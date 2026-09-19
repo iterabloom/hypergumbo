@@ -56,3 +56,17 @@
   set: {}  # 5863
   add:  # 5863
     isbefore: [WI-lihis-dunav-durur-fimid-vulaj-fupir-notoz-loloz]  # 5863
+- op: discuss  # fb24
+  at: '2026-09-19T01:26:23Z'  # fb24
+  by: agent  # fb24
+  actor: jgstern_agent  # fb24
+  clock: 6  # fb24
+  nonce: fb24  # fb24
+  message: "PRECONDITION LANDED (WI-hohuh, PR #1066, dev 52d5763a39): the declaration this pass must READ exists. registry.merge_participants(language) returns the anchored producers to pair among (for \"rust\": [rust_analyzer, rust], priority order) and raises UndeclaredProducerError naming the analyzer otherwise — the pass should call it per language and let that exception be the refusal; do not re-implement the check. Each RegisteredAnalyzer.merge is a MergeAnchor with .name_key (callable Symbol.name -> key) and .span_role (\"token\" | \"item\"): rust = last \"::\" segment / item; rust_analyzer = as_emitted / token. Containment rule per §10: token inside item; item vs item is equality.\n\nFACTS PINNED FOR THIS PASS on the recorded rust-analyzer 1.94.0 sample (lang-rust-analyzer/tests/recorded_rust_analyzer_1_94_0.py): every callable's SCIP range is the single-line token; enclosing_range equals the tree-sitter item span line-for-line on 6/6 callables — so the INV-lodum fold (span the merged record from enclosing_range) will produce item == item on the recorded producer. Two same-named declarations (`greet` trait sig vs impl) are separated by containment, not by key — the pass must NOT pair on key alone.\n\nSCOPE NOTE: javascript/svelte/vue are MergeDisjoint on both sides; merge_participants returns [] for svelte and vue, so the pass is a no-op there by declaration. A future tsserver backend anchored on javascript would make javascript's own declaration (currently MergeDisjoint) insufficient — the contract test will refuse it until javascript declares an anchor; that is the intended forcing function."  # fb24
+- op: discuss  # b195
+  at: '2026-09-19T02:08:24Z'  # b195
+  by: agent  # b195
+  actor: jgstern_agent  # b195
+  clock: 7  # b195
+  nonce: b195  # b195
+  message: "FIXTURE LANDED (WI-romuh). Import from recorded_rust_analyzer_1_94_0: aardvark_dns_index_bytes(), aardvark_dns_crate_root(), AARDVARK_DNS_PAIRING. The SCIP arm's Symbols come from translate_scip_to_hg(aardvark_dns_index_bytes(), reader-over-crate); the tree-sitter arm runs live on aardvark_dns_crate_root(). ACCEPTANCE NUMBER CORRECTED: under the declared anchors the committed input pairs **148 of 169** (not 138), 0 ambiguous — test_recorded_fixtures.py::test_pairing_under_the_declared_rule is the reference computation (same path, equal name keys, token line inside item span). The 21 unpaired: 18 namespaces + 2 `type` aliases + 1 `static` (rust.py emits none). When the pass has a function name, add it to CROSS_BACKEND_CONSUMERS in check_recorded_producer_input.py so a test cannot feed it rust.py-derived input."  # b195
