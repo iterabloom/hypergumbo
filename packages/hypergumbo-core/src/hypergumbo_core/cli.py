@@ -537,7 +537,9 @@ def _discover_input_file(repo_root: Path) -> Optional[Path]:
     """Auto-discover a survey artifact from cache or repo root.
 
     Search order:
-    1. Cache directory: ~/.cache/hypergumbo/<fingerprint>/results/<state>/<analyzer_identity>/
+    1. Cache directory: ~/.cache/hypergumbo/<fingerprint>/results/<state>[-<backends>]/<analyzer_identity>/
+       (the state segment carries the resolved opt-in backend set when one is on — WI-givib —
+       so a read command finds a two-arm artifact only under the same resolved set)
     2. Repo root: <repo>/
 
     This enables the seamless workflow where 'hypergumbo survey .' (which caches

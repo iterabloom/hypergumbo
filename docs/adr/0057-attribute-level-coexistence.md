@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0057: Multi-Backend Coexistence at the Attribute, Not the Record
 
-Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh), §12's recorded fixtures and lint (WI-romuh), §7's two producer fixes (WI-gapup, WI-zapuk), §3's merge pass (WI-kokiz), §4/§6/§13's provenance slot, arbitration property and corroboration (WI-binis) and §14's same-site supersession (WI-lihis) landed. WI-gojum stays parked until the owner unparks it.
+Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh), §12's recorded fixtures and lint (WI-romuh), §7's two producer fixes (WI-gapup, WI-zapuk), §3's merge pass (WI-kokiz), §4/§6/§13's provenance slot, arbitration property and corroboration (WI-binis) §14's same-site supersession (WI-lihis) and the cache key's resolved backend set (WI-givib) landed. WI-gojum stays parked until the owner unparks it.
 
 - Date: 2026-09-18
 - Supersedes: ADR-0012 §Step 3 (multi-fidelity passes — the record-level coexistence it described; Steps 1–2 are untouched)
@@ -174,7 +174,7 @@ A resolved (`is_resolved=True`) first-party edge at `(src, line)` **demotes** a 
 - WI-hohuh — producer contract: merge anchor, measured authority, `executes_analysed_code` on one surface; the pass refuses the undeclared (§10). Blocks WI-kokiz. **Landed.**
 - WI-dajif — the backend-agreement instrument whose committed tables are the only evidence that may change a default (§5, §10). Blocks WI-hukuf.
 - WI-romuh — recorded producer-shaped fixtures and the lint that forbids feeding the incumbent's output back (§12). Blocks WI-kokiz. **Landed.**
-- WI-givib — results-cache key folds in the resolved backend set (WI-gojum sub-component 3, split out). Blocks WI-dajif.
+- WI-givib — results-cache key folds in the resolved backend set (WI-gojum sub-component 3, split out). Blocks WI-dajif. **Landed:** the state segment is suffixed with the resolved set (`-rust_analyzer`) only when a backend will actually run — opt-in chain and binary present — so tree-sitter-only entries keep their pre-existing key.
 - WI-lihis — same-site supersession by `rank_score`, stamped on the stub (§14). Blocked by WI-kokiz. **Landed.**
 - WI-binis additionally carries §13: the `corroborated` source value, the combining case in the arbitration property, `CONFIDENCE_MODEL` v2.1. WI-gapup is widened to enum variants (9 of 9 pair SCIP `class` against tree-sitter `field`).
 - WI-gojum — parked host; sub-component 1 is superseded by this ADR, sub-component 2 is WI-kokiz, sub-component 3 is WI-givib, sub-component 4 is WI-sobig's question.

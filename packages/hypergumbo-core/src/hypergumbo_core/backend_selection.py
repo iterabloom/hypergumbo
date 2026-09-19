@@ -47,7 +47,7 @@ which is the same class of bug as the one above, pointed the other way.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import FrozenSet, Mapping, Optional
+from typing import Callable, FrozenSet, Mapping, Optional
 
 #: The rust-analyzer/SCIP backend's selection vocabulary, owned here rather
 #: than in ``hypergumbo-lang-rust-analyzer`` because the CLI must resolve the
@@ -171,3 +171,48 @@ def resolve_rust_analyzer_optin(
 
     recorded = read_decision(repo_root, "rust_analyzer", environ=environ)
     return None if recorded is None else recorded.granted
+
+
+def resolved_backend_set(
+    *,
+    repo_root: "Path",
+    environ: Optional[Mapping[str, str]] = None,
+    flag_choice: Optional[str] = None,
+    is_available: Optional[Callable[[], bool]] = None,
+) -> "tuple[str, ...]":
+    """The opt-in backends that WILL RUN for ``repo_root``, as registration names.
+
+    WI-givib (WI-gojum sub-component 3): the results cache is keyed on
+    ``<fingerprint>/results/<state>/<analyzer_identity>``, and
+    ``analyzer_identity`` hashes the INSTALLED code — which backends exist —
+    not which were ENABLED, so a tree-sitter-only run and a two-arm run of
+    one tree shared a cache dir and could return each other's artifact
+    (user-visible since the merge pass: the two differ in node count). The
+    enabled set is run configuration, like ``max_files``, and this is the one
+    place it is resolved for the cache key.
+
+    It names what will run, not what was asked for: the opt-in is the output
+    of the ADR-0045 ruling-4 chain (:func:`resolve_rust_analyzer_optin` —
+    flag > environment > per-repository trust grant), and it counts only when
+    the binary is actually installed (:func:`rust_analyzer_install
+    .is_rust_analyzer_available`, the same probe the backend's gate makes),
+    because an opt-in with no binary falls through to the tree-sitter arm
+    (WI-luvud) and must be keyed as tree-sitter-only. A run that starts and
+    produces nothing (a wasmtime-class OOM) cannot be known before it runs
+    and is accepted as the residual.
+
+    The vocabulary is owned here for the reason the module docstring gives —
+    the CLI must resolve the same choice and cannot import the optional
+    backend package. A second opt-in backend (WI-nanom) adds its own clause
+    beside this one.
+    """
+    decision = resolve_rust_analyzer_optin(
+        flag_choice=flag_choice, environ=environ, repo_root=repo_root,
+    )
+    if decision is not True:
+        return ()
+    if is_available is None:
+        from .rust_analyzer_install import is_rust_analyzer_available
+
+        is_available = is_rust_analyzer_available
+    return ("rust_analyzer",) if is_available() else ()
