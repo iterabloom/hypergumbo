@@ -42,3 +42,18 @@
   clock: 4  # 026e
   nonce: 026e  # 026e
   message: "UNBLOCKED 2026-09-18: INV-kukiz (isbefore this row) is satisfied in PR #1042 — SCIP locals are dropped, so the 21.2% false cross-file edges that made this arm unsafe to enable persistently are gone (455 -> 0 local-pointing edges on aardvark-dns). The remaining SCIP-arm defects are identity-side, not edge-side: INV-dolud (parity does not hold; being retracted in docs, not fixed) and INV-kutid (per-target moniker collision, 5/756). Neither is an edge falsehood. Not started here."  # 026e
+- op: update  # 0fcb
+  at: '2026-09-19T09:57:26Z'  # 0fcb
+  by: agent  # 0fcb
+  actor: jgstern_agent  # 0fcb
+  clock: 5  # 0fcb
+  nonce: 0fcb  # 0fcb
+  set:  # 0fcb
+    status: done  # 0fcb
+- op: discuss  # 027f
+  at: '2026-09-19T09:57:27Z'  # 027f
+  by: agent  # 027f
+  actor: jgstern_agent  # 027f
+  clock: 6  # 027f
+  nonce: 027f  # 027f
+  message: "Verified and closed on the filed repro, 2026-09-19, against dev e60e6abe43. The feature the row asked for landed as ADR-0045 rulings 1/5/7/8: `hypergumbo trust-backend rust_analyzer <path> [--revoke|--show]` (hypergumbo_core.backend_trust; store $XDG_STATE_HOME/hypergumbo/trust.d, keyed by absolute path, 0600, outside every repository — the design constraint in this row), consulted by the gate as the third tier after --backend and HYPERGUMBO_RUST_ANALYZER (backend_selection.resolve_rust_analyzer_optin), and read by the nudge (partial_install_warnings.check_rust_analyzer_disclosure: a recorded decision either way silences it).\n\nLive repro on a trivial crate (~/scip_edge_probe/sobig_crate: Cargo.toml + src/main.rs, no deps, no build.rs), every arm run with the environment variable UNSET (`env -u HYPERGUMBO_RUST_ANALYZER hypergumbo survey <crate> --out ...`):\n  A. no decision: exit 0; stderr carries the nudge \"rust-analyzer is installed but NOT enabled ... Enable per run: --backend rust-analyzer\"; artifact has 0 origin=scip nodes; passes {rust}; backend_selection.resolved_backend_set(repo_root) == ().\n  B. `trust-backend rust_analyzer <crate> --revoke` → \"Declined ... recorded in ~/.local/state/hypergumbo/trust.d\"; survey exit 0; nudge lines in stderr: 0 (the second, smaller problem in the row — the undismissable nudge — is gone); 0 scip nodes.\n  C. `trust-backend rust_analyzer <crate>` → \"Granted ... Indexing this repository will run its build scripts (build.rs) and proc macros as you.\"; `--show` → \"GRANTED for <crate>\"; survey exit 0 with NO env var: stderr \"rust-analyzer backend ACTIVE for this run\"; artifact has 3 origin=scip nodes, 2 merged (ADR-0057 pass ran: passes {rust, rust_analyzer, producer-merge}); resolved_backend_set == ('rust_analyzer',) — so the results cache keys the two-arm artifact separately (WI-givib).\n  D. `--revoke` again → resolved_backend_set == ().\nSo a per-repository, durable, out-of-repo enable exists; the global env var is no longer the only persistence; the nudge respects a recorded answer either way; and (the ordering note on this row) INV-kukiz landed first so a granted user no longer receives the 21.2% false cross-file edges.\n\nNot asserted: ruling 6's OS-level separation (a store the agent cannot write) — stated as partial on ADR-0045; and the `--forget` spelling suggested here does not exist (revoke records a decline rather than forgetting — deliberate, ruling 8, so the nudge can stop asking)."  # 027f
