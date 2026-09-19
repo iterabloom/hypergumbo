@@ -1,0 +1,58 @@
+Original commit body from db3dd0dbb602d5960817df8392d282ec815eb58d:
+
+analyze/merge_producers.py runs in run_behavior_map at the top of Phase C —
+after _relativize_ir_paths, before refine_frameworks — and folds two
+anchored producers' records for one declaration into one Symbol. Until now
+run_all_analyzers concatenated the tree-sitter `rust` and `rust_analyzer`
+lists and every Phase-C reader saw two records per function.
+
+Nothing in the pass is Rust-shaped. A record's producer is its
+origin_run_id -> AnalysisRun.pass; the pairing key is each producer's
+declared MergeAnchor (registry, §10): same path, equal name_key, token
+inside item or item equal to item; merge_participants supplies the anchored
+producers and its UndeclaredProducerError IS the refusal (propagated, not
+caught). The incumbent is the non-scip backend (registry.incumbent_first;
+ALTERNATIVE_BACKENDS moves from the lint into the registry so there is one
+home) — ADR-0057 §5's built-in until WI-hukuf makes it a config preference.
+
+The merged record is the incumbent's copy with: an id minted from the
+merged attributes (ADR-0036 — the grammar has no slot that could make it
+differ, so it coincides with the incumbent's whenever incumbent-first
+leaves every identity attribute the incumbent's; recorded in ADR §3);
+the ITEM span (INV-lodum's cure for every merged record); origin = both
+producers' pass ids, incumbent first; meta union with the incumbent winning
+a shared key (the SCIP moniker survives); attributes only the other producer
+observed filled in; origin_run_id = the pass's own producer-merge run
+(catalog._BUILTIN_PIPELINE_PASS_IDS), appended only when it folded
+something (the file-symbol synthesizer's convention; a run for a no-op pass
+is the ADR-0056 question the owner reserved). Per merged record the §1
+candidate set — attribute -> [(value, producers)] — is kept in memory
+(MergedRecord.candidates) for WI-binis's slot. Edges: src/dst/derived_from
+rewired, edge_key reset so deduplicate_edges collapses twins (§11);
+usage-context symbol_ref rewired. A record with two candidate partners, or
+a partner claimed twice, is left unmerged and reported. A single producer
+is untouched, byte for byte.
+
+The Python incumbent (py.py) declares its anchor — last "." segment, item
+span — ahead of the second Python producer WI-nanom names, and so a plugin
+backend can pair with it; the pipeline test relies on it.
+
+Measured on the committed aardvark-dns fixture (test_recorded_fixtures.py):
+148 folded, 0 ambiguous, 21 SCIP-only left, 0 tree-sitter-only; every merged
+record origin == [rust, scip], carries scip_symbol, spans the item, joins to
+the producer-merge run; the 121 shared call edges fall onto 93 distinct
+(src, dst, calls) keys that deduplicate_edges removes (pinned). Pipeline
+(test_merge_pass_in_pipeline.py): a fake second Python producer beside the
+real one for one run_behavior_map -> "f" and "Alias" are ONE node each with
+origin [python, pyscip], Alias keeps the incumbent's kind on the contested
+attribute, the namespace record stays pyscip-only, a producer-merge run is
+recorded; no second producer -> no merge run; stripping the incumbent's
+declaration makes the run raise UndeclaredProducerError naming 'python'.
+25 unit tests on synthetic input; mutation: breaking containment turns 18
+tests red.
+
+Slice: 705 affected test files in 17 foreground chunks, 22,276 passed;
+coverage of the six changed source files 100%; mypy ratchet 667 unchanged.
+
+Tracker: WI-kokiz.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
