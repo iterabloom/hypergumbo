@@ -683,6 +683,13 @@ _BUILTIN_PIPELINE_PASS_IDS: frozenset[str] = frozenset({
     # declared HTTP method.
     "route-materializer",
     "django-cbv-method-expander",
+    # analyze/merge_producers.py — ADR-0057 §3 (WI-kokiz): the merge pass at
+    # the top of Phase C that folds two producers' records for one
+    # declaration into one Symbol. Emits a real AnalysisRun (only when it
+    # merged something, like the file-symbol synthesizer) whose execution_id
+    # the merged records' origin_run_id joins to; their ``origin`` keeps the
+    # two PRODUCERS' pass ids, since those are who observed the declaration.
+    "producer-merge",
 })
 
 # Synthetic-pass provenance IDs (ADR-0044). A few pipeline-level synthesis /

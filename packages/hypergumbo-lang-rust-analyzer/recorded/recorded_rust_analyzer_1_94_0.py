@@ -251,6 +251,11 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     "twins": 130,
     "twins_calls_calls": 121,
     "twins_references_calls": 9,
+    # After the merge pass rewires endpoints (WI-kokiz), the 121 calls/calls
+    # twins fall onto 93 DISTINCT (src, dst, edge_type) keys — SCIP emits one
+    # edge per call occurrence and within-arm dedup already folds repeats —
+    # so deduplicate_edges removes exactly 93 cross-arm duplicates.
+    "shared_call_keys_after_fold": 93,
 }
 
 

@@ -122,7 +122,13 @@ from hypergumbo_core.analyze.base import (
     make_typed_stable_id,
     visibility_from_modifiers,
 )
-from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.registry import (
+    SPAN_ROLE_ITEM,
+    MergeAnchor,
+    last_segment,
+    register_analyzer,
+)
+from hypergumbo_core.qualified_name_axis import QUALIFIED_NAME_SEPARATORS
 from hypergumbo_lang_mainstream._pyscope import NestedDef, Scope, ScopeStack
 
 if TYPE_CHECKING:
@@ -8719,7 +8725,21 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     )
 
 
-@register_analyzer("python", supports_max_files=True)
+# ADR-0057 §10 (WI-kokiz): the Python incumbent declares its merge anchor
+# ahead of the second Python producer WI-nanom names (pyright / scip-python):
+# a method is named ``Class.method`` here, so the declaration key is the last
+# segment under the taxonomy's declared ``.`` separator, over the ITEM span.
+# The sole producer today; the declaration costs nothing until a partner
+# registers, and lets a plugin backend pair with this analyzer's records
+# without a change here.
+@register_analyzer(
+    "python",
+    supports_max_files=True,
+    merge=MergeAnchor(
+        name_key=last_segment(QUALIFIED_NAME_SEPARATORS["python"]),
+        span_role=SPAN_ROLE_ITEM,
+    ),
+)
 def analyze_python(
     repo_root: Path, max_files: int | None = None
 ) -> AnalysisResult:

@@ -23,7 +23,8 @@ from hypergumbo_core.analyze.registry import (
     ensure_discovered,
     get_analyzer,
 )
-from hypergumbo_core.ir import Symbol
+from hypergumbo_core.analyze.merge_producers import merge_producer_records
+from hypergumbo_core.ir import Symbol, deduplicate_edges
 from hypergumbo_core.scip._generated import scip_pb2
 from hypergumbo_core.scip.descriptor import is_local_symbol
 from hypergumbo_lang_mainstream.rust import analyze_rust
@@ -215,7 +216,7 @@ class TestTheCallEdgesAgreeWithTheIncumbentWhereBothSeeTheCall:
             if other is not None:
                 twins_by_types[(edge.edge_type, other)] += 1
 
-        assert {
+        measured = {
             "scip_edges": len(scip_edges),
             "calls": by_type["calls"],
             "references": by_type["references"],
@@ -225,10 +226,82 @@ class TestTheCallEdgesAgreeWithTheIncumbentWhereBothSeeTheCall:
             "twins": sum(twins_by_types.values()),
             "twins_calls_calls": twins_by_types[("calls", "calls")],
             "twins_references_calls": twins_by_types[("references", "calls")],
-        } == AARDVARK_DNS_CALL_SITE_TALLY
+        }
+        # (the post-fold key is pinned by the merge-pass test below)
+        assert measured == {k: AARDVARK_DNS_CALL_SITE_TALLY[k] for k in measured}
         # Every callable-target edge is a call, and only those are.
         callable_kinds = {"function", "method", "constructor"}
         assert all(
             (e.edge_type == "calls") == (kind_of.get(e.dst) in callable_kinds) for e in scip_edges
         )
         assert set(twins_by_types) == {("calls", "calls"), ("references", "calls")}
+
+
+class TestTheMergePassOnBothArms:
+    """WI-kokiz's acceptance, on committed input: the pass folds exactly the
+    148 declarations the anchors pair, leaves the 21 SCIP-only records and
+    no tree-sitter-only record, stamps both producers on every merged
+    record, and rewires the edges so the 121 shared call sites collapse."""
+
+    def _both_arms(self) -> tuple[list[Symbol], list, list[dict[str, str]]]:
+        result = analyze_rust(aardvark_dns_crate_root())
+        assert result.run is not None
+        tree_sitter = [s for s in result.symbols if s.path.startswith("src/") or s.path == "build.rs"]
+        for symbol in tree_sitter:
+            symbol.origin_run_id = symbol.origin_run_id or result.run.execution_id
+        scip_symbols, scip_edges = translate_scip_to_hg(
+            aardvark_dns_index_bytes(), _read_crate_file, run_id="scip-run",
+        )
+        runs = [
+            {"execution_id": result.run.execution_id, "pass": "rust"},
+            {"execution_id": "scip-run", "pass": "rust_analyzer"},
+        ]
+        return tree_sitter + scip_symbols, list(result.edges) + scip_edges, runs
+
+    def test_the_pass_folds_the_paired_declarations(self) -> None:
+        symbols, edges, runs = self._both_arms()
+        before = len(symbols)
+        report = merge_producer_records(symbols, edges, runs)
+        assert len(report.merged) == AARDVARK_DNS_PAIRING["paired"]
+        assert report.ambiguous == []
+        assert before - len(symbols) == AARDVARK_DNS_PAIRING["paired"]
+        by_origin = Counter(tuple(s.origin) for s in symbols)
+        assert by_origin[("rust", "scip")] == AARDVARK_DNS_PAIRING["paired"]
+        assert by_origin[("scip",)] == (
+            AARDVARK_DNS_PAIRING["scip_definitions"] - AARDVARK_DNS_PAIRING["paired"]
+        )
+        assert by_origin[("rust",)] == 0  # no tree-sitter-only leftover
+        assert runs[-1]["pass"] == "producer-merge"
+
+    def test_merged_records_carry_the_item_span_and_the_moniker(self) -> None:
+        symbols, edges, runs = self._both_arms()
+        merge_producer_records(symbols, edges, runs)
+        merged = [s for s in symbols if s.origin == ["rust", "scip"]]
+        callables = [s for s in merged if s.kind in ("function", "method")]
+        assert callables and any(s.span.end_line > s.span.start_line for s in callables)
+        assert all("scip_symbol" in (s.meta or {}) for s in merged)
+        assert all(s.origin_run_id == runs[-1]["execution_id"] for s in merged)
+
+    def test_shared_call_sites_collapse_after_the_fold(self) -> None:
+        symbols, edges, runs = self._both_arms()
+        tree_sitter_edges = [e for e in edges if e.origin == ["rust"]]
+        scip_edges = [e for e in edges if e.origin == ["scip"]]
+        separately = len(deduplicate_edges(tree_sitter_edges)) + len(deduplicate_edges(scip_edges))
+        report = merge_producer_records(symbols, edges, runs)
+        # No edge still names a folded id (external targets are not symbols
+        # yet — the orchestrator synthesises those stubs later — so the test
+        # is "nothing dangles on a dropped id", not "every endpoint exists").
+        folded = set(report.id_remap)
+        assert not any(e.src in folded or e.dst in folded for e in edges)
+        together = len(deduplicate_edges(edges))
+        keys_of = lambda origin: {  # noqa: E731 - local shorthand
+            (e.src, e.dst, e.edge_type) for e in edges if e.origin == [origin]
+        }
+        shared = keys_of("rust") & keys_of("scip")
+        assert len(shared) == AARDVARK_DNS_CALL_SITE_TALLY["shared_call_keys_after_fold"]
+        assert {k[2] for k in shared} == {"calls"}
+        assert separately - together == len(shared)
+        # The 121 SCIP call edges that have a twin are exactly the ones on those keys.
+        assert sum(
+            1 for e in edges if e.origin == ["scip"] and (e.src, e.dst, e.edge_type) in shared
+        ) == AARDVARK_DNS_CALL_SITE_TALLY["twins_calls_calls"]

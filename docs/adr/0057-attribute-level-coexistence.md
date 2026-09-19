@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0057: Multi-Backend Coexistence at the Attribute, Not the Record
 
-Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh), §12's recorded fixtures and lint (WI-romuh) and §7's two producer fixes (WI-gapup, WI-zapuk) landed. WI-gojum stays parked until the owner unparks it.
+Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh), §12's recorded fixtures and lint (WI-romuh), §7's two producer fixes (WI-gapup, WI-zapuk) and §3's merge pass (WI-kokiz) landed. WI-gojum stays parked until the owner unparks it.
 
 - Date: 2026-09-18
 - Supersedes: ADR-0012 §Step 3 (multi-fidelity passes — the record-level coexistence it described; Steps 1–2 are untouched)
@@ -72,6 +72,8 @@ A declared **merge pass** runs after Phase B relativization and **before the fir
 The merge key is (path, declared name key, declared span role) — **read from each producer's declaration (§10), never hardcoded**; the Rust instance is (path, last `::` segment, SCIP token inside tree-sitter item). Neither `id` nor `stable_id` qualifies (§Context). The merged record gets a **new `id`**, every edge from **both** producers is rewired to it, and `edge_key` is reset so `deduplicate_edges` recomputes it — the exact mechanics of `dedup_logical_synthetic_identities` (`analyze/base.py`). The merged span is the **item** span (rust-analyzer's `enclosing_range`, populated on 20 of 20 Definitions), so INV-lodum's cure lands inside this pass rather than as a separate importer edit. The pass is a **no-op when one producer emitted**: a tree-sitter-only run is byte-identical before and after.
 
 It is a pass, not a traversal: one linear loop over symbols, one over edges, no edge-following. On `aardvark-dns` that is 756 nodes and 1,282 edges.
+
+*Landed (WI-kokiz)* as `analyze/merge_producers.py`, called in `run_behavior_map` after `_relativize_ir_paths` and before `refine_frameworks`. A record's producer is read from `origin_run_id` → `AnalysisRun.pass`; the anchors from `merge_participants` (§10), whose `UndeclaredProducerError` is the refusal; the incumbent from `incumbent_first` (non-`scip` backends first, then priority — the §5 built-in until WI-hukuf). On the committed aardvark-dns fixture: 148 declarations folded, 0 ambiguous, 21 SCIP-only records left (namespaces, two `type` aliases, one `static`), 0 tree-sitter-only; every merged record carries `origin = [rust, scip]`, the item span, the SCIP moniker in `meta`, and `origin_run_id` of the pass's own `producer-merge` run (appended only when it folded something, the file-symbol synthesizer's convention; a run for a no-op pass is the ADR-0056 question the owner reserved). The rewired edges put the 121 shared call sites onto 93 distinct `(src, dst, calls)` keys, which `deduplicate_edges` then collapses. Two readings this landing fixes: the "new `id`" is *minted from the merged attributes* (ADR-0036: an id derives from attributes) and therefore coincides with the incumbent's whenever incumbent-first arbitration leaves every identity attribute the incumbent's — the id grammar has no slot that could make it differ; and the §1 candidate sets are kept per merged record in memory (`MergedRecord.candidates`) for WI-binis's slot, not yet serialized. A record with two candidate partners, or a partner claimed twice, is left unmerged and reported rather than guessed.
 
 ### 4. Arbitration is a property, with one stamped default
 
@@ -161,7 +163,7 @@ A resolved (`is_resolved=True`) first-party edge at `(src, line)` **demotes** a 
 
 - WI-zapuk — SCIP edges carry the target-kind-derived edge type (§7, first prerequisite; the role bits the row named are all zero on the recorded producer). **Landed.**
 - WI-gapup — SCIP `kind` from the producer's declaration, else the descriptor chain (§7, second prerequisite). **Landed.**
-- WI-kokiz — the merge pass (§3); INV-lodum's cure lands here.
+- WI-kokiz — the merge pass (§3); INV-lodum's cure lands here for every merged record (SCIP-only leftovers keep their token span). **Landed.**
 - WI-binis — attribute-level provenance slot + arbitration property + schema bump (§1, §4, §6).
 - WI-hukuf — the `config.toml` arbitration default (§5).
 - WI-hohuh — producer contract: merge anchor, measured authority, `executes_analysed_code` on one surface; the pass refuses the undeclared (§10). Blocks WI-kokiz. **Landed.**

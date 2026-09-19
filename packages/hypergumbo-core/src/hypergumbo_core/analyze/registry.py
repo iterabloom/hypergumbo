@@ -99,6 +99,19 @@ SPAN_ROLE_ITEM = "item"
 _SPAN_ROLES = frozenset({SPAN_ROLE_TOKEN, SPAN_ROLE_ITEM})
 
 AUDIT_CITATION_PREFIX = "docs/audits/"
+
+ALTERNATIVE_BACKENDS: frozenset[str] = frozenset({"scip"})
+"""Backends that are the ALTERNATIVE arm of a language, never its incumbent.
+
+ADR-0057 §5's built-in arbitration default is "incumbent first" — tree-sitter
+before any SCIP/LSP backend. The Python incumbent is ``ast``-backed, not
+tree-sitter, so the rule is spelled on the alternative side: among a
+language's anchored producers, the ones whose ``backend`` is NOT listed here
+are incumbents. Extend when an LSP-backed backend registers. Declaring
+incumbency per language on the registration is WI-hukuf's question; this is
+the one inference until then, read by :func:`incumbent_first` and by the
+recorded-producer-input lint.
+"""
 """Every ``authoritative_for`` entry cites a committed table under here,
 produced by the backend-agreement instrument (ADR-0057 §5, §10). No citation,
 no authority: the built-in arbitration default stays incumbent-first."""
@@ -606,6 +619,17 @@ def _pair_is_declared(left: RegisteredAnalyzer, right: RegisteredAnalyzer) -> bo
     return any(
         isinstance(a.merge, MergeDisjoint) and b.name in a.merge.partners
         for a, b in ((left, right), (right, left))
+    )
+
+
+def incumbent_first(analyzers: Iterable[RegisteredAnalyzer]) -> list[RegisteredAnalyzer]:
+    """``analyzers`` ordered incumbent first: non-alternative backends, then
+    by registration priority — the ADR-0057 §5 built-in precedence the merge
+    pass applies to categorical attributes until WI-hukuf makes it a
+    ``config.toml`` preference."""
+    return sorted(
+        analyzers,
+        key=lambda a: (a.backend in ALTERNATIVE_BACKENDS, a.priority, a.name),
     )
 
 

@@ -48,8 +48,12 @@ import ast
 from pathlib import Path
 from typing import Iterator, Union
 
-#: Cross-backend consumers (sinks). Extend when a new one lands — the merge
-#: pass (WI-kokiz) belongs here the day it has a name.
+#: Cross-backend consumers (sinks): functions whose input is the ALTERNATIVE
+#: arm's. The merge pass (``analyze.merge_producers.merge_producer_records``)
+#: is deliberately NOT one: its inputs are both arms, and the incumbent's
+#: live output is legitimately one of them — the rule is about deriving the
+#: alternative arm's input, and a fixture test that hands the pass live
+#: tree-sitter records beside recorded SCIP records is the intended shape.
 CROSS_BACKEND_CONSUMERS: frozenset[str] = frozenset({
     # hypergumbo_core.scip — the shim every SCIP backend goes through
     "scip_index_to_symbols",
@@ -61,15 +65,10 @@ CROSS_BACKEND_CONSUMERS: frozenset[str] = frozenset({
     "compute_rust_stable_id_from_source",
 })
 
-#: Backends that are the ALTERNATIVE arm of a language, never its incumbent.
-#: Read with the registry's merge declarations: among a language's anchored
-#: producers, the ones whose ``backend`` is not listed here are incumbents.
-#: ADR-0057 §5 phrases the default as "tree-sitter before any SCIP/LSP
-#: backend"; the Python incumbent is ``ast``-backed, so the exclusion is
-#: spelled on the alternative side. Extend when an LSP-backed backend
-#: registers. (Declaring incumbency per language on the registration is
-#: WI-hukuf's question; this is the inference until then.)
-ALTERNATIVE_BACKENDS: frozenset[str] = frozenset({"scip"})
+#: Which backends are the ALTERNATIVE arm of a language lives with the
+#: registry (``analyze.registry.ALTERNATIVE_BACKENDS``), one home shared with
+#: the merge pass; re-exported here for the lint's callers and tests.
+from .analyze.registry import ALTERNATIVE_BACKENDS  # noqa: E402
 
 MARKER = "incumbent_fed"
 

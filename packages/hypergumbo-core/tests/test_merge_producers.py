@@ -1,0 +1,369 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""ADR-0057 §3 / WI-kokiz: the merge pass, on synthetic two-producer input.
+
+Two producers are registered in an isolated registry for the language
+``python``: ``python`` (the incumbent — ``ast`` backend, item span, dotted
+names) and ``pyscip`` (a ``scip`` backend, token span, names as emitted).
+Records carry ``origin_run_id`` values that join to two AnalysisRun dicts,
+which is how the pass learns who produced what. Every rule the module
+docstring states is pinned here: pairing by declared key and span role,
+incumbent-first scalars with disjoint-coverage fill, origin and meta union,
+the item span, the new id, edge / usage-context rewiring, ambiguity left
+alone and reported, the single-producer no-op, and the refusal.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from hypergumbo_core.analyze import registry as _registry_mod
+from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.merge_producers import (
+    PASS_ID,
+    MergeReport,
+    merge_producer_records,
+)
+from hypergumbo_core.analyze.registry import (
+    SPAN_ROLE_ITEM,
+    SPAN_ROLE_TOKEN,
+    MergeAnchor,
+    UndeclaredProducerError,
+    as_emitted,
+    last_segment,
+    register_analyzer,
+)
+from hypergumbo_core.ir import Edge, Span, Symbol, UsageContext, deduplicate_edges
+
+RUN_PY, RUN_SCIP, RUN_LINKER = "run-python", "run-pyscip", "run-linker"
+RUNS: list[dict[str, Any]] = [
+    {"execution_id": RUN_PY, "pass": "python"},
+    {"execution_id": RUN_SCIP, "pass": "pyscip"},
+    {"execution_id": RUN_LINKER, "pass": "containment-linker"},
+]
+
+
+def _noop(repo_root: Any) -> AnalysisResult:  # pragma: no cover - never called
+    return AnalysisResult(symbols=[], edges=[], run=None)
+
+
+@pytest.fixture(autouse=True)
+def two_producers():
+    saved, saved_flag = dict(_registry_mod._ANALYZER_REGISTRY), _registry_mod._discovered
+    _registry_mod._ANALYZER_REGISTRY.clear()
+    _registry_mod._discovered = True
+    register_analyzer(
+        "python", backend="ast", priority=50,
+        merge=MergeAnchor(name_key=last_segment("."), span_role=SPAN_ROLE_ITEM),
+    )(_noop)
+    register_analyzer(
+        "pyscip", backend="scip", priority=45, languages=["python"],
+        merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN),
+    )(_noop)
+    yield
+    _registry_mod._ANALYZER_REGISTRY.clear()
+    _registry_mod._ANALYZER_REGISTRY.update(saved)
+    _registry_mod._discovered = saved_flag
+
+
+def _sym(
+    name: str, kind: str, start: int, end: int, *, run: str, origin: str,
+    path: str = "pkg/mod.py", stable_id: str | None = None, meta: dict[str, Any] | None = None,
+    signature: str | None = None, start_col: int = 0, end_col: int = 0,
+) -> Symbol:
+    return Symbol(
+        id=f"python:{path}:{start}-{end}:{name}:{kind}",
+        name=name, kind=kind, language="python", path=path,
+        span=Span(start, end, start_col, end_col),
+        origin=origin, origin_run_id=run, stable_id=stable_id, meta=meta, signature=signature,
+    )
+
+
+def _edge(src: str, dst: str, edge_type: str = "calls", origin: str = "python") -> Edge:
+    return Edge.create(src=src, dst=dst, edge_type=edge_type, line=1, origin=origin,
+                       evidence_type="ast_call", confidence=0.9,
+                       origin_run_id=RUN_PY if origin == "python" else RUN_SCIP)
+
+
+def _incumbent_method() -> Symbol:
+    return _sym("Counter.increment", "method", 14, 17, run=RUN_PY, origin="python",
+                stable_id="sha256:incumbent", meta={"visibility": "public"},
+                signature="def increment(self, by)")
+
+
+def _scip_method() -> Symbol:
+    return _sym("increment", "method", 14, 14, run=RUN_SCIP, origin="scip",
+                stable_id="sha256:moniker", meta={"scip_symbol": "pkg/Counter#increment().", "visibility": "pub"},
+                start_col=11, end_col=20)
+
+
+class TestPairing:
+    def test_a_token_inside_the_item_with_the_same_key_merges(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        runs = [dict(r) for r in RUNS]
+        report = merge_producer_records(symbols, [], runs)
+        assert len(report.merged) == 1
+        assert len(symbols) == 1
+        [merged] = symbols
+        assert merged.name == "Counter.increment" and merged.kind == "method"
+        assert report.languages == ["python"]
+
+    def test_the_merged_record_has_the_item_span_and_a_minted_id(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [merged] = symbols
+        assert (merged.span.start_line, merged.span.end_line) == (14, 17)
+        # ADR-0036: the id derives from the merged attributes.
+        assert merged.id == "python:pkg/mod.py:14-17:Counter.increment:method"
+
+    def test_a_different_key_does_not_merge(self) -> None:
+        symbols = [_incumbent_method(), _sym("reset", "method", 14, 14, run=RUN_SCIP, origin="scip")]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert report.merged == [] and len(symbols) == 2
+
+    def test_a_token_outside_the_item_does_not_merge(self) -> None:
+        symbols = [_incumbent_method(), _sym("increment", "method", 30, 30, run=RUN_SCIP, origin="scip")]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert report.merged == [] and len(symbols) == 2
+
+    def test_two_same_named_items_are_separated_by_containment(self) -> None:
+        """The recorded sample's two ``greet``s: the key is ambiguous, the
+        containment is not."""
+        trait_sig = _sym("Greeter.greet", "method", 25, 25, run=RUN_PY, origin="python")
+        impl = _sym("Counter.greet", "method", 29, 31, run=RUN_PY, origin="python")
+        scip_sig = _sym("greet", "method", 25, 25, run=RUN_SCIP, origin="scip")
+        scip_impl = _sym("greet", "method", 29, 29, run=RUN_SCIP, origin="scip")
+        symbols = [trait_sig, impl, scip_sig, scip_impl]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert len(report.merged) == 2 and report.ambiguous == []
+        assert {s.name for s in symbols} == {"Greeter.greet", "Counter.greet"}
+
+    def test_a_record_the_other_producer_never_saw_stays_as_emitted(self) -> None:
+        alias = _sym("AardvarkResult", "type_alias", 3, 3, run=RUN_SCIP, origin="scip")
+        symbols = [_incumbent_method(), _scip_method(), alias]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert alias in symbols and len(symbols) == 2
+
+
+class TestArbitrationAndProvenance:
+    def test_incumbent_first_on_a_contested_attribute(self) -> None:
+        incumbent = _sym("parse_configs", "function", 23, 40, run=RUN_PY, origin="python")
+        other = _sym("parse_configs", "method", 23, 23, run=RUN_SCIP, origin="scip")
+        symbols = [incumbent, other]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert symbols[0].kind == "function"
+        [record] = report.merged
+        assert record.candidates["kind"] == [("function", ("python",)), ("method", ("pyscip",))]
+
+    def test_agreement_is_one_value_with_two_provenances(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [record] = report.merged
+        assert record.candidates["kind"] == [("method", ("python", "pyscip"))]
+        assert record.members == {
+            "python": "python:pkg/mod.py:14-17:Counter.increment:method",
+            "pyscip": "python:pkg/mod.py:14-14:increment:method",
+        }
+
+    def test_origin_is_both_producers_incumbent_first(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert symbols[0].origin == ["python", "scip"]
+
+    def test_meta_is_the_union_with_the_incumbent_winning_a_shared_key(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert symbols[0].meta == {
+            "scip_symbol": "pkg/Counter#increment().",  # only SCIP had it: kept
+            "visibility": "public",  # both had it: incumbent's
+        }
+
+    def test_stable_id_is_the_incumbents_and_a_missing_one_is_filled(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert symbols[0].stable_id == "sha256:incumbent"
+        bare = _sym("Counter.increment", "method", 14, 17, run=RUN_PY, origin="python")
+        symbols = [bare, _scip_method()]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert symbols[0].stable_id == "sha256:moniker"
+        assert symbols[0].signature is None  # neither observed it: stays unset
+
+    def test_an_attribute_only_the_other_producer_observed_is_taken(self) -> None:
+        incumbent = _sym("Counter.increment", "method", 14, 17, run=RUN_PY, origin="python")
+        other = _sym("increment", "method", 14, 14, run=RUN_SCIP, origin="scip",
+                     signature="fn increment(&mut self, by: i32) -> i32")
+        symbols = [incumbent, other]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert symbols[0].signature == "fn increment(&mut self, by: i32) -> i32"
+        [record] = report.merged
+        assert record.candidates["signature"] == [
+            ("fn increment(&mut self, by: i32) -> i32", ("pyscip",)),
+        ]
+
+    def test_the_merged_record_joins_to_this_passs_run(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        runs = [dict(r) for r in RUNS]
+        report = merge_producer_records(symbols, [], runs)
+        assert report.run is not None and report.run.pass_id == PASS_ID
+        assert symbols[0].origin_run_id == report.run.execution_id
+        assert runs[-1]["pass"] == PASS_ID and runs[-1]["execution_id"] == report.run.execution_id
+        assert report.run.nodes_emitted == 1
+
+
+class TestEdgesAndContexts:
+    def test_edges_from_both_producers_are_rewired_and_collapse_on_dedup(self) -> None:
+        caller_inc = _sym("main", "function", 1, 5, run=RUN_PY, origin="python")
+        caller_scip = _sym("main", "function", 1, 1, run=RUN_SCIP, origin="scip")
+        symbols = [caller_inc, _incumbent_method(), caller_scip, _scip_method()]
+        edges = [
+            _edge(caller_inc.id, symbols[1].id, origin="python"),
+            _edge(caller_scip.id, symbols[3].id, origin="scip"),
+        ]
+        report = merge_producer_records(symbols, edges, [dict(r) for r in RUNS])
+        assert len(report.merged) == 2
+        merged_ids = {s.id for s in symbols}
+        assert all(e.src in merged_ids and e.dst in merged_ids for e in edges)
+        assert all(e.edge_key is None for e in edges if "scip" in e.origin)
+        assert len(deduplicate_edges(edges)) == 1  # §11: agree on src, dst, type -> one edge
+
+    def test_derived_from_and_usage_contexts_are_rewired(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        scip_id = symbols[1].id
+        edge = _edge("python:pkg/mod.py:1-5:main:function", "python:pkg/mod.py:1-1:x:variable")
+        edge.derived_from = [scip_id]
+        context = UsageContext(
+            id="uc1", kind="call", context_name="increment", symbol_ref=scip_id,
+            position="args[0]", metadata={}, path="pkg/mod.py", span=Span(14, 14, 0, 0),
+        )
+        merge_producer_records(symbols, [edge], [dict(r) for r in RUNS], usage_contexts=[context])
+        assert edge.derived_from == [symbols[0].id]
+        assert context.symbol_ref == symbols[0].id
+
+
+class TestWhatItRefusesToGuess:
+    def test_two_candidate_partners_leave_both_unmerged_and_reported(self) -> None:
+        a = _sym("A.run", "method", 10, 20, run=RUN_PY, origin="python")
+        b = _sym("B.run", "method", 10, 20, run=RUN_PY, origin="python")  # same key, same span
+        other = _sym("run", "method", 10, 10, run=RUN_SCIP, origin="scip")
+        symbols = [a, b, other]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert report.merged == [] and len(symbols) == 3
+        assert report.ambiguous == [(other.id, [a.id, b.id])]
+
+    def test_one_incumbent_claimed_twice_is_left_alone(self) -> None:
+        incumbent = _incumbent_method()
+        first = _sym("increment", "method", 14, 14, run=RUN_SCIP, origin="scip", start_col=4)
+        second = _sym("increment", "method", 15, 15, run=RUN_SCIP, origin="scip")
+        symbols = [incumbent, first, second]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert report.merged == [] and len(symbols) == 3
+        assert {r[0] for r in report.ambiguous} == {first.id, second.id}
+
+
+class TestNoOpAndRefusal:
+    def test_a_single_producer_is_untouched_and_no_run_is_appended(self) -> None:
+        incumbent = _incumbent_method()
+        symbols = [incumbent]
+        edges = [_edge(incumbent.id, incumbent.id)]
+        runs = [dict(r) for r in RUNS]
+        report = merge_producer_records(symbols, edges, runs)
+        assert isinstance(report, MergeReport) and report.merged == [] and report.run is None
+        assert symbols[0] is incumbent and edges[0].edge_key is not None
+        assert [r["pass"] for r in runs] == ["python", "pyscip", "containment-linker"]
+
+    def test_records_from_a_non_producer_pass_are_ignored(self) -> None:
+        linker_record = _sym("increment", "method", 14, 14, run=RUN_LINKER, origin="containment-linker")
+        symbols = [_incumbent_method(), linker_record]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert report.merged == [] and linker_record in symbols
+
+    def test_a_record_with_no_span_never_pairs(self) -> None:
+        incumbent = _incumbent_method()
+        spanless = _scip_method()
+        spanless.span = None
+        symbols = [incumbent, spanless]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert report.merged == []
+
+    def test_an_undeclared_producer_is_refused_by_name(self) -> None:
+        register_analyzer("pyother", backend="lsp", priority=60, languages=["python"])(_noop)
+        runs = [dict(r) for r in RUNS] + [{"execution_id": "run-other", "pass": "pyother"}]
+        symbols = [_incumbent_method(), _sym("increment", "method", 14, 14, run="run-other", origin="pyother")]
+        with pytest.raises(UndeclaredProducerError, match="pyother"):
+            merge_producer_records(symbols, [], runs)
+
+
+class TestItemAgainstItem:
+    def test_two_item_role_producers_pair_on_equal_spans(self) -> None:
+        _registry_mod._ANALYZER_REGISTRY.pop("pyscip")
+        register_analyzer(
+            "pyscip", backend="scip", priority=45, languages=["python"],
+            merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_ITEM),
+        )(_noop)
+        same = _sym("increment", "method", 14, 17, run=RUN_SCIP, origin="scip")
+        shifted = _sym("increment", "method", 14, 18, run=RUN_SCIP, origin="scip")
+        symbols = [_incumbent_method(), same]
+        assert len(merge_producer_records(symbols, [], [dict(r) for r in RUNS]).merged) == 1
+        symbols = [_incumbent_method(), shifted]
+        assert merge_producer_records(symbols, [], [dict(r) for r in RUNS]).merged == []
+
+
+class TestRolesAndProducersBeyondTheRustShape:
+    def _reregister(self, name: str, *, backend: str, priority: int, role: str) -> None:
+        _registry_mod._ANALYZER_REGISTRY.pop(name, None)
+        key = last_segment(".") if name == "python" else as_emitted
+        register_analyzer(
+            name, backend=backend, priority=priority, languages=["python"],
+            merge=MergeAnchor(name_key=key, span_role=role),
+        )(_noop)
+
+    def test_a_token_role_incumbent_takes_the_other_producers_item_span(self) -> None:
+        """Reverse roles: the incumbent spans the token, the alternative the
+        item. The merged record still gets the ITEM span."""
+        self._reregister("python", backend="ast", priority=50, role=SPAN_ROLE_TOKEN)
+        self._reregister("pyscip", backend="scip", priority=45, role=SPAN_ROLE_ITEM)
+        incumbent = _sym("Counter.increment", "method", 14, 14, run=RUN_PY, origin="python", start_col=8)
+        other = _sym("increment", "method", 14, 17, run=RUN_SCIP, origin="scip")
+        symbols = [incumbent, other]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert len(report.merged) == 1
+        assert (symbols[0].span.start_line, symbols[0].span.end_line) == (14, 17)
+        assert symbols[0].id == "python:pkg/mod.py:14-17:Counter.increment:method"
+
+    def test_two_token_role_producers_pair_on_the_same_start_position(self) -> None:
+        self._reregister("python", backend="ast", priority=50, role=SPAN_ROLE_TOKEN)
+        self._reregister("pyscip", backend="scip", priority=45, role=SPAN_ROLE_TOKEN)
+        incumbent = _sym("Counter.increment", "method", 14, 14, run=RUN_PY, origin="python", start_col=8)
+        same = _sym("increment", "method", 14, 14, run=RUN_SCIP, origin="scip", start_col=8)
+        elsewhere = _sym("increment", "method", 14, 14, run=RUN_SCIP, origin="scip", start_col=30)
+        assert len(merge_producer_records([incumbent, same], [], [dict(r) for r in RUNS]).merged) == 1
+        incumbent = _sym("Counter.increment", "method", 14, 14, run=RUN_PY, origin="python", start_col=8)
+        assert merge_producer_records([incumbent, elsewhere], [], [dict(r) for r in RUNS]).merged == []
+
+    def test_a_record_with_no_run_or_no_language_is_left_alone(self) -> None:
+        orphan = _sym("increment", "method", 14, 14, run="", origin="scip")
+        unlanguaged = _sym("increment", "method", 14, 14, run=RUN_SCIP, origin="scip")
+        unlanguaged.language = None
+        symbols = [_incumbent_method(), orphan, unlanguaged]
+        report = merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert report.merged == [] and len(symbols) == 3
+
+    def test_a_third_producer_joins_an_already_merged_record(self) -> None:
+        """Three anchored producers: the two alternatives fold into the same
+        incumbent record, and the report keeps one entry with three members."""
+        register_analyzer(
+            "pylsp", backend="lsp", priority=60, languages=["python"],
+            merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN),
+        )(_noop)
+        runs = [dict(r) for r in RUNS] + [{"execution_id": "run-lsp", "pass": "pylsp"}]
+        lsp = _sym("increment", "method", 14, 14, run="run-lsp", origin="lsp",
+                   signature="fn increment(&mut self, by: i32)")
+        symbols = [_incumbent_method(), _scip_method(), lsp]
+        report = merge_producer_records(symbols, [], runs)
+        assert len(symbols) == 1 and len(report.merged) == 1
+        [record] = report.merged
+        assert set(record.members) == {"python", "pyscip", "pylsp"}
+        # incumbent_first: non-alternative backends before the scip arm, so the
+        # lsp producer folds in before scip and origin records that order.
+        assert symbols[0].origin == ["python", "lsp", "scip"]
+        assert record.merged_id == symbols[0].id
