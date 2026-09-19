@@ -1,0 +1,3 @@
+Original commit body from 37c513d06541fb985bb279fe90d0fcc56e7ab5aa:
+
+ADR-0057 §10 producer contract (WI-hohuh, row 1 of the owner-authorised 11-row sequence). Each backend declares merge=MergeAnchor(name_key, span_role, authoritative_for) or MergeDisjoint(partners), plus executes_analysed_code, on @register_analyzer; merge_participants(language) is the merge pass's reader and refuses an undeclared producer by name. Both Rust arms anchored; javascript/svelte/vue declare disjointness (tested on a component file); the trust deny-list is derived from the registry instead of a hardcoded set. Recorded rust-analyzer 1.94.0 fixture pins one-declaration-one-key. Slice 21,010 passed in foreground chunks; changed-file coverage 100%.
