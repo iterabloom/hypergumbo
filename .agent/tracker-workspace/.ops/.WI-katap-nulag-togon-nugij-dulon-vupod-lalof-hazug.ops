@@ -35,3 +35,10 @@
   clock: 3  # 7e09
   nonce: '7e09'  # 7e09
   message: "SimHash false positive. WI-mimap is about taint catalogue channel directories (taint_sources.d / taint_sanitizers.d) being created but scanned by nothing; this item is about re-measuring the auto-pr convergence ledger. Shared vocabulary ('declared', 'channel exists'), no shared subject, mechanism or artifact."  # 7e09
+- op: discuss  # f89c
+  at: '2026-09-18T23:26:39Z'  # f89c
+  by: agent  # f89c
+  actor: jgstern_agent  # f89c
+  clock: 4  # f89c
+  nonce: f89c  # f89c
+  message: "Data point from the 2026-09-18 session-start hook: scripts/audit-autopr-convergence over 531 runs reports 58 violations — Class 1 (merged, then exit nonzero) 41, Class 2 (no declared terminal state) 17, of which THREE are post-instrumentation (post WI-nazoj) with 'abort site not recorded — set -u / bare exit / signal': 2026-09-18T03:57:46Z, 03:58:42Z, 04:00:35Z, all exit 1, PR number unrecorded, ~1 min apart. Not investigated in this session (WI-juzig was the task); the two auto-pr runs of this session both ended in a declared state (ci_failed exit 1 on #1065's first push — ARCHITECTURE.md freshness gate; merged exit 0 on the second). The three 03:57–04:00 rows are the next thing this row should look at: three runs in three minutes with no PR number reads like a retry loop dying before PR creation."  # f89c

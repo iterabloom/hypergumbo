@@ -39,3 +39,35 @@
   set: {}  # 6fd2
   add:  # 6fd2
     isbefore: [WI-hohuh-jamif-jugim-najak-tufif-goput-lubap-nizok]  # 6fd2
+- op: update  # 68be
+  at: '2026-09-18T21:24:38Z'  # 68be
+  by: agent  # 68be
+  actor: jgstern_agent  # 68be
+  clock: 4  # 68be
+  nonce: 68be  # 68be
+  set: {}  # 68be
+  add:  # 68be
+    isbefore: [WI-futin-punos-kujar-manir-muzap-dikid-puzip-bujuk]  # 68be
+- op: discuss  # bb9d
+  at: '2026-09-18T23:25:02Z'  # bb9d
+  by: agent  # bb9d
+  actor: jgstern_agent  # bb9d
+  clock: 5  # bb9d
+  nonce: bb9d  # bb9d
+  message: "Merged as PR #1065, dev SHA 697dd4de5a05."  # bb9d
+- op: update  # 4158
+  at: '2026-09-18T23:26:11Z'  # 4158
+  by: agent  # 4158
+  actor: jgstern_agent  # 4158
+  clock: 6  # 4158
+  nonce: '4158'  # 4158
+  set:  # 4158
+    status: done  # 4158
+    pr_ref: '1065'  # 4158
+- op: discuss  # b83b
+  at: '2026-09-18T23:26:11Z'  # b83b
+  by: agent  # b83b
+  actor: jgstern_agent  # b83b
+  clock: 7  # b83b
+  nonce: b83b  # b83b
+  message: "Done in PR #1065. Every item of the fix shape shipped, plus two consequences the gate's own tests surfaced.\n\nGATE (analyze/registry.py): language_state = \"taxonomy\" (default; every language a taxonomy key, aliases canonicalised) | \"no_taxonomy_spec\" (none may be a taxonomy key -> raises as stale once a spec lands) | \"no_language\" (languages stored as []). Undeclared non-language name raises LanguageDeclarationError at import; _import_module_list re-raises it (the old blanket except would have made the analyzer vanish silently). Explicit languages=[] is an error (absent != empty). Both downstream `if languages else {name}` fallbacks (finalize.py, all_analyzers._filter_by_file_presence) removed.\n\nDECLARED: rust_analyzer -> languages=[\"rust\"], backend=\"scip\"; rust -> backend=\"tree-sitter\"; make -> languages=[\"makefile\"], backend=\"tree-sitter\", find_files=find_make_files, and its symbols/file node/id prefix now say \"makefile\" (56 nodes on aardvark); manifest_targets -> no_language, backend=\"regex\"; the 32 taxonomy-less (31 name==language + yaml_ansible->ansible) -> no_taxonomy_spec, coverage gap filed as WI-futin (this row blocks it).\n\nMEASURED (enumeration in test_registry_language_vocabulary.py, real registry): 118 analyzers = 85 taxonomy + 32 no_taxonomy_spec + 1 no_language; all_known_languages() 121 names, contains none of rust_analyzer/manifest_targets/make. Linkers contribute no phantoms (62 registered, all languages=[]).\n\nTWO CONSEQUENCES of \"rust now has two producers\": (1) profile.py looked up find_files by get_analyzer(<language>) i.e. by pass NAME, so INV-hokig's cure fired only where name==language; new registry.analyzers_for_language() (every producer, priority order), profile uses it; a GNUmakefile-only repo now counts 1 makefile and make is not short-circuited (production-path test). (2) Three drift-guard tests keyed dicts by language and silently kept whichever rust producer registered last; helpers made multi-producer, and jni/pyffi/tauri-ipc/wasm-bindgen/inherited-calls depends_on now name rust_analyzer beside rust (type-hierarchy-linker already did).\n\nACCEPTANCE, each checked: aardvark survey reports no skipped makefile (re-run, field absent); @register_analyzer(\"foo_bar\") raises at import (test); all_known_languages() has neither phantom (test + measured); the 32 carry their state and WI-futin exists. Mutation check: reverting make's declaration turns 5 new tests red.\n\nNOT asserted: the per-entry language-vs-dialect ruling for the 32 (WI-futin); the rest of the ADR-0057 §10 contract (name_key, span_role, authoritative_for, executes_analysed_code) is WI-hohuh's."  # b83b

@@ -30,3 +30,26 @@
   set: {}  # ea8f
   add:  # ea8f
     isbefore: [WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid]  # ea8f
+- op: discuss  # dc9e
+  at: '2026-09-18T23:26:12Z'  # dc9e
+  by: agent  # dc9e
+  actor: jgstern_agent  # dc9e
+  clock: 3  # dc9e
+  nonce: dc9e  # dc9e
+  message: "Precondition landed (WI-juzig, PR #1065): `languages` is now a gated declaration in the taxonomy vocabulary, and `backend` is set on 4 of 118 (rust=\"tree-sitter\", rust_analyzer=\"scip\", make=\"tree-sitter\", manifest_targets=\"regex\") — was 0. The registry can now enumerate \"languages claimed by >1 analyzer\": rust -> [rust, rust_analyzer]; svelte -> [svelte, javascript]; vue -> [vue, javascript]. NOTE for the contract's registry test (\"every analyzer whose languages overlap another's declares a merge anchor\"): the javascript/svelte/vue overlap is NOT two backends for one language (the js analyzer reads the <script> block, the svelte/vue analyzers the template) — a distinct-backend rule would misfire there; the anchor must be declared, not inferred from backend inequality. New helper: registry.analyzers_for_language(). One consumer-side finding: five bridge linkers' depends_on had named only the incumbent rust producer; now name both — the contract should say what depends_on means under multiple producers."  # dc9e
+- op: update  # b95b
+  at: '2026-09-19T01:25:41Z'  # b95b
+  by: agent  # b95b
+  actor: jgstern_agent  # b95b
+  clock: 4  # b95b
+  nonce: b95b  # b95b
+  set:  # b95b
+    status: done  # b95b
+    pr_ref: '1066'  # b95b
+- op: discuss  # 5dbd
+  at: '2026-09-19T01:25:41Z'  # 5dbd
+  by: agent  # 5dbd
+  actor: jgstern_agent  # 5dbd
+  clock: 5  # 5dbd
+  nonce: 5dbd  # 5dbd
+  message: "DONE in PR #1066 (dev 52d5763a39). Row 1 of the owner-authorised 11-row sequence (2026-09-18).\n\nWHAT LANDED. register_analyzer(..., merge=, executes_analysed_code=) — MergeAnchor(name_key, span_role in {token,item}, authoritative_for={attr: docs/audits/... citation}) or MergeDisjoint(partners=(...)); validated at construction/decoration (bad span role, non-callable key, uncited authority, a dict where a declaration belongs, or an unknown key all raise by name). merge_participants(language) is the merge pass's reader: the anchored producers, or UndeclaredProducerError naming the analyzer AND the language when a multi-producer language has an undeclared producer or a pair covered by neither two anchors nor a MergeDisjoint naming the other. backends_executing_analysed_code() derives the ADR-0045 §5 set from the declarations; user_config.py's hardcoded frozenset({\"rust_analyzer\"}) is gone, trust_only_settings()/project_forbidden_settings() and backend_trust.record_decision read the registry.\n\nDECLARATIONS. rust: last segment under QUALIFIED_NAME_SEPARATORS[\"rust\"] (taxonomy-declared, not a literal — test pins no \"::\" string constant in registry.py), span item. rust_analyzer: as_emitted, span token (INV-lodum), executes_analysed_code=True. javascript: MergeDisjoint(vue, svelte); svelte/vue: MergeDisjoint(javascript) — the script-block vs template split, measured true: on a Counter.svelte + Widget.vue fixture the three analyzers share zero (relpath, name, kind) records (paths relativised, since js emits absolute and the templates relative — the raw comparison was a control that could not fail).\n\nEVIDENCE. (a) Real-registry contract enumeration (test_registry_merge_contract.py): shared languages = {rust, svelte, vue}; every producer declared; merge_participants(\"rust\") == [rust_analyzer, rust]; derived executing set == {rust_analyzer}. (b) Recorded rust-analyzer 1.94.0 (4a4ef49) output on a 33-line sample crate (packages/hypergumbo-lang-rust-analyzer/tests/recorded_rust_analyzer_1_94_0.py, ADR-0057 §12): 9 of 9 non-namespace definitions key to EXACTLY ONE live tree-sitter record under the two declared anchors with the token line inside the item span; the two `greet`s (trait sig line 25, impl line 29) are separated by containment, not by key; enclosing_range == tree-sitter item span on 6/6 callables (what WI-kokiz's fold will compare). (c) Mutation: removing svelte's declaration turns 3 contract tests red. (d) Slice: 654 affected test files, 21,010 passed in 12 foreground chunks; coverage of the 10 changed src files 100% (4,541 stmts); mypy ratchet 667 unchanged (my two redundant-expr guards removed before commit).\n\nNOT ASSERTED HERE. The acceptance clause \"the pass run on the recorded aardvark-dns fixture pairs 138/169 through the declarations alone\" is the PASS's behaviour and lands with WI-kokiz, which now has its reader. The aardvark-scale recording is WI-romuh (row 2). The registry test is on the 33-line recorded sample, not on aardvark.\n\nBEHAVIOUR CHANGE worth knowing: with the SCIP package NOT installed, `[backends] rust_analyzer = true` in config is refused as an UNKNOWN setting rather than as a trust key (still refused, fail-closed; message no longer claims a trust store for a backend that is not there). backend_trust's refusal now names the backends it accepts."  # 5dbd
