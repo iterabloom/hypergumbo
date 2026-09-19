@@ -32,6 +32,7 @@ from hypergumbo_lang_rust_analyzer.translate import translate_scip_to_hg
 from recorded_rust_analyzer_1_94_0 import (
     AARDVARK_DNS_COUNTS,
     AARDVARK_DNS_AGREEMENT_TALLY,
+    AARDVARK_DNS_CALL_SITE_TALLY,
     AARDVARK_DNS_PAIRING,
     AARDVARK_DNS_UPSTREAM_COMMIT,
     PRODUCER_VERSION,
@@ -175,3 +176,59 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
         assert all(s.span.start_line == s.span.end_line for s in callables)
         tree_sitter = analyze_rust(aardvark_dns_crate_root()).symbols
         assert not any("scip_symbol" in (s.meta or {}) for s in tree_sitter)
+
+
+class TestTheCallEdgesAgreeWithTheIncumbentWhereBothSeeTheCall:
+    def test_call_site_tally(self) -> None:
+        """WI-zapuk: a SCIP reference whose target is a declared callable is
+        ``calls``; on paired endpoints those are the same edges the tree-sitter
+        arm emits, and now carry the same type. The 113 field-target edges
+        keep ``references`` (the row's "field references keep a non-calls
+        type"). Twins are found by pairing symbols through the declared
+        anchors and then matching (src, dst)."""
+        incumbent, scip_anchor = _anchors()
+        scip_symbols, scip_edges = translate_scip_to_hg(aardvark_dns_index_bytes(), _read_crate_file)
+        result = analyze_rust(aardvark_dns_crate_root())
+        tree_sitter_symbols, tree_sitter_edges = list(result.symbols), list(result.edges)
+
+        by_key: dict[tuple[str, str], list[Symbol]] = {}
+        for symbol in tree_sitter_symbols:
+            by_key.setdefault((symbol.path, incumbent.name_key(symbol.name)), []).append(symbol)
+        twin_of: dict[str, str] = {}
+        for symbol in scip_symbols:
+            twins = [
+                t for t in by_key.get((symbol.path, scip_anchor.name_key(symbol.name)), [])
+                if t.span.start_line <= symbol.span.start_line <= t.span.end_line
+            ]
+            if len(twins) == 1:
+                twin_of[symbol.id] = twins[0].id
+        kind_of = {s.id: s.kind for s in scip_symbols}
+        tree_sitter_type = {(e.src, e.dst): e.edge_type for e in tree_sitter_edges}
+
+        by_type: Counter[str] = Counter(e.edge_type for e in scip_edges)
+        twins_by_types: Counter[tuple[str, str]] = Counter()
+        for edge in scip_edges:
+            src, dst = twin_of.get(edge.src), twin_of.get(edge.dst)
+            if src is None or dst is None:
+                continue
+            other = tree_sitter_type.get((src, dst))
+            if other is not None:
+                twins_by_types[(edge.edge_type, other)] += 1
+
+        assert {
+            "scip_edges": len(scip_edges),
+            "calls": by_type["calls"],
+            "references": by_type["references"],
+            "field_target_references": sum(
+                1 for e in scip_edges if kind_of.get(e.dst) == "field" and e.edge_type == "references"
+            ),
+            "twins": sum(twins_by_types.values()),
+            "twins_calls_calls": twins_by_types[("calls", "calls")],
+            "twins_references_calls": twins_by_types[("references", "calls")],
+        } == AARDVARK_DNS_CALL_SITE_TALLY
+        # Every callable-target edge is a call, and only those are.
+        callable_kinds = {"function", "method", "constructor"}
+        assert all(
+            (e.edge_type == "calls") == (kind_of.get(e.dst) in callable_kinds) for e in scip_edges
+        )
+        assert set(twins_by_types) == {("calls", "calls"), ("references", "calls")}
