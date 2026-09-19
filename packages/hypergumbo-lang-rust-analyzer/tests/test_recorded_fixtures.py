@@ -24,6 +24,7 @@ from hypergumbo_core.analyze.registry import (
     get_analyzer,
 )
 from hypergumbo_core.analyze.merge_producers import merge_producer_records
+from hypergumbo_core.arbitration import ArbitrationPolicy
 from hypergumbo_core.finalize import SUPERSEDED_STUB_RANK_FACTOR, demote_superseded_stubs
 from hypergumbo_core.ir import Symbol, deduplicate_edges
 from hypergumbo_core.scip._generated import scip_pb2
@@ -261,20 +262,24 @@ def _both_arms() -> tuple[list[Symbol], list, list[dict[str, str]]]:
     return tree_sitter + scip_symbols, list(result.edges) + scip_edges, runs
 
 
-def _two_arm_artifact() -> dict:
+def _two_arm_artifact(policy: "ArbitrationPolicy | None" = None) -> dict:
     """Both arms through the merge pass, edge dedup, the resolution verdict
     and same-site supersession — the pipeline stages the backend-agreement
     instrument reads — as one artifact dict of ``to_dict()`` records. The
     committed ``docs/audits/0019`` table is this dict through
     ``hypergumbo backend-agreement``; regenerate it with
-    ``scripts/regenerate-backend-agreement-table`` (which calls this)."""
+    ``scripts/regenerate-backend-agreement-table`` (which calls this).
+    ``policy`` is the WI-hukuf arbitration policy; None is the built-in."""
+    from hypergumbo_core.arbitration import BUILTIN_POLICY
+
+    policy = policy or BUILTIN_POLICY
     symbols, edges, runs = _both_arms()
-    merge_producer_records(symbols, edges, runs)  # appends its own run to ``runs``
+    merge_producer_records(symbols, edges, runs, policy=policy)  # appends its own run to ``runs``
     edges = deduplicate_edges(edges)
     ids = {s.id for s in symbols}
     for edge in edges:
         edge.is_resolved = edge.dst in ids
-    demote_superseded_stubs(symbols, edges)
+    demote_superseded_stubs(symbols, edges, policy=policy)
     return {
         "analysis_runs": runs,
         "nodes": [s.to_dict() for s in symbols],
@@ -399,6 +404,24 @@ class TestTheAgreementInstrumentOnBothArms:
         by_attr = {a.attribute: a for a in report.attributes}
         assert by_attr["kind"].shapes == [("variable", "constant", 15)]
         assert by_attr["is_exported"].shapes == [("null", "false", 41)]
+
+    def test_a_kind_preference_for_scip_moves_exactly_the_kind_row(self) -> None:
+        """WI-hukuf on the recorded fixture: prefer the SCIP arm for `kind`
+        and the 15 `const` items carry `constant`; every other attribute
+        row, the pairing and the edge overlap are the built-in numbers."""
+        from hypergumbo_core.arbitration import ArbitrationPolicy
+        from hypergumbo_core.backend_agreement import measure_backend_agreement
+
+        policy = ArbitrationPolicy(prefer_by_attribute={"kind": ("scip",)})
+        [report] = measure_backend_agreement(_two_arm_artifact(policy))
+        rows = {a.attribute: (a.agree, a.disagree, a.only["rust"], a.only["rust_analyzer"]) for a in report.attributes}
+        assert rows == AARDVARK_DNS_ATTRIBUTE_AGREEMENT  # counts do not move: only which value is carried
+        by_attr = {a.attribute: a for a in report.attributes}
+        assert by_attr["kind"].shapes == [("constant", "variable", 15)]
+        assert {k: row["paired"] for k, row in report.pairing.items() if row["paired"]} == {
+            **{k: v for k, v in AARDVARK_DNS_PAIRED_PER_CATEGORY.items() if k != "variable"}, "variable": 2, "constant": 15,
+        }
+        assert {(e.edge_type, e.resolved): (e.both, e.only["rust"], e.only["rust_analyzer"]) for e in report.edges} == AARDVARK_DNS_EDGE_OVERLAP
 
     def test_the_committed_table_is_what_the_instrument_says(self) -> None:
         import re

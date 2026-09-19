@@ -11333,6 +11333,12 @@ def run_survey(
     from hypergumbo_core.discovery import (
         DEFAULT_EXCLUDES, FileIndex, set_file_index, set_max_file_bytes,
     )
+    # ADR-0057 §5 (WI-hukuf): the arbitration policy is a preference in the
+    # ADR-0045 config tiers. Resolved BEFORE any analysis so a bad `[merge]`
+    # key fails fast, with the file and key named (exit 2), not after a run.
+    from .arbitration import policy_from_config
+    _arbitration_policy = policy_from_config(_load_config_or_exit(repo_root))
+
     show_progress("Indexing files", 2)
     combined_excludes = list(DEFAULT_EXCLUDES)
     if extra_excludes:
@@ -11402,6 +11408,7 @@ def run_survey(
     from .analyze.merge_producers import merge_producer_records
     _merge_report = merge_producer_records(
         all_symbols, all_edges, analysis_runs, usage_contexts=all_usage_contexts,
+        policy=_arbitration_policy,
     )
     if _merge_report.merged:
         _log_memory(  # pragma: no cover - debug logging
@@ -11743,6 +11750,7 @@ def run_survey(
     # after it returns; the tiered projection re-derives its nodes_summary from the FINAL
     # post-shrink arrays via compact.recompute_view_summary (projection:F1 / INV-pazur).
     _fin_ctx = FinalizeContext(
+        arbitration_policy=_arbitration_policy,
         symbols=ranked_symbols,
         edges=all_edges,
         usage_contexts=all_usage_contexts,

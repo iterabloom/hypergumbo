@@ -107,10 +107,11 @@ ADR-0057 §5's built-in arbitration default is "incumbent first" — tree-sitter
 before any SCIP/LSP backend. The Python incumbent is ``ast``-backed, not
 tree-sitter, so the rule is spelled on the alternative side: among a
 language's anchored producers, the ones whose ``backend`` is NOT listed here
-are incumbents. Extend when an LSP-backed backend registers. Declaring
-incumbency per language on the registration is WI-hukuf's question; this is
-the one inference until then, read by :func:`incumbent_first` and by the
-recorded-producer-input lint.
+are incumbents. Extend when an LSP-backed backend registers. This is a fact
+about BACKENDS (which arm is the alternative), read by :func:`incumbents_of`
+and by the recorded-producer-input lint; which arm WINS a contest is the
+arbitration policy's (``hypergumbo_core.arbitration``, WI-hukuf), whose
+built-in is :func:`incumbent_first` and which ``config.toml`` can reorder.
 """
 """Every ``authoritative_for`` entry cites a committed table under here,
 produced by the backend-agreement instrument (ADR-0057 §5, §10). No citation,
@@ -631,6 +632,14 @@ def incumbent_first(analyzers: Iterable[RegisteredAnalyzer]) -> list[RegisteredA
         analyzers,
         key=lambda a: (a.backend in ALTERNATIVE_BACKENDS, a.priority, a.name),
     )
+
+
+def incumbents_of(language: str) -> list[RegisteredAnalyzer]:
+    """The anchored producers of ``language`` that are not an alternative arm
+    (:data:`ALTERNATIVE_BACKENDS`) — empty when the language has no pairing
+    producers. The recorded-producer-input lint reads this; precedence is
+    the arbitration policy's, not this list's."""
+    return [a for a in merge_participants(language) if a.backend not in ALTERNATIVE_BACKENDS]
 
 
 def merge_participants(language: str) -> list[RegisteredAnalyzer]:

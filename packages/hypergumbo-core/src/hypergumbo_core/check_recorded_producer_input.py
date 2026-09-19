@@ -68,7 +68,7 @@ CROSS_BACKEND_CONSUMERS: frozenset[str] = frozenset({
 #: Which backends are the ALTERNATIVE arm of a language lives with the
 #: registry (``analyze.registry.ALTERNATIVE_BACKENDS``), one home shared with
 #: the merge pass; re-exported here for the lint's callers and tests.
-from .analyze.registry import ALTERNATIVE_BACKENDS  # noqa: E402
+from .analyze.registry import ALTERNATIVE_BACKENDS as ALTERNATIVE_BACKENDS  # noqa: E402
 
 MARKER = "incumbent_fed"
 
@@ -81,24 +81,22 @@ def incumbent_producer_names() -> frozenset[str]:
     """Entry-function names AND analyzer names of every incumbent producer.
 
     Derived from the registry: for each language whose declared producers
-    pair (``merge_participants`` returns two or more), every participant
-    whose ``backend`` is not in :data:`ALTERNATIVE_BACKENDS`. Both spellings
-    are returned because a test may call ``analyze_rust(root)`` or
+    pair, every participant the registry names an incumbent
+    (:func:`~.analyze.registry.incumbents_of` — not an alternative arm). Both
+    spellings are returned because a test may call ``analyze_rust(root)`` or
     ``run_analyzer("rust", root)``.
     """
     from .analyze.registry import (
         ensure_discovered,
         get_all_analyzers,
-        merge_participants,
+        incumbents_of,
     )
 
     ensure_discovered()
     languages = {lang for a in get_all_analyzers() for lang in a.languages}
     names: set[str] = set()
     for language in sorted(languages):
-        for analyzer in merge_participants(language):
-            if analyzer.backend in ALTERNATIVE_BACKENDS:
-                continue
+        for analyzer in incumbents_of(language):
             names.add(analyzer.name)
             if analyzer.func_name:
                 names.add(analyzer.func_name)
