@@ -67,11 +67,15 @@ def _edge(src: str, dst: str, *, run: str, resolved: bool = True, **extra: Any) 
 
 def _artifact() -> dict[str, Any]:
     merged = {"attribution": {"kind": ["python"], "name": ["python", "pyscip"], "span": ["python"],
-                              "stable_id": ["python"]},
+                              "stable_id": ["python"], "is_exported": ["python"]},
               "alternatives": {"kind": [{"value": "method", "origin": ["pyscip"]}],
                                "span": [{"value": {"start_line": 1, "end_line": 1, "start_col": 4, "end_col": 5}, "origin": ["pyscip"]}],
-                               "stable_id": [{"value": "sha256:beef", "origin": ["pyscip"]}]},
-              "stable_id": "sha256:cafe"}
+                               "stable_id": [{"value": "sha256:beef", "origin": ["pyscip"]}],
+                               "is_exported": [{"value": False, "origin": ["pyscip"]}]},
+              "stable_id": "sha256:cafe",
+              # WI-pofih: `is_exported` is the one tracked attribute
+              # `Symbol.to_dict()` does NOT put at the top level.
+              "supply_chain": {"tier": 1, "is_exported": True}}
     agreed = {"attribution": {"kind": ["python", "pyscip"], "name": ["python", "pyscip"], "signature": ["python"]}}
     return {
         "analysis_runs": [
@@ -98,6 +102,8 @@ def _artifact() -> dict[str, Any]:
             _edge("python:a.py:1-3:f:function", "python:a.py:9-9:x:variable", run="r-scip"),
             # a linker's edge is not a producer's: never counted
             _edge("python:a.py:1-20:a.py:file", "python:a.py:8-8:C:class", run="r-link", type="contains"),
+            # another language's edge is not this language's: never counted
+            _edge("rust:b.rs:1-1:only:function", "rust:b.rs:1-1:only:function", run="r-py"),
         ],
     }
 
@@ -127,6 +133,27 @@ class TestMeasurement:
         assert by_attr["name"].agree == 2 and by_attr["name"].disagree == 0
         assert by_attr["span"].disagree == 1 and by_attr["span"].shapes == [("1:0-3:0", "1:4-1:5", 1)]
         assert by_attr["signature"].agree == 0 and by_attr["signature"].only == {"python": 1, "pyscip": 0}
+
+    def test_a_nested_attributes_carried_value_is_read_where_it_serialises(self) -> None:
+        """WI-pofih: ``Symbol.to_dict()`` nests ``is_exported`` under
+        ``supply_chain`` — the only one of the ten TRACKED_ATTRIBUTES not a
+        top-level key. Reading the carried value with ``node.get(attribute)``
+        printed ``null`` for a value that EXISTS, into a committed table."""
+        [report] = measure_backend_agreement(_artifact())
+        by_attr = {a.attribute: a for a in report.attributes}
+        assert by_attr["is_exported"].disagree == 1
+        assert by_attr["is_exported"].shapes == [("true", "false", 1)]
+
+    def test_an_attribute_the_node_does_not_serialise_is_not_shown_as_a_value(self) -> None:
+        """Absent is not empty. An attribution naming an attribute the node
+        carries nowhere is a defect in whatever produced the artifact; the
+        table must say it could not find it, not print a plausible ``null``."""
+        artifact = _artifact()
+        artifact["nodes"][0]["attribution"]["invented"] = ["python"]
+        artifact["nodes"][0]["alternatives"]["invented"] = [{"value": "x", "origin": ["pyscip"]}]
+        [report] = measure_backend_agreement(artifact)
+        by_attr = {a.attribute: a for a in report.attributes}
+        assert by_attr["invented"].shapes == [("(not serialised)", "x", 1)]
 
     def test_an_opaque_attribute_is_counted_without_shapes(self) -> None:
         [report] = measure_backend_agreement(_artifact())
@@ -160,6 +187,7 @@ class TestRendering:
         assert "| `kind` | 1 | 1 | 0 | 0 | `function` ← `method` x1 |" in text
         assert "| `signature` | 0 | 0 | 1 | 0 | — |" in text
         assert "| `stable_id` | 0 | 1 | 0 | 0 | (hash derived from the attributes above) |" in text
+        assert "| `is_exported` | 0 | 1 | 0 | 0 | `true` ← `false` x1 |" in text
         assert "| `calls` | in-repo | 1 | 1 | 1 |" in text
         assert "Corroborated edges (two distinct pathways, ADR-0057 §13): 1. Superseded external stubs (§14): 1." in text
 
@@ -172,7 +200,9 @@ class TestRendering:
         data = to_json(reports, artifact_label="synthetic.json")
         assert data["instrument"] == "backend-agreement"
         assert data["languages"][0]["pairing"]["function"]["paired"] == 2
-        assert data["languages"][0]["attributes"][0]["attribute"] == "kind"
+        by_attr = {a["attribute"]: a for a in data["languages"][0]["attributes"]}
+        assert by_attr["kind"]["disagree"] == 1
+        assert by_attr["is_exported"]["shapes"] == [{"carried": "true", "alternative": "false", "count": 1}]
 
 
 class TestTheSubcommand:

@@ -79,8 +79,11 @@ SAMPLE_PROJECT_PAIRING = {
 }
 # Per attribute over the 10 paired records: (agree, disagree, python only, scip_python only).
 # `name`: the four methods are `Shape.x` here and `x` there. `is_exported`:
-# the incumbent's None beats SCIP's False on 6 (INV-huboz). `span`: token vs
-# item, by construction.
+# the incumbent computes True on the 6 module-level names and False on the 4
+# methods; the SCIP arm contributes the dataclass default False on all of
+# them, never having assigned the field, so the 6 are a phantom contest and
+# the 4 a phantom agreement (INV-huboz). `span`: token vs item, by
+# construction.
 SAMPLE_PROJECT_ATTRIBUTE_AGREEMENT = {
     "docstring": (0, 0, 2, 0),
     "is_exported": (4, 6, 0, 0),

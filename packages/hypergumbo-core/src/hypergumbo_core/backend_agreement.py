@@ -25,6 +25,17 @@ instrument never re-pairs anything: the pairing the merge pass performed is
 the pairing measured, and the tool and the pass cannot disagree about what
 "the same declaration" means.
 
+A SERIALISED NODE IS NOT THE RECORD (WI-pofih). ``attribution`` and
+``alternatives`` name attributes by their FIELD name, but ``to_dict()``
+does not write every field at the top level: ``is_exported`` goes under
+``supply_chain``, the only one of the ten attributes the merge pass tracks
+that is nested. A ``node.get(attribute)`` therefore returned ``None`` for a
+value that exists, and the table printed ``null`` as the carried value on
+41 records that carry ``True`` — a wrong instrument returns a plausible
+number and exits 0. :func:`_carried` looks the attribute up where it
+actually serialises, and says so when it is carried nowhere rather than
+rendering an absence as a value.
+
 WHAT IT PRODUCES, per language with two or more producers present:
 
 1. **Pairing** by kind — paired (both producers), or one producer only.
@@ -65,6 +76,16 @@ EXAMPLE_LIMIT = 8
 #: Attributes whose values are hashes derived from other attributes: a
 #: disagreement is counted, but its shapes say nothing a reader can act on.
 OPAQUE_ATTRIBUTES = frozenset({"stable_id"})
+
+#: Serialised keys whose dict value is an open payload rather than a group of
+#: the record's own fields: their keys are not attribute names and must never
+#: answer an attribute lookup (a ``meta["kind"]`` is not the record's kind).
+OPAQUE_CONTAINERS = frozenset({"meta", "quality", "attribution", "alternatives"})
+
+#: Printed as the carried value when the serialised node carries the attribute
+#: nowhere. A distinguishable marker, never ``null``: an absence a reader can
+#: mistake for a value is how this instrument was wrong (WI-pofih).
+NOT_SERIALISED = "(not serialised)"
 
 
 @dataclass
@@ -163,6 +184,28 @@ def _producer_order(language: str) -> List[str]:
     return [a.name for a in incumbent_first(analyzers_for_language(language))]
 
 
+def _carried(node: Mapping[str, Any], attribute: str) -> Tuple[bool, Any]:
+    """The value the merged record carries for ``attribute``, and whether it is there.
+
+    ``Symbol.to_dict()`` writes most fields at the top level and groups the
+    supply-chain ones (``is_exported`` among them) under a nested key, so an
+    attribute named in ``attribution`` is found either directly or one level
+    down in a field group. The open payloads (:data:`OPAQUE_CONTAINERS`) are
+    not field groups and are skipped: a key that happens to collide inside
+    ``meta`` is not this record's attribute. Returns ``(False, None)`` when
+    the attribute is carried nowhere — which the caller must not render as a
+    value (WI-pofih).
+    """
+    if attribute in node:
+        return True, node[attribute]
+    for key, value in node.items():
+        if key in OPAQUE_CONTAINERS or not isinstance(value, dict):
+            continue
+        if attribute in value:
+            return True, value[attribute]
+    return False, None
+
+
 def _shape(value: Any) -> str:
     """A value as the table prints it; a span as ``line:col-line:col`` (the
     item/token split of ADR-0057 §10 differs in columns, not only lines)."""
@@ -219,7 +262,8 @@ def measure_backend_agreement(artifact: Mapping[str, Any]) -> List[LanguageAgree
                         entry.disagree += 1
                         if attribute in OPAQUE_ATTRIBUTES:
                             continue
-                        carried = _shape(node.get(attribute))
+                        found, value = _carried(node, attribute)
+                        carried = _shape(value) if found else NOT_SERIALISED
                         for alternative in alternatives[attribute]:
                             shapes[attribute][(carried, _shape(alternative["value"]))] += 1
                     elif len(holders) >= 2:

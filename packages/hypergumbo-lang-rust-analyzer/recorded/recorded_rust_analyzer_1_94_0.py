@@ -292,8 +292,10 @@ AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY = {"namespace": 18, "type_alias": 2, "variab
 # Per attribute over the 148 paired records: (agree, disagree, rust only, rust_analyzer only).
 # `name`: the 38 fields and 27 methods tree-sitter qualifies as `Type::member`
 # and SCIP emits bare — the anchors' name_key folds them, the carried scalar
-# keeps the incumbent's form. `is_exported`: 41 records where the incumbent
-# holds None and SCIP holds False, and None wins by precedence. `span`: the
+# keeps the incumbent's form. `is_exported`: the 41 `pub` items, where the
+# incumbent computes True (`"pub" in modifiers`) and the SCIP arm contributes
+# the dataclass default False, never having assigned the field (INV-huboz);
+# incumbent-first carries True. `span`: the
 # item/token role split of §10, by construction. `stable_id`: derived from the
 # attributes above it; the 14 one-sided are the struct/enum/trait records the
 # SCIP arm emits without one. The one-sided rust-only columns are attributes
