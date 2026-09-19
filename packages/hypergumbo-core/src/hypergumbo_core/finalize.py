@@ -432,6 +432,111 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
         _rederive_confidence_from_verdict(edge)
 
 
+#: ADR-0057 §14 (WI-lihis): how far a superseded external stub's ``rank_score``
+#: falls — a multiplicative dampener, the ADR-0039 ruling-3 shape the
+#: type-hierarchy fan-out already uses, never a change to ``confidence``. A
+#: declared level rather than a formula; it joins the per-attribute table
+#: WI-hukuf makes configurable.
+SUPERSEDED_STUB_RANK_FACTOR = 0.5
+
+
+def _stub_callee_name(edge: "Edge") -> str:
+    """The name the stub claims to call: ``dst_ref.name`` when the verdict
+    derived one, else the name slot of the id (ADR-0036 grammar, parsed from
+    the right as ``check_id_construction`` does)."""
+    if edge.dst_ref is not None and edge.dst_ref.name:
+        return edge.dst_ref.name
+    parts = edge.dst.split(":")
+    return parts[-2] if len(parts) >= 5 else edge.dst
+
+
+def demote_superseded_stubs(symbols: "list[Symbol]", edges: "list[Edge]") -> int:
+    """ADR-0057 §14: a resolved edge demotes a same-site edge to an external stub.
+
+    Runs after the resolution verdict, so ``is_resolved`` is settled. For every
+    language with two or more anchored producers (``merge_participants``; a
+    single-producer language cannot contradict itself and is untouched), an
+    UNRESOLVED edge is superseded when a RESOLVED edge shares its ``src``, one
+    of its call lines, its ``edge_type`` and its declared callee name key, and
+    that resolved edge carries a producer the stub's own ``origin`` lacks — the
+    syntactic backend said "outside the repo", the type-aware one "this item,
+    here". All four are required: on the recorded aardvark-dns fixture 27 stub
+    call sites share a line and type with a resolved call, and only 3 name the
+    same callee; the other 24 are different calls on one line
+    (``a.b(c.d())``), and a producer's own two calls on a line are not a
+    contradiction either.
+
+    The stub's ``rank_score`` is multiplied by :data:`SUPERSEDED_STUB_RANK_FACTOR`
+    (``confidence`` untouched — ADR-0039 ruling 3), and ``meta["superseded_by"]``
+    / ``meta["superseded_by_origin"]`` name the superseding edge and its
+    producers, so a low rank is a stated fact, not an unexplained number.
+    Nothing is deleted and the edge count is unchanged. Returns the number of
+    stubs demoted.
+    """
+    from .analyze.registry import MergeAnchor, incumbent_first, merge_participants
+    from .ir import _edge_call_lines
+
+    by_id = {s.id: s for s in symbols}
+    languages = {s.language for s in symbols if s.language}
+    name_key_of: dict[str, Any] = {}
+    for language in sorted(languages):
+        participants = merge_participants(language)
+        if len(participants) >= 2:
+            anchor = incumbent_first(participants)[0].merge
+            assert isinstance(anchor, MergeAnchor)  # merge_participants returns anchored ones
+            name_key_of[language] = anchor.name_key
+    if not name_key_of:
+        return 0
+
+    site: dict[tuple[str, int, str], list[Edge]] = {}
+    for edge in edges:
+        if not edge.is_resolved:
+            continue
+        target = by_id.get(edge.dst)
+        if target is None or target.language not in name_key_of:
+            continue
+        for line in _edge_call_lines(edge):
+            site.setdefault((edge.src, line, edge.edge_type), []).append(edge)
+    if not site:
+        return 0
+
+    demoted = 0
+    for stub in edges:
+        if stub.is_resolved:
+            continue
+        candidates = [
+            resolved
+            for line in _edge_call_lines(stub)
+            for resolved in site.get((stub.src, line, stub.edge_type), [])
+        ]
+        if not candidates:
+            continue
+        callee = _stub_callee_name(stub)
+        stub_origin = set(stub.origin)
+        for resolved in candidates:
+            target = by_id[resolved.dst]
+            key = name_key_of[target.language or ""]
+            if key(target.name) != key(callee):
+                continue  # a different call that shares the line
+            if not (set(resolved.origin) - stub_origin):
+                continue  # the same producer's two calls on one line
+            base = stub.rank_score if stub.rank_score is not None else stub.confidence
+            stub.rank_score = base * SUPERSEDED_STUB_RANK_FACTOR
+            stub.meta = {
+                **(stub.meta or {}),
+                "superseded_by": resolved.id,
+                "superseded_by_origin": list(resolved.origin),
+            }
+            demoted += 1
+            break
+    return demoted
+
+
+def _finalize_demote_superseded_stubs(ctx: FinalizeContext) -> None:
+    """Sub-step 7a (ADR-0057 §14): see :func:`demote_superseded_stubs`."""
+    demote_superseded_stubs(ctx.symbols, ctx.edges)
+
+
 def _rederive_confidence_from_verdict(edge: "Edge") -> None:
     """INV-fazim: re-derive ``evidence_derived`` confidence from the verdict above.
 
@@ -647,6 +752,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     _finalize_skipped_into_limits(ctx)      # 6  skipped → limits
     _finalize_demote_receiver_blind_magnets(ctx)  # 6c INV-fahub magnet demote (before 7)
     _finalize_edge_resolution(ctx)          # 7  edge-resolution verdict (ADR-0037; before 8)
+    _finalize_demote_superseded_stubs(ctx)  # 7a same-site stub demotion (ADR-0057 §14; after 7)
     _finalize_compute_visibility(ctx)       # 7b visibility fold (INV-jusot; before 8)
     _finalize_prune_repro_grammars(ctx)     # 7c repro grammars → used-only (WI-fonod/WI-givad; before 8)
     _finalize_commit_dicts(ctx)             # 8  commit reconciled view

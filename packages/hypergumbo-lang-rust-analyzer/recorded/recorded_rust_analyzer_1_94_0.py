@@ -267,6 +267,15 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     # twins plus each arm's own repeats of the same key — a producer's repeated
     # call sites are absorbed the same way, their lines unioned into call_lines.
     "edges_absorbed_by_fold": 149,
+    # ADR-0057 §14 (WI-lihis), after the fold and the resolution verdict: of
+    # the tree-sitter call edges that end at an external stub, how many share
+    # a src, a call line, the edge type AND the declared callee name with a
+    # resolved edge from a producer they lack (superseded — every one is a
+    # `wrap` SCIP resolves to `Result::wrap`), and how many share the site and
+    # type but name a DIFFERENT callee (two calls on one line: never demoted).
+    "stub_calls": 244,
+    "superseded_stubs": 3,
+    "co_located_same_type_not_superseded": 24,
 }
 
 

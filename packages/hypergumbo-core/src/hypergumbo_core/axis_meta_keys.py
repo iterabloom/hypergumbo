@@ -1222,6 +1222,20 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "that model discards, which ADR-0017 §4 needs to map a "
                 "dataflow use at line U onto the callee invoked at line U. "
                 "Capped at ``ir._CALL_LINES_CAP`` (lowest N retained)."),
+    MetaKeySpec("superseded_by", AXIS_EDGE_META,
+                "ADR-0057 §14 (WI-lihis): the id of the RESOLVED edge that "
+                "superseded this unresolved edge to an external stub — same "
+                "src, a shared call line, the same edge type and the same "
+                "declared callee name, from a producer this edge's origin "
+                "lacks. Stamped by finalize sub-step 7a when it multiplies "
+                "this edge's rank_score by SUPERSEDED_STUB_RANK_FACTOR, so the "
+                "low rank is a stated fact rather than an unexplained number. "
+                "Present only on a superseded edge; confidence is untouched "
+                "and the edge is never deleted."),
+    MetaKeySpec("superseded_by_origin", AXIS_EDGE_META,
+                "ADR-0057 §14: the origin (pass ids) of the superseding edge "
+                "named in ``superseded_by`` — which producer saw the site as "
+                "first-party. Present only beside ``superseded_by``."),
 )
 
 
