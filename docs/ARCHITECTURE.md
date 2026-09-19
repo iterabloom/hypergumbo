@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **326** Python modules (134 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 90 core, 4 CLI, 36 tracker)
-- **46852** symbols (functions, classes, methods)
-- **185870** edges by type:
-  - calls: 107069
-  - contains: 43145
-  - imports: 14510
-  - instantiates: 11530
-  - references: 6573
-  - module_attr_ref: 1562
-  - other: 1481
+- **330** Python modules (135 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 93 core, 4 CLI, 36 tracker)
+- **47767** symbols (functions, classes, methods)
+- **188665** edges by type:
+  - calls: 108490
+  - contains: 43782
+  - imports: 14894
+  - instantiates: 11605
+  - references: 6783
+  - module_attr_ref: 1607
+  - other: 1504
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 46852 Symbols + 185870 Edges + UsageContexts           │
+│  Output: 47767 Symbols + 188665 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -220,6 +220,10 @@ A code symbol (function, class, etc.) detected by analysis.
 - ```None``. ``# axis`: free-text`` — consumers display the value; no consumer mechanically branches on it.
 - `qualified_name`: ADR-0032 typed sibling field. Fully-qualified name including ancestor containers (e.g. ``module.OuterClass.InnerClass.method``). Replaces the prior ``meta["qualified_name"]`` shape. Per-language separator policy lives in :mod:`hypergumbo_core.qualified_name_axis`; the
 - ```# axis`: qualified-name`` classification keys into that catalog. ``None`` for analyzers whose ``name`` already encodes the fully-qualified form, or for languages that haven't declared a separator policy yet.
+- `attribution`: ADR-0057 §6 provenance slot, set only by the merge pass on
+- `a record folded from two producers`: ``{field: [pass_id, ...]}`` — the producers whose value the scalar slot carries (agreement lists both; a contested field lists the arbitration winner; a field only one producer observed lists that producer). ``None`` on every single-producer record, and then omitted from the dict form, so a one-backend artifact is byte-identical.
+- `alternatives`: ADR-0057 §6, the candidate set: ``{field: [{"value",
+- `"origin"`: [pass_id, ...]}]}`` for the values the scalar slot does NOT carry — present only for contested fields on a merged record. Nothing a producer emitted is discarded (§1); the scalar is the one stamped default (§4) and this is what an opt-in policy reads instead.
 
 ### Edge (`ir.py`)
 A relationship between two symbols (e.g., function calls).
@@ -239,6 +243,8 @@ A relationship between two symbols (e.g., function calls).
 - `derived_from`: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
 - `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
 - `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+- `attribution`: ADR-0057 §6 provenance slot, set only by the merge pass when two producers' edges for one ``(src, dst, edge_type)`` are folded: ``{field: [pass_id, ...]}`` for ``confidence`` / ``evidence_type`` — who holds the value the scalar carries. ``None`` (and omitted from the dict form) on every other edge.
+- `alternatives`: ADR-0057 §6 candidate set on a folded edge: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar does not carry; under ``confidence_source="corroborated"`` both producers' original confidences are here.
 - `rank_score`: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
 - `meta`: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3). An edge that survived a collapse of two or more call sites stores the union of their lines in ``call_lines`` (see :func:`deduplicate_edges`); its absence means the one call site is ``line``.
 
@@ -271,21 +277,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9634.6 | ir.py |
-| `len` | external_symbol | 7483.0 | <external> |
-| `write_text` | external_symbol | 6549.0 | <external> |
-| `Span` | class | 6445.7 | ir.py |
+| `Symbol` | class | 9789.9 | ir.py |
+| `len` | external_symbol | 7534.0 | <external> |
+| `write_text` | external_symbol | 6564.0 | <external> |
+| `Span` | class | 6466.3 | ir.py |
 | `LinkerContext` | class | 3441.9 | registry.py |
-| `get` | external_symbol | 3009.0 | <external> |
+| `get` | external_symbol | 3026.0 | <external> |
 | `load_catalog` | function | 2540.2 | io_boundary.py |
-| `Edge.create` | method | 2410.7 | ir.py |
-| `next` | external_symbol | 2135.0 | <external> |
-| `str` | external_symbol | 2091.0 | <external> |
+| `Edge.create` | method | 2429.5 | ir.py |
+| `next` | external_symbol | 2140.0 | <external> |
+| `str` | external_symbol | 2112.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `Path` | external_symbol | 1985.0 | <external> |
+| `Path` | external_symbol | 2002.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1607.0 | <external> |
+| `append` | external_symbol | 1624.0 | <external> |
 
 ## Pattern System
 
@@ -482,6 +488,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-mypy-ratchet` | Whole-tree mypy strict ratchet (WI-rokup, Decision D13, INV-zogud). |
 | `check-pass-id-agreement` | Pre-commit / CI lint: catalog pass IDs agree with runtime pass IDs. |
 | `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
+| `check-recorded-producer-input` | CI / on-demand lint: a cross-backend test runs on RECORDED producer input, |
 | `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
 | `check-self-claims` | Run hypergumbo against its OWN security claims and fail if the result drifts |
 | `check-self-claims-drift` | Compare a verify-claims JSON run against the checked-in self-claim snapshot. |
@@ -532,6 +539,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-taint-precision.py` | Of the taint flows hypergumbo reports as violations, how many are real? |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
+| `regenerate-backend-agreement-table` | Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``. |
 | `scrub-transcript-corpus` | Backfill: redact known secrets across the whole retained transcript corpus. |
 | `tracker-path-linter` | Scan tracker items for stale file-path references. |
 | `verify-tracker-pr` | Check if a tracker sync PR's ops data is already |
@@ -578,9 +586,11 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 - **`hypergumbo_core.analyzer_disclosure`**: Dated per-language declarations of whether an analyzer emits the ex...
 - **`hypergumbo_core.analyzer_identity`**: Compute a hash representing the analyzer's identity (WI-panih).
+- **`hypergumbo_core.arbitration`**: The arbitration policy: precedence among a language's producers (AD...
 - **`hypergumbo_core.audit_findings`**: Parser and validator for the audit-findings document format.
 - **`hypergumbo_core.axis_drift`**: Field-agnostic AST drift detector for axis-bearing canonical regist...
 - **`hypergumbo_core.axis_meta_keys`**: Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
+- **`hypergumbo_core.backend_agreement`**: The backend-agreement instrument (ADR-0057 §5, §10; WI-dajif).
 - **`hypergumbo_core.backend_selection`**: Precedence resolution for per-backend opt-in decisions (ADR-0045 ru...
 - **`hypergumbo_core.backend_trust`**: Per-repository backend trust grants (ADR-0045 rulings 5-8).
 - **`hypergumbo_core.behavior_map_io`**: Deprecation shim: ``behavior_map_io`` was renamed to ``survey_io`` ...
@@ -591,6 +601,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.catalogue_inventory`**: WI-vafit — the inventory a USER needs of what this installation knows.
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
 - **`hypergumbo_core.check_id_construction`**: Static enforcement of ADR-0034's id-construction discipline (WI-vod...
+- **`hypergumbo_core.check_recorded_producer_input`**: Static enforcement of ADR-0057 §12: cross-backend tests run on RECO...
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
 - **`hypergumbo_core.coverage_census`**: Per-test coverage census and test-trajectory search.
@@ -672,6 +683,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.analyze.all_analyzers`**: Analyzer orchestration + the stable analyzer-dispatch import points.
 - **`hypergumbo_core.analyze.base`**: Base classes and utilities for language analyzers.
 - **`hypergumbo_core.analyze.cyclomatic`**: Grammar-agnostic McCabe cyclomatic-complexity walker + decision-poi...
+- **`hypergumbo_core.analyze.merge_producers`**: The merge pass: two producers' records for one declaration become one
 - **`hypergumbo_core.analyze.registry`**: Analyzer registry for decorator-based dynamic dispatch.
 - **`hypergumbo_lang_mainstream.bash`**: Bash/shell script analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.c`**: C analysis pass using tree-sitter-c.
@@ -919,8 +931,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 9bac00429346
-  commit_count: 7431
+  commit: 612854969915
+  commit_count: 7447
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
