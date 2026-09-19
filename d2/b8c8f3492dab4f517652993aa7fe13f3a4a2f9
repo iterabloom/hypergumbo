@@ -1,0 +1,22 @@
+Original commit body from bcd1fb8672825f174013787381fcd92df7b15370:
+
+CI on PR #1078 failed in test_pass_silence's production-path test with
+`ValueError: '/tmp/.../test_an_undeclared_incumbent_m0/repo/a.py' is not in
+the subpath of '/tmp/.../test_a_skip_entry_carries_sile0'` — a path from a
+DIFFERENT test's repository. run_survey publishes its FileIndex through
+discovery.set_file_index and cleared it only on the normal return; the merge
+pass's UndeclaredProducerError refusal (ADR-0057 §10, exercised by
+test_merge_pass_in_pipeline) raised after indexing, the clear was skipped,
+and the next run_all_analyzers on the same xdist worker fed the stale
+index's absolute paths to taxonomy.additional_file_candidates, whose
+relative_to(new root) raised.
+
+The index is process state scoped to one call, so its release belongs in a
+finally, not on the happy path: `cli._releases_file_index` wraps run_survey
+and releases it on every exit; the in-body clear is removed so one mechanism
+owns the lifetime. The refusal test now asserts get_file_index() is None
+after the raise (RED before the fix). Reproduced and verified locally with
+smart-test -n 1 on the two files in CI's order: 2 failed before, 92 passed
+after. Filed and closed as INV-ziruv with that evidence.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
