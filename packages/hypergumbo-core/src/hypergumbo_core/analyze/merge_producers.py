@@ -95,6 +95,11 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from ..arbitration import (
+    BUILTIN_POLICY,
+    ArbitrationPolicy,
+)
+from ..arbitration import CORROBORATED_CONFIDENCE as CORROBORATED_CONFIDENCE  # re-export: the §13 level
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, UsageContext, _absorb_call_site
 from .base import make_symbol_id
 from .registry import (
@@ -102,7 +107,6 @@ from .registry import (
     SPAN_ROLE_TOKEN,
     MergeAnchor,
     RegisteredAnalyzer,
-    incumbent_first,
     merge_participants,
 )
 
@@ -113,7 +117,6 @@ PASS_ID = "producer-merge"
 #: not a formula: ``max`` would launder SCIP's 0.85 emitter constant into
 #: evidence and noisy-OR overstates producers reading the same text. It
 #: joins the per-attribute table WI-hukuf makes configurable.
-CORROBORATED_CONFIDENCE = 0.95
 
 #: Attributes whose candidates are recorded per merged record (ADR-0057 §1).
 TRACKED_ATTRIBUTES: Tuple[str, ...] = (
@@ -250,11 +253,14 @@ def _stamp_slot(
     precedence: Sequence[str],
     *,
     chosen: Optional[Dict[str, Candidate]] = None,
+    precedence_by_attribute: Optional[Mapping[str, Sequence[str]]] = None,
 ) -> Dict[str, Candidate]:
     """Arbitrate every attribute, set the scalar, write attribution / alternatives.
 
     ``chosen`` pre-decides attributes whose rule is not precedence (the item
-    span; a corroborated confidence). Returns the winners so a caller can
+    span; a corroborated confidence). ``precedence_by_attribute`` is the
+    policy's per-attribute order where one is declared (WI-hukuf); every
+    other attribute uses ``precedence``. Returns the winners so a caller can
     apply a value that is not a plain setattr (a ``Span`` object).
     """
     attribution: Dict[str, List[str]] = {}
@@ -264,7 +270,8 @@ def _stamp_slot(
         candidates = _candidates(attribute, members)
         if not candidates:
             continue  # nobody observed it: no entry at all (§1)
-        winner = (chosen or {}).get(attribute) or arbitrate(candidates, precedence)
+        order = (precedence_by_attribute or {}).get(attribute, precedence)
+        winner = (chosen or {}).get(attribute) or arbitrate(candidates, order)
         winners[attribute] = winner
         attribution[attribute] = list(winner[1])
         losers = [c for c in candidates if c[0] != winner[0]]
@@ -288,6 +295,8 @@ def _merge_one(
     other: Symbol,
     other_role: str,
     run_id: str,
+    *,
+    precedence_by_attribute: Optional[Mapping[str, Sequence[str]]] = None,
 ) -> Tuple[Symbol, MergedRecord]:
     merged = replace(incumbent)
     members = [(incumbent_name, incumbent), (other_name, other)]
@@ -299,7 +308,8 @@ def _merge_one(
     item_span = _value(item_holder, "span")
     span_candidates = _candidates("span", members)
     chosen_span = next(c for c in span_candidates if c[0] == item_span)
-    _stamp_slot(merged, members, TRACKED_ATTRIBUTES, precedence, chosen={"span": chosen_span})
+    _stamp_slot(merged, members, TRACKED_ATTRIBUTES, precedence, chosen={"span": chosen_span},
+                precedence_by_attribute=precedence_by_attribute)
     if item_holder.span is not None:
         merged.span = replace(item_holder.span)
     for attribute in _FILL_WHEN_INCUMBENT_EMPTY:
@@ -339,6 +349,9 @@ def _fold_edges(
     precedence: Sequence[str],
     run_id: str,
     report: MergeReport,
+    *,
+    policy: ArbitrationPolicy = BUILTIN_POLICY,
+    precedence_by_attribute: Optional[Mapping[str, Sequence[str]]] = None,
 ) -> None:
     """§11 / §13: fold the participants' edges that agree on (src, dst, edge_type)."""
     rank = {producer: index for index, producer in enumerate(precedence)}
@@ -363,11 +376,12 @@ def _fold_edges(
         distinct_pathways = len({edge.evidence_type for _, edge in group}) > 1
         chosen: Dict[str, Candidate] = {}
         if distinct_pathways:
-            chosen["confidence"] = (CORROBORATED_CONFIDENCE, tuple(producers))
+            chosen["confidence"] = (policy.corroborated_confidence, tuple(producers))
             survivor.confidence_source = "corroborated"
             report.corroborated += 1
         winners = _stamp_slot(
             survivor, members, ("confidence", "evidence_type"), precedence, chosen=chosen,
+            precedence_by_attribute=precedence_by_attribute,
         )
         if distinct_pathways:
             # Every original is an alternative to the combined value (§13).
@@ -397,8 +411,12 @@ def merge_producer_records(
     analysis_runs: List[Dict[str, Any]],
     *,
     usage_contexts: Optional[List[UsageContext]] = None,
+    policy: ArbitrationPolicy = BUILTIN_POLICY,
 ) -> MergeReport:
     """Fold two anchored producers' records for one declaration into one.
+
+    ``policy`` (WI-hukuf) decides precedence among a language's producers —
+    the built-in is incumbent first — and the §13 corroboration level.
 
     Mutates ``symbols`` (folded records replaced in place by the merged one,
     the other member dropped), ``edges`` and ``usage_contexts`` (endpoints
@@ -425,7 +443,8 @@ def merge_producer_records(
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)  # nosec B106 — a pass id, not a password
     replacement: Dict[int, Symbol] = {}  # id(incumbent record) -> merged record
     dropped: set[int] = set()
-    precedence: List[str] = []  # every merged language's producers, incumbent first
+    precedence: List[str] = []  # every merged language's producers, in policy order
+    by_attribute: Dict[str, List[str]] = {}  # the policy's per-attribute orders, across languages
 
     for language in sorted(by_language):
         present = by_language[language]
@@ -434,11 +453,15 @@ def merge_producer_records(
         participants = [a for a in merge_participants(language) if a.name in present]
         if len(participants) < 2:
             continue
-        ordered = incumbent_first(participants)
+        ordered = policy.order(participants)
         incumbent_analyzer, alternatives = ordered[0], ordered[1:]
         incumbent_anchor = _anchor(incumbent_analyzer)
         report.languages.append(language)
         precedence.extend(a.name for a in ordered if a.name not in precedence)
+        language_by_attribute = policy.precedence_by_attribute(participants)
+        for attribute, names in language_by_attribute.items():
+            known = by_attribute.setdefault(attribute, [])
+            known.extend(n for n in names if n not in known)
 
         index: Dict[Tuple[str, str], List[Symbol]] = {}
         for record in present[incumbent_analyzer.name]:
@@ -469,6 +492,7 @@ def merge_producer_records(
                 merged, merged_record = _merge_one(
                     incumbent_analyzer.name, survivor, incumbent_anchor.span_role,
                     alternative.name, record, anchor.span_role, run.execution_id,
+                    precedence_by_attribute=language_by_attribute,
                 )
                 if id(incumbent_record) in replacement:
                     # A third producer joining an already-merged record.
@@ -505,7 +529,8 @@ def merge_producer_records(
         if context.symbol_ref in remap:
             context.symbol_ref = remap[context.symbol_ref]
     if precedence:
-        _fold_edges(edges, pass_of_run, precedence, run.execution_id, report)
+        _fold_edges(edges, pass_of_run, precedence, run.execution_id, report,
+                    policy=policy, precedence_by_attribute=by_attribute)
     if not report.merged and not report.edges_folded:
         return report
 

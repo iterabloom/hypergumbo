@@ -108,6 +108,15 @@ class TestTheRule:
 
 
 class TestWhatDoesNotDemote:
+    def test_the_factor_is_the_policys(self) -> None:
+        from hypergumbo_core.arbitration import ArbitrationPolicy
+
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        resolved = _edge(WRAP, origin=["scip"], resolved=True, confidence=0.85)
+        policy = ArbitrationPolicy(superseded_stub_rank_factor=0.25)
+        assert demote_superseded_stubs(_symbols(), [stub, resolved], policy=policy) == 1
+        assert stub.rank_score == pytest.approx(0.5 * 0.25)
+
     def test_a_different_callee_on_the_same_line_is_a_different_call(self) -> None:
         stub = _edge(STUB, origin=["python"], resolved=False)
         resolved = _edge(OTHER, origin=["scip"], resolved=True)

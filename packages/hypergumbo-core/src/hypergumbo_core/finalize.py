@@ -74,6 +74,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
+from .arbitration import BUILTIN_POLICY, ArbitrationPolicy
+from .arbitration import SUPERSEDED_STUB_RANK_FACTOR as SUPERSEDED_STUB_RANK_FACTOR  # re-export: the §14 level
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
 from .receiver_blind_magnets import demote_harmful_magnets
@@ -215,6 +217,9 @@ class FinalizeContext:
     pass_metadata: PassMetadataLookup
     violations: list[ValidationViolation] = field(default_factory=list)
     repo_fingerprint: str = ""  # set by sub-step 4; surfaced by _freeze
+    #: ADR-0057 §5 (WI-hukuf): the resolved arbitration policy; sub-step 7a
+    #: reads its supersession factor and producer order.
+    arbitration_policy: "ArbitrationPolicy" = field(default_factory=lambda: BUILTIN_POLICY)
 
 
 @dataclass(frozen=True)
@@ -437,7 +442,6 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
 #: type-hierarchy fan-out already uses, never a change to ``confidence``. A
 #: declared level rather than a formula; it joins the per-attribute table
 #: WI-hukuf makes configurable.
-SUPERSEDED_STUB_RANK_FACTOR = 0.5
 
 
 def _stub_callee_name(edge: "Edge") -> str:
@@ -450,7 +454,9 @@ def _stub_callee_name(edge: "Edge") -> str:
     return parts[-2] if len(parts) >= 5 else edge.dst
 
 
-def demote_superseded_stubs(symbols: "list[Symbol]", edges: "list[Edge]") -> int:
+def demote_superseded_stubs(
+    symbols: "list[Symbol]", edges: "list[Edge]", *, policy: ArbitrationPolicy = BUILTIN_POLICY,
+) -> int:
     """ADR-0057 §14: a resolved edge demotes a same-site edge to an external stub.
 
     Runs after the resolution verdict, so ``is_resolved`` is settled. For every
@@ -473,7 +479,7 @@ def demote_superseded_stubs(symbols: "list[Symbol]", edges: "list[Edge]") -> int
     Nothing is deleted and the edge count is unchanged. Returns the number of
     stubs demoted.
     """
-    from .analyze.registry import MergeAnchor, incumbent_first, merge_participants
+    from .analyze.registry import MergeAnchor, merge_participants
     from .ir import _edge_call_lines
 
     by_id = {s.id: s for s in symbols}
@@ -482,7 +488,7 @@ def demote_superseded_stubs(symbols: "list[Symbol]", edges: "list[Edge]") -> int
     for language in sorted(languages):
         participants = merge_participants(language)
         if len(participants) >= 2:
-            anchor = incumbent_first(participants)[0].merge
+            anchor = policy.order(participants)[0].merge
             assert isinstance(anchor, MergeAnchor)  # merge_participants returns anchored ones
             name_key_of[language] = anchor.name_key
     if not name_key_of:
@@ -521,7 +527,7 @@ def demote_superseded_stubs(symbols: "list[Symbol]", edges: "list[Edge]") -> int
             if not (set(resolved.origin) - stub_origin):
                 continue  # the same producer's two calls on one line
             base = stub.rank_score if stub.rank_score is not None else stub.confidence
-            stub.rank_score = base * SUPERSEDED_STUB_RANK_FACTOR
+            stub.rank_score = base * policy.superseded_stub_rank_factor
             stub.meta = {
                 **(stub.meta or {}),
                 "superseded_by": resolved.id,
@@ -534,7 +540,7 @@ def demote_superseded_stubs(symbols: "list[Symbol]", edges: "list[Edge]") -> int
 
 def _finalize_demote_superseded_stubs(ctx: FinalizeContext) -> None:
     """Sub-step 7a (ADR-0057 §14): see :func:`demote_superseded_stubs`."""
-    demote_superseded_stubs(ctx.symbols, ctx.edges)
+    demote_superseded_stubs(ctx.symbols, ctx.edges, policy=ctx.arbitration_policy)
 
 
 def _rederive_confidence_from_verdict(edge: "Edge") -> None:

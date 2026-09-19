@@ -211,6 +211,55 @@ class TestArbitrationAndProvenance:
         assert report.run.nodes_emitted == 1
 
 
+class TestThePolicyIsTheOnlyKnob:
+    """WI-hukuf: precedence and the corroboration level come from the policy;
+    the built-in policy is what every other test here exercises."""
+
+    def test_a_global_preference_flips_every_contested_attribute(self) -> None:
+        from hypergumbo_core.arbitration import ArbitrationPolicy
+
+        incumbent = _sym("parse_configs", "function", 23, 40, run=RUN_PY, origin="python")
+        other = _sym("parse_configs", "method", 23, 23, run=RUN_SCIP, origin="scip")
+        symbols = [incumbent, other]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS], policy=ArbitrationPolicy(prefer=("scip",)))
+        [merged] = symbols
+        assert merged.kind == "method"  # the scip value, not the incumbent's
+        assert merged.attribution["kind"] == ["pyscip"]
+        assert merged.alternatives["kind"] == [{"value": "function", "origin": ["python"]}]
+        assert merged.origin == ["scip", "python"]  # the records' emitted origins, policy order
+        assert merged.span is not None and (merged.span.start_line, merged.span.end_line) == (23, 40)  # the item span still
+
+    def test_a_per_attribute_preference_flips_only_that_attribute(self) -> None:
+        from hypergumbo_core.arbitration import ArbitrationPolicy
+
+        incumbent = _sym("parse_configs", "function", 23, 40, run=RUN_PY, origin="python",
+                         stable_id="sha256:incumbent")
+        other = _sym("parse_configs", "method", 23, 23, run=RUN_SCIP, origin="scip", stable_id="sha256:moniker")
+        symbols = [incumbent, other]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS],
+                               policy=ArbitrationPolicy(prefer_by_attribute={"kind": ("scip",)}))
+        [merged] = symbols
+        assert merged.kind == "method" and merged.attribution["kind"] == ["pyscip"]
+        assert merged.stable_id == "sha256:incumbent" and merged.attribution["stable_id"] == ["python"]
+        assert merged.origin == ["python", "scip"]
+
+    def test_the_corroboration_level_is_the_policys(self) -> None:
+        from hypergumbo_core.arbitration import ArbitrationPolicy
+
+        symbols = [_incumbent_method(), _scip_method(), _sym("caller", "function", 30, 40, run=RUN_PY, origin="python")]
+        caller = symbols[2].id
+        edges = [
+            _edge(caller, _incumbent_method().id, origin="python"),
+            _edge(caller, _scip_method().id, origin="scip"),
+        ]
+        edges[1].evidence_type = "scip_reference"  # a distinct pathway from the incumbent's ast_call
+        report = merge_producer_records(symbols, edges, [dict(r) for r in RUNS],
+                                        policy=ArbitrationPolicy(corroborated_confidence=0.9))
+        assert report.corroborated == 1
+        [survivor] = [e for e in edges if e.confidence_source == "corroborated"]
+        assert survivor.confidence == 0.9
+
+
 class TestEdgesAndContexts:
     def test_edges_from_both_producers_are_rewired_and_collapse_on_dedup(self) -> None:
         caller_inc = _sym("main", "function", 1, 5, run=RUN_PY, origin="python")

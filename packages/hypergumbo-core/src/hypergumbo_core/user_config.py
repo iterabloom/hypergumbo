@@ -42,7 +42,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, Mapping, Optional
+from typing import Any, Dict, FrozenSet, Mapping, Optional, Tuple, Union
 
 # ``tomllib`` is stdlib from Python 3.11. Every package here declares
 # ``requires-python = ">=3.10"``, so a BARE top-level import breaks the declared
@@ -107,7 +107,61 @@ def project_forbidden_settings() -> FrozenSet[str]:
 
 #: Recognised settings and the type each must have. Membership is the
 #: allow-list; see the module docstring on why an unknown key raises.
-_KNOWN_SETTINGS: Dict[str, type] = {"io_primitives": list}
+#: ``merge.*`` is the ADR-0057 §5 arbitration default (WI-hukuf): a
+#: preference, allowed in both tiers, validated by :func:`_validate_merge`.
+_KNOWN_SETTINGS: Dict[str, Union[type, Tuple[type, ...]]] = {
+    "io_primitives": list,
+    "merge.prefer": list,
+    "merge.corroborated_confidence": (int, float),
+    "merge.superseded_stub_rank_factor": (int, float),
+}
+
+#: ``[merge.prefer_by_attribute]`` — one list per arbitrated attribute.
+_MERGE_BY_ATTRIBUTE_PREFIX = "merge.prefer_by_attribute."
+_MERGE_PREFIX = "merge."
+
+
+def _type_name(expected: Union[type, Tuple[type, ...]]) -> str:
+    if isinstance(expected, tuple):
+        return " or ".join(t.__name__ for t in expected)
+    return expected.__name__
+
+
+def _arbitrated_attributes() -> FrozenSet[str]:
+    """The attributes ``[merge.prefer_by_attribute]`` may name — the merge
+    pass's TRACKED_ATTRIBUTES. Local import: only a file naming the table
+    pays for the analyzer graph."""
+    from .analyze.merge_producers import TRACKED_ATTRIBUTES
+
+    return frozenset(TRACKED_ATTRIBUTES)
+
+
+def _declared_backends() -> FrozenSet[str]:
+    """Every backend some registered analyzer declares (``tree-sitter``,
+    ``scip``, ``ast``, …) — what a ``merge.prefer`` entry must name."""
+    from .analyze.registry import ensure_discovered, get_all_analyzers
+
+    ensure_discovered()
+    return frozenset(a.backend for a in get_all_analyzers() if a.backend)
+
+
+def _validate_merge(setting: str, value: Any, path: Path) -> None:
+    """A backend order names declared backends; a level lies in [0, 1]."""
+    if isinstance(value, list):
+        backends = _declared_backends()
+        for entry in value:
+            if not isinstance(entry, str):
+                raise ConfigError(
+                    f"{path}: '{setting}' entries must be backend names (strings), got {entry!r}.",
+                )
+            if entry not in backends:
+                raise ConfigError(
+                    f"{path}: '{setting}' names backend '{entry}', which no registered "
+                    f"analyzer declares. Declared backends: {', '.join(sorted(backends))}.",
+                )
+        return
+    if not 0 <= value <= 1:
+        raise ConfigError(f"{path}: '{setting}' must be between 0 and 1, got {value!r}.")
 
 _USER_CONFIG_BASENAME = "config.toml"
 #: NOT ``.hypergumbo/config.toml``. ``.hypergumbo`` is already an OUTPUT
@@ -136,6 +190,12 @@ class LayeredConfig:
     """
 
     io_primitives: "list[Path]" = field(default_factory=list)
+    #: ``[merge]`` (ADR-0057 §5, WI-hukuf). Scalar-valued: the project tier
+    #: REPLACES the user tier key by key — an order cannot be concatenated.
+    merge_prefer: "tuple[str, ...]" = ()
+    merge_prefer_by_attribute: "dict[str, tuple[str, ...]]" = field(default_factory=dict)
+    merge_corroborated_confidence: Optional[float] = None
+    merge_superseded_stub_rank_factor: Optional[float] = None
 
 
 def user_config_path(
@@ -220,18 +280,32 @@ def _validate(flat: Mapping[str, Any], path: Path, *, is_project: bool) -> None:
                 f"analysed.",
             )
     for setting, value in sorted(flat.items()):
-        expected = _KNOWN_SETTINGS.get(setting)
+        expected: Union[type, Tuple[type, ...], None]
+        if setting.startswith(_MERGE_BY_ATTRIBUTE_PREFIX):
+            attribute = setting[len(_MERGE_BY_ATTRIBUTE_PREFIX):]
+            attributes = _arbitrated_attributes()
+            if attribute not in attributes:
+                raise ConfigError(
+                    f"{path}: '{setting}': '{attribute}' is not an arbitrated "
+                    f"attribute. Arbitrated attributes: {', '.join(sorted(attributes))}.",
+                )
+            expected = list
+        else:
+            expected = _KNOWN_SETTINGS.get(setting)
         if expected is None:
             known = ", ".join(sorted(_KNOWN_SETTINGS))
             raise ConfigError(
                 f"{path}: unknown setting '{setting}'. Known settings: "
                 f"{known}.",
             )
-        if not isinstance(value, expected):
+        # bool is an int subclass; a level spelled `true` is a typo, not 1.
+        if not isinstance(value, expected) or isinstance(value, bool):
             raise ConfigError(
-                f"{path}: '{setting}' must be a {expected.__name__}, got "
+                f"{path}: '{setting}' must be a {_type_name(expected)}, got "
                 f"{type(value).__name__}.",
             )
+        if setting.startswith(_MERGE_PREFIX):
+            _validate_merge(setting, value, path)
 
 
 def _paths_from(flat: Mapping[str, Any], config_path: Path) -> "list[Path]":
@@ -267,9 +341,25 @@ def load_layered_config(
     proj_flat = _flatten(_read_toml(proj_path))
     _validate(proj_flat, proj_path, is_project=True)
 
-    return LayeredConfig(
+    merged = LayeredConfig(
         io_primitives=(
             _paths_from(user_flat, user_path)
             + _paths_from(proj_flat, proj_path)
         ),
     )
+    for flat in (user_flat, proj_flat):  # ascending: the project tier wins each key it sets
+        _apply_merge_settings(merged, flat)
+    return merged
+
+
+def _apply_merge_settings(config: LayeredConfig, flat: Mapping[str, Any]) -> None:
+    """Overlay one tier's ``[merge]`` keys on ``config`` (validated already)."""
+    if "merge.prefer" in flat:
+        config.merge_prefer = tuple(flat["merge.prefer"])
+    if "merge.corroborated_confidence" in flat:
+        config.merge_corroborated_confidence = float(flat["merge.corroborated_confidence"])
+    if "merge.superseded_stub_rank_factor" in flat:
+        config.merge_superseded_stub_rank_factor = float(flat["merge.superseded_stub_rank_factor"])
+    for setting, value in flat.items():
+        if setting.startswith(_MERGE_BY_ATTRIBUTE_PREFIX):
+            config.merge_prefer_by_attribute[setting[len(_MERGE_BY_ATTRIBUTE_PREFIX):]] = tuple(value)

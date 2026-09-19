@@ -81,7 +81,7 @@ def second_python_producer():
 
 def _run(tmp_path: Path) -> dict:
     repo = tmp_path / "repo"
-    repo.mkdir()
+    repo.mkdir(parents=True, exist_ok=True)
     (repo / "a.py").write_text(SOURCE)
     out = tmp_path / "results.json"
     run_behavior_map(
@@ -122,6 +122,52 @@ def test_without_a_second_producer_no_merge_run_is_recorded(tmp_path: Path) -> N
     data = _run(tmp_path)
     assert [r for r in data["analysis_runs"] if r["pass"] == "producer-merge"] == []
     assert [n["origin"] for n in data["nodes"] if n["name"] == "f"] == [["python"]]
+
+
+def _shape(data: dict) -> set:
+    return {(n["name"], n["kind"], tuple(n["origin"]), n["span"]["start_line"], n["span"]["end_line"])
+            for n in data["nodes"]}
+
+
+def test_a_user_preference_changes_the_contested_scalar_and_nothing_else(
+    tmp_path: Path, second_python_producer, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WI-hukuf acceptance: a `config.toml` naming a per-attribute order
+    changes the arbitrated scalar on the contested attribute in the artifact
+    — Alias's kind — and nothing else: every other (name, kind, origin, span)
+    tuple is identical to the built-in run, and `f`, whose kind both
+    producers agree on, is untouched. The USER tier is used so the two
+    repositories are byte-identical (a project-tier file would itself be a
+    new config-file node, which is presence, not policy)."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-builtin"))
+    baseline = _run(tmp_path / "builtin")
+    user = tmp_path / "xdg" / "hypergumbo"
+    user.mkdir(parents=True)
+    (user / "config.toml").write_text('[merge.prefer_by_attribute]\nkind = ["scip"]\n')
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    preferred = _run(tmp_path / "prefer")
+    alias_before = next(n for n in baseline["nodes"] if n["name"] == "Alias")
+    alias_after = next(n for n in preferred["nodes"] if n["name"] == "Alias")
+    assert alias_before["kind"] == "variable" and alias_after["kind"] == "type_alias"
+    assert alias_after["attribution"]["kind"] == ["pyscip"]
+    assert alias_after["alternatives"]["kind"] == [{"value": "variable", "origin": ["python"]}]
+    assert alias_after["origin"] == ["python", "pyscip"]
+    changed = {("Alias", "variable", ("python", "pyscip"), 5, 5)}
+    assert _shape(baseline) - _shape(preferred) == changed
+    assert _shape(preferred) - _shape(baseline) == {("Alias", "type_alias", ("python", "pyscip"), 5, 5)}
+    f_before = next(n for n in baseline["nodes"] if n["name"] == "f" and n["path"] == "a.py")
+    f_after = next(n for n in preferred["nodes"] if n["name"] == "f" and n["path"] == "a.py")
+    assert f_before["kind"] == f_after["kind"] == "function" and f_after["attribution"] == f_before["attribution"]
+
+
+def test_an_unknown_merge_key_exits_two_naming_the_file_and_key(tmp_path: Path, second_python_producer, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "repo").mkdir()
+    (tmp_path / "repo" / ".hypergumbo.toml").write_text('[merge]\nprefers = ["scip"]\n')
+    with pytest.raises(SystemExit) as excinfo:
+        _run(tmp_path)
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert ".hypergumbo.toml" in err and "merge.prefers" in err
 
 
 def test_an_undeclared_incumbent_makes_the_pipeline_refuse_by_name(tmp_path: Path, second_python_producer) -> None:
