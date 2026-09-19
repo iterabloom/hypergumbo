@@ -27,3 +27,17 @@
   clock: 2  # 2a7b
   nonce: 2a7b  # 2a7b
   message: "INCUMBENCY IS INFERRED, NOT DECLARED — flagging for this row's design. WI-romuh's lint needs \"the incumbent producer of language L\" and derives it as the anchored producer whose backend is not in {\"scip\"} (check_recorded_producer_input.ALTERNATIVE_BACKENDS). ADR-0057 §5's built-in default (\"tree-sitter before any SCIP/LSP backend\") needs the same notion, and the Python incumbent is ast-backed, not tree-sitter, so an order keyed on backend NAMES is Rust-shaped. Suggest this row's config key resolve to a per-language ORDER of producer names with a built-in default derived as \"non-index backends first\", and expose the resolved incumbent so the lint can read it instead of inferring."  # 2a7b
+- op: discuss  # ca14
+  at: '2026-09-19T05:15:54Z'  # ca14
+  by: agent  # ca14
+  actor: jgstern_agent  # ca14
+  clock: 3  # ca14
+  nonce: ca14  # ca14
+  message: "INPUTS LANDED (WI-binis): the arbitration property is merge_producers.arbitrate(candidates, precedence) — a pure function whose ONLY policy input is `precedence`, a producer-name order; merge_producer_records builds it today from registry.incumbent_first(participants) (non-scip backends first, then priority) and CORROBORATED_CONFIDENCE = 0.95 is a module constant. This row's job is therefore: (1) a [merge] preference in config.toml (ADR-0045 tiers, never trust.d) resolving to a per-language producer ORDER — suggest keying on producer NAMES (rust, rust_analyzer, python, pyscip...) rather than backend names, since the Python incumbent is ast-backed and \"tree-sitter before scip\" is Rust-shaped; built-in default = incumbent_first; (2) a per-attribute override table (`[merge.prefer_by_attribute] kind = [...]`) that arbitrate() consults per field; (3) the corroboration level as a preference in the same table (`confidence.corroborated = 0.95`); (4) expose the resolved incumbent so check_recorded_producer_input.py can read it instead of inferring from ALTERNATIVE_BACKENDS. Note _KNOWN_SETTINGS in user_config.py raises on unknown keys — add the new keys there. Acceptance idea on the committed fixture: a project .hypergumbo.toml preferring rust_analyzer for `kind` flips the 15 const records to `constant` with attribution [rust_analyzer] and alternatives [{variable, [rust]}]."  # ca14
+- op: discuss  # c284
+  at: '2026-09-19T06:26:12Z'  # c284
+  by: agent  # c284
+  actor: jgstern_agent  # c284
+  clock: 4  # c284
+  nonce: c284  # c284
+  message: "ADDENDUM (WI-lihis): two more declared levels belong in this row's per-attribute table beside the precedence order — merge_producers.CORROBORATED_CONFIDENCE (0.95, §13) and finalize.SUPERSEDED_STUB_RANK_FACTOR (0.5, §14). Both are module constants today; both should become preferences in the same [merge] section, non-trust (they execute nothing)."  # c284

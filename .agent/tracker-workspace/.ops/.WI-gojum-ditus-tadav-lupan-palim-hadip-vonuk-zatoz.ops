@@ -72,3 +72,10 @@
   clock: 8  # e8c2
   nonce: e8c2  # e8c2
   message: "ADR-0057 §10-§12 filed 2026-09-18 after the owner asked whether the design is extensible to backends beyond Rust. Sub-component 3 (cache key ignores the backend) is SPLIT OUT to WI-givib-humiz-pujub-sogip-rosud-bidiz-fupaj-nimal so it can be sequenced: it blocks the backend-agreement measurement (WI-dajif-duzab-notah-guvij-likum-tigir-modoh-rurot), which blocks the config default (WI-hukuf-juniz-zudoh-tivag-kapad-nobuz-komil-rasis). New: producer contract WI-hohuh-jamif-jugim-najak-tufif-goput-lubap-nizok (each backend declares its merge anchor; the merge pass reads it — the key in WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid was Rust-shaped and is re-scoped to read the declaration) and recorded-fixture discipline WI-romuh-zakuf-huvug-sokag-rovap-hojol-guzaz-rikup, both blocking WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid. Note for the record: ADR-0045 §5's executes_analysed_code declaration is NOT implemented either (grep finds no such field); the contract row lands both declarations on one surface. This row's remaining content is sub-component 4 only (WI-sobig's question); it stays parked."  # e8c2
+- op: discuss  # 9f37
+  at: '2026-09-19T07:04:56Z'  # 9f37
+  by: agent  # 9f37
+  actor: jgstern_agent  # 9f37
+  clock: 9  # 9f37
+  nonce: 9f37  # 9f37
+  message: "SUB-COMPONENT 3 CLOSED (WI-givib, PR #1076): the results cache now keys on the resolved backend set (state segment suffixed -rust_analyzer only when the backend will actually run). Status of this parked host after the owner-authorised sequence so far: sub-1 superseded by ADR-0057 (attribute-level coexistence — landed: §10 hohuh #1066, §12 romuh #1068, §7 gapup #1069 / zapuk #1071, §3 kokiz #1072, §1/§4/§6/§13 binis #1074, §14 lihis #1075); sub-2 = WI-kokiz done; sub-3 = WI-givib done; sub-4 = WI-sobig's question (verify-and-close pending at the end of the sequence). Still parked; the owner unparks."  # 9f37
