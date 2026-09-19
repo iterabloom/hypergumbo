@@ -1,0 +1,38 @@
+Original commit body from 43056c8f14b58a7c83371230fa71b92c56dfe917:
+
+The instrument rendered a disagreement's CARRIED value with a top-level
+lookup on the serialised node. Nine of the ten attributes the merge pass
+tracks are top-level in `Symbol.to_dict()`; `is_exported` is not — it
+nests under `supply_chain`. So `node.get("is_exported")` was None for
+every node and `docs/audits/0019` reported `null <- false` x41 for 41
+records that carry `true`. A wrong instrument returns a plausible number
+and exits 0 (LIVE.md rules 4 and 5); this one also produced a false
+tracker filing against the merge pass, which was correct all along.
+
+`_carried(node, attribute)` now returns (found, value): the top-level key
+when there is one, else the attribute inside one of the record's field
+groups, skipping the open payloads (`meta`, `quality`, `attribution`,
+`alternatives`) whose keys are not field names. An attribute carried
+nowhere renders `(not serialised)`, never `null`.
+
+Only the shape column moves. The agree / disagree / one-sided counts come
+from the ADR-0057 §6 slot and were always right, so no pinned tally in
+either recorded fixture changes.
+
+Evidence: the synthetic test goes red->green on `("null","false",1)` ->
+`("true","false",1)`; the recorded aardvark-dns fixture now measures
+`("true","false",41)` and its pin is updated; regenerating
+docs/audits/0019 diffs exactly one cell. Three mutants killed (top-level
+lookup restored; a miss returned as a value; the open payloads answering
+the lookup).
+
+Also corrected, since the wrong reading was committed and cited: 0019's
+hand-written Reading bullet, ADR-0057 §5's landing note and WI-dajif's
+tracker-item line, and both recorded fixtures' comments. And the core
+package now covers `backend_agreement.py` 100% on its own — the
+cross-language edge branch was covered only by the rust-analyzer
+package's tests.
+
+Closes WI-pofih
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
