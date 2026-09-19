@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0057: Multi-Backend Coexistence at the Attribute, Not the Record
 
-Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh) and §12's recorded fixtures and lint (WI-romuh) landed. WI-gojum stays parked until the owner unparks it.
+Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh), §12's recorded fixtures and lint (WI-romuh) and §7's `kind` producer fix (WI-gapup) landed. WI-gojum stays parked until the owner unparks it.
 
 - Date: 2026-09-18
 - Supersedes: ADR-0012 §Step 3 (multi-fidelity passes — the record-level coexistence it described; Steps 1–2 are untouched)
@@ -81,7 +81,7 @@ There is **one default**, stamped so that ranking, slicing, finalize and seriali
 
 ### 5. The default is a preference in `config.toml`
 
-The arbitration default lives in ADR-0045's **preferences** tiers — `$XDG_CONFIG_HOME/hypergumbo/config.toml` and the project tier — resolved through ADR-0045 ruling 4's chain (CLI flag > environment > project > user > built-in). It executes nothing, so it is not a trust key and is allowed in both tiers. The **built-in default is incumbent-first per categorical attribute** — tree-sitter before any SCIP/LSP backend — until a per-attribute measurement shows otherwise; `confidence` is numeric and follows §13, where incumbent-first would be actively wrong. "Type-aware backend wins" is **refused** as the blanket built-in: on the one attribute measured, `kind`, the type-aware backend is wrong on 52 of 52 free functions. The key is a per-attribute table so measured exceptions can be declared without flipping the whole default.
+The arbitration default lives in ADR-0045's **preferences** tiers — `$XDG_CONFIG_HOME/hypergumbo/config.toml` and the project tier — resolved through ADR-0045 ruling 4's chain (CLI flag > environment > project > user > built-in). It executes nothing, so it is not a trust key and is allowed in both tiers. The **built-in default is incumbent-first per categorical attribute** — tree-sitter before any SCIP/LSP backend — until a per-attribute measurement shows otherwise; `confidence` is numeric and follows §13, where incumbent-first would be actively wrong. "Type-aware backend wins" is **refused** as the blanket built-in: on the one attribute measured, `kind`, the type-aware backend was wrong on 52 of 52 free functions when this was ruled (the importer read only the leaf descriptor suffix and ignored `SymbolInformation.kind`; WI-gapup fixed the producer, and the refusal stands on its principle — a default is changed by a §5 measurement, not by one producer fix). The key is a per-attribute table so measured exceptions can be declared without flipping the whole default.
 
 ### 6. Provenance gets a registered, schema-versioned slot
 
@@ -90,7 +90,7 @@ The arbitration default lives in ADR-0045's **preferences** tiers — `$XDG_CONF
 ### 7. Two producer fixes are prerequisites, not part of the mechanism
 
 - **SCIP edges must carry the edge type SCIP already knows.** `Occurrence.symbol_roles` is a `SymbolRole` bitfield; `calls.py` reads it only to exclude Definition. Until a call-position reference is emitted as `calls`, the 92 shared edges are not duplicates under `edge_key` and the merge can fold nodes but never edges.
-- **SCIP `kind` must come from the descriptor chain** (parent TYPE → method, parent NAMESPACE → function). Arbitration only helps when at least one side is right; fixing the producer removes the contest on 52 of 52 instead of adjudicating it.
+- **SCIP `kind` must come from the descriptor chain** (parent TYPE → method, parent NAMESPACE → function). Arbitration only helps when at least one side is right; fixing the producer removes the contest on 52 of 52 instead of adjudicating it. *Landed (WI-gapup), with a correction to the prescription:* rust-analyzer declares `SymbolInformation.kind` on every global definition (169 of 169 on the recorded aardvark-dns index), so the importer reads the producer's declaration first — Function → `function`, Method / StaticMethod / TraitMethod → `method`, EnumMember → `field` (the tree-sitter arm's choice for a variant), Struct / Enum / Trait / TypeAlias → their registered kinds, Constant → `constant` — and uses the chain only as the fallback for an emitter that leaves it unset, placing a METHOD or TERM leaf by its nearest ancestor that is not a type parameter (rust-analyzer spells an impl target as one: `impl#[Counter]increment().`; the immediate parent would have called 26 of 27 methods free functions). On the recorded fixture the two arms now agree on `kind` for 133 of the 148 paired records — 52 of 52 free functions, 27 of 27 methods, 29 of 29 fields, 9 of 9 variants, 10 of 10 structs, 3 of 3 enums, the trait and both statics; the 15 disagreements are every `const` item, where the SCIP arm says `constant` and the tree-sitter arm `variable` — the SCIP side is the more precise one, and the contest is left for arbitration.
 
 ### 8. What this makes moot
 
@@ -160,7 +160,7 @@ A resolved (`is_resolved=True`) first-party edge at `(src, line)` **demotes** a 
 ## Tracker items
 
 - WI-zapuk — SCIP edges carry the role-derived edge type (§7, first prerequisite).
-- WI-gapup — SCIP `kind` from the descriptor chain (§7, second prerequisite).
+- WI-gapup — SCIP `kind` from the producer's declaration, else the descriptor chain (§7, second prerequisite). **Landed.**
 - WI-kokiz — the merge pass (§3); INV-lodum's cure lands here.
 - WI-binis — attribute-level provenance slot + arbitration property + schema bump (§1, §4, §6).
 - WI-hukuf — the `config.toml` arbitration default (§5).

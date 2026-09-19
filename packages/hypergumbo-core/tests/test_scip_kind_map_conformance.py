@@ -14,7 +14,8 @@ These are the gates the dict never had. They are cheap and total, so a ninth
 from __future__ import annotations
 
 from hypergumbo_core.scip.descriptor import DescriptorKind
-from hypergumbo_core.scip.index import _KIND_MAP
+from hypergumbo_core.scip._generated import scip_pb2
+from hypergumbo_core.scip.index import _KIND_MAP, _SCIP_KIND_MAP
 from hypergumbo_core.symbol_kinds import all_symbol_kind_names
 
 
@@ -51,3 +52,25 @@ class TestKindMapConformance:
         assert [v for v in mutated.values() if v not in known] != []
         del mutated[DescriptorKind.NAMESPACE]
         assert [m for m in DescriptorKind if m not in mutated] != []
+
+
+class TestDeclaredKindMapConformance:
+    """WI-gapup: the second map, keyed by ``SymbolInformation.Kind``, must
+    stay on the axis the same way. It is NOT required to be total over the
+    70-odd SCIP kinds — an unmapped kind falls back to the descriptor chain —
+    but every value it does mint must be registered."""
+
+    def test_every_declared_kind_value_is_a_registered_symbol_kind(self) -> None:
+        known = all_symbol_kind_names()
+        offenders = sorted(v for v in _SCIP_KIND_MAP.values() if v not in known)
+        assert offenders == []
+
+    def test_every_key_is_a_symbol_information_kind_member(self) -> None:
+        members = set(scip_pb2.SymbolInformation.Kind.values())
+        assert set(_SCIP_KIND_MAP) <= members
+        assert scip_pb2.SymbolInformation.Kind.UnspecifiedKind not in _SCIP_KIND_MAP
+
+    def test_the_gate_can_fail(self) -> None:
+        mutated = dict(_SCIP_KIND_MAP)
+        mutated[scip_pb2.SymbolInformation.Kind.Function] = "not_a_kind"
+        assert [v for v in mutated.values() if v not in all_symbol_kind_names()] != []

@@ -128,7 +128,9 @@ def test_single_definition_becomes_symbol() -> None:
     s = result[0]
     assert isinstance(s, Symbol)
     assert s.name == "foo"
-    assert s.kind == "method"
+    # WI-gapup: ``module/path/foo().`` is a METHOD descriptor under a NAMESPACE,
+    # i.e. a free function; before the chain was consulted this said "method".
+    assert s.kind == "function"
     assert s.language == "python"
     assert s.path == "mod.py"
     assert s.span == Span(start_line=6, end_line=9, start_col=0, end_col=0)
@@ -151,7 +153,8 @@ def test_symbol_id_follows_hypergumbo_format() -> None:
         )],
     )
     [s] = scip_index_to_symbols(idx)
-    assert s.id == "python:mod.py:1-3:bar:method"
+    # WI-gapup: a METHOD descriptor under a NAMESPACE is a free function.
+    assert s.id == "python:mod.py:1-3:bar:function"
 
 
 # ---------------------------------------------------------------------------
@@ -359,3 +362,90 @@ def test_display_name_is_preserved_in_meta() -> None:
     assert s.meta["scip_symbol"] == sym
     assert s.meta["display_name"] == "foo"
     assert s.meta["scip_kind"] == 17
+
+
+# ---------------------------------------------------------------------------
+# WI-gapup / ADR-0057 §7: kind from the producer's declaration, else the chain
+# ---------------------------------------------------------------------------
+
+K = scip_pb2.SymbolInformation.Kind
+
+
+def _one(sym: str, *, kind: int = 0, rng: tuple[int, ...] = (0, 0, 3)) -> Symbol:
+    idx = _make_index(
+        language="Rust", path="src/lib.rs",
+        symbols=[scip_pb2.SymbolInformation(symbol=sym, kind=kind)],
+        occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=list(rng))],
+    )
+    [s] = scip_index_to_symbols(idx)
+    return s
+
+
+class TestKindFromTheProducersDeclaration:
+    """rust-analyzer sets ``SymbolInformation.kind`` on every global definition
+    (measured: 169 of 169 on aardvark-dns). That is the producer's own claim
+    and it wins over anything inferred from the descriptor string."""
+
+    @pytest.mark.parametrize("declared, expected", [
+        (K.Function, "function"),
+        (K.Method, "method"),
+        (K.StaticMethod, "method"),
+        (K.TraitMethod, "method"),
+        (K.AbstractMethod, "method"),
+        (K.Constructor, "constructor"),
+        (K.Field, "field"),
+        (K.Property, "property"),
+        (K.EnumMember, "field"),
+        (K.Constant, "constant"),
+        (K.StaticVariable, "variable"),
+        (K.Variable, "variable"),
+        (K.Struct, "struct"),
+        (K.Enum, "enum"),
+        (K.Trait, "trait"),
+        (K.Interface, "interface"),
+        (K.Class, "class"),
+        (K.TypeAlias, "type_alias"),
+        (K.Macro, "macro"),
+        (K.Module, "namespace"),
+    ])
+    def test_the_declared_kind_wins(self, declared: int, expected: str) -> None:
+        # The descriptor says METHOD-under-NAMESPACE for every case: only the
+        # declaration can be what decides.
+        s = _one("rust-analyzer cargo c 0.1.0 a/thing().", kind=declared)
+        assert s.kind == expected
+
+    def test_an_unmapped_declared_kind_falls_back_to_the_chain(self) -> None:
+        s = _one("rust-analyzer cargo c 0.1.0 a/Foo#bar().", kind=K.Axiom)
+        assert s.kind == "method"
+
+    def test_the_declared_kind_is_still_recorded_in_meta(self) -> None:
+        s = _one("rust-analyzer cargo c 0.1.0 a/thing().", kind=K.Function)
+        assert s.meta["scip_kind"] == int(K.Function)
+
+
+class TestKindFromTheDescriptorChain:
+    """The fallback for an emitter that leaves ``kind`` unset: a METHOD or
+    TERM leaf is placed by its nearest ancestor that is not a type
+    parameter — rust-analyzer spells an impl target as one
+    (``impl#[Counter]increment().``), and skipping it is what makes 26 of
+    27 aardvark-dns methods land as methods rather than free functions."""
+
+    @pytest.mark.parametrize("sym, expected", [
+        ("rust-analyzer cargo c 0.1.0 a/foo().", "function"),
+        ("rust-analyzer cargo c 0.1.0 foo().", "function"),
+        ("rust-analyzer cargo c 0.1.0 a/Foo#bar().", "method"),
+        ("rust-analyzer cargo c 0.1.0 a/impl#[Foo]bar().", "method"),
+        ("rust-analyzer cargo c 0.1.0 a/impl#[Foo][Tr]bar().", "method"),
+        ("rust-analyzer cargo c 0.1.0 a/Foo#x.", "field"),
+        ("rust-analyzer cargo c 0.1.0 a/x.", "variable"),
+        ("rust-analyzer cargo c 0.1.0 a/Foo#", "class"),
+        # A nested TYPE stays a class: in scip-python ``Outer#Inner#`` is a
+        # nested class. Only a DECLARED EnumMember is a variant.
+        ("rust-analyzer cargo c 0.1.0 a/Outer#Inner#", "class"),
+        ("rust-analyzer cargo c 0.1.0 a/", "namespace"),
+        ("rust-analyzer cargo c 0.1.0 a/m!", "macro"),
+        ("rust-analyzer cargo c 0.1.0 a/foo().[T]", "type_parameter"),
+        ("rust-analyzer cargo c 0.1.0 a/foo().(x)", "parameter"),
+    ])
+    def test_placement_by_nearest_non_type_parameter_ancestor(self, sym: str, expected: str) -> None:
+        assert _one(sym).kind == expected

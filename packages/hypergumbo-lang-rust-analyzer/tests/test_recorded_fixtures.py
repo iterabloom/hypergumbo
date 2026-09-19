@@ -31,6 +31,7 @@ from hypergumbo_lang_rust_analyzer.translate import translate_scip_to_hg
 
 from recorded_rust_analyzer_1_94_0 import (
     AARDVARK_DNS_COUNTS,
+    AARDVARK_DNS_AGREEMENT_TALLY,
     AARDVARK_DNS_PAIRING,
     AARDVARK_DNS_UPSTREAM_COMMIT,
     PRODUCER_VERSION,
@@ -121,6 +122,8 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
         paired = ambiguous = 0
         unpaired: Counter[str] = Counter()
         unpaired_names: list[str] = []
+        kinds_agree: Counter[bool] = Counter()
+        disagreements: Counter[tuple[str, str]] = Counter()
         for symbol in scip_symbols:
             twins = [
                 t for t in by_key.get((symbol.path, scip_anchor.name_key(symbol.name)), [])
@@ -128,6 +131,10 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
             ]
             if len(twins) == 1:
                 paired += 1
+                same = symbol.kind == twins[0].kind
+                kinds_agree[same] += 1
+                if not same:
+                    disagreements[(symbol.kind, twins[0].kind)] += 1
             elif twins:
                 ambiguous += 1
             else:
@@ -140,13 +147,23 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
             "paired": paired,
             "ambiguous": ambiguous,
             "unpaired_namespace": unpaired["namespace"],
-            "unpaired_class": unpaired["class"],
+            "unpaired_type_alias": unpaired["type_alias"],
             "unpaired_variable": unpaired["variable"],
         } == AARDVARK_DNS_PAIRING
         # The three non-namespace leftovers are constructs the tree-sitter arm
         # emits no Symbol for (two `type` aliases, one `static`) — an incumbent
-        # gap, not a disagreement between the anchors.
+        # gap (WI-bamar), not a disagreement between the anchors.
         assert sorted(unpaired_names) == ["AardvarkResult", "DNSBACKEND", "ThreadHandleMap"]
+        # WI-gapup: the SCIP arm reads the producer's declared kind, so the
+        # paired records agree on kind except for `const` items, where SCIP's
+        # `constant` is the more precise claim and stays a contest.
+        assert {
+            "paired": paired,
+            "agree": kinds_agree[True],
+            "disagree": kinds_agree[False],
+            "disagree_constant_vs_variable": disagreements[("constant", "variable")],
+        } == AARDVARK_DNS_AGREEMENT_TALLY
+        assert set(disagreements) == {("constant", "variable")}
 
     def test_the_fixture_is_not_the_incumbents_output_in_disguise(self) -> None:
         """The recorded arm must carry something the incumbent does not, or a
