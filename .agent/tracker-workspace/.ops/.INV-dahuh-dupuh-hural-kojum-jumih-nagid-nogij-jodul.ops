@@ -1,0 +1,24 @@
+- op: create  # e8d3
+  at: '2026-09-19T02:49:54Z'  # e8d3
+  by: agent  # e8d3
+  actor: jgstern_agent  # e8d3
+  clock: 1  # e8d3
+  nonce: e8d3  # e8d3
+  data:  # e8d3
+    kind: invariant  # e8d3
+    title: "scip/edges.py mints edge types 'has_type' and 'defined_by' that no registry declares, through a list-of-tuples the L1/L3 gates cannot see; no producer emits them today"  # e8d3
+    status: violated  # e8d3
+    priority: 3  # e8d3
+    parent:  # e8d3
+    tags:  # e8d3
+    - scip  # e8d3
+    - edge_type  # e8d3
+    - axis  # e8d3
+    isbefore: []  # e8d3
+    duplicate_of: []  # e8d3
+    not_duplicate_of: []  # e8d3
+    pr_ref:  # e8d3
+    description: "FOUND 2026-09-18 while measuring WI-zapuk on the recorded aardvark-dns fixture.\n\nscip/edges.py (the SymbolInformation.relationships -> Edge shim, WI-mafut Slice C) maps SCIP Relationship flags through\n\n    _RELATION_EDGE_TYPES = [(\"is_implementation\", \"implements\"), (\"is_type_definition\", \"has_type\"),\n                            (\"is_reference\", \"references\"), (\"is_definition\", \"defined_by\")]\n\n`implements` and `references` are registered edge types; `has_type` and `defined_by` are NOT (edge_types.all_edge_type_names() returns False for both). The value reaches Edge.create(edge_type=edge_type) through a variable, so the L3 producer gate (literal-string arguments) never sees it, and the L1 consumer gate reads frozensets/dicts named *EDGE_TYPE*, not a list of tuples named _RELATION_EDGE_TYPES — the same indirection shape WI-rorul (otp_call/otp_cast via dict) closed for one producer.\n\nNO PRODUCER TODAY: rust-analyzer 1.94.0 leaves `relationships` empty on every SymbolInformation (0 relationship edges on the recorded index), so the two values are minted by no run — a vocabulary value with no producer AND no registry entry. A scip-python or scip-typescript backend (WI-nanom) does populate relationships (is_implementation, is_type_definition), at which point the SCIP arm would emit an edge type no ADR-0023 consumer has a case for.\n\nFIX SHAPE (pick one per value, do not keep both): register `has_type` / `defined_by` in edge_types.py with an ADR-0023 axis classification, OR fold them onto registered values (is_type_definition -> the existing type-relation edge type if one is registered; is_definition -> drop, since a Definition relationship duplicates the Symbol itself). Then add a conformance test in the test_scip_kind_map_conformance.py shape: every value in _RELATION_EDGE_TYPES is a registered edge type, and the gate can fail."  # e8d3
+    fields:  # e8d3
+      statement: "Every edge_type a producer emits is a registered ADR-0023 value; a value reached through a variable or a list-of-tuples is subject to the same rule as a literal."  # e8d3
+      root_cause: "scip/edges.py _RELATION_EDGE_TYPES maps SCIP Relationship flags to edge-type strings via a list of tuples; the L3 gate reads literal keyword arguments and the L1 gate reads *EDGE_TYPE*-named sets, so the indirection escaped both, and rust-analyzer emits no relationships so no run ever produced the unregistered values."  # e8d3
