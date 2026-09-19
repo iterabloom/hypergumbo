@@ -1,0 +1,21 @@
+- op: create  # 9ced
+  at: '2026-09-19T07:22:06Z'  # 9ced
+  by: agent  # 9ced
+  actor: jgstern_agent  # 9ced
+  clock: 1  # 9ced
+  nonce: 9ced  # 9ced
+  data:  # 9ced
+    kind: work_item  # 9ced
+    title: "rust_analyzer translate: struct/enum/trait records carry no stable_id (14 of 14 on aardvark-dns)"  # 9ced
+    status: todo_hard  # 9ced
+    priority: 2  # 9ced
+    parent:  # 9ced
+    tags:  # 9ced
+    - adr_0057  # 9ced
+    - rust_analyzer  # 9ced
+    isbefore: []  # 9ced
+    duplicate_of: []  # 9ced
+    not_duplicate_of: []  # 9ced
+    pr_ref:  # 9ced
+    description: "On the recorded aardvark-dns two-arm fixture the rust-analyzer arm's records for every struct (10), enum (3) and trait (1) carry no `stable_id`, while its function/method/field/variable records do: `hypergumbo backend-agreement` (docs/audits/0019, row `stable_id`) counts 134 disagree and 14 one-sided to `rust`, and the 14 are exactly the struct/enum/trait pairs. Either `hypergumbo_lang_rust_analyzer.translate` skips the stable_id for type-shaped SymbolInformation kinds, or the stable_id derivation it calls has no rule for them. Find which, fix at the producer (ADR-0057 §7: fix the producer, not the merge), pin the count in `AARDVARK_DNS_ATTRIBUTE_AGREEMENT`, and regenerate 0019 with scripts/regenerate-backend-agreement-table."  # 9ced
+    fields: {}  # 9ced

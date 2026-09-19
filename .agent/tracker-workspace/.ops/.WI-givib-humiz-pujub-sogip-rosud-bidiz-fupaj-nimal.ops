@@ -29,3 +29,19 @@
   set: {}  # d529
   add:  # d529
     isbefore: [WI-dajif-duzab-notah-guvij-likum-tigir-modoh-rurot]  # d529
+- op: update  # e5bc
+  at: '2026-09-19T07:04:54Z'  # e5bc
+  by: agent  # e5bc
+  actor: jgstern_agent  # e5bc
+  clock: 3  # e5bc
+  nonce: e5bc  # e5bc
+  set:  # e5bc
+    status: done  # e5bc
+    pr_ref: '1076'  # e5bc
+- op: discuss  # e1a0
+  at: '2026-09-19T07:04:55Z'  # e1a0
+  by: agent  # e1a0
+  actor: jgstern_agent  # e1a0
+  clock: 4  # e1a0
+  nonce: e1a0  # e1a0
+  message: "DONE (PR in pr_ref). Row 8 of the owner-authorised sequence (WI-gojum sub-component 3).\n\nWHAT LANDED. backend_selection.resolved_backend_set(repo_root=, environ=, flag_choice=, is_available=) -> tuple of registration names of the opt-in backends that WILL RUN: the ADR-0045 ruling-4 chain via resolve_rust_analyzer_optin (flag > environment > per-repository trust grant) AND rust_analyzer_install.is_rust_analyzer_available() — the same two conditions the backend's own gate (lang-rust-analyzer gate.should_use_rust_analyzer_backend) makes, so an opt-in with no binary on PATH keys as tree-sitter-only because that is what runs (the WI-luvud fall-through). The binary probe is not consulted unless the opt-in resolved True. Owned in backend_selection.py for the reason that module states (the CLI cannot import the optional backend package); a second opt-in backend (WI-nanom) adds a clause beside it.\n\nsketch_embeddings._get_results_cache_dir: the state segment is suffixed with the resolved set only when non-empty — `<state_hash>-rust_analyzer` — so <fingerprint>/results/<state>[-<backends>]/<analyzer_identity>. Chosen over folding into the hash: every entry written before this change keeps its key (no mass invalidation), and the suffix is readable in `hypergumbo cache-status`. analyzer_identity untouched (code identity). Eviction iterates state dirs by name with no format check, so a suffixed entry is evicted like any other.\n\nEVIDENCE. test_backend_selection.py::TestTheResolvedBackendSet (6): opted in + installed -> (\"rust_analyzer\",); opted in but not installed -> (); silent tiers -> (); explicit --backend tree-sitter beats env on; a trust grant is consulted when env is silent (live trust store under XDG_STATE_HOME); the binary probe is skipped when not opted in. test_sketch.py::TestRepoFingerprint::test_results_cache_dir_per_resolved_backend_set: on one git repo, tree-sitter-only and two-arm resolved sets land in different dirs under the same results/ root, the same set twice hits the same dir, the tree-sitter-only segment is the bare 16-hex state hash, the two-arm segment is `<hash>-rust_analyzer`, and the analyzer_identity leaf is identical. Mutation: disabling the fold turns the new test red.\n\nBEHAVIOUR CHANGE, stated: read commands (slice/search/explain/...) resolve the same chain, so a repo with a trust grant or the env var set finds its two-arm artifact; a survey run with a one-off `--backend rust-analyzer` flag is reachable only with the same flag/env. Recorded in CHANGELOG, the cli discovery docstring and the spec's cache section.\n\nNOT ASSERTED. A run that starts and produces nothing (wasmtime-class OOM, WI-luvud's other fall-throughs) cannot be known before it runs; it keys as two-arm. The acceptance's end-to-end \"two surveys of one tree land in different cache dirs\" is pinned at the cache-dir function with the resolved set patched, not by running the SCIP backend (it does not run in CI)."  # e1a0
