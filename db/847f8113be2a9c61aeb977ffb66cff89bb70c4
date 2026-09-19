@@ -1,0 +1,41 @@
+Original commit body from ab67ad3ae7c0f8dac2e54010d95b18b3b31ef397:
+
+ADR-0057 §1 rules that a producer which did not observe an attribute
+contributes no candidate for it, and for nine of the ten attributes the
+merge pass tracks the VALUE says so: the `Symbol` default is None, "" or
+[] and `_candidates` already skipped it, per record. `is_exported: bool =
+False` cannot — a default False is indistinguishable from a measured one
+— so both SCIP arms, which assign the field nowhere, contributed a
+phantom `False` candidate on every record they emitted: on the recorded
+aardvark-dns fixture, 41 contests that arbitration then resolved and 107
+agreements reported as two producers concurring. All of it read as
+evidence in the one table §5 lets change an arbitration default.
+
+The cure is a declaration on the §10 producer contract, not a change to
+arbitration, which was right. `MergeAnchor.observes` names which of the
+abstention-blind attributes a backend computes;
+`ABSTENTION_BLIND_ATTRIBUTES` is DERIVED from `Symbol`'s field defaults,
+so a tracked attribute that gains a concrete default appears there the
+day it is added; declaring an attribute that does express absence by
+value is refused at construction. `observes=None` is not a ruling: the
+merge pass takes no candidate from such a producer and the live-registry
+contract test refuses any shipped anchored producer that left it unset.
+
+Declared: `rust` and `python` compute exportedness (pub modifiers;
+`__all__` and the underscore convention); `rust_analyzer` and
+`scip_python` compute none.
+
+Measured: aardvark-dns `is_exported` (107, 41, 0, 0) -> (0, 0, 148, 0);
+scip-python sample (4, 6, 0, 0) -> (0, 0, 10, 0). Every other attribute
+row, the pairing and the edge overlap are unchanged, and no carried value
+moves — only the provenance the artifact claims for it. Four mutants
+killed, including leaving a shipped producer unruled.
+
+Filed rather than swept in: INV-kubup (the artifact still asserts
+`is_exported: false` wherever the analyzer has no rule, which finalize
+entrenches and the dead-code seed set reads) and INV-nudoj (`Edge`'s
+concrete defaults are the same family, unaudited).
+
+Closes INV-huboz
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
