@@ -278,6 +278,49 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     "co_located_same_type_not_superseded": 24,
 }
 
+# What `hypergumbo backend-agreement` (ADR-0057 §5, WI-dajif) reads off the
+# two-arm artifact — the merge pass, edge dedup, the resolution verdict and
+# supersession, as `_two_arm_artifact()` in test_recorded_fixtures builds it.
+# These are the numbers in docs/audits/0019-backend-agreement-rust-aardvark-dns.md.
+# Pairing per Symbol category: every one of the 148 paired records has both
+# producers; the 21 SCIP-only records are the namespaces, the two `type`
+# aliases and the one `static` (WI-bamar) the tree-sitter arm emits nothing for.
+AARDVARK_DNS_PAIRED_PER_CATEGORY = {
+    "enum": 3, "field": 38, "function": 52, "method": 27, "struct": 10, "trait": 1, "variable": 17,
+}
+AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY = {"namespace": 18, "type_alias": 2, "variable": 1}
+# Per attribute over the 148 paired records: (agree, disagree, rust only, rust_analyzer only).
+# `name`: the 38 fields and 27 methods tree-sitter qualifies as `Type::member`
+# and SCIP emits bare — the anchors' name_key folds them, the carried scalar
+# keeps the incumbent's form. `is_exported`: 41 records where the incumbent
+# holds None and SCIP holds False, and None wins by precedence. `span`: the
+# item/token role split of §10, by construction. `stable_id`: derived from the
+# attributes above it; the 14 one-sided are the struct/enum/trait records the
+# SCIP arm emits without one. The one-sided rust-only columns are attributes
+# the SCIP translation never fills (signature, docstring, modifiers, qualified_name).
+AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
+    "docstring": (0, 0, 63, 0),
+    "is_exported": (107, 41, 0, 0),
+    "kind": (133, 15, 0, 0),
+    "modifiers": (0, 0, 35, 0),
+    "name": (83, 65, 0, 0),
+    "qualified_name": (0, 0, 148, 0),
+    "signature": (0, 0, 125, 0),
+    "span": (2, 146, 0, 0),
+    "stable_id": (0, 134, 0, 14),
+}
+# Per (edge type, resolved) after the fold: (both producers, rust only, rust_analyzer only).
+# The 93 "both" calls are the corroborated edges; the incumbent emits no
+# `references` edge and the SCIP arm no edge to an external stub.
+AARDVARK_DNS_EDGE_OVERLAP = {
+    ("calls", True): (93, 18, 7),
+    ("calls", False): (0, 244, 0),
+    ("decorated_by", False): (0, 1, 0),
+    ("implements", False): (0, 2, 0),
+    ("module_attr_ref", False): (0, 26, 0),
+    ("references", True): (0, 0, 269),
+}
+
 
 def aardvark_dns_crate_root() -> Path:
     """The committed aardvark-dns crate the index was recorded on."""

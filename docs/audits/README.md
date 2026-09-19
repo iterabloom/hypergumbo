@@ -80,6 +80,25 @@ write an ADR vs an audit-findings document."
 | [0016](0016-resolver-openapi-rpc-family.md) | Resolver / OpenAPI / RPC Family Classifications | `Edge.edge_type` | All RESOLVED |
 | [0017](0017-endpoint-shape-long-tail.md) | Endpoint-Shape Long-Tail Classifications | `Edge.edge_type` | All RESOLVED |
 | [0018](0018-symbol-kind-type-family-abstract-predicate.md) | Symbol.kind Type Family — the abstract-type predicate | `Symbol.kind` | All RESOLVED (no fold; remedy is a consumer predicate layer) |
+| [0019](0019-backend-agreement-rust-aardvark-dns.md) | Backend agreement — `rust` (tree-sitter) vs `rust_analyzer` on the recorded aardvark-dns fixture | backend agreement (sibling format, `kind: backend_agreement`) | Measurement (no verdict rows) |
+
+## Sibling formats
+
+A document under `docs/audits/` declares what it is in the first
+fenced YAML block: `kind: audit_verdicts` is the verdict-table format
+below, checked by `scripts/check-audit-findings`; any other `kind` is a
+sibling format the lint skips (`hypergumbo_core.audit_findings.declared_kind`).
+One sibling exists:
+
+- **`kind: backend_agreement`** — the per-attribute agreement table
+  `hypergumbo backend-agreement` renders from a survey artifact's
+  provenance slot (ADR-0057 §5). It is a *measurement*, not a verdict
+  table: agreement means a value is uncontested, not that it is right.
+  It is the only evidence that may change an arbitration default or
+  license an `authoritative_for` declaration (ADR-0057 §10). Number it
+  in this series; regenerate `0019` with
+  `scripts/regenerate-backend-agreement-table`, which keeps the
+  hand-written `## Reading` section.
 
 ## File format
 

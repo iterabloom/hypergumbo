@@ -29,6 +29,7 @@ from hypergumbo_core.audit_findings import (
     VERDICT_FOLD,
     VerdictRow,
     _is_valid_expect,
+    declared_kind,
     find_audit_findings_docs,
     find_readme_index_drift,
     find_zero_producer_violations,
@@ -844,6 +845,23 @@ def test_find_audit_findings_docs_finds_md_files(tmp_path: Path):
 
     found = find_audit_findings_docs(tmp_path)
     assert [p.name for p in found] == ["0001-foo.md", "0002-bar.md"]
+
+
+def test_find_audit_findings_docs_skips_sibling_kind_docs(tmp_path: Path):
+    """A ``docs/audits/`` document whose fenced YAML declares a sibling
+    ``kind`` (the backend-agreement table, ADR-0057 §5) is not a verdict
+    table; the verdicts lint leaves it alone. A doc declaring no kind at
+    all is still returned, so a malformed verdict doc is still reported."""
+    audits = tmp_path / "docs" / "audits"
+    audits.mkdir(parents=True)
+    (audits / "0001-foo.md").write_text("## Verdicts\n```yaml\nkind: audit_verdicts\n```\n")
+    (audits / "0002-agreement.md").write_text("# x\n```yaml\nkind: backend_agreement\n```\n")
+    (audits / "0003-nokind.md").write_text("x")
+
+    found = find_audit_findings_docs(tmp_path)
+    assert [p.name for p in found] == ["0001-foo.md", "0003-nokind.md"]
+    assert declared_kind(audits / "0002-agreement.md") == "backend_agreement"
+    assert declared_kind(audits / "0003-nokind.md") is None
 
 
 # --- Live-tree property test ---

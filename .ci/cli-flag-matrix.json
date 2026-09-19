@@ -13,6 +13,12 @@
     "--skip",
     "-h"
   ],
+  "backend-agreement": [
+    "--format",
+    "--help",
+    "--out",
+    "-h"
+  ],
   "build-grammars": [
     "--check",
     "--help",
