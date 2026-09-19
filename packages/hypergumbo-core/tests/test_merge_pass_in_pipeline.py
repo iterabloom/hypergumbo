@@ -36,6 +36,7 @@ from hypergumbo_core.analyze.registry import (
 )
 from hypergumbo_core.cli import run_behavior_map
 from hypergumbo_core.ir import PASS_VERSION, AnalysisRun, Span, Symbol
+from hypergumbo_core.schema import SCHEMA_VERSION
 
 SOURCE = "def f():\n    return 1\n\n\nAlias = int\n"
 
@@ -107,6 +108,14 @@ def test_the_pipeline_folds_the_shared_declaration(tmp_path: Path, second_python
     merge_runs = [r for r in data["analysis_runs"] if r["pass"] == "producer-merge"]
     assert len(merge_runs) == 1
     assert f["origin_run_id"] == merge_runs[0]["execution_id"]
+    # WI-binis: the provenance slot is in the artifact, on merged nodes only.
+    assert f["attribution"]["kind"] == ["python", "pyscip"]
+    assert "kind" not in f.get("alternatives", {})
+    assert alias[0]["attribution"]["kind"] == ["python"]
+    assert alias[0]["alternatives"]["kind"] == [{"value": "type_alias", "origin": ["pyscip"]}]
+    assert "attribution" not in namespace[0] and "alternatives" not in namespace[0]
+    assert all("attribution" not in n for n in data["nodes"] if n["origin"] == ["python"])
+    assert data["schema_version"] == SCHEMA_VERSION
 
 
 def test_without_a_second_producer_no_merge_run_is_recorded(tmp_path: Path) -> None:

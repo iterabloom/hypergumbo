@@ -83,7 +83,7 @@ outright — "Go caller passes data to C"). ``dest_access_mode`` is removed.
 """
 
 VALID_CONFIDENCE_SOURCES: frozenset[str] = frozenset({
-    "evidence_derived", "emitter_constant", "composite",
+    "evidence_derived", "emitter_constant", "composite", "corroborated",
 })
 """ADR-0039 ruling 2 provenance discriminator for ``Edge.confidence_source``.
 
@@ -100,6 +100,16 @@ derivation layer is machine-readable rather than an audit:
 - composite: ``confidence`` still fuses a ranking adjustment that ruling 3
   relocates to ``rank_score``; a producer stamps this explicitly while its
   ranking migration is pending.
+- corroborated: two producers reached this edge by DISTINCT inference
+  pathways (ADR-0057 §13 — the merge pass folded, say, a tree-sitter
+  ``ast_call_direct`` edge and a SCIP ``scip_occurrence_ref`` edge for one
+  ``(src, dst, edge_type)``), so ``confidence`` is the declared corroboration
+  level (``merge_producers.CORROBORATED_CONFIDENCE``, 0.95), not either
+  producer's value — never ``max`` (which would launder an emitter constant
+  into evidence) and never noisy-OR (the producers read the same source
+  text). Both originals are preserved in ``alternatives["confidence"]``. The
+  same pathway seen twice is not new evidence and keeps the incumbent's
+  value under ``emitter_constant`` / ``evidence_derived``.
 
 Re-evaluation trigger (ADR-0024 bounded-enum discipline): if ``composite``
 ever needs to split into sub-kinds (per-adjustment provenance), or a consumer
@@ -586,6 +596,19 @@ class Symbol:
             catalog. ``None`` for analyzers whose ``name`` already encodes
             the fully-qualified form, or for languages that haven't
             declared a separator policy yet.
+        attribution: ADR-0057 §6 provenance slot, set only by the merge pass on
+            a record folded from two producers: ``{field: [pass_id, ...]}`` —
+            the producers whose value the scalar slot carries (agreement
+            lists both; a contested field lists the arbitration winner; a
+            field only one producer observed lists that producer). ``None``
+            on every single-producer record, and then omitted from the dict
+            form, so a one-backend artifact is byte-identical.
+        alternatives: ADR-0057 §6, the candidate set: ``{field: [{"value",
+            "origin": [pass_id, ...]}]}`` for the values the scalar slot does
+            NOT carry — present only for contested fields on a merged
+            record. Nothing a producer emitted is discarded (§1); the
+            scalar is the one stamped default (§4) and this is what an
+            opt-in policy reads instead.
     """
 
     id: str  # axis: identity
@@ -625,6 +648,10 @@ class Symbol:
     protocol_origin: Optional[str] = None  # axis: protocol-origin
     display_label: Optional[str] = None  # axis: free-text — human-readable UI display string for synthetic linker stand-ins; consumers display, never branch on the value itself.
     qualified_name: Optional[str] = None  # axis: qualified-name (ADR-0032)
+    # ADR-0057 §6 (WI-binis): dict-valued, so no ``# axis:`` declaration —
+    # the keys are field names of this record and the leaves are pass ids.
+    attribution: Optional[Dict[str, List[str]]] = None
+    alternatives: Optional[Dict[str, List[Dict[str, Any]]]] = None
     visibility: Optional[str] = None  # axis: visibility — INV-jusot: one computed canonical visibility level (public/private/protected/internal/package), folded in finalize from the language modifier / legacy meta['visibility'] / Python name convention; None until finalize computes it. The deciding signal is recorded in meta['visibility_signal'].
 
     def __post_init__(self) -> None:
@@ -687,6 +714,11 @@ class Symbol:
         # present only when a producer sets it.
         if self.quality is not None:
             result["quality"] = self.quality
+        # ADR-0057 §6: the provenance slot exists only on a merged record.
+        if self.attribution is not None:
+            result["attribution"] = self.attribution
+        if self.alternatives is not None:
+            result["alternatives"] = self.alternatives
         return result
 
     @classmethod
@@ -729,6 +761,8 @@ class Symbol:
             display_label=d.get("display_label"),
             qualified_name=d.get("qualified_name"),  # ADR-0032
             visibility=d.get("visibility"),  # INV-jusot
+            attribution=d.get("attribution"),  # ADR-0057 §6
+            alternatives=d.get("alternatives"),
         )
 
 
@@ -842,6 +876,8 @@ class Edge:
         derived_from: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
         confidence: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
         confidence_source: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+        attribution: ADR-0057 §6 provenance slot, set only by the merge pass when two producers' edges for one ``(src, dst, edge_type)`` are folded: ``{field: [pass_id, ...]}`` for ``confidence`` / ``evidence_type`` — who holds the value the scalar carries. ``None`` (and omitted from the dict form) on every other edge.
+        alternatives: ADR-0057 §6 candidate set on a folded edge: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar does not carry; under ``confidence_source="corroborated"`` both producers' original confidences are here.
         rank_score: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
         meta: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3). An edge that survived a collapse of two or more call sites stores the union of their lines in ``call_lines`` (see :func:`deduplicate_edges`); its absence means the one call site is ``line``.
     """
@@ -861,6 +897,10 @@ class Edge:
     dst_ref: Optional[ExternalRef] = None
     derived_from: Optional[List[str]] = None  # axis: identity
     confidence_source: str = "emitter_constant"  # axis: bounded-enum
+    # ADR-0057 §6 (WI-binis): the provenance slot, present only on an edge the
+    # merge pass folded from two producers. Dict-valued: no ``# axis:``.
+    attribution: Optional[Dict[str, List[str]]] = None
+    alternatives: Optional[Dict[str, List[Dict[str, Any]]]] = None
     rank_score: Optional[float] = None
     meta: Optional[Dict[str, Any]] = None
 
@@ -1042,6 +1082,11 @@ class Edge:
             out["dst_ref"] = self.dst_ref.to_dict()
         if self.derived_from is not None:
             out["derived_from"] = self.derived_from
+        # ADR-0057 §6: the provenance slot exists only on a folded edge.
+        if self.attribution is not None:
+            out["attribution"] = self.attribution
+        if self.alternatives is not None:
+            out["alternatives"] = self.alternatives
         return out
 
     @classmethod
@@ -1074,6 +1119,8 @@ class Edge:
             dst_ref=ExternalRef.from_dict(dst_ref_raw) if dst_ref_raw else None,
             derived_from=d.get("derived_from"),
             confidence_source=d.get("confidence_source", "emitter_constant"),
+            attribution=d.get("attribution"),  # ADR-0057 §6
+            alternatives=d.get("alternatives"),
             rank_score=d.get("rank_score"),
             meta=meta,
         )

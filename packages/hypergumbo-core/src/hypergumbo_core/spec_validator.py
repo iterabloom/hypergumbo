@@ -450,7 +450,7 @@ _BOUNDED_ENUMS: dict[tuple[str, str], frozenset[str]] = {
     # Kept in lockstep with ir.VALID_CONFIDENCE_SOURCES by
     # test_spec_validator's drift guard.
     ("Edge", "confidence_source"): frozenset({
-        "evidence_derived", "emitter_constant", "composite",
+        "evidence_derived", "emitter_constant", "composite", "corroborated",
     }),
 }
 

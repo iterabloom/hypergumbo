@@ -528,6 +528,7 @@ def test_edge_from_dict_defaults_new_fields_for_legacy_artifact() -> None:
 def test_valid_confidence_sources_vocabulary() -> None:
     assert VALID_CONFIDENCE_SOURCES == {
         "evidence_derived", "emitter_constant", "composite",
+        "corroborated",  # ADR-0057 §13 (WI-binis)
     }
 
 

@@ -20,6 +20,7 @@ import pytest
 from hypergumbo_core.analyze import registry as _registry_mod
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.merge_producers import (
+    CORROBORATED_CONFIDENCE,
     PASS_ID,
     MergeReport,
     merge_producer_records,
@@ -367,3 +368,173 @@ class TestRolesAndProducersBeyondTheRustShape:
         # lsp producer folds in before scip and origin records that order.
         assert symbols[0].origin == ["python", "lsp", "scip"]
         assert record.merged_id == symbols[0].id
+
+
+# ---------------------------------------------------------------------------
+# WI-binis / ADR-0057 §1, §4, §6, §13: the provenance slot and the edge fold
+# ---------------------------------------------------------------------------
+
+
+def _scip_edge(src: str, dst: str, *, confidence: float = 0.85, evidence: str = "scip_occurrence_ref",
+               line: int = 1) -> Edge:
+    return Edge.create(src=src, dst=dst, edge_type="calls", line=line, origin="scip",
+                       evidence_type=evidence, confidence=confidence, origin_run_id=RUN_SCIP)
+
+
+def _ast_edge(src: str, dst: str, *, confidence: float = 0.5, evidence: str = "ast_call_direct",
+              line: int = 1) -> Edge:
+    return Edge.create(src=src, dst=dst, edge_type="calls", line=line, origin="python",
+                       evidence_type=evidence, confidence=confidence, origin_run_id=RUN_PY)
+
+
+class TestTheProvenanceSlotOnSymbols:
+    def test_a_contested_attribute_records_both_values(self) -> None:
+        incumbent = _sym("parse_configs", "function", 23, 40, run=RUN_PY, origin="python")
+        other = _sym("parse_configs", "method", 23, 23, run=RUN_SCIP, origin="scip")
+        symbols = [incumbent, other]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [merged] = symbols
+        assert merged.kind == "function"  # the stamped default: incumbent first
+        assert merged.attribution["kind"] == ["python"]
+        assert merged.alternatives["kind"] == [{"value": "method", "origin": ["pyscip"]}]
+
+    def test_agreement_is_one_value_with_two_provenances_and_no_alternative(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [merged] = symbols
+        assert merged.attribution["kind"] == ["python", "pyscip"]
+        assert merged.attribution["name"] == ["python"]  # names differ by shape: contested
+        assert "kind" not in merged.alternatives
+        assert merged.alternatives["name"] == [{"value": "increment", "origin": ["pyscip"]}]
+
+    def test_disjoint_coverage_is_one_value_with_one_provenance(self) -> None:
+        incumbent = _sym("Counter.increment", "method", 14, 17, run=RUN_PY, origin="python")
+        other = _sym("increment", "method", 14, 14, run=RUN_SCIP, origin="scip",
+                     signature="fn increment(&mut self, by: i32) -> i32")
+        symbols = [incumbent, other]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [merged] = symbols
+        assert merged.signature == "fn increment(&mut self, by: i32) -> i32"
+        assert merged.attribution["signature"] == ["pyscip"]
+        assert "signature" not in merged.alternatives
+        assert "docstring" not in merged.attribution  # neither observed it: no entry at all
+
+    def test_the_token_span_is_kept_as_the_alternative(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [merged] = symbols
+        assert merged.attribution["span"] == ["python"]
+        assert merged.alternatives["span"] == [
+            {"value": {"start_line": 14, "end_line": 14, "start_col": 11, "end_col": 20}, "origin": ["pyscip"]},
+        ]
+
+    def test_a_single_producer_record_carries_no_slot(self) -> None:
+        incumbent = _incumbent_method()
+        symbols = [incumbent]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert incumbent.attribution is None and incumbent.alternatives is None
+
+    def test_the_slot_round_trips_through_the_dict_form(self) -> None:
+        symbols = [_incumbent_method(), _scip_method()]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [merged] = symbols
+        as_dict = merged.to_dict()
+        assert as_dict["attribution"] == merged.attribution
+        assert as_dict["alternatives"] == merged.alternatives
+        back = Symbol.from_dict(as_dict)
+        assert back.attribution == merged.attribution and back.alternatives == merged.alternatives
+        assert "attribution" not in _incumbent_method().to_dict()  # omitted when None
+
+
+class TestTheEdgeFold:
+    def _pair(self) -> tuple[list[Symbol], list[Edge]]:
+        caller_inc = _sym("main", "function", 1, 5, run=RUN_PY, origin="python")
+        caller_scip = _sym("main", "function", 1, 1, run=RUN_SCIP, origin="scip")
+        callee_inc, callee_scip = _incumbent_method(), _scip_method()
+        symbols = [caller_inc, callee_inc, caller_scip, callee_scip]
+        return symbols, [caller_inc, caller_scip, callee_inc, callee_scip]
+
+    def test_two_pathways_to_one_edge_corroborate_at_the_declared_level(self) -> None:
+        symbols, (ci, cs, ki, ks) = self._pair()
+        edges = [_ast_edge(ci.id, ki.id, line=3), _scip_edge(cs.id, ks.id, line=4)]
+        report = merge_producer_records(symbols, edges, [dict(r) for r in RUNS])
+        assert len(edges) == 1 and report.edges_folded == 1 and report.corroborated == 1
+        [edge] = edges
+        assert edge.confidence == CORROBORATED_CONFIDENCE == 0.95
+        assert edge.confidence_source == "corroborated"
+        assert edge.origin == ["python", "scip"]
+        assert edge.evidence_type == "ast_call_direct"  # categorical: incumbent first
+        assert edge.attribution["confidence"] == ["python", "pyscip"]
+        assert edge.alternatives["confidence"] == [
+            {"value": 0.5, "origin": ["python"]}, {"value": 0.85, "origin": ["pyscip"]},
+        ]
+        assert edge.attribution["evidence_type"] == ["python"]
+        assert edge.alternatives["evidence_type"] == [{"value": "scip_occurrence_ref", "origin": ["pyscip"]}]
+        assert sorted(edge.meta["call_lines"]) == [3, 4]  # both sites survive the fold
+        assert edge.edge_key is None
+        assert edge.origin_run_id == report.run.execution_id
+
+    def test_the_same_pathway_twice_is_not_new_evidence(self) -> None:
+        symbols, (ci, cs, ki, ks) = self._pair()
+        edges = [_ast_edge(ci.id, ki.id, confidence=0.5), _scip_edge(cs.id, ks.id, confidence=0.85, evidence="ast_call_direct")]
+        report = merge_producer_records(symbols, edges, [dict(r) for r in RUNS])
+        assert len(edges) == 1 and report.corroborated == 0
+        [edge] = edges
+        assert edge.confidence == 0.5 and edge.confidence_source == "emitter_constant"
+        assert edge.attribution["confidence"] == ["python"]
+        assert edge.alternatives["confidence"] == [{"value": 0.85, "origin": ["pyscip"]}]
+
+    def test_an_edge_only_one_producer_saw_is_untouched(self) -> None:
+        symbols, (ci, cs, ki, ks) = self._pair()
+        lonely = _scip_edge(cs.id, ks.id)
+        edges = [lonely]
+        merge_producer_records(symbols, edges, [dict(r) for r in RUNS])
+        assert edges == [lonely] and lonely.attribution is None
+        assert lonely.confidence == 0.85 and lonely.confidence_source == "emitter_constant"
+
+    def test_a_fold_with_no_symbol_merge_still_records_the_run(self) -> None:
+        """Two producers emitted the same edge between records that did not
+        pair: the edges still fold, and the pass's run is still appended."""
+        a = _sym("A.run", "method", 10, 20, run=RUN_PY, origin="python")
+        b = _sym("B.run", "method", 10, 20, run=RUN_PY, origin="python")
+        other = _sym("run", "method", 10, 10, run=RUN_SCIP, origin="scip")
+        edges = [_ast_edge(a.id, b.id), _scip_edge(a.id, b.id)]
+        runs = [dict(r) for r in RUNS]
+        report = merge_producer_records([a, b, other], edges, runs)
+        assert report.merged == [] and report.edges_folded == 1
+        assert runs[-1]["pass"] == PASS_ID and report.run is not None
+
+    def test_the_slot_round_trips_on_an_edge(self) -> None:
+        symbols, (ci, cs, ki, ks) = self._pair()
+        edges = [_ast_edge(ci.id, ki.id), _scip_edge(cs.id, ks.id)]
+        merge_producer_records(symbols, edges, [dict(r) for r in RUNS])
+        [edge] = edges
+        as_dict = edge.to_dict()
+        assert as_dict["attribution"] == edge.attribution and as_dict["alternatives"] == edge.alternatives
+        back = Edge.from_dict(as_dict)
+        assert back.attribution == edge.attribution and back.confidence_source == "corroborated"
+        assert "attribution" not in _ast_edge("x", "y").to_dict()
+
+
+class TestUntrackedFillAndForeignEdges:
+    def test_an_untracked_attribute_only_the_other_producer_observed_is_filled(self) -> None:
+        incumbent = _incumbent_method()
+        other = _scip_method()
+        other.cyclomatic_complexity = 7
+        symbols = [incumbent, other]
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        assert symbols[0].cyclomatic_complexity == 7
+        assert "cyclomatic_complexity" not in (symbols[0].attribution or {})  # untracked: no slot entry
+
+    def test_an_edge_from_a_non_participant_pass_is_not_folded(self) -> None:
+        caller_inc = _sym("main", "function", 1, 5, run=RUN_PY, origin="python")
+        caller_scip = _sym("main", "function", 1, 1, run=RUN_SCIP, origin="scip")
+        symbols = [caller_inc, _incumbent_method(), caller_scip, _scip_method()]
+        linker_edge = Edge.create(src=caller_inc.id, dst=symbols[1].id, edge_type="calls", line=9,
+                                  origin="containment-linker", evidence_type="ast_call",
+                                  confidence=0.9, origin_run_id=RUN_LINKER)
+        ast = _ast_edge(caller_inc.id, symbols[1].id)
+        edges = [linker_edge, ast]
+        report = merge_producer_records(symbols, edges, [dict(r) for r in RUNS])
+        assert report.edges_folded == 0
+        assert linker_edge in edges and linker_edge.attribution is None

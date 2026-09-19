@@ -308,13 +308,17 @@ def _sample_symbol() -> Symbol:
     # quality is a conditional key (omitted when None per INV-nuzal) — populate
     # it so the schema-drift round-trip sees a fully-populated instance.
     sym.quality = {"score": 0.9, "reason": "sample"}
+    # attribution / alternatives (ADR-0057 §6) are conditional too: present
+    # only on a record the merge pass folded from two producers.
+    sym.attribution = {"kind": ["python"]}
+    sym.alternatives = {"kind": [{"value": "method", "origin": ["pyscip"]}]}
     return sym
 
 
 def _sample_edge() -> Edge:
     # dst_ref / derived_from are conditional keys — populate them so the
     # round-trip check sees the full key set.
-    return Edge.create(
+    edge = Edge.create(
         src="a",
         dst="b",
         edge_type="calls",
@@ -325,6 +329,11 @@ def _sample_edge() -> Edge:
         dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
         derived_from=["sym:1"],
     )
+    # attribution / alternatives (ADR-0057 §6) are conditional: present only
+    # on an edge the merge pass folded from two producers.
+    edge.attribution = {"confidence": ["python", "pyscip"]}
+    edge.alternatives = {"confidence": [{"value": 0.5, "origin": ["python"]}]}
+    return edge
 
 
 def _sample_analysis_run() -> AnalysisRun:
@@ -540,6 +549,20 @@ def _symbol_spec() -> ClassSpec:
                 "from confidence, so it is omitted when null (INV-virik omit-"
                 "when-empty) and appears only if a future pass populates it."
             )},
+            "attribution": {"description": (
+                "ADR-0057 §6 provenance slot, present only on a record the "
+                "merge pass folded from two producers: field -> the pass ids "
+                "whose value the scalar slot carries (agreement lists both "
+                "producers; a contested field lists the arbitration winner; a "
+                "field only one producer observed lists that producer)."
+            )},
+            "alternatives": {"description": (
+                "ADR-0057 §6: the values the scalar slot does NOT carry, "
+                "present only for contested fields on a merged record: "
+                "field -> [{value, origin: [pass_id, ...]}]. Nothing a "
+                "producer emitted is discarded; the scalar is the one "
+                "stamped default (§4) and this is the candidate set."
+            )},
             "meta": {"description": "Language-specific metadata"},
             "signature": {
                 "description": (
@@ -603,7 +626,7 @@ def _symbol_spec() -> ClassSpec:
             },
         },
         sample_factory=_sample_symbol,
-        conditional={"quality"},
+        conditional={"quality", "attribution", "alternatives"},
     )
 
 
@@ -760,15 +783,29 @@ def _edge_spec() -> ClassSpec:
                 ),
             },
             "confidence_source": {
-                "enum": ["evidence_derived", "emitter_constant", "composite"],
+                "enum": ["evidence_derived", "emitter_constant", "composite", "corroborated"],
                 "description": (
                     "Provenance of the confidence value (ADR-0039 ruling 2): "
                     "evidence_derived (from the evidence_type registry base), "
                     "emitter_constant (a declared hardcoded producer value), "
-                    "or composite (still fuses a ranking adjustment ruling 3 "
-                    "relocates to rank_score)."
+                    "composite (still fuses a ranking adjustment ruling 3 "
+                    "relocates to rank_score), or corroborated (ADR-0057 §13: "
+                    "two producers reached this edge by DISTINCT inference "
+                    "pathways, so the value is the declared corroboration "
+                    "level, not either producer's; both originals are in "
+                    "alternatives.confidence)."
                 ),
             },
+            "attribution": {"description": (
+                "ADR-0057 §6 provenance slot, present only on an edge the "
+                "merge pass folded from two producers: field -> the pass ids "
+                "whose value the scalar carries."
+            )},
+            "alternatives": {"description": (
+                "ADR-0057 §6: the values the scalar slot does NOT carry, "
+                "present only for contested fields on a folded edge: "
+                "field -> [{value, origin: [pass_id, ...]}]."
+            )},
             "rank_score": {
                 "minimum": 0.0,
                 "maximum": 1.0,
@@ -796,7 +833,7 @@ def _edge_spec() -> ClassSpec:
                 ),
             },
         },
-        conditional={"dst_ref", "derived_from"},
+        conditional={"dst_ref", "derived_from", "attribution", "alternatives"},
         # confidence has a producer default (0.85) but is contractually
         # always emitted; keep the pre-existing required guarantee.
         extra_required=["confidence"],

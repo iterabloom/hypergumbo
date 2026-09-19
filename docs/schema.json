@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.20.10"
+      "const": "0.20.11"
     },
     "confidence_model": {
       "type": "string",
@@ -999,6 +999,28 @@
           ],
           "description": "ADR-0032: fully-qualified name including ancestor containers, joined with the per-language separator declared in qualified_name_axis.py. Null when name already encodes the qualified form or no separator policy is declared."
         },
+        "attribution": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0057 \u00a76 provenance slot, present only on a record the merge pass folded from two producers: field -> the pass ids whose value the scalar slot carries (agreement lists both producers; a contested field lists the arbitration winner; a field only one producer observed lists that producer)."
+        },
+        "alternatives": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0057 \u00a76: the values the scalar slot does NOT carry, present only for contested fields on a merged record: field -> [{value, origin: [pass_id, ...]}]. Nothing a producer emitted is discarded; the scalar is the one stamped default (\u00a74) and this is the candidate set."
+        },
         "visibility": {
           "oneOf": [
             {
@@ -1181,9 +1203,32 @@
           "enum": [
             "evidence_derived",
             "emitter_constant",
-            "composite"
+            "composite",
+            "corroborated"
           ],
-          "description": "Provenance of the confidence value (ADR-0039 ruling 2): evidence_derived (from the evidence_type registry base), emitter_constant (a declared hardcoded producer value), or composite (still fuses a ranking adjustment ruling 3 relocates to rank_score)."
+          "description": "Provenance of the confidence value (ADR-0039 ruling 2): evidence_derived (from the evidence_type registry base), emitter_constant (a declared hardcoded producer value), composite (still fuses a ranking adjustment ruling 3 relocates to rank_score), or corroborated (ADR-0057 \u00a713: two producers reached this edge by DISTINCT inference pathways, so the value is the declared corroboration level, not either producer's; both originals are in alternatives.confidence)."
+        },
+        "attribution": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0057 \u00a76 provenance slot, present only on an edge the merge pass folded from two producers: field -> the pass ids whose value the scalar carries."
+        },
+        "alternatives": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0057 \u00a76: the values the scalar slot does NOT carry, present only for contested fields on a folded edge: field -> [{value, origin: [pass_id, ...]}]."
         },
         "rank_score": {
           "oneOf": [

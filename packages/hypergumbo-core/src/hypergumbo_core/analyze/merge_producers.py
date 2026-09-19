@@ -49,19 +49,36 @@ set, so the SCIP moniker (``scip_symbol``) survives on the merged record;
 ``origin_run_id`` = this pass's run, since this pass emitted the record as
 it now exists, and the two producers are recoverable from ``origin``.
 
-WHAT IS PRESERVED FOR THE PROVENANCE SLOT. Every merged record's
-:class:`MergedRecord` lists its members and, per tracked attribute, the
-(value, producers) candidates — agreement is one value with two producers,
-disagreement two values with one each. That is ADR-0057 §1 in memory; the
-schema-versioned slot that serializes it is WI-binis, the next row.
+THE ARBITRATION PROPERTY AND THE PROVENANCE SLOT (§1, §4, §6; WI-binis).
+Per tracked attribute the members' values form a candidate set — agreement
+is one value with two producers, disagreement two values with one each, an
+attribute only one producer observed has one entry. The scalar the record
+carries is produced by :func:`arbitrate`: a pure function over that set
+with ONE stamped default, precedence in incumbent-first order for every
+categorical attribute (``span`` is the one exception: the item-role
+member's span, whichever producer that is — INV-lodum). The choice is
+written into the record's ``attribution`` (``field -> [producers holding
+the carried value]``) and the losers into ``alternatives`` (``field ->
+[{value, origin}]``, present only when contested), the ADR-0057 §6 slot
+that ``to_dict`` emits only when set — so a single-producer artifact is
+byte-identical. An alternative policy is an opt-in read of the candidate
+set, never a second default.
 
-EDGES (§11). ``src``, ``dst`` and ``edge_type`` are identity. Every edge
-endpoint (and ``derived_from``) that named a folded record is rewired to
-the merged id and its ``edge_key`` reset, so the caller's
-``deduplicate_edges`` collapses two producers' edges that agree on all
-three; a disagreement stays two edges, each with its own ``origin`` — that
-IS the provenance of the disagreement. Usage contexts' ``symbol_ref`` is
-rewired the same way.
+EDGES (§11, §13). ``src``, ``dst`` and ``edge_type`` are identity. Every
+edge endpoint (and ``derived_from``) that named a folded record is rewired
+to the merged id and its ``edge_key`` reset. Then the participants' edges
+that now agree on all three are FOLDED here (not left for
+``deduplicate_edges``, whose survivor is encounter order — the SCIP arm
+runs first by priority, and the fold must be incumbent-first): the
+survivor is the incumbent's edge, the others' call sites are absorbed
+(``_absorb_call_site``), ``origin`` is the union, and ``confidence`` is
+COMBINED, not arbitrated by precedence: two DISTINCT inference pathways
+(different ``evidence_type``) reaching one edge make it ``corroborated``
+at :data:`CORROBORATED_CONFIDENCE` with both originals kept in
+``alternatives``; the same pathway twice is not new evidence and keeps the
+incumbent's value. A disagreement on any of the three identity fields
+stays two edges, each with its own ``origin`` — that IS the provenance of
+the disagreement. Usage contexts' ``symbol_ref`` is rewired the same way.
 
 WHAT IT REFUSES TO GUESS. A record with two candidate partners, or a
 candidate claimed by two records, is left unmerged and reported
@@ -78,7 +95,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, UsageContext
+from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, UsageContext, _absorb_call_site
 from .base import make_symbol_id
 from .registry import (
     SPAN_ROLE_ITEM,
@@ -91,17 +108,26 @@ from .registry import (
 
 PASS_ID = "producer-merge"
 
+#: ADR-0057 §13: the confidence of an edge two DISTINCT inference pathways
+#: reached — ADR-0012's number for a type-resolved call. A declared level,
+#: not a formula: ``max`` would launder SCIP's 0.85 emitter constant into
+#: evidence and noisy-OR overstates producers reading the same text. It
+#: joins the per-attribute table WI-hukuf makes configurable.
+CORROBORATED_CONFIDENCE = 0.95
+
 #: Attributes whose candidates are recorded per merged record (ADR-0057 §1).
 TRACKED_ATTRIBUTES: Tuple[str, ...] = (
     "name", "kind", "stable_id", "span", "signature", "docstring",
     "qualified_name", "visibility", "modifiers", "is_exported",
 )
 
-#: Scalar attributes the merged record takes from the other producer when the
-#: incumbent did not observe them (disjoint coverage, §1).
+#: Scalar attributes OUTSIDE the tracked set that the merged record takes from
+#: the other producer when the incumbent did not observe them (disjoint
+#: coverage, §1, without a provenance entry — they are not in the slot). Every
+#: tracked attribute reaches the merged record through :func:`arbitrate`
+#: instead, where a sole observer's value is the only candidate.
 _FILL_WHEN_INCUMBENT_EMPTY: Tuple[str, ...] = (
-    "stable_id", "signature", "docstring", "qualified_name", "visibility",
-    "display_label", "cyclomatic_complexity", "line_span", "modifiers",
+    "display_label", "cyclomatic_complexity", "line_span",
 )
 
 
@@ -128,6 +154,10 @@ class MergeReport:
     ambiguous: List[Tuple[str, List[str]]] = field(default_factory=list)
     #: every folded id -> the merged id (both members, when they differ)
     id_remap: Dict[str, str] = field(default_factory=dict)
+    #: edges removed by the §11 fold (their survivor carries the slot)
+    edges_folded: int = 0
+    #: folded edges whose two pathways were distinct (§13)
+    corroborated: int = 0
     run: Optional[AnalysisRun] = None
 
 
@@ -189,6 +219,67 @@ def _candidates(
     return [(value, tuple(producers)) for value, producers in out]
 
 
+Candidate = Tuple[Any, Tuple[str, ...]]
+
+
+def arbitrate(candidates: Sequence[Candidate], precedence: Sequence[str]) -> Candidate:
+    """The ADR-0057 §4 arbitration property for a categorical attribute.
+
+    Pure over the candidate set: the value held by the earliest producer in
+    ``precedence`` wins; ties cannot arise because a producer holds one
+    value. ``precedence`` is the stamped default — incumbent first (§5) —
+    until WI-hukuf reads it from ``config.toml``; a caller with another
+    policy passes another order and reads the same candidates.
+    """
+    rank = {producer: index for index, producer in enumerate(precedence)}
+    return min(candidates, key=lambda c: min(rank.get(p, len(rank)) for p in c[1]))
+
+
+def _serializable(attribute: str, value: Any) -> Any:
+    if attribute == "span":
+        start_line, end_line, start_col, end_col = value
+        return {"start_line": start_line, "end_line": end_line,
+                "start_col": start_col, "end_col": end_col}
+    return value
+
+
+def _stamp_slot(
+    record: Any,
+    members: Sequence[Tuple[str, Any]],
+    attributes: Sequence[str],
+    precedence: Sequence[str],
+    *,
+    chosen: Optional[Dict[str, Candidate]] = None,
+) -> Dict[str, Candidate]:
+    """Arbitrate every attribute, set the scalar, write attribution / alternatives.
+
+    ``chosen`` pre-decides attributes whose rule is not precedence (the item
+    span; a corroborated confidence). Returns the winners so a caller can
+    apply a value that is not a plain setattr (a ``Span`` object).
+    """
+    attribution: Dict[str, List[str]] = {}
+    alternatives: Dict[str, List[Dict[str, Any]]] = {}
+    winners: Dict[str, Candidate] = {}
+    for attribute in attributes:
+        candidates = _candidates(attribute, members)
+        if not candidates:
+            continue  # nobody observed it: no entry at all (§1)
+        winner = (chosen or {}).get(attribute) or arbitrate(candidates, precedence)
+        winners[attribute] = winner
+        attribution[attribute] = list(winner[1])
+        losers = [c for c in candidates if c[0] != winner[0]]
+        if losers:
+            alternatives[attribute] = [
+                {"value": _serializable(attribute, value), "origin": list(producers)}
+                for value, producers in losers
+            ]
+        if attribute != "span":
+            setattr(record, attribute, winner[0])
+    record.attribution = attribution or None
+    record.alternatives = alternatives or None
+    return winners
+
+
 def _merge_one(
     incumbent_name: str,
     incumbent: Symbol,
@@ -199,10 +290,18 @@ def _merge_one(
     run_id: str,
 ) -> Tuple[Symbol, MergedRecord]:
     merged = replace(incumbent)
-    # The ITEM span: whichever member spans the item (INV-lodum cure).
-    # (A member with no span never pairs — _spans_pair — so both spans exist here.)
-    if incumbent_role != SPAN_ROLE_ITEM and other_role == SPAN_ROLE_ITEM and other.span is not None:
-        merged.span = replace(other.span)
+    members = [(incumbent_name, incumbent), (other_name, other)]
+    precedence = [incumbent_name, other_name]
+    # The ITEM span: whichever member spans the item (INV-lodum cure) — the
+    # one attribute not decided by precedence. (A member with no span never
+    # pairs — _spans_pair — so both spans exist here.)
+    item_holder = other if (incumbent_role != SPAN_ROLE_ITEM and other_role == SPAN_ROLE_ITEM) else incumbent
+    item_span = _value(item_holder, "span")
+    span_candidates = _candidates("span", members)
+    chosen_span = next(c for c in span_candidates if c[0] == item_span)
+    _stamp_slot(merged, members, TRACKED_ATTRIBUTES, precedence, chosen={"span": chosen_span})
+    if item_holder.span is not None:
+        merged.span = replace(item_holder.span)
     for attribute in _FILL_WHEN_INCUMBENT_EMPTY:
         if _empty(getattr(merged, attribute)) and not _empty(getattr(other, attribute)):
             setattr(merged, attribute, getattr(other, attribute))
@@ -224,7 +323,6 @@ def _merge_one(
         span.start_line if span else 0, span.end_line if span else 0,
         merged.name, merged.kind,
     )
-    members = [(incumbent_name, incumbent), (other_name, other)]
     record = MergedRecord(
         merged_id=merged.id,
         language=language,
@@ -233,6 +331,64 @@ def _merge_one(
         candidates={attr: _candidates(attr, members) for attr in TRACKED_ATTRIBUTES},
     )
     return merged, record
+
+
+def _fold_edges(
+    edges: List[Edge],
+    pass_of_run: Mapping[str, str],
+    precedence: Sequence[str],
+    run_id: str,
+    report: MergeReport,
+) -> None:
+    """§11 / §13: fold the participants' edges that agree on (src, dst, edge_type)."""
+    rank = {producer: index for index, producer in enumerate(precedence)}
+    groups: Dict[Tuple[str, str, str], List[Tuple[str, Edge]]] = {}
+    for edge in edges:
+        producer = pass_of_run.get(edge.origin_run_id)
+        if producer is None or producer not in rank:
+            continue
+        groups.setdefault((edge.src, edge.dst, edge.edge_type), []).append((producer, edge))
+    dropped: set[int] = set()
+    for group in groups.values():
+        if len({producer for producer, _ in group}) < 2:
+            continue
+        group.sort(key=lambda item: rank[item[0]])
+        survivor_name, survivor = group[0]
+        others = group[1:]
+        members = list(group)
+        # A producer may hold several edges on one key (SCIP emits one per
+        # occurrence): provenance names each producer once, in precedence order.
+        producers = list(dict.fromkeys(producer for producer, _ in group))
+        originals = list(dict.fromkeys((producer, edge.confidence) for producer, edge in group))
+        distinct_pathways = len({edge.evidence_type for _, edge in group}) > 1
+        chosen: Dict[str, Candidate] = {}
+        if distinct_pathways:
+            chosen["confidence"] = (CORROBORATED_CONFIDENCE, tuple(producers))
+            survivor.confidence_source = "corroborated"
+            report.corroborated += 1
+        winners = _stamp_slot(
+            survivor, members, ("confidence", "evidence_type"), precedence, chosen=chosen,
+        )
+        if distinct_pathways:
+            # Every original is an alternative to the combined value (§13).
+            assert survivor.alternatives is not None
+            survivor.alternatives["confidence"] = [
+                {"value": confidence, "origin": [producer]} for producer, confidence in originals
+            ]
+        del winners
+        origins = list(survivor.origin)
+        for _producer_name, other in others:
+            for origin in other.origin:
+                if origin not in origins:
+                    origins.append(origin)
+            _absorb_call_site(survivor, other)
+            dropped.add(id(other))
+        survivor.origin = origins
+        survivor.origin_run_id = run_id
+        survivor.edge_key = None
+        report.edges_folded += len(others)
+    if dropped:
+        edges[:] = [edge for edge in edges if id(edge) not in dropped]
 
 
 def merge_producer_records(
@@ -269,6 +425,7 @@ def merge_producer_records(
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)  # nosec B106 — a pass id, not a password
     replacement: Dict[int, Symbol] = {}  # id(incumbent record) -> merged record
     dropped: set[int] = set()
+    precedence: List[str] = []  # every merged language's producers, incumbent first
 
     for language in sorted(by_language):
         present = by_language[language]
@@ -281,6 +438,7 @@ def merge_producer_records(
         incumbent_analyzer, alternatives = ordered[0], ordered[1:]
         incumbent_anchor = _anchor(incumbent_analyzer)
         report.languages.append(language)
+        precedence.extend(a.name for a in ordered if a.name not in precedence)
 
         index: Dict[Tuple[str, str], List[Symbol]] = {}
         for record in present[incumbent_analyzer.name]:
@@ -326,12 +484,10 @@ def merge_producer_records(
                     if original != merged.id:
                         report.id_remap[original] = merged.id
 
-    if not report.merged:
-        return report
-
-    symbols[:] = [
-        replacement.get(id(s), s) for s in symbols if id(s) not in dropped
-    ]
+    if report.merged:
+        symbols[:] = [
+            replacement.get(id(s), s) for s in symbols if id(s) not in dropped
+        ]
     remap = report.id_remap
     for edge in edges:
         changed = False
@@ -348,6 +504,10 @@ def merge_producer_records(
     for context in usage_contexts or []:
         if context.symbol_ref in remap:
             context.symbol_ref = remap[context.symbol_ref]
+    if precedence:
+        _fold_edges(edges, pass_of_run, precedence, run.execution_id, report)
+    if not report.merged and not report.edges_folded:
+        return report
 
     run.nodes_emitted = len(report.merged)
     run.duration_ms = int((time.perf_counter() - started) * 1000)

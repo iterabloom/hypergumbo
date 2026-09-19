@@ -480,6 +480,14 @@ class Symbol:
                                # (kafka, websocket, grpc, …) of a synthetic stand-in
     display_label: Optional[str]   # human-readable label (ADR-0032)
     qualified_name: Optional[str]  # scope-qualified name (ADR-0032)
+    attribution: Optional[Dict[str, List[str]]]
+                               # ADR-0057 §6 provenance slot (schema 0.20.11): set only by
+                               # the merge pass on a record folded from two producers —
+                               # {field: [pass_id, ...]}, who holds the value the scalar
+                               # slot carries. None (and omitted from JSON) otherwise.
+    alternatives: Optional[Dict[str, List[Dict[str, Any]]]]
+                               # ADR-0057 §6 candidate set, present only for contested
+                               # fields on a merged record: {field: [{value, origin}]}.
     visibility: Optional[str]      # INV-jusot: one canonical level (public/private/protected/internal/package), computed in finalize; signal in meta['visibility_signal']
     # canonical_name was REMOVED per ADR-0032, superseded by the typed sibling
     # fields display_label / qualified_name above.
@@ -908,7 +916,7 @@ Single file: `survey.json`
 ```json
 {
   "schema_version": "0.20.6",
-  "confidence_model": "hypergumbo-evidence-v2.0",
+  "confidence_model": "hypergumbo-evidence-v2.1",
   "stable_id_scheme": "hypergumbo-stableid-v8",
   "shape_id_scheme": "hypergumbo-shapeid-v3",
   "repo_fingerprint_scheme": "hypergumbo-repofp-v2",
@@ -951,7 +959,7 @@ The schema follows JSON Schema Draft 2020-12 and can be used for:
 
 ### Confidence scoring
 
-The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v2.0`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations.
+The `confidence` field on edges (0.0-1.0) indicates detection reliability. The `confidence_model` field (`hypergumbo-evidence-v2.1`) identifies the scoring algorithm. See [§12 Confidence scoring](#12-confidence-scoring) for the full confidence model and [Appendix C](#appendix-c-schema-compatibility-contract) for consumer obligations.
 
 ### analysis_runs[] — provenance tracking
 
@@ -1526,7 +1534,7 @@ Hypergumbo assigns confidence scores (0.0–1.0) in three independent categories
 | **Linker edge confidence** | Linker-recovered relationships across all four subcategories — Bridge/Protocol examples include JNI, IPC, HTTP | Match quality (literal vs. dynamic, naming convention vs. annotation) | 0.40–0.95 | [Below](#edge-confidence-linker-edges), details in [§7](#7-linkers) |
 | **Entrypoint confidence** | Whether a symbol is an entry point | Detection method (manifest, decorator, convention, naming) | 0.70–0.99 | [Below](#entrypoint-confidence-tiers), details in [§8](#8-entrypoint-detection) |
 
-All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v2.0`) identifies the scoring algorithm version — `v2` marks the deterministic evidence→confidence derivation now in effect for analyzer edges ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun): the base score is a registry lookup keyed on `evidence_type`, `is_resolved`-conditioned for call types. Unregistered/unseeded pathways and dynamically-computed sites fall back to the caller's value; consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
+All scores use the same 0.0–1.0 scale and the same semantic contract: higher means more certain. The `confidence_model` field in output (`hypergumbo-evidence-v2.1`) identifies the scoring algorithm version — `v2` marks the deterministic evidence→confidence derivation now in effect for analyzer edges ([ADR-0039](adr/0039-confidence-separation.md) / WI-nurun): the base score is a registry lookup keyed on `evidence_type`, `is_resolved`-conditioned for call types. Unregistered/unseeded pathways and dynamically-computed sites fall back to the caller's value; consumers should read `confidence` purely as detection reliability on the 0.0–1.0 scale.
 
 ### Edge confidence: analyzer evidence
 
@@ -1574,7 +1582,9 @@ the flat in-band 0.85 `type_hierarchy` base.
 **Confidence provenance & ranking separation (ADR-0039 rulings 2 & 3, implemented).**
 Every `Edge` carries a `confidence_source` discriminator — `evidence_derived` (the
 value came through `derive_confidence`), `emitter_constant` (a declared hardcoded
-producer value, incl. the unseeded 0.85 fallback), or `composite` (still fuses a
+producer value, incl. the unseeded 0.85 fallback), `corroborated` (ADR-0057 §13: two
+producers reached the edge by distinct inference pathways and the merge pass set the
+declared 0.95, keeping both originals in `alternatives.confidence`), or `composite` (still fuses a
 ranking adjustment) — so the migration off per-emitter constants is machine-readable.
 Post-detection **ranking** adjustments (the type-hierarchy fan-out dampener, the
 entrypoint penalties/demotions/degree-boosts) no longer contaminate `confidence`;
@@ -2130,7 +2140,7 @@ For detailed designs, see [roadmap-details.md](future/roadmap-details.md) and [R
 | Additional linkers | Near-term | 🟩 Constant propagation for dynamic routes (Python). 🟩 Middleware chain linker (same-file chaining). 🟪 Proxy detection. |
 | Additional output views | Near-term | 🟪 `ir_export.json`, `context_bundle.json`, `sarif.json`, flow specs. |
 | Testing & CI enhancements | Near-term | 🟪 Longitudinal analysis, integration test markers. |
-| Multi-fidelity analysis | Medium-term | 🟩 rust-analyzer SCIP backend shipped (opt-in via `HYPERGUMBO_RUST_ANALYZER=1` or `--backend rust-analyzer`; **executes `build.rs`** — never on an untrusted repo, see [§4](#4-supported-stacks)); falls through to tree-sitter `rust.py` when unavailable. **The SCIP arm mints no Symbol and no edge for a function-local binding** (WI-jikok / INV-kukiz, ruled 2026-09-18): rust-analyzer's `local <n>` ids are document-scoped, so on one 16-file crate they were 75% of the backend's nodes at a 39.7% `stable_id` collision rate, and 329 of the 455 edges pointing at them crossed files. Every other backend already leaves locals out of the map. **Its edges are attributed to the enclosing item via the Definition's `enclosing_range`** (INV-mofiv): with the identifier-token `range` alone, 182 of 182 SCIP edges on the same crate were sourced from the file's namespace and none from a function; 287 are now sourced from a method. **How two backends' records for one declaration are reconciled is decided, not built** ([ADR-0057](adr/0057-attribute-level-coexistence.md), adopted 2026-09-18): one node and one edge per declaration, every attribute a set of (value, provenance) pairs, a merge pass at the top of Phase C, a per-record arbitration property with one default read from `config.toml`. Measured before it: the two Rust arms agree on 92 of ~100 in-crate call edges and each carries a class the other cannot (268 external-stub calls vs 79 field references). The `kind` contest the ADR measured (52 of 52 free functions `method` on the SCIP side) was a producer defect: the importer ignored `SymbolInformation.kind`, which rust-analyzer declares on every definition; it now reads it first and falls back to the descriptor chain, and the arms agree on `kind` for 133 of 148 paired records, the 15 exceptions being `const` items the SCIP arm calls `constant` (WI-gapup). The shared call edges were labelled `references` on the SCIP side and `calls` on the tree-sitter side, so `edge_key` never saw a duplicate; the SCIP arm now types a reference by its target's declared kind — a declared callable gives `calls` — because the `symbol_roles` bitfield the design named is zero on every one of the recorded producer's 3,543 reference occurrences (WI-zapuk); 121 of 130 callable-target edges on the committed fixture now match their tree-sitter twin's type. **The merge pass itself now runs** (`analyze/merge_producers.py`, WI-kokiz): at the top of Phase C, two anchored producers' records for one declaration become one Symbol — new id minted from the merged attributes, item span, `origin = [rust, scip]`, meta union, incumbent-first scalars — with every edge rewired and the §1 candidate set kept in memory for the provenance slot. On the fixture, 148 declarations fold, none ambiguously, 21 SCIP-only records remain, and the shared call sites collapse to 93 keys under `deduplicate_edges`. 🟪 tsserver, pyright, gopls, JDT backends. Mixed-fidelity graphs. |
+| Multi-fidelity analysis | Medium-term | 🟩 rust-analyzer SCIP backend shipped (opt-in via `HYPERGUMBO_RUST_ANALYZER=1` or `--backend rust-analyzer`; **executes `build.rs`** — never on an untrusted repo, see [§4](#4-supported-stacks)); falls through to tree-sitter `rust.py` when unavailable. **The SCIP arm mints no Symbol and no edge for a function-local binding** (WI-jikok / INV-kukiz, ruled 2026-09-18): rust-analyzer's `local <n>` ids are document-scoped, so on one 16-file crate they were 75% of the backend's nodes at a 39.7% `stable_id` collision rate, and 329 of the 455 edges pointing at them crossed files. Every other backend already leaves locals out of the map. **Its edges are attributed to the enclosing item via the Definition's `enclosing_range`** (INV-mofiv): with the identifier-token `range` alone, 182 of 182 SCIP edges on the same crate were sourced from the file's namespace and none from a function; 287 are now sourced from a method. **How two backends' records for one declaration are reconciled is decided, not built** ([ADR-0057](adr/0057-attribute-level-coexistence.md), adopted 2026-09-18): one node and one edge per declaration, every attribute a set of (value, provenance) pairs, a merge pass at the top of Phase C, a per-record arbitration property with one default read from `config.toml`. Measured before it: the two Rust arms agree on 92 of ~100 in-crate call edges and each carries a class the other cannot (268 external-stub calls vs 79 field references). The `kind` contest the ADR measured (52 of 52 free functions `method` on the SCIP side) was a producer defect: the importer ignored `SymbolInformation.kind`, which rust-analyzer declares on every definition; it now reads it first and falls back to the descriptor chain, and the arms agree on `kind` for 133 of 148 paired records, the 15 exceptions being `const` items the SCIP arm calls `constant` (WI-gapup). The shared call edges were labelled `references` on the SCIP side and `calls` on the tree-sitter side, so `edge_key` never saw a duplicate; the SCIP arm now types a reference by its target's declared kind — a declared callable gives `calls` — because the `symbol_roles` bitfield the design named is zero on every one of the recorded producer's 3,543 reference occurrences (WI-zapuk); 121 of 130 callable-target edges on the committed fixture now match their tree-sitter twin's type. **The merge pass itself now runs** (`analyze/merge_producers.py`, WI-kokiz): at the top of Phase C, two anchored producers' records for one declaration become one Symbol — new id minted from the merged attributes, item span, `origin = [rust, scip]`, meta union, incumbent-first scalars — with every edge rewired and the §1 candidate set kept in memory for the provenance slot. On the fixture, 148 declarations fold, none ambiguously, 21 SCIP-only records remain, and the shared call sites collapse to 93 keys under `deduplicate_edges`. **The provenance slot is serialized (§6, WI-binis; schema 0.20.11):** a merged Symbol or folded Edge carries `attribution` (`{field: [pass_id, …]}`, who holds the value the scalar slot carries — both producers on agreement, the arbitration winner on a contest, the sole observer otherwise) and `alternatives` (`{field: [{value, origin}]}`, present only for contested fields); both are omitted on every single-producer record, so a one-backend artifact is byte-identical. The scalar is produced by the §4 arbitration property — incumbent first for every categorical attribute, the item span for `span` — and `confidence` on a folded edge follows §13: two distinct inference pathways make it `corroborated` at the declared 0.95 with both originals kept, the same pathway twice keeps the incumbent's value. The merge pass now folds the participants' agreeing edges itself, incumbent-first, rather than leaving them to encounter-order deduplication. 🟪 tsserver, pyright, gopls, JDT backends. Mixed-fidelity graphs. |
 | Agent context router | Medium-term | 🟪 Query → slice → context bundle pipeline. Builds on existing slicing. |
 | Incremental analysis | Not on roadmap | 18+ month effort. Current mitigation: caching, partial re-analysis. |
 
@@ -2149,7 +2159,7 @@ For the technical contract governing output schema stability, see [Appendix C](#
 * **Confidence model versions**: `hypergumbo-evidence-vMAJOR.MINOR`
   - MAJOR: Incompatible changes (requires new schema)
   - MINOR: Refinements (new evidence types, score adjustments)
-  - The emitted value carried a bare `v2` until WI-huhin, which did not match this grammar and left MINOR unexpressible — so ADR-0039's refinement (new evidence types, exactly what MINOR is for) had no way to signal itself, and the next refinement would have had to choose between a misleading MAJOR bump and silence. `hypergumbo-evidence-v2.0` is the first *conforming* rendering of the **same** model, not a refinement of `v2`; MAJOR is unchanged and no scoring behaviour differs.
+  - The emitted value carried a bare `v2` until WI-huhin, which did not match this grammar and left MINOR unexpressible — so ADR-0039's refinement (new evidence types, exactly what MINOR is for) had no way to signal itself, and the next refinement would have had to choose between a misleading MAJOR bump and silence. `hypergumbo-evidence-v2.0` is the first *conforming* rendering of the **same** model, not a refinement of `v2`; MAJOR is unchanged and no scoring behaviour differs. `v2.1` (ADR-0057 §13, WI-binis) is the first MINOR refinement: a new `confidence_source`, `corroborated`, and its declared 0.95 for an edge two distinct pathways reached; no single-producer score changes.
 
 ### Compatibility guarantees
 
@@ -2231,7 +2241,7 @@ This appendix defines the **technical contract** for output consumers: which fie
 - `analysis_runs[].run_signature`: Deterministic fingerprint of pass configuration
 
 **4. Confidence scoring:**
-- `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v2.0`)
+- `confidence_model` field identifies the scoring algorithm (`hypergumbo-evidence-v2.1`)
 - `confidence` is detection reliability (0.0–1.0); there is no normative default for unknown `evidence_type` (the deterministic evidence→confidence model is **implemented** for seeded pathways — [ADR-0039](adr/0039-confidence-separation.md) / WI-nurun; unseeded/dynamically-computed sites fall back to the caller's value). Ranking prominence lives in the sibling `rank_score` field, and `confidence_source` records how each `confidence` was produced.
 
 ### Extensible Contracts (can add in minor versions)

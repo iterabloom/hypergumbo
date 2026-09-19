@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0057: Multi-Backend Coexistence at the Attribute, Not the Record
 
-Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh), §12's recorded fixtures and lint (WI-romuh), §7's two producer fixes (WI-gapup, WI-zapuk) and §3's merge pass (WI-kokiz) landed. WI-gojum stays parked until the owner unparks it.
+Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh), §12's recorded fixtures and lint (WI-romuh), §7's two producer fixes (WI-gapup, WI-zapuk), §3's merge pass (WI-kokiz) and §4/§6/§13's provenance slot, arbitration property and corroboration (WI-binis) landed. WI-gojum stays parked until the owner unparks it.
 
 - Date: 2026-09-18
 - Supersedes: ADR-0012 §Step 3 (multi-fidelity passes — the record-level coexistence it described; Steps 1–2 are untouched)
@@ -81,6 +81,8 @@ The scalar a consumer reads is produced by a **per-record arbitration property**
 
 There is **one default**, stamped so that ranking, slicing, finalize and serialization all see the same value. Laziness does not remove the default; it only hides where it lives. Alternative policies are **opt-in reads of the candidate set**, never a second default. The scalar slot on `Symbol` / `Edge` keeps its current type, so the 89 files of consumers are unchanged by default.
 
+*Landed (WI-binis)* as `merge_producers.arbitrate(candidates, precedence)`: pure over the candidate set, precedence in `incumbent_first` order (the §5 built-in until WI-hukuf), `span` decided by the item-role member instead; the pass stamps the scalar and writes the choice into the §6 slot in the same step.
+
 ### 5. The default is a preference in `config.toml`
 
 The arbitration default lives in ADR-0045's **preferences** tiers — `$XDG_CONFIG_HOME/hypergumbo/config.toml` and the project tier — resolved through ADR-0045 ruling 4's chain (CLI flag > environment > project > user > built-in). It executes nothing, so it is not a trust key and is allowed in both tiers. The **built-in default is incumbent-first per categorical attribute** — tree-sitter before any SCIP/LSP backend — until a per-attribute measurement shows otherwise; `confidence` is numeric and follows §13, where incumbent-first would be actively wrong. "Type-aware backend wins" is **refused** as the blanket built-in: on the one attribute measured, `kind`, the type-aware backend was wrong on 52 of 52 free functions when this was ruled (the importer read only the leaf descriptor suffix and ignored `SymbolInformation.kind`; WI-gapup fixed the producer, and the refusal stands on its principle — a default is changed by a §5 measurement, not by one producer fix). The key is a per-attribute table so measured exceptions can be declared without flipping the whole default.
@@ -88,6 +90,8 @@ The arbitration default lives in ADR-0045's **preferences** tiers — `$XDG_CONF
 ### 6. Provenance gets a registered, schema-versioned slot
 
 `origin` is record-level and `meta` is not a registry (`parent_type` is written by four analyzers, read by a linker, declared nowhere), so attribute provenance needs its own slot on `Symbol` and `Edge`, with `# axis:` declarations, a `SCHEMA_VERSION` patch bump, and `docs/schema.json` / `docs/concept-axes.md` regenerated. The **semantics** are pinned here; the spelling is the implementing row's (proposed: `attribution: {field: [pass_id, …]}` plus `alternatives: {field: [{value, origin}]}` present only for contested fields; absence of both means single producer — today's records are unchanged). Edge `evidence_type` is a candidate set like any other attribute: an edge seen by two inference pathways is precisely the two-pathway case §13 keys on, not an exception to the axis.
+
+*Landed (WI-binis, schema 0.20.11)* with exactly the proposed spelling on both `Symbol` and `Edge`, dict-valued (so no `# axis:` line — the keys are field names, the leaves pass ids), emitted by `to_dict` only when set and read back by `from_dict`; the schema generator declares both as conditional keys. Tracked on a merged Symbol: name, kind, stable_id, span, signature, docstring, qualified_name, visibility, modifiers, is_exported; on a folded Edge: confidence, evidence_type. Measured on the committed fixture: every one of the 148 merged records carries a `span` alternative (the SCIP token) and a `stable_id` alternative (the moniker hash); the 15 `const` items carry a `kind` alternative; the 93 folded call edges are `corroborated` at 0.95 with both originals in `alternatives.confidence`.
 
 ### 7. Two producer fixes are prerequisites, not part of the mechanism
 
@@ -164,7 +168,7 @@ A resolved (`is_resolved=True`) first-party edge at `(src, line)` **demotes** a 
 - WI-zapuk — SCIP edges carry the target-kind-derived edge type (§7, first prerequisite; the role bits the row named are all zero on the recorded producer). **Landed.**
 - WI-gapup — SCIP `kind` from the producer's declaration, else the descriptor chain (§7, second prerequisite). **Landed.**
 - WI-kokiz — the merge pass (§3); INV-lodum's cure lands here for every merged record (SCIP-only leftovers keep their token span). **Landed.**
-- WI-binis — attribute-level provenance slot + arbitration property + schema bump (§1, §4, §6).
+- WI-binis — attribute-level provenance slot + arbitration property + schema bump (§1, §4, §6), and §13's `corroborated` source, combining rule and `CONFIDENCE_MODEL` v2.1. **Landed.**
 - WI-hukuf — the `config.toml` arbitration default (§5).
 - WI-hohuh — producer contract: merge anchor, measured authority, `executes_analysed_code` on one surface; the pass refuses the undeclared (§10). Blocks WI-kokiz. **Landed.**
 - WI-dajif — the backend-agreement instrument whose committed tables are the only evidence that may change a default (§5, §10). Blocks WI-hukuf.
