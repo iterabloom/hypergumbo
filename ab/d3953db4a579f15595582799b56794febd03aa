@@ -1,0 +1,3 @@
+Original commit body from 997fde313b8382f8b5e09a09b9bfe58aaa0c2e45:
+
+ADR-0057 §7 (WI-zapuk, row 4). Premise corrected: rust-analyzer sets symbol_roles=0 on all 3,543 recorded reference occurrences, so the SCIP call-edge shim now types an occurrence edge by its TARGET's declared SymbolInformation.kind — a declared callable gives calls, everything else stays references; role bits are kept in meta, none mapped (no recorded producer sets them). On the committed fixture: 498 edges = 130 calls + 368 references; 121 of 130 twins now calls/calls; 9 remain contested (tree-sitter labels struct/variant construction as calls). Slice 12,424 passed; changed modules 100%.
