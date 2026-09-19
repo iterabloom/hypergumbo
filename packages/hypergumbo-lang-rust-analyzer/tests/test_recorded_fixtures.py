@@ -403,7 +403,11 @@ class TestTheAgreementInstrumentOnBothArms:
         assert report.superseded_edges == AARDVARK_DNS_CALL_SITE_TALLY["superseded_stubs"]
         by_attr = {a.attribute: a for a in report.attributes}
         assert by_attr["kind"].shapes == [("variable", "constant", 15)]
-        assert by_attr["is_exported"].shapes == [("null", "false", 41)]
+        # WI-pofih: `true`, not the `null` this pinned while the instrument
+        # read a nested attribute from the top level. The incumbent computes
+        # is_exported ("pub" in modifiers) and holds True on these 41; the
+        # SCIP arm holds the dataclass default False (INV-huboz).
+        assert by_attr["is_exported"].shapes == [("true", "false", 41)]
 
     def test_a_kind_preference_for_scip_moves_exactly_the_kind_row(self) -> None:
         """WI-hukuf on the recorded fixture: prefer the SCIP arm for `kind`
