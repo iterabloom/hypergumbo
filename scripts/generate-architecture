@@ -449,6 +449,7 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
         ("hypergumbo_lang_common", REPO_ROOT / "packages" / "hypergumbo-lang-common" / "src" / "hypergumbo_lang_common"),
         ("hypergumbo_lang_extended1", REPO_ROOT / "packages" / "hypergumbo-lang-extended1" / "src" / "hypergumbo_lang_extended1"),
         ("hypergumbo_lang_rust_analyzer", REPO_ROOT / "packages" / "hypergumbo-lang-rust-analyzer" / "src" / "hypergumbo_lang_rust_analyzer"),
+        ("hypergumbo_lang_scip_python", REPO_ROOT / "packages" / "hypergumbo-lang-scip-python" / "src" / "hypergumbo_lang_scip_python"),
         ("hypergumbo_tracker", REPO_ROOT / "packages" / "hypergumbo-tracker" / "src" / "hypergumbo_tracker"),
     ]
 
@@ -805,6 +806,8 @@ def count_language_analyzers(categories: dict[str, list[tuple[str, str | None]]]
             counts["extended1"] = counts.get("extended1", 0) + 1
         elif "hypergumbo_lang_rust_analyzer" in name:
             counts["rust_analyzer"] = counts.get("rust_analyzer", 0) + 1
+        elif "hypergumbo_lang_scip_python" in name:
+            counts["scip_python"] = counts.get("scip_python", 0) + 1
         else:
             counts["core"] = counts.get("core", 0) + 1
     return counts
@@ -1123,11 +1126,12 @@ def generate_architecture_md() -> str:
     common_n = lang_counts.get("common", 0)
     extended1_n = lang_counts.get("extended1", 0)
     rust_analyzer_n = lang_counts.get("rust_analyzer", 0)
+    scip_python_n = lang_counts.get("scip_python", 0)
     lines.extend([
         "",
         "## Package Architecture",
         "",
-        "The codebase is a Python monorepo with seven packages arranged in a strict",
+        "The codebase is a Python monorepo with eight packages arranged in a strict",
         "dependency hierarchy. The separation enforces layering: language analyzers",
         "depend on core but not on each other, and the tracker is fully independent.",
         "",
@@ -1135,8 +1139,8 @@ def generate_architecture_md() -> str:
         "                       hypergumbo (meta-package)",
         "                /       |       |        \\",
         "               v        v       v         v",
-        "  lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer",
-        f"  ({mainstream_n} analyzers)  ({common_n} analyzers)  ({extended1_n} analyzers)   ({rust_analyzer_n} SCIP backend)",
+        "  lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer  lang-scip-python",
+        f"  ({mainstream_n} analyzers)  ({common_n} analyzers)  ({extended1_n} analyzers)   ({rust_analyzer_n} SCIP backend)   ({scip_python_n} SCIP backend)",
         "                   \\      |      |       /",
         "                    v     v      v      v",
         "                       hypergumbo-core",
@@ -1162,6 +1166,8 @@ def generate_architecture_md() -> str:
         "(Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |",
         f"| **hypergumbo-lang-rust-analyzer** | SCIP-backed Rust analyzer "
         "(alternative to the tree-sitter Rust analyzer in `lang-mainstream`; activates with `--backend rust-analyzer`) |",
+        f"| **hypergumbo-lang-scip-python** | SCIP-backed Python analyzer "
+        "(pyright via scip-python, beside the ast Python analyzer in `lang-mainstream`; executes nothing; activates with `--backend scip-python` or `[backends] scip_python = true`) |",
         "| **hypergumbo** | Meta-package that installs core + all language packages |",
         "| **hypergumbo-tracker** | Standalone governance tool with TUI, YAML-backed op-log store, "
         "Lamport-clock ordering, and optional embedding-based dedup |",

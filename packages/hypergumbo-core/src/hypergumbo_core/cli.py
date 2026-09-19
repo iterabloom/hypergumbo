@@ -3304,6 +3304,60 @@ def _apply_backend_choice(choice: str) -> None:
         os.environ[RUST_ANALYZER_ENV_VAR] = "1"
     elif decision is False:
         os.environ[RUST_ANALYZER_ENV_VAR] = "0"
+    # WI-nanom: the same flag resolves the scip-python backend through its own
+    # vocabulary; `tree-sitter` is an explicit OFF for both, `rust-analyzer`
+    # says nothing about this one (None → untouched).
+    from .backend_selection import SCIP_PYTHON_ENV_VAR, resolve_scip_python_optin
+
+    py_decision = resolve_scip_python_optin(flag_choice=choice, environ={})
+    if py_decision is True:
+        _ensure_scip_python_integration_or_exit()
+        _ensure_scip_python_binary_or_exit()
+        os.environ[SCIP_PYTHON_ENV_VAR] = "1"
+    elif py_decision is False:
+        os.environ[SCIP_PYTHON_ENV_VAR] = "0"
+
+
+def _ensure_scip_python_integration_or_exit() -> None:
+    """Exit 2 naming the missing Python wrapper package (the BUG-06 shape, for scip-python)."""
+    from .scip_python_install import is_scip_python_integration_installed
+
+    if is_scip_python_integration_installed():
+        return
+    print(
+        "hypergumbo: error: --backend scip-python requested but the "
+        "hypergumbo-lang-scip-python Python integration package is not "
+        "installed.\n"
+        "\n"
+        "Install via:\n"
+        "  pipx install 'hypergumbo[scip-python]' --force\n"
+        "(or 'pipx inject hypergumbo hypergumbo-lang-scip-python' to add it "
+        "to an existing install).",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+def _ensure_scip_python_binary_or_exit() -> None:
+    """Exit 2 when the ``scip-python`` binary is missing or does not answer ``--version``."""
+    from .scip_python_install import (
+        SCIP_PYTHON_NPM_PACKAGE,
+        SCIP_PYTHON_PINNED_VERSION,
+        is_scip_python_available,
+    )
+
+    if is_scip_python_available():
+        return
+    print(
+        "hypergumbo: error: --backend scip-python requested but the "
+        "'scip-python' binary is not on PATH or does not run.\n"
+        "\n"
+        f"Install it with: npm install -g {SCIP_PYTHON_NPM_PACKAGE}@{SCIP_PYTHON_PINNED_VERSION}\n"
+        "(node and npm are required; scip-python bundles pyright and "
+        "executes nothing from the analysed repository).",
+        file=sys.stderr,
+    )
+    sys.exit(2)
 
 
 def _ensure_rust_analyzer_integration_or_exit() -> None:
@@ -8803,12 +8857,18 @@ For help on ALL commands:   hypergumbo --help --all"""
     )
     p.add_argument(
         "--backend",
-        choices=["tree-sitter", "rust-analyzer"],
+        choices=["tree-sitter", "rust-analyzer", "scip-python"],
         default=None,
         help=(
-            "Select the Rust analysis backend. 'rust-analyzer' activates the "
-            "SCIP-backed analyzer (requires 'hypergumbo install-rust-analyzer'). "
-            "Default: tree-sitter (respects HYPERGUMBO_RUST_ANALYZER if set)."
+            "Select an opt-in analysis backend for this run. 'rust-analyzer' "
+            "activates the SCIP-backed Rust analyzer (requires 'hypergumbo "
+            "install-rust-analyzer'; executes the crate's build.rs). "
+            "'scip-python' activates the SCIP-backed Python analyzer (pyright "
+            "via scip-python; executes nothing; needs `npm install -g "
+            "@sourcegraph/scip-python`). 'tree-sitter' turns every opt-in "
+            "backend off for this run. Default: the environment "
+            "(HYPERGUMBO_RUST_ANALYZER / HYPERGUMBO_SCIP_PYTHON), then the "
+            "per-repository trust grant or the config tiers."
         ),
     )
 

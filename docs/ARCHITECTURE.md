@@ -14,20 +14,20 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **330** Python modules (135 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 93 core, 4 CLI, 36 tracker)
-- **47767** symbols (functions, classes, methods)
-- **188665** edges by type:
-  - calls: 108490
-  - contains: 43782
-  - imports: 14894
-  - instantiates: 11605
-  - references: 6783
-  - module_attr_ref: 1607
-  - other: 1504
+- **335** Python modules (139 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 94 core, 4 CLI, 36 tracker)
+- **47968** symbols (functions, classes, methods)
+- **189447** edges by type:
+  - calls: 108800
+  - contains: 43954
+  - imports: 15080
+  - instantiates: 11633
+  - references: 6844
+  - module_attr_ref: 1622
+  - other: 1514
 
 ## Package Architecture
 
-The codebase is a Python monorepo with seven packages arranged in a strict
+The codebase is a Python monorepo with eight packages arranged in a strict
 dependency hierarchy. The separation enforces layering: language analyzers
 depend on core but not on each other, and the tracker is fully independent.
 
@@ -35,8 +35,8 @@ depend on core but not on each other, and the tracker is fully independent.
                        hypergumbo (meta-package)
                 /       |       |        \
                v        v       v         v
-  lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer
-  (46 analyzers)  (38 analyzers)  (41 analyzers)   (5 SCIP backend)
+  lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer  lang-scip-python
+  (46 analyzers)  (38 analyzers)  (41 analyzers)   (5 SCIP backend)   (4 SCIP backend)
                    \      |      |       /
                     v     v      v      v
                        hypergumbo-core
@@ -55,6 +55,7 @@ depend on core but not on each other, and the tracker is fully independent.
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
 | **hypergumbo-lang-rust-analyzer** | SCIP-backed Rust analyzer (alternative to the tree-sitter Rust analyzer in `lang-mainstream`; activates with `--backend rust-analyzer`) |
+| **hypergumbo-lang-scip-python** | SCIP-backed Python analyzer (pyright via scip-python, beside the ast Python analyzer in `lang-mainstream`; executes nothing; activates with `--backend scip-python` or `[backends] scip_python = true`) |
 | **hypergumbo** | Meta-package that installs core + all language packages |
 | **hypergumbo-tracker** | Standalone governance tool with TUI, YAML-backed op-log store, Lamport-clock ordering, and optional embedding-based dedup |
 
@@ -85,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 47767 Symbols + 188665 Edges + UsageContexts           │
+│  Output: 47968 Symbols + 189447 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -277,21 +278,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9789.9 | ir.py |
-| `len` | external_symbol | 7534.0 | <external> |
-| `write_text` | external_symbol | 6564.0 | <external> |
+| `Symbol` | class | 9803.9 | ir.py |
+| `len` | external_symbol | 7540.0 | <external> |
+| `write_text` | external_symbol | 6566.0 | <external> |
 | `Span` | class | 6466.3 | ir.py |
 | `LinkerContext` | class | 3441.9 | registry.py |
-| `get` | external_symbol | 3026.0 | <external> |
+| `get` | external_symbol | 3031.0 | <external> |
 | `load_catalog` | function | 2540.2 | io_boundary.py |
 | `Edge.create` | method | 2429.5 | ir.py |
-| `next` | external_symbol | 2140.0 | <external> |
-| `str` | external_symbol | 2112.0 | <external> |
+| `next` | external_symbol | 2141.0 | <external> |
+| `str` | external_symbol | 2122.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `Path` | external_symbol | 2002.0 | <external> |
+| `Path` | external_symbol | 2017.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1624.0 | <external> |
+| `append` | external_symbol | 1631.0 | <external> |
 
 ## Pattern System
 
@@ -653,6 +654,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.scip.descriptor`**: Parser for Sourcegraph SCIP symbol strings.
 - **`hypergumbo_core.scip.edges`**: SCIP ``Index`` → hypergumbo ``Edge`` translation shim (WI-mafut Pha...
 - **`hypergumbo_core.scip.index`**: SCIP ``Index`` → hypergumbo ``Symbol`` translation shim (WI-mafut P...
+- **`hypergumbo_core.scip_python_install`**: Availability probes for the scip-python backend (WI-nanom).
 - **`hypergumbo_core.selection.filters`**: Path classification and symbol kind filtering for selection.
 - **`hypergumbo_core.selection.language_proportional`**: Language-proportional symbol selection utilities.
 - **`hypergumbo_core.selection.token_budget`**: Token estimation and budget management for LLM-aware output.
@@ -815,6 +817,10 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_rust_analyzer.graceful_degrade`**: Graceful-degrade orchestrator for the SCIP-backed Rust analyzer (WI...
 - **`hypergumbo_lang_rust_analyzer.invoke`**: Shell-out wrapper for ``rust-analyzer scip`` (WI-duzul Slice B-first).
 - **`hypergumbo_lang_rust_analyzer.translate`**: SCIP bytes → hypergumbo ``(Symbol, Edge)`` translation with rust.py...
+- **`hypergumbo_lang_scip_python.analyzer`**: Registered analyzer entry point for the scip-python backend (WI-nan...
+- **`hypergumbo_lang_scip_python.gate`**: Opt-in gate for the scip-python backend (WI-nanom).
+- **`hypergumbo_lang_scip_python.invoke`**: Shell-out wrapper for ``scip-python index`` (WI-nanom).
+- **`hypergumbo_lang_scip_python.translate`**: SCIP → hypergumbo IR for scip-python output (WI-nanom).
 
 ### Linkers
 
@@ -931,8 +937,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 612854969915
-  commit_count: 7447
+  commit: dd4e42c7be0f
+  commit_count: 7450
   hypergumbo: 8.0.0
   python: 3.12.3
 -->

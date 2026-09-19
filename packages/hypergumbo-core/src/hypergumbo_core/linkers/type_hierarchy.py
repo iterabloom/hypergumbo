@@ -652,7 +652,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     depends_on=[
         [
             "inheritance-linker", "blade", "haskell", "java", "javascript",
-            "python", "ruby", "rust", "rust_analyzer", "twig", "vhdl",
+            "python", "ruby", "rust", "rust_analyzer", "scip_python", "twig", "vhdl",
         ],
     ],
 )

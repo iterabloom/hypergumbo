@@ -178,7 +178,8 @@ class TestInheritedCallsDeclaresItsWalkers:
             "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
             "kotlin", "objc", "php", "python", "ruby", "rust",
             "rust_analyzer",  # WI-juzig: rust's second producer
-            "scala", "swift",
+            "scala", "scip_python",  # WI-nanom: python's second producer
+            "swift",
         ]
 
     def test_the_inheritance_linker_conjunct_is_gone(self) -> None:
@@ -232,7 +233,7 @@ class TestTypeHierarchyDeclaresItsEdgeSources:
     def test_the_clause_is_exactly_this(self) -> None:
         assert _clause_containing("type-hierarchy-linker", "inheritance-linker") == [
             "inheritance-linker", "blade", "haskell", "java", "javascript",
-            "python", "ruby", "rust", "rust_analyzer", "twig", "vhdl",
+            "python", "ruby", "rust", "rust_analyzer", "scip_python", "twig", "vhdl",
         ]
 
 

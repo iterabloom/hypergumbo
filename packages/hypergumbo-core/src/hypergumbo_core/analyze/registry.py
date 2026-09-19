@@ -599,6 +599,23 @@ def analyzers_for_language(language: str) -> list[RegisteredAnalyzer]:
     return [a for a in get_all_analyzers() if language in a.languages]
 
 
+def config_optin_backends() -> frozenset[str]:
+    """Names of the opt-in backends a CONFIG tier may enable (ADR-0045 ruling 5).
+
+    An alternative arm (:data:`ALTERNATIVE_BACKENDS`) that declares
+    ``executes_analysed_code=False`` — scip-python (WI-nanom) — is a
+    preference: ``[backends] <name> = true`` in either tier turns it on. The
+    executing ones are :func:`backends_executing_analysed_code` and belong to
+    the trust store instead. Derived from the declarations, like the
+    deny-list, so the next backend lands in the right store by describing
+    itself. Does not trigger discovery; call :func:`ensure_discovered` first.
+    """
+    return frozenset(
+        a.name for a in _ANALYZER_REGISTRY.values()
+        if a.backend in ALTERNATIVE_BACKENDS and not a.executes_analysed_code
+    )
+
+
 def backends_executing_analysed_code() -> frozenset[str]:
     """Names of the registered analyzers declaring ``executes_analysed_code``.
 

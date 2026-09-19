@@ -383,3 +383,57 @@ class TestTheTrustDenyListIsDerivedFromTheRegistry:
         message = str(exc.value)
         assert "unknown setting" in message
         assert "trust" not in message.lower()
+
+
+class TestANonExecutingBackendIsAnOrdinaryPreference:
+    """ADR-0045 ruling 5, the other half (WI-nanom): a backend that declares
+    ``executes_analysed_code=False`` and is an alternative arm (``scip``) may
+    be enabled from EITHER config tier with ``[backends] <name> = true`` — a
+    preference, not a trust grant. The allow-list is derived from the
+    registry the same way the deny-list is."""
+
+    @pytest.fixture(autouse=True)
+    def isolated_registry(self):
+        from hypergumbo_core.analyze import registry as reg
+        from hypergumbo_core.analyze.base import AnalysisResult
+        from hypergumbo_core.analyze.registry import (
+            SPAN_ROLE_TOKEN, MergeAnchor, as_emitted, register_analyzer,
+        )
+
+        saved, saved_flag = dict(reg._ANALYZER_REGISTRY), reg._discovered
+        reg._ANALYZER_REGISTRY.clear()
+        reg._discovered = True
+        register_analyzer("scip_python", languages=["python"], backend="scip",
+                          merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN))(
+            lambda root: AnalysisResult(symbols=[], edges=[], run=None))
+        register_analyzer("fakeexec", languages=["python"], backend="scip", executes_analysed_code=True)(
+            lambda root: AnalysisResult(symbols=[], edges=[], run=None))
+        yield
+        reg._ANALYZER_REGISTRY.clear()
+        reg._ANALYZER_REGISTRY.update(saved)
+        reg._discovered = saved_flag
+
+    def test_it_is_read_from_both_tiers_project_winning(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        _write(tmp_path / "x" / "hypergumbo" / "config.toml", "[backends]\nscip_python = true\n")
+        env = {"XDG_CONFIG_HOME": str(tmp_path / "x")}
+        assert load_layered_config(repo_root=repo, environ=env).backends == {"scip_python": True}
+        _write(repo / ".hypergumbo.toml", "[backends]\nscip_python = false\n")
+        assert load_layered_config(repo_root=repo, environ=env).backends == {"scip_python": False}
+
+    def test_it_must_be_a_bool(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        _write(repo / ".hypergumbo.toml", "[backends]\nscip_python = 'on'\n")
+        with pytest.raises(ConfigError, match=r"backends\.scip_python.*bool"):
+            load_layered_config(repo_root=repo, environ={"XDG_CONFIG_HOME": str(tmp_path / "x")})
+
+    def test_the_executing_one_beside_it_is_still_a_trust_key(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        _write(repo / ".hypergumbo.toml", "[backends]\nfakeexec = true\n")
+        with pytest.raises(ConfigError, match="trust"):
+            load_layered_config(repo_root=repo, environ={"XDG_CONFIG_HOME": str(tmp_path / "x")})
+
+    def test_the_allow_list_is_derived_from_the_registry(self) -> None:
+        from hypergumbo_core.analyze.registry import config_optin_backends
+
+        assert config_optin_backends() == frozenset({"scip_python"})

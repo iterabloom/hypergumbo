@@ -49,6 +49,12 @@ embeddings = [
 rust-analyzer = [
   "hypergumbo-lang-rust-analyzer==8.0.0",
 ]
+# SCIP-backed Python analysis via scip-python / pyright (WI-nanom). Executes
+# nothing from the analysed repository; the producer itself is an npm package:
+#   npm install -g @sourcegraph/scip-python@0.6.6
+scip-python = [
+  "hypergumbo-lang-scip-python==8.0.0",
+]
 
 [project.scripts]
 hypergumbo = "hypergumbo_core.cli:main"

@@ -167,3 +167,99 @@ class TestTheResolvedBackendSet:
 
         assert resolved_backend_set(repo_root=tmp_path, environ={ENV: "0"}, is_available=probe) == ()
         assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# WI-nanom: the second opt-in backend, scip-python. It executes nothing, so
+# ADR-0045 ruling 4's CONFIG tiers are consulted below the environment —
+# the wiring the ADR deferred until "the first non-executing backend".
+# ---------------------------------------------------------------------------
+
+
+class TestTheScipPythonOptin:
+    def _write(self, path, text):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    @pytest.fixture(autouse=True)
+    def a_non_executing_scip_backend(self):
+        from hypergumbo_core.analyze import registry as reg
+        from hypergumbo_core.analyze.base import AnalysisResult
+        from hypergumbo_core.analyze.registry import (
+            SPAN_ROLE_TOKEN, MergeAnchor, as_emitted, register_analyzer,
+        )
+
+        saved, saved_flag = dict(reg._ANALYZER_REGISTRY), reg._discovered
+        reg._ANALYZER_REGISTRY.clear()
+        reg._discovered = True
+        register_analyzer("scip_python", languages=["python"], backend="scip", priority=45,
+                          merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN))(
+            lambda root: AnalysisResult(symbols=[], edges=[], run=None))
+        yield
+        reg._ANALYZER_REGISTRY.clear()
+        reg._ANALYZER_REGISTRY.update(saved)
+        reg._discovered = saved_flag
+
+    def test_the_flag_outranks_the_environment_both_ways(self) -> None:
+        from hypergumbo_core.backend_selection import SCIP_PYTHON_ENV_VAR, resolve_scip_python_optin
+
+        assert resolve_scip_python_optin(flag_choice="scip-python", environ={SCIP_PYTHON_ENV_VAR: "0"}) is True
+        assert resolve_scip_python_optin(flag_choice="tree-sitter", environ={SCIP_PYTHON_ENV_VAR: "1"}) is False
+        assert resolve_scip_python_optin(flag_choice="rust-analyzer", environ={}) is None  # the other backend's flag
+        assert resolve_scip_python_optin(flag_choice=None, environ={SCIP_PYTHON_ENV_VAR: "yes"}) is True
+
+    def test_the_config_tiers_are_consulted_below_the_environment(self, tmp_path) -> None:
+        from hypergumbo_core.backend_selection import SCIP_PYTHON_ENV_VAR, resolve_scip_python_optin
+
+        repo = tmp_path / "repo"
+        self._write(repo / ".hypergumbo.toml", "[backends]\nscip_python = true\n")
+        env = {"XDG_CONFIG_HOME": str(tmp_path / "xdg")}
+        assert resolve_scip_python_optin(environ=env, repo_root=repo) is True
+        assert resolve_scip_python_optin(environ={**env, SCIP_PYTHON_ENV_VAR: "0"}, repo_root=repo) is False
+        assert resolve_scip_python_optin(environ=env) is None  # no repo, no config tier
+
+    def test_the_project_tier_outranks_the_user_tier(self, tmp_path) -> None:
+        from hypergumbo_core.backend_selection import resolve_scip_python_optin
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._write(tmp_path / "xdg" / "hypergumbo" / "config.toml", "[backends]\nscip_python = true\n")
+        env = {"XDG_CONFIG_HOME": str(tmp_path / "xdg")}
+        assert resolve_scip_python_optin(environ=env, repo_root=repo) is True
+        self._write(repo / ".hypergumbo.toml", "[backends]\nscip_python = false\n")
+        assert resolve_scip_python_optin(environ=env, repo_root=repo) is False
+
+    def test_a_bad_config_file_is_no_opinion_here_the_cli_reports_it(self, tmp_path) -> None:
+        """The gate runs deep inside the registry; run_survey validates the
+        config before any analysis, so a bad file never reaches here in
+        production — and if it does, the tier abstains rather than crashes."""
+        from hypergumbo_core.backend_selection import resolve_scip_python_optin
+
+        repo = tmp_path / "repo"
+        self._write(repo / ".hypergumbo.toml", "[backends]\nscip_python = 'yes'\n")
+        assert resolve_scip_python_optin(environ={"XDG_CONFIG_HOME": str(tmp_path / "xdg")}, repo_root=repo) is None
+
+    def test_the_resolved_backend_set_names_both_arms_when_both_will_run(self, tmp_path) -> None:
+        from hypergumbo_core.backend_selection import (
+            RUST_ANALYZER_ENV_VAR, SCIP_PYTHON_ENV_VAR, resolved_backend_set,
+        )
+
+        env = {RUST_ANALYZER_ENV_VAR: "1", SCIP_PYTHON_ENV_VAR: "1"}
+        both = resolved_backend_set(repo_root=tmp_path, environ=env,
+                                    is_available=lambda: True, is_scip_python_available=lambda: True)
+        assert both == ("rust_analyzer", "scip_python")
+        only_python = resolved_backend_set(repo_root=tmp_path, environ=env,
+                                           is_available=lambda: False, is_scip_python_available=lambda: True)
+        assert only_python == ("scip_python",)
+        not_installed = resolved_backend_set(repo_root=tmp_path, environ=env,
+                                             is_available=lambda: False, is_scip_python_available=lambda: False)
+        assert not_installed == ()
+
+    def test_the_default_python_probe_is_the_real_one(self, tmp_path, monkeypatch) -> None:
+        import hypergumbo_core.scip_python_install as install
+        from hypergumbo_core.backend_selection import SCIP_PYTHON_ENV_VAR, resolved_backend_set
+
+        monkeypatch.setattr(install, "is_scip_python_available", lambda: True)
+        assert resolved_backend_set(repo_root=tmp_path, environ={SCIP_PYTHON_ENV_VAR: "1"}) == ("scip_python",)
+        monkeypatch.setattr(install, "is_scip_python_available", lambda: False)
+        assert resolved_backend_set(repo_root=tmp_path, environ={SCIP_PYTHON_ENV_VAR: "1"}) == ()
