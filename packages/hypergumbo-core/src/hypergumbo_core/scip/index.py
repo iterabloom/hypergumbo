@@ -140,6 +140,104 @@ _KIND_MAP: Dict[DescriptorKind, str] = {
     DescriptorKind.META: "declaration",
 }
 
+# ---------------------------------------------------------------------------
+# WI-gapup / ADR-0057 §7: kind from the producer's declaration, else the chain
+# ---------------------------------------------------------------------------
+#
+# ``_KIND_MAP`` above reads only the LEAF descriptor's suffix, and SCIP's
+# ``().`` suffix (DescriptorKind.METHOD) covers a free function as well as a
+# method — so every free function the SCIP arm emitted was ``kind="method"``
+# (52 of 52 on aardvark-dns), and every enum variant, a ``#`` TYPE nested in a
+# TYPE, was a ``class``. Two sources of truth were being ignored:
+#
+# 1. ``SymbolInformation.kind``. rust-analyzer sets it on every global
+#    definition (169 of 169 on the recorded aardvark-dns index: Function,
+#    Method / StaticMethod / TraitMethod, Field, EnumMember, Struct, Enum,
+#    Trait, TypeAlias, Constant, StaticVariable, Module). That is the
+#    PRODUCER'S OWN claim about the construct and it wins. ``_SCIP_KIND_MAP``
+#    maps the kinds we have a registered counterpart for; it is deliberately
+#    NOT total over SCIP's 70-odd members — an unmapped kind (Axiom, Lemma,
+#    Quasiquoter, ...) falls through to rule 2 rather than minting a guess.
+#    ``EnumMember`` lands as ``field``, the tree-sitter Rust arm's deliberate
+#    choice for a variant (WI-duguk); whether a registered variant kind should
+#    exist is an ADR-0027 question this module does not decide. ``Module``
+#    stays ``namespace`` for the same reason (module-vs-namespace is not this
+#    map's call). ``Constant`` is the registry's generic ``constant``: SCIP is
+#    language-agnostic and so is this table.
+#
+# 2. The descriptor CHAIN, for an emitter that leaves ``kind`` unset. A METHOD
+#    or TERM leaf is placed by its nearest ancestor that is not a
+#    TYPE_PARAMETER: under a TYPE it is a method / field, otherwise a
+#    function / variable. The type-parameter skip is not a nicety —
+#    rust-analyzer spells an impl target as one (``impl#[Counter]increment().``
+#    parses as TYPE impl, TYPE_PARAMETER Counter, METHOD increment), and
+#    reading the immediate parent would have called 26 of 27 methods free
+#    functions. A nested TYPE stays ``class``: in scip-python ``Outer#Inner#``
+#    is a nested class, and only a DECLARED EnumMember is a variant.
+#
+# Both maps are held on the Symbol.kind axis by test_scip_kind_map_conformance.
+
+
+def _symbol_information_kind_values() -> Dict[str, int]:
+    """``SymbolInformation.Kind`` member name -> value, via the enum descriptor.
+
+    The generated module has no type stubs, so a direct attribute access is
+    a strict-typing error; going through the descriptor's ``keys()`` /
+    ``Value()`` is the same enum, typed honestly as ``Any``.
+    """
+    generated: Any = scip_pb2  # no stubs: every member is Any from here on
+    kind_enum = generated.SymbolInformation.Kind
+    return {name: int(kind_enum.Value(name)) for name in kind_enum.keys()}
+
+
+_KIND_VALUE = _symbol_information_kind_values()
+_SCIP_KIND_MAP: Dict[int, str] = {
+    _KIND_VALUE[name]: kind
+    for name, kind in (
+        ("Function", "function"),
+        ("Method", "method"),
+        ("StaticMethod", "method"),
+        ("TraitMethod", "method"),
+        ("AbstractMethod", "method"),
+        ("ProtocolMethod", "method"),
+        ("PureVirtualMethod", "method"),
+        ("Constructor", "constructor"),
+        ("Field", "field"),
+        ("Property", "property"),
+        ("EnumMember", "field"),
+        ("Constant", "constant"),
+        ("StaticVariable", "variable"),
+        ("Variable", "variable"),
+        ("Struct", "struct"),
+        ("Enum", "enum"),
+        ("Trait", "trait"),
+        ("Interface", "interface"),
+        ("Class", "class"),
+        ("TypeAlias", "type_alias"),
+        ("Module", "namespace"),
+        ("Namespace", "namespace"),
+        ("Package", "package"),
+        ("Macro", "macro"),
+        ("Parameter", "parameter"),
+        ("TypeParameter", "type_parameter"),
+    )
+}
+
+
+def _kind_from_chain(descriptors: "tuple[Any, ...]") -> str:
+    """Rule 2 above: place a METHOD / TERM leaf by its nearest non-type-parameter ancestor."""
+    leaf = descriptors[-1]
+    ancestor = next(
+        (d for d in reversed(descriptors[:-1]) if d.kind is not DescriptorKind.TYPE_PARAMETER),
+        None,
+    )
+    under_type = ancestor is not None and ancestor.kind is DescriptorKind.TYPE
+    if leaf.kind is DescriptorKind.METHOD:
+        return "method" if under_type else "function"
+    if leaf.kind is DescriptorKind.TERM:
+        return "field" if under_type else "variable"
+    return _KIND_MAP[leaf.kind]
+
 
 def _span_from_range(range_array: "list[int]") -> Span:
     """Convert a SCIP ``Occurrence.range`` int array into a :class:`Span`.
@@ -182,12 +280,15 @@ def _resolve_language(doc: scip_pb2.Document) -> str:
     return raw.lower() if raw else "unknown"
 
 
-def _name_and_kind(scip_sym: Any) -> "tuple[str, str]":
+def _name_and_kind(scip_sym: Any, declared_kind: int = 0) -> "tuple[str, str]":
     """Pick the (name, kind) pair for a parsed, GLOBAL :class:`ScipSymbol`.
 
-    We use the last descriptor in the chain — SCIP puts the most specific
-    piece last, so for ``module/Class#method().`` the last descriptor is
-    ``method`` with the METHOD suffix.
+    The name is the last descriptor's — SCIP puts the most specific piece
+    last, so for ``module/Class#method().`` it is ``method``. The kind is the
+    producer's declared ``SymbolInformation.kind`` when :data:`_SCIP_KIND_MAP`
+    knows it, else the descriptor chain's placement (WI-gapup; see the
+    comment block above the map for why the leaf suffix alone was wrong on
+    52 of 52 free functions and 9 of 9 enum variants).
 
     Local symbols never reach here: :func:`scip_index_to_symbols` skips
     them on the raw string (see the module docstring). Until WI-jikok this
@@ -202,14 +303,18 @@ def _name_and_kind(scip_sym: Any) -> "tuple[str, str]":
         # a future parser regression.
         return "", "unknown"
     last = scip_sym.descriptors[-1]
-    # INV-lagot: this was ``_KIND_MAP.get(last.kind, "unknown")``, minting a
-    # fourth unregistered kind. The fallback is unreachable and always was:
-    # DescriptorKind is a closed Enum, every producer in ``descriptor.py``
-    # constructs from it, and the map is total over it — a totality now held
-    # by test_scip_kind_map_conformance. A direct subscript is the honest
+    declared = _SCIP_KIND_MAP.get(declared_kind)
+    if declared is not None:
+        return last.name, declared
+    # INV-lagot: the chain rule bottoms out in ``_KIND_MAP[leaf.kind]``, which
+    # was ``.get(last.kind, "unknown")`` and minted a fourth unregistered
+    # kind. The fallback is unreachable and always was: DescriptorKind is a
+    # closed Enum, every producer in ``descriptor.py`` constructs from it,
+    # and the map is total over it — a totality held by
+    # test_scip_kind_map_conformance. A direct subscript is the honest
     # expression of that, and a KeyError on a future ninth member is louder
     # and more truthful than silently minting a kind nothing describes.
-    return last.name, _KIND_MAP[last.kind]
+    return last.name, _kind_from_chain(scip_sym.descriptors)
 
 
 def _build_meta(sym_info: scip_pb2.SymbolInformation) -> Dict[str, Any]:
@@ -256,7 +361,7 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
                 parsed = parse_scip_symbol(sym_info.symbol)
             except ValueError:
                 continue
-            name, kind = _name_and_kind(parsed)
+            name, kind = _name_and_kind(parsed, sym_info.kind)
             if not name:  # pragma: no cover
                 # Defensive: only reachable if _name_and_kind's empty-
                 # descriptor guard fires, which parse_scip_symbol already

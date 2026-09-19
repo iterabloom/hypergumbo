@@ -73,11 +73,13 @@ Re-record (3 s) rather than edit: create the crate above, run
    identifier token), the live tree-sitter arm run on ``crate/`` pairs
    **148 of the 169** SCIP definitions with exactly one record each and
    none ambiguously; the 21 unpaired are the 18 module namespaces (no
-   tree-sitter counterpart by design), 2 classes that are ``type`` aliases
-   (``AardvarkResult``, ``ThreadHandleMap``) and 1 variable that is a
-   ``static`` item (``DNSBACKEND``) — three constructs the tree-sitter arm
-   emits no Symbol for at all, an incumbent gap, not an anchor defect —
-   :data:`AARDVARK_DNS_PAIRING` pins it. ADR-0057 §3 cites 138 of 169 from
+   tree-sitter counterpart by design), 2 ``type`` aliases (``AardvarkResult``,
+   ``ThreadHandleMap``; SCIP kind ``type_alias`` since WI-gapup) and 1
+   ``static`` item (``DNSBACKEND``, ``variable``) — three constructs the
+   tree-sitter arm emits no Symbol for at all (WI-bamar), an incumbent gap,
+   not an anchor defect — :data:`AARDVARK_DNS_PAIRING` pins it, and
+   :data:`AARDVARK_DNS_AGREEMENT_TALLY` pins that the paired records agree on
+   ``kind`` 133 times out of 148. ADR-0057 §3 cites 138 of 169 from
    a scratch-script measurement on 2026-09-18; the committed rule and the
    committed input give 148, and the committed number is the one the merge
    pass (WI-kokiz) must reproduce.
@@ -215,8 +217,24 @@ AARDVARK_DNS_PAIRING: Final[dict[str, int]] = {
     "paired": 148,
     "ambiguous": 0,
     "unpaired_namespace": 18,
-    "unpaired_class": 2,
+    "unpaired_type_alias": 2,
     "unpaired_variable": 1,
+}
+
+#: On the 148 paired records, how often the two arms say the same ``kind``.
+#: (Named without the word "kind": the axis-drift collector reads any
+#: identifier containing it as a Symbol.kind value set, and these are counters.)
+#: (WI-gapup: the SCIP arm reads the producer's declared kind). The 15
+#: disagreements are every ``const`` item: SCIP declares ``Constant`` and the
+#: importer maps it to the registry's ``constant``; the tree-sitter arm emits
+#: ``variable`` for module-level ``const`` and ``static`` alike. The SCIP side
+#: is the more precise one, so the contest is left to arbitration rather than
+#: shaped away. Statics agree (``variable`` on both).
+AARDVARK_DNS_AGREEMENT_TALLY: Final[dict[str, int]] = {
+    "paired": 148,
+    "agree": 133,
+    "disagree": 15,
+    "disagree_constant_vs_variable": 15,
 }
 
 
