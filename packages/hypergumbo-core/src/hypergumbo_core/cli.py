@@ -50,6 +50,7 @@ Why This Design
 """
 import argparse
 import gc
+import functools
 import json
 import math
 import os
@@ -62,6 +63,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    cast,
     Dict,
     Final,
     Iterable,
@@ -70,6 +72,7 @@ from typing import (
     Optional,
     Sequence,
     Set,
+    TypeVar,
 )
 
 from rich.console import Console
@@ -11190,6 +11193,37 @@ def _emit_handler_slices(
 
 
 # RCT-pinned surface — see tests/test_rct_public_api_pinned.py before changing parameter names or defaults.
+_SurveyFn = TypeVar("_SurveyFn", bound=Callable[..., Any])
+
+
+def _releases_file_index(fn: _SurveyFn) -> _SurveyFn:
+    """Release the process-global file index on EVERY exit path of ``fn``.
+
+    ``run_survey`` publishes its ``FileIndex`` through ``discovery.set_file_index``
+    so every analyzer, linker and the file-anchor synthesis read one ``os.walk``.
+    That index is process state scoped to one run, and it used to be cleared
+    only on the normal return. A run that raised after indexing — the merge
+    pass's ``UndeclaredProducerError`` refusal (ADR-0057 §10) is one such
+    path — left the previous repository's index behind, and the next
+    ``run_all_analyzers`` in the same process anchored THAT repository's files
+    against ITS OWN root (``relative_to`` raised; CI on PR #1078, two tests
+    sharing an xdist worker). ``finally`` is the only shape that binds the
+    index's lifetime to the call rather than to the happy path.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        from hypergumbo_core.discovery import set_file_index
+
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            set_file_index(None)
+
+    return cast(_SurveyFn, wrapper)
+
+
+@_releases_file_index
 def run_survey(
     repo_root: Path,
     out_path: Path | None = None,
@@ -12003,9 +12037,8 @@ def run_survey(
     generated_files.append(out_path)
     _log_memory("after write")
 
-    # Clear global file index to release memory
-    set_file_index(None)
-
+    # The global file index is released by ``_releases_file_index`` on every
+    # exit path of this function, including the merge pass's refusal.
     complete_progress()
     return generated_files
 

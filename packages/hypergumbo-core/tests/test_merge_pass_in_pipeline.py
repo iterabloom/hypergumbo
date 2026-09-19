@@ -127,6 +127,8 @@ def test_without_a_second_producer_no_merge_run_is_recorded(tmp_path: Path) -> N
 def test_an_undeclared_incumbent_makes_the_pipeline_refuse_by_name(tmp_path: Path, second_python_producer) -> None:
     """The refusal is the pipeline's, not a fallthrough: strip the incumbent's
     declaration and the run stops naming it."""
+    from hypergumbo_core.discovery import get_file_index
+
     python = _registry_mod._ANALYZER_REGISTRY["python"]
     saved = python.merge
     python.merge = None
@@ -135,3 +137,7 @@ def test_an_undeclared_incumbent_makes_the_pipeline_refuse_by_name(tmp_path: Pat
             _run(tmp_path)
     finally:
         python.merge = saved
+    # The refusal must not leave this run's file index behind as process
+    # state: the next run_all_analyzers in the process would read THIS
+    # repository's files against ITS root (CI on #1078 failed exactly so).
+    assert get_file_index() is None
