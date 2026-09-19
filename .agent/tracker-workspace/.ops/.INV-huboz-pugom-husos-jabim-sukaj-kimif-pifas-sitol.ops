@@ -1,0 +1,23 @@
+- op: create  # 4579
+  at: '2026-09-19T07:24:41Z'  # 4579
+  by: agent  # 4579
+  actor: jgstern_agent  # 4579
+  clock: 1  # 4579
+  nonce: '4579'  # 4579
+  data:  # 4579
+    kind: invariant  # 4579
+    title: "Merge pass: an incumbent's None wins arbitration over a partner's concrete value (is_exported, 41 of 148 on aardvark-dns)"  # 4579
+    status: violated  # 4579
+    priority: 2  # 4579
+    parent:  # 4579
+    tags:  # 4579
+    - adr_0057  # 4579
+    - merge_pass  # 4579
+    isbefore: []  # 4579
+    duplicate_of: []  # 4579
+    not_duplicate_of: []  # 4579
+    pr_ref:  # 4579
+    description: "The merge pass (ADR-0057 §4, `analyze/merge_producers.arbitrate`) treats an incumbent's `None` as a candidate value: on the recorded aardvark-dns two-arm fixture, `is_exported` is `None` on the tree-sitter record and `False` on the rust-analyzer record for 41 of 148 paired declarations (16 methods, 12 fields, 5 structs, 3 functions, 3 variables, 1 enum, 1 trait), and incumbent-first precedence carries the `None` — `attribution.is_exported = [rust]`, `alternatives.is_exported = [{value: false, origin: [rust_analyzer]}]`. Measured by `hypergumbo backend-agreement` (docs/audits/0019, row `is_exported`: 107 agree / 41 disagree, shape `null ← false x41`).\n\nInvariant: an absent value is not a candidate. Precedence chooses among values a producer actually supplied; a producer that supplied nothing for an attribute abstains, and the other's concrete value is carried with attribution naming it alone (the way `_FILL_WHEN_INCUMBENT_EMPTY` already treats display_label / cyclomatic_complexity / line_span). Fix belongs in `arbitrate` for every TRACKED_ATTRIBUTE, not a per-attribute exception in the §5 table — the ADR's own absent-versus-empty rule. After the fix the 0019 row should read 148 agree-or-one-sided / 0 disagree and the table regenerates via scripts/regenerate-backend-agreement-table; the fixture constant AARDVARK_DNS_ATTRIBUTE_AGREEMENT[\"is_exported\"] moves with it."  # 4579
+    fields:  # 4579
+      statement: "An absent value is not a candidate: the merge pass's arbitration chooses among values producers actually supplied, and a producer that supplied None for an attribute abstains, so the partner's concrete value is carried with attribution naming it alone."  # 4579
+      root_cause: "merge_producers.arbitrate admits None as a candidate for every TRACKED_ATTRIBUTE, so incumbent-first precedence carries the incumbent's None over the partner's concrete value; only _FILL_WHEN_INCUMBENT_EMPTY attributes get the fill-when-empty treatment."  # 4579
