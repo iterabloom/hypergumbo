@@ -1,0 +1,31 @@
+Original commit body from 2d5164e345cb8a56501545e239be9d3e92c13b02:
+
+Running a second SCIP producer (scip-python 0.6.6) through the shared
+importer for the first time found two gaps, both backend-neutral:
+
+1. scip-python leaves Document.language EMPTY on every document, so every
+   one of its records landed in language "unknown" and the merge pass —
+   keyed on language — paired nothing. scip/index.py now falls back to the
+   file extension via the taxonomy's get_language; "unknown" is kept only
+   when neither the producer nor the extension says.
+
+2. scip-python declares SymbolInformation.kind == 0 on 17,851 of 17,851
+   symbols, so the WI-gapup declared-kind rule typed every occurrence
+   `references` and emitted no `calls` at all — the exact shape that
+   measured zero receiver typing on the Rust arm. scip/calls.py now lets
+   the SCIP descriptor grammar decide when the producer is silent (a METHOD
+   descriptor, `name().`, is callable), cached per symbol string; a
+   declared kind keeps winning, so rust-analyzer (which declares both
+   fields) is unaffected.
+
+Measured on hypergumbo-core's 179 source files after the fixes: the Python
+arms pair 4,723 of 5,284 records, agree on kind 4,721 to 2, share 3,162
+in-repo call edges (399 SCIP-only, 154 syntax-only, 98 stubs superseded),
+and scip-python types the receiver of 4,831 of the syntax arm's 5,048
+untyped method calls (95.7%; 4,654 stdlib, 99 in-repo, 78 third-party).
+Rust measured 0. Lab notebook 2026-09-19 12:15 has the tables.
+
+Three tests that pinned the old behaviour are updated to state the new
+rule; five new tests pin both fallbacks and that a declared kind wins.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
