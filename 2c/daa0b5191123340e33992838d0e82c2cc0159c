@@ -1,0 +1,3 @@
+Original commit body from a5de4ddc16873dc39b469cf5a3ef20ae65d26416:
+
+ADR-0057 §12 (WI-romuh, row 2 of the owner-authorised sequence). Recorded rust-analyzer 1.94.0 output lives with the producer's package under recorded/ (sample crate inline; aardvark-dns source @4444d90fee + raw index.scip, 169 global definitions). Fixture tests pin counts, doc↔file correspondence, and the pairing the declared anchors give on committed input: 148/169, none ambiguous (ADR's 138 corrected). New lint scripts/check-recorded-producer-input (CI gate in core tests): AST taint walk from incumbent-producer calls to cross-backend consumers; @pytest.mark.incumbent_fed(reason) for the three deliberate extraction contracts. Slice 13,996 passed in chunks; lint module 100%.
