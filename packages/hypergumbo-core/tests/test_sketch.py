@@ -8524,6 +8524,31 @@ class TestRepoFingerprint:
         assert fingerprint in str(cache1)
         assert fingerprint in str(cache2)
 
+    def test_results_cache_dir_per_resolved_backend_set(self, tmp_path: Path, monkeypatch) -> None:
+        """WI-givib: a tree-sitter-only run and a two-arm run of ONE tree land in
+        different cache dirs; the same set twice hits the same dir; the
+        tree-sitter-only dir is the unsuffixed state hash, so every cache
+        entry written before this change stays reachable."""
+        import hypergumbo_core.backend_selection as selection
+        from hypergumbo_core.sketch_embeddings import _get_results_cache_dir
+
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg_cache"))
+        self._init_git_repo(tmp_path)
+
+        monkeypatch.setattr(selection, "resolved_backend_set", lambda **_kw: ())
+        tree_sitter_only = _get_results_cache_dir(tmp_path)
+        monkeypatch.setattr(selection, "resolved_backend_set", lambda **_kw: ("rust_analyzer",))
+        two_arm = _get_results_cache_dir(tmp_path)
+        two_arm_again = _get_results_cache_dir(tmp_path)
+
+        assert tree_sitter_only != two_arm
+        assert two_arm == two_arm_again
+        assert tree_sitter_only.parent.parent == two_arm.parent.parent  # same results/ root
+        state = tree_sitter_only.parent.name
+        assert len(state) == 16 and int(state, 16) >= 0  # the bare state hash
+        assert two_arm.parent.name == f"{state}-rust_analyzer"
+        assert tree_sitter_only.name == two_arm.name  # analyzer identity is code identity, unchanged
+
 
 class TestBatchEmbedFiles:
     """Tests for batch embedding of files."""

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from hypergumbo_core.backend_selection import resolve_optin
+from hypergumbo_core.backend_selection import resolve_optin, resolved_backend_set
 
 ENV = "HYPERGUMBO_RUST_ANALYZER"
 ON = frozenset({"rust-analyzer", "rust_analyzer", "scip"})
@@ -116,3 +116,54 @@ class TestEnvironmentParsingMatchesTheShippedGate:
         # tier turn the backend ON for a user whose env var says something
         # the parser did not understand. Fail safe, and fail as a DECISION.
         assert _resolve(environ={ENV: raw}) is False
+
+
+class TestTheResolvedBackendSet:
+    """WI-givib: the set of opt-in backends that WILL RUN for a repository —
+    the output of the precedence chain AND the binary being installed —
+    is what the results cache must key on. It names what runs, not what
+    was asked for: an opt-in with no binary on PATH falls through to the
+    tree-sitter arm (WI-luvud), so it must key as tree-sitter-only."""
+
+    def test_opted_in_and_installed_names_the_scip_arm(self, tmp_path) -> None:
+        got = resolved_backend_set(
+            repo_root=tmp_path, environ={ENV: "1"}, is_available=lambda: True,
+        )
+        assert got == ("rust_analyzer",)
+
+    def test_opted_in_but_not_installed_is_tree_sitter_only(self, tmp_path) -> None:
+        got = resolved_backend_set(
+            repo_root=tmp_path, environ={ENV: "1"}, is_available=lambda: False,
+        )
+        assert got == ()
+
+    def test_silent_tiers_are_tree_sitter_only(self, tmp_path) -> None:
+        assert resolved_backend_set(repo_root=tmp_path, environ={}, is_available=lambda: True) == ()
+
+    def test_an_explicit_off_beats_env_on(self, tmp_path) -> None:
+        got = resolved_backend_set(
+            repo_root=tmp_path, environ={ENV: "1"}, flag_choice="tree-sitter",
+            is_available=lambda: True,
+        )
+        assert got == ()
+
+    def test_a_trust_grant_is_consulted_when_env_is_silent(self, tmp_path) -> None:
+        from hypergumbo_core.backend_trust import record_decision
+        from hypergumbo_core.analyze.registry import ensure_discovered
+
+        ensure_discovered()
+        environ = {"XDG_STATE_HOME": str(tmp_path / "state")}
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        record_decision(repo, "rust_analyzer", True, environ=environ)
+        assert resolved_backend_set(repo_root=repo, environ=environ, is_available=lambda: True) == ("rust_analyzer",)
+
+    def test_the_binary_check_is_not_consulted_when_not_opted_in(self, tmp_path) -> None:
+        calls: list[int] = []
+
+        def probe() -> bool:
+            calls.append(1)
+            return True
+
+        assert resolved_backend_set(repo_root=tmp_path, environ={ENV: "0"}, is_available=probe) == ()
+        assert calls == []
