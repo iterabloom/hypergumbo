@@ -1,0 +1,3 @@
+Original commit body from 3de95fcb292e858df9118a603ef85d6dcdf6a1c0:
+
+ADR-0057 §7 (WI-gapup, row 3). The SCIP importer reads rust-analyzer's declared SymbolInformation.kind first (169/169 set on the recorded index) through a registry-conformant map, and falls back to the descriptor chain placed by the nearest non-type-parameter ancestor (rust-analyzer spells impl targets as type parameters). On the committed fixture the arms now agree on kind for 133/148 paired records; the 15 left are const items (SCIP constant vs tree-sitter variable). Slice 12,407 passed; index.py 100%.
