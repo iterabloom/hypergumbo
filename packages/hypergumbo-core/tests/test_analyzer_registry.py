@@ -23,17 +23,28 @@ from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, _default_config_
 from hypergumbo_core.limits import Limits
 from hypergumbo_core.analyze import registry as _registry_mod
 from hypergumbo_core.analyze.registry import (
+    AUDIT_CITATION_PREFIX,
     LANGUAGE_STATE_NO_LANGUAGE,
     LANGUAGE_STATE_NO_SPEC,
     LANGUAGE_STATE_TAXONOMY,
+    SPAN_ROLE_ITEM,
+    SPAN_ROLE_TOKEN,
     LanguageDeclarationError,
+    MergeAnchor,
+    MergeDeclarationError,
+    MergeDisjoint,
     RegisteredAnalyzer,
+    UndeclaredProducerError,
     analyzers_for_language,
+    as_emitted,
+    backends_executing_analysed_code,
     clear_registry,
     ensure_discovered,
     get_all_analyzers,
     get_analyzer,
+    last_segment,
     list_registered,
+    merge_participants,
     register_analyzer,
     run_all_analyzers,
     run_analyzer,
@@ -2015,3 +2026,169 @@ class TestProductiveRunlessResultIsNotSilentlyDropped:
         )
         assert syms == [sym]
         assert edges == [edge]
+
+
+# ---------------------------------------------------------------------------
+# ADR-0057 §10 / WI-hohuh: the producer contract
+# ---------------------------------------------------------------------------
+
+
+def _noop(repo_root: Path) -> AnalysisResult:
+    return AnalysisResult(symbols=[], edges=[], run=None)
+
+
+class TestMergeDeclaration:
+    """Each backend DECLARES how its records pair with another producer's.
+
+    The declaration is a value the registry validates at decoration time:
+    an anchor (name key + span role + measured authority) for a backend that
+    emits records for the same declarations another producer emits, or a
+    disjointness claim naming the producers it shares a language with but
+    never a record. Unknown keys raise, as ``user_config`` does for unknown
+    settings — a silently-ignored declaration would be the ABSENT != EMPTY
+    defect at registration.
+    """
+
+    def test_a_registration_without_a_declaration_stores_none(self) -> None:
+        register_analyzer("python")(_noop)
+        entry = get_analyzer("python")
+        assert entry is not None
+        assert entry.merge is None
+        assert entry.executes_analysed_code is False
+
+    def test_an_anchor_is_stored_as_declared(self) -> None:
+        anchor = MergeAnchor(name_key=last_segment("::"), span_role=SPAN_ROLE_ITEM)
+        register_analyzer("rust", merge=anchor)(_noop)
+        entry = get_analyzer("rust")
+        assert entry is not None
+        assert entry.merge is anchor
+        assert entry.merge.authoritative_for == {}
+
+    def test_a_span_role_outside_the_vocabulary_is_refused(self) -> None:
+        with pytest.raises(MergeDeclarationError, match="span_role"):
+            MergeAnchor(name_key=as_emitted, span_role="line")
+
+    def test_a_name_key_must_be_callable(self) -> None:
+        with pytest.raises(MergeDeclarationError, match="name_key"):
+            MergeAnchor(name_key="last_segment", span_role=SPAN_ROLE_ITEM)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("citation", ["", "measured it myself", "docs/adr/0057.md"])
+    def test_an_authority_claim_without_an_audit_citation_is_refused(
+        self, citation: str,
+    ) -> None:
+        """ADR-0057 §5/§10: no ``authoritative_for`` entry except by citing a
+        committed ``docs/audits/`` table produced by the agreement instrument."""
+        with pytest.raises(MergeDeclarationError, match=AUDIT_CITATION_PREFIX):
+            MergeAnchor(
+                name_key=as_emitted,
+                span_role=SPAN_ROLE_TOKEN,
+                authoritative_for={"kind": citation},
+            )
+
+    def test_a_cited_authority_claim_is_stored(self) -> None:
+        anchor = MergeAnchor(
+            name_key=as_emitted,
+            span_role=SPAN_ROLE_TOKEN,
+            authoritative_for={"kind": "docs/audits/99-example.md"},
+        )
+        assert anchor.authoritative_for == {"kind": "docs/audits/99-example.md"}
+
+    def test_an_unknown_declaration_key_raises(self) -> None:
+        with pytest.raises(TypeError):
+            MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN, authority="x")  # type: ignore[call-arg]
+
+    def test_a_dict_is_not_a_declaration(self) -> None:
+        """The decorator refuses anything but the two declaration types, naming
+        the analyzer — a dict with the right keys would be accepted by duck
+        typing and then silently ignore a misspelled one."""
+        with pytest.raises(MergeDeclarationError, match="rust"):
+            register_analyzer(
+                "rust", merge={"name_key": as_emitted, "span_role": "token"},  # type: ignore[arg-type]
+            )(_noop)
+
+    def test_a_disjoint_declaration_needs_at_least_one_partner(self) -> None:
+        with pytest.raises(MergeDeclarationError, match="partners"):
+            MergeDisjoint(partners=())
+
+    def test_name_key_helpers(self) -> None:
+        assert as_emitted("process_message") == "process_message"
+        assert last_segment("::")("CoreDns::process_message") == "process_message"
+        assert last_segment("::")("free_fn") == "free_fn"
+        assert last_segment(".")("Class.method") == "method"
+
+
+class TestMergeParticipants:
+    """``merge_participants(L)`` is what the merge pass (WI-kokiz) reads.
+
+    It returns the anchored producers of ``L`` the pass pairs among, and it
+    REFUSES — naming the analyzer — when a language has two producers and
+    one of them has not declared how its records relate to the other's.
+    Falling through would read as "nothing to merge".
+    """
+
+    _anchor = MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN)
+    _item = MergeAnchor(name_key=last_segment("::"), span_role=SPAN_ROLE_ITEM)
+
+    def test_a_sole_producer_has_nothing_to_merge_declared_or_not(self) -> None:
+        register_analyzer("rust")(_noop)
+        assert merge_participants("rust") == []
+        register_analyzer("python", merge=self._anchor)(_noop)
+        assert merge_participants("python") == []
+
+    def test_two_anchored_producers_are_returned_in_priority_order(self) -> None:
+        register_analyzer("rust", priority=50, merge=self._item)(_noop)
+        register_analyzer("rust_scip", priority=45, languages=["rust"], merge=self._anchor)(_noop)
+        assert [a.name for a in merge_participants("rust")] == ["rust_scip", "rust"]
+
+    def test_an_undeclared_producer_is_refused_by_name(self) -> None:
+        register_analyzer("rust", merge=self._item)(_noop)
+        register_analyzer("rust_scip", languages=["rust"])(_noop)
+        with pytest.raises(UndeclaredProducerError) as exc:
+            merge_participants("rust")
+        message = str(exc.value)
+        assert "rust_scip" in message
+        assert "'rust'" in message  # the language, so the reader knows which pair
+
+    def test_mutually_disjoint_producers_have_nothing_to_merge(self) -> None:
+        register_analyzer("javascript", languages=["javascript", "svelte"],
+                          merge=MergeDisjoint(partners=("svelte",)))(_noop)
+        register_analyzer("svelte", merge=MergeDisjoint(partners=("javascript",)))(_noop)
+        assert merge_participants("svelte") == []
+
+    def test_a_one_sided_disjoint_claim_covers_the_pair(self) -> None:
+        """An anchored incumbent need not name every template analyzer that
+        keeps out of its way; the analyzer that stays disjoint says so."""
+        register_analyzer("javascript", languages=["javascript", "svelte"],
+                          merge=self._anchor)(_noop)
+        register_analyzer("svelte", merge=MergeDisjoint(partners=("javascript",)))(_noop)
+        assert merge_participants("svelte") == []
+
+    def test_a_disjoint_claim_that_names_neither_side_is_refused(self) -> None:
+        register_analyzer("javascript", languages=["javascript", "svelte"],
+                          merge=self._anchor)(_noop)
+        register_analyzer("svelte", merge=MergeDisjoint(partners=("vue",)))(_noop)
+        with pytest.raises(UndeclaredProducerError) as exc:
+            merge_participants("svelte")
+        message = str(exc.value)
+        assert "svelte" in message and "javascript" in message
+
+    def test_disjoint_producers_are_excluded_from_the_anchored_set(self) -> None:
+        register_analyzer("rust", priority=50, merge=self._item)(_noop)
+        register_analyzer("rust_scip", priority=45, languages=["rust"], merge=self._anchor)(_noop)
+        register_analyzer("rust_docs", priority=60, languages=["rust"],
+                          merge=MergeDisjoint(partners=("rust", "rust_scip")))(_noop)
+        assert [a.name for a in merge_participants("rust")] == ["rust_scip", "rust"]
+
+
+class TestExecutesAnalysedCode:
+    """ADR-0045 §5: which store a backend's opt-in lands in follows from the
+    bit the backend DECLARES, not from a list someone remembers to update."""
+
+    def test_the_executing_set_is_derived_from_the_declarations(self) -> None:
+        register_analyzer("rust")(_noop)
+        register_analyzer("rust_scip", languages=["rust"], executes_analysed_code=True)(_noop)
+        register_analyzer("python", executes_analysed_code=False)(_noop)
+        assert backends_executing_analysed_code() == frozenset({"rust_scip"})
+
+    def test_an_empty_registry_executes_nothing(self) -> None:
+        assert backends_executing_analysed_code() == frozenset()

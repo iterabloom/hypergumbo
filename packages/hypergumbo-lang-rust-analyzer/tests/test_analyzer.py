@@ -203,6 +203,27 @@ class TestAnalyzerRegistration:
         assert entry.languages == ["rust"]
         assert entry.backend == "scip"
 
+    def test_declares_the_rest_of_the_producer_contract(self) -> None:
+        """ADR-0057 §10 / WI-hohuh: the merge anchor (name as emitted — the
+        SCIP descriptor name carries no ``::`` — over the identifier-token
+        span rust-analyzer emits, INV-lodum) and ADR-0045 §5's
+        ``executes_analysed_code`` (indexing runs ``build.rs``) live on the
+        same registration, so the next backend cannot omit either."""
+        import hypergumbo_lang_rust_analyzer.analyzer as _ra
+        _ = _ra
+        from hypergumbo_core.analyze.registry import (
+            SPAN_ROLE_TOKEN,
+            MergeAnchor,
+            _ANALYZER_REGISTRY,
+            as_emitted,
+        )
+        entry = _ANALYZER_REGISTRY["rust_analyzer"]
+        assert entry.executes_analysed_code is True
+        assert isinstance(entry.merge, MergeAnchor)
+        assert entry.merge.span_role == SPAN_ROLE_TOKEN
+        assert entry.merge.name_key is as_emitted
+        assert entry.merge.authoritative_for == {}
+
 
 class TestEngagementCheck:
     """WI-todon: warn if the SCIP backend ran but produced no SCIP-origin edges

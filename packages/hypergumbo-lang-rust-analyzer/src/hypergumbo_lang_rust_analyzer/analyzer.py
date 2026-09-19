@@ -58,7 +58,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 from hypergumbo_core.analyze.base import AnalysisResult
-from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.registry import (
+    SPAN_ROLE_TOKEN,
+    MergeAnchor,
+    as_emitted,
+    register_analyzer,
+)
 from hypergumbo_core.ir import PASS_VERSION, AnalysisRun, Edge
 
 from hypergumbo_lang_rust_analyzer.gate import should_use_rust_analyzer_backend
@@ -157,8 +162,23 @@ def _has_scip_origin_edge(edges: list[Edge]) -> bool:
 
 # WI-juzig / ADR-0057 §10: a second BACKEND for the language ``rust`` — not a
 # language of its own. The registry can now see that ``rust`` and
-# ``rust_analyzer`` are two producers for one language.
-@register_analyzer("rust_analyzer", priority=45, languages=["rust"], backend="scip")
+# ``rust_analyzer`` are two producers for one language, and (WI-hohuh) how
+# their records pair: this arm's ``Symbol.name`` is the SCIP descriptor name
+# as emitted (never ``::``-qualified) and its ``Symbol.span`` is the identifier
+# TOKEN rust-analyzer puts in the Definition ``range`` (INV-lodum), so the
+# pass tests token-inside-item against the tree-sitter arm. No measured
+# authority is declared: on the one attribute measured, ``kind``, this arm is
+# the wrong one (WI-gapup). ``executes_analysed_code`` (ADR-0045 §5): indexing
+# runs the analysed crate's ``build.rs`` and proc macros, so the opt-in is a
+# per-repository trust grant, never a config preference.
+@register_analyzer(
+    "rust_analyzer",
+    priority=45,
+    languages=["rust"],
+    backend="scip",
+    executes_analysed_code=True,
+    merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN),
+)
 def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     """Entry point for the SCIP-backed Rust analyzer.
 

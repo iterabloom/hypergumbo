@@ -20,8 +20,8 @@ route. Those settings live in a separate trust store outside this file, and
 this module raises rather than accepting them.
 
 TWO RULES THAT CURRENTLY FORBID THE SAME KEY, AND ARE STILL TWO RULES.
-:data:`TRUST_ONLY_SETTINGS` (ruling 2) is refused in **every** tier because the
-fact does not belong in config at all. :data:`PROJECT_FORBIDDEN_SETTINGS`
+:func:`trust_only_settings` (ruling 2) is refused in **every** tier because the
+fact does not belong in config at all. :func:`project_forbidden_settings`
 (ruling 3) is refused only from the project tier, because a repository must not
 be able to make a security decision *about itself* — the inversion of
 ADR-0016 §35 / ADR-0017 §370, where project-local overlays deliberately
@@ -57,24 +57,53 @@ try:  # pragma: no cover - the branch taken depends on the interpreter
 except ModuleNotFoundError:  # pragma: no cover - py3.10 fallback
     import tomli as tomllib
 
-#: Backends whose activation executes code from the analysed repository, and
-#: whose opt-in is therefore a trust grant rather than a preference (ADR-0045
-#: ruling 5). The bit is declared per backend rather than hardcoded at the
-#: deny-list, so a backend added later lands in the right store by describing
-#: itself instead of by someone remembering to update a list. ``pyright``
-#: performs pure static inference and executes nothing, so when it arrives
-#: (WI-nanom) it belongs on the ``False`` side and is an ordinary preference.
-BACKENDS_EXECUTING_ANALYSED_CODE: FrozenSet[str] = frozenset({"rust_analyzer"})
+#: The dotted prefix under which a backend opt-in would be spelled. Every
+#: trust-only key has it, which is what lets :func:`_validate` skip analyzer
+#: discovery for a file that names no backend at all.
+_BACKENDS_PREFIX = "backends."
 
-#: Settings no config tier may carry, at all (ruling 2).
-TRUST_ONLY_SETTINGS: FrozenSet[str] = frozenset(
-    f"backends.{name}" for name in BACKENDS_EXECUTING_ANALYSED_CODE
-)
 
-#: Settings the PROJECT tier may not carry (ruling 3). A superset of the
-#: above by construction: anything that cannot live in config at all
-#: certainly cannot live in a file the analysed repository ships.
-PROJECT_FORBIDDEN_SETTINGS: FrozenSet[str] = TRUST_ONLY_SETTINGS
+def backends_executing_analysed_code() -> FrozenSet[str]:
+    """Backends whose activation executes code from the analysed repository.
+
+    Their opt-in is a trust grant rather than a preference (ADR-0045 ruling
+    5). The bit is DECLARED per backend on its ``@register_analyzer`` call
+    (``executes_analysed_code=True``; ADR-0057 §10 / WI-hohuh) and this
+    function derives the set from the registry, so a backend added later
+    lands in the right store by describing itself instead of by someone
+    remembering to update a list. Until WI-hohuh this was a hardcoded
+    ``frozenset({"rust_analyzer"})`` — exactly the list ruling 5 forbids.
+    ``pyright`` performs pure static inference and executes nothing, so when
+    it arrives (WI-nanom) it declares ``False`` and is an ordinary preference.
+
+    Consequence worth knowing: with the SCIP package not installed there is
+    no ``rust_analyzer`` registration, so ``backends.rust_analyzer`` in a
+    config file is refused as an UNKNOWN setting rather than as a trust key.
+    Still refused — fail closed — but the message no longer claims a trust
+    store for a backend that is not there.
+    """
+    # Local import: the registry imports ``ir``; keep this module importable
+    # without the analyzer graph until a caller actually asks.
+    from .analyze.registry import backends_executing_analysed_code as _declared
+    from .analyze.registry import ensure_discovered
+
+    ensure_discovered()
+    return _declared()
+
+
+def trust_only_settings() -> FrozenSet[str]:
+    """Settings no config tier may carry, at all (ruling 2)."""
+    return frozenset(
+        f"{_BACKENDS_PREFIX}{name}" for name in backends_executing_analysed_code()
+    )
+
+
+def project_forbidden_settings() -> FrozenSet[str]:
+    """Settings the PROJECT tier may not carry (ruling 3). A superset of
+    :func:`trust_only_settings` by construction: anything that cannot live
+    in config at all certainly cannot live in a file the analysed repository
+    ships."""
+    return trust_only_settings()
 
 #: Recognised settings and the type each must have. Membership is the
 #: allow-list; see the module docstring on why an unknown key raises.
@@ -170,8 +199,11 @@ def _validate(flat: Mapping[str, Any], path: Path, *, is_project: bool) -> None:
     and it is the one whose fix (move it to the trust store) is not obvious
     from the message about the typo.
     """
+    names_a_backend = any(setting.startswith(_BACKENDS_PREFIX) for setting in flat)
+    trust_only = trust_only_settings() if names_a_backend else frozenset()
+    project_forbidden = project_forbidden_settings() if names_a_backend else frozenset()
     for setting in sorted(flat):
-        if setting in TRUST_ONLY_SETTINGS:
+        if setting in trust_only:
             raise ConfigError(
                 f"{path}: '{setting}' cannot be set in a configuration file. "
                 f"Enabling this backend runs the analysed repository's build "
@@ -180,7 +212,7 @@ def _validate(flat: Mapping[str, Any], path: Path, *, is_project: bool) -> None:
                 f"— a config file is designed to be copied between machines "
                 f"and a trust grant must not be.",
             )
-        if is_project and setting in PROJECT_FORBIDDEN_SETTINGS:
+        if is_project and setting in project_forbidden:
             # Unreachable while the two sets are equal; kept because they are
             # two rulings, and whichever outlives the other must still hold.
             raise ConfigError(  # pragma: no cover

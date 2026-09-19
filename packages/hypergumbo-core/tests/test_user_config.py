@@ -331,3 +331,55 @@ class TestARejectedSettingExitsCleanly:
                 os.environ.pop("XDG_CONFIG_HOME", None)
             else:
                 os.environ["XDG_CONFIG_HOME"] = prior
+
+
+class TestTheTrustDenyListIsDerivedFromTheRegistry:
+    """ADR-0045 §5 / ADR-0057 §10 (WI-hohuh): ``executes_analysed_code`` is a
+    per-backend DECLARATION on ``@register_analyzer``; the set of keys no
+    config tier may carry is derived from it. Before this the set was a
+    hardcoded ``frozenset({"rust_analyzer"})`` — exactly the list ADR-0045
+    said the next backend must not depend on someone remembering to update.
+    """
+
+    @pytest.fixture(autouse=True)
+    def isolated_registry(self):
+        from hypergumbo_core.analyze import registry as reg
+
+        saved, saved_flag = dict(reg._ANALYZER_REGISTRY), reg._discovered
+        reg._ANALYZER_REGISTRY.clear()
+        reg._discovered = True  # nothing to discover; the test registers
+        yield
+        reg._ANALYZER_REGISTRY.clear()
+        reg._ANALYZER_REGISTRY.update(saved)
+        reg._discovered = saved_flag
+
+    def test_a_declared_executing_backend_is_refused_from_config(self, tmp_path: Path) -> None:
+        from hypergumbo_core.analyze.base import AnalysisResult
+        from hypergumbo_core.analyze.registry import register_analyzer
+
+        @register_analyzer("fakeexec", languages=["python"], executes_analysed_code=True)
+        def _fake(repo_root: Path) -> AnalysisResult:
+            return AnalysisResult(symbols=[], edges=[], run=None)  # pragma: no cover
+
+        repo = tmp_path / "repo"
+        _write(repo / ".hypergumbo.toml", "[backends]\nfakeexec = true\n")
+        with pytest.raises(ConfigError) as exc:
+            load_layered_config(
+                repo_root=repo, environ={"XDG_CONFIG_HOME": str(tmp_path / "e")},
+            )
+        assert "fakeexec" in str(exc.value)
+        assert "trust" in str(exc.value).lower()
+
+    def test_a_backend_that_is_not_declared_executing_is_merely_unknown(self, tmp_path: Path) -> None:
+        """With the SCIP package absent, ``backends.rust_analyzer`` is an
+        unknown setting, not a trust key — still refused, fail-closed, but the
+        message must not claim a trust store for a backend that is not there."""
+        repo = tmp_path / "repo"
+        _write(repo / ".hypergumbo.toml", "[backends]\nrust_analyzer = true\n")
+        with pytest.raises(ConfigError) as exc:
+            load_layered_config(
+                repo_root=repo, environ={"XDG_CONFIG_HOME": str(tmp_path / "e")},
+            )
+        message = str(exc.value)
+        assert "unknown setting" in message
+        assert "trust" not in message.lower()

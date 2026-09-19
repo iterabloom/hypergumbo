@@ -55,7 +55,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
-from .user_config import BACKENDS_EXECUTING_ANALYSED_CODE
+from .user_config import backends_executing_analysed_code
 
 #: Files whose change REVOKES a grant. Owner ruling 2026-08-23 resolving
 #: ADR-0045 OQ1: ``build.rs`` is the file that actually EXECUTES during
@@ -160,15 +160,22 @@ def record_decision(
 ) -> TrustDecision:
     """Record a grant or a decline for ``backend`` on ``repo_root``.
 
-    Refuses any backend that does not execute analysed-repo code (ruling 5):
-    such a backend's opt-in is an ordinary preference and belongs in the
-    config file. Accepting it here would give one setting two homes.
+    Refuses any backend that does not DECLARE ``executes_analysed_code`` on
+    its registration (ruling 5; ADR-0057 §10 moved the bit from a hardcoded
+    set onto the declaration): such a backend's opt-in is an ordinary
+    preference and belongs in the config file. Accepting it here would give
+    one setting two homes. An unregistered name is refused the same way —
+    the message names the backends the store does accept, so a typo is
+    visible rather than silently recorded.
     """
-    if backend not in BACKENDS_EXECUTING_ANALYSED_CODE:
+    executing = backends_executing_analysed_code()
+    if backend not in executing:
+        accepted = ", ".join(sorted(executing)) or "none registered"
         raise ValueError(
             f"backend {backend!r} does not execute analysed-repository code, "
             f"so its opt-in is a preference and belongs in hypergumbo's "
-            f"configuration file, not the trust store.",
+            f"configuration file, not the trust store (backends that declare "
+            f"executes_analysed_code: {accepted}).",
         )
     resolved = Path(repo_root).resolve()
     decision = TrustDecision(

@@ -109,7 +109,7 @@ from hypergumbo_core.analyze.base import (
     make_variable_stable_id,
     node_text as _node_text,
 )
-from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
@@ -6251,10 +6251,18 @@ def _analyze_vue_file(
     return all_symbols, all_edges, True
 
 
+# ADR-0057 §10 (WI-hohuh): this analyzer shares ``vue`` and ``svelte`` with the
+# component analyzers but never a record — it reads a component file's
+# <script> block (functions, classes, variables), they read its template
+# (slots, events, blocks, directives). Declared, not inferred: a rule keyed
+# on "two backends for one language" would misfire on exactly this pair.
+# ``test_registry_merge_contract`` runs both sides on a component and pins
+# that the record sets are disjoint.
 @register_analyzer(
     "javascript",
     supports_max_files=True,
     languages=["javascript", "typescript", "vue", "svelte"],
+    merge=MergeDisjoint(partners=("vue", "svelte")),
 )
 def analyze_javascript(
     repo_root: Path, max_files: int | None = None
