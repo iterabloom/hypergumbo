@@ -92,7 +92,7 @@ no-op pass gets a run is the ADR-0056 question the owner reserved).
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import MISSING, dataclass, field, fields, replace
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from ..arbitration import (
@@ -204,12 +204,53 @@ def _empty(value: Any) -> bool:
     return value is None or value == "" or value == []
 
 
+def _symbol_default(attribute: str) -> Any:
+    """The value a ``Symbol`` carries for ``attribute`` when nobody assigned it."""
+    declared = {f.name: f for f in fields(Symbol)}[attribute]
+    if declared.default is not MISSING:
+        return declared.default
+    if declared.default_factory is not MISSING:  # pragma: no branch - both forms occur
+        return declared.default_factory()
+    return None  # a required field: every producer supplies it
+
+
+#: Tracked attributes whose ``Symbol`` default is a CONCRETE value, so the
+#: record cannot say that nobody looked (INV-huboz). ``_empty`` recognises
+#: absence for the other nine — per RECORD, which is better information than
+#: any declaration — but ``is_exported: bool = False`` is indistinguishable
+#: from a measured ``False``, and a producer that assigns the field nowhere
+#: contributed a phantom candidate on every record it emitted. For these, and
+#: only these, the producer's ``MergeAnchor.observes`` decides (ADR-0057 §10).
+#:
+#: DERIVED from the dataclass, not listed: a tracked attribute that gains a
+#: concrete default appears here the day it is added, and the registry
+#: contract test then refuses every anchored producer that has not ruled on
+#: it. A hand-kept list would have to be remembered instead.
+ABSTENTION_BLIND_ATTRIBUTES: Tuple[str, ...] = tuple(
+    attribute for attribute in TRACKED_ATTRIBUTES
+    if not _empty(_symbol_default(attribute))
+)
+
+
 def _candidates(
-    attribute: str, members: Sequence[Tuple[str, Symbol]],
+    attribute: str,
+    members: Sequence[Tuple[str, Symbol]],
+    observed_by: Optional[Mapping[str, frozenset[str]]] = None,
 ) -> List[Tuple[Any, Tuple[str, ...]]]:
-    """(value, producers) per distinct observed value, incumbent's value first."""
+    """(value, producers) per distinct observed value, incumbent's value first.
+
+    ``observed_by`` maps a producer to the :data:`ABSTENTION_BLIND_ATTRIBUTES`
+    it declared it computes. For every other attribute the VALUE says whether
+    it was observed, per record, and the declaration is not consulted. Omit it
+    (edge folding does) and no blind attribute contributes at all — the safe
+    direction, since a phantom candidate is asserted evidence.
+    """
     out: List[Tuple[Any, List[str]]] = []
     for producer, symbol in members:
+        if attribute in ABSTENTION_BLIND_ATTRIBUTES and attribute not in (
+            (observed_by or {}).get(producer) or frozenset()
+        ):
+            continue  # this producer did not declare that it observes it (§1, §10)
         value = _value(symbol, attribute)
         if _empty(value):
             continue  # not observed by this producer: no entry (§1)
@@ -254,6 +295,7 @@ def _stamp_slot(
     *,
     chosen: Optional[Dict[str, Candidate]] = None,
     precedence_by_attribute: Optional[Mapping[str, Sequence[str]]] = None,
+    observed_by: Optional[Mapping[str, frozenset[str]]] = None,
 ) -> Dict[str, Candidate]:
     """Arbitrate every attribute, set the scalar, write attribution / alternatives.
 
@@ -267,7 +309,7 @@ def _stamp_slot(
     alternatives: Dict[str, List[Dict[str, Any]]] = {}
     winners: Dict[str, Candidate] = {}
     for attribute in attributes:
-        candidates = _candidates(attribute, members)
+        candidates = _candidates(attribute, members, observed_by)
         if not candidates:
             continue  # nobody observed it: no entry at all (§1)
         order = (precedence_by_attribute or {}).get(attribute, precedence)
@@ -297,6 +339,7 @@ def _merge_one(
     run_id: str,
     *,
     precedence_by_attribute: Optional[Mapping[str, Sequence[str]]] = None,
+    observed_by: Optional[Mapping[str, frozenset[str]]] = None,
 ) -> Tuple[Symbol, MergedRecord]:
     merged = replace(incumbent)
     members = [(incumbent_name, incumbent), (other_name, other)]
@@ -309,7 +352,7 @@ def _merge_one(
     span_candidates = _candidates("span", members)
     chosen_span = next(c for c in span_candidates if c[0] == item_span)
     _stamp_slot(merged, members, TRACKED_ATTRIBUTES, precedence, chosen={"span": chosen_span},
-                precedence_by_attribute=precedence_by_attribute)
+                precedence_by_attribute=precedence_by_attribute, observed_by=observed_by)
     if item_holder.span is not None:
         merged.span = replace(item_holder.span)
     for attribute in _FILL_WHEN_INCUMBENT_EMPTY:
@@ -338,7 +381,7 @@ def _merge_one(
         language=language,
         path=merged.path,
         members={incumbent_name: incumbent.id, other_name: other.id},
-        candidates={attr: _candidates(attr, members) for attr in TRACKED_ATTRIBUTES},
+        candidates={attr: _candidates(attr, members, observed_by) for attr in TRACKED_ATTRIBUTES},
     )
     return merged, record
 
@@ -454,6 +497,13 @@ def merge_producer_records(
         if len(participants) < 2:
             continue
         ordered = policy.order(participants)
+        # What each producer DECLARED it observes among the attributes whose
+        # value cannot say so (§10). An anchored producer that has not ruled
+        # observes none of them — the registry contract test is what stops a
+        # shipped producer from silently landing there.
+        observed_by = {
+            a.name: frozenset(_anchor(a).observes or ()) for a in ordered
+        }
         incumbent_analyzer, alternatives = ordered[0], ordered[1:]
         incumbent_anchor = _anchor(incumbent_analyzer)
         report.languages.append(language)
@@ -493,6 +543,7 @@ def merge_producer_records(
                     incumbent_analyzer.name, survivor, incumbent_anchor.span_role,
                     alternative.name, record, anchor.span_role, run.execution_id,
                     precedence_by_attribute=language_by_attribute,
+                    observed_by=observed_by,
                 )
                 if id(incumbent_record) in replacement:
                     # A third producer joining an already-merged record.

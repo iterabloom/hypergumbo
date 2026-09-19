@@ -95,6 +95,36 @@ class TestEveryProducerOfASharedLanguageIsDeclared:
         ]
         assert undeclared == []
 
+    def test_every_anchored_producer_rules_on_the_attributes_that_cannot_speak(self) -> None:
+        """ADR-0057 §10 / INV-huboz: an attribute whose ``Symbol`` default is
+        a concrete value cannot say whether anybody looked, so every anchored
+        producer must say instead. ``observes=None`` is NOT a ruling — it is
+        the omission this test exists to catch, and leaving it costs real
+        observations, not only provenance."""
+        from hypergumbo_core.analyze.merge_producers import ABSTENTION_BLIND_ATTRIBUTES
+
+        assert ABSTENTION_BLIND_ATTRIBUTES, "nothing to rule on: the enumeration proves nothing"
+        unruled = [
+            (language, a.name)
+            for language, producers in _shared_languages().items()
+            for a in producers
+            if isinstance(a.merge, MergeAnchor) and a.merge.observes is None
+        ]
+        assert unruled == [], (
+            f"anchored producers that have not ruled on {list(ABSTENTION_BLIND_ATTRIBUTES)}: {unruled}"
+        )
+
+    def test_the_rust_arms_rule_as_their_code_does(self) -> None:
+        """The enumeration above cannot tell a right ruling from a wrong one.
+        These two are checkable by reading the producers: ``rust.py`` sets
+        ``is_exported`` from the item's ``pub`` modifier; the SCIP translation
+        assigns the field nowhere."""
+        reg = _discovered()
+        rust, scip = reg["rust"].merge, reg["rust_analyzer"].merge
+        assert isinstance(rust, MergeAnchor) and isinstance(scip, MergeAnchor)
+        assert rust.observes == ("is_exported",)
+        assert scip.observes == ()
+
     def test_disjoint_partners_are_producers_of_a_language_the_declarer_shares(self) -> None:
         """A disjointness claim naming an analyzer that does not share a
         language with the declarer is stale — it covers nothing."""

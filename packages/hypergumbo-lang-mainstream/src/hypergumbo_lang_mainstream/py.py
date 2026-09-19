@@ -8738,6 +8738,9 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
     merge=MergeAnchor(
         name_key=last_segment(QUALIFIED_NAME_SEPARATORS["python"]),
         span_role=SPAN_ROLE_ITEM,
+        # Computed here from ``__all__`` and the leading-underscore
+        # convention (WI-gipag), so it is an observation (ADR-0057 §10).
+        observes=("is_exported",),
     ),
 )
 def analyze_python(

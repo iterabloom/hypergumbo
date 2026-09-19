@@ -127,7 +127,9 @@ def analyze_python_with_scip_impl(
     languages=["python"],
     backend="scip",
     executes_analysed_code=False,
-    merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN),
+    # As with the Rust SCIP arm: this translation computes no exportedness,
+    # so it declares none rather than contributing the default (INV-huboz).
+    merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN, observes=()),
 )
 def analyze_python_with_scip(repo_root: Path) -> AnalysisResult:
     """Entry point for the SCIP-backed Python analyzer (see the module docstring)."""
