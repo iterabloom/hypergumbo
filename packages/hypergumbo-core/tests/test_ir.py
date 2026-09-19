@@ -1689,7 +1689,11 @@ def test_symbol_from_dict_is_test_file_default_false() -> None:
 
 
 def test_symbol_is_exported_default() -> None:
-    """WI-zimum: Symbol.is_exported defaults to False."""
+    """INV-kubup: Symbol.is_exported defaults to None — nobody looked.
+
+    It was ``False``, which said "measured, and not part of the public API"
+    for every record from the ninety-odd analyzer modules that compute no
+    exportedness. A producer with a rule still writes True or False."""
     sym = Symbol(
         id="python:src/lib.py:1-2:helper:function",
         name="helper",
@@ -1698,7 +1702,7 @@ def test_symbol_is_exported_default() -> None:
         path="src/lib.py",
         span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
     )
-    assert sym.is_exported is False
+    assert sym.is_exported is None
 
 
 def test_symbol_to_dict_includes_is_exported() -> None:
@@ -1731,8 +1735,9 @@ def test_symbol_roundtrip_preserves_is_exported() -> None:
     assert restored.is_exported is True
 
 
-def test_symbol_from_dict_is_exported_default_false() -> None:
-    """WI-zimum: from_dict treats missing is_exported as False (back-compat)."""
+def test_symbol_from_dict_is_exported_unobserved_when_absent() -> None:
+    """INV-kubup: a missing key is not a measured False. An artifact that
+    does not carry the fact says nothing about it."""
     d = {
         "id": "python:src/lib.py:1-2:foo:function",
         "name": "foo",
@@ -1742,7 +1747,7 @@ def test_symbol_from_dict_is_exported_default_false() -> None:
         "supply_chain": {"tier": 1, "reason": "first_party"},
     }
     restored = Symbol.from_dict(d)
-    assert restored.is_exported is False
+    assert restored.is_exported is None
 
 
 def test_edge_from_dict() -> None:

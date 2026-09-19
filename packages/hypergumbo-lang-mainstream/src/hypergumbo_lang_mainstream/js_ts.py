@@ -4730,27 +4730,30 @@ def _mark_exported_symbols(
     source: bytes,
     symbols: list[Symbol],
 ) -> None:
-    """Set ``Symbol.is_exported = True`` for each symbol whose short name
-    is in the exported-name set for this file.
+    """Decide ``Symbol.is_exported`` for every declaration in this file.
 
     WI-nimug: match by short name (split on the last dot) so ``Class.method``
     style symbols created for TypeScript class members do not accidentally
     get flagged when only the class is exported — class members stay
     un-exported unless the class was the only thing exported, in which case
     they are still un-exported here (the class symbol is the public
-    API entry point). The file pseudo-node remains un-exported — the
-    field is about individual declarations, not the per-file anchor
-    (INV-kokaj renamed kind from "module" to "file").
+    API entry point).
+
+    INV-kubup: the verdict is written in BOTH directions. A module's
+    ``export`` clauses are the whole of its public API, so a declaration
+    absent from them is measured as not exported — including in a file with
+    no exports at all, which is a measurement that nothing is exported and
+    not an absence of one. The file pseudo-node is left UNDECIDED (``None``):
+    the field is about individual declarations, not the per-file anchor
+    (INV-kokaj renamed kind from "module" to "file"), so this analyzer has
+    no rule for it and must not invent one.
     """
     exported_names = _collect_exported_names(root, source)
-    if not exported_names:
-        return
     for sym in symbols:
         if sym.kind == "file":
             continue
         short = sym.name.rsplit(".", 1)[-1] if "." in sym.name else sym.name
-        if short in exported_names and "." not in sym.name:
-            sym.is_exported = True
+        sym.is_exported = short in exported_names and "." not in sym.name
 
 
 def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) -> bool:

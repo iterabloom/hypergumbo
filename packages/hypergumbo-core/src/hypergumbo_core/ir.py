@@ -550,7 +550,15 @@ class Symbol:
             are mutually exclusive — at most one is True per Symbol.
         is_generated_file: True if the file is generated code. Independent of
             the role flags above.
-        is_exported: True if the symbol is part of the package's public API.
+        is_exported: True if the symbol is part of the package's public API,
+            False if a producer measured that it is not, and ``None`` when
+            nobody looked (INV-kubup). Seventeen analyzer modules compute
+            exportedness and ninety-odd do not; while this was ``bool =
+            False`` the artifact could not tell a measured negative from a
+            missing rule, and said "not public API" for both. Only a
+            positive input fills it: an analyzer's own rule, an export
+            modifier (``pub`` / ``public`` / ``exported``), or a language
+            signal that the symbol is not public at all.
         cyclomatic_complexity: McCabe cyclomatic complexity (decision points + 1).
             Counts if/elif/else, for, while, except, with, and/or, match/case.
         line_span: Physical line span of the symbol body — ``end_line -
@@ -638,7 +646,7 @@ class Symbol:
     is_example_file: bool = False  # WI-jobuj: example/demo/sample/tutorial code
     is_config_file: bool = False  # WI-jobuj: dependency/build manifest
     is_generated_file: bool = False  # WI-tizij: generated code flag
-    is_exported: bool = False  # WI-zimum: public API / externally reachable
+    is_exported: Optional[bool] = None  # WI-zimum: public API; None = unobserved (INV-kubup)
     cyclomatic_complexity: Optional[int] = None
     line_span: Optional[int] = None
     signature: Optional[str] = None  # axis: free-text — callable signature string in source-language grammar; consumers display, never branch on the value itself.
@@ -749,7 +757,7 @@ class Symbol:
             is_example_file=supply_chain.get("is_example_file", False),
             is_config_file=supply_chain.get("is_config_file", False),
             is_generated_file=supply_chain.get("is_generated_file", False),
-            is_exported=supply_chain.get("is_exported", False),
+            is_exported=supply_chain.get("is_exported"),  # absent = unobserved (INV-kubup)
             cyclomatic_complexity=d.get("cyclomatic_complexity"),
             # WI-bozid back-compat: pre-rename maps stored this as lines_of_code.
             line_span=d.get("line_span", d.get("lines_of_code")),

@@ -422,8 +422,14 @@ def _symbol_spec() -> ClassSpec:
                         "description": "True if the file is generated code",
                     },
                     "is_exported": {
-                        "type": "boolean",
-                        "description": "True if the symbol is part of the package's public API",
+                        "type": ["boolean", "null"],
+                        "description": (
+                            "True if the symbol is part of the package's public API, "
+                            "false if a producer measured that it is not, and null when "
+                            "no producer computed exportedness for this record "
+                            "(INV-kubup: seventeen analyzer modules have a rule and "
+                            "ninety-odd do not)"
+                        ),
                     },
                 },
                 "required": ["tier", "tier_name", "reason"],

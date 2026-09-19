@@ -177,8 +177,8 @@ def _has_scip_origin_edge(edges: list[Edge]) -> bool:
     languages=["rust"],
     backend="scip",
     executes_analysed_code=True,
-    # The SCIP translation computes no exportedness: `Symbol.is_exported`
-    # stays the dataclass default, which is not an observation (INV-huboz).
+    # Nothing to declare: every tracked attribute's default is absent
+    # since INV-kubup, so an unassigned field is already an abstention.
     merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN, observes=()),
 )
 def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:

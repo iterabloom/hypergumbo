@@ -10770,10 +10770,12 @@ def _classify_symbols(
         # ``export`` keyword); this step additionally picks up modifier-
         # based signals for Go ("exported"), Rust ("pub"/"pub(...)"),
         # and languages that emit "public" via visibility_from_modifiers.
-        symbol.is_exported = (
-            symbol.is_exported
-            or is_exported_from_modifiers(symbol.modifiers)
-        )
+        # INV-kubup: an export modifier is a positive signal and fills the
+        # field; its ABSENCE is not. The old ``or`` spelling resolved every
+        # unobserved record to False, which read downstream as "measured,
+        # not public API" for the ninety-odd analyzers that have no rule.
+        if is_exported_from_modifiers(symbol.modifiers):
+            symbol.is_exported = True
         # INV-virik: a fall-through to the "outside repo" default-bucket
         # classification means the path didn't match ANY tier policy.
         # Record it as a classification failure so consumers can see the

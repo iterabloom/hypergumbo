@@ -5269,10 +5269,10 @@ def _run_analysis(
         # WI-zimum: fold in modifier-derived export signal. Analyzer
         # may have already set is_exported (WI-gipag Python __all__);
         # otherwise pick up "public"/"exported"/"pub" from modifiers.
-        symbol.is_exported = (
-            symbol.is_exported
-            or is_exported_from_modifiers(symbol.modifiers)
-        )
+        # INV-kubup: only the PRESENCE of the modifier is a signal — its
+        # absence leaves the field unobserved rather than asserting False.
+        if is_exported_from_modifiers(symbol.modifiers):
+            symbol.is_exported = True
 
     # Deduplicate edges by ID (some analyzers may produce duplicate edges)
     seen_edge_ids: set[str] = set()

@@ -597,7 +597,9 @@ def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
 
     - ``is_exported`` — a public API cannot be non-public, so language
       visibility is a **necessary but not sufficient** condition:
-      ``is_exported`` is downgraded to False for any non-public symbol, but is
+      ``is_exported`` is set False for any non-public symbol (a non-public
+      level is always a language signal's verdict, never the default, so
+      this is an observation — INV-kubup), but is
       NOT set True merely because a symbol is language-public. (A pure
       ``is_exported = visibility=='public'`` alias would flip 58% of the
       self-corpus — 19k of them test-file symbols — from not-exported to
@@ -626,6 +628,10 @@ def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
         sym.meta["visibility_signal"] = signal
         sym.meta.pop("visibility", None)
         # is_exported requires public visibility (necessary, not sufficient).
+        # INV-kubup: this fills the field only when a language signal
+        # decided the level — ``compute_visibility`` returns public for the
+        # default, so a non-public level is always somebody's observation,
+        # and "not public" settles public-API membership on its own.
         if level != VISIBILITY_PUBLIC:
             sym.is_exported = False
         # modifiers keeps only non-visibility terms.
