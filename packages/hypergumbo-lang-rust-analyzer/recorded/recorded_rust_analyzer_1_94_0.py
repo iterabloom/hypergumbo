@@ -237,6 +237,22 @@ AARDVARK_DNS_AGREEMENT_TALLY: Final[dict[str, int]] = {
     "disagree_constant_vs_variable": 15,
 }
 
+#: The SCIP arm's occurrence edges on the recording and their tree-sitter
+#: twins (WI-zapuk). A "twin" is a tree-sitter edge on the same (src, dst)
+#: after both endpoints are paired through the declared anchors. The nine
+#: twins that still differ are tuple-struct / variant CONSTRUCTION sites the
+#: tree-sitter arm labels ``calls`` while the SCIP target is a struct or
+#: variant. (Named without "edge type": see AARDVARK_DNS_AGREEMENT_TALLY.)
+AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
+    "scip_edges": 498,
+    "calls": 130,
+    "references": 368,
+    "field_target_references": 113,
+    "twins": 130,
+    "twins_calls_calls": 121,
+    "twins_references_calls": 9,
+}
+
 
 def aardvark_dns_crate_root() -> Path:
     """The committed aardvark-dns crate the index was recorded on."""

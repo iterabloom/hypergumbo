@@ -178,7 +178,7 @@ _KIND_MAP: Dict[DescriptorKind, str] = {
 # Both maps are held on the Symbol.kind axis by test_scip_kind_map_conformance.
 
 
-def _symbol_information_kind_values() -> Dict[str, int]:
+def symbol_information_kind_values() -> Dict[str, int]:
     """``SymbolInformation.Kind`` member name -> value, via the enum descriptor.
 
     The generated module has no type stubs, so a direct attribute access is
@@ -190,7 +190,7 @@ def _symbol_information_kind_values() -> Dict[str, int]:
     return {name: int(kind_enum.Value(name)) for name in kind_enum.keys()}
 
 
-_KIND_VALUE = _symbol_information_kind_values()
+_KIND_VALUE = symbol_information_kind_values()
 _SCIP_KIND_MAP: Dict[int, str] = {
     _KIND_VALUE[name]: kind
     for name, kind in (

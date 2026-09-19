@@ -23,7 +23,9 @@ Behavioural contract pinned here:
   module statements, imports at module scope, occurrences before the
   first definition) are skipped silently. Attributing them to a
   phantom caller would introduce false edges.
-* Edges are emitted with ``edge_type="references"``,
+* Edges are emitted with ``edge_type="calls"`` when the target's declared
+  kind is callable and ``"references"`` otherwise (WI-zapuk); before that,
+  uniformly ``"references"``,
   ``evidence_type="scip_occurrence_ref"``, ``origin="scip"``, and
   meta carrying the scip symbol strings and the role bitfield. A
   downstream linker can specialize to "calls" / "writes_to" / "imports"
@@ -34,6 +36,8 @@ Behavioural contract pinned here:
   either endpoint drops the edge.
 """
 from __future__ import annotations
+
+import pytest
 
 from hypergumbo_core.ir import Edge
 from hypergumbo_core.scip._generated import scip_pb2
@@ -465,3 +469,89 @@ def test_innermost_is_chosen_by_enclosing_range_when_items_nest() -> None:
     ])
     edges = scip_index_to_call_edges(_idx(doc), run_id="test")
     assert [(e.src, e.dst) for e in edges] == [(method, callee)]
+
+
+# ---------------------------------------------------------------------------
+# WI-zapuk / ADR-0057 §7: the edge type comes from the TARGET's declared kind
+# ---------------------------------------------------------------------------
+#
+# The row prescribed mapping ``Occurrence.symbol_roles``; measured on the
+# recorded aardvark-dns index, rust-analyzer 1.94.0 sets ``symbol_roles = 0``
+# on 3,543 of 3,543 reference occurrences, so there is nothing there to map.
+# What the producer DOES declare is ``SymbolInformation.kind`` on every
+# definition, and a reference whose target is declared callable is a call.
+
+K = scip_pb2.SymbolInformation.Kind
+
+
+def _one_ref(target_kind: int | None, *, callee_doc_path: str | None = None) -> Edge:
+    caller, callee = _sym("foo"), _sym("bar")
+    callee_info = (
+        scip_pb2.SymbolInformation(symbol=callee)
+        if target_kind is None
+        else scip_pb2.SymbolInformation(symbol=callee, kind=target_kind)
+    )
+    caller_doc_symbols = [scip_pb2.SymbolInformation(symbol=caller)]
+    caller_doc_occurrences = [
+        scip_pb2.Occurrence(symbol=caller, symbol_roles=DEFINITION_ROLE, range=[0, 0, 20, 0]),
+        scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 4, 10]),
+    ]
+    if callee_doc_path is None:
+        caller_doc_symbols.append(callee_info)
+        caller_doc_occurrences.append(
+            scip_pb2.Occurrence(symbol=callee, symbol_roles=DEFINITION_ROLE, range=[30, 0, 35, 0]),
+        )
+        docs = [_doc_with(symbols=caller_doc_symbols, occurrences=caller_doc_occurrences)]
+    else:
+        docs = [
+            _doc_with(symbols=caller_doc_symbols, occurrences=caller_doc_occurrences),
+            _doc_with(
+                symbols=[callee_info],
+                occurrences=[scip_pb2.Occurrence(symbol=callee, symbol_roles=DEFINITION_ROLE, range=[0, 0, 3, 0])],
+                path=callee_doc_path,
+            ),
+        ]
+    [edge] = scip_index_to_call_edges(_idx(*docs), run_id="test")
+    return edge
+
+
+class TestEdgeTypeFromTheTargetsDeclaredKind:
+    @pytest.mark.parametrize("kind", [
+        K.Function, K.Method, K.StaticMethod, K.TraitMethod, K.AbstractMethod, K.Constructor,
+    ])
+    def test_a_reference_to_a_declared_callable_is_a_call(self, kind: int) -> None:
+        edge = _one_ref(kind)
+        assert edge.edge_type == "calls"
+        # The pathway is unchanged: this is still a span-enclosed occurrence.
+        assert edge.evidence_type == "scip_occurrence_ref"
+
+    @pytest.mark.parametrize("kind", [K.Field, K.Variable, K.Constant, K.Struct, K.Enum, K.TypeAlias, K.Module])
+    def test_a_reference_to_a_declared_non_callable_stays_a_reference(self, kind: int) -> None:
+        assert _one_ref(kind).edge_type == "references"
+
+    def test_an_undeclared_target_kind_stays_a_reference(self) -> None:
+        """An emitter that leaves ``kind`` unset gets no guess: ``references``."""
+        assert _one_ref(None).edge_type == "references"
+
+    def test_the_callee_declared_in_another_document_is_still_a_call(self) -> None:
+        """The kind lives with the DEFINING document's SymbolInformation; a
+        cross-file call must read it from there, not from the caller's."""
+        assert _one_ref(K.Function, callee_doc_path="other.py").edge_type == "calls"
+
+    def test_role_bits_are_still_preserved_but_do_not_decide(self) -> None:
+        """rust-analyzer sets no role bits; an emitter that does keeps them
+        in meta for a later reader. No read/write edge type is minted from
+        them here — no recorded producer sets them yet (ADR-0057 §12)."""
+        caller, callee = _sym("foo"), _sym("bar")
+        doc = _doc_with(
+            symbols=[scip_pb2.SymbolInformation(symbol=caller),
+                     scip_pb2.SymbolInformation(symbol=callee, kind=K.Variable)],
+            occurrences=[
+                scip_pb2.Occurrence(symbol=caller, symbol_roles=DEFINITION_ROLE, range=[0, 0, 20, 0]),
+                scip_pb2.Occurrence(symbol=callee, symbol_roles=scip_pb2.SymbolRole.WriteAccess, range=[5, 4, 10]),
+                scip_pb2.Occurrence(symbol=callee, symbol_roles=DEFINITION_ROLE, range=[30, 0, 35, 0]),
+            ],
+        )
+        [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
+        assert edge.edge_type == "references"
+        assert edge.meta["symbol_roles"] == int(scip_pb2.SymbolRole.WriteAccess)

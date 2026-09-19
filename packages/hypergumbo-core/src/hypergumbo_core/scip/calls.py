@@ -76,13 +76,30 @@ Enclosure resolution:
 
 Edge shape:
 
-* ``edge_type="references"`` uniformly. SCIP's SymbolRole bitfield
-  (ReadAccess / WriteAccess / Import / Generated / Test / Definition /
-  ForwardDefinition) is preserved in ``meta["symbol_roles"]`` so a
-  downstream specialization pass can refine to "calls", "writes_to",
-  or "imports" when it has target-kind context. Keeping Slice D
-  generic avoids having to re-parse the SCIP symbol string here; the
-  Symbol list from Slice B already carries that via ``stable_id``.
+* ``edge_type`` is decided by the TARGET's declared kind (WI-zapuk,
+  ADR-0057 §7): a reference whose target the producer declares callable
+  (``SymbolInformation.kind`` in Function, Method, StaticMethod,
+  TraitMethod, AbstractMethod, ProtocolMethod, PureVirtualMethod,
+  Constructor) is ``calls``; every other reference — and every reference
+  to a target whose kind the emitter left unset — is ``references``.
+  Until WI-zapuk every occurrence edge was ``references`` "so a
+  downstream specialization pass can refine to calls / writes_to /
+  imports when it has target-kind context"; no such pass existed, and
+  the tree-sitter arm labels the same call sites ``calls``, so under
+  ``edge_key = (src, dst, edge_type)`` none of the shared call sites
+  was a duplicate the merge pass could fold (121 of 130 callable-target
+  SCIP edges on the recorded aardvark-dns fixture have a tree-sitter
+  ``calls`` twin on the paired endpoints). The row prescribed mapping
+  ``Occurrence.symbol_roles`` instead; measured on the recording,
+  rust-analyzer 1.94.0 sets ``symbol_roles = 0`` on 3,543 of 3,543
+  reference occurrences, so there is nothing there to map. The bitfield
+  is still preserved in ``meta["symbol_roles"]``, and NO read / write
+  edge type is minted from it: no recorded producer sets those bits
+  yet, and a mapping nothing exercises is a claim (ADR-0057 §12). What
+  this rule over-claims: a callable referenced as a VALUE (a function
+  passed to ``.map``) is ``calls`` too — SCIP carries no call-position
+  signal — which is why the confidence below stays at the
+  occurrence-ref level rather than rising to a syntactic call's.
 
 * ``evidence_type="scip_occurrence_ref"`` distinguishes these edges
   from Slice C's ``scip_relationship`` edges so the bakeoff-reflect
@@ -105,12 +122,48 @@ from typing import Any, Callable, List, Optional, Tuple
 from ..ir import Edge
 from ._generated import scip_pb2
 from .descriptor import is_local_symbol
+from .index import symbol_information_kind_values
 
 
 _ROLE_DEFINITION = 0x01
 
 _EVIDENCE_TYPE = "scip_occurrence_ref"
 _CONFIDENCE = 0.85
+
+#: ``SymbolInformation.kind`` values a producer uses for a callable. A
+#: reference to one of these is a call site (see the module docstring for
+#: the over-claim this accepts and why role bits cannot decide instead).
+_CALLABLE_KIND_VALUES: frozenset[int] = frozenset(
+    symbol_information_kind_values()[name]
+    for name in (
+        "Function",
+        "Method",
+        "StaticMethod",
+        "TraitMethod",
+        "AbstractMethod",
+        "ProtocolMethod",
+        "PureVirtualMethod",
+        "Constructor",
+    )
+)
+
+
+def _declared_kinds(index: Any) -> "dict[str, int]":
+    """``symbol -> SymbolInformation.kind`` over EVERY document.
+
+    The kind lives with the DEFINING document's ``SymbolInformation``; a
+    cross-file call must read it from there, not from the caller's document.
+    """
+    kinds: "dict[str, int]" = {}
+    for doc in index.documents:
+        for sym_info in doc.symbols:
+            if sym_info.kind:
+                kinds[sym_info.symbol] = int(sym_info.kind)
+    return kinds
+
+
+def _edge_type_for(target_symbol: str, declared_kinds: "dict[str, int]") -> str:
+    return "calls" if declared_kinds.get(target_symbol) in _CALLABLE_KIND_VALUES else "references"
 
 
 def _definition_extent(occ: Any) -> Optional[Tuple[int, int, int, int]]:
@@ -184,6 +237,7 @@ def scip_index_to_call_edges(
     See the module docstring for enclosure semantics and edge shape.
     """
     out: List[Edge] = []
+    declared_kinds = _declared_kinds(index)
     for doc in index.documents:
         # Build the definition list once per document, ordered to make
         # tie-breaking deterministic (equal-area ties go to the first
@@ -229,7 +283,7 @@ def scip_index_to_call_edges(
             out.append(Edge.create(
                 src=src_resolved,
                 dst=dst_resolved,
-                edge_type="references",
+                edge_type=_edge_type_for(occ.symbol, declared_kinds),
                 line=ref_span[0] + 1,
                 origin="scip",
                 evidence_type=_EVIDENCE_TYPE,
