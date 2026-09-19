@@ -1,0 +1,49 @@
+Original commit body from b7c76af4e928a2517229ae381dbe98a7599503c7:
+
+`Symbol.is_exported` was `bool = False`, with no absent value. Seventeen
+analyzer modules compute exportedness; around ninety do not, and every
+record they emitted carried a `false` no consumer could tell from a
+measured one. On this repository's own survey that was 36,659 of 52,728
+records, 29,505 of them with no visibility signal of any kind — read by
+the WI-zimum dead-code seed set, the `exported_symbols` count and the
+WI-zafab `--exclude-exported` filter.
+
+It is now `Optional[bool] = None`, and only a positive input fills it: an
+analyzer's own rule; an export modifier (`pub`/`public`/`exported`); or a
+language signal that the symbol is not public at all, which finalize
+writes as False because public-API membership needs public visibility and
+`compute_visibility` returns public for the DEFAULT — so a non-public
+level is always somebody's observation. The supply-chain fold, spelled
+`is_exported or is_exported_from_modifiers(...)` in two copies (`cli.py`
+and `sketch.py`), resolved every unobserved record to False; both now
+upgrade only on the modifier's presence.
+
+Measured per record on the same repository, before and after: 28,049
+`false` -> `null`, 7,902 `false` kept as real measurements, 15,844 `true`
+unchanged, and no `true` lost. By kind the moved population is 23,466
+methods (`py.py` has a rule for module-level constructs but not methods —
+filed as WI-kohah), 2,049 external symbols, 1,890 file anchors.
+
+The JS/TS analyzer now records both directions: a module's `export`
+clauses are the whole of its public API, so a declaration absent from them
+is MEASURED as not exported, including in a file with no exports at all.
+Its synthetic per-file anchor is left undecided — the field is about
+declarations and this analyzer has no rule for the anchor.
+
+A consequence inside ADR-0057: `ABSTENTION_BLIND_ATTRIBUTES` is derived
+from `Symbol`'s field defaults and `is_exported` was its last member, so
+the set is empty, every anchored producer rules `observes=()`, and
+INV-huboz's declaration goes dormant. It stays armed — a tracked attribute
+that gains a concrete default repopulates the set and the contract test
+then refuses every producer that has not re-ruled — and since an empty
+live set would make that guard untestable, the derivation is now a
+function exercised on a record type that has such a field.
+
+Schema 0.20.11 -> 0.20.12: `supply_chain.is_exported` widens from
+`boolean` to `boolean|null`. Readers that test truthiness are unaffected;
+all of them do. Three mutants killed (each fold restored, and `from_dict`
+reading an absent key as False).
+
+Closes INV-kubup
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
