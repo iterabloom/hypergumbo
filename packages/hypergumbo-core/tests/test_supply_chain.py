@@ -2481,7 +2481,11 @@ class TestIsTestFileAxis:
         _classify_symbols([public_fn, private_fn], tmp_path, set())
 
         assert public_fn.is_exported is True
-        assert private_fn.is_exported is False
+        # INV-kubup: the PRESENCE of an export modifier is the signal this
+        # step reads. `unexported` is a signal too, but it is the visibility
+        # pass's (finalize maps it to `private`, which cannot be public API);
+        # this step no longer writes a False nobody computed.
+        assert private_fn.is_exported is None
 
     def test_classify_symbols_sets_is_exported_for_rust_pub(
         self, tmp_path: Path
@@ -2525,7 +2529,11 @@ class TestIsTestFileAxis:
 
         assert pub_fn.is_exported is True
         assert pub_crate_fn.is_exported is True
-        assert priv_fn.is_exported is False
+        # INV-kubup: a Rust item without `pub` IS private, but that is the
+        # rust analyzer's rule (it sets is_exported on every item it emits);
+        # this hand-built Symbol carries no such measurement, and this step
+        # must not invent one from the absence of a modifier.
+        assert priv_fn.is_exported is None
 
 
 class TestIsGeneratedFileAxis:

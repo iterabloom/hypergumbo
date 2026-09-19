@@ -293,9 +293,9 @@ AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY = {"namespace": 18, "type_alias": 2, "variab
 # `name`: the 38 fields and 27 methods tree-sitter qualifies as `Type::member`
 # and SCIP emits bare — the anchors' name_key folds them, the carried scalar
 # keeps the incumbent's form. `is_exported`: one-sided to the incumbent on all
-# 148 — it computes exportedness (`"pub" in modifiers`) and the SCIP arm
-# declares it computes none (`observes=()`), so the dataclass default it would
-# otherwise have contributed on every record is not a candidate (INV-huboz). `span`: the
+# 148 — `rust.py` computes exportedness for every item it emits (`"pub" in
+# modifiers`) and the SCIP arm computes none, so since INV-kubup its records
+# carry no value at all rather than a `False` that read as a measurement. `span`: the
 # item/token role split of §10, by construction. `stable_id`: derived from the
 # attributes above it; the 14 one-sided are the struct/enum/trait records the
 # SCIP arm emits without one. The one-sided rust-only columns are attributes

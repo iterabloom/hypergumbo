@@ -204,32 +204,44 @@ def _empty(value: Any) -> bool:
     return value is None or value == "" or value == []
 
 
-def _symbol_default(attribute: str) -> Any:
-    """The value a ``Symbol`` carries for ``attribute`` when nobody assigned it."""
-    declared = {f.name: f for f in fields(Symbol)}[attribute]
-    if declared.default is not MISSING:
-        return declared.default
-    if declared.default_factory is not MISSING:  # pragma: no branch - both forms occur
-        return declared.default_factory()
-    return None  # a required field: every producer supplies it
+def abstention_blind_attributes(
+    record_type: type, attributes: Sequence[str] = TRACKED_ATTRIBUTES,
+) -> Tuple[str, ...]:
+    """Those ``attributes`` whose default on ``record_type`` is a CONCRETE value.
+
+    Such a field cannot say that nobody looked: an unassigned one is
+    indistinguishable from a measured one, so a producer that never computes
+    it contributes a phantom candidate on every record it emits (INV-huboz).
+    For those attributes — and only those — the producer's
+    ``MergeAnchor.observes`` decides instead of the value (ADR-0057 §10).
+
+    Kept as a function over a record type so the derivation itself is
+    testable: the live sets are empty today (INV-kubup made ``is_exported``
+    ``Optional[bool] = None``, which was the last one), and a guard that can
+    only be exercised by regressing the tree is not a guard.
+    """
+    declared = {f.name: f for f in fields(record_type)}
+    blind = []
+    for attribute in attributes:
+        field_ = declared[attribute]
+        if field_.default is not MISSING:
+            default = field_.default
+        elif field_.default_factory is not MISSING:
+            default = field_.default_factory()
+        else:
+            continue  # a required field: every producer supplies it
+        if not _empty(default):
+            blind.append(attribute)
+    return tuple(blind)
 
 
-#: Tracked attributes whose ``Symbol`` default is a CONCRETE value, so the
-#: record cannot say that nobody looked (INV-huboz). ``_empty`` recognises
-#: absence for the other nine — per RECORD, which is better information than
-#: any declaration — but ``is_exported: bool = False`` is indistinguishable
-#: from a measured ``False``, and a producer that assigns the field nowhere
-#: contributed a phantom candidate on every record it emitted. For these, and
-#: only these, the producer's ``MergeAnchor.observes`` decides (ADR-0057 §10).
-#:
-#: DERIVED from the dataclass, not listed: a tracked attribute that gains a
-#: concrete default appears here the day it is added, and the registry
-#: contract test then refuses every anchored producer that has not ruled on
-#: it. A hand-kept list would have to be remembered instead.
-ABSTENTION_BLIND_ATTRIBUTES: Tuple[str, ...] = tuple(
-    attribute for attribute in TRACKED_ATTRIBUTES
-    if not _empty(_symbol_default(attribute))
-)
+#: The live set, DERIVED not listed, so a tracked attribute that gains a
+#: concrete default appears here the day it is added and the registry
+#: contract test then demands that every anchored producer rule on it. Empty
+#: since INV-kubup: every tracked attribute's default is absent, so each
+#: record says for itself, per record, whether its producer observed it —
+#: which is strictly better information than a per-producer declaration.
+ABSTENTION_BLIND_ATTRIBUTES: Tuple[str, ...] = abstention_blind_attributes(Symbol)
 
 
 def _candidates(

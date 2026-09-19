@@ -772,8 +772,9 @@ const x = require(name);
         assert by_name["baz"].is_exported is False
 
     def test_module_symbol_not_exported(self, tmp_path: Path) -> None:
-        """The synthetic file pseudo-node is never flagged (INV-kokaj
-        renamed kind from 'module' to 'file')."""
+        """The synthetic file pseudo-node carries no verdict at all: this
+        analyzer's rule is about declarations, and INV-kubup says a producer
+        with no rule for a record says nothing rather than "not exported"."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text(
@@ -786,10 +787,12 @@ const x = require(name);
         ]
         assert len(file_syms) >= 1
         for m in file_syms:
-            assert m.is_exported is False
+            assert m.is_exported is None
 
     def test_no_exports_means_nothing_flagged(self, tmp_path: Path) -> None:
-        """When a file has no export_statement, no symbols get flagged."""
+        """A file with no export_statement exports nothing — which this
+        analyzer MEASURES as False on every declaration, rather than leaving
+        undecided: the export clauses are the whole of the public API."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         (tmp_path / "app.js").write_text(
