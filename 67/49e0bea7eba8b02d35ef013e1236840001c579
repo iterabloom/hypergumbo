@@ -1,0 +1,52 @@
+Original commit body from c1cb0aac6b1323ccadc6787d9697a71a5baa300a:
+
+Under ADR-0057 §11 a tree-sitter `calls` edge to an external stub and a
+SCIP `calls` edge resolved to a first-party item at the same site are two
+edges (they disagree on dst), and until now the wrong answer sat at equal
+standing with the right one. §14 (owner ruling 2026-09-18): the resolved
+edge DEMOTES the stub, by rank_score, never deletes it, and records why.
+
+Placement: finalize sub-step 7a, _finalize_demote_superseded_stubs, right
+after the ADR-0037 resolution verdict — is_resolved is settled in Phase E,
+so the merge pass could not know which edge is the stub. The stamp and
+the rank adjustment both live here.
+
+The measurement the row required changed its number. On the committed
+aardvark-dns fixture 244 tree-sitter call edges end at a stub; 63 share a
+(src, line) with some resolved edge; 27 with a resolved edge of the same
+type; only 3 also name the same callee — every `wrap` the syntactic arm
+left external and the SCIP arm resolved to `Result::wrap`. The other 24
+are different calls that share a line (`a.b(c.d())`); demoting them would
+have been the false supersession the row warned about, and 5 of the 27
+were "superseded" only by the same producer's other call. So the rule as
+landed requires all of: same src, a shared call line (call_lines-aware),
+the same edge_type, the same declared callee name key (the language's
+incumbent anchor applied to the resolved dst's name and the stub's
+dst_ref.name / id name slot), and a producer in the resolved edge's origin
+that the stub's origin lacks. Languages with one anchored producer are
+untouched by construction.
+
+The demotion: rank_score *= SUPERSEDED_STUB_RANK_FACTOR (0.5, declared —
+the ADR-0039 ruling-3 multiplicative shape; joins WI-hukuf's table);
+confidence untouched; nothing deleted; edge count unchanged.
+meta.superseded_by / meta.superseded_by_origin — two new registered
+edge-meta keys, docs/schema.json regenerated — name the superseding edge
+and its producers, so a low rank is a stated fact.
+
+Tests: 12 unit tests on synthetic two-producer edges (fires for another
+producer's resolved call and for a merged edge, honours call_lines; does
+not fire for a different callee, the same producer, a different line or
+type, two stubs, a single-producer language; reads the callee from the id
+when dst_ref is absent; takes rank_score from confidence when unset); the
+fixture pins 244 stub calls, 3 superseded (each stamped with a SCIP-only
+edge to Result::wrap), 24 co-located sites untouched, every other
+rank_score and the edge count unchanged. Mutation: dropping the
+callee-name condition turns the unit and fixture pins red. The finalize
+sub-step order list gains the entry.
+
+Slice: 475 affected test files in 12 foreground chunks plus the
+schema-coverage file serially (WI-rukil), 18,340 passed; finalize.py and
+axis_meta_keys.py coverage 100%; mypy ratchet 667 unchanged.
+
+Tracker: WI-lihis.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
