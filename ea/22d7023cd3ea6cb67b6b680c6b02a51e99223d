@@ -1,0 +1,55 @@
+Original commit body from da199ca4f1061b1c1f255beed170fdbaf60fc2e9:
+
+Built on the measurement the row's own notes demanded first (tracker
+discussion + lab notebook 2026-09-19 12:15): on hypergumbo-core's 179 files
+scip-python types 3,973 of the 4,133 method-call receivers the syntax arm
+left module-less (96.1%; 3,840 stdlib, 96 in-repo, 37 third-party), where
+the Rust arm measured zero; the two Python arms agree on kind 4,721 to 2.
+The two shared-importer gaps that measurement exposed landed in PR #1082.
+
+New optional package packages/hypergumbo-lang-scip-python (pipx extra
+`scip-python`; the producer is `npm install -g @sourcegraph/scip-python
+@0.6.6`), registering `scip_python`: backend scip, languages [python],
+executes_analysed_code=False, merge anchor name-as-emitted over the
+identifier token — the ast python analyzer's anchor (WI-kokiz) pairs with
+it unchanged. gate / invoke / translate / analyzer mirror the rust-analyzer
+package; failures travel as pass-silence codes (dependency_unavailable /
+pass_crashed / unreported); a completed run that indexed nothing is a run.
+
+The translation drops what the syntax arm never models (parameter symbols,
+per-module __init__ declarations) and does the one thing the Rust arm never
+did: an external callee keeps the receiver's MODULE, as a `calls` edge on
+the syntax arm's own id shape (python:pathlib.Path:0-0:glob:unresolved with
+a structured dst_ref and call_construct), so the two arms are comparable at
+every call site and the I/O-boundary catalogue can read it.
+
+ADR-0045's deferred wiring fires: this is the first non-executing backend,
+so ruling 4's config tiers are consulted inside resolve_optin below the
+environment. `[backends] scip_python = true|false` is accepted in either
+tier for exactly the registry's config_optin_backends() — alternative arms
+declaring executes_analysed_code=False — project replacing user, and still
+refused as a trust key for the executing ones; both lists derive from one
+declaration. `--backend scip-python` checks the wrapper and the binary
+(exit 2 naming the install line otherwise) and writes HYPERGUMBO_SCIP_PYTHON;
+`--backend tree-sitter` is an explicit OFF for every opt-in backend;
+resolved_backend_set names both arms so the results cache keys a Python
+two-arm run separately.
+
+Recorded fixture (ADR-0057 §12): recorded/sample_project/, three files and
+the scip-python 0.6.6 index (project_root normalised; re-recorded after the
+repository's SPDX header was added to each file). Pinned: 10 of 11 SCIP
+records pair with all 10 syntax-arm records, 0 ambiguous, kind 10/10; 10
+folded, 7 corroborated; of the syntax arm's 7 module-less stubs 6 gain a
+typed twin at the same site and the 7th (a property) is superseded by the
+SCIP arm's resolved call (§14); where the syntax arm already knew the module
+the ids are identical and fold for free.
+
+A second producer forced three linker depends_on producer sets (pyffi,
+inherited_calls, type_hierarchy) to name scip_python, as rust_analyzer was
+named in WI-juzig — every one caught by the existing guards — and the
+architecture generator's package list gained the package. Not done, stated:
+no install-scip-python command; no installed-but-not-enabled nudge; the fold
+of a module-less stub into its typed twin at one call site is WI-hupod
+(needs_human_review, §11 makes dst identity).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
