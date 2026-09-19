@@ -117,11 +117,12 @@ half-resolved artefacts in the output.
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any, Callable, List, Optional, Tuple
 
 from ..ir import Edge
 from ._generated import scip_pb2
-from .descriptor import is_local_symbol
+from .descriptor import DescriptorKind, is_local_symbol, parse_scip_symbol
 from .index import symbol_information_kind_values
 
 
@@ -162,8 +163,30 @@ def _declared_kinds(index: Any) -> "dict[str, int]":
     return kinds
 
 
+@lru_cache(maxsize=None)
+def _descriptor_says_callable(symbol: str) -> bool:
+    """Whether the SCIP descriptor grammar itself marks ``symbol`` callable.
+
+    The fallback for a producer that declares NO ``SymbolInformation.kind``
+    (scip-python 0.6.6: ``kind == 0`` on every symbol, WI-nanom): a METHOD
+    descriptor — ``name().`` — is a function or method in the grammar, so a
+    reference to it is a call site. Only consulted when the producer was
+    silent; a declared kind keeps winning (WI-gapup measured the leaf suffix
+    wrong against a producer that DID declare). Cached per symbol string:
+    an index references the same callee many times.
+    """
+    try:
+        leaf = parse_scip_symbol(symbol).descriptors[-1]
+    except (ValueError, IndexError):  # pragma: no cover - a malformed symbol is not callable
+        return False
+    return leaf.kind is DescriptorKind.METHOD
+
+
 def _edge_type_for(target_symbol: str, declared_kinds: "dict[str, int]") -> str:
-    return "calls" if declared_kinds.get(target_symbol) in _CALLABLE_KIND_VALUES else "references"
+    declared = declared_kinds.get(target_symbol)
+    if declared is not None:
+        return "calls" if declared in _CALLABLE_KIND_VALUES else "references"
+    return "calls" if _descriptor_says_callable(target_symbol) else "references"
 
 
 def _definition_extent(occ: Any) -> Optional[Tuple[int, int, int, int]]:

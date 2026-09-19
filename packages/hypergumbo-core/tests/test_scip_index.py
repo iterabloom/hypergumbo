@@ -323,13 +323,17 @@ def test_language_is_lowercased() -> None:
     assert s.language == "rust"
 
 
-def test_empty_language_falls_back_to_unknown() -> None:
+def test_empty_language_falls_back_to_the_extension_then_unknown() -> None:
+    """WI-nanom: an empty ``Document.language`` reads the file extension
+    (``mod.py`` → ``python``); only a path the taxonomy cannot place stays
+    ``unknown``."""
     sym = _py_symbol("foo")
-    idx = _make_index(language="",
-                     symbols=[scip_pb2.SymbolInformation(symbol=sym)],
-                     occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[0, 0, 1])])
-    [s] = scip_index_to_symbols(idx)
-    assert s.language == "unknown"
+    for path, expected in (("mod.py", "python"), ("mod.nope", "unknown")):
+        idx = _make_index(language="", path=path,
+                         symbols=[scip_pb2.SymbolInformation(symbol=sym)],
+                         occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[0, 0, 1])])
+        [s] = scip_index_to_symbols(idx)
+        assert s.language == expected
 
 
 def test_multiple_documents_emit_from_each() -> None:
@@ -449,3 +453,36 @@ class TestKindFromTheDescriptorChain:
     ])
     def test_placement_by_nearest_non_type_parameter_ancestor(self, sym: str, expected: str) -> None:
         assert _one(sym).kind == expected
+
+
+# ---------------------------------------------------------------------------
+# WI-nanom: a producer that leaves Document.language empty (scip-python 0.6.6
+# does, on every document) must not land every record in language "unknown"
+# — the merge pass keys on language, so nothing would ever pair. The file
+# extension is the fallback, through the taxonomy, backend-neutral.
+# ---------------------------------------------------------------------------
+
+
+def _one_definition(path: str, language: str = "") -> scip_pb2.Index:
+    sym = _py_symbol("f")
+    return _make_index(
+        language=language, path=path,
+        symbols=[scip_pb2.SymbolInformation(symbol=sym)],
+        occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[0, 0, 5])],
+    )
+
+
+def test_an_empty_document_language_falls_back_to_the_file_extension() -> None:
+    [symbol] = scip_index_to_symbols(_one_definition("pkg/mod.py"))
+    assert symbol.language == "python"
+    assert symbol.id.startswith("python:pkg/mod.py:")
+
+
+def test_a_declared_document_language_still_wins_over_the_extension() -> None:
+    [symbol] = scip_index_to_symbols(_one_definition("pkg/mod.py", language="Rust"))
+    assert symbol.language == "rust"
+
+
+def test_an_empty_language_and_an_unknown_extension_stay_unknown() -> None:
+    [symbol] = scip_index_to_symbols(_one_definition("pkg/mod.zzz"))
+    assert symbol.language == "unknown"

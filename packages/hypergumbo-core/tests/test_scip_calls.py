@@ -94,7 +94,9 @@ def test_ref_inside_definition_emits_edge() -> None:
     assert isinstance(edge, Edge)
     assert edge.src == caller
     assert edge.dst == callee
-    assert edge.edge_type == "references"
+    # No declared kind on ``bar``; its METHOD descriptor (``bar().``) says
+    # callable, so the reference is a call site (WI-nanom).
+    assert edge.edge_type == "calls"
     assert edge.origin == ["scip"]
     assert edge.evidence_type == "scip_occurrence_ref"
     assert edge.line == 6  # 5 + 1 (SCIP 0-index → hypergumbo 1-index)
@@ -529,9 +531,13 @@ class TestEdgeTypeFromTheTargetsDeclaredKind:
     def test_a_reference_to_a_declared_non_callable_stays_a_reference(self, kind: int) -> None:
         assert _one_ref(kind).edge_type == "references"
 
-    def test_an_undeclared_target_kind_stays_a_reference(self) -> None:
-        """An emitter that leaves ``kind`` unset gets no guess: ``references``."""
-        assert _one_ref(None).edge_type == "references"
+    def test_an_undeclared_target_kind_reads_the_descriptor(self) -> None:
+        """An emitter that leaves ``kind`` unset (scip-python 0.6.6 on every
+        symbol, WI-nanom) is answered by the SCIP descriptor grammar: the
+        ``_sym`` helper's METHOD descriptor is callable, so ``calls``. The
+        TERM-descriptor counterpart stays ``references`` (see the WI-nanom
+        block below)."""
+        assert _one_ref(None).edge_type == "calls"
 
     def test_the_callee_declared_in_another_document_is_still_a_call(self) -> None:
         """The kind lives with the DEFINING document's SymbolInformation; a
@@ -555,3 +561,51 @@ class TestEdgeTypeFromTheTargetsDeclaredKind:
         [edge] = scip_index_to_call_edges(_idx(doc), run_id="test")
         assert edge.edge_type == "references"
         assert edge.meta["symbol_roles"] == int(scip_pb2.SymbolRole.WriteAccess)
+
+
+# ---------------------------------------------------------------------------
+# WI-nanom: a producer that declares NO SymbolInformation.kind at all
+# (scip-python 0.6.6: kind == 0 on 17,851 of 17,851 symbols) emitted only
+# `references` — every call site typed as a bare reference, the shape that
+# measured zero receiver typing on the Rust arm. When the producer is silent
+# the SCIP descriptor grammar still says what is callable: a METHOD
+# descriptor (`name().`) is a function or method. A declared kind, when
+# present, keeps winning (WI-gapup).
+# ---------------------------------------------------------------------------
+
+
+def _term(name: str) -> str:
+    return f"scip-python pypi pkg 0.1.0 mod/{name}."
+
+
+def _call_site(callee: str, *, declared_kind: int = 0) -> scip_pb2.Index:
+    caller = _sym("caller")
+    return _idx(_doc_with(
+        symbols=[
+            scip_pb2.SymbolInformation(symbol=caller),
+            scip_pb2.SymbolInformation(symbol=callee, kind=declared_kind),
+        ],
+        occurrences=[
+            scip_pb2.Occurrence(symbol=caller, symbol_roles=DEFINITION_ROLE, range=[0, 0, 20, 0]),
+            scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 4, 10]),
+            scip_pb2.Occurrence(symbol=callee, symbol_roles=DEFINITION_ROLE, range=[30, 0, 35, 0]),
+        ],
+    ))
+
+
+def test_an_undeclared_kind_falls_back_to_the_method_descriptor_for_calls() -> None:
+    [edge] = scip_index_to_call_edges(_call_site(_sym("callee")), run_id="test")
+    assert edge.edge_type == "calls"
+
+
+def test_an_undeclared_kind_with_a_term_descriptor_is_a_reference() -> None:
+    [edge] = scip_index_to_call_edges(_call_site(_term("value")), run_id="test")
+    assert edge.edge_type == "references"
+
+
+def test_a_declared_non_callable_kind_beats_the_method_descriptor() -> None:
+    from hypergumbo_core.scip.index import symbol_information_kind_values
+
+    variable = symbol_information_kind_values()["Variable"]
+    [edge] = scip_index_to_call_edges(_call_site(_sym("callee"), declared_kind=variable), run_id="test")
+    assert edge.edge_type == "references"

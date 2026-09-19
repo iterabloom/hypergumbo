@@ -106,6 +106,7 @@ Edge cases intentionally handled by skip rather than raise:
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, List
 
 from ..analyze.base import _short_sha256, make_symbol_id
@@ -269,15 +270,24 @@ def _span_from_range(range_array: "list[int]") -> Span:
 def _resolve_language(doc: scip_pb2.Document) -> str:
     """Normalize ``Document.language`` to a lowercase hypergumbo language.
 
-    SCIP emitters set ``Document.language`` to strings like ``"Python"``
-    (scip-python), ``"Rust"`` (rust-analyzer), or a lowercase form.
-    Hypergumbo analyzers use lowercase identifiers across the board, so
-    we flatten here. An empty language field becomes ``"unknown"``
-    rather than an empty string so downstream ``id`` construction never
+    SCIP emitters set ``Document.language`` to strings like ``"Rust"``
+    (rust-analyzer) or a lowercase form; hypergumbo analyzers use lowercase
+    identifiers across the board, so we flatten here. A producer may also
+    leave the field EMPTY — scip-python 0.6.6 does, on every document
+    (WI-nanom) — and until this fallback that landed every one of its
+    records in language ``"unknown"``, which the merge pass keys on, so
+    nothing could ever pair with the ``python`` arm. The file extension is
+    the backend-neutral answer (the taxonomy's :func:`get_language`, the
+    same lookup discovery uses); ``"unknown"`` is kept only when neither
+    the producer nor the extension says, so ``id`` construction never
     produces a malformed ``:filename:...`` prefix.
     """
     raw = doc.language or ""
-    return raw.lower() if raw else "unknown"
+    if raw:
+        return raw.lower()
+    from ..taxonomy import get_language  # local: taxonomy is heavy and this module is not
+
+    return get_language(Path(doc.relative_path)) or "unknown"
 
 
 def _name_and_kind(scip_sym: Any, declared_kind: int = 0) -> "tuple[str, str]":
