@@ -21,7 +21,9 @@ The CLI uses argparse with subcommands for different operations:
   (SCIP-backed Rust backend, WI-dotud), ``install-embeddings`` /
   ``uninstall-embeddings``, ``add-extras`` / ``remove-extras``,
   ``init-catalogs`` (scaffold the user catalogue channels, ADR-0047),
-  ``trust-backend`` (record a per-repo backend opt-in, ADR-0045).
+  ``trust-backend`` (record a per-repo backend opt-in, ADR-0045),
+  ``backend-agreement`` (measure two backends' agreement from an
+  artifact's provenance slot, ADR-0057 §5).
 
 The authoritative set is derived from the parser itself —
 ``_registered_subcommands(build_parser())`` — not a hand-maintained literal.
@@ -3363,6 +3365,46 @@ def _ensure_rust_analyzer_binary_or_exit() -> None:
         file=sys.stderr,
     )
     sys.exit(2)
+
+
+def cmd_backend_agreement(args: argparse.Namespace) -> int:
+    """Measure how two backends agree, from one artifact's provenance slot.
+
+    ADR-0057 §5 rules that the built-in arbitration default is incumbent-first
+    "until a per-attribute measurement shows otherwise", and §10 that a
+    backend may declare itself authoritative for an attribute only by citing
+    a committed table. This is the instrument that produces the table
+    (``docs/audits/``, ``kind: backend_agreement``): it reads the merge
+    pass's own ``attribution`` / ``alternatives`` and the folded edges, so
+    the pairing measured is the pairing the pipeline performed. Markdown by
+    default (the committed form), ``--format json`` for a machine reader,
+    ``--out`` to write a file instead of stdout. Exit 2 when the artifact
+    cannot be read; an artifact with one producer per language is a valid
+    measurement that says so, exit 0.
+    """
+    import datetime as _dt
+
+    from .backend_agreement import measure_backend_agreement, render_markdown, to_json
+
+    artifact_path = Path(args.artifact)
+    try:
+        artifact = json.loads(artifact_path.read_text())
+    except (OSError, ValueError) as exc:
+        print(f"hypergumbo backend-agreement: cannot read {artifact_path}: {exc}", file=sys.stderr)
+        return 2
+    reports = measure_backend_agreement(artifact)
+    label = artifact_path.name
+    if args.format == "json":
+        text = json.dumps(to_json(reports, artifact_label=label), indent=2) + "\n"
+    else:
+        text = render_markdown(
+            reports, artifact_label=label, date=_dt.date.today().isoformat(),
+        )
+    if args.out:
+        Path(args.out).write_text(text)
+    else:
+        print(text, end="")
+    return 0
 
 
 def cmd_trust_backend(args: argparse.Namespace) -> int:
@@ -9640,6 +9682,23 @@ The output begins with passes suggested for your current directory."""
         "--show", action="store_true", help="Print the recorded decision and exit",
     )
     p_trust.set_defaults(func=cmd_trust_backend)
+
+    # hypergumbo backend-agreement (ADR-0057 §5)
+    p_agree = sub.add_parser(
+        "backend-agreement",
+        help=(
+            "Measure how two backends agree on one language, from a survey "
+            "artifact's provenance slot (the only evidence that may change an "
+            "arbitration default, ADR-0057 §5)"
+        ),
+    )
+    p_agree.add_argument("artifact", metavar="ARTIFACT", help="A survey artifact (JSON)")
+    p_agree.add_argument(
+        "--format", choices=["md", "json"], default="md",
+        help="Output format: md (the committed docs/audits/ form, default) or json",
+    )
+    p_agree.add_argument("--out", metavar="FILE", help="Write to FILE instead of stdout")
+    p_agree.set_defaults(func=cmd_backend_agreement)
 
     # hypergumbo uninstall-rust-analyzer
     p_uninstall_ra = sub.add_parser(

@@ -32,6 +32,10 @@ from hypergumbo_lang_mainstream.rust import analyze_rust
 from hypergumbo_lang_rust_analyzer.translate import translate_scip_to_hg
 
 from recorded_rust_analyzer_1_94_0 import (
+    AARDVARK_DNS_ATTRIBUTE_AGREEMENT,
+    AARDVARK_DNS_EDGE_OVERLAP,
+    AARDVARK_DNS_PAIRED_PER_CATEGORY,
+    AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY,
     AARDVARK_DNS_COUNTS,
     AARDVARK_DNS_AGREEMENT_TALLY,
     AARDVARK_DNS_CALL_SITE_TALLY,
@@ -257,6 +261,27 @@ def _both_arms() -> tuple[list[Symbol], list, list[dict[str, str]]]:
     return tree_sitter + scip_symbols, list(result.edges) + scip_edges, runs
 
 
+def _two_arm_artifact() -> dict:
+    """Both arms through the merge pass, edge dedup, the resolution verdict
+    and same-site supersession — the pipeline stages the backend-agreement
+    instrument reads — as one artifact dict of ``to_dict()`` records. The
+    committed ``docs/audits/0019`` table is this dict through
+    ``hypergumbo backend-agreement``; regenerate it with
+    ``scripts/regenerate-backend-agreement-table`` (which calls this)."""
+    symbols, edges, runs = _both_arms()
+    merge_producer_records(symbols, edges, runs)  # appends its own run to ``runs``
+    edges = deduplicate_edges(edges)
+    ids = {s.id for s in symbols}
+    for edge in edges:
+        edge.is_resolved = edge.dst in ids
+    demote_superseded_stubs(symbols, edges)
+    return {
+        "analysis_runs": runs,
+        "nodes": [s.to_dict() for s in symbols],
+        "edges": [e.to_dict() for e in edges],
+    }
+
+
 class TestTheMergePassOnBothArms:
     """WI-kokiz's acceptance, on committed input: the pass folds exactly the
     148 declarations the anchors pair, leaves the 21 SCIP-only records and
@@ -347,6 +372,52 @@ class TestTheMergePassOnBothArms:
         assert all(e.evidence_type.startswith("ast_") for e in folded)  # categorical: incumbent
         assert separately - len(deduplicate_edges(edges)) == shared
         assert all(e.attribution is None for e in edges if e.origin in (["rust"], ["scip"]))
+
+
+class TestTheAgreementInstrumentOnBothArms:
+    """ADR-0057 §5 (WI-dajif): the instrument reads the artifact's own
+    provenance, so on the recorded fixture it must reproduce the merge
+    pass's numbers — and the committed docs/audits/0019 table must be what
+    the instrument says today."""
+
+    def test_the_instrument_reproduces_the_merge_pass(self) -> None:
+        from hypergumbo_core.backend_agreement import measure_backend_agreement
+
+        [report] = measure_backend_agreement(_two_arm_artifact())
+        assert report.language == "rust" and report.producers == ["rust", "rust_analyzer"]
+        assert report.merged_nodes == AARDVARK_DNS_PAIRING["paired"]
+        assert report.nodes == AARDVARK_DNS_PAIRING["scip_definitions"]
+        assert {k: row["paired"] for k, row in report.pairing.items() if row["paired"]} == AARDVARK_DNS_PAIRED_PER_CATEGORY
+        assert {k: row["rust_analyzer"] for k, row in report.pairing.items() if row["rust_analyzer"]} == AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY
+        assert all(row["rust"] == 0 for row in report.pairing.values())
+        assert {
+            a.attribute: (a.agree, a.disagree, a.only["rust"], a.only["rust_analyzer"]) for a in report.attributes
+        } == AARDVARK_DNS_ATTRIBUTE_AGREEMENT
+        assert {(e.edge_type, e.resolved): (e.both, e.only["rust"], e.only["rust_analyzer"]) for e in report.edges} == AARDVARK_DNS_EDGE_OVERLAP
+        assert report.corroborated_edges == AARDVARK_DNS_CALL_SITE_TALLY["shared_call_keys_after_fold"]
+        assert report.superseded_edges == AARDVARK_DNS_CALL_SITE_TALLY["superseded_stubs"]
+        by_attr = {a.attribute: a for a in report.attributes}
+        assert by_attr["kind"].shapes == [("variable", "constant", 15)]
+        assert by_attr["is_exported"].shapes == [("null", "false", 41)]
+
+    def test_the_committed_table_is_what_the_instrument_says(self) -> None:
+        import re
+
+        from hypergumbo_core.audit_findings import declared_kind
+        from hypergumbo_core.backend_agreement import measure_backend_agreement
+
+        doc = Path(__file__).resolve().parents[3] / "docs" / "audits" / "0019-backend-agreement-rust-aardvark-dns.md"
+        if not doc.exists():
+            pytest.skip("docs/audits/ not present (isolated package run)")
+        assert declared_kind(doc) == "backend_agreement"
+        text = doc.read_text()
+        [report] = measure_backend_agreement(_two_arm_artifact())
+        for key, value in (("nodes", report.nodes), ("merged_nodes", report.merged_nodes),
+                           ("corroborated_edges", report.corroborated_edges),
+                           ("superseded_edges", report.superseded_edges)):
+            assert re.search(rf"^    {key}: {value}$", text, re.MULTILINE), f"{key}: {value} not in the committed table"
+        for attribute, (agree, disagree, rust_only, scip_only) in AARDVARK_DNS_ATTRIBUTE_AGREEMENT.items():
+            assert f"| `{attribute}` | {agree} | {disagree} | {rust_only} | {scip_only} |" in text
 
 
 class TestSameSiteSupersessionOnBothArms:
