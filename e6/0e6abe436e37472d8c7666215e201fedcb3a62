@@ -1,0 +1,46 @@
+Original commit body from e318c3c6ce17daea97c1f1aad3cf578b45b72ec9:
+
+ADR-0057 §5 rules that which producer wins a contested categorical
+attribute is a preference with one built-in default, never a hardcoded
+"type-aware wins". Until now the order was inferred in three places
+(registry.incumbent_first, the merge pass, finalize 7a) and the two
+declared levels were module constants. Now `hypergumbo_core.arbitration`
+is the one place precedence is computed:
+
+- ArbitrationPolicy(prefer, prefer_by_attribute, corroborated_confidence,
+  superseded_stub_rank_factor); BUILTIN_POLICY = incumbent first (the
+  registry's inference), 0.95, 0.5, no per-attribute exception.
+- `[merge]` in either ADR-0045 preference tier: `prefer` orders BACKENDS
+  (one line means the same thing for every language the backend serves),
+  `[merge.prefer_by_attribute]` replaces it per attribute, the two levels
+  move. Project tier replaces user tier key by key. Refused naming the
+  file and key, BEFORE any analysis runs (exit 2): an unknown key, a
+  backend no registered analyzer declares, an attribute the merge pass
+  does not arbitrate, a level outside [0, 1] (bool is not 1).
+- run_survey resolves the policy once and threads it into
+  merge_producer_records (precedence, per-attribute precedence, the §13
+  level) and FinalizeContext.arbitration_policy → demote_superseded_stubs
+  (producer order, the §14 factor). The constants are re-exported from
+  merge_producers / finalize under their old names.
+- §10 citation gate: BUILTIN_ATTRIBUTE_EXCEPTIONS is EMPTY — the first
+  backend-agreement table (docs/audits/0019) warranted none — and
+  validate_builtin_exceptions refuses, by name, any future entry that does
+  not cite a committed docs/audits/ document of kind backend_agreement
+  (live-tree test).
+- Which arm is the ALTERNATIVE stays a registry fact
+  (ALTERNATIVE_BACKENDS, now read through registry.incumbents_of by the
+  recorded-producer-input lint); which arm WINS is the policy's.
+
+Acceptance (the item's): a config.toml naming a per-attribute order changes
+the arbitrated scalar on the contested attribute in the artifact and
+nothing else (pipeline test on the second-Python-producer fixture: Alias
+variable → type_alias, every other (name, kind, origin, span) identical);
+an unknown key under [merge] exits 2 naming .hypergumbo.toml and the key.
+On the recorded aardvark-dns fixture a kind preference for the SCIP arm
+moves exactly the kind row's carried value (constant ← variable x15) and
+no other count; the committed 0019 table is unchanged under the built-in.
+Eight mutations each kill 1–5 tests. Not done, stated: no CLI flag or
+environment variable spells a precedence (no measurement has asked for a
+one-off override).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
