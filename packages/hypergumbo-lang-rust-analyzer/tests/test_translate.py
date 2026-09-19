@@ -172,6 +172,11 @@ class TestReassignRustStableIds:
         out = reassign_rust_stable_ids([sym], lambda _p: source)
         assert out[0].stable_id == "scip-raw-id"
 
+    @pytest.mark.incumbent_fed(
+        "extraction contract: pins that the helper folds the SAME repo-relative path "
+        "into the id as rust.py does, by handing it rust.py's own span; the "
+        "producer-shaped arm is test_production_shaped_span_keeps_the_scip_id_..."
+    )
     def test_parity_byte_matches_rust_py_for_nested_path(self, tmp_path: Path) -> None:
         """WI-bokab v7: the SCIP parity helper's id must byte-EQUAL ``analyze_rust``'s id
         for the same function at the same repo-relative NESTED path. Post-v7 the file path

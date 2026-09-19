@@ -28,58 +28,23 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-
-RUST_SAMPLE = """\
-pub fn top_level_add(x: i32, y: i32) -> i32 {
-    x + y
-}
-
-fn private_helper(name: &str) -> String {
-    name.to_string()
-}
-
-pub struct Counter {
-    value: i32,
-}
-
-impl Counter {
-    pub fn increment(&mut self, by: i32) -> i32 {
-        self.value += by;
-        self.value
-    }
-
-    fn reset(&mut self) {
-        self.value = 0;
-    }
-}
-
-pub trait Greeter {
-    fn greet(&self, name: &str) -> String;
-}
-
-impl Greeter for Counter {
-    fn greet(&self, name: &str) -> String {
-        format!("hi {}", name)
-    }
-}
-"""
+import pytest
 
 
-# Recorded 2026-09-18 from ``rust-analyzer scip`` (rust-analyzer 1.94.0,
-# 4a4ef49 2026-03-02) run on a crate whose ``src/lib.rs`` is RUST_SAMPLE byte for
-# byte. Keys are rust.py's ITEM spans; values are the 1-based lines of the
-# Definition-role Occurrence rust-analyzer emitted for the same callable. Every
-# value is the identifier token's line; only the single-line trait declaration
-# has a token range equal to its item range. (The document's ``crate/``
-# namespace occurrence, 1-33, is not a callable and is omitted.)
-RUST_ANALYZER_DEFINITION_LINES: dict[tuple[int, int], tuple[int, int]] = {
-    (1, 3): (1, 1),      # top_level_add
-    (5, 7): (5, 5),      # private_helper
-    (14, 17): (14, 14),  # Counter::increment
-    (19, 21): (19, 19),  # Counter::reset
-    (25, 25): (25, 25),  # Greeter::greet — trait declaration, single-line item
-    (29, 31): (29, 29),  # <Counter as Greeter>::greet
-}
+from recorded_rust_analyzer_1_94_0 import (
+    SAMPLE_SOURCE as RUST_SAMPLE,
+    callable_item_to_token_lines,
+)
+
+# Recorded from rust-analyzer 1.94.0 (4a4ef49 2026-03-02) on a crate whose
+# ``src/lib.rs`` is RUST_SAMPLE byte for byte — read from the shared recorded
+# module (ADR-0057 §12, WI-romuh) rather than transcribed here. Keys are the
+# ITEM spans (what rust.py spans a callable over); values are the identifier
+# token rust-analyzer puts in the Definition ``range``. Only the single-line
+# trait declaration has a token range equal to its item range.
+RUST_ANALYZER_DEFINITION_LINES: dict[tuple[int, int], tuple[int, int]] = (
+    callable_item_to_token_lines()
+)
 
 
 def _collect_rust_py_stable_ids(tmp_path: Path, source: str) -> dict[tuple[int, int], str]:
@@ -107,6 +72,11 @@ def _collect_rust_py_stable_ids(tmp_path: Path, source: str) -> dict[tuple[int, 
 class TestComputeRustStableIdFromSource:
     """Parity with ``rust.py`` on the shared extraction pipeline."""
 
+    @pytest.mark.incumbent_fed(
+        "extraction contract: proves the helper agrees with rust.py when handed "
+        "rust.py's own item spans; claims nothing about what production feeds it "
+        "(INV-dolud) — the recorded-span test beside it is the production arm"
+    )
     def test_helper_reproduces_rust_py_ids_when_given_the_item_span(
         self, tmp_path: Path,
     ) -> None:
@@ -178,6 +148,10 @@ class TestComputeRustStableIdFromSource:
                 )
         assert reached == [(25, 25)]
 
+    @pytest.mark.incumbent_fed(
+        "extraction contract: two same-named methods at rust.py's own spans get "
+        "rust.py's own distinct ids from the helper; not a claim about producer input"
+    )
     def test_distinguishes_trait_impl_methods_by_span(self, tmp_path: Path) -> None:
         """Two methods at different spans with the same name receive different stable_ids.
 
