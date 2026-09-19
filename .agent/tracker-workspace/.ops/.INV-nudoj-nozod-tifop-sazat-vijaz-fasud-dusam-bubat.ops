@@ -1,0 +1,23 @@
+- op: create  # 1650
+  at: '2026-09-19T20:02:15Z'  # 1650
+  by: agent  # 1650
+  actor: jgstern_agent  # 1650
+  clock: 1  # 1650
+  nonce: '1650'  # 1650
+  data:  # 1650
+    kind: invariant  # 1650
+    title: "Edge.confidence and Edge.evidence_type have concrete defaults too, so the INV-huboz family is unaudited on edges"  # 1650
+    status: violated  # 1650
+    priority: 3  # 1650
+    parent:  # 1650
+    tags:  # 1650
+    - adr_0057  # 1650
+    - absent_vs_empty  # 1650
+    isbefore: []  # 1650
+    duplicate_of: []  # 1650
+    not_duplicate_of: []  # 1650
+    pr_ref:  # 1650
+    description: "INV-huboz's derivation, `merge_producers.ABSTENTION_BLIND_ATTRIBUTES`, walks `Symbol`'s field defaults for the ten TRACKED_ATTRIBUTES and finds exactly one that cannot express abstention (`is_exported`). The same walk over `Edge` finds two: `confidence: float = 0.85` and `evidence_type: str = \"ast_call_direct\"`, both arbitrated by `_fold_edges` through the same `_stamp_slot` / `_candidates` path.\n\nWHY IT IS NOT THE SAME BUG TODAY, stated rather than assumed: an edge is folded only when BOTH producers emitted an edge on the same (src, dst, edge_type), so both DID observe the relationship — unlike a Symbol attribute, where one producer can emit the record and never touch the field. And every emitter sets confidence explicitly as far as the recorded fixtures show. So the phantom this family produces on Symbols has no demonstrated instance on Edges.\n\nWHAT IS UNVERIFIED, and why the row exists: that \"every emitter sets it explicitly\" is a claim about all current and future edge emitters, not a property of the type. `Edge.confidence`'s default 0.85 is also the SCIP arm's emitter constant (ADR-0057 §13 calls it that), so an emitter that forgot to set it would be indistinguishable from one that chose it — the exact shape of INV-huboz, and `_empty` cannot catch a float either.\n\nPROPOSED WORK: run the derivation over `Edge` and decide per attribute — either demonstrate positively that every registered producer assigns both (an enumeration over the recorded §12 fixtures plus an AST check of the emit sites), or extend the `observes` declaration to the edge attributes. Do not widen `ABSTENTION_BLIND_ATTRIBUTES` to Edge without deciding, because `_candidates` skips an undeclared blind attribute and that would silently drop every folded edge's confidence arbitration."  # 1650
+    fields:  # 1650
+      statement: "An arbitrated attribute whose dataclass default is a concrete value cannot distinguish a measurement from an omission. This was cured for Symbol (INV-huboz) and has not been audited for Edge, whose confidence and evidence_type defaults are concrete and arbitrated by the same code path."  # 1650
+      root_cause: "ABSTENTION_BLIND_ATTRIBUTES is derived from Symbol's fields only; _fold_edges arbitrates Edge.confidence and Edge.evidence_type through the same _stamp_slot/_candidates path with no equivalent derivation, and Edge.confidence's default 0.85 is also the SCIP arm's declared emitter constant."  # 1650

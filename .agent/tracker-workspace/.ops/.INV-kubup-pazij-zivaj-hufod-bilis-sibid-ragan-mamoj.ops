@@ -1,0 +1,23 @@
+- op: create  # d455
+  at: '2026-09-19T20:01:55Z'  # d455
+  by: agent  # d455
+  actor: jgstern_agent  # d455
+  clock: 1  # d455
+  nonce: d455  # d455
+  data:  # d455
+    kind: invariant  # d455
+    title: "Symbol.is_exported asserts 'not exported' in the artifact for every analyzer that has no exportedness rule"  # d455
+    status: violated  # d455
+    priority: 2  # d455
+    parent:  # d455
+    tags:  # d455
+    - adr_0057  # d455
+    - absent_vs_empty  # d455
+    isbefore: []  # d455
+    duplicate_of: []  # d455
+    not_duplicate_of: []  # d455
+    pr_ref:  # d455
+    description: "INV-huboz cured the merge pass's candidate set: a producer that never computes `is_exported` now declares so and contributes nothing. The ARTIFACT still lies, one level out.\n\n`Symbol.is_exported: bool = False` means every analyzer that has no exportedness rule emits `supply_chain.is_exported: false` for every symbol it produces — not \"unknown\", a positive claim that the symbol is NOT part of the public API. Of the shipped analyzers only some compute it (python via `__all__`, rust/csharp/scala via visibility modifiers, dart/julia/haskell via naming or export lists); the rest leave the default. `finalize`'s supply-chain classification then entrenches it: `symbol.is_exported = symbol.is_exported or is_exported_from_modifiers(symbol.modifiers)` turns the default into a computed-looking `False` for every classified symbol, and `compute_visibility`'s reconciliation downgrades to `False` for anything non-public. Nothing downstream can tell the difference between \"this analyzer measured that it is not exported\" and \"this analyzer has no rule for exportedness\".\n\nCONSUMERS THAT BRANCH ON IT, so the blast radius is not cosmetic: the WI-zimum dead-code seed set (`exports` root mode), `cli.py`'s `exported_symbols` count and the `--exclude-exported` filter of WI-zafab, and the supply-chain view. A language with no exportedness rule contributes an all-not-exported population to every one of them.\n\nWHY IT IS NOT FIXED HERE: the cure is a tri-state (`Optional[bool]`), which the owner weighed against the declaration on 2026-09-19 and deferred — 98 construction sites, 15 readers, `docs/schema.json` moving from `boolean` to `boolean|null`, artifacts that can carry `supply_chain.is_exported: null`, and a decision about what the finalize fold does with `None` (today it would concretise it straight back to `False`). That is a schema-visible change and its own row.\n\nREPRO: `grep -L is_exported packages/*/src/*/[a-z]*.py` over the analyzer modules enumerates the producers with no rule; any survey of a repo in one of those languages shows `supply_chain.is_exported: false` on 100% of its symbols."  # d455
+    fields:  # d455
+      statement: "A serialised attribute states what a producer observed. supply_chain.is_exported is False on every record from an analyzer that computes no exportedness, which is a positive claim that the symbol is not public API rather than an absence of evidence."  # d455
+      root_cause: "Symbol.is_exported: bool = False is a dataclass default with no absent value, and finalize's classification fold (is_exported or is_exported_from_modifiers) plus the visibility downgrade turn the default into an indistinguishable computed False before serialization."  # d455
