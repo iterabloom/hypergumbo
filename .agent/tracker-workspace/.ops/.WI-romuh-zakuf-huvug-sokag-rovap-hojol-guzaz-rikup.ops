@@ -30,3 +30,19 @@
   set: {}  # 4e6f
   add:  # 4e6f
     isbefore: [WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid]  # 4e6f
+- op: update  # bf3f
+  at: '2026-09-19T02:08:23Z'  # bf3f
+  by: agent  # bf3f
+  actor: jgstern_agent  # bf3f
+  clock: 3  # bf3f
+  nonce: bf3f  # bf3f
+  set:  # bf3f
+    status: done  # bf3f
+    pr_ref: '1068'  # bf3f
+- op: discuss  # 2405
+  at: '2026-09-19T02:08:23Z'  # 2405
+  by: agent  # 2405
+  actor: jgstern_agent  # 2405
+  clock: 4  # 2405
+  nonce: '2405'  # 2405
+  message: "DONE (PR number in pr_ref). Row 2 of the owner-authorised 11-row sequence (2026-09-18).\n\nWHAT LANDED. (1) packages/hypergumbo-lang-rust-analyzer/recorded/ — owned by the producer's package, on pytest's pythonpath (pyproject), not in the wheel: recorded_rust_analyzer_1_94_0.py (producer version pinned; the 33-line sample crate with every Definition listed inline — moved from tests/ — plus aardvark-dns loaders and counts) and aardvark_dns/ (upstream 4444d90fee, Apache-2.0, LICENSE kept, src/+build.rs+Cargo.toml+Cargo.lock beside the raw index.scip rust-analyzer 1.94.0 emitted: 16 documents, 169 global definitions, 500 locals, 3,543 references; project_root normalised to file:///recorded/aardvark_dns/crate; README.md with provenance and re-recording steps). (2) hypergumbo_core/check_recorded_producer_input.py + scripts/check-recorded-producer-input, CI gate test_check_recorded_producer_input.py::TestLiveTree: per-test AST taint walk from a call to an incumbent producer (derived from the §10 declarations: the non-scip anchored producer of each shared language; plus run_analyzer(\"<name>\") and same-module helpers that call one, to a fixpoint) through assignment/unpacking/augmented/walrus/with/for/comprehension bindings into any cross-backend consumer (core SCIP shim, translate_scip_to_hg, rust_scip parity helpers; the merge pass joins CROSS_BACKEND_CONSUMERS when it has a name). @pytest.mark.incumbent_fed(\"<reason>\") registered; a bare marker is refused. (3) The rust_scip parity test reads RUST_ANALYZER_DEFINITION_LINES from the shared module (callable_item_to_token_lines()) instead of a transcribed dict; three extraction-contract tests are marked with their reasons (2 in test_rust_scip_stable_id.py, 1 in test_translate.py).\n\nEVIDENCE. Fixture tests: index parses with the shipped scip_pb2; counts equal the module's; every indexed document is a committed file and every .rs in the crate was indexed; under the declared anchors the live tree-sitter arm pairs 148/169 SCIP definitions one-to-one, 0 ambiguous — the 21 leftovers are 18 module namespaces + AardvarkResult and ThreadHandleMap (`type` aliases) + DNSBACKEND (`static`), constructs rust.py emits no Symbol for. Mutation: stripping one incumbent_fed marker -> the script exits 1 naming test_translate.py:197, the test, analyze_rust and reassign_rust_stable_ids. Lint unit tests pin 12 offence/allowed shapes (direct, for, comprehension, helper propagation, method, run_analyzer literal, augmented, walrus, with; recorded-input-with-incumbent-as-expectation allowed; bare marker refused; non-test modules unread). Slice 340 files / 13,996 passed; lint module 100%; ratchet 667.\n\nCORRECTION RECORDED (ADR-0057 §12 note, spec, CHANGELOG): the ADR's \"138 of 169\" was a scratch-script number; the committed rule on committed input gives 148. WI-kokiz reproduces 148.\n\nNOT ASSERTED. The lint's incumbent inference is `backend not in {\"scip\"}` among anchored producers — incumbency is not yet a per-language declaration (noted on WI-hukuf). Only packages/*/tests are read (the top-level tests/ suite has no cross-backend tests)."  # 2405

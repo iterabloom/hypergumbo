@@ -30,3 +30,10 @@
   nonce: f5ab  # f5ab
   set:  # f5ab
     status: violated  # f5ab
+- op: discuss  # 1abb
+  at: '2026-09-19T02:08:26Z'  # 1abb
+  by: agent  # 1abb
+  actor: jgstern_agent  # 1abb
+  clock: 3  # 1abb
+  nonce: 1abb  # 1abb
+  message: "PRODUCER-SIDE CONFIRMATION 2026-09-18 while recording the WI-romuh fixture: rust-analyzer 1.94.0's own `scip` log on aardvark-dns prints \"Duplicate symbol: rust-analyzer cargo aardvark-dns 2.0.0-dev crate/\" — the per-target root-namespace collision this row describes is reported by the producer at emission time, not just observed in our hash. The recording (packages/hypergumbo-lang-rust-analyzer/recorded/aardvark_dns/index.scip) is a committed repro for this row: three Definition occurrences (src/lib.rs, src/main.rs, build.rs) share that moniker. Not started here."  # 1abb
