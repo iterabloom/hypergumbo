@@ -127,6 +127,10 @@ Design only — nothing in the pipeline changes in this release. ADR-0012 §Step
 
 ### Fixed
 
+#### Process state scoped to the call, not the happy path
+
+- **`run_survey`'s global file index no longer outlives a run that raises after indexing (INV-ziruv).** The `FileIndex` the survey publishes through `discovery.set_file_index` was cleared only on the normal return, so a run that raised after indexing — the merge pass's `UndeclaredProducerError` refusal (ADR-0057 §10) is one such path — left the previous repository's index behind, and the next `run_all_analyzers` in the same process anchored *that* repository's files against its own root (`relative_to` raised; seen on PR #1078's CI where two tests shared an xdist worker). A `finally`-decorator, `cli._releases_file_index`, now releases the index on every exit path, and the refusal test asserts the index is gone.
+
 #### One language vocabulary in the analyzer registry (WI-juzig / INV-nidul)
 
 - **`limits.skipped_languages` reported `makefile` as detected-but-unanalysed on a repo where the `make` pass had run and emitted 56 nodes.** `@register_analyzer` defaulted `languages` to `[name]` and checked nothing, so the registry spoke a second vocabulary beside the taxonomy's: the pass named `make` was language `make` while `taxonomy.LANGUAGES`, profile detection and every file-anchored `Symbol.language` said `makefile`, and the finalize step's detected-minus-analysed difference could not connect the two. Enumerated, not assumed: of 118 analyzers, 35 (name, language) pairs sat outside the vocabulary — **one synonym** (`make`), **two phantoms** that are not languages at all (`rust_analyzer`, a second backend for `rust`; `manifest_targets`, a synthesis pass over eleven manifest formats) and which `all_known_languages()`, hence the spec validator, accepted as `Symbol.language` values, and **32 real languages the taxonomy has no `LanguageSpec` for** (gleam, hack, odin, ansible, …). The default also conflated absent with empty: an explicit `languages=[]` became `[name]`.
