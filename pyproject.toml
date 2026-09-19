@@ -7,6 +7,12 @@
 python_files = ["test_*.py", "*_test.py", "BRANCHES_*.py"]
 markers = [
     "torch: tests requiring PyTorch (deselect in CI with -m 'not torch')",
+    # ADR-0057 §12 / WI-romuh: a test that feeds the incumbent analyzer's
+    # output into a cross-backend consumer ON PURPOSE — an extraction contract
+    # that proves a helper agrees with the incumbent, claiming nothing about
+    # production input. scripts/check-recorded-producer-input flags every
+    # other such test; the reason is mandatory and is read by people.
+    "incumbent_fed(reason): deliberately feeds incumbent output to a cross-backend consumer (ADR-0057 §12)",
 ]
 # Required for hypergumbo-tracker's Textual TUI tests (async pilot tests)
 asyncio_mode = "auto"
@@ -18,7 +24,16 @@ asyncio_mode = "auto"
 # `python -m pytest` inserts cwd, the `pytest` console script does not -- which
 # is why that spelling passed locally and raised ModuleNotFoundError in CI.
 # A pythonpath entry is independent of both the invocation and the import mode.
-pythonpath = ["packages/hypergumbo-tracker/tests", "tests"]
+# Recorded producer output (ADR-0057 §12, WI-romuh): the rust-analyzer package
+# OWNS its producer's recordings under packages/hypergumbo-lang-rust-analyzer/
+# recorded/ (not shipped in the wheel — hatch builds from src/). Core, mainstream
+# and rust-analyzer tests all import from it, so it is a pythonpath entry for the
+# same reason the two above are.
+pythonpath = [
+    "packages/hypergumbo-tracker/tests",
+    "tests",
+    "packages/hypergumbo-lang-rust-analyzer/recorded",
+]
 # Filter expected warnings from tests
 filterwarnings = [
     # tree-sitter unavailability in fallback tests

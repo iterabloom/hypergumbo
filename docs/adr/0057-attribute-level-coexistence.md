@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0057: Multi-Backend Coexistence at the Attribute, Not the Record
 
-Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract landed (WI-hohuh). WI-gojum stays parked until the owner unparks it.
+Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh) and §12's recorded fixtures and lint (WI-romuh) landed. WI-gojum stays parked until the owner unparks it.
 
 - Date: 2026-09-18
 - Supersedes: ADR-0012 §Step 3 (multi-fidelity passes — the record-level coexistence it described; Steps 1–2 are untouched)
@@ -118,6 +118,8 @@ For a node, `kind` may hold two values. For an edge, `edge_type` is inside `edge
 
 rust-analyzer executes the analysed crate's `build.rs`, is opt-in, and will not run in CI. The parity test that fed `rust.py`'s own spans back into the helper passed for months over a feature measuring 0 of 52 (INV-dolud); a control that cannot fail is not a control. Every merge, parity and contract test therefore imports **recorded** fixtures — the emitted index or its parsed Definition `range` / `enclosing_range` / `symbol_roles` per fixture crate, with the producer version pinned (the #1044 `RUST_ANALYZER_DEFINITION_LINES` pattern) — and a lint refuses a test in those families that calls the incumbent analyzer to build the alternative arm's input.
 
+*Landed (WI-romuh).* The recordings live in `packages/hypergumbo-lang-rust-analyzer/recorded/` (`recorded_rust_analyzer_1_94_0.py`: the sample crate inline, and aardvark-dns — source at upstream `4444d90fee` committed beside its raw `index.scip`, 169 global definitions). `scripts/check-recorded-producer-input` is the lint: an AST taint walk from incumbent-producer calls (derived from the §10 declarations) to cross-backend consumers, with `@pytest.mark.incumbent_fed("<reason>")` for the two extraction contracts that feed on purpose. **Correction to §3's number:** under the declared anchors on the committed input, the live tree-sitter arm pairs **148 of 169** SCIP definitions, none ambiguous — not 138; the difference is 10 struct fields the incumbent now emits. The 21 leftovers are 18 module namespaces, two `type` aliases and one `static` for which the tree-sitter arm emits no Symbol. The committed number is the one WI-kokiz reproduces.
+
 ### 13. `confidence` is not arbitrated by precedence; corroboration is a declared level
 
 *(Owner ruling 2026-09-18.)* Measured on the 92 agreed edges: tree-sitter's `calls` carry 0.4–0.85 `evidence_derived`; SCIP's `references` carry 0.85 `emitter_constant`, uniformly. Incumbent-first would leave an edge the type-aware backend just confirmed at 0.5 — inverting ADR-0012's founding premise that AST edges are *upgraded* when type resolution confirms them — and "take SCIP's" would launder a hardcoded constant into evidence. Three cases, only one of which combines:
@@ -164,7 +166,7 @@ A resolved (`is_resolved=True`) first-party edge at `(src, line)` **demotes** a 
 - WI-hukuf — the `config.toml` arbitration default (§5).
 - WI-hohuh — producer contract: merge anchor, measured authority, `executes_analysed_code` on one surface; the pass refuses the undeclared (§10). Blocks WI-kokiz. **Landed.**
 - WI-dajif — the backend-agreement instrument whose committed tables are the only evidence that may change a default (§5, §10). Blocks WI-hukuf.
-- WI-romuh — recorded producer-shaped fixtures and the lint that forbids feeding the incumbent's output back (§12). Blocks WI-kokiz.
+- WI-romuh — recorded producer-shaped fixtures and the lint that forbids feeding the incumbent's output back (§12). Blocks WI-kokiz. **Landed.**
 - WI-givib — results-cache key folds in the resolved backend set (WI-gojum sub-component 3, split out). Blocks WI-dajif.
 - WI-lihis — same-site supersession by `rank_score`, stamped on the stub (§14). Blocked by WI-kokiz.
 - WI-binis additionally carries §13: the `corroborated` source value, the combining case in the arbitration property, `CONFIDENCE_MODEL` v2.1. WI-gapup is widened to enum variants (9 of 9 pair SCIP `class` against tree-sitter `field`).
