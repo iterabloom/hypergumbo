@@ -1,0 +1,3 @@
+Original commit body from 487a9ab4fe24deb6504a1642960b97ff9df01d09:
+
+WI-givib (row 8; WI-gojum sub-component 3). backend_selection.resolved_backend_set names the opt-in backends that will actually run (ADR-0045 chain ∧ rust-analyzer installed — the gate's own two conditions); the results-cache state segment is suffixed with it only when non-empty (<state>-rust_analyzer), so a tree-sitter-only run and a two-arm run of one tree no longer share a cache dir, pre-existing entries keep their key, and an opt-in with no binary keys as tree-sitter-only because that is what runs. Read commands resolve the same chain (documented). Slice 16,305 passed; changed files 100%.
