@@ -30,3 +30,19 @@
   set: {}  # cfb5
   add:  # cfb5
     isbefore: [WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid]  # cfb5
+- op: update  # 56a5
+  at: '2026-09-19T03:11:05Z'  # 56a5
+  by: agent  # 56a5
+  actor: jgstern_agent  # 56a5
+  clock: 3  # 56a5
+  nonce: 56a5  # 56a5
+  set:  # 56a5
+    status: done  # 56a5
+    pr_ref: '1071'  # 56a5
+- op: discuss  # 952e
+  at: '2026-09-19T03:11:05Z'  # 952e
+  by: agent  # 952e
+  actor: jgstern_agent  # 952e
+  clock: 4  # 952e
+  nonce: 952e  # 952e
+  message: "DONE (PR in pr_ref). Row 4 of the owner-authorised sequence.\n\nPREMISE FALSIFIED, FIX RE-BASED (LIVE.md rule 2). This row said \"SCIP already knows which occurrences are calls: Occurrence.symbol_roles is a SymbolRole bitfield ... and rust-analyzer sets it.\" Measured on the recorded aardvark-dns index (WI-romuh fixture): rust-analyzer 1.94.0 sets symbol_roles = 0 on 3,543 of 3,543 non-definition occurrences (first-party and external alike). There is nothing in the bitfield to map. What the producer DOES declare is SymbolInformation.kind on every definition (WI-gapup reads it for Symbol.kind), so scip/calls.py now types a reference by its TARGET's declared kind, read across every document of the index: Function / Method / StaticMethod / TraitMethod / AbstractMethod / ProtocolMethod / PureVirtualMethod / Constructor -> `calls`; anything else, and a target whose kind is unset -> `references` (unchanged). Role bits are still kept in meta[\"symbol_roles\"]; NO read/write edge type is minted from them — no recorded producer sets them, and a mapping nothing exercises is a claim (§12; revisit when a scip-python/scip-typescript recording exists — WI-nanom).\n\nEVIDENCE on committed input (test_recorded_fixtures.py): 498 SCIP occurrence edges -> 130 `calls` (every callable-target edge) + 368 `references`; the 113 field-target edges are all `references` (the row's \"79 field references keep a non-calls type\"). Twins on paired endpoints: 130 SCIP edges have a tree-sitter edge on the same (src, dst); 121 are now calls/calls — duplicates edge_key can see; 9 remain references/calls where the tree-sitter arm labels tuple-struct / variant CONSTRUCTION as `calls` and the SCIP target is a struct or variant (an incumbent imprecision — `instantiates` territory — left as a contest). The row's \"92 of 99\" was the b1008d3b67 scratch measurement; the committed numbers supersede it. Unit tests: 6 callable kinds -> calls, 7 non-callable kinds -> references, unset kind -> references, cross-document callee, role bits preserved but not deciding. Mutation: disabling the target-kind rule turns the callable tests and the fixture pin red.\n\nOVER-CLAIM ACCEPTED AND RECORDED: a callable referenced as a VALUE (fn passed to .map) is `calls` too — SCIP carries no call-position signal; confidence stays at the occurrence-ref 0.85, and the merge pass's corroboration (§13) is what will raise a call both arms saw.\n\nSIDE FINDING (filed separately): scip/edges.py's _RELATION_EDGE_TYPES mints `has_type` and `defined_by`, neither a registered edge type; a list-of-tuples indirection invisible to the L1/L3 gates; no producer today (rust-analyzer leaves relationships empty)."  # 952e
