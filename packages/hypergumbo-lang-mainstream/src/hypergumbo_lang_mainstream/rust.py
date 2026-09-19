@@ -70,7 +70,10 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
-from hypergumbo_core.qualified_name_axis import separator_for_language
+from hypergumbo_core.qualified_name_axis import (
+    QUALIFIED_NAME_SEPARATORS,
+    separator_for_language,
+)
 from hypergumbo_core.analyze.base import (
     constructed_from_callee,
     AnalysisResult,
@@ -89,7 +92,12 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.paths import normalize_path
-from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.registry import (
+    SPAN_ROLE_ITEM,
+    MergeAnchor,
+    last_segment,
+    register_analyzer,
+)
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
@@ -3573,7 +3581,20 @@ def is_rust_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("rust", backend="tree-sitter")  # WI-juzig: the incumbent of two rust backends
+# WI-juzig: the incumbent of two rust backends. ADR-0057 §10 (WI-hohuh): its
+# records pair with the SCIP arm's by the last ``::`` segment of the name —
+# this analyzer qualifies a method by its impl target (``CoreDns::process_message``)
+# where rust-analyzer emits the bare descriptor name — over the ITEM span it
+# emits for every declaration. The separator is the taxonomy's declared one,
+# not a literal, so the registry assumes no language's spelling.
+@register_analyzer(
+    "rust",
+    backend="tree-sitter",
+    merge=MergeAnchor(
+        name_key=last_segment(QUALIFIED_NAME_SEPARATORS["rust"]),
+        span_role=SPAN_ROLE_ITEM,
+    ),
+)
 def analyze_rust(repo_root: Path) -> AnalysisResult:
     """Analyze Rust files in a repository."""
     return _analyzer.analyze(repo_root)

@@ -10,7 +10,7 @@ courtesy.
 
 WHY THE DECISION IS NOT IN THE TRUST STORE, since the item originally said it
 should be. ``backend_trust.record_decision`` refuses any key outside
-``BACKENDS_EXECUTING_ANALYSED_CODE`` — ``frozenset({'rust_analyzer'})`` — on the
+the set of backends declaring ``executes_analysed_code`` (``rust_analyzer``) on the
 grounds that a non-executing opt-in is a preference belonging in the config
 file, and the config file is the one ADR-0045 says the tool may read and must
 not write. The owner ruled for a separate UX-state record (2026-08-28): a UX

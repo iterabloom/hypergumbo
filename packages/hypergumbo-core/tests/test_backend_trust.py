@@ -375,3 +375,58 @@ class TestTheGrantIsTheLowestTier:
         from hypergumbo_core.backend_selection import resolve_rust_analyzer_optin
 
         assert resolve_rust_analyzer_optin(environ={}) is None
+
+
+class TestTheStoreGatesOnTheDeclaredBit:
+    """ADR-0045 ruling 5, second half: the store refuses a backend that does
+    not DECLARE ``executes_analysed_code`` (WI-hohuh moved the bit from a
+    hardcoded set in ``user_config`` onto ``@register_analyzer``)."""
+
+    @pytest.fixture(autouse=True)
+    def isolated_registry(self):
+        from hypergumbo_core.analyze import registry as reg
+
+        saved, saved_flag = dict(reg._ANALYZER_REGISTRY), reg._discovered
+        reg._ANALYZER_REGISTRY.clear()
+        reg._discovered = True
+        yield
+        reg._ANALYZER_REGISTRY.clear()
+        reg._ANALYZER_REGISTRY.update(saved)
+        reg._discovered = saved_flag
+
+    def _register(self, name: str, *, executes: bool) -> None:
+        from hypergumbo_core.analyze.base import AnalysisResult
+        from hypergumbo_core.analyze.registry import register_analyzer
+
+        @register_analyzer(name, languages=["python"], executes_analysed_code=executes)
+        def _fake(repo_root: Path) -> AnalysisResult:
+            return AnalysisResult(symbols=[], edges=[], run=None)  # pragma: no cover
+
+    def test_a_declared_executing_backend_is_accepted(self, tmp_path: Path) -> None:
+        self._register("fakeexec", executes=True)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        environ = {"XDG_STATE_HOME": str(tmp_path / "state")}
+        record_decision(repo, "fakeexec", True, environ=environ)
+        assert read_decision(repo, "fakeexec", environ=environ).granted is True
+
+    def test_a_registered_non_executing_backend_is_refused_and_told_where_to_go(
+        self, tmp_path: Path,
+    ) -> None:
+        self._register("fakeexec", executes=True)
+        self._register("pure_static", executes=False)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        with pytest.raises(ValueError) as exc:
+            record_decision(repo, "pure_static", True, environ={"XDG_STATE_HOME": str(tmp_path)})
+        message = str(exc.value)
+        assert "pure_static" in message
+        assert "preference" in message
+        # It names the backends the store DOES accept, so a typo is visible.
+        assert "fakeexec" in message
+
+    def test_an_unregistered_name_is_refused(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        with pytest.raises(ValueError, match="no_such_backend"):
+            record_decision(repo, "no_such_backend", True, environ={"XDG_STATE_HOME": str(tmp_path)})

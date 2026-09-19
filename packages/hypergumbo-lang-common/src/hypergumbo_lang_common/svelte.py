@@ -49,7 +49,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     populate_docstrings_from_tree,
 )
-from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.registry import MergeDisjoint, register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
@@ -471,7 +471,10 @@ def is_svelte_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("svelte")
+# ADR-0057 §10 (WI-hohuh): the ``javascript`` analyzer also claims ``svelte``
+# (it parses the <script> block); this one reads the template. Disjoint by
+# construction and declared so — see js_ts.py's registration.
+@register_analyzer("svelte", merge=MergeDisjoint(partners=("javascript",)))
 def analyze_svelte(repo_root: Path) -> AnalysisResult:
     """Analyze Svelte component files in a repository.
 

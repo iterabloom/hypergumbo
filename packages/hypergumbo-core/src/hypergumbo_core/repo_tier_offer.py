@@ -33,8 +33,9 @@ is the one the answer arrives on.
 
 WHERE THE DECISION LIVES, AND WHY IT IS NOT THE TRUST STORE. WI-putat's original
 instruction was to reuse ADR-0045 ruling 8's store. That store refuses this by
-construction: ``backend_trust.record_decision`` raises for any key outside
-``BACKENDS_EXECUTING_ANALYSED_CODE`` — ``frozenset({'rust_analyzer'})`` — on the
+construction: ``backend_trust.record_decision`` raises for any backend that
+does not declare ``executes_analysed_code`` on its registration (today only
+``rust_analyzer`` does; the set is derived from the registry, WI-hohuh) on the
 grounds that a non-executing opt-in is a preference and belongs in the config
 file, which in turn is the file ADR-0045 says the tool may read and must not
 write. All three doors were shut, and the owner ruled (2026-08-28) for a
