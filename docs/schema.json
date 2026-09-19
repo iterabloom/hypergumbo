@@ -1382,6 +1382,12 @@
             "server_framework": {
               "description": "Server-side framework of a WebSocket edge \u2014 same vocabulary as ``client_framework``, naming the endpoint that accepts the connection."
             },
+            "superseded_by": {
+              "description": "ADR-0057 \u00a714 (WI-lihis): the id of the RESOLVED edge that superseded this unresolved edge to an external stub \u2014 same src, a shared call line, the same edge type and the same declared callee name, from a producer this edge's origin lacks. Stamped by finalize sub-step 7a when it multiplies this edge's rank_score by SUPERSEDED_STUB_RANK_FACTOR, so the low rank is a stated fact rather than an unexplained number. Present only on a superseded edge; confidence is untouched and the edge is never deleted."
+            },
+            "superseded_by_origin": {
+              "description": "ADR-0057 \u00a714: the origin (pass ids) of the superseding edge named in ``superseded_by`` \u2014 which producer saw the site as first-party. Present only beside ``superseded_by``."
+            },
             "table_name": {
               "description": "Database table a database-query edge reads or writes, extracted from the query by the database_query linker."
             },

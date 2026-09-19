@@ -24,6 +24,7 @@ from hypergumbo_core.analyze.registry import (
     get_analyzer,
 )
 from hypergumbo_core.analyze.merge_producers import merge_producer_records
+from hypergumbo_core.finalize import SUPERSEDED_STUB_RANK_FACTOR, demote_superseded_stubs
 from hypergumbo_core.ir import Symbol, deduplicate_edges
 from hypergumbo_core.scip._generated import scip_pb2
 from hypergumbo_core.scip.descriptor import is_local_symbol
@@ -238,29 +239,32 @@ class TestTheCallEdgesAgreeWithTheIncumbentWhereBothSeeTheCall:
         assert set(twins_by_types) == {("calls", "calls"), ("references", "calls")}
 
 
+def _both_arms() -> tuple[list[Symbol], list, list[dict[str, str]]]:
+    """The live tree-sitter arm plus the recorded SCIP arm, with the two
+    AnalysisRun dicts the merge pass reads producers from."""
+    result = analyze_rust(aardvark_dns_crate_root())
+    assert result.run is not None
+    tree_sitter = [s for s in result.symbols if s.path.startswith("src/") or s.path == "build.rs"]
+    for symbol in tree_sitter:
+        symbol.origin_run_id = symbol.origin_run_id or result.run.execution_id
+    scip_symbols, scip_edges = translate_scip_to_hg(
+        aardvark_dns_index_bytes(), _read_crate_file, run_id="scip-run",
+    )
+    runs = [
+        {"execution_id": result.run.execution_id, "pass": "rust"},
+        {"execution_id": "scip-run", "pass": "rust_analyzer"},
+    ]
+    return tree_sitter + scip_symbols, list(result.edges) + scip_edges, runs
+
+
 class TestTheMergePassOnBothArms:
     """WI-kokiz's acceptance, on committed input: the pass folds exactly the
     148 declarations the anchors pair, leaves the 21 SCIP-only records and
     no tree-sitter-only record, stamps both producers on every merged
     record, and rewires the edges so the 121 shared call sites collapse."""
 
-    def _both_arms(self) -> tuple[list[Symbol], list, list[dict[str, str]]]:
-        result = analyze_rust(aardvark_dns_crate_root())
-        assert result.run is not None
-        tree_sitter = [s for s in result.symbols if s.path.startswith("src/") or s.path == "build.rs"]
-        for symbol in tree_sitter:
-            symbol.origin_run_id = symbol.origin_run_id or result.run.execution_id
-        scip_symbols, scip_edges = translate_scip_to_hg(
-            aardvark_dns_index_bytes(), _read_crate_file, run_id="scip-run",
-        )
-        runs = [
-            {"execution_id": result.run.execution_id, "pass": "rust"},
-            {"execution_id": "scip-run", "pass": "rust_analyzer"},
-        ]
-        return tree_sitter + scip_symbols, list(result.edges) + scip_edges, runs
-
     def test_the_pass_folds_the_paired_declarations(self) -> None:
-        symbols, edges, runs = self._both_arms()
+        symbols, edges, runs = _both_arms()
         before = len(symbols)
         report = merge_producer_records(symbols, edges, runs)
         assert len(report.merged) == AARDVARK_DNS_PAIRING["paired"]
@@ -278,7 +282,7 @@ class TestTheMergePassOnBothArms:
         """WI-binis: every merged record says who holds each value. On this
         producer pair the span (token vs item) and stable_id (moniker hash vs
         rust.py's) are contested on all 148; kind on the 15 const items."""
-        symbols, edges, runs = self._both_arms()
+        symbols, edges, runs = _both_arms()
         merge_producer_records(symbols, edges, runs)
         merged = [s for s in symbols if s.origin == ["rust", "scip"]]
         assert len(merged) == AARDVARK_DNS_PAIRING["paired"]
@@ -305,7 +309,7 @@ class TestTheMergePassOnBothArms:
         assert all(s.attribution is None for s in symbols if s.origin == ["scip"])
 
     def test_merged_records_carry_the_item_span_and_the_moniker(self) -> None:
-        symbols, edges, runs = self._both_arms()
+        symbols, edges, runs = _both_arms()
         merge_producer_records(symbols, edges, runs)
         merged = [s for s in symbols if s.origin == ["rust", "scip"]]
         callables = [s for s in merged if s.kind in ("function", "method")]
@@ -318,7 +322,7 @@ class TestTheMergePassOnBothArms:
         the same pass (§11) and combines their confidence (§13): every one of
         the 93 shared call keys becomes ONE edge, corroborated at 0.95 because
         the two arms reached it by distinct pathways, both originals kept."""
-        symbols, edges, runs = self._both_arms()
+        symbols, edges, runs = _both_arms()
         tree_sitter_edges = [e for e in edges if e.origin == ["rust"]]
         scip_edges = [e for e in edges if e.origin == ["scip"]]
         separately = len(deduplicate_edges(tree_sitter_edges)) + len(deduplicate_edges(scip_edges))
@@ -343,3 +347,51 @@ class TestTheMergePassOnBothArms:
         assert all(e.evidence_type.startswith("ast_") for e in folded)  # categorical: incumbent
         assert separately - len(deduplicate_edges(edges)) == shared
         assert all(e.attribution is None for e in edges if e.origin in (["rust"], ["scip"]))
+
+
+class TestSameSiteSupersessionOnBothArms:
+    def test_only_the_same_callee_is_superseded(self) -> None:
+        """WI-lihis: the resolution verdict is imitated as finalize does it
+        (a dst that is a real node -> resolved, else a stub), then the rule
+        runs. Three stubs are genuinely superseded; twenty-four share a line
+        and type with a resolved call to a DIFFERENT callee and stay."""
+        symbols, edges, runs = _both_arms()
+        merge_producer_records(symbols, edges, runs)
+        edges = deduplicate_edges(edges)
+        ids = {s.id for s in symbols}
+        for edge in edges:
+            edge.is_resolved = edge.dst in ids
+        stubs = [e for e in edges if not e.is_resolved and e.edge_type == "calls"]
+        assert len(stubs) == AARDVARK_DNS_CALL_SITE_TALLY["stub_calls"]
+        before = {id(e): e.rank_score for e in edges}
+        demoted = demote_superseded_stubs(symbols, edges)
+        assert demoted == AARDVARK_DNS_CALL_SITE_TALLY["superseded_stubs"]
+        assert len(edges) == len(before)
+        stamped = [e for e in edges if "superseded_by" in (e.meta or {})]
+        assert len(stamped) == demoted
+        by_id = {e.id: e for e in edges}
+        name_of = {s.id: s.name for s in symbols}
+        for stub in stamped:
+            superseder = by_id[stub.meta["superseded_by"]]
+            assert superseder.is_resolved and superseder.edge_type == "calls"
+            assert name_of[superseder.dst] == "Result::wrap"
+            assert stub.meta["superseded_by_origin"] == ["scip"]  # only the type-aware arm resolved it
+            assert stub.confidence == before[id(stub)] or stub.rank_score == pytest.approx(
+                (before[id(stub)] or stub.confidence) * SUPERSEDED_STUB_RANK_FACTOR
+            )
+        # Everything else keeps its rank_score.
+        assert all(
+            e.rank_score == before[id(e)] for e in edges if "superseded_by" not in (e.meta or {})
+        )
+        # The co-located different-callee sites are counted the way the ADR note states them.
+        from hypergumbo_core.ir import _edge_call_lines
+        site = {}
+        for r in (e for e in edges if e.is_resolved):
+            for ln in _edge_call_lines(r):
+                site.setdefault((r.src, ln, r.edge_type), []).append(r)
+        co_located = 0
+        for stub in stubs:
+            hits = [r for ln in _edge_call_lines(stub) for r in site.get((stub.src, ln, "calls"), [])]
+            if hits and "superseded_by" not in (stub.meta or {}):
+                co_located += 1
+        assert co_located == AARDVARK_DNS_CALL_SITE_TALLY["co_located_same_type_not_superseded"]

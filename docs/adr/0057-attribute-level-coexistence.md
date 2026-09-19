@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0057: Multi-Backend Coexistence at the Attribute, Not the Record
 
-Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh), §12's recorded fixtures and lint (WI-romuh), §7's two producer fixes (WI-gapup, WI-zapuk), §3's merge pass (WI-kokiz) and §4/§6/§13's provenance slot, arbitration property and corroboration (WI-binis) landed. WI-gojum stays parked until the owner unparks it.
+Status: Accepted — design adopted by the owner 2026-09-18 in session; implementation authorised by the owner the same day as an eleven-row sequence (§Tracker items) and in progress: §10's producer contract (WI-hohuh), §12's recorded fixtures and lint (WI-romuh), §7's two producer fixes (WI-gapup, WI-zapuk), §3's merge pass (WI-kokiz), §4/§6/§13's provenance slot, arbitration property and corroboration (WI-binis) and §14's same-site supersession (WI-lihis) landed. WI-gojum stays parked until the owner unparks it.
 
 - Date: 2026-09-18
 - Supersedes: ADR-0012 §Step 3 (multi-fidelity passes — the record-level coexistence it described; Steps 1–2 are untouched)
@@ -142,6 +142,7 @@ Why not `max` or noisy-OR: `max` returns the emitter constant; noisy-OR assumes 
 
 A resolved (`is_resolved=True`) first-party edge at `(src, line)` **demotes** a same-site edge whose `dst` is an external stub, by `rank_score` — ADR-0039 ruling 3 puts ranking adjustments there and never on `confidence`. The stub keeps its confidence, its origin and its place in the graph; **no edge is deleted** (never pin a removal). The merge pass **stamps the supersession on the stub as a positive claim** — the superseding edge's id and producer — so a consumer can see *why* it ranks low; a bare lower number is an absent-versus-empty reading waiting to happen. Same `(src, line)` only, no cross-line inference; a site where both producers point at stubs is untouched. The 33 is an **upper bound** — a co-located field or type reference on a call's line is not the same call — and the implementing row measures the true count before claiming it.
 
+*Landed (WI-lihis)* as finalize sub-step 7a, `_finalize_demote_superseded_stubs`, right after the ADR-0037 resolution verdict that decides `is_resolved` — the merge pass cannot stamp this, since resolution is settled in Phase E. The measurement the row demanded changes the number: on the committed aardvark-dns fixture 244 tree-sitter call edges end at an external stub; 63 share a (src, line) with some resolved edge and 27 with a resolved edge of the same type, but only **3** name the same callee — every `wrap` the syntactic arm left external and the SCIP arm resolved to `Result::wrap`. The other 24 are different calls that happen to share a line (`a.b(c.d())`), and demoting them would have been a false claim. So the rule as landed requires all four: same `src`, a shared call line, the same `edge_type`, and the same declared callee name key — and the superseding edge must carry a producer the stub's own `origin` lacks (a producer's two calls on one line are not a contradiction). The stub's `rank_score` is multiplied by the declared `SUPERSEDED_STUB_RANK_FACTOR` (0.5; joins WI-hukuf's table), `confidence` untouched, and `meta["superseded_by"]` / `meta["superseded_by_origin"]` (registered edge-meta keys) name the superseding edge and its producers. Nothing is deleted; the edge count is unchanged; a language with one producer is untouched by construction.
 ## Consequences
 
 **Positive.** Under a two-backend run, one node per declaration and one edge per relationship; nothing either backend saw is lost; disagreement is data, not a silent pick; consumers are unchanged by default; tree-sitter-only users see no change at all.
@@ -174,7 +175,7 @@ A resolved (`is_resolved=True`) first-party edge at `(src, line)` **demotes** a 
 - WI-dajif — the backend-agreement instrument whose committed tables are the only evidence that may change a default (§5, §10). Blocks WI-hukuf.
 - WI-romuh — recorded producer-shaped fixtures and the lint that forbids feeding the incumbent's output back (§12). Blocks WI-kokiz. **Landed.**
 - WI-givib — results-cache key folds in the resolved backend set (WI-gojum sub-component 3, split out). Blocks WI-dajif.
-- WI-lihis — same-site supersession by `rank_score`, stamped on the stub (§14). Blocked by WI-kokiz.
+- WI-lihis — same-site supersession by `rank_score`, stamped on the stub (§14). Blocked by WI-kokiz. **Landed.**
 - WI-binis additionally carries §13: the `corroborated` source value, the combining case in the arbitration property, `CONFIDENCE_MODEL` v2.1. WI-gapup is widened to enum variants (9 of 9 pair SCIP `class` against tree-sitter `field`).
 - WI-gojum — parked host; sub-component 1 is superseded by this ADR, sub-component 2 is WI-kokiz, sub-component 3 is WI-givib, sub-component 4 is WI-sobig's question.
 

@@ -412,6 +412,7 @@ _SUBSTEPS = [
     "_finalize_skipped_into_limits",
     "_finalize_demote_receiver_blind_magnets",  # INV-fahub (6c, before 7)
     "_finalize_edge_resolution",
+    "_finalize_demote_superseded_stubs",
     "_finalize_compute_visibility",  # INV-jusot (7b, before commit)
     "_finalize_prune_repro_grammars",  # WI-fonod/WI-givad (7c, before commit)
     "_finalize_commit_dicts",
