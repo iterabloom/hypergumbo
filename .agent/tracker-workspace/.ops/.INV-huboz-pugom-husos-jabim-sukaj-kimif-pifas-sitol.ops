@@ -21,3 +21,14 @@
     fields:  # 4579
       statement: "An absent value is not a candidate: the merge pass's arbitration chooses among values producers actually supplied, and a producer that supplied None for an attribute abstains, so the partner's concrete value is carried with attribution naming it alone."  # 4579
       root_cause: "merge_producers.arbitrate admits None as a candidate for every TRACKED_ATTRIBUTE, so incumbent-first precedence carries the incumbent's None over the partner's concrete value; only _FILL_WHEN_INCUMBENT_EMPTY attributes get the fill-when-empty treatment."  # 4579
+- op: update  # e33e
+  at: '2026-09-19T17:58:53Z'  # e33e
+  by: agent  # e33e
+  actor: jgstern_agent  # e33e
+  clock: 2  # e33e
+  nonce: e33e  # e33e
+  set:  # e33e
+    title: "Symbol.is_exported's bool default makes 'not observed' indistinguishable from 'observed false', so a non-computing producer contributes a phantom arbitration candidate"  # e33e
+    fields:  # e33e
+      statement: "A producer contributes a candidate for an attribute only when it OBSERVED that attribute. A field whose dataclass default is a concrete value (Symbol.is_exported: bool = False) cannot express abstention, so a producer that never computes it is indistinguishable from one that measured the default."  # e33e
+      root_cause: "_empty() recognises only None/''/[] as absent, and is_exported defaults to False rather than None, so the SCIP arm — which assigns is_exported nowhere — contributes False as an observed candidate on all 169 records; the fix is a positive observed-or-not claim, not a change to arbitrate (which correctly skips empties)."  # e33e

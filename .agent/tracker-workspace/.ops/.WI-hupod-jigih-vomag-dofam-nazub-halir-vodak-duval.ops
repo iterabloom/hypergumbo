@@ -1,0 +1,22 @@
+- op: create  # 2ceb
+  at: '2026-09-19T10:34:41Z'  # 2ceb
+  by: agent  # 2ceb
+  actor: jgstern_agent  # 2ceb
+  clock: 1  # 2ceb
+  nonce: 2ceb  # 2ceb
+  data:  # 2ceb
+    kind: work_item  # 2ceb
+    title: "Fold a module-less external stub into its typed twin at one call site (scip-python's receiver typing is invisible to unknown_receiver_scope until it lands)"  # 2ceb
+    status: needs_human_review  # 2ceb
+    priority: 2  # 2ceb
+    parent:  # 2ceb
+    tags:  # 2ceb
+    - adr_0057  # 2ceb
+    - multi_fidelity  # 2ceb
+    - receiver_typing  # 2ceb
+    isbefore: []  # 2ceb
+    duplicate_of: []  # 2ceb
+    not_duplicate_of: []  # 2ceb
+    pr_ref:  # 2ceb
+    description: "OWNER DECISION REQUESTED (ADR-0057 §11 makes src/dst/edge_type the edge identity, so this cannot be decided by an agent under the existing ruling).\n\nTHE SITUATION, measured on hypergumbo-core with the scip-python backend (WI-nanom, PR pending): the syntax arm emits a method-call stub whose receiver module it could not determine as `python:external:0-0:<name>:unresolved`. The SCIP arm emits the SAME call site as `python:<module>:0-0:<name>:unresolved` (e.g. `python:pathlib.Path:0-0:glob:unresolved`) — the syntax arm's own id shape when IT knows the module. Where the syntax arm already knew the module the two ids are identical and the merge pass folds them (2 of 2 on the recorded sample); where it did not, the dst ids DIFFER and the artifact carries TWO edges for one call: the module-less stub and its typed twin (3,973 of 4,133 sites on hypergumbo-core, 96.1%; 6 of 7 on the recorded sample).\n\nWHY IT MATTERS: `unknown_receiver_scope` (INV-fibis / INV-nuhun's metric) counts the module-less stub as an untyped site regardless of its typed twin, so the backend's whole value proposition is invisible to verify-claims until the two become one edge. The §14 supersession rule does not apply: it requires the superseding edge to be RESOLVED in-repo.\n\nTHE QUESTION: may a typed external twin ABSORB a module-less stub at the same (src, call line, edge_type, callee name)? Under the ADR's own absent-versus-empty rule, `external` in the module slot is an ABSENT value, not a different value — so this is arguably not a §11 identity disagreement but the §4 fill-when-empty case applied to an edge's dst. Two shapes on the table: (A) a §15 fold rule in the merge pass — the stub is absorbed into the typed twin, provenance [python, scip_python] on the survivor, the stub's dst kept as an alternative; (B) a §14 sibling — the stub stays, demoted by rank_score and stamped `superseded_by`, and the metric learns to skip a superseded stub. (A) changes edge counts and gives the consumer one edge; (B) changes nothing a consumer sees except through the stamp. Recommendation: (A), because the two edges are one call and every consumer that counts sites will otherwise double-count. Not implemented pending the ruling."  # 2ceb
+    fields: {}  # 2ceb
