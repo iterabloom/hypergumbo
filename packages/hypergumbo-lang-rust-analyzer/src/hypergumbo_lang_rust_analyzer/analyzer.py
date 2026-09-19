@@ -177,7 +177,9 @@ def _has_scip_origin_edge(edges: list[Edge]) -> bool:
     languages=["rust"],
     backend="scip",
     executes_analysed_code=True,
-    merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN),
+    # The SCIP translation computes no exportedness: `Symbol.is_exported`
+    # stays the dataclass default, which is not an observation (INV-huboz).
+    merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN, observes=()),
 )
 def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     """Entry point for the SCIP-backed Rust analyzer.

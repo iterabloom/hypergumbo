@@ -174,11 +174,22 @@ class MergeAnchor:
             is authoritative on BY MEASUREMENT, each citing a committed
             ``docs/audits/`` table. Empty by default (ADR-0057 §5:
             incumbent-first until a measurement shows otherwise).
+        observes: of the attributes whose VALUE cannot say whether anybody
+            looked (``merge_producers.ABSTENTION_BLIND_ATTRIBUTES`` — those
+            whose ``Symbol`` default is a concrete value), the ones this
+            backend COMPUTES. ``None`` means the backend has not ruled: the
+            merge pass then takes no candidate from it for any of them, and
+            the registry contract test refuses a shipped producer that left
+            it so. ``()`` is a ruling — "I compute none of them". Declaring
+            an attribute that DOES express absence by value is refused: the
+            record already says, per record, whether it was observed, and a
+            declaration could only lose that (INV-huboz).
     """
 
     name_key: Callable[[str], str]
     span_role: str
     authoritative_for: Mapping[str, str] = field(default_factory=dict)
+    observes: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if not callable(self.name_key):
@@ -198,6 +209,21 @@ class MergeAnchor:
                     f"by measurement only (ADR-0057 §5, §10)"
                 )
         object.__setattr__(self, "authoritative_for", dict(self.authoritative_for))
+        if self.observes is not None:
+            # Local import: the merge pass imports this module, and only a
+            # declaration naming the table needs the table (user_config.py
+            # does the same for TRACKED_ATTRIBUTES).
+            from .merge_producers import ABSTENTION_BLIND_ATTRIBUTES
+
+            speaks_for_itself = [a for a in self.observes if a not in ABSTENTION_BLIND_ATTRIBUTES]
+            if speaks_for_itself:
+                raise MergeDeclarationError(
+                    f"MergeAnchor: observes={tuple(self.observes)!r} names "
+                    f"{speaks_for_itself!r}, which a record already expresses by value "
+                    f"(its default is absent). Declare only "
+                    f"{list(ABSTENTION_BLIND_ATTRIBUTES)!r} (ADR-0057 §10, INV-huboz)"
+                )
+            object.__setattr__(self, "observes", tuple(self.observes))
 
 
 @dataclass(frozen=True)

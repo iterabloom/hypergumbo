@@ -403,11 +403,15 @@ class TestTheAgreementInstrumentOnBothArms:
         assert report.superseded_edges == AARDVARK_DNS_CALL_SITE_TALLY["superseded_stubs"]
         by_attr = {a.attribute: a for a in report.attributes}
         assert by_attr["kind"].shapes == [("variable", "constant", 15)]
-        # WI-pofih: `true`, not the `null` this pinned while the instrument
-        # read a nested attribute from the top level. The incumbent computes
-        # is_exported ("pub" in modifiers) and holds True on these 41; the
-        # SCIP arm holds the dataclass default False (INV-huboz).
-        assert by_attr["is_exported"].shapes == [("true", "false", 41)]
+        # INV-huboz: no shapes, because there is no contest left. The SCIP
+        # arm declares it computes no exportedness, so its dataclass-default
+        # False is not a candidate and the attribute is one-sided to the
+        # incumbent. (While the instrument read this nested attribute from the
+        # top level it pinned `("null", "false", 41)` — a value that never
+        # existed, WI-pofih; the true carried value was `true`.)
+        assert by_attr["is_exported"].shapes == []
+        assert (by_attr["is_exported"].agree, by_attr["is_exported"].disagree) == (0, 0)
+        assert by_attr["is_exported"].only == {"rust": 148, "rust_analyzer": 0}
 
     def test_a_kind_preference_for_scip_moves_exactly_the_kind_row(self) -> None:
         """WI-hukuf on the recorded fixture: prefer the SCIP arm for `kind`

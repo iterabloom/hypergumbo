@@ -20,6 +20,7 @@ import pytest
 from hypergumbo_core.analyze import registry as _registry_mod
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.merge_producers import (
+    ABSTENTION_BLIND_ATTRIBUTES,
     CORROBORATED_CONFIDENCE,
     PASS_ID,
     MergeReport,
@@ -29,6 +30,7 @@ from hypergumbo_core.analyze.registry import (
     SPAN_ROLE_ITEM,
     SPAN_ROLE_TOKEN,
     MergeAnchor,
+    MergeDeclarationError,
     UndeclaredProducerError,
     as_emitted,
     last_segment,
@@ -55,11 +57,12 @@ def two_producers():
     _registry_mod._discovered = True
     register_analyzer(
         "python", backend="ast", priority=50,
-        merge=MergeAnchor(name_key=last_segment("."), span_role=SPAN_ROLE_ITEM),
+        merge=MergeAnchor(name_key=last_segment("."), span_role=SPAN_ROLE_ITEM,
+                          observes=("is_exported",)),
     )(_noop)
     register_analyzer(
         "pyscip", backend="scip", priority=45, languages=["python"],
-        merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN),
+        merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN, observes=()),
     )(_noop)
     yield
     _registry_mod._ANALYZER_REGISTRY.clear()
@@ -587,3 +590,74 @@ class TestUntrackedFillAndForeignEdges:
         report = merge_producer_records(symbols, edges, [dict(r) for r in RUNS])
         assert report.edges_folded == 0
         assert linker_edge in edges and linker_edge.attribution is None
+
+
+class TestAnObservationIsDeclaredWhenTheValueCannotSayIt:
+    """ADR-0057 §1 / INV-huboz: a producer contributes a candidate for an
+    attribute only when it OBSERVED that attribute.
+
+    Nine of the ten tracked attributes say that by value — their ``Symbol``
+    default is ``None``, ``""`` or ``[]``, which :func:`_candidates` skips,
+    and that is PER RECORD, which is better information than any
+    declaration. ``is_exported`` cannot: its default is a concrete
+    ``False``, indistinguishable from a measured one, so a producer that
+    assigns the field nowhere contributed a phantom ``False`` candidate on
+    every record it emitted. For those attributes — and only those — the
+    producer declares, on the §10 anchor it already carries.
+    """
+
+    def test_the_blind_attributes_are_derived_from_the_record_not_listed(self) -> None:
+        """If this fails because a tracked attribute gained a concrete
+        default, the registry contract test will already be demanding that
+        every anchored producer rule on it. That is the intended sequence:
+        the field cannot express abstention, so its producers must."""
+        assert ABSTENTION_BLIND_ATTRIBUTES == ("is_exported",)
+
+    def _pair(self, *, incumbent_exported: bool, other_exported: bool) -> list[Symbol]:
+        incumbent, other = _incumbent_method(), _scip_method()
+        incumbent.is_exported = incumbent_exported
+        other.is_exported = other_exported
+        return [incumbent, other]
+
+    def test_an_undeclared_producers_default_is_not_a_candidate(self) -> None:
+        """``pyscip`` declares ``observes=()``: its ``False`` is the
+        dataclass default, not an observation, and must not contest the
+        incumbent's measured ``True`` nor corroborate its ``False``."""
+        symbols = self._pair(incumbent_exported=True, other_exported=False)
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [merged] = symbols
+        assert merged.is_exported is True
+        assert merged.attribution["is_exported"] == ["python"]
+        assert "is_exported" not in (merged.alternatives or {})
+
+    def test_nor_does_it_manufacture_an_agreement(self) -> None:
+        """The subtler half: where the incumbent also holds ``False`` the
+        phantom read as AGREEMENT — two producers holding one value — which
+        is a stronger claim than the evidence supports."""
+        symbols = self._pair(incumbent_exported=False, other_exported=False)
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [merged] = symbols
+        assert merged.attribution["is_exported"] == ["python"]
+
+    def test_a_declared_producer_still_contests(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The declaration is not a mute button: a producer that says it
+        computes the attribute is arbitrated as before."""
+        anchor = _registry_mod._ANALYZER_REGISTRY["pyscip"].merge
+        monkeypatch.setattr(
+            _registry_mod._ANALYZER_REGISTRY["pyscip"], "merge",
+            MergeAnchor(name_key=anchor.name_key, span_role=anchor.span_role,
+                        observes=("is_exported",)),
+        )
+        symbols = self._pair(incumbent_exported=True, other_exported=False)
+        merge_producer_records(symbols, [], [dict(r) for r in RUNS])
+        [merged] = symbols
+        assert merged.is_exported is True
+        assert merged.attribution["is_exported"] == ["python"]
+        assert merged.alternatives["is_exported"] == [{"value": False, "origin": ["pyscip"]}]
+
+    def test_an_attribute_that_expresses_absence_by_value_is_refused(self) -> None:
+        """Declaring one would be redundant at best and silently lossy at
+        worst: the record already says, per record, whether it was seen."""
+        with pytest.raises(MergeDeclarationError, match="signature"):
+            MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN,
+                        observes=("is_exported", "signature"))

@@ -3593,6 +3593,9 @@ def is_rust_tree_sitter_available() -> bool:
     merge=MergeAnchor(
         name_key=last_segment(QUALIFIED_NAME_SEPARATORS["rust"]),
         span_role=SPAN_ROLE_ITEM,
+        # Computed here from the item's visibility modifiers, so the merge
+        # pass may take it as an observation (ADR-0057 §10, INV-huboz).
+        observes=("is_exported",),
     ),
 )
 def analyze_rust(repo_root: Path) -> AnalysisResult:
