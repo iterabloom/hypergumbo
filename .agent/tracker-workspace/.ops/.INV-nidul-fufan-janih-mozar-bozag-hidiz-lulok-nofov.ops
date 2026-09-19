@@ -23,3 +23,19 @@
     fields:  # 8dbd
       statement: "A language the profile detected and an analyzer pass completed a run for is never reported in limits.skipped_languages: an analyzer's declared languages and the taxonomy's language names are one vocabulary."  # 8dbd
       root_cause: "register_analyzer defaults languages=[name] with no vocabulary check (analyze/registry.py:208); the make pass is therefore language 'make' while the taxonomy, profile detection and Symbol.language say 'makefile'; _detected_unanalyzed_languages (finalize.py:281) diffs the two vocabularies and drains the mismatch into skipped_languages. Enumerated family: 1 false instance (makefile/make) of 5 unclaimed detectable languages; 2 phantom languages from the same default (rust_analyzer, manifest_targets)."  # 8dbd
+- op: update  # 7b12
+  at: '2026-09-18T23:26:11Z'  # 7b12
+  by: agent  # 7b12
+  actor: jgstern_agent  # 7b12
+  clock: 2  # 7b12
+  nonce: 7b12  # 7b12
+  set:  # 7b12
+    status: satisfied  # 7b12
+    pr_ref: '1065'  # 7b12
+- op: discuss  # fb88
+  at: '2026-09-18T23:26:12Z'  # fb88
+  by: agent  # fb88
+  actor: jgstern_agent  # fb88
+  clock: 3  # fb88
+  nonce: fb88  # fb88
+  message: "Satisfied via PR #1065 (WI-juzig). Behavioural evidence, the row's own repro re-run on the same code path:\n\n  hypergumbo survey ~/whole_bunch_of_repos/aardvark-dns --out ~/scip_edge_probe/aardvark_after_juzig.json\n  BEFORE (dev 2cbb50a567): limits.skipped_languages == ['makefile']; 56 nodes language \"make\"; profile.languages has \"makefile\"; make run present.\n  AFTER  (this branch):    limits.skipped_languages ABSENT; 0 nodes language \"make\", 56 language \"makefile\"; 0 ids with a \"make:\" prefix; profile.languages.makefile.files == 1; make run present; node/edge totals unchanged (582/797).\n\nProduction-path tests (not proxies): test_run_behavior_map.py::test_a_language_whose_pass_ran_is_never_reported_skipped (Makefile fixture through run_behavior_map: make run present AND makefile not in skipped_languages AND every emitted node says makefile); test_finalize.py::test_skipped_languages_never_reports_a_language_whose_pass_ran_under_another_name (the finalize step against the REAL registry with pass \"make\" + detected \"makefile\"); test_finalize.py::..._does_not_reinflate_a_no_language_pass_into_a_language.\n\nRoot cause cured, not worked around: register_analyzer's [name] default is gone (gated; LanguageDeclarationError), make declares languages=[\"makefile\"], finalize reads the declaration with no {name} fallback. Statement general (\"an analyzer's declared languages and the taxonomy's names are one vocabulary\") now holds by construction over all 118 registrations (enumeration test), not only the filed instance.\n\nResidual, filed separately: the 14 make-target external stubs on aardvark carried language None for one intermediate build because two id sites still minted a \"make:\" prefix; fixed in the same PR (0 such ids after). Sibling phantoms rust_analyzer/manifest_targets: gone from all_known_languages() (measured).\n\nRe-run on merged dev 697dd4de5a: skipped_languages absent, 0 make-language nodes, 56 makefile, make run present."  # fb88
