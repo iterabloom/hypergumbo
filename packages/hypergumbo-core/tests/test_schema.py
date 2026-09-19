@@ -554,16 +554,23 @@ class TestSchemaDataclassSync:
             origin=["python"], origin_run_id="uuid:1",
         )
         symbol_sample.quality = {"score": 0.9, "reason": "sample"}
+        # ADR-0057 §6 (WI-binis): the provenance slot is conditional on both
+        # Symbol and Edge — present only on a record the merge pass folded.
+        symbol_sample.attribution = {"kind": ["python"]}
+        symbol_sample.alternatives = {"kind": [{"value": "method", "origin": ["pyscip"]}]}
+        edge_sample = Edge.create(
+            src="a", dst="b", edge_type="calls", line=1,
+            origin="python", origin_run_id="uuid:1",
+            evidence_lang="python",
+            dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
+            derived_from=["sym:1"],
+        )
+        edge_sample.attribution = {"confidence": ["python", "pyscip"]}
+        edge_sample.alternatives = {"confidence": [{"value": 0.5, "origin": ["python"]}]}
         samples = {
             "Span": span,
             "Symbol": symbol_sample,
-            "Edge": Edge.create(
-                src="a", dst="b", edge_type="calls", line=1,
-                origin="python", origin_run_id="uuid:1",
-                evidence_lang="python",
-                dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
-                derived_from=["sym:1"],
-            ),
+            "Edge": edge_sample,
             "AnalysisRun": run_sample,
         }
         for def_name, instance in samples.items():

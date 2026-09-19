@@ -159,12 +159,13 @@ class TestTheDeclaredAnchorsPairTheRecordedDefinitions:
         # WI-gapup: the SCIP arm reads the producer's declared kind, so the
         # paired records agree on kind except for `const` items, where SCIP's
         # `constant` is the more precise claim and stays a contest.
-        assert {
+        measured_kind = {
             "paired": paired,
             "agree": kinds_agree[True],
             "disagree": kinds_agree[False],
             "disagree_constant_vs_variable": disagreements[("constant", "variable")],
-        } == AARDVARK_DNS_AGREEMENT_TALLY
+        }
+        assert measured_kind == {k: AARDVARK_DNS_AGREEMENT_TALLY[k] for k in measured_kind}
         assert set(disagreements) == {("constant", "variable")}
 
     def test_the_fixture_is_not_the_incumbents_output_in_disguise(self) -> None:
@@ -273,6 +274,36 @@ class TestTheMergePassOnBothArms:
         assert by_origin[("rust",)] == 0  # no tree-sitter-only leftover
         assert runs[-1]["pass"] == "producer-merge"
 
+    def test_merged_records_carry_the_provenance_slot(self) -> None:
+        """WI-binis: every merged record says who holds each value. On this
+        producer pair the span (token vs item) and stable_id (moniker hash vs
+        rust.py's) are contested on all 148; kind on the 15 const items."""
+        symbols, edges, runs = self._both_arms()
+        merge_producer_records(symbols, edges, runs)
+        merged = [s for s in symbols if s.origin == ["rust", "scip"]]
+        assert len(merged) == AARDVARK_DNS_PAIRING["paired"]
+        assert all(s.attribution is not None and s.alternatives is not None for s in merged)
+        span_contested = [s for s in merged if "span" in s.alternatives]
+        assert len(span_contested) == AARDVARK_DNS_AGREEMENT_TALLY["span_alternatives"]
+        assert all(s.attribution["span"] == ["rust"] for s in span_contested)
+        # The two unit enum variants: both arms span the bare name, so they agree.
+        assert all(
+            s.kind == "field" and s.attribution["span"] == ["rust", "rust_analyzer"]
+            for s in merged if "span" not in s.alternatives
+        )
+        id_contested = [s for s in merged if "stable_id" in s.alternatives]
+        assert len(id_contested) == AARDVARK_DNS_AGREEMENT_TALLY["stable_id_alternatives"]
+        assert all(s.attribution["stable_id"] == ["rust"] for s in id_contested)
+        kind_contests = [s for s in merged if "kind" in s.alternatives]
+        assert len(kind_contests) == AARDVARK_DNS_AGREEMENT_TALLY["disagree_constant_vs_variable"]
+        assert all(
+            s.kind == "variable" and s.alternatives["kind"] == [{"value": "constant", "origin": ["rust_analyzer"]}]
+            for s in kind_contests
+        )
+        agreed_kind = [s for s in merged if "kind" not in s.alternatives]
+        assert all(s.attribution["kind"] == ["rust", "rust_analyzer"] for s in agreed_kind)
+        assert all(s.attribution is None for s in symbols if s.origin == ["scip"])
+
     def test_merged_records_carry_the_item_span_and_the_moniker(self) -> None:
         symbols, edges, runs = self._both_arms()
         merge_producer_records(symbols, edges, runs)
@@ -282,7 +313,11 @@ class TestTheMergePassOnBothArms:
         assert all("scip_symbol" in (s.meta or {}) for s in merged)
         assert all(s.origin_run_id == runs[-1]["execution_id"] for s in merged)
 
-    def test_shared_call_sites_collapse_after_the_fold(self) -> None:
+    def test_shared_call_sites_are_folded_and_corroborated(self) -> None:
+        """WI-kokiz folds the endpoints; WI-binis folds the agreeing edges in
+        the same pass (§11) and combines their confidence (§13): every one of
+        the 93 shared call keys becomes ONE edge, corroborated at 0.95 because
+        the two arms reached it by distinct pathways, both originals kept."""
         symbols, edges, runs = self._both_arms()
         tree_sitter_edges = [e for e in edges if e.origin == ["rust"]]
         scip_edges = [e for e in edges if e.origin == ["scip"]]
@@ -291,17 +326,20 @@ class TestTheMergePassOnBothArms:
         # No edge still names a folded id (external targets are not symbols
         # yet — the orchestrator synthesises those stubs later — so the test
         # is "nothing dangles on a dropped id", not "every endpoint exists").
-        folded = set(report.id_remap)
-        assert not any(e.src in folded or e.dst in folded for e in edges)
-        together = len(deduplicate_edges(edges))
-        keys_of = lambda origin: {  # noqa: E731 - local shorthand
-            (e.src, e.dst, e.edge_type) for e in edges if e.origin == [origin]
-        }
-        shared = keys_of("rust") & keys_of("scip")
-        assert len(shared) == AARDVARK_DNS_CALL_SITE_TALLY["shared_call_keys_after_fold"]
-        assert {k[2] for k in shared} == {"calls"}
-        assert separately - together == len(shared)
-        # The 121 SCIP call edges that have a twin are exactly the ones on those keys.
-        assert sum(
-            1 for e in edges if e.origin == ["scip"] and (e.src, e.dst, e.edge_type) in shared
-        ) == AARDVARK_DNS_CALL_SITE_TALLY["twins_calls_calls"]
+        dropped = set(report.id_remap)
+        assert not any(e.src in dropped or e.dst in dropped for e in edges)
+        shared = AARDVARK_DNS_CALL_SITE_TALLY["shared_call_keys_after_fold"]
+        assert report.edges_folded == AARDVARK_DNS_CALL_SITE_TALLY["edges_absorbed_by_fold"]
+        assert report.corroborated == shared  # 93 survivors, each corroborated
+        folded = [e for e in edges if e.origin == ["rust", "scip"]]
+        assert len(folded) == shared
+        assert all(e.edge_type == "calls" for e in folded)
+        assert all(e.confidence == 0.95 and e.confidence_source == "corroborated" for e in folded)
+        assert all(e.attribution["confidence"] == ["rust", "rust_analyzer"] for e in folded)
+        assert all(
+            {a["origin"][0] for a in e.alternatives["confidence"]} == {"rust", "rust_analyzer"}
+            for e in folded
+        )
+        assert all(e.evidence_type.startswith("ast_") for e in folded)  # categorical: incumbent
+        assert separately - len(deduplicate_edges(edges)) == shared
+        assert all(e.attribution is None for e in edges if e.origin in (["rust"], ["scip"]))

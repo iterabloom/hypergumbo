@@ -235,6 +235,13 @@ AARDVARK_DNS_AGREEMENT_TALLY: Final[dict[str, int]] = {
     "agree": 133,
     "disagree": 15,
     "disagree_constant_vs_variable": 15,
+    # WI-binis, the provenance slot on the 148 merged records: ``span`` is
+    # contested (token vs item) on all but the 2 unit enum variants, whose
+    # tree-sitter span IS the bare name; ``stable_id`` is contested (moniker
+    # hash vs rust.py's) on all but the 14 single-line items for which the
+    # parity helper already reaches rust.py's id (INV-dolud's one case).
+    "span_alternatives": 146,
+    "stable_id_alternatives": 134,
 }
 
 #: The SCIP arm's occurrence edges on the recording and their tree-sitter
@@ -256,6 +263,10 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     # edge per call occurrence and within-arm dedup already folds repeats —
     # so deduplicate_edges removes exactly 93 cross-arm duplicates.
     "shared_call_keys_after_fold": 93,
+    # Edges the fold absorbs into those 93 survivors (WI-binis): the 121 SCIP
+    # twins plus each arm's own repeats of the same key — a producer's repeated
+    # call sites are absorbed the same way, their lines unioned into call_lines.
+    "edges_absorbed_by_fold": 149,
 }
 
 
