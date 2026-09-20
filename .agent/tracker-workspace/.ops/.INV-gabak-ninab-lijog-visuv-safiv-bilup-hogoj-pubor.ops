@@ -1,0 +1,23 @@
+- op: create  # 33c4
+  at: '2026-09-20T07:53:59Z'  # 33c4
+  by: agent  # 33c4
+  actor: jgstern_agent  # 33c4
+  clock: 1  # 33c4
+  nonce: 33c4  # 33c4
+  data:  # 33c4
+    kind: invariant  # 33c4
+    title: "Edge.origin carries the BACKEND name for the SCIP arms and the PASS name for every other producer, so a registry join needs two vocabularies"  # 33c4
+    status: violated  # 33c4
+    priority: 2  # 33c4
+    parent:  # 33c4
+    tags:  # 33c4
+    - analysis_quality  # 33c4
+    - writer_contract  # 33c4
+    isbefore: []  # 33c4
+    duplicate_of: []  # 33c4
+    not_duplicate_of: []  # 33c4
+    pr_ref:  # 33c4
+    description: "Found while ruling ADR-0057 Open question 4 (2026-09-20).\n\n`Edge.origin` is the pass-id axis. Every analyzer and linker stamps its PASS name into it — except the SCIP arms, which stamp the BACKEND name:\n  - scip/index.py:392, scip/edges.py:138, scip/calls.py:311 all write `origin=\"scip\"`\n  - while `hypergumbo-lang-rust-analyzer/analyzer.py:178` and `hypergumbo-lang-scip-python/analyzer.py:128` register with `backend=\"scip\"` under the analyzer NAMES `rust_analyzer` and `scip_python`.\n\nSo any consumer that joins `Edge.origin` back to the registry must accept two vocabularies for the same producer, and has no declared way to know that. `registry.anchored_producer_tokens` (added for ADR-0057 §14) bridges it by unioning `{a.name}` with `{a.backend}`; it should not have to, and the bridge is only as complete as the spellings someone happened to find.\n\nCONSEQUENCE IF UNFIXED: a third spelling anywhere disarms §14's origin condition for that producer silently. That is the false-NEGATIVE direction for a withholding rule (a stub is not demoted when it should be), which is the safe direction — but it is undetectable, because nothing asserts that a registered anchored producer's edges carry a token the registry recognises.\n\nCANDIDATE CURE (structural, not a widening): a lint or a test that enumerates registered anchored producers and asserts each one's emitted `origin` token resolves back to its registration — i.e. make the omission impossible rather than accepting both spellings forever. Whether the right fix is to change the SCIP emitters to stamp the analyzer name, or to declare the backend name as a legitimate second identity on `RegisteredAnalyzer`, is open and should be decided before either is coded.\n\nNOT ASSERTED: that a third spelling exists. I did not find one; I also did not enumerate every producer's emitted tokens against the registry, which is exactly the check this item asks for."  # 33c4
+    fields:  # 33c4
+      statement: "Every Edge.origin token emitted by a registered analyzer resolves back to that analyzer's registration under a single declared spelling."  # 33c4
+      root_cause: "The SCIP translation layer (scip/index.py, scip/edges.py, scip/calls.py) stamps origin=\"scip\" — the backend field — while the analyzers register under the names rust_analyzer and scip_python, and nothing asserts the two agree."  # 33c4

@@ -48,3 +48,12 @@
   clock: 5  # eb2c
   nonce: eb2c  # eb2c
   message: "[+ tranch_04: card 030 F75.A1 — related: confirms the work this item tracks is still needed. On substrate HEAD eb5355917e all 23867 populated Edge.derived_from rows == {src,dst} exactly (tautological); INV-rukor flipped pending_validation->violated. Populating derived_from with the actual consumed inputs (decorator site, topic registration, consumed edges) at the ~20 linker sites is the fix.]"  # eb2c
+- op: update  # 8648
+  at: '2026-09-20T07:54:43Z'  # 8648
+  by: agent  # 8648
+  actor: jgstern_agent  # 8648
+  clock: 6  # 8648
+  nonce: '8648'  # 8648
+  set: {}  # 8648
+  add:  # 8648
+    isbefore: [WI-togad-gusab-togul-vumaj-habov-vurat-bifut-gohur]  # 8648

@@ -1,0 +1,21 @@
+- op: create  # 4f0c
+  at: '2026-09-20T07:53:38Z'  # 4f0c
+  by: agent  # 4f0c
+  actor: jgstern_agent  # 4f0c
+  clock: 1  # 4f0c
+  nonce: 4f0c  # 4f0c
+  data:  # 4f0c
+    kind: work_item  # 4f0c
+    title: "method-call-recovery-linker binds at ~49% precision: 45 of 92 edges on this repo are false, 28 overriding a CORRECT external stub"  # 4f0c
+    status: todo_hard  # 4f0c
+    priority: 1  # 4f0c
+    parent:  # 4f0c
+    tags:  # 4f0c
+    - analysis_quality  # 4f0c
+    - linker_protocol  # 4f0c
+    isbefore: []  # 4f0c
+    duplicate_of: []  # 4f0c
+    not_duplicate_of: []  # 4f0c
+    pr_ref:  # 4f0c
+    description: "Measured on a single-backend Python self-survey (2026-09-20, dev 13c6033f1c) while ruling ADR-0057 Open question 4.\n\n`method-call-recovery-linker` contributed 92 edges to the artifact. At least 45 of them (48.9%) bind the call to the wrong target. All 45 were hand-read against source; the finding is a floor, not an estimate — the other 47 were not audited.\n\nTWO MECHANISMS, both the receiver-blind magnet family.\n\n(1) The stub stated a real external module and was RIGHT — 28 cases. 26 of the 28 bind a `calls` edge to a dataclass FIELD.\n  - `tree_sitter.Language(tree_sitter_rust.language())` at test_rust.py (19 sites) and lua.py:833 -> `Symbol.language` [field] in ir.py\n  - `stubs_with_servicer.add(id(stub))` grpc.py:793, py.py:2905, js_ts.py:3955 -> `Symbol.id` [field]\n  - `f\"{type(e).__name__}\"` ipc.py:485, phoenix_ipc.py:256, models.py:496 -> `IpcPattern.type` / `PhoenixPattern.type` / `FieldSchema.type` [field]\n  - `Path(os.environ.get(\"HOME\", ...))` stop_hook.py:225 -> `TrackerSet.get`\n  - `last_list_path.exists()` test_trackerset.py:1360 -> `TrackerSet.exists`\n\n(2) The stub abstained and the line-proximity guess was still wrong — 17 cases. `AnalysisRun.to_dict` -> `Limits.to_dict`; `Symbol.to_dict` -> `CompactResult.to_dict`; `re.Match.start`/`end` -> `ItemIdMatch.start`/`end` [field]; `set.add` -> `TrackerSet.add`; `Store.add` -> `TrackerSet.add` (4 sites, `TrackerSet.workspace` returns a Store); `pathlib.Path.exists` -> `TrackerSet.exists`.\n\nROOT CAUSE. `_declared_receiver_type` (method_call_recovery.py:133) reads `receiver_type_hint` and drops a class hint that CONTRADICTS it. Its own docstring gets absent-not-empty right: None means \"no second opinion\", never \"any type\". But none of the 90 stubs carried a hint, so the filter had nothing to filter and the line-proximity tiebreaker at :270 ran unguarded. Mechanism present, never armed. `is_fallback` (and the 0.5 confidence cap) fires only when `len(candidates) > 1`, so a single wrong candidate is emitted at full confidence with no marker.\n\nWHY IT SURFACED NOW. ADR-0057 Open Q4's ruling removes §14's amplification of these binds (they were ranking the CORRECT external stub below the fabrication), but the false edges themselves remain in the graph at full confidence. This item is that residue. ADR-0055 line 46 already records that this linker \"is labelled Protocol but is a pure graph rewrite.\"\n\nCANDIDATE GATES, in order of measured yield on this corpus:\n  1. refuse a target whose `Symbol.kind == \"field\"` for a `calls` edge (26 of 45)\n  2. refuse when the stub carries a COMPLETE `dst_ref` — the same §15.1 predicate `ir.stated_module_of` now applies in §14, applied at the linker instead (28 of 45)\n  3. require the class hint's declaration to precede the call site\n\nNOT ASSERTED: that the other 47 edges are correct (unaudited), or that the precision generalises off this repository — its own `to_dict`/`id`/`type`/`get` naming is unusually collision-prone.\n\nREPRO: `hypergumbo survey . --out survey.json`, then select edges with origin containing `method-call-recovery-linker` and read each against its source line. Baseline artifact: ~/hypergumbo_lab_notebook/adr0057_q4_ruling/survey.json."  # 4f0c
+    fields: {}  # 4f0c
