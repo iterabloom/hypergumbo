@@ -141,6 +141,12 @@ Design only — nothing in the pipeline changes in this release. ADR-0012 §Step
 
 ### Fixed
 
+#### A 1:1 translation table is not a partial family enumeration (WI-fopuh)
+
+- **The abstract-family linter read one literal at a time**, so `scip/index.py`'s SCIP-kind mapping — one foreign name to one local kind per row — had every row flagged for "omitting" the other two kinds, when together the rows are the most complete mapping the family admits. The linter's own docstring stated the rule at **module** level; the implementation was stricter than the rule it documented. A literal is now exempt when an **enclosing collection** covers the family, because a row is not an enumeration. Stated trade-off: a genuinely partial literal nested inside a large collection that mentions all three kinds elsewhere is no longer flagged; the audit-0018 defect (`("class", "interface", "struct", "trait")`, enclosed by nothing) still fails.
+- **A real gap was hiding behind the false positive.** SCIP declares `Protocol` beside `Trait` and `Interface`, and the table omitted it — so a Swift or Objective-C protocol indexed by SCIP never reached the `protocol` kind at all. That is precisely the Swift-loses-dispatch shape the linter exists to catch, inside the file it was complaining about for the wrong reason.
+- This is what had kept the **cron full-suite red on `dev`**; it was failing there before the work that surfaced it.
+
 #### With no terminal, `auto-pr` refuses to start until the caller declares a mode (WI-hajak)
 
 - **`--detach` only helps a caller who remembers to pass it, and the record says callers forget** — the session that discovered `nohup` reverted to `timeout 590` within the same session. The obvious remedy, defaulting to `--detach` when stdout is not a tty, was **considered and rejected on evidence**: `scripts/prepare-release` does `if ./scripts/auto-pr; then echo "merged"`, reading exit 0 as the merge, and an agent runs it — so it is non-tty. Auto-detaching would have it return 0 immediately having merged nothing and announce a merge that never happened. Exit 0 would then carry two facts, which is the conflation the two preceding changes removed, re-made at the exit code.

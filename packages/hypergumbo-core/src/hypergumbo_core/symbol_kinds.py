@@ -875,6 +875,49 @@ def is_abstract_type(kind: str, modifiers: Sequence[str] = ()) -> bool:
     return "abstract" in modifiers
 
 
+def _collection_string_members(node: ast.AST) -> set[str]:
+    """Every string literal anywhere inside a collection literal."""
+    return {
+        sub.value
+        for sub in ast.walk(node)
+        if isinstance(sub, ast.Constant) and isinstance(sub.value, str)
+    }
+
+
+def _enclosing_collection_covers(
+    node: ast.AST, parents: dict[ast.AST, ast.AST], full: frozenset[str]
+) -> bool:
+    """Is this literal one ROW of a collection that covers the whole family?
+
+    A 1:1 translation table maps one foreign name to one local kind per row::
+
+        ("Trait", "trait"),
+        ("Interface", "interface"),
+        ("Protocol", "protocol"),
+
+    Read a row at a time, every one of those "omits" the other two, and the
+    per-literal rule flags all three -- which is backwards, because together
+    they are the most complete mapping the family admits. The rule this
+    function restores is the one the docstring above always stated: the
+    question is whether the *enumeration* covers the family, and a row is not
+    an enumeration.
+
+    The trade-off, stated rather than hidden: a genuinely partial literal
+    nested inside a large collection that happens to mention all three kinds
+    elsewhere is no longer flagged. That is a real loss of resolution, and it
+    is the cost of not flagging every bijection in the tree. The audit-0018
+    defect itself is untouched -- ``("class", "interface", "struct", "trait")``
+    sits in no collection containing ``protocol``, so it still fails.
+    """
+    cur = parents.get(node)
+    while cur is not None:
+        if isinstance(cur, (ast.Tuple, ast.List, ast.Set, ast.Dict)):
+            if full <= _collection_string_members(cur):
+                return True
+        cur = parents.get(cur)
+    return False
+
+
 def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
     """Find language-agnostic literals that enumerate PART of the abstract family.
 
@@ -909,6 +952,11 @@ def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
                 continue
             guarded = _language_guarded_line_spans(tree)
             declared = _declared_linker_languages(tree)
+            parents: dict[ast.AST, ast.AST] = {
+                child: parent
+                for parent in ast.walk(tree)
+                for child in ast.iter_child_nodes(parent)
+            }
             seen: set[int] = set()
             for node in ast.walk(tree):
                 names = _string_literal_members(node)
@@ -922,6 +970,8 @@ def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
                 if not present or present == full:
                     continue
                 if any(lo <= lineno <= hi for lo, hi in guarded):
+                    continue
+                if _enclosing_collection_covers(node, parents, full):
                     continue
                 missing = sorted(
                     k for k in full - present
