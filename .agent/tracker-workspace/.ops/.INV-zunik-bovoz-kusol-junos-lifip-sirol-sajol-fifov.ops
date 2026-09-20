@@ -1,0 +1,30 @@
+- op: create  # a4f4
+  at: '2026-09-20T00:36:33Z'  # a4f4
+  by: agent  # a4f4
+  actor: jgstern_agent  # a4f4
+  clock: 1  # a4f4
+  nonce: a4f4  # a4f4
+  data:  # a4f4
+    kind: invariant  # a4f4
+    title: "ensure_def_use_extractors_registered learned its health baseline from a possibly-clipped registry, so a missing extractor could never be repaired"  # a4f4
+    status: violated  # a4f4
+    priority: 3  # a4f4
+    parent:  # a4f4
+    tags:  # a4f4
+    - test_isolation  # a4f4
+    isbefore: []  # a4f4
+    duplicate_of: []  # a4f4
+    not_duplicate_of: []  # a4f4
+    pr_ref:  # a4f4
+    description: "Found while diagnosing a CI-only failure of `test_cfg.py::TestUnaccountedNames` (two tests, green locally, red on a Woodpecker xdist worker). Fixed in the same PR, filed for the record because the mechanism is general and the previous guard was written against exactly this family.\n\n`dataflow_scope.ensure_def_use_extractors_registered()` imports the four language def/use modules for their registration side effect, and guards the known hazard that `importlib.import_module` is a NO-OP once a module sits in `sys.modules` — so after a `clear_def_use_extractors()` the import re-registers nothing. The guard compared the live registry against `_EXPECTED_DEF_USE_LANGUAGES`, a set LEARNED from the first successful call.\n\nThe learned baseline could itself be clipped. If the first call ran in a process where an earlier test had imported the modules and then cleared the registry, `current` was partial — `{javascript, python, typescript}`, missing `go` — the `if not current` reload branch did not fire (the set was non-empty), and that partial set was recorded as what health looks like. Every later subset check then passed against the clipped baseline, so `go` stayed unregistered for the rest of the process with nothing reporting it. Observed exactly: `ensure_def_use_extractors_registered()` returning True with `_DEF_USE_EXTRACTORS` holding javascript/python/typescript and no go.\n\nWHAT IT COSTS: `populate_def_use_for_cfg` no-ops for an unregistered language, so every statement keeps empty `defines`/`uses`, the reaching-defs solver returns zero DDG edges, and `unaccounted_names` answers EMPTY for any input — a predicate that cannot report. Whether a Go data-flow claim was computed at all depended on which tests shared an xdist worker.\n\nFIX: the first call in a process reloads unconditionally and learns the baseline from the state it produced itself, rather than from whatever was lying around. Later calls keep the subset check.\n\nNOT A PRODUCTION-RUN HAZARD as far as I measured: only tests call `clear_def_use_extractors()`, so a real survey's first call finds an empty registry and reloads. The damage was confined to the suite — which is also where it hid, because it made a test green or red by ordering."  # a4f4
+    fields:  # a4f4
+      statement: "A guard that checks the live registry against an expected set must learn that set from a state it produced, not from whatever was registered when it first ran; otherwise a clipped first observation is recorded as health and the missing entry is never repaired."  # a4f4
+      root_cause: "_EXPECTED_DEF_USE_LANGUAGES was seeded from registered_def_use_languages() on the first call, and the reload branch fired only when the registry was COMPLETELY empty, so a partial registry (modules already in sys.modules after a clear_def_use_extractors()) seeded a partial baseline that every later subset check accepted."  # a4f4
+- op: update  # 2483
+  at: '2026-09-20T00:36:45Z'  # 2483
+  by: agent  # 2483
+  actor: jgstern_agent  # 2483
+  clock: 2  # 2483
+  nonce: '2483'  # 2483
+  set:  # 2483
+    status: satisfied  # 2483
