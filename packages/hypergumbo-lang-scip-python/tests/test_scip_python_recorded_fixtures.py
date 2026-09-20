@@ -8,7 +8,9 @@ records. What is pinned: the recording is what its module says, the
 declared anchors pair every syntax-arm record, the merge pass and the
 backend-agreement instrument reproduce the recorded tallies, and — the
 number this backend exists for — every module-less method-call receiver
-the syntax arm left behind gains a typed twin or a resolved superseder.
+the syntax arm left behind is either ABSORBED by the typed twin at the
+same site (§15) or superseded by a resolved one (§14). Seven stubs in,
+one sentinel stub out.
 """
 from __future__ import annotations
 
@@ -31,14 +33,15 @@ from hypergumbo_lang_scip_python.translate import translate_scip_python_to_hg
 
 from recorded_scip_python_0_6_6 import (
     PRODUCER_VERSION,
+    SAMPLE_PROJECT_ABSORBED,
     SAMPLE_PROJECT_ATTRIBUTE_AGREEMENT,
     SAMPLE_PROJECT_CORROBORATED,
     SAMPLE_PROJECT_COUNTS,
     SAMPLE_PROJECT_EDGE_OVERLAP,
+    SAMPLE_PROJECT_EXTERNAL_FOLDS,
     SAMPLE_PROJECT_MODULE_LESS_STUBS,
     SAMPLE_PROJECT_PAIRING,
     SAMPLE_PROJECT_SUPERSEDED,
-    SAMPLE_PROJECT_TYPED_BY_SCIP,
     SAMPLE_PROJECT_TYPED_EXTERNALS,
     sample_project_index_bytes,
     sample_project_root,
@@ -135,8 +138,10 @@ def _two_arm_artifact() -> tuple[dict, list[Symbol], list]:
     edges = syntax_edges + scip_edges
     runs = [{"execution_id": run_id, "pass": "python"}, {"execution_id": "scip-run", "pass": "scip_python"}]
     report = merge_producer_records(symbols, edges, runs)
-    assert (len(report.merged), len(report.ambiguous), report.corroborated) == (
+    assert (len(report.merged), len(report.ambiguous), report.corroborated,
+            report.external_folds) == (
         SAMPLE_PROJECT_PAIRING["paired"], 0, SAMPLE_PROJECT_CORROBORATED,
+        SAMPLE_PROJECT_EXTERNAL_FOLDS,
     )
     edges = deduplicate_edges(edges)
     ids = {s.id for s in symbols}
@@ -145,6 +150,20 @@ def _two_arm_artifact() -> tuple[dict, list[Symbol], list]:
     assert demote_superseded_stubs(symbols, edges) == SAMPLE_PROJECT_SUPERSEDED
     artifact = {"analysis_runs": runs, "nodes": [s.to_dict() for s in symbols], "edges": [e.to_dict() for e in edges]}
     return artifact, symbols, edges
+
+
+class TestWhatTheFoldActsOn:
+    def test_the_syntax_arm_alone_emits_seven_module_less_stubs(self) -> None:
+        """§15's input, pinned separately so "seven in, one out" has both ends.
+        Every one of these says ``external`` in the module slot — the sentinel
+        ADR-0051's axiom defines as *not a marker for the absence of an answer*
+        — and carries no ``dst_ref``, which is how the abstention is signalled
+        positively rather than inferred from the string (§15.1, WI-huzuv)."""
+        _, syntax_edges, _ = _syntax_arm()
+        stubs = [e for e in syntax_edges
+                 if e.edge_type == "calls" and e.dst.startswith("python:external:")]
+        assert sorted(e.dst.split(":")[-2] for e in stubs) == SAMPLE_PROJECT_MODULE_LESS_STUBS
+        assert all(e.dst_ref is None for e in stubs)
 
 
 class TestTheMergePassAndTheInstrumentOnBothArms:
@@ -157,17 +176,27 @@ class TestTheMergePassAndTheInstrumentOnBothArms:
         assert report.pairing["field"] == {"paired": 0, "python": 0, "scip_python": 1}
         assert sum(row["paired"] for row in report.pairing.values()) == SAMPLE_PROJECT_PAIRING["paired"]
 
-    def test_every_module_less_receiver_gains_a_typed_twin_or_a_superseder(self) -> None:
-        """The number this backend exists for, on the recording: of the syntax
-        arm's 7 module-less method-call stubs, 6 have a SCIP twin at the same
-        site carrying the receiver's module, and the seventh (`label`, a
-        property) is superseded by the SCIP arm's RESOLVED call."""
+    def test_every_module_less_receiver_is_absorbed_or_superseded(self) -> None:
+        """The number this backend exists for, on the recording. The syntax arm
+        emits 7 module-less method-call stubs. Six have a SCIP twin at the same
+        site stating the receiver's module, and §15 absorbs each into ONE edge
+        carrying that module and both origins — before §15 the artifact held two
+        edges for each of those calls. The seventh (`label`, a property) the
+        SCIP arm resolves IN-REPO, so no twin states a module and §14's
+        supersession is what applies instead."""
         _, symbols, edges = _two_arm_artifact()
-        stubs = [e for e in edges if e.edge_type == "calls" and e.dst.startswith("python:external:") and "scip" not in e.origin]
-        assert sorted(e.dst.split(":")[-2] for e in stubs) == SAMPLE_PROJECT_MODULE_LESS_STUBS
-        typed_sites = {(e.src, e.line, e.dst_ref.name) for e in edges if e.dst_ref and "scip" in e.origin}
-        typed = sorted(e.dst.split(":")[-2] for e in stubs if (e.src, e.line, e.dst.split(":")[-2]) in typed_sites)
-        assert typed == SAMPLE_PROJECT_TYPED_BY_SCIP
+        calls = [e for e in edges if e.edge_type == "calls"]
+        absorbed = sorted(
+            (e.dst_ref.name, e.dst_ref.module_path) for e in calls
+            if e.dst_ref and e.dst_ref.module_path and (e.attribution or {}).get("dst_ref")
+        )
+        assert absorbed == SAMPLE_PROJECT_ABSORBED
+        assert all(e.attribution["dst_ref"] == ["scip_python"] for e in calls
+                   if (e.attribution or {}).get("dst_ref"))
+        assert all(sorted(e.origin) == ["python", "scip"] for e in calls
+                   if (e.attribution or {}).get("dst_ref")), "one call, both producers"
+        # Exactly one sentinel stub is left, and it is the one no twin typed.
+        stubs = [e for e in calls if e.dst.startswith("python:external:")]
+        assert [e.dst.split(":")[-2] for e in stubs] == ["label"]
         [superseded] = [e for e in stubs if "superseded_by" in (e.meta or {})]
-        assert superseded.dst.split(":")[-2] == "label"
         assert superseded.meta["superseded_by_origin"] == ["scip"]

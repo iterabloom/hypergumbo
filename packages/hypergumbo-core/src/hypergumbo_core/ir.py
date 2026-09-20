@@ -1037,11 +1037,10 @@ class Edge:
                 evidence_lang = cand
         # Generate deterministic edge ID from src, dst, type, AND line
         # Line is included to ensure uniqueness for multiple call sites
-        edge_hash = hashlib.sha256(f"{src}:{dst}:{edge_type}:{line}".encode()).hexdigest()[:16]
         # edge_key excludes line for deduplication across passes
         edge_key = _compute_edge_key(src, dst, edge_type)
         return cls(
-            id=f"edge:sha256:{edge_hash}",
+            id=mint_edge_id(src, dst, edge_type, line),
             edge_key=edge_key,
             src=src,
             dst=dst,
@@ -1145,6 +1144,20 @@ class Edge:
 # lines, so it is a deterministic function of the input, not of encounter
 # order.
 _CALL_LINES_CAP = 50
+
+
+def mint_edge_id(src: str, dst: str, edge_type: str, line: int) -> str:
+    """The edge id, derived from the four facts that locate a relationship.
+
+    ADR-0036: an id derives from attributes, so anything that changes one of
+    these four must re-mint rather than carry the old id forward. ``line`` is
+    in the hash and ``edge_key`` is not, which is what lets two call sites of
+    one relationship be distinct edges before ``deduplicate_edges`` collapses
+    them. Extracted so the merge pass's §15 fold, which rebuilds ``dst`` from
+    the stated ``ExternalRef``, re-mints by the same rule the producer used.
+    """
+    digest = hashlib.sha256(f"{src}:{dst}:{edge_type}:{line}".encode()).hexdigest()[:16]
+    return f"edge:sha256:{digest}"
 
 
 def _edge_call_lines(edge: Edge) -> list[int]:

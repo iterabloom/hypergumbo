@@ -100,7 +100,19 @@ from ..arbitration import (
     ArbitrationPolicy,
 )
 from ..arbitration import CORROBORATED_CONFIDENCE as CORROBORATED_CONFIDENCE  # re-export: the §13 level
-from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, UsageContext, _absorb_call_site
+from ..ir import (
+    PASS_VERSION,
+    AnalysisRun,
+    Edge,
+    ExternalRef,
+    Symbol,
+    UsageContext,
+    _absorb_call_site,
+    _edge_call_lines,
+    callee_name_of,
+    format_legacy_dst,
+    mint_edge_id,
+)
 from .base import make_symbol_id
 from .registry import (
     SPAN_ROLE_ITEM,
@@ -161,6 +173,8 @@ class MergeReport:
     edges_folded: int = 0
     #: folded edges whose two pathways were distinct (§13)
     corroborated: int = 0
+    #: partial external identity keys absorbed by a complete one (§15)
+    external_folds: int = 0
     run: Optional[AnalysisRun] = None
 
 
@@ -460,6 +474,155 @@ def _fold_edges(
         edges[:] = [edge for edge in edges if id(edge) not in dropped]
 
 
+#: An external target's legacy ``dst`` ends in this kind slot before
+#: ``apply_external_id_remap`` rewrites it to ``external_symbol`` in finalize.
+#: The merge pass runs long before that, so this is what "outside the repo"
+#: looks like here.
+_EXTERNAL_KIND_SUFFIX = ":unresolved"
+
+
+def _external_language(edge: Edge) -> Optional[str]:
+    """The language slot of an edge pointing outside the repo, else ``None``."""
+    if not edge.dst.endswith(_EXTERNAL_KIND_SUFFIX):
+        return None
+    language = edge.dst.split(":", 1)[0]
+    return language or None
+
+
+def _stated_module(edge: Edge) -> Optional[ExternalRef]:
+    """The edge's COMPLETE external key, or ``None`` when it abstains.
+
+    §15.1: the abstention is signalled positively by ``dst_ref is None``,
+    never inferred from the ``dst`` string — whose module segment carries the
+    ``external`` sentinel that ADR-0051's axiom defines as not a marker for
+    the absence of an answer. An ``ExternalRef`` with an empty module path
+    states nothing either, and is neither partial nor complete.
+    """
+    ref = edge.dst_ref
+    if ref is None or not ref.module_path:
+        return None
+    return ref
+
+
+def _absorb_partial_external_keys(
+    edges: List[Edge],
+    pass_of_run: Mapping[str, str],
+    precedence: Sequence[str],
+    run_id: str,
+    report: MergeReport,
+    name_key_by_language: Mapping[str, Any],
+    *,
+    policy: ArbitrationPolicy = BUILTIN_POLICY,
+    precedence_by_attribute: Optional[Mapping[str, Sequence[str]]] = None,
+) -> None:
+    """§15: a partial external identity key is absorbed by a complete one.
+
+    Runs on what §11's fold left over. The two edges are the same call seen
+    by two producers, one of which determined the receiver's module and one
+    of which did not, so their ``dst`` strings differ and §11 kept both. The
+    key is §14's — same ``src``, a shared call line, the same ``edge_type``,
+    the same callee under the INCUMBENT's declared ``name_key`` — plus
+    "exactly one side states a module".
+
+    Placement is load-bearing and is why this lives in the merge pass rather
+    than in finalize: ``deduplicate_edges`` has not run, so every edge here
+    is still one call site. After it, a stub carries ``meta["call_lines"]``
+    for N sites and absorbing it would assert the twin's module of all N.
+    """
+    rank = {producer: index for index, producer in enumerate(precedence)}
+    sites: Dict[Tuple[str, int, str, str], List[Tuple[str, Edge]]] = {}
+    for edge in edges:
+        producer = pass_of_run.get(edge.origin_run_id)
+        if producer is None or producer not in rank:
+            continue
+        language = _external_language(edge)
+        if language is None:
+            continue
+        name_key = name_key_by_language.get(language)
+        if name_key is None:
+            continue
+        ref = edge.dst_ref
+        name = callee_name_of(
+            edge.dst, meta=edge.meta, dst_ref_name=ref.name if ref is not None else None
+        )
+        if not name:
+            continue  # no name information: nothing to pair on (INV-difud)
+        keyed = name_key(name)
+        for line in _edge_call_lines(edge):
+            sites.setdefault((edge.src, line, edge.edge_type, keyed), []).append((producer, edge))
+
+    dropped: set[int] = set()
+    for site in sorted(sites):
+        group = [(p, e) for p, e in sites[site] if id(e) not in dropped]
+        partials = [(p, e) for p, e in group if e.dst_ref is None]
+        completes = [(p, e) for p, e in group if _stated_module(e) is not None]
+        if not partials or not completes:
+            continue
+        modules = {_stated_module(e).module_path for _, e in completes}  # type: ignore[union-attr]
+        if len(modules) > 1 or len(partials) > 1:
+            # §15.5: more than one complete candidate that disagree, or one
+            # complete claimed by two partials. Refused and reported, never
+            # guessed — a wrong fold would be a false identity.
+            report.ambiguous.append((partials[0][1].id, [e.id for _, e in completes]))
+            continue
+        partial_producer = partials[0][0]
+        stating = sorted(
+            (item for item in completes if item[0] != partial_producer),
+            key=lambda item: rank[item[0]],
+        )
+        if not stating:
+            continue  # one producer's two calls on a line are not a contradiction
+        stating_producer, stated = stating[0][0], _stated_module(stating[0][1])
+        assert stated is not None  # `stating` is drawn from `completes`
+
+        members = sorted(group, key=lambda item: rank[item[0]])
+        survivor_name, survivor = members[0]
+        del survivor_name
+        others = members[1:]
+        producers = list(dict.fromkeys(producer for producer, _ in members))
+        originals = list(dict.fromkeys((p, e.confidence) for p, e in members))
+        distinct_pathways = len({edge.evidence_type for _, edge in members}) > 1
+        chosen: Dict[str, Candidate] = {}
+        if distinct_pathways:
+            chosen["confidence"] = (policy.corroborated_confidence, tuple(producers))
+            survivor.confidence_source = "corroborated"
+            report.corroborated += 1
+        _stamp_slot(
+            survivor, members, ("confidence", "evidence_type"), precedence, chosen=chosen,
+            precedence_by_attribute=precedence_by_attribute,
+        )
+        if distinct_pathways:
+            assert survivor.alternatives is not None
+            survivor.alternatives["confidence"] = [
+                {"value": confidence, "origin": [producer]} for producer, confidence in originals
+            ]
+        origins = list(survivor.origin)
+        for _name, other in others:
+            for origin in other.origin:
+                if origin not in origins:
+                    origins.append(origin)
+            _absorb_call_site(survivor, other)
+            dropped.add(id(other))
+        survivor.origin = origins
+        survivor.origin_run_id = run_id
+        # §15.2: the survivor takes the STATED ref and a dst rebuilt from it,
+        # so the id it derives from has changed and must be re-minted.
+        survivor.dst_ref = stated
+        survivor.dst = format_legacy_dst(stated)
+        survivor.id = mint_edge_id(survivor.src, survivor.dst, survivor.edge_type, survivor.line)
+        survivor.edge_key = None
+        # §15.6: the loser is an ABSTENTION, and §1 says an abstention
+        # contributes no entry at all — so the stating producer is named in
+        # `attribution` and `alternatives` gains nothing. Recording
+        # `module_path: "external"` here would stamp the defect into the slot
+        # that exists to cure it.
+        survivor.attribution = {**(survivor.attribution or {}), "dst_ref": [stating_producer]}
+        report.edges_folded += len(others)
+        report.external_folds += 1
+    if dropped:
+        edges[:] = [edge for edge in edges if id(edge) not in dropped]
+
+
 def merge_producer_records(
     symbols: List[Symbol],
     edges: List[Edge],
@@ -500,6 +663,7 @@ def merge_producer_records(
     dropped: set[int] = set()
     precedence: List[str] = []  # every merged language's producers, in policy order
     by_attribute: Dict[str, List[str]] = {}  # the policy's per-attribute orders, across languages
+    name_key_of: Dict[str, Any] = {}  # language -> the incumbent's declared name key (§10, §15)
 
     for language in sorted(by_language):
         present = by_language[language]
@@ -520,6 +684,7 @@ def merge_producer_records(
         incumbent_anchor = _anchor(incumbent_analyzer)
         report.languages.append(language)
         precedence.extend(a.name for a in ordered if a.name not in precedence)
+        name_key_of[language] = incumbent_anchor.name_key
         language_by_attribute = policy.precedence_by_attribute(participants)
         for attribute, names in language_by_attribute.items():
             known = by_attribute.setdefault(attribute, [])
@@ -594,6 +759,10 @@ def merge_producer_records(
     if precedence:
         _fold_edges(edges, pass_of_run, precedence, run.execution_id, report,
                     policy=policy, precedence_by_attribute=by_attribute)
+        _absorb_partial_external_keys(
+            edges, pass_of_run, precedence, run.execution_id, report, name_key_of,
+            policy=policy, precedence_by_attribute=by_attribute,
+        )
     if not report.merged and not report.edges_folded:
         return report
 
