@@ -211,8 +211,15 @@ _SCIP_KIND_MAP: Dict[int, str] = {
         ("Variable", "variable"),
         ("Struct", "struct"),
         ("Enum", "enum"),
+        # The abstract-type family is mapped WHOLE. SCIP declares Protocol
+        # beside Trait and Interface, and omitting it meant a Swift or
+        # Objective-C protocol indexed by SCIP never reached the `protocol`
+        # kind at all -- the partial-family enumeration that
+        # test_no_language_agnostic_module_hand_rolls_a_partial_abstract_family
+        # exists to catch, and the reason it was catching this file.
         ("Trait", "trait"),
         ("Interface", "interface"),
+        ("Protocol", "protocol"),
         ("Class", "class"),
         ("TypeAlias", "type_alias"),
         ("Module", "namespace"),
