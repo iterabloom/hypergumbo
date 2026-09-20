@@ -2665,6 +2665,33 @@ class TestUnaccountedNames:
     literal) does not reproduce, and nearly got the clause recorded as unreal.
     """
 
+    @pytest.fixture(autouse=True)
+    def _with_the_go_extractor_registered(self):
+        """``populate_def_use_for_cfg`` NO-OPS when no def/use extractor is
+        registered for the language, and that registry is populated by IMPORT
+        SIDE-EFFECT — analyzer discovery does not fill it; the production
+        dataflow path force-imports it
+        (``dataflow_scope.ensure_def_use_extractors_registered``, called from
+        ``cli``). Without that import every statement has empty ``defines``,
+        so there is no tracked name and this predicate answers EMPTY for any
+        input — the shape ``test_a_cfg_with_no_definitions_answers_empty``
+        pins deliberately, reached here by accident.
+
+        So these cases silently depended on whether some earlier test in the
+        same process had imported ``go_def_use``: green alone, green after
+        ``test_go_def_use.py``, and RED on an xdist worker that drew neither
+        (which is how CI saw it). Establish the production configuration
+        instead of inheriting whatever the worker happened to import.
+        """
+        from hypergumbo_core import cfg as _cfg
+        from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
+
+        ensure_def_use_extractors_registered()
+        assert "go" in _cfg._DEF_USE_EXTRACTORS, (
+            "the production force-import registered no Go def/use extractor; "
+            "without it this predicate answers empty for every input"
+        )
+
     def test_go_grouped_var_declaration_hides_its_value(self) -> None:
         """The motivating shape, live in alertmanager (api/v2/api.go:251).
 
