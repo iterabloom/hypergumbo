@@ -1,0 +1,38 @@
+Original commit body from 8d3a02b2e1cc68afaf7e7349ec7c315ce220357f:
+
+method-call-recovery-linker resolves by class-hint-and-short-name with a
+line-proximity tiebreaker and no receiver evidence. It was applying that to
+unresolved calls whose producer had already stated WHERE the callee lives.
+
+dst_ref with a module path is ADR-0035's complete external identity key,
+stated positively or abstained per ADR-0057 §15.1. The pass that read the
+imports and the scope made that claim; a short-name match is strictly less
+evidence, so an in-repo answer CONTRADICTS it rather than filling a gap --
+which is what §11 settles by keeping both edges and §14 declines to demote.
+The linker now refuses outright, applying the same rule one stage earlier at
+the pass that would otherwise manufacture the contest.
+
+The refusal reads the unresolved edge the recovery was derived FROM, not the
+call site: a.b(c.d()) puts two calls on one line and one sibling's claim says
+nothing about the other. A site-keyed version would have refused 7 recoveries
+whose own stub abstained.
+
+Measured on a single-backend Python self-survey of this repository:
+
+  method-call-recovery edges   92 -> 64   (28 removed, all wrong)
+  precision                    51% -> 73%
+  inherited-calls-linker       329 -> 329 (untouched)
+  §14 demotions                0 -> 0
+
+26 of the 28 targeted a dataclass FIELD -- tree_sitter_rust.language() bound
+to Symbol.language (19 sites), id(stub) to Symbol.id, type(e).__name__ to
+IpcPattern.type. The other 2 were os.environ.get -> TrackerSet.get and
+pathlib.Path.exists -> TrackerSet.exists.
+
+NOT asserted: that this linker is now correct. 17 of the remaining 64 are
+still wrong, every one a receiver-blind mis-bind where the stub abstained and
+no receiver_type_hint was stamped (0 of 90 audited Python stubs carried one).
+Filed as WI-fihun, which also carries the callability-taxonomy question and
+the two disagreeing hardcoded _CALLABLE_KINDS sets.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
