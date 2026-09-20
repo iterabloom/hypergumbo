@@ -126,6 +126,11 @@ def analyze_python_with_scip_impl(
     priority=45,
     languages=["python"],
     backend="scip",
+    # INV-gabak: the shared SCIP translation stamps this synthetic pass id
+    # (ADR-0044, catalog._SYNTHETIC_PASS_IDS) on every record it emits, not
+    # this analyzer's registration name. Declared so a consumer joining
+    # Edge.origin back to the registry reads a statement, not a coincidence.
+    emits_origin="scip",
     executes_analysed_code=False,
     # As with the Rust SCIP arm: nothing to declare, because no tracked
     # attribute's default is a concrete value any more (INV-kubup).

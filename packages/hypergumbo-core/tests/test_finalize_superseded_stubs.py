@@ -44,7 +44,8 @@ def two_producers():
     _registry_mod._discovered = True
     register_analyzer("python", backend="ast", priority=50,
                       merge=MergeAnchor(name_key=last_segment("."), span_role=SPAN_ROLE_ITEM))(_noop)
-    register_analyzer("pyscip", backend="scip", priority=45, languages=["python"],
+    register_analyzer("pyscip", backend="scip", emits_origin="scip", priority=45,
+                      languages=["python"],
                       merge=MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN))(_noop)
     yield
     _registry_mod._ANALYZER_REGISTRY.clear()
@@ -238,13 +239,15 @@ class TestOnlyAnAnchoredProducerSupersedes:
         resolved = _edge(WRAP, origin=["python"], resolved=True)
         assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 0
 
-    def test_the_backend_name_spelling_is_accepted(self) -> None:
-        """``pyscip`` registers ``backend="scip"`` and its edges stamp
-        ``origin="scip"`` (``scip/index.py``, ``scip/edges.py``,
-        ``scip/calls.py`` all write it), while the registry knows it by NAME.
-        Both spellings name the same anchored producer and both are accepted;
-        picking one would silently disarm the rule for the only backends it
-        exists to serve."""
+    def test_the_declared_origin_spelling_is_accepted(self) -> None:
+        """``pyscip`` registers under that NAME and declares
+        ``emits_origin="scip"``, because the shared SCIP translation stamps
+        that synthetic pass id on every record (ADR-0044). Both spellings name
+        the same anchored producer and both are accepted; recognising only the
+        registration name would silently disarm the rule for the only backends
+        it exists to serve. The declaration is what is read — reading
+        ``backend`` instead got the right answer off the wrong field
+        (INV-gabak)."""
         stub = _edge(STUB, origin=["python"], resolved=False)
         resolved = _edge(WRAP, origin=["scip"], resolved=True)
         assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1

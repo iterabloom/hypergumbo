@@ -176,6 +176,11 @@ def _has_scip_origin_edge(edges: list[Edge]) -> bool:
     priority=45,
     languages=["rust"],
     backend="scip",
+    # INV-gabak: the shared SCIP translation stamps this synthetic pass id
+    # (ADR-0044, catalog._SYNTHETIC_PASS_IDS) on every record it emits, not
+    # this analyzer's registration name. Declared so a consumer joining
+    # Edge.origin back to the registry reads a statement, not a coincidence.
+    emits_origin="scip",
     executes_analysed_code=True,
     # Nothing to declare: every tracked attribute's default is absent
     # since INV-kubup, so an unassigned field is already an abstention.
