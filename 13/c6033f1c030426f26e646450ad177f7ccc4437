@@ -1,0 +1,34 @@
+Original commit body from f0ab6f3acda3f26bab1050412549ebbe796e9799:
+
+The syntax arm emits a method call whose receiver module it could not
+determine; the type-aware arm emits the SAME call with the module stated.
+Under §11 alone the two dst strings differ and the artifact carries two
+edges for one call — 3,973 of 4,133 sites under scip-python.
+
+ADR-0057 §15 rules that for an endpoint outside the repo the identity is
+dst_ref, which can abstain, and not the dst string, whose module segment
+defaults to the "external" sentinel. A key missing its module component
+is PARTIAL; a partial key matches a complete one that agrees on every
+component it states, and two partials do not match each other.
+
+_absorb_partial_external_keys is a second phase inside _fold_edges, over
+what §11's fold left. The key is §14's — same src, a shared call line,
+the same edge_type, the same callee under the incumbent's declared
+name_key — plus "exactly one side states a module". The survivor is
+incumbent-first, takes the stated dst_ref and a dst rebuilt from it,
+re-mints its id via the extracted ir.mint_edge_id, resets edge_key,
+unions origin and absorbs call sites; attribution["dst_ref"] names the
+producer that stated it and alternatives gains nothing, because the
+loser abstained (§1). Ambiguity is reported on MergeReport.ambiguous,
+never guessed.
+
+Placement is load-bearing: deduplicate_edges has not run here, so every
+edge is still one call site. After it a stub carries meta["call_lines"]
+for N sites and absorbing it would assert the twin's module of all N.
+
+On the committed scip-python recording: 7 module-less stubs in, 6
+absorbed into one edge carrying both origins, 1 (`label`, resolved
+in-repo) left to §14. External unresolved calls in the backend-agreement
+table move from 2 both / 11 python-only / 6 scip-only to 8 / 5 / 0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
