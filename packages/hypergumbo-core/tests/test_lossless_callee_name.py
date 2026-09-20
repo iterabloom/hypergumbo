@@ -235,3 +235,60 @@ class TestTheIdStaysColonFreeWhileTheNameDoesNot:
         from hypergumbo_core.ir import sanitize_id_name_segment as b
 
         assert a is b
+
+
+#: The shape the reader disagreement took in production: the id's name slot has
+#: escaped ``::`` to ``..``, and only ``meta['callee_name']`` still has the truth.
+_ESCAPED = {"src": "rust:src/a.rs:1-9:main:function",
+            "dst": "rust:external:0-0:String..from_utf8:external_symbol",
+            "type": "calls", "line": 4, "is_resolved": False, "dst_ref": None,
+            "meta": {"callee_name": "String::from_utf8"}}
+
+
+class TestOneReaderForOneFact:
+    """INV-difud: every reader of an edge's callee name returns the same string.
+
+    ``verify_claims._callee_name`` read ``meta['callee_name']`` then the id;
+    ``finalize._stub_callee_name`` read ``dst_ref.name`` then parsed the id
+    POSITIONALLY as ``parts[-2]``, consulting the lossless home never. Two
+    homes for one read is how they drift apart (LIVE.md rule 7), and they had:
+    12 external edges on this repository's own survey, every one a name whose
+    id slot escaped ``::`` to ``..``.
+    """
+
+    def _edge_object(self):
+        from hypergumbo_core.ir import Edge
+        edge = Edge.create(src=_ESCAPED["src"], dst=_ESCAPED["dst"], edge_type="calls",
+                           line=4, origin=["rust"], evidence_type="ast_call_direct",
+                           confidence=0.5, origin_run_id="r")
+        edge.is_resolved = False
+        edge.dst_ref = None
+        edge.meta = {**(edge.meta or {}), "callee_name": "String::from_utf8"}
+        return edge
+
+    def test_both_readers_return_the_lossless_name(self) -> None:
+        from hypergumbo_core.finalize import _stub_callee_name
+        from hypergumbo_core.verify_claims import _callee_name
+        assert _callee_name(_ESCAPED) == "String::from_utf8"
+        assert _stub_callee_name(self._edge_object()) == "String::from_utf8"
+
+    def test_the_two_readers_agree(self) -> None:
+        from hypergumbo_core.finalize import _stub_callee_name
+        from hypergumbo_core.verify_claims import _callee_name
+        edge = self._edge_object()
+        assert _stub_callee_name(edge) == _callee_name(edge.to_dict())
+
+    def test_a_structured_ref_is_read_when_the_lossless_home_is_empty(self) -> None:
+        from hypergumbo_core.finalize import _stub_callee_name
+        from hypergumbo_core.ir import ExternalRef
+        edge = self._edge_object()
+        edge.meta = {}
+        edge.dst_ref = ExternalRef(lang="rust", module_path="std::string", name="String::from_utf8")
+        assert _stub_callee_name(edge) == "String::from_utf8"
+
+    def test_a_malformed_id_yields_no_name_information(self) -> None:
+        """``symbol_name_slot``'s contract: "" means "no name information"."""
+        from hypergumbo_core.finalize import _stub_callee_name
+        edge = self._edge_object()
+        edge.meta, edge.dst_ref, edge.dst = {}, None, "too:short"
+        assert _stub_callee_name(edge) == ""

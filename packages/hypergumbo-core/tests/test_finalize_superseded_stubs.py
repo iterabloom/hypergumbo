@@ -107,6 +107,40 @@ class TestTheRule:
         assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
 
 
+class TestTheCalleeNameIsReadFromItsLosslessHome:
+    """INV-difud. The id's name slot is deliberately lossy (ADR-0036 R1) and
+    ``meta['callee_name']`` is the lossless home the producer stamps. Reading
+    the slot instead makes an escaped name fail the key comparison, so the
+    demotion is silently MISSED — a false negative in the direction that leaves
+    a wrong answer at equal standing with the right one."""
+
+    #: ``Result::wrap`` after the id's ``:`` -> ``.`` fold. ``last_segment(".")``
+    #: reads the escaped form as ``wrap`` and the real name as ``Result::wrap``.
+    ESCAPED_TARGET = "python:pkg/b.py:60-70:Result..wrap:method"
+    ESCAPED_STUB = "python:<external>:0-0:Result..wrap:external_symbol"
+
+    def _escaped_symbols(self) -> list[Symbol]:
+        return _symbols() + [Symbol(
+            id=self.ESCAPED_TARGET, name="Result::wrap", kind="method", language="python",
+            path="pkg/b.py", span=Span(60, 70, 0, 0), origin="python", origin_run_id="r")]
+
+    def test_an_escaped_name_still_reaches_its_demotion(self) -> None:
+        stub = _edge(self.ESCAPED_STUB, origin=["python"], resolved=False)
+        stub.dst_ref = None  # WI-huzuv: no ref when the module is the sentinel
+        stub.meta = {**(stub.meta or {}), "callee_name": "Result::wrap"}
+        resolved = _edge(self.ESCAPED_TARGET, origin=["scip"], resolved=True)
+        assert demote_superseded_stubs(self._escaped_symbols(), [stub, resolved]) == 1
+        assert stub.meta["superseded_by"] == resolved.id
+
+    def test_without_the_lossless_home_the_lossy_slot_is_still_read(self) -> None:
+        """No meta, no ref — the id remains the fallback rather than a raise."""
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        stub.dst_ref = None
+        stub.meta = {k: v for k, v in (stub.meta or {}).items() if k != "callee_name"}
+        resolved = _edge(WRAP, origin=["scip"], resolved=True)
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
+
+
 class TestWhatDoesNotDemote:
     def test_the_factor_is_the_policys(self) -> None:
         from hypergumbo_core.arbitration import ArbitrationPolicy

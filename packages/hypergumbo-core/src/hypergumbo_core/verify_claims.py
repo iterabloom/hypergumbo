@@ -143,7 +143,7 @@ from .io_boundary import (
     module_hint_disjuncts,
     normalize_module_separators,
 )
-from .ir import symbol_name_slot, symbol_path_slot
+from .ir import callee_name_of, symbol_name_slot, symbol_path_slot
 from .paths import classify_test_file, is_migration_file
 
 
@@ -3815,11 +3815,11 @@ def _callee_name(edge: dict[str, Any]) -> str:
     parses ``_call_site_label``'s output back out — and two homes for one read
     is how they drift apart (LIVE.md rule 7).
     """
-    meta = edge.get("meta") or {}
-    name = meta.get("callee_name")
-    if isinstance(name, str) and name:
-        return name
-    return symbol_name_slot(str(edge.get("dst", "")))
+    return callee_name_of(
+        str(edge.get("dst", "")),
+        meta=edge.get("meta"),
+        dst_ref_name=(edge.get("dst_ref") or {}).get("name"),
+    )
 
 
 def _call_site_label(edge: dict[str, Any]) -> str:

@@ -445,13 +445,16 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
 
 
 def _stub_callee_name(edge: "Edge") -> str:
-    """The name the stub claims to call: ``dst_ref.name`` when the verdict
-    derived one, else the name slot of the id (ADR-0036 grammar, parsed from
-    the right as ``check_id_construction`` does)."""
-    if edge.dst_ref is not None and edge.dst_ref.name:
-        return edge.dst_ref.name
-    parts = edge.dst.split(":")
-    return parts[-2] if len(parts) >= 5 else edge.dst
+    """The name the stub claims to call — :func:`ir.callee_name_of`, which is
+    the one home for this read (INV-difud). This used to skip
+    ``meta['callee_name']`` and parse the id positionally, so an escaped name
+    failed §14's key comparison and the demotion was silently missed."""
+    from .ir import callee_name_of
+
+    ref = edge.dst_ref
+    return callee_name_of(
+        edge.dst, meta=edge.meta, dst_ref_name=ref.name if ref is not None else None
+    )
 
 
 def demote_superseded_stubs(
