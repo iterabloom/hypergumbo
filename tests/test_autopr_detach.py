@@ -83,7 +83,10 @@ def _harness(tmp_path: Path, child_body: str, driver: str) -> tuple[Path, Path]:
         f'REPO_ROOT="{repo}"\n'
         f'AUTOPR_RESULT_FILE="{repo}/.git/AUTOPR_LAST_RESULT.json"\n'
         f'AUTOPR_HISTORY_FILE="{repo}/.git/AUTOPR_HISTORY.jsonl"\n'
-        "if [[ \"${1:-}\" == --child-marker ]]; then\n"
+        # The marker may not be $1: the detach helper PREPENDS --foreground to
+        # the child argv (the child has no tty either and would otherwise be
+        # refused by the mode gate), so match anywhere in "$*".
+        "if [[ \" $* \" == *\" --child-marker \"* ]]; then\n"
         f"{child_body}\n"
         "\texit 0\n"
         "fi\n"

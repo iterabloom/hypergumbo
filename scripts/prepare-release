@@ -352,7 +352,7 @@ echo "━━━ Step 6: Push release commit to dev ━━━"
 if ! $DRY_RUN; then
     # Feature branch was created in Step 4.  auto-pr pushes, polls CI,
     # and merges to dev, then switches back to dev and cleans up the branch.
-    if ./scripts/auto-pr; then
+    if ./scripts/auto-pr --foreground; then
         echo -e "${GREEN}✓${NC} Release commit merged to dev via auto-pr"
     else
         echo -e "${RED}✗${NC} Failed to push release commit to dev"

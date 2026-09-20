@@ -453,6 +453,12 @@ _autopr_detach_and_exit() {
 	# the child's first write there is otherwise a window in which a second
 	# auto-pr would see no gate and start concurrently.
 	echo "detached" >"$REPO_ROOT/.git/PR_PENDING"
+	# The child's stdout is the log file, so it has no tty either. Declare its
+	# mode FOR it or the gate refuses the watcher the instant it starts, and
+	# --detach fails closed with the evidence buried in a log nobody reads.
+	# PREPENDED, because the flag loop breaks at the first non-flag: a trailing
+	# --foreground after a subcommand such as `flush` would never be parsed.
+	_AUTOPR_CHILD_ARGS=(--foreground "${_AUTOPR_CHILD_ARGS[@]}")
 	setsid nohup "$0" "${_AUTOPR_CHILD_ARGS[@]}" >"$log" 2>&1 &
 	local pid=$!
 	AUTOPR_WATCH_PID="$pid" AUTOPR_WATCH_LOG="$log" AUTOPR_WATCH_OUT="$handle" \
@@ -549,6 +555,52 @@ do_wait() {
 	echo "   Log: $log"
 	rm -f "$handle" 2>/dev/null || true
 	return "$code"
+}
+
+# ------------------------------------------------------------------
+# WI-hajak: with no terminal, the caller must DECLARE how it wants to run.
+#
+# WI-katap made a killed run visible; --detach means it need not be killed at
+# all. Neither stops the caller FORGETTING, and forgetting is what actually
+# happened: the session that discovered `nohup` reverted to `timeout 590`
+# within the same session, and 22 of 84 recorded runs died that way.
+#
+# Making --detach the DEFAULT for a non-tty caller was considered and refused
+# on evidence. scripts/prepare-release does `if ./scripts/auto-pr; then echo
+# "merged"`, reading exit 0 as the merge, and an agent runs it -- so it is
+# non-tty. Auto-detaching would have it return 0 at once, having merged
+# nothing, and announce a merge that did not happen. Exit 0 would then carry
+# two facts ("merged" / "handed off, outcome unknown"), which is exactly the
+# conflation the last two changes removed, re-made at the exit code.
+#
+# So the mode is declared, not guessed, and an undeclared non-tty run is
+# refused BEFORE it does anything. Gating at the CI poll instead would be more
+# narrowly targeted but would refuse only after pushing a branch and opening a
+# PR; a refusal that costs a re-run beats one that leaves side effects behind.
+#
+# stdout is the test because it is the channel a human reads: if it is a tty
+# somebody is watching and can Ctrl-C, and there is nothing to declare.
+# ------------------------------------------------------------------
+_autopr_require_declared_mode() {
+	if [[ -t 1 ]]; then
+		return 0
+	fi
+	if [[ "${DETACH_MODE:-false}" == "true" || "${FOREGROUND_MODE:-false}" == "true" ]]; then
+		return 0
+	fi
+	echo "❌ auto-pr: no terminal, and no execution mode declared." >&2
+	echo "" >&2
+	echo "   This run would poll CI for up to $((${CI_POLL_TIMEOUT:-2400} + 300))s." >&2
+	echo "   Nothing is watching, so say which you want:" >&2
+	echo "" >&2
+	echo "     --detach      hand the poll to a background watcher and return now" >&2
+	echo "                   (then: auto-pr wait). Use this from an agent." >&2
+	echo "     --foreground  block here until the merge lands. Use this from a" >&2
+	echo "                   script that reads auto-pr's exit code as the result." >&2
+	echo "" >&2
+	echo "   Refusing rather than guessing: the two differ in what exit 0 MEANS." >&2
+	_autopr_state_final="failed_mode_undeclared"
+	exit 1
 }
 
 _autopr_write_sentinel() {
@@ -1900,6 +1952,7 @@ do_pr() {
 	if [[ "${DETACH_MODE:-false}" == "true" ]]; then
 		_autopr_detach_and_exit
 	fi
+	_autopr_require_declared_mode
 
 	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
 	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
@@ -2695,6 +2748,7 @@ fi
 # appends its own arguments EXCEPT --detach, so the child inherits the whole
 # invocation minus the flag that would make it detach again.
 DETACH_MODE=false
+FOREGROUND_MODE=false
 _AUTOPR_CHILD_ARGS=()
 
 # Parse global flags
@@ -2722,6 +2776,13 @@ while [[ $# -gt 0 ]]; do
 	--gov)
 		GOVERNANCE_MODE=true
 		_AUTOPR_CHILD_ARGS+=("$1")
+		shift
+		;;
+	--foreground)
+		# Declared blocking. NOT forwarded to the child here — the detach
+		# helper prepends it itself, and forwarding both would be harmless
+		# but would hide which one is load-bearing.
+		FOREGROUND_MODE=true
 		shift
 		;;
 	--detach)
@@ -2776,6 +2837,14 @@ done
 # Whatever positionals survive the loop (legacy title/description) go to the
 # child too, or a detached run would silently lose its PR title.
 _AUTOPR_CHILD_ARGS+=("$@")
+
+# Contradictory instructions. Picking a winner would be the guess this whole
+# family of fixes exists to refuse.
+if [[ "$DETACH_MODE" == "true" && "$FOREGROUND_MODE" == "true" ]]; then
+	echo "❌ --detach and --foreground are mutually exclusive." >&2
+	echo "   --detach returns immediately; --foreground blocks until the merge." >&2
+	exit 1
+fi
 
 # ------------------------------------------------------------------
 # gov-cleanup: Verify PR is merged (by human via web UI), then clean up
@@ -2864,6 +2933,10 @@ help | --help | -h)
 	echo "                      Commit body is preserved via git notes, subject includes [from <sha>]"
 	echo "  --timeout SECS      CI polling timeout in seconds (default: 2400 = 40 min)"
 	echo "  --gov               Governance mode: push + CI, but do NOT auto-merge (human reviews)"
+	echo "  --foreground        Block here until the merge lands. Declares that this caller"
+	echo "                      can wait; required (with --detach as the alternative) when"
+	echo "                      stdout is not a terminal, since exit 0 means different"
+	echo "                      things in the two modes."
 	echo "  --detach            Hand the CI poll to a background watcher and return at once."
 	echo "                      Use this from an agent: a foreground run cannot fit the CI"
 	echo "                      budget (2400s poll + 300s soft-retry) inside a 600s turn."

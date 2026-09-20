@@ -107,7 +107,7 @@ def _run_autopr(
     if extra_env:
         env.update(extra_env)
     return subprocess.run(
-        ["bash", str(AUTO_PR_PATH), *args],
+        ["bash", str(AUTO_PR_PATH), "--foreground", *args],
         cwd=str(fake_root),
         capture_output=True,
         text=True,

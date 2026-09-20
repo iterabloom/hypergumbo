@@ -141,6 +141,13 @@ Design only — nothing in the pipeline changes in this release. ADR-0012 §Step
 
 ### Fixed
 
+#### With no terminal, `auto-pr` refuses to start until the caller declares a mode (WI-hajak)
+
+- **`--detach` only helps a caller who remembers to pass it, and the record says callers forget** — the session that discovered `nohup` reverted to `timeout 590` within the same session. The obvious remedy, defaulting to `--detach` when stdout is not a tty, was **considered and rejected on evidence**: `scripts/prepare-release` does `if ./scripts/auto-pr; then echo "merged"`, reading exit 0 as the merge, and an agent runs it — so it is non-tty. Auto-detaching would have it return 0 immediately having merged nothing and announce a merge that never happened. Exit 0 would then carry two facts, which is the conflation the two preceding changes removed, re-made at the exit code.
+- **So the mode is declared, not guessed.** A non-tty run that passed neither `--detach` nor `--foreground` is refused with `failed_mode_undeclared`, and the refusal names both ways out. It fires at the **top** of `do_pr`, before any work: gating at the CI poll would be more narrowly targeted but would refuse only after pushing a branch and opening a PR, and a refusal that costs a re-run beats one that leaves side effects behind. `--detach` and `--foreground` together are refused as contradictory rather than resolved by precedence.
+- **The detached child declares `--foreground` for itself**, prepended rather than appended — its stdout is the log file, so it has no tty either, and the flag loop breaks at the first non-flag so a trailing flag after a subcommand is never parsed. Without this `--detach` would fail closed, with the evidence buried in a log nobody reads.
+- A pty-backed control test pins that a run **with** a terminal is not refused; without it an unconditionally-refusing implementation would pass every other test in the file.
+
 #### `auto-pr --detach`: the CI poll outlives the caller's turn (WI-hajak)
 
 - **WI-katap made the kill visible; this stops it.** The arithmetic cannot be tuned away — `auto-pr` commits to 2400s of polling plus a 300s soft-retry that is not optional, while an agent harness caps one foreground shell call at 600s. `--detach` re-execs `auto-pr` as a `setsid` watcher that survives its parent's session, records the deliberate non-merge state `detached_watching`, and returns immediately. The watcher writes its **own** ledger row, so one logical PR yields two honest rows rather than one lie.

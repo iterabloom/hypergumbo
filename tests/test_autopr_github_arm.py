@@ -44,7 +44,7 @@ class TestDoPrGitHubPush:
         repo = fake_repo(tmp_path, "https://github.com/test/repo.git", branch="feature")
         bindir = bindir_with_fakes(tmp_path)
         r, logs = run_script(
-            AUTO_PR, repo, ("--title", "fix: x", "--description", "y"),
+            AUTO_PR, repo, ("--foreground", "--title", "fix: x", "--description", "y"),
             fixtures=[
                 {"match": "POST", "code": 201, "body": json.dumps({"number": 7777})},
                 {"match": "GET", "code": 200, "body": "[]"},
@@ -62,7 +62,7 @@ class TestDoPrGitHubPush:
         repo = fake_repo(tmp_path, "https://github.com/test/repo.git", branch="feature")
         bindir = bindir_with_fakes(tmp_path)
         r, _ = run_script(
-            AUTO_PR, repo, ("--title", "fix: x", "--description", "y"),
+            AUTO_PR, repo, ("--foreground", "--title", "fix: x", "--description", "y"),
             fixtures=[{"match": "GET", "code": 200, "body": "[]"}],
             env=dict(_BASE_ENV, AUTO_PR_SIMULATE_GH_PUSH="fail"),
             bindir=bindir,
