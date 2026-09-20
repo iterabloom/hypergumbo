@@ -340,6 +340,7 @@ def _process_maven_pom(
                     src=src_id,
                     dst=target_path,
                     edge_type="defines_target",
+                    evidence_type="build_target_main",
                     line=line,
                     confidence=1.0,
                     origin=PASS_ID,

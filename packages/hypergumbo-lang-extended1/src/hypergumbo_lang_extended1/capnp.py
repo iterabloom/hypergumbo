@@ -219,6 +219,7 @@ def _extract_symbols_and_edges(
                         src=interface_sym.id,
                         dst=method_sym.id,
                         edge_type="contains",
+                        evidence_type="enclosing_scope",
                         # Same value as method_sym.span.start_line: make_symbol
                         # derives the span from this very node.
                         line=node.start_point[0] + 1,
@@ -251,6 +252,7 @@ def _extract_symbols_and_edges(
                                         src=make_file_id("capnp", file_path),
                                         dst=f"capnp:{import_path}:1-1:file:file",
                                         edge_type="imports",
+                                        evidence_type="ast_import",
                                         line=node.start_point[0] + 1,
                                         origin=PASS_ID,
                                         origin_run_id=run_id,

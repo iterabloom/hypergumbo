@@ -1281,6 +1281,69 @@ def ratchet_diff(
     return sorted(live_values - baseline_values), sorted(baseline_values - live_values)
 
 
+def edge_sites_without_evidence_type(
+    repo_root: Path,
+    *,
+    search_roots: Iterable[str] = DEFAULT_SEARCH_ROOTS,
+    excluded_path_substrings: Iterable[str] = DEFAULT_EXCLUDED_PATH_SUBSTRINGS,
+) -> tuple[str, ...]:
+    """``file:line`` for every producer site that does not NAME its pathway.
+
+    ``Edge.evidence_type`` defaults to ``ast_call_direct`` on both the
+    dataclass and ``Edge.create``, and ADR-0028 makes that value a claim
+    about how the analyzer concluded the edge exists — the most specific
+    pathway in a 126-value vocabulary. A producer that omits the keyword
+    therefore does not abstain: it asserts a direct call site it never saw,
+    and `Edge.create` then DERIVES the edge's confidence from that
+    fabricated pathway and stamps it ``evidence_derived`` (INV-nudoj).
+    Fifty-one sites did exactly that, including three linkers that perform
+    no call analysis at all.
+
+    The cure is to make the omission impossible rather than to detect the
+    phantom afterwards: every producer names its pathway, so the merge
+    pass's candidate set (ADR-0057 §1) cannot contain an unobserved value.
+    A call that forwards ``**kwargs`` is not a site — what it passes cannot
+    be read statically — and neither are tests, which construct synthetic
+    edges (:data:`DEFAULT_EXCLUDED_PATH_SUBSTRINGS`).
+    """
+    excluded_tuple = tuple(excluded_path_substrings)
+    sites: list[str] = []
+    for root_name in search_roots:
+        root = repo_root / root_name
+        if not root.is_dir():
+            continue
+        for py_file in sorted(root.rglob("*.py")):
+            py_str = str(py_file)
+            if any(sub in py_str for sub in excluded_tuple):
+                continue
+            try:
+                tree = ast.parse(py_file.read_text(encoding="utf-8"))
+            except (OSError, SyntaxError):  # pragma: no cover - unparseable source
+                continue
+            try:
+                rel: Path | str = py_file.relative_to(repo_root)
+            except ValueError:  # pragma: no cover
+                rel = py_file
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                is_site = (
+                    (isinstance(func, ast.Name) and func.id == "Edge")
+                    or (
+                        isinstance(func, ast.Attribute) and func.attr == "create"
+                        and isinstance(func.value, ast.Name) and func.value.id == "Edge"
+                    )
+                )
+                if not is_site:
+                    continue
+                names = {kw.arg for kw in node.keywords}
+                if "evidence_type" in names or None in names:
+                    continue
+                sites.append(f"{rel}:{node.lineno}")
+    return tuple(sites)
+
+
 def unregistered_symbol_kinds(
     repo_root: Path, descend_helpers: bool = True,
 ) -> dict[str, tuple[str, ...]]:

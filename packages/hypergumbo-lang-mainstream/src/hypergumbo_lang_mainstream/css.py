@@ -180,6 +180,7 @@ def _process_css_tree(
                         src=file_symbol_id,
                         dst=f"css:{import_path}:0-0:module:module",
                         edge_type="imports",
+                        evidence_type="ast_import",
                         line=start_line,
                         confidence=1.0,
                         origin=PASS_ID,

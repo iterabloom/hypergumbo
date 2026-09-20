@@ -8138,7 +8138,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     entrypoint_seed_ids: set[str] = set()
     if seeds_mode in ("production", "entrypoints", "all"):
         from .entrypoints import detect_entrypoints
-        from .ir import LEGACY_DESERIALIZED_SENTINEL, Symbol, Edge, Span, _normalize_origin
+        from .ir import Edge, Span, Symbol
 
         # Convert dict nodes/edges to IR objects for detect_entrypoints
         ir_nodes = []
@@ -8160,22 +8160,15 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             )
             ir_nodes.append(sym)
 
-        ir_edges = []
-        for e in edges:
-            # WI-higap: this path reconstructs Edges from a previously-saved
-            # behavior map. Preserve the original origin / origin_run_id where
-            # available, falling back to the deserialization sentinel for
-            # legacy maps that pre-date producer fixes.
-            ir_edges.append(Edge(
-                id=e.get("id", ""),
-                src=e.get("src", ""),
-                dst=e.get("dst", ""),
-                edge_type=e.get("type", "calls"),
-                line=e.get("line", 0),
-                confidence=e.get("confidence", 0.85),
-                origin=_normalize_origin(e.get("origin")) or [LEGACY_DESERIALIZED_SENTINEL],
-                origin_run_id=e.get("origin_run_id") or LEGACY_DESERIALIZED_SENTINEL,
-            ))
+        # WI-higap: this path reconstructs Edges from a previously-saved
+        # behavior map, and ``Edge.from_dict`` is the one deserializer —
+        # it carries the sentinel fallback for legacy origin fields AND
+        # reads back the fields this call site used to drop on the floor:
+        # ``meta`` (and with it ``evidence_type``, which serialises there),
+        # ``is_resolved``, ``dst_ref`` and ``confidence_source``. Rebuilding
+        # the Edge by hand meant every reconstructed edge claimed the
+        # ``ast_call_direct`` inference pathway it was never told (INV-nudoj).
+        ir_edges = [Edge.from_dict(e) for e in edges]
 
         min_conf = getattr(args, "min_confidence", 0.0)
         for ep in detect_entrypoints(ir_nodes, ir_edges):

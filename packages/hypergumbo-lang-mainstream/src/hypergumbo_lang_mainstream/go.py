@@ -5605,6 +5605,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                         src=a.id,
                         dst=b.id,
                         edge_type="references",
+                        evidence_type="naming_convention",
                         line=a.span.start_line if a.span else 0,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,

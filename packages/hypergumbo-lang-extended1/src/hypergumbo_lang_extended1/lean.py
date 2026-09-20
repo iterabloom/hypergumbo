@@ -432,6 +432,7 @@ def _extract_edges_from_file(
                             src=decl_result.symbol.id,
                             dst=ref_result.symbol.id,
                             edge_type="references",
+                            evidence_type="reference",
                             line=id_node.start_point[0] + 1,
                             origin=PASS_ID,
                             origin_run_id=run_id,

@@ -1974,3 +1974,77 @@ def test_edge_type_wrapper_accepts_mode_kwargs():
         nonexistent, fstring_mode="strict", variable_form_mode="strict",
     )
     assert r.strict_violations == ()
+
+
+class TestEveryProducerNamesItsPathway:
+    """INV-nudoj: ``Edge.evidence_type`` defaults to ``ast_call_direct``, so
+    a producer that omits it does not abstain — it claims the most specific
+    inference pathway in a 126-value vocabulary, and ``Edge.create`` then
+    DERIVES the edge's confidence from that claim and stamps it
+    ``evidence_derived``. Fifty-one sites did, including three linkers that
+    perform no call analysis at all. The cure is to make the omission
+    impossible rather than to detect the phantom downstream.
+    """
+
+    def test_no_shipped_producer_leaves_its_pathway_to_the_default(self) -> None:
+        from hypergumbo_core.producer_coherence import edge_sites_without_evidence_type
+
+        assert edge_sites_without_evidence_type(REPO_ROOT) == ()
+
+    def _tree(self, tmp_path: Path, body: str, *, relative: str) -> Path:
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body)
+        return tmp_path
+
+    def test_a_site_that_omits_the_keyword_is_reported(self, tmp_path: Path) -> None:
+        """The live tree passing proves nothing on its own (LIVE.md rule 6)."""
+        from hypergumbo_core.producer_coherence import edge_sites_without_evidence_type
+
+        root = self._tree(
+            tmp_path,
+            'Edge.create(src="a", dst="b", edge_type="calls", line=1)\n',
+            relative="packages/p/src/m.py",
+        )
+        assert edge_sites_without_evidence_type(root) == ("packages/p/src/m.py:1",)
+
+    def test_a_site_that_names_it_is_not(self, tmp_path: Path) -> None:
+        from hypergumbo_core.producer_coherence import edge_sites_without_evidence_type
+
+        root = self._tree(
+            tmp_path,
+            'Edge.create(src="a", dst="b", edge_type="calls", line=1,\n'
+            '            evidence_type="ast_call")\n',
+            relative="packages/p/src/m.py",
+        )
+        assert edge_sites_without_evidence_type(root) == ()
+
+    def test_a_forwarded_kwargs_site_cannot_be_read_and_is_not_reported(
+        self, tmp_path: Path,
+    ) -> None:
+        """What ``**kwargs`` carries is not statically visible; reporting it
+        would be a claim this walker cannot support."""
+        from hypergumbo_core.producer_coherence import edge_sites_without_evidence_type
+
+        root = self._tree(
+            tmp_path,
+            'Edge(src="a", dst="b", edge_type="calls", line=1, **extra)\n',
+            relative="packages/p/src/m.py",
+        )
+        assert edge_sites_without_evidence_type(root) == ()
+
+    def test_tests_construct_synthetic_edges_and_are_excluded(self, tmp_path: Path) -> None:
+        from hypergumbo_core.producer_coherence import edge_sites_without_evidence_type
+
+        root = self._tree(
+            tmp_path,
+            'Edge.create(src="a", dst="b", edge_type="calls", line=1)\n',
+            relative="packages/p/tests/test_m.py",
+        )
+        assert edge_sites_without_evidence_type(root) == ()
+
+    def test_an_unparseable_source_is_skipped_not_reported(self, tmp_path: Path) -> None:
+        from hypergumbo_core.producer_coherence import edge_sites_without_evidence_type
+
+        root = self._tree(tmp_path, "def (:\n", relative="packages/p/src/broken.py")
+        assert edge_sites_without_evidence_type(root) == ()
