@@ -133,6 +133,10 @@ Design only — nothing in the pipeline changes in this release. ADR-0012 §Step
 
 ### Fixed
 
+#### ADR-0057 §14 states the scope of the rule that landed
+
+- **The supersession pass is armed by registration, not by what ran.** §14 closed with "a language with one producer is untouched by construction". Its language gate is `merge_participants` — a registry query — where §3's merge pass additionally requires two producers' records to be *present*; and its second gate accepts any origin the stub lacks, which a linker satisfies as readily as a second backend. Measured on this repository with no SCIP backend active: **419** Python stubs are demoted, 329 by `inherited-calls-linker` and 90 by `method-call-recovery-linker`. §14 and the Consequences bullet that repeated the claim now state the shipped scope, and whether a linker's resolution should carry that weight — and whether the gate should read what ran — is an open question on the ADR. No behaviour changes.
+
 #### Every producer names its inference pathway (INV-nudoj)
 
 - **`Edge.evidence_type` defaults to `ast_call_direct`, so omitting it is not an abstention — it is a claim.** ADR-0028 makes the value name *how* the analyzer concluded the edge exists, and the default is the most specific pathway in a 126-value vocabulary. **51 producer sites omitted it**, including three linkers that perform no call analysis at all, a proto/thrift/capnp declaration nesting, five build-manifest target declarations and `cli.py`'s hand-rolled behavior-map deserializer. Worse than a silent phantom: `Edge.create` **derives the edge's confidence from `evidence_type`** and then stamps the result `evidence_derived`, so a defaulted pathway also fabricates a derived confidence with provenance attached.
