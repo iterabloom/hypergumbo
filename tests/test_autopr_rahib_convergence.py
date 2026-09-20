@@ -699,7 +699,11 @@ CONVERGED_FAILURE = frozenset(
 
 # Deliberate non-merge outcomes. Converged by ruling, not by accident.
 CONVERGED_DELIBERATE = frozenset(
-    {"queued_vpr", "governance_pending", "noop_empty_queue"}
+    # `detached_watching` (WI-hajak) belongs here for the same reason
+    # `queued_vpr` does: the run did exactly what it set out to do. It did not
+    # merge, and it did not fail to merge — it handed the poll to a watcher
+    # that outlives the caller's turn, and that watcher writes its own row.
+    {"queued_vpr", "governance_pending", "noop_empty_queue", "detached_watching"}
 )
 
 # A FOURTH bucket (WI-katap), deliberately not folded into any of the three

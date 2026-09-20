@@ -424,6 +424,133 @@ _autopr_install_traps() {
 	trap '_autopr_on_signal HUP 1' HUP
 }
 
+# ------------------------------------------------------------------
+# WI-hajak: hand the CI poll to a watcher that outlives the caller's turn.
+#
+# WI-katap made an externally-killed run VISIBLE; it did not stop the kill. The
+# arithmetic cannot be tuned away: this script commits to 2400s of polling plus
+# a 300s soft-retry that is not optional, while an agent harness caps one
+# foreground shell call at 600s. 22 of 84 post-instrumentation runs died that
+# way and 14 of the 15 PRs behind them merged anyway -- finished by hand.
+#
+# THE PARENT DETACHES BEFORE DOING ANY WORK and re-execs itself WITHOUT
+# `--detach`. That is what leaves do_pr -- 600 lines carrying the poll, the
+# soft retry, Scenario B and the merge cascade -- completely untouched: the
+# child is an ordinary run, not a resumed half of one. The push is idempotent
+# for exactly this reason (an existing open PR for the branch is reused), which
+# production already exercises.
+#
+# `setsid` rather than a bare `&`: the child must survive its parent's session
+# going away, which is the whole failure mode being fixed. The log is opened
+# BEFORE the fork so `wait` can never be handed a handle naming a file that
+# does not exist yet.
+# ------------------------------------------------------------------
+_autopr_detach_and_exit() {
+	local log="$REPO_ROOT/.git/autopr-detached.log"
+	local handle="$REPO_ROOT/.git/AUTOPR_WATCH.json"
+	: >"$log"
+	# The gate goes up HERE, not in the child: between the parent's exit and
+	# the child's first write there is otherwise a window in which a second
+	# auto-pr would see no gate and start concurrently.
+	echo "detached" >"$REPO_ROOT/.git/PR_PENDING"
+	setsid nohup "$0" "${_AUTOPR_CHILD_ARGS[@]}" >"$log" 2>&1 &
+	local pid=$!
+	AUTOPR_WATCH_PID="$pid" AUTOPR_WATCH_LOG="$log" AUTOPR_WATCH_OUT="$handle" \
+		python3 - <<'PY' 2>/dev/null || true
+import datetime
+import json
+import os
+
+with open(os.environ["AUTOPR_WATCH_OUT"], "w") as f:
+    json.dump(
+        {
+            "watcher_pid": int(os.environ["AUTOPR_WATCH_PID"]),
+            "log": os.environ["AUTOPR_WATCH_LOG"],
+            "started_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+        },
+        f,
+        indent=2,
+    )
+    f.write("\n")
+PY
+	# The watcher owns the gate now; the parent's finalize must not clear it.
+	_autopr_state_keep_pending=true
+	_autopr_state_final="detached_watching"
+	echo "🛰️  Detached: watcher pid $pid is running the CI poll and merge."
+	echo "   Log:  $log"
+	echo "   Wait: ./scripts/auto-pr wait        (blocks in caller-sized chunks)"
+	exit 0
+}
+
+# ------------------------------------------------------------------
+# WI-hajak: block on the detached watcher, in chunks the caller can afford.
+#
+# THREE OUTCOMES, never collapsed. A handle whose watcher is gone is not a
+# handle whose watcher is still polling, and neither is no handle at all.
+# Collapsing them would re-commit one level out the defect WI-katap just closed
+# inside the ledger: a watcher that died mid-poll (machine sleep, session
+# teardown, OOM) leaves a handle byte-identical to a live one unless somebody
+# checks the pid. Reporting that as finished hands the caller a merge that
+# never happened; reporting it as still-running hangs them forever.
+# ------------------------------------------------------------------
+do_wait() {
+	local budget="${1:-300}"
+	local handle="$REPO_ROOT/.git/AUTOPR_WATCH.json"
+	if [[ ! -f "$handle" ]]; then
+		echo "No detached watcher recorded for this clone." >&2
+		echo "   (Nothing to wait for — start one with: auto-pr --detach)" >&2
+		return 1
+	fi
+	local pid log
+	pid="$(json_field watcher_pid <"$handle")"
+	log="$(json_field log <"$handle")"
+	# json_field renders a null, a missing key and an unparseable file
+	# identically as the empty string (its own docstring says so). A handle we
+	# cannot read is not a handle naming a live watcher, and `kill -0 ""` would
+	# fail in a way that reads like a dead pid -- so refuse it explicitly.
+	if [[ -z "$pid" ]]; then
+		echo "❌ Watch handle is unreadable or names no watcher: $handle" >&2
+		echo "   Refusing to guess whether a watcher is running." >&2
+		return 1
+	fi
+
+	local waited=0
+	while kill -0 "$pid" 2>/dev/null; do
+		if [[ "$waited" -ge "$budget" ]]; then
+			echo "⏳ Watcher pid $pid is still working (waited ${waited}s)."
+			echo "   Log: $log"
+			echo "   Come back with: ./scripts/auto-pr wait"
+			return 2
+		fi
+		sleep 5
+		waited=$((waited + 5))
+	done
+
+	# The watcher is gone. Did it leave a result, or did it die mid-poll?
+	local result="$REPO_ROOT/.git/AUTOPR_LAST_RESULT.json"
+	if [[ ! -f "$result" ]]; then
+		echo "❌ Watcher pid $pid vanished without writing a result." >&2
+		echo "   It died mid-poll; the PR may or may not have merged." >&2
+		echo "   Log: $log" >&2
+		return 1
+	fi
+	local state code
+	state="$(json_field final_state <"$result")"
+	code="$(json_field exit_code <"$result")"
+	[[ -n "$code" ]] || code=1
+	if [[ -z "$state" || "$state" == "unknown" ]]; then
+		echo "❌ Watcher pid $pid vanished with no declared terminal state." >&2
+		echo "   Log: $log" >&2
+		return 1
+	fi
+	echo "✅ Watcher finished: $state (exit $code)"
+	echo "   Log: $log"
+	rm -f "$handle" 2>/dev/null || true
+	return "$code"
+}
+
 _autopr_write_sentinel() {
 	local exit_code="$1"
 	if [[ "$_autopr_sentinel_written" == "true" ]]; then
@@ -1768,6 +1895,12 @@ ensure_stacked_on_tip() {
 do_pr() {
 	_autopr_install_traps
 
+	# WI-hajak: hand off BEFORE any work, so the child is a plain auto-pr run
+	# rather than a resumed half of one and do_pr below stays untouched.
+	if [[ "${DETACH_MODE:-false}" == "true" ]]; then
+		_autopr_detach_and_exit
+	fi
+
 	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
 	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
 	_autopr_hold_recover_lock
@@ -2558,11 +2691,18 @@ if [[ "${AUTOPR_SOURCE_ONLY:-0}" == "1" ]]; then
 	return 0 2>/dev/null || exit 0
 fi
 
+# WI-hajak: the argv a detached child is re-execed with. Every arm below
+# appends its own arguments EXCEPT --detach, so the child inherits the whole
+# invocation minus the flag that would make it detach again.
+DETACH_MODE=false
+_AUTOPR_CHILD_ARGS=()
+
 # Parse global flags
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--squash)
 		FORCE_SQUASH=true
+		_AUTOPR_CHILD_ARGS+=("$1")
 		echo "⚠️  WARNING: --squash is discouraged. Commit bodies will be preserved via git notes,"
 		echo "   but the squash commit itself will only have the subject line."
 		echo ""
@@ -2576,10 +2716,19 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--timeout)
 		CI_POLL_TIMEOUT="$2"
+		_AUTOPR_CHILD_ARGS+=("$1" "$2")
 		shift 2
 		;;
 	--gov)
 		GOVERNANCE_MODE=true
+		_AUTOPR_CHILD_ARGS+=("$1")
+		shift
+		;;
+	--detach)
+		# WI-hajak. Deliberately NOT appended to _AUTOPR_CHILD_ARGS: a child
+		# that re-detached would fork-bomb the machine. That is pinned by a
+		# test on the argv this loop builds, not by this comment.
+		DETACH_MODE=true
 		shift
 		;;
 	--tracker-id)
@@ -2591,6 +2740,7 @@ while [[ $# -gt 0 ]]; do
 			exit 1
 		fi
 		TRACKER_ID="$2"
+		_AUTOPR_CHILD_ARGS+=("$1" "$2")
 		shift 2
 		;;
 	--title)
@@ -2604,6 +2754,7 @@ while [[ $# -gt 0 ]]; do
 			exit 1
 		fi
 		TITLE_FLAG="$2"
+		_AUTOPR_CHILD_ARGS+=("$1" "$2")
 		shift 2
 		;;
 	--description)
@@ -2614,6 +2765,7 @@ while [[ $# -gt 0 ]]; do
 			exit 1
 		fi
 		DESC_FLAG="$2"
+		_AUTOPR_CHILD_ARGS+=("$1" "$2")
 		shift 2
 		;;
 	*)
@@ -2621,6 +2773,9 @@ while [[ $# -gt 0 ]]; do
 		;;
 	esac
 done
+# Whatever positionals survive the loop (legacy title/description) go to the
+# child too, or a detached run would silently lose its PR title.
+_AUTOPR_CHILD_ARGS+=("$@")
 
 # ------------------------------------------------------------------
 # gov-cleanup: Verify PR is merged (by human via web UI), then clean up
@@ -2692,6 +2847,13 @@ gov-cleanup)
 	shift
 	gov_cleanup "$@"
 	;;
+wait)
+	# Introspection, like `status` and `list`: it installs no traps and
+	# writes no ledger row, because it is not an invocation that could
+	# merge anything. The row belongs to the watcher it is waiting on.
+	shift
+	do_wait "${1:-300}"
+	;;
 help | --help | -h)
 	echo "auto-pr: Push PRs with offline resilience via vPR queue"
 	echo ""
@@ -2702,6 +2864,10 @@ help | --help | -h)
 	echo "                      Commit body is preserved via git notes, subject includes [from <sha>]"
 	echo "  --timeout SECS      CI polling timeout in seconds (default: 2400 = 40 min)"
 	echo "  --gov               Governance mode: push + CI, but do NOT auto-merge (human reviews)"
+	echo "  --detach            Hand the CI poll to a background watcher and return at once."
+	echo "                      Use this from an agent: a foreground run cannot fit the CI"
+	echo "                      budget (2400s poll + 300s soft-retry) inside a 600s turn."
+	echo "                      Follow with 'auto-pr wait'. Never wrap auto-pr in timeout."
 	echo "  --tracker-id ID     Full tracker item ID (WI-*, INV-*, etc). On successful merge,"
 	echo "                      appends a discussion entry to that item citing the PR number and"
 	echo "                      merged dev SHA. Missing flag is a no-op."
@@ -2715,6 +2881,9 @@ help | --help | -h)
 	echo "  status          Show queue status and recommended next steps"
 	echo "  prune           Remove stale vPRs (commit already in origin/<base>)"
 	echo "  gov-cleanup N   After human merges PR N via web UI, clean up local state"
+	echo "  wait [SECS]     Block on the --detach watcher for up to SECS (default 300)."
+	echo "                  Exit 0 = watcher finished, 2 = still working (call again),"
+	echo "                  1 = no watcher, or it vanished mid-poll."
 	echo ""
 	echo "Exit codes:"
 	echo "  0  Success (merged or vPR queued)"
