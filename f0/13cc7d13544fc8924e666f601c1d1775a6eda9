@@ -1,0 +1,33 @@
+Original commit body from 1df55d7f3744667f1a1d751d917669af670b8756:
+
+CI on this PR went red on two `test_cfg.py::TestUnaccountedNames` cases
+that are green locally. The cause was not the change under review: the
+predicate they exercise reads statements that `populate_def_use_for_cfg`
+fills, that pass NO-OPS when no def/use extractor is registered for the
+language, and the registry is populated by import side effect — so with
+no Go extractor registered every statement has empty `defines`,
+`unaccounted_names` answers EMPTY for any input, and the tests pass or
+fail by whether some other test in the worker had imported
+`go_def_use`. A different slice gives a different xdist distribution,
+which is all it took.
+
+`ensure_def_use_extractors_registered` already guards the neighbouring
+hazard (an import is a no-op once the module is in `sys.modules`, so it
+cannot re-register after a clear) by comparing the live registry against
+a LEARNED expected set. The learned set could itself be clipped: if the
+first call in a process found a partial registry — non-empty, so the
+reload branch did not fire — it recorded that as health, and every later
+subset check passed against the clipped baseline. Measured: the helper
+returning True with javascript/python/typescript registered and `go`
+missing, permanently. The first call now reloads unconditionally and
+learns from the state it produced itself.
+
+The tests stop inheriting their configuration: an autouse fixture
+establishes the production one and ASSERTS the Go extractor is present,
+because a class whose predicate answers empty for every input would pass
+by reporting nothing. INV-lupav clause L4 is unaffected — it reproduces
+exactly as written once the extractor is registered.
+
+Closes INV-zunik
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
