@@ -1,0 +1,21 @@
+- op: create  # 4ae2
+  at: '2026-09-20T07:54:20Z'  # 4ae2
+  by: agent  # 4ae2
+  actor: jgstern_agent  # 4ae2
+  clock: 1  # 4ae2
+  nonce: 4ae2  # 4ae2
+  data:  # 4ae2
+    kind: work_item  # 4ae2
+    title: "The consuming pass should stamp the stub it derived its resolution from, so §14 stops re-deriving supersession by name-and-line collision"  # 4ae2
+    status: todo_soft  # 4ae2
+    priority: 2  # 4ae2
+    parent:  # 4ae2
+    tags:  # 4ae2
+    - analysis_quality  # 4ae2
+    - adr_0057  # 4ae2
+    isbefore: []  # 4ae2
+    duplicate_of: []  # 4ae2
+    not_duplicate_of: []  # 4ae2
+    pr_ref:  # 4ae2
+    description: "The residual left by ADR-0057 Open question 4's ruling (2026-09-20).\n\n§14 now supersedes a stub only when a second ANCHORED PRODUCER resolves the same site. That removed 419 demotions on a single-backend Python run of this repo, of which 45 were false and 374 were true or probably-true (115 hand-verified correct, 259 screened against the declared inheritance graph but not individually read). Those 374 ranking signals are now unrecorded.\n\nThey should come back — but through the RIGHT organ. §14 was re-deriving, downstream and by name-and-line collision over the post-dedup graph, a relation the producing pass already knew: `inherited-calls-linker` and `method-call-recovery-linker` each build their resolved edge FROM the stub, with that stub's `src`, `line` and parsed callee. The consuming pass is the one that knows which stub it consumed, and it should say so as a POSITIVE claim on the edge rather than leave a later pass to guess it. Re-deriving is exactly how the 45 false demotions arose: the collision key cannot tell \"this linker refined this stub\" from \"this linker bound a different call that happens to share the line and short name\".\n\nSHAPE (not designed, not costed):\n  - the linker stamps `derived_from` naming the stub it consumed (WI-latup is the blocker: `derived_from` is unpopulated at ~20 linker construction sites, and WI-ratun records that the existing [src,dst] stub shape is tautological — so the field's shape may need settling first)\n  - a finalize step demotes a stub that a resolved edge NAMES as its input, with no name-or-line matching involved\n  - the stamp records which pass did it, as §14's `superseded_by_origin` already does\n\nOPEN, AND TO BE RULED BEFORE CODING: whether a `method-call-recovery-linker` stamp should be admitted at all, given its measured ~49% precision on this corpus (WI-rulik). Admitting it would re-introduce 45 known-false demotions through the front door. A defensible answer is \"only passes above a measured precision floor may stamp\", but nothing in the record establishes such a floor and inventing one here would be a number with no derivation.\n\nNOT ASSERTED: that the 259 unread demotions are correct, or that the 0.5 rank factor is the right weight for a derivation-stamped supersession (it is still \"a declared level, not measured\" — WI-lihis's own words)."  # 4ae2
+    fields: {}  # 4ae2
