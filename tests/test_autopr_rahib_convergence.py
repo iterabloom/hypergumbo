@@ -694,6 +694,11 @@ CONVERGED_FAILURE = frozenset(
         "ci_timeout",
         "ci_hung",
         "ci_unknown",
+        # WI-hajak: a non-tty caller that declared neither --detach nor
+        # --foreground is refused before doing any work, because exit 0 means
+        # different things in the two modes and guessing would re-make the
+        # conflation the preceding fixes removed.
+        "failed_mode_undeclared",
     }
 )
 

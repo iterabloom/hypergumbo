@@ -262,7 +262,7 @@ def _run_autopr(fake_root: Path, *args: str, extra_env: dict[str, str]) -> subpr
         env.pop(k, None)
     env.update(extra_env)
     return subprocess.run(
-        ["bash", str(AUTO_PR), *args],
+        ["bash", str(AUTO_PR), "--foreground", *args],
         cwd=str(fake_root),
         capture_output=True,
         text=True,
