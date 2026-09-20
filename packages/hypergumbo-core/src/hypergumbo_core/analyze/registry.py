@@ -722,6 +722,31 @@ def merge_participants(language: str) -> list[RegisteredAnalyzer]:
     return anchored if len(anchored) >= 2 else []
 
 
+def anchored_producer_tokens(language: str) -> frozenset[str]:
+    """The ``Edge.origin`` tokens that name an ANCHORED PRODUCER of *language*.
+
+    ADR-0057 §14's origin condition asks whether a resolved edge carries a
+    second INDEPENDENT OBSERVER of the call site. ``origin`` is the pass-id
+    axis, so the question is answered by asking which origin tokens belong to
+    an anchored producer rather than to a derived pass — a linker's resolution
+    of a stub is a refinement of one observation, not a second one (§13 case
+    2). Empty when the language has fewer than two anchored producers, which
+    is what makes §14's registry gate redundant rather than load-bearing.
+
+    TWO SPELLINGS, both accepted. The SCIP arms stamp the BACKEND name into
+    ``origin`` (``scip/index.py``, ``scip/edges.py`` and ``scip/calls.py`` all
+    write ``origin="scip"``) while registering under an analyzer NAME
+    (``rust_analyzer``, ``scip_python``). Accepting one spelling would
+    silently disarm the rule for the only backends it exists to serve; the
+    divergence itself is filed separately. Does not trigger discovery; call
+    :func:`ensure_discovered` first.
+    """
+    participants = merge_participants(language)
+    return frozenset(
+        {a.name for a in participants} | {a.backend for a in participants if a.backend}
+    )
+
+
 def run_analyzer(
     name: str,
     repo_root: Path,

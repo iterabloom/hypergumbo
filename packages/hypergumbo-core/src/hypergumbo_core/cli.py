@@ -3458,7 +3458,7 @@ def cmd_backend_agreement(args: argparse.Namespace) -> int:
             reports, artifact_label=label, date=_dt.date.today().isoformat(),
         )
     if args.out:
-        Path(args.out).write_text(text)
+        user_out_write(Path(args.out), text)
     else:
         print(text, end="")
     return 0

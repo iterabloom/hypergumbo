@@ -462,18 +462,35 @@ def demote_superseded_stubs(
 ) -> int:
     """ADR-0057 §14: a resolved edge demotes a same-site edge to an external stub.
 
-    Runs after the resolution verdict, so ``is_resolved`` is settled. For every
-    language with two or more anchored producers (``merge_participants``; a
-    single-producer language cannot contradict itself and is untouched), an
+    Runs after the resolution verdict, so ``is_resolved`` is settled. An
     UNRESOLVED edge is superseded when a RESOLVED edge shares its ``src``, one
-    of its call lines, its ``edge_type`` and its declared callee name key, and
-    that resolved edge carries a producer the stub's own ``origin`` lacks — the
-    syntactic backend said "outside the repo", the type-aware one "this item,
-    here". All four are required: on the recorded aardvark-dns fixture 27 stub
-    call sites share a line and type with a resolved call, and only 3 name the
-    same callee; the other 24 are different calls on one line
-    (``a.b(c.d())``), and a producer's own two calls on a line are not a
-    contradiction either.
+    of its call lines, its ``edge_type`` and its declared callee name key, the
+    stub ABSTAINED on its target's module, and the resolved edge carries an
+    ANCHORED PRODUCER of the language that the stub's own ``origin`` lacks —
+    the syntactic backend said "outside the repo", the type-aware one "this
+    item, here". On the recorded aardvark-dns fixture 27 stub call sites share
+    a line and type with a resolved call, and only 3 name the same callee; the
+    other 24 are different calls on one line (``a.b(c.d())``), and a
+    producer's own two calls on a line are not a contradiction either.
+
+    The last two conditions were added when Open question 4 was ruled
+    (2026-09-20). The origin condition as first landed tested PASS-ID
+    INEQUALITY and stood in for a test on INDEPENDENT OBSERVATION; a
+    single-backend Python run of this repository demoted 419 stubs, every
+    superseder a LINKER, and those 419 superseders were 419 of the 421 edges
+    the two linkers emitted — each the linker's own resolution of the very
+    stub it superseded, built from that stub's ``src``, ``line`` and parsed
+    callee, so the key matched BY CONSTRUCTION. 45 of the 419 were wrong, 28
+    of them stubs whose external key was COMPLETE and CORRECT
+    (``tree_sitter_rust.language``, ``builtins.id``) ranked below a
+    same-short-name in-repo FIELD. A refinement of one observation is not a
+    second observation (§13 case 2), and a stub that STATES its module
+    contradicts rather than abstains, which §11 makes two edges (§15.1).
+    Under both conditions a single-backend run is byte-identical here, as it
+    already was through §3 — the ``merge_participants`` gate is now redundant
+    rather than load-bearing, and stays because what it reads from the
+    registry is a DECLARATION (the incumbent's ``name_key``), not an
+    observation.
 
     The stub's ``rank_score`` is multiplied by :data:`SUPERSEDED_STUB_RANK_FACTOR`
     (``confidence`` untouched — ADR-0039 ruling 3), and ``meta["superseded_by"]``
@@ -482,18 +499,24 @@ def demote_superseded_stubs(
     Nothing is deleted and the edge count is unchanged. Returns the number of
     stubs demoted.
     """
-    from .analyze.registry import MergeAnchor, merge_participants
-    from .ir import _edge_call_lines
+    from .analyze.registry import (
+        MergeAnchor,
+        anchored_producer_tokens,
+        merge_participants,
+    )
+    from .ir import _edge_call_lines, stated_module_of
 
     by_id = {s.id: s for s in symbols}
     languages = {s.language for s in symbols if s.language}
     name_key_of: dict[str, Any] = {}
+    tokens_of: dict[str, frozenset[str]] = {}
     for language in sorted(languages):
         participants = merge_participants(language)
         if len(participants) >= 2:
             anchor = policy.order(participants)[0].merge
             assert isinstance(anchor, MergeAnchor)  # merge_participants returns anchored ones
             name_key_of[language] = anchor.name_key
+            tokens_of[language] = anchored_producer_tokens(language)
     if not name_key_of:
         return 0
 
@@ -513,6 +536,12 @@ def demote_superseded_stubs(
     for stub in edges:
         if stub.is_resolved:
             continue
+        if stated_module_of(stub) is not None:
+            # §15.1: a COMPLETE external key STATES a module, so an in-repo
+            # answer contradicts it rather than filling it, and §11 keeps both
+            # edges. Only a key that abstained is superseded. Measured: 28 of
+            # the 419 stated a module and all 28 were correct.
+            continue
         candidates = [
             resolved
             for line in _edge_call_lines(stub)
@@ -527,8 +556,13 @@ def demote_superseded_stubs(
             key = name_key_of[target.language or ""]
             if key(target.name) != key(callee):
                 continue  # a different call that shares the line
-            if not (set(resolved.origin) - stub_origin):
-                continue  # the same producer's two calls on one line
+            tokens = tokens_of[target.language or ""]
+            if not ((set(resolved.origin) - stub_origin) & tokens):
+                continue  # not a second ANCHORED PRODUCER: the same producer's
+                          # two calls on one line, or a linker's resolution of
+                          # this very stub — a derivation, not an observation
+            if not (stub_origin & tokens):
+                continue  # nor is the stub itself an anchored producer's edge
             base = stub.rank_score if stub.rank_score is not None else stub.confidence
             stub.rank_score = base * policy.superseded_stub_rank_factor
             stub.meta = {

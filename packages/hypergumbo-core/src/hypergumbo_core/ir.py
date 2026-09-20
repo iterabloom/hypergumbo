@@ -1769,6 +1769,27 @@ def callee_name_of(
     return symbol_name_slot(dst)
 
 
+def stated_module_of(edge: "Edge") -> Optional["ExternalRef"]:
+    """THE read of "does this edge STATE its target's module?" (§15.1).
+
+    Returns the edge's COMPLETE external key, or ``None`` when it abstains.
+    The abstention is signalled positively by ``dst_ref is None``, never
+    inferred from the ``dst`` string — whose module segment carries the
+    ``external`` sentinel that ADR-0051's ``MODULE_KEY_AXIOM`` defines as not
+    a marker for the absence of an answer. An ``ExternalRef`` with an empty
+    module path states nothing either, and is neither partial nor complete.
+
+    Two rules turn on this one fact and they must not drift: §15's fold
+    absorbs a PARTIAL key into a complete one, and §14 supersedes only a
+    PARTIAL stub (a complete one contradicts rather than abstains, which §11
+    makes two edges). INV-difud is what two homes for one read costs.
+    """
+    ref = edge.dst_ref
+    if ref is None or not ref.module_path:
+        return None
+    return ref
+
+
 def _extract_path_slot(symbol_id: str) -> Optional[str]:
     """Extract the ``path`` slot, or ``None`` for a malformed id.
 
