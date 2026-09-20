@@ -33,6 +33,10 @@ A single post-analysis pass, language-agnostic. For each caller N:
      class has a ``contains`` child symbol whose short name matches
      ``unresolved_name``. If yes, emit a synthetic
      ``calls -> Class.method`` edge.
+  3z. Refuse outright when the unresolved edge carries a COMPLETE external
+     identity key (``dst_ref`` with a module path). The producer said where
+     the callee lives; a short-name match is less evidence, not more
+     (WI-rulik).
   3a. Drop any hint that CONTRADICTS a ``receiver_type_hint`` the producer
      stamped on the unresolved edge. The premise of step 1 is that the class
      hint IS the receiver; a producer that named a different type for the
@@ -71,7 +75,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from ..member_names import member_short_name
-from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
+from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id, stated_module_of
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
@@ -250,6 +254,34 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
             # every language that stamps nothing. A stamp naming a type the
             # repository does not contain also recovers nothing, correctly: a
             # receiver declared as a library type is not a project class.
+            if stated_module_of(ucall) is not None:
+                # A PRODUCER THAT NAMED THE MODULE IS NOT OVERRIDDEN BY A
+                # NAME MATCH (WI-rulik).
+                #
+                # ``dst_ref`` with a module path is the COMPLETE external
+                # identity key of ADR-0035, and ADR-0057 §15.1 rules that a
+                # producer states it positively or abstains -- never a
+                # sentinel. A complete key is a claim about WHERE the callee
+                # lives, made by the pass that read the imports and the
+                # scope. This linker has a short name, a class hint and a
+                # line-proximity tiebreaker; it is strictly less evidence,
+                # so an in-repo answer here CONTRADICTS the producer rather
+                # than filling a gap. §11 settles that contest by keeping
+                # both edges and §14 declines to demote -- this is the same
+                # rule applied one stage earlier, at the pass that would
+                # otherwise manufacture the contest.
+                #
+                # Measured on a single-backend Python self-survey: 28 of
+                # this linker's 92 edges overrode a stated module and ALL 28
+                # were wrong -- ``tree_sitter_rust.language()`` bound to the
+                # ``Symbol.language`` FIELD, ``builtins.id`` to ``Symbol.id``,
+                # ``os.environ.get`` to ``TrackerSet.get``.
+                #
+                # Read from the unresolved edge THIS recovery is derived
+                # from, not from the call site: ``a.b(c.d())`` puts two calls
+                # on one line and one sibling's claim says nothing about the
+                # other.
+                continue
             declared = _declared_receiver_type(ucall)
             # Find candidate (class_hint_edge, method_symbol) pairs.
             candidates: list[tuple[Edge, Symbol]] = []
