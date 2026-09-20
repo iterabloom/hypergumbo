@@ -391,7 +391,13 @@ steps:
       - apt-get update && apt-get install -y jq
       - pip install --upgrade pip
       - pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev,tui]"
+      # `-e packages/hypergumbo` is the UMBRELLA package that provides the
+      # top-level `hypergumbo` module, i.e. the thing `python -m hypergumbo`
+      # imports. full-suite.yml:94 and nightly.yml:68/95 all install it; this
+      # step was the only one that did not, so any PR whose manifest happened
+      # to select a test that shells out to `python -m hypergumbo` failed with
+      # "No module named hypergumbo" — and stayed invisible until one did.
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev,tui]" -e packages/hypergumbo
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - |
         set -e
