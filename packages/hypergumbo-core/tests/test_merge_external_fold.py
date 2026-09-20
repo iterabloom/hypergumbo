@@ -202,6 +202,30 @@ class TestWhatDoesNotFold:
         assert len(edges) == 2
 
 
+    def test_a_language_with_no_merging_producers_is_skipped(self) -> None:
+        """The pass reads the INCUMBENT's declared name_key per language (§10).
+        A language that never entered the merge has no declared key, so its
+        external edges are not candidates — the pass does not guess a key."""
+        stub = _edge("rust:external:0-0:read:unresolved", run=RUN_PY, origin="python",
+                     callee="read")
+        typed = _edge("rust:std::fs:0-0:read:unresolved", run=RUN_SCIP, origin="scip",
+                      ref=ExternalRef(lang="rust", module_path="std::fs", name="read"),
+                      callee="read")
+        report, edges = _merge([stub, typed])
+        assert len(edges) == 2
+        assert report.external_folds == 0
+
+    def test_an_edge_with_no_name_information_is_not_paired(self) -> None:
+        """``symbol_name_slot`` returns "" for an id it cannot parse, and with
+        no ``meta['callee_name']`` and no ref there is nothing to pair on. A
+        name that cannot be read must not match one that can (INV-difud)."""
+        nameless = _edge("python:x:unresolved", run=RUN_PY, origin="python", callee=None)
+        typed = _edge(TYPED, run=RUN_SCIP, origin="scip", ref=TYPED_REF)
+        report, edges = _merge([nameless, typed])
+        assert len(edges) == 2
+        assert report.external_folds == 0
+
+
 class TestAmbiguityIsRefused:
     def test_two_complete_candidates_disagreeing_on_the_module_are_reported(self) -> None:
         stub = _edge(STUB, run=RUN_PY, origin="python")
