@@ -177,7 +177,7 @@ class TestWhatDoesNotDemote:
         b = _edge(STUB, origin=["scip"], resolved=False)
         assert demote_superseded_stubs(_symbols(), [a, b]) == 0
 
-    def test_a_language_with_one_producer_is_untouched(self) -> None:
+    def test_a_language_with_one_registered_producer_is_untouched(self) -> None:
         _registry_mod._ANALYZER_REGISTRY.pop("pyscip")
         stub = _edge(STUB, origin=["python"], resolved=False)
         resolved = _edge(WRAP, origin=["scip"], resolved=True)
@@ -195,3 +195,103 @@ class TestWhatDoesNotDemote:
         resolved = _edge(WRAP, origin=["scip"], resolved=True)
         assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
         assert stub.rank_score == pytest.approx(0.5 * SUPERSEDED_STUB_RANK_FACTOR)
+
+
+class TestOnlyAnAnchoredProducerSupersedes:
+    """ADR-0057 §14, ruled 2026-09-20 on measurement (Open question 4).
+
+    The origin condition as first landed tested PASS-ID INEQUALITY and stood in
+    for a test on INDEPENDENT OBSERVATION. A single-backend Python run of this
+    repository showed how far apart the two are: 419 stubs demoted, every
+    superseder a linker, and those 419 superseders were 419 of the 421 edges
+    ``inherited-calls-linker`` (329 of 329) and ``method-call-recovery-linker``
+    (90 of 92) emitted — each one the linker's own resolution of the very stub
+    it superseded, built from that stub's ``src``, ``line`` and parsed callee.
+    A refinement of one observation is not a second observation (§13 case 2).
+    """
+
+    def test_two_producers_registered_but_only_one_ran_demotes_nothing(self) -> None:
+        """THE CONTROL, and unlike its predecessor it can fail.
+
+        ``test_a_language_with_one_registered_producer_is_untouched`` pops
+        ``pyscip`` from the REGISTRY, which makes ``merge_participants`` return
+        ``[]`` and the pass early-return before the origin gate is ever
+        consulted — so it cannot observe the state that produced the 419:
+        both producers REGISTERED (the monorepo installs both) and only one
+        RUN. This leaves the registry exactly as production has it and varies
+        what is in the graph instead.
+        """
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        resolved = _edge(WRAP, origin=["inherited-calls-linker"], resolved=True)
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 0
+
+    def test_a_linker_resolution_never_supersedes(self) -> None:
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        resolved = _edge(WRAP, origin=["method-call-recovery-linker"], resolved=True)
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 0
+
+    def test_a_stub_a_linker_emitted_is_not_superseded_by_an_analyzer(self) -> None:
+        """The symmetric half. Both sides must be an anchored producer's edge:
+        a linker's stub has no second observer either, whichever direction the
+        origin difference runs."""
+        stub = _edge(STUB, origin=["inherited-calls-linker"], resolved=False)
+        resolved = _edge(WRAP, origin=["python"], resolved=True)
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 0
+
+    def test_the_backend_name_spelling_is_accepted(self) -> None:
+        """``pyscip`` registers ``backend="scip"`` and its edges stamp
+        ``origin="scip"`` (``scip/index.py``, ``scip/edges.py``,
+        ``scip/calls.py`` all write it), while the registry knows it by NAME.
+        Both spellings name the same anchored producer and both are accepted;
+        picking one would silently disarm the rule for the only backends it
+        exists to serve."""
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        resolved = _edge(WRAP, origin=["scip"], resolved=True)
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
+
+    def test_the_analyzer_name_spelling_is_accepted(self) -> None:
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        resolved = _edge(WRAP, origin=["pyscip"], resolved=True)
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
+
+    def test_the_survey_case_that_ranked_a_field_over_a_correct_stub(self) -> None:
+        """The regression that would have caught the 419 the day they appeared.
+
+        Measured on this repository: ``tree_sitter.Language(tree_sitter_rust.language())``
+        at ``test_rust.py:612``. The producer said ``tree_sitter_rust.language``
+        and was RIGHT; ``method-call-recovery-linker`` bound the call to
+        ``Symbol.language`` — a dataclass FIELD in ``ir.py`` — and §14 then
+        halved the correct answer's rank in favour of the fabrication. Nineteen
+        of that shape, 28 with a stated module, 45 wrong in all.
+        """
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        stub.dst_ref = ExternalRef(lang="python", module_path="tree_sitter_rust", name="wrap")
+        resolved = _edge(WRAP, origin=["method-call-recovery-linker"], resolved=True)
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 0
+        assert "superseded_by" not in (stub.meta or {})
+        assert stub.rank_score == 0.5  # untouched
+
+
+class TestOnlyAnAbstainingStubIsSuperseded:
+    """§15.1 applied to §14: a PARTIAL external key abstains on its module, so
+    an in-repo answer FILLS it (§1's abstention rule, §4's fill-when-empty). A
+    COMPLETE key STATES one, an in-repo answer CONTRADICTS it, and §11 rules
+    that a disagreement on ``dst`` is two edges — a contest, not a
+    supersession, and §10 settles a contest only by a cited ``docs/audits/``
+    table, of which none exists for external-vs-in-repo.
+    """
+
+    def test_a_stub_that_states_a_module_is_contested_not_superseded(self) -> None:
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        stub.dst_ref = ExternalRef(lang="python", module_path="builtins", name="wrap")
+        resolved = _edge(WRAP, origin=["scip"], resolved=True)
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 0
+
+    def test_an_empty_module_path_states_nothing_and_is_still_superseded(self) -> None:
+        """``_edge``'s default. An ``ExternalRef`` with an empty module path
+        states nothing either — ``ir.stated_module_of`` is the one reader of
+        that fact, shared with §15's fold, so the two rules cannot drift."""
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        assert stub.dst_ref is not None and stub.dst_ref.module_path == ""
+        resolved = _edge(WRAP, origin=["scip"], resolved=True)
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1

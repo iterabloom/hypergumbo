@@ -104,7 +104,6 @@ from ..ir import (
     PASS_VERSION,
     AnalysisRun,
     Edge,
-    ExternalRef,
     Symbol,
     UsageContext,
     _absorb_call_site,
@@ -112,6 +111,7 @@ from ..ir import (
     callee_name_of,
     format_legacy_dst,
     mint_edge_id,
+    stated_module_of,
 )
 from .base import make_symbol_id
 from .registry import (
@@ -489,21 +489,6 @@ def _external_language(edge: Edge) -> Optional[str]:
     return language or None
 
 
-def _stated_module(edge: Edge) -> Optional[ExternalRef]:
-    """The edge's COMPLETE external key, or ``None`` when it abstains.
-
-    §15.1: the abstention is signalled positively by ``dst_ref is None``,
-    never inferred from the ``dst`` string — whose module segment carries the
-    ``external`` sentinel that ADR-0051's axiom defines as not a marker for
-    the absence of an answer. An ``ExternalRef`` with an empty module path
-    states nothing either, and is neither partial nor complete.
-    """
-    ref = edge.dst_ref
-    if ref is None or not ref.module_path:
-        return None
-    return ref
-
-
 def _absorb_partial_external_keys(
     edges: List[Edge],
     pass_of_run: Mapping[str, str],
@@ -555,10 +540,10 @@ def _absorb_partial_external_keys(
     for site in sorted(sites):
         group = [(p, e) for p, e in sites[site] if id(e) not in dropped]
         partials = [(p, e) for p, e in group if e.dst_ref is None]
-        completes = [(p, e) for p, e in group if _stated_module(e) is not None]
+        completes = [(p, e) for p, e in group if stated_module_of(e) is not None]
         if not partials or not completes:
             continue
-        modules = {_stated_module(e).module_path for _, e in completes}  # type: ignore[union-attr]
+        modules = {stated_module_of(e).module_path for _, e in completes}  # type: ignore[union-attr]
         if len(modules) > 1 or len(partials) > 1:
             # §15.5: more than one complete candidate that disagree, or one
             # complete claimed by two partials. Refused and reported, never
@@ -572,7 +557,7 @@ def _absorb_partial_external_keys(
         )
         if not stating:
             continue  # one producer's two calls on a line are not a contradiction
-        stating_producer, stated = stating[0][0], _stated_module(stating[0][1])
+        stating_producer, stated = stating[0][0], stated_module_of(stating[0][1])
         assert stated is not None  # `stating` is drawn from `completes`
 
         members = sorted(group, key=lambda item: rank[item[0]])
