@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol
 from hypergumbo_core.linkers.method_call_recovery import (
     _parse_unresolved_name,
     _short_name,
@@ -541,3 +541,75 @@ class TestTheHintMustNotContradictTheDeclaredReceiver:
         symbols, edges = self._fixture("com.example.Tts")
         result = link_method_call_recovery(_ctx(symbols, edges))
         assert [e.dst for e in result.edges] == ["k:Tts.kt:10-20:Tts.m:method"]
+
+
+class TestAProducerThatNamedTheModuleIsNotOverridden:
+    """WI-rulik: a COMPLETE external identity key refuses the recovery.
+
+    This linker resolves by class-hint-and-short-name with a line-proximity
+    tiebreaker and NO receiver evidence. When the producer already stated
+    WHERE the callee lives — ``dst_ref`` with a module path, the complete
+    external identity key of ADR-0035 / ADR-0057 §15.1 — it made a positive
+    claim from strictly more evidence than a name match, and this linker has
+    nothing to refute it with.
+
+    Measured on a single-backend Python self-survey: 28 of this linker's 92
+    edges overrode such a claim, and all 28 were wrong —
+    ``tree_sitter.Language(tree_sitter_rust.language())`` bound to
+    ``Symbol.language``, ``id(stub)`` to ``Symbol.id``, ``type(e).__name__``
+    to ``IpcPattern.type``. It is the same rule ADR-0057 §11 applies to a
+    merge and §14 to a supersession, applied here at the producer instead:
+    an in-repo answer CONTRADICTS a stated module rather than filling it.
+    An ``ExternalRef`` with an EMPTY module path states nothing and does not
+    refuse — ``ir.stated_module_of`` is the one reader of that distinction.
+    """
+
+    @staticmethod
+    def _graph() -> tuple[list[Symbol], list[Edge], Edge]:
+        main = _sym("py:m.py:1-5:main:function", "main", "function", language="python")
+        cls = _sym("py:m.py:10-20:Symbol:class", "Symbol", "class", language="python")
+        member = _sym("py:m.py:11-15:Symbol.language:method",
+                      "Symbol.language", "method", language="python", start=11, end=15)
+        ucall = _edge(main.id, "python:external:0-0:language:unresolved", "calls", line=2)
+        edges = [
+            _edge(main.id, cls.id, "calls", line=2),
+            _edge(cls.id, member.id, "contains", line=11),
+            ucall,
+        ]
+        return [main, cls, member], edges, ucall
+
+    def test_an_abstaining_stub_is_still_recovered(self) -> None:
+        symbols, edges, ucall = self._graph()
+        assert ucall.dst_ref is None
+        assert len(link_method_call_recovery(_ctx(symbols, edges)).edges) == 1
+
+    def test_an_empty_module_path_states_nothing_and_is_still_recovered(self) -> None:
+        symbols, edges, ucall = self._graph()
+        ucall.dst_ref = ExternalRef(lang="python", module_path="", name="language")
+        assert len(link_method_call_recovery(_ctx(symbols, edges)).edges) == 1
+
+    def test_a_stated_module_refuses_the_recovery(self) -> None:
+        symbols, edges, ucall = self._graph()
+        ucall.dst_ref = ExternalRef(
+            lang="python", module_path="tree_sitter_rust", name="language",
+        )
+        assert link_method_call_recovery(_ctx(symbols, edges)).edges == []
+
+    def test_the_refusal_is_per_call_not_per_site(self) -> None:
+        """Two calls on one line, one stating a module and one abstaining:
+        ``a.b(c.d())``. The refusal reads the unresolved edge this recovery
+        was derived FROM, so the sibling's claim neither refuses it nor is
+        refused by it."""
+        symbols, edges, ucall = self._graph()
+        ucall.dst_ref = ExternalRef(
+            lang="python", module_path="tree_sitter_rust", name="language",
+        )
+        other_member = _sym("py:m.py:16-18:Symbol.wrap:method",
+                            "Symbol.wrap", "method", language="python", start=16, end=18)
+        sibling = _edge(symbols[0].id, "python:external:0-0:wrap:unresolved",
+                        "calls", line=2)
+        symbols.append(other_member)
+        edges.append(_edge(symbols[1].id, other_member.id, "contains", line=16))
+        edges.append(sibling)
+        recovered = link_method_call_recovery(_ctx(symbols, edges)).edges
+        assert [e.dst for e in recovered] == [other_member.id]
