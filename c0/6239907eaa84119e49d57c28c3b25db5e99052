@@ -1,0 +1,18 @@
+Original commit body from d4622d0b222bd8b6aacbb034902b6a61b8ff1082:
+
+§14 closed with "a language with one producer is untouched by
+construction". Its language gate is merge_participants — a registry
+query — where §3's merge pass additionally requires two producers'
+records to be present; and its second gate accepts any origin the stub
+lacks, which a linker satisfies as readily as a second backend.
+
+Measured on this repository with no SCIP backend active: 419 Python
+stubs carry meta["superseded_by"], 329 from inherited-calls-linker and
+90 from method-call-recovery-linker.
+
+§14 and the Consequences bullet that repeated the claim now state the
+shipped scope. Whether a linker's resolution should carry that weight,
+and whether the gate should read what ran rather than what is
+registered, is added to Open questions. No behaviour changes.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
