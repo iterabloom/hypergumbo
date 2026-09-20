@@ -361,14 +361,23 @@ def ensure_def_use_extractors_registered() -> bool:
     # test reports health while the JavaScript extractor is gone. That is exactly
     # how a full-suite run produced two JavaScript data-flow failures that every
     # smaller scope passed.
-    current = registered_def_use_languages()
-    if not current:
+    # THE BASELINE IS PRODUCED, NOT FOUND. Learning the expected set from
+    # whatever happened to be registered when this ran first has the same
+    # shape as the subset defect above, one level up: if an earlier test had
+    # imported the modules and then cleared the registry, the first call
+    # found a PARTIAL registry (the import is a no-op once the module is in
+    # ``sys.modules``), recorded that as healthy, and every later subset
+    # check passed against the clipped baseline — so ``go`` could stay
+    # missing for the rest of the process with nothing reporting it. The
+    # first call therefore reloads unconditionally and learns from the state
+    # it produced itself.
+    if not _EXPECTED_DEF_USE_LANGUAGES:
         for module in modules:
             importlib.reload(module)
-        current = registered_def_use_languages()
-    if not _EXPECTED_DEF_USE_LANGUAGES:
-        _EXPECTED_DEF_USE_LANGUAGES = current
-    elif not _EXPECTED_DEF_USE_LANGUAGES <= current:
+        _EXPECTED_DEF_USE_LANGUAGES = registered_def_use_languages()
+        return True
+    current = registered_def_use_languages()
+    if not _EXPECTED_DEF_USE_LANGUAGES <= current:
         for module in modules:
             importlib.reload(module)
     return True
