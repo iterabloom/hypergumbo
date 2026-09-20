@@ -1,0 +1,26 @@
+Original commit body from 97a128fcb4a84c8a66172f22b911a7290bc6afe2:
+
+Two tests declared a mode, got PAST the gate, and then let auto-pr do real
+work -- push, PR lookup, the lot. Locally that failed fast and they passed
+in about a second. In CI it hung and
+test_foreground_declared_gets_past_the_gate died on
+
+    subprocess.TimeoutExpired: ... timed out after 120 seconds
+
+The defect is mine and it is in the fixture, not the gate: the tests
+depended on the network failing QUICKLY, which is not a property any
+environment owes them. A test whose pass depends on how fast an external
+call fails is a flake with a good day.
+
+Both now run from `dev`. The gate sits at auto-pr:1955 and the
+protected-branch refusal at :2001, so a declared run gets past the gate and
+then stops immediately on a check that touches nothing outside the repo.
+The assertion also tightened from "not failed_mode_undeclared" to "IS
+failed_protected_branch" -- the weaker form was satisfied by a run that
+hung, crashed or never started, which is precisely how the first version
+managed to be green locally while being meaningless.
+
+The pty control got the same treatment. It had the same exposure and only
+escaped by luck of timing in the one CI run that caught its sibling.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
