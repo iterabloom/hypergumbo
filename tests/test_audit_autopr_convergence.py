@@ -350,3 +350,141 @@ def test_json_output_tallies_the_abort_sites(tmp_path: Path) -> None:
     assert payload["abort_sites"] == {"auto-pr:2114": 2, "auto-pr:900": 1}
     assert payload["undeclared_unattributed"] == 1
     assert payload["undeclared_uninstrumented"] == 1
+
+
+# --- externally terminated is a fourth bucket, not a violation (WI-katap) ---
+#
+# Measured 2026-09-20: 22 of 84 post-instrumentation runs carried
+# `final_state=unknown`, and 14 of the 15 PRs behind them had MERGED. The
+# violation signal was firing on runs that succeeded, because a kill from the
+# caller's `timeout` wrapper was indistinguishable from auto-pr falling off the
+# end. auto-pr now names the signal; this is the reader half.
+
+
+def _sig_row(state: str, exit_code: int, pr: int, terminated_by: str | None) -> str:
+    row = json.loads(_row(state, exit_code, pr=pr, sha=None))
+    row["abort_site"] = None
+    row["terminated_by"] = terminated_by
+    return json.dumps(row)
+
+
+def test_a_terminated_run_is_not_counted_as_a_violation(tmp_path: Path) -> None:
+    """The load-bearing behaviour: a kill is not a convergence failure.
+
+    The run never got to decide, so it neither converged nor failed to.
+    """
+    mod = _load()
+    rows = [
+        _row("merged", 0, pr=1),
+        _sig_row("terminated_sigterm", 143, 2, "SIGTERM"),
+    ]
+    code, out = mod.run([str(_ledger(tmp_path, rows))])
+    assert code == mod.EXIT_OK, out
+    assert "externally terminated" in out.lower(), (
+        "a terminated run must still be DISCLOSED — it is not a violation, "
+        "but it is not evidence of convergence either."
+    )
+    assert "1 invocation(s) that ran to a decision" in out, (
+        "the converged verdict must name its own denominator, so an all-clear "
+        f"cannot be read as covering runs that never got to decide. Got:\n{out}"
+    )
+
+
+def test_terminated_runs_are_reported_with_their_signal(tmp_path: Path) -> None:
+    """SIGINT and SIGTERM are different facts and are tallied apart."""
+    mod = _load()
+    rows = [
+        # A deciding run, so this exercises the TALLY rather than the
+        # all-kills verdict (which its own test covers).
+        _row("merged", 0, pr=9),
+        _sig_row("terminated_sigterm", 143, 1, "SIGTERM"),
+        _sig_row("terminated_sigterm", 143, 2, "SIGTERM"),
+        _sig_row("terminated_sigint", 130, 3, "SIGINT"),
+    ]
+    code, out = mod.run([str(_ledger(tmp_path, rows))])
+    assert code == mod.EXIT_OK, out
+    assert "SIGTERMx2" in out and "SIGINTx1" in out, (
+        f"signals must be tallied apart, not collapsed. Got:\n{out}"
+    )
+    assert "3 run(s)" in out
+
+
+def test_an_undeclared_run_is_still_a_violation(tmp_path: Path) -> None:
+    """Non-vacuity control: the change must not disarm the class it refines.
+
+    Without this, a patch that simply stopped counting `unknown` would pass
+    every test above while destroying the instrument.
+    """
+    mod = _load()
+    rows = [_sig_row("unknown", 1, 1, None)]
+    code, out = mod.run([str(_ledger(tmp_path, rows))])
+    assert code == mod.EXIT_VIOLATION
+    assert "Class 2" in out
+
+
+def test_a_merged_run_that_was_also_signalled_stays_merged_and_is_disclosed(
+    tmp_path: Path,
+) -> None:
+    """`terminated_by` is independent of `final_state`, so the reader is too.
+
+    A run that merged and was then killed during housekeeping is NOT a
+    violation — Class 1 is about a merge reported as a failure, and the exit
+    code here is an honest signal death. But the kill is disclosed, because it
+    is the fact Class 1's own investigation had to recover from a terminal log.
+    """
+    mod = _load()
+    rows = [_sig_row("merged", 143, 1, "SIGTERM")]
+    code, out = mod.run([str(_ledger(tmp_path, rows))])
+    assert "SIGTERM" in out
+    assert code == mod.EXIT_OK, out
+
+
+def test_pre_instrumentation_rows_are_not_claimed_as_unsignalled(
+    tmp_path: Path,
+) -> None:
+    """ABSENT is not EMPTY, one level further in — the audit's own house rule.
+
+    A row written before the signal traps existed carries no `terminated_by`
+    KEY. It must not be reported as "this run was not signalled", because the
+    22 rows that prompted this work are exactly such rows and most of them WERE
+    signalled. The audit has to say it cannot tell.
+    """
+    mod = _load()
+    rows = [_row("unknown", 1, pr=1, sha=None)]  # no terminated_by key at all
+    code, out = mod.run([str(_ledger(tmp_path, rows))])
+    assert code == mod.EXIT_VIOLATION
+    assert "cannot distinguish" in out.lower() or "predate" in out.lower(), (
+        "the audit must disclose that pre-instrumentation undeclared rows "
+        f"cannot be attributed to a kill or a fall-off-the-end. Got:\n{out}"
+    )
+
+
+def test_the_json_envelope_carries_the_fourth_bucket(tmp_path: Path) -> None:
+    """A machine reader must see the split too, not just the text rendering."""
+    mod = _load()
+    rows = [
+        _sig_row("terminated_sigterm", 143, 1, "SIGTERM"),
+        _row("merged", 0, pr=2),
+    ]
+    code, out = mod.run([str(_ledger(tmp_path, rows)), "--json"])
+    payload = json.loads(out)
+    assert payload["externally_terminated"] == 1
+    assert payload["verdict"] == "converged"
+    assert payload["terminated_by"] == {"SIGTERM": 1}
+
+
+def test_a_ledger_of_nothing_but_kills_cannot_conclude(tmp_path: Path) -> None:
+    """If every run was killed, there is no evidence either way.
+
+    The same rule the script already applies to an empty ledger, extended to a
+    ledger that is empty OF DECISIONS. Reporting CONVERGED here would be the
+    exact reassurance-manufacturing this audit exists to refuse.
+    """
+    mod = _load()
+    rows = [
+        _sig_row("terminated_sigterm", 143, 1, "SIGTERM"),
+        _sig_row("terminated_sigint", 130, 2, "SIGINT"),
+    ]
+    code, out = mod.run([str(_ledger(tmp_path, rows))])
+    assert code == mod.EXIT_CANNOT_CONCLUDE, out
+    assert "CANNOT CONCLUDE" in out

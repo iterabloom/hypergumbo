@@ -132,6 +132,11 @@ REQUIRED_KEYS = {
     # ALSO when the ERR trap could not see the abort (set -u, a bare exit, a
     # signal) -- so null never means "nothing went wrong"; final_state says that.
     "abort_site", "abort_command",
+    # WI-katap: which signal killed the run, if one did. Recorded
+    # INDEPENDENTLY of final_state, because a kill can arrive AFTER a decision
+    # -- a run that merged and was then SIGTERMed during its housekeeping keeps
+    # `merged` and still reports the signal here.
+    "terminated_by",
 }
 
 
@@ -149,6 +154,7 @@ def _assert_schema(payload: dict) -> None:
     )
     assert payload["abort_site"] is None or isinstance(payload["abort_site"], str)
     assert payload["abort_command"] is None or isinstance(payload["abort_command"], str)
+    assert payload["terminated_by"] is None or isinstance(payload["terminated_by"], str)
     assert isinstance(payload["final_state"], str)
     assert payload["final_state"] != "unknown", (
         "final_state must be set to a real terminal state, not 'unknown'"
