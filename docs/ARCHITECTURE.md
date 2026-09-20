@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **335** Python modules (139 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 94 core, 4 CLI, 36 tracker)
-- **47968** symbols (functions, classes, methods)
-- **189447** edges by type:
-  - calls: 108800
-  - contains: 43954
-  - imports: 15080
-  - instantiates: 11633
-  - references: 6844
-  - module_attr_ref: 1622
-  - other: 1514
+- **48124** symbols (functions, classes, methods)
+- **190109** edges by type:
+  - calls: 109097
+  - contains: 44105
+  - imports: 15137
+  - instantiates: 11652
+  - references: 6970
+  - module_attr_ref: 1631
+  - other: 1517
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 47968 Symbols + 189447 Edges + UsageContexts           │
+│  Output: 48124 Symbols + 190109 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -209,7 +209,8 @@ A code symbol (function, class, etc.) detected by analysis.
 - `is_example_file`: True if the file is example/demo/sample/tutorial code. Set when the path matches an EXAMPLE_PATTERN.
 - `is_config_file`: True if the file is a dependency/build manifest such as ``pyproject.toml`` / ``package.json`` / ``Cargo.toml``. Within tier 2, ``is_test_file`` / ``is_example_file`` / ``is_config_file`` are mutually exclusive — at most one is True per Symbol.
 - `is_generated_file`: True if the file is generated code. Independent of the role flags above.
-- `is_exported`: True if the symbol is part of the package's public API.
+- `is_exported`: True if the symbol is part of the package's public API, False if a producer measured that it is not, and ``None`` when nobody looked (INV-kubup). Seventeen analyzer modules compute exportedness and ninety-odd do not; while this was ``bool = False`` the artifact could not tell a measured negative from a missing rule, and said "not public API" for both. Only a
+- `positive input fills it`: an analyzer's own rule, an export modifier (``pub`` / ``public`` / ``exported``), or a language signal that the symbol is not public at all.
 - `cyclomatic_complexity`: McCabe cyclomatic complexity (decision points + 1). Counts if/elif/else, for, while, except, with, and/or, match/case.
 - `line_span`: Physical line span of the symbol body — ``end_line - start_line + 1``, INCLUDING blank and comment lines. This is NOT source-lines-of-code (SLOC); the spec's "lines of code" / file-level SLOC convention lives in ``profile.languages[*].loc``. Renamed from ``lines_of_code`` (WI-bozid) so one term no longer names two different counting conventions.
 - `signature`: Function/method signature string, e.g., "(x: int, y: str) -> bool". Only populated for callable symbols (functions, methods). None for classes, etc.
@@ -278,21 +279,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9803.9 | ir.py |
-| `len` | external_symbol | 7540.0 | <external> |
-| `write_text` | external_symbol | 6566.0 | <external> |
-| `Span` | class | 6466.3 | ir.py |
+| `Symbol` | class | 9827.0 | ir.py |
+| `len` | external_symbol | 7552.0 | <external> |
+| `write_text` | external_symbol | 6571.0 | <external> |
+| `Span` | class | 6481.0 | ir.py |
 | `LinkerContext` | class | 3441.9 | registry.py |
-| `get` | external_symbol | 3031.0 | <external> |
+| `get` | external_symbol | 3039.0 | <external> |
 | `load_catalog` | function | 2540.2 | io_boundary.py |
-| `Edge.create` | method | 2429.5 | ir.py |
+| `Edge.create` | method | 2350.8 | ir.py |
 | `next` | external_symbol | 2141.0 | <external> |
-| `str` | external_symbol | 2122.0 | <external> |
+| `str` | external_symbol | 2123.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `Path` | external_symbol | 2017.0 | <external> |
+| `Path` | external_symbol | 2018.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1631.0 | <external> |
+| `append` | external_symbol | 1635.0 | <external> |
 
 ## Pattern System
 
@@ -937,8 +938,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: dd4e42c7be0f
-  commit_count: 7450
+  commit: ebf0a106605e
+  commit_count: 7481
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
