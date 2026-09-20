@@ -131,6 +131,12 @@ Design only — nothing in the pipeline changes in this release. ADR-0012 §Step
 - **`MetaKeySpec` gains `per_call_site`**, so a collapsed edge no longer reports one call site's fact as the whole relationship's. A function opening a path for read and then for write had reported `fs_read` only — the truncating write vanished and a `must_not_exist: fs_write` claim confirmed on it, the ADR-0033 false-confirm class reached through the edge collapse.
 - **Solidity contract-member ids change.** Members are now `method` rather than `function`, and `kind` is a slot in both `Symbol.id` and the typed `stable_id`; regenerate rather than diff Solidity identities across the boundary.
 
+### Changed
+
+#### ADR-0057 §15: an external endpoint's identity is `dst_ref` (WI-hupod)
+
+- **An absent module is an abstention, not a value.** §11 made `src`/`dst`/`edge_type` an edge's identity without qualifying the endpoint, so a module-less external stub and its typed twin — the same call, seen by two producers — were two edges, on **3,973 of 4,133** method-call sites under the scip-python backend. The ruling refines §11 rather than excepting it: for an endpoint outside the repo the identity is `dst_ref`, which can abstain, and not the `dst` string, whose module segment defaults to the `external` sentinel that ADR-0051's axiom defines as *not a marker for the absence of an answer*. An external identity key missing its module component is **partial**, and a partial key matches a complete one that agrees on every component it states; two partial keys do not match each other. The fold places before `deduplicate_edges` — 12,126 external call edges are post-collapse multi-site, 4,818 of them sentinel-module — and refuses rather than guesses where a site is ambiguous, which is 10 of 86,839 site groups here. §15.7 states what it does not assert. Ruled, not yet implemented.
+
 ### Fixed
 
 #### ADR-0057 §14 states the scope of the rule that landed
