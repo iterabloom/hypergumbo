@@ -1716,6 +1716,46 @@ def symbol_name_slot(symbol_id: str) -> str:
     return parts[-2]
 
 
+def callee_name_of(
+    dst: str,
+    *,
+    meta: Optional[Dict[str, Any]] = None,
+    dst_ref_name: Optional[str] = None,
+) -> str:
+    """THE callee-name read for an edge, in one place (INV-difud).
+
+    Three sources carry the name and they are not equally faithful, which is
+    why the order is the rule and not a preference:
+
+    1. ``meta['callee_name']`` — the LOSSLESS home ``make_unresolved_edge``
+       stamps on every unresolved-external edge. ADR-0036 Ruling 1 makes the
+       id's name slot deliberately lossy and says in as many words that a
+       consumer needing the exact name must never re-derive it from the id.
+    2. ``dst_ref.name`` — structured and equally lossless, but WI-huzuv
+       withholds the ref when the module is the ``external`` sentinel, so it
+       is absent on precisely the edges whose name is hardest to recover.
+    3. :func:`symbol_name_slot` — the id, span-anchored so a colon-bearing
+       objc selector survives (INV-fokik). ``""`` means "no name information",
+       and that is returned rather than the raw id: a name that cannot be read
+       must not compare equal to one that can.
+
+    Two readers had two orders. ``verify_claims._callee_name`` read 1 then 3;
+    ``finalize._stub_callee_name`` read 2 and then parsed the id POSITIONALLY
+    as ``parts[-2]``, consulting 1 never. Measured on this repository's own
+    survey they returned different strings for 12 external edges, every one a
+    name whose id slot had escaped ``::`` to ``..`` — and ``_stub_callee_name``
+    is the callee half of ADR-0057 §14's supersession key, compared against a
+    lossless ``Symbol.name``, so each mismatch silently MISSED a demotion.
+    One home, because two homes for one read is how they drifted.
+    """
+    stamped = (meta or {}).get("callee_name")
+    if isinstance(stamped, str) and stamped:
+        return stamped
+    if dst_ref_name:
+        return dst_ref_name
+    return symbol_name_slot(dst)
+
+
 def _extract_path_slot(symbol_id: str) -> Optional[str]:
     """Extract the ``path`` slot, or ``None`` for a malformed id.
 
