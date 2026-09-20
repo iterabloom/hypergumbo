@@ -96,12 +96,15 @@ SAMPLE_PROJECT_ATTRIBUTE_AGREEMENT = {
     "stable_id": (0, 8, 0, 2),
 }
 # Per (edge type, resolved) after the fold: (both, python only, scip_python only).
-# External `calls` BOTH: the two sites where the syntax arm already knew the
-# module (`pathlib.Path.glob`, `builtins.sorted`) — identical ids, folded.
-# External `calls` scip-only: the six module-less stubs' typed twins.
+# External `calls` BOTH is 8: the two sites where the syntax arm already knew
+# the module (`pathlib.Path.glob`, `builtins.sorted`) fold on identical ids
+# under §11, and the six module-less stubs are absorbed by their typed twins
+# under §15 — a partial external key matched by a complete one. scip_python-only
+# is 0 BECAUSE of that absorption: before §15 those six twins had no partner,
+# and one call carried two edges.
 SAMPLE_PROJECT_EDGE_OVERLAP = {
     ("calls", True): (3, 0, 1),
-    ("calls", False): (2, 11, 6),
+    ("calls", False): (8, 5, 0),
     ("imports", True): (0, 2, 0),
     ("imports", False): (0, 2, 0),
     ("instantiates", True): (0, 1, 0),
@@ -119,10 +122,20 @@ SAMPLE_PROJECT_TYPED_EXTERNALS = [
     ("tag", "python:builtins.str:0-0:strip:unresolved", "method", 23),
 ]
 # The syntax arm's module-less stubs (`python:external:0-0:<name>:unresolved`)
-# and what happens to each: six gain a typed twin at the same site from the
-# SCIP arm; `label` is a property the SCIP arm RESOLVES in-repo, so the stub
-# is superseded (§14).
+# and what happens to each: six are ABSORBED by the typed twin the SCIP arm
+# emits at the same site (§15, WI-hupod) and survive as one edge carrying the
+# stated module and both origins; `label` is a property the SCIP arm RESOLVES
+# in-repo, so no twin states a module and the stub is superseded instead (§14).
+# Seven stubs in, one sentinel stub out.
 SAMPLE_PROJECT_MODULE_LESS_STUBS = ["append", "group", "join", "label", "search", "strip", "upper"]
-SAMPLE_PROJECT_TYPED_BY_SCIP = ["append", "group", "join", "search", "strip", "upper"]
+#: What each absorbed stub's survivor states, as (callee, module path). The six
+#: names here are the six of MODULE_LESS_STUBS that a typed twin reaches.
+SAMPLE_PROJECT_ABSORBED = [
+    ("append", "builtins.list"), ("group", "re.Match"), ("join", "builtins.str"),
+    ("search", "re.Pattern"), ("strip", "builtins.str"), ("upper", "builtins.str"),
+]
 SAMPLE_PROJECT_SUPERSEDED = 1
-SAMPLE_PROJECT_CORROBORATED = 7
+#: §13: the six §15 absorptions pair two distinct pathways, as do the seven
+#: §11 folds on identical ids.
+SAMPLE_PROJECT_CORROBORATED = 13
+SAMPLE_PROJECT_EXTERNAL_FOLDS = 6
