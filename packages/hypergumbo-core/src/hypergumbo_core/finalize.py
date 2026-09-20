@@ -457,6 +457,67 @@ def _stub_callee_name(edge: "Edge") -> str:
     )
 
 
+def _passes_that_may_supersede() -> frozenset[str]:
+    """Pass ids whose resolutions may demote the stub they name (§14.1).
+
+    Declared on the linker registration, never inferred from being a linker.
+    ADR-0057 §5's discipline applied to a different permission: a pass that
+    has not been measured does not get to rank a producer's answer below its
+    own, and the grant cites ``docs/audits/0020``.
+    """
+    from .linkers.registry import get_all_linkers
+    from .pass_metadata import _resolve_linker_pass_id
+
+    return frozenset(
+        _resolve_linker_pass_id(linker) for linker in get_all_linkers()
+        if linker.supersedes_consumed_stub
+    )
+
+
+def _demote_stubs_named_as_consumed(
+    edges: "list[Edge]", policy: ArbitrationPolicy,
+) -> int:
+    """ADR-0057 §14.1: a resolved edge demotes the stub it NAMES as its input.
+
+    The stated half of §14. Where the same-site rule reconstructs the relation
+    downstream from (src, line, edge_type, callee name key) — and cannot tell a
+    refinement from a collision, which is how Open question 4's 45 false
+    demotions arose — this reads it off ``Edge.derived_from``, where the pass
+    that consumed the stub recorded which one. No key, no line, no candidate
+    set, so no ambiguity to resolve.
+
+    ``derived_from`` mixes Symbol and Edge ids; only an id naming an
+    UNRESOLVED edge in this graph is a supersession. Runs BEFORE the same-site
+    pass and stamps ``meta["superseded_by"]``, which that pass skips, so one
+    stub is halved once however many rules reach it.
+    """
+    allowed = _passes_that_may_supersede()
+    if not allowed:
+        return 0  # pragma: no cover - every shipped grant is declared
+    by_edge_id = {edge.id: edge for edge in edges}
+    demoted = 0
+    for resolved in edges:
+        if not resolved.is_resolved or not resolved.derived_from:
+            continue
+        if not (set(resolved.origin) & allowed):
+            continue
+        for ref in resolved.derived_from:
+            stub = by_edge_id.get(ref)
+            if stub is None or stub.is_resolved:
+                continue
+            if "superseded_by" in (stub.meta or {}):
+                continue
+            base = stub.rank_score if stub.rank_score is not None else stub.confidence
+            stub.rank_score = base * policy.superseded_stub_rank_factor
+            stub.meta = {
+                **(stub.meta or {}),
+                "superseded_by": resolved.id,
+                "superseded_by_origin": list(resolved.origin),
+            }
+            demoted += 1
+    return demoted
+
+
 def demote_superseded_stubs(
     symbols: "list[Symbol]", edges: "list[Edge]", *, policy: ArbitrationPolicy = BUILTIN_POLICY,
 ) -> int:
@@ -506,6 +567,8 @@ def demote_superseded_stubs(
     )
     from .ir import _edge_call_lines, stated_module_of
 
+    demoted = _demote_stubs_named_as_consumed(edges, policy)
+
     by_id = {s.id: s for s in symbols}
     languages = {s.language for s in symbols if s.language}
     name_key_of: dict[str, Any] = {}
@@ -518,7 +581,7 @@ def demote_superseded_stubs(
             name_key_of[language] = anchor.name_key
             tokens_of[language] = anchored_producer_tokens(language)
     if not name_key_of:
-        return 0
+        return demoted
 
     site: dict[tuple[str, int, str], list[Edge]] = {}
     for edge in edges:
@@ -530,12 +593,14 @@ def demote_superseded_stubs(
         for line in _edge_call_lines(edge):
             site.setdefault((edge.src, line, edge.edge_type), []).append(edge)
     if not site:
-        return 0
+        return demoted
 
-    demoted = 0
     for stub in edges:
         if stub.is_resolved:
             continue
+        if "superseded_by" in (stub.meta or {}):
+            continue  # §14.1 already stated this one; halving twice would
+                      # quarter the rank and make the declared factor a lie
         if stated_module_of(stub) is not None:
             # §15.1: a COMPLETE external key STATES a module, so an in-repo
             # answer contradicts it rather than filling it, and §11 keeps both

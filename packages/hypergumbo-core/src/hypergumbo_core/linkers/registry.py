@@ -527,6 +527,12 @@ class RegisteredLinker:
     availability: str = "core"
     requires: str | None = None
     pass_version: str = ""
+    # ADR-0057 §14.1 (WI-togad): may this pass's resolution DEMOTE the stub it
+    # names in ``Edge.derived_from``? Granted on measured precision only — see
+    # ``docs/audits/0020-recovery-linker-supersession-precision.md``. Default
+    # False: a pass that has not been measured does not get to rank a
+    # producer's answer below its own.
+    supersedes_consumed_stub: bool = False
     # WI-hupaz / WI-dilab / INV-hujog: pass-id dependencies surfaced into
     # ``Pass.depends_on``, expressed in CNF (outer-AND of inner-OR clauses).
     # Distinct from ``activation`` (which gates "should this linker run at all
@@ -565,6 +571,7 @@ def register_linker(  # nosec B107 — pass_label/backend defaults are tag strin
     availability: str = "core",
     requires: str | None = None,
     depends_on: list[list[str]] | None = None,
+    supersedes_consumed_stub: bool = False,
 ) -> Callable[[LinkerFunc], LinkerFunc]:
     """Decorator to register a linker function.
 
@@ -608,6 +615,7 @@ def register_linker(  # nosec B107 — pass_label/backend defaults are tag strin
             requires=requires,
             pass_version=compute_pass_version(func),
             depends_on=[list(clause) for clause in depends_on] if depends_on else [],
+            supersedes_consumed_stub=supersedes_consumed_stub,
         )
         return func
 

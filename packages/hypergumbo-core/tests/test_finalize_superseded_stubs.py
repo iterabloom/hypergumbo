@@ -19,6 +19,8 @@ from typing import Any
 
 import pytest
 
+import hypergumbo_core.cli  # the @register_linker side-effect block (see pass_metadata)
+
 from hypergumbo_core.analyze import registry as _registry_mod
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import (
@@ -298,3 +300,115 @@ class TestOnlyAnAbstainingStubIsSuperseded:
         assert stub.dst_ref is not None and stub.dst_ref.module_path == ""
         resolved = _edge(WRAP, origin=["scip"], resolved=True)
         assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
+
+
+class TestADerivationStampSupersedesWhatItConsumed:
+    """ADR-0057 §14.1 (WI-togad): the consuming pass NAMES the stub it used.
+
+    §14's same-site rule reconstructs the supersession relation downstream, by
+    matching ``src``, a call line, ``edge_type`` and a callee name key over the
+    post-dedup graph. That reconstruction is what produced Open question 4's
+    419 false-positive-bearing demotions: the key cannot tell "this pass
+    refined this stub" from "this pass bound a different call that happens to
+    share the line and short name". A pass that CONSUMED a stub already knows
+    which one, and ``Edge.derived_from`` is where it says so — the relation
+    becomes a stated fact rather than a re-derivation, with no name or line
+    matching involved.
+
+    Not every pass may stamp its way to a demotion. The permission is declared
+    on the linker registration and granted on measured precision: see
+    ``docs/audits/0020-recovery-linker-supersession-precision.md``.
+    """
+
+    @staticmethod
+    def _pair(origin: str) -> tuple[Edge, Edge]:
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        resolved = _edge(WRAP, origin=[origin], resolved=True, line=99)
+        resolved.derived_from = [stub.id, CALLER]
+        return stub, resolved
+
+    def test_a_declared_pass_demotes_the_stub_it_names(self) -> None:
+        stub, resolved = self._pair("inherited-calls-linker")
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
+        assert stub.meta["superseded_by"] == resolved.id
+        assert stub.meta["superseded_by_origin"] == ["inherited-calls-linker"]
+        assert stub.rank_score == pytest.approx(0.5 * SUPERSEDED_STUB_RANK_FACTOR)
+
+    def test_it_needs_no_shared_line_or_name(self) -> None:
+        """The whole point: the relation is stated, so none of the same-site
+        key's four components is consulted. The resolved edge here sits on a
+        different line and its target's name never matches the stub's callee
+        under any key."""
+        stub = _edge(STUB, origin=["python"], resolved=False, line=5)
+        resolved = _edge(OTHER, origin=["inherited-calls-linker"], resolved=True, line=4242)
+        resolved.derived_from = [stub.id]
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
+
+    def test_an_undeclared_pass_stamps_without_effect(self) -> None:
+        """``method-call-recovery-linker`` resolves 16 of its 64 edges wrongly
+        on this repository and no shipped signal separates the wrong quarter —
+        ``disambiguation_fallback`` is set on 5 of the 16 wrong and 13 of the
+        48 right. It stamps its consumed edge, because the provenance is true
+        and useful; it does not get to demote on it."""
+        stub, resolved = self._pair("method-call-recovery-linker")
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 0
+        assert "superseded_by" not in (stub.meta or {})
+
+    def test_a_symbol_reference_in_derived_from_demotes_nothing(self) -> None:
+        """``derived_from`` mixes Symbol and Edge ids. Only an edge reference
+        naming an UNRESOLVED edge is a supersession; a symbol id that happens
+        to be listed is upstream evidence of a different kind."""
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        resolved = _edge(WRAP, origin=["inherited-calls-linker"], resolved=True)
+        resolved.derived_from = [CALLER, WRAP, OTHER]
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 0
+
+    def test_a_named_edge_that_is_resolved_is_not_demoted(self) -> None:
+        stub, resolved = self._pair("inherited-calls-linker")
+        stub.is_resolved = True
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 0
+
+    def test_a_stub_is_demoted_once_not_twice(self) -> None:
+        """The stated relation and the same-site key can both hold. The stated
+        one wins and the rank is halved once — two passes over one stub would
+        quarter it and make the factor a lie."""
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        stated = _edge(WRAP, origin=["inherited-calls-linker"], resolved=True)
+        stated.derived_from = [stub.id]
+        same_site = _edge(WRAP, origin=["scip"], resolved=True)
+        assert demote_superseded_stubs(_symbols(), [stub, stated, same_site]) == 1
+        assert stub.rank_score == pytest.approx(0.5 * SUPERSEDED_STUB_RANK_FACTOR)
+        assert stub.meta["superseded_by_origin"] == ["inherited-calls-linker"]
+
+    def test_it_runs_for_a_language_with_one_anchored_producer(self) -> None:
+        """The same-site rule needs two anchored producers and returns 0
+        without them. A stated derivation needs no second observer at all —
+        the pass that consumed the stub is the only witness required."""
+        _registry_mod._ANALYZER_REGISTRY.pop("pyscip")
+        stub, resolved = self._pair("inherited-calls-linker")
+        assert demote_superseded_stubs(_symbols(), [stub, resolved]) == 1
+
+    def test_two_resolutions_naming_one_stub_demote_it_once(self) -> None:
+        """A stub can be consumed by more than one resolution — the walk
+        reaches the same unresolved call from two class hints. The second
+        stamp is skipped, so the rank is halved once and
+        ``superseded_by`` names the first resolution rather than flickering
+        between them."""
+        stub = _edge(STUB, origin=["python"], resolved=False)
+        first = _edge(WRAP, origin=["inherited-calls-linker"], resolved=True)
+        second = _edge(OTHER, origin=["inherited-calls-linker"], resolved=True)
+        first.derived_from = [stub.id]
+        second.derived_from = [stub.id]
+        assert demote_superseded_stubs(_symbols(), [stub, first, second]) == 1
+        assert stub.rank_score == pytest.approx(0.5 * SUPERSEDED_STUB_RANK_FACTOR)
+        assert stub.meta["superseded_by"] == first.id
+
+    def test_the_grant_names_the_pass_it_was_measured_on(self) -> None:
+        """A named entry, not a count. The linker registry is populated by an
+        import side-effect, so an empty one would make every test above pass
+        for the wrong reason — a §14.1 path that silently demotes nothing
+        looks identical to one that correctly declines."""
+        from hypergumbo_core.finalize import _passes_that_may_supersede
+
+        granted = _passes_that_may_supersede()
+        assert granted == {"inherited-calls-linker"}
