@@ -1,0 +1,20 @@
+- op: create  # 3ba3
+  at: '2026-09-19T21:57:06Z'  # 3ba3
+  by: agent  # 3ba3
+  actor: jgstern_agent  # 3ba3
+  clock: 1  # 3ba3
+  nonce: 3ba3  # 3ba3
+  data:  # 3ba3
+    kind: work_item  # 3ba3
+    title: "py.py computes is_exported for module-level constructs but not for methods, so every Python method has no exportedness verdict"  # 3ba3
+    status: todo_hard  # 3ba3
+    priority: 3  # 3ba3
+    parent:  # 3ba3
+    tags:  # 3ba3
+    - producer_gap  # 3ba3
+    isbefore: []  # 3ba3
+    duplicate_of: []  # 3ba3
+    not_duplicate_of: []  # 3ba3
+    pr_ref:  # 3ba3
+    description: "INV-kubup made `Symbol.is_exported` a tri-state, so a record now says `null` where no producer computed exportedness. That turned a silent population into a visible one, and the largest single group is Python methods: on this repository's own survey, **23,466 of the 28,049 records that moved from `false` to `null` are `kind: method`**.\n\nThe cause is a producer gap, not a defect in the cure. `py.py` sets `is_exported` at four sites — module-level variables (`_is_python_top_level_exported`), classes, class attributes (`not attr.startswith(\"_\")`) and module-level functions — and at none for methods. So every Python method in every surveyed repository carries no exportedness verdict at all.\n\nWHAT A RULE WOULD HAVE TO DECIDE, stated rather than assumed:\n- A public method of an exported class is reachable from outside the package; a public method of a private class is not. So the honest rule is conjunctive, and needs the enclosing class's verdict — which `py.py` computes, in the same pass.\n- The leading-underscore convention applies to methods as it does to functions (`_helper` is private by PEP-8), and dunders are the public protocol, not private — `visibility.py::_is_python_private_name` already encodes exactly that and is the thing to reuse rather than re-derive.\n- `__all__` does not list methods, so membership is not the authority here; the class's own membership is.\n\nCONSUMERS THIS REACHES: the WI-zimum dead-code seed set in `exports` root mode, `cli`'s `exported_symbols` count, and the WI-zafab `--exclude-exported` filter. Today a Python method is invisible to all three, in both directions.\n\nNOT URGENT AND NOT A REGRESSION: before INV-kubup these records claimed `false`, which was worse (a phantom measurement). `null` is honest; this row is about supplying the measurement.\n\nREPRO: survey any Python repository and count `kind: method` nodes whose `supply_chain.is_exported` is null — it is all of them."  # 3ba3
+    fields: {}  # 3ba3
