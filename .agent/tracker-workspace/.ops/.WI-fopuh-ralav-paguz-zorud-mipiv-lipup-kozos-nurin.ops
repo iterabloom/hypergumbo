@@ -1,0 +1,20 @@
+- op: create  # ba8a
+  at: '2026-09-20T22:11:12Z'  # ba8a
+  by: agent  # ba8a
+  actor: jgstern_agent  # ba8a
+  clock: 1  # ba8a
+  nonce: ba8a  # ba8a
+  data:  # ba8a
+    kind: work_item  # ba8a
+    title: "per-PR pytest step omits the umbrella 'hypergumbo' package (fixed), and selects 964 files from a 75-path manifest (unexplained)"  # ba8a
+    status: todo_hard  # ba8a
+    priority: 2  # ba8a
+    parent:  # ba8a
+    tags:  # ba8a
+    - ci_infrastructure  # ba8a
+    isbefore: []  # ba8a
+    duplicate_of: []  # ba8a
+    not_duplicate_of: []  # ba8a
+    pr_ref:  # ba8a
+    description: "FOUND while shipping WI-hajak's mode gate (PR #1107). Two separate defects, filed together because one masked the other.\n\nDEFECT 1 -- the per-PR `pytest` step installs every package EXCEPT the umbrella. .woodpecker/woodpecker.yml's pytest step installed hypergumbo-core, the five lang packages and hypergumbo-tracker, but NOT `packages/hypergumbo` -- the package whose name is literally `hypergumbo` and whose src/ provides the top-level module that `python -m hypergumbo` imports. full-suite.yml:94 and nightly.yml:68/95 all install it. This step was the only one that did not.\n\nConsequence: any PR whose smart-test manifest happens to select a test that shells out to `python -m hypergumbo` fails with\n\n    /usr/local/bin/python3.11: No module named hypergumbo\n\nand it is INVISIBLE until a manifest happens to select one. On #1107 six tests failed this way (test_cli_run_behavior_map x4, test_schema x2). FIXED in the same PR by adding `-e packages/hypergumbo`, matching the other two workflows.\n\nDEFECT 2 -- NOT EXPLAINED, and I am filing it rather than guessing. The same step reported\n\n    === pytest (964 selected files, -n 8) ===\n\nwhile the manifest committed at that exact SHA (0cb9039d) carries 75 selected paths, verified with `git show 0cb9039d:.ci/affected-tests.txt`. For contrast, #1106's step at e9acc336bb reported `71 selected files` and finished in 36s -- matching dev's manifest exactly. 964 also exceeds the 850 test files that exist in the repo at all, so it is not a full-suite fallback either.\n\nWhat I ruled out, each by checking rather than by reasoning:\n  * the committed manifest is not bloated -- 85 lines, 75 paths, and the working tree matches it byte for byte;\n  * nothing in any .woodpecker/*.yml regenerates .ci/affected-tests.txt, so no step overwrites it in the shared workspace;\n  * the branch FAST-FORWARDS from dev (merge-base == origin/dev == 9565972d49), so the synthetic PR merge commit cannot have produced a union-merged manifest;\n  * the manifest baseline SHA (9565972d49) resolves on origin, so smart-test had no reason to fall back;\n  * `SELECTED_TESTS` is built inside a command substitution and counted through a QUOTED expansion, so neither word-splitting nor pathname expansion explains the count.\n\nSo the selection the pytest step actually used did not come from the manifest at that SHA, and I do not know where it came from. That matters beyond one PR: a step that silently runs ~13x the selected slice is both a cost and a correctness problem, because it drags in tests the PR was never measured against -- which is exactly how defect 1 surfaced.\n\nNEXT STEP for whoever picks this up: have the pytest step print the manifest header and the first few SELECTED_TESTS entries before running, so the file it read is observable. Right now the only evidence is a count."  # ba8a
+    fields: {}  # ba8a
