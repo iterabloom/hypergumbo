@@ -1,0 +1,27 @@
+Original commit body from 570ec05d61c4e9519afc9a68204e29e9aecfca2a:
+
+Owner ruling on WI-hupod. A module-less external stub and its typed twin
+are the same call seen by two producers; §11 made them two edges on
+3,973 of 4,133 method-call sites under scip-python.
+
+§15 refines §11 rather than excepting it. For an endpoint outside the
+repo the identity is dst_ref — ADR-0037 ruling 2 already says so — which
+can abstain, and not the dst string, whose module segment defaults to
+the "external" sentinel that ADR-0051's MODULE_KEY_AXIOM defines as not
+a marker for the absence of an answer. An external identity key missing
+its module component is partial; a partial key matches a complete one
+that agrees on every component it states, and two partial keys do not
+match each other.
+
+Placement is before deduplicate_edges and before create_boundary_nodes,
+both load-bearing: 12,126 external call edges are post-collapse
+multi-site (4,818 sentinel-module), and 779 of 2,137 external_symbol
+nodes carry a sentinel module absorbing 22,284 of 74,816 in-edges.
+Ambiguity is refused, not guessed — 10 of 86,839 site groups here.
+
+§11 additionally loses a sentence that scip-python falsified ("SCIP
+emits no external edges today") and gains the in-repo qualification.
+
+Ruled, not implemented: WI-hupod, blocked by INV-difud.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
