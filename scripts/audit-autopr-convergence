@@ -102,6 +102,30 @@ UNDECLARED = "unknown"
 #: fleet of live instrument failures -- ABSENT is not EMPTY.
 UNINSTRUMENTED = object()
 
+#: A FOURTH bucket (WI-katap): the run was KILLED before it could decide.
+#: Not converged and not a violation -- it never got to converge. Measured
+#: 2026-09-20, 22 of 84 post-instrumentation runs carried ``unknown`` and 14 of
+#: the 15 PRs behind them had MERGED: the violation signal was firing on runs
+#: that succeeded, because a kill from the caller's ``timeout`` wrapper was
+#: indistinguishable from auto-pr falling off the end.
+EXTERNALLY_TERMINATED = frozenset(
+    {"terminated_sigterm", "terminated_sigint", "terminated_sighup"}
+)
+
+
+def terminated_by(row: dict):
+    """Three-valued, exactly like :func:`abort_site`.
+
+    A signal name, ``None`` (this run was not signalled), or ``UNINSTRUMENTED``
+    (the row predates the signal traps, so whether it was signalled is
+    unknowable). The third value is load-bearing: the 22 rows that prompted
+    this work carry no ``terminated_by`` key and MOST OF THEM WERE SIGNALLED,
+    so reporting them as unsignalled would state the opposite of the truth.
+    """
+    if "terminated_by" not in row:
+        return UNINSTRUMENTED
+    return row["terminated_by"] or None
+
 
 def abort_site(row: dict):
     """Three-valued: a site string, ``None``, or ``UNINSTRUMENTED``."""
@@ -161,6 +185,9 @@ def classify(rows: list[dict]) -> dict:
     sites: dict[str, int] = {}
     unattributed = 0
     uninstrumented = 0
+    terminated: list[dict] = []
+    by_signal: dict[str, int] = {}
+    undeclared_pre_signal_era = 0
 
     for row in rows:
         state = str(row.get("final_state"))
@@ -168,9 +195,24 @@ def classify(rows: list[dict]) -> dict:
         by_state.setdefault(state, {}).setdefault(str(code), 0)
         by_state[state][str(code)] += 1
 
-        if state in CONVERGED_MERGED and code != 0:
+        # Recorded independently of the state, so a run that MERGED and was
+        # then killed during its housekeeping is disclosed too -- that is the
+        # fact INV-rahib's Class 1 investigation had to recover from a
+        # surviving terminal log because nothing had written it down.
+        sig = terminated_by(row)
+        if sig is not UNINSTRUMENTED and sig is not None:
+            by_signal[sig] = by_signal.get(sig, 0) + 1
+
+        if state in EXTERNALLY_TERMINATED:
+            terminated.append(row)
+        # A merge that landed and then took a signal exits 128+n by design, so
+        # it is NOT the Class 1 defect (a merge reported as a failure by an
+        # aborted cleanup). Exempting it keeps Class 1 measuring one thing.
+        if state in CONVERGED_MERGED and code != 0 and sig in (None, UNINSTRUMENTED):
             merged_nonzero.append(row)
         if state == UNDECLARED:
+            if sig is UNINSTRUMENTED:
+                undeclared_pre_signal_era += 1
             undeclared.append(row)
             if code == 0:
                 undeclared_exit_zero.append(row)
@@ -193,6 +235,13 @@ def classify(rows: list[dict]) -> dict:
         "abort_sites": sites,
         "undeclared_unattributed": unattributed,
         "undeclared_uninstrumented": uninstrumented,
+        "externally_terminated": len(terminated),
+        "terminated_by": by_signal,
+        "undeclared_pre_signal_era": undeclared_pre_signal_era,
+        # The population the verdict is actually ABOUT: runs that got to
+        # decide. A kill is neither convergence nor its absence.
+        "deciding_runs": len(rows) - len(terminated),
+        "_terminated_rows": terminated,
         "_merged_nonzero_rows": merged_nonzero,
         "_undeclared_rows": undeclared,
     }
@@ -217,6 +266,39 @@ def _describe(row: dict) -> str:
             if cmd:
                 line += f"  {cmd}"
     return line
+
+
+def _terminated_block(summary: dict) -> list[str]:
+    """Disclose the kills, whatever the verdict.
+
+    Never silent: a run that was killed is not a violation, but an audit that
+    simply omitted it would let a fleet of externally-terminated runs read as
+    an unqualified all-clear -- the same reassurance-manufacturing this script
+    refuses everywhere else.
+    """
+    out: list[str] = []
+    if summary["externally_terminated"]:
+        sigs = ", ".join(
+            f"{name}x{n}"
+            for name, n in sorted(summary["terminated_by"].items())
+        )
+        out.append("")
+        out.append(
+            f"  Externally terminated: {summary['externally_terminated']} "
+            f"run(s) ({sigs}) — killed before they could decide. Not counted "
+            f"as convergence and not as a violation."
+        )
+    elif summary["terminated_by"]:
+        # Signalled, but the state was already decided when the signal landed.
+        sigs = ", ".join(
+            f"{name}x{n}" for name, n in sorted(summary["terminated_by"].items())
+        )
+        out.append("")
+        out.append(
+            f"  Signalled after deciding: {sigs} — the run had already "
+            f"recorded its outcome; only its housekeeping was interrupted."
+        )
+    return out
 
 
 def _render_text(path: Path, summary: dict, malformed: list[int],
@@ -268,11 +350,25 @@ def _render_text(path: Path, summary: dict, malformed: list[int],
             lines.append(f"  It also already shows {violations} violation(s).")
         return "\n".join(lines) + "\n"
 
+    if summary["deciding_runs"] == 0:
+        lines.append(
+            f"VERDICT: CANNOT CONCLUDE — all {summary['total']} invocation(s) "
+            f"were externally terminated"
+        )
+        lines.append(
+            "  Every run was killed before it could decide, so the ledger "
+            "holds no evidence either way."
+        )
+        lines.extend(_terminated_block(summary))
+        return "\n".join(lines) + "\n"
+
     if violations == 0:
         lines.append(
-            f"VERDICT: CONVERGED — {summary['total']} invocation(s), "
-            f"every one in a declared terminal state with an agreeing exit code."
+            f"VERDICT: CONVERGED — {summary['deciding_runs']} invocation(s) "
+            f"that ran to a decision, every one in a declared terminal state "
+            f"with an agreeing exit code."
         )
+        lines.extend(_terminated_block(summary))
         return "\n".join(lines) + "\n"
 
     lines.append(f"VERDICT: VIOLATION — {violations} run(s)")
@@ -297,6 +393,14 @@ def _render_text(path: Path, summary: dict, malformed: list[int],
                 f"    of which {summary['undeclared_state_exit_zero']} exit 0 "
                 f"— claimed success with no terminal state recorded."
             )
+        if summary["undeclared_pre_signal_era"]:
+            lines.append(
+                f"    of which {summary['undeclared_pre_signal_era']} predate "
+                f"the signal traps (WI-katap) — for these the audit CANNOT "
+                f"DISTINGUISH a run that fell off the end from one that was "
+                f"killed. Measured on the rows that prompted the fix, most "
+                f"were kills whose PR merged anyway."
+            )
         if summary["abort_sites"]:
             lines.append("    abort sites, most frequent first:")
             for site, n in sorted(
@@ -305,6 +409,7 @@ def _render_text(path: Path, summary: dict, malformed: list[int],
                 lines.append(f"      {n:>4}x  {site}")
         for row in summary["_undeclared_rows"][-5:]:
             lines.append(f"    {_describe(row)}")
+    lines.extend(_terminated_block(summary))
     return "\n".join(lines) + "\n"
 
 
@@ -335,7 +440,12 @@ def run(argv: list[str] | None = None) -> tuple[int, str]:
     summary = classify(rows)
     violations = summary["merged_nonzero_exit"] + summary["undeclared_state"]
 
-    if error is not None or summary["total"] == 0 or malformed:
+    if (
+        error is not None
+        or summary["total"] == 0
+        or malformed
+        or summary["deciding_runs"] == 0
+    ):
         code = EXIT_CANNOT_CONCLUDE
         verdict = "cannot_conclude"
     elif violations:

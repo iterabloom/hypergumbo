@@ -314,6 +314,12 @@ _autopr_state_merged_sha=""
 # from "aborted, site unknown", so the two are reported separately.
 _autopr_state_abort_site=""
 _autopr_state_abort_cmd=""
+# WI-katap: which signal killed this run, if one did. Recorded INDEPENDENTLY of
+# _autopr_state_final, because "the run was killed" and "what the run decided"
+# are two facts and a kill can arrive after a decision. Empty on a run nobody
+# signalled -- which a reader must not confuse with the ABSENT key on a row
+# written before this instrumentation existed.
+_autopr_state_signal=""
 # Governance mode wants PR_PENDING to persist across the auto-pr exit
 # until the human acts.  Setting this true makes _autopr_finalize skip
 # the rm.  Default false matches the historical 'remove on exit' behavior.
@@ -348,6 +354,76 @@ _autopr_record_abort() {
 	_autopr_state_abort_cmd="$BASH_COMMAND"
 }
 
+# ------------------------------------------------------------------
+# WI-katap: a run that is KILLED says so, instead of reporting INV-rahib's
+# violation signal.
+#
+# Measured on the ledger 2026-09-20: the undeclared-terminal-state class was
+# 22 of 84 post-instrumentation runs (26%), up from 14 of 485 (2.9%). Not one
+# carried an abort_site, because the ERR trap cannot see a signal -- and a
+# surviving run log named the signal: the caller wraps auto-pr in
+# `timeout 590` (its harness caps one foreground call at 600s) while auto-pr's
+# own poll budget is 2400s plus a soft-retry of 300s that is not optional. The
+# kill is structural, not bad luck. 14 of the 15 PRs behind those rows MERGED.
+#
+# So `unknown` was carrying two facts: "reached the end without deciding" (the
+# convergence bug INV-rahib is about) and "was killed before it could decide"
+# (not a convergence property at all -- the run never got to converge). That is
+# this repository's recurring absent-versus-empty defect, and it made the
+# refined criterion "zero unknown rows over a window" UNSATISFIABLE.
+#
+# Two rules here, both load-bearing:
+#
+#  1. The state is only claimed when nothing else has decided. A signal landing
+#     during post-merge housekeeping must NOT rewrite a landed merge -- that is
+#     INV-rahib's Class 1 defect with the sign flipped.
+#  2. The signal is recorded EITHER WAY, in its own field. On the merged case
+#     that second fact is exactly what Class 1's investigation had to
+#     reconstruct from a terminal log because nothing had written it down.
+#
+# The state names are spelled as literals rather than built from "$1", because
+# the vocabulary test extracts them with a regex over this file -- a computed
+# assignment would declare three states it could never see emitted.
+# ------------------------------------------------------------------
+_autopr_on_signal() {
+	local name="$1" num="$2"
+	_autopr_state_signal="SIG${name}"
+	if [[ "$_autopr_state_final" == "unknown" ]]; then
+		case "$name" in
+		TERM) _autopr_state_final="terminated_sigterm" ;;
+		INT) _autopr_state_final="terminated_sigint" ;;
+		HUP) _autopr_state_final="terminated_sighup" ;;
+		esac
+	fi
+	# `exit` from a trap still runs the EXIT trap, which is what writes the
+	# sentinel and the ledger row. 128+n keeps the exit code a conventional
+	# signal death, so `timeout`, a supervisor and the shell all still see
+	# what happened rather than a manufactured 0.
+	exit $((128 + num))
+}
+
+# ------------------------------------------------------------------
+# One boundary for trap installation, not N hand-written sets.
+#
+# This is the shape _autopr_post_merge already paid for: introduced as a
+# boundary rather than three guards, and its structural test immediately found
+# a FOURTH call site that reading the code by hand had missed. An action
+# subcommand that installed the EXIT trap by hand would silently have no signal
+# traps, and the only symptom would be a row in a ledger nobody reads.
+# ------------------------------------------------------------------
+_autopr_install_traps() {
+	# WI-miriz: the sentinel trap goes in first so even the earliest exits
+	# (auth, branch check) capture a final state.
+	trap _autopr_finalize EXIT
+	# WI-nazoj: paired with the EXIT trap so an abort that never reaches a
+	# state assignment still names the line it died on.
+	trap _autopr_record_abort ERR
+	# WI-katap: and the three signals the ERR trap is blind to.
+	trap '_autopr_on_signal TERM 15' TERM
+	trap '_autopr_on_signal INT 2' INT
+	trap '_autopr_on_signal HUP 1' HUP
+}
+
 _autopr_write_sentinel() {
 	local exit_code="$1"
 	if [[ "$_autopr_sentinel_written" == "true" ]]; then
@@ -370,6 +446,7 @@ _autopr_write_sentinel() {
 		AUTOPR_FINAL_STATE="$_autopr_state_final" \
 		AUTOPR_ABORT_SITE="$_autopr_state_abort_site" \
 		AUTOPR_ABORT_CMD="$_autopr_state_abort_cmd" \
+		AUTOPR_TERMINATED_BY="$_autopr_state_signal" \
 		AUTOPR_OUT="$AUTOPR_RESULT_FILE" \
 		AUTOPR_HISTORY_OUT="$AUTOPR_HISTORY_FILE" \
 		python3 - <<'PY' 2>/dev/null || true
@@ -392,6 +469,11 @@ data = {
     # null for "nothing went wrong" -- final_state is what says that.
     "abort_site": os.environ.get("AUTOPR_ABORT_SITE") or None,
     "abort_command": os.environ.get("AUTOPR_ABORT_CMD") or None,
+    # WI-katap. Three-valued for a reader, exactly like abort_site: a signal
+    # name, null (this run was not signalled), or the key ABSENT on a row
+    # written before the signal traps existed. Independent of final_state --
+    # a run can merge and THEN be killed during its housekeeping.
+    "terminated_by": os.environ.get("AUTOPR_TERMINATED_BY") or None,
 }
 with open(os.environ["AUTOPR_OUT"], "w") as f:
     json.dump(data, f, indent=2)
@@ -1244,12 +1326,7 @@ prune_queue() {
 
 # Flush all vPRs as a single atomic PR
 flush_queue() {
-	# WI-miriz: install sentinel trap as the very first action so even
-	# the earliest exits (auth) capture a final state.
-	trap _autopr_finalize EXIT
-	# WI-nazoj: paired with the EXIT trap so an abort that never reaches a
-	# state assignment still names the line it died on.
-	trap _autopr_record_abort ERR
+	_autopr_install_traps
 
 	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
 	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
@@ -1689,12 +1766,7 @@ ensure_stacked_on_tip() {
 # Main PR workflow (push, poll, merge) - or queue if offline
 # ------------------------------------------------------------------
 do_pr() {
-	# WI-miriz: install sentinel trap as the very first action so even
-	# the earliest exits (auth, branch check) capture a final state.
-	trap _autopr_finalize EXIT
-	# WI-nazoj: paired with the EXIT trap so an abort that never reaches a
-	# state assignment still names the line it died on.
-	trap _autopr_record_abort ERR
+	_autopr_install_traps
 
 	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
 	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
@@ -2554,12 +2626,7 @@ done
 # gov-cleanup: Verify PR is merged (by human via web UI), then clean up
 # ------------------------------------------------------------------
 gov_cleanup() {
-	# WI-miriz: install sentinel trap as the very first action so even
-	# the earliest exits capture a final state.
-	trap _autopr_finalize EXIT
-	# WI-nazoj: paired with the EXIT trap so an abort that never reaches a
-	# state assignment still names the line it died on.
-	trap _autopr_record_abort ERR
+	_autopr_install_traps
 
 	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
 	# See _autopr_hold_recover_lock for why this is a lock and not a flag.

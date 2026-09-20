@@ -702,6 +702,17 @@ CONVERGED_DELIBERATE = frozenset(
     {"queued_vpr", "governance_pending", "noop_empty_queue"}
 )
 
+# A FOURTH bucket (WI-katap), deliberately not folded into any of the three
+# above. A run that was killed did not converge — but it did not fail to
+# converge either, because it never got to decide. Folding it into
+# CONVERGED_DELIBERATE would claim auto-pr chose this; folding it into
+# CONVERGED_FAILURE would claim auto-pr failed; leaving it in `unknown` (the
+# status quo ante) made the ledger report 22 of 84 runs as INV-rahib
+# violations when 14 of the 15 PRs behind them had merged.
+EXTERNALLY_TERMINATED = frozenset(
+    {"terminated_sigterm", "terminated_sigint", "terminated_sighup"}
+)
+
 # Test seams that live in the production script. Declared rather than
 # silently tolerated, so that their number is visible and does not grow
 # unnoticed.
@@ -715,6 +726,7 @@ DECLARED_STATES = (
     CONVERGED_MERGED
     | CONVERGED_FAILURE
     | CONVERGED_DELIBERATE
+    | EXTERNALLY_TERMINATED
     | TEST_SEAM_STATES
     | NON_CONVERGENT
 )

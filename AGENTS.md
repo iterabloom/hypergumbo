@@ -188,7 +188,7 @@ Before every commit: verify git identity (user.name/user.email), run tests with 
   2. Create a feature branch: `git checkout -b <author>/feat/<name>`
   3. Commit with sign-off: `git commit -s -m "feat: description"`
   4. Choose a PR method:
-     - **`auto-pr` (recommended):** Runs `./scripts/auto-pr` which pushes, polls CI, and auto-merges. Creates `.git/PR_PENDING` gate file.
+     - **`auto-pr` (recommended):** Runs `./scripts/auto-pr` which pushes, polls CI, and auto-merges. Creates `.git/PR_PENDING` gate file. **Run it detached, never in the foreground** — see the budget rule below.
      - **Manual:** Push via `git push origin "HEAD:refs/for/dev/<branch>" -o title="..." -o description="..."`, then manually poll CI and merge.
   5. **CI Check:** Wait for remote CI to pass.
   6. **Merge:** If CI is Green, merge immediately. Do not wait for human review unless you are unsure of architecture or PR touches governance files.
@@ -197,6 +197,14 @@ Before every commit: verify git identity (user.name/user.email), run tests with 
   - **If diverged:** Prompts to rebase first (`git rebase origin/dev && ./scripts/auto-pr`).
   - **`--squash` fallback:** Discouraged, but available for edge cases. Preserves body via git notes, adds `[from <sha>]` to subject.
 - **Git Notes:** Historical commits (Jan 9-22 2026) have bodies restored via git notes. Fetch with `git fetch origin refs/notes/*:refs/notes/*`. View with `git log --show-notes`.
+- **`auto-pr` does not fit a foreground turn — detach it (WI-katap).** An agent harness caps one foreground shell call (Claude Code: 600s). `auto-pr`'s CI poll defaults to **2400s** and adds a **300s soft-retry that is not optional**, so even `--timeout 240` commits to 540s of polling before Scenario B, plus push, PR-create, merge and cleanup. Wrapping it in `timeout 590` does not make it fit; it kills it mid-poll. Measured on the convergence ledger: **22 of 84 runs** were killed this way, and **14 of the 15 PRs behind them had merged anyway** — every one then finished by hand with `merge-pr <N> --wait-for-ci`. Do this instead:
+  ```bash
+  nohup ./scripts/auto-pr > /tmp/autopr.log 2>&1 &     # detach; survives the turn
+  # later turns: check the gate, then read the log
+  test -f .git/PR_PENDING && echo "still running" || tail -30 /tmp/autopr.log
+  ```
+  The gate file is the completion signal — `auto-pr` removes it on exit. **Never wrap `auto-pr` in `timeout`.** A kill now records `terminated_sigterm` rather than the `unknown` that is INV-rahib's violation signal, so it is no longer *invisible* — but it is still a run that died with the merge unfinished.
+
 - **PR Pending Gate (auto-pr only):**
   - `auto-pr` creates `.git/PR_PENDING` while CI runs. It removes the file after merge.
   - Before starting new work: `test -f .git/PR_PENDING && echo "WAIT"`
