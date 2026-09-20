@@ -107,13 +107,23 @@ def test_the_refusal_happens_before_any_push(tmp_path: Path) -> None:
 
 
 def test_foreground_declared_gets_past_the_gate(tmp_path: Path) -> None:
-    """Declaring foreground is honoured — the caller said it can block."""
-    fake = _init_fake_repo(tmp_path)
+    """Declaring foreground is honoured — the caller said it can block.
+
+    Run from ``dev``. The gate sits at auto-pr:1955 and the protected-branch
+    refusal at :2001, so a declared run gets PAST the gate and then stops
+    immediately, on a check that touches no network. That ordering is the
+    whole fixture: the first draft ran from a feature branch, sailed past the
+    gate into a real push, and timed out after 120s in CI while passing
+    locally in a second — a test that depended on the network failing FAST,
+    which is not a property any environment owes it.
+    """
+    fake = _init_fake_repo(tmp_path, branch="dev")
     proc = _run(fake, "--foreground")
     payload = _sentinel(fake)
     assert payload is not None
-    assert payload["final_state"] != "failed_mode_undeclared", (
-        "an explicitly declared foreground run must not be refused"
+    assert payload["final_state"] == "failed_protected_branch", (
+        "a declared foreground run must reach the protected-branch check, "
+        f"i.e. get past the gate. Got {payload['final_state']!r}"
     )
 
 
@@ -124,14 +134,14 @@ def test_a_terminal_needs_no_declaration(tmp_path: Path) -> None:
     every other test in this file. A human at a terminal is watching and can
     Ctrl-C, so there is nothing to declare.
     """
-    fake = _init_fake_repo(tmp_path)
-    proc = _run(fake, tty=True)
+    fake = _init_fake_repo(tmp_path, branch="dev")
+    _run(fake, tty=True)
     payload = _sentinel(fake)
     assert payload is not None
-    assert payload["final_state"] != "failed_mode_undeclared", (
-        "a run with a terminal was refused; the gate is not reading the tty"
+    assert payload["final_state"] == "failed_protected_branch", (
+        "a run WITH a terminal was refused; the gate is not reading the tty. "
+        f"Got {payload['final_state']!r}"
     )
-    assert proc.returncode != 1 or "failed_mode_undeclared" not in str(payload)
 
 
 def test_detach_and_foreground_together_are_refused(tmp_path: Path) -> None:
