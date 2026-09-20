@@ -199,11 +199,10 @@ Before every commit: verify git identity (user.name/user.email), run tests with 
 - **Git Notes:** Historical commits (Jan 9-22 2026) have bodies restored via git notes. Fetch with `git fetch origin refs/notes/*:refs/notes/*`. View with `git log --show-notes`.
 - **`auto-pr` does not fit a foreground turn — detach it (WI-katap).** An agent harness caps one foreground shell call (Claude Code: 600s). `auto-pr`'s CI poll defaults to **2400s** and adds a **300s soft-retry that is not optional**, so even `--timeout 240` commits to 540s of polling before Scenario B, plus push, PR-create, merge and cleanup. Wrapping it in `timeout 590` does not make it fit; it kills it mid-poll. Measured on the convergence ledger: **22 of 84 runs** were killed this way, and **14 of the 15 PRs behind them had merged anyway** — every one then finished by hand with `merge-pr <N> --wait-for-ci`. Do this instead:
   ```bash
-  nohup ./scripts/auto-pr > /tmp/autopr.log 2>&1 &     # detach; survives the turn
-  # later turns: check the gate, then read the log
-  test -f .git/PR_PENDING && echo "still running" || tail -30 /tmp/autopr.log
+  ./scripts/auto-pr --detach --title "..."   # hands off, returns at once
+  ./scripts/auto-pr wait                     # blocks up to 300s; call again if it returns 2
   ```
-  The gate file is the completion signal — `auto-pr` removes it on exit. **Never wrap `auto-pr` in `timeout`.** A kill now records `terminated_sigterm` rather than the `unknown` that is INV-rahib's violation signal, so it is no longer *invisible* — but it is still a run that died with the merge unfinished.
+  `--detach` re-execs `auto-pr` as a `setsid` watcher that outlives your turn, writes `.git/AUTOPR_WATCH.json`, and records `detached_watching`. `wait` is three-valued on purpose: **0** = the watcher finished (it prints the outcome), **2** = still working, call again next turn, **1** = no watcher, or it *vanished* mid-poll (a dead pid with no result — do not read that as success). **Never wrap `auto-pr` in `timeout`.** A kill records `terminated_sigterm` rather than the `unknown` that is INV-rahib's violation signal, so it is no longer *invisible* — but it is still a run that died with the merge unfinished.
 
 - **PR Pending Gate (auto-pr only):**
   - `auto-pr` creates `.git/PR_PENDING` while CI runs. It removes the file after merge.
