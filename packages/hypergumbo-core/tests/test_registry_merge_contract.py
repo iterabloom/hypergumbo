@@ -294,3 +294,72 @@ class TestTheDeclaredDisjointnessIsTrue:
         assert ("src/Widget.vue", "body", "slot") in vue
         assert script & svelte == set()
         assert script & vue == set()
+
+
+class TestEveryProducerDeclaresTheOriginItsRecordsCarry:
+    """INV-gabak: the origin token a producer's records carry is DECLARED.
+
+    ``Edge.origin`` / ``Symbol.origin`` carry the ``pass-id`` axis, and for
+    almost every producer that value is the registration name. The two SCIP
+    arms are the exception: they register as ``rust_analyzer`` / ``scip_python``
+    but their records carry ``scip``, because the translation that emits them
+    (``scip/index.py``, ``scip/edges.py``, ``scip/calls.py``) is SHARED by both
+    arms and is a pass in its own right — ``catalog._SYNTHETIC_PASS_IDS``
+    declares it as one, per ADR-0044.
+
+    That is a legitimate design, and it is not what this pins. What it pins is
+    that a consumer joining ``origin`` back to the registry is reading a
+    DECLARATION rather than a coincidence. ADR-0057 §14's origin condition
+    (``anchored_producer_tokens``) first bridged the gap by unioning
+    ``RegisteredAnalyzer.backend`` — which happens to spell ``scip`` for both
+    arms. ``backend`` is the PARSING BACKEND label and the registry's own
+    docstring says it is "decoupled from pass_id so the ID stays stable across
+    backend swaps"; reading it as a pass identity is reading the right answer
+    off the wrong field, it silently admitted ``ast`` as a Python producer
+    token, and a producer whose backend label and origin token differ would
+    have disarmed the rule with no error.
+    """
+
+    def test_the_scip_arms_declare_the_synthetic_origin_they_emit(self) -> None:
+        reg = _discovered()
+        assert reg["scip_python"].emits_origin == "scip"
+        assert reg["rust_analyzer"].emits_origin == "scip"
+
+    def test_a_producer_that_emits_its_own_name_declares_nothing(self) -> None:
+        """Absent is not empty: ``None`` means "the registration name", which
+        is the truth for every analyzer that emits its own pass id. Requiring
+        all 100-odd of them to restate it would make the declaration noise and
+        the exception invisible."""
+        reg = _discovered()
+        for name in ("rust", "javascript", "svelte", "vue"):
+            assert reg[name].emits_origin is None
+        declared = {a.name for a in reg.values() if a.emits_origin is not None}
+        assert declared == {"rust_analyzer", "scip_python"}
+
+    def test_every_declared_origin_is_a_known_pass_id(self) -> None:
+        """A declaration may not invent a vocabulary. The value has to be one
+        the ``pass-id`` axis already resolves, so ``# axis: pass-id`` on
+        ``Edge.origin`` stays true of what these producers actually stamp."""
+        from hypergumbo_core.catalog import all_known_pass_ids
+
+        known = all_known_pass_ids()
+        assert "scip" in known  # the sentinel: the axis really was resolved
+        for analyzer in _discovered().values():
+            if analyzer.emits_origin is not None:
+                assert analyzer.emits_origin in known, (
+                    f"{analyzer.name!r} declares emits_origin="
+                    f"{analyzer.emits_origin!r}, which no pass declares"
+                )
+
+    def test_anchored_producer_tokens_reads_the_declaration_not_the_backend(self) -> None:
+        from hypergumbo_core.analyze.registry import anchored_producer_tokens
+
+        tokens = anchored_producer_tokens("python")
+        assert tokens == {"python", "scip_python", "scip"}
+        assert "ast" not in tokens, "the incumbent's PARSING BACKEND is not a producer token"
+        assert anchored_producer_tokens("rust") == {"rust", "rust_analyzer", "scip"}
+
+    def test_a_language_with_one_anchored_producer_has_no_tokens(self) -> None:
+        from hypergumbo_core.analyze.registry import anchored_producer_tokens
+
+        assert anchored_producer_tokens("go") == frozenset()

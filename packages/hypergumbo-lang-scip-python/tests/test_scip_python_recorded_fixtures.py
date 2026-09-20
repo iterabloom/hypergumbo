@@ -200,3 +200,27 @@ class TestTheMergePassAndTheInstrumentOnBothArms:
         assert [e.dst.split(":")[-2] for e in stubs] == ["label"]
         [superseded] = [e for e in stubs if "superseded_by" in (e.meta or {})]
         assert superseded.meta["superseded_by_origin"] == ["scip"]
+
+
+class TestTheArmStampsWhatItDeclares:
+    def test_every_translated_record_carries_the_declared_origin(self) -> None:
+        """INV-gabak: the declaration is checked against the emission.
+
+        This arm registers as ``scip_python`` and declares
+        ``emits_origin="scip"``, because the SCIP translation it delegates to
+        is shared with the Rust arm and is a pass in its own right (ADR-0044,
+        ``catalog._SYNTHETIC_PASS_IDS``). ADR-0057 §14's origin condition
+        joins ``Edge.origin`` back to the registry through that declaration,
+        so a declaration nothing checks would be a claim in a costume — the
+        rule would silently stop recognising this producer.
+        """
+        ensure_discovered()
+        analyzer = get_analyzer("scip_python")
+        assert analyzer is not None and analyzer.emits_origin == "scip"
+        symbols, edges = translate_scip_python_to_hg(
+            sample_project_index_bytes(), run_id="scip-run",
+        )
+        assert symbols and edges  # an empty translation would pass vacuously
+        emitted = {o for r in (*symbols, *edges)
+                   for o in ([r.origin] if isinstance(r.origin, str) else r.origin)}
+        assert emitted == {analyzer.emits_origin}

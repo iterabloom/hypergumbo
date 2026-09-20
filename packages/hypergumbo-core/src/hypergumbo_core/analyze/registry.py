@@ -324,6 +324,7 @@ class RegisteredAnalyzer:
     # ADR-0045 §5 / ADR-0057 §10 (WI-hohuh): the producer contract.
     executes_analysed_code: bool = False
     merge: MergeAnchor | MergeDisjoint | None = None
+    emits_origin: str | None = None
 
     def get_func(self) -> AnalyzerFunc:
         """Get the analyzer function, resolving from module for patchability.
@@ -487,6 +488,7 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
     depends_on: list[list[str]] | None = None,
     executes_analysed_code: bool = False,
     merge: MergeAnchor | MergeDisjoint | None = None,
+    emits_origin: str | None = None,
 ) -> Callable[[AnalyzerFunc], AnalyzerFunc]:
     """Decorator to register an analyzer function.
 
@@ -583,6 +585,7 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
             depends_on=[list(clause) for clause in depends_on] if depends_on else [],
             executes_analysed_code=executes_analysed_code,
             merge=merge,
+            emits_origin=emits_origin,
         )
         return func
 
@@ -733,17 +736,26 @@ def anchored_producer_tokens(language: str) -> frozenset[str]:
     2). Empty when the language has fewer than two anchored producers, which
     is what makes §14's registry gate redundant rather than load-bearing.
 
-    TWO SPELLINGS, both accepted. The SCIP arms stamp the BACKEND name into
-    ``origin`` (``scip/index.py``, ``scip/edges.py`` and ``scip/calls.py`` all
-    write ``origin="scip"``) while registering under an analyzer NAME
-    (``rust_analyzer``, ``scip_python``). Accepting one spelling would
-    silently disarm the rule for the only backends it exists to serve; the
-    divergence itself is filed separately. Does not trigger discovery; call
-    :func:`ensure_discovered` first.
+    TWO SPELLINGS, and the second one is DECLARED (INV-gabak). Almost every
+    producer's records carry its registration name, but the two SCIP arms
+    register as ``rust_analyzer`` / ``scip_python`` and emit ``scip``, because
+    the translation that emits them is shared by both arms and is a pass in
+    its own right — ``catalog._SYNTHETIC_PASS_IDS`` declares it as one, per
+    ADR-0044. Each such producer states that in ``emits_origin``; ``None``
+    means "the registration name", which is the truth for everyone else.
+
+    This first read :attr:`RegisteredAnalyzer.backend`, which happens to spell
+    ``scip`` for both arms. That was the right answer off the wrong field:
+    ``backend`` is the PARSING BACKEND label, "decoupled from pass_id so the
+    ID stays stable across backend swaps", so a backend swap or a producer
+    whose two labels differ would have disarmed the rule with no error — and
+    it admitted the incumbent's ``ast`` as a Python producer token. Does not
+    trigger discovery; call :func:`ensure_discovered` first.
     """
     participants = merge_participants(language)
     return frozenset(
-        {a.name for a in participants} | {a.backend for a in participants if a.backend}
+        {a.name for a in participants}
+        | {a.emits_origin for a in participants if a.emits_origin}
     )
 
 
