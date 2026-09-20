@@ -1,0 +1,61 @@
+Original commit body from 1fe61c0cb3a685fbb7d92bc6883f3a2ec3bc91ed:
+
+§14's origin condition tested PASS-ID INEQUALITY and stood in for a test on
+INDEPENDENT OBSERVATION. A single-backend Python run of this repository
+demoted 419 stubs, every superseder a LINKER — and those 419 superseders were
+419 of the 421 edges inherited-calls-linker (329 of 329) and
+method-call-recovery-linker (90 of 92) emitted. Each superseding edge is that
+linker's own resolution of the very stub it superseded, built from the stub's
+src, line and parsed callee, so the four-part key matched BY CONSTRUCTION.
+The pass was rediscovering a derivation, not detecting a contradiction. §13
+case 2 in contrapositive: a refinement of one observation is not a second one.
+
+45 of the 419 are false, every one from method-call-recovery-linker, whose
+receiver-type filter drops a hint that CONTRADICTS a declared
+receiver_type_hint but abstains when none is stamped — and none of the 90
+carried one. 28 of the 45 demoted a stub whose external key was COMPLETE and
+CORRECT (tree_sitter_rust.language, builtins.id) in favour of a
+same-short-name in-repo FIELD. inherited-calls-linker was right on 70 of 70
+audited and consistent with the declared inheritance graph on 329 of 329.
+
+Two conditions added, for six:
+
+- the stub must have ABSTAINED on its module. ir.stated_module_of is promoted
+  from merge_producers as the one reader of that fact, so §14 and §15's fold
+  cannot drift (INV-difud is what two homes for one read costs). A complete
+  key contradicts an in-repo answer rather than being filled by it, and §11
+  makes a dst disagreement two edges.
+- both sides must be an ANCHORED PRODUCER's edge, via the new
+  registry.anchored_producer_tokens. It accepts the analyzer name and the
+  backend name, because the SCIP arms stamp origin="scip" while registering
+  as rust_analyzer / scip_python; that divergence is filed as INV-gabak.
+
+The language gate stays a registry query — what it reads there is a
+DECLARATION (the incumbent's name_key), not an observation; analysis_runs
+carries no pass-kind field and Edge.origin answers per edge (§15.3). Under
+the new conditions the gate is provably redundant, so a single-backend run is
+byte-identical through §14, as it already was through §3.
+
+Measured: 419 -> 0, no node or edge added or removed, no confidence or
+is_resolved changed, and the only rank_score changes across 207,486 shared
+edges are those 419. Both two-backend recorded fixtures untouched
+(aardvark-dns 3, scip-python sample 1).
+
+The old control could not have caught this: it popped the producer from the
+REGISTRY, which short-circuits the pass before the origin gate. Renamed to
+test_a_language_with_one_registered_producer_is_untouched (it does test that
+gate) and joined by one that leaves the registry as production has it and
+varies the graph instead.
+
+Cost, stated: 374 true-or-probably-true supersessions (115 hand-verified, 259
+screened-but-unread) go unrecorded until the consuming pass stamps the stub
+it derived from — filed as WI-togad, blocked by WI-latup. The residual false
+binds themselves are filed as WI-rulik.
+
+Also fixes a pre-existing red on dev: cmd_backend_agreement wrote --out with
+a bare Path.write_text, bypassing safety_zones.user_out_write and INV-zudak's
+live guard.
+
+Files WI-rulik, INV-gabak, WI-togad.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
