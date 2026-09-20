@@ -897,6 +897,12 @@ def _extract_method_short_name(callee_name: str) -> str:
             "swift",
         ],
     ],
+    # ADR-0057 §14.1: this pass's resolutions may demote the stub they were
+    # derived from. Granted on measurement, not on being a linker — audited
+    # 70 of 70 correct and consistent with the declared inheritance graph on
+    # 329 of 329 (docs/audits/0020). The sibling recovery pass is NOT granted
+    # it: 16 of its 64 edges are wrong and no shipped signal separates them.
+    supersedes_consumed_stub=True,
 )
 def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
     """See module docstring for the algorithm."""
@@ -1178,7 +1184,7 @@ def _resolve_site1(
         if src_lang in _SITE1_STRICT_LANGS and len(start_class_ids) > 1:
             return None
     resolved_target: Symbol | None = None
-    resolved_start_id: str | None = None
+    resolved_start_id: str = ""
     for start_id in start_class_ids:
         candidate = walker(
             start_id, callee_short, inheritance_index,
@@ -1194,7 +1200,6 @@ def _resolve_site1(
     # the walk's resolution in Python's real MRO — bias to unresolved.
     if (
         src_lang == "python"
-        and resolved_start_id is not None
         and _python_stdlib_base_shadows(
             resolved_start_id, callee_short, inheritance_index,
             class_symbols, method_index,
@@ -1209,7 +1214,7 @@ def _resolve_site1(
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited",
         is_resolved=True,
-        derived_from=[edge.src, resolved_target.id],
+        derived_from=[edge.id, resolved_start_id],
     )
 
 
@@ -1303,7 +1308,7 @@ def _resolve_site2(
             origin=PASS_ID, origin_run_id=run.execution_id,
             evidence_type="ast_call_type_inferred",
             is_resolved=True,
-            derived_from=[edge.src, direct.id],
+            derived_from=[edge.id, type_class_id],
         )
 
     # Step 2: MRO walk (requires a registered walker).
@@ -1329,7 +1334,7 @@ def _resolve_site2(
                     origin=PASS_ID, origin_run_id=run.execution_id,
                     evidence_type="ast_call_inherited_method",
                     is_resolved=True,
-                    derived_from=[edge.src, via_mro.id],
+                    derived_from=[edge.id, type_class_id],
                 )
 
     # Step 3: fallback to the type symbol itself.
@@ -1352,7 +1357,7 @@ def _resolve_site2(
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited_method",
         is_resolved=True,
-        derived_from=[edge.src, type_sym.id],
+        derived_from=[edge.id, type_class_id],
     )
 
 
@@ -1454,10 +1459,11 @@ def _resolve_site3(
     methods_by_class: dict[str, Symbol] = dict(candidates_by_short)
 
     resolved_target: Symbol | None = None
+    resolved_field_type_id: str = ""
     for ftid in field_type_class_ids:
         direct = methods_by_class.get(ftid)
         if direct is not None:
-            resolved_target = direct
+            resolved_target, resolved_field_type_id = direct, ftid
             break
         if walker is not None:
             via = walker(
@@ -1465,7 +1471,7 @@ def _resolve_site3(
                 method_index, _DEFAULT_DEPTH_CAP,
             )
             if via is not None:
-                resolved_target = via
+                resolved_target, resolved_field_type_id = via, ftid
                 break
 
     if resolved_target is None:
@@ -1480,5 +1486,5 @@ def _resolve_site3(
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited_field",
         is_resolved=True,
-        derived_from=[edge.src, resolved_target.id],
+        derived_from=[edge.id, resolved_field_type_id],
     )

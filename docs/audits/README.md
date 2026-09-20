@@ -81,6 +81,7 @@ write an ADR vs an audit-findings document."
 | [0017](0017-endpoint-shape-long-tail.md) | Endpoint-Shape Long-Tail Classifications | `Edge.edge_type` | All RESOLVED |
 | [0018](0018-symbol-kind-type-family-abstract-predicate.md) | Symbol.kind Type Family — the abstract-type predicate | `Symbol.kind` | All RESOLVED (no fold; remedy is a consumer predicate layer) |
 | [0019](0019-backend-agreement-rust-aardvark-dns.md) | Backend agreement — `rust` (tree-sitter) vs `rust_analyzer` on the recorded aardvark-dns fixture | backend agreement (sibling format, `kind: backend_agreement`) | Measurement (no verdict rows) |
+| [0020](0020-recovery-linker-supersession-precision.md) | Which recovery passes may demote the stub they consumed (ADR-0057 §14.1) | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED / REFUSED, per pass |
 
 ## Sibling formats
 
