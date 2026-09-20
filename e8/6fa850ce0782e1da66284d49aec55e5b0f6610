@@ -1,0 +1,43 @@
+Original commit body from 95e4f95e6e892f39b6ae09fe1a489d0b317bc41a:
+
+Edge.origin is the pass-id axis, and for the two SCIP arms it is not the
+registration name: they register as rust_analyzer / scip_python and their
+records carry "scip", because the translation that emits them is shared by
+both arms and is a pass in its own right. catalog._SYNTHETIC_PASS_IDS
+declares it as one, per ADR-0044, and all_known_pass_ids() resolves it -- so
+the axis annotation was never violated.
+
+What was missing is that nothing said so where a consumer could read it.
+ADR-0057 §14's origin condition bridged the gap by unioning
+RegisteredAnalyzer.backend, which happens to spell "scip" for both arms.
+That is the right answer off the wrong field: backend is the PARSING BACKEND
+label, and the registry's own docstring says it is "decoupled from pass_id so
+the ID stays stable across backend swaps". A backend swap, or a producer
+whose two labels differ, would have disarmed the supersession rule with no
+error -- the false-negative direction, silent. It also admitted the
+incumbent's "ast" as a Python producer token.
+
+RegisteredAnalyzer.emits_origin now states it. None keeps meaning "the
+registration name", true for every analyzer but these two, so the
+declaration marks the exception instead of adding noise to a hundred rows --
+absent is not empty here either.
+
+  anchored_producer_tokens("python") == {python, scip_python, scip}   ("ast" gone)
+  anchored_producer_tokens("rust")   == {rust, rust_analyzer, scip}
+
+The declaration is checked against the EMISSION, in each arm's own package:
+a recorded-fixture test per backend asserts every symbol and edge the
+translation produces carries the declared token, with a non-empty guard so it
+cannot pass vacuously. A declaration nothing checks is a claim in a costume,
+and this one decides whether §14 recognises the producer at all.
+
+The §14 test fixture registered pyscip with backend="scip" and relied on that
+coincidence; it now declares emits_origin, as production does, and
+test_the_backend_name_spelling_is_accepted is renamed for what it tests.
+
+NOT asserted: that every producer's emitted origin matches its registration.
+Only the two declaring an exception are checked against their emissions, plus
+four sentinels that declare none. Making the general case impossible needs a
+corpus-wide emission check the recorded fixtures cannot supply.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
