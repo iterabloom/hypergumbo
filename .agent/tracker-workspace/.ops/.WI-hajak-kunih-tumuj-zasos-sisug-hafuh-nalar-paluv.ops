@@ -1,0 +1,35 @@
+- op: create  # 7b72
+  at: '2026-09-20T21:16:13Z'  # 7b72
+  by: agent  # 7b72
+  actor: jgstern_agent  # 7b72
+  clock: 1  # 7b72
+  nonce: 7b72  # 7b72
+  data:  # 7b72
+    kind: work_item  # 7b72
+    title: "auto-pr --detach: background its own CI poll and return a resumable handle (WI-katap ergonomics half)"  # 7b72
+    status: todo_hard  # 7b72
+    priority: 2  # 7b72
+    parent:  # 7b72
+    tags:  # 7b72
+    - ci_infrastructure  # 7b72
+    isbefore: []  # 7b72
+    duplicate_of: []  # 7b72
+    not_duplicate_of: []  # 7b72
+    pr_ref:  # 7b72
+    description: "auto-pr's blocking CI poll does not fit an agent harness's foreground budget, and no amount of tuning makes it fit: the poll defaults to 2400s, the 300s soft-retry is not optional, and a foreground shell call is capped at 600s (Claude Code). WI-katap made the resulting kill VISIBLE (it now records terminated_sigterm rather than INV-rahib's `unknown` violation signal) but did nothing about the ergonomics: the run still dies with the merge unfinished, and a human or agent still completes it by hand with `merge-pr <N> --wait-for-ci`. Measured: 22 of 84 post-instrumentation runs, 14 of the 15 PRs behind them merged anyway.\n\nThe workaround that already works is `nohup ./scripts/auto-pr > log 2>&1 &`, now written into AGENTS.md. It is a workaround because the caller has to know to do it, has to invent a log path, and gets no declared state from the parent -- the prior session rediscovered it and then reverted to `timeout 590` within the SAME session.\n\nPROPOSED SHAPE (owner said \"scope it in now\" on 2026-09-20; design not yet reviewed):\n  * `auto-pr --detach` does the bounded work in the foreground -- push, PR create/find -- then re-execs itself as a detached watcher (setsid + nohup, stdio to a standard log path), writes a handle, records a DECLARED terminal state for the parent, and returns 0 immediately.\n  * The detached child runs the poll + merge and appends its OWN ledger row, so one logical PR yields two honest rows rather than one lie.\n  * `auto-pr wait [--timeout N]` blocks in CALLER-SIZED chunks against the handle, so an agent can check in within its budget and resume next turn.\n  * The handle, not an ad-hoc /tmp path, is the discovery mechanism; PR_PENDING remains the gate.\n\nOPEN QUESTIONS for review, not yet decided:\n  1. Does `--detach` become the DEFAULT for non-tty callers? Tempting and risky -- it changes the contract of the script that merges every PR.\n  2. What terminal state does the parent record? It did not merge and did not fail; it handed off. Probably a new deliberate-non-merge value, which needs the same both-directions vocabulary treatment WI-katap's fourth bucket got.\n  3. What happens when a detached watcher is itself killed (machine sleep, session teardown)? The handle must distinguish \"still watching\" from \"watcher died mid-poll\", or this re-creates the absent-vs-empty defect one level out."  # 7b72
+    fields: {}  # 7b72
+- op: update  # 70d8
+  at: '2026-09-20T21:29:40Z'  # 70d8
+  by: agent  # 70d8
+  actor: jgstern_agent  # 70d8
+  clock: 2  # 70d8
+  nonce: 70d8  # 70d8
+  set:  # 70d8
+    status: needs_human_review  # 70d8
+- op: discuss  # d54f
+  at: '2026-09-20T21:29:40Z'  # d54f
+  by: agent  # d54f
+  actor: jgstern_agent  # d54f
+  clock: 3  # d54f
+  nonce: d54f  # d54f
+  message: "IMPLEMENTED and LIVE-VALIDATED by shipping itself. PR #1106 was created by `auto-pr --detach --gov`, i.e. the feature's first production use was its own delivery.\n\nTHE FULL LOOP, observed rather than reasoned about:\n  parent: `--detach` returned in under a second, printed the watcher pid and log\n  watcher: pushed, created PR #1106, polled CI to green, stopped at the governance gate\n  caller: `auto-pr wait 420` returned 0 with \"Watcher finished: governance_pending (exit 0)\" and removed the handle\n\nTWO HONEST LEDGER ROWS for one logical PR, which is the design:\n  2026-09-20T21:25:23Z  PR#None   detached_watching    exit=0\n  2026-09-20T21:28:50Z  PR#1106   governance_pending   exit=0\n\nAnd the audit over that window now reads:\n  VERDICT: CONVERGED — 4 invocation(s) that ran to a decision, every one in a declared terminal state with an agreeing exit code.\n\nNOTED LIMITATION, not a defect and not silently left: the parent's row carries pr_number=null, because it hands off BEFORE the PR exists and therefore genuinely does not know the number. That is honest, but it means the two rows for one logical PR cannot be joined on PR number. If a future reader needs that join (e.g. \"how long from hand-off to merge\"), the key has to be something the parent can know at fork time -- the watcher pid is already in both the handle and the parent's stdout, but is NOT currently in either ledger row. Recorded now rather than discovered later by someone trying to compute that duration and finding no key.\n\nALSO UNCLOSED, from the filing: open question 1 (should --detach become the DEFAULT for non-tty callers?) is NOT decided. It stays opt-in. Changing the default behaviour of the script that merges every PR is a separate decision and wants its own evidence.\n\nDESIGN POINT WORTH KEEPING. The parent hands off before doing ANY work and re-execs without --detach, so do_pr -- 600 lines carrying the poll, soft retry, Scenario B and the merge cascade -- is untouched. The child is an ordinary run, not a resumed half of one. That only works because the push is already idempotent (an existing open PR for the branch is reused), which production exercises independently.\n\nTWO HARNESS DEFECTS the tests caught, both the same lesson as WI-katap's `sleep 60` fixture -- a harness must match the SHAPE of what it models, not just its flags. The fixture needed a shebang (the re-exec of \"$0\" without one lands in /bin/sh and dies on `set -o pipefail`) and needed chmod +x (production's $0 always is). Both failures were indistinguishable from \"the feature does not work\".\n\nStatus -> needs_human_review: PR #1106 is on the governance gate awaiting the owner's merge (scripts/auto-pr and AGENTS.md are both governance-listed). `pending_validation` would have been the honest word for what follows the merge, but the tracker reserves it for invariants.\n\nPOST-MERGE VALIDATION CRITERION: a detached run that goes all the way to a MERGE (not a governance stop) without manual recovery. #1106 stopped at the governance gate by design, so the merge arm of the watcher is not yet exercised in production."  # d54f
