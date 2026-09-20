@@ -133,6 +133,7 @@ def _emit(
         src=sym_id,
         dst=dst_id,
         edge_type="defines_target",
+        evidence_type="build_target_main",
         line=line,
         confidence=1.0,
         origin=PASS_ID,

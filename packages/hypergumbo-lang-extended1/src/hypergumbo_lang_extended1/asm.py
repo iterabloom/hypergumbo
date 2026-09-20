@@ -253,6 +253,7 @@ class AsmAnalyzer(TreeSitterAnalyzer):
                     src=caller.id,
                     dst=target_sym.id,
                     edge_type="calls",
+                    evidence_type="ast_call",
                     line=call_line,
                     confidence=0.85,
                     origin=PASS_ID,

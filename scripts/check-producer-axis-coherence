@@ -41,6 +41,7 @@ sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
 
 try:
     from hypergumbo_core.producer_coherence import (
+        edge_sites_without_evidence_type,
         ratchet_diff,
         unregistered_edge_types,
         unregistered_evidence_types,
@@ -93,6 +94,22 @@ def main() -> int:
                 f"(remove from {_BASELINE_PATH.name}, shrink-only): "
                 f"{', '.join(repr(s) for s in stale)}"
             )
+
+    # INV-nudoj: an UNREGISTERED value is one kind of leak; an UNNAMED
+    # pathway is the other, and it is the quieter one. `evidence_type`
+    # defaults to `ast_call_direct`, so a producer that omits it does not
+    # abstain — it claims the most specific pathway in the vocabulary, and
+    # `Edge.create` then derives the edge's confidence from that claim.
+    undeclared = edge_sites_without_evidence_type(REPO_ROOT)
+    if undeclared:
+        failed = True
+        print("[Edge.evidence_type] producer site(s) that do not name their pathway:")
+        for site in undeclared:
+            print(f"  {site}")
+        print(
+            "  ADR-0028: evidence_type names HOW the analyzer concluded the "
+            "edge exists. Pass it explicitly (INV-nudoj)."
+        )
 
     if failed:
         print(

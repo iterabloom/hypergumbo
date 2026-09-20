@@ -60,6 +60,13 @@ class TestRouteHandlerLinker:
         assert edge.src == route.id
         assert edge.dst == handler.id
         assert edge.edge_type == "dispatches_to"
+        # INV-nudoj: this linker recognises a route->handler dispatch from
+        # the route's own handler reference. It never reads a call site, and
+        # while it left `evidence_type` to the default it claimed
+        # `ast_call_direct` on every edge it emitted (15 of them on this
+        # repository's own survey), which `Edge.create` then used to DERIVE
+        # the confidence and stamp it `evidence_derived`.
+        assert edge.evidence_type == "dispatch_pattern"
         assert edge.meta["controller_action"] == "users#index"
 
     def test_rails_nested_controller_action(self) -> None:

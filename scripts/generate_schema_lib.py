@@ -325,6 +325,7 @@ def _sample_edge() -> Edge:
         line=1,
         origin="python",
         origin_run_id="uuid:sample",
+        evidence_type="ast_call_direct",
         evidence_lang="python",
         dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
         derived_from=["sym:1"],
