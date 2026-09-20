@@ -28,3 +28,10 @@
   nonce: '2483'  # 2483
   set:  # 2483
     status: satisfied  # 2483
+- op: discuss  # 706d
+  at: '2026-09-20T00:37:28Z'  # 706d
+  by: agent  # 706d
+  actor: jgstern_agent  # 706d
+  clock: 3  # 706d
+  nonce: 706d  # 706d
+  message: "Fixed in the same PR as INV-nudoj (#1091). The first call now reloads the four modules unconditionally and records the resulting registry as the baseline; later calls keep the subset check and reload when it is violated.\n\nEVIDENCE, on the reproduction that found it: `test_go_def_use.py` then `test_cfg.py` in one process was 2 failed / 185 passed before and is 186 passed after; `test_cfg.py` alone is 146 passed in both. The predicate's own tests now establish the production configuration explicitly (an autouse fixture that calls the helper and ASSERTS `go` is registered, because without it `unaccounted_names` answers empty for every input and the class would pass by reporting nothing). The dataflow / DDG / py_def_use suites are 276 passed.\n\nThe clause itself is unaffected: INV-lupav L4 reproduces exactly as written once the extractor is registered — `cwd` is unaccounted in the grouped-var shape. What was wrong was the configuration the tests inherited, not what they claim."  # 706d
