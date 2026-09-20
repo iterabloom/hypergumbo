@@ -1,0 +1,28 @@
+Original commit body from 4895bbea43ffc899bf606147563b2538a3903399:
+
+verify_claims._callee_name read meta['callee_name'] — the lossless home
+make_unresolved_edge stamps — then the span-anchored symbol_name_slot.
+finalize._stub_callee_name read dst_ref.name, then parsed the id
+POSITIONALLY as parts[-2], consulting the lossless home never.
+
+Measured on this repository's own survey: the two returned different
+strings for 12 of 74,816 external-dst edges, every one a name whose id
+slot escaped '::' to '..' (String..from_utf8 against String::from_utf8).
+_stub_callee_name is the callee half of ADR-0057 §14's four-part
+supersession key and is compared against a lossless Symbol.name, so each
+mismatch silently MISSED a demotion — a false negative in the direction
+that leaves a wrong answer at equal standing with the right one.
+
+Both now delegate to ir.callee_name_of: meta['callee_name'] ->
+dst_ref.name -> symbol_name_slot(dst), returning "" rather than the raw
+id when the id yields nothing, so an unreadable name cannot compare
+equal to a readable one. Re-running the filed repro with the fix in
+place: 0 of 74,816 disagree, and all 12 escaped names read losslessly.
+
+The positional read was the third appearance of the INV-fokik /
+INV-divuf pattern. io_boundary._extract_callee_name is deliberately not
+folded in — it takes an id string and can read neither meta nor ref.
+
+Unblocks WI-hupod (ADR-0057 §15), which needs both branches.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
