@@ -1,0 +1,43 @@
+Original commit body from a1735b723890373534229cdefa4972cee45b8545:
+
+The regen ran as `smart-test --manifest >/dev/null 2>&1`, so every non-zero
+exit -- hypergumbo not installed, the slice crashing, or WI-fopuh's refusal to
+write the manifest of a repo the caller is not in -- arrived as one fixed line:
+
+    ⚠️  Manifest generation skipped (no stable hypergumbo?)
+
+One message standing in for several causes is this project's absent-versus-empty
+defect at the diagnostics layer. It is not silence; it is a confident wrong
+answer, and it leaves no route back to the real one. The parenthetical names the
+first of the three, and is wrong for the case that now fires on every
+tests/test_autopr_*.py fixture run.
+
+The skip now reports the exit status and relays smart-test's own stderr,
+indented beneath it:
+
+    ⚠️  Manifest generation skipped (smart-test exited 3):
+       ERROR: smart-test belongs to /home/…/hypergumbo,
+              but the current directory is inside /tmp/…/fakerepo.
+       …
+
+The status is captured as the FIRST statement of the branch, because any command
+there would overwrite $?, and it is the one piece of evidence stderr cannot
+restate. An empty stderr is reported as the distinct fact it is -- the only case
+where the old guess was defensible.
+
+No behaviour change: the regen is still best-effort, still non-fatal, and runs
+exactly when it ran before.
+
+Six tests. Four pin the relay, the status, the removed guess, and the composed
+end-to-end path against the real smart-test; two are difference arms that pass
+before the change and must keep passing -- a successful regen is not reported as
+skipped, and an explicit AUTO_PR_SKIP_MANIFEST=1 does not borrow the failure
+line. They copy scripts/ AND .githooks/ into a throwaway tree so the stub
+smart-test's exit code and stderr are the test's to choose; AUTO_PR_SIMULATE_OUTAGE
+keeps the run off the network, because a test that passes because a push fails
+fast is a flake with a good day.
+
+419 passed across the auto-pr/CI/smart-test slice, 2337 across the full affected
+slice.
+
+Closes WI-furum-pojuv-kodol-lupof-hunog-mazaj-nohus-buhab
