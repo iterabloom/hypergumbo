@@ -1,0 +1,52 @@
+Original commit body from 6278006dd4c63e2794074bcaa0f52d4621c4aaa3:
+
+`Symbol.signature` declared `# axis: free-text — consumers display, never branch on the value itself` while nine shipped consumers parsed the value. This retires that declaration and declares the callable-signature axis (ADR-0058), following ADR-0051's move on `ExternalRef.module_path`, whose retired justification read almost verbatim the same.
+
+Not a gate failure: a `free-text` justification is required to be PRESENT, not TRUE (ADR-0051; ADR-0033 §1). But ADR-0024 defines `free-text` as a payload NO CONSUMER BRANCHES ON, so the CATEGORY was wrong rather than the comment — and rewording it to admit branching would leave a declaration contradicting its own category.
+
+ADR-0024 named this failure in advance when it made the justification mandatory: `free-text` is "the only category whose 'this is the right call' claim isn't anchored elsewhere ... so it would otherwise be the natural can-kicker."
+
+## The slot carries two notions
+
+Measured over a survey of this repository — 52,983 symbols, 38,573 with a signature:
+
+| notion | slots | |
+|---|---|---|
+| `callable_surface` — `(self) -> int`, `fn new(cfg: &Config) -> Self` | 36,662 | conformant |
+| `value_type` — `int`, `list[Edge]`, `&'static str` on a NON-callable | **1,911 (4.95%)** | a declared type wearing a signature's name |
+
+The 1,911 are 1,886 fields and 25 variables: python 1,817, rust 49, typescript 35, then single digits in five more. `symbol_introspection`, the centralised producer, says it "does not extend signature/docstring to non-callable Symbols (vars, type aliases, fields)" — and Python, not one of its ten languages, does it anyway.
+
+## The enforcement gates CONSUMERS, not values
+
+A structural-policy axis has no enumerable value set, which is why ADR-0051 shipped without a drift linter. Here the enumerable thing is the consumer side.
+
+`signature_axis.find_undeclared_value_parsers` walks `packages/*/src` for `.signature` reads whose value flows into a call, and fails on any site absent from `LEGACY_VALUE_PARSERS` — the nine, each cited by `file:line` + anchor and naming which fact it is after, with a companion test re-checking every citation against the tree.
+
+**The nine are grandfathered by owner ruling; a tenth is a decision, and the gate is where it gets made.**
+
+- The `getattr(sym, "signature", None)` form IS matched, because `jackson_dispatch` uses it and a plain attribute walk cannot see it — the blind spot INV-lafid records for the io-boundary drift linter, avoided here by having been looked for.
+- Two limits are STATED, not covered: a value bound to a local, and a keyword argument named `signature` (the SCIP round-trip's `Symbol(signature=sym.signature)` carry at `translate.py:164`). Written down so silence is not mistaken for coverage.
+- Both controls were mutation-tested: dropping a declaration and rotting a citation each turn the suite red.
+
+## The facts inside already had homes
+
+| Fact | Declared home | Populated by |
+|---|---|---|
+| return type | `FileAnalysis.method_return_types` | go, rust, swift, objc |
+| return type (per-Symbol) | `meta["return_type"]` / `meta["inferred_return_type"]` | java, luau, apex |
+| parameter arity | `meta["parameters"]` / `meta["params"]` | 15 analyzers, **including `py.py`** |
+| field / variable type | `FileAnalysis.class_field_types` | csharp, cpp |
+
+`inferred_return_type`'s own registry description names Python as an intended producer. `py.py:641` cites the return-type home in a comment 5,240 lines above `py.py:5881`, where it parses the string instead.
+
+## Scope — this declares and closes; it does NOT migrate
+
+Nothing an analyzer emits changes. The nine keep parsing. Migrating the producers is ADR-0024 step 7, filed separately, Python first. Until then the axiom describes what the field should hold while 4.95% of shipped slots do not — a documented gap rather than a fixed one, the same posture ADR-0051 took.
+
+## Also corrected here
+
+- **The spec said "Three axes are currently declared."** Thirteen are wired into `_known_axes()`; the count had been stale since ADR-0050/0051 landed on 2026-09-01, and the spec mentioned none of the structural-policy or catalog-derived axes. Now it names all thirteen and describes the new one.
+- **`Symbol.docstring` was checked rather than assumed** (ADR-0058 open question 2): its near-identical justification is TRUE — all seven reads in `packages/*/src` are display, serialisation, or `is None` presence checks, and a presence check is not a value branch. So the clause is not inherently rotten; it goes false when consumers accumulate and nobody re-reads it. That is the argument for one sweep over the remaining 18 `free-text` declarations rather than a fourth one-at-a-time instance. No row moves on that note.
+
+Addresses INV-lotoh (needs_human_review) and unblocks WI-fihun's residual 14, all of which read a declared type.
