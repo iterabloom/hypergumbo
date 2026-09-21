@@ -1,0 +1,42 @@
+Original commit body from 7764488b33ec181d2733b508465de1b4abee0fdb:
+
+ADR-0024 step 7 for the callable-signature axis (ADR-0058), python arm.
+
+`py.py` parsed `assigned_class.signature` to seed `var_types` — which is how a Python variable gets a type at all, so it feeds `receiver_type_hint` and therefore the method-call-recovery linker. ADR-0058's axiom forbids that: `Symbol.signature` is a **display** string and the facts inside it have homes.
+
+## What changed
+
+`py.py` stamps `Symbol.meta["return_type"]` in Pass 1 at both emit sites — where the annotation is already in the AST and needs no re-parsing — and the `var_types` seeding reads that home. `_extract_return_type_name` had one caller and no tests; it is deleted, which is what makes the closed-set entry removable.
+
+**The closed parser set shrinks 9 → 8.** That is the measure of a migration rather than a declaration, and it is this row's acceptance test.
+
+## A correction to ADR-0058's own table, found by building on it
+
+The ADR said the home was `FileAnalysis.method_return_types`. **`py.py` has its OWN `FileAnalysis`** (py.py:2181) — a different dataclass from the tree-sitter base's, carrying neither that field nor `class_field_types`, and never reaching the core linker that needs the same fact. `Symbol.meta["return_type"]` is the home that travels, and the one java, luau and apex already use. The ADR is amended in place.
+
+## Equivalence measured, not assumed
+
+Over **33,740 functions** in this repository the AST-derived value and the retired signature parse agreed on every one — **0 disagreements**. That holds because WI-hopiz made display truncation preserve the return type rather than cut it off.
+
+**Split of responsibility:** the producer records the declared type **verbatim** (`Optional[Foo]` included); the narrowness — simple identifiers only — stays the consumer's policy, so nothing widened or narrowed. A test pins the unchanged narrowness, and a difference arm renders every signature *without* its return type and shows the inference is unaffected.
+
+## Survey diff (`fihun_after` → `ribak_after`, this repo)
+
+| metric | before → after | |
+|---|---|---|
+| method-call-recovery edges | 62 → 62 | **identical set**, 0 lost / 0 gained |
+| `receiver_type_hint` | 809 → 810 | 0 lost |
+| `meta["return_type"]` | 4 → **31,932** | the home is populated |
+| resolved calls (span-insensitive) | 119,591 → 119,710 | **3 lost** |
+
+The 3 are the deleted function's own edges: its call site, plus its calls to `rsplit` and `isidentifier`.
+
+**The first diff read 1,075 resolved-call losses.** Those were `py.py` symbols whose line spans shifted because this change adds lines above them, churning their ids. Span-insensitively it is 3. Recording it because the raw number looks like a serious regression and is not.
+
+## Verification
+
+- Full affected slice: **22,214 passed, 0 failed** — including the four files the regenerated manifest newly selected (`BRANCHES_test_python_ast_analysis.py` among them), which the pre-change chunk split did not cover.
+- mypy strict ratchet 667 = baseline, delta 0. Ruff clean. All 18 pre-commit gates.
+- Every added line covered.
+
+Addresses WI-ribak; unblocks WI-fihun's residual 14, which all read a declared type.
