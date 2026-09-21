@@ -1,0 +1,30 @@
+- op: create  # 6d24
+  at: '2026-09-21T06:30:00Z'  # 6d24
+  by: agent  # 6d24
+  actor: jgstern_agent  # 6d24
+  clock: 1  # 6d24
+  nonce: 6d24  # 6d24
+  data:  # 6d24
+    kind: work_item  # 6d24
+    title: "py.py writes the declared type homes instead of parsing Symbol.signature (ADR-0058 step 7, python arm)"  # 6d24
+    status: todo_hard  # 6d24
+    priority: 2  # 6d24
+    parent:  # 6d24
+    tags:  # 6d24
+    - analysis_quality  # 6d24
+    - axis  # 6d24
+    isbefore: []  # 6d24
+    duplicate_of: []  # 6d24
+    not_duplicate_of: []  # 6d24
+    pr_ref:  # 6d24
+    description: "ADR-0024 step 7 for the callable-signature axis (ADR-0058), which declared the axis and CLOSED its consumer set but migrated nothing.\n\nTHE GAP. Four declared homes for the facts a signature string carries, and Python writes exactly one of them:\n\n  FileAnalysis.method_return_types   (analyze/base.py:227)  <- go, rust, swift, objc     ... python: NO\n  Symbol.meta[\"return_type\"]                                <- java, luau, apex          ... python: NO\n  Symbol.meta[\"parameters\"] / [\"params\"]                    <- 15 analyzers              ... python: YES\n  FileAnalysis.class_field_types     (analyze/base.py:189)  <- csharp, cpp               ... python: NO\n\nInstead `py.py:5881` parses `assigned_class.signature` with `_extract_return_type_name` to seed `var_types`. That is how a Python variable gets a type at all, so it feeds `receiver_type_hint` and therefore the method-call-recovery linker. `py.py:641` cites the correct home in a comment 5,240 lines above the parse: \"THE CONCEPT'S HOME IS FileAnalysis.method_return_types (INV-dihos / WI-kuroj), the language-neutral return-type registry Go and Rust already populate from parsed signatures.\"\n\nDELIVERABLE. Populate `FileAnalysis.method_return_types` and `FileAnalysis.class_field_types` from py.py's Pass 1, where the annotation is already in the AST and does not need re-parsing out of a rendered string. Then re-point `py.py:5881` at the aggregated `_method_return_type_registry` and remove its entry from `LEGACY_VALUE_PARSERS`.\n\nWHY IT IS WORTH DOING BEYOND TIDINESS. It is the only route left for WI-fihun's residual 14: all four residual shapes read a DECLARED TYPE, the owner ruling forbids a tenth signature parse, and a property getter's `-> Store` or a `handler_map: dict[str, Any]` annotation has nowhere else to live. Deriving beats enumerating (WI-lalot's argument in py.py).\n\nSIZE, NOT ASSERTED AS SMALL. python is the largest producer on this field: 36,256 callable surfaces and 1,817 value types out of 38,573 populated slots. The base-analyzer aggregation and the library-signature join already exist, so this is a producer-side port of a shipped pattern to a fifth language, NOT a from-zero build -- but the `var_types` walker it feeds is the most consequential machinery in py.py and the port must not regress it.\n\nACCEPTANCE. `find_undeclared_value_parsers` still returns [] with py.py:5881 REMOVED from LEGACY_VALUE_PARSERS (the closed set shrinks 9 -> 8, which is the direction that proves the migration rather than the declaration). A survey diff showing receiver-typing recall did not fall.\n\nNOT ASSERTED: that the other three languages' return-type parsers (kotlin x2, js_ts, dart, csharp) port the same way -- each has its own home question and files on its own evidence. This row is python."  # 6d24
+    fields: {}  # 6d24
+- op: update  # cf5a
+  at: '2026-09-21T06:30:31Z'  # cf5a
+  by: agent  # cf5a
+  actor: jgstern_agent  # cf5a
+  clock: 2  # cf5a
+  nonce: cf5a  # cf5a
+  set: {}  # cf5a
+  add:  # cf5a
+    isbefore: [WI-fihun-pumik-pugit-kapoj-gijop-sonab-taluv-putuk]  # cf5a
