@@ -9,7 +9,10 @@ instantiates), [ADR-0032](0032-canonical-name-fingerprint-reshape.md) (whose
 [ADR-0050](0050-io-boundary-axis.md) (the sibling axis, declared together under
 the same owner ruling, taking the heavyweight enumerable shape instead),
 [ADR-0023](0023-edge-type-relationship-not-endpoints.md) (whose
-endpoint-property cut this reuses)
+endpoint-property cut this reuses),
+[ADR-0058](0058-callable-signature-axis.md) (the same false-justification
+defect on `Symbol.signature`, which follows this ADR's retire-and-declare move
+and its structural-policy shape)
 
 ## Context
 

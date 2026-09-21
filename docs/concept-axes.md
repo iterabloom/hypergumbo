@@ -557,3 +557,59 @@ The analyzer genuinely does not know which module, and says so. Non-conformant a
 Genuinely contested. Ruling these in the axis declaration would be the undisciplined move the axis exists to prevent; verdicts arrive with each value's audit-findings document.
 
 - **`global_object`** — An ambient runtime object used as the owner path: process, window, document, navigator, console, localStorage. DELIBERATELY UNRULED. The case FOR conformance is real -- you do not import `process` in node, so the global's name IS how JS's vocabulary spells that owner path, and js_ts.py maps each to itself in the import map for exactly that reason. The case AGAINST is that these name a VALUE rather than a definition site, which is the receiver-variable objection one step up. Ruling this in the declaration would be the undisciplined move the axis exists to prevent; it is the first candidate for a per-value audit under ADR-0024's family-audit methodology, and NO ROW MOVES on this note.
+
+
+---
+
+## `signature` — the callable-signature axis (ADR-0058)
+
+**Axiom.** Symbol.signature preserves the DECLARATION SURFACE of a callable, verbatim, in the source language's own grammar, for DISPLAY. Every fact inside it -- return type, parameter arity, a field's declared type -- is a property of the symbol and is read from its declared home, never parsed back out of this string.
+
+A **structural-policy** axis, for the same reason `module_key` is one:
+signature strings cannot be enumerated, so what is declared is the set of
+*notions* a slot may carry.
+
+`Symbol.signature` previously declared `# axis: free-text` with the
+justification "consumers display, never branch on the value itself", while
+nine shipped consumers parsed the value. That is ADR-0051's defect one field
+over, and it stood for the same reason: a `free-text` justification is
+required to be *present*, not *true*. ADR-0024 named this failure in advance
+when it made the justification mandatory — `free-text` is "the only category
+whose 'this is the right call' claim isn't anchored elsewhere ... so it would
+otherwise be the natural can-kicker."
+
+Measured over a survey of this repository: 38,573 of 52,983 symbols carry a
+signature, of which 36,662 are a callable surface and **1,911 (4.95%) are a
+bare value type on a symbol that is not callable** — 1,886 fields and 25
+variables, 1,817 of them Python.
+
+### `declaration_surface` — ADR-0058 compliant
+
+The callable's parameter-and-return surface, preserved verbatim for a reader. This is the only notion the field's name describes, and the only one a new producer should write.
+
+- **`callable_surface`** — The parameter-and-return surface of a callable as its own grammar spells it: '(self) -> int', 'func(a string) error', 'fn new(cfg: &Config) -> Self'. 36,662 of 38,573 populated slots. Conformant: it is the declaration, preserved for a reader, and it is the only notion the field's name describes.
+
+### `foreign_fact` — a fact with a home elsewhere
+
+A fact that is real and worth having but is not a signature, so the slot is answering a question the symbol did not ask. Each one names the declared home it belongs in; see the fact-home table below.
+
+- **`value_type`** — The declared type of a symbol that is NOT callable -- a field or a variable: 'int', 'list[Edge]', "'Mapping[str, str]'", "&'static str". 1,911 of 38,573 populated slots (4.95%): 1,886 fields and 25 variables; python 1,817, rust 49, typescript 35, and single digits in java, swift, csharp, go, solidity. Non-conformant: a field has no signature, so the slot is answering a question the field did not ask. The fact is real and worth having -- its home is FileAnalysis.class_field_types, which csharp and cpp populate.
+
+### `pending_classification` — per-value audit pending
+
+Not yet argued. Deriving conformance from the section means this reads as non-conformant until someone makes the case, which is the direction that cannot manufacture a false all-clear.
+
+_(empty — no values currently classified on this axis)_
+
+
+### Where the facts inside a signature are declared
+
+A consumer needing one of these reads its home. The nine that parse the string instead are grandfathered, not exemplary.
+
+| Fact | Declared home | Populated by |
+| --- | --- | --- |
+| `return_type` | `FileAnalysis.method_return_types` | go, rust, swift, objc |
+| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 15 analyzers, including py.py |
+| `value_type` | `FileAnalysis.class_field_types` | csharp, cpp |
+
+**Closed parser set.** 9 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on a tenth. Adding one is a decision, and that gate is where it gets made.

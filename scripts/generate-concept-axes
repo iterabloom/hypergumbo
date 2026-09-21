@@ -70,6 +70,15 @@ from hypergumbo_core.module_key_axis import (
     MODULE_KEY_AXIOM,
     MODULE_KEY_NOTIONS,
 )
+from hypergumbo_core.signature_axis import (
+    AXIS_DECLARATION_SURFACE,
+    AXIS_FOREIGN_FACT,
+    AXIS_PENDING as SIGNATURE_AXIS_PENDING,
+    FACT_HOMES,
+    LEGACY_VALUE_PARSERS,
+    SIGNATURE_AXIOM,
+    SIGNATURE_NOTIONS,
+)
 
 
 # Edge.type section ordering (most-canonical first). Each entry:
@@ -224,6 +233,35 @@ _MODULE_KEY_SECTIONS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# callable-signature section ordering (ADR-0058). A STRUCTURAL-POLICY axis
+# for the same reason module-key is one: signature strings are unenumerable,
+# so the rows are the axis's NOTIONS rather than its legal values.
+_SIGNATURE_SECTIONS: tuple[tuple[str, str, str], ...] = (
+    (
+        AXIS_DECLARATION_SURFACE,
+        "`declaration_surface` — ADR-0058 compliant",
+        "The callable's parameter-and-return surface, preserved verbatim "
+        "for a reader. This is the only notion the field's name describes, "
+        "and the only one a new producer should write.",
+    ),
+    (
+        AXIS_FOREIGN_FACT,
+        "`foreign_fact` — a fact with a home elsewhere",
+        "A fact that is real and worth having but is not a signature, so "
+        "the slot is answering a question the symbol did not ask. Each one "
+        "names the declared home it belongs in; see the fact-home table "
+        "below.",
+    ),
+    (
+        SIGNATURE_AXIS_PENDING,
+        "`pending_classification` — per-value audit pending",
+        "Not yet argued. Deriving conformance from the section means this "
+        "reads as non-conformant until someone makes the case, which is "
+        "the direction that cannot manufacture a false all-clear.",
+    ),
+)
+
+
 _HEADER = """\
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- AUTO-GENERATED — do not edit manually.
@@ -354,6 +392,66 @@ which `_module_matches` contradicts — it infers type-vs-sub-package from
 capitalisation. The lint accepted it because a free-text justification must be
 *present*, not *true*.
 """
+
+
+_SIGNATURE_HEADER = """\
+
+---
+
+## `signature` — the callable-signature axis (ADR-0058)
+
+**Axiom.** """ + SIGNATURE_AXIOM + """
+
+A **structural-policy** axis, for the same reason `module_key` is one:
+signature strings cannot be enumerated, so what is declared is the set of
+*notions* a slot may carry.
+
+`Symbol.signature` previously declared `# axis: free-text` with the
+justification "consumers display, never branch on the value itself", while
+nine shipped consumers parsed the value. That is ADR-0051's defect one field
+over, and it stood for the same reason: a `free-text` justification is
+required to be *present*, not *true*. ADR-0024 named this failure in advance
+when it made the justification mandatory — `free-text` is "the only category
+whose 'this is the right call' claim isn't anchored elsewhere ... so it would
+otherwise be the natural can-kicker."
+
+Measured over a survey of this repository: 38,573 of 52,983 symbols carry a
+signature, of which 36,662 are a callable surface and **1,911 (4.95%) are a
+bare value type on a symbol that is not callable** — 1,886 fields and 25
+variables, 1,817 of them Python.
+"""
+
+
+def _format_fact_home_table() -> str:
+    """Render where each fact inside a signature is DECLARED.
+
+    This table is the axis's actionable half and the reason its ruling is
+    not merely a relabelling: every fact a consumer currently parses out of
+    the string already has a home that at least two languages populate.
+    """
+    rows = [
+        "",
+        "### Where the facts inside a signature are declared",
+        "",
+        "A consumer needing one of these reads its home. The nine that "
+        "parse the string instead are grandfathered, not exemplary.",
+        "",
+        "| Fact | Declared home | Populated by |",
+        "| --- | --- | --- |",
+    ]
+    for fact, home in FACT_HOMES.items():
+        rows.append(
+            f"| `{fact}` | `{home.home}` | {', '.join(home.populated_by)} |"
+        )
+    rows += [
+        "",
+        f"**Closed parser set.** {len(LEGACY_VALUE_PARSERS)} consumers parse "
+        "the value and are grandfathered by the 2026-09-21 owner ruling; "
+        "`signature_axis.find_undeclared_value_parsers` fails on a tenth. "
+        "Adding one is a decision, and that gate is where it gets made.",
+        "",
+    ]
+    return "\n".join(rows)
 
 
 def _confidence_annotation(spec: object) -> str:
@@ -558,6 +656,15 @@ def render() -> str:
             MODULE_KEY_NOTIONS, _MODULE_KEY_SECTIONS, "_MODULE_KEY_SECTIONS",
         ),
     )
+
+    # callable-signature sections (ADR-0058).
+    sections.append(_SIGNATURE_HEADER)
+    sections.extend(
+        _render_axis_sections(
+            SIGNATURE_NOTIONS, _SIGNATURE_SECTIONS, "_SIGNATURE_SECTIONS",
+        ),
+    )
+    sections.append(_format_fact_home_table())
 
     return "\n".join(sections).rstrip() + "\n"
 
