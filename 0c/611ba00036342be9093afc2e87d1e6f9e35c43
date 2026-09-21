@@ -1,0 +1,47 @@
+Original commit body from e095da2bd4227d1eb58ab3be876b8223c7f4f172:
+
+## What this fixes, and what it does not
+
+`def make() -> "Client"` unparses **with** its quotes, so the identifier check in `_declared_return_type_name` rejected it — yet PEP 484 says a string annotation names exactly the type it spells, and every type checker resolves it. Unquoting widens how a type may be **spelled**, not what counts as one: a quoted generic (`"Optional[Client]"`) still does not infer, pinned by a difference arm.
+
+**This fixes ZERO of WI-fihun's 14 sites, and its measured effect on this repository is ZERO.** 37 of 31,932 stamped return types are quoted, and none currently sits in a bare-function assignment — the only position the return-type inference reads (blocker 1 below). Shipped as a latent-correctness fix and a prerequisite for the factory shape, not as a recall claim.
+
+Survey diff vs `ribak_after`:
+
+| metric | result |
+|---|---|
+| resolved call edges | 0 lost, 16 gained — **all 16 from this PR's own test file** |
+| method-call-recovery edges | 62 → 62, **identical set** |
+| `receiver_type_hint` | 810 → 810 |
+
+`py.py` is +13/−1. The 565-line deletion in the diffstat is `.ci/affected-tests.txt` shrinking 677 → 118, because only `py.py` changed this time rather than `ir.py`.
+
+## The larger part: WI-fihun's four "shapes" are three located blockers
+
+Recorded on the row. Each was probed, not reasoned about.
+
+**1. The return-type inference only fires for a bare function call.** One file each:
+
+| receiver shape | `c.send()` resolves? |
+|---|---|
+| `c = make()` — bare function | **yes** |
+| `c = f.build()` where `f: Factory` | no — `f.build()` is itself unresolved |
+| `c = Cls.create()` — classmethod on the class | no — `Cls.create()` is itself unresolved |
+
+The factory sites fail *before* WI-ribak's home is reachable. The evidence is present and unused: that call edge already carries `receiver_type_hint="AnalysisRun"` plus a `receiver_type_id`.
+
+**2. `Name.attr.method()` has no branch.** `py.py:8093` guards on `isinstance(func.value, ast.Name)`; for `ts.workspace.add(1)` the `func.value` is itself an `ast.Attribute`. Both halves exist and nothing joins them — the `ts.workspace` edge carries `receiver_type_hint="TrackerSet"`, and `TrackerSet.workspace` carries `meta["return_type"]="Store"`. **Filed as WI-fikoh**, linked `isbefore` WI-fihun: 4 sites, all evidence present, highest-value next step.
+
+**3. The builtin-receiver sites have no evidence anywhere.** `handler_map` is a function-local and is not emitted as a Symbol at all, so its `dict[str, Any]` annotation is recorded nowhere, and there is no registered meta key for a variable's declared type. Not a linker problem.
+
+## Why blocker 2 is not in this PR
+
+A minted hint is **trusted** — `test_py_annotated_receiver`'s docstring records that it bypasses both `gate_named_entry` and the `ambiguous_names` net by design, so a wrong hint is a confident false edge *and* a false taint sink, never silence. Adding that branch as a tail-end change to a PR whose measured effect is zero would ship the risky part without its own measurement. WI-fikoh carries the polarity requirement (stamp only on an unambiguous member whose return type resolves in-repo; abstain otherwise) and its own acceptance criteria.
+
+## Verification
+
+- Affected slice: **3,943 passed, 2 xfailed, 0 failed**
+- Controls mutation-tested: removing the unquoting turns exactly the two relevant tests red; the difference arms stay green both ways
+- mypy strict ratchet 667 = baseline. Ruff clean. All pre-commit gates.
+
+Addresses WI-fihun; the site count is **unchanged at 14 of 16**.
