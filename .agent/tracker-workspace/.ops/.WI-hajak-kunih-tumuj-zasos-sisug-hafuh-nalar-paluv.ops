@@ -40,3 +40,18 @@
   clock: 4  # 7ebd
   nonce: 7ebd  # 7ebd
   message: "Merged as PR #1107, dev SHA 0f0f3454158e."  # 7ebd
+- op: update  # 3b18
+  at: '2026-09-20T23:39:21Z'  # 3b18
+  by: agent  # 3b18
+  actor: jgstern_agent  # 3b18
+  clock: 5  # 3b18
+  nonce: 3b18  # 3b18
+  set:  # 3b18
+    status: done  # 3b18
+- op: discuss  # b084
+  at: '2026-09-20T23:39:21Z'  # b084
+  by: agent  # b084
+  actor: jgstern_agent  # b084
+  clock: 6  # b084
+  nonce: b084  # b084
+  message: "MERGED as PR #1107, dev 0f0f345415. Five commits: the mode gate plus three pre-existing defects it surfaced and one defect of my own.\n\nVALIDATION CRITERION MET, and by the run that shipped it. The criterion recorded on this item was \"a detached run that goes all the way to a MERGE (not a governance stop) without manual recovery\" -- #1106 stopped at the governance gate, so the watcher's merge arm had never run in production. The final #1107 run is that arm:\n\n    2026-09-20T23:30:26Z  PR#None   detached_watching  exit=0\n    2026-09-20T23:37:52Z  PR#1107   merged             exit=0\n\n`auto-pr wait` returned 0 with \"Watcher finished: merged (exit 0)\". No manual merge-pr, no recovery.\n\nTWO FURTHER LIVE CONFIRMATIONS on the same sequence, neither manufactured:\n  * `wait` returned 2 (\"still working, come back\") twice when CI outran the caller's budget. Same wall that used to produce a SIGTERM, an `unknown` ledger row and a hand-finished merge; now it produces an actionable answer and the watcher keeps going.\n  * The merged run's post-merge pull ABORTED on an untracked tracker .ops file -- the documented collision -- and the run still recorded `merged` exit 0. That is INV-rahib's post-merge boundary (7359007100) holding: the merge decided the run, not the cleanup after it. `scripts/tracker reconcile` cleared it, as AGENTS.md prescribes.\n\nAudit over the 12-run window: CONVERGED, every run in a declared terminal state with an agreeing exit code, including six `detached_watching` rows that did not exist as a vocabulary entry this morning.\n\nWHAT SHIPPED BEYOND THE GATE, because the PR could not land without it:\n  * de886631c1 -- the per-PR pytest step installs the umbrella `hypergumbo` package (WI-fopuh). Six unrelated tests were failing on any PR whose manifest selected them.\n  * feeaac1fcd -- the abstract-family linter treats a 1:1 translation table as an enumeration, not N partial ones, and the SCIP kind map gains `Protocol` (WI-fopuh). This is what had kept the cron full-suite RED on dev.\n  * 547fc5ed78 -- ARCHITECTURE.md regenerated past its 30-commit freshness window.\n\nAND ONE DEFECT OF MY OWN, recorded because it is the more instructive one. Two of the new tests declared a mode, got past the gate, and then let auto-pr do real network work. Locally the network failed fast and they passed in a second; in CI they hung and one died on a 120s timeout. The tests depended on an external call failing QUICKLY, which no environment owes them. Both now run from `dev` so they stop at the protected-branch check (auto-pr:2001, just past the gate at :1955), touching nothing outside the repo, and the assertion tightened from \"not failed_mode_undeclared\" to \"IS failed_protected_branch\" -- the weaker form was satisfied by a run that hung, crashed or never started, which is exactly how it managed to be green locally while asserting nothing.\n\nStatus -> done. Open question 1 from the filing (should --detach become the DEFAULT for non-tty callers?) is answered and closed: NO, refused on evidence -- prepare-release reads auto-pr's exit 0 as \"merged\", so auto-detaching would have it announce a merge that never happened. The mode gate is the answer instead."  # b084
