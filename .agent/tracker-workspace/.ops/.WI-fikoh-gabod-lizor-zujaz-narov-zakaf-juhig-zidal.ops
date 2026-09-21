@@ -1,0 +1,30 @@
+- op: create  # 60e2
+  at: '2026-09-21T07:50:27Z'  # 60e2
+  by: agent  # 60e2
+  actor: jgstern_agent  # 60e2
+  clock: 1  # 60e2
+  nonce: '60e2'  # 60e2
+  data:  # 60e2
+    kind: work_item  # 60e2
+    title: "py.py stamps a receiver hint for Name.attr.method() through the attr's declared return type (WI-fihun blocker 2)"  # 60e2
+    status: todo_hard  # 60e2
+    priority: 2  # 60e2
+    parent:  # 60e2
+    tags:  # 60e2
+    - analysis_quality  # 60e2
+    - linker_protocol  # 60e2
+    isbefore: []  # 60e2
+    duplicate_of: []  # 60e2
+    not_duplicate_of: []  # 60e2
+    pr_ref:  # 60e2
+    description: "Blocker 2 of WI-fihun's residual, and the only one whose evidence is fully present today.\n\nTHE GAP. py.py's attribute-receiver emit path is guarded by `isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)` (py.py:8093). For `ts.workspace.add(1)` the func.value is itself an ast.Attribute, so a two-hop chain never enters that block and no receiver_type_hint is stamped. The method-call-recovery linker then has nothing to filter on and picks by line proximity, which is how `ts.workspace.add` binds to TrackerSet.add instead of Store.add.\n\nBOTH HALVES ALREADY EXIST, verified on a probe file rather than assumed:\n    `ts = TrackerSet(root)`              -> var_types types `ts` (direct constructor, the base case)\n    the emitted `ts.workspace` edge      -> carries receiver_type_hint=\"TrackerSet\" + receiver_type_id\n    `TrackerSet.workspace`               -> carries meta[\"return_type\"] = \"Store\"  (WI-ribak)\nNothing joins them.\n\nDELIVERABLE. Where the receiver is `Name.attr` and the Name is in var_types, look up `attr` among that class's members; if the member carries a declared return type that resolves to a project class, stamp receiver_type_hint with it. Reuse `_declared_return_type_name` (py.py) and `_resolve_return_type_class` rather than re-deriving either.\n\nWHY THE POLARITY MATTERS MORE THAN THE RECALL. A minted hint is TRUSTED: test_py_annotated_receiver's docstring records that it bypasses both gate_named_entry and the ambiguous_names net by design, so a wrong hint is a confident false edge AND a false taint sink, never silence. Stamp ONLY when the member is unambiguous on the concrete class and its return type resolves to an in-repo class; abstain otherwise. Under-stamping is the safe direction.\n\nACCEPTANCE. The 4 test_fork_workflow sites (108/168/191/218) bind Store.add rather than TrackerSet.add; a survey diff shows no resolved call edge lost; method-call-recovery edge count falls by 4 with the remaining set otherwise identical on (src path, line, target).\n\nNOT ASSERTED: that this generalises past two hops, or to a chain rooted at anything other than a var_types-typed Name. Deeper chains and non-Name roots are out of scope and should stay unstamped rather than guessed."  # 60e2
+    fields: {}  # 60e2
+- op: update  # 5421
+  at: '2026-09-21T07:50:37Z'  # 5421
+  by: agent  # 5421
+  actor: jgstern_agent  # 5421
+  clock: 2  # 5421
+  nonce: '5421'  # 5421
+  set: {}  # 5421
+  add:  # 5421
+    isbefore: [WI-fihun-pumik-pugit-kapoj-gijop-sonab-taluv-putuk]  # 5421
