@@ -1,0 +1,44 @@
+Original commit body from 4446fe3af554016ae09bf042d1aa6eb1269ce3c1:
+
+The per-PR gate announced `964 selected files` for PR #1107, whose committed
+manifest listed 75, ran ~29,680 tests, and dragged three unrelated latent
+defects through five CI rounds. 964 is not arbitrary: it is exactly
+`find packages/*/tests tests \( -name 'test_*.py' -o -name
+'BRANCHES_test_*.py' \) | wc -l` at that SHA -- smart-test's full-suite
+fallback. The original filing ruled that out by counting 850 test files and
+observing 964 > 850; the count was `test_*.py` only and missed the 116
+`BRANCHES_test_*.py` the writer also takes.
+
+Root cause: smart-test decides which repo it means from its OWN location
+(`REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"`, then `cd "$REPO_ROOT"`) and
+writes the literal relative path `.ci/affected-tests.txt`. The caller's cwd
+never enters the decision, so `/A/scripts/smart-test` run from inside repo `/B`
+produces no manifest for `/B` and does not fail -- it rewrites `/A`'s committed
+artifact. Ten `tests/test_autopr_*.py` modules drive the real `scripts/auto-pr`
+from a fixture repo, and auto-pr regenerates the manifest before pushing.
+
+In CI the steps share one workspace. `forge-arms` installs pytest and nothing
+else and runs `tests/test_autopr_*.py`, so the regen took the "no stable
+hypergumbo found" branch and wrote a full-suite manifest over the checked-out
+one; the `pytest` step waits on build-grammars and read it much later. The case
+self-healed when the offending test was made hermetic in 0f0f345415, which is
+why nothing reproduced it afterwards.
+
+Fixed at the writer: a cwd inside a DIFFERENT git repo is refused with exit 3,
+naming both roots and both ways out. Scoped to the case shown to bite -- a cwd
+in no git repo names no competing manifest and keeps today's behaviour.
+
+Fixed at the reader too: the per-PR pytest step reads the blob committed at
+HEAD, prints the header of the manifest it actually read (the step's only
+selection output was a count, which is untraceable to a file), and discloses
+any disagreement. It discloses rather than fails: measuring the committed
+artifact is the safety property, and turning an unexplained rewrite into a red
+PR is the recall-loss direction.
+
+Verified against the original repro -- before: the real manifest's md5 changed
+while the foreign repo got nothing; after: refusal printed, exit 3, md5
+unchanged. 410 passed across the auto-pr/smart-test/CI slice, 1996 across the
+full affected slice. The control arm in the CI gate is mutation-tested.
+
+Closes WI-fopuh-ralav-paguz-zorud-mipiv-lipup-kozos-nurin
+Files WI-furum-pojuv-kodol-lupof-hunog-mazaj-nohus-buhab
