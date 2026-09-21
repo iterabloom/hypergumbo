@@ -141,6 +141,11 @@ Design only — nothing in the pipeline changes in this release. ADR-0012 §Step
 
 ### Fixed
 
+#### A failed manifest regen says which failure it was (WI-furum)
+
+- **`auto-pr` ran the regen as `smart-test --manifest >/dev/null 2>&1`**, so every non-zero exit — hypergumbo not installed, the slice crashing, or WI-fopuh's refusal to write the manifest of a repo the caller is not in — arrived as one fixed line: `⚠️ Manifest generation skipped (no stable hypergumbo?)`. One message standing in for several causes is this project's absent-versus-empty defect at the diagnostics layer: not silence, but a confident wrong answer, with no way back to the real one. The parenthetical named the first of the three and was wrong for the case that now fires on every `tests/test_autopr_*.py` fixture run.
+- **The skip now reports the exit status and relays smart-test's own stderr**, indented beneath it. The status is captured as the first statement of the branch, because any command there would overwrite `$?` — and it is the one piece of evidence stderr cannot restate. An *empty* stderr is reported as the distinct fact it is, which is the only case where the old guess was defensible. The regen stays best-effort and non-fatal; nothing about when it runs changed.
+
 #### `smart-test` no longer rewrites the manifest of a repo you are not in (WI-fopuh)
 
 - **The per-PR gate was measuring every PR against the whole tree, and the only evidence was a count.** PR #1107's `pytest` step announced `964 selected files` for a commit whose committed manifest listed **75**, ran ~29,680 tests, and dragged three unrelated latent defects through five CI rounds. 964 is not an arbitrary number: it is exactly `find packages/*/tests tests \( -name 'test_*.py' -o -name 'BRANCHES_test_*.py' \) | wc -l` at that SHA — smart-test's **full-suite fallback**, which the original investigation ruled out by counting only `test_*.py` (850) and never counting the `BRANCHES_test_*.py` half. A wrong instrument returns a plausible number, not an error.
