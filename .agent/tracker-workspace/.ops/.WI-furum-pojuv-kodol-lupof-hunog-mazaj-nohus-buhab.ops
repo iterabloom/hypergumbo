@@ -1,0 +1,44 @@
+- op: create  # e4f7
+  at: '2026-09-21T00:15:34Z'  # e4f7
+  by: agent  # e4f7
+  actor: jgstern_agent  # e4f7
+  clock: 1  # e4f7
+  nonce: e4f7  # e4f7
+  data:  # e4f7
+    kind: work_item  # e4f7
+    title: "auto-pr discards smart-test's stderr, so every manifest-regen failure reports one wrong reason ('no stable hypergumbo?')"  # e4f7
+    status: needs_human_review  # e4f7
+    priority: 3  # e4f7
+    parent:  # e4f7
+    tags:  # e4f7
+    - ci_infrastructure  # e4f7
+    isbefore: []  # e4f7
+    duplicate_of: []  # e4f7
+    not_duplicate_of: []  # e4f7
+    pr_ref:  # e4f7
+    description: "RESIDUAL of WI-fopuh, filed rather than folded because the fix lands in a GOVERNANCE file.\n\nWI-fopuh fixed smart-test so that a caller whose cwd is a different git repo is REFUSED (exit 3) instead of silently rewriting this repo's committed .ci/affected-tests.txt. The refusal names both roots and both ways out.\n\nNobody running auto-pr will ever see it. scripts/auto-pr calls the regen as:\n\n    elif \"$SCRIPT_DIR/smart-test\" --manifest >/dev/null 2>&1; then\n\nBoth streams are discarded, so on a non-zero exit the user gets auto-pr's own else-branch message:\n\n    ⚠️  Manifest generation skipped (no stable hypergumbo?)\n\nThat reason is now WRONG for the foreign-cwd case, and wrong in the specific way this project keeps paying for: a single fallback message stands in for several distinct causes, so the reader cannot tell \"hypergumbo is not installed\" from \"you are not in this repo\" from \"the slice crashed\". It is the same absent-vs-empty shape one level out -- one message carrying three facts.\n\nWhere it bites: every tests/test_autopr_*.py module that drives the real auto-pr from a fixture repo now takes this path on every run. They pass (verified: 410 tests green), so this is a diagnosability defect, not a correctness one -- which is exactly why it will be expensive if it is ever the thing you are debugging.\n\nPROPOSED CHANGE (needs human approval -- scripts/auto-pr is a governance file):\nCapture smart-test's stderr instead of discarding it, and print it under the warning, or at minimum change the message to name the exit code so the cause is recoverable. Roughly:\n\n    _mf_err=\"$(mktemp)\"\n    elif \"$SCRIPT_DIR/smart-test\" --manifest >/dev/null 2>\"$_mf_err\"; then\n        ...\n    else\n        echo \"   ⚠️  Manifest generation skipped (smart-test exited $?):\"\n        sed 's/^/      /' \"$_mf_err\"\n\nScope is a handful of lines in one hunk of do_pr. No behaviour change: the regen is still skipped, the run still proceeds."  # e4f7
+    fields: {}  # e4f7
+- op: update  # b05f
+  at: '2026-09-21T00:15:46Z'  # b05f
+  by: agent  # b05f
+  actor: jgstern_agent  # b05f
+  clock: 2  # b05f
+  nonce: b05f  # b05f
+  set: {}  # b05f
+  add:  # b05f
+    not_duplicate_of: [INV-tajik-komos-dakoh-radik-kogar-ropun-fubar-fosip]  # b05f
+- op: update  # 9b80
+  at: '2026-09-21T00:29:56Z'  # 9b80
+  by: human  # 9b80
+  actor: jgstern  # 9b80
+  clock: 3  # 9b80
+  nonce: 9b80  # 9b80
+  set:  # 9b80
+    status: todo_soft  # 9b80
+- op: discuss  # bedd
+  at: '2026-09-21T00:30:45Z'  # bedd
+  by: agent  # bedd
+  actor: jgstern_agent  # bedd
+  clock: 4  # bedd
+  nonce: bedd  # bedd
+  message: "Owner approved the change to scripts/auto-pr (governance) and moved the row to todo_soft. Implementing: capture smart-test's stderr instead of discarding it, print it under the warning, and name the exit code so the cause is recoverable. No behaviour change -- the regen is still skipped and the run still proceeds."  # bedd
