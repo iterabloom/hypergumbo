@@ -612,4 +612,4 @@ A consumer needing one of these reads its home. The nine that parse the string i
 | `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 15 analyzers, including py.py |
 | `value_type` | `FileAnalysis.class_field_types` | csharp, cpp |
 
-**Closed parser set.** 9 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on a tenth. Adding one is a decision, and that gate is where it gets made.
+**Closed parser set.** 8 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on any site not among them. Adding one is a decision, and that gate is where it gets made. The count may only go DOWN — it was 9 at declaration and each drop is one language reading its declared home instead.

@@ -131,8 +131,15 @@ class TestFactHomes:
 
 
 class TestLegacyParsersAreClosedAndLive:
-    def test_the_set_is_the_nine_the_owner_grandfathered(self) -> None:
-        assert len(LEGACY_VALUE_PARSERS) == 9
+    def test_the_set_is_the_current_migration_backlog(self) -> None:
+        """This number may only go DOWN.
+
+        It was NINE when ADR-0058 declared the axis. ``py.py`` left it under
+        WI-ribak. A RISE means a new parser slipped in -- which the live-tree
+        gate below should have caught first, so a rise here means the gate
+        was edited to admit it, and that is the review.
+        """
+        assert len(LEGACY_VALUE_PARSERS) == 8
 
     def test_every_parser_cites_a_file_that_exists(self) -> None:
         for site in LEGACY_VALUE_PARSERS:

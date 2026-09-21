@@ -16,9 +16,11 @@ a FALSE one, for long enough that nine consumers grew underneath it::
     string in source-language grammar; consumers display, never branch on
     the value itself.
 
-Nine shipped consumers branch on the value itself (:data:`LEGACY_VALUE_PARSERS`
-enumerates them): six parse a return type across five languages, two count
-parameters for overload selection, one reads a field's declared type. The
+Nine shipped consumers branched on the value itself when the axis was
+declared: six parsed a return type across five languages, two counted
+parameters for overload selection, one read a field's declared type. EIGHT
+remain (:data:`LEGACY_VALUE_PARSERS` enumerates them) -- ``py.py`` migrated
+to the declared home under WI-ribak. The
 static linter accepted the declaration because a ``free-text`` justification is
 required to be PRESENT, not TRUE (ADR-0051; ADR-0033 section 1) -- the same
 mechanism, one field over. ADR-0024 defines ``free-text`` as an open-ended
@@ -75,9 +77,9 @@ in ``py.py``: "Deriving beats enumerating".
 SCOPE: THIS DECLARES AND CLOSES; IT DOES NOT MIGRATE. Nothing any analyzer
 emits changes, and the nine existing parsers keep working -- ADR-0051 left
 ``_module_matches`` branching on orthography for the same reason, filing the
-replacement as its own row. What this adds is the closure: the nine are
-GRANDFATHERED and enumerated, and :func:`find_undeclared_value_parsers` fails
-on a tenth. That is the owner's 2026-09-21 ruling ("A+no"): fix the category,
+replacement as its own row. What this adds is the closure: the
+grandfathered parsers are enumerated, and
+:func:`find_undeclared_value_parsers` fails on a new one. That is the owner's 2026-09-21 ruling ("A+no"): fix the category,
 stop widening, port the producers language by language. Migrating them is
 ADR-0024 step 7.
 """
@@ -234,7 +236,9 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
 #: Where each fact inside a signature is DECLARED. This is the table that
 #: answers "then where do I read it instead?", and the reason the answer is
 #: not "nowhere" -- every one of these already ships, populated by at least
-#: two languages. Python populates none of them (WI-<port row>).
+#: two languages. Python populated NONE of them when the axis was declared;
+#: since WI-ribak it writes ``meta["return_type"]`` and ``meta["parameters"]``
+#: and reads the former. ``class_field_types`` is still unwritten by python.
 FACT_HOMES: Final[dict[str, FactHome]] = {
     "return_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
@@ -286,10 +290,17 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
 }
 
 
-#: The nine consumers that parse the value, GRANDFATHERED by the owner's
-#: 2026-09-21 ruling. The list is CLOSED: a tenth fails
+#: The consumers that parse the value, GRANDFATHERED by the owner's
+#: 2026-09-21 ruling. The list is CLOSED: a new one fails
 #: :func:`find_undeclared_value_parsers`, which is the point -- adding one is
 #: a decision, and this is where it gets made rather than noticed afterwards.
+#:
+#: IT SHRINKS, AND THAT IS THE MEASURE OF THE MIGRATION. It held NINE when
+#: the axis was declared. ``py.py:5881`` left it (WI-ribak): Python now
+#: stamps ``Symbol.meta["return_type"]`` in Pass 1 and reads the home, which
+#: is ADR-0024 step 7 for this axis performed rather than promised. The
+#: remaining EIGHT are the migration backlog, and each one's ``fact`` names
+#: the home it is owed to.
 LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
     LegacyValueParser(
         path=(
@@ -310,22 +321,6 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
         anchor="_count_signature_params(c.signature) == arg_count",
         fact="parameter_arity",
         note="Overload selection by counting rendered parameters.",
-    ),
-    LegacyValueParser(
-        path=(
-            "packages/hypergumbo-lang-mainstream/src/"
-            "hypergumbo_lang_mainstream/py.py"
-        ),
-        line=5881,
-        anchor="assigned_class.signature",
-        fact="return_type",
-        note=(
-            "Seeds var_types from a callee's return annotation. The largest "
-            "of the nine by consequence: it is how a Python variable gets a "
-            "type at all, so it feeds receiver_type_hint and therefore the "
-            "method-call-recovery linker. py.py:641 cites the declared home "
-            "in a comment 5,240 lines above this line."
-        ),
     ),
     LegacyValueParser(
         path=(

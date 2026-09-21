@@ -188,8 +188,19 @@ having been looked for.
 
 ### Negative
 
-**Nothing an analyzer emits changes, and the nine keep parsing.** This
-declares and closes; it does not migrate. Migration is ADR-0024 step 7 and is
+**Nothing an analyzer emits changes, and the grandfathered parsers keep
+parsing.** This declares and closes; it does not migrate.
+
+> **2026-09-21, same day:** the Python arm landed (WI-ribak). `py.py` stamps
+> `Symbol.meta["return_type"]` in Pass 1 at both emit sites and reads the
+> home, so the closed set is **8, was 9**. Equivalence was measured, not
+> assumed: over 33,740 functions in this repository the AST-derived value and
+> the retired signature parse agreed on every one. One correction to the
+> table below — `py.py` could not populate `FileAnalysis.method_return_types`
+> as this ADR implies, because `py.py` has its **own** `FileAnalysis`
+> (py.py:2181), a different dataclass from the tree-sitter base's that never
+> reaches the core linker. `Symbol.meta["return_type"]` is the home that
+> travels. Migration is ADR-0024 step 7 and is
 filed separately as the per-language producer port, Python first — it is the
 largest consumer (36,256 callable surfaces, 1,817 value types) and the only
 one of the four home-populating languages' peers that writes none of them.

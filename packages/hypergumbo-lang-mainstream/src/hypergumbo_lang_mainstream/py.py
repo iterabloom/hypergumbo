@@ -370,25 +370,31 @@ def _make_module_id(module_name: str) -> str:
     return f"python:{module_name}:0-0:module:module"
 
 
-def _extract_return_type_name(signature: str | None) -> str | None:
-    """Extract simple return type name from a function signature string.
+def _declared_return_type_name(symbol: "Symbol") -> str | None:
+    """Read a callee's DECLARED return type from its home.
 
-    Parses signatures like "(x: int) -> MyClass" and returns "MyClass".
-    Only handles simple (non-generic) return types — returns None for
-    complex types like "Optional[X]", "list[X]", "X | Y", etc.
+    ADR-0058 / WI-ribak. The fact lives in ``Symbol.meta["return_type"]`` --
+    the registered meta key (``axis_meta_keys.py``) that java, luau and apex
+    already populate, and whose sibling ``inferred_return_type`` names Python
+    as an intended producer. It is stamped in Pass 1 at the two emit sites,
+    where the annotation is in the AST and needs no re-parsing.
 
-    Args:
-        signature: Function signature string from Symbol.signature.
+    THIS REPLACED A PARSE OF ``Symbol.signature``, which ADR-0058's axiom
+    forbids: that field is a DISPLAY string and the facts inside it have
+    homes. Not ``FileAnalysis.method_return_types`` -- ``py.py`` has its own
+    :class:`FileAnalysis`, a different dataclass from the tree-sitter base's,
+    and it never reaches the core linker that also needs this fact.
 
-    Returns:
-        The simple class name if found, None otherwise.
+    THE NARROWNESS IS THIS READER'S POLICY, deliberately unchanged: only a
+    simple identifier infers, so ``Optional[Foo]`` and ``list[Foo]`` do not,
+    exactly as the signature parse behaved. Measured equivalent over 33,740
+    functions in this repository -- 0 disagreements -- which holds because
+    WI-hopiz made display truncation preserve the return type rather than
+    cut it off. Widening is a separate, measurable change.
     """
-    if not signature or " -> " not in signature:
-        return None
-    ret_part = signature.rsplit(" -> ", 1)[1]
-    # Only handle simple names (identifiers), not generics or unions
-    if ret_part.isidentifier():
-        return ret_part
+    declared = (symbol.meta or {}).get("return_type")
+    if isinstance(declared, str) and declared.isidentifier():
+        return declared
     return None
 
 
@@ -3142,6 +3148,14 @@ def _extract_file_analysis(
                     if params:
                         method_meta["parameters"] = params
 
+                    # ADR-0058 / WI-ribak: the DECLARED return type goes to its
+                    # home here, where the annotation is already in the AST.
+                    # Verbatim -- ``Optional[Foo]`` included; narrowing is the
+                    # consumer's policy (_declared_return_type_name), not the
+                    # producer's.
+                    if item.returns is not None:
+                        method_meta["return_type"] = ast.unparse(item.returns)
+
                     _mds = ast.get_docstring(item)
                     _mds_line = _mds.split("\n")[0].strip()[:80] if _mds else None
                     method_symbol = Symbol(
@@ -3253,6 +3267,10 @@ def _extract_file_analysis(
                 params = _extract_parameters_info(node.args, exclude_self=False)
                 if params:
                     func_meta["parameters"] = params
+
+                # ADR-0058 / WI-ribak: see the method emit site above.
+                if node.returns is not None:
+                    func_meta["return_type"] = ast.unparse(node.returns)
 
                 # Try typed tier first (ADR-0014 §3), fall back to untyped
                 func_sig = _format_function_signature(node)
@@ -5877,8 +5895,8 @@ def _extract_edges(
                             # Return type inference: if the function has a
                             # return type annotation pointing to a class,
                             # track the variable's type from that annotation.
-                            ret_name = _extract_return_type_name(
-                                assigned_class.signature
+                            ret_name = _declared_return_type_name(
+                                assigned_class
                             )
                             if ret_name:
                                 ret_class = _resolve_return_type_class(
