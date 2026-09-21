@@ -1,0 +1,56 @@
+Original commit body from e913c9b6b856508f9d4ed79c407c626282e51502:
+
+`method-call-recovery-linker` emits 64 edges on a single-backend Python
+self-survey, of which 16 are wrong. Two of them bound a `calls` edge to a
+member that cannot be called: `m.start()` / `m.end()` on a `re.Match` became
+`ItemIdMatch.start` / `ItemIdMatch.end`, both declared `int`. Calling an int
+instance is a TypeError, so the binding sits outside this linker's own premise
+-- it stamps `call_construct="method"`.
+
+THE GATE READS THE DECLARED TYPE, NOT THE SYMBOL KIND. A blanket
+`kind == "field"` refusal would be wrong: a JS/TS class property and a Python
+dataclass field can both hold a callable, and `js_ts.py` records
+`property_signature` members as `field`. The refusal is positive -- it fires
+only when a declaration is PRESENT and every arm of it is a builtin scalar or
+container. Refused: `int`, `list[str]`, `Optional[str]`, `str | None`. Not
+refused: `Callable[[], None]`, a project class, an absent declaration, and any
+wrapper the parser has not been taught (`ClassVar[...]`, `Union[...]`).
+Under-refusal is the safe direction: a missed refusal leaves one wrong edge,
+an over-eager one silently deletes a correct recovery.
+
+A PARENTHESIS DISCRIMINATES A VALUE TYPE FROM A CALL SIGNATURE. `Symbol.signature`
+holds `int` for a field and `(self) -> int` for a method; reading the second as
+the first would refuse real methods, so a parenthesised signature is declined
+rather than parsed. That also keeps the callable-KINDS question out of it --
+`ranking._CALLABLE_KINDS` and `entrypoints._CALLABLE_KINDS` differ deliberately
+and have cross-referencing comments saying so since 28d26c92c8.
+
+THE REFUSAL DROPS A CANDIDATE, NOT THE CALL SITE, so a sibling class that really
+does declare the method still wins. Pinned by a test where the non-callable's
+hint sits NEARER the call and would otherwise win the line-proximity tiebreaker.
+
+Behavioural evidence -- a fresh `hypergumbo survey .`, diffed against the
+pre-change artifact:
+
+    method-call-recovery edges   64 -> 62
+    dst kind        62 method + 2 field  ->  62 method
+    REMOVED  id_matching.py:119 -> ItemIdMatch.start [field]
+             id_matching.py:119 -> ItemIdMatch.end   [field]
+    ADDED    (none)
+
+The 62 survivors are identical across both runs on (src path, line, target,
+kind). 47 tests in the linker's file, 100% coverage on the changed file, mypy
+ratchet clean (667, delta 0), 3235 passed across the affected slice.
+
+Nine tests, five of which are DIFFERENCE ARMS that pass before this change and
+must keep passing -- a method target, an undeclared member, a project-class
+type, a `Callable[...]` type, and a `ClassVar[...]` wrapper the parser
+deliberately does not unwrap.
+
+WI-fihun stays OPEN at 2 of 16. The residual is 14 sites in three producer-side
+shapes, each now sized on the row: `Class.factory()` return types (3),
+attribute chains through a property (4), loop/comprehension targets (5), plus 2
+builtin-container receivers.
+
+Advances WI-fihun-pumik-pugit-kapoj-gijop-sonab-taluv-putuk
+Files INV-lotoh-molup-hufoh-dibot-hovit-nujit-gotoz-hipur
