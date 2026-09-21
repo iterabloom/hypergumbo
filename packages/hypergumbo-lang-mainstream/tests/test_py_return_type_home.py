@@ -167,6 +167,65 @@ class TestTheConsumerStillInfers:
         ), "inference still depends on Symbol.signature"
 
 
+class TestAForwardReferenceIsStillATypeName:
+    """WI-fihun: ``-> "Client"`` names exactly the type it spells.
+
+    ``ast.unparse`` renders a string annotation WITH its quotes, so the
+    identifier check rejected it. PEP 484 says a string annotation names the
+    type it spells and every type checker resolves it, so unquoting widens
+    how a type may be SPELLED, not what counts as one.
+    """
+
+    def _edges(self, root: Path, source: str) -> list:
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "app.py").write_text(source, encoding="utf-8")
+        return analyze_python(root).edges
+
+    def _src(self, ret: str) -> str:
+        return (
+            "class Client:\n"
+            "    def send(self):\n"
+            "        return 1\n"
+            "\n"
+            f"def make() -> {ret}:\n"
+            "    return Client()\n"
+            "\n"
+            "def run():\n"
+            "    c = make()\n"
+            "    return c.send()\n"
+        )
+
+    def test_a_quoted_forward_reference_types_the_variable(
+        self, tmp_path: Path
+    ) -> None:
+        edges = self._edges(tmp_path / "fwd", self._src('"Client"'))
+        assert any("Client.send:method" in e.dst for e in edges)
+
+    def test_it_agrees_with_the_unquoted_spelling(self, tmp_path: Path) -> None:
+        # The control: same type, two spellings, same outcome.
+        quoted = self._edges(tmp_path / "q", self._src('"Client"'))
+        plain = self._edges(tmp_path / "p", self._src("Client"))
+        assert (
+            any("Client.send:method" in e.dst for e in quoted)
+            == any("Client.send:method" in e.dst for e in plain)
+            is True
+        )
+
+    def test_a_quoted_GENERIC_still_does_not_type(self, tmp_path: Path) -> None:
+        # The difference arm: unquoting must not smuggle generics through.
+        edges = self._edges(
+            tmp_path / "qg",
+            "from typing import Optional\n" + self._src('"Optional[Client]"'),
+        )
+        assert all("Client.send:method" not in e.dst for e in edges)
+
+    def test_an_empty_string_annotation_does_not_crash(
+        self, tmp_path: Path
+    ) -> None:
+        edges = self._edges(tmp_path / "empty", self._src('""'))
+        assert all("Client.send:method" not in e.dst for e in edges)
+
+
 class TestTheConsumerKeepsItsNarrowness:
     """Neither widened nor narrowed: only simple identifiers infer."""
 
