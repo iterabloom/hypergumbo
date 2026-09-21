@@ -2060,9 +2060,19 @@ do_pr() {
 	# (AUTO_PR_SKIP_MANIFEST=1 bypasses for tests that don't need a real
 	# hypergumbo install in the fake-repo fixture.)
 	echo "---------------------------------------------------"
+	# WI-furum: KEEP smart-test's OWN ACCOUNT OF THE FAILURE. Both streams used
+	# to go to /dev/null, so "no stable hypergumbo", "the slice crashed" and
+	# "I refuse to write the manifest of a repo you are not in" (WI-fopuh's
+	# guard, which every tests/test_autopr_*.py fixture run now trips) all
+	# arrived as one fixed sentence naming the first of the three. That is this
+	# project's absent-versus-empty defect at the diagnostics layer: not
+	# silence, but a confident wrong answer, and the operator has no way back
+	# to the real cause. The regen is still best-effort and still non-fatal.
+	local _mf_err _mf_rc
+	_mf_err="$(mktemp)"
 	if [[ "${AUTO_PR_SKIP_MANIFEST:-}" == "1" ]]; then
 		echo "📋 Skipping manifest regen (AUTO_PR_SKIP_MANIFEST=1)"
-	elif "$SCRIPT_DIR/smart-test" --manifest >/dev/null 2>&1; then
+	elif "$SCRIPT_DIR/smart-test" --manifest >/dev/null 2>"$_mf_err"; then
 		echo "📋 Regenerating test manifest..."
 		# Guard: don't stage a full-suite manifest (pre-commit hook rejects it,
 		# and the existing committed manifest is likely better anyway)
@@ -2102,8 +2112,20 @@ do_pr() {
 			fi
 		fi
 	else
-		echo "   ⚠️  Manifest generation skipped (no stable hypergumbo?)"
+		# FIRST statement in the branch: any command here would overwrite $?,
+		# and the status is the only part of the evidence smart-test cannot
+		# restate on stderr.
+		_mf_rc=$?
+		echo "   ⚠️  Manifest generation skipped (smart-test exited $_mf_rc):"
+		if [[ -s "$_mf_err" ]]; then
+			sed 's/^/      /' "$_mf_err"
+		else
+			# An empty stderr is a DIFFERENT fact from a reason, and the old
+			# guess is only defensible when there is nothing else to report.
+			echo "      (it said nothing — is a stable hypergumbo installed?)"
+		fi
 	fi
+	rm -f "$_mf_err"
 
 	# Exclude tracker ops files from PR (they flow through tracker sync)
 	# IMPORTANT: Use index-only operations to avoid overwriting the working
