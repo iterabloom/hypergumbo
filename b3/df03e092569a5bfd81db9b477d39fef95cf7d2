@@ -1,0 +1,38 @@
+Original commit body from 49bd6fc88646121b7faef6fb2dc5795d83d794f9:
+
+ssl.SSLObject carried three python rows asserting a network crossing:
+read (net_recv), write and do_handshake (net_send). CPython documents the
+class as performing no network I/O at all -- "IO needs to be performed
+through separate BIO objects", and against SSLSocket it "lacks ... Any
+form of network IO, including methods such as recv and send". The rows
+were kind-asserted BY NAME: SSLObject spells its methods like SSLSocket,
+whose methods really do cross.
+
+THE RULE ALREADY EXISTED. Under the File-object rule a read from a
+caller-opened object is the CALLER's I/O. wrap_bio is handed two
+MemoryBIOs the caller made and feeds, so SSLObject.read is pickle.load
+for a memory buffer -- and io.BytesIO.read carries no row either. The
+rule's own test now enumerates this case beside pickle.load and
+marshal.load so the two cannot drift apart.
+
+ADR-0049 RULING 3 PAID AT THE FINDING LEVEL, not argued at the row
+level. Real analyzer over a wrap_bio fixture: 4 tagged boundaries
+before, 1 after, and the survivor is socket.socket.recv -- where the
+far-side bytes actually enter. The crossing stays represented.
+
+INERT ON THE IDIOMATIC FORM, LATENT RATHER THAN HARMLESS. Written
+sslobj = ctx.wrap_bio(...) the receiver cannot be typed and the rows
+never fire; annotating sslobj: ssl.SSLObject makes all three fire at
+once. The falsifiability control reinstates the rows and asserts the
+three false boundaries come back, so the fixture is proven to reach what
+it pins.
+
+python.yaml's completeness note said ssl's MemoryBIO surface "were not
+read one by one". They have now been read, and the reading REMOVED rows
+rather than adding them. The module stays ungranted on the descriptor
+plumbing alone.
+
+Addresses INV-kazuk -- closed after merge, with the merge SHA as
+evidence.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
