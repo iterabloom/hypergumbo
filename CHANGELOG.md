@@ -147,6 +147,14 @@ Design only — nothing in the pipeline changes in this release. ADR-0012 §Step
 
 ### Fixed
 
+#### A class that performs no network I/O rows none (INV-kazuk)
+
+- **Three python catalogue rows asserted a network crossing at `ssl.SSLObject`, which performs none.** `read` was `net_recv`; `write` and `do_handshake` were `net_send`. CPython's own docstring is explicit — the object *"does not provide any network IO itself. IO needs to be performed through separate "BIO" objects"*, and against `SSLSocket` it *"lacks … **Any form of network IO, including methods such as `recv` and `send`**"*. A source row that mints `untrusted_input` where no far-side data enters is a false-positive generator, and this one was kind-asserted **by name**: `SSLObject` spells its methods like `SSLSocket`, whose methods really do cross.
+- **The project had already ruled this class of question.** Under the File-object rule (`docs/surveys/stdlib-module-completeness-scope.md` §3) a read from a caller-opened object is the *caller's* I/O. `SSLContext.wrap_bio(incoming, outgoing)` is handed two `MemoryBIO`s the caller made and feeds, so `SSLObject.read` is `pickle.load` for a memory buffer — and `io.BytesIO.read` carries no row either. The rule's own test now enumerates this case beside `pickle.load` and `marshal.load`, so the two cannot drift apart.
+- **ADR-0049 ruling 3 was paid at the finding level, not argued at the row level.** Running the real analyzer over a `wrap_bio` fixture: **4 tagged boundaries before, 1 after** — and the survivor is `socket.socket.recv`, where the far-side bytes actually enter. The crossing stays represented, so removal relocates nothing.
+- **The rows were inert on the idiomatic form and latent rather than harmless.** Written `sslobj = ctx.wrap_bio(...)` the receiver cannot be typed and the rows never fire; annotating `sslobj: ssl.SSLObject` makes all three fire at once. The falsifiability control reinstates them and asserts the three false boundaries return, so the fixture is proven to reach what it pins.
+- **`python.yaml`'s completeness note said ssl's MemoryBIO surface *"were not read one by one"*.** They have now been read, and the reading **removed** rows rather than adding them. The module stays ungranted, on the descriptor plumbing alone.
+
 #### A declared non-callable is evidence against a method binding (WI-fihun)
 
 - **`method-call-recovery-linker` bound `calls` edges to members that cannot be called.** Measured on a single-backend Python self-survey, the linker emits 64 edges of which 16 are wrong; two of those bound `m.start()` / `m.end()` on a `re.Match` to `ItemIdMatch.start` / `.end`, both declared `int`. Calling an int instance is a `TypeError`, so the binding was outside the linker's own premise — it stamps `call_construct="method"`.

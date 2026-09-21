@@ -552,8 +552,8 @@ net_send:
     notes: "Connects to the address (and resolves it); the module-level twin of socket.socket.connect."
   - module: ssl.SSLSocket
     methods: [send, sendall, sendto, sendmsg, write, connect, connect_ex, do_handshake]
-  - module: ssl.SSLObject
-    methods: [write, do_handshake]
+    notes: "The SOCKET-backed class: these really do cross. Its BIO-backed twin
+      ssl.SSLObject is rowed NOWHERE -- see the net_recv block (INV-kazuk)."
   - module: http.client.HTTPConnection
     methods: [request, putrequest, endheaders, send]
   - module: http.client.HTTPSConnection
@@ -599,8 +599,19 @@ net_recv:
   - module: ssl.SSLSocket
     methods: [recv, recvfrom, recv_into, recvfrom_into, recvmsg, recvmsg_into, read, accept]
     notes: "2026-09-06 WI-dupok. accept returns the peer's connection (peer-chosen, as socket.socket.accept)."
-  - module: ssl.SSLObject
-    methods: [read]
+  # INV-kazuk, 2026-09-21: ssl.SSLObject carried read (net_recv) here and
+  # write/do_handshake (net_send) above. ALL THREE ARE REMOVED. CPython's own
+  # docstring: the class "does not provide any network IO itself. IO needs to be
+  # performed through separate "BIO" objects", and against SSLSocket it "lacks
+  # ... Any form of network IO, including methods such as recv and send". The
+  # rows were kind-asserted by NAME -- SSLObject spells its methods like
+  # SSLSocket, whose methods do cross. Under the File-object rule
+  # (docs/surveys/stdlib-module-completeness-scope.md) a read from a
+  # caller-opened object is the CALLER's I/O: wrap_bio is handed two MemoryBIOs
+  # the caller made and feeds, so SSLObject.read is pickle.load for a memory
+  # buffer, and io.BytesIO.read carries no row either. ADR-0049 ruling 3 is
+  # paid at the finding level in test_sslobject_bio_rows.py: the crossing is
+  # still represented, at the caller's own socket.socket.recv/sendall.
   - module: ssl
     functions: [get_server_certificate]
     notes: "Connects and returns the certificate the far side presented -- content the far side chose (ADR-0049)."
@@ -1955,9 +1966,14 @@ module_completeness:
   #                  UNRULED in every catalogue -- escalated; the module stays
   #                  ungranted until ruled. socket.socket's rows stand.
   #   ssl            rowed above but SSLContext.wrap_socket / SSLSocket's
-  #                  descriptor plumbing (fileno, makefile) and the
-  #                  MemoryBIO surface were not read one by one; PARTIAL,
-  #                  not granted.
+  #                  descriptor plumbing (fileno, makefile) were not read one
+  #                  by one; PARTIAL, not granted. THE MemoryBIO SURFACE HAS
+  #                  NOW BEEN READ (INV-kazuk, 2026-09-21) and the reading
+  #                  REMOVED rows rather than adding them: ssl.SSLObject
+  #                  carried read/write/do_handshake asserting a network
+  #                  crossing at a class CPython documents as performing no
+  #                  network I/O at all. The module stays ungranted on the
+  #                  descriptor plumbing alone.
   #   unittest.mock  patches module state; 10 probe signals in its
   #                  os.environ / open patch helpers -- not read; not granted.
   #   multiprocessing  rowed above; Manager / shared_memory / connection

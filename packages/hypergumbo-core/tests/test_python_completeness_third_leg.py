@@ -22,14 +22,17 @@ modules whose remaining surface is in-memory.
 
 TWO RULES THE 08-15 SURVEY SET AND THIS LEG FOLLOWS. A read from a
 CALLER-OPENED object is the caller's I/O (tomllib): pickle.load, marshal.load,
-xml.dom.minidom.parse(fileobj) get no row. A WRITE into a caller-opened object
-is rowed where the value enters it (json.dump): pickle.dump keeps its fs_write
-row.
+xml.dom.minidom.parse(fileobj) and -- since INV-kazuk -- ssl.SSLObject.read get
+no row. A WRITE into a caller-opened object is rowed where the value enters it
+(json.dump): pickle.dump keeps its fs_write row, but only because a file object
+is a boundary; SSLObject.write enters a MemoryBIO, and memory is not.
 
 REFUSED, so the list can be checked: tkinter (a display is a boundary the
 vocabulary does not name), socket (its DNS functions are UNRULED -- net_recv
-by ADR-0049's question or host_info_read; escalated), ssl (rowed, but the
-descriptor plumbing and MemoryBIO were not read one by one), unittest.mock,
+by ADR-0049's question or host_info_read; escalated), ssl (rowed, and its
+descriptor plumbing still not read one by one -- but its MemoryBIO surface HAS
+now been read, one member at a time, and the three ssl.SSLObject rows it
+carried were kind-asserted by name and are gone: INV-kazuk), unittest.mock,
 multiprocessing's Manager / shared_memory / connection surface.
 """
 from __future__ import annotations
@@ -78,7 +81,7 @@ class TestTheRowsCameFirst:
         ("multiprocessing.Process", "kill", "ipc_send"),
         ("socket", "create_connection", "net_send"), ("socket", "create_server", "net_listen"),
         ("ssl.SSLSocket", "sendall", "net_send"), ("ssl.SSLSocket", "recv", "net_recv"),
-        ("ssl.SSLSocket", "connect", "net_send"), ("ssl.SSLObject", "read", "net_recv"),
+        ("ssl.SSLSocket", "connect", "net_send"),
         ("ssl", "get_server_certificate", "net_recv"),
         ("ssl.SSLContext", "load_cert_chain", "fs_read"),
     ])
@@ -96,6 +99,19 @@ class TestTheRowsCameFirst:
         assert _boundary("pickle", "dump") == "fs_write"
         assert _boundary("marshal", "load") is None
         assert _boundary("xml.dom.minidom", "parseString") is None
+
+    def test_the_rule_reaches_ssl_sslobject_too(self) -> None:
+        """INV-kazuk. ``SSLContext.wrap_bio`` is handed two ``MemoryBIO``s the
+        CALLER made and feeds, so ``SSLObject`` is a caller-opened object and
+        rows nothing -- while its socket-backed twin keeps every row. This
+        leg's REFUSED list said ssl's MemoryBIO surface "were not read one by
+        one"; it has now been read, and the three rows it had were wrong.
+        The finding-level proof lives in ``test_sslobject_bio_rows.py``."""
+        assert _boundary("ssl.SSLObject", "read") is None
+        assert _boundary("ssl.SSLObject", "write") is None
+        assert _boundary("ssl.SSLObject", "do_handshake") is None
+        assert _boundary("ssl.SSLSocket", "read") == "net_recv"
+        assert _boundary("ssl.SSLSocket", "sendall") == "net_send"
 
 
 GRANTED = [
