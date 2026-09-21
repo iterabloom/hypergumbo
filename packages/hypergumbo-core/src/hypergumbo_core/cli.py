@@ -69,6 +69,7 @@ from typing import (
     Iterable,
     List,
     Mapping,
+    NamedTuple,
     Optional,
     Sequence,
     Set,
@@ -7567,10 +7568,30 @@ def _compute_path_shape_boost(node: dict) -> int:
     return boost
 
 
+class CrossLanguageHits(NamedTuple):
+    """Two tallies, because a manifest is not a language (INV-hugit).
+
+    ``code`` counts hits in files of a real other language — the only kind
+    that is evidence of cross-language DISPATCH, and the only kind the
+    threshold reads. ``config`` counts hits in the manifest family
+    (``.json`` / ``.yaml`` / ``.yml`` / ``.toml`` / ``.xml`` / ``.html``),
+    which is still computed and published per candidate but decides nothing
+    on its own.
+    """
+
+    code: dict[str, int]
+    config: dict[str, int]
+
+
+#: Extensions the collision scan reads but which are NOT a language. A YAML
+#: file naming a Python symbol is a manifest, not a dispatcher (INV-hugit).
+_CONFIG_PSEUDO_LANG = "config"
+
+
 def _compute_cross_language_hits(
     dead_candidates: list[dict],
     repo_root: Path,
-) -> dict[str, int]:
+) -> CrossLanguageHits:
     """Count cross-language string collisions for dead-code candidates.
 
     For each dead candidate, checks whether its symbol name appears as a
@@ -7582,7 +7603,16 @@ def _compute_cross_language_hits(
     non-binary files in the repo for occurrences.  Only counts hits in
     files whose extension maps to a different language family.
 
-    Returns mapping of candidate ID → cross-language hit count.
+    INV-hugit: hits in the ``config`` pseudo-language are tallied SEPARATELY
+    and never reach the demoter's threshold. Counting them was worth 112 of
+    207 demotions on this repository — over half of the exclusions rested on
+    manifest substrings, including ``_label`` (24 config hits, 0 code hits),
+    a private helper with no cross-language dispatch story at all. The
+    rationale in the demoter's own comment is DISPATCH; a manifest mentioning
+    a symbol is not that. The count is kept and published rather than
+    discarded, so a reviewer can still see the old signal.
+
+    Returns a :class:`CrossLanguageHits` of two candidate-ID → count maps.
     """
     # Map file extensions to language families (coarse grouping)
     _EXT_TO_LANG: dict[str, str] = {
@@ -7602,8 +7632,11 @@ def _compute_cross_language_hits(
         ".ex": "elixir", ".exs": "elixir",
         ".erl": "erlang",
         ".lua": "lua",
-        ".yaml": "config", ".yml": "config", ".json": "config",
-        ".toml": "config", ".xml": "config", ".html": "config",
+        # NOT a language — see CrossLanguageHits. These are scanned and
+        # counted, but their tally is kept apart from the threshold.
+        ".yaml": _CONFIG_PSEUDO_LANG, ".yml": _CONFIG_PSEUDO_LANG,
+        ".json": _CONFIG_PSEUDO_LANG, ".toml": _CONFIG_PSEUDO_LANG,
+        ".xml": _CONFIG_PSEUDO_LANG, ".html": _CONFIG_PSEUDO_LANG,
     }
 
     # Collect unique names from dead candidates, grouped by language
@@ -7618,13 +7651,14 @@ def _compute_cross_language_hits(
         name_to_candidates.setdefault(short_name, []).append(candidate)
 
     if not name_to_candidates:
-        return {}
+        return CrossLanguageHits({}, {})
 
     # Build set of names to search for
     search_names = set(name_to_candidates.keys())
 
     # Scan repo files for string occurrences
     hits: dict[str, int] = {}
+    config_hits: dict[str, int] = {}
     try:
         for dirpath, _dirnames, filenames in os.walk(repo_root):
             rel_dir = os.path.relpath(dirpath, repo_root)
@@ -7653,13 +7687,18 @@ def _compute_cross_language_hits(
                             cand_lang = candidate.get("language", "")
                             # Only count if different language
                             if cand_lang and file_lang != cand_lang:
-                                hits[candidate["id"]] = (
-                                    hits.get(candidate["id"], 0) + 1
+                                tally = (
+                                    config_hits
+                                    if file_lang == _CONFIG_PSEUDO_LANG
+                                    else hits
+                                )
+                                tally[candidate["id"]] = (
+                                    tally.get(candidate["id"], 0) + 1
                                 )
     except OSError:  # pragma: no cover — repo_root unreadable
         pass
 
-    return hits
+    return CrossLanguageHits(hits, config_hits)
 
 
 def production_callables(
@@ -8417,8 +8456,9 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # a near-certain signal of a missing cross-language reference
     # (HTTP path, RPC method, MQ topic, FFI name).
     cross_lang_hits: dict[str, int] = {}
+    config_name_hits: dict[str, int] = {}
     if dead_candidates:
-        cross_lang_hits = _compute_cross_language_hits(
+        cross_lang_hits, config_name_hits = _compute_cross_language_hits(
             dead_candidates, repo_root,
         )
 
@@ -8432,13 +8472,24 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # threshold <= 0 disables the demoter. Mirrors the dispatch_inherited_ids
     # demoter above (a hard exclusion: no per-candidate dead-confidence score
     # exists to demote proportionally yet).
+    #
+    # INV-hugit, 2026-09-21, TWO CHANGES THAT ARE ONE CHANGE. The threshold now
+    # reads ONLY hits in files of a real other language: a manifest substring
+    # is not dispatch evidence, and counting it was worth 112 of 207 demotions
+    # on this repository. And the demotions that remain are RECORDED rather
+    # than dropped — a hard exclusion that published only a count left a
+    # wrongly-demoted candidate unreviewable, which is the fail-open direction
+    # for a demoter, and is how INV-rolok's "0 of 2,152 candidates are
+    # __init__" sizing claim came to be manufactured by this code.
     cross_lang_threshold = getattr(args, "cross_lang_threshold", 3)
     cross_lang_demoted_ids: set[str] = set()
+    cross_lang_demoted: list[dict[str, Any]] = []
     if cross_lang_threshold > 0:
-        cross_lang_demoted_ids = {
-            n["id"] for n in dead_candidates
+        cross_lang_demoted = [
+            n for n in dead_candidates
             if cross_lang_hits.get(n["id"], 0) >= cross_lang_threshold
-        }
+        ]
+        cross_lang_demoted_ids = {n["id"] for n in cross_lang_demoted}
         if cross_lang_demoted_ids:
             dead_candidates = [
                 n for n in dead_candidates
@@ -8573,6 +8624,9 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                     "span": n.get("span"),
                     "id": n["id"],
                     "cross_language_hits": cross_lang_hits.get(n["id"], 0),
+                    # INV-hugit: manifest substrings, kept and published but
+                    # no longer able to demote on their own.
+                    "config_name_hits": config_name_hits.get(n["id"], 0),
                     "path_shape_boost": shape_boosts.get(n["id"], 0),
                     "ffi_signature": ffi_flags.get(n["id"], False),
                     # WI-jozah: the cohort the summary already counted, now
@@ -8580,6 +8634,24 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
                     "reachability": _reachability_of(n["id"]),
                 }
                 for n in dead_candidates
+            ],
+            # INV-hugit (D): the demoter's residue, disclosed rather than
+            # silently dropped — the treatment ``entrypoint_only_dead`` and
+            # ``test_only_reachable_candidates`` already get. ALWAYS PRESENT,
+            # empty when nothing was demoted: a reader must be able to tell
+            # "the demoter ran and took nothing" from "this build has no such
+            # bucket", which is this project's absent-versus-empty rule.
+            "cross_language_demoted": [
+                {
+                    "name": n.get("name", ""),
+                    "path": n.get("path", ""),
+                    "language": n.get("language", ""),
+                    "kind": n.get("kind", ""),
+                    "id": n["id"],
+                    "cross_language_hits": cross_lang_hits.get(n["id"], 0),
+                    "config_name_hits": config_name_hits.get(n["id"], 0),
+                }
+                for n in cross_lang_demoted
             ],
         }
         print(json.dumps(
@@ -8602,6 +8674,12 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             # dispatch:F2 disclosure buckets.
             print(f"  entrypoint-only view would flag: {entrypoint_only_dead}")
             print(f"  reachable only from tests:       {test_only_reachable}")
+        # INV-hugit: the demoter's residue is disclosed in the text view too,
+        # and unconditionally — a reader of the default output must be able to
+        # tell "nothing was demoted" from "this view does not say".
+        print(f"  withheld by cross-language hits: "
+              f"{len(cross_lang_demoted)}"
+              f"{' (--cross-lang-threshold 0 to see them)' if cross_lang_demoted else ''}")
         print()
 
         if dead_candidates:

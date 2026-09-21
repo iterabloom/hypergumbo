@@ -151,7 +151,13 @@ READ_VIEW_SCHEMA_VERSION = "0.1.0"
 # ``test_cli_test_coverage``), so every bump of the shared constant is a
 # four-file edit in views that have nothing to do with the change. That cost is
 # the signal that the placeholder had stopped fitting.
-DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.2.0"
+# 0.3.0 (INV-hugit): ADDITIVE. A new top-level ``cross_language_demoted``
+# listing -- the candidates the cross-language demoter removed, disclosed
+# rather than published as a bare count -- and a new ``config_name_hits``
+# field on every ``dead_candidates`` row, carrying the manifest-substring
+# tally that no longer demotes on its own. Nothing is removed or renamed, so
+# a 0.2.0 reader keeps working; the MINOR bump announces the two additions.
+DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.3.0"
 # WI-huhin: spec Appendix C mandates `hypergumbo-evidence-vMAJOR.MINOR`. This
 # emitted a bare `v2`, which did not match that grammar and left MINOR
 # unexpressible — so ADR-0039's refinement (new evidence types, precisely what
