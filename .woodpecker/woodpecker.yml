@@ -462,6 +462,44 @@ steps:
           exit 1
         fi
 
+        # WI-fopuh: THE FILE ON DISK IS NOT NECESSARILY THE FILE THE PR COMMITTED.
+        # These steps share ONE workspace, and `smart-test` resolves its manifest
+        # path from its OWN location (`cd "$REPO_ROOT"`, then the literal ".ci"),
+        # never the caller's cwd. So any step that reaches it rewrites the
+        # checked-out manifest: `forge-arms` runs tests/test_autopr_*.py, those
+        # shell out to the real scripts/auto-pr, and auto-pr regenerates the
+        # manifest before pushing. That container installs pytest and nothing
+        # else, so the regen took smart-test's "no stable hypergumbo found"
+        # branch and wrote a FULL-SUITE manifest over the checked-out one. This
+        # step then announced "964 selected files" -- exactly the full-suite
+        # `find` count -- for PR #1107, whose committed manifest listed 75, and
+        # measured a five-line change against the whole tree. It cost five CI
+        # rounds, and the only evidence was a count with no traceable source.
+        #
+        # The writer is fixed (smart-test now refuses a foreign cwd). This is the
+        # reader: take the blob the PR COMMITTED, and disclose any disagreement.
+        # It DISCLOSES rather than fails -- measuring the committed artifact is
+        # the safety property, and turning an unexplained rewrite into a red PR
+        # is the recall-loss direction.
+        MANIFEST_SRC="$MANIFEST"
+        if COMMITTED_MANIFEST=$(git show "HEAD:$MANIFEST" 2>/dev/null) && [ -n "$COMMITTED_MANIFEST" ]; then
+          if [ "$COMMITTED_MANIFEST" != "$(cat "$MANIFEST")" ]; then
+            echo "⚠️  the workspace manifest is NOT the blob committed at HEAD — a step"
+            echo "    in this pipeline rewrote it (WI-fopuh). Measuring the PR against"
+            echo "    the COMMITTED one. What was on disk instead:"
+            sed -n '1,8p' "$MANIFEST" | sed 's/^/      /'
+          fi
+          MANIFEST_SRC="$(mktemp)"
+          printf '%s\n' "$COMMITTED_MANIFEST" > "$MANIFEST_SRC"
+        else
+          echo "ℹ️  cannot read HEAD:$MANIFEST — using the working-tree copy. That is"
+          echo "    a fallback, NOT a statement that the two agree."
+        fi
+        # The step used to report selection as a COUNT and nothing else, which is
+        # untraceable to a file. Say which manifest was read.
+        echo "=== manifest read by this step ==="
+        sed -n '1,8p' "$MANIFEST_SRC" | sed 's/^/  /'
+
         # WI-modur: the ONLY question that decides whether tests run is "did the
         # manifest select any?". This used to key on CHANGED **SOURCE** files
         # instead, which silently skipped the suite for every PR that touched no
@@ -470,7 +508,7 @@ steps:
         # Caught on the WI-fodad PR: its manifest carried 0 changed source files
         # and 1 selected test, and CI ran nothing. The two concerns were
         # conflated in one condition; they are separated below.
-        SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+        SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST_SRC" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
         if [ -z "$SELECTED_TESTS" ]; then
           echo "✅ manifest selects no tests — skipping pytest"; exit 0
         fi
@@ -482,7 +520,7 @@ steps:
         # failed, re-running it just fails again silently and this would size the
         # coverage gate off an empty set (WI-vilor).
         ACTUAL_SOURCE_FILES=$(echo "$CHANGED_IN_RANGE" | grep -E '^packages/.*/src/.*\.py$' | sort || true)
-        CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || true)
+        CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST_SRC" | grep -v '^#' | grep -v '^$' || true)
         # Trust the actual diff when the manifest is missing files (staged-before-run drift).
         for f in $ACTUAL_SOURCE_FILES; do
           echo "$CHANGED_SOURCE_FILES" | grep -qF "$f" || CHANGED_SOURCE_FILES="$ACTUAL_SOURCE_FILES"

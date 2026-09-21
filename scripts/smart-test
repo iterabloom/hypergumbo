@@ -32,6 +32,45 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── WI-fopuh: this script writes the manifest of the repo it LIVES in ────────
+# Everything below is relative to REPO_ROOT (the `cd` at the end of this block)
+# and MANIFEST_DIR is the literal ".ci", so the caller's working directory never
+# enters the decision. Invoking /A/scripts/smart-test from inside repo /B
+# therefore does not produce /B's manifest and does not fail: it rewrites /A's
+# COMMITTED .ci/affected-tests.txt -- the artifact the next PR is measured with
+# -- and says nothing.
+#
+# That is not hypothetical. tests/test_autopr_*.py drive the real scripts/auto-pr
+# with cwd set to a throwaway fixture repo, and auto-pr regenerates the manifest
+# before pushing, so those runs rewrote the working tree's manifest as a side
+# effect. In CI the Woodpecker steps share ONE workspace and it was worse: the
+# forge-arms step installs pytest and nothing else, so the regen reached the
+# "no stable hypergumbo found" branch below and wrote a FULL-SUITE manifest over
+# the checked-out one. The pytest step ran later, read that file, and measured
+# PR #1107 against 964 files -- exactly the full-suite `find` -- from a manifest
+# that committed 75. Five CI rounds and three unrelated latent defects later,
+# the only evidence was a count with no traceable source.
+#
+# Refuse rather than guess which repo was meant. Scoped to the case shown to
+# bite: a cwd inside a DIFFERENT git repo. A cwd in no repo at all names no
+# competing manifest, so it keeps today's behaviour.
+_caller_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -n "$_caller_root" ]] &&
+	[[ "$(cd "$_caller_root" && pwd -P)" != "$(cd "$REPO_ROOT" && pwd -P)" ]]; then
+	echo "ERROR: smart-test belongs to $REPO_ROOT," >&2
+	echo "       but the current directory is inside $_caller_root." >&2
+	echo "" >&2
+	echo "Running it from here would rewrite" >&2
+	echo "  $REPO_ROOT/.ci/affected-tests.txt" >&2
+	echo "-- a committed artifact of a repo you are not in -- and report nothing." >&2
+	echo "" >&2
+	echo "Either:" >&2
+	echo "  1. cd $REPO_ROOT, then re-run, OR" >&2
+	echo "  2. run $_caller_root/scripts/smart-test (that repo's own copy)." >&2
+	exit 3
+fi
+
 cd "$REPO_ROOT"
 
 # ── Flock guard: prevent concurrent smart-test invocations ──
