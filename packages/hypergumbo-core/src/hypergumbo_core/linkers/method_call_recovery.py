@@ -145,6 +145,74 @@ def _declared_receiver_type(edge: Edge) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+# WI-fihun: TYPE NAMES WHOSE INSTANCES ARE NOT CALLABLE. The class objects are
+# (``int()`` builds an int), but a member DECLARED as one holds an instance, and
+# calling an instance of any of these is a TypeError. Deliberately the builtin
+# scalars and containers only: this list is read as PERMISSION TO REFUSE, so
+# anything not on it must leave the candidate standing.
+_NON_CALLABLE_VALUE_TYPES = frozenset({
+    "bool", "bytearray", "bytes", "complex", "dict", "float", "frozenset",
+    "int", "list", "set", "str", "tuple",
+})
+
+
+def _annotation_bases(annotation: str) -> set[str]:
+    """The unqualified head of every arm of a type annotation.
+
+    ``str | None`` -> ``{"str"}``; ``Optional[str]`` and ``typing.Optional[str]``
+    -> ``{"str"}``; ``list[str]`` -> ``{"list"}``; ``Callable[[], None]`` ->
+    ``{"Callable"}``. ``None`` arms are dropped -- an optional scalar is still a
+    scalar, and keeping the arm would defeat every refusal below.
+
+    WRAPPERS IT HAS NOT BEEN TAUGHT ARE LEFT WHOLE, on purpose. ``Union[...]``
+    and ``ClassVar[list[str]]`` return their own head, which is not in
+    ``_NON_CALLABLE_VALUE_TYPES``, so the caller refuses nothing. Under-refusal
+    is the safe direction here: a missed refusal leaves one wrong edge, while an
+    over-eager one silently deletes a correct recovery.
+    """
+    bases: set[str] = set()
+    for arm in annotation.split("|"):
+        head, _, rest = arm.strip().partition("[")
+        head = head.strip().rsplit(".", 1)[-1]
+        if head == "Optional" and rest.endswith("]"):
+            bases |= _annotation_bases(rest[:-1])
+        elif head and head not in ("None", "NoneType"):
+            bases.add(head)
+    return bases
+
+
+def _declares_non_callable_value(member: "Symbol") -> bool:
+    """Does the repository state that this member holds a non-callable value?
+
+    A POSITIVE refusal, per the polarity this linker already takes with
+    ``_hint_agrees_with_declared``: the answer is True only when a declaration
+    is PRESENT and every arm of it is a type we can vouch for as non-callable.
+    Absent evidence is not evidence -- a member with no declared type stays a
+    candidate.
+
+    A BLANKET ``kind == "field"`` REFUSAL WOULD BE WRONG, which is why this reads
+    the type instead: a JS/TS class property and a Python dataclass field can
+    both hold a callable, and ``js_ts.py`` records ``property_signature`` members
+    as ``field``.
+
+    ``Symbol.signature`` HOLDS BOTH A VALUE TYPE AND A CALL SIGNATURE depending
+    on the member, and the discriminator is a parenthesis: ``int`` is a type,
+    ``(self) -> int`` is a signature whose RETURN type is int and whose member is
+    perfectly callable. Reading the second as the first would refuse real
+    methods, so a parenthesised signature is declined outright rather than
+    parsed. (Reading this field at all is an eighth instance of an existing
+    pattern and is filed as INV-lotoh: its ``free-text`` axis justification
+    claims no consumer branches on the value, which eight shipped sites already
+    contradict. It is also the only place a Python field's declared type is
+    recorded.)
+    """
+    signature = (member.signature or "").strip()
+    if not signature or "(" in signature:
+        return False
+    bases = _annotation_bases(signature)
+    return bool(bases) and bases <= _NON_CALLABLE_VALUE_TYPES
+
+
 def _hint_agrees_with_declared(hint_class: "Symbol", declared: str) -> bool:
     """Does this class hint name the type the producer declared for the receiver?
 
@@ -291,8 +359,18 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 ):
                     continue
                 method = class_methods.get(hint.dst, {}).get(name)
-                if method is not None:
-                    candidates.append((hint, method))
+                if method is None:
+                    continue
+                # WI-fihun: a member the repository declares as a non-callable
+                # value cannot be what this call dispatched to. Dropped from the
+                # CANDIDATE SET rather than abandoning the site, so a sibling
+                # class that really does declare the method still wins -- the
+                # same shape as the declared-receiver refusal above. Measured:
+                # ``m.start()`` / ``m.end()`` on a ``re.Match`` bound to
+                # ``ItemIdMatch.start`` / ``.end``, both declared ``int``.
+                if _declares_non_callable_value(method):
+                    continue
+                candidates.append((hint, method))
             if not candidates:
                 continue
             # Pick the candidate whose hint is closest in line number to

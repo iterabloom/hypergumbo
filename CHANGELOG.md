@@ -141,6 +141,13 @@ Design only — nothing in the pipeline changes in this release. ADR-0012 §Step
 
 ### Fixed
 
+#### A declared non-callable is evidence against a method binding (WI-fihun)
+
+- **`method-call-recovery-linker` bound `calls` edges to members that cannot be called.** Measured on a single-backend Python self-survey, the linker emits 64 edges of which 16 are wrong; two of those bound `m.start()` / `m.end()` on a `re.Match` to `ItemIdMatch.start` / `.end`, both declared `int`. Calling an int instance is a `TypeError`, so the binding was outside the linker's own premise — it stamps `call_construct="method"`.
+- **The gate reads the declared type, not the symbol kind.** A blanket `kind == "field"` refusal would be wrong: a JS/TS class property and a Python dataclass field can both hold a callable, and `js_ts.py` records `property_signature` members as `field`. The refusal is positive — it fires only when a declaration is present and *every* arm of it is a builtin scalar or container. `Optional[str]`, `str | None` and `list[str]` are refused; `Callable[[], None]`, a project class, an absent declaration and anything wrapped in a qualifier the parser has not been taught (`ClassVar[...]`, `Union[...]`) are not. Under-refusal is the safe direction: a missed refusal leaves one wrong edge, an over-eager one silently deletes a correct recovery.
+- **A parenthesis discriminates a value type from a call signature.** `Symbol.signature` holds `int` for a field and `(self) -> int` for a method; reading the second as the first would refuse real methods, so a parenthesised signature is declined outright rather than parsed.
+- **The refusal drops a candidate, not the call site**, so a sibling class that really does declare the method still wins — pinned by a test where the non-callable's hint is *nearer* the call and would otherwise win the line-proximity tiebreaker.
+
 #### A failed manifest regen says which failure it was (WI-furum)
 
 - **`auto-pr` ran the regen as `smart-test --manifest >/dev/null 2>&1`**, so every non-zero exit — hypergumbo not installed, the slice crashing, or WI-fopuh's refusal to write the manifest of a repo the caller is not in — arrived as one fixed line: `⚠️ Manifest generation skipped (no stable hypergumbo?)`. One message standing in for several causes is this project's absent-versus-empty defect at the diagnostics layer: not silence, but a confident wrong answer, with no way back to the real one. The parenthetical named the first of the three and was wrong for the case that now fires on every `tests/test_autopr_*.py` fixture run.
