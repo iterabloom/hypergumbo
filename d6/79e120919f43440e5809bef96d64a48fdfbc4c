@@ -1,0 +1,45 @@
+Original commit body from d04b84b34676242e08b60b0edd7063cc4b0b131e:
+
+The cross-language demoter mapped .json/.yaml/.yml/.toml/.xml/.html to a
+pseudo-language "config" and hard-excluded any candidate whose short name
+appeared as a substring in three such files. Its own rationale is
+cross-language DISPATCH -- an HTTP route, an RPC method, an FFI name --
+and a YAML file mentioning a Python symbol is a manifest, not a
+dispatcher.
+
+MEASURED BEFORE CODING: 112 of 207 demotions (54%) had fewer than three
+hits in any real other-language file. The worst shapes make the case
+better than the ratio: extract (66 config hits, 1 code), matches (30, 1),
+_label (24, ZERO) -- a leading-underscore private helper with no
+cross-language dispatch story at all, deleted from the report by
+substring collisions in YAML.
+
+TWO HALVES, ONE CHANGE, because either alone is wrong.
+(A) The threshold now reads only real other-language files. This is what
+    the invariant's statement compels -- "a substring collision between
+    its short name and a non-code manifest file is not such evidence" --
+    not a judgement made here. The manifest tally is KEPT and published
+    per candidate as config_name_hits; the signal is demoted, not deleted.
+(D) The demotions that remain are DISCLOSED in a cross_language_demoted
+    listing, the treatment entrypoint_only_dead and
+    test_only_reachable_candidates already get. It is always present and
+    empty when nothing was demoted, so a reader can tell "the demoter ran
+    and took nothing" from "this view does not say". The text renderer
+    gains the same line unconditionally.
+
+(A) alone is a one-directional loosening; (D) alone leaves the statement
+violated.
+
+MEASURED EFFECT on this repository: dead candidates 2282 -> 2402 (+120),
+demotions 207 -> 87, all 87 now listed. The 34 non-test python __init__
+methods no default run could show come back -- the cohort whose
+invisibility manufactured INV-rolok's "0 of 2,152 dead candidates are
+__init__" sizing claim.
+
+DEAD_CODE_MAYBE_SCHEMA_VERSION 0.2.0 -> 0.3.0, additive: nothing removed
+or renamed, so a 0.2.0 reader keeps working.
+
+Addresses INV-hugit -- closed after merge, with the merge SHA as
+evidence.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
