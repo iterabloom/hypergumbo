@@ -67,6 +67,8 @@ def _sandbox(
     changed_files: list[str],
     diff_fails: bool = False,
     prev_sha_resolvable: bool = True,
+    committed_manifest: str | None = None,
+    committed_readable: bool = True,
 ) -> tuple[Path, Path]:
     """A fake repo + a REPLACED PATH holding only the stubs we intend (L49).
 
@@ -75,10 +77,19 @@ def _sandbox(
     `prev_sha_resolvable` controls whether `git cat-file -e <sha>^{commit}`
     succeeds, which is how the block decides whether to trust
     CI_PREV_COMMIT_SHA.
+    `committed_manifest` is what `git show HEAD:.ci/affected-tests.txt` returns
+    -- the blob the PR actually committed, which WI-fopuh showed is not always
+    the file sitting on disk. It defaults to the on-disk body (the ordinary
+    case, where nothing rewrote it). `committed_readable=False` makes that read
+    FAIL instead, the way it would for a manifest untracked at HEAD.
     """
     repo = tmp_path / "repo"
     (repo / ".ci").mkdir(parents=True)
     (repo / ".ci" / "affected-tests.txt").write_text(manifest_body)
+    committed_blob = tmp_path / "committed-manifest.txt"
+    committed_blob.write_text(
+        manifest_body if committed_manifest is None else committed_manifest
+    )
 
     bindir = tmp_path / "bin"
     bindir.mkdir()
@@ -99,10 +110,19 @@ def _sandbox(
     catfile_rc = "0" if prev_sha_resolvable else "1"
     # `cat-file` must be matched BEFORE the generic arms; the block calls it as
     # `git cat-file -e <sha>^{commit}`.
+    # `show HEAD:<path>` must be matched before the generic arms too; it is how
+    # the block reaches the blob the PR committed rather than the working file.
+    show_arm = (
+        f"    cat {str(committed_blob)!r}" if committed_readable
+        else "    exit 128"
+    )
     (bindir / "git").write_text(textwrap.dedent("""\
         #!/usr/bin/env bash
         case "$*" in
           *"cat-file -e"*) exit __CATFILE_RC__ ;;
+          *"show HEAD:"*)
+        __SHOW__
+            ;;
           *"merge-base"*) echo "basesha" ;;
           *"diff --name-only"*)
         __DIFF__
@@ -110,7 +130,8 @@ def _sandbox(
           *) : ;;
         esac
         exit 0
-    """).replace("__DIFF__", diff_lines).replace("__CATFILE_RC__", catfile_rc))
+    """).replace("__DIFF__", diff_lines).replace("__CATFILE_RC__", catfile_rc)
+       .replace("__SHOW__", show_arm))
     # `pytest` stub: records that it ran, and passes.
     (bindir / "pytest").write_text(textwrap.dedent(f"""\
         #!/usr/bin/env bash
@@ -288,4 +309,133 @@ def test_no_skip_condition_keys_on_changed_source(tmp_path: Path) -> None:
     assert "no python source files changed" not in lowered, (
         "the source-keyed skip is back; it makes test-only, scripts/, and "
         ".agent/hooks/ pull requests run no tests while reporting green"
+    )
+
+
+# ── WI-fopuh: the file on disk is not necessarily the file the PR committed ──
+#
+# The Woodpecker steps share ONE workspace. `smart-test` resolves its manifest
+# path from its OWN location, never the caller's cwd, so any step that reaches
+# it rewrites the checked-out `.ci/affected-tests.txt`: `forge-arms` runs
+# `tests/test_autopr_*.py`, those shell out to the real `scripts/auto-pr`, and
+# auto-pr regenerates the manifest before pushing. That container installs
+# pytest and nothing else, so the regen fell back to a FULL-SUITE manifest.
+# PR #1107's pytest step then announced `964 selected files` -- the full-suite
+# `find` count -- for a PR whose committed manifest listed 75, and ran the whole
+# tree. The root cause is fixed at the writer (scripts/smart-test now refuses a
+# foreign cwd); these tests pin the reader, so a second writer cannot make the
+# gate silently measure the wrong set again.
+#
+# The gate DISCLOSES rather than fails. Measuring the committed artifact is the
+# safety property; turning an unexplained rewrite into a red PR is the
+# recall-loss direction, and the disclosure is what makes the next one
+# diagnosable in one look instead of five CI rounds.
+
+MANIFEST_CLOBBERED = (
+    "# Mode: full-suite\n"
+    "# === CHANGED_SOURCE_FILES ===\n"
+    "# === SELECTED_TESTS ===\n"
+    "tests/test_everything_else.py\n"
+)
+
+
+def test_the_gate_reads_the_committed_manifest_not_the_workspace_copy(
+    tmp_path: Path,
+) -> None:
+    """THE regression: a rewritten workspace manifest must not steer the gate."""
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_CLOBBERED,
+        committed_manifest=MANIFEST_TEST_ONLY,
+        changed_files=["tests/test_something.py"],
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+
+    assert marker.exists(), (
+        f"pytest never ran.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    invoked = marker.read_text()
+    assert "tests/test_something.py" in invoked, (
+        "the gate ran the WORKSPACE manifest's selection, not the one the PR "
+        f"committed.\npytest args: {invoked}\nstdout:\n{result.stdout}"
+    )
+    assert "tests/test_everything_else.py" not in invoked, (
+        f"the clobbered selection reached pytest anyway.\npytest args: {invoked}"
+    )
+
+
+def test_a_rewritten_manifest_is_disclosed(tmp_path: Path) -> None:
+    """Reading the right file silently would leave the rewrite undiagnosable."""
+    repo, _ = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_CLOBBERED,
+        committed_manifest=MANIFEST_TEST_ONLY,
+        changed_files=["tests/test_something.py"],
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+
+    assert "WI-fopuh" in result.stdout, (
+        f"the divergence is not attributed to anything:\n{result.stdout}"
+    )
+    assert "Mode: full-suite" in result.stdout, (
+        "the disclosure must show the header of the file that was on disk — "
+        "without it the reader still cannot tell WHAT overwrote it.\n"
+        f"{result.stdout}"
+    )
+
+
+def test_an_undisturbed_manifest_is_not_flagged(tmp_path: Path) -> None:
+    """The DIFFERENCE arm (L17). A warning printed on every run is not read."""
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_TEST_ONLY,
+        changed_files=["tests/test_something.py"],
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+
+    assert marker.exists(), f"pytest never ran:\n{result.stdout}\n{result.stderr}"
+    assert "WI-fopuh" not in result.stdout, (
+        f"an untouched manifest was reported as rewritten:\n{result.stdout}"
+    )
+
+
+def test_the_step_prints_the_header_of_the_manifest_it_read(tmp_path: Path) -> None:
+    """The filed ask: make the file observable, not just its cardinality.
+
+    The whole investigation cost what it did because the step's only output
+    about selection was a COUNT, which cannot be traced back to a file.
+    """
+    repo, _ = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_TEST_ONLY,
+        changed_files=["tests/test_something.py"],
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+
+    assert "=== CHANGED_SOURCE_FILES ===" in result.stdout, (
+        f"the step does not show the manifest it read:\n{result.stdout}"
+    )
+
+
+def test_an_unreadable_committed_blob_falls_back_and_says_so(tmp_path: Path) -> None:
+    """Absent is not empty: a failed `git show` is not evidence of agreement.
+
+    The working-tree copy is still the best available answer, so the step uses
+    it — but it must not present that as having read the committed artifact.
+    """
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=MANIFEST_TEST_ONLY,
+        committed_readable=False,
+        changed_files=["tests/test_something.py"],
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+
+    assert marker.exists(), (
+        "an unreadable committed blob must not stop the suite — that is the "
+        f"fail-open direction WI-vilor already paid for.\n{result.stdout}"
+    )
+    assert "tests/test_something.py" in marker.read_text()
+    assert "working-tree" in result.stdout, (
+        f"the fallback is not declared:\n{result.stdout}"
     )
