@@ -42,3 +42,25 @@
   clock: 4  # bedd
   nonce: bedd  # bedd
   message: "Owner approved the change to scripts/auto-pr (governance) and moved the row to todo_soft. Implementing: capture smart-test's stderr instead of discarding it, print it under the warning, and name the exit code so the cause is recoverable. No behaviour change -- the regen is still skipped and the run still proceeds."  # bedd
+- op: update  # e3f6
+  at: '2026-09-21T00:38:18Z'  # e3f6
+  by: agent  # e3f6
+  actor: jgstern_agent  # e3f6
+  clock: 5  # e3f6
+  nonce: e3f6  # e3f6
+  set:  # e3f6
+    status: done  # e3f6
+- op: discuss  # 538c
+  at: '2026-09-21T00:38:18Z'  # 538c
+  by: agent  # 538c
+  actor: jgstern_agent  # 538c
+  clock: 6  # 538c
+  nonce: 538c  # 538c
+  message: "FIXED. Owner approved the governance change; implemented in one hunk of do_pr.\n\nBEHAVIOURAL EVIDENCE -- a live run of the real auto-pr from a fixture repo (AUTO_PR_SIMULATE_OUTAGE=1, so no network):\n\nBEFORE:\n       ⚠️  Manifest generation skipped (no stable hypergumbo?)\n\nAFTER:\n       ⚠️  Manifest generation skipped (smart-test exited 3):\n          ERROR: smart-test belongs to /home/jgstern_agent/hypergumbo,\n                 but the current directory is inside /tmp/.../fakerepo.\n\n          Running it from here would rewrite\n            /home/jgstern_agent/hypergumbo/.ci/affected-tests.txt\n          -- a committed artifact of a repo you are not in -- and report nothing.\n\n          Either:\n            1. cd /home/jgstern_agent/hypergumbo, then re-run, OR\n            2. run /tmp/.../fakerepo/scripts/smart-test (that repo's own copy).\n\nA stable hypergumbo IS installed on this machine, which is exactly the point: the old line asserted a cause nobody had checked.\n\nIMPLEMENTATION NOTE worth keeping. $? is captured as the FIRST statement of the else branch. Any command ahead of it -- including the echo that reports it -- overwrites $?, and the status is the one piece of evidence stderr cannot restate. An EMPTY stderr is reported as its own distinct fact (\"it said nothing -- is a stable hypergumbo installed?\"), which is the only case where the old guess was defensible; collapsing \"it explained itself\" into \"it said nothing\" would rebuild the defect one level down.\n\nTESTS: tests/test_autopr_manifest_regen_reason.py, 6.\n  - 4 that were RED before the change: the relay, the reported exit status, the removed hypergumbo guess, and the composed end-to-end path against the REAL smart-test (a fixture repo is a foreign cwd, so WI-fopuh's guard fires and its text must reach the operator).\n  - 2 DIFFERENCE ARMS that passed before and still pass: a successful regen is not reported as skipped, and AUTO_PR_SKIP_MANIFEST=1 does not borrow the failure line. Without them an implementation that printed the warning unconditionally would satisfy every other assertion in the file.\n  - The harness copies scripts/ AND .githooks/ into a throwaway tree, so the stub smart-test's exit code and stderr are the test's to choose. .githooks/ is load-bearing: without brand-scrub.sh auto-pr aborts at the title scrub, 14 lines ABOVE the code under test, and it looks exactly like the feature not working. AUTO_PR_SIMULATE_OUTAGE=1 keeps the run off the network (the outage branch sits after the regen block), because a test that passes because a push fails fast is a flake with a good day.\n\nLocal: 419 passed across the auto-pr/CI/smart-test slice, 2337 across the full affected slice.\n\nNOT ASSERTED: no claim that this is the last one-message-many-causes site in auto-pr. This closes the filed instance; the general sweep is not done."  # 538c
+- op: discuss  # 0c0a
+  at: '2026-09-21T00:42:02Z'  # 0c0a
+  by: agent  # 0c0a
+  actor: jgstern_agent  # 0c0a
+  clock: 7  # 0c0a
+  nonce: 0c0a  # 0c0a
+  message: "MERGED as PR #1112, dev 1f746ffdc4. The per-PR gate at that SHA read its committed manifest (the WI-fopuh reader disclosure printed no divergence), and the convergence audit over the last 12 invocations is CONVERGED: 3 merged, 3 ci_failed, 6 detached_watching, zero undeclared."  # 0c0a
