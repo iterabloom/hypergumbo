@@ -649,7 +649,7 @@ class Symbol:
     is_exported: Optional[bool] = None  # WI-zimum: public API; None = unobserved (INV-kubup)
     cyclomatic_complexity: Optional[int] = None
     line_span: Optional[int] = None
-    signature: Optional[str] = None  # axis: free-text — callable signature string in source-language grammar; consumers display, never branch on the value itself.
+    signature: Optional[str] = None  # axis: callable-signature — ADR-0058; see hypergumbo_core.signature_axis. The facts inside have declared homes (FACT_HOMES); the nine consumers that parse the value are grandfathered and closed.
     docstring: Optional[str] = None  # axis: free-text — natural-language summary from the source comment; consumers display/log/hash, never branch on the value itself.
     modifiers: List[str] = field(default_factory=list)
     discovery_language: Optional[str] = None  # axis: language

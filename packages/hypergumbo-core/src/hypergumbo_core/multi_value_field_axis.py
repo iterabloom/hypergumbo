@@ -122,6 +122,7 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     from .module_key_axis import all_module_key_notions
     from .protocol_origins import all_protocol_origin_names
     from .qualified_name_axis import all_qualified_name_languages
+    from .signature_axis import all_signature_notions
     from .symbol_kinds import all_symbol_kind_names
     from .visibility import all_known_visibility_levels
     from .pass_silence import all_pass_silence_reason_names
@@ -143,6 +144,10 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
         "pass-id": all_known_pass_ids,
         "protocol-origin": all_protocol_origin_names,
         "qualified-name": all_qualified_name_languages,
+        # INV-lotoh/ADR-0058: what Symbol.signature may hold. Structural
+        # policy (qualified-name / module-key shape): the resolver returns
+        # the axis's NOTIONS, since signature strings are unenumerable.
+        "callable-signature": all_signature_notions,
         # WI-pupiz: entrypoint-kind catalog (single source = EntrypointKind).
         "entrypoint-kind": all_known_entrypoint_kinds,
         # INV-jusot: canonical visibility levels (closed enum).
