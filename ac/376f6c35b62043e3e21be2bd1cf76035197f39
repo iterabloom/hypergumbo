@@ -1,0 +1,37 @@
+Original commit body from 05490abf71d357b44cac3c04672a5a1082d8d1be:
+
+py.py's receiver-hint chain is entered only for a bare ast.Name receiver
+(py.py:8093), so `obj.member.method()` -- whose func.value is itself an
+ast.Attribute -- never entered it and fell through to the INV-mumov `external`
+placeholder with no hint. The method-call-recovery linker then bound by line
+proximity: on the filed repro `ts.workspace.add(...)` bound to `TrackerSet.add`
+instead of `Store.add`, emitted is_resolved=True at confidence 0.50. A
+confidently wrong call edge, not a missing one.
+
+Both halves already existed and are joined rather than re-derived: var_types
+types the root from a direct constructor, the intervening member carries
+meta["return_type"] (WI-ribak), _declared_return_type_name reads it -- including
+the quoted forward-reference spelling WI-fihun taught it -- and
+_resolve_return_type_class resolves it to a class Symbol. The walk applies them
+one hop at a time, so a three-hop chain works for the same reason a two-hop one
+does.
+
+Every failed hop is a hard stop. A minted receiver_type_hint is TRUSTED
+downstream (it bypasses gate_named_entry and the ambiguous-names net), so
+falling back to the last class the walk was sure about would stamp `TrackerSet`
+with full confidence -- the original bug reached from the other side. Both stops
+are pinned by negative tests that were mutated, watched go red, and restored.
+receiver_type_id passes the same WI-supat gate the one-hop branch uses.
+
+Narrowness inherited deliberately from _declared_return_type_name: only a simple
+identifier infers, so `-> Optional[Store]` / `-> list[Store]` stamp nothing.
+
+MEASURED REACH on this repository: 15 of 9,634 external placeholders (0.16%)
+newly carry a hint, all 15 with a trustworthy id, and all 15 the filed
+instance's own `Store` shape. The correctness win is verified end to end -- the
+false TrackerSet.add edge is gone and Store.add resolves in its place -- but the
+recall effect on this corpus is small and is reported as such, not as recall.
+
+Addresses WI-fikoh.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
