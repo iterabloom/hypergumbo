@@ -144,3 +144,18 @@
   nonce: c109  # c109
   set:  # c109
     pr_ref: '1134'  # c109
+- op: update  # 231d
+  at: '2026-09-22T22:44:07Z'  # 231d
+  by: agent  # 231d
+  actor: jgstern_agent  # 231d
+  clock: 18  # 231d
+  nonce: 231d  # 231d
+  set:  # 231d
+    status: satisfied  # 231d
+- op: discuss  # 7950
+  at: '2026-09-22T22:44:08Z'  # 7950
+  by: agent  # 7950
+  actor: jgstern_agent  # 7950
+  clock: 19  # 7950
+  nonce: '7950'  # 7950
+  message: "SATISFIED on behavioural evidence. PR #1134 (562e5a3b8b) + PR #1136 (b5146af1d8).\n\nTHE STATEMENT: every Edge a linker produces records the Symbols/Edges it consumed.\n\nTHE FILED REPRO, RE-RUN. The reopen counterexample was type-hierarchy-linker: 342 of 342 edges endpoints-only, even though it joins on extends/implements edges. On a fresh self-survey that linker now emits 343 of 343 as chains naming the admitted inheritance edges. The 06-05 validation's finding (\"every populated derived_from == {src,dst}, uniform chain-len 2, the (or Edge) clause unexercised\") no longer holds either: 841 edges carry a chain, and every one of them names a consumed EDGE.\n\nEVERY SITE NOW STATES WHAT IT CONSUMED (93 Edge.create sites, AST-classified):\n  - 17 + 6 name records beyond their endpoints. The 17 are new: consumed unresolved/import edges, inheritance paths, qualifying classes and modules, gating manifest entries. The 6 already did (inherited-calls x5, method-call-recovery).\n  - 9 former `incomplete` sites now name their walked ancestors and edges: the _transitive_bases family, view templates, DI heuristic bindings, fire.Fire.\n  - 24 are declared honest endpoints-only (`# derived-from endpoints: <reason>`).\n  - 20 record [] (consumed nothing, both ends minted; schema 0.20.13).\n  - 16 keep only the one consumed endpoint (the other is minted).\n  - 0 are declared `incomplete`.\nThe guard reads VALUES. A restating or empty value needs a declaration, and a declaration on a richer value is refused as stale.\n\nPRODUCTION-PATH EVIDENCE BEYOND THIS REPO: koel (Laravel), view-template-linker 4 endpoints-only -> 4 chains, edge set identical. Every new provenance site is mutation-checked: removing it turns its pin red.\n\nNOT ASSERTED:\n  - That the 24 `endpoints` declarations are all true. Each rests on a read of the site by a research pass plus mine, and the guard cannot check the content of a declaration.\n  - That transitive (inherited-base) chains are exercised on a real repository. Neither koel nor spring-petclinic nor this repo has one; that half rests on fixture pins.\n  - Anything about analyzer-originated edges, which still carry None by design."  # 7950
