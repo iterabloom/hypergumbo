@@ -2656,6 +2656,32 @@ def _print_edge_provenance(
         # edge is the deferred structural half (declared-fields:F5).
         print("      (no derivation chain — analyzer-produced edge)")
         return
+    # WI-latup: an endpoints-only value is not a derivation chain. Measured on
+    # this repository, 44,813 of the 45,204 edges carrying ``derived_from``
+    # (99.1%) hold EXACTLY the edge's own ``[src, dst]`` — 44,104 of them from
+    # containment-linker — and only 391 name anything the linker consumed
+    # beyond its own endpoints. Printing those as "Derived from: <src>, <dst>"
+    # read as a recorded derivation while edges carrying nothing got the honest
+    # "(no derivation chain)", so the DISPLAY WAS INVERTED: the uninformative
+    # rows looked documented. Restating the endpoints tells a reader nothing the
+    # edge did not already give them.
+    #
+    # Kept DISTINCT from the no-value case above rather than folded into it: a
+    # linker did run here and did record something, and collapsing the two would
+    # hide that. A subset of the endpoints (inheritance.py:350 passes a
+    # one-element list holding the edge's own source) carries no more than the
+    # pair, so the test is ``issubset``, not equality.
+    #
+    # This changes only what the READER is told. Populating the 86 endpoints-only
+    # ``Edge.create`` sites with real consumed inputs is the separate half, and
+    # is per-linker semantic work rather than a sweep.
+    endpoints = {edge_dict.get("src"), edge_dict.get("dst")}
+    if set(derived_from) <= endpoints:
+        print(
+            "      (derivation chain names only this edge's own endpoints — "
+            "no consumed input beyond them was recorded)"
+        )
+        return
     resolved = []
     for sym_id in derived_from:
         node = nodes_by_id.get(sym_id)
