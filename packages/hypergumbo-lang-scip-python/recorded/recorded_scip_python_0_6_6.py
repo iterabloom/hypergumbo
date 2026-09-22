@@ -79,15 +79,21 @@ SAMPLE_PROJECT_PAIRING = {
 }
 # Per attribute over the 10 paired records: (agree, disagree, python only, scip_python only).
 # `name`: the four methods are `Shape.x` here and `x` there. `is_exported`:
-# one-sided to the incumbent on 6 of the 10 — `py.py` computes exportedness
-# for module-level constructs (`__all__`, the underscore convention) and the
-# SCIP arm computes none, so only the incumbent supplies a value. The four
-# MISSING from the count are the methods, for which neither arm has a rule:
-# since INV-kubup the field abstains (`None`) instead of defaulting to a
-# `False` that read as a measurement. `span`: token vs item, by construction.
+# one-sided to the incumbent on ALL 10 — `py.py` computes exportedness and the
+# SCIP arm computes none, so only the incumbent supplies a value.
+#
+# WAS 6 of 10 UNTIL WI-kohah, and the four missing ones were the METHODS. This
+# comment used to read "for which neither arm has a rule: since INV-kubup the
+# field abstains (`None`)" — an accurate description of a PRODUCER GAP that the
+# fixture had been recording as though it were a property of the comparison.
+# py.py now decides a method's exportedness conjunctively (the enclosing class's
+# verdict AND the method not being private-by-name), so the incumbent supplies
+# all 10 and the count is one-sided for the same reason at every record rather
+# than for two different reasons at six and four.
+# `span`: token vs item, by construction.
 SAMPLE_PROJECT_ATTRIBUTE_AGREEMENT = {
     "docstring": (0, 0, 2, 0),
-    "is_exported": (0, 0, 6, 0),
+    "is_exported": (0, 0, 10, 0),
     "kind": (10, 0, 0, 0),
     "name": (6, 4, 0, 0),
     "qualified_name": (0, 0, 8, 0),
