@@ -371,3 +371,102 @@ class TestDatabaseQueryDeclaresOnlyItsDestinationSupplier:
         known = {p.id for p in get_default_catalog().passes}
         assert "sql" in known
         assert ["sql"] in declared["database-query-linker"].depends_on
+
+
+class TestMessageQueueDeclaresNothingBecauseItConsumesNothing:
+    """WI-zujan: the second clean specimen of WI-ditir's family.
+
+    ``message-queue-linker`` declared NINE host languages. Its wrapper is
+
+        result = link_message_queues(ctx.repo_root)
+
+    and ``link_message_queues(root: Path)`` takes the repository root and
+    nothing else. It reads no ``ctx.symbols``, no ``ctx.edges``, and no pass
+    output of any kind; it scans four globs itself and MINTS BOTH ENDS of every
+    edge it emits (its result carries ``symbols`` as well as ``edges``). So no
+    pass supplies its destination either, and the honest declaration is the
+    empty CNF — the registry's documented default.
+
+    Its own comment stated the WI-rasal diagnosis verbatim without noticing:
+    "Kafka/RabbitMQ/SQS/Redis pub-sub clients exist across all common backend
+    languages" is a statement about THE WORLD, where ``depends_on`` is defined
+    as the passes whose OUTPUT this pass reads. Both readings produce a
+    plausible list of language names, which is why nothing caught it.
+
+    This is a stricter case than database-query-linker (WI-ditir), which at
+    least genuinely consumed ``sql``'s ``kind="table"`` symbols and kept
+    ``[["sql"]]``. Here there is nothing to keep.
+    """
+
+    def test_the_clause_is_gone_entirely(self) -> None:
+        declared = {p.id: p for p in get_default_catalog().passes}
+        assert declared["message-queue-linker"].depends_on == []
+
+    def test_no_host_language_is_declared(self) -> None:
+        declared = {p.id: p for p in get_default_catalog().passes}
+        flat = _flatten(declared["message-queue-linker"].depends_on)
+        assert sorted(flat & {"python", "javascript", "ruby", "java", "go"}) == []
+
+    def test_the_wrapper_passes_only_the_repo_root(self) -> None:
+        """The justification, derived from the source rather than asserted: the
+        linker's entry point takes one parameter and it is the root."""
+        import inspect
+
+        from hypergumbo_core.linkers.message_queue import link_message_queues
+
+        params = list(inspect.signature(link_message_queues).parameters)
+        assert params == ["root"]
+
+    def test_the_control_can_fail(self) -> None:
+        """A linker that DOES consume a pass still declares it — so an empty
+        clause here is a finding about this linker, not about the assertion."""
+        declared = {p.id: p for p in get_default_catalog().passes}
+        assert declared["database-query-linker"].depends_on == [["sql"]]
+
+
+class TestGraphqlResolverDeclaresItsSchemaSuppliers:
+    """WI-zujan: the sibling WI-dinum repaired one half of.
+
+    ``graphql-resolver-linker`` declared five HOST languages plus ``graphql``.
+    Its only read of pass output is ``_get_graphql_schema_symbols``, which
+    filters ``ctx.symbols`` on ``language == "graphql"`` and
+    ``kind in ("type", "field", "interface")`` — and nothing else. The RESOLVER
+    side, which is where those five host languages would matter, is read off
+    disk by ``link_graphql_resolvers(ctx.repo_root, schema_symbols)``.
+
+    Its comment contained both readings side by side without noticing the
+    difference: "resolvers live in the language hosting the GraphQL server" is
+    a statement about the world; "Schema docs via the graphql analyzer carry
+    the type/field targets" is the actual dependency.
+
+    BOTH suppliers are declared, not just the analyzer. ``graphql-sdl-linker``
+    emits ``kind == "field"`` symbols at ``language="graphql"`` from SDL
+    embedded in a ``gql`` template, and ``_get_graphql_schema_field_symbols``
+    records that "the GraphQL analyzer has never emitted this kind". So a
+    ``field`` target can come from either, which is the same pair WI-dinum
+    settled on for ``graphql-linker``.
+    """
+
+    def test_the_clause_is_exactly_this(self) -> None:
+        declared = {p.id: p for p in get_default_catalog().passes}
+        assert declared["graphql-resolver-linker"].depends_on == [
+            ["graphql", "graphql-sdl-linker"]
+        ]
+
+    def test_the_host_languages_are_gone(self) -> None:
+        declared = {p.id: p for p in get_default_catalog().passes}
+        flat = _flatten(declared["graphql-resolver-linker"].depends_on)
+        assert sorted(flat & {"javascript", "python", "java", "ruby", "go"}) == []
+
+    def test_it_matches_the_sibling_wi_dinum_already_repaired(self) -> None:
+        """Both halves of the GraphQL pair now name the same suppliers, which
+        is the point: they consume the same schema symbols."""
+        declared = {p.id: p for p in get_default_catalog().passes}
+        assert (
+            declared["graphql-resolver-linker"].depends_on
+            == declared["graphql-linker"].depends_on
+        )
+
+    def test_both_declared_suppliers_are_real_passes(self) -> None:
+        known = {p.id for p in get_default_catalog().passes}
+        assert {"graphql", "graphql-sdl-linker"} <= known

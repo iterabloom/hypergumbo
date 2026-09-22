@@ -652,6 +652,14 @@ class TestBridgeLinkerDependsOnPopulated:
         assert p.depends_on == [["swift"], ["objc"]]
 
 
+#: WI-zujan. The exact phrase a Bridge/Framework/Protocol linker must carry in
+#: its module docstring to be allowed an EMPTY ``depends_on``. A phrase rather
+#: than a flag or an allowlist, because the justification has to live next to
+#: the code it justifies -- an allowlist in the test drifts away from the linker
+#: and is satisfied by adding a name, which is the thing being prevented.
+_EMPTY_DEPENDS_ON_DECLARATION = "``depends_on`` is EMPTY because"
+
+
 class TestINVHujogClosureCriterion:
     """Every Bridge/Framework/Protocol linker has non-empty depends_on.
 
@@ -677,23 +685,96 @@ class TestINVHujogClosureCriterion:
                     break
         return result
 
-    def test_every_bridge_framework_protocol_linker_has_non_empty_depends_on(self) -> None:
+    def _module_docstrings(self) -> dict[str, str]:
+        """{pass_id: module docstring} for every registered linker."""
+        import importlib
+
+        import hypergumbo_core.cli  # linkers register by import side-effect
+        from hypergumbo_core.linkers.registry import _LINKER_REGISTRY
+
+        return {
+            name: (importlib.import_module(reg.func.__module__).__doc__ or "")
+            for name, reg in _LINKER_REGISTRY.items()
+        }
+
+    def _empty_depends_on_offenders(self) -> list[str]:
         catalog = get_default_catalog()
         subcategories = self._all_linkers_with_subcategory()
+        docstrings = self._module_docstrings()
         passes_by_id = {p.id: p for p in catalog.passes}
         offenders: list[str] = []
         for name, cat in subcategories.items():
-            if cat in ("Bridge", "Framework", "Protocol"):
-                p = passes_by_id.get(name)
-                if p is None:
-                    continue
-                if not p.depends_on or all(not clause for clause in p.depends_on):
-                    offenders.append(f"{name} ({cat})")
+            if cat not in ("Bridge", "Framework", "Protocol"):
+                continue
+            p = passes_by_id.get(name)
+            if p is None:
+                continue
+            if p.depends_on and any(clause for clause in p.depends_on):
+                continue
+            if _EMPTY_DEPENDS_ON_DECLARATION in docstrings.get(name, ""):
+                continue
+            offenders.append(f"{name} ({cat})")
+        return offenders
+
+    def test_every_bridge_framework_protocol_linker_has_non_empty_depends_on(self) -> None:
+        """...unless it PROVABLY consumes no pass output and says so (WI-zujan).
+
+        The criterion was written on the premise that a Bridge/Framework/
+        Protocol linker always reads some analyzer's output, and for almost all
+        of them that holds. ``message-queue-linker`` falsifies the premise: its
+        entry point is ``link_message_queues(root: Path)``, it scans the tree
+        itself and mints BOTH ENDS of every edge, so there is no pass to name.
+        Forcing a non-empty clause there does not make the declaration true --
+        it makes it a list of passes the linker never reads, which is the
+        too-wide, false-all-clear shape WI-ditir and WI-zujan exist to remove.
+
+        So the allowance is narrow and POSITIVE: the module docstring must say,
+        in the exact words of ``_EMPTY_DEPENDS_ON_DECLARATION``, why the clause
+        is empty. Silence plus an empty clause is still an offence, because
+        silence is indistinguishable from having forgotten to declare -- which
+        is the case the criterion exists to catch. Owner ruled this amendment
+        2026-09-22 after being shown the collision.
+        """
+        offenders = self._empty_depends_on_offenders()
         assert not offenders, (
             f"Linkers in Bridge/Framework/Protocol categories must declare "
-            f"non-empty depends_on (per WI-dilab closure criterion). Offenders: "
-            f"{offenders}"
+            f"non-empty depends_on (per WI-dilab closure criterion), OR carry "
+            f"{_EMPTY_DEPENDS_ON_DECLARATION!r} in their module docstring "
+            f"explaining why they consume no pass output. Offenders: {offenders}"
         )
+
+    def test_the_allowance_is_actually_exercised(self) -> None:
+        """A branch no linker takes is a branch nothing tests. If this fails,
+        the exception above has become dead and should be removed rather than
+        carried."""
+        catalog = get_default_catalog()
+        docstrings = self._module_docstrings()
+        passes_by_id = {p.id: p for p in catalog.passes}
+        declared_empty = [
+            name for name, doc in docstrings.items()
+            if _EMPTY_DEPENDS_ON_DECLARATION in doc
+            and name in passes_by_id
+            and not any(passes_by_id[name].depends_on)
+        ]
+        assert "message-queue-linker" in declared_empty, declared_empty
+
+    def test_an_undeclared_empty_clause_is_still_an_offence(self) -> None:
+        """The control: without the declaration the gate still fires, so a
+        green result above is evidence about the tree and not about a gate that
+        stopped checking."""
+        catalog = get_default_catalog()
+        passes_by_id = {p.id: p for p in catalog.passes}
+        subcategories = self._all_linkers_with_subcategory()
+        docstrings = dict(self._module_docstrings())
+        docstrings["message-queue-linker"] = "Protocol linker: no declaration."
+        offenders = [
+            name for name, cat in subcategories.items()
+            if cat in ("Bridge", "Framework", "Protocol")
+            and name in passes_by_id
+            and not any(passes_by_id[name].depends_on)
+            and _EMPTY_DEPENDS_ON_DECLARATION not in docstrings.get(name, "")
+        ]
+        assert "message-queue-linker" in offenders
 
     def test_infrastructure_linkers_have_explicit_depends_on(self) -> None:
         # Empty list is OK for Infrastructure; the requirement is that the
