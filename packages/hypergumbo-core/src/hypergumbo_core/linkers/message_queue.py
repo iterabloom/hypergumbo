@@ -6,6 +6,21 @@ This linker detects message queue patterns across multiple languages and creates
 ``message_publish`` / ``message_subscribe`` types were folded onto the canonical
 type by ADR-0023 §6 Phase 3.
 
+``depends_on`` is EMPTY because this linker consumes no pass output (WI-zujan).
+Its entry point is ``link_message_queues(root: Path)``: it takes the repository
+root, scans the tree itself, and MINTS BOTH ENDS of every edge it emits, so no
+analyzer supplies its source side and no pass supplies its destination. The
+clause this replaced named nine host languages on the reasoning that
+"Kafka/RabbitMQ/SQS/Redis pub-sub clients exist across all common backend
+languages" — a statement about the world, where ``depends_on`` is defined as the
+passes whose OUTPUT this pass reads.
+
+This is the declared exception the WI-dilab closure criterion allows for a
+Bridge/Framework/Protocol linker: an empty clause is permitted only when the
+module docstring says, in these words, why it is empty. Silence plus an empty
+clause is still an offence, because that is indistinguishable from forgetting
+to declare — which is the case the criterion exists to catch.
+
 Only ONE direction is emitted. A subscriber is an edge *destination* — there is
 no subscribe-direction edge. The ``-> subscriber`` rows below name the site the
 linker resolves an edge TO, not a second edge type.
@@ -592,9 +607,28 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
     "message-queue-linker",
     priority=55,  # Run after core linkers, with other messaging patterns
     description="Message queue linking (Kafka, RabbitMQ, SQS, Redis pub/sub)",
-    # CNF: Kafka/RabbitMQ/SQS/Redis pub-sub clients exist across all common
-    # backend languages.
-    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "kotlin", "scala"]],
+    # CNF: EMPTY, because this linker consumes no pass output at all.
+    #
+    # WI-zujan, the second clean specimen of WI-ditir's family. The wrapper is
+    # `link_message_queues(ctx.repo_root)`, and that function's signature is
+    # `(root: Path)` — it reads no ctx.symbols, no ctx.edges, and no analyzer's
+    # output. It scans the tree itself and MINTS BOTH ENDS of every edge it
+    # emits (its result carries `symbols` as well as `edges`), so no pass
+    # supplies its destination either. There is nothing to declare.
+    #
+    # The clause this replaces named nine host languages, and the comment above
+    # it stated the WI-rasal diagnosis without noticing: "Kafka/RabbitMQ/SQS/
+    # Redis pub-sub clients exist across all common backend languages" is a
+    # statement about THE WORLD, where depends_on is defined as the passes
+    # whose OUTPUT this pass reads. Both readings produce a plausible list of
+    # language names, which is why nothing caught the difference.
+    #
+    # Stricter than database-query-linker (WI-ditir), which genuinely consumed
+    # sql's kind="table" symbols and kept [["sql"]]. Here there is nothing to
+    # keep. Too wide is the false-all-clear direction: an inner-OR clause is
+    # satisfied by any one member, so nine never-consulted languages kept this
+    # satisfiable on every repository in the corpus.
+    depends_on=[],
     activation=always_on_unreviewed(),
 )
 def message_queue_linker(ctx: LinkerContext) -> LinkerResult:
