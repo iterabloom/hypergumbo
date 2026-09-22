@@ -307,3 +307,67 @@ class TestEveryRepairedLiteralResolves:
             - known
         )
         assert unknown == []
+
+
+class TestDatabaseQueryDeclaresOnlyItsDestinationSupplier:
+    """WI-ditir: a linker that OPENS THE FILES ITSELF depends on no host
+    analyzer, and saying otherwise is the too-wide shape falsification cannot
+    see.
+
+    ``database-query-linker`` declared eleven host languages in a second
+    conjunct while scanning four globs and dispatching to three scanners, so
+    eight of the eleven named neither a pass whose output it reads nor a file
+    it opens. Too wide is the FALSE-ALL-CLEAR direction here: a clause is an
+    inner-OR, so any one member satisfies it, and eight never-scanned languages
+    keep it satisfiable on repos where the linker cannot have read anything.
+    ``find_falsified_dependencies`` is backward-looking and can only catch a
+    clause that is too NARROW, so nothing would ever have reported this.
+
+    The repair follows the shipped WI-dinum precedent on ``graphql-linker``
+    verbatim -- name what supplies the edge DESTINATION, not where the source
+    pattern was found. Here that is ``sql``, whose ``kind="table"`` symbols are
+    the only pass output this linker consumes; the query side it reads off disk
+    itself, through ``_find_source_files``.
+
+    NOT DONE HERE, deliberately: recording the scan capability on
+    ``activation``. ``LinkerActivation`` has no file-shape field, so that is a
+    core-dataclass change with its own axis-declaration obligations, and the
+    seven sibling linkers this row also names each need their own verification
+    that they consume no host analyzer's output. Both are residual.
+    """
+
+    def test_the_clause_is_exactly_this(self) -> None:
+        declared = {p.id: p for p in get_default_catalog().passes}
+        assert declared["database-query-linker"].depends_on == [["sql"]]
+
+    def test_the_host_language_conjunct_is_gone(self) -> None:
+        declared = {p.id: p for p in get_default_catalog().passes}
+        clauses = declared["database-query-linker"].depends_on
+        assert len(clauses) == 1
+        assert [c for c in clauses if "python" in c] == []
+
+    def test_the_linker_opens_source_files_itself(self) -> None:
+        """The justification, derived rather than asserted: the module carries
+        its own glob patterns, so the query side arrives from disk and not from
+        a host analyzer's output."""
+        import hypergumbo_core.linkers.database_query as mod
+
+        assert mod.__file__ is not None
+        with open(mod.__file__) as handle:
+            tree = ast.parse(handle.read())
+        globs = sorted({
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value.startswith("**/*.")
+        })
+        assert globs == ["**/*.java", "**/*.js", "**/*.py", "**/*.ts"]
+
+    def test_sql_still_supplies_the_destination(self) -> None:
+        """The control on the removal: dropping the WRONG conjunct would have
+        left the linker declaring no producer for its edge destination."""
+        declared = {p.id: p for p in get_default_catalog().passes}
+        known = {p.id for p in get_default_catalog().passes}
+        assert "sql" in known
+        assert ["sql"] in declared["database-query-linker"].depends_on
