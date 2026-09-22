@@ -461,6 +461,61 @@ def _resolve_return_type_class(
     return None
 
 
+def _chain_receiver_class_from_return_types(
+    chain_attrs: list[str],
+    root_class: "Symbol",
+    local_symbols: dict[str, "Symbol"],
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], "Symbol"],
+    resolver: "SymbolResolver | None",
+    sym_by_path_name: dict[tuple[str, str], "Symbol"] | None,
+) -> "Symbol | None":
+    """Walk ``obj.a.b.method()``'s INTERMEDIATE hops through declared return
+    types, returning the class that owns the final call — or None (WI-fikoh).
+
+    WI-fihun blocker 2. The receiver-hint chain at the ``ast.Attribute`` /
+    ``ast.Name`` branch is entered only for a ONE-hop receiver, so
+    ``ts.workspace.add()`` — whose ``func.value`` is itself an ``ast.Attribute``
+    — reached the INV-mumov ``external`` placeholder with no hint, and the
+    method-call-recovery linker fell back to line proximity.
+
+    NOTHING HERE IS RE-DERIVED. ``_declared_return_type_name`` reads the fact
+    from its home (``Symbol.meta["return_type"]``, WI-ribak) and already unquotes
+    a forward reference (WI-fihun); ``_resolve_return_type_class`` resolves the
+    name to a class Symbol. This only JOINS them, one hop at a time, so a
+    three-hop chain works for the same reason a two-hop one does.
+
+    EVERY FAILURE IS A HARD STOP, and that is the point. A minted
+    ``receiver_type_hint`` is TRUSTED downstream — it bypasses gate_named_entry
+    and the ambiguous_names net (test_py_annotated_receiver) — so a partially
+    resolved chain must yield NO hint rather than the last class it was sure
+    about. Returning ``root_class`` on a failed hop would name the wrong class
+    with full confidence, which is precisely the bug being fixed.
+
+    The narrowness of ``_declared_return_type_name`` is inherited deliberately:
+    only a simple identifier infers, so ``-> Optional[Store]`` and
+    ``-> list[Store]`` stop the walk. Widening is a separate, measurable change.
+    """
+    if sym_by_path_name is None:  # pragma: no cover - always supplied in-tree
+        return None
+    cls = root_class
+    for attr in chain_attrs[:-1]:
+        member = sym_by_path_name.get((cls.path, f"{cls.name}.{attr}"))
+        if member is None or member.kind not in ("method", "function"):
+            return None
+        ret_name = _declared_return_type_name(member)
+        if ret_name is None:
+            return None
+        nxt = _resolve_return_type_class(
+            ret_name, member, local_symbols, imports, global_symbols,
+            resolver, sym_by_path_name,
+        )
+        if nxt is None:
+            return None
+        cls = nxt
+    return cls
+
+
 def _lookup_symbol_by_module(
     global_symbols: dict[tuple[str, str], "Symbol"],
     module_name: str,
@@ -8558,6 +8613,34 @@ def _process_call(
                     # module-qualified `django.db.models` edge, keeps winning —
                     # pinned by its own test.
                     callee = chain_attrs[-1]
+                    # WI-fikoh: before settling for the untyped placeholder, try
+                    # the chain's INTERMEDIATE hops. When the root is a typed
+                    # local (``ts = TrackerSet()``) and each intervening member
+                    # declares a return type that resolves to a project class,
+                    # the receiver of the final call IS known — ``ts.workspace``
+                    # is a ``Store`` — and the linker should filter on it rather
+                    # than pick ``TrackerSet.add`` by line proximity. A failed
+                    # walk returns None and the placeholder is emitted exactly
+                    # as before, so this is additive.
+                    chain_meta = {"call_construct": "method"}
+                    chain_cls = (
+                        _chain_receiver_class_from_return_types(
+                            chain_attrs, var_types[root_name], local_symbols,
+                            imports, global_symbols, resolver, sym_by_path_name,
+                        )
+                        if root_name in var_types and len(chain_attrs) >= 2
+                        else None
+                    )
+                    if chain_cls is not None:
+                        chain_meta["receiver_type_hint"] = chain_cls.name
+                        # WI-supat (D3): the concrete id only when it is safe —
+                        # same gate as the one-hop branch, not a looser one.
+                        if _receiver_type_id_trustworthy(
+                            chain_cls, class_name_counts, imports,
+                            module_imports, local_symbols,
+                        ):
+                            chain_meta["receiver_type_id"] = chain_cls.id
+                        chain_meta["resolution_quality"] = "type_inferred"
                     edges.append(Edge.create(
                         src=caller_symbol.id,
                         dst=f"python:external:0-0:{callee}:unresolved",
@@ -8565,7 +8648,7 @@ def _process_call(
                         line=call_node.lineno,
                         evidence_type="ast_call_direct",
                         is_resolved=False,
-                        meta={"call_construct": "method"},
+                        meta=chain_meta,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     ))
