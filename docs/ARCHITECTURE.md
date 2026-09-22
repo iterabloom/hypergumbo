@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **335** Python modules (139 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 94 core, 4 CLI, 36 tracker)
-- **48124** symbols (functions, classes, methods)
-- **190109** edges by type:
-  - calls: 109097
-  - contains: 44105
-  - imports: 15137
-  - instantiates: 11652
-  - references: 6970
-  - module_attr_ref: 1631
-  - other: 1517
+- **336** Python modules (139 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 95 core, 4 CLI, 36 tracker)
+- **48441** symbols (functions, classes, methods)
+- **191084** edges by type:
+  - calls: 109582
+  - contains: 44412
+  - imports: 15208
+  - instantiates: 11686
+  - references: 7028
+  - module_attr_ref: 1645
+  - other: 1523
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 48124 Symbols + 190109 Edges + UsageContexts           │
+│  Output: 48441 Symbols + 191084 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -242,7 +242,7 @@ A relationship between two symbols (e.g., function calls).
 - `evidence_lang`: Language for confidence scoring
 - `is_resolved`: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
 - `dst_ref`: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
-- `derived_from`: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
+- `derived_from`: Symbol (or Edge) IDs of the INPUT records the producer consumed to construct this Edge (INV-rukor) — the records whose presence decided it, e.g. the unresolved edge a linker resolved or the inheritance edges a dispatch walked. Ids the producer MINTED in the same run are not consumed and are left out, so a pass that builds both ends from a file scan records ``[]`` — a positive "consumed nothing", distinct from ``None``. A value naming only the endpoints is legal where the endpoints ARE the whole derivation, and every such linker site declares why in its source (``test_edge_derived_from.py``). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
 - `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
 - `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
 - `attribution`: ADR-0057 §6 provenance slot, set only by the merge pass when two producers' edges for one ``(src, dst, edge_type)`` are folded: ``{field: [pass_id, ...]}`` for ``confidence`` / ``evidence_type`` — who holds the value the scalar carries. ``None`` (and omitted from the dict form) on every other edge.
@@ -279,21 +279,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9827.0 | ir.py |
-| `len` | external_symbol | 7552.0 | <external> |
-| `write_text` | external_symbol | 6571.0 | <external> |
-| `Span` | class | 6481.0 | ir.py |
-| `LinkerContext` | class | 3441.9 | registry.py |
-| `get` | external_symbol | 3039.0 | <external> |
-| `load_catalog` | function | 2540.2 | io_boundary.py |
-| `Edge.create` | method | 2350.8 | ir.py |
-| `next` | external_symbol | 2141.0 | <external> |
-| `str` | external_symbol | 2123.0 | <external> |
+| `Symbol` | class | 9854.9 | ir.py |
+| `len` | external_symbol | 7560.0 | <external> |
+| `write_text` | external_symbol | 6595.0 | <external> |
+| `Span` | class | 6495.7 | ir.py |
+| `LinkerContext` | class | 3544.1 | registry.py |
+| `get` | external_symbol | 3053.0 | <external> |
+| `load_catalog` | function | 2552.1 | io_boundary.py |
+| `Edge.create` | method | 2365.4 | ir.py |
+| `next` | external_symbol | 2144.0 | <external> |
+| `str` | external_symbol | 2124.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `Path` | external_symbol | 2018.0 | <external> |
+| `Path` | external_symbol | 2027.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1635.0 | <external> |
+| `append` | external_symbol | 1640.0 | <external> |
 
 ## Pattern System
 
@@ -662,6 +662,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.selection_index`**: Incremental ``block -> tests`` index for coverage-directed test sel...
 - **`hypergumbo_core.selection_log`**: Durable evidence log for the coverage-selection shadow phase.
 - **`hypergumbo_core.selection_shadow`**: Shadow-mode comparison: what coverage WOULD have selected, versus w...
+- **`hypergumbo_core.signature_axis`**: The callable-signature axis: what ``Symbol.signature`` is for (ADR-...
 - **`hypergumbo_core.sketch_embeddings`**: Embedding-based utilities for sketch generation.
 - **`hypergumbo_core.slice`**: Graph slicing for LLM context extraction.
 - **`hypergumbo_core.spec_validator`**: Spec-vs-data validator stage (ADR-0033, INV-sugat).
@@ -938,8 +939,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: ebf0a106605e
-  commit_count: 7481
+  commit: a314e243f7c3
+  commit_count: 7512
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
