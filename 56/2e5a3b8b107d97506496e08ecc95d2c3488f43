@@ -1,0 +1,27 @@
+Original commit body from 431b80eb96402c02f6e54fb64307015601bd095b:
+
+Addresses INV-rukor and WI-latup (population half, family 1 of 2). Neither row closes here: 9 sites are declared `incomplete` and are the next PR.
+
+## Why
+INV-rukor was closed `satisfied` on `test_all_linker_edge_creates_pass_derived_from`, whose whole predicate was `"derived_from" in kwarg_names`. It asserted the keyword was present, so 86 of 93 linker `Edge.create` sites restated their own `[src, dst]` under it. The reopen counterexample was type-hierarchy-linker: 342 of 342 edges were endpoints-only, even though the linker joins on `extends`/`implements` edges and named neither.
+
+## What
+- **Rule (ir.py, spec §9):** `derived_from` names the input records whose presence decided the edge. Ids minted in the same run are omitted (precedent: inheritance.py:350). `[]` means "consumed no graph record" and is distinct from `null`.
+- **Guard reads the value.** A restating or empty value needs an in-call declaration, `# derived-from endpoints|consumed-none|incomplete: <reason>`. Stale and malformed declarations are refused. It is still a syntactic check: it cannot verify that a declaration is true.
+- **All 86 sites classified by reading the code** (counts come from an AST diff against dev):
+  - 17 now name the consumed record. 12 of them name an unresolved or import edge; the others are type_hierarchy's inheritance path, rust_trait's implements edge and struct, caddy's struct, Erlang otp's module symbols, and yjs's manifest dependency.
+  - 24 are declared honest endpoints-only.
+  - 36 drop minted ids: 20 become `[]` and 16 keep only the consumed endpoint.
+  - 9 are declared `incomplete`: the transitive-bases walk family, DI heuristic bindings, view templates, and fire.Fire.
+- **Schema 0.20.12 → 0.20.13:** drops `minItems: 1`. This is widening only.
+- **`explain --provenance`:** `[]` gets its own message instead of "analyzer-produced edge".
+
+## Measured
+Self-survey, with the baseline being dev b95e0d19ef in a worktree:
+- Edges carrying a real chain went from 399 to 840. Every one of them names a consumed edge.
+- type-hierarchy went from 342/342 endpoints-only to 342/342 chains.
+- Per-linker edge counts are unchanged, apart from containment +30, which comes from this PR's own new test code.
+
+## Not changed / filed
+- The §14.1 stub demotion is still gated to inherited-calls, so the 12 newly named unresolved edges demote nothing.
+- Filed from the per-site reading: WI-judov (ruby_ffi self-loop), WI-mofih (swift_objc dangling ids), WI-vojur (wasm_bindgen 0-0 file id), WI-gulud (react_component fabricated src).
