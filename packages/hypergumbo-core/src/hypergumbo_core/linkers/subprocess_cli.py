@@ -964,10 +964,12 @@ SUBPROCESS_REQUIREMENTS = [
     priority=65,  # Run after framework patterns have identified CLI commands
     description="Subprocess-to-CLI linking (subprocess.run to Click/Typer commands)",
     requirements=SUBPROCESS_REQUIREMENTS,
-    # CNF: subprocess invocations appear in any language with shell-out APIs.
-    # CLI handler resolution targets Python (Click/Typer/argparse), JS/TS
-    # (commander/yargs), Go (cobra/flag), Java (picocli), Rust (clap), etc.
-    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "rust", "kotlin", "elixir"]],
+    # CNF (WI-zujan): the source side is a ``**/*.py`` disk scan and the call
+    # node is minted. The destinations are Python records: ``concept=command``
+    # enriched onto the python analyzer's decorators/base_classes, argparse
+    # handlers (resolvable on scip_python records as well), fire.Fire methods.
+    # The nine-language clause this replaced described the world.
+    depends_on=[["python", "scip_python"]],
     activation=always_on_unreviewed(),
 )
 def subprocess_linker(ctx: LinkerContext) -> LinkerResult:

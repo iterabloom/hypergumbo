@@ -4,6 +4,14 @@
 This linker detects event-driven patterns (EventEmitter, Django signals, Spring
 events) and links event publishers to their subscribers.
 
+``depends_on`` is EMPTY because this linker consumes no pass output (WI-zujan).
+``link_events(root, ...)`` finds its own files (``_find_source_files``) and MINTS
+BOTH ENDS of every edge it emits. Its one read of ``ctx.symbols`` is the
+WI-vasik-jofiv tombstone ``_create_subscriber_to_method_edges``, which computes
+an enclosing method and discards it, so it contributes nothing to the output.
+The clause this replaced named six host languages "per the description" -- two
+of which (Ruby, C#) the file scan never even reads.
+
 Detected Patterns
 -----------------
 JavaScript (EventEmitter, custom events):
@@ -961,10 +969,8 @@ def _create_subscriber_to_method_edges(
     "event-sourcing-linker",
     priority=55,  # Run after core linkers, with other event patterns
     description="Event sourcing linking (EventEmitter, Django signals, Spring events, Guava EventBus, Go channels)",
-    # CNF: per the description — JS/TS (EventEmitter), Python (Django signals),
-    # Java (Spring events / Guava EventBus), Go (channels), plus Ruby
-    # (ActiveSupport::Notifications) and C# (delegates / IObservable).
-    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp"]],
+    # CNF: empty -- see the module docstring (WI-zujan).
+    depends_on=[],
     activation=always_on_unreviewed(),
 )
 def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:

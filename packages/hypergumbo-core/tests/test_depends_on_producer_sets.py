@@ -470,3 +470,141 @@ class TestGraphqlResolverDeclaresItsSchemaSuppliers:
     def test_both_declared_suppliers_are_real_passes(self) -> None:
         known = {p.id for p in get_default_catalog().passes}
         assert {"graphql", "graphql-sdl-linker"} <= known
+
+
+# ---------------------------------------------------------------------------
+# WI-zujan: the six linkers WI-ditir's family left, each derived by reading
+# what the linker consumes. The shape of every repair is the WI-dinum one:
+# name the passes that supply the records the linker READS, not the languages
+# where its own disk scan finds the other end.
+# ---------------------------------------------------------------------------
+
+
+def _pass_ids_calling(*callee_names: str) -> set[str]:
+    """Analyzer pass ids whose module CALLS any of ``callee_names``.
+
+    For producers that reach a record through a helper — ``make_route_symbol``
+    writes ``route_path`` for its callers, so a literal scan of the caller's own
+    source misses them — or construct a record type (``UsageContext``).
+    """
+    wanted = set(callee_names)
+    found: set[str] = set()
+    for source, names in _analyzer_sources():
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = (
+                func.id if isinstance(func, ast.Name)
+                else func.attr if isinstance(func, ast.Attribute) else None
+            )
+            if name in wanted or (
+                isinstance(func, ast.Attribute)
+                and isinstance(func.value, ast.Name)
+                and func.value.id in wanted
+            ):
+                found.update(names)
+    return found
+
+
+def _declared(pass_id: str) -> list[list[str]]:
+    declared = {p.id: p for p in get_default_catalog().passes}
+    return declared[pass_id].depends_on
+
+
+class TestZujanScannerControls:
+    def test_the_call_scanner_finds_a_known_caller_and_not_a_fiction(self) -> None:
+        assert "python" in _pass_ids_calling("make_route_symbol")
+        assert _pass_ids_calling("wi_zujan_no_such_callee") == set()
+
+
+class TestHttpDeclaresItsRouteProducers:
+    """http-linker reads exactly one thing from the graph: path-bearing route
+    records, its edge DESTINATION (``_get_route_symbols`` -> ``route_of``). The
+    client side comes off disk, which is why ``elm`` (scanned for client calls,
+    never a route producer) was on the old list and ``play-routes`` (the Play
+    route producer) was not.
+
+    ``route_of`` has two arms and both collapse to the HOST analyzer: the marker
+    arm's records are minted by an analyzer via ``make_route_symbol``; the
+    concept arm's are the framework-YAML enrichment of a host analyzer's record,
+    matched on ``decorators``/``annotations`` meta or on a ``UsageContext``.
+    The enrichment is not a pass (it records no AnalysisRun), and its framework
+    gating is an activation fact, not a dependency.
+    """
+
+    def test_every_route_record_producer_is_declared(self) -> None:
+        (clause,) = _declared("http-linker")
+        producers = (
+            _pass_ids_calling("make_route_symbol", "UsageContext")
+            | _pass_ids_writing("decorators", "annotations")
+        )
+        assert sorted(producers - set(clause)) == []
+
+    def test_the_clause_is_exactly_this(self) -> None:
+        assert _declared("http-linker") == [[
+            "clojure", "csharp", "elixir", "go", "groovy", "java", "javascript",
+            "kotlin", "php", "play-routes", "python", "ruby", "rust", "scala",
+            "swift",
+        ]]
+
+    def test_elm_is_no_longer_declared(self) -> None:
+        """The linker scans ``.elm`` files for CLIENT calls; no elm pass emits
+        a route record, so a clause naming it was satisfied on an Elm-only repo
+        where nothing could be matched."""
+        (clause,) = _declared("http-linker")
+        assert "elm" not in clause
+
+
+class TestCryptoFlowDeclaresItsFileListProducers:
+    """crypto-flow-linker has no glob of its own: every file it scans comes from
+    ``ctx.symbols`` filtered to ``_CRYPTO_LANGUAGES``, so the passes emitting
+    symbols in those languages are a STRUCTURAL requirement — without them the
+    file list is empty and the linker returns nothing. Both edge ends are
+    minted, which is why this is not an empty clause."""
+
+    def test_the_clause_is_every_producer_of_a_scanned_language(self) -> None:
+        from hypergumbo_core.linkers.crypto_flow import _CRYPTO_LANGUAGES
+
+        producers = sorted({
+            pid for language in _CRYPTO_LANGUAGES
+            for pid in _pass_ids_for_language(language)
+        })
+        assert _declared("crypto-flow-linker") == [producers]
+
+    def test_the_clause_is_exactly_this(self) -> None:
+        assert _declared("crypto-flow-linker") == [["javascript", "rust", "rust_analyzer"]]
+
+
+class TestPythonOnlyLinkersDeclarePython:
+    """Both scan ``**/*.py`` only and read records only a Python producer
+    writes; eight and nine host languages were declared."""
+
+    def test_subprocess_names_both_python_producers(self) -> None:
+        """Destinations: ``concept=command`` (written onto the ``python``
+        analyzer's decorators/base_classes by enrichment), argparse handlers
+        (resolvable on ``scip_python`` records too), ``fire.Fire`` methods."""
+        assert _declared("subprocess-linker") == [
+            sorted(_pass_ids_for_language("python")),
+        ]
+
+    def test_orm_names_the_python_analyzer_only(self) -> None:
+        """Destinations are ``concept=model`` symbols, matched on
+        ``base_classes`` — which ``scip_python`` never writes — so it alone
+        cannot produce an edge."""
+        producers = set(_pass_ids_for_language("python")) & _pass_ids_writing(
+            "base_classes",
+        )
+        assert _declared("orm-linker") == [sorted(producers)]
+        assert _declared("orm-linker") == [["python"]]
+
+
+class TestSelfScanningLinkersDeclareNothing:
+    """Both mint the records their edges join and read no pass output that
+    their core edges need. The WI-dilab allowance requires the fixed phrase."""
+
+    def test_event_sourcing_is_empty(self) -> None:
+        assert _declared("event-sourcing-linker") == []
+
+    def test_grpc_is_empty(self) -> None:
+        assert _declared("grpc-linker") == []
