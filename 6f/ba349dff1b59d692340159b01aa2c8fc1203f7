@@ -1,0 +1,49 @@
+Original commit body from e793c5ec37dbb8deabddbaf29e19baff9e7c8df8:
+
+MEASURED on this repository: of 190,109 edges, 45,204 carry derived_from and
+44,813 of those (99.1%) hold EXACTLY the edge's own [src, dst] -- 44,104 from
+containment-linker alone. Only 391 edges (0.2% of all edges) name anything the
+linker consumed beyond its endpoints, from two passes (inherited-calls 329,
+method-call-recovery 62).
+
+explain --provenance printed those 44,813 as "Derived from: <src>, <dst>",
+which reads as a recorded derivation, while printing the honest "(no derivation
+chain -- analyzer-produced edge)" for edges carrying nothing. THE DISPLAY WAS
+INVERTED: the uninformative rows looked documented and the honest ones looked
+empty.
+
+Three states, three messages. Endpoints-only is kept DISTINCT from
+carrying-nothing rather than folded into it: a linker did run and did record a
+value, and collapsing them would hide that. The test is a subset check, not
+equality, because inheritance.py:350 passes a one-element list holding the
+edge's own source, and a subset of the endpoints carries no more than the pair.
+
+Only the READER's view changes. No producer output changes, nothing is
+discarded. The other consumer -- finalize.py's ADR-0057 §14.1 stub demotion --
+was already immune by type: it acts only on a ref naming an unresolved EDGE and
+[src, dst] are SYMBOL ids, so the vacuous values never caused a false demotion.
+
+test_cmd_explain_provenance_on_callees needed its fixture corrected rather than
+its assertion relaxed: its subject is the callee DIRECTION, and it happened to
+carry an endpoints-only derived_from. It now carries a real consumed input, so
+it exercises the thing it is named for.
+
+THE ROW'S OWN NUMBERS AND SCOPE WERE WRONG and are corrected on it. It reported
+"~22% populated" (counting vacuous values as populated -- real coverage is
+0.2%) and "~20 linker files, the fix is mechanical". Measured: 93 Edge.create
+sites across 58 linker files ALREADY pass derived_from, 86 of them literally
+[src, dst]. The work is not adding a kwarg, it is replacing a vacuous value,
+which is per-linker semantic work. The row's prescribed
+derived_from=[source_id_a, source_id_b] is the exact pattern that produced the
+44,104 vacuous rows.
+
+WI-latup STAYS OPEN: its stated deliverable is population, and population is
+not done here. See also the note filed on INV-rukor, which was closed
+`satisfied` on a guard test that only asserts the derived_from= KEYWORD IS
+PRESENT and therefore cannot witness the semantic half of its own statement.
+
+Suite: 6,792 passed, 0 failed, changed sources at 100%, ratchet clean.
+
+Addresses WI-latup.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
