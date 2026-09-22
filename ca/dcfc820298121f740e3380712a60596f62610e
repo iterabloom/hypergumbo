@@ -1,0 +1,50 @@
+Original commit body from b9d648e8d3818d530c8dfdbbcc9cfe6543fdc518:
+
+_ddg_taint_reaches gates on fn_has_ddg = source_fn in ddg_symbols, where
+source_fn is the ANALYZER's symbol id. The python LanguageDdgSpec supplied
+neither name_for nor kind_for, so _walk_functions fell back to the bare `name`
+field and the constant kind "function", and every method was stored under a key
+nothing ever constructs. Measured before: 0 of 24,915 methods matched, while
+21,257 of them (85.3%) WERE in the set under the unreachable bare-name
+spelling. 68.5% of python callables could never have fn_has_ddg true, so every
+taint finding rooted in one was structural BY CONSTRUCTION.
+
+py.py's naming rule was DERIVED from the analyzer, not assumed. A probe over all
+four shapes gives top / top.inner / Outer.meth / Inner.deep -- prefix with the
+IMMEDIATE enclosing scope, one level, class or function; kind is "method"
+exactly when that scope is a class. Nested FUNCTIONS were mis-keyed too, which
+the row had not noticed.
+
+MEASURED on this repository:
+  methods         0 -> 21,275 of 24,941   (85.3%)
+  functions      69.1% -> 71.0%
+  all callables  ~21.7% -> 80.8%
+  orphan ddg keys ~21,600 -> 145
+
+NOT MERELY A RE-LABELLING, and the §3a walk census proves it: 84 -> 122 walks
+(+45%) on this repo against its own claims, same binary otherwise. BUT THE
+DIRECTION IS THE ONE THE ROW WARNED ABOUT: of the +38 new walks, +32 escape
+(None) and only +6 establish dependence.
+
+THE PRECISION A/B THE ROW DEMANDED IS NOT SATISFIED, and I am not pretending
+otherwise. Pre-registered refutation: "if ADR-0046 useful precision drops, this
+is a reporting regression even though the lookup is correct." It could not be
+tested -- this repo's claims are all repaired and report zero violating flows by
+construction, prospector under the generic claims yields zero evidence, and
+measure-taint-precision.py requires per-flow human scoring. The mechanism is
+fixed and measured; the effect on the published precision headline is
+UNMEASURED, and a finding leaving the structurally-identified class enters the
+useful-precision denominator. Filed as a residual row.
+
+FAMILY ENUMERATED: go supplies both hooks; rust omits them WITH A WRITTEN REASON
+(methods are function_item nested in impl_item, so defaults are right); python
+(fixed here) and both ts_def_use registrations omitted them with no reason. The
+javascript instance is unfiled, and WI-jopuf's P3 price does not cover it --
+that price rests on "TypeScript has 0 catalogued taint sinks", and WI-nonad
+records that JavaScript has 83.
+
+Suite: 2,591 passed, 0 failed, changed sources at 100%, ratchet clean.
+
+Addresses WI-ripas.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
