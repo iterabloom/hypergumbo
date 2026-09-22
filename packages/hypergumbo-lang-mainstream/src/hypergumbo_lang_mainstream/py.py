@@ -3225,6 +3225,7 @@ def _extract_file_analysis(
 
                     _mds = ast.get_docstring(item)
                     _mds_line = _mds.split("\n")[0].strip()[:80] if _mds else None
+                    _method_modifiers = _python_visibility_modifiers(method_name)
                     method_symbol = Symbol(
                         id=_make_symbol_id(str(py_file), item.lineno, method_end_line, method_name, "method"),
                         name=method_name,
@@ -3242,7 +3243,31 @@ def _extract_file_analysis(
                         ),
                         docstring=_mds_line,
                         meta=method_meta if method_meta else None,
-                        modifiers=_python_visibility_modifiers(method_name),
+                        modifiers=_method_modifiers,
+                        # WI-kohah: the FIFTH is_exported site. py.py decided
+                        # exportedness for module-level variables, classes,
+                        # class attributes and module-level functions, and for
+                        # no method — so after INV-kubup made the field
+                        # tri-state, Python methods were the largest ``null``
+                        # population in the tree.
+                        #
+                        # THE RULE IS CONJUNCTIVE because reachability is: a
+                        # public method of an exported class is reachable from
+                        # outside the package, a public method of a PRIVATE
+                        # class is not. ``__all__`` never lists methods, so the
+                        # CLASS's membership is the authority here and
+                        # ``class_is_exported`` (computed above in this same
+                        # pass) is the left conjunct.
+                        #
+                        # The right conjunct reuses ``_method_modifiers`` — the
+                        # very list this symbol's ``modifiers`` field carries —
+                        # rather than re-deriving the leading-underscore
+                        # convention, so the two facts cannot disagree. Dunders
+                        # are deliberately NOT private there: ``__init__`` of an
+                        # exported class is reachable by constructing it.
+                        is_exported=(
+                            class_is_exported and not _method_modifiers
+                        ),
                     )
                     symbols.append(method_symbol)
                     # Store by short name for self.method() lookups
