@@ -1,0 +1,20 @@
+Original commit body from 0a437d63cfe78a9df0f424f3d2d21c8495de452d:
+
+Addresses INV-rukor and WI-latup: family 2 of 2, the 9 sites #1134 declared `incomplete`.
+
+## Why
+Each of these sites learned why its edge exists from a walk that threw its path away. `_transitive_bases` walked a class's `extends`/`implements` ancestry and returned bare base-name strings. So a framework hook could say *that* its class qualified, but never *through which* ancestor and edges.
+
+## What
+- **`collect_transitive_base_origins`** runs the same BFS as the names walk. The two share one implementation and a test pins them equal. It returns each name with its provenance: `()` when the name is on the class itself, otherwise the path's edge ids plus the declaring ancestor.
+- **`match_framework_bases`** replaces three copies of the base-table matcher (django_orm, airflow, third_party_bases) and returns provenance per method.
+- **Jackson** names the ancestor chain or the annotated sibling methods. **Kafka Streams** names the chain behind each callback interface. **gRPC** names the base-chain struct.
+- **View templates:** `consumed_ids` on the emission, plus a `StringSite` type. Rails and Laravel name the controller and its chain, Spring the `@Controller`, Phoenix the module, and Django CBV the chain. `LinkerContext.base_name_origins` caches the index. Rails previously rebuilt it for every class symbol.
+- **DI heuristic bindings** carry `evidence_ids`. **fire.Fire** names the fired class.
+
+No `incomplete` declaration remains. Every new provenance site was mutation-checked, and removing any one turns its pin red.
+
+## Measured
+- **koel:** view-template edges went from 4 endpoints-only to 4 chains. The edge set is otherwise identical.
+- **spring-petclinic:** unchanged, which is correct, because every Jackson edge there qualifies on a class-level annotation.
+- **Not witnessed on a real repo:** neither corpus exercises an inherited base, so the transitive half is covered only by the fixture pins.
