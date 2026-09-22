@@ -28,3 +28,25 @@
   set: {}  # 5421
   add:  # 5421
     isbefore: [WI-fihun-pumik-pugit-kapoj-gijop-sonab-taluv-putuk]  # 5421
+- op: discuss  # 954c
+  at: '2026-09-22T00:51:35Z'  # 954c
+  by: agent  # 954c
+  actor: jgstern_agent  # 954c
+  clock: 3  # 954c
+  nonce: 954c  # 954c
+  message: "PREMISES RE-VERIFIED 2026-09-21. NOT STALE. The row is accurate, its citation is\nexact, and one of its blockers has since been REMOVED by a sibling fix.\n\nCITATION EXACT. py.py:8093 is `elif isinstance(func, ast.Attribute) and\nisinstance(func.value, ast.Name):`, and it does govern the hint-stamping path --\nthe stamps are at py.py:8299 and py.py:8311, inside that block. Checked against\nthe current tree, not assumed.\n\nTHE FALSE EDGE REPRODUCES END-TO-END on a 27-line probe through the real\npipeline (`hypergumbo survey`), not just the analyzer:\n\n    class Store:      def add(self, x)\n    class TrackerSet: @property workspace(self) -> \"Store\";  def add(self, y)\n    def go(root):     ts = TrackerSet(root);  ts.workspace.add(1)\n\n  calls -> python:external:0-0:workspace:external_symbol   hint='TrackerSet'  unresolved\n  calls -> python:external:0-0:add:external_symbol         hint=None          unresolved\n  calls -> TrackerSet.workspace:method   origin=inherited-calls-linker      conf 0.85  RESOLVED\n  calls -> TrackerSet.add:method         origin=method-call-recovery-linker conf 0.50  RESOLVED  <-- WRONG\n\nThe correct target is Store.add. So the filed claim holds exactly: the first hop\nresolves, the second hop mis-binds, and the edge is emitted RESOLVED at 0.5.\n\nALL THREE \"BOTH HALVES ALREADY EXIST\" CLAIMS RE-CONFIRMED on the probe:\n  - `ts = TrackerSet(root)` types ts (the instantiates edge resolves).\n  - the emitted `ts.workspace` edge carries receiver_type_hint='TrackerSet'.\n  - TrackerSet.workspace carries meta['return_type'] -- observed value \"'Store'\",\n    i.e. the annotation unparses WITH its quotes.\n\nA BLOCKER THIS ROW DID NOT KNOW ABOUT IS NOW GONE. That quoted value would have\ndefeated the prescribed reuse of `_declared_return_type_name`, whose identifier\ncheck rejected a quoted string. WI-fihun's fix (commit 0c611ba000, merged\n2026-09-21) added the unquoting -- the helper's docstring now reads \"A FORWARD\nREFERENCE IS STILL A TYPE NAME (WI-fihun)\". So the deliverable as written is MORE\nviable than at filing: `-> \"Store\"` now resolves. Re-verify against the helper's\nstated narrowness, which is unchanged and deliberate -- only a simple identifier\ninfers, so Optional[Foo] / list[Foo] still do not.\n\nWI-fihun itself remains OPEN (todo_soft, P2), so this row's framing as \"blocker 2\nof WI-fihun's residual\" is still live.\n\nPOLARITY WARNING FROM THE ROW STANDS AND IS THE REAL RISK: a minted hint is\nTRUSTED -- it bypasses gate_named_entry and the ambiguous_names net by design --\nso a wrong hint converts an unresolved edge into a confidently wrong one. The\nprobe shows the failure already happens at conf 0.5 via line proximity; the fix\nmust not upgrade that to a trusted hint pointing at the same wrong class."  # 954c
+- op: update  # 2955
+  at: '2026-09-22T02:23:35Z'  # 2955
+  by: agent  # 2955
+  actor: jgstern_agent  # 2955
+  clock: 4  # 2955
+  nonce: '2955'  # 2955
+  set:  # 2955
+    status: done  # 2955
+- op: discuss  # abf8
+  at: '2026-09-22T02:23:35Z'  # abf8
+  by: agent  # abf8
+  actor: jgstern_agent  # abf8
+  clock: 5  # abf8
+  nonce: abf8  # abf8
+  message: "DONE, merged to dev. py.py now walks a two-hop receiver's INTERMEDIATE hops through declared return types (_chain_receiver_class_from_return_types), joining var_types + meta['return_type'] + _resolve_return_type_class rather than re-deriving any of them.\n\nBEHAVIOURAL EVIDENCE, the filed repro run end to end through 'hypergumbo survey':\n  BEFORE  calls -> TrackerSet.add   origin=method-call-recovery-linker  conf 0.50  RESOLVED  (WRONG)\n  AFTER   calls -> Store.add        origin=inherited-calls-linker                  RESOLVED  (correct)\nThe false edge is gone and the true one is in its place.\n\nPOLARITY HELD. Every failed hop is a hard stop; falling back to the last known class would stamp 'TrackerSet' as a TRUSTED hint -- the original bug from the other side. Both stops are pinned by negative controls that were MUTATED, watched go red, and restored (mutating stop 1 reddens test_member_with_no_return_annotation + test_subscripted_return_type_stays_narrow; mutating stop 2 reddens test_return_type_that_is_not_a_project_class). receiver_type_id passes the same WI-supat gate as the one-hop branch.\n\nMEASURED REACH, stated as measured and NOT as recall: 15 of 9,634 INV-mumov external placeholders on this repository (0.16%) newly carry a hint -- all 15 with a trustworthy id, and all 15 the filed instance's own Store shape. Small. The correctness win is real; the corpus effect is not large.\n\nSuite: 4114 passed, 0 failed, changed sources at 100%, mypy ratchet clean.\nUNBLOCKS WI-fihun (this row's isbefore)."  # abf8

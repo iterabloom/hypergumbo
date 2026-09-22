@@ -1,0 +1,19 @@
+- op: create  # d421
+  at: '2026-09-22T04:59:34Z'  # d421
+  by: agent  # d421
+  actor: jgstern_agent  # d421
+  clock: 1  # d421
+  nonce: d421  # d421
+  data:  # d421
+    kind: work_item  # d421
+    title: "Seven linkers still declare host languages they never read; the family WI-ditir closed on one instance of"  # d421
+    status: todo_hard  # d421
+    priority: 2  # d421
+    parent:  # d421
+    tags: []  # d421
+    isbefore: []  # d421
+    duplicate_of: []  # d421
+    not_duplicate_of: []  # d421
+    pr_ref:  # d421
+    description: "RESIDUAL OF WI-ditir, which closed on its filed instance (database-query-linker,\nrepaired to depends_on=[[\"sql\"]]). The general claim that row made -- too-wide\ndepends_on clauses are invisible to falsification -- is still true of the tree\nand is NOT asserted resolved by that closure.\n\nTHE MECHANISM. depends_on is defined as \"the upstream analyzer pass IDs whose\noutput this linker structurally requires\". A clause is an inner-OR, so ANY one\nmember satisfies it. A clause that names languages the linker never reads is\ntherefore satisfiable on repositories where the linker cannot have read\nanything -- the FALSE-ALL-CLEAR direction. find_falsified_dependencies is\nbackward-looking and can only catch a clause that is too NARROW, so this class\nis invisible to the detector by construction and has to be found by reading.\n\nENUMERATED 2026-09-22 (declared language literals in conjunct #0 vs the glob\nconstants the module actually scans):\n\n  subprocess-linker       9 declared, scans **/*.py ONLY\n  orm-linker              8 declared, scans **/*.py ONLY\n  http-linker            13 declared, scans 9\n  message-queue-linker    9 declared, scans 4 -- and reads NO ctx.symbols\n  grpc-linker            12 declared, scans 6 (incl. .proto -- a real dependency)\n  event-sourcing-linker   6 declared, scans 5\n  graphql-resolver-linker 6 declared, scans 3 (incl. graphql -- a real dependency)\n  crypto-flow-linker     10 declared, 0 glob constants -- locates files by some\n                            other route; needs individual reading before any verdict\n\nWHY THIS IS NOT A SWEEP, and must not become one. database-query-linker was the\nclean specimen: it consumes NO pass output on the query side, taking\nctx.repo_root and re-reading from disk, so deleting the conjunct was\nunambiguous. Most of the linkers above DO read ctx.symbols, so some part of\ntheir host-language clause may name a real producer. Each needs its own\nverification of what it actually consumes. Applying one rule to all eight is\nthe same too-wide reasoning the family is about.\n\nTHE SHAPE OF EACH REPAIR, per the WI-dinum precedent shipped for graphql-linker\nand now database-query-linker: name the pass that can supply the edge\nDESTINATION, not the language where the source pattern was found.\n\nALSO OPEN, and larger: recording a linker's SCAN CAPABILITY somewhere honest.\nWI-ditir proposed `activation`, but LinkerActivation has only always /\nframeworks / language_pairs -- no file-shape field. Adding one is a core\ndataclass change carrying ADR-0024 axis-declaration obligations, so it is its\nown decision, not a rider on any of the eight repairs above.\n\nSTARTING POINT: message-queue-linker is the strongest candidate for the next\nclean specimen -- 9 declared languages and no ctx.symbols read at all, which is\ndatabase-query-linker's exact shape."  # d421
+    fields: {}  # d421
