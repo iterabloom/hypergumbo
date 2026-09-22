@@ -479,7 +479,9 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
                 origin_run_id=run.execution_id,
                 evidence_type="naming_convention",
                 meta=edge_meta,
-                derived_from=[query_symbol.id, table_sym.id],
+                # derived-from endpoints: the src query node is minted here; the table is joined by
+                #   name (meta table_name)
+                derived_from=[table_sym.id],
             )
             edges.append(edge)
 

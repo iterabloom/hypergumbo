@@ -262,6 +262,8 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
                         origin_run_id=run.execution_id,
                         evidence_type="ast_call_direct",
                         meta=edge_meta,
+                        # derived-from endpoints: the enclosing symbol plus a handler-name match;
+                        #   both strings are in meta
                         derived_from=[enclosing.id, handler_sym.id],
                     ),
                 )

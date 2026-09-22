@@ -175,7 +175,7 @@ def link_caddy_module_dispatch(ctx: LinkerContext) -> LinkerResult:
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta={"framework_dispatch": "caddy_module"},
-                    derived_from=[marker.id, method.id],
+                    derived_from=[marker.id, method.id, sym.id],
                 ),
             )
 

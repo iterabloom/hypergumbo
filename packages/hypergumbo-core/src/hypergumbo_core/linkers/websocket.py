@@ -896,7 +896,9 @@ def link_websocket(
                                 send_pat.pattern_type, declared_python_deps
                             ),
                         },
-                        derived_from=[_make_file_id(_language_for_file(send_pat.file_path, send_pat.pattern_type), send_pat.file_path), _make_file_id(_language_for_file(recv_pat.file_path, recv_pat.pattern_type), recv_pat.file_path)],
+                        # derived-from consumed-none: a file scan; both file ids are computed from
+                        #   paths, not read
+                        derived_from=[],
                     )
                     edges.append(edge)
 
@@ -934,7 +936,9 @@ def link_websocket(
                 "ref_construct": "websocket_endpoint",
                 "framework_dispatch": _resolve_ws_framework(ep.pattern_type, declared_python_deps),
             },
-            derived_from=[_make_file_id(ep_language, ep.file_path), ep_id],
+            # derived-from consumed-none: a file scan; the endpoint node is minted and the file id
+            #   computed
+            derived_from=[],
         ))
 
     # WI-zolot: cross-language client↔server bridge.
@@ -996,7 +1000,9 @@ def link_websocket(
                             server_ep.pattern_type, declared_python_deps
                         ),
                     },
-                    derived_from=[_make_file_id(client_lang, client_ep.file_path), server_ep_id],
+                    # derived-from consumed-none: a file scan; the server endpoint is minted and the
+                    #   file id computed
+                    derived_from=[],
                 ))
 
     run.files_analyzed = files_analyzed

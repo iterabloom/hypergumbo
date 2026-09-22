@@ -131,7 +131,7 @@ def _run(tmp_path: Path, nodes: list[dict], **overrides) -> dict:
     repo = tmp_path / "repo"
     bm = tmp_path / "hg.json"
     bm.write_text(json.dumps(
-        {"schema_version": "0.20.12", "nodes": nodes, "edges": []},
+        {"schema_version": "0.20.13", "nodes": nodes, "edges": []},
     ))
     args = argparse.Namespace(
         path=str(repo), input=str(bm), format="json",

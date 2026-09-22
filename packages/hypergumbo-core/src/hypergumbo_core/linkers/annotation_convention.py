@@ -281,7 +281,9 @@ def link_annotations(
                     access_mode="write",
                     channel=channel,
                     meta={"mechanism": "annotation"},
-                    derived_from=[pub_id, sub_id],
+                    # derived-from consumed-none: both site nodes are minted from a file scan and
+                    #   joined on the channel
+                    derived_from=[],
                 ))
 
     # --- Create route symbols for @hg:route directives ---
@@ -402,7 +404,9 @@ def link_annotations(
                 # meta.channel is reserved for the dataflow conduit/topic, so
                 # the (redundant) target-name channel is dropped here.
                 meta=edge_meta,
-                derived_from=[disp_id, target.id],
+                # derived-from endpoints: the src is minted here; the target is joined by the
+                #   directive's name string
+                derived_from=[target.id],
             ))
 
     run.silence_reason = silence_reason_for_candidates(routes + dispatches)

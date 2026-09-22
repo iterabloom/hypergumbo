@@ -178,6 +178,7 @@ def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
                 confidence=0.80,
                 meta={"framework_dispatch": "controller_routes"},
                 origin_run_id=run.execution_id,
+                # derived-from endpoints: the endpoints' own concept tags and span nesting decide it
                 derived_from=[winner.id, route.id],
             )
             edges.append(edge)

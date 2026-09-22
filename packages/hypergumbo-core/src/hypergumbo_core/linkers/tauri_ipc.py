@@ -700,7 +700,9 @@ def link_tauri_ipc(
                     "protocol": "ipc",
                     "framework_dispatch": "tauri_invoke",
                 },
-                derived_from=[src_id, target_sym.id],
+                # derived-from endpoints: the publisher node is minted here; the command is joined
+                #   by name
+                derived_from=[target_sym.id],
             ))
 
     # Phase 4: Specta wrapper resolution
@@ -819,7 +821,9 @@ def link_tauri_ipc(
                     evidence_type="ast_import",
                     data_direction="src_to_dst",
                     meta={"framework_dispatch": "specta_wrapper", "protocol": "ipc"},
-                    derived_from=[caller_id, publisher_id],
+                    # derived-from consumed-none: both ends are minted by this pass and joined on
+                    #   the command name
+                    derived_from=[],
                 ))
 
     # Phase 5: Rust→TS event emission (emit/emit_all/emit_to → listen/once)
@@ -956,7 +960,9 @@ def link_tauri_ipc(
                             "channel_kind": "ipc",
                             "framework_dispatch": "tauri_emit_listen",
                         },
-                        derived_from=[src_id, dst_id],
+                        # derived-from consumed-none: both ends are minted from a file scan and
+                        #   joined on the event name
+                        derived_from=[],
                     ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

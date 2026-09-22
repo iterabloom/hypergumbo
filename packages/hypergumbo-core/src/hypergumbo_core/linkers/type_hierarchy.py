@@ -38,7 +38,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
 from ..edge_types import (
@@ -152,10 +152,26 @@ def build_inheritance_maps(
         - parent_to_children: class_id -> [child_class_ids] (from extends)
         - interface_to_impls: interface_id -> [implementing_class_ids] (from implements)
     """
-    symbol_by_id = {s.id: s for s in symbols}
     parent_to_children: dict[str, list[str]] = defaultdict(list)
     interface_to_impls: dict[str, list[str]] = defaultdict(list)
+    for edge, is_concrete in admitted_inheritance_edges(symbols, edges):
+        target = parent_to_children if is_concrete else interface_to_impls
+        target[edge.dst].append(edge.src)
+    return dict(parent_to_children), dict(interface_to_impls)
 
+
+def admitted_inheritance_edges(
+    symbols: list[Symbol],
+    edges: list[Edge],
+) -> Iterator[tuple[Edge, bool]]:
+    """Yield ``(edge, is_concrete)`` for each inheritance edge the dispatch
+    gate admits — the one place the gate is applied.
+
+    Split out of :func:`build_inheritance_maps` so the linker can also record
+    WHICH edge justified each hop (INV-rukor): the maps keep only the class
+    ids, and a dispatch edge's ``derived_from`` needs the edge ids.
+    """
+    symbol_by_id = {s.id: s for s in symbols}
     for edge in edges:
         # INV-nosoz: the family and its dispatch split come from the registry.
         # This loop used to branch on two string literals, so Solidity's
@@ -175,14 +191,52 @@ def build_inheritance_maps(
             child_mods = child_sym.modifiers if child_sym else None
             if not _extends_admits_dispatch(child_lang, child_kind, child_mods):
                 continue
-            parent_to_children[edge.dst].append(edge.src)
+            yield edge, True
         else:
             # edge: impl --implements--> interface, or includer --includes-->
             # mixin module. Interface satisfaction and mixin inclusion are
             # virtual in every language, so no language gate applies.
-            interface_to_impls[edge.dst].append(edge.src)
+            yield edge, False
 
-    return dict(parent_to_children), dict(interface_to_impls)
+
+def inheritance_path_edge_ids(
+    ancestor_id: str,
+    descendant_id: str,
+    one_hop: dict[str, list[str]],
+    hop_edge: dict[tuple[str, str], str],
+) -> list[str]:
+    """The inheritance edge ids joining ``descendant_id`` up to ``ancestor_id``.
+
+    Breadth-first over the one-hop ``parent -> [children]`` map, so the path is
+    a SHORTEST one; under a diamond it is one justification among several, not
+    all of them. Ordered from the descendant's own edge upward — the order a
+    reader follows ("C implements I2, I2 extends I1, ...").
+    ``hop_edge[(parent, child)]`` is the first admitted edge seen for that hop.
+    Returns ``[]`` when the descendant is unreachable, which the transitive
+    closure the linker iterates rules out.
+    """
+    predecessor: dict[str, str] = {}
+    frontier = [ancestor_id]
+    seen = {ancestor_id}
+    while frontier and descendant_id not in predecessor:
+        next_frontier: list[str] = []
+        for parent in frontier:
+            for child in one_hop.get(parent, ()):
+                if child in seen:
+                    continue
+                seen.add(child)
+                predecessor[child] = parent
+                next_frontier.append(child)
+        frontier = next_frontier
+    if descendant_id not in predecessor:  # pragma: no cover - closure guarantees reach
+        return []
+    path: list[str] = []
+    node = descendant_id
+    while node != ancestor_id:
+        parent = predecessor[node]
+        path.append(hop_edge[(parent, node)])
+        node = parent
+    return path
 
 
 def close_parent_to_children_transitively(
@@ -500,6 +554,13 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
         for key, children in source_map.items():
             bucket = one_hop_parents_to_children.setdefault(key, [])
             bucket.extend(c for c in children if c not in bucket)
+    # INV-rukor: which admitted edge justified each hop, so a dispatch edge can
+    # name the inheritance path it was derived from rather than restating its
+    # own two endpoints (342 of 342 did, with 259 extends/implements edges in
+    # the same graph going unnamed).
+    hop_edge: dict[tuple[str, str], str] = {}
+    for inh_edge, _concrete in admitted_inheritance_edges(ctx.symbols, ctx.edges):
+        hop_edge.setdefault((inh_edge.dst, inh_edge.src), inh_edge.id)
     all_parents_to_children = close_parent_to_children_transitively(
         one_hop_parents_to_children,
     )
@@ -556,6 +617,11 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     hierarchy_index = _TypeHierarchyIndex.build(
         ctx.symbols, class_ids_by_name, class_symbols,
     )
+    class_of_method = {
+        sym.id: class_id
+        for candidates in hierarchy_index.methods_by_short_name.values()
+        for class_id, sym in candidates
+    }
 
     # Create dispatches_to edges
     new_edges: list[Edge] = []
@@ -626,7 +692,13 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="type_hierarchy",
-                    derived_from=[parent_method.id, override.id],
+                    derived_from=[
+                        parent_method.id, override.id,
+                        *inheritance_path_edge_ids(
+                            parent_id, class_of_method[override.id],
+                            one_hop_parents_to_children, hop_edge,
+                        ),
+                    ],
                 )
                 new_edges.append(edge)
 

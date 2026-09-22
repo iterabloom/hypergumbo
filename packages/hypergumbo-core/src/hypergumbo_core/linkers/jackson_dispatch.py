@@ -466,6 +466,8 @@ def link_jackson_dispatch(ctx: LinkerContext) -> LinkerResult:
                     origin_run_id=run.execution_id,
                     evidence_type="ast_decorator",
                     meta=edge_meta,
+                    # derived-from incomplete: the qualifying ancestor chain or annotated sibling
+                    #   methods are not kept
                     derived_from=[class_sym.id, method.id],
                 ),
             )

@@ -542,7 +542,9 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                derived_from=[resolver_symbol.id, schema_sym.id],
+                # derived-from endpoints: the resolver node is minted here; the field is joined by
+                #   type.field
+                derived_from=[schema_sym.id],
             )
             edge.meta = {
                 "type_name": pattern.type_name,
@@ -571,7 +573,9 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                derived_from=[resolver_symbol.id, type_sym.id],
+                # derived-from endpoints: the resolver node is minted here; the type is joined by
+                #   name
+                derived_from=[type_sym.id],
             )
             edge.meta = {
                 "type_name": pattern.type_name,

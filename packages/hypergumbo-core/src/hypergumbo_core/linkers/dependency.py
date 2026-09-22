@@ -226,7 +226,7 @@ def link_dependencies(
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="import_to_manifest",
-            derived_from=[edge.src, dep_sym.id],
+            derived_from=[edge.src, dep_sym.id, edge.id],
             meta={"disambiguation_fallback": True} if ambiguous else None,
         )
         edges.append(link_edge)

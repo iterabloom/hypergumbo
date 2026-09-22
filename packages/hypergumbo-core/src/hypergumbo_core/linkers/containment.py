@@ -357,6 +357,8 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="naming_convention",
+            # derived-from endpoints: the child's qualified-name prefix names the parent; nothing
+            #   else is read
             derived_from=[parent_sym.id, sym.id],
         ))
         # Track to avoid duplicates within this run
@@ -406,6 +408,8 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="canonical_name",
+            # derived-from endpoints: the child's qualified_name prefix names the parent; nothing
+            #   else is read
             derived_from=[parent_sym.id, sym.id],
         ))
         existing_contains.add(pair)
@@ -464,6 +468,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="span_overlap",
+            # derived-from endpoints: span nesting of the two endpoint symbols decides it
             derived_from=[best.id, sym.id],
         ))
         existing_contains.add(pair)

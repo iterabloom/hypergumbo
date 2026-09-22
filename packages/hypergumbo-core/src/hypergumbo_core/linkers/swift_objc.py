@@ -213,7 +213,9 @@ def _extract_bridging_header_imports(
             confidence=0.95,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            derived_from=[file_id, import_path],
+            # derived-from consumed-none: a bridging-header text scan; neither endpoint is a graph
+            #   record
+            derived_from=[],
         ))
 
     return symbols, edges

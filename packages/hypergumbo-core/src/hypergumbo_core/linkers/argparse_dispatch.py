@@ -247,6 +247,8 @@ def argparse_dispatch_linker(ctx: LinkerContext) -> LinkerResult:
                         origin_run_id=run.execution_id,
                         evidence_type="ast_call_direct",
                         meta=edge_meta,
+                        # derived-from endpoints: the site's enclosing symbol plus a handler-name
+                        #   match; the name is in meta
                         derived_from=[enclosing.id, handler_sym.id],
                     ),
                 )

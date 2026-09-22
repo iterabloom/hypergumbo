@@ -2986,3 +2986,14 @@ def test_a_single_endpoint_is_also_not_a_chain(
     )
     assert "Derived from:" not in out
     assert "only this edge's own endpoints" in out
+
+
+def test_an_empty_derived_from_is_a_linker_that_consumed_nothing(
+    tmp_path: Path, capsys
+) -> None:
+    """INV-rukor: ``[]`` is a positive statement from a linker — it read no
+    existing graph record (a pure file scan that minted both ends) — and must
+    not fall into the ``None`` branch that says "analyzer-produced edge"."""
+    out = _provenance_output(tmp_path, capsys, [])
+    assert "analyzer-produced edge" not in out
+    assert "consumed no existing graph record" in out

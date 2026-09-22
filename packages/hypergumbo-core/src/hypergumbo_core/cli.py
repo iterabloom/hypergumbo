@@ -2647,6 +2647,16 @@ def _print_edge_provenance(
 ) -> None:
     """Print derivation chain details for an edge (--provenance mode)."""
     derived_from = edge_dict.get("derived_from")
+    if derived_from == []:
+        # INV-rukor: an EMPTY list is a linker's positive statement that it
+        # read no existing graph record — a file-scan pass that minted both
+        # ends. ``None`` below is the absence of any statement; folding the two
+        # would tell the reader an analyzer made this edge.
+        print(
+            "      (this pass consumed no existing graph record — it built the "
+            "edge from its own source scan)"
+        )
+        return
     if not derived_from:
         # INV-rarol: --provenance must have a VISIBLE effect even on edges with
         # no derivation chain (previously this returned silently, making
@@ -2672,9 +2682,11 @@ def _print_edge_provenance(
     # one-element list holding the edge's own source) carries no more than the
     # pair, so the test is ``issubset``, not equality.
     #
-    # This changes only what the READER is told. Populating the 86 endpoints-only
-    # ``Edge.create`` sites with real consumed inputs is the separate half, and
-    # is per-linker semantic work rather than a sweep.
+    # Since INV-rukor's guard (test_edge_derived_from.py) every linker site whose
+    # value restates only its endpoints DECLARES why in the source — honest
+    # (a containment edge is decided by parent and child alone), or a known
+    # gap marked ``incomplete``. The reader still sees only the value, so the
+    # message says what was recorded, not that nothing else existed.
     endpoints = {edge_dict.get("src"), edge_dict.get("dst")}
     if set(derived_from) <= endpoints:
         print(

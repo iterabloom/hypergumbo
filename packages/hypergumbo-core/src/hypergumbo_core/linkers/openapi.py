@@ -395,7 +395,9 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                     },
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    derived_from=[symbol.id, route.id],
+                    # derived-from endpoints: the operation node is minted here; the route is joined
+                    #   by path and method
+                    derived_from=[route.id],
                 )
                 result_edges.append(edge)
                 matched = True
@@ -424,7 +426,9 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
                         },
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        derived_from=[symbol.id, route.id],
+                        # derived-from endpoints: the operation node is minted here; the route is
+                        #   joined by operationId
+                        derived_from=[route.id],
                     )
                     result_edges.append(edge)
 

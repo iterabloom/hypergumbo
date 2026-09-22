@@ -291,6 +291,8 @@ def link_orm_queries(
             origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
             meta=edge_meta,
+            # derived-from endpoints: a source-text accessor regex joined on the model name; both
+            #   are in meta
             derived_from=[enclosing.id, model_sym.id],
         )
         edges.append(edge)

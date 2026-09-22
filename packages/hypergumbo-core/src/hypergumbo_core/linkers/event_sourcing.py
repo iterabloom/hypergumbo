@@ -838,7 +838,9 @@ def link_events(
                         "subscriber_event_type": sub_pattern.event_type,
                         "detection_pattern": "event_name",
                     },
-                    derived_from=[pub_symbol.id, sub_symbol.id],
+                    # derived-from consumed-none: both ends are minted from a file scan and joined
+                    #   on the event name
+                    derived_from=[],
                 )
                 edges.append(edge)
 

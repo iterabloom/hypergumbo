@@ -254,6 +254,8 @@ def link_ruby_ffi(
                     evidence_type="ast_call_direct",
                     data_direction="src_to_dst",
                     meta=edge_meta,
+                    # derived-from endpoints: the enclosing Ruby symbol plus an attach_function name
+                    #   match
                     derived_from=[src_sym.id, c_sym.id],
                 ))
             else:
@@ -271,7 +273,8 @@ def link_ruby_ffi(
                     is_resolved=False,
                     data_direction="src_to_dst",
                     meta={"bridge_kind": "ffi", "framework_dispatch": "ruby_ffi_attach"},
-                    derived_from=[src_sym.id, dst],
+                    # derived-from endpoints: the dst is a minted stdlib placeholder
+                    derived_from=[src_sym.id],
                 ))
 
     # --- Phase 2: Scan C files for rb_define_method patterns ---
@@ -321,7 +324,9 @@ def link_ruby_ffi(
                 evidence_type="ast_call_direct",
                 data_direction="src_to_dst",
                 meta=edge_meta,
-                derived_from=[c_sym.id, c_sym.id],
+                # derived-from endpoints: only the C function is read; the self-loop src is
+                #   defect WI-judov
+                derived_from=[c_sym.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

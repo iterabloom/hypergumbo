@@ -240,6 +240,19 @@ class TestSchemaValidation:
         validator = make_validator(schema, "Edge")
         validator.validate(edge.to_dict())
 
+    def test_edge_with_empty_derived_from_validates(self):
+        """INV-rukor: ``derived_from=[]`` is a linker's positive "consumed no
+        graph record" (both ends minted from a file scan), distinct from
+        ``null``. The schema had ``minItems: 1`` and rejected it."""
+        from hypergumbo_core.ir import Edge
+
+        edge = Edge.create(
+            src="a", dst="b", edge_type="calls", line=1,
+            origin="ipc-linker", origin_run_id="uuid:1", derived_from=[],
+        )
+        assert edge.to_dict()["derived_from"] == []
+        make_validator(load_schema(), "Edge").validate(edge.to_dict())
+
     def test_analysis_run_validates(self):
         """An AnalysisRun validates."""
         from hypergumbo_core.ir import AnalysisRun

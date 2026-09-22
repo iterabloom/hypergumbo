@@ -633,6 +633,8 @@ def _create_di_edges(
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
+                    # derived-from incomplete: a heuristic binding's implements/extends edge is read
+                    #   but not kept
                     derived_from=[iface_m.id, impl_m.id],
                 ))
 
@@ -722,6 +724,7 @@ def _create_di_registers_edges(
             origin_run_id=run.execution_id,
             evidence_type="ast_decorator",
             meta=edge_meta,
+            # derived-from endpoints: NestJS @Module name strings from a file scan resolve both ends
             derived_from=[module_sym.id, provider_sym.id],
         ))
 
