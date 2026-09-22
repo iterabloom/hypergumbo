@@ -1,0 +1,41 @@
+Original commit body from a1e924a62f36ec79a7963fca694f00e82edd5f31:
+
+database-query-linker declared ELEVEN host languages in its second CNF
+conjunct while _find_source_files scans four globs (**/*.py, **/*.js, **/*.ts,
+**/*.java) and dispatches to three scanners. Eight of the eleven named neither
+a pass whose output it reads nor a file it opens -- and it consumes no host
+analyzer's output at all: it takes ctx.repo_root and re-reads the query side
+from disk.
+
+TOO WIDE IS THE FALSE-ALL-CLEAR DIRECTION HERE, and falsification cannot see
+it. A clause is an inner-OR, so any single member satisfies it, and eight
+never-scanned languages kept the clause satisfiable on repositories where this
+linker could not possibly have read anything. find_falsified_dependencies is
+backward-looking and catches only a clause that is too NARROW, so this was
+invisible to the detector by construction -- found by reading the body.
+
+Repaired to [["sql"]], the shape WI-dinum shipped for graphql-linker: name the
+pass that supplies the edge DESTINATION, not where the source pattern was
+found. sql's kind="table" symbols are the only pass output this linker
+consumes. depends_on is declarative -- read by validate_pass_dependencies and
+the falsification report, never by execution -- so no activation changes.
+
+The new test derives its justification rather than asserting it: it AST-walks
+the linker module for its own glob constants, so the claim "this linker reads
+files itself" is evidence in the test, not prose in a comment.
+
+RESIDUAL, enumerated rather than assumed and deliberately NOT swept:
+subprocess-linker declares 9 languages and scans only **/*.py; orm-linker
+declares 8 and scans only **/*.py; http-linker declares 13 and scans 9;
+message-queue-linker declares 9 and reads no ctx.symbols at all. But most
+siblings DO read ctx.symbols, so unlike this one they may carry a real host
+dependency and each needs its own verification -- a mechanical sweep here would
+be the same mistake this row is about. Recording the scan capability on
+activation is also left open: LinkerActivation has no file-shape field, so that
+is a core-dataclass change with its own axis-declaration obligations.
+
+Suite: 4,052 passed, 0 failed, changed sources at 100%, ratchet clean.
+
+Addresses WI-ditir.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
