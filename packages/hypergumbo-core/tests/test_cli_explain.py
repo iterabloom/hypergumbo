@@ -2242,7 +2242,16 @@ def test_cmd_explain_shows_edge_type_in_callees(tmp_path: Path, capsys) -> None:
 
 
 def test_cmd_explain_provenance_on_callees(tmp_path: Path, capsys) -> None:
-    """--provenance shows derived_from on callee edges (Calls direction)."""
+    """--provenance shows derived_from on callee edges (Calls direction).
+
+    WI-latup: this test's subject is the DIRECTION — that a callee edge's
+    provenance surfaces at all, not just a caller's. Its fixture originally
+    carried a ``derived_from`` of exactly ``[src, dst]``, which is no longer
+    displayed as a derivation chain because restating an edge's own endpoints
+    tells the reader nothing. The fixture now carries a real consumed input so
+    it exercises the direction it is named for; the endpoints-only case has its
+    own dedicated tests at the end of this file.
+    """
     behavior_map = {
         "schema_version": SCHEMA_VERSION,
         "nodes": [
@@ -2262,6 +2271,14 @@ def test_cmd_explain_provenance_on_callees(tmp_path: Path, capsys) -> None:
                 "path": "src/utils.py",
                 "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
             },
+            {
+                "id": "python:src/routes.py:1-1:file:file",
+                "name": "routes",
+                "kind": "file",
+                "language": "python",
+                "path": "src/routes.py",
+                "span": {"start_line": 1, "end_line": 1, "start_col": 0, "end_col": 0},
+            },
         ],
         "edges": [
             {
@@ -2273,6 +2290,7 @@ def test_cmd_explain_provenance_on_callees(tmp_path: Path, capsys) -> None:
                 "derived_from": [
                     "python:src/main.py:1-5:main:function",
                     "python:src/utils.py:1-5:helper:function",
+                    "python:src/routes.py:1-1:file:file",
                 ],
                 "line": 3,
                 "confidence": 0.9,
@@ -2858,3 +2876,113 @@ def test_cmd_explain_surfaces_registry_description(tmp_path: Path, capsys) -> No
     # The registry description appears as a sub-line under the section header.
     assert spec.description in out
 
+
+
+# WI-latup: an endpoints-only derived_from is not a derivation chain.
+#
+# MEASURED on this repository before the change: of 190,109 edges, 45,204 carry
+# derived_from and 44,813 of those (99.1%) are EXACTLY the edge's own
+# [src, dst] -- 44,104 of them from containment-linker alone. Only 391 edges
+# (0.2% of all edges) name anything the linker actually consumed beyond its own
+# endpoints, from two passes (inherited-calls 329, method-call-recovery 62).
+#
+# `explain --provenance` printed those 44,813 as "Derived from: <src>, <dst>",
+# which reads as a recorded derivation, while printing the honest
+# "(no derivation chain -- analyzer-produced edge)" for edges carrying nothing.
+# THE DISPLAY WAS INVERTED: the uninformative rows looked documented and the
+# honest ones looked empty. Restating an edge's own endpoints tells a reader
+# nothing they did not already have from the edge.
+#
+# This does NOT change what producers write; it stops the reader being told a
+# circular restatement is provenance. Populating the 86 endpoints-only
+# Edge.create sites with real consumed inputs is the separate, per-linker half.
+
+
+def _provenance_output(tmp_path: Path, capsys, derived_from: list[str]) -> str:
+    src_id = "python:src/main.py:1-5:main:function"
+    dst_id = "python:src/api.py:1-5:handler:function"
+    behavior_map = {
+        "schema_version": SCHEMA_VERSION,
+        "nodes": [
+            {
+                "id": src_id, "name": "main", "kind": "function",
+                "language": "python", "path": "src/main.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+            {
+                "id": dst_id, "name": "handler", "kind": "function",
+                "language": "python", "path": "src/api.py",
+                "span": {"start_line": 1, "end_line": 5, "start_col": 0, "end_col": 10},
+            },
+        ],
+        "edges": [
+            {
+                "id": "edge:1", "src": src_id, "dst": dst_id,
+                "type": "contains", "origin": ["containment-linker"],
+                "derived_from": derived_from, "line": 3, "confidence": 0.9,
+            },
+        ],
+    }
+    (tmp_path / "hypergumbo.results.json").write_text(json.dumps(behavior_map))
+    args = FakeArgs()
+    args.symbol = "handler"
+    args.path = str(tmp_path)
+    args.input = None
+    args.provenance = True
+    assert cmd_explain(args) == 0
+    out, _ = capsys.readouterr()
+    return out
+
+
+def test_endpoints_only_derived_from_is_not_shown_as_a_chain(
+    tmp_path: Path, capsys
+) -> None:
+    """The 99.1% case: derived_from restates the edge's own endpoints."""
+    out = _provenance_output(
+        tmp_path, capsys,
+        ["python:src/main.py:1-5:main:function",
+         "python:src/api.py:1-5:handler:function"],
+    )
+    assert "Derived from:" not in out
+    assert "only this edge's own endpoints" in out
+
+
+def test_endpoints_only_is_distinguished_from_carrying_nothing(
+    tmp_path: Path, capsys
+) -> None:
+    """Three states, three messages. Collapsing the endpoints-only case into
+    the analyzer-produced one would hide that a LINKER ran and recorded a value
+    that happens to carry no information."""
+    out = _provenance_output(
+        tmp_path, capsys,
+        ["python:src/main.py:1-5:main:function",
+         "python:src/api.py:1-5:handler:function"],
+    )
+    assert "analyzer-produced edge" not in out
+
+
+def test_a_real_consumed_input_still_prints_the_chain(
+    tmp_path: Path, capsys
+) -> None:
+    """The control: one id beyond the endpoints and the chain is real again.
+    Without this, suppressing everything would also pass the test above."""
+    out = _provenance_output(
+        tmp_path, capsys,
+        ["python:src/main.py:1-5:main:function",
+         "python:src/api.py:1-5:handler:function",
+         "python:src/api.py:1-1:file:file"],
+    )
+    assert "Derived from:" in out
+    assert "only this edge's own endpoints" not in out
+
+
+def test_a_single_endpoint_is_also_not_a_chain(
+    tmp_path: Path, capsys
+) -> None:
+    """inheritance.py:350 passes a one-element list that is the edge's own
+    source. A subset of the endpoints carries no more than the whole pair."""
+    out = _provenance_output(
+        tmp_path, capsys, ["python:src/main.py:1-5:main:function"],
+    )
+    assert "Derived from:" not in out
+    assert "only this edge's own endpoints" in out
