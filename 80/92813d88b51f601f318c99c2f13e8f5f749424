@@ -1,0 +1,45 @@
+Original commit body from b6a84f018015db39db220e74c21975a111a8b22c:
+
+DISCLOSURE FIRST. This moves the default dead-code-maybe view from 41.4% to
+7.5% dead -- 2,468 candidates to 448. Measured as a clean A/B on identical
+trees (total production functions identical at 5,964, so the only variable is
+this change): seeds 1,541 -> 2,303 (+762); 2,026 candidates disappear, 785
+methods directly and 1,241 functions those methods transitively reach; the 34
+__init__ candidates INV-hugit had just made visible go to 0. Owner ruled
+"ship as-is, disclose loudly" after being shown these numbers.
+
+CAUSE. py.py decided is_exported at four sites -- module-level variable, class,
+class attribute, module-level function -- and at none for a method. After
+INV-kubup made the field tri-state, Python methods were the largest null
+population in the tree, and --seeds production (the default: entrypoints +
+exported public API) never saw them. The old 41.4% rested on an ABSENT
+measurement, not a negative one.
+
+THE ROW'S REPRO WAS WRONG, and correcting it shrank the fix. It claimed "it is
+all of them"; measured, 23,063 of 23,731 (97.2%). The other 668 were not noise
+-- the split was exact with zero exceptions: every private-by-name method
+already carried False (written by finalize.py whenever computed visibility is
+non-public), every other method carried null. Only the PUBLIC half was missing,
+which is exactly the half that needs the enclosing class's verdict. The
+asymmetry ran the unsafe way: the methods that HAD a verdict were the ones that
+could never be exported.
+
+THE RULE IS CONJUNCTIVE because reachability is: a public method of an exported
+class is reachable from outside the package, a public method of a PRIVATE class
+is not. __all__ never lists methods, so the class's membership is the
+authority. Dunders are public protocol -- __init__ of an exported class is
+reachable by constructing it. The private-name half reuses py.py's own
+_python_visibility_modifiers, the same call that fills this symbol's modifiers,
+so the two facts cannot disagree.
+
+RESULT: 24,929 python methods, 0 null (24,048 True / 881 False).
+
+The recorded scip-python agreement fixture moves is_exported one-sided-to-
+incumbent 6 -> 10 of 10. Its comment had been recording this producer gap as a
+property of the comparison ("neither arm has a rule"); it now says what it was.
+
+Suite: 4,135 passed, 1 pin updated, changed sources at 100%, ratchet clean.
+
+Addresses WI-kohah.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
