@@ -1,0 +1,20 @@
+- op: create  # ab41
+  at: '2026-09-22T20:25:59Z'  # ab41
+  by: agent  # ab41
+  actor: jgstern_agent  # ab41
+  clock: 1  # ab41
+  nonce: ab41  # ab41
+  data:  # ab41
+    kind: work_item  # ab41
+    title: "ruby_ffi rb_define_method path emits a c_sym->c_sym self-loop instead of an edge from the registering C function"  # ab41
+    status: todo_hard  # ab41
+    priority: 3  # ab41
+    parent:  # ab41
+    tags:  # ab41
+    - analysis_quality  # ab41
+    isbefore: []  # ab41
+    duplicate_of: []  # ab41
+    not_duplicate_of: []  # ab41
+    pr_ref:  # ab41
+    description: "ruby_ffi.py Phase 2 (the `rb_define_method` / C-extension path, ~line 313) emits\n\n    Edge.create(src=c_sym.id, dst=c_sym.id, edge_type=\"calls\", ...)\n\n-- a SELF-LOOP asserting the C function calls itself. The comment above the call says the source \"is a synthetic registration\", but no registration node is minted and none is looked up. The real caller is the C function whose span encloses the `rb_define_method(...)` line in `c_path_str` (typically `Init_<ext>`); Phase 1 already does exactly that innermost-span search over `c_symbols` for the attach_function path. The Ruby method name (regex group 1 of the rb_define pattern) is also discarded, so the edge cannot say which Ruby method the C function backs.\n\nFound by the WI-latup derived_from sweep (verdict group 5): the site's derived_from was `[c_sym.id, c_sym.id]`; it is now `[c_sym.id]` with an `endpoints` declaration naming this defect.\n\nFIX SHAPE: resolve `reg_sym` = innermost C symbol in `c_path_str` whose span contains `line_num` (share Phase 1's span search); emit `src=reg_sym.id`; carry the Ruby method name in meta. Pin with a fixture that has `Init_ext` calling `rb_define_method(cls, \"foo\", c_foo, 0)` and assert src == Init_ext, dst == c_foo, never src == dst."  # ab41
+    fields: {}  # ab41
