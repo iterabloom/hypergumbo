@@ -1,0 +1,19 @@
+- op: create  # 2f68
+  at: '2026-09-22T05:35:54Z'  # 2f68
+  by: agent  # 2f68
+  actor: jgstern_agent  # 2f68
+  clock: 1  # 2f68
+  nonce: 2f68  # 2f68
+  data:  # 2f68
+    kind: work_item  # 2f68
+    title: "WI-ripas shipped without its precision A/B: find a population that produces violating python method-rooted flows, then test the pre-registered refutation"  # 2f68
+    status: todo_hard  # 2f68
+    priority: 2  # 2f68
+    parent:  # 2f68
+    tags: []  # 2f68
+    isbefore: []  # 2f68
+    duplicate_of: []  # 2f68
+    not_duplicate_of: []  # 2f68
+    pr_ref:  # 2f68
+    description: "WI-ripas shipped the python DDG key fix (methods 0 -> 21,275 of 24,941 matched,\n§3a walks 84 -> 122) WITHOUT satisfying the A/B it demanded. This row carries\nthat debt, with the refutation pre-registered so it cannot be retro-fitted to\nwhatever the number turns out to be.\n\nPRE-REGISTERED REFUTATION, written 2026-09-22 BEFORE any precision number\nexists: if ADR-0046 USEFUL PRECISION (the second number -- correctness\nexcluding the structurally-identified class) DROPS after WI-ripas relative to\nthe same frame before it, then the fix is a REPORTING regression even though\nthe lookup it repaired was unambiguously correct, and the right response is to\nreconsider how a walk-that-escaped is labelled -- NOT to revert the key fix,\nwhich restores information that was being discarded.\n\nWHY THE RISK IS REAL AND NOT HYPOTHETICAL. Of the +38 walks WI-ripas made\npossible on this repository, +32 returned None (the walk ran and ESCAPED) and\nonly +6 established dependence. A finding that was `structural` sat OUTSIDE the\nuseful-precision denominator by ADR-0046's construction; once the walk is\nreachable it leaves that class and enters the denominator. If those escapes are\nmostly wrong, the published headline (24.1% -> 30.9% across measurements\n0003-0012) moves down for a change that improved the underlying analysis.\n\nWHY IT COULD NOT BE MEASURED IN THE SHIPPING SESSION -- three independent dead\nends, recorded so they are not re-walked:\n  1. hypergumbo's OWN claims: all 18 verdicts are `inconclusive` with zero\n     evidence. Both previously-violated self-claims were repaired, and\n     verify_claims never downgrades a `violated` verdict, so the population is\n     empty BY CONSTRUCTION. This is the same frame collapse measure-taint-\n     precision.py's docstring already records for WI-sivuz.\n  2. prospector under docs/example-claims/generic-taint-claims.yaml: 7\n     verdicts, all inconclusive, zero evidence, on both the default and the\n     --include-non-production-sources arm.\n  3. scripts/measure-taint-precision.py is a collect/sample/score/packet\n     instrument requiring PER-FLOW HUMAN SCORING against a rubric. It cannot be\n     run end-to-end by an agent in one session, by design.\n\nSO THE FIRST DELIVERABLE IS A POPULATION, NOT A NUMBER: a repo + claims pair\nthat actually produces violating python flows rooted in METHODS. Until that\nexists, no arm of this question is answerable, and finding one is the work.\n\nWHAT THE FINER INSTRUMENT BUYS. INV-zidur (satisfied) added\nTaintFlowFinding.walk_verdict and derives analysis_method from it, so\n\"walk escaped\" and \"walk proved no dependence\" are now distinguishable where\nthey were not when ddg_mixed was last measured BELOW structural. Any re-run\nshould report the walk_verdict distribution, not just analysis_method -- the\nthree-populations result that made this row refuse to ship blind was measured\nunder the COARSER vocabulary and may not survive the finer one.\n\nMEASUREMENTS TO PRODUCE, same frame both arms, ADR-0048 frame declaration\nrequired: analysis_method distribution, walk_verdict distribution, correctness,\nuseful precision -- at the commit before cadcfc8202 and at/after it."  # 2f68
+    fields: {}  # 2f68

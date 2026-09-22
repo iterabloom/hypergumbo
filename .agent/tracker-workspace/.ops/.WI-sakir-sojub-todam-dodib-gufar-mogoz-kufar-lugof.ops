@@ -1,0 +1,19 @@
+- op: create  # bbd4
+  at: '2026-09-22T05:36:18Z'  # bbd4
+  by: agent  # bbd4
+  actor: jgstern_agent  # bbd4
+  clock: 1  # bbd4
+  nonce: bbd4  # bbd4
+  data:  # bbd4
+    kind: work_item  # bbd4
+    title: "javascript DDG spec supplies no name_for/kind_for either, and unlike TypeScript it has 83 taint sinks"  # bbd4
+    status: todo_hard  # bbd4
+    priority: 3  # bbd4
+    parent:  # bbd4
+    tags: []  # bbd4
+    isbefore: []  # bbd4
+    duplicate_of: []  # bbd4
+    not_duplicate_of: []  # bbd4
+    pr_ref:  # bbd4
+    description: "The javascript DDG registration has the same missing-hooks defect WI-ripas just\nfixed for python, and NO row covers it. WI-jopuf names TypeScript only, and its\nP3 price does not transfer.\n\nTHE CODE. ts_def_use.py registers TWO languages from one module:\n\n    register_ddg_language(LanguageDdgSpec(\n        language=\"typescript\", file_glob=\"*.ts\",\n        function_node_types=frozenset({\"function_declaration\"}),\n    ))                                                          # line 316\n    register_ddg_language(LanguageDdgSpec(\n        language=\"javascript\", file_glob=\"*.js\",\n        function_node_types=frozenset({\"function_declaration\"}),\n    ))                                                          # line 327\n\nSame grammar, same function node types, and NEITHER supplies name_for or\nkind_for. So both carry the WI-ripas defect: a class method is stored under a\nkey the taint walk never constructs, and `fn_has_ddg` is false for it however\nwell the reaching-definitions solve went.\n\nWHY WI-jopuf DOES NOT COVER THIS. Its title names TypeScript, and it is priced\nP3 for a stated reason: \"TypeScript has 0 catalogued taint sinks, so no amount\nof TypeScript DDG coverage can move a taint verdict today.\" That is sound for\nTypeScript. It is NOT true of javascript: WI-nonad (done) records that\nJAVASCRIPT HAS 83 TAINT SINKS and wired its cfg mapping, extractor and spec.\nSo the javascript instance has live sinks and an unreachable walk -- the same\ninversion WI-ripas documented for python against the same sibling row.\n\nNOT THE SAME AS WI-fovus, which is open for javascript and is about the GLOB\n(`*.js` only, so .mjs/.cjs/.jsx reach no machinery). That is file discovery;\nthis is key construction. A repo could be fully discovered and still have every\nmethod's walk discarded.\n\nFIX SHAPE, following WI-ripas: derive the analyzer's own naming rule by probing\nit over the four shapes (top-level function, nested function, class method,\nmethod of a nested class) rather than assuming it matches python's, then supply\nname_for / kind_for accordingly. js/ts class methods are `method_definition`\ninside `class_body`, NOT `function_declaration`, so note that\nfunction_node_types may ALSO need widening -- which is WI-jopuf's stated\nsubject (\"covers only function_declaration; class methods excluded to avoid\nduplicates\"). The two rows therefore overlap at the node-type question and\ndiffer at the key question; check WI-jopuf's duplicate-avoidance rationale\nbefore widening, because that is why the exclusion is there.\n\nMEASURE BEFORE AND AFTER, as WI-ripas did: the share of javascript methods\nmatching a ddg_symbols key, and the §3a walk census. Do not assume python's\n85.3% transfers."  # bbd4
+    fields: {}  # bbd4
