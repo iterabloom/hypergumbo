@@ -26,3 +26,18 @@
   clock: 2  # f06d
   nonce: f06d  # f06d
   message: "SCOPE NARROWED BY ONE: graphql-linker is settled, in PR #1025 under WI-dinum.\n\nIts clause named six HOST languages (javascript/python/java/ruby/go + graphql)\nwhile the linker reads source files itself and consumes no host analyzer's\noutput. Repaired to [[\"graphql\", \"graphql-sdl-linker\"]] -- the two passes that\ncan supply an edge DESTINATION. That is the shape this row proposes for the\nfamily: name what supplies the destination, not where the source pattern was\nfound.\n\nStill on this row: database-query-linker (the filed instance),\ngraphql-resolver-linker, event_sourcing, message_queue, subprocess_cli, http,\ncrypto_flow."  # f06d
+- op: update  # 8891
+  at: '2026-09-22T04:59:16Z'  # 8891
+  by: agent  # 8891
+  actor: jgstern_agent  # 8891
+  clock: 3  # 8891
+  nonce: '8891'  # 8891
+  set:  # 8891
+    status: done  # 8891
+- op: discuss  # cb33
+  at: '2026-09-22T04:59:16Z'  # cb33
+  by: agent  # cb33
+  actor: jgstern_agent  # cb33
+  clock: 4  # cb33
+  nonce: cb33  # cb33
+  message: "FILED INSTANCE DONE, merged to dev. database-query-linker's depends_on is now [['sql']] -- the pass that supplies the edge DESTINATION, matching the shape WI-dinum shipped for graphql-linker.\n\nPREMISE RE-VERIFIED IN THE CODE BEFORE TOUCHING IT, and it was exact: database_query.py:523 declared all eleven languages, :205 scanned exactly four globs, three scanners at :222/:264/:303. Not stale.\n\nTHE JUSTIFICATION IS IN THE TEST, NOT IN A COMMENT. test_the_linker_opens_source_files_itself AST-walks the linker module for its own glob constants and asserts ['**/*.java','**/*.js','**/*.py','**/*.ts'], so 'this linker reads files itself' is evidence rather than prose. The removal is pinned by test_the_clause_is_exactly_this and test_the_host_language_conjunct_is_gone; test_sql_still_supplies_the_destination is the control against dropping the WRONG conjunct.\n\nNO BEHAVIOUR CHANGED: depends_on is declarative, read by validate_pass_dependencies and the falsification report and never by execution, so no linker's activation moved.\n\nTHE GENERAL CLAIM IN THE TITLE IS NOT ASSERTED AS RESOLVED. 'Too-wide depends_on clauses are invisible to falsification' remains true of the tree: 24 linkers carry a conjunct of 5+ language literals. I fixed the filed instance only.\n\nRESIDUAL ENUMERATED WITH EVIDENCE (declared languages vs globs actually scanned):\n  subprocess-linker      9 declared, scans **/*.py ONLY\n  orm-linker             8 declared, scans **/*.py ONLY\n  http-linker           13 declared, scans 9\n  message-queue-linker   9 declared, scans 4 -- AND reads no ctx.symbols at all\n  grpc-linker           12 declared, scans 6 (incl .proto, a real dependency)\n  event-sourcing-linker  6 declared, scans 5\n  graphql-resolver       6 declared, scans 3 (incl graphql, a real dependency)\n  crypto-flow-linker    10 declared, 0 glob constants -- finds files by some other route, needs individual reading\n\nWHY I DID NOT SWEEP THEM: unlike database-query-linker, most of these DO read ctx.symbols, so they may carry a genuine host-analyzer dependency and each needs its own verification. A mechanical sweep would be the very mistake this row is about. Filed as the residual."  # cb33
