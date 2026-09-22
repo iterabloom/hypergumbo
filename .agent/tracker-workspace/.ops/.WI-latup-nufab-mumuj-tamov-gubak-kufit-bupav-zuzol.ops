@@ -109,3 +109,18 @@
   nonce: b896  # b896
   set:  # b896
     parent: INV-rukor-rimoz-tajuf-kagov-tojas-ninik-vahij-niliv  # b896
+- op: update  # 8159
+  at: '2026-09-22T22:44:09Z'  # 8159
+  by: agent  # 8159
+  actor: jgstern_agent  # 8159
+  clock: 14  # 8159
+  nonce: '8159'  # 8159
+  set:  # 8159
+    status: done  # 8159
+- op: discuss  # d682
+  at: '2026-09-22T22:44:10Z'  # d682
+  by: agent  # d682
+  actor: jgstern_agent  # d682
+  clock: 15  # d682
+  nonce: d682  # d682
+  message: "DONE. Family 1 in PR #1134, family 2 in PR #1136 (b5146af1d8). The 86 endpoints-only sites were each classified by reading, not swept. None remains undeclared, and none is declared incomplete. Evidence and residuals are on INV-rukor (satisfied the same day). The row's original prescription ('the fix is mechanical: add derived_from=[source_id_a, ...]') was NOT followed, because that is the pattern that produced the 44,104 vacuous rows."  # d682
