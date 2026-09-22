@@ -1,0 +1,38 @@
+Original commit body from b3e66d19361b9f269fee9b4fdfe9bfb8a3fd74f7:
+
+CORRECTION FIRST. The WI-ripas entry warned that "a finding leaving the
+structurally-identified class enters the useful-precision denominator". That is
+wrong, and it was wrong on a citation LIVE.md rule 1 says to check: ADR-0046
+defines useful precision as (TP - VACUOUS) / adjudicated over the SAME
+denominator, deducting from the NUMERATOR only, where VACUOUS has exactly two
+member classes -- CONFIGURED-ACTION (three citable clauses) and KIND-MISDECLARED
+(the INV-nular defect). NEITHER keys on analysis_method. The word "structural"
+means two unrelated things in the two places. Nothing moves into or out of that
+denominator by changing an evidence label, so the pre-registered refutation is
+NOT APPLICABLE rather than untested.
+
+A POPULATION WAS FOUND, the row's actual first deliverable: podman-compose and
+sherpa-onnx under docs/example-claims/generic-taint-claims.yaml both produce
+violated verdicts with evidence. hypergumbo's own claims cannot -- all repaired,
+zero violating flows by construction.
+
+MEASURED, same binary except the two spec hooks:
+  sherpa-onnx, default arm, 28 situations / 47 pairs, count unchanged:
+      structural 6 -> 4, ddg 4 -> 5, walk unavailable 6 -> 4
+  podman-compose, default arm: ONE structural finding with
+      collapsed_flow_count=2 SPLIT into two separately-verdicted situations --
+      logging.basicConfig confirmed, print_help escaped.
+  podman-compose, --include-non-production-sources: 100% of findings are
+      method-rooted (confirming WI-mojaz's premise); structural 7 -> 0.
+
+THE REAL RESIDUAL IS LABEL HONESTY, NOT PRECISION. method_for_walk_verdict maps
+confirmed -> ddg, unavailable -> structural, and everything else -- including
+not_attempted -- to ddg_mixed. So 6 of the 8 findings on that arm now carry a
+DDG label with no walk ever attempted, gaining it from COVERAGE rather than
+evidence. That is INV-zidur's documented many-to-one collapse behaving as
+specified; whether a not_attempted finding should read as ddg_mixed is
+surfaced, not decided.
+
+Addresses WI-fazan.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
