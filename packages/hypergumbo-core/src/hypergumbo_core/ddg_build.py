@@ -442,9 +442,77 @@ def _python_refine(
     )
 
 
+def _python_enclosing_scope(node: Any) -> Any:
+    """The IMMEDIATELY enclosing ``class_definition`` / ``function_definition``.
+
+    Walks past everything that is not itself a scope — ``block``, and
+    ``decorated_definition`` for a decorated member — so a decorator does not
+    hide the class a method belongs to.
+    """
+    parent = node.parent
+    while parent is not None:
+        if parent.type in ("class_definition", "function_definition"):
+            return parent
+        parent = parent.parent
+    return None
+
+
+def _python_named_scope_prefix(node: Any, source: bytes) -> str:
+    """``<immediate scope name>.`` or ``""`` when there is no named scope."""
+    scope = _python_enclosing_scope(node)
+    if scope is None:
+        return ""
+    scope_name = scope.child_by_field_name("name")
+    if scope_name is None:  # pragma: no cover - both scope types name a child
+        return ""
+    text = source[scope_name.start_byte:scope_name.end_byte].decode(
+        "utf-8", errors="replace",
+    )
+    return f"{text}."
+
+
+def _python_function_name(node: Any, source: bytes) -> str:
+    """Name a python callable exactly as ``py.py`` names it (WI-ripas).
+
+    py.py prefixes with the IMMEDIATE enclosing scope, one level, whether that
+    scope is a class or a function — derived from the analyzer over all four
+    shapes rather than assumed:
+
+        top-level function      ``top``
+        nested function         ``top.inner``
+        method                  ``Outer.meth``
+        method of nested class  ``Inner.deep``   (not ``Outer.Inner.deep``)
+
+    Without this the default bare-``name`` fallback stored every method under a
+    key the taint walk never constructs, so ``fn_has_ddg`` was false for 68.5%
+    of python callables and their findings degraded to ``structural`` by
+    construction. Nested FUNCTIONS were mis-keyed by the same fallback.
+    """
+    name_node = node.child_by_field_name("name")
+    if name_node is None:  # pragma: no cover - grammar always supplies a name
+        return ""
+    name = source[name_node.start_byte:name_node.end_byte].decode(
+        "utf-8", errors="replace",
+    )
+    return _python_named_scope_prefix(node, source) + name
+
+
+def _python_symbol_kind(node: Any) -> str:
+    """``method`` exactly when the immediate enclosing scope is a class.
+
+    A function nested in a function stays ``function`` — which is what py.py
+    emits for ``top.inner`` — so this is not "is it nested" but "is its owner a
+    class".
+    """
+    scope = _python_enclosing_scope(node)
+    return "method" if scope is not None and scope.type == "class_definition" else "function"
+
+
 register_ddg_language(LanguageDdgSpec(
     language="python",
     file_glob="*.py",
     function_node_types=frozenset({"function_definition"}),
+    name_for=_python_function_name,
+    kind_for=_python_symbol_kind,
     refine=_python_refine,
 ))
