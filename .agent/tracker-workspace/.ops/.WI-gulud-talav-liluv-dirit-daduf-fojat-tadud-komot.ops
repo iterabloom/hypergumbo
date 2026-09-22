@@ -1,0 +1,20 @@
+- op: create  # 2ab3
+  at: '2026-09-22T20:26:13Z'  # 2ab3
+  by: agent  # 2ab3
+  actor: jgstern_agent  # 2ab3
+  clock: 1  # 2ab3
+  nonce: 2ab3  # 2ab3
+  data:  # 2ab3
+    kind: work_item  # 2ab3
+    title: "react_component references edges start at a fabricated jsx_usage id no node carries (and hardcode typescript)"  # 2ab3
+    status: todo_hard  # 2ab3
+    priority: 3  # 2ab3
+    parent:  # 2ab3
+    tags:  # 2ab3
+    - analysis_quality  # 2ab3
+    isbefore: []  # 2ab3
+    duplicate_of: []  # 2ab3
+    not_duplicate_of: []  # 2ab3
+    pr_ref:  # 2ab3
+    description: "react_component.py (~line 268) emits `references` edges whose src is\n\n    src_id = f\"typescript:{rel_path}:0-0:{comp_name}:jsx_usage\"\n\n-- a FABRICATED id: the linker's result carries only edges, no Symbol is minted for it, so the src matches no node and dangles. It also hardcodes `typescript` regardless of the file's language (sibling of WI-komum's hardcoded-language class).\n\nFound by the WI-latup derived_from sweep (verdict group 4). derived_from there is now `[target_sym.id]` (the only consumed record) with an `endpoints` declaration.\n\nFIX SHAPE: either anchor src on the enclosing component/function (`ctx.find_enclosing_symbol`) -- the edge then says \"this component renders that one\" -- or mint a real usage Symbol. The first is the one other linkers use. Verify with the dangling-endpoint check."  # 2ab3
+    fields: {}  # 2ab3

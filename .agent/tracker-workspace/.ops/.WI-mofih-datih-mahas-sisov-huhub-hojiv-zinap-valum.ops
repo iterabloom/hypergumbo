@@ -1,0 +1,20 @@
+- op: create  # 1d72
+  at: '2026-09-22T20:26:04Z'  # 1d72
+  by: agent  # 1d72
+  actor: jgstern_agent  # 1d72
+  clock: 1  # 1d72
+  nonce: 1d72  # 1d72
+  data:  # 1d72
+    kind: work_item  # 1d72
+    title: "swift_objc import edges dangle at both ends: src uses the pass name as language, dst is the raw #import string"  # 1d72
+    status: todo_hard  # 1d72
+    priority: 3  # 1d72
+    parent:  # 1d72
+    tags:  # 1d72
+    - analysis_quality  # 1d72
+    isbefore: []  # 1d72
+    duplicate_of: []  # 1d72
+    not_duplicate_of: []  # 1d72
+    pr_ref:  # 1d72
+    description: "swift_objc.py (~line 196) builds its import edge's src as\n\n    file_id = f\"swift_objc:{rel_path}:1-1:file:file\"\n\n-- the PASS NAME in the language slot, not `make_file_id(<language>, rel_path)`. No Symbol is minted for it, so the id matches no node and the edge's src dangles. Its dst is the raw `#import` header string, not an id. Neither endpoint is a graph record. Sibling shape of INV-ronuf / INV-movor / INV-bahov (all satisfied for their own linkers), which fixed exactly this non-canonical-file-id class elsewhere.\n\nFound by the WI-latup derived_from sweep (verdict group 5). derived_from there is now `[]` with a `consumed-none` declaration; that is honest about the derivation and says nothing about the dangling endpoints, which are this row.\n\nFIX SHAPE: `make_file_id(\"objc\"|header language, rel_path)` for the src (reusing an existing canonical file Symbol when present, as js_module does via existing_file_symbol_by_canonical_id), and resolve the imported header to its file id (or a declared external placeholder) for the dst. Verify with the spec validator's dangling-endpoint check (WI-mujor) on a fixture."  # 1d72
+    fields: {}  # 1d72
