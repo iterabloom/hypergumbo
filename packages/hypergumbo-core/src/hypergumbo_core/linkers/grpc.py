@@ -4,6 +4,17 @@
 This linker detects gRPC patterns across multiple languages and creates
 edges linking clients to their corresponding server implementations.
 
+``depends_on`` is EMPTY because this linker's core edges consume no pass
+output (WI-zujan). It parses ``.proto`` files and client/server sources itself
+(``_find_grpc_files``) and mints the services, stubs, servicers and RPC routes
+those edges join. The Go analyzer's output IS read, by two OPTIONAL Go-only
+sub-families -- Go methods implementing a minted RPC route, and resolving an
+unresolved ``Register*Server`` call -- but CNF has no optional form:
+``[["go"]]`` would be falsified on every Python/Java/TS gRPC repo whose
+scan-built edges arrive with no Go pass. The twelve-language clause this
+replaced named seven languages the linker never scans and a ``proto`` pass
+whose output it never reads.
+
 Detected Patterns
 -----------------
 Protocol Buffers (.proto):
@@ -1198,10 +1209,8 @@ def _resolve_unresolved_grpc_edges(
     description="gRPC/Protobuf RPC pattern linking across languages",
     requirements=GRPC_REQUIREMENTS,
     activation=LinkerActivation(frameworks=["grpc", "protobuf"]),
-    # CNF: gRPC has first-class clients in Go, Python, Java, JS/TS, C++, Rust,
-    # Ruby, C#, Kotlin, Swift, Dart. Proto schema itself goes through the
-    # proto analyzer.
-    depends_on=[["go", "python", "java", "javascript", "cpp", "rust", "ruby", "csharp", "kotlin", "swift", "dart", "proto"]],
+    # CNF: empty -- see the module docstring (WI-zujan).
+    depends_on=[],
 )
 def grpc_linker(ctx: LinkerContext) -> LinkerResult:
     """gRPC linker for registry-based dispatch.

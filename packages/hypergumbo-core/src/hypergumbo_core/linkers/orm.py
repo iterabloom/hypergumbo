@@ -313,11 +313,12 @@ def link_orm_queries(
     "orm-linker",
     priority=75,  # Run after framework patterns have enriched symbols
     description="ORM query linking (model accessor patterns to Model symbols)",
-    # CNF: ORM frameworks span Java (Hibernate/JPA/MyBatis), Python
-    # (SQLAlchemy/Django ORM/Peewee), Ruby (ActiveRecord), Go (GORM/sqlc),
-    # JS/TS (TypeORM/Prisma/Sequelize), C# (EF Core), Kotlin (Exposed),
-    # Elixir (Ecto).
-    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "kotlin", "elixir"]],
+    # CNF (WI-zujan): the accessor regexes run over ``**/*.py`` only, the src
+    # is the enclosing symbol of a .py line, and the dst is a
+    # ``concept=model`` symbol matched on ``base_classes`` -- which only the
+    # python analyzer writes (scip_python alone cannot produce an edge). The
+    # eight-language clause this replaced listed ORM frameworks of the world.
+    depends_on=[["python"]],
     activation=always_on_unreviewed(),
 )
 def orm_linker(ctx: LinkerContext) -> LinkerResult:

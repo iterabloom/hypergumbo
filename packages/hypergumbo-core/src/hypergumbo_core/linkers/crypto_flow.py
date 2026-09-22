@@ -406,9 +406,12 @@ def link_crypto_flow(
     priority=86,  # After framework linkers, near Yjs linker
     activation=LinkerActivation(always=True),
     requirements=[],
-    # CNF: crypto APIs (hash/cipher/sign/HMAC) appear in every general-purpose
-    # backend language.
-    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "rust", "kotlin", "swift", "php"]],
+    # CNF (WI-zujan): the linker has no glob of its own -- every file it scans
+    # is the path of a ``ctx.symbols`` entry in ``_CRYPTO_LANGUAGES``, so the
+    # passes emitting those languages are a structural requirement: without
+    # them the file list is empty. javascript covers typescript; rust has two
+    # producers. The ten-language clause this replaced described the world.
+    depends_on=[["javascript", "rust", "rust_analyzer"]],
 )
 def crypto_flow_linker(ctx: LinkerContext) -> LinkerResult:
     """Run the crypto-flow linker."""
