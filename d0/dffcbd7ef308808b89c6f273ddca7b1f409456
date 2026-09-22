@@ -1,0 +1,50 @@
+Original commit body from bb0ba03d4edd636e8163797e608ce6a986e598be:
+
+graphql-resolver-linker declared five HOST languages plus graphql. Its only read
+of pass output is _get_graphql_schema_symbols, which filters ctx.symbols on
+language == "graphql" and kind in ("type","field","interface") and nothing else;
+the resolver side is read off disk by link_graphql_resolvers(ctx.repo_root, ...).
+Repaired to [["graphql", "graphql-sdl-linker"]] -- the same pair WI-dinum
+settled for its sibling graphql-linker, because both consume the same schema
+symbols and graphql-sdl-linker emits the kind="field" records the GraphQL
+analyzer never has.
+
+message-queue-linker declared nine host languages and consumes NOTHING. Its
+entry point is link_message_queues(root: Path): it takes the repository root,
+scans the tree itself, and mints BOTH ENDS of every edge, so no pass supplies
+its source and none supplies its destination. Its clause is now empty. The old
+comment stated the WI-rasal diagnosis without noticing -- "clients exist across
+all common backend languages" is a statement about the world, where depends_on
+is the passes whose OUTPUT this pass reads.
+
+THAT COLLIDED WITH A RATIFIED CRITERION, and the criterion was amended rather
+than the declaration falsified. WI-dilab's closure criterion (INV-hujog's gate)
+requires every Bridge/Framework/Protocol linker to declare a non-empty
+depends_on, and message-queue-linker is a Protocol linker. The criterion's
+premise -- that such a linker always reads some analyzer's output -- is false
+for a self-scanner, and forcing a non-empty clause does not make the declaration
+true, it makes it a list of passes the linker never reads: the too-wide,
+false-all-clear shape WI-ditir and WI-zujan exist to remove. Owner was shown the
+collision and ruled the amendment.
+
+The allowance is narrow and POSITIVE: the module docstring must state, in a
+fixed phrase the gate greps for, why the clause is empty. SILENCE PLUS AN EMPTY
+CLAUSE IS STILL AN OFFENCE, because silence cannot be told from having forgotten
+to declare, which is the case the criterion exists to catch. Two further tests
+keep the exception honest -- one asserts the branch is actually exercised (a
+dead allowance should be deleted, not carried), one asserts an undeclared empty
+clause still trips the gate.
+
+SIX OF EIGHT REMAIN, deliberately. http-linker (13 declared), subprocess-linker
+(9, scans only **/*.py), orm-linker (8, scans only **/*.py), grpc-linker (12,
+and it reads ctx.edges), event-sourcing-linker (6) and crypto-flow-linker (10)
+all genuinely read ctx.symbols, so part of each clause may name a real producer
+and each needs its own derivation. http-linker's is hardest: route_of accepts
+both an analyzer-written framework_role == "route" marker and a framework-YAML
+concept == "route" entry, so its producer set is not analyzer-only.
+
+Suite: 4,974 passed, 0 failed, changed sources at 100%, ratchet clean.
+
+Addresses WI-zujan.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
