@@ -162,6 +162,9 @@ class TestLinkYjsCrdt:
         assert edge.meta is not None
         assert edge.meta["access_mode"] == "write"
         assert edge.meta.get("dest_access_mode") is None
+        # INV-rukor: both ends are minted from the scan; the manifest entry
+        # that opened the gate is the one graph record the pass consumed.
+        assert edge.derived_from == [_make_yjs_dep_sym().id]
 
     def test_awareness_writer_links_to_awareness_reader(self, tmp_path: Path) -> None:
         """Awareness write + awareness read creates an edge."""

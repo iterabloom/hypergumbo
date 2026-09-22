@@ -283,6 +283,7 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
             evidence_type="naming_convention",
             data_direction="src_to_dst",
             meta=edge_meta,
+            # derived-from endpoints: the two are joined by the JNI mangled-name convention alone
             derived_from=[sym.id, native_sym.id],
         )
         edges.append(edge)

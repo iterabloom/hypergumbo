@@ -277,7 +277,9 @@ def link_via_strategies(
                             "ref_construct": "view_render",
                         },
                         origin_run_id=run.execution_id,
-                        derived_from=[emission.action_symbol_id, template_id],
+                        # derived-from incomplete: the template is minted; the qualifying controller
+                        #   class is not kept
+                        derived_from=[emission.action_symbol_id],
                     )
                 )
 

@@ -320,7 +320,9 @@ def link_wasm_bindgen(
                 evidence_type="ast_import",
                 data_direction="src_to_dst",
                 meta={"bridge_kind": "wasm", "framework_dispatch": "wasm_bindgen_import"},
-                derived_from=[src_id, target_sym.id],
+                # derived-from endpoints: the import node is minted here; the export is joined by
+                #   name
+                derived_from=[target_sym.id],
             ))
 
     run.silence_reason = silence_reason_for_candidates(all_imports)
@@ -467,7 +469,9 @@ def _create_wasm_load_edges(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta={"framework_dispatch": "wasm_instantiate"},
-                derived_from=[src_id, wasm_module_id],
+                # derived-from consumed-none: a text scan; the module is minted and the file id is
+                #   computed, not read
+                derived_from=[],
             ))
 
     return edges, symbols

@@ -386,7 +386,9 @@ def link_crypto_flow(
                 data_direction="src_to_dst",
                 channel=write.channel,
                 meta={"detection_pattern": "crypto_api", "ref_construct": "crypto"},
-                derived_from=[pub_id, sub_id],
+                # derived-from consumed-none: both site nodes are minted from a file scan and joined
+                #   on the API string
+                derived_from=[],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

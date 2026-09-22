@@ -238,6 +238,8 @@ def link_airflow_framework_dispatch(ctx: LinkerContext) -> LinkerResult:
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
+                    # derived-from incomplete: an inherited base's ancestor and inheritance edges
+                    #   are walked but not kept
                     derived_from=[class_sym.id, target.id],
                 ),
             )

@@ -288,10 +288,10 @@ so checking for yjs core is sufficient — but the additional two names
 are kept here to be explicit and to match the WI-vurig prescription."""
 
 
-def _repo_has_yjs_dependency(symbols: list[Symbol]) -> bool:
-    """Manifest-presence gate (WI-vurig). True iff at least one symbol
-    is an npm package.json dependency whose name is in
-    ``YJS_DEPENDENCY_NAMES``.
+def _find_yjs_dependency(symbols: list[Symbol]) -> Symbol | None:
+    """Manifest-presence gate (WI-vurig): the first symbol that is an npm
+    package.json dependency whose name is in ``YJS_DEPENDENCY_NAMES``, or
+    ``None`` when there is none.
 
     The json_config analyzer emits each package.json dependency as a
     ``Symbol(kind="dependency", language="json", name=<pkg>)`` (see
@@ -301,6 +301,10 @@ def _repo_has_yjs_dependency(symbols: list[Symbol]) -> bool:
     so the gate fires and the linker skips text-pattern scanning entirely
     — eliminating the 68 false-positive crdt_publishes edges observed in
     DEEP cohort 1 reflect (2026-05-10).
+
+    Returned rather than tested so an emitted edge can name it (INV-rukor):
+    both ends of every edge this pass emits are minted from a file scan, so
+    the gating manifest entry is the only graph record it consumed.
     """
     for sym in symbols:
         if (
@@ -308,8 +312,8 @@ def _repo_has_yjs_dependency(symbols: list[Symbol]) -> bool:
             and sym.language == "json"
             and sym.name in YJS_DEPENDENCY_NAMES
         ):
-            return True
-    return False
+            return sym
+    return None
 
 
 def link_yjs_crdt(
@@ -339,7 +343,8 @@ def link_yjs_crdt(
     # false-positive edges. Gating on a real yjs npm dependency cuts the
     # false positives to zero on non-Yjs repos while leaving Yjs repos
     # unaffected.
-    if not _repo_has_yjs_dependency(symbols):
+    yjs_dependency = _find_yjs_dependency(symbols)
+    if yjs_dependency is None:
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(edges=[], symbols=[], run=run)
 
@@ -493,7 +498,7 @@ def link_yjs_crdt(
                     "channel_kind": "crdt",
                     "framework_dispatch": "yjs_crdt",
                 },
-                derived_from=[pub_id, sub_id],
+                derived_from=[yjs_dependency.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

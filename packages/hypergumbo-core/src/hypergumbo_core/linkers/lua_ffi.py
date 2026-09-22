@@ -231,6 +231,7 @@ def link_lua_ffi(
                 evidence_type=evidence_type,
                 data_direction="src_to_dst",
                 meta=edge_meta,
+                # derived-from endpoints: the enclosing Lua symbol plus an FFI function-name match
                 derived_from=[src_sym.id, c_sym.id],
             ))
 
@@ -273,7 +274,7 @@ def link_lua_ffi(
             is_resolved=False,
             data_direction="src_to_dst",
             meta=edge_meta,
-            derived_from=[edge.src, c_sym.id],
+            derived_from=[edge.src, c_sym.id, edge.id],
         ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

@@ -79,7 +79,8 @@ class TestExtensionResolution:
         assert resolved[0].confidence == 0.8
         assert resolved[0].confidence_source == "evidence_derived"
         assert resolved[0].line == 1
-        assert resolved[0].derived_from == [caller.id, ext.id]
+        # INV-rukor: the unresolved call it resolved is the consumed record.
+        assert resolved[0].derived_from == [caller.id, ext.id, call.id]
 
     def test_resolves_via_qualified_def_name(self) -> None:
         """A qualified definition name still matches on its short name."""

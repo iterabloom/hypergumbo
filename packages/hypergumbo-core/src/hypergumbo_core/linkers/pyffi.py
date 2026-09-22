@@ -394,6 +394,8 @@ def link_pyffi(
                     evidence_type=resolved_evidence,
                     data_direction="src_to_dst",
                     meta=edge_meta,
+                    # derived-from endpoints: a ctypes/cffi call-name string joined on the C
+                    #   symbol's name
                     derived_from=[src_sym.id, c_sym.id],
                 ))
             elif is_stdlib:
@@ -410,7 +412,8 @@ def link_pyffi(
                     evidence_type=evidence_type,
                     data_direction="src_to_dst",
                     meta={"bridge_kind": "ffi"},
-                    derived_from=[src_sym.id, dst],
+                    # derived-from endpoints: the dst is a minted stdlib placeholder
+                    derived_from=[src_sym.id],
                 ))
             else:
                 # Non-stdlib call with repo-local C symbol. INV-zuhub: multi-value
@@ -435,6 +438,8 @@ def link_pyffi(
                     evidence_type=evidence_type,
                     data_direction="src_to_dst",
                     meta=edge_meta,
+                    # derived-from endpoints: a ctypes/cffi call-name string joined on the C
+                    #   symbol's name
                     derived_from=[src_sym.id, c_sym.id],
                 ))
 
@@ -491,7 +496,7 @@ def link_pyffi(
                 evidence_type="ast_call_direct",
                 data_direction="src_to_dst",
                 meta=pyo3_meta,
-                derived_from=[edge.src, rust_sym.id],
+                derived_from=[edge.src, rust_sym.id, edge.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

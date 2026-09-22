@@ -645,7 +645,9 @@ def _link_go_methods_to_rpc_routes(
             origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
             meta={"framework_dispatch": "grpc_go_server", "protocol": "grpc"},
-            derived_from=[sym.id, route_id],
+            # derived-from incomplete: the route is minted; a base-chain-mapped struct and its walk
+            #   are not kept
+            derived_from=[sym.id],
         ))
 
     return edges
@@ -821,7 +823,8 @@ def link_grpc(
                     "protocol": "grpc",
                     "framework_dispatch": "grpc_service_match",
                 },
-                derived_from=[stub_id, servicer_id],
+                # derived-from consumed-none: stub and servicer are both minted from a file scan
+                derived_from=[],
             ))
 
     # WI-ropoz: fallback — stubs/clients without an in-tree servicer
@@ -873,7 +876,8 @@ def link_grpc(
             evidence_type="ast_call_direct",
             is_resolved=False,
             meta=edge_meta,
-            derived_from=[stub_id, target.id],
+            # derived-from consumed-none: stub and proto service are both minted from a file scan
+            derived_from=[],
         ))
 
     # Create route symbols for proto RPC definitions.
@@ -940,7 +944,8 @@ def link_grpc(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta=bridge_meta,
-                derived_from=[sym.id, target_svc.id],
+                # derived-from consumed-none: server and service are both minted from a file scan
+                derived_from=[],
             ))
 
     for rpc in all_rpc_defs:
@@ -1024,7 +1029,8 @@ def link_grpc(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta=route_meta,
-                derived_from=[route_id, target_svc.id],
+                # derived-from consumed-none: route and service are both minted from the .proto scan
+                derived_from=[],
             ))
 
     # Link Go implementation methods to proto RPC route symbols.
@@ -1127,6 +1133,8 @@ def _resolve_unresolved_grpc_edges(
             linker_symbols_by_name[name] = []
         linker_symbols_by_name[name].append(sym)
 
+    minted_ids = {sym.id for sym in symbols}
+
     # Find unresolved Go edges
     for edge in ctx.get_unresolved_edges(lang="go"):
         parsed = ctx.parse_unresolved_dst(edge.dst)
@@ -1156,6 +1164,12 @@ def _resolve_unresolved_grpc_edges(
                 break
 
         if best_candidate:
+            # INV-rukor: the consumed record is the unresolved edge; the
+            # candidate counts only when it came from the graph, not from
+            # this pass's own file scan.
+            consumed_target = (
+                [] if best_candidate.id in minted_ids else [best_candidate.id]
+            )
             resolved_edges.append(Edge.create(
                 src=edge.src,
                 dst=best_candidate.id,
@@ -1166,7 +1180,7 @@ def _resolve_unresolved_grpc_edges(
                 origin_run_id=run.execution_id,
                 evidence_type="grpc_stub_resolution",
                 is_resolved=False,
-                derived_from=[edge.src, best_candidate.id],
+                derived_from=[edge.src, edge.id, *consumed_target],
             ))
 
     return resolved_edges

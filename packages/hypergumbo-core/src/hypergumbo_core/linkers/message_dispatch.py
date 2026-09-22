@@ -360,7 +360,9 @@ def link_message_dispatch(
                 access_mode="write",
                 channel=write.channel,
                 meta={"channel_kind": "message_bus"},
-                derived_from=[pub_id, sub_id],
+                # derived-from consumed-none: both ends are minted from a file scan and joined on
+                #   (api, channel)
+                derived_from=[],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

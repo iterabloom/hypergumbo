@@ -293,7 +293,7 @@ def link_napi(
             evidence_type=evidence_type,
             data_direction="src_to_dst",
             meta=edge_meta,
-            derived_from=[edge.src, target_sym.id],
+            derived_from=[edge.src, target_sym.id, edge.id],
         ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

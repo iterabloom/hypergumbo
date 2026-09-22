@@ -174,7 +174,7 @@ def link_build_targets(ctx: LinkerContext) -> LinkerResult:
             confidence=0.95,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            derived_from=[edge.src, main_fn.id],
+            derived_from=[edge.src, main_fn.id, edge.id],
         ))
 
     return LinkerResult(edges=edges, run=run)

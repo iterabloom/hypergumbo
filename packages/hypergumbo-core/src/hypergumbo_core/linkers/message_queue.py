@@ -587,7 +587,9 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                             "topic": key[1],
                             "topic_type": "variable" if is_variable_match else "literal",
                         },
-                        derived_from=[pub_symbol.id, sub_symbol.id],
+                        # derived-from consumed-none: both ends are minted from a file scan and
+                        #   joined on the topic
+                        derived_from=[],
                     )
                     edges.append(edge)
 

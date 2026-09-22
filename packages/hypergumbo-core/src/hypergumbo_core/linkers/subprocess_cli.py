@@ -884,7 +884,9 @@ def link_subprocess(
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
-                    derived_from=[call_symbol.id, target_symbol.id],
+                    # derived-from incomplete: the call node is minted; a fire.Fire target's class
+                    #   is read but not kept
+                    derived_from=[target_symbol.id],
                 ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

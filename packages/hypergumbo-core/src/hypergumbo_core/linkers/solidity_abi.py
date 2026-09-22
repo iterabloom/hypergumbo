@@ -255,7 +255,9 @@ def link_solidity_abi(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta={"detection_pattern": "abi_name_match", "call_kind": "abi"},
-                derived_from=[syn_id, target.id],
+                # derived-from endpoints: the call-site node is minted here; the function is joined
+                #   by name
+                derived_from=[target.id],
             ))
 
     run.silence_reason = silence_reason_for_candidates(call_sites)

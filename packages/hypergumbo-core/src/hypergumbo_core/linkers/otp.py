@@ -292,6 +292,30 @@ def _resolve_handler_module(
     return None
 
 
+def _erlang_module_evidence(
+    handler: Symbol,
+    enclosing: Symbol,
+    is_module: bool,
+    file_to_module_sym: dict[str, Symbol],
+) -> list[str]:
+    """The Erlang module Symbols an Erlang dispatch edge was derived from.
+
+    The handler index files each handler under its FILE's module symbol, so
+    that record decided the edge; a ``?MODULE`` or variable target also read
+    the CALLER's module symbol to pick the target. Listed once when both are
+    the same module, which is the ordinary case.
+    """
+    ids: list[str] = []
+    handler_mod = file_to_module_sym.get(handler.path)
+    if handler_mod is not None:
+        ids.append(handler_mod.id)
+    if not is_module:
+        caller_mod = file_to_module_sym.get(enclosing.path)
+        if caller_mod is not None and caller_mod.id not in ids:
+            ids.append(caller_mod.id)
+    return ids
+
+
 def _extract_erlang_caller_module(
     enclosing: Symbol,
     file_to_module: dict[str, str],
@@ -404,6 +428,8 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
+                                # derived-from endpoints: the target-module string joined on the
+                                #   handler's own qualified name
                                 derived_from=[enclosing.id, handler.id],
                             )
                             edge.meta = {
@@ -421,9 +447,13 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
         erlang_handler_index = _build_erlang_handler_index(ctx.symbols)
         # Build file→module mapping for caller module resolution
         file_to_module: dict[str, str] = {}
+        # INV-rukor: the module Symbols themselves, so an edge can name the
+        # records that keyed the handler index and the ?MODULE resolution.
+        file_to_module_sym: dict[str, Symbol] = {}
         for sym in ctx.symbols:
             if sym.language == "erlang" and sym.kind == "module":
                 file_to_module[sym.path] = sym.name
+                file_to_module_sym[sym.path] = sym
 
         if erlang_handler_index:
             for file_path in _find_erlang_files(ctx.repo_root):
@@ -498,7 +528,13 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 evidence_type="ast_call_direct",
-                                derived_from=[enclosing.id, handler.id],
+                                derived_from=[
+                                    enclosing.id, handler.id,
+                                    *_erlang_module_evidence(
+                                        handler, enclosing, is_module,
+                                        file_to_module_sym,
+                                    ),
+                                ],
                             )
                             edge.meta = {
                                 "framework_dispatch": "otp_genserver",

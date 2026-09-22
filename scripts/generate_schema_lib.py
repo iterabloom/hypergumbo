@@ -740,15 +740,19 @@ def _edge_spec() -> ClassSpec:
                     {
                         "type": "array",
                         "items": {"type": "string"},
-                        "minItems": 1,
                     },
                     {"type": "null"},
                 ],
                 "default": None,
                 "description": (
-                    "Symbol (or Edge) IDs the producer consumed "
-                    "to construct this Edge (INV-rukor). Populated "
-                    "by linkers; null for analyzer-originated edges."
+                    "Symbol (or Edge) IDs of the input records the "
+                    "producer consumed to construct this Edge "
+                    "(INV-rukor) -- the records whose presence "
+                    "decided it. Ids the producer minted in the same "
+                    "run are omitted, so [] is a linker's positive "
+                    "'consumed no graph record' (both ends built from "
+                    "a file scan), distinct from null. Populated by "
+                    "linkers; null for analyzer-originated edges."
                 ),
             },
         },
