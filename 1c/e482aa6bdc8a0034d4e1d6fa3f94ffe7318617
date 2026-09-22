@@ -1,0 +1,14 @@
+Original commit body from 4ea1c813622097c9a9106095e9263f6ad4281f2d:
+
+Addresses WI-zujan: the six linkers the row left open.
+
+Each clause was derived by reading what its linker consumes, not by a sweep. The per-linker reasoning is in the changelog entry and in each registration comment.
+
+- http: the 15 analyzers that can supply a path-bearing route record. Drops `elm`; adds `play-routes`, `clojure`, `groovy`.
+- crypto-flow: `[[javascript, rust, rust_analyzer]]`. These are its file-list producers.
+- subprocess: `[[python, scip_python]]`. orm: `[[python]]`.
+- event-sourcing and grpc: `[]`, with the fixed docstring phrase.
+
+The producer sets for http, crypto-flow, subprocess and orm are derived in tests from the analyzers' source rather than restated, with exact pins on top. Local run: 5,723 passed, and changed sources are at 100% coverage.
+
+Not changed, and to be filed: subprocess and ORM destinations are not language-filtered, so a same-named symbol in another language can be bound by name coincidence.
