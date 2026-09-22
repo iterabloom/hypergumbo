@@ -131,6 +131,8 @@ class TestStringReturnViewName:
         assert edge.dst.endswith(
             "src/main/resources/templates/users/show.html:1-1:show.html:template"
         )
+        # INV-rukor: the @Controller class qualified the method.
+        assert edge.derived_from == [method.id, klass.id]
 
     def test_jsp_under_webapp(self, tmp_path: Path) -> None:
         _write(tmp_path, "src/main/webapp/WEB-INF/views/users/show.jsp")

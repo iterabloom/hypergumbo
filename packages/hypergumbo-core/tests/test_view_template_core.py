@@ -427,3 +427,28 @@ class TestExplicitStringStrategy:
         assert em.line == 7
         assert em.detection_pattern == "render_call"
         assert em.candidates[0].path == Path("templates/users/show.html")
+        # A plain 4-tuple site names nothing beyond the action (INV-rukor).
+        assert em.consumed_ids == ()
+
+    def test_string_site_consumed_ids_reach_derived_from(self, tmp_path: Path) -> None:
+        """INV-rukor: a site's consumed ids travel onto the edge; the minted
+        template is never among them."""
+        from hypergumbo_core.linkers._view_template_core import (
+            StringSite,
+            link_via_strategies,
+        )
+
+        action = _method_symbol(name="users_view")
+        (tmp_path / "templates").mkdir()
+        (tmp_path / "templates" / "show.html").write_text("x")
+
+        class _DummyStrategy(ExplicitStringStrategy):
+            def find_string_sites(self, ctx):
+                yield StringSite(action, "show.html", 3, "render_call", ("ctrl:1",))
+
+            def string_to_candidates(self, string_value, action_symbol, ctx):
+                return [TemplateCandidate(path=Path(f"templates/{string_value}"), language="html")]
+
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[action])
+        (edge,) = link_via_strategies(ctx, [_DummyStrategy()]).edges
+        assert edge.derived_from == [action.id, "ctrl:1"]

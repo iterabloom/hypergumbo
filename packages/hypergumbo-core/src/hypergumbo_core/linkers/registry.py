@@ -182,6 +182,9 @@ class LinkerContext:
     _symbols_by_path: dict[str, list["Symbol"]] | None = field(
         default=None, init=False, repr=False
     )
+    _inheritance_edge_index: dict[str, list[tuple[str, str]]] | None = field(
+        default=None, init=False, repr=False
+    )
 
     def create_run(self) -> "AnalysisRun":
         """Create an AnalysisRun stamped with this linker's pass_version."""
@@ -214,6 +217,30 @@ class LinkerContext:
                 if s.path not in self._symbols_by_path:
                     self._symbols_by_path[s.path] = []
                 self._symbols_by_path[s.path].append(s)
+
+    def base_name_origins(
+        self, sym: "Symbol", meta_keys: tuple[str, ...] = ("base_classes",),
+    ) -> list[tuple[str, tuple[str, ...]]]:
+        """``sym``'s transitive base names, each with the records behind it.
+
+        :func:`~._transitive_bases.collect_transitive_base_origins` over this
+        context's symbols and inheritance edges, with the edge index built
+        once per context. A linker that must name what it consumed
+        (``Edge.derived_from``, INV-rukor) reads the ancestor and edge ids
+        from here instead of rebuilding an index per class.
+        """
+        from ._transitive_bases import (
+            build_inheritance_edge_index,
+            collect_transitive_base_origins,
+        )
+
+        self._ensure_indexes()
+        assert self._symbol_by_id is not None  # for type checker
+        if self._inheritance_edge_index is None:
+            self._inheritance_edge_index = build_inheritance_edge_index(self.edges)
+        return collect_transitive_base_origins(
+            sym, self._symbol_by_id, self._inheritance_edge_index, meta_keys,
+        )
 
     def get_symbol_by_id(self, symbol_id: str) -> "Symbol | None":
         """Look up a symbol by its ID.

@@ -94,20 +94,21 @@ class TestFindAirflowSubclasses:
         assert len(result) == 1
         sym, methods, _is_fallback = result[0]
         assert sym.name == "MyOperator"
-        assert methods == AIRFLOW_BASE_METHODS["BaseOperator"]
+        assert set(methods) == AIRFLOW_BASE_METHODS["BaseOperator"]
+        assert set(methods.values()) == {()}  # a direct base: no ancestor consumed
 
     def test_detects_qualified_base(self) -> None:
         c = _class_sym("MyHook", base_classes=["airflow.hooks.base.BaseHook"])
         result = _find_airflow_subclasses([c])
         assert len(result) == 1
-        assert result[0][1] == AIRFLOW_BASE_METHODS["BaseHook"]
+        assert set(result[0][1]) == AIRFLOW_BASE_METHODS["BaseHook"]
         assert result[0][2] is False
 
     def test_base_sensor_operator_alias(self) -> None:
         c = _class_sym("S", base_classes=["BaseSensorOperator"])
         result = _find_airflow_subclasses([c])
         assert len(result) == 1
-        assert result[0][1] == AIRFLOW_BASE_METHODS["BaseSensorOperator"]
+        assert set(result[0][1]) == AIRFLOW_BASE_METHODS["BaseSensorOperator"]
 
     def test_non_airflow_base_ignored(self) -> None:
         c = _class_sym("Widget", base_classes=["MyOwnBase", "object"])
@@ -304,6 +305,10 @@ class TestLinkAirflowFrameworkDispatch:
         ctx = _ctx([leaf, intermediate, method], edges=[prior])
         result = link_airflow_framework_dispatch(ctx)
         assert {(e.src, e.dst) for e in result.edges} == {(leaf.id, method.id)}
+        # INV-rukor: the Airflow base sits on the intermediate, reached by the
+        # extends edge -- both consumed, both named.
+        (dispatch,) = result.edges
+        assert dispatch.derived_from == [leaf.id, method.id, prior.id, intermediate.id]
 
     def test_transitive_two_intermediates(self) -> None:
         # MyOp -> Mid1 -> Mid2 -> BaseSensor (external).

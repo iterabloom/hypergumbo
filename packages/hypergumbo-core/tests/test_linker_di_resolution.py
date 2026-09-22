@@ -359,6 +359,9 @@ class TestHeuristics:
         assert len(match) == 1
         assert match[0].impl_name == "SqlUserService"
         assert match[0].confidence == 0.70
+        # INV-rukor: the implements edge and both classes are what the
+        # heuristic read to bind the pair.
+        assert match[0].evidence_ids == (impl_edge.id, iface.id, impl.id)
 
     def test_multiple_impls_no_edge(self) -> None:
         """Two implementations of an interface -> no heuristic binding."""
@@ -552,6 +555,38 @@ class TestDILinkerIntegration:
         assert edge.src == iface_method.id
         assert edge.dst == impl_method.id
         assert edge.confidence == 0.90
+        # An explicit binding is named by source-text strings: nothing beyond
+        # the two method endpoints was read from the graph.
+        assert edge.derived_from == [iface_method.id, impl_method.id]
+
+    def test_heuristic_binding_names_the_edge_it_read(self, tmp_path: Path) -> None:
+        """INV-rukor: with no explicit binding, the implements edge and both
+        classes decided the dispatch, so the edge names them."""
+        iface = _make_class_symbol(
+            "UserService", "java", kind="interface", path="src/UserService.java",
+        )
+        impl = _make_class_symbol(
+            "SqlUserService", "java", kind="class", path="src/SqlUserService.java",
+            base_classes=["UserService"], line=1,
+        )
+        iface_method = _make_method_symbol(
+            "findUser", "java", path="src/UserService.java", line=5,
+            class_name="UserService",
+        )
+        impl_method = _make_method_symbol(
+            "findUser", "java", path="src/SqlUserService.java", line=10,
+            class_name="SqlUserService",
+        )
+        impl_edge = _make_implements_edge(impl.id, iface.id)
+        ctx = LinkerContext(
+            repo_root=tmp_path,
+            symbols=[iface, impl, iface_method, impl_method],
+            edges=[impl_edge],
+        )
+        (edge,) = [e for e in link_di_resolution(ctx).edges if e.edge_type == "dispatches_to"]
+        assert edge.derived_from == [
+            iface_method.id, impl_method.id, impl_edge.id, iface.id, impl.id,
+        ]
 
     def test_explicit_binding_overrides_heuristic(self, tmp_path: Path) -> None:
         """An explicit Guice binding wins over the single-impl heuristic."""

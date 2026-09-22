@@ -45,10 +45,6 @@ from pathlib import Path
 from typing import Iterable, Iterator, Optional, Tuple
 
 from ..ir import Symbol
-from ._transitive_bases import (
-    build_inheritance_index,
-    collect_transitive_base_names,
-)
 from ._view_template_core import (
     ExplicitStringStrategy,
     TemplateCandidate,
@@ -337,17 +333,15 @@ class DjangoCBVDefaultStrategy(TemplateStrategy):
     def find_emissions(
         self, ctx: LinkerContext
     ) -> Iterator[TemplateRenderEmission]:
-        inheritance_index = build_inheritance_index(ctx.edges)
-        symbol_by_id = {sym.id: sym for sym in ctx.symbols}
-
         for sym in ctx.symbols:
             if sym.kind != "class" or sym.language != "python":
                 continue
-            chain = collect_transitive_base_names(
-                sym, symbol_by_id, inheritance_index
-            )
-            matching_cbv = next(
-                (b for b in chain if b in _CBV_DEFAULT_SUFFIXES), None
+            matching_cbv, cbv_via = next(
+                (
+                    (b, via) for b, via in ctx.base_name_origins(sym)
+                    if b in _CBV_DEFAULT_SUFFIXES
+                ),
+                (None, ()),
             )
             if matching_cbv is None:
                 continue
@@ -379,6 +373,8 @@ class DjangoCBVDefaultStrategy(TemplateStrategy):
                 line=sym.span.start_line if sym.span else 0,
                 detection_pattern="cbv_default_template",
                 candidates=candidates,
+                # INV-rukor: the ancestor/edges the CBV base was read through.
+                consumed_ids=cbv_via,
             )
 
 

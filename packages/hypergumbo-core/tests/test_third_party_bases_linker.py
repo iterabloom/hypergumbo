@@ -363,6 +363,11 @@ class TestFindThirdPartySubclasses:
         wrapper_subs = [s for s in subs if s[0] is wrapper]
         assert len(wrapper_subs) == 1
         assert "clean" in wrapper_subs[0][1]
+        # INV-rukor: the method is a hook BECAUSE of the ancestor and the edge
+        # reaching it; the base's own match needed neither.
+        assert wrapper_subs[0][1]["clean"] == (edge.id, base.id)
+        base_subs = [s for s in subs if s[0] is base]
+        assert base_subs[0][1]["clean"] == ()
 
 
 # ---------------------------------------------------------------------------

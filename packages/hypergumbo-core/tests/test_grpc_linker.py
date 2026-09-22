@@ -2527,6 +2527,10 @@ class TestTransitiveStructEmbedding:
             f"UserHealth.Check should implement Health.Check transitively; got "
             f"{[(e.src, e.dst) for e in impl_edges]}"
         )
+        # INV-rukor: the route is minted; the records consumed are the leaf
+        # struct, the extends edge, and the intermediate carrying the base.
+        (impl,) = [e for e in impl_edges if e.src == check.id]
+        assert impl.derived_from == [check.id, leaf_struct.id, edge.id, base_struct.id]
 
     def test_two_intermediate_chain(self, tmp_path: Path) -> None:
         """Three-level chain: Leaf → Mid → Base implements HealthService."""

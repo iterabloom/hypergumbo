@@ -725,31 +725,46 @@ def _scan_fire_commands(
     instance / dict / module target, or a class IMPORTED from another module —
     the deferred fire forms) contributes nothing (fails safe to no join).
     """
+    commands: dict[str, list[Symbol]] = {}
+    for method_sym, _cls in _fire_method_classes(root, all_symbols):
+        commands.setdefault(method_sym.name.rpartition(".")[2], []).append(method_sym)
+    return commands
+
+
+def _fire_method_classes(
+    root: Path, all_symbols: list[Symbol],
+) -> list[tuple[Symbol, Symbol]]:
+    """``(public method, fired class)`` pairs behind :func:`_scan_fire_commands`.
+
+    The class is kept because it is a consumed record: the method becomes a
+    subcommand only because a ``fire.Fire(<Class>)`` in its file names that
+    class, so an edge to the method names the class in ``derived_from``
+    (INV-rukor). In ``all_symbols`` order, as the command map was built.
+    """
     # (fire-file repo-relative path, target class name) pairs, from the shared
     # walk — see _scan_python_cli_facts for why this is no longer a private one.
     fire_targets = _scan_python_cli_facts(root).fire_targets
     if not fire_targets:
-        return {}
+        return []
     # Keep only targets whose class is DEFINED in the fire.Fire() call's own
     # file, indexed by that file's path for the method scan below.
-    class_paths_names = {
-        (s.path, s.name) for s in all_symbols if s.kind == "class"
+    class_by_path_name = {
+        (s.path, s.name): s for s in all_symbols if s.kind == "class"
     }
-    targets_by_path: dict[str, set[str]] = {}
+    targets_by_path: dict[str, dict[str, Symbol]] = {}
     for rel_path, name in fire_targets:
-        if (rel_path, name) in class_paths_names:
-            targets_by_path.setdefault(rel_path, set()).add(name)
-    commands: dict[str, list[Symbol]] = {}
+        cls = class_by_path_name.get((rel_path, name))
+        if cls is not None:
+            targets_by_path.setdefault(rel_path, {})[name] = cls
+    pairs: list[tuple[Symbol, Symbol]] = []
     for sym in all_symbols:
         if sym.kind != "method" or "." not in sym.name:
             continue
-        cls, _, method = sym.name.rpartition(".")
-        if (
-            cls in targets_by_path.get(sym.path, ())
-            and not method.startswith("_")
-        ):
-            commands.setdefault(method, []).append(sym)
-    return commands
+        cls_name, _, method = sym.name.rpartition(".")
+        fired = targets_by_path.get(sym.path, {}).get(cls_name)
+        if fired is not None and not method.startswith("_"):
+            pairs.append((sym, fired))
+    return pairs
 
 
 def link_subprocess(
@@ -809,6 +824,11 @@ def link_subprocess(
         fire_commands = _scan_fire_commands(root, all_symbols)
         for subcmd, handlers in fire_commands.items():
             command_by_name.setdefault(subcmd, []).extend(handlers)
+    # INV-rukor: method id -> the fired class that made it a subcommand.
+    fire_class_of: dict[str, str] = {
+        method.id: cls.id
+        for method, cls in (_fire_method_classes(root, all_symbols) if all_symbols else [])
+    }
 
     # Collect all subprocess calls
     all_calls: list[SubprocessCall] = []
@@ -884,9 +904,12 @@ def link_subprocess(
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
-                    # derived-from incomplete: the call node is minted; a fire.Fire target's class
-                    #   is read but not kept
-                    derived_from=[target_symbol.id],
+                    # The call node is minted here, so it is not a consumed record.
+                    derived_from=[
+                        target_symbol.id,
+                        *([fire_class_of[target_symbol.id]]
+                          if target_symbol.id in fire_class_of else []),
+                    ],
                 ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

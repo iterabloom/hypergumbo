@@ -86,9 +86,10 @@ from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ._transitive_bases import (
-    build_inheritance_index,
+    build_inheritance_edge_index,
     build_short_name_collisions,
     collect_transitive_base_names,
+    collect_transitive_base_origins,
     short_name_fallback,
 )
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
@@ -332,8 +333,8 @@ def _find_bean_target_classes(
     method_index: dict[tuple[str, str], list["Symbol"]],
     edges: list[Edge] | None = None,
     in_tree_collisions: frozenset[str] = frozenset(),
-) -> list[tuple["Symbol", bool]]:
-    """Return ``(class_sym, is_fallback)`` for each bean-dispatch target class.
+) -> list[tuple["Symbol", bool, tuple[str, ...]]]:
+    """Return ``(class_sym, is_fallback, evidence_ids)`` per bean-dispatch target.
 
     A class is a target when it carries a class-level serialization hint, or
     when any of its methods carries a method-level Jackson annotation. The
@@ -350,12 +351,17 @@ def _find_bean_target_classes(
     disambiguator), and any FQN-qualified bean-marker base is also
     precision. A class with mixed paths (one precision match + one
     fallback match) resolves as precision.
+
+    ``evidence_ids`` (INV-rukor) are the records that qualified the class
+    beyond the class itself, for the emitted edges' ``derived_from``: nothing
+    on the class-annotation path; the ancestor(s) and inheritance edges that
+    carried a bean-marker base; or the annotated sibling methods.
     """
     edges = edges or []
-    inheritance_index = build_inheritance_index(edges)
+    edge_index = build_inheritance_edge_index(edges)
     symbol_by_id = {sym.id: sym for sym in symbols}
 
-    targets: list[tuple[Symbol, bool]] = []
+    targets: list[tuple[Symbol, bool, tuple[str, ...]]] = []
     for sym in symbols:
         if sym.kind not in {"class", "interface", "struct"}:
             continue
@@ -363,16 +369,17 @@ def _find_bean_target_classes(
             continue
         # Class-level annotation path — precision.
         if _decorator_names(sym.meta) & CLASS_LEVEL_SERIALIZATION_ANNOTATIONS:
-            targets.append((sym, False))
+            targets.append((sym, False, ()))
             continue
         # Bean-marker base path — INV-zuhub fallback risk. Track each
         # base-marker match and resolve precision-wins-over-fallback.
-        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
         any_precision_base = False
         any_fallback_base = False
-        for raw in chain:
+        base_evidence: list[str] = []
+        for raw, via in collect_transitive_base_origins(sym, symbol_by_id, edge_index):
             short = _short_annotation_name(raw)
             if short in BEAN_MARKER_BASE_CLASSES:
+                base_evidence.extend(x for x in via if x not in base_evidence)
                 if short_name_fallback(
                     raw, short, in_tree_collisions, _JACKSON_BEAN_FQN_PREFIXES,
                 ):
@@ -380,13 +387,19 @@ def _find_bean_target_classes(
                 else:
                     any_precision_base = True
         if any_precision_base or any_fallback_base:
-            targets.append((sym, any_fallback_base and not any_precision_base))
+            targets.append((
+                sym, any_fallback_base and not any_precision_base,
+                tuple(base_evidence),
+            ))
             continue
         # Method-level annotation path — precision.
         key = (sym.path or "", sym.name)
         class_methods = method_index.get(key, [])
-        if any(_method_is_serialization_annotated(m) for m in class_methods):
-            targets.append((sym, False))
+        annotated = tuple(
+            m.id for m in class_methods if _method_is_serialization_annotated(m)
+        )
+        if annotated:
+            targets.append((sym, False, annotated))
     return targets
 
 
@@ -443,7 +456,7 @@ def link_jackson_dispatch(ctx: LinkerContext) -> LinkerResult:
     }
 
     edges: list[Edge] = []
-    for class_sym, is_fallback in targets:
+    for class_sym, is_fallback, evidence in targets:
         key = (class_sym.path or "", class_sym.name)
         class_methods = method_index.get(key, [])
         for method in _select_dispatch_targets(class_methods):
@@ -466,9 +479,10 @@ def link_jackson_dispatch(ctx: LinkerContext) -> LinkerResult:
                     origin_run_id=run.execution_id,
                     evidence_type="ast_decorator",
                     meta=edge_meta,
-                    # derived-from incomplete: the qualifying ancestor chain or annotated sibling
-                    #   methods are not kept
-                    derived_from=[class_sym.id, method.id],
+                    derived_from=[
+                        class_sym.id, method.id,
+                        *(x for x in evidence if x != method.id),
+                    ],
                 ),
             )
 

@@ -40,7 +40,7 @@ Sister Frameworks
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional, Tuple
 
 from ..ir import Edge, Symbol
 from ._transitive_bases import (
@@ -198,17 +198,25 @@ class RailsStrategy(MethodNameStrategy):
     """
 
     def is_action_class(self, sym: Symbol, ctx: LinkerContext) -> bool:
+        return self.action_class_evidence(sym, ctx) is not None
+
+    def action_class_evidence(
+        self, sym: Symbol, ctx: LinkerContext,
+    ) -> Optional[Tuple[str, ...]]:
+        """The ancestors and edges a controller base was read through.
+
+        Uses the context's cached walk: this used to rebuild the inheritance
+        index and the symbol map for EVERY class symbol it was asked about.
+        """
         if sym.kind != "class":
-            return False
-        inheritance_index = build_inheritance_index(ctx.edges)
-        symbol_by_id = {s.id: s for s in ctx.symbols}
-        chain = collect_transitive_base_names(
-            sym, symbol_by_id, inheritance_index
-        )
-        for base in chain:
+            return None
+        found = False
+        ids: list[str] = []
+        for base, via in ctx.base_name_origins(sym):
             if base in _CONTROLLER_BASES:
-                return True
-        return False
+                found = True
+                ids.extend(x for x in via if x not in ids)
+        return tuple(ids) if found else None
 
     def is_action_method(self, method_name: str) -> bool:
         return _is_action_method(method_name)
