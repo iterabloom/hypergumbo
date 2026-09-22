@@ -41,12 +41,9 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     import tree_sitter
 
 from ..ir import Symbol
-from ._transitive_bases import (
-    build_inheritance_index,
-    collect_transitive_base_names,
-)
 from ._view_template_core import (
     ExplicitStringStrategy,
+    StringSite,
     TemplateCandidate,
     link_via_strategies,
 )
@@ -216,21 +213,25 @@ class LaravelStrategy(ExplicitStringStrategy):
 
     def find_string_sites(
         self, ctx: LinkerContext
-    ) -> Iterator[Tuple[Symbol, str, int, str]]:
-        inheritance_index = build_inheritance_index(ctx.edges)
-        symbol_by_id = {sym.id: sym for sym in ctx.symbols}
-
+    ) -> Iterator[StringSite]:
         controller_classes: dict[str, Symbol] = {}
+        # INV-rukor: the controller and the ancestors/edges its base came from.
+        controller_evidence: dict[str, Tuple[str, ...]] = {}
         for sym in ctx.symbols:
             if sym.kind != "class" or sym.language != "php":
                 continue
             if not _is_controller_path(sym.path):
                 continue
-            chain = collect_transitive_base_names(
-                sym, symbol_by_id, inheritance_index
-            )
-            if any(base in _CONTROLLER_BASES for base in chain):
+            via_ids = [
+                via for base, via in ctx.base_name_origins(sym)
+                if base in _CONTROLLER_BASES
+            ]
+            if via_ids:
                 controller_classes[sym.name] = sym
+                ids: list[str] = [sym.id]
+                for via in via_ids:
+                    ids.extend(x for x in via if x not in ids)
+                controller_evidence[sym.name] = tuple(ids)
 
         if not controller_classes:
             return
@@ -268,7 +269,10 @@ class LaravelStrategy(ExplicitStringStrategy):
                 for pattern, view_name, lineno in _walk_view_calls_in_method(
                     method_node, source_bytes
                 ):
-                    yield method, view_name, lineno, pattern
+                    yield StringSite(
+                        method, view_name, lineno, pattern,
+                        controller_evidence[method.name.rsplit(".", 1)[0]],
+                    )
 
     def string_to_candidates(
         self, string_value: str, action_symbol: Symbol, ctx: LinkerContext

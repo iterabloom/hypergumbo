@@ -48,6 +48,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 from ..ir import Symbol
 from ._view_template_core import (
     ExplicitStringStrategy,
+    StringSite,
     TemplateCandidate,
     link_via_strategies,
 )
@@ -256,7 +257,7 @@ class SpringStrategy(ExplicitStringStrategy):
 
     def find_string_sites(
         self, ctx: LinkerContext
-    ) -> Iterator[Tuple[Symbol, str, int, str]]:
+    ) -> Iterator[StringSite]:
         controller_classes: dict[str, Symbol] = {}
         for sym in ctx.symbols:
             if sym.kind != "class" or sym.language != "java":
@@ -305,7 +306,11 @@ class SpringStrategy(ExplicitStringStrategy):
                         for prefix in _NON_TEMPLATE_PREFIXES
                     ):
                         continue
-                    yield method, view_name, lineno, pattern
+                    # INV-rukor: the @Controller class qualified the method.
+                    yield StringSite(
+                        method, view_name, lineno, pattern,
+                        (controller_classes[_enclosing_class_name(method) or ""].id,),
+                    )
 
     def string_to_candidates(
         self, string_value: str, action_symbol: Symbol, ctx: LinkerContext

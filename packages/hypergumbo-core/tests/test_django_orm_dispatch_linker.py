@@ -373,6 +373,10 @@ class TestTransitiveSubclassWalk:
         ctx = _ctx([order, logged, save], edges=[edge])
         result = link_django_orm_dispatch(ctx)
         assert {(e.src, e.dst) for e in result.edges} == {(order.id, save.id)}
+        # INV-rukor: the Django base was learned from LoggedModel through the
+        # extends edge, so both are consumed records the edge must name.
+        (dispatch,) = result.edges
+        assert dispatch.derived_from == [order.id, save.id, edge.id, logged.id]
 
     def test_form_chain(self) -> None:
         # CustomForm(HierarkeyForm) ; HierarkeyForm(forms.Form)

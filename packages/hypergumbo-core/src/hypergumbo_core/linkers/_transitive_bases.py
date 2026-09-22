@@ -45,7 +45,7 @@ matcher.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Callable, Iterable, Mapping
 
 from ..edge_types import INHERITANCE_EDGE_TYPES
 from ..symbol_kinds import type_like_kind_names
@@ -195,12 +195,64 @@ def collect_transitive_base_names(
     declaration order if they care; duplicates within the list are
     expected and fine.
     """
-    collected: list[str] = []
+    plain = {
+        src: [(dst, "") for dst in dsts] for src, dsts in inheritance_index.items()
+    }
+    return [raw for raw, _via in _walk_base_entries(
+        class_sym, symbol_by_id, plain, meta_keys,
+    )]
+
+
+def build_inheritance_edge_index(
+    edges: list["Edge"],
+    edge_types: tuple[str, ...] = _INHERITANCE_EDGE_TYPES,
+) -> dict[str, list[tuple[str, str]]]:
+    """:func:`build_inheritance_index`, keeping each hop's EDGE id.
+
+    ``src -> [(dst, edge_id), ...]``. The dst-only index answers "which names
+    are reachable"; a linker that must say WHICH records it read to emit an
+    edge (``Edge.derived_from``, INV-rukor) needs the edges it walked too.
+    """
+    index: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for edge in edges:
+        if edge.edge_type in edge_types:
+            index[edge.src].append((edge.dst, edge.id))
+    return dict(index)
+
+
+def collect_transitive_base_origins(
+    class_sym: "Symbol",
+    symbol_by_id: dict[str, "Symbol"],
+    edge_index: dict[str, list[tuple[str, str]]],
+    meta_keys: tuple[str, ...] = ("base_classes",),
+) -> list[tuple[str, tuple[str, ...]]]:
+    """:func:`collect_transitive_base_names` with each name's provenance.
+
+    Returns ``(raw, via)`` in the same order and over the same walk. ``via`` is
+    ``()`` for an entry on ``class_sym`` itself -- the class is already the
+    edge's own endpoint -- and otherwise the inheritance edge ids from
+    ``class_sym`` up to the ancestor whose metadata held ``raw``, followed by
+    that ancestor's id: the records the caller consumed to learn the name.
+    The path is the BFS one, a shortest path; under a diamond it is one
+    justification among several.
+    """
+    return _walk_base_entries(class_sym, symbol_by_id, edge_index, meta_keys)
+
+
+def _walk_base_entries(
+    class_sym: "Symbol",
+    symbol_by_id: dict[str, "Symbol"],
+    edge_index: dict[str, list[tuple[str, str]]],
+    meta_keys: tuple[str, ...],
+) -> list[tuple[str, tuple[str, ...]]]:
+    """The one BFS both public walks share; see their docstrings."""
+    collected: list[tuple[str, tuple[str, ...]]] = []
     visited: set[str] = {class_sym.id}
-    queue: list["Symbol"] = [class_sym]
+    queue: list[tuple["Symbol", tuple[str, ...]]] = [(class_sym, ())]
 
     while queue:
-        current = queue.pop(0)
+        current, path = queue.pop(0)
+        via = (*path, current.id) if path else ()
         meta = current.meta or {}
         for key in meta_keys:
             entries = meta.get(key, []) or []
@@ -208,15 +260,66 @@ def collect_transitive_base_names(
                 continue
             for raw in entries:
                 if isinstance(raw, str):
-                    collected.append(raw)
+                    collected.append((raw, via))
 
-        for parent_id in inheritance_index.get(current.id, ()):
+        for parent_id, edge_id in edge_index.get(current.id, ()):
             if parent_id in visited:
                 continue
             visited.add(parent_id)
             parent_sym = symbol_by_id.get(parent_id)
             if parent_sym is None:
                 continue
-            queue.append(parent_sym)
+            queue.append((parent_sym, (*path, edge_id)))
 
     return collected
+
+
+def match_framework_bases(
+    symbols: list["Symbol"],
+    edges: list["Edge"],
+    method_table: Mapping[str, Iterable[str]],
+    *,
+    short_name: Callable[[str], str],
+    fqn_prefixes: Iterable[str],
+    in_tree_collisions: frozenset[str] = frozenset(),
+    language: str | None = "python",
+) -> list[tuple["Symbol", dict[str, tuple[str, ...]], bool]]:
+    """Match classes against a framework base -> method-name table.
+
+    The shared body of the table-driven framework-dispatch linkers
+    (``django_orm_dispatch``, ``airflow_framework_dispatch``,
+    ``_third_party_bases``), which had three copies of it. A class qualifies
+    when any name on its transitive base chain (see
+    :func:`collect_transitive_base_origins`) shortens, via ``short_name``, to a
+    key of ``method_table``; ``language=None`` skips the language filter.
+
+    Returns ``(class_symbol, {method_name: provenance_ids}, is_fallback)``.
+    ``provenance_ids`` are the records that made THAT method a framework hook
+    -- empty when the base sits on the class itself, the ancestor and
+    inheritance edges otherwise -- so an emitted edge can name them in
+    ``derived_from`` (INV-rukor). ``is_fallback`` is INV-zuhub's, unchanged.
+    """
+    edge_index = build_inheritance_edge_index(edges)
+    symbol_by_id = {sym.id: sym for sym in symbols}
+    results: list[tuple["Symbol", dict[str, tuple[str, ...]], bool]] = []
+    for sym in symbols:
+        if sym.kind not in ("class", "struct"):
+            continue
+        if language is not None and sym.language != language:
+            continue
+        if not sym.meta or not sym.meta.get("base_classes"):
+            continue
+        methods: dict[str, tuple[str, ...]] = {}
+        is_fallback = False
+        for raw, via in collect_transitive_base_origins(sym, symbol_by_id, edge_index):
+            short = short_name(raw)
+            if short not in method_table:
+                continue
+            for method in method_table[short]:
+                prior = methods.get(method, ())
+                methods[method] = prior + tuple(x for x in via if x not in prior)
+            if short_name_fallback(raw, short, in_tree_collisions, fqn_prefixes):
+                is_fallback = True
+        if methods:
+            results.append((sym, methods, is_fallback))
+    return results

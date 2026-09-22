@@ -859,6 +859,10 @@ class TestFireSubcommandLinking:
         assert edges[0].dst == add_method.id
         # Single unambiguous candidate → full literal-command confidence.
         assert edges[0].confidence == 0.85
+        # INV-rukor: the call node is minted; the fired class is what made
+        # ``add`` a subcommand, so the edge names it beside the method.
+        calc = next(s for s in symbols if s.name == "Calc")
+        assert edges[0].derived_from == [add_method.id, calc.id]
 
     def test_fire_private_method_not_linked(self, tmp_path: Path) -> None:
         """python-fire hides underscore-prefixed members, so ``_private`` is not

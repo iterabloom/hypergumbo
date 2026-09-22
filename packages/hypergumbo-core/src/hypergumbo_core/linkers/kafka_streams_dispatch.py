@@ -99,8 +99,8 @@ from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ._transitive_bases import (
-    build_inheritance_index,
-    collect_transitive_base_names,
+    build_inheritance_edge_index,
+    collect_transitive_base_origins,
 )
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
@@ -175,23 +175,41 @@ def _callback_interface_matches(
     FQN-qualified with the kafka namespace; fallback when an unqualified
     short name collides with an in-tree class).
     """
+    plain = {
+        src: [(dst, "") for dst in dsts]
+        for src, dsts in (inheritance_index or {}).items()
+    }
+    return [
+        (short, raw)
+        for short, raw, _via in _callback_interface_origins(sym, symbol_by_id, plain)
+    ]
+
+
+def _callback_interface_origins(
+    sym: "Symbol",
+    symbol_by_id: dict[str, "Symbol"] | None,
+    edge_index: dict[str, list[tuple[str, str]]],
+) -> list[tuple[str, str, tuple[str, ...]]]:
+    """:func:`_callback_interface_matches` plus each match's provenance.
+
+    ``(short, raw, via)``: ``via`` names the ancestor and inheritance edges the
+    interface was read through, ``()`` when ``sym`` declares it itself
+    (INV-rukor), per :func:`collect_transitive_base_origins`.
+    """
     if not isinstance(sym.meta, dict):
         return []
     if symbol_by_id is None:
         symbol_by_id = {sym.id: sym}
-    if inheritance_index is None:
-        inheritance_index = {}
-    chain = collect_transitive_base_names(
-        sym, symbol_by_id, inheritance_index,
-        meta_keys=("base_classes", "interfaces"),
-    )
     seen: set[str] = set()
-    found: list[tuple[str, str]] = []
-    for entry in chain:
+    found: list[tuple[str, str, tuple[str, ...]]] = []
+    for entry, via in collect_transitive_base_origins(
+        sym, symbol_by_id, edge_index,
+        meta_keys=("base_classes", "interfaces"),
+    ):
         short = _short_type_name(entry)
         if short in KAFKA_STREAMS_CALLBACKS and short not in seen:
             seen.add(short)
-            found.append((short, entry))
+            found.append((short, entry, via))
     return found
 
 
@@ -304,6 +322,19 @@ def _build_class_method_index(
     return index
 
 
+def _provenance_for_method(
+    method_name: str,
+    interface_matches: list[tuple[str, str, tuple[str, ...]]],
+) -> list[str]:
+    """The ancestors and edges behind every matched interface that declares
+    ``method_name`` a callback — the records that made it one (INV-rukor)."""
+    ids: list[str] = []
+    for short, _raw, via in interface_matches:
+        if method_name in KAFKA_STREAMS_CALLBACKS[short]:
+            ids.extend(x for x in via if x not in ids)
+    return ids
+
+
 def _expected_method_names(interfaces: list[str]) -> frozenset[str]:
     """Union the callback-method sets for every matched interface."""
     expected: set[str] = set()
@@ -332,7 +363,7 @@ def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
 
     method_index = _build_class_method_index(ctx.symbols)
-    inheritance_index = build_inheritance_index(ctx.edges)
+    edge_index = build_inheritance_edge_index(ctx.edges)
     symbol_by_id = {sym.id: sym for sym in ctx.symbols}
     in_tree_collisions = _build_in_tree_callback_name_collisions(ctx.symbols)
     existing_keys: set[tuple[str, str, str]] = {
@@ -347,8 +378,8 @@ def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
             continue
         if sym.language not in {"java", "kotlin", "scala"}:
             continue
-        interface_matches = _callback_interface_matches(
-            sym, symbol_by_id, inheritance_index,
+        interface_matches = _callback_interface_origins(
+            sym, symbol_by_id, edge_index,
         )
         if not interface_matches:
             continue
@@ -358,9 +389,9 @@ def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
         # edges must downgrade.
         is_fallback = any(
             _is_fallback_match(raw, short, in_tree_collisions)
-            for short, raw in interface_matches
+            for short, raw, _via in interface_matches
         )
-        interfaces = [short for short, _raw in interface_matches]
+        interfaces = [short for short, _raw, _via in interface_matches]
         expected = _expected_method_names(interfaces)
         class_methods = method_index.get((sym.path or "", sym.name), [])
         for method in class_methods:
@@ -389,9 +420,10 @@ def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
-                    # derived-from incomplete: an inherited callback's ancestor and inheritance
-                    #   edges are walked but not kept
-                    derived_from=[sym.id, method.id],
+                    derived_from=[
+                        sym.id, method.id,
+                        *_provenance_for_method(short_method_name, interface_matches),
+                    ],
                 ),
             )
 

@@ -86,6 +86,8 @@ class TestPhoenix1xLayout:
             "lib/my_app_web/templates/user/show.html.eex:1-1:"
             "show.html.eex:template"
         )
+        # INV-rukor: the controller module qualified the action by name.
+        assert edge.derived_from == [action.id, controller.id]
 
     def test_heex_template(self, tmp_path: Path) -> None:
         _write(tmp_path, "lib/my_app_web/templates/user/show.html.heex")

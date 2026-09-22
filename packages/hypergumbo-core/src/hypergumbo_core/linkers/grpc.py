@@ -83,8 +83,8 @@ from ..discovery import find_files, find_non_test_files
 from ..analyze.base import make_route_symbol
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._transitive_bases import (
-    build_inheritance_index,
-    collect_transitive_base_names,
+    build_inheritance_edge_index,
+    collect_transitive_base_origins,
 )
 from .registry import (
     LinkerActivation,
@@ -557,16 +557,21 @@ def _link_go_methods_to_rpc_routes(
     # Go uses struct embedding rather than class inheritance, but the Go
     # analyzer encodes embedded structs / implemented interfaces in the
     # same `meta.base_classes` metadata, so the WI-halat helper applies.
-    inheritance_index = build_inheritance_index(existing_edges or [])
+    #
+    # INV-rukor: a mapping made HERE read graph records -- the struct symbol
+    # and, for an inherited base, the ancestor and inheritance edges -- so it
+    # keeps them for the edge's ``derived_from``. The text-scan mapping above
+    # read none, and has no entry.
+    edge_index = build_inheritance_edge_index(existing_edges or [])
     symbol_by_id = {s.id: s for s in existing_symbols}
+    struct_evidence: dict[tuple[str, str], tuple[str, ...]] = {}
     for sym in existing_symbols:
         if sym.kind != "struct" or sym.language != "go":
             continue
         struct_key = (sym.path, sym.name)
         if struct_key in struct_to_service:
             continue  # already mapped via Unimplemented embedding
-        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
-        for base in chain:
+        for base, via in collect_transitive_base_origins(sym, symbol_by_id, edge_index):
             if base.startswith("Unimplemented"):
                 continue
             # Match ttrpc patterns: XxxService or XxxServiceService
@@ -576,11 +581,13 @@ def _link_go_methods_to_rpc_routes(
                 else:
                     service_name = base[:-len("Service")]
                 struct_to_service[struct_key] = service_name
+                struct_evidence[struct_key] = (sym.id, *via)
             # Match CSI / external library patterns: XxxServer
             # e.g., IdentityServer → Identity, ControllerServer → Controller
             elif base.endswith("Server"):
                 service_name = base[:-len("Server")]
                 struct_to_service[struct_key] = service_name
+                struct_evidence[struct_key] = (sym.id, *via)
 
     if not struct_to_service:
         return edges
@@ -645,9 +652,8 @@ def _link_go_methods_to_rpc_routes(
             origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
             meta={"framework_dispatch": "grpc_go_server", "protocol": "grpc"},
-            # derived-from incomplete: the route is minted; a base-chain-mapped struct and its walk
-            #   are not kept
-            derived_from=[sym.id],
+            # The route is minted here, so it is not a consumed record.
+            derived_from=[sym.id, *struct_evidence.get((sym.path, struct_name), ())],
         ))
 
     return edges

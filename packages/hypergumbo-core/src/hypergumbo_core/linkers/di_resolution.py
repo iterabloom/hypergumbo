@@ -51,7 +51,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator
 
 from ..discovery import find_non_test_files
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
@@ -231,12 +231,17 @@ class DIBinding:
         impl_name: Short name of the implementation class.
         confidence: 0.0-1.0 confidence in the binding.
         source: Where the binding was found (e.g. "guice", "spring", "heuristic").
+        evidence_ids: Graph records the binding was derived from, for the
+            emitted edges' ``derived_from`` (INV-rukor): the implements/extends
+            edge and the two classes for a heuristic binding; empty for an
+            explicit one, which is named by source-text strings.
     """
 
     interface_name: str
     impl_name: str
     confidence: float
     source: str
+    evidence_ids: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -439,22 +444,33 @@ def build_interface_impl_map(
     Returns:
         Dict mapping interface short name to list of implementing class Symbols.
     """
-    sym_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
     result: dict[str, list[Symbol]] = defaultdict(list)
+    for iface_sym, impl_sym, _edge in _iter_interface_impls(symbols, edges):
+        result[iface_sym.name].append(impl_sym)
+    return dict(result)
 
+
+def _iter_interface_impls(
+    symbols: list[Symbol],
+    edges: list[Edge],
+) -> Iterator[tuple[Symbol, Symbol, Edge]]:
+    """``(interface, implementation, edge)`` for each edge that relates them.
+
+    The one reading of the graph behind :func:`build_interface_impl_map`,
+    exposed with the edge so a heuristic binding can say what it consumed.
+    """
+    sym_by_id: dict[str, Symbol] = {s.id: s for s in symbols}
     for edge in edges:
         if edge.edge_type == "implements":
             iface_sym = sym_by_id.get(edge.dst)
             impl_sym = sym_by_id.get(edge.src)
             if iface_sym and impl_sym:
-                result[iface_sym.name].append(impl_sym)
+                yield iface_sym, impl_sym, edge
         elif edge.edge_type == "extends":
             parent_sym = sym_by_id.get(edge.dst)
             child_sym = sym_by_id.get(edge.src)
             if parent_sym and child_sym and parent_sym.kind == "interface":
-                result[parent_sym.name].append(child_sym)
-
-    return dict(result)
+                yield parent_sym, child_sym, edge
 
 
 # ---------------------------------------------------------------------------
@@ -498,8 +514,14 @@ def resolve_bindings(
     # Interfaces already bound explicitly
     explicitly_bound: set[str] = {b.interface_name for b in explicit_bindings}
 
-    # Build interface->impl map from edges
-    iface_impl_map = build_interface_impl_map(symbols, edges)
+    # Build interface->impl map from edges, keeping what each pairing read.
+    iface_impl_map: dict[str, list[Symbol]] = defaultdict(list)
+    pair_evidence: dict[tuple[str, str], tuple[str, ...]] = {}
+    for iface_sym, impl_sym, edge in _iter_interface_impls(symbols, edges):
+        iface_impl_map[iface_sym.name].append(impl_sym)
+        pair_evidence.setdefault(
+            (iface_sym.name, impl_sym.id), (edge.id, iface_sym.id, impl_sym.id),
+        )
 
     # Apply heuristics for unbound interfaces
     for iface_name, impls in iface_impl_map.items():
@@ -521,6 +543,7 @@ def resolve_bindings(
                 impl_name=impl.name,
                 confidence=confidence,
                 source=source,
+                evidence_ids=pair_evidence[(iface_name, impl.id)],
             ))
         # Multiple impls: check if exactly one has naming convention
         elif len(impls) > 1:
@@ -531,6 +554,7 @@ def resolve_bindings(
                     impl_name=named[0].name,
                     confidence=0.75,
                     source="heuristic:naming",
+                    evidence_ids=pair_evidence[(iface_name, named[0].id)],
                 ))
 
     return all_bindings
@@ -633,9 +657,7 @@ def _create_di_edges(
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
-                    # derived-from incomplete: a heuristic binding's implements/extends edge is read
-                    #   but not kept
-                    derived_from=[iface_m.id, impl_m.id],
+                    derived_from=[iface_m.id, impl_m.id, *binding.evidence_ids],
                 ))
 
     return edges
