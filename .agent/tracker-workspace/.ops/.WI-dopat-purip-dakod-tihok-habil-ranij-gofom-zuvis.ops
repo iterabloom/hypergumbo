@@ -39,3 +39,18 @@
   clock: 4  # b4ff
   nonce: b4ff  # b4ff
   message: "MEASURED and the doc defect FIXED (4f36dc948e). Owner rulings requested, both surfaced rather than taken:\n(1) THE LABEL. not_attempted is 85.8% (default) / 88.2% (nonprod) of ddg_mixed rows across 0007's cohort + 2. walk_verdict already discloses this on every JSON evidence row and in the text view (option d was already shipped), and the scope doc no longer says 'the walk ran'. Keep (a), or remap to (b)/(c)? INV-zidur refused (c).\n(2) A REMOVAL RULE. sink_before_source adjudicates 22 FP / 0 TP on the pretix nonprod arm (seeded sample, 0022's classifier, control reproduces 119/119). Refuting on it would raise that arm's precision from 27.5% to 35.0% with no sampled TP lost, but ADR-0052 makes refutation confirm-only, and a loop-carried value is the soundness exception. Full numbers are in my previous entry and on WI-mojaz."  # b4ff
+- op: update  # bfa3
+  at: '2026-09-23T02:02:21Z'  # bfa3
+  by: agent  # bfa3
+  actor: jgstern_agent  # bfa3
+  clock: 5  # bfa3
+  nonce: bfa3  # bfa3
+  set:  # bfa3
+    status: wont_do  # bfa3
+- op: discuss  # a585
+  at: '2026-09-23T02:02:21Z'  # a585
+  by: agent  # a585
+  actor: jgstern_agent  # a585
+  clock: 6  # a585
+  nonce: a585  # a585
+  message: "OWNER RULING (2026-09-22, in chat): KEEP the label (option a). A never-attempted walk keeps publishing as ddg_mixed.\nClosed wont_do, not done: the condition in the title still holds, by decision.\nWhy it is acceptable: walk_verdict is published on every JSON evidence row and in the text view, so not_attempted is disclosed (option d was already shipped). docs/VERIFY-CLAIMS-SCOPE.md no longer says \"the walk ran\" (4f36dc948e). Measured share: not_attempted = 85.8% (default) / 88.2% (nonprod) of ddg_mixed rows.\nQuestion (2), the sink_before_source removal rule, was ruled separately (\"not yet\") and is recorded on WI-mojaz."  # a585
