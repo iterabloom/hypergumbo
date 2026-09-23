@@ -46,7 +46,7 @@ from typing import ClassVar
 
 import pytest
 
-from hypergumbo_core.io_boundary import load_catalog
+from hypergumbo_core.io_boundary import classify_call, load_catalog
 from hypergumbo_core.verify_claims import (
     compute_boundary_coverage,
     method_starved_modules,
@@ -603,3 +603,45 @@ class TestAClassmethodCalledThroughAModuleAlias:
             edges, {"python"}, _catalogs("python"),
         )
         assert coverage.complete is True, coverage.reason
+
+
+class TestAMethodOnAModuleLevelObject:
+    """INV-dihun: the INV-fugus contradiction on an OBJECT owner.
+
+    ``ctypes.cdll`` is a module-level ``LibraryLoader`` instance, so
+    ``ctypes.cdll.LoadLibrary(p)`` is a module-rooted chain the analyzer emits
+    with no ``call_construct`` -- the ``_dt.date.today()`` shape above. Keyed
+    ``methods:``, the call classified fs_read and the gate still reported
+    ``ctypes.cdll`` starved. INV-fugus's sweep resolves only CLASSES, so it
+    could not see this row. The cure is again the row's kind (INV-zikab:
+    ``module.name(...)`` is a valid call as written, so it is a function).
+    """
+
+    SOURCE = "import ctypes\n\n\ndef load(p):\n    return ctypes.cdll.LoadLibrary(p)\n"
+
+    def _edges(self, tmp_path) -> list[dict]:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(self.SOURCE, encoding="utf-8")
+        return [e.to_dict() for e in analyze_python(tmp_path).edges]
+
+    def _load_edge(self, tmp_path) -> dict:
+        hits = [
+            e for e in self._edges(tmp_path)
+            if e["dst"].startswith("python:ctypes.cdll:0-0:LoadLibrary:")
+        ]
+        assert len(hits) == 1
+        return hits[0]
+
+    def test_the_analyzer_really_emits_it_unstamped(self, tmp_path) -> None:
+        """REACH."""
+        assert "call_construct" not in (self._load_edge(tmp_path).get("meta") or {})
+
+    def test_it_classifies(self, tmp_path) -> None:
+        edge = self._load_edge(tmp_path)
+        prim = classify_call(_catalogs("python"), edge["dst"], edge.get("meta"))
+        assert prim is not None and prim.boundary == "fs_read"
+
+    def test_it_does_not_starve_the_module(self, tmp_path) -> None:
+        edges = self._edges(tmp_path) + _PY_HEALTHY_EDGES
+        assert method_starved_modules(edges, _catalogs("python")) == []

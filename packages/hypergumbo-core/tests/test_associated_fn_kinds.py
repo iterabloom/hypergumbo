@@ -168,6 +168,44 @@ class TestPythonClassmethodsAreFunctionKind:
             f"classmethod/staticmethod rows keyed as methods: {offenders}"
         )
 
+    def test_no_method_row_is_callable_as_written_on_an_object(self) -> None:
+        """INV-dihun / INV-zikab: the sweep above only sees CLASS owners.
+
+        A row's kind says how the primitive is reached from the row's own
+        ``module`` (INV-zikab, owner-ratified 2026-09-23): ``methods:`` iff it is
+        called on an INSTANCE of ``module``. When ``module`` is itself an
+        object -- ``ctypes.cdll`` is a module-level ``LibraryLoader`` instance
+        -- then ``module.name(...)`` is a valid call as written, so the row is a
+        function. Keyed ``methods:``, ``ctypes.cdll.LoadLibrary(p)`` classified
+        fs_read while ``method_starved_modules`` reported ``ctypes.cdll``
+        starved in the same run: INV-fugus's contradiction, missed by the
+        class-only sweep by construction.
+        """
+        from hypergumbo_core.io_boundary import load_catalog
+
+        offenders = [
+            f"{p.module}.{p.name}"
+            for p in load_catalog("python").primitives
+            if p.kind == "method" and _callable_on_a_non_class_owner(p.module, p.name)
+        ]
+        assert offenders == [], (
+            f"method rows callable as written on an object owner: {offenders}"
+        )
+
+    def test_the_object_owner_predicate_has_reach(self) -> None:
+        """CONTROLS for the sweep above, which can pass vacuously once every
+        offender is fixed: the predicate must still say yes to an object owner
+        and no to the shapes that really are methods."""
+        assert _callable_on_a_non_class_owner("ctypes.cdll", "LoadLibrary")
+        # A CLASS owner is the other sweep's business, not this one's.
+        assert not _callable_on_a_non_class_owner("pathlib.Path", "expanduser")
+        # A factory whose product carries the method: ``multiprocessing.Queue``
+        # is a function, and ``multiprocessing.Queue.put`` is not a valid call.
+        assert not _callable_on_a_non_class_owner("multiprocessing.Queue", "put")
+
+    def test_ctypes_cdll_load_library_is_function_kind(self) -> None:
+        assert _kinds("ctypes.cdll", language="python").get("LoadLibrary") == "function"
+
     @pytest.mark.parametrize("name", ["expanduser", "absolute"])
     def test_instance_methods_stay_method_kind(self, name: str) -> None:
         """The control — the split must not sweep the real methods along."""
@@ -177,8 +215,8 @@ class TestPythonClassmethodsAreFunctionKind:
         )
 
 
-def _resolve_class(dotted: str) -> Optional[type]:
-    """The class a catalogue module path names, or None if it is not one here."""
+def _resolve(dotted: str) -> object:
+    """The object a catalogue module path names here, or None."""
     parts = dotted.split(".")
     for cut in range(len(parts), 0, -1):
         try:
@@ -187,5 +225,27 @@ def _resolve_class(dotted: str) -> Optional[type]:
             continue
         for attr in parts[cut:]:
             obj = getattr(obj, attr, None)
-        return obj if inspect.isclass(obj) else None
+        return obj
     return None
+
+
+def _resolve_class(dotted: str) -> Optional[type]:
+    """The class a catalogue module path names, or None if it is not one here."""
+    obj = _resolve(dotted)
+    return obj if inspect.isclass(obj) else None
+
+
+def _callable_on_a_non_class_owner(module: str, name: str) -> bool:
+    """True when ``module`` names a non-class object here that ITSELF carries a
+    callable ``name`` -- so ``module.name(...)`` is a valid call as written.
+
+    A module object counts: its members are functions by the same rule. A
+    module without the name (``django.db.models.filter``, a queryset method
+    keyed on its package) or a factory whose product has it
+    (``multiprocessing.Queue.put``) is not a valid call as written and is not
+    claimed here.
+    """
+    obj = _resolve(module)
+    if obj is None or inspect.isclass(obj):
+        return False
+    return callable(getattr(obj, name, None))

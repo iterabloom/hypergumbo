@@ -327,7 +327,10 @@ host_info_read:
       Machine uptime is host information by the same argument that puts a
       monotonic clock in scope.
   - module: process
-    attributes: [platform, arch, version, cwd, pid, ppid, execPath, title, versions, release]
+    attributes: [platform, arch, version, pid, ppid, execPath, title, versions, release]
+  - module: process
+    functions: [cwd]
+    notes: "process.cwd() is CALLED, so it is not an attribute (INV-zikab); as an attribute it also denied the starvation gate its function-name route (INV-dihun)."
   - module: os
     functions: [hostname, platform, arch, release, type, cpus, totalmem, freemem, homedir, tmpdir, userInfo]
   - module: navigator
@@ -339,8 +342,8 @@ host_info_read:
 
 ipc_send:
   - module: process
-    methods: [send]
-    notes: "IPC to parent process in child_process.fork()"
+    functions: [send]
+    notes: "IPC to parent process in child_process.fork(). Function-kind: named global (INV-dihun)."
   - module: BroadcastChannel
     methods: [postMessage]
     notes: >-
@@ -375,8 +378,13 @@ ipc_recv:
     # the quotes, the auto-derived TaintSource for process.on lands
     # with name=True, which trips `if "." in src.name` in
     # `propagate_taint_structural`.
-    methods: ["on"]
-    notes: "process.on('message', ...) for IPC from parent"
+    functions: ["on"]
+    notes: >-
+      process.on('message', ...) for IPC from parent. FUNCTION-kind: `process`
+      is a named global, so `process.on(...)` is a valid call as written
+      (INV-zikab's rule, owner-ratified 2026-09-23). Keyed `methods:` it
+      starved the module on 6 of 9 surveyed JS repos once WI-kikar gave
+      process member calls their slot (INV-dihun).
 
 logging:
   # Browser + Node share console.* (WI-banaf)
