@@ -1096,6 +1096,35 @@ runs can find prior work:
   symbols on one 19-file repo). *An audit of a field should also audit the
   predicate that decides what that field gets to say.*
 
+- **2026-09-23 — `IoPrimitive.kind` (the catalogue's `functions:` /
+  `methods:` / `attributes:`).** Trigger: cadence (79 commits) plus signal 1 —
+  INV-fugus was the third per-row fix of one contradiction. **Confirmed.** The
+  catalogues state three rules in their own notes: java.yaml and kotlin.yaml
+  key on what their ANALYZER stamps ("java's analyzer stamps
+  call_construct=method"); cpp / scala / python / WI-komun key on whether a
+  VALUE supplies the callee's owner; rust.yaml and INV-pimir's statement key on
+  what the callee IS. Scala holds two of them in one merged catalogue. Every
+  consumer that branches on the value needs the second reading. The starvation
+  gate's premise is false on the main path: with a definite module slot the
+  matcher never reads `kind`. Instrument: a same-edges A/B over 21 fresh
+  surveys that re-kinds only the rows with no value receiver. It cut **both
+  ways**, and that is the lesson worth carrying: JS `process` was
+  classified-yet-starved on 6 of 9 JS-bearing repos (WI-komun exempted it,
+  then WI-kikar made it reachable, and neither checked the coverage gate), yet
+  the same re-kind LOSES 41 Java classifications through a second
+  construct×kind join (the INV-nizom arm, io_boundary.py:1161), and silences
+  76 real static calls in sbt whose qualifier the Scala analyzer drops. So a
+  kind that looks wrong can be compensating for a consumer, and fixing the row
+  first moves the harm. Also found: 16 Swift constructor rows that can never
+  match, whose BOUNDARIES are mostly wrong too (a mis-keyed kind hid
+  mis-keyed boundaries), and Scala `Process(cmd)` never classified (INV-zumin
+  had closed on a synthetic edge). One instrument error, caught before use:
+  the first probe omitted `dst_ref` and showed ObjC matching nothing. →
+  INV-zikab (axis; the axiom is the owner's call, since two shipped rulings
+  collide), INV-dihun (the contradiction, fourth occurrence), WI-narij
+  (Scala); evidence added to INV-pimir, WI-kilap, INV-gujoh, WI-fazad. Full
+  write-up: `~/hypergumbo_lab_notebook/concept-audit-io-primitive-kind_09232026.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks

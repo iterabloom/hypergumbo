@@ -1,6 +1,6 @@
 {
-  "last_audit_sha": "b41493dbfa9fadc0e907d03c2a7b9fc963354ab9",
-  "last_audit_iso_date": "2026-09-17T14:36:09.946640-04:00",
-  "suspect_domain": "pass-silence-host-boundary",
-  "audits_run": 17
+  "last_audit_sha": "d9725a9ead9a87432668c09ae49cfc90b743b910",
+  "last_audit_iso_date": "2026-09-23T14:09:49.285045-04:00",
+  "suspect_domain": "io-primitive-kind",
+  "audits_run": 18
 }
