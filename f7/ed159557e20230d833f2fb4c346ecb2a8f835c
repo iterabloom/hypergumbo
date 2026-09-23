@@ -1,0 +1,14 @@
+Original commit body from 34ef92207d87cc1f6f6117d998b4211541dc04a6:
+
+Addresses WI-fihun: 7 of its 14 wrong bindings are fixed. The row stays open for the rest.
+
+- **Return types resolve in the module that declares them.** Resolution now tries the declaring module's own class, then that module's imports, and only then the caller's scope. Previously the callee's imports were never consulted. As a result, imported return types went unresolved, and a class in the caller with the same name could win with a trusted id.
+- **`Cls.factory()` / `obj.build()` now type the variable they are assigned to**, when the receiver's type is already known.
+
+**Measured** by surveying one working tree with dev's code and with this change, each with its own cache:
+- Method-call-recovery edges dropped from 62 to 49.
+- The resolved call edges lost are exactly the 7 wrong bindings. No correct resolution was lost.
+- 196 resolved call edges were gained. I read a sample of 14 at source and all were correct.
+- All three mechanisms are mutation-checked.
+
+**Remaining:** 5 bindings on loop or comprehension targets, and 2 on builtin receivers.
