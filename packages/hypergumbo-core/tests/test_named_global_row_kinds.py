@@ -40,6 +40,12 @@ NAMED_GLOBAL_ROWS = [
     ("navigator", "sendBeacon"),
     ("Deno", "readFile"), ("Deno", "stat"),
     ("fs", "createWriteStream"),
+    # INV-dihun: ``process`` is a named global too. WI-komun left its two
+    # method rows alone because the analyzer could not reach them; WI-kikar
+    # then gave ``process`` member calls their module slot, and the two rows
+    # starved the module on 6 of 9 surveyed JS repos. ``cwd`` is CALLED
+    # (``process.cwd()``), so it is not an attribute either (INV-zikab).
+    ("process", "on"), ("process", "send"), ("process", "cwd"),
 ]
 
 CLASS_RECEIVER_ROWS = [
@@ -104,6 +110,59 @@ class TestTheGateNoLongerStarvesANamedGlobal:
                        "javascript:navigator:0-0:sendBeacon:unresolved",
                        construct_on_first="method")
         assert method_starved_modules(edges, {"javascript": load_catalog("javascript")}) == []
+
+
+class TestProcessOnTheProductionPath:
+    """INV-dihun through the real analyzer, not a hand-written edge.
+
+    The failure mode was a module the classifier MATCHED a call into being
+    reported starved in the same run, so the test asserts both halves on one
+    set of analyzer edges.
+    """
+
+    SOURCE = (
+        "function main(cb) {\n"
+        "  const here = process.cwd();\n"
+        "  process.nextTick(cb);\n"
+        "  process.on('message', cb);\n"
+        "  process.send({ here });\n"
+        "  return here.split('/');\n"
+        "}\n"
+        "module.exports = main;\n"
+    )
+
+    def _edges(self, tmp_path) -> list[dict]:
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "app.js").write_text(self.SOURCE, encoding="utf-8")
+        return [e.to_dict() for e in analyze_javascript(tmp_path).edges]
+
+    def test_reach(self, tmp_path) -> None:
+        """REACH FIRST: the process calls land in the ``process`` slot with no
+        construct, and one other edge carries a construct -- without that the
+        gate abstains for the language and the assertion below is vacuous."""
+        edges = self._edges(tmp_path)
+        process = {e["dst"]: (e.get("meta") or {}).get("call_construct")
+                   for e in edges if e["dst"].startswith("javascript:process:")}
+        assert process == {
+            f"javascript:process:0-0:{n}:unresolved": None
+            for n in ("cwd", "nextTick", "on", "send")
+        }
+        assert any((e.get("meta") or {}).get("call_construct") for e in edges)
+
+    def test_the_calls_classify(self, tmp_path) -> None:
+        catalogs = {"javascript": load_catalog("javascript")}
+        got = {}
+        for e in self._edges(tmp_path):
+            if e["dst"].startswith("javascript:process:"):
+                prim = classify_call(catalogs, e["dst"], e.get("meta"))
+                got[e["dst"].split(":")[3]] = prim and prim.boundary
+        assert got == {"cwd": "host_info_read", "nextTick": None,
+                       "on": "ipc_recv", "send": "ipc_send"}
+
+    def test_process_is_not_starved(self, tmp_path) -> None:
+        catalogs = {"javascript": load_catalog("javascript")}
+        assert method_starved_modules(self._edges(tmp_path), catalogs) == []
 
 
 class TestAClassReceiverStillStarves:

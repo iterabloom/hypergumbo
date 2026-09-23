@@ -224,7 +224,13 @@ fs_read:
     functions: [CDLL, PyDLL, OleDLL, WinDLL]
     notes: "A shared object is loaded from a PATH (dlopen) -- a filesystem read that then runs foreign code; INV-buzab's own live false confirm. cdll.LoadLibrary is the method form."
   - module: ctypes.cdll
-    methods: [LoadLibrary]
+    functions: [LoadLibrary]
+    notes: >-
+      FUNCTION-kind: `ctypes.cdll` is a module-level LibraryLoader INSTANCE, so
+      `ctypes.cdll.LoadLibrary(p)` is a valid call as written (INV-zikab). Keyed
+      `methods:`, the unstamped module-rooted chain classified fs_read while the
+      gate reported ctypes.cdll starved (INV-dihun, INV-fugus's shape on an object
+      owner, which the class-only sweep could not see).
   - module: ctypes.util
     functions: [find_library]
     notes: "Searches the library path on disk (and shells out to ldconfig / gcc on some platforms -- disclosed here, rowed as the read)."
