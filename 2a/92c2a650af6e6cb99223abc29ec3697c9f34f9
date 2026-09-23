@@ -1,0 +1,17 @@
+Original commit body from 1c8c572c5fc293d08764e3a760f352204ef34eeb:
+
+Addresses WI-sakir and WI-jopuf.
+
+**What was wrong.** Both `ts_def_use` registrations walked only `function_declaration` nodes. Class methods were therefore never walked at all: on dash.js, 0 of 766 methods reached the dataflow graph.
+
+**The fix.** The analyzer's own method naming and kind decision is extracted into `jsts_method_name` / `jsts_method_kind`. The analyzer and both dataflow specs now call those helpers, so there is no second copy of the rule.
+
+**Measured:**
+- dash.js: methods went from 0 to 766 of 766 walked under the analyzer's exact key, and getters/setters from 0 to 55 of 55.
+- apollo-server (TypeScript): methods went from 0 to 314 of 355. The remaining 41 are bodiless interface signatures, plus 2 methods in `.mts`/`.cts` files that the `*.ts` glob doesn't claim.
+
+**Not measured:** the effect on taint verdicts.
+
+**Filed:** WI-mufag, callables named after their binding (arrow functions and function expressions), which are still not walked.
+
+**Also fixed here:** a regression from #1136. Its CI missed a line-pin test, so dev was red on the full suite. That pin and two pins this PR moved are re-pinned. The full suite passes (29,934).
