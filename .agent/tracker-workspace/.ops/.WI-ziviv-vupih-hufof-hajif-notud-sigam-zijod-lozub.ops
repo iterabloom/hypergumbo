@@ -1,0 +1,24 @@
+- op: create  # 6214
+  at: '2026-09-23T19:09:25Z'  # 6214
+  by: agent  # 6214
+  actor: jgstern_agent  # 6214
+  clock: 1  # 6214
+  nonce: '6214'  # 6214
+  data:  # 6214
+    kind: work_item  # 6214
+    title: "Re-kind the unconstrained remainder under INV-zikab's axiom: 21 objc class methods, 3 swift statics, and kotlin.io.FilesKt, whose module fits neither kind"  # 6214
+    status: todo_hard  # 6214
+    priority: 3  # 6214
+    parent:  # 6214
+    tags:  # 6214
+    - catalogue  # 6214
+    - io_boundary  # 6214
+    - objc  # 6214
+    - swift  # 6214
+    - kotlin  # 6214
+    isbefore: []  # 6214
+    duplicate_of: []  # 6214
+    not_duplicate_of: []  # 6214
+    pr_ref:  # 6214
+    description: "FROM INV-zikab (axiom owner-ratified 2026-09-23): the rows that break the axiom and have NO measured blocker. They are not being re-kinded in the axis-declaration PR, which moves no row; they sit in that PR's shrink-only ledger naming this item.\n\n1. objc CLASS METHODS keyed methods: (21 rows). NSData dataWithContentsOfFile:/...URL: (4), NSString stringWithContentsOf... (2), NSFileHandle fileHandleFor... (6), NSInputStream inputStreamWith... (2), NSOutputStream outputStreamToFileAtPath:append:, NSMutableURLRequest requestWithURL:, NSURLConnection connectionWithRequest:delegate: / sendAsynchronousRequest:... / sendSynchronousRequest:..., NSFetchRequest fetchRequestWithEntityName:, NSDate date. `[NSData dataWithContentsOfFile:p]` is called on the CLASS, so by the axiom (module.name(...) valid as written) these are functions. Audit A/B (21 surveys): classifications identical on both objc repos (ReactiveObjC 2/2, ResearchKit 201/201); ResearchKit's untyped-receiver disclosures went 4 -> 3. Check the objc analyzer's +/- handling before moving them. The instance forms (initWithContentsOfFile:, writeToFile:...) stay methods.\n2. swift STATICS keyed methods: Date.now (a static property), DispatchTime.now() (a static func), ProcessInfo.processInfo (a static property). No measured effect either way.\n3. kotlin.io.FilesKt (5 rows: readText, readLines, readBytes, forEachLine, useLines; fs_read). NEITHER kind fits: no Kotlin value has type FilesKt, and FilesKt.readText(f) is not valid Kotlin. FilesKt is the compiler-emitted JVM facade class for top-level extension functions. The call `f.readText()` reaches the java.io.File rows, which already carry these names. Found by the panel's catalogue-author seat; I have not verified which of the two rows the analyzer's edges actually reach. Likely outcome: delete the facade rows once reach through java.io.File is confirmed on a fixture."  # 6214
+    fields: {}  # 6214

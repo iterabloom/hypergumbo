@@ -17,3 +17,10 @@
     pr_ref:  # 4705
     description: "FOUND while fixing INV-fugus (probe at dev 91d56790e3, analyze_python edge passed to io_boundary.classify_call WITH its dst_ref):\n\n  from datetime import date, datetime\n  from pathlib import Path\n  date.today()   -> dst python:datetime:0-0:date.today   dst_ref(module_path=datetime, name=date.today) -> classify_call None\n  Path.cwd()     -> dst python:pathlib:0-0:Path.cwd      dst_ref(module_path=pathlib,  name=Path.cwd)   -> None\n  datetime.now() -> dst python:datetime:0-0:datetime.now dst_ref(module_path=datetime, name=datetime.now) -> datetime.datetime.now (classified)\n\nSo a classmethod called on a FROM-IMPORTED class is not classified, although catalogue rows datetime.date.today and pathlib.Path.cwd exist (both function-kind after INV-fugus). datetime.now() is classified, probably because the class name equals its module name -- UNVERIFIED, not traced. The same call written `_dt.date.today()` IS classified (dst python:datetime.date:0-0:today).\n\nConsequence: a clock read / cwd read written in the most common import style is invisible to host_info_read (a recall gap, the false-all-clear direction for a host-info claim). NOT MEASURED on a corpus -- on the 09-06 surveys `python:datetime:0-0:date*` edges number 303 on django and 53+ on pretix, but how many are `date.today` was not counted.\n\nNext: trace _module_hint_candidates / _module_matches for hint `datetime` + name `date.today` vs `datetime.now`; count affected edges on the python cohort before choosing a fix."  # 4705
     fields: {}  # 4705
+- op: discuss  # a1c1
+  at: '2026-09-23T19:03:36Z'  # a1c1
+  by: agent  # a1c1
+  actor: jgstern_agent  # a1c1
+  clock: 2  # a1c1
+  nonce: a1c1  # a1c1
+  message: "Same shape seen 2026-09-23 on an OBJECT owner: 'from ctypes import cdll; cdll.LoadLibrary(p)' -> python:ctypes:0-0:cdll.LoadLibrary, not classified, while 'ctypes.cdll.LoadLibrary(p)' classifies fs_read (INV-dihun). The from-import form puts the owner in the name slot instead of the module slot."  # a1c1

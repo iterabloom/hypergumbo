@@ -1,0 +1,22 @@
+- op: create  # 5987
+  at: '2026-09-23T19:03:32Z'  # 5987
+  by: agent  # 5987
+  actor: jgstern_agent  # 5987
+  clock: 1  # 5987
+  nonce: '5987'  # 5987
+  data:  # 5987
+    kind: work_item  # 5987
+    title: "Guard the classified-yet-starved contradiction itself: five per-row fixes (INV-nular, WI-komun, INV-fugus, INV-dihun x2), each found by its symptom, and no check asserts that a module the classifier matched into is never reported starved"  # 5987
+    status: todo_hard  # 5987
+    priority: 3  # 5987
+    parent:  # 5987
+    tags:  # 5987
+    - io_boundary  # 5987
+    - verify_claims  # 5987
+    - catalogue  # 5987
+    isbefore: []  # 5987
+    duplicate_of: []  # 5987
+    not_duplicate_of: []  # 5987
+    pr_ref:  # 5987
+    description: "RESIDUAL of INV-dihun (satisfied on its filed instances by PR #1155). INV-dihun's statement is general: no module the classifier matched a call into may be reported by method_starved_modules in the same run. That was fixed FIVE times, one row at a time: INV-nular (rust File::open), WI-komun (JS console and friends), INV-fugus (python datetime), INV-dihun (JS process, python ctypes.cdll). Each instance was found by its symptom. Every row sweep since then has been limited by construction: INV-fugus's sweep resolved only CLASSES, which is how ctypes.cdll slipped past it.\n\nWHAT IS MISSING: a guard keyed on the CONTRADICTION rather than on rows. Options, not chosen:\n  (a) A test over the fixture corpus that runs each analyzer's fixtures through classify_call and method_starved_modules and asserts the intersection is empty.\n  (b) A runtime self-check inside compute_boundary_coverage: when a starved module has a classified edge in the same run, report it as an internal inconsistency rather than as blindness.\n(b) must NOT satisfy the module. Loosening the gate on \"any classified edge\" was refused for INV-fugus (test_a_METHOD_name_on_an_unstamped_edge_still_starves pins it).\nCorpus state at 10b8576108: 0 contradictions on 21 surveys (swift 4, scala 3, java 4, kotlin 1, objc 2, js 7). INV-zikab's axiom is the long-run cure; this guard is what catches the next row before a user does."  # 5987
+    fields: {}  # 5987
