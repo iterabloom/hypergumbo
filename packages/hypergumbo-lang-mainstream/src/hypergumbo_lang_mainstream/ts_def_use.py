@@ -32,10 +32,12 @@ TypeScript code.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from hypergumbo_core.cfg import DefUseResult, register_def_use_extractor
 from hypergumbo_core.ddg_build import LanguageDdgSpec, register_ddg_language
+
+from .js_ts import jsts_method_kind, jsts_method_name
 
 
 def _node_text(node: Any, source: bytes) -> str:
@@ -313,10 +315,44 @@ _HANDLERS: dict[str, Any] = {
 #     express-is-zero half is what this change addresses; the apollo-server
 #     figure was measured on an older tree and should be re-measured before
 #     being cited, not copied forward.
+def _jsts_callable_name(node: Any, source: bytes) -> Optional[str]:
+    """Name a walked callable exactly as ``js_ts.py`` names it (WI-sakir).
+
+    A ``method_definition`` takes the analyzer's own shared rule
+    (``jsts_method_name``: nearest ``class_declaration``, one level). A
+    ``function_declaration`` keeps the bare ``name`` field, which is what the
+    analyzer emits for a nested function too -- probed, not assumed.
+    """
+    if node.type == "method_definition":
+        return jsts_method_name(node, source)
+    name_node = node.child_by_field_name("name")
+    if name_node is None:  # pragma: no cover - grammar always names a declaration
+        return None
+    return source[name_node.start_byte:name_node.end_byte].decode(
+        "utf-8", errors="replace",
+    )
+
+
+def _jsts_callable_kind(node: Any) -> str:
+    """``method`` / ``getter`` / ``setter`` via the analyzer's own rule, or
+    ``function`` for a declaration."""
+    if node.type == "method_definition":
+        return jsts_method_kind(node)
+    return "function"
+
+
+# WI-sakir / WI-jopuf: ``method_definition`` is walked, and both hooks come
+# from js_ts.py rather than re-deriving its naming here -- the duplication
+# WI-jopuf declined to introduce. Before this, a class method was never walked
+# at all (dash.js: 0 of 766 methods, 0 of 54 getters reached the DDG).
+_JSTS_FUNCTION_NODE_TYPES = frozenset({"function_declaration", "method_definition"})
+
 register_ddg_language(LanguageDdgSpec(
     language="typescript",
     file_glob="*.ts",
-    function_node_types=frozenset({"function_declaration"}),
+    function_node_types=_JSTS_FUNCTION_NODE_TYPES,
+    name_for=_jsts_callable_name,
+    kind_for=_jsts_callable_kind,
 ))
 
 # Same grammar, same function node types, different glob. `*.js` only — `.mjs`
@@ -327,5 +363,7 @@ register_ddg_language(LanguageDdgSpec(
 register_ddg_language(LanguageDdgSpec(
     language="javascript",
     file_glob="*.js",
-    function_node_types=frozenset({"function_declaration"}),
+    function_node_types=_JSTS_FUNCTION_NODE_TYPES,
+    name_for=_jsts_callable_name,
+    kind_for=_jsts_callable_kind,
 ))

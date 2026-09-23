@@ -131,6 +131,21 @@ class TestTheThreeHops:
         assert len(drift) == 1
         assert "mod.py" in drift[0]
 
+    def test_hop_three_stops_at_a_helper_the_module_does_not_define(
+        self, tmp_path: Path,
+    ) -> None:
+        """An imported helper has no body in this module to walk, so the third
+        hop has nothing to follow and the call itself is all that is reached.
+        Covered only incidentally by the live tree before, which a linker
+        rewrite can remove without anyone noticing."""
+        root = _write(tmp_path, '''
+            from elsewhere import build_id
+
+            def f(path):
+                return Symbol(id=build_id(path))
+        ''')
+        assert find_id_construction_drift(root) == []
+
     def test_the_canonical_factory_is_never_flagged(self, tmp_path: Path) -> None:
         root = _write(tmp_path, '''
             def f(path, line, name):

@@ -3214,6 +3214,35 @@ def _get_class_context(node: "tree_sitter.Node", source: bytes) -> Optional[str]
     return None
 
 
+def jsts_method_kind(node: "tree_sitter.Node") -> str:
+    """The kind slot of a ``method_definition``: ``getter``, ``setter`` or
+    ``method``, from a ``get`` / ``set`` child.
+
+    Public because it is a production decision with two consumers: the
+    analyzer's own symbol ids, and the DDG spec in ``ts_def_use``, which must
+    key a method exactly as the analyzer does or the taint walk's
+    ``source_fn in ddg_symbols`` lookup misses it (WI-sakir, WI-jopuf).
+    """
+    for child in node.children:
+        if child.type == "get":
+            return "getter"
+        if child.type == "set":
+            return "setter"
+    return "method"
+
+
+def jsts_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The name slot of a ``method_definition``: ``Class.method``, prefixed by
+    the NEAREST enclosing ``class_declaration`` only, or the bare name outside
+    one. ``None`` when the node carries no name. Shared for the reason given on
+    :func:`jsts_method_kind`."""
+    name = _find_name_in_children(node, source)
+    if name is None:
+        return None
+    class_name = _get_class_context(node, source)
+    return f"{class_name}.{name}" if class_name else name
+
+
 def _get_jsts_class_ancestors(
     node: "tree_sitter.Node", source: bytes
 ) -> list[str]:
@@ -4404,14 +4433,7 @@ def _extract_symbols(
         elif node.type == "method_definition":
             name = _find_name_in_children(node, source)
             if name:
-                kind = "method"
-                for child in node.children:
-                    if child.type == "get":
-                        kind = "getter"
-                        break
-                    elif child.type == "set":
-                        kind = "setter"
-                        break
+                kind = jsts_method_kind(node)
 
                 span = Span(
                     start_line=node.start_point[0] + 1 + line_offset,
@@ -4419,9 +4441,7 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                # Use parent-walking to get class context
-                current_class_name = _get_class_context(node, source)
-                full_name = f"{current_class_name}.{name}" if current_class_name else name
+                full_name = jsts_method_name(node, source) or name
 
                 http_method, _method_route_path = _detect_nestjs_decorator(node, source)
                 if http_method:
