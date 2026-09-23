@@ -36,9 +36,20 @@ kotlin ``String`` would be a present-but-wrong hint (INV-kotob), so each
 language passes the names it shadows. None of them is a catalogued I/O owner
 today; the exclusion keeps the slot true, not a match count.
 
-A PROJECT TYPE OF THE SAME NAME WINS, as it does in both languages (a
-same-package type shadows a default import). The caller says whether the name
-is a project type; this module cannot know.
+A PROJECT TYPE IS NEVER AN OWNER HERE, imported or not, as in java
+(``_receiver_type_module``: "a project class is left alone: it is not a
+module"). The Tier-2 linkers resolve a call on a project type from the
+placeholder. Measured the first time this shipped without the rule: detekt's
+``Issue.Entity(...)`` on an imported project class took the import path as its
+slot, and 4 resolved calls into the project were lost (1 in sbt, 1 in gatling).
+The same rule is what keeps a project type named ``System`` from being read as
+java.lang's. The caller says whether the name is a project type; this module
+cannot know.
+
+AN IMPORT VALUE WITH NO DOT IS NOT A PATH. scala's import parser records the
+relative wildcard ``import Parser.*`` as ``Parser -> "Parser"``, and writing
+that into the slot is the bare simple name INV-fazim forbids. It put 101 bare
+``Def`` slots into sbt before this rule.
 """
 from __future__ import annotations
 
@@ -118,17 +129,17 @@ def static_owner_module(
     ``receiver_name`` is the source text before the dot; the caller has already
     established that it is not a local, a parameter or a typed field (a VALUE),
     so a capitalised simple name here is a TYPE the call is made on. Returns
-    the file's import of it, else ``java.lang.<name>`` for a name in the closed
-    list the language does not shadow and the project does not define, else
-    ``None`` (keep the placeholder).
+    ``None`` (keep the placeholder) for a type the project defines; else the
+    file's dotted import of it; else ``java.lang.<name>`` for a name in the
+    closed list the language does not shadow; else ``None``.
     """
     if not receiver_name.isidentifier() or not receiver_name[:1].isupper():
         return None
-    imported = imports.get(receiver_name)
-    if imported:
-        return imported
     if is_project_type:
         return None
+    imported = imports.get(receiver_name)
+    if imported:
+        return imported if "." in imported else None
     if receiver_name in JAVA_LANG_TYPES and receiver_name not in shadowed:
         return f"{IMPLICIT_IMPORT_PACKAGE}.{receiver_name}"
     return None
