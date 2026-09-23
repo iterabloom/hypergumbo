@@ -192,16 +192,59 @@ def test_a_project_type_shadows_java_lang(tmp_path: Path, lang: str, source: str
     assert _classified(lang, edges["getenv"]) is None
 
 
+_KOTLIN_IMPORTED_PROJECT_CLASS = {
+    "api/Issue.kt": """\
+package dev.acme.api
+
+class Issue {
+    class Entity(val name: String)
+}
+""",
+    "core/Use.kt": """\
+package dev.acme.core
+
+import dev.acme.api.Issue
+
+class Use {
+    fun make(): Any = Issue.Entity("x")
+}
+""",
+}
+
+
+def test_a_call_on_an_imported_project_class_still_resolves(tmp_path: Path) -> None:
+    """THE REGRESSION the first version of this change shipped on detekt: the
+    nested-class constructor on an imported PROJECT class must keep resolving
+    to the project symbol, not leave with the import path as an external."""
+    from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+    for rel, text in _KOTLIN_IMPORTED_PROJECT_CLASS.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text)
+    calls = [e for e in analyze_kotlin(tmp_path).edges
+             if e.edge_type == "calls" and "Entity" in e.dst]
+    assert calls, "reach: the constructor call must be emitted"
+    assert not any(":dev.acme.api.Issue:" in e.dst for e in calls), [e.dst for e in calls]
+
+
 class TestTheResolver:
     def test_an_import_wins(self) -> None:
         assert static_owner_module(
             "Files", {"Files": "java.nio.file.Files"},
             shadowed=frozenset(), is_project_type=False) == "java.nio.file.Files"
 
-    def test_an_imported_project_type_keeps_its_declared_path(self) -> None:
+    def test_an_imported_project_type_keeps_the_placeholder(self) -> None:
+        """A project type is resolved by the Tier-2 linkers from the
+        placeholder; its import path in the slot lost detekt 4 resolved calls."""
         assert static_owner_module(
-            "System", {"System": "com.acme.System"},
-            shadowed=frozenset(), is_project_type=True) == "com.acme.System"
+            "Issue", {"Issue": "dev.detekt.api.Issue"},
+            shadowed=frozenset(), is_project_type=True) is None
+
+    def test_a_bare_import_value_is_not_a_path(self) -> None:
+        """scala records ``import Parser.*`` as ``Parser -> "Parser"``."""
+        assert static_owner_module(
+            "Parser", {"Parser": "Parser"},
+            shadowed=frozenset(), is_project_type=False) is None
 
     def test_java_lang(self) -> None:
         assert static_owner_module(
