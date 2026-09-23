@@ -29,3 +29,10 @@
   clock: 2  # 59a8
   nonce: 59a8  # 59a8
   message: "EVIDENCE 2026-09-23 (IoPrimitive.kind concept audit, INV-zikab): THE QUALIFIER DROP IS NOT LIMITED TO IMPLICIT PACKAGES. Fixture at d917e02282, production survey + classify_call with dst_ref:\n  kotlin  import java.nio.file.Files;  Files.readAllBytes(Paths.get(p))  -> kotlin:external:0-0:readAllBytes  cc=method -> NONE\n  kotlin  import java.time.Instant;    Instant.now()                     -> kotlin:external:0-0:now           cc=method -> NONE\n  scala   import java.nio.file.{Files, Paths}; Files.readAllBytes(...)   -> scala:external:0-0:readAllBytes   cc=method -> NONE\n  scala   import scala.util.Properties; Properties.envOrElse(...)        -> scala:external:0-0:envOrElse      -> NONE\n  scala   import scala.sys.process.Process; Process.apply(c)             -> scala:external:0-0:apply          -> NONE\nControl in the same run: kotlin `File(s).readText()` resolves java.io.File and classifies.\nON sbt: 76 untyped-receiver disclosure sites are real Files.x / System.getProperty / Instant.now calls with the qualifier dropped (split by source text: ~/hypergumbo_lab_notebook/kind_audit_09232026/split_dropped.py). The disclosure is currently their ONLY signal, and it exists only because these statics are keyed methods. So re-kinding JVM statics (INV-zikab's R2) must wait for this item, or those 76 sites go silent. The title's \"implicitly-imported\" scope is narrower than the measured defect. Not re-titled here; flagging for whoever picks this up."  # 59a8
+- op: discuss  # 2515
+  at: '2026-09-23T18:44:15Z'  # 2515
+  by: agent  # 2515
+  actor: jgstern_agent  # 2515
+  clock: 3  # 2515
+  nonce: '2515'  # 2515
+  message: "CORRECTION 2026-09-23 to my note above: re-kinding the JVM statics would NOT silence the 76 sbt sites. unknown_receiver_scope does not read kind, and its caveat still attaches (verified by reading, per the INV-zikab panel's soundness seat; not re-run). What is lost is their boundary-scoped naming, a precision loss, not the caveat. This item stays a prerequisite of the JVM re-kind on precision grounds."  # 2515

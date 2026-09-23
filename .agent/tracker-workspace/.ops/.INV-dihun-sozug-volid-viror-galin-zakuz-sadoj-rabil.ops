@@ -24,3 +24,19 @@
     fields:  # c1ea
       statement: "No module into which the production classifier matched a call is reported by method_starved_modules in the same run."  # c1ea
       root_cause: "Rows for owner-named members (named globals, module-level objects) are keyed methods: while analyzers emit owner-named chains without a method stamp, so neither satisfaction route fires; fixes were applied per instance (INV-nular, WI-komun, INV-fugus) and no guard asserts the contradiction itself."  # c1ea
+- op: update  # 8d20
+  at: '2026-09-23T19:03:31Z'  # 8d20
+  by: agent  # 8d20
+  actor: jgstern_agent  # 8d20
+  clock: 2  # 8d20
+  nonce: 8d20  # 8d20
+  set:  # 8d20
+    status: satisfied  # 8d20
+    pr_ref: '1155'  # 8d20
+- op: discuss  # 9ae0
+  at: '2026-09-23T19:03:31Z'  # 9ae0
+  by: agent  # 9ae0
+  actor: jgstern_agent  # 9ae0
+  clock: 3  # 9ae0
+  nonce: 9ae0  # 9ae0
+  message: "SATISFIED ON THE FILED INSTANCES (PR #1155, dev bec1607e18). Re-ran the item's own repros on the merged tree:\n  JS fixture through analyze_javascript: process.cwd -> host_info_read, process.on -> ipc_recv, process.send -> ipc_send, process.nextTick -> None; method_starved_modules [] (was ['process']).\n  python fixture through analyze_python: ctypes.cdll.LoadLibrary -> fs_read; method_starved_modules [] (was ['ctypes.cdll']).\n  Surveys express, mobx, ioredis, jotai, EventEmitter2, killbill: starved [] on all six (each was ['process']).\nverify-claims A/B, pinned worktrees 494eb2f480 vs b9dfdb5f83, generic-taint-claims on express/mobx/ioredis: all 21 verdicts identical. express's details now name the real blocker (10 uncatalogued modules) instead of the false process starvation. The mobx/ioredis analyzer-blind caveat counts 29 method-kind primitives, down from 31 (process.on/send are seen). Classification counts on 9 JS-bearing surveys are unchanged.\nTHE GENERAL STATEMENT IS NOT ASSERTED. No guard checks the contradiction itself; filed as the residual. The from-import form cdll.LoadLibrary still does not classify; that is WI-torin's shape."  # 9ae0
