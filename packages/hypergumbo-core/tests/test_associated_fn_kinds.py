@@ -27,6 +27,10 @@ blanket move: ``TcpStream::connect`` is an associated function while
 regression that moved the whole module either way would be invisible without
 asserting both halves.
 """
+import importlib
+import inspect
+from typing import Optional
+
 import pytest
 
 
@@ -110,12 +114,58 @@ class TestPythonClassmethodsAreFunctionKind:
     withheld. The entries were still unmatchable.
     """
 
-    @pytest.mark.parametrize("name", ["cwd", "home"])
-    def test_classmethods_are_function_kind(self, name: str) -> None:
-        kinds = _kinds("pathlib.Path", language="python")
+    @pytest.mark.parametrize(
+        "module,name",
+        [
+            ("pathlib.Path", "cwd"),
+            ("pathlib.Path", "home"),
+            # INV-fugus. Keyed ``methods`` by WI-tubij, whose own note called
+            # them classmethods. ``_dt.date.today()`` reaches the catalogue on
+            # an edge with no ``call_construct``, so the methods-only
+            # ``datetime.date`` row starved the module and withheld every
+            # verdict of hypergumbo's own self-proof.
+            ("datetime.date", "today"),
+            ("datetime.datetime", "now"),
+            ("datetime.datetime", "utcnow"),
+            ("datetime.datetime", "today"),
+        ],
+    )
+    def test_classmethods_are_function_kind(self, module: str, name: str) -> None:
+        kinds = _kinds(module, language="python")
         assert kinds.get(name) == "function", (
-            f"pathlib.Path.{name} is a classmethod; a method-kind entry "
-            f"cannot match `Path.{name}()`."
+            f"{module}.{name} is a classmethod; a method-kind entry "
+            f"cannot match a call on the class."
+        )
+
+    def test_no_method_row_on_an_importable_class_is_receiverless(self) -> None:
+        """THE FAMILY, not the instances: sweep every method-kind row.
+
+        The two instances above were found one at a time, a month apart, by
+        their symptoms. This asks the bar the stdlib audit set --
+        ``inspect.getattr_static`` -- of every method-kind row whose module
+        resolves to a class in this interpreter. A row on a module that does
+        not import here (a third-party package) is NOT checked, and is not
+        claimed to be.
+        """
+        from hypergumbo_core.io_boundary import load_catalog
+
+        # C-level classmethods (``date.today``) are ``classmethod_descriptor``.
+        receiverless = (classmethod, staticmethod, type(dict.__dict__["fromkeys"]))
+        checked: list[str] = []
+        offenders: list[str] = []
+        for prim in load_catalog("python").primitives:
+            if prim.kind != "method":
+                continue
+            owner = _resolve_class(prim.module)
+            if owner is None:
+                continue
+            checked.append(f"{prim.module}.{prim.name}")
+            attr = inspect.getattr_static(owner, prim.name, None)
+            if isinstance(attr, receiverless):
+                offenders.append(f"{prim.module}.{prim.name}")
+        assert "pathlib.Path.expanduser" in checked  # reach: the sweep sees rows
+        assert offenders == [], (
+            f"classmethod/staticmethod rows keyed as methods: {offenders}"
         )
 
     @pytest.mark.parametrize("name", ["expanduser", "absolute"])
@@ -125,3 +175,17 @@ class TestPythonClassmethodsAreFunctionKind:
         assert kinds.get(name) == "method", (
             f"pathlib.Path.{name} is called on a Path instance."
         )
+
+
+def _resolve_class(dotted: str) -> Optional[type]:
+    """The class a catalogue module path names, or None if it is not one here."""
+    parts = dotted.split(".")
+    for cut in range(len(parts), 0, -1):
+        try:
+            obj = importlib.import_module(".".join(parts[:cut]))
+        except ImportError:
+            continue
+        for attr in parts[cut:]:
+            obj = getattr(obj, attr, None)
+        return obj if inspect.isclass(obj) else None
+    return None

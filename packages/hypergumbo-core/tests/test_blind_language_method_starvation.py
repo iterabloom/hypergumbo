@@ -555,3 +555,51 @@ class TestAnUnstampedAssociatedFunctionCall:
         assert method_starved_modules(
             [self._unstamped("std::process::Command", "arg")], _catalogs("rust"),
         ) == []
+
+
+class TestAClassmethodCalledThroughAModuleAlias:
+    """INV-fugus: the self-proof's every verdict, withheld by one clock read.
+
+    ``import datetime as _dt; _dt.date.today()`` is a MODULE-ROOTED dotted
+    chain, and the python analyzer emits it with no ``call_construct`` at all.
+    ``datetime.date.today`` was keyed ``methods``, so the module declared no
+    function-kind name, neither route could satisfy it, and a call the
+    catalogue CLASSIFIES (host_info_read) was reported "structurally
+    invisible". That blocker is not the qualifying kind, so every self-claim
+    fell from ``confirmed_with_caveats`` to ``inconclusive``.
+
+    The cure is the row's kind (a classmethod takes no receiver -- INV-nular's
+    ``Path.cwd`` precedent), NOT a looser gate: an unstamped edge naming a
+    METHOD row still starves, pinned in the class above.
+    """
+
+    SOURCE = "import datetime as _dt\n\n\ndef stamp():\n    return _dt.date.today()\n"
+
+    def _edges(self, tmp_path) -> list[dict]:
+        from hypergumbo_lang_mainstream.py import analyze_python
+
+        (tmp_path / "m.py").write_text(self.SOURCE, encoding="utf-8")
+        return [e.to_dict() for e in analyze_python(tmp_path).edges]
+
+    def test_the_analyzer_really_emits_it_unstamped(self, tmp_path) -> None:
+        """REACH. Without this, the assertion below could pass on any edge."""
+        today = [
+            e for e in self._edges(tmp_path)
+            if e["dst"] == "python:datetime.date:0-0:today:unresolved"
+        ]
+        assert len(today) == 1
+        assert "call_construct" not in (today[0].get("meta") or {})
+
+    def test_it_does_not_starve_the_module(self, tmp_path) -> None:
+        # The language must carry construct evidence or it is abstained on and
+        # the assertion is vacuous; one stamped edge is what every real python
+        # run has.
+        edges = self._edges(tmp_path) + _PY_HEALTHY_EDGES
+        assert method_starved_modules(edges, _catalogs("python")) == []
+
+    def test_the_coverage_gate_stays_complete(self, tmp_path) -> None:
+        edges = self._edges(tmp_path) + _PY_HEALTHY_EDGES
+        coverage = compute_boundary_coverage(
+            edges, {"python"}, _catalogs("python"),
+        )
+        assert coverage.complete is True, coverage.reason

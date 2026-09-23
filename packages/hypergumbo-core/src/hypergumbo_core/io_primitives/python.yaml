@@ -977,14 +977,18 @@ host_info_read:
       REPLACES the read, and the catalogue matches on name not arity, so a
       row would mark pure conversions too).
   - module: datetime.datetime
-    methods: [now, utcnow, today]
+    functions: [now, utcnow, today]
     notes: >-
       Classmethods that always sample the clock; the optional tz argument
       shapes the result, it does not replace the read.
       fromtimestamp/utcfromtimestamp convert a supplied value and get no
-      row.
+      row. FUNCTION-kind because a classmethod takes no receiver (INV-nular's
+      Path.cwd rule, checked with inspect.getattr_static). Keyed `methods`,
+      `_dt.date.today()` -- a module-rooted chain the analyzer emits with no
+      call_construct -- left datetime.date method-starved and withheld every
+      self-claim verdict (INV-fugus).
   - module: datetime.date
-    methods: [today]
+    functions: [today]
   - module: os
     functions: [getuid, getgid, geteuid, getegid, getgroups, getcwd, getcwdb, uname, getlogin, sysconf, confstr]
     notes: "Host- and user-identifying reads. THE REASON getpid / cpu_count / times WERE HELD OUT IS GONE (INV-tutar): they were excluded because env_read auto-derived the host_secret label and a pid is not a secret, which is the catalogue distorting itself to protect a consumer. Under host_info_read they would be ordinary rows; adding them is an ADDITION and is deliberately not folded into the split. urandom stays out for a different and still-live reason: hypergumbo ships a HAND-WRITTEN taint source for os.urandom and an auto-derived twin DISPLACES it, tripping the INV-faput caveat on every python repo (measured: rc 0 fixtures went rc 3). os.getrandom was REMOVED outright by the split -- a CSPRNG read is not an environment read under any reading."
