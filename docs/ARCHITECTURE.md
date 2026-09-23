@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **336** Python modules (139 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 95 core, 4 CLI, 36 tracker)
-- **48441** symbols (functions, classes, methods)
-- **191084** edges by type:
-  - calls: 109582
-  - contains: 44412
-  - imports: 15208
-  - instantiates: 11686
-  - references: 7028
-  - module_attr_ref: 1645
-  - other: 1523
+- **338** Python modules (140 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 96 core, 4 CLI, 36 tracker)
+- **48659** symbols (functions, classes, methods)
+- **192043** edges by type:
+  - calls: 110160
+  - contains: 44619
+  - imports: 15296
+  - instantiates: 11700
+  - references: 7072
+  - module_attr_ref: 1664
+  - other: 1532
 
 ## Package Architecture
 
@@ -36,7 +36,7 @@ depend on core but not on each other, and the tracker is fully independent.
                 /       |       |        \
                v        v       v         v
   lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer  lang-scip-python
-  (46 analyzers)  (38 analyzers)  (41 analyzers)   (5 SCIP backend)   (4 SCIP backend)
+  (47 analyzers)  (38 analyzers)  (41 analyzers)   (5 SCIP backend)   (4 SCIP backend)
                    \      |      |       /
                     v     v      v      v
                        hypergumbo-core
@@ -51,7 +51,7 @@ depend on core but not on each other, and the tracker is fully independent.
 | Package | Role |
 |---------|------|
 | **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 62 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
-| **hypergumbo-lang-mainstream** | 46 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
+| **hypergumbo-lang-mainstream** | 47 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
 | **hypergumbo-lang-rust-analyzer** | SCIP-backed Rust analyzer (alternative to the tree-sitter Rust analyzer in `lang-mainstream`; activates with `--backend rust-analyzer`) |
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 48441 Symbols + 191084 Edges + UsageContexts           │
+│  Output: 48659 Symbols + 192043 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,21 +279,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9854.9 | ir.py |
-| `len` | external_symbol | 7560.0 | <external> |
-| `write_text` | external_symbol | 6595.0 | <external> |
-| `Span` | class | 6495.7 | ir.py |
+| `Symbol` | class | 9864.1 | ir.py |
+| `len` | external_symbol | 7577.0 | <external> |
+| `write_text` | external_symbol | 6605.0 | <external> |
+| `Span` | class | 6501.6 | ir.py |
 | `LinkerContext` | class | 3544.1 | registry.py |
-| `get` | external_symbol | 3053.0 | <external> |
-| `load_catalog` | function | 2552.1 | io_boundary.py |
+| `get` | external_symbol | 3066.0 | <external> |
+| `load_catalog` | function | 2579.3 | io_boundary.py |
 | `Edge.create` | method | 2365.4 | ir.py |
-| `next` | external_symbol | 2144.0 | <external> |
+| `next` | external_symbol | 2145.0 | <external> |
 | `str` | external_symbol | 2124.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `Path` | external_symbol | 2027.0 | <external> |
+| `Path` | external_symbol | 2035.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1640.0 | <external> |
+| `append` | external_symbol | 1645.0 | <external> |
 
 ## Pattern System
 
@@ -623,6 +623,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
 - **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalogue, matching, tagging and map (ADR-0...
 - **`hypergumbo_core.io_boundary_types`**: Canonical registry of I/O-boundary values — the io-boundary axis (A...
+- **`hypergumbo_core.io_primitive_kinds`**: Canonical registry of I/O-primitive kinds — the io-primitive-kind a...
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
 - **`hypergumbo_core.library_signatures`**: DRAFT for WI-lalot — the library-signature catalogue: what a librar...
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
@@ -707,6 +708,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_mainstream.json_config`**: JSON configuration analysis pass using tree-sitter-json.
 - **`hypergumbo_lang_mainstream.jupyter`**: Jupyter notebook (.ipynb) analyzer.
 - **`hypergumbo_lang_mainstream.jvm_deps`**: JVM dependency manifest parsing for Gradle and Maven projects.
+- **`hypergumbo_lang_mainstream.jvm_implicit_imports`**: The owner a JVM static call names, when the source wrote only a sim...
 - **`hypergumbo_lang_mainstream.kotlin`**: Kotlin analysis pass using tree-sitter-kotlin.
 - **`hypergumbo_lang_mainstream.lua`**: Lua analysis pass using tree-sitter-lua.
 - **`hypergumbo_lang_mainstream.make`**: Makefile analysis pass using tree-sitter-make.
@@ -939,8 +941,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: a314e243f7c3
-  commit_count: 7512
+  commit: 182bcbdeadbc
+  commit_count: 7547
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
