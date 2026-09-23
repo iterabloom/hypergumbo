@@ -147,6 +147,11 @@ Design only — nothing in the pipeline changes in this release. ADR-0012 §Step
 
 ### Fixed
 
+#### `ddg_mixed` was documented as "the walk ran"; mostly it did not (WI-dopat)
+
+- **`docs/VERIFY-CLAIMS-SCOPE.md` defined `ddg_mixed` as "the walk ran and did not confirm". A census says that is false for most rows carrying it.** Measurement 0007's method was re-run on its 11-repository cohort plus sherpa-onnx and podman-compose, with the analyzer pinned in a worktree. `not_attempted` accounts for **242 of 282** `ddg_mixed` rows (85.8%) on the default arm and **551 of 625** (88.2%) with `--include-non-production-sources`. The first blocker is `cross_function` 62–66%, `sink_before_source` 20–23% and `source_not_tracked` 13–15%. The definition now names the three verdicts `ddg_mixed` covers and points to `walk_verdict`, which already separates them on every JSON evidence row and in the text view.
+- **The label itself is unchanged, as INV-zidur ruled.** WI-dopat's option (d), publishing the finer axis wherever the coarse one appears, turned out to be already shipped. Remapping `not_attempted` is still an owner decision. So is the finding that `sink_before_source` situations adjudicate 22 FP / 0 TP on the pretix non-production arm (WI-mojaz), because acting on it would be a removal rule and ADR-0052 makes refutation confirm-only.
+
 #### A JS/TS class method reaches the dataflow graph at all (WI-sakir, WI-jopuf)
 
 - **WI-sakir was filed on the WI-ripas shape, a method stored under a key the taint walk never asks for. Probing the analyzer showed the defect was one step earlier.** Both `ts_def_use` registrations walked only `function_declaration`, so a `method_definition` was never walked at all. On dash.js **0 of 766 methods and 0 of 54 getters** reached the DDG. Plain function-declaration keys already matched, because a nested function is named bare by both producers; that was probed, not assumed, and is now pinned.
