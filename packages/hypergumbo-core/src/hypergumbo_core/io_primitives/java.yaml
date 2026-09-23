@@ -43,6 +43,37 @@ ambiguous_names:
   - length        # File.length vs String.length, array.length — WI-gonav
   - copy          # Files.copy vs IOUtils.copy, any .copy()
   - find          # Files.find vs Stream.find, List.find, any .find()
+  # INV-zikab step 6 (ADR-0059): the JDK statics below are function-kind now,
+  # because each is called on its class (`Files.walk(p)`). Java has no free
+  # functions, so a BARE call with no module context can be one of them only
+  # through a static import, and java.py gives a static import its module
+  # slot. On the no-context path a bare `now()` / `readString()` is a project
+  # method: measured, arm B of the re-kind matched exactly that in sbt and
+  # gatling. Listing them keeps that path as it was when they were method
+  # rows; a call whose slot names the class matches as before.
+  # test_io_primitive_kinds pins that every java function row is listed.
+  - readAllBytes
+  - readAllLines
+  - readString
+  - walk
+  - isRegularFile
+  - isDirectory
+  - getLastModifiedTime
+  - writeString
+  - createFile
+  - createDirectory
+  - createDirectories
+  - deleteIfExists
+  - move
+  - createTempFile
+  - createTempDirectory
+  - getenv
+  - getProperty
+  - getProperties
+  - currentTimeMillis
+  - nanoTime
+  - now
+  - systemUTC
 
 fs_read:
   - module: java.io.File
@@ -81,7 +112,12 @@ fs_read:
       The declared type is what the analyzer puts in the module slot, so the
       base type needs its own row and cannot inherit FileInputStream's.
   - module: java.nio.file.Files
-    methods: [readAllBytes, readAllLines, readString, list, walk, find, exists, isRegularFile, isDirectory, size, getLastModifiedTime]
+    functions: [readAllBytes, readAllLines, readString, list, walk, find, exists, isRegularFile, isDirectory, size, getLastModifiedTime]
+    notes: >-
+      Static methods, called on the class (`Files.readAllBytes(p)`), so
+      function-kind (ADR-0059). They were keyed methods to get past the
+      INV-nizom arm, which read java's `method` stamp as instance-receiver
+      evidence; INV-zikab steps 4 and 5 removed that need.
   - module: java.nio.file.Path
     methods: [toFile, toRealPath]
   - module: java.util.Scanner
@@ -110,7 +146,7 @@ fs_write:
   - module: java.io.BufferedWriter
     methods: [write, newLine]
   - module: java.nio.file.Files
-    methods: [write, writeString, createFile, createDirectory, createDirectories, delete, deleteIfExists, move, copy, createTempFile, createTempDirectory]
+    functions: [write, writeString, createFile, createDirectory, createDirectories, delete, deleteIfExists, move, copy, createTempFile, createTempDirectory]
 
 net_send:
   - module: java.net.Socket
@@ -152,7 +188,7 @@ subprocess:
 
 env_read:
   - module: java.lang.System
-    methods: [getenv, getProperty, getProperties]
+    functions: [getenv, getProperty, getProperties]
 
 # INV-tutar: host DESCRIPTION reads. Split out of env_read because
 # AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
@@ -160,27 +196,25 @@ env_read:
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
   - module: java.lang.System
-    methods: [currentTimeMillis, nanoTime]
+    functions: [currentTimeMillis, nanoTime]
     notes: >-
       WI-tubij: a clock read is host_info_read in EVERY catalogued language
       (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
       Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
       approximate uptime, which distinguishes machines. Arithmetic on an
       already-captured value is NOT a read and is refused. Static methods,
-      catalogued method-kind on the precedent set by java.nio.file.Files'
-      statics (INV-suril) — java's analyzer stamps call_construct=method on
-      every selector-expression call. INHERITED BY kotlin AND scala via
-      _CATALOG_PARENTS, which is why neither of those catalogues repeats
-      these rows.
+      called on the class, so function-kind (ADR-0059). INHERITED BY kotlin
+      AND scala via _CATALOG_PARENTS, which is why neither of those
+      catalogues repeats these rows.
   - module: java.time.Instant
-    methods: [now]
+    functions: [now]
     notes: >-
       now() and now(Clock) both query a clock; ofEpochMilli / ofEpochSecond
       / from / parse convert a supplied value and get no row.
   - module: java.time.LocalDateTime
-    methods: [now]
+    functions: [now]
   - module: java.time.LocalDate
-    methods: [now]
+    functions: [now]
     notes: >-
       MEASURED, not assumed: across the corpus surveys java.time.LocalDate.now
       is the MOST-CALLED clock in java code (10 edges, ahead of
@@ -188,13 +222,13 @@ host_info_read:
       along with ZonedDateTime. Every java.time type exposes a static now();
       the four below are the ones the corpus actually calls.
   - module: java.time.LocalTime
-    methods: [now]
+    functions: [now]
   - module: java.time.ZonedDateTime
-    methods: [now]
+    functions: [now]
   - module: java.time.OffsetDateTime
-    methods: [now]
+    functions: [now]
   - module: java.time.Clock
-    methods: [systemUTC]
+    functions: [systemUTC]
   - module: java.lang.Runtime
     methods: [availableProcessors, totalMemory, freeMemory, maxMemory]
 

@@ -26,6 +26,21 @@ status: in_progress
 # When module_hint is "external" (unresolved), these names are skipped for
 # short-name matching. Qualified-name and module-filtered matching still work.
 ambiguous_names:
+  # --- scala.util.Properties members (INV-zikab step 6, ADR-0059) ---
+  # Function-kind, called on the object; a bare no-context call is a project
+  # method. java's re-kinded statics are listed in java.yaml, which this
+  # catalogue inherits.
+  - envOrElse
+  - envOrNone
+  - propOrElse
+  - propOrNone
+  - propIsSet
+  - javaHome
+  - tmpDir
+  - userDir
+  - userHome
+  - userName
+  - scalaHome
   # --- Java I/O primitives with generic Scala names ---
   - bind          # monadic bind vs ServerSocket.bind
   - start         # Eval.start, Future vs ProcessBuilder.start
@@ -185,7 +200,11 @@ env_read:
   - module: scala.sys.SystemProperties
     methods: [apply, get, getOrElse]
   - module: scala.util.Properties
-    methods: [envOrElse, envOrNone, propOrElse, propOrNone, propIsSet]
+    functions: [envOrElse, envOrNone, propOrElse, propOrNone, propIsSet]
+    notes: >-
+      Members of the `object` Properties, called on the object itself, so
+      function-kind (ADR-0059). Listed in ambiguous_names for java's reason:
+      a bare call with no module context is a project method.
 
 # INV-tutar: host DESCRIPTION reads. Split out of env_read because
 # AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
@@ -193,5 +212,5 @@ env_read:
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
   - module: scala.util.Properties
-    methods: [javaHome, tmpDir, userDir, userHome, userName, scalaHome]
+    functions: [javaHome, tmpDir, userDir, userHome, userName, scalaHome]
 
