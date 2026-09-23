@@ -44,3 +44,24 @@
   clock: 4  # c553
   nonce: c553  # c553
   message: "STEP 2 DONE (PR #1155): JS process.on/send/cwd and python ctypes.cdll.LoadLibrary are function-kind; INV-dihun satisfied on those instances, and the contradiction guard is filed as WI-bobuf. Remaining in the ratified order: step 1 (declare the axis: registry, helper, linter, property test, shrink-only allowlist), step 3 (swift constructor boundaries, INV-gujoh), step 4 (INV-nizom arm, io_boundary.py:1161), step 5 (WI-kilap), step 6 (JVM statics + re-measure), step 7 (INV-pimir statement, starvation docstring)."  # c553
+- op: discuss  # 00a6
+  at: '2026-09-23T19:45:03Z'  # 00a6
+  by: agent  # 00a6
+  actor: jgstern_agent  # 00a6
+  clock: 5  # 00a6
+  nonce: 00a6  # 00a6
+  message: "STEP 1 DONE (PR #1157, ADR-0059): the axis is declared with ADR-0024's four artifacts.\n- Registry and predicates: io_primitive_kinds.\n- Consumers: 18 literal sites converted, no behaviour change.\n- Static check: find_kind_literal_drift, run by check-io-boundary-drift.\n- Property tests: test_io_primitive_kinds.py.\nThe 91 non-conforming rows sit in a shrink-only ledger, each naming its blocker (INV-pimir, WI-kilap, WI-narij, INV-gujoh, WI-ziviv).\nNext in order: step 3 (swift constructor boundaries, INV-gujoh), step 4 (the INV-nizom arm), step 5 (WI-kilap), step 6 (JVM statics), step 7 (INV-pimir statement and the starvation docstring). WI-ziviv (objc, swift statics, FilesKt) is unconstrained and can go at any point."  # 00a6
+- op: discuss  # 8a8b
+  at: '2026-09-23T21:14:38Z'  # 8a8b
+  by: agent  # 8a8b
+  actor: jgstern_agent  # 8a8b
+  clock: 6  # 8a8b
+  nonce: 8a8b  # 8a8b
+  message: "STEP 3 DONE (PR #1158): the 16 swift constructor rows were adjudicated (8 deleted, 4 disclosed as net_listen/db_compose, 3 handles kept, CommandLine made an attribute) and keyed function. The ledger went 91 -> 75. Full breakdown on INV-gujoh. Next: step 4, the INV-nizom arm."  # 8a8b
+- op: discuss  # 06ce
+  at: '2026-09-23T21:43:43Z'  # 06ce
+  by: agent  # 06ce
+  actor: jgstern_agent  # 06ce
+  clock: 7  # 06ce
+  nonce: 06ce  # 06ce
+  message: "STEP 4 DONE (PR #1159): slot_names_one_owner() exempts a disjunctive module slot whose every entry names the same owner (java's wildcard slot, e.g. redis.clients.jedis.System,...,java.lang.System) from the INV-nizom arm; cpp's #include set is still file context. Measured over 21 surveys: arm A (shipped) is IDENTICAL on all 21, so no shipped output changed. Arm B (JVM statics re-kinded) lost 41 classifications before and loses 0 now (jedis 160, petclinic 14, gatling 32 with one gained); the acceptance condition held. The ledger's JVM statics now name only WI-kilap as blocker. Next: step 5 (WI-kilap)."  # 06ce

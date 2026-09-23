@@ -36,3 +36,18 @@
   clock: 3  # 2515
   nonce: '2515'  # 2515
   message: "CORRECTION 2026-09-23 to my note above: re-kinding the JVM statics would NOT silence the 76 sbt sites. unknown_receiver_scope does not read kind, and its caveat still attaches (verified by reading, per the INV-zikab panel's soundness seat; not re-run). What is lost is their boundary-scoped naming, a precision loss, not the caveat. This item stays a prerequisite of the JVM re-kind on precision grounds."  # 2515
+- op: update  # fee9
+  at: '2026-09-23T23:22:19Z'  # fee9
+  by: agent  # fee9
+  actor: jgstern_agent  # fee9
+  clock: 4  # fee9
+  nonce: fee9  # fee9
+  set:  # fee9
+    status: done  # fee9
+- op: discuss  # 9598
+  at: '2026-09-23T23:22:19Z'  # 9598
+  by: agent  # 9598
+  actor: jgstern_agent  # 9598
+  clock: 5  # 9598
+  nonce: '9598'  # 9598
+  message: "DONE in PR #1160 (INV-zikab step 5). BEHAVIORAL EVIDENCE: I re-ran this item's filed repro (~/hypergumbo_lab_notebook/suril_09072026/fxkt, fxsc) on dev 8d6be9b562 through the production analyzers + classify_call:\n  kotlin System.getenv            -> kotlin:java.lang.System:0-0:getenv             -> env_read        (was NONE)\n  kotlin System.currentTimeMillis -> kotlin:java.lang.System:0-0:currentTimeMillis  -> host_info_read  (was NONE)\n  scala  System.getenv            -> scala:java.lang.System:0-0:getenv              -> env_read        (was NONE)\n  scala  System.currentTimeMillis -> scala:java.lang.System:0-0:currentTimeMillis   -> host_info_read  (was NONE)\n  control: kotlin println -> logging, as before.\nThe fix also covers the EXPLICIT-import half recorded on this item: Files.readAllBytes -> fs_read, Instant.now -> host_info_read, scala Properties.envOrElse -> env_read. These are pinned by test_jvm_static_owner_slot.py, which also pins the controls: an unimported type, an untyped value, a shadowed String/Long, and a project type named System all keep the placeholder.\nMechanism: jvm_implicit_imports.static_owner_module(). It uses the file's dotted import, else java.lang's closed JLS list minus each language's shadows, and never a project type.\nSurveys (pinned worktrees): classified calls sbt 123 -> 237, gatling 31 -> 57, detekt 17 -> 30, http4s 3 -> 6. No resolved edge was lost and no bare slot was written.\nNOT CLOSED BY THIS, and still failing in the filed repro: Runtime.getRuntime().exec(c). getRuntime now carries java.lang.Runtime, but exec is called on the VALUE that static returns, which carries no type. That is a return-type-propagation gap, not a static receiver: WI-lalot's class (\"a receiver typed from a library return value is not typed at all\"). Recorded there. Wildcard imports (import java.nio.file._) are also not expanded, by design; see the module docstring."  # 9598
