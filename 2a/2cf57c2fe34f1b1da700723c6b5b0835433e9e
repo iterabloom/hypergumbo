@@ -1,0 +1,39 @@
+Original commit body from 0d8f301f6e3d770a2c5df9589660ca639daed4b8:
+
+IoPrimitive.kind -- the catalogue's functions:/methods:/attributes: --
+had no stated meaning, and the catalogues' own notes gave three rules:
+what the callee IS (rust), whether a value supplies its owner (cpp,
+scala, python), and what the language's analyzer stamps (java, kotlin).
+Every consumer that branches on the value needs the second. Axiom as
+ratified by the owner (INV-zikab, after a three-seat panel):
+
+  A row's kind says how the primitive is reached from the row's own
+  module: method iff called on an INSTANCE of module; function iff
+  called on module itself (namespace, package, type, companion object,
+  named global) or with no owner; attribute iff read, not called.
+
+The four ADR-0024 artifacts:
+- registry + predicates: hypergumbo_core.io_primitive_kinds
+  (reached_through_an_instance / called_on_a_named_owner /
+  read_not_called, KIND_* constants, kind_for_yaml_section);
+- consumer pattern: the 18 literal sites in io_boundary, verify_claims,
+  analyzer_disclosure and taint now go through the predicates and
+  constants, with no behaviour change;
+- static enforcement: find_kind_literal_drift, run by
+  scripts/check-io-boundary-drift (the pre-commit step that already
+  covers IoPrimitive's boundary axis);
+- runtime enforcement: tests/test_io_primitive_kinds.py -- every shipped
+  row carries a registered kind; no name list sits under an unregistered
+  key (a typo'd 'method:' used to vanish silently); the scanner fires on
+  each offence shape; the Swift constructor-shape check.
+
+io-primitive-kind is wired into _known_axes() and declared on
+IoPrimitive.kind (was bounded-enum, with a docstring naming two of its
+three values -- WI-fazad).
+
+No row changes kind. The 91 shipped rows the axiom rejects sit in a
+shrink-only ledger, each naming its blocker (INV-pimir, WI-kilap,
+WI-narij, INV-gujoh, WI-ziviv); the test fails on a fixed or removed
+entry and pins the size.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
