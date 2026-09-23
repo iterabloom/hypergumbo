@@ -135,23 +135,6 @@ _JAVA_SYSTEM_DISJUNCTION = (
 )
 
 
-def _java_with_system_statics_as_functions():
-    """The java catalogue with ``java.lang.System``'s statics keyed as ADR-0059
-    says they are -- called on the class itself, so function-kind. Built in
-    memory because the shipped rows move only after this arm is fixed (the
-    ledger names INV-pimir as their blocker)."""
-    import dataclasses
-
-    from hypergumbo_core.io_primitive_kinds import KIND_FUNCTION, KIND_METHOD
-
-    cat = load_catalog("java")
-    prims = [dataclasses.replace(p, kind=KIND_FUNCTION)
-             if p.module == "java.lang.System" and p.kind == KIND_METHOD else p
-             for p in cat.primitives]
-    return dataclasses.replace(cat, primitives=prims, _by_qualified={},
-                               _by_qualified_all={}, _by_short={})
-
-
 def test_a_one_owner_disjunction_names_the_receiver() -> None:
     """THE JEDIS LOSS. Every disjunct is a package-qualified spelling of the one
     name the source wrote before the dot, so the slot says WHICH owner the call
@@ -159,20 +142,24 @@ def test_a_one_owner_disjunction_names_the_receiver() -> None:
     ``System.currentTimeMillis()``: a static, called on the class.
 
     Before step 4 this returned None, and 36 jedis classifications went with it
-    the moment the statics were keyed function (measure.py arm B)."""
-    cat = _java_with_system_statics_as_functions()
+    the moment the statics were keyed function (measure.py arm B). Since step 6
+    the SHIPPED rows are function-kind, so this is the production case."""
+    from hypergumbo_core.io_primitive_kinds import KIND_FUNCTION
+
+    cat = load_catalog("java")
+    assert cat.lookup_with_module("currentTimeMillis", "java.lang.System").kind == KIND_FUNCTION
     hit = cat.lookup_with_module(
         "currentTimeMillis", _JAVA_SYSTEM_DISJUNCTION, call_construct="method")
     assert hit is not None and (hit.module, hit.name) == (
         "java.lang.System", "currentTimeMillis")
 
 
-def test_the_shipped_method_rows_still_match_under_it() -> None:
-    """REACH / NON-DESTRUCTION on the shipped catalogue, where the statics are
-    still method rows: the arm never touched them, and must not start to."""
+def test_a_method_row_still_matches_under_a_one_owner_disjunction() -> None:
+    """NON-DESTRUCTION: the arm never touched method rows and must not start
+    to. ``java.io.File.exists`` is an instance method."""
     hit = load_catalog("java").lookup_with_module(
-        "currentTimeMillis", _JAVA_SYSTEM_DISJUNCTION, call_construct="method")
-    assert hit is not None and hit.module == "java.lang.System"
+        "exists", "com.acme.File,java.io.File", call_construct="method")
+    assert hit is not None and (hit.module, hit.kind) == ("java.io.File", "method")
 
 
 def test_an_include_set_is_still_file_context() -> None:

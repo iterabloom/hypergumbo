@@ -148,7 +148,7 @@ class TestTheLiteralScanner:
 class TestTheLedger:
     #: Shrink-only. Lower it when a blocked row is fixed and its entry deleted;
     #: raising it is a new exception to the axiom and must be argued in review.
-    LEDGER_SIZE = 75
+    LEDGER_SIZE = 30
 
     def test_the_size_is_pinned(self) -> None:
         assert len(KNOWN_NONCONFORMING_ROWS) == self.LEDGER_SIZE
@@ -213,3 +213,55 @@ class TestSwiftConstructorsAreFunctions:
         rows = [(p.boundary, p.kind) for p in load_catalog("swift").primitives
                 if p.module == "CommandLine"]
         assert rows == [("env_read", KIND_ATTRIBUTE)]
+
+
+class TestJvmStaticsAreFunctions:
+    """INV-zikab step 6 (ADR-0059): a JDK static is called on its class."""
+
+    @pytest.mark.parametrize("module,name", [
+        ("java.nio.file.Files", "readAllBytes"), ("java.nio.file.Files", "walk"),
+        ("java.nio.file.Files", "deleteIfExists"), ("java.lang.System", "getenv"),
+        ("java.lang.System", "currentTimeMillis"), ("java.time.Instant", "now"),
+        ("java.time.Clock", "systemUTC"),
+    ])
+    def test_a_static_is_function_kind_in_every_jvm_catalogue(self, module: str, name: str) -> None:
+        for language in ("java", "kotlin", "scala"):
+            kinds = {p.kind for p in load_catalog(language).primitives
+                     if (p.module, p.name) == (module, name)}
+            assert kinds == {KIND_FUNCTION}, (language, module, name, kinds)
+
+    def test_scala_properties_members_are_function_kind(self) -> None:
+        kinds = {p.kind for p in load_catalog("scala").primitives
+                 if p.module == "scala.util.Properties"}
+        assert kinds == {KIND_FUNCTION}
+
+    def test_every_java_function_row_needs_module_context(self) -> None:
+        """Java has no free functions: every function row is called on its
+        class, and a bare call with no module context can reach one only by a
+        static import, which java.py slots. So the no-context path must not
+        match one by name. Arm B of the re-kind did exactly that without this
+        rule: sbt's own ``now()`` became ``Instant.now``, gatling's own
+        ``readString()`` became ``Files.readString``."""
+        catalog = load_catalog("java")
+        functions = {p.name for p in catalog.primitives if p.kind == KIND_FUNCTION}
+        assert functions, "reach: java must carry function rows"
+        assert functions <= catalog.ambiguous_names, sorted(functions - catalog.ambiguous_names)
+
+    def test_scala_properties_members_need_module_context(self) -> None:
+        catalog = load_catalog("scala")
+        names = {p.name for p in catalog.primitives if p.module == "scala.util.Properties"}
+        assert names and names <= catalog.ambiguous_names, sorted(names - catalog.ambiguous_names)
+
+    @pytest.mark.parametrize("language,name", [("scala", "now"), ("scala", "readString"),
+                                               ("kotlin", "getenv"), ("java", "walk")])
+    def test_a_bare_no_context_call_does_not_match(self, language: str, name: str) -> None:
+        """The two false positives arm B found, plus one per other language."""
+        assert load_catalog(language).lookup_with_module(name, "external") is None
+
+    @pytest.mark.parametrize("language", ["java", "kotlin", "scala"])
+    def test_a_call_whose_slot_names_the_class_still_matches(self, language: str) -> None:
+        """REACH: the definite slot java writes and WI-kilap made kotlin and
+        scala write reaches the row regardless of the stamp."""
+        hit = load_catalog(language).lookup_with_module(
+            "readAllBytes", "java.nio.file.Files", call_construct="method")
+        assert hit is not None and hit.kind == KIND_FUNCTION

@@ -49,10 +49,11 @@ been fixed or removed (delete the entry) and pins the ledger's size, so a new
 exception is a visible diff. It records non-conformance; it does not approve
 it. Why each is blocked rather than simply fixed was MEASURED (INV-zikab):
 re-kinding the java statics lost 41 classifications through the INV-nizom arm,
-which read a ``method`` stamp as receiver evidence even on a slot naming ONE
-owner in several packages; since that slot is exempt
-(``io_boundary.slot_names_one_owner``) the same re-kind loses none over 21
-surveys, and the statics wait only on the kotlin/scala qualifier drop. The sixteen
+which read a ``method`` stamp as instance-receiver evidence even on a slot naming
+ONE owner in several packages. Once that slot was exempt
+(``io_boundary.slot_names_one_owner``) and kotlin/scala named a static call's
+owner (WI-kilap), the 34 java statics and 11 ``scala.util.Properties`` members
+left the ledger (INV-zikab step 6). The sixteen
 swift constructor rows carried mostly WRONG boundaries that their unreachable
 kind had hidden, so they left the ledger only after each boundary was
 adjudicated (INV-gujoh, 2026-09-23): eight deleted, four moved to an ADR-0049
@@ -185,40 +186,12 @@ class NonconformingRow:
     blocked_by: tuple[str, ...]
 
 
-_JVM_STATICS_BLOCKERS: Final[tuple[str, ...]] = ("WI-kilap",)
-
-
 def _rows(language: str, module: str, names: Iterable[str],
           blocked_by: tuple[str, ...]) -> tuple[NonconformingRow, ...]:
     return tuple(NonconformingRow(language, module, n, blocked_by) for n in names)
 
 
 KNOWN_NONCONFORMING_ROWS: Final[tuple[NonconformingRow, ...]] = (
-    # JVM statics, called on the class (`Files.readAllBytes(p)`). Keyed methods
-    # because java's analyzer stamps `method` on a qualified static and the
-    # INV-nizom arm dropped function rows under that stamp (-41 classifications
-    # measured; 0 since the one-owner exemption). The kotlin/scala qualifier
-    # drop (WI-kilap) is what still blocks them.
-    *_rows("java", "java.nio.file.Files", (
-        "copy", "createDirectories", "createDirectory", "createFile",
-        "createTempDirectory", "createTempFile", "delete", "deleteIfExists",
-        "exists", "find", "getLastModifiedTime", "isDirectory",
-        "isRegularFile", "list", "move", "readAllBytes", "readAllLines",
-        "readString", "size", "walk", "write", "writeString",
-    ), _JVM_STATICS_BLOCKERS),
-    *_rows("java", "java.lang.System", (
-        "currentTimeMillis", "getProperties", "getProperty", "getenv", "nanoTime",
-    ), _JVM_STATICS_BLOCKERS),
-    *(NonconformingRow("java", f"java.time.{c}", "now", _JVM_STATICS_BLOCKERS)
-      for c in ("Instant", "LocalDate", "LocalDateTime", "LocalTime",
-                "OffsetDateTime", "ZonedDateTime")),
-    NonconformingRow("java", "java.time.Clock", "systemUTC", _JVM_STATICS_BLOCKERS),
-    # scala `object` members, called on the object; the scala analyzer drops
-    # the qualifier (WI-kilap), so today the method kind is what discloses them.
-    *_rows("scala", "scala.util.Properties", (
-        "envOrElse", "envOrNone", "javaHome", "propIsSet", "propOrElse",
-        "propOrNone", "scalaHome", "tmpDir", "userDir", "userHome", "userName",
-    ), ("WI-kilap",)),
     # Companion apply; the analyzer emits `Process(c)` under the name `Process`,
     # so the row is unreachable whatever its kind (WI-narij).
     NonconformingRow("scala", "scala.sys.process.Process", "apply", ("WI-narij",)),
