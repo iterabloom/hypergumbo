@@ -147,6 +147,17 @@ Design only — nothing in the pipeline changes in this release. ADR-0012 §Step
 
 ### Fixed
 
+#### A JS/TS class method reaches the dataflow graph at all (WI-sakir, WI-jopuf)
+
+- **WI-sakir was filed on the WI-ripas shape, a method stored under a key the taint walk never asks for. Probing the analyzer showed the defect was one step earlier.** Both `ts_def_use` registrations walked only `function_declaration`, so a `method_definition` was never walked at all. On dash.js **0 of 766 methods and 0 of 54 getters** reached the DDG. Plain function-declaration keys already matched, because a nested function is named bare by both producers; that was probed, not assumed, and is now pinned.
+- **The analyzer's own decision is shared rather than re-derived.** WI-jopuf declined to widen the node types because the spec would carry a second copy of `js_ts.py`'s inline kind-slot rule. `jsts_method_name` (the nearest enclosing `class_declaration`, one level) and `jsts_method_kind` (`getter`/`setter`/`method`) are extracted, and the analyzer and both DDG specs call them. `LanguageDdgSpec.name_for` may now return `None` for a nameless node, which `_function_name` already treated as "skip".
+- **Measured, with a spy on every key the walk attempted and the path slot normalised:**
+  - dash.js (JS): methods **0 → 766 of 766 walked under the analyzer's exact key**, 194 of them now with dependence edges; getters and setters 0 → 55 of 55 walked.
+  - apollo-server (TS), baseline dev in a worktree: methods **0 → 314 of 355**. The 41 still unwalked are 39 interface method signatures, which have no body, plus 2 methods in `.mts`/`.cts` files the `*.ts` glob does not claim (the WI-fovus shape).
+  - The taint-verdict effect is **not measured here**. javascript carries 83 sinks and typescript 0.
+- **A citation regression from the previous entry, fixed here.** `signature_axis.LEGACY_VALUE_PARSERS` pins `jackson_dispatch.py` by line, and the inherited-base PR moved that line by one without updating the pin. The test was not in that PR's affected set, so its CI passed and dev was red for the full suite. This PR's own `js_ts.py` edits moved two more pins in `signature_axis` and `module_key_axis`. All three are re-pinned, the full suite passes (29,934), and two branches that the live tree had been covering only incidentally now have synthetic tests.
+- **The larger residual is filed, not fixed:** callables the analyzer names after their *binding* (arrow functions, function expressions) are still never walked. That is 7,415 of dash.js's 11,600 functions (WI-mufag). Walking them without the analyzer's binding-name rule would recreate the WI-ripas defect.
+
 #### The last six linkers stop declaring passes they never read (WI-zujan)
 
 - **Each clause was derived by reading what its linker consumes, not by sweeping.** All six read `ctx.symbols` in some form, which is why WI-ditir's clean "consumes nothing" shape could not simply be applied to them. Each repair names the passes that supply the records the linker READS, and `test_depends_on_producer_sets.py` now *derives* four of the producer sets from the analyzers' own source. A one-directional gate (the clause covers the producers) plus an exact pin mean that widening one is a deliberate edit.

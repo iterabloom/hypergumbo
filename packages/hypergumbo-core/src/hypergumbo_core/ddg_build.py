@@ -89,9 +89,11 @@ class LanguageDdgSpec:
         file_glob: ``rglob`` pattern for source files.
         function_node_types: AST node types that introduce a function
             scope. Each is expected to expose ``name`` and ``body`` fields.
-        name_for: Optional callable ``(node, source) -> str`` overriding
-            the plain ``name`` field. Go uses this to prepend a receiver
-            type so method ids match the analyzer's.
+        name_for: Optional callable ``(node, source) -> str | None``
+            overriding the plain ``name`` field. Go uses this to prepend a
+            receiver type so method ids match the analyzer's. ``None`` means
+            the node carries no name and is skipped, as a missing ``name``
+            field is by the default.
         kind_for: Optional callable ``(node) -> str`` choosing the id's
             kind slot; defaults to ``"function"``.
         refine: Optional callable invoked per function to derive extra
@@ -101,7 +103,7 @@ class LanguageDdgSpec:
     language: str
     file_glob: str
     function_node_types: frozenset[str]
-    name_for: Optional[Callable[[Any, bytes], str]] = None
+    name_for: Optional[Callable[[Any, bytes], Optional[str]]] = None
     kind_for: Optional[Callable[[Any], str]] = None
     refine: Optional[Callable[..., dict[tuple[int, str], str]]] = None
 
