@@ -31,3 +31,10 @@
   set: {}  # ddae
   add:  # ddae
     not_duplicate_of: [INV-votoj-zurit-kimov-majah-biriz-dozas-datal-lavip, WI-lotig-jasam-mafih-nagak-daput-momid-fufoz-patom, WI-mital-jusaf-kuzif-lukin-sanat-gotok-biput-mutih]  # ddae
+- op: discuss  # 503f
+  at: '2026-09-23T18:09:41Z'  # 503f
+  by: agent  # 503f
+  actor: jgstern_agent  # 503f
+  clock: 3  # 503f
+  nonce: 503f  # 503f
+  message: "EVIDENCE 2026-09-23 (IoPrimitive.kind concept audit, INV-zikab; write-up §6 S5). THE SWIFT MEMBERS OF THIS FAMILY HAVE NEVER FIRED, AND THE KIND IS WHY. swift.yaml keys 16 constructor rows as `methods:` (URLRequest, HTTPClientRequest, NWConnection, NWListener, Logger, ServerBootstrap, ClientBootstrap, MultiThreadedEventLoopGroup, NIOSSLCertificate/Context/PrivateKey, NIOAsyncChannel, NIOWebSocketServerUpgrader, NSFetchRequest, ModelContext, CommandLine). The analyzer emits `URLRequest(url:)` as swift:external:0-0:URLRequest (no stamp, hint `external`), so gate_named_entry drops every method row: zero matches.\nRe-kinding them to function would ACTIVATE 115 edges on 4 repos (vapor +26, hummingbird +76, SwiftLint +1, Alamofire +12). All 14 sampled are genuine calls of the named constructor. BUT MOST OF THE BOUNDARIES ARE WRONG, and nothing ever exercised them:\n  - Logger(label:) rowed logging (41 on hummingbird) only builds a logger.\n  - MultiThreadedEventLoopGroup rowed net_recv is a thread pool.\n  - NIOSSLPrivateKey(file:) and NIOSSLCertificate(file:) rowed net_send READ A FILE (fs_read).\n  - URLRequest and HTTPClientRequest rowed net_send build a value.\n  - CommandLine is a static property (CommandLine.arguments), never called.\nSo a mis-keyed kind has hidden mis-keyed boundaries. Adjudicate each row (delete / re-boundary / re-kind) before any kind change. A blind re-kind turns a recall gap into false positives."  # 503f

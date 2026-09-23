@@ -1,0 +1,23 @@
+- op: create  # d424
+  at: '2026-09-23T18:09:12Z'  # d424
+  by: agent  # d424
+  actor: jgstern_agent  # d424
+  clock: 1  # d424
+  nonce: d424  # d424
+  data:  # d424
+    kind: work_item  # d424
+    title: "scala: Process(cmd) -- companion-apply sugar reaches the name slot as 'Process', not 'apply', so the most common process launch is never classified (sbt: 6 of 6); INV-zumin closed on a synthetic edge"  # d424
+    status: todo_hard  # d424
+    priority: 2  # d424
+    parent:  # d424
+    tags:  # d424
+    - scala  # d424
+    - io_boundary  # d424
+    - catalogue  # d424
+    - taint  # d424
+    isbefore: []  # d424
+    duplicate_of: []  # d424
+    not_duplicate_of: []  # d424
+    pr_ref:  # d424
+    description: "FOUND 2026-09-23 by the IoPrimitive.kind concept audit (INV-zikab; write-up\n~/hypergumbo_lab_notebook/concept-audit-io-primitive-kind_09232026.md §6 S6).\nThe most common spelling of a Scala process launch is invisible to io-boundaries and\ntaint, and no gate says so.\n\nFIXTURE, production path (survey + classify_call with dst_ref):\n  import scala.sys.process.Process\n  Process(c).!            -> scala:scala.sys.process.Process:0-0:Process  cc=None -> NONE\n  Process.apply(c).run()  -> scala:external:0-0:apply                     cc=method -> NONE\n  Process(Seq(\"ls\", c)).!! -> scala:scala.sys.process.Process:0-0:Process  cc=None -> NONE\nThe rows are `module: scala.sys.process.Process, methods: [apply, run]` under both\nfs_write and subprocess. Companion-apply sugar reaches the analyzer's name slot as\n`Process`, not `apply`, and the explicit `Process.apply` loses its qualifier.\n\nON sbt (surveyed at d917e02282): 6 `Process(...)` edges into\nscala.sys.process.Process, 0 classified. The module is NOT starved there, but only\nbecause uncatalogued Process-instance calls (exitValue x4, destroy x3, isAlive x1)\nland in the module stamped `method`, so the gate counts it as examined. A\n`{boundary: subprocess, must_not_exist: true}` claim therefore finds no chain on a\nprogram that launches processes: the false-all-clear direction.\n\nNOT A KIND DEFECT. Re-kinding `apply` to function changes nothing (arm B of the\naudit's A/B, fixture), because the NAME never matches.\n\nWHY IT SURVIVED: INV-zumin (satisfied) fixed the multi-boundary tagging of these exact\nrows, and its evidence is a SYNTHETIC edge `calls -> scala.sys.process.Process.apply`,\nnever the analyzer's emission for `Process(c)`. The row was closed and never reached.\nINV-linub's class statement (\"a catalogued I/O call site must reach its catalogue\nentry regardless of receiver syntax\") covers this. That item is satisfied on its filed\ninstances; this is the residual.\n\nFIX SHAPES, not chosen: (a) the scala analyzer maps companion apply-sugar\n`X(args)` onto `X.apply` when X resolves to an imported object; or (b) the catalogue\nrows the name the analyzer emits (`functions: [Process]` under\nscala.sys.process.Process), the constructor-named-row convention swift uses. Either\nway, measure both directions on the scala cohort: Process is also a common\nfirst-party class name."  # d424
+    fields: {}  # d424
