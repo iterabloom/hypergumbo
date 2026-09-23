@@ -442,7 +442,10 @@ def _arity_of(node: "tree_sitter.Node") -> int:
     name AND arity, the way Erlang itself does.
     """
     args = find_child_by_type(node, "expr_args")
-    if args is None:
+    if args is None:  # pragma: no cover - defensive for malformed AST
+        # The grammar gives every function_clause and local call an
+        # expr_args, even ``f()``; none was found across ejabberd and rebar3
+        # or in truncated input. Same guard as _extract_erlang_signature.
         return 0
     return sum(1 for c in args.children if c.type not in ("(", ")", ","))
 
