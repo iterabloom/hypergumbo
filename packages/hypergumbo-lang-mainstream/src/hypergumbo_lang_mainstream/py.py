@@ -418,14 +418,21 @@ def _resolve_return_type_class(
     global_symbols: dict[tuple[str, str], "Symbol"],
     resolver: "SymbolResolver | None" = None,
     sym_by_path_name: dict[tuple[str, str], "Symbol"] | None = None,
+    imports_by_path: dict[str, dict[str, tuple[str, str]]] | None = None,
 ) -> "Symbol | None":
     """Resolve a return type name to a class Symbol.
 
-    Searches for the class in three places (in order):
-    1. The caller's local symbols (same file as the call site)
-    2. The caller's imports
-    3. The function's own module (the return type is usually co-located
-       with the function that returns it)
+    An annotation is a name in the DEFINING module's namespace, so that is
+    searched first (WI-fihun):
+    1. The function's own module -- a class defined there
+    2. The function's own module's IMPORTS (``imports_by_path``)
+    3. The caller's local symbols, then 4. the caller's imports -- a fallback
+       for when the defining module's namespace does not resolve the name
+
+    The order used to be caller-first with no step 2, which both MISSED an
+    imported return type (``trackerset.py``'s ``-> Store`` imported from
+    ``store.py``, seen from a third module) and could bind a same-named class
+    the CALLER happens to define, with a trusted ``receiver_type_id``.
 
     Only returns symbols with kind == "class".
 
@@ -440,25 +447,39 @@ def _resolve_return_type_class(
     Returns:
         The class Symbol if found, None otherwise.
     """
-    # Check caller's local symbols first
-    sym = local_symbols.get(type_name)
-    if sym and sym.kind == "class":
-        return sym
-    # Check caller's imports
-    if type_name in imports:
-        module_name, original_name = imports[type_name]
-        sym = _lookup_symbol_by_module(
-            global_symbols, module_name, original_name, resolver=resolver
-        )
-        if sym and sym.kind == "class":
-            return sym
-    # Check function's own module — the return type class is typically
-    # defined in the same file as the function
+    # 1. The defining module's own class.
     if sym_by_path_name is not None:
         sym = sym_by_path_name.get((func_symbol.path, type_name))
         if sym and sym.kind == "class":
             return sym
-    return None
+    # 2. The defining module's imports.
+    sym = _imported_class(
+        type_name, (imports_by_path or {}).get(func_symbol.path, {}),
+        global_symbols, resolver,
+    )
+    if sym is not None:
+        return sym
+    # 3-4. Fallback: the caller's scope.
+    sym = local_symbols.get(type_name)
+    if sym and sym.kind == "class":
+        return sym
+    return _imported_class(type_name, imports, global_symbols, resolver)
+
+
+def _imported_class(
+    type_name: str,
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], "Symbol"],
+    resolver: "SymbolResolver | None",
+) -> "Symbol | None":
+    """The class ``type_name`` names through one module's import table."""
+    if type_name not in imports:
+        return None
+    module_name, original_name = imports[type_name]
+    sym = _lookup_symbol_by_module(
+        global_symbols, module_name, original_name, resolver=resolver
+    )
+    return sym if sym and sym.kind == "class" else None
 
 
 def _chain_receiver_class_from_return_types(
@@ -469,6 +490,7 @@ def _chain_receiver_class_from_return_types(
     global_symbols: dict[tuple[str, str], "Symbol"],
     resolver: "SymbolResolver | None",
     sym_by_path_name: dict[tuple[str, str], "Symbol"] | None,
+    imports_by_path: dict[str, dict[str, tuple[str, str]]] | None = None,
 ) -> "Symbol | None":
     """Walk ``obj.a.b.method()``'s INTERMEDIATE hops through declared return
     types, returning the class that owns the final call — or None (WI-fikoh).
@@ -508,7 +530,7 @@ def _chain_receiver_class_from_return_types(
             return None
         nxt = _resolve_return_type_class(
             ret_name, member, local_symbols, imports, global_symbols,
-            resolver, sym_by_path_name,
+            resolver, sym_by_path_name, imports_by_path,
         )
         if nxt is None:
             return None
@@ -5163,6 +5185,7 @@ def _extract_edges(
         dict[str, dict[str, Symbol]], dict[str, dict[str, str]],
     ] | None = None,
     django_index: DjangoRelationIndex | None = None,
+    imports_by_path: dict[str, dict[str, tuple[str, str]]] | None = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -5977,6 +6000,8 @@ def _extract_edges(
                             node.value, local_symbols, imports, global_symbols,
                             module_imports, resolver,
                             inner_scope=stack.immediate_symbols() if stack else None,
+                            sym_by_path_name=_sym_by_path_name,
+                            var_types=var_types,
                         )
                         if assigned_class and assigned_class.kind == "class":
                             var_types[target.id] = assigned_class
@@ -5994,7 +6019,7 @@ def _extract_edges(
                                 ret_class = _resolve_return_type_class(
                                     ret_name, assigned_class, local_symbols,
                                     imports, global_symbols, resolver,
-                                    _sym_by_path_name,
+                                    _sym_by_path_name, imports_by_path,
                                 )
                                 if ret_class:
                                     var_types[target.id] = ret_class
@@ -6061,6 +6086,7 @@ def _extract_edges(
                     node, caller_symbol, local_symbols, imports, global_symbols,
                     module_imports, var_types, edges, resolver,
                     sym_by_path_name=_sym_by_path_name,
+                    imports_by_path=imports_by_path,
                     run_id=run_id,
                     stack=stack,
                     external_var_types=external_var_types,
@@ -6855,6 +6881,8 @@ def _resolve_call_target(
     module_imports: dict[str, str],
     resolver: "SymbolResolver | None" = None,
     inner_scope: dict[str, Symbol] | None = None,
+    sym_by_path_name: dict[tuple[str, str], Symbol] | None = None,
+    var_types: dict[str, Symbol] | None = None,
 ) -> Symbol | None:
     """Resolve the target of a call expression to a Symbol.
 
@@ -6862,6 +6890,11 @@ def _resolve_call_target(
     - ClassName() -> class symbol
     - module.ClassName() -> class symbol in module
     - imported_name() -> resolved symbol
+    - ClassName.method() / typed_local.method() -> the method symbol, when
+      ``sym_by_path_name`` is supplied (WI-fihun blocker 1: a factory's
+      declared return type is then read by the caller). The receiver must
+      itself be KNOWN -- a local already in ``var_types`` (checked first, as it
+      shadows a same-named class) or a class in scope -- or nothing resolves.
 
     ``inner_scope`` is the enclosing-function scope (INV-mofav): when the
     bare name resolves to a nested function in the caller's body, it wins
@@ -6900,8 +6933,41 @@ def _resolve_call_target(
                 return _lookup_symbol_by_module(
                     global_symbols, module_name, attr_name, resolver=resolver
                 )
+            if sym_by_path_name is not None:
+                owner = _known_receiver_class(
+                    receiver_name, var_types, local_symbols, imports,
+                    global_symbols, resolver,
+                )
+                if owner is not None:
+                    member = sym_by_path_name.get(
+                        (owner.path, f"{owner.name}.{attr_name}")
+                    )
+                    if member is not None and member.kind in ("method", "function"):
+                        return member
 
     return None
+
+
+def _known_receiver_class(
+    receiver_name: str,
+    var_types: dict[str, Symbol] | None,
+    local_symbols: dict[str, Symbol],
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+) -> Symbol | None:
+    """The class a ``receiver.method()`` receiver is known to be, or None.
+
+    A typed local first (``f = Factory()`` then ``f.build()``), since it
+    shadows a same-named class; then the receiver as a class itself, defined
+    here or imported (``Run.create()``).
+    """
+    if var_types is not None and receiver_name in var_types:
+        return var_types[receiver_name]
+    sym = local_symbols.get(receiver_name)
+    if sym is not None:
+        return sym if sym.kind == "class" else None
+    return _imported_class(receiver_name, imports, global_symbols, resolver)
 
 
 def _derived_receiver_module(
@@ -7768,6 +7834,7 @@ def _process_call(
     method_to_enclosing_class_id: dict[str, str] | None = None,
     class_name_counts: dict[str, int] | None = None,
     django_oracle: "_DjangoReceiverOracle | None" = None,
+    imports_by_path: dict[str, dict[str, tuple[str, str]]] | None = None,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -8652,6 +8719,7 @@ def _process_call(
                         _chain_receiver_class_from_return_types(
                             chain_attrs, var_types[root_name], local_symbols,
                             imports, global_symbols, resolver, sym_by_path_name,
+                            imports_by_path,
                         )
                         if root_name in var_types and len(chain_attrs) >= 2
                         else None
@@ -9031,6 +9099,13 @@ def analyze_python(
     # Build (path, name) -> symbol index for O(1) lookups in typed method
     # resolution. Replaces O(n) scans of global_symbols.items() that check
     # sym.path == target_path and sym_name == target_name.
+    # WI-fihun: each file's import table, keyed by the ``Symbol.path`` its
+    # symbols carry, so a declared return type resolves in the DEFINING
+    # module's namespace (``_resolve_return_type_class``).
+    _imports_by_path: dict[str, dict[str, tuple[str, str]]] = {
+        analysis.symbols[0].path: analysis.imports
+        for analysis in file_analyses.values() if analysis.symbols
+    }
     _sym_by_path_name: dict[tuple[str, str], Symbol] = {}
     for (_mod, sym_name), sym in global_symbols.items():
         key = (sym.path, sym_name)
@@ -9139,6 +9214,7 @@ def analyze_python(
         call_edges = _extract_edges(
             analysis.tree, analysis.symbol_by_name, analysis.imports, global_symbols,
             analysis.module_imports, resolver, _sym_by_path_name,
+            imports_by_path=_imports_by_path,
             run_id=run.execution_id,
             property_getter_by_path_name=_property_getter_by_path_name,
             nested_by_parent_id=analysis.nested_by_parent_id,
