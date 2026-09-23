@@ -1,0 +1,19 @@
+- op: create  # a15c
+  at: '2026-09-23T08:03:41Z'  # a15c
+  by: agent  # a15c
+  actor: jgstern_agent  # a15c
+  clock: 1  # a15c
+  nonce: a15c  # a15c
+  data:  # a15c
+    kind: work_item  # a15c
+    title: "A red cron gate reaches no reader: the self-claims gate sat red and unfiled for 4 days (INV-fugus); surface cron FAIL steps at session start"  # a15c
+    status: todo_hard  # a15c
+    priority: 2  # a15c
+    parent:  # a15c
+    tags: []  # a15c
+    isbefore: []  # a15c
+    duplicate_of: []  # a15c
+    not_duplicate_of: []  # a15c
+    pr_ref:  # a15c
+    description: "EVIDENCE. The cron full-suite self-claims-gate went red at ea22d7023c (09-19) and was red at every firing after (2c7511c656, 1f746ffdc4, d679e12091, b95e0d19ef, 9aac6ffe8d). No row was filed until 09-23, when it was noticed by chance while waiting on an unrelated PR (INV-fugus). Several sessions ran in between, and each merged PRs past it. The defect was a one-line cause (a7495d9b9a) that would have bisected in minutes on day one.\n\nThis is the THIRD time the same symptom has occurred -- all 18 self-claims withheld by one new line of code: INV-bofab (09-02), WI-jabus, INV-fugus. Detection latency is bounded at ~12h by design: the per-PR arm was REMOVED by owner decision 2026-08-30 (it cost ~14 min per PR), and that decision is NOT re-opened here. The gap is READING, not detection: nothing puts a red cron verdict in front of the agent. LIVE.md now carries \"ci-debug cron-status at session start\" as a landmine, which is a memory aid, not a mechanism.\n\nPROPOSAL (not built): the session-start hook (or the stop hook's guidance) runs `ci-debug cron-status` and, for each FAIL step, surfaces it with the commit it first went red at, unless an open tracker row already names that step. Needs: a network call at session start (CI API via an approved script -- allowed use-case 2), a cheap cache so it is not re-fetched every turn, and a failure mode that degrades silently when the CI host is unreachable. Touches .agent/hooks/** = governance (owner has pre-approved governance changes; still one PR, reviewed).\n\nMEASURED FOR SIZING: `scripts/check-self-claims`-equivalent ran in 213-229 s cold per commit on this machine (6 cores), 7 runs. The script's own comment says 16.8 min with --minimal; that measurement is older and was on another machine -- NOT reconciled."  # a15c
+    fields: {}  # a15c

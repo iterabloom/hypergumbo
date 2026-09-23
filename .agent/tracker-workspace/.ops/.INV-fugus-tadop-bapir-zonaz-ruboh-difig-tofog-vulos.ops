@@ -26,3 +26,35 @@
   clock: 2  # a7f9
   nonce: a7f9  # a7f9
   message: "BISECTED (local, pinned worktrees, own XDG caches; runner ~/hypergumbo_lab_notebook/fugus_09232026/run_claims.sh). 697dd4de5a clean, 9578781ef2 clean, 1018e5b35e clean, a7495d9b9a DRIFT, ea22d7023c DRIFT. a7495d9b9a's drift is line-for-line the CI drift at 9aac6ffe8d. FIRST BAD COMMIT: a7495d9b9a (WI-dajif backend-agreement instrument).\n\nMECHANISM. Every verdict's details now read \"NOT CONFIRMED: the analysis calls into 1 module(s) whose catalogued I/O is method-shaped (datetime.date) but produced no method call edge\". a7495d9b9a added cli.py `import datetime as _dt; _dt.date.today()`. py.py emits a MODULE-ROOTED dotted chain with NO call_construct (dst python:datetime.date:0-0:today, meta None -- same for os.path.join), while `json.dumps()` / local-rooted chains are stamped \"method\". method_starved_modules reads construct None as \"not a method\" and reports datetime.date (a methods-only row) STARVED -- yet classify_call, the declared ONE answer to \"did the catalogue classify this call\", classifies that exact edge as datetime.date.today host_info_read. Starvation is a withholding (not qualifying) blocker, so qualifying_only goes False, opaque_boundary is not attached, and every claim drops confirmed_with_caveats -> inconclusive.\n\nSo the drift is not a coverage change in hypergumbo's own code: it is two consumers disagreeing about the same edge -- the gate calling a call invisible that the classifier classified."  # a7f9
+- op: update  # a7cd
+  at: '2026-09-23T07:49:35Z'  # a7cd
+  by: agent  # a7cd
+  actor: jgstern_agent  # a7cd
+  clock: 3  # a7cd
+  nonce: a7cd  # a7cd
+  set:  # a7cd
+    fields:  # a7cd
+      root_cause: "method_starved_modules (verify_claims.py) reports a module STARVED when no edge into it carries a matching call_construct, even when classify_call classified an edge into it. First bad commit a7495d9b9a added cli.py _dt.date.today(); py.py stamps no call_construct on a module-rooted dotted chain, so datetime.date (methods-only row) starved -> qualifying_only False -> every claim inconclusive."  # a7cd
+- op: update  # 2602
+  at: '2026-09-23T08:11:40Z'  # 2602
+  by: agent  # 2602
+  actor: jgstern_agent  # 2602
+  clock: 4  # 2602
+  nonce: '2602'  # 2602
+  set:  # 2602
+    status: satisfied  # 2602
+- op: discuss  # 3e48
+  at: '2026-09-23T08:11:40Z'  # 3e48
+  by: agent  # 3e48
+  actor: jgstern_agent  # 3e48
+  clock: 5  # 3e48
+  nonce: '3e48'  # 3e48
+  message: "FIXED in PR #1150 (94d30be466). FILED REPRO RE-RUN ON MERGED dev: `XDG_CACHE_HOME=<fresh> scripts/check-self-claims` at 94d30be466 -> rc 0, \"check-self-claims-drift: OK — 18 claims unchanged (18 confirmed_with_caveats)\", 224 s cold. The same command's equivalent at 91d56790e3 (dev tip without the fix, pinned worktree) printed the 40-line drift, line-for-line the CI drift at 9aac6ffe8d.\n\nROOT CAUSE: a7495d9b9a added `_dt.date.today()` to cli.py. py.py emits a module-rooted chain with no call_construct; datetime.date.today was a METHOD-kind row, so method_starved_modules found no route to satisfy datetime.date and reported it structurally invisible, although classify_call classifies the edge (host_info_read). Starvation is not the qualifying incompleteness, so every claim was withheld.\n\nFIX: datetime.date.today and datetime.datetime.now/utcnow/today are classmethod_descriptors (inspect.getattr_static) -> function-kind rows (INV-nular's Path.cwd rule). The starvation gate is NOT loosened (an unstamped edge naming a method row still starves, pinned). New sweep test: no python method-kind row on an importable class may be a classmethod/staticmethod -- it found exactly these 4; rows on 7 non-importable (third-party) modules are NOT checked.\n\nPER-CLAIM, vs the last good commit 1018e5b35e: verdict, evidence_count, sanitized_flows (e.g. runtime-cli-no-subprocess 11 -> 0 without the fix -> 11), excluded_flows and caveat kinds identical on all 18. SECURITY.md needs no change: the snapshot was not re-recorded. Exposure of the new function-kind short-name match: 0 unstamped python:external now/today/utcnow edges across 7 older python surveys (~284k call edges).\n\nNOT YET SEEN: a green cron firing. Local reproduction matched CI exactly in both directions, but the next full-suite firing is the independent confirmation -- check `ci-debug cron-status`.\n\nRESIDUALS FILED: WI-torin (P3, from-imported-class classmethod `date.today()` / `Path.cwd()` unclassified), WI-lapof (P2, a red cron gate reaches no reader -- this one sat 4 days)."  # 3e48
+- op: update  # e229
+  at: '2026-09-23T08:11:43Z'  # e229
+  by: agent  # e229
+  actor: jgstern_agent  # e229
+  clock: 6  # e229
+  nonce: e229  # e229
+  set:  # e229
+    pr_ref: '1150'  # e229
