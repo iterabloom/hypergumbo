@@ -1,0 +1,19 @@
+- op: create  # 4705
+  at: '2026-09-23T08:03:09Z'  # 4705
+  by: agent  # 4705
+  actor: jgstern_agent  # 4705
+  clock: 1  # 4705
+  nonce: '4705'  # 4705
+  data:  # 4705
+    kind: work_item  # 4705
+    title: "python: a classmethod called on a from-imported class (date.today(), Path.cwd()) is not classified; datetime.now() is"  # 4705
+    status: todo_hard  # 4705
+    priority: 3  # 4705
+    parent:  # 4705
+    tags: []  # 4705
+    isbefore: []  # 4705
+    duplicate_of: []  # 4705
+    not_duplicate_of: []  # 4705
+    pr_ref:  # 4705
+    description: "FOUND while fixing INV-fugus (probe at dev 91d56790e3, analyze_python edge passed to io_boundary.classify_call WITH its dst_ref):\n\n  from datetime import date, datetime\n  from pathlib import Path\n  date.today()   -> dst python:datetime:0-0:date.today   dst_ref(module_path=datetime, name=date.today) -> classify_call None\n  Path.cwd()     -> dst python:pathlib:0-0:Path.cwd      dst_ref(module_path=pathlib,  name=Path.cwd)   -> None\n  datetime.now() -> dst python:datetime:0-0:datetime.now dst_ref(module_path=datetime, name=datetime.now) -> datetime.datetime.now (classified)\n\nSo a classmethod called on a FROM-IMPORTED class is not classified, although catalogue rows datetime.date.today and pathlib.Path.cwd exist (both function-kind after INV-fugus). datetime.now() is classified, probably because the class name equals its module name -- UNVERIFIED, not traced. The same call written `_dt.date.today()` IS classified (dst python:datetime.date:0-0:today).\n\nConsequence: a clock read / cwd read written in the most common import style is invisible to host_info_read (a recall gap, the false-all-clear direction for a host-info claim). NOT MEASURED on a corpus -- on the 09-06 surveys `python:datetime:0-0:date*` edges number 303 on django and 53+ on pretix, but how many are `date.today` was not counted.\n\nNext: trace _module_hint_candidates / _module_matches for hint `datetime` + name `date.today` vs `datetime.now`; count affected edges on the python cohort before choosing a fix."  # 4705
+    fields: {}  # 4705
