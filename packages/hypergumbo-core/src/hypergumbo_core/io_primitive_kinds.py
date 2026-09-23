@@ -49,15 +49,18 @@ been fixed or removed (delete the entry) and pins the ledger's size, so a new
 exception is a visible diff. It records non-conformance; it does not approve
 it. Why each is blocked rather than simply fixed was MEASURED (INV-zikab):
 re-kinding the java statics loses 41 classifications through the INV-nizom arm
-until it stops reading a ``method`` stamp as receiver evidence; the swift
-constructor rows carry mostly WRONG boundaries that their unreachable kind has
-hidden (INV-gujoh), so re-kinding them first would mint false detections.
+until it stops reading a ``method`` stamp as receiver evidence. The sixteen
+swift constructor rows carried mostly WRONG boundaries that their unreachable
+kind had hidden, so they left the ledger only after each boundary was
+adjudicated (INV-gujoh, 2026-09-23): eight deleted, four moved to an ADR-0049
+disclosure boundary, three kept, and ``CommandLine`` re-keyed as the attribute
+read it is.
 
 WHAT IS AND IS NOT CHECKED MECHANICALLY, stated so a green test is not read as
 more than it is. Python: every method row on an importable class or object
 owner (``test_associated_fn_kinds.py``, via ``inspect.getattr_static``). Swift:
-a method row whose NAME is UpperCamelCase is a constructor and must be in the
-ledger. Every other language is checked only through the ledger -- a new
+no method row's NAME is UpperCamelCase (such a row is a constructor, called on
+the type itself). Every other language is checked only through the ledger -- a new
 non-conforming java or objc row would pass the tests. No toolchain for those
 languages is available to the test suite.
 """
@@ -215,20 +218,6 @@ KNOWN_NONCONFORMING_ROWS: Final[tuple[NonconformingRow, ...]] = (
     # Companion apply; the analyzer emits `Process(c)` under the name `Process`,
     # so the row is unreachable whatever its kind (WI-narij).
     NonconformingRow("scala", "scala.sys.process.Process", "apply", ("WI-narij",)),
-    # swift constructors keyed methods: unreachable today, and most of their
-    # boundaries are wrong (a constructor that builds a value is not I/O), so
-    # the boundaries are adjudicated before any re-kind (INV-gujoh).
-    *(NonconformingRow("swift", m, n, ("INV-gujoh",)) for m, n in (
-        ("AsyncHTTPClient", "HTTPClientRequest"), ("ClientBootstrap", "ClientBootstrap"),
-        ("CommandLine", "CommandLine"), ("EventLoopGroup", "MultiThreadedEventLoopGroup"),
-        ("Logger", "Logger"), ("ModelContext", "ModelContext"),
-        ("NIOAsyncChannel", "NIOAsyncChannel"), ("NIOSSL", "NIOSSLCertificate"),
-        ("NIOSSL", "NIOSSLContext"), ("NIOSSL", "NIOSSLPrivateKey"),
-        ("NIOWebSocketServerUpgrader", "NIOWebSocketServerUpgrader"),
-        ("NSFetchRequest", "NSFetchRequest"), ("NWConnection", "NWConnection"),
-        ("NWListener", "NWListener"), ("ServerBootstrap", "ServerBootstrap"),
-        ("URLRequest", "URLRequest"),
-    )),
     # No measured blocker; queued (WI-ziviv).
     *(NonconformingRow("swift", m, n, ("WI-ziviv",)) for m, n in (
         ("Date", "now"), ("DispatchTime", "now"), ("ProcessInfo", "processInfo"),

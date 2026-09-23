@@ -5129,17 +5129,22 @@ class TestSwiftCatalog:
         assert edges[4].meta is None
 
     def test_swift_has_swiftnio_server_primitives(self) -> None:
-        """Swift catalog covers SwiftNIO server infrastructure."""
+        """Swift catalog covers SwiftNIO server infrastructure.
+
+        INV-gujoh (2026-09-23): the server bootstrap ARRANGES inbound data, so
+        it is the ADR-0049 disclosure boundary ``net_listen``, not a receive;
+        an event-loop group (a thread pool) and a request VALUE cross nothing
+        and are not rowed.
+        """
         catalog = load_catalog("swift")
-        net_recvs = {p.name for p in catalog.primitives if p.boundary == "net_recv"}
-        net_sends = {p.name for p in catalog.primitives if p.boundary == "net_send"}
+        listens = {p.name for p in catalog.primitives if p.boundary == "net_listen"}
         process = {p.name for p in catalog.primitives if p.boundary == "process_send"}
-        # Event loop group creation is server infrastructure
-        assert "MultiThreadedEventLoopGroup" in net_recvs
+        names = {p.name for p in catalog.primitives}
+        assert "ServerBootstrap" in listens
         # Graceful shutdown is process lifecycle
         assert "syncShutdownGracefully" in process
-        # HTTP client request construction
-        assert "HTTPClientRequest" in net_sends
+        assert "MultiThreadedEventLoopGroup" not in names
+        assert "HTTPClientRequest" not in names
 
     def test_swift_has_websocket_handlers(self) -> None:
         """Swift catalog covers WebSocket event handlers."""
@@ -5148,12 +5153,12 @@ class TestSwiftCatalog:
         assert "onText" in net_recvs
         assert "onBinary" in net_recvs
 
-    def test_swift_has_tls_primitives(self) -> None:
-        """Swift catalog covers NIO TLS/SSL primitives."""
-        catalog = load_catalog("swift")
-        net_sends = {p.name for p in catalog.primitives if p.boundary == "net_send"}
-        assert "NIOSSLContext" in net_sends
-        assert "NIOSSLCertificate" in net_sends
+    def test_swift_tls_material_is_not_a_network_crossing(self) -> None:
+        """INV-gujoh (2026-09-23): building TLS material sends nothing. The
+        ``(file:)`` constructor forms read a file, but the analyzer carries no
+        argument label and most real uses are ``(bytes:)``, so no row."""
+        names = {p.name for p in load_catalog("swift").primitives}
+        assert not names & {"NIOSSLContext", "NIOSSLCertificate", "NIOSSLPrivateKey"}
 
     def test_swift_has_nio_channel_operations(self) -> None:
         """Swift catalog covers NIO async channel and pipeline operations."""
@@ -5185,14 +5190,17 @@ class TestSwiftCatalog:
             meta: Optional[Dict[str, Any]] = None
 
         catalog = load_catalog("swift")
-        # io-boundary:F3 — these are method-kind catalog entries, so the edge
-        # must carry the receiver module (no-receiver-evidence bare calls are
-        # now suppressed under INV-tapat). The module hints below are the
-        # PascalCase type names the receiver-type inference would supply.
+        # io-boundary:F3 — the method-kind entries need the receiver module (no-
+        # receiver-evidence bare calls are suppressed under INV-tapat); the
+        # module hints below are the PascalCase type names the receiver-type
+        # inference would supply. A CONSTRUCTOR is function-kind (ADR-0059), and
+        # the analyzer emits it with no module hint at all, so its edge says
+        # ``external`` -- which is exactly why the method-keyed constructor rows
+        # never matched before INV-gujoh.
         edges = [
             MockEdge(
                 src="swift:Sources/App/Server.swift:10:setup:method",
-                dst="swift:EventLoopGroup:0-0:MultiThreadedEventLoopGroup:unresolved",
+                dst="swift:external:0-0:ServerBootstrap:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/Server.swift:15:teardown:method",
@@ -5203,21 +5211,22 @@ class TestSwiftCatalog:
                 dst="swift:WebSocket:0-0:onText:unresolved",
             ),
             MockEdge(
-                src="swift:Sources/App/TLS.swift:5:configure:method",
-                dst="swift:NIOSSL:0-0:NIOSSLContext:unresolved",
+                src="swift:Sources/App/Chan.swift:5:serve:method",
+                dst="swift:external:0-0:NIOAsyncChannel:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/Client.swift:8:fetch:method",
-                dst="swift:AsyncHTTPClient:0-0:HTTPClientRequest:unresolved",
+                dst="swift:external:0-0:HTTPClientRequest:unresolved",
             ),
         ]
         count = tag_io_boundaries(edges, {"swift": catalog})
-        assert count == 5, f"Expected 5 tagged edges, got {count}"
-        assert edges[0].meta["io_boundary"] == "net_recv"
+        assert count == 4, f"Expected 4 tagged edges, got {count}"
+        assert edges[0].meta["io_boundary"] == "net_listen"
         assert edges[1].meta["io_boundary"] == "process_send"
         assert edges[2].meta["io_boundary"] == "net_recv"
-        assert edges[3].meta["io_boundary"] == "net_send"
-        assert edges[4].meta["io_boundary"] == "net_send"
+        assert edges[3].meta["io_boundary"] == "net_recv"
+        # A request VALUE is not a send (INV-gujoh): no row, no tag.
+        assert edges[4].meta is None
 
     def test_swift_has_logger_methods(self) -> None:
         """Swift catalog covers swift-log Logger level methods."""

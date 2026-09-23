@@ -83,24 +83,38 @@ net_send:
       - dataTask
       - uploadTask
     notes: "URLSession request methods — dual-classified with net_recv"
-  - module: URLRequest
-    methods:
-      - URLRequest
-    notes: "URLRequest constructor implies HTTP request setup"
+  # NOT ROWED: `URLRequest(url:)`. It builds a request value and sends
+  # nothing; the send is the URLSession task above (INV-gujoh, the family of
+  # python's urllib.request.Request). It was rowed here until 2026-09-23,
+  # keyed `methods:`, and never matched a call.
   - module: NWConnection
-    methods:
+    functions:
       - NWConnection
-    notes: "Network.framework connection"
+    notes: >-
+      Network.framework connection, the HANDLE shape of ADR-0049 ruling 4:
+      `NWConnection(host:port:using:)` names the peer, and the bytes cross at
+      the instance's start/send/receive, which are not rowed. A constructor is
+      called on the type itself, so function-kind (ADR-0059).
 
 net_recv:
   - module: URLSession
     methods:
       - downloadTask
     notes: "URLSession download is primarily receive"
+
+# ADR-0049: a call that ARRANGES inbound data to arrive in a scope it does
+# not name is disclosed, never minted. The disclosure boundary is in place,
+# so ruling 3 licenses the retag; these rows had never fired (they were
+# keyed `methods:` and the analyzer emits a constructor call with no module
+# hint), so no represented crossing is removed.
+net_listen:
   - module: NWListener
-    methods:
+    functions:
       - NWListener
-    notes: "Network.framework listener"
+    notes: >-
+      SETUP (ADR-0049 ruling 4). `NWListener(using:on:)` configures a
+      listener on a port; connections arrive at its newConnectionHandler,
+      which the runtime invokes. go's net.Listen is the same row.
 
 db_read:
   - module: NSManagedObjectContext
@@ -109,14 +123,24 @@ db_read:
       - countForFetchRequest
       - existingObject
     notes: "Core Data fetch operations"
-  - module: NSFetchRequest
-    methods:
-      - NSFetchRequest
-    notes: "Core Data fetch request constructor"
   - module: ModelContext
-    methods:
+    functions:
       - ModelContext
-    notes: "SwiftData model context (iOS 17+)"
+    notes: >-
+      SwiftData model context (iOS 17+). A HANDLE constructor, which ADR-0049
+      keeps under the transfer boundary until the reads it hands out are rowed
+      (python's sqlite3.connect is the same shape). Function-kind: a
+      constructor is called on the type itself (ADR-0059).
+
+db_compose:
+  - module: NSFetchRequest
+    functions:
+      - NSFetchRequest
+    notes: >-
+      LAZY (ADR-0049 ruling 4): `NSFetchRequest(entityName:)` composes a
+      query that has run nothing; the read happens when a context executes
+      it. Moved from db_read, where it would have minted a source at the
+      composition.
 
 db_write:
   - module: NSManagedObjectContext
@@ -139,8 +163,14 @@ env_read:
     methods: [processInfo]
     notes: "ProcessInfo.processInfo access (environment, processName, etc.)"
   - module: CommandLine
-    methods: [CommandLine]
-    notes: "CommandLine.arguments access"
+    attributes: [arguments]
+    notes: >-
+      `CommandLine.arguments`, a static property READ, not called (ADR-0059);
+      argv is env_read in every catalogue (python sys.argv, javascript
+      process.argv). No call ever named `CommandLine(...)`, so the old
+      `methods: [CommandLine]` row could not match anything. The swift
+      analyzer emits no module_attr_ref edge, so this row is unreachable
+      until it does -- a stated recall gap, not a claim of coverage.
 
 # INV-tutar: host DESCRIPTION reads. Split out of env_read because
 # AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and

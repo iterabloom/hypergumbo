@@ -64,31 +64,33 @@ fs_write:
       - writeBuffer
     notes: "SwiftNIO non-blocking file write"
 
+# CONSTRUCTORS, ADJUDICATED 2026-09-23 (INV-gujoh, ADR-0059, ADR-0049). Each
+# was keyed `methods:`, and the swift analyzer emits a constructor call with
+# no module hint, so none had ever matched a call. Making them reachable
+# needed a boundary each one really crosses:
+#   - ServerBootstrap and NIOWebSocketServerUpgrader ARRANGE inbound data
+#     (ADR-0049 SETUP / REGISTER) -> net_listen, disclosed, never minted.
+#   - NIOAsyncChannel is a HANDLE -> stays net_recv (ADR-0049 keeps the
+#     handle shape until the reads are rowed).
+#   - REMOVED, because the constructor crosses nothing: ClientBootstrap
+#     (a builder; `.connect` connects), MultiThreadedEventLoopGroup (a thread
+#     pool), HTTPClientRequest (a request value; HTTPClient.execute sends),
+#     Logger's constructor (builds a logger, writes nothing), and
+#     NIOSSLContext / NIOSSLCertificate / NIOSSLPrivateKey (TLS material,
+#     not network; the `(file:)` forms read a file, but the analyzer does not
+#     carry the argument label and 17 of 22 uses in vapor + hummingbird are
+#     `(bytes:)`).
 net_recv:
-  - module: ServerBootstrap
-    methods:
-      - ServerBootstrap
-    notes: "SwiftNIO server bootstrap"
-  - module: ClientBootstrap
-    methods:
-      - ClientBootstrap
-    notes: "SwiftNIO client bootstrap"
-  - module: EventLoopGroup
-    methods:
-      - MultiThreadedEventLoopGroup
-    notes: "SwiftNIO event loop group for server networking"
   - module: NIOAsyncChannel
-    methods:
+    functions:
       - NIOAsyncChannel
-    notes: "SwiftNIO async channel for bidirectional IO (Swift Concurrency)"
+    notes: >-
+      SwiftNIO async channel for bidirectional IO (Swift Concurrency). A
+      HANDLE over an open channel, like java's Socket.getInputStream.
   - module: Channel
     methods:
       - channelRead
     notes: "SwiftNIO channel handler inbound data callback"
-  - module: NIOWebSocketServerUpgrader
-    methods:
-      - NIOWebSocketServerUpgrader
-    notes: "SwiftNIO WebSocket server upgrader"
   - module: WebSocket
     methods:
       - onText
@@ -96,11 +98,21 @@ net_recv:
       - onClose
     notes: "WebSocket event handlers for incoming messages"
 
+net_listen:
+  - module: ServerBootstrap
+    functions:
+      - ServerBootstrap
+    notes: >-
+      SwiftNIO server bootstrap. SETUP (ADR-0049 names it): requests arrive
+      at channel handlers the runtime invokes, never at this call.
+  - module: NIOWebSocketServerUpgrader
+    functions:
+      - NIOWebSocketServerUpgrader
+    notes: >-
+      SwiftNIO WebSocket server upgrader. REGISTER: frames arrive at the
+      handlers it installs.
+
 net_send:
-  - module: AsyncHTTPClient
-    methods:
-      - HTTPClientRequest
-    notes: "AsyncHTTPClient request constructor (server-side Swift)"
   - module: Channel
     methods:
       - writeAndFlush
@@ -114,12 +126,6 @@ net_send:
       - fireChannelInactive
       - fireErrorCaught
     notes: "SwiftNIO handler context I/O forwarding methods"
-  - module: NIOSSL
-    methods:
-      - NIOSSLContext
-      - NIOSSLCertificate
-      - NIOSSLPrivateKey
-    notes: "SwiftNIO TLS/SSL context and credential loading"
 
 process_send:
   - module: EventLoopGroup
@@ -130,7 +136,6 @@ process_send:
 logging:
   - module: Logger
     methods:
-      - Logger
       - trace
       - debug
       - info
@@ -138,7 +143,7 @@ logging:
       - warning
       - error
       - critical
-    notes: "swift-log Logger: constructor and level methods (trace/debug/info/notice/warning/error/critical)"
+    notes: "swift-log Logger level methods (trace/debug/info/notice/warning/error/critical); the constructor writes nothing and is not rowed"
   - module: Tracing
     methods:
       - startSpan
