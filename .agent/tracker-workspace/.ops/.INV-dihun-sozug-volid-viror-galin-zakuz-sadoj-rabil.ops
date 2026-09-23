@@ -1,0 +1,26 @@
+- op: create  # c1ea
+  at: '2026-09-23T18:08:55Z'  # c1ea
+  by: agent  # c1ea
+  actor: jgstern_agent  # c1ea
+  clock: 1  # c1ea
+  nonce: c1ea  # c1ea
+  data:  # c1ea
+    kind: invariant  # c1ea
+    title: "A module the classifier matched a call into is reported method-starved in the same run: JS process on 6/9 JS-bearing repos (since WI-kikar gave process member calls a slot) and python ctypes.cdll -- the INV-fugus contradiction, fourth occurrence"  # c1ea
+    status: violated  # c1ea
+    priority: 2  # c1ea
+    parent:  # c1ea
+    tags:  # c1ea
+    - io_boundary  # c1ea
+    - verify_claims  # c1ea
+    - catalogue  # c1ea
+    - javascript  # c1ea
+    - python  # c1ea
+    isbefore: []  # c1ea
+    duplicate_of: []  # c1ea
+    not_duplicate_of: []  # c1ea
+    pr_ref:  # c1ea
+    description: "FOUND 2026-09-23 by the IoPrimitive.kind concept audit (INV-zikab; write-up\n~/hypergumbo_lab_notebook/concept-audit-io-primitive-kind_09232026.md §6 S1/S2).\nFOURTH OCCURRENCE of one contradiction: the classifier matches a call into a module,\nand method_starved_modules reports that same module \"structurally invisible\" in the\nsame run. Earlier: INV-nular (rust File::open), WI-komun (JS console/localStorage),\nINV-fugus (python datetime.date.today). Each was fixed per instance.\n\nLIVE INSTANCE 1 -- javascript `process`, 6 of 9 JS-bearing repos surveyed at\nd917e02282: express, mobx, ioredis, jotai, EventEmitter2, killbill.\n`process.cwd()` classifies host_info_read, and `process` is starved. It is the FIRST\ncoverage reason printed on express and mobx (\"calls into 1 module(s) whose catalogued\nI/O is method-shaped (process) but produced no method call edge\"). It flips\n`complete` on 0 of 9, because every one of these repos has another blocker, so the\nmeasured harm is a FALSE REASON, not a changed verdict.\nMECHANISM (by reading, NOT bisected): WI-komun (#800) re-kinded the named globals to\nfunctions: and left process.on / process.send as methods: because they were\n\"unreachable for a different reason, WI-kikar\". WI-kikar (#898) then gave process\nmember calls their module slot; its A/B counted edges moved and never looked at the\ncoverage gate (kikar_js_09102026/RESULT.md has no mention of it). So the exemption's\nreason expired unnoticed. Also: `process.cwd` is rowed attributes: although it is\nCALLED, and that denies route 2 its function name.\nA/B (re-kind on/send to function, JS + TS, which load the same YAML): starvation\ncleared on 6/6. It also removes a false disclosure: every untyped `x.send(...)` was\nreported as possible process.send IPC, 355 -> 0 on express.\n\nLIVE INSTANCE 2 -- python `ctypes.cdll.LoadLibrary`, fixture through\nanalyze_python + classify_call + method_starved_modules:\n  ctypes.cdll.LoadLibrary(p) -> python:ctypes.cdll:0-0:LoadLibrary, no call_construct,\n      classifies ctypes.cdll.LoadLibrary (fs_read); STARVED ['ctypes.cdll']\n  from ctypes import cdll; cdll.LoadLibrary(p) -> python:ctypes:0-0:cdll.LoadLibrary,\n      NOT classified (WI-torin's shape)\nINV-fugus's sweep test (test_no_method_row_on_an_importable_class_is_receiverless)\nresolves only CLASSES. ctypes.cdll is a module-level INSTANCE, so the sweep skipped it\nby construction. It is the only lowercase-owner method row in python.yaml.\n\nWHY PER-INSTANCE FIXES KEEP RECURRING: the gate reads a row's kind as \"the call shape\nthe analyzer will emit\", but rows for OWNER-NAMED members (named globals, module-level\nobjects, classmethods, statics) are keyed methods in several catalogues (INV-zikab),\nand analyzers leave owner-named chains unstamped. A guard keyed on the CONTRADICTION\nwould catch the next instance where a per-row sweep did not: over the fixture corpus,\nassert that no module is both classified-into and starved.\nNOT a gate loosening: satisfying a module on \"any classified edge\" was considered for\nINV-fugus and refused. test_a_METHOD_name_on_an_unstamped_edge_still_starves pins\nthat an unstamped edge naming a METHOD row still starves."  # c1ea
+    fields:  # c1ea
+      statement: "No module into which the production classifier matched a call is reported by method_starved_modules in the same run."  # c1ea
+      root_cause: "Rows for owner-named members (named globals, module-level objects) are keyed methods: while analyzers emit owner-named chains without a method stamp, so neither satisfaction route fires; fixes were applied per instance (INV-nular, WI-komun, INV-fugus) and no guard asserts the contradiction itself."  # c1ea
