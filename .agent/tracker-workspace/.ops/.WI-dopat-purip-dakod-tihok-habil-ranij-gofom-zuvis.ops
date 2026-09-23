@@ -24,3 +24,18 @@
   clock: 2  # 49e5
   nonce: '49e5'  # 49e5
   message: "MEASURED FIRST, as the row asked. Census, measurement 0007's method (verify-claims --format json, generic-taint-claims.yaml, unit = evidence row), on 0007's 11-repo cohort plus sherpa-onnx and podman-compose. Analyzer pinned: dev 4610d2d693 in a worktree, PYTHONHASHSEED=0. An earlier unpinned run was byte-identical in totals. Artifacts: ~/hypergumbo_lab_notebook/dopat_census_pinned/.\n\n            rows  confirmed  escaped  NOT_ATTEMPTED  unavailable  unconfirmed\n  default    498        50       40            242          166            0\n  nonprod    878        61       74            551          192            0\n\nnot_attempted is 242 of 282 ddg_mixed rows (85.8%) on the default arm and 551 of 625 (88.2%) on nonprod. So the row's worry is real at scale: most ddg_mixed rows got a DDG-flavoured label from coverage with no walk.\n\nWHY NOT ATTEMPTED (first blocker; partitions, do not add):\n  default   cross_function 151 (62.4%)   sink_before_source 55 (22.7%)   source_not_tracked 36 (14.9%)\n  nonprod   cross_function 366 (66.4%)   sink_before_source 113 (20.5%)  source_not_tracked 72 (13.1%)\ncross_function dominates. It is §3a's by-construction intraprocedural limit, fixable only by §4 summaries, so the row's \"if one guard dominates, fix the guard\" does not apply to the dominant one.\n\nOPTION (d) IS ALREADY SHIPPED, which the row did not know. walk_verdict is published on every JSON evidence row. The text view prints \"§3a walk verdicts for those findings: ...\" directly under the analysis_method line, plus a paragraph stating that not_attempted is ignorance, not absence.\n\nWHAT IS STILL WRONG, and FIXED in this row's PR: docs/VERIFY-CLAIMS-SCOPE.md defined `ddg_mixed` as \"the walk ran and did not confirm\". That is false for 86-88% of the rows carrying it.\n\nA SECOND GUARD IS WORTH AN OWNER DECISION (see WI-mojaz for the adjudication). On the pretix nonprod arm, a seeded sample adjudicated with 0022's classifier (control: reproduces 0022's 119/119 verdicts) puts sink_before_source situations at 22 FP / 0 TP (+6 vacuous). Treating sink_before_source as refutation would be a removal rule, and ADR-0052 makes §3a refutation confirm-only. So that is an ADR-level ruling, not mine. Soundness caveat: a loop can carry a later source to an earlier sink.\n\nLABEL (options a-c): left as INV-zidur ruled. Remapping is still the owner's call. The measurement says the collapse is 86-88%, and (d) already discloses it on both surfaces."  # 49e5
+- op: update  # 7da2
+  at: '2026-09-23T00:11:50Z'  # 7da2
+  by: agent  # 7da2
+  actor: jgstern_agent  # 7da2
+  clock: 3  # 7da2
+  nonce: 7da2  # 7da2
+  set:  # 7da2
+    status: needs_human_review  # 7da2
+- op: discuss  # b4ff
+  at: '2026-09-23T00:11:50Z'  # b4ff
+  by: agent  # b4ff
+  actor: jgstern_agent  # b4ff
+  clock: 4  # b4ff
+  nonce: b4ff  # b4ff
+  message: "MEASURED and the doc defect FIXED (4f36dc948e). Owner rulings requested, both surfaced rather than taken:\n(1) THE LABEL. not_attempted is 85.8% (default) / 88.2% (nonprod) of ddg_mixed rows across 0007's cohort + 2. walk_verdict already discloses this on every JSON evidence row and in the text view (option d was already shipped), and the scope doc no longer says 'the walk ran'. Keep (a), or remap to (b)/(c)? INV-zidur refused (c).\n(2) A REMOVAL RULE. sink_before_source adjudicates 22 FP / 0 TP on the pretix nonprod arm (seeded sample, 0022's classifier, control reproduces 119/119). Refuting on it would raise that arm's precision from 27.5% to 35.0% with no sampled TP lost, but ADR-0052 makes refutation confirm-only, and a loop-carried value is the soundness exception. Full numbers are in my previous entry and on WI-mojaz."  # b4ff
