@@ -133,8 +133,12 @@ names the receiver, so the arm no longer fires on it (`slot_names_one_owner`).
 
 `KNOWN_NONCONFORMING_ROWS` listed 91 shipped rows that break the axiom and are
 not re-kinded here. Each names the tracker item that blocks it:
-- **34 Java statics:** WI-kilap. INV-pimir's arm blocked them too until step 4.
-- **11 Scala `object` members:** WI-kilap.
+- **34 Java statics** and **11 Scala `object` members:** WI-kilap, and INV-pimir's
+  arm until step 4. Re-kinded in step 6 (2026-09-23) and removed from the
+  ledger. Their names also joined the catalogue's `ambiguous_names`: Java has no
+  free functions, so a bare call with no module context is a project method
+  (sbt's own `now()`, gatling's own `readString()`), and listing them keeps that
+  path as it was when they were method rows.
 - **Scala `Process.apply`:** WI-narij.
 - **16 Swift constructors:** INV-gujoh. Left the ledger on 2026-09-23 once each
   boundary was adjudicated against ADR-0049. Eight crossed nothing and were
@@ -152,7 +156,10 @@ The test fails on an entry whose row has been fixed or removed, and pins the
 size. So the ledger can only shrink, and a new exception is a visible diff. It
 records non-conformance; it does not approve it.
 
-**This ADR moves no row.** The order is measured, and it is recorded on INV-zikab:
+**This ADR moved no row.** The order is measured, recorded on INV-zikab, and
+now complete through step 6. The ledger holds 30 rows: Scala `Process.apply`
+(WI-narij), and 3 Swift statics, 21 ObjC class methods and 5 `kotlin.io.FilesKt`
+rows (WI-ziviv).
 1. The unconstrained rows went first (INV-dihun, PR #1155).
 2. The Swift boundaries are adjudicated before their kinds.
 3. The INV-nizom arm stops reading `method` as receiver evidence before the
