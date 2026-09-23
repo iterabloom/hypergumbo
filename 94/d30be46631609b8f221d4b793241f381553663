@@ -1,0 +1,29 @@
+Original commit body from 66fc76a64cd73b701a48b8cb47850fc552e68802:
+
+The cron self-claims gate had been red since 09-19: all 18 self-claims fell
+confirmed_with_caveats -> inconclusive, lost opaque_boundary, and four lost
+their credited sanitized flows. Bisected in pinned worktrees to a7495d9b9a,
+which added `import datetime as _dt; _dt.date.today()` to cli.py.
+
+The python analyzer emits a module-rooted dotted chain with no
+call_construct. datetime.date.today was catalogued as a METHOD, so
+method_starved_modules reported datetime.date structurally invisible
+although classify_call classifies that very edge (host_info_read). A
+starved module is not the qualifying kind of incompleteness, so no claim
+could be qualified and every one was withheld.
+
+datetime.date.today and datetime.datetime.now/utcnow/today are all
+classmethod_descriptors (inspect.getattr_static): a classmethod takes no
+receiver, so they are function-kind rows -- INV-nular's Path.cwd rule. The
+starvation gate is NOT loosened; an unstamped edge naming a method row still
+starves. A new sweep test fails on any python method-kind row that is a
+classmethod/staticmethod on an importable class; it found exactly these four.
+
+Measured, verify-claims on the self-claims at dev tip, own worktree + cache:
+without the fix the same 40-line drift as CI; with it "18 claims unchanged
+(18 confirmed_with_caveats)", and verdict, evidence count, sanitized/excluded
+flows and caveat kinds per claim identical to the last good commit.
+
+Addresses INV-fugus.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
