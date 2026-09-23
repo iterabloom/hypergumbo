@@ -27,3 +27,18 @@
   clock: 2  # 3f8f
   nonce: 3f8f  # 3f8f
   message: "THE SAME DEFECT EXISTS IN PYTHON, AND THERE IT IS LOAD-BEARING. Filed 2026-09-21 as WI-ripas.\n\nThis row prices itself P3 on a stated reason: \"TypeScript has 0 catalogued taint sinks, so no amount of TypeScript DDG coverage can move a taint verdict today.\" That reasoning is sound for TS and inverts exactly for python, which carries the richest sink catalogue in the tree -- and python's LanguageDdgSpec supplies neither `name_for` nor `kind_for` either.\n\nMEASURED on hypergumbo itself: 0 of 24,915 python methods match a ddg_symbols key, while 21,257 of them (85.3%) HAVE their DDG data sitting in that set under the bare-name/`:function` key nothing asks for. 68.5% of python callables can therefore never be walked, and every taint finding rooted in one is `structural` by construction.\n\nNothing about THIS row changes -- the TS gap is still real and still cheap to leave -- but the fix shape this row already wrote down (\"have the spec call it via kind_for, the way go_def_use imports _extract_receiver_type_from_node from go.py\") is the one WI-ripas will implement for python. If the shared kind-slot helper this row asks for gets extracted, both languages should take it."  # 3f8f
+- op: update  # 693c
+  at: '2026-09-23T00:09:47Z'  # 693c
+  by: agent  # 693c
+  actor: jgstern_agent  # 693c
+  clock: 3  # 693c
+  nonce: 693c  # 693c
+  set:  # 693c
+    status: done  # 693c
+- op: discuss  # 6fc0
+  at: '2026-09-23T00:09:47Z'  # 6fc0
+  by: agent  # 6fc0
+  actor: jgstern_agent  # 6fc0
+  clock: 4  # 6fc0
+  nonce: 6fc0  # 6fc0
+  message: "DONE by the same change as WI-sakir (2a92c2a650), using this row's own prescribed fix shape: extract the analyzer's kind-slot decision into a shared helper (jsts_method_kind, plus jsts_method_name), have the TypeScript spec call it via kind_for / name_for, then widen function_node_types to method_definition. apollo-server (TS), baseline dev in a worktree: methods 0 -> 314 of 355 walked under the analyzer's key. The 41 left are 39 bodiless interface method signatures (nothing to walk) and 2 methods in .mts/.cts files the *.ts glob does not claim, the TypeScript twin of WI-fovus. The row's P3 price still holds for verdicts: TypeScript carries 0 taint sinks."  # 6fc0
