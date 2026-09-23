@@ -1,0 +1,21 @@
+- op: create  # bf3d
+  at: '2026-09-22T23:18:37Z'  # bf3d
+  by: agent  # bf3d
+  actor: jgstern_agent  # bf3d
+  clock: 1  # bf3d
+  nonce: bf3d  # bf3d
+  data:  # bf3d
+    kind: work_item  # bf3d
+    title: "JS/TS DDG never walks binding-named callables (arrow functions, function expressions): 7,415 of 11,600 dash.js functions"  # bf3d
+    status: todo_hard  # bf3d
+    priority: 3  # bf3d
+    parent:  # bf3d
+    tags:  # bf3d
+    - taint  # bf3d
+    - analysis_quality  # bf3d
+    isbefore: []  # bf3d
+    duplicate_of: []  # bf3d
+    not_duplicate_of: []  # bf3d
+    pr_ref:  # bf3d
+    description: "Residual of WI-sakir. After that fix, every JS/TS method, getter and setter is walked under the analyzer's exact key. What is still never walked is the larger JS population: callables the analyzer names after their BINDING.\n\n  const handler = (req) => { ... }        analyzer: handler:function\n  obj.prop = function (x) { ... }          analyzer: (name from the assignment)\n  const f = function named() { ... }       analyzer: f:function   (NOT \"named\")\n\nMEASURED (instrument: spy on ddg_build._solve_one_function, path slot normalised):\n  dash.js     functions never walked  7,415 of 11,600  (arrow_function 2,001 + function_expression 3,515 + `function` 771 + other)\n  apollo-server (TS) functions never walked  951 of 1,146\nFor comparison, function_declaration keys already match, and after WI-sakir methods are 766/766 walked on dash.js.\n\nWHY IT IS NOT A ONE-LINE WIDENING. The analyzer's name for these comes from several separate emission branches (variable declarator, property assignment, call argument, export default ...). Adding arrow_function / function_expression to function_node_types without the SAME naming would store them under keys nothing asks for, which is the WI-ripas defect again. The fix shape is WI-sakir's: extract the analyzer's binding-name decision into a shared helper that both producers call. An arrow with an EXPRESSION body (no statement_block) also needs a CFG answer, and that has not been checked.\n\nPRICE BEFORE BUILDING: javascript carries 83 taint sinks (WI-nonad), so this can move verdicts. TypeScript carries 0, so it cannot today. Measure how many taint findings on a JS cohort are rooted in a never-walked binding-named callable before sizing the work."  # bf3d
+    fields: {}  # bf3d
