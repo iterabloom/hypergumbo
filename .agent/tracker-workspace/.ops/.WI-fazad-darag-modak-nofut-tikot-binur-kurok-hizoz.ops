@@ -26,3 +26,19 @@
   clock: 2  # 2176
   nonce: '2176'  # 2176
   message: "2026-09-23: the concept audit of this field (INV-zikab) found the enum's VALUES are not the problem. Their MEANING is: three written rules across the catalogues, measured consequences on 21 surveys. Whatever axiom the owner adopts on INV-zikab is the docstring this item's declaration should carry. The comment fix alone would ratify an undefined value."  # 2176
+- op: update  # 73be
+  at: '2026-09-23T19:45:02Z'  # 73be
+  by: agent  # 73be
+  actor: jgstern_agent  # 73be
+  clock: 3  # 73be
+  nonce: 73be  # 73be
+  set:  # 73be
+    status: done  # 73be
+    pr_ref: '1157'  # 73be
+- op: discuss  # 6dbe
+  at: '2026-09-23T19:45:03Z'  # 6dbe
+  by: agent  # 6dbe
+  actor: jgstern_agent  # 6dbe
+  clock: 4  # 6dbe
+  nonce: 6dbe  # 6dbe
+  message: "DONE in PR #1157 (dev 2a2cf57c2f), as ADR-0059. On the merged tree: IoPrimitive.kind now declares '# axis: io-primitive-kind', a registry-backed axis wired into _known_axes() and resolved by io_primitive_kinds.all_io_primitive_kind_names() = {function, method, attribute}. The docstring names all three values and states the owner-ratified axiom (it read 'Either function or method'). scripts/check-multi-value-field-axis-declaration rc 0, scripts/check-io-boundary-drift rc 0. The item's second point, that attribute is unreachable at the verify_claims route-1 join, stays with INV-pimir: route 1 is unchanged in this PR."  # 6dbe
