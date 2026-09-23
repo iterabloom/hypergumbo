@@ -15,9 +15,11 @@ What each class pins, and why it is not the same check twice:
   offence shape, so a clean exit cannot be a broken scanner.
 * ``TestTheLedger`` -- the shrink-only record of rows the axiom rejects. It
   fails on an entry whose row is fixed or gone, and pins the size.
-* ``TestSwiftConstructorsAreLedgered`` -- the one mechanical conformance check
+* ``TestSwiftConstructorsAreFunctions`` -- the one mechanical conformance check
   available for a non-python language: an UpperCamelCase name under
-  ``methods:`` is a constructor, called on the type itself.
+  ``methods:`` is a constructor, called on the type itself, so none may remain;
+  and the constructors that do stay rowed carry the boundary INV-gujoh's
+  adjudication gave them.
 """
 from __future__ import annotations
 
@@ -146,7 +148,7 @@ class TestTheLiteralScanner:
 class TestTheLedger:
     #: Shrink-only. Lower it when a blocked row is fixed and its entry deleted;
     #: raising it is a new exception to the axiom and must be argued in review.
-    LEDGER_SIZE = 91
+    LEDGER_SIZE = 75
 
     def test_the_size_is_pinned(self) -> None:
         assert len(KNOWN_NONCONFORMING_ROWS) == self.LEDGER_SIZE
@@ -171,10 +173,43 @@ class TestTheLedger:
         assert not stale, f"row re-kinded or removed; drop the entry: {stale}"
 
 
-class TestSwiftConstructorsAreLedgered:
-    def test_every_upper_camel_method_row_is_ledgered(self) -> None:
-        ledgered = {(r.module, r.name) for r in KNOWN_NONCONFORMING_ROWS if r.language == "swift"}
-        ctors = {(p.module, p.name) for p in load_catalog("swift").primitives
-                 if p.kind == KIND_METHOD and p.name[:1].isupper()}
-        assert ctors, "reach: the swift catalogue carries constructor-shaped method rows today"
-        assert ctors <= ledgered, sorted(ctors - ledgered)
+class TestSwiftConstructorsAreFunctions:
+    def test_no_upper_camel_method_row_remains(self) -> None:
+        catalog = load_catalog("swift")
+        assert any(p.kind == KIND_METHOD for p in catalog.primitives), (
+            "reach: the swift catalogue must still carry method rows")
+        ctors = sorted((p.module, p.name) for p in catalog.primitives
+                       if p.kind == KIND_METHOD and p.name[:1].isupper())
+        assert not ctors, ctors
+
+    def test_the_adjudicated_constructors(self) -> None:
+        """INV-gujoh, 2026-09-23. Pinned by (module, name) -> boundary so a
+        re-added row, or one moved back onto a transfer boundary, is a visible
+        diff. ADR-0049: SETUP / REGISTER / LAZY rows are disclosed
+        (net_listen, db_compose); HANDLE rows keep the transfer boundary."""
+        rows = {(p.module, p.name): (p.boundary, p.kind)
+                for p in load_catalog("swift").primitives if p.name[:1].isupper()
+                and p.module == p.name}
+        assert rows == {
+            ("NWConnection", "NWConnection"): ("net_send", KIND_FUNCTION),
+            ("NWListener", "NWListener"): ("net_listen", KIND_FUNCTION),
+            ("ServerBootstrap", "ServerBootstrap"): ("net_listen", KIND_FUNCTION),
+            ("NIOWebSocketServerUpgrader", "NIOWebSocketServerUpgrader"):
+                ("net_listen", KIND_FUNCTION),
+            ("NIOAsyncChannel", "NIOAsyncChannel"): ("net_recv", KIND_FUNCTION),
+            ("NSFetchRequest", "NSFetchRequest"): ("db_compose", KIND_FUNCTION),
+            ("ModelContext", "ModelContext"): ("db_read", KIND_FUNCTION),
+        }
+
+    @pytest.mark.parametrize("name", [
+        "URLRequest", "HTTPClientRequest", "ClientBootstrap",
+        "MultiThreadedEventLoopGroup", "Logger", "NIOSSLContext",
+        "NIOSSLCertificate", "NIOSSLPrivateKey", "CommandLine",
+    ])
+    def test_a_constructor_that_crosses_nothing_is_not_rowed(self, name: str) -> None:
+        assert not [p for p in load_catalog("swift").primitives if p.name == name]
+
+    def test_command_line_is_an_attribute_read(self) -> None:
+        rows = [(p.boundary, p.kind) for p in load_catalog("swift").primitives
+                if p.module == "CommandLine"]
+        assert rows == [("env_read", KIND_ATTRIBUTE)]

@@ -128,12 +128,20 @@ construct-as-receiver-evidence assumption INV-pimir records.
 
 ### 3. A shrink-only ledger of the rows the axiom rejects
 
-`KNOWN_NONCONFORMING_ROWS` lists 91 shipped rows that break the axiom and are
+`KNOWN_NONCONFORMING_ROWS` listed 91 shipped rows that break the axiom and are
 not re-kinded here. Each names the tracker item that blocks it:
 - **34 Java statics:** INV-pimir, WI-kilap.
 - **11 Scala `object` members:** WI-kilap.
 - **Scala `Process.apply`:** WI-narij.
-- **16 Swift constructors:** INV-gujoh.
+- **16 Swift constructors:** INV-gujoh. Left the ledger on 2026-09-23 once each
+  boundary was adjudicated against ADR-0049. Eight crossed nothing and were
+  deleted (`URLRequest`, `HTTPClientRequest`, `ClientBootstrap`,
+  `MultiThreadedEventLoopGroup`, `Logger`, the three `NIOSSL*`). Four moved to
+  a disclosure boundary (`NWListener`, `ServerBootstrap`,
+  `NIOWebSocketServerUpgrader` to `net_listen`; `NSFetchRequest` to
+  `db_compose`). Three HANDLE rows kept theirs (`NWConnection`,
+  `NIOAsyncChannel`, `ModelContext`), and `CommandLine` became the attribute
+  read `CommandLine.arguments`.
 - **3 Swift statics, 21 ObjC class methods and 5 `kotlin.io.FilesKt` rows:**
   WI-ziviv. No kind fits the FilesKt rows, because their module string is wrong.
 
@@ -166,8 +174,8 @@ records non-conformance; it does not approve it.
 **Conformance is checked mechanically for two languages only.**
 - **Python:** `inspect.getattr_static` over every method row whose module
   resolves to a class or an object.
-- **Swift:** an UpperCamelCase name under `methods:` is a constructor and must
-  be in the ledger.
+- **Swift:** an UpperCamelCase name under `methods:` is a constructor, so none
+  may remain.
 
 For every other language the ledger is the only record. A new non-conforming
 Java or ObjC row passes every test, because the suite has no JVM, Swift or ObjC
