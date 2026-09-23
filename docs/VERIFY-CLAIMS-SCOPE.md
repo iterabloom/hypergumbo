@@ -135,7 +135,18 @@ The label records **how the flow was included**, not how likely it is to be
 real:
 
 - `ddg` — the walk confirmed a data dependence;
-- `ddg_mixed` — the walk ran and did not confirm;
+- `ddg_mixed` — reaching-definition data covered the source function, but the
+  walk did not confirm. That covers three different facts, and the finer
+  `walk_verdict` field (on every JSON evidence row, and in the text view's
+  "§3a walk verdicts" line) says which: `not_attempted` (a guard above the walk
+  failed, so it never ran), `escaped` (it ran and lost the value), or
+  `unconfirmed` (it ran to exhaustion and found no dependence; such a flow is
+  removed, so it never survives into a report). **Most `ddg_mixed` rows never
+  ran a walk at all**: on measurement 0007's cohort re-run on 2026-09-22,
+  `not_attempted` was 242 of 282 `ddg_mixed` rows (85.8%) by default and 551 of
+  625 (88.2%) with `--include-non-production-sources`, two thirds of them
+  stopped by `cross_function` (source and sink in different functions, which
+  the intraprocedural walk cannot follow by construction);
 - `structural` — no reaching-definition data was available.
 
 Measured three times now, on three different populations, `ddg_mixed` scores
