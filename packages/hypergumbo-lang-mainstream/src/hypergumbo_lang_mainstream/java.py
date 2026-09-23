@@ -123,6 +123,10 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.paths import normalize_path
+from hypergumbo_lang_mainstream.jvm_implicit_imports import (
+    IMPLICIT_IMPORT_PACKAGE,
+    JAVA_LANG_TYPES,
+)
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
@@ -641,7 +645,7 @@ def _extract_static_imports(
 
 #: The package JLS 7.3 imports into every compilation unit whether or not it is
 #: written. Not a heuristic and not a class list — the language guarantees it.
-_IMPLICIT_IMPORT_PACKAGE = "java.lang"
+_IMPLICIT_IMPORT_PACKAGE = IMPLICIT_IMPORT_PACKAGE
 
 
 def _fully_qualified_type_reference(chain_text: str) -> "str | None":
@@ -755,48 +759,9 @@ def _declared_type_name(
 
 
 #: The public types of ``java.lang`` (JDK 17), which JLS 7.3 imports into every
-#: compilation unit. A CLOSED list on purpose: a bare, unimported ``InputStream``
-#: in a file that forgot its import is NOT ``java.lang.InputStream``, and
-#: writing that into the module slot would be a present-but-wrong hint -- the
-#: INV-kotob shape, worse than untyped. Annotations are omitted (never a
-#: receiver); nested types (``Thread.UncaughtExceptionHandler``) are spelled
-#: with their outer and reach here through the nested-type branch.
-_JAVA_LANG_TYPES: frozenset[str] = frozenset({
-    # interfaces
-    "Appendable", "AutoCloseable", "CharSequence", "Cloneable", "Comparable",
-    "Iterable", "ProcessHandle", "Readable", "Runnable",
-    # classes
-    "Boolean", "Byte", "Character", "Class", "ClassLoader", "ClassValue",
-    "Double", "Enum", "Float", "InheritableThreadLocal", "Integer", "Long",
-    "Math", "Module", "ModuleLayer", "Number", "Object", "Package", "Process",
-    "ProcessBuilder", "Record", "Runtime", "RuntimePermission",
-    "SecurityManager", "Short", "StackTraceElement", "StackWalker",
-    "StrictMath", "String", "StringBuffer", "StringBuilder", "System",
-    "Thread", "ThreadGroup", "ThreadLocal", "Throwable", "Void",
-    # exceptions
-    "ArithmeticException", "ArrayIndexOutOfBoundsException",
-    "ArrayStoreException", "ClassCastException", "ClassNotFoundException",
-    "CloneNotSupportedException", "EnumConstantNotPresentException",
-    "Exception", "IllegalAccessException", "IllegalArgumentException",
-    "IllegalCallerException", "IllegalMonitorStateException",
-    "IllegalStateException", "IllegalThreadStateException",
-    "IndexOutOfBoundsException", "InstantiationException",
-    "InterruptedException", "LayerInstantiationException",
-    "NegativeArraySizeException", "NoSuchFieldException",
-    "NoSuchMethodException", "NullPointerException", "NumberFormatException",
-    "ReflectiveOperationException", "RuntimeException", "SecurityException",
-    "StringIndexOutOfBoundsException", "TypeNotPresentException",
-    "UnsupportedOperationException",
-    # errors
-    "AbstractMethodError", "AssertionError", "BootstrapMethodError",
-    "ClassCircularityError", "ClassFormatError", "Error",
-    "ExceptionInInitializerError", "IllegalAccessError",
-    "IncompatibleClassChangeError", "InstantiationError", "InternalError",
-    "LinkageError", "NoClassDefFoundError", "NoSuchFieldError",
-    "NoSuchMethodError", "OutOfMemoryError", "StackOverflowError",
-    "ThreadDeath", "UnknownError", "UnsatisfiedLinkError",
-    "UnsupportedClassVersionError", "VerifyError", "VirtualMachineError",
-})
+#: compilation unit. The closed list lives in :mod:`jvm_implicit_imports` since
+#: kotlin and scala read it too (WI-kilap); the rationale is there.
+_JAVA_LANG_TYPES: frozenset[str] = JAVA_LANG_TYPES
 
 
 # ---------------------------------------------------------------------------

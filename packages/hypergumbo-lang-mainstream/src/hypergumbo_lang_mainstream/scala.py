@@ -64,6 +64,10 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_lang_mainstream.jvm_implicit_imports import (
+    SCALA_SHADOWED_JAVA_LANG,
+    static_owner_module,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -247,6 +251,16 @@ _SCALA_IMPLICIT_IMPORT_TYPES = frozenset({
 #: the bare one every extraction site used to look for exclusively; the other
 #: two were invisible, which cost the hint entirely (WI-pokam).
 _SCALA_TYPE_NODES = ("type_identifier", "stable_type_identifier", "generic_type")
+
+
+def _is_project_type(name: str, global_symbols: dict[str, Symbol]) -> bool:
+    """Whether the analysed project defines a class, object or trait ``name``.
+
+    A same-package type shadows a default import in scala, so a project
+    ``object System`` must not be read as ``java.lang.System`` (WI-kilap).
+    """
+    sym = global_symbols.get(name)
+    return sym is not None and sym.kind in ("class", "object", "trait")
 
 
 def _qualify_scala_receiver(
@@ -1256,8 +1270,21 @@ def _extract_edges_from_file(
                         # shape is also rare in Scala -- 199/4,314 import lines in
                         # sbt (4.6%) and 5/6,674 in lila (0.07%) -- so the
                         # explicit-import path below carries the population.
-                        typed_module = _qualify_scala_receiver(
-                            receiver_type, import_aliases,
+                        typed_module = (
+                            _qualify_scala_receiver(receiver_type, import_aliases)
+                            if receiver_type
+                            # WI-kilap: an untyped receiver spelled as a TYPE
+                            # (``Files.readAllBytes(p)``, ``System.getenv(k)``,
+                            # ``Properties.envOrElse(...)``) is a static / object
+                            # call, and its owner is the module. Only the file's
+                            # import or java.lang's closed list names one, so
+                            # WI-sigog's "a path the file declares" still holds.
+                            else static_owner_module(
+                                receiver_name or "", import_aliases,
+                                shadowed=SCALA_SHADOWED_JAVA_LANG,
+                                is_project_type=_is_project_type(
+                                    receiver_name or "", global_symbols),
+                            )
                         )
                         edges.append(Edge.create(
                             src=current_function.id,
