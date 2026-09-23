@@ -159,7 +159,10 @@ records non-conformance; it does not approve it.
    Java statics move. Done: re-kinding them in memory loses 0 classifications
    over 21 surveys (it lost 41), and the shipped output is unchanged.
 4. The Kotlin and Scala qualifier drop (WI-kilap) is fixed before those rows
-   lose their boundary-scoped disclosure.
+   lose their boundary-scoped disclosure. Done: a static call now carries its
+   owner (the file's import, or `java.lang`'s closed list) in the module slot,
+   so `Files.readAllBytes(p)` classifies in both languages instead of being
+   disclosed as an untyped receiver.
 
 ## Consequences
 
