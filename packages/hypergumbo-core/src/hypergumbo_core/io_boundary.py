@@ -78,6 +78,13 @@ import yaml
 
 from .axis_meta_keys import write_meta_key
 from .edge_types import is_grpc_rpc_implementation
+from .io_primitive_kinds import (
+    KIND_ATTRIBUTE,
+    KIND_FUNCTION,
+    KIND_METHOD,
+    called_on_a_named_owner,
+    reached_through_an_instance,
+)
 from .io_boundary_types import (
     all_io_boundary_names,
     catalog_declarable_names,
@@ -608,7 +615,7 @@ def gate_named_entry(hits, name, module_hint, ambiguous_names,
     """
     if call_construct == "method":
         return None
-    non_method = [h for h in hits if h.kind != "method"]
+    non_method = [h for h in hits if not reached_through_an_instance(h.kind)]
     if not non_method:
         return None
     if ambiguous_names and name in ambiguous_names:
@@ -641,7 +648,12 @@ class IoPrimitive:
         boundary: The I/O boundary classification (e.g. "fs_read", "net_send").
         module: The module or class path (e.g. "os", "pathlib.Path").
         name: The function or method name (e.g. "listdir", "read_text").
-        kind: Either "function" or "method".
+        kind: How the primitive is reached from ``module`` -- the
+            io-primitive-kind axis (ADR-0059): ``method`` iff called on an
+            INSTANCE of ``module``; ``function`` iff called on ``module`` itself
+            (namespace, package, type, companion object, named global) or with
+            no owner; ``attribute`` iff read, not called. A property of the
+            primitive, never of what an analyzer stamps.
         notes: Optional human-readable notes about classification caveats.
         simultaneous: The primitive genuinely crosses THIS boundary AT THE SAME
             TIME as its other declarations (INV-zumin). Default False, which is
@@ -677,7 +689,7 @@ class IoPrimitive:
     boundary: str  # axis: io-boundary
     module: str  # axis: module-key
     name: str  # axis: free-text — the primitive's own function/method name, used WHOLE as a dict key (``_by_short[p.name]``) and never decomposed; the module qualifier lives in the sibling slot.
-    kind: str  # axis: bounded-enum
+    kind: str  # axis: io-primitive-kind
     notes: str = ""  # axis: free-text — prose caveats for a human reader; no consumer branches on it.
     simultaneous: bool = False
     #: True when this row came from a SHIPPED COMMUNITY overlay — rows
@@ -1157,8 +1169,16 @@ class IoBoundaryCatalog:
             # ``net/http.NewRequest``, ``logging.exception``). A definite module
             # slot is precisely what disambiguates those, which is why the gate
             # defers to it and why this refusal must not.
+            #
+            # READ IN THE AXIS'S TERMS (ADR-0059) this drops rows CALLED ON A
+            # NAMED OWNER whenever the stamp says ``method`` -- i.e. it takes a
+            # ``method`` stamp as evidence of an instance receiver, which Go and
+            # Java do not honour (they stamp ``method`` on ``os.Open`` and on a
+            # qualified static). That is INV-pimir's second join site, and it is
+            # why java's statics still carry a ``methods:`` key (the ADR-0059
+            # ledger names it as their blocker).
             if call_construct == "method" and len(candidates) > 1:
-                filtered = [p for p in filtered if p.kind != "function"]
+                filtered = [p for p in filtered if not called_on_a_named_owner(p.kind)]
             if filtered:
                 return select_by_mode(
                     _narrow_by_target_kind(filtered, io_target_kinds),
@@ -1531,7 +1551,7 @@ class IoBoundaryCatalog:
                         boundary=boundary,
                         module=module,
                         name=func_name,
-                        kind="function",
+                        kind=KIND_FUNCTION,
                         notes=notes,
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
@@ -1545,7 +1565,7 @@ class IoBoundaryCatalog:
                         boundary=boundary,
                         module=module,
                         name=method_name,
-                        kind="method",
+                        kind=KIND_METHOD,
                         notes=notes,
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
@@ -1559,7 +1579,7 @@ class IoBoundaryCatalog:
                         boundary=boundary,
                         module=module,
                         name=attr_name,
-                        kind="attribute",
+                        kind=KIND_ATTRIBUTE,
                         notes=notes,
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,

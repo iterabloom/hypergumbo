@@ -18,10 +18,11 @@ the linter requires a trailing source-line comment of the form
 be one of:
 
 - A **known axis name** — see :func:`_known_axes` for the live set,
-  which is twelve: ``edge-type``, ``symbol-kind``,
+  which is fourteen: ``edge-type``, ``symbol-kind``,
   ``evidence-type``, ``language``, ``pass-id``, ``protocol-origin``,
   ``qualified-name``, ``io-boundary`` (ADR-0050), ``module-key``
-  (ADR-0051), ``entrypoint-kind``, ``visibility`` and
+  (ADR-0051), ``callable-signature`` (ADR-0058), ``io-primitive-kind``
+  (ADR-0059), ``entrypoint-kind``, ``visibility`` and
   ``pass-silence-reason`` (INV-bikaj, arc T6). The field's value
   space is the legal set returned by the axis's all-names function.
   ``language`` and ``pass-id`` are derived from the analyzer/linker
@@ -119,6 +120,7 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     from .entrypoints import all_known_entrypoint_kinds
     from .evidence_types import all_evidence_type_names
     from .io_boundary_types import all_io_boundary_names
+    from .io_primitive_kinds import all_io_primitive_kind_names
     from .module_key_axis import all_module_key_notions
     from .protocol_origins import all_protocol_origin_names
     from .qualified_name_axis import all_qualified_name_languages
@@ -140,6 +142,9 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
         # resolver returns the axis's NOTIONS, not legal field
         # values, which are unenumerable.
         "module-key": all_module_key_notions,
+        # INV-zikab/ADR-0059: how a catalogued primitive is reached from its
+        # row's module (instance / named owner / read). Closed enum.
+        "io-primitive-kind": all_io_primitive_kind_names,
         "language": all_known_languages,
         "pass-id": all_known_pass_ids,
         "protocol-origin": all_protocol_origin_names,

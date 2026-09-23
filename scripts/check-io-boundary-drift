@@ -21,6 +21,15 @@ dict-shaped consumers (``AUTO_SOURCE_LABEL_MAP``,
 ``_WRITE_TARGET_KIND_BOUNDARY``), which the
 property test asserts explicitly instead.
 
+ALSO CHECKS THE SIBLING AXIS ON THE SAME DATACLASS (ADR-0059). ``IoPrimitive``
+carries two registry-backed vocabularies, ``boundary`` and ``kind``, and one
+pre-commit step covers both: ``io_primitive_kinds.find_kind_literal_drift``
+flags a ``"method"`` / ``"function"`` / ``"attribute"`` literal compared with a
+``kind`` in the four consumer modules, where the axis's predicates must be used.
+Unlike the set walker above, that scan has a non-empty population on the live
+tree (18 sites were converted when the axis was declared), and its property test
+proves it fires on a synthetic offender.
+
 Exit codes:
     0 — no drift detected.
     1 — drift detected; offenders printed to stdout, fix instructions to stderr.
@@ -41,6 +50,7 @@ sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
 
 try:
     from hypergumbo_core.io_boundary_types import find_axis_drift
+    from hypergumbo_core.io_primitive_kinds import find_kind_literal_drift
 except ImportError as exc:  # pragma: no cover — defensive
     print(
         f"check-io-boundary-drift: cannot import canonical registry: {exc}",
@@ -59,8 +69,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.parse_args(argv)
 
     offenders = find_axis_drift(REPO_ROOT)
+    kind_offenders = find_kind_literal_drift(REPO_ROOT)
+    if kind_offenders:
+        print("io-primitive-kind axis check failed (ADR-0059):")
+        for line in kind_offenders:
+            print(f"  {line}")
+        print(
+            "Compare kinds through io_primitive_kinds.reached_through_an_instance /\n"
+            "called_on_a_named_owner / read_not_called, and produce them with\n"
+            "the KIND_* constants or kind_for_yaml_section.",
+            file=sys.stderr,
+        )
     if not offenders:
-        return 0
+        return 1 if kind_offenders else 0
 
     print("I/O-boundary axis-coherence check failed:")
     for line in offenders:
