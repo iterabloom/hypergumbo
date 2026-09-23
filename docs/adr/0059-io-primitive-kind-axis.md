@@ -124,13 +124,16 @@ sites in `io_boundary.py`, `verify_claims.py`, `analyzer_disclosure.py` and
 `taint.py` were converted with no behaviour change. Named for the axiom, each
 call site now reads as what it assumes. The INV-nizom arm now reads "drop rows
 **called on a named owner** when the stamp says `method`". That is precisely the
-construct-as-receiver-evidence assumption INV-pimir records.
+construct-as-receiver-evidence assumption INV-pimir records. INV-zikab step 4
+then narrowed it: a slot whose every entry spells the same owner in another
+package (java's wildcard-import slot, `redis.clients.jedis.System,…,java.lang.System`)
+names the receiver, so the arm no longer fires on it (`slot_names_one_owner`).
 
 ### 3. A shrink-only ledger of the rows the axiom rejects
 
 `KNOWN_NONCONFORMING_ROWS` listed 91 shipped rows that break the axiom and are
 not re-kinded here. Each names the tracker item that blocks it:
-- **34 Java statics:** INV-pimir, WI-kilap.
+- **34 Java statics:** WI-kilap. INV-pimir's arm blocked them too until step 4.
 - **11 Scala `object` members:** WI-kilap.
 - **Scala `Process.apply`:** WI-narij.
 - **16 Swift constructors:** INV-gujoh. Left the ledger on 2026-09-23 once each
@@ -153,7 +156,8 @@ records non-conformance; it does not approve it.
 1. The unconstrained rows went first (INV-dihun, PR #1155).
 2. The Swift boundaries are adjudicated before their kinds.
 3. The INV-nizom arm stops reading `method` as receiver evidence before the
-   Java statics move.
+   Java statics move. Done: re-kinding them in memory loses 0 classifications
+   over 21 surveys (it lost 41), and the shipped output is unchanged.
 4. The Kotlin and Scala qualifier drop (WI-kilap) is fixed before those rows
    lose their boundary-scoped disclosure.
 

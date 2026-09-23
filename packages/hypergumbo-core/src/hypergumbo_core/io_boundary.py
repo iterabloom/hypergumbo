@@ -1170,14 +1170,19 @@ class IoBoundaryCatalog:
             # slot is precisely what disambiguates those, which is why the gate
             # defers to it and why this refusal must not.
             #
-            # READ IN THE AXIS'S TERMS (ADR-0059) this drops rows CALLED ON A
-            # NAMED OWNER whenever the stamp says ``method`` -- i.e. it takes a
-            # ``method`` stamp as evidence of an instance receiver, which Go and
-            # Java do not honour (they stamp ``method`` on ``os.Open`` and on a
-            # qualified static). That is INV-pimir's second join site, and it is
-            # why java's statics still carry a ``methods:`` key (the ADR-0059
-            # ledger names it as their blocker).
-            if call_construct == "method" and len(candidates) > 1:
+            # READ IN THE AXIS'S TERMS (ADR-0059), this drops rows CALLED ON A
+            # NAMED OWNER when the stamp says ``method`` and the slot does not
+            # say which owner the call is on. A ``method`` stamp alone is not
+            # evidence of an instance receiver: Go stamps it on ``os.Open`` and
+            # java on a qualified static. So the arm must not fire on a slot
+            # that DOES name the owner. A single module does, and so does a
+            # disjunction whose every entry spells the same owner in another
+            # package (java's wildcard slot, :func:`slot_names_one_owner`).
+            # Without that exemption, java's statics could not be keyed as the
+            # functions they are: 36 jedis classifications were lost
+            # (INV-zikab step 4).
+            if (call_construct == "method" and len(candidates) > 1
+                    and not slot_names_one_owner(module_hint)):
                 filtered = [p for p in filtered if not called_on_a_named_owner(p.kind)]
             if filtered:
                 return select_by_mode(
@@ -4109,6 +4114,43 @@ def module_hint_disjuncts(module_hint: str) -> list[list[str]]:
                 break
         groups.append(spellings)
     return groups
+
+
+def slot_names_one_owner(module_hint: str) -> bool:
+    """Whether a multi-module slot lists alternative packages for ONE owner.
+
+    INV-zikab step 4 (ADR-0059). ``lookup_with_module``'s INV-nizom arm reads a
+    disjunctive slot as FILE CONTEXT. cpp's ``#include`` set says only that the
+    call could come from any included header, so a ``method``-stamped call on
+    such a slot is refused a function row (``fut.wait()`` is not POSIX
+    ``wait``). Java emits a disjunction of another kind. For
+    ``System.currentTimeMillis()`` in a file with wildcard imports,
+    ``_wildcard_candidate_slot`` lists every package the receiver NAME could
+    come from (``redis.clients.jedis.System,...,java.lang.System``). Every
+    disjunct names the one owner the source wrote before the dot, so the slot is
+    receiver evidence as a single module is, only less sure of the package.
+    Read as file context, it refused function rows to every qualified static,
+    which is why java's statics could not be keyed as the functions they are:
+    re-keying them lost 36 jedis classifications through that arm.
+
+    THE TEST IS STRUCTURAL AND LANGUAGE-NEUTRAL. There are two or more
+    disjuncts, and all of them end in the same final component once separators
+    are folded and any header suffix is stripped. A single disjunct returns
+    False, so the arm's arity rule decides it exactly as before.
+
+    THE STATED LIMIT. Two headers sharing a basename, and nothing else
+    (``wait.h`` with ``sys/wait.h``), read as one owner. A method call on a
+    ``std::future`` needs ``<future>``, which breaks the tie. No cpp slot in the
+    21-survey census (2026-09-23) has disjuncts that share a final component.
+    """
+    groups = module_hint_disjuncts(module_hint)
+    if len(groups) < 2:
+        return False
+    finals = {
+        normalize_module_separators(spellings[-1]).rsplit(".", 1)[-1]
+        for spellings in groups
+    }
+    return len(finals) == 1
 
 
 def normalize_module_separators(name: str) -> str:
