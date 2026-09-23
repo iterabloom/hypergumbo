@@ -1,0 +1,24 @@
+Original commit body from 0c0d55001013b54499f56c046a87403e7ca0c446:
+
+Main CHANGELOG [Unreleased]: 222k -> 52k characters. Since the 09-14
+compression it had grown by ~190k in nine days, as ~70 separate #### entries
+under Fixed, each 2-4k with implementation detail and tracker IDs.
+
+- Regrouped by theme, one bullet per effect, plain lead sentences:
+  Added gains "Two producers per language" (scip-python, backend-agreement,
+  [merge]); Changed gains ADR-0057 coexistence, linker declarations
+  (activation / depends_on / derived_from), pass-silence reporting,
+  dead-code-maybe, and a consolidated Schema entry listing every
+  SCHEMA_VERSION step 0.20.1 -> 0.20.13; Fixed is regrouped into verify-claims
+  verdicts, taint propagation, call graph accuracy, the rust-analyzer/SCIP
+  backends, symbol kinds/ids, security, and workflow.
+- The two duplicate "### Changed" headings are merged.
+- Tracker IDs stripped; ADR references and every version transition kept.
+- Phase 1: one missing item added (def/use registry baseline); every other
+  commit since the last audit was already represented.
+- Phase 0: the tracker-durability entry duplicated the tracker changelog;
+  the main changelog keeps a one-line pointer.
+
+Tracker CHANGELOG [Unreleased]: 13.3k -> 3.6k, same treatment.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
