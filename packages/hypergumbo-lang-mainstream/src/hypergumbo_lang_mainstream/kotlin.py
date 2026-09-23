@@ -88,6 +88,10 @@ from hypergumbo_core.analyze.base import (
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_lang_mainstream.jvm_implicit_imports import (
+    KOTLIN_SHADOWED_JAVA_LANG,
+    static_owner_module,
+)
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
@@ -751,12 +755,14 @@ def _kt_receiver_module(type_name: str, imports: dict[str, str]) -> str | None:
     ``println`` classifying in the same run as a control. scala is worse at
     57 of 184 rows (31.0%).
 
-    A closed list therefore buys 22 rows, not nothing -- but it is NOT the same
-    fix java took (INV-suril), and the difference is why this is filed rather
-    than patched here: java keeps the receiver in the name (``System.getenv``)
-    and needed only the module slot, whereas kotlin DROPS the receiver and
-    emits the bare method, so the receiver identity is gone from the edge
-    before any slot could be written. Tracked as its own item.
+    A closed list therefore buys 22 rows, not nothing. It is not applied HERE,
+    because this function qualifies a receiver's declared TYPE, and a declared
+    type the file forgot to import is not java.lang's. The case the list serves
+    is a receiver the source spelled AS a type (``System.getenv(k)``, a static
+    call), and the call-edge fallback handles it through
+    :func:`jvm_implicit_imports.static_owner_module` (WI-kilap), which also
+    covers the explicitly imported ``Files.readAllBytes(p)`` that dropped its
+    qualifier the same way.
     """
     if type_name in imports:
         return imports[type_name]
@@ -1648,7 +1654,17 @@ def _extract_edges_from_file(
                             )
                             _module = (
                                 _kt_receiver_module(_recv_type, imports)
-                                if _recv_type is not None else None
+                                if _recv_type is not None
+                                # WI-kilap: an untyped receiver spelled as a TYPE
+                                # (``Files.readAllBytes(p)``, ``System.getenv(k)``)
+                                # is a static call, and its owner is the module.
+                                # Only the file's import or java.lang's closed list
+                                # names one; anything else keeps the placeholder.
+                                else static_owner_module(
+                                    receiver_name, imports,
+                                    shadowed=KOTLIN_SHADOWED_JAVA_LANG,
+                                    is_project_type=receiver_name in class_symbols,
+                                )
                             )
                             edges.append(make_unresolved_edge(
                                 "kotlin", current_function.id, method_name,
