@@ -1,0 +1,7 @@
+Original commit body from 755879702ced775658cc8a358fcd44ba928a50a6:
+
+Addresses WI-dopat (documentation only; the label is unchanged).
+
+VERIFY-CLAIMS-SCOPE.md defined `ddg_mixed` as 'the walk ran and did not confirm.' A census using measurement 0007's method, with the analyzer pinned in a worktree, puts `not_attempted` at 242 of 282 `ddg_mixed` rows (85.8%) on the default arm and 551 of 625 (88.2%) on the non-production arm.
+
+The definition now names the three verdicts `ddg_mixed` covers and points readers to `walk_verdict`, which already separates them in both the JSON and text output.
