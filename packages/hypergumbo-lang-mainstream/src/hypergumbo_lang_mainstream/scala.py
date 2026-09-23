@@ -264,7 +264,7 @@ def _is_project_type(name: str, global_symbols: dict[str, Symbol]) -> bool:
 
 
 def _qualify_scala_receiver(
-    receiver_type: "str | None",
+    receiver_type: str,
     import_aliases: "dict[str, str]",
 ) -> "str | None":
     """The module-slot path for a receiver type, or ``None`` to keep the sentinel.
@@ -291,8 +291,6 @@ def _qualify_scala_receiver(
     row. The corpus share of the shape is measured rather than assumed — see
     ``~/hypergumbo_lab_notebook/pokam_scala_09102026/``.
     """
-    if not receiver_type:
-        return None
     imported: "str | None" = import_aliases.get(receiver_type)
     if imported:
         return imported
