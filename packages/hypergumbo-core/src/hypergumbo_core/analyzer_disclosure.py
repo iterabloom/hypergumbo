@@ -62,6 +62,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .io_primitive_kinds import reached_through_an_instance
+
 __all__ = [
     "CONSTRUCT_BLIND_ROWS",
     "DECLARATIONS",
@@ -259,7 +261,7 @@ def suppressed_catalogued_sinks(language: str, catalog: object) -> set[str]:
     """
     names = {
         p.name for p in getattr(catalog, "primitives", ())
-        if getattr(p, "kind", None) == "method"
+        if reached_through_an_instance(getattr(p, "kind", ""))
     }
     return names & SUPPRESSED_METHOD_NAMES.get(language, frozenset())
 
@@ -326,6 +328,6 @@ def construct_blind_catalogued_sinks(language: str, catalog: object) -> set[str]
         return set()
     keys = {
         f"{p.module}.{p.name}" for p in getattr(catalog, "primitives", ())
-        if getattr(p, "kind", None) == "method"
+        if reached_through_an_instance(getattr(p, "kind", ""))
     }
     return keys & declared.rows

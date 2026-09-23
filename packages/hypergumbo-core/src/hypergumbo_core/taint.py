@@ -68,6 +68,7 @@ from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_callback_registration, is_grpc_rpc_implementation
 from .member_names import MEMBER_NAME_SEPARATORS, member_owner
 from .symbol_kinds import type_like_kind_names
+from .io_primitive_kinds import KIND_FUNCTION, KIND_METHOD
 from .io_boundary import (
     suppresses_resource_naming_finding,
     _UNRESOLVED_MODULE_PLACEHOLDERS_IO,
@@ -122,7 +123,7 @@ class TaintSource:
     taint_label: str
     module: str
     name: str
-    kind: str  # "function", "method", or "attribute"
+    kind: str  # axis: io-primitive-kind (ADR-0059) -- copied from IoPrimitive.kind or from the YAML section
     return_tainted: bool = True
     argument_tainted: tuple[int, ...] = ()
     start_at: str = "caller"  # "caller" or "callee"
@@ -221,7 +222,7 @@ class TaintSink:
     trust_level: str
     module: str
     name: str
-    kind: str  # "function", "method", or "attribute"
+    kind: str  # axis: io-primitive-kind (ADR-0059) -- copied from IoPrimitive.kind or from the YAML section
     resource_naming_only: bool = False
     """The tainted value can only be SELECTING which resource this sink acts on.
 
@@ -1499,7 +1500,7 @@ def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
                     taint_label=label,
                     module=module,
                     name=func_name,
-                    kind="function",
+                    kind=KIND_FUNCTION,
                     return_tainted=return_tainted,
                     argument_tainted=arg_tainted,
                     start_at=start_at,
@@ -1509,7 +1510,7 @@ def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
                     taint_label=label,
                     module=module,
                     name=method_name,
-                    kind="method",
+                    kind=KIND_METHOD,
                     return_tainted=return_tainted,
                     argument_tainted=arg_tainted,
                     start_at=start_at,
@@ -1542,7 +1543,7 @@ def _load_sink_yaml(path: Path) -> dict[str, list[TaintSink]]:
                     trust_level=trust_level,
                     module=module,
                     name=func_name,
-                    kind="function",
+                    kind=KIND_FUNCTION,
                 ))
             for method_name in entry.get("methods", []):
                 lang_sinks.append(TaintSink(
@@ -1550,7 +1551,7 @@ def _load_sink_yaml(path: Path) -> dict[str, list[TaintSink]]:
                     trust_level=trust_level,
                     module=module,
                     name=method_name,
-                    kind="method",
+                    kind=KIND_METHOD,
                 ))
         sinks_by_lang[lang] = lang_sinks
 

@@ -1,0 +1,180 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""The io-primitive-kind axis (ADR-0059): registry, producers, consumers, ledger.
+
+What each class pins, and why it is not the same check twice:
+
+* ``TestTheRegistry`` -- the three kinds, their YAML sections and their order
+  (rows are emitted section by section and first-declared-wins is load-bearing).
+* ``TestEveryShippedRowIsOnTheAxis`` -- the RUNTIME half of ADR-0024's
+  enforcement: every row every shipped catalogue and overlay loads carries a
+  registered kind, and no row hides its names under an unrecognised key (a
+  typo'd ``method:`` would drop them without a word, since the loader reads
+  only the registered sections).
+* ``TestTheLiteralScanner`` -- the STATIC half: the live tree has no kind
+  literal in the consumer modules, and the scanner demonstrably fires on each
+  offence shape, so a clean exit cannot be a broken scanner.
+* ``TestTheLedger`` -- the shrink-only record of rows the axiom rejects. It
+  fails on an entry whose row is fixed or gone, and pins the size.
+* ``TestSwiftConstructorsAreLedgered`` -- the one mechanical conformance check
+  available for a non-python language: an UpperCamelCase name under
+  ``methods:`` is a constructor, called on the type itself.
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+import yaml
+
+from hypergumbo_core.io_boundary import load_catalog
+from hypergumbo_core.io_primitive_kinds import (
+    IO_PRIMITIVE_KINDS,
+    KIND_ATTRIBUTE,
+    KIND_FUNCTION,
+    KIND_METHOD,
+    KNOWN_NONCONFORMING_ROWS,
+    YAML_SECTIONS,
+    all_io_primitive_kind_names,
+    called_on_a_named_owner,
+    find_kind_literal_drift,
+    find_kind_literal_drift_in_source,
+    kind_for_yaml_section,
+    reached_through_an_instance,
+    read_not_called,
+)
+
+_PKG = Path(__file__).resolve().parents[1] / "src" / "hypergumbo_core"
+_REPO = Path(__file__).resolve().parents[3]
+_CATALOGUES = sorted((_PKG / "io_primitives").glob("*.yaml"))
+_OVERLAYS = sorted((_PKG / "io_primitives_overlays").glob("*.yaml"))
+_LANGUAGES = [p.stem for p in _CATALOGUES]
+
+
+class TestTheRegistry:
+    def test_the_three_kinds(self) -> None:
+        assert all_io_primitive_kind_names() == {KIND_FUNCTION, KIND_METHOD, KIND_ATTRIBUTE}
+
+    def test_sections_in_emission_order(self) -> None:
+        assert YAML_SECTIONS == ("functions", "methods", "attributes")
+        assert [kind_for_yaml_section(s) for s in YAML_SECTIONS] == [
+            s.name for s in IO_PRIMITIVE_KINDS
+        ]
+
+    def test_an_unknown_section_raises(self) -> None:
+        with pytest.raises(KeyError):
+            kind_for_yaml_section("method")
+
+    @pytest.mark.parametrize("kind", sorted(all_io_primitive_kind_names()))
+    def test_the_predicates_partition_the_kinds(self, kind: str) -> None:
+        hits = [reached_through_an_instance(kind), called_on_a_named_owner(kind),
+                read_not_called(kind)]
+        assert hits.count(True) == 1, (kind, hits)
+
+    def test_an_unregistered_value_satisfies_no_predicate(self) -> None:
+        for bogus in ("", "constructor", "Method"):
+            assert not (reached_through_an_instance(bogus) or called_on_a_named_owner(bogus)
+                        or read_not_called(bogus))
+
+
+class TestEveryShippedRowIsOnTheAxis:
+    @pytest.mark.parametrize("language", _LANGUAGES)
+    def test_every_loaded_row_has_a_registered_kind(self, language: str) -> None:
+        catalog = load_catalog(language)
+        assert catalog.primitives, f"{language}: reach -- the catalogue must load rows"
+        bad = {(p.module, p.name, p.kind) for p in catalog.primitives
+               if p.kind not in all_io_primitive_kind_names()}
+        assert not bad, bad
+
+    @pytest.mark.parametrize("path", _CATALOGUES + _OVERLAYS, ids=lambda p: p.name)
+    def test_no_name_list_hides_under_an_unregistered_key(self, path: Path) -> None:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        offenders = []
+        for section, rows in data.items():
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                for key, value in row.items():
+                    is_name_list = isinstance(value, list) and value and all(
+                        isinstance(v, (str, bool)) for v in value)
+                    if is_name_list and key not in YAML_SECTIONS:
+                        offenders.append((section, row.get("module"), key))
+        assert not offenders, offenders
+
+    def test_the_taint_copies_are_on_the_axis(self) -> None:
+        from hypergumbo_core.taint import _derive_auto_imports_from_io_primitives
+
+        sources, sinks, _ambiguous = _derive_auto_imports_from_io_primitives(
+            _PKG / "io_primitives")
+        kinds = {e.kind for by_lang in (sources, sinks) for entries in by_lang.values()
+                 for e in entries}
+        assert kinds, "reach: auto-derived sources/sinks must exist"
+        assert kinds <= all_io_primitive_kind_names(), kinds
+
+
+class TestTheLiteralScanner:
+    def test_the_live_tree_is_clean(self) -> None:
+        assert find_kind_literal_drift(_REPO) == []
+
+    @pytest.mark.parametrize("snippet", [
+        'x = [p for p in hits if p.kind != "method"]',
+        'y = getattr(p, "kind", None) == "method"',
+        'z = {m for m, k in kinds.items() if "method" in k}',
+        'w = [p for p in rows if p.kind in ("function", "attribute")]',
+        'v = IoPrimitive(boundary="fs_read", module="os", name="x", kind="function")',
+        'u = TaintSink(module="os", name="x", kind="method", zone="z")',
+    ])
+    def test_it_fires_on_each_offence_shape(self, snippet: str) -> None:
+        assert find_kind_literal_drift_in_source(snippet, "t.py"), snippet
+
+    @pytest.mark.parametrize("snippet", [
+        'x = [s for s in syms if s.kind == "class"]',
+        'y = reached_through_an_instance(p.kind)',
+        'z = Symbol(kind="method", name="m")',
+        'w = meta.get("call_construct") == "method"',
+    ])
+    def test_it_ignores_what_is_not_a_primitive_kind_literal(self, snippet: str) -> None:
+        """CONTROLS. A symbol kind that is not one of the three, a predicate
+        call, a Symbol constructor and a call_construct comparison are not
+        offences. Stated limit: ``kind == "method"`` on a bare NAME is not
+        caught -- the scanner keys on an attribute or getattr access."""
+        assert find_kind_literal_drift_in_source(snippet, "t.py") == [], snippet
+
+
+class TestTheLedger:
+    #: Shrink-only. Lower it when a blocked row is fixed and its entry deleted;
+    #: raising it is a new exception to the axiom and must be argued in review.
+    LEDGER_SIZE = 91
+
+    def test_the_size_is_pinned(self) -> None:
+        assert len(KNOWN_NONCONFORMING_ROWS) == self.LEDGER_SIZE
+
+    def test_no_duplicates(self) -> None:
+        keys = [(r.language, r.module, r.name) for r in KNOWN_NONCONFORMING_ROWS]
+        assert len(keys) == len(set(keys))
+
+    def test_every_entry_names_a_blocker(self) -> None:
+        pattern = re.compile(r"^(INV|WI)-[a-z]{5}$")
+        for row in KNOWN_NONCONFORMING_ROWS:
+            assert row.blocked_by and all(pattern.match(b) for b in row.blocked_by), row
+
+    @pytest.mark.parametrize("language", sorted({r.language for r in KNOWN_NONCONFORMING_ROWS}))
+    def test_every_entry_is_still_a_method_row(self, language: str) -> None:
+        """An entry whose row was re-kinded or removed must be DELETED, so the
+        ledger can only shrink toward conformance."""
+        loaded = {(p.module, p.name) for p in load_catalog(language).primitives
+                  if p.kind == KIND_METHOD}
+        stale = [r for r in KNOWN_NONCONFORMING_ROWS
+                 if r.language == language and (r.module, r.name) not in loaded]
+        assert not stale, f"row re-kinded or removed; drop the entry: {stale}"
+
+
+class TestSwiftConstructorsAreLedgered:
+    def test_every_upper_camel_method_row_is_ledgered(self) -> None:
+        ledgered = {(r.module, r.name) for r in KNOWN_NONCONFORMING_ROWS if r.language == "swift"}
+        ctors = {(p.module, p.name) for p in load_catalog("swift").primitives
+                 if p.kind == KIND_METHOD and p.name[:1].isupper()}
+        assert ctors, "reach: the swift catalogue carries constructor-shaped method rows today"
+        assert ctors <= ledgered, sorted(ctors - ledgered)

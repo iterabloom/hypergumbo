@@ -133,6 +133,10 @@ import yaml
 
 from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_grpc_rpc_implementation
+from .io_primitive_kinds import (
+    called_on_a_named_owner,
+    reached_through_an_instance,
+)
 from .io_boundary import (
     KNOWN_IO_BOUNDARIES,
     PRODUCER_OPAQUE_BOUNDARIES,
@@ -974,7 +978,7 @@ def _analyzer_method_call_blind_caveat(
     parts = []
     for lang in languages:
         prims = load_catalog(lang).primitives
-        methods = sum(1 for p in prims if getattr(p, "kind", None) == "method")
+        methods = sum(1 for p in prims if reached_through_an_instance(getattr(p, "kind", "")))
         parts.append(f"{lang} ({methods} of {len(prims)} catalogued primitives "
                      f"are method-kind)")
     measured = sorted({
@@ -3536,7 +3540,7 @@ def untyped_receiver_sites(
     ):
         for boundary in {
             p.boundary for p in catalog.lookup_all(name)
-            if p.kind == "method" and p.name == name
+            if reached_through_an_instance(p.kind) and p.name == name
         }:
             grouped.setdefault(boundary, set()).add(site)
     return {b: sorted(sites) for b, sites in sorted(grouped.items())}
@@ -3651,7 +3655,7 @@ def accessor_name_receiver_sites(
         name = symbol_name_slot(dst)
         for boundary in {
             pr.boundary for pr in catalog.lookup_all(name)
-            if pr.kind == "method" and pr.name == name
+            if reached_through_an_instance(pr.kind) and pr.name == name
         }:
             grouped.setdefault(boundary, set()).add(_call_site_label(edge))
     return {b: sorted(sites) for b, sites in sorted(grouped.items())}
@@ -3699,7 +3703,7 @@ def untyped_receiver_sink_zones(
             # sink is not reached through a receiver at all, so claiming its
             # receiver was untyped would make the sentence false on its own
             # evidence — the same rule the boundary arm applies to ``IoPrimitive``.
-            if sink.kind == "method" and sink.name == name:
+            if reached_through_an_instance(sink.kind) and sink.name == name:
                 grouped.setdefault(sink.zone, set()).add(site)
     return {z: sorted(sites) for z, sites in sorted(grouped.items())}
 
@@ -3931,12 +3935,13 @@ def method_starved_modules(
         fnames: dict[str, set[str]] = {}
         for prim in catalog.primitives:
             kinds.setdefault(prim.module, set()).add(prim.kind)
-            if prim.kind == "function":
+            if called_on_a_named_owner(prim.kind):
                 fnames.setdefault(prim.module, set()).add(prim.name)
         module_kinds[language] = kinds
         module_function_names[language] = fnames
     method_modules: dict[str, set[str]] = {
-        language: {m for m, k in kinds.items() if "method" in k}
+        language: {m for m, k in kinds.items()
+                   if any(reached_through_an_instance(x) for x in k)}
         for language, kinds in module_kinds.items()
     }
     # ABSTAIN FOR ANY LANGUAGE THAT NEVER POPULATES ``call_construct``. Measured
@@ -4099,7 +4104,7 @@ def compute_boundary_coverage(
         supported_languages,
         {
             lang for lang, catalog in catalogs.items()
-            if any(getattr(p, "kind", None) == "method"
+            if any(reached_through_an_instance(getattr(p, "kind", ""))
                    for p in catalog.primitives)
         },
     )
