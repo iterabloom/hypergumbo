@@ -3313,6 +3313,29 @@ class TreeSitterAnalyzer:
 
     # -- Template methods: edge extraction (Pass 2) ------------------------
 
+    #: The complete symbol list of the file Pass 2 is on; set by ``analyze()``
+    #: around each ``extract_edges_from_file`` call. See ``file_symbols``.
+    _current_file_symbols: Optional[list[Symbol]] = None
+
+    def file_symbols(self, local_symbols: dict[str, Symbol]) -> list[Symbol]:
+        """Every symbol of the file Pass 2 is on, not the name-keyed view.
+
+        ``extract_edges_from_file`` receives ``symbol_by_name``, which keeps
+        ONE symbol per name. Where a language lets two declarations in one
+        file share a name -- an Erlang ``-ifdef``/``-else`` pair, a C
+        ``#ifdef`` alternative, an overload -- all but the last are gone
+        before any edge is extracted, and a lookup for the enclosing symbol
+        of a call inside a lost one returns a symbol that does not contain
+        it (INV-mozas). An analyzer that needs the declarations themselves
+        reads this list instead.
+
+        Outside ``analyze()`` (a test calling Pass 2 directly) there is no
+        list to hand over, so this returns the dict's distinct values.
+        """
+        if self._current_file_symbols is not None:
+            return self._current_file_symbols
+        return list({s.id: s for s in local_symbols.values()}.values())
+
     def extract_edges_from_file(
         self,
         tree: "tree_sitter.Tree",
@@ -4150,6 +4173,7 @@ class TreeSitterAnalyzer:
             tree = parser.parse(source)
             rel_path = str(source_file.relative_to(repo_root))
 
+            self._current_file_symbols = analysis.symbols
             edges = self.extract_edges_from_file(
                 tree, source, source_file, rel_path,
                 analysis.symbol_by_name, global_symbols, run,
@@ -4171,6 +4195,7 @@ class TreeSitterAnalyzer:
         # data across runs (mirrors the WI-kuroj cleanup pattern).
         self._field_type_registry = {}
         self._method_return_type_registry = {}
+        self._current_file_symbols = None
 
         # 7. Post-process
         all_symbols, all_edges, all_contexts = self.post_process(

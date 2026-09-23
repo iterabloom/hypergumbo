@@ -272,12 +272,7 @@ def _extract_symbols_from_file(
                 atom = find_child_by_type(clause, "atom")
                 if atom:
                     func_name = node_text(atom, source)
-                    args = find_child_by_type(clause, "expr_args")
-                    arity = 0
-                    if args:
-                        for child in args.children:
-                            if child.type not in ("(", ")", ","):
-                                arity += 1
+                    arity = _arity_of(clause)
 
                     clause_start = node.start_point[0] + 1
                     clause_end = node.end_point[0] + 1
@@ -438,12 +433,40 @@ _LOGGER_HRL_INCLUDE = re.compile(
 )
 
 
+def _arity_of(node: "tree_sitter.Node") -> int:
+    """Count the arguments of a function clause or a call.
+
+    Both a ``function_clause`` and a local ``call`` carry their arguments in
+    an ``expr_args`` child, so one counter serves the declaration and the
+    call site -- which is what lets a call be matched to a declaration by
+    name AND arity, the way Erlang itself does.
+    """
+    args = find_child_by_type(node, "expr_args")
+    if args is None:
+        return 0
+    return sum(1 for c in args.children if c.type not in ("(", ")", ","))
+
+
 def _get_enclosing_function_erlang(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    functions: dict[str, list[Symbol]],
 ) -> Symbol | None:
-    """Walk up parent chain to find enclosing function."""
+    """Find the function whose declaration encloses ``node``.
+
+    The lookup key is ``name/arity``, the symbol's own name, read off the
+    enclosing ``fun_decl``. INV-mozas: it used to be the bare atom, which
+    every arity registers under (``base_name``), so a call inside
+    ``get_timeout/0`` was anchored to whichever arity registered last --
+    a source attributed to a function that does not contain it. Erlang
+    rejects two same-name/arity functions in one module, and consecutive
+    clauses coalesce into one symbol under that name, so a call in any clause
+    finds the coalesced function. The key is NOT unique per file, though:
+    ``-ifdef``/``-else`` defines the same name/arity once per branch, and
+    tree-sitter parses unpreprocessed source, so both are symbols. Of the
+    candidates, the one whose span contains the declaration is the answer
+    (ejabberd_app.erl: 21 calls anchored to the ``-else`` stub otherwise).
+    """
     current = node.parent
     while current is not None:
         if current.type == "fun_decl":
@@ -451,10 +474,14 @@ def _get_enclosing_function_erlang(
             if clause:
                 atom = find_child_by_type(clause, "atom")
                 if atom:
-                    func_name = node_text(atom, source)
-                    sym = local_symbols.get(func_name)
-                    if sym:
-                        return sym
+                    full_name = f"{node_text(atom, source)}/{_arity_of(clause)}"
+                    line = current.start_point[0] + 1
+                    return next(
+                        (s for s in functions.get(full_name, ())
+                         if s.span is not None
+                         and s.span.start_line <= line <= s.span.end_line),
+                        None,
+                    )
         current = current.parent
     return None
 
@@ -483,6 +510,13 @@ def _extract_edges_from_file(
     # per file rather than per node -- the answer cannot vary within a file.
     logger_macros_visible = bool(_LOGGER_HRL_INCLUDE.search(source.decode(
         "utf-8", errors="replace")))
+
+    # Every function of this file under its name/arity. A list, because
+    # -ifdef/-else can define one name/arity twice (see the enclosing lookup).
+    functions: dict[str, list[Symbol]] = {}
+    for s in file_symbols:
+        if s.kind == "function":
+            functions.setdefault(s.name, []).append(s)
 
     # Build local symbol map (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -544,7 +578,7 @@ def _extract_edges_from_file(
                 node_text(macro_var, source) if macro_var else "",
             )
             caller = _get_enclosing_function_erlang(
-                node, source, local_symbols,
+                node, source, functions,
             )
             if level and caller:
                 edges.append(Edge.create(
@@ -564,7 +598,7 @@ def _extract_edges_from_file(
 
         elif node.type == "call":
             # Function call
-            caller = _get_enclosing_function_erlang(node, source, local_symbols)
+            caller = _get_enclosing_function_erlang(node, source, functions)
             if caller:
                 remote = find_child_by_type(node, "remote")
                 if remote:
@@ -625,8 +659,13 @@ def _extract_edges_from_file(
                     atom = find_child_by_type(node, "atom")
                     if atom:
                         func_name = node_text(atom, source)
-                        # Prefer local symbols (same-file functions by base_name)
-                        callee = local_symbols.get(func_name)
+                        # A local function is its name AND arity. The bare
+                        # name is whichever arity registered last, so keying
+                        # on it made get_timeout() inside get_timeout/2 a
+                        # self-loop (INV-mozas's wrong-callee symptom).
+                        callee = local_symbols.get(
+                            f"{func_name}/{_arity_of(node)}",
+                        )
                         if callee is not None:
                             confidence = 0.90
                         else:
@@ -830,7 +869,9 @@ class ErlangAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract call and import edges from an Erlang file."""
         # Rebuild local symbols with base_name mapping needed by edge extractor
-        file_symbols = list(local_symbols.values())
+        # The full list, not the name-keyed dict: -ifdef/-else defines one
+        # name/arity twice and the dict keeps only the last (INV-mozas).
+        file_symbols = self.file_symbols(local_symbols)
         return _extract_edges_from_file(
             tree, source, rel_path, file_symbols,
             resolver, self._module_registry, run.execution_id,
