@@ -115,3 +115,61 @@ class TestNothingIsMintedWithoutEvidence:
         )
         e = _unresolved_call(_edges(tmp_path / "r", src), "add")
         assert "receiver_type_hint" not in (e.meta or {})
+
+
+class TestTheReturnTypeResolvesInTheCalleesNamespace:
+    """WI-fihun: an annotation is a name in the DEFINING module's namespace.
+
+    ``TrackerSet.workspace`` is declared ``-> Store`` in ``trackerset.py``,
+    which IMPORTS ``Store`` from ``store.py``. ``_resolve_return_type_class``
+    searched the caller's locals, the caller's imports and the callee's own
+    file -- never the callee's imports -- so across modules the chain stopped
+    and ``ts.workspace.add`` kept its line-proximity binding to
+    ``TrackerSet.add``. Every fixture above was single-file, where the callee's
+    own file happens to define the class, so none of them could see it.
+    """
+
+    @staticmethod
+    def _project(root: Path, caller: str) -> list[Edge]:
+        pkg = root / "pkg"
+        pkg.mkdir(parents=True, exist_ok=True)
+        (pkg / "__init__.py").write_text("")
+        (pkg / "store.py").write_text(
+            "class Store:\n    def add(self, x):\n        return x\n"
+        )
+        (pkg / "trackerset.py").write_text(
+            "from pkg.store import Store\n\n\n"
+            "class TrackerSet:\n"
+            "    @property\n"
+            "    def workspace(self) -> Store:\n"
+            "        return Store()\n\n"
+            "    def add(self, y):\n"
+            "        return y\n"
+        )
+        (root / "use.py").write_text(caller)
+        return analyze_python(root).edges
+
+    _CALLER = (
+        "from pkg.trackerset import TrackerSet\n\n\n"
+        "def go():\n"
+        "    ts = TrackerSet()\n"
+        "    ts.workspace.add(1)\n"
+    )
+
+    def test_an_imported_return_type_is_found(self, tmp_path: Path) -> None:
+        edges = self._project(tmp_path / "r", self._CALLER)
+        assert _hint(edges, "add") == "Store"
+
+    def test_the_callees_meaning_wins_over_a_same_named_caller_class(
+        self, tmp_path: Path,
+    ) -> None:
+        """The caller defines an unrelated ``Store``. Python binds the
+        annotation in ``trackerset.py``, so the hint must name pkg's class --
+        the id says which, since both are called ``Store``."""
+        caller = self._CALLER + (
+            "\n\nclass Store:\n    def add(self, z):\n        return z\n"
+        )
+        edges = self._project(tmp_path / "r", caller)
+        meta = _unresolved_call(edges, "add").meta or {}
+        assert meta.get("receiver_type_hint") == "Store"
+        assert "pkg/store.py" in meta.get("receiver_type_id", "")
