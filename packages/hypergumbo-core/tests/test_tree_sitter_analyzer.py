@@ -1901,3 +1901,73 @@ class TestSelfKeywordsDefault:
     def test_default_is_self(self) -> None:
         """Default self_keywords is frozenset({'self'})."""
         assert StubAnalyzer.self_keywords == frozenset({"self"})
+
+
+class _SameNameTwiceAnalyzer(StubAnalyzer):
+    """Two symbols share one name in each file; Pass 2 records what it sees."""
+
+    seen: list[list[str]]
+
+    def extract_symbols_from_file(self, tree, source, file_path, rel_path, run):
+        analysis = FileAnalysis()
+        for start, end in ((1, 3), (5, 7)):
+            sym = Symbol(
+                id=make_symbol_id("stub", rel_path, start, end, "f", "function"),
+                name="f",
+                kind="function",
+                language="stub",
+                path=rel_path,
+                span=Span(start_line=start, start_col=0, end_line=end, end_col=0),
+                origin=self.pass_id,
+                origin_run_id=run.execution_id,
+            )
+            analysis.symbols.append(sym)
+            analysis.symbol_by_name[sym.name] = sym  # the second overwrites
+        return analysis
+
+    def extract_edges_from_file(
+        self, tree, source, file_path, rel_path, local_symbols,
+        global_symbols, run, import_aliases, resolver,
+    ):
+        self.seen.append([s.id for s in self.file_symbols(local_symbols)])
+        return []
+
+
+class TestPassTwoSeesEveryFileSymbol:
+    """INV-mozas: Pass 2's name-keyed view drops a symbol that shares a name.
+
+    ``symbol_by_name`` keeps one symbol per name, so an Erlang ``-ifdef``
+    pair, a Swift overload or a C ``#ifdef`` alternative loses all but the
+    last before any edge is extracted, and every call inside the lost one is
+    anchored to a symbol that does not contain it -- or dropped.
+    ``file_symbols()`` hands Pass 2 the file's complete list.
+    """
+
+    def test_both_same_named_symbols_reach_pass_two(self, tmp_path: Path) -> None:
+        (tmp_path / "a.stub").write_text("x")
+        analyzer = _SameNameTwiceAnalyzer()
+        analyzer.seen = []
+        analyzer.analyze(tmp_path)
+        assert len(analyzer.seen) == 1
+        assert sorted(analyzer.seen[0]) == sorted([
+            make_symbol_id("stub", "a.stub", 1, 3, "f", "function"),
+            make_symbol_id("stub", "a.stub", 5, 7, "f", "function"),
+        ])
+
+    def test_outside_analyze_it_falls_back_to_the_name_keyed_view(self) -> None:
+        """A direct Pass-2 call (no analyze()) has only the dict to go on."""
+        sym = Symbol(
+            id="stub:x:1-1:g:function", name="g", kind="function",
+            language="stub", path="x",
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=0),
+            origin="stub",
+        )
+        analyzer = StubAnalyzer()
+        assert analyzer.file_symbols({"g": sym, "alias": sym}) == [sym]
+
+    def test_the_list_does_not_outlive_the_run(self, tmp_path: Path) -> None:
+        (tmp_path / "a.stub").write_text("x")
+        analyzer = _SameNameTwiceAnalyzer()
+        analyzer.seen = []
+        analyzer.analyze(tmp_path)
+        assert analyzer.file_symbols({}) == []

@@ -66,7 +66,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
@@ -449,24 +449,76 @@ def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]
     return list(reversed(modules))  # Return outermost first
 
 
+_DEF_KEYWORDS = ("def", "defp", "defmacro", "defmacrop")
+
+#: A def clause's symbol, keyed by where its declaration starts.
+SymbolsAt = dict[tuple[int, int], Symbol]
+
+
+def _symbols_at(symbols: Iterable[Symbol], file_path: str) -> SymbolsAt:
+    """Index this file's symbols by (start_line, start_col) of their node."""
+    return {
+        (s.span.start_line, s.span.start_col): s
+        for s in symbols if s.path == file_path and s.span is not None
+    }
+
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    symbols_at: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function."""
+    """Find the def clause whose declaration encloses ``node``.
+
+    Keyed by the declaration's POSITION, not its name. INV-mozas: the key
+    used to be the short name, but Elixir emits one symbol per clause and the
+    name carries no arity, so ``get_timeout/0``, ``get_timeout/2`` and a
+    same-named function in another module of the same file all share it. The
+    lookup returned whichever registered last, anchoring 22-27% of calls on
+    phoenix and plausible to a clause that does not contain them. The
+    enclosing ``def`` node IS the symbol's node, so its start position
+    identifies the clause exactly.
+
+    A def with no symbol -- one inside ``quote``, suppressed by INV-sinah
+    because it is injected into the module that runs ``use`` -- is walked
+    past, so the call is anchored to the macro whose text contains it
+    (``__using__``), not dropped.
+    """
     current = node.parent
     while current is not None:
         if current.type == "call":
             target = find_child_by_type(current, "identifier")
-            if target:
-                target_name = node_text(target, source)
-                if target_name in ("def", "defp", "defmacro", "defmacrop"):
-                    func_name = _get_function_name(current, source)
-                    if func_name and func_name in local_symbols:
-                        return local_symbols[func_name]
+            if target and node_text(target, source) in _DEF_KEYWORDS:
+                sym = symbols_at.get(
+                    (current.start_point[0] + 1, current.start_point[1]),
+                )
+                if sym is not None:
+                    return sym
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return None
+
+
+def _is_def_head(node: "tree_sitter.Node", source: bytes) -> bool:
+    """True when ``node`` is the head of a def: ``def foo(a)`` / ``... when g``.
+
+    The grammar parses a head as a ``call`` to the function being defined,
+    so without this every clause emitted a call edge to every same-named
+    clause from its own first line. A guard (``when is_atom(a)``) and a
+    default argument (``a \\\\ build()``) sit INSIDE the head and are real
+    calls; only the head node itself is excluded.
+    """
+    parent = node.parent
+    if parent is not None and parent.type == "binary_operator":
+        if _unwrap_guard(parent) != node:
+            return False
+        parent = parent.parent
+    if parent is None or parent.type != "arguments":
+        return False
+    # The only call that sits DIRECTLY in a def's arguments is its head: a
+    # one-line body is inside a ``keywords`` pair, a block body in ``do_block``.
+    owner = parent.parent
+    target = find_child_by_type(owner, "identifier") if owner is not None else None
+    return target is not None and node_text(target, source) in _DEF_KEYWORDS
 
 
 def _get_module_name_from_call(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -1209,6 +1261,7 @@ def _extract_edges_from_tree(
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
     imported_modules: set[str] | None = None,
     import_only_bindings: dict[str, str] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Elixir tree.
 
@@ -1218,6 +1271,9 @@ def _extract_edges_from_tree(
             lists of ``import`` directives (WI-jozap). Direct evidence of which
             module a bare call belongs to; outranks the default ownership
             table.
+        file_symbols: Every symbol of this file (INV-mozas). The enclosing
+            def is found by position among these; ``local_symbols`` keeps one
+            symbol per short name and so cannot tell clauses apart.
         imported_modules: Set of module names from ``import`` directives. When
             provided, bare cross-module calls are only resolved if the target
             function's module was imported. This prevents false edges from
@@ -1228,6 +1284,15 @@ def _extract_edges_from_tree(
 
     edges: list[Edge] = []
     file_id = make_file_id("elixir", file_path)
+    # Every clause of this file, by position. ``file_symbols`` is the whole
+    # list (TreeSitterAnalyzer.file_symbols); without it -- a direct call --
+    # the name-keyed dict plus the clause index is the best available.
+    symbols_at = _symbols_at(
+        file_symbols if file_symbols is not None else
+        [*local_symbols.values(),
+         *(s for syms in (local_symbols_multi or {}).values() for s in syms)],
+        file_path,
+    )
 
     for node in iter_tree(tree.root_node):
         if node.type == "call":
@@ -1269,8 +1334,9 @@ def _extract_edges_from_tree(
                                 ))
 
                 # Detect function calls within a function body
-                elif target_name not in ("def", "defp", "defmacro", "defmacrop", "defmodule"):
-                    current_function = _get_enclosing_function(node, source, local_symbols)
+                elif (target_name not in (*_DEF_KEYWORDS, "defmodule")
+                      and not _is_def_head(node, source)):
+                    current_function = _get_enclosing_function(node, source, symbols_at)
                     if current_function is not None:
                         # Multi-clause: check local file for all clauses with this name
                         local_multi = local_symbols_multi.get(target_name) if local_symbols_multi else None
@@ -1394,7 +1460,7 @@ def _extract_edges_from_tree(
                 dot_node = find_child_by_type(node, "dot")
                 if dot_node:
                     _handle_dot_call(
-                        node, dot_node, source, local_symbols,
+                        node, dot_node, source, symbols_at,
                         global_symbols, resolver, alias_hints, edges, run_id,
                     )
 
@@ -1409,7 +1475,7 @@ def _extract_edges_from_tree(
                 rhs = children[2]
                 if rhs.type == "identifier":
                     func_name = node_text(rhs, source)
-                    current_function = _get_enclosing_function(node, source, local_symbols)
+                    current_function = _get_enclosing_function(node, source, symbols_at)
                     if current_function is not None:
                         local_multi = local_symbols_multi.get(func_name) if local_symbols_multi else None
                         if local_multi:
@@ -1479,7 +1545,7 @@ def _handle_dot_call(
     call_node: "tree_sitter.Node",
     dot_node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    symbols_at: SymbolsAt,
     global_symbols: dict[str, Symbol],
     resolver: "NameResolver",
     alias_hints: dict[str, str],
@@ -1515,7 +1581,7 @@ def _handle_dot_call(
     func_name = node_text(func_id_node, source)
 
     # Find the enclosing function (caller)
-    current_function = _get_enclosing_function(call_node, source, local_symbols)
+    current_function = _get_enclosing_function(call_node, source, symbols_at)
     if current_function is None:
         return
 
@@ -1755,6 +1821,7 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
             global_symbols_multi=global_multi,
             imported_modules=file_imported_modules,
             import_only_bindings=file_only_bindings,
+            file_symbols=self.file_symbols(local_symbols),
         )
 
         # Behaviour callback edges (use GenServer, use Phoenix.LiveView, etc.)
