@@ -48,8 +48,11 @@ blocks it. It is SHRINK-ONLY: the property test fails on an entry whose row has
 been fixed or removed (delete the entry) and pins the ledger's size, so a new
 exception is a visible diff. It records non-conformance; it does not approve
 it. Why each is blocked rather than simply fixed was MEASURED (INV-zikab):
-re-kinding the java statics loses 41 classifications through the INV-nizom arm
-until it stops reading a ``method`` stamp as receiver evidence. The sixteen
+re-kinding the java statics lost 41 classifications through the INV-nizom arm,
+which read a ``method`` stamp as receiver evidence even on a slot naming ONE
+owner in several packages; since that slot is exempt
+(``io_boundary.slot_names_one_owner``) the same re-kind loses none over 21
+surveys, and the statics wait only on the kotlin/scala qualifier drop. The sixteen
 swift constructor rows carried mostly WRONG boundaries that their unreachable
 kind had hidden, so they left the ledger only after each boundary was
 adjudicated (INV-gujoh, 2026-09-23): eight deleted, four moved to an ADR-0049
@@ -182,7 +185,7 @@ class NonconformingRow:
     blocked_by: tuple[str, ...]
 
 
-_JVM_STATICS_BLOCKERS: Final[tuple[str, ...]] = ("INV-pimir", "WI-kilap")
+_JVM_STATICS_BLOCKERS: Final[tuple[str, ...]] = ("WI-kilap",)
 
 
 def _rows(language: str, module: str, names: Iterable[str],
@@ -193,8 +196,9 @@ def _rows(language: str, module: str, names: Iterable[str],
 KNOWN_NONCONFORMING_ROWS: Final[tuple[NonconformingRow, ...]] = (
     # JVM statics, called on the class (`Files.readAllBytes(p)`). Keyed methods
     # because java's analyzer stamps `method` on a qualified static and the
-    # INV-nizom arm drops function rows under that stamp (-41 classifications
-    # measured); the kotlin/scala qualifier drop (WI-kilap) is the other half.
+    # INV-nizom arm dropped function rows under that stamp (-41 classifications
+    # measured; 0 since the one-owner exemption). The kotlin/scala qualifier
+    # drop (WI-kilap) is what still blocks them.
     *_rows("java", "java.nio.file.Files", (
         "copy", "createDirectories", "createDirectory", "createFile",
         "createTempDirectory", "createTempFile", "delete", "deleteIfExists",
