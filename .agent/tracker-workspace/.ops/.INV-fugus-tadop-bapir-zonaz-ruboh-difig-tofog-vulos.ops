@@ -1,0 +1,28 @@
+- op: create  # 1f88
+  at: '2026-09-23T06:39:36Z'  # 1f88
+  by: agent  # 1f88
+  actor: jgstern_agent  # 1f88
+  clock: 1  # 1f88
+  nonce: 1f88  # 1f88
+  data:  # 1f88
+    kind: invariant  # 1f88
+    title: "Self-claims drift on dev since 09-19: claims fall confirmed_with_caveats -> inconclusive, opaque_boundary caveats vanish, credited flows go nonzero -> zero (cron self-claims-gate red for 4 days, unfiled)"  # 1f88
+    status: violated  # 1f88
+    priority: 1  # 1f88
+    parent:  # 1f88
+    tags: []  # 1f88
+    isbefore: []  # 1f88
+    duplicate_of: []  # 1f88
+    not_duplicate_of: []  # 1f88
+    pr_ref:  # 1f88
+    description: "The cron full-suite's self-claims-gate has been RED on dev since 2026-09-19, and no open row covered it. Found while waiting on INV-mozas's PR.\n\nEVIDENCE (ci-debug cron-status / status / logs self-claims-gate):\n- last green full-suite: 697dd4de5a (2026-09-18). First red: ea22d7023c (2026-09-19). Red at every later firing checked: 2c7511c656, 1f746ffdc4, d679e12091, b95e0d19ef, 9aac6ffe8d.\n- Every red firing has the SAME 40-line drift report. Shape: many self-claims move verdict confirmed_with_caveats -> inconclusive; each loses the `opaque_boundary` caveat kind; several REGRESS credited_flows nonzero -> zero (build-grammars-no-host-fs, install-gitleaks-no-host-fs, runtime-cli-no-host-fs, runtime-cli-no-subprocess, among others).\n- Same step list also shows test-all-packages FAIL at each of these firings; not examined here (WI-ruhul and WI-kogop are open full-suite flake rows that may account for it -- UNVERIFIED).\n\nREGRESSION WINDOW, 14 commits (697dd4de5a..ea22d7023c), the ADR-0057 multi-fidelity / second-producer work: 52d5763a39 producer contract, 2cdaa0b519 recorded producer fixtures, 6e1a9ba22a / abd3953db4 scip kind, 62d1be15cd merge pass, 9578781ef2 provenance slot + arbitration, 6749e0bea7 finalize demotes a same-site external stub by rank_score, c79c6b8c18 cache key on backend set, a7495d9b9a backend-agreement instrument, d2b8c8f349 run_survey file index, d3bed2ee2e arbitration default, e60e6abe43 docs, dd4e42c7be scip language fallback, ea22d7023c scip-python second producer. NOT BISECTED. The `opaque_boundary` caveat disappearing everywhere at once suggests one mechanism (a guess to check, e.g. the finalize stub demotion removing the external stubs that caveat keys on -- UNVERIFIED).\n\nPRECEDENT: INV-bofab (satisfied 09-03) was this exact symptom (\"all 18 self-claims moved confirmed_with_caveats -> inconclusive ... lost credited flows\") with a different cause. The gate says: if the drift is intended, update BOTH the snapshot (scripts/check-self-claims --update) AND SECURITY.md's prose; updating the snapshot alone recreates the drift the gate exists to catch.\n\nNEXT: bisect the window locally with scripts/check-self-claims (pin each commit in a worktree), name the commit, then decide real regression (fix) vs intended coverage change (re-record + SECURITY.md) -- the second is an owner decision since SECURITY.md is published prose."  # 1f88
+    fields:  # 1f88
+      statement: "scripts/check-self-claims reports no drift on dev: every self-claim's verdict, caveat kinds and credited-flow bit match docs/hypergumbo.claims.expected.json, or the snapshot and SECURITY.md were deliberately re-recorded together."  # 1f88
+      root_cause: "Not localized. Regression window 697dd4de5a..ea22d7023c (14 commits, ADR-0057 second-producer / arbitration / finalize-demotion work). Not bisected."  # 1f88
+- op: discuss  # a7f9
+  at: '2026-09-23T07:48:51Z'  # a7f9
+  by: agent  # a7f9
+  actor: jgstern_agent  # a7f9
+  clock: 2  # a7f9
+  nonce: a7f9  # a7f9
+  message: "BISECTED (local, pinned worktrees, own XDG caches; runner ~/hypergumbo_lab_notebook/fugus_09232026/run_claims.sh). 697dd4de5a clean, 9578781ef2 clean, 1018e5b35e clean, a7495d9b9a DRIFT, ea22d7023c DRIFT. a7495d9b9a's drift is line-for-line the CI drift at 9aac6ffe8d. FIRST BAD COMMIT: a7495d9b9a (WI-dajif backend-agreement instrument).\n\nMECHANISM. Every verdict's details now read \"NOT CONFIRMED: the analysis calls into 1 module(s) whose catalogued I/O is method-shaped (datetime.date) but produced no method call edge\". a7495d9b9a added cli.py `import datetime as _dt; _dt.date.today()`. py.py emits a MODULE-ROOTED dotted chain with NO call_construct (dst python:datetime.date:0-0:today, meta None -- same for os.path.join), while `json.dumps()` / local-rooted chains are stamped \"method\". method_starved_modules reads construct None as \"not a method\" and reports datetime.date (a methods-only row) STARVED -- yet classify_call, the declared ONE answer to \"did the catalogue classify this call\", classifies that exact edge as datetime.date.today host_info_read. Starvation is a withholding (not qualifying) blocker, so qualifying_only goes False, opaque_boundary is not attached, and every claim drops confirmed_with_caveats -> inconclusive.\n\nSo the drift is not a coverage change in hypergumbo's own code: it is two consumers disagreeing about the same edge -- the gate calling a call invisible that the classifier classified."  # a7f9

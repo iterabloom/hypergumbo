@@ -1,0 +1,21 @@
+- op: create  # b9e1
+  at: '2026-09-23T06:39:08Z'  # b9e1
+  by: agent  # b9e1
+  actor: jgstern_agent  # b9e1
+  clock: 1  # b9e1
+  nonce: b9e1  # b9e1
+  data:  # b9e1
+    kind: invariant  # b9e1
+    title: "A call edge's src is the callable whose span contains the call line: violated in Kotlin, Scala, Swift, Haskell, JS, C, TS, Rust, Ruby (fixed per-language only in python, java, erlang, elixir)"  # b9e1
+    status: violated  # b9e1
+    priority: 2  # b9e1
+    parent:  # b9e1
+    tags: []  # b9e1
+    isbefore: []  # b9e1
+    duplicate_of: []  # b9e1
+    not_duplicate_of: []  # b9e1
+    pr_ref:  # b9e1
+    description: "A call edge's `src` must be the callable whose span contains the call line. Measured violated in 9 more analyzers on a pinned dev run (9aac6ffe8d, 26 repos, instrument ~/hypergumbo_lab_notebook/mozas_09222026/anchor_probe.py; calls edges, analyzer origin, callable src):\n\n  language    checked  outside  rate   src name shared with another fn in the same file\n  kotlin        54037     2014  3.7%   840\n  scala         16531      964  5.8%   590\n  swift          8343      273  3.3%   261\n  haskell        3012      119  4.0%     0   <- different mechanism\n  javascript    12573      135  1.1%     6   <- different mechanism (sample: vendored docs/js/typeahead.jquery.js prototype methods)\n  c             11011       35  0.3%    35   (#ifdef alternatives, e.g. tmux compat/closefrom.c)\n  typescript    14980       33  0.2%    28\n  rust           8842        5  0.1%     5\n  ruby           1296        3  0.2%     3\n  java          86580        0  0.0%   -- already looks up by (path, line, col)\n  python         2283        0  0.0%   -- WI-jafat fixed python by node id\n\nTHE SAME DEFECT HAS NOW BEEN CURED THREE TIMES, EACH WIRED TO ONE LANGUAGE: python (WI-jafat, node-id-keyed), java (symbol_by_position), erlang+elixir (INV-mozas: name/arity + span; def position). Solidity also keys by span. The shared root: `extract_edges_from_file` receives `symbol_by_name`, which keeps one symbol per name. INV-mozas added `TreeSitterAnalyzer.file_symbols()` so Pass 2 can see every symbol of its file; each analyzer's enclosing lookup still has to key on the declaration's position, not its name.\n\nEACH LANGUAGE NEEDS ITS OWN VERIFICATION (overloads, #ifdef, nested types and extensions differ). Kotlin and Scala are mixed: 58% / 39% of their out-of-span sources do NOT share a name, so there is a second mechanism there too, uninvestigated. Haskell has 0 name collisions (samples: xmonad Main.hs `handle` 287-292 credited with calls at 392-414 -- probably where-clauses or multi-equation definitions; unverified).\n\nPROPOSED ACCEPTANCE: the instrument reports 0 outside for the language on the same repos, plus a cross-language gate (containment of `edge.line` in `src.span` for analyzer-origin call edges) that a new analyzer cannot silently fail -- the WI-sajis registry-driven shape.\n\nTaint consequence (INV-mozas): a mis-anchored source span makes an adjudication packet search the wrong lines and report an empty listing that reads as evidence of absence."  # b9e1
+    fields:  # b9e1
+      statement: "For every analyzer-origin calls edge with a line, the src symbol's span contains that line."  # b9e1
+      root_cause: "For the majority mechanism: extract_edges_from_file receives symbol_by_name (one symbol per name), and each analyzer's enclosing-function lookup keys on the declaration's NAME. Same-named declarations in one file (overloads, #ifdef alternatives, same method name in two types) collapse to the last one registered. Haskell (0 of 119) and JavaScript (6 of 135) out-of-span sources do not share a name: a second, uninvestigated mechanism."  # b9e1
