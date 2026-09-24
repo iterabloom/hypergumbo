@@ -255,6 +255,20 @@ class TestTheScipPythonOptin:
                                              is_available=lambda: False, is_scip_python_available=lambda: False)
         assert not_installed == ()
 
+    def test_the_default_rust_probe_is_the_real_one(self, tmp_path, monkeypatch) -> None:
+        """The rust twin of the python test below. Every other rust test here
+        injects ``is_available``, so the default-probe branch was covered only
+        when some OTHER test in the same xdist worker had left
+        HYPERGUMBO_RUST_ANALYZER=1 set before a production call. That made the
+        coverage depend on test order: the 2026-09-23 20:53 full-suite cron
+        found backend_selection.py:281-283 uncovered with no change to them."""
+        import hypergumbo_core.rust_analyzer_install as install
+
+        monkeypatch.setattr(install, "is_rust_analyzer_available", lambda: True)
+        assert resolved_backend_set(repo_root=tmp_path, environ={ENV: "1"}) == ("rust_analyzer",)
+        monkeypatch.setattr(install, "is_rust_analyzer_available", lambda: False)
+        assert resolved_backend_set(repo_root=tmp_path, environ={ENV: "1"}) == ()
+
     def test_the_default_python_probe_is_the_real_one(self, tmp_path, monkeypatch) -> None:
         import hypergumbo_core.scip_python_install as install
         from hypergumbo_core.backend_selection import SCIP_PYTHON_ENV_VAR, resolved_backend_set

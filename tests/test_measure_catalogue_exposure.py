@@ -65,9 +65,19 @@ class TestTheFalsifiedTableCannotComeBack:
         assert row.at_risk > 0, "C must not read as not-at-risk"
 
     def test_kotlin_reproduces_the_receiver_syntax_exposure(self) -> None:
-        """The old table's own control: kotlin at 95% method-kind."""
+        """The old table's own control. Kotlin is the language whose exposure
+        really does come through method-kind rows, so R1 must be its MAJORITY
+        route. The census must not read it as a C-shaped zero.
+
+        The threshold used to be 0.8, under the old table's "95% method-kind".
+        ADR-0059 re-kinded the JDK statics that Kotlin loads through java.yaml
+        (INV-zikab step 6) as function-kind, since they are called on the TYPE.
+        That took Kotlin from 190/195 to 156/195, exactly 0.8, and the cron went
+        red. The kind rule moved the number, not a census defect, and more
+        ledgered re-kinds are planned (WI-ziviv), so this pins the property
+        instead of the old share."""
         row = measure_catalogue_exposure.exposure("kotlin")
-        assert row.r1_method / row.total > 0.8
+        assert row.r1_method / row.total > 0.5
 
     @pytest.mark.parametrize("lang", ["cpp", "elixir", "erlang", "haskell"])
     def test_every_dismissed_language_is_at_risk(self, lang: str) -> None:
