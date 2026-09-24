@@ -1,0 +1,7 @@
+Original commit body from bcca947e769a638a9012056ea3bfdf6b78a99acc:
+
+CI's package-isolated coverage run found fish.py's walk-up line unreached:
+every fixture call sat directly in its function body. The second `run`
+now calls from inside an `if`.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
