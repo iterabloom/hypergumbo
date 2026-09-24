@@ -62,3 +62,18 @@
   nonce: 0f13  # 0f13
   set:  # 0f13
     pr_ref: '1180'  # 0f13
+- op: update  # b0a3
+  at: '2026-09-24T19:29:35Z'  # b0a3
+  by: agent  # b0a3
+  actor: jgstern_agent  # b0a3
+  clock: 8  # b0a3
+  nonce: b0a3  # b0a3
+  set:  # b0a3
+    status: satisfied  # b0a3
+- op: discuss  # e4f2
+  at: '2026-09-24T19:29:35Z'  # e4f2
+  by: agent  # e4f2
+  actor: jgstern_agent  # e4f2
+  clock: 9  # e4f2
+  nonce: e4f2  # e4f2
+  message: "SATISFIED ON THE FILED INSTANCES, 2026-09-24. PRs #1176, #1177, #1178, #1180 (earlier), #1183 (WI-pizan), #1184 (WI-mapor) and #1186 (gate enumeration).\n\nTHE TITLE'S LANGUAGES, out of span, calls edges, analyzer origin:\n- kotlin 2014 -> 0, scala 964 -> 0, swift 273 -> 0, c 35 -> 0, rust 5 -> 0, ruby 3 -> 0, csharp 3 -> 0, haskell 119 -> 0, javascript 135 -> 0. Measured on INV-midag's 26 repos, surveys from pinned worktrees (earlier stage notes).\n- typescript 33 -> 9 -> 0. The last 9 were koel's HotkeyListener.vue (WI-pizan, #1183). Re-measured with analyze_javascript, pinned dev vs fix: koel 9 -> 0 outside of 15,244 checked. chatwoot, podman-desktop, workadventure and gitlab were 0 before and after (the latter 455,630 checked).\n\nBEYOND THE TITLE:\n- go: a second `func init()` in one file was mis-anchored. Fixed in #1180.\n- WI-mapor (#1184): 13 more analyzers had the name-keyed defect (groovy, objc, perl, powershell, f#, glsl, hlsl, julia, nix, r, d, fish, gdscript). Now 0 out of span on 18 corpus repos (d on dmd was 15,126 -> 0).\n- All 42 modules the original gate enumerated are VERIFIED against an executing same-named fixture that asserts reach, then containment.\n\nBEHAVIORAL EVIDENCE: every VERIFIED entry names a test that runs the real analyzer on a same-named-declarations fixture. For WI-mapor's 13 and WI-pizan, the tests were run against a pinned dev worktree and failed there, then passed on the fix.\n\nNOT ASSERTED, and filed:\n- WI-tosum (P3): 25 analyzers emit calls edges through a lookup the gate's name pattern did not see (cpp, lua, bash, zig, ocaml, ada, tcl, ...). #1186 makes the gate enumerate them as UNVERIFIED. Unknown, not clean.\n- The general statement on repositories outside the measured corpora.\n- Side findings from WI-mapor: WI-gadag (julia self-calls), WI-donan (nested lisp definitions drop calls), WI-darik (pascal qualified methods have no symbol), WI-tuzok (nix curried duplicates)."  # e4f2

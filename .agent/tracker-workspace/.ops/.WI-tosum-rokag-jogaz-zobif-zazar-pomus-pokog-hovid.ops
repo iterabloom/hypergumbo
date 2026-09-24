@@ -1,0 +1,20 @@
+- op: create  # 7028
+  at: '2026-09-24T19:18:46Z'  # 7028
+  by: agent  # 7028
+  actor: jgstern_agent  # 7028
+  clock: 1  # 7028
+  nonce: '7028'  # 7028
+  data:  # 7028
+    kind: work_item  # 7028
+    title: "INV-midag residual: 25 analyzers emit calls edges through an enclosing lookup the gate's name pattern did not see (cpp, lua, bash, zig, ocaml, ...) -- unverified, not clean"  # 7028
+    status: todo_hard  # 7028
+    priority: 3  # 7028
+    parent:  # 7028
+    tags:  # 7028
+    - analysis_quality  # 7028
+    isbefore: []  # 7028
+    duplicate_of: []  # 7028
+    not_duplicate_of: []  # 7028
+    pr_ref:  # 7028
+    description: "RESIDUAL OF INV-midag, whose statement is general: every analyzer-origin calls edge with a line lies inside its src's span.\n\nINV-midag's gate (test_call_anchor_gate*.py) enumerated the analyzers that DEFINE a function named `_(get|find)_enclosing_(function|method|callable)*`. That is a NAME pattern, not the mechanism. Found 2026-09-24 while closing WI-mapor, which verified all 42 modules the pattern sees.\n\n25 more analyzer modules emit `calls` edges and match no such name. Their lookup is spelled otherwise, or is inline, or comes from the base class:\n  lang-mainstream : bash cpp jupyter lua py\n  lang-common     : clojure commonlisp fortran ocaml purescript racket robot\n  lang-extended1  : ada apex asm circom cobol haxe jsonnet luau nim pony tcl wolfram zig\nExamples of the other spellings: _find_enclosing_defn (clojure), _find_enclosing_proc (tcl), _get_enclosing_fortran_symbol, _find_enclosing_lua_function, _find_enclosing_subprogram (ada).\npy is already verified by construction (WI-jafat keys on node id). cpp was not in INV-midag's 26-repo table: unmeasured, not clean.\n\nTHE GATE NOW ENUMERATES THEM (same change that closes INV-midag). A module counts if it defines such a lookup OR emits a calls edge. These 25 are UNVERIFIED against this row, so a 26th cannot arrive unclassified.\n\nASKED, per language, the WI-mapor procedure:\n1. Write a same-named-callables fixture in the language's own shape.\n2. Assert reach first, then containment.\n3. If it fails, key on position (symbols_at / symbol_declared_by).\n4. Move the entry to VERIFIED.\nMeasure on corpus repos where they exist (whole_bunch_of_repos has cpp, lua, bash, zig, ocaml, ...). WI-mapor's instruments are reusable: ~/hypergumbo_lab_notebook/mapor_09242026/ (probe.py, ab.py, diff.py)."  # 7028
+    fields: {}  # 7028

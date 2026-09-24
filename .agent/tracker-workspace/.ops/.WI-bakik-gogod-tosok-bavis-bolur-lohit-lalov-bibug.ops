@@ -29,3 +29,18 @@
   set: {}  # b264
   add:  # b264
     isbefore: [INV-gujoh-fodug-polig-viviv-dihaz-vulij-danib-ratos]  # b264
+- op: update  # 6e47
+  at: '2026-09-24T20:24:38Z'  # 6e47
+  by: agent  # 6e47
+  actor: jgstern_agent  # 6e47
+  clock: 3  # 6e47
+  nonce: '6e47'  # 6e47
+  set:  # 6e47
+    status: done  # 6e47
+- op: discuss  # 95ad
+  at: '2026-09-24T20:24:38Z'  # 95ad
+  by: agent  # 95ad
+  actor: jgstern_agent  # 95ad
+  clock: 4  # 95ad
+  nonce: 95ad  # 95ad
+  message: "DONE, PR #1187 (merged 2026-09-24).\n\nurllib.request's 46 own public callables were probed and each read by hand. The record is the survey addendum in docs/surveys/python-stdlib-module-io-enumeration.md.\n- ROWED NEW: ftpwrapper (net_send); localhost, thishost (net_recv, per the DNS ruling); getproxies, getproxies_environment, proxy_bypass, proxy_bypass_environment, ProxyHandler, build_opener, URLopener, FancyURLopener (env_read); urlcleanup (fs_write).\n- NO I/O: Request, OpenerDirector, install_opener, the 22 other handler classes, and the string helpers.\n- urllib.request is declared complete (retrieved 2026-09-24), and the false Request net_send row is DELETED.\n\nBEHAVIORAL EVIDENCE (the row's own acceptance: check-self-claims must stay clean):\n- scripts/check-self-claims --minimal with the row deleted: 18 claims unchanged, confirmed_with_caveats. Before the enumeration, the same deletion moved all 18 to inconclusive.\n- verify-claims fixtures, pinned worktrees dev vs fix, claim host_secret !-> network:\n    Request(data=secret) -> urlopen(req)   violated -> violated, evidence now ddg-confirmed at urlopen\n    urlopen(url, data=secret)              violated both arms (control)\n    getproxies() sent via urlopen          inconclusive -> violated (new source)\n- Production-path test: test_inv_gujoh_constructor_sinks.py::TestUrllibRequestIsEnumerated runs analyze_python and the real coverage gate. The gate admits a program that builds a Request; with the completeness entry removed, it withholds and names urllib.request (the control can fail).\n- Cohort, finding-level diff with generic taint claims: beads, django, litellm, superset. 0 verdict moves. Every function that lost evidence at Request gained it at urlopen.\n  Disclosed: in beads' `with urlopen(req)` the evidence weakens to not_attempted (WI-hular). django gains one sink-before-source evidence at mkdtemp (WI-mojaz ruling). litellm's evidence list is capped at 100.\n\nNOT CLAIMED: urllib.request.OpenerDirector.open sends and has no row. It is its own slot, not declared complete.\nInstruments: ~/hypergumbo_lab_notebook/bakik_09242026/."  # 95ad
