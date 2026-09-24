@@ -44,10 +44,13 @@ from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     iter_tree,
     make_symbol_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -226,22 +229,31 @@ def _is_in_inputs_block(node: "tree_sitter.Node", source: bytes) -> bool:
 
 def _find_enclosing_function_nix(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the enclosing function Symbol by walking up parents.
+    """The function whose definition contains ``node``: a function-valued
+    binding, or the file's own top-level function (``{ pkgs, ... }: ...``).
 
     In Nix, functions are defined via bindings with function_expression values.
+    Keyed by the binding's POSITION, not its name (INV-midag, WI-mapor): two
+    attribute sets of one file each binding ``run = x: ...`` share a name, and
+    the name lookup credited both bodies' calls to the last one.
+
+    The top-level function is a symbol named after the file, and the name
+    lookup reached it only when a binding inside it shared that name
+    (postgrest's ``style = checkedShellScript ...`` in style.nix). It is now
+    reached as what it is: the function that contains the call.
     """
     current = node.parent
     while current is not None:
-        if current.type == "binding":
-            # Check if this binding defines a function
-            name = _get_attrpath_name(current, source)
-            if name:
-                sym = local_symbols.get(name)
-                if sym and sym.kind == "function":
-                    return sym
+        if current.type == "binding" or (
+            current.type == "function_expression"
+            and current.parent is not None
+            and current.parent.type == "source_code"
+        ):
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None and sym.kind == "function":
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -407,7 +419,7 @@ def _extract_nix_edges(
     root: "tree_sitter.Node",
     source: bytes,
     rel_path: str,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
     resolver: "NameResolver",
     *,
     run_id: str,
@@ -418,7 +430,7 @@ def _extract_nix_edges(
         root: Root tree-sitter node to process
         source: Source file bytes
         rel_path: Relative path to file
-        local_symbols: Local symbol registry for finding enclosing functions
+        decl_index: The file's declarations by position, for the enclosing lookup
         resolver: NameResolver for callee resolution
 
     Returns:
@@ -451,7 +463,7 @@ def _extract_nix_edges(
                 # Handle function calls
                 target_name = _get_call_target_name_nix(node, source)
                 if target_name:
-                    caller = _find_enclosing_function_nix(node, source, local_symbols)
+                    caller = _find_enclosing_function_nix(node, decl_index)
                     if caller:
                         # Use resolver for callee resolution
                         lookup_result = resolver.lookup(target_name)
@@ -515,8 +527,8 @@ class NixAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract import and call edges from a Nix file."""
         return _extract_nix_edges(
-            tree.root_node, source, rel_path, local_symbols, resolver,
-
+            tree.root_node, source, rel_path,
+            symbols_at(self.file_symbols(local_symbols)), resolver,
             run_id=run.execution_id,
         )
 

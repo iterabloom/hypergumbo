@@ -44,11 +44,11 @@ CLASSIFIED: dict[str, tuple[str, str]] = {
     "rust": ("verified", "test_rust_call_anchor::test_two_impls_of_one_method"),
     "scala": ("verified", "test_scala_call_anchor::test_same_named_methods_in_two_classes"),
     "swift": ("verified", "test_swift_call_anchor::test_overloads_are_told_apart"),
-    "groovy": ("unverified", "WI-mapor"),
-    "objc": ("unverified", "WI-mapor"),
-    "perl": ("unverified", "WI-mapor"),
-    "php": ("unverified", "WI-mapor"),
-    "powershell": ("unverified", "WI-mapor"),
+    "groovy": ("verified", "test_call_anchor_gate::test_groovy_same_named_callables"),
+    "objc": ("verified", "test_call_anchor_gate::test_objc_same_named_callables"),
+    "perl": ("verified", "test_call_anchor_gate::test_perl_same_named_callables"),
+    "php": ("verified", "test_call_anchor_gate::test_php_same_named_callables"),
+    "powershell": ("verified", "test_call_anchor_gate::test_powershell_same_named_callables"),
 }
 
 
@@ -126,3 +126,129 @@ def test_go_without_an_index_falls_back_to_the_qualified_name(tmp_path: Path) ->
     assert len(calls) == 2  # reach
     got = [_get_enclosing_function(c, source, symbols).name for c in calls]
     assert got == ["A.Run", "B.Run"], got
+
+
+def _assert_contained(result, calls: list[int]) -> None:
+    """Reach first: a call edge credited to a callable (not the file) at every
+    expected line. Then containment: every call edge's src span holds its line."""
+    by_id = {s.id: s for s in result.symbols}
+    anchors = [
+        (by_id[e.src].name, by_id[e.src].span.start_line, by_id[e.src].span.end_line, e.line)
+        for e in result.edges
+        if e.edge_type == "calls" and e.line and e.src in by_id and by_id[e.src].kind != "file"
+    ]
+    assert {a[3] for a in anchors} >= set(calls), anchors  # reach
+    for name, start, end, line in anchors:
+        assert start <= line <= end, (name, start, end, line)
+
+
+def test_groovy_same_named_callables(tmp_path: Path) -> None:
+    """Same-named shape: an overload pair and one method name in two classes. Its calls
+    went to the last same-named declaration until the lookup keyed on position (WI-
+    mapor)."""
+    from hypergumbo_lang_mainstream.groovy import analyze_groovy
+
+    (tmp_path / "A.groovy").write_text("""\
+class A {
+    void one() {}
+    void run(int x) {
+        one()
+    }
+    void run(String s) {
+        one()
+    }
+}
+class B {
+    void two() {}
+    void run() {
+        two()
+    }
+}
+""")
+    _assert_contained(analyze_groovy(tmp_path), [4, 7, 13])
+
+
+def test_objc_same_named_callables(tmp_path: Path) -> None:
+    """Same-named shape: one selector implemented in two ``@implementation`` blocks. Its
+    calls went to the last same-named declaration until the lookup keyed on position
+    (WI-mapor)."""
+    from hypergumbo_lang_mainstream.objc import analyze_objc
+
+    (tmp_path / "A.m").write_text("""\
+@implementation A
+- (void)one {}
+- (void)run {
+    [self one];
+}
+@end
+@implementation B
+- (void)two {}
+- (void)run {
+    [self two];
+}
+@end
+""")
+    _assert_contained(analyze_objc(tmp_path), [4, 10])
+
+
+def test_perl_same_named_callables(tmp_path: Path) -> None:
+    """Same-named shape: ``sub run`` in two packages of one file. Its calls went to the
+    last same-named declaration until the lookup keyed on position (WI-mapor)."""
+    from hypergumbo_lang_mainstream.perl import analyze_perl
+
+    (tmp_path / "A.pm").write_text("""\
+package A;
+sub one { }
+sub run {
+    one();
+}
+package B;
+sub two { }
+sub run {
+    two();
+}
+1;
+""")
+    _assert_contained(analyze_perl(tmp_path), [4, 9])
+
+
+def test_php_same_named_callables(tmp_path: Path) -> None:
+    """Same-named shape: one method name in two classes. It measured correct when first
+    checked (WI-mapor); this pins it."""
+    from hypergumbo_lang_mainstream.php import analyze_php
+
+    (tmp_path / "A.php").write_text("""\
+<?php
+class A {
+    function one() {}
+    function run() {
+        $this->one();
+    }
+}
+class B {
+    function two() {}
+    function run() {
+        $this->two();
+    }
+}
+""")
+    _assert_contained(analyze_php(tmp_path), [5, 11])
+
+
+def test_powershell_same_named_callables(tmp_path: Path) -> None:
+    """Same-named shape: a function defined twice (the later definition wins at run time).
+    Its calls went to the last same-named declaration until the lookup keyed on position
+    (WI-mapor)."""
+    from hypergumbo_lang_mainstream.powershell import analyze_powershell
+
+    (tmp_path / "A.ps1").write_text("""\
+function One { }
+function Two { }
+function Run {
+    One
+}
+function Run {
+    Two
+}
+""")
+    _assert_contained(analyze_powershell(tmp_path), [4, 7])

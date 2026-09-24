@@ -48,12 +48,15 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.discovery import classify_dot_d_file, find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -494,31 +497,22 @@ def _process_import_declaration(
 
 def _find_enclosing_function_d(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the enclosing function Symbol by walking up parents.
+    """The function or method whose declaration contains ``node``.
 
-    For methods inside structs/classes/interfaces, the local_symbols map
-    uses qualified names (e.g., ``Searcher.search``), so we build the
-    qualified name when the enclosing function is inside a container.
+    Keyed by the declaration's POSITION, not its name (INV-midag, WI-mapor).
+    D overloads a function by parameter types and lets two structs or classes
+    of one file declare one method name; the name lookup (bare name first,
+    then ``Container.name``) credited every overload's calls to the last one,
+    and a method's to a free function of the same name.
     """
     current = node.parent
     while current is not None:
         if current.type == "function_declaration":
-            name_node = find_child_by_type(current, "identifier")
-            if name_node:
-                name = node_text(name_node, source)
-                # Try bare name first (top-level function)
-                sym = local_symbols.get(name)
-                if sym:
-                    return sym
-                # Try qualified name (method inside container)
-                parent_name = _find_parent_container(current, source)
-                if parent_name:
-                    sym = local_symbols.get(f"{parent_name}.{name}")
-                    if sym:
-                        return sym
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -877,6 +871,8 @@ class DAnalyzer(TreeSitterAnalyzer):
         """Extract import and call edges from a D file."""
         edges: list[Edge] = []
         file_stable_id = f"d:{rel_path}:file:"
+        # Every declaration of this file, by position (INV-midag).
+        decl_index = symbols_at(self.file_symbols(local_symbols))
 
         # Extract imported modules for scope-based disambiguation
         imported_modules = _extract_imported_modules(tree, source)
@@ -903,7 +899,7 @@ class DAnalyzer(TreeSitterAnalyzer):
             elif node.type == "call_expression":
                 target_name, receiver = _get_call_target_name_d(node, source)
                 if target_name:
-                    caller = _find_enclosing_function_d(node, source, local_symbols)
+                    caller = _find_enclosing_function_d(node, decl_index)
                     if caller:
                         fnode = _enclosing_function_node(node)
                         if fnode is None:  # pragma: no cover - caller ⟹ fnode set
@@ -926,7 +922,7 @@ class DAnalyzer(TreeSitterAnalyzer):
             elif node.type == "property_expression":
                 ufcs_name = _get_ufcs_template_name(node, source)
                 if ufcs_name:
-                    caller = _find_enclosing_function_d(node, source, local_symbols)
+                    caller = _find_enclosing_function_d(node, decl_index)
                     if caller:
                         _resolve_and_emit_call_edge(
                             caller, ufcs_name, None,

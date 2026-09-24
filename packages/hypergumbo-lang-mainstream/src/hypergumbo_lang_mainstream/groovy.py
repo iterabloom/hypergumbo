@@ -57,6 +57,9 @@ from hypergumbo_core.analyze.base import (
     make_typed_stable_id,
     make_unresolved_edge,
     node_text,
+    SymbolsAt,
+    symbol_declared_by,
+    symbols_at,
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -230,24 +233,20 @@ def _get_enclosing_class(node: "tree_sitter.Node", source: bytes) -> Optional[st
 
 def _get_enclosing_function_groovy(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing method/function."""
+    """The method or function whose declaration contains ``node``.
+
+    Keyed by the declaration's POSITION, not its name (INV-midag, WI-mapor).
+    Overloads and one method name in two classes of a file share a name, and
+    the name lookup returned whichever registered last.
+    """
     current = node.parent
     while current is not None:
-        if current.type == "method_declaration":
-            name_node = find_child_by_type(current, "identifier")
-            if name_node:
-                method_name = node_text(name_node, source)
-                if method_name in local_symbols:
-                    return local_symbols[method_name]
-        elif current.type == "function_definition":
-            name_node = find_child_by_type(current, "identifier")
-            if name_node:
-                func_name = node_text(name_node, source)
-                if func_name in local_symbols:
-                    return local_symbols[func_name]
+        if current.type in ("method_declaration", "function_definition"):
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -653,6 +652,9 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
         method_invocation and juxt_function_call forms).
         Uses import aliases as path_hint for resolver disambiguation.
         """
+        # Every declaration of this file, by position (INV-midag): ``local_symbols``
+        # keeps ONE symbol per name.
+        decl_index = symbols_at(self.file_symbols(local_symbols))
         # AMB-METHOD: build method resolver for ambiguity guard
         global_methods: dict[str, list[Symbol]] = {}
         seen_ids: set[str] = set()
@@ -714,7 +716,7 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
             # method_invocation: helper() inside a method, or Receiver.method()
             # juxt_function_call: println "hello" (Groovy's operator-less call syntax)
             elif node.type in ("method_invocation", "juxt_function_call"):
-                current_function = _get_enclosing_function_groovy(node, source, local_symbols)
+                current_function = _get_enclosing_function_groovy(node, decl_index)
                 if current_function is not None:
                     # Extract receiver and method name from method_invocation
                     # Pattern: identifier.identifier(args) or just identifier(args)

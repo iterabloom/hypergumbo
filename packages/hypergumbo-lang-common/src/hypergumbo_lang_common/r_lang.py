@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
@@ -45,6 +46,8 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
     populate_docstrings_from_tree,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -110,24 +113,24 @@ def _extract_r_signature(func_def: "tree_sitter.Node", source: bytes) -> Optiona
 
 def _find_enclosing_function_r(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the enclosing function Symbol by walking up parents."""
+    """The function whose assignment (``f <- function(...) ...``) contains ``node``.
+
+    The symbol is declared by the ASSIGNMENT, the ``binary_operator`` whose
+    right side is the ``function_definition``, and is found by that node's
+    POSITION, not its name (INV-midag, WI-mapor). A local helper of one name
+    in two functions (``inner <- function()`` in each) and a redefinition
+    share a name, and the name lookup credited both bodies' calls to the last.
+    """
     current = node.parent
     while current:
         if current.type == "function_definition":
-            # The function definition is the right side of an assignment
-            # The parent should be binary_operator with the function name on left
             parent = current.parent
             if parent and parent.type == "binary_operator":
-                for child in parent.children:
-                    if child.type == "identifier":
-                        func_name = source[child.start_byte:child.end_byte].decode("utf-8", errors="replace")
-                        sym = local_symbols.get(func_name)
-                        if sym:
-                            return sym
-                        break  # pragma: no cover - defensive
+                sym = symbol_declared_by(parent, decl_index)
+                if sym is not None:
+                    return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -320,7 +323,7 @@ def _extract_r_edges(
     root_node: "tree_sitter.Node",
     source: bytes,
     edges: list[Edge],
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
     resolver: NameResolver,
     loaded_packages: set[str] | None = None,
     *,
@@ -335,7 +338,7 @@ def _extract_r_edges(
         root_node: Root tree-sitter node to process
         source: Source file bytes
         edges: List to append edges to
-        local_symbols: Local symbol registry for finding enclosing functions
+        decl_index: This file's function declarations by position
         resolver: NameResolver for callee resolution
         loaded_packages: Set of package names loaded via library/require (ADR-0007)
     """
@@ -371,7 +374,7 @@ def _extract_r_edges(
                 continue
 
             # Regular function call - create edge if inside a function
-            caller = _find_enclosing_function_r(node, source, local_symbols)
+            caller = _find_enclosing_function_r(node, decl_index)
             if caller:
                 # Use resolver for callee resolution with path_hint
                 lookup_result = resolver.lookup(func_name, path_hint=path_hint)
@@ -504,14 +507,16 @@ class RAnalyzer(TreeSitterAnalyzer):
 
         # Pass 2: Extract edges using resolver
         for rel_path, source, tree, loaded_packages in parsed_files:
-            # Build local symbol map for this file (functions only)
-            local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
+            # This file's functions by declaration position (INV-midag): a
+            # name-keyed map keeps one symbol per name.
+            decl_index = symbols_at(
+                [s for s in symbols if s.path == rel_path and s.kind == "function"])
 
             _extract_r_edges(
                 tree.root_node,
                 source,
                 edges,
-                local_symbols,
+                decl_index,
                 resolver,
                 loaded_packages,
 

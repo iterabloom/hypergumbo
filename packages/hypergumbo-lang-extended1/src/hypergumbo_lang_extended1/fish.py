@@ -37,11 +37,14 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     iter_tree,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -111,18 +114,22 @@ def _make_symbol(
 
 def _get_enclosing_function_fish(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up parent chain to find enclosing function Symbol."""
+    """The function whose definition contains ``node``.
+
+    Keyed by the definition's POSITION, not its name (INV-midag, WI-mapor).
+    Fish lets a script define a function twice (the later definition wins
+    when it runs), and the name lookup credited both bodies' calls to the
+    last one.
+    """
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
-            words = _find_children_by_type(current, "word")
-            if words:
-                func_name = node_text(words[0], source)
-                return local_symbols.get(func_name)
-        current = current.parent  # pragma: no cover - loop until function found
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
+        current = current.parent
     return None  # pragma: no cover - no enclosing function found
 
 
@@ -228,12 +235,14 @@ class FishAnalyzer(TreeSitterAnalyzer):
         """Extract source and call edges from Fish commands."""
         edges: list[Edge] = []
         file_stable_id = f"fish:{rel_path}:file:"
+        # Every declaration of this file, by position (INV-midag).
+        decl_index = symbols_at(self.file_symbols(local_symbols))
 
         for node in iter_tree(tree.root_node):
             if node.type == "command":
                 self._process_command_edges(
                     node, source, rel_path, run.execution_id,
-                    file_stable_id, local_symbols, resolver, edges,
+                    file_stable_id, decl_index, resolver, edges,
                 )
 
         return edges
@@ -241,7 +250,7 @@ class FishAnalyzer(TreeSitterAnalyzer):
     def _process_command_edges(
         self, node: "tree_sitter.Node", source: bytes,
         rel_path: str, run_id: str, file_stable_id: str,
-        local_symbols: dict[str, Symbol], resolver: "NameResolver",
+        decl_index: SymbolsAt, resolver: "NameResolver",
         edges: list[Edge],
     ) -> None:
         """Process a command for edge extraction."""
@@ -281,7 +290,7 @@ class FishAnalyzer(TreeSitterAnalyzer):
                 )
 
         elif cmd_name not in ("alias", "set"):
-            caller = _get_enclosing_function_fish(node, source, local_symbols)
+            caller = _get_enclosing_function_fish(node, decl_index)
             if caller:
                 result = resolver.lookup(cmd_name)
                 if result.symbol is not None:
