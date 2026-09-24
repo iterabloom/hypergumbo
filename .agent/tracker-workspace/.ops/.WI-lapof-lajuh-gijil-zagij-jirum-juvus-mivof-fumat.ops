@@ -24,3 +24,19 @@
   clock: 2  # 120e
   nonce: 120e  # 120e
   message: "PREMISE RE-CHECKED 2026-09-24. The premise holds, and this check produced a LIVE INSTANCE.\n\n`ci-debug cron-status` shows full-suite RED at d31439e6. It is the most recent firing, 2 commits back. Two steps failed:\n- test-all-packages: coverage 99%, because backend_selection.py:281-283 is uncovered.\n- test-agent-infra: test_measure_catalogue_exposure.py::test_kotlin_reproduces_the_receiver_syntax_exposure, 156/195 is not > 0.8.\nNo hook surfaced it. It was found only because checking this row ran cron-status. No file under .agent/hooks references ci-debug or cron.\n\nCORRECTION TO THIS ROW'S TEXT. The 08-30 decision (5b52f9bf17) removed the per-PR arm from .woodpecker/woodpecker.yml. .github/workflows/ci.yml still carries a path-filtered per-PR `self-claims-gate` job, present since 08-16 (ceaba981e3). But #1167's checks reported only ci/woodpecker/pr/woodpecker, so that GitHub job does not run. It is dormant config that contradicts the woodpecker tombstone, so \"the per-PR arm was removed\" is true of the live CI only."  # 120e
+- op: update  # 96ba
+  at: '2026-09-24T07:21:40Z'  # 96ba
+  by: agent  # 96ba
+  actor: jgstern_agent  # 96ba
+  clock: 3  # 96ba
+  nonce: 96ba  # 96ba
+  set:  # 96ba
+    status: done  # 96ba
+    pr_ref: '1174'  # 96ba
+- op: discuss  # b88b
+  at: '2026-09-24T07:21:41Z'  # b88b
+  by: agent  # b88b
+  actor: jgstern_agent  # b88b
+  clock: 4  # b88b
+  nonce: b88b  # b88b
+  message: "DONE in PR #1174. The proposal was built as written: a session-start reader, cached, silent on outage, suppressed by an open row.\n\nMECHANISM: .agent/hooks/_shared/cron_status_nudge.py, called as _append_cron_status from every mode branch of session_start_logic.sh. All four vendors' session-start hooks source that file.\n- It runs `ci-debug cron-status`, lists each red workflow's failing STEPS, and walks back one cron verdict at a time to the commit where the step FIRST went red.\n- It stays silent when green or pending, when the CI host is unreachable, when output can't be parsed, and under CI or HG_SKIP_CRON_NUDGE.\n- It suppresses a step that an OPEN row names at a red commit.\n- The network half is cached for 1h.\n\nBEHAVIOURAL EVIDENCE, live on dev b0dcfd1e41 (the cron is red at d31439e6 until the 13:00 UTC firing):\n  python3 .agent/hooks/_shared/cron_status_nudge.py .   -> rc 0, 17.4 s cold, 1.2 s cached\n  \"The cron CI is RED and no open tracker row names it: full-suite (`test-all-packages`) red at d31439e6, 7 commit(s) back, first red at d31439e6. Read `./scripts/ci-debug cron-status`, then fix it or file a row naming the step and commit.\"\n`test-agent-infra` was correctly suppressed, because WI-juzoz names that step at d31439e6. Sourcing session_start_logic.sh in OFF mode shows the line as an \"ALSO (separate item)\".\n\nNOT ASSERTED:\n- That a SessionStart hook runs with its full ~17 s cold budget under every vendor's hook timeout. Not measured per vendor. The cache makes the cold path at most hourly.\n- The per-PR detection latency, which is unchanged by design (owner decision 08-30)."  # b88b

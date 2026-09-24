@@ -1,0 +1,31 @@
+- op: create  # 0eb4
+  at: '2026-09-24T06:57:57Z'  # 0eb4
+  by: agent  # 0eb4
+  actor: jgstern_agent  # 0eb4
+  clock: 1  # 0eb4
+  nonce: 0eb4  # 0eb4
+  data:  # 0eb4
+    kind: work_item  # 0eb4
+    title: "python: enumerate urllib.request's I/O surface (module_completeness) -- prerequisite for deleting the false Request net_send row, whose removal otherwise withholds all 18 of hypergumbo's self-claims"  # 0eb4
+    status: todo_hard  # 0eb4
+    priority: 3  # 0eb4
+    parent:  # 0eb4
+    tags:  # 0eb4
+    - python  # 0eb4
+    - catalogue  # 0eb4
+    - io_boundary  # 0eb4
+    isbefore: []  # 0eb4
+    duplicate_of: []  # 0eb4
+    not_duplicate_of: []  # 0eb4
+    pr_ref:  # 0eb4
+    description: "PREREQUISITE for deleting python's false `urllib.request.Request` net_send row (INV-gujoh).\n\nWHY THE ROW CANNOT GO ALONE. `Request` builds a request object and sends nothing, and `urlopen(req)` is the send. A finding-level A/B shows the flow survives the deletion at urlopen: fixture violated -> violated, and 0 verdict moves on beads and mlflow. But the call `Request(...)` then becomes an unclassified call into `urllib.request`, whose I/O surface is not enumerated. _uncatalogued_external_modules (verify_claims.py) withholds a clean verdict for that, by design: the permitting case is ENUMERATED per module, never per name (INV-buzab). Measured with scripts/check-self-claims --minimal and the row deleted: all 18 of hypergumbo's own self-claims moved confirmed_with_caveats -> inconclusive, and 4 credited_flows moved nonzero -> zero, because hypergumbo_tracker/stop_hook.py:401 builds a Request. On dev the gate is clean. `stdlib_other` does NOT lift that gate (probed).\n\nTHE AUDIT. urllib.request defines 46 own public callables (introspected, python 3.12). 3 are rowed. At least these do I/O on call and have NO row:\n- getproxies, getproxies_environment, proxy_bypass, proxy_bypass_environment: env_read\n- ProxyHandler(), build_opener(), URLopener(), FancyURLopener(): read proxies from the environment AT CONSTRUCTION\n- urlcleanup(): deletes urlretrieve's temp files (fs_write)\n- localhost(), thishost(): resolve DNS\n- ftpwrapper(...): opens an FTP connection at construction\nThen OpenerDirector.open, the handler classes, and the deprecated URLopener family's methods.\nAdjudicate each against ADR-0049 and the 2026-08-15 rule (docs/surveys/python-stdlib-module-io-enumeration.md), row what crosses, then declare `urllib.request` complete in module_completeness, dated. Only then delete `Request`, and re-run check-self-claims: it must stay clean."  # 0eb4
+    fields: {}  # 0eb4
+- op: update  # b264
+  at: '2026-09-24T06:58:06Z'  # b264
+  by: agent  # b264
+  actor: jgstern_agent  # b264
+  clock: 2  # b264
+  nonce: b264  # b264
+  set: {}  # b264
+  add:  # b264
+    isbefore: [INV-gujoh-fodug-polig-viviv-dihaz-vulij-danib-ratos]  # b264

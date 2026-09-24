@@ -1,0 +1,22 @@
+- op: create  # 202e
+  at: '2026-09-24T06:46:12Z'  # 202e
+  by: agent  # 202e
+  actor: jgstern_agent  # 202e
+  clock: 1  # 202e
+  nonce: 202e  # 202e
+  data:  # 202e
+    kind: work_item  # 202e
+    title: "python DDG: a sink called in a with-item (with urlopen(req) as r) never gets a confirmed walk -- structural or escaped where the plain call confirms"  # 202e
+    status: todo_hard  # 202e
+    priority: 3  # 202e
+    parent:  # 202e
+    tags:  # 202e
+    - python  # 202e
+    - taint  # 202e
+    - analysis_quality  # 202e
+    isbefore: []  # 202e
+    duplicate_of: []  # 202e
+    not_duplicate_of: []  # 202e
+    pr_ref:  # 202e
+    description: "FOUND 2026-09-24 while running INV-gujoh's finding-level A/B.\n\nIn python, a sink called in a `with` item never gets a confirmed DDG walk:\n  secret = os.environ[\"API_KEY\"]\n  with urlopen(url, data=secret.encode()) as resp:   -> urlopen, structural / unavailable\n  req = Request(url, headers={...secret...})\n  with urlopen(req) as resp:                          -> urlopen, ddg_mixed / escaped\nThe same flow as a plain call, `return urlopen(url, data=secret.encode())`, is ddg / confirmed.\nMeasured with hypergumbo verify-claims, host_secret must not reach network (fixtures in ~/hypergumbo_lab_notebook/gujoh_09242026/fx3/). The result is the same with and without INV-gujoh's change.\n\nWHY IT MATTERS: `with urllib.request.urlopen(req) as resp:` is THE idiomatic way to use urlopen, and the same holds for open(), requests sessions, sqlite connections, and others. On mlflow and beads, the strongest evidence left after INV-gujoh removed the Request row is escaped / not_attempted at urlopen. The row had carried a confirmed walk, but that walk confirmed a flow into a constructor, which is not a crossing. Verdicts are unaffected: violated before and after. The evidence the reader sees is weaker than the dataflow supports.\n\nNOT INVESTIGATED: whether the python DDG's def/use extractor treats a `with_item` as a use of its expression's arguments, or whether the walk stops at the `as` binding. Check the extractor first, via dataflow_scope.ensure_def_use_extractors_registered(). LIVE.md warns that an empty registry reads as a false diagnosis.\n\nACCEPTANCE: both fixtures above read ddg / confirmed at urlopen."  # 202e
+    fields: {}  # 202e
