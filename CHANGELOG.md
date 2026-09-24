@@ -73,6 +73,7 @@ Four threads run through this cycle.
 
 #### Developer tooling and CI
 
+- **A red cron CI step now reaches the agent at session start.** A red full-suite gate sat unread for four days in September, and again on 2026-09-23, because nothing surfaced cron verdicts. Session start now names each failing step, the commit it is red at, and where it first went red, which is where a bisect starts. It is silent when everything is green, when the CI host is unreachable, and when an open tracker row already names that step and commit. The network half is cached for an hour: measured at 17 s cold and 1 s warm.
 - **`auto-pr --detach` hands the CI poll to a background watcher, and `auto-pr wait` reports on it**: 0 when the watcher has finished, 2 while it is still running, 1 when there is no watcher or it died mid-poll. An agent's shell call is capped well below `auto-pr`'s CI poll, and killed runs had become the most common unexplained outcome, so a run with no terminal must now pass `--detach` or `--foreground`.
 - **`scripts/audit-autopr-convergence` reads the `auto-pr` run ledger**, which had collected 483 rows and 55 violations with no reader, and its findings appear at session start.
 - **`ci-debug` reads what Woodpecker's single status hides.** `cron-status` reports the latest scheduled-run verdict per workflow and step, on whichever commit carries it. `pr-body <n>` prints a pull request's description, fenced so the author's text cannot forge the delimiter, and tells an empty description apart from one that could not be read.
