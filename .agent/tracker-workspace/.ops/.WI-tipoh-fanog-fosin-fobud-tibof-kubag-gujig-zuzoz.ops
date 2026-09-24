@@ -1,0 +1,22 @@
+- op: create  # 3f7c
+  at: '2026-09-24T03:52:20Z'  # 3f7c
+  by: agent  # 3f7c
+  actor: jgstern_agent  # 3f7c
+  clock: 1  # 3f7c
+  nonce: 3f7c  # 3f7c
+  data:  # 3f7c
+    kind: work_item  # 3f7c
+    title: "scala resolves a call by simple name across the repo, ignoring the file's explicit import: imported scala.sys.process.Process(...) links to an unrelated project Process (spark 12, scala3 10)"  # 3f7c
+    status: todo_hard  # 3f7c
+    priority: 2  # 3f7c
+    parent:  # 3f7c
+    tags:  # 3f7c
+    - scala  # 3f7c
+    - analysis_quality  # 3f7c
+    - io_boundary  # 3f7c
+    isbefore: []  # 3f7c
+    duplicate_of: []  # 3f7c
+    not_duplicate_of: []  # 3f7c
+    pr_ref:  # 3f7c
+    description: "FOUND 2026-09-24 while measuring WI-narij (surveys at dev 944735a08f; ~/hypergumbo_lab_notebook/narij_09242026/).\n\nTHE DEFECT: the scala analyzer resolves a call by the callee's SIMPLE NAME across the whole repository and ignores the calling file's explicit import. The edge is origin `scala`, confidence 0.8 (0.85 for one).\n- spark: core/src/main/scala/org/apache/spark/TestUtils.scala (package org.apache.spark) has `import scala.sys.process.Process`. Its `Process(cmdSeq :+ ...).!` resolves to the `case class Process` nested in sql/core/src/test/.../ForeachWriterSuite.scala, in another package. That is 12 edges of this shape on spark.\n- scala3: bin/test/TestScripts.scala has `import scala.sys.process.{Process, ProcessLogger}`. Its `Process(script) ! ...` resolves to `object Process` in the sbt build's project/Process.scala. That is 10 edges.\n\nCONSEQUENCES:\n1. A FALSE call edge to the wrong callee, which feeds the call graph, slices and dead-code.\n2. The real launch disappears. A resolved edge never reaches the io catalogue, so these subprocess launches classify as nothing even after WI-narij.\n`_is_project_type` (scala.py) is name-based in the same way. WI-kilap's static_owner_module relies on it to refuse the import path for a project type.\n\nASKED:\n- An explicit import in the calling file must outrank a same-named project symbol from another package, unless the import itself names a project path.\n- Fix in the producer.\n- Measure the resolved-edge diff on the scala cohort, as a set not a count. Detekt's imported project type (WI-kilap's regression test) must keep resolving.\n- Check kotlin for the same shape. Not checked."  # 3f7c
+    fields: {}  # 3f7c
