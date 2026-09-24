@@ -238,7 +238,7 @@ net_send:
   - module: net/smtp.Client
     methods: [Mail, Rcpt, Data, Close]
   - module: net/http
-    functions: [Get, Post, PostForm, Head, NewRequest]
+    functions: [Get, Post, PostForm, Head]
   - module: net/http.Client
     methods: [Do, Get, Post, Head]
   - module: net/http.Transport

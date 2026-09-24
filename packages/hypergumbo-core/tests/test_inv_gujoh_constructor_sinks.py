@@ -21,13 +21,18 @@ on rebar3, cowboy, ejabberd, vernemq, plausible and livebook: no verdict moved.
                                                       rowed WITH the removal
   python  Request(url, data=s) -> urlopen(req)        violated, now at urlopen
                                                       (WI-bakik; see below)
+  go      http.NewRequest(.., s) -> Client.Do(req)    violated, now at Client.Do
+                                                      (WI-jikik; see below)
 
-ONE THAT STAYS, a measured refusal rather than an omission:
+The last two each waited on a prerequisite.
 
-* go ``net/http.NewRequest``. With a typed client the flow survives at
-  ``Client.Do``. Through ``http.DefaultClient.Do(req)`` the package variable's
-  type is unknown, so ``Client.Do`` is never reached, and deleting the row LOSES
-  the finding. It is compensating for WI-jikik.
+go ``net/http.NewRequest`` waited for WI-jikik. With a typed client the flow
+survived at ``Client.Do``, but through ``http.DefaultClient.Do(req)`` the package
+variable was untyped, so ``Client.Do`` was never reached and deleting the row
+LOST the finding. WI-jikik types stdlib package variables
+(library_signatures/go.yaml ``package_variables``), and
+:func:`test_default_client_do_reaches_the_client_send` pins that on real
+analyzer output.
 
 python ``urllib.request.Request`` waited for WI-bakik. The flow survived at
 ``urlopen``, but the ``Request(...)`` call then counted as an unclassified call
@@ -52,6 +57,7 @@ def _boundaries(language: str, module: str, name: str) -> set[str]:
 
 @pytest.mark.parametrize("language,module,name,boundary", [
     ("python", "urllib.request", "Request", "net_send"),
+    ("go", "net/http", "NewRequest", "net_send"),
     ("erlang", "ets", "new", "db_write"),
     ("elixir", "ets", "new", "db_write"),
     ("elixir", "Req", "new", "net_send"),
@@ -72,6 +78,7 @@ def test_the_constructor_is_not_rowed_under_the_sink(
     ("elixir", "Req.Request", "run_request", "net_send"),
     ("elixir", "Finch", "request", "net_send"),
     ("python", "urllib.request", "urlopen", "net_send"),
+    ("go", "net/http.Client", "Do", "net_send"),
 ])
 def test_the_executor_still_carries_the_crossing(
         language: str, module: str, name: str, boundary: str) -> None:
@@ -79,14 +86,25 @@ def test_the_executor_still_carries_the_crossing(
     assert boundary in _boundaries(language, module, name)
 
 
-@pytest.mark.parametrize("language,module,name,blocker", [
-    ("go", "net/http", "NewRequest", "WI-jikik"),
-])
-def test_a_constructor_is_kept_until_its_blocker_lands(
-        language: str, module: str, name: str, blocker: str) -> None:
-    """Remove the pin together with the row, once the blocker lands and the
-    finding-level A/B (and, for python, scripts/check-self-claims) passes."""
-    assert "net_send" in _boundaries(language, module, name), blocker
+def test_default_client_do_reaches_the_client_send(tmp_path) -> None:
+    """The represented crossing the go removal is licensed against, through the
+    package variable that used to leave it unreachable."""
+    from hypergumbo_core.io_boundary import classify_call
+    from hypergumbo_lang_mainstream.go import analyze_go
+
+    (tmp_path / "main.go").write_text(
+        'package main\n\nimport (\n\t"bytes"\n\t"net/http"\n)\n\n'
+        'func send(url, secret string) {\n'
+        '\treq, _ := http.NewRequest("POST", url, bytes.NewBufferString(secret))\n'
+        '\thttp.DefaultClient.Do(req)\n}\n')
+    edges = [e for e in analyze_go(tmp_path).edges if e.edge_type == "calls"]
+    by_name = {e.dst.split(":")[-2]: e for e in edges}
+    assert {"NewRequest", "Do"} <= set(by_name), sorted(by_name)  # reach
+    catalogs = {"go": load_catalog("go")}
+    assert classify_call(catalogs, by_name["NewRequest"].dst, by_name["NewRequest"].meta) is None
+    send = classify_call(catalogs, by_name["Do"].dst, by_name["Do"].meta)
+    assert send is not None and (send.module, send.name, send.boundary) == (
+        "net/http.Client", "Do", "net_send")
 
 
 class TestUrllibRequestIsEnumerated:
