@@ -1,0 +1,55 @@
+Original commit body from a2ac1757394a1aeeef731c8e73af13e9d7609416:
+
+`urllib.request.Request` builds a request object and sends nothing.
+`urlopen(req)` is the send (INV-gujoh). The net_send row on Request was
+wrong and was kept, because deleting it made every `Request(...)` an
+unclassified call into an unenumerated module. The coverage gate
+(_uncatalogued_external_modules) then withholds the clean verdict: all
+18 of hypergumbo's own self-claims went inconclusive.
+
+This change enumerates the module first, per the 2026-08-15 rule
+(docs/surveys/python-stdlib-module-io-enumeration.md, new addendum).
+Its 46 own public callables were probed and read one by one.
+- net_send: urlopen and urlretrieve (already rowed); ftpwrapper, NEW
+  (its __init__ connects and sends USER/PASS).
+- net_recv: localhost, thishost, NEW (gethostbyname: the DNS ruling,
+  WI-dozul).
+- env_read: getproxies, getproxies_environment, proxy_bypass,
+  proxy_bypass_environment, ProxyHandler (proxies=None reads the
+  environment), build_opener (always adds a ProxyHandler), URLopener,
+  FancyURLopener, all NEW.
+- fs_write: urlcleanup, NEW (unlinks urlretrieve's temp files).
+- none: Request, OpenerDirector, install_opener, the other 22 handler
+  classes, and the string helpers.
+Then urllib.request is declared complete, dated 2026-09-24, and the
+Request row is deleted.
+
+NOT CLAIMED: urllib.request.OpenerDirector.open sends and carries no
+row. It is its own slot, which is not declared complete.
+
+MEASURED
+- scripts/check-self-claims --minimal: 18 claims unchanged
+  (confirmed_with_caveats). Before the enumeration, the same deletion
+  moved all 18 to inconclusive.
+- Fixtures, claim host_secret !-> network, verify-claims from pinned
+  worktrees (dev vs this):
+    Request(url, data=secret) -> urlopen(req)   violated -> violated,
+      evidence moves from Request to urlopen, ddg confirmed there
+    urlopen(url, data=secret)                   unchanged (control)
+    getproxies() sent via urlopen               inconclusive -> violated
+- Cohort, generic taint claims, finding-level diff: beads, django,
+  litellm, superset. 0 verdict moves. Every function that lost evidence
+  at Request gained it at urlopen (beads 3, litellm 1, superset 1). In
+  beads' `with urlopen(req) as r` the evidence weakens from ddg-confirmed
+  at Request to not_attempted at urlopen: WI-hular, no DDG walk into a
+  `with` item. django gains one not_attempted host-fs evidence at
+  tempfile.mkdtemp, in the function whose build_opener() is now a source.
+  The mkdtemp call comes BEFORE the source, so this is the
+  sink-before-source imprecision the owner ruled stays (WI-mojaz), and the
+  verdict was already violated. litellm's evidence list is capped at 100
+  in both arms, so a change past the cap would not show in this diff.
+  mlflow was not re-run: it calls only Request, which INV-gujoh already
+  A/B'd there with 0 moves.
+Instruments: ~/hypergumbo_lab_notebook/bakik_09242026/.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
