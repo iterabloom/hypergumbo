@@ -1221,6 +1221,18 @@ if [[ -n "$CHANGED_CATALOGUE_FILES" ]]; then
         log "  families: $(echo "$CATALOGUE_GATE_TERMS" | tr '\n' ' ')"
         AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CATALOGUE_GATE_TESTS" | sed '/^$/d' | sort -u)
     fi
+    # WI-juzoz: THE GREP CANNOT SEE A ROOT TEST THAT READS THE DATA THROUGH A
+    # SCRIPT OR THE CLI. It names none of the terms. PR #1162 changed java.yaml
+    # alone, and tests/test_measure_catalogue_exposure.py (which loads it through
+    # scripts/measure-catalogue-exposure.py) first ran, and failed, on the cron.
+    # Traced: 13 root test files open catalogue data, and the grep selected none
+    # of them. A second hop through the scripts that name a term reached 4. So
+    # union the whole root suite (1973 tests, 78s locally) whenever the data changes.
+    if [[ -n "$CATALOGUE_GATE_TERMS" ]]; then
+        log "Catalogue data changed - unioning the root suite (WI-juzoz)"
+        CATALOGUE_ROOT_SUITE=$(cd "$REPO_ROOT" && ls tests/test_*.py 2>/dev/null || true)
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CATALOGUE_ROOT_SUITE" | sed '/^$/d' | sort -u)
+    fi
 fi
 
 CHANGED_DOC_FILES=$(echo "$CHANGED_FILES" | grep -E '^docs/' || echo "")

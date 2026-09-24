@@ -558,6 +558,70 @@ class TestCatalogueGateSelection:
         ), "the script's own pattern does not even reach the helper"
 
 
+def _catalogue_block_selection(changed: str) -> set[str]:
+    """Run smart-test's OWN catalogue block over ``changed``; return what it adds.
+
+    The block is cut out of the script from its ``CHANGED_CATALOGUE_FILES=``
+    assignment to the ``fi`` that closes its ``if``, and run in bash with only
+    the variables it reads. A copy of the rule could drift from what ships.
+    """
+    lines = SMART_TEST.read_text().splitlines()
+    start = next(i for i, raw in enumerate(lines)
+                 if raw.startswith("CHANGED_CATALOGUE_FILES="))
+    end = next(i for i in range(start + 1, len(lines)) if lines[i] == "fi")
+    block = "\n".join(lines[start:end + 1])
+    script = (
+        'log() { :; }\n'
+        f'REPO_ROOT="{REPO_ROOT}"\n'
+        'CHANGED_FILES="$1"\nAFFECTED_TESTS=""\n'
+        f"{block}\n"
+        'printf "%s\\n" "$AFFECTED_TESTS"\n'
+    )
+    proc = subprocess.run(["bash", "-c", script, "_", changed],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    return {line for line in proc.stdout.splitlines() if line}
+
+
+#: The catalogue file PR #1162 changed.
+JAVA_YAML = "packages/hypergumbo-core/src/hypergumbo_core/io_primitives/java.yaml"
+
+
+class TestCatalogueSelectsTheRootSuite:
+    """WI-juzoz: a root test that reads a catalogue through a SCRIPT names none
+    of the gate's terms, so the grep above cannot reach it.
+
+    PR #1162 changed java.yaml alone. ``test_measure_catalogue_exposure.py``
+    pins a ratio that change moved (190/195 -> 156/195), and it loads the
+    catalogues through ``scripts/measure-catalogue-exposure.py``. The test was
+    not selected, and it first failed on the full-suite cron with dev already red.
+
+    ENUMERATED, NOT INFERRED. An audit hook logged every non-Python file under
+    ``packages/*/src/*/<dir>/`` that each root test opened, including from the
+    scripts it runs as subprocesses. 13 root test files opened one. The term grep
+    selected NONE of them. A second hop (terms -> the scripts that name them ->
+    the root tests that name those scripts) would have reached 4. The other 9
+    load the data through the CLI or an import. So a catalogue change now selects
+    the whole root suite: 1973 tests, 78s locally. That selects too many, which
+    is the direction a selector may err in.
+    """
+
+    def test_the_change_that_went_red_on_the_cron_selects_its_test(self) -> None:
+        assert "tests/test_measure_catalogue_exposure.py" in \
+            _catalogue_block_selection(JAVA_YAML)
+
+    def test_every_root_test_is_selected(self) -> None:
+        root = {f"tests/{p.name}" for p in (REPO_ROOT / "tests").glob("test_*.py")}
+        assert len(root) > 100  # reach
+        assert root <= _catalogue_block_selection(FRAMEWORKS_YAML)
+
+    def test_a_python_source_change_does_not_select_the_root_suite(self) -> None:
+        """The import slice owns Python sources. The union is for data only."""
+        selected = _catalogue_block_selection(
+            "packages/hypergumbo-core/src/hypergumbo_core/linkers/route_handler.py")
+        assert "tests/test_measure_catalogue_exposure.py" not in selected
+
+
 class TestFullMeansFull:
     """WI-ginuj: a gate named for totality that is silently partial.
 
