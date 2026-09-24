@@ -37,3 +37,20 @@
   clock: 3  # 9d7d
   nonce: 9d7d  # 9d7d
   message: "SECOND JOIN SITE ADDRESSED (PR #1159, INV-zikab step 4): the INV-nizom arm in lookup_with_module no longer reads a method stamp as instance-receiver evidence on a slot that names ONE owner (slot_names_one_owner). It still does so on cpp's #include disjunction, where the slot really is file context. Route 1 of method_starved_modules (this item's filed site) is unchanged. This item's statement (R1, 'the construct of the DEFINITION') is rewritten in step 7 to follow ADR-0059."  # 9d7d
+- op: update  # 640d
+  at: '2026-09-24T00:17:31Z'  # 640d
+  by: agent  # 640d
+  actor: jgstern_agent  # 640d
+  clock: 4  # 640d
+  nonce: 640d  # 640d
+  set:  # 640d
+    fields:  # 640d
+      statement: "A satisfaction test must compare values drawn from the same vocabulary. call_construct names the SYNTAX of the call site; IoPrimitive.kind says how the primitive is reached from its row's own module (ADR-0059: method iff called on an instance of the module; function iff called on the module itself or with no owner; attribute iff read). The two overlap lexically in exactly {function, method}, but they are different axes and must not be joined by bare string equality."  # 640d
+      root_cause: "MetaKeySpec declares no value vocabulary for call_construct, so the call-site side of the join has no registry to check against. The definition side has had one since ADR-0059 (io_primitive_kinds); before that it was an undeclared bare str (WI-fazad)."  # 640d
+- op: discuss  # a9ca
+  at: '2026-09-24T00:17:31Z'  # a9ca
+  by: agent  # a9ca
+  actor: jgstern_agent  # a9ca
+  clock: 5  # a9ca
+  nonce: a9ca  # a9ca
+  message: "STATEMENT REWRITTEN 2026-09-23 (INV-zikab step 7) to follow ADR-0059, as the ratified order required. The old statement defined IoPrimitive.kind as 'the construct of the DEFINITION' (R1), which the panel rejected. The item stays VIOLATED: route 1 of method_starved_modules still joins call_construct to kind by bare membership, a proxy whose looseness is now stated in its docstring (one method-stamped edge satisfies a whole module; Process.exitValue shields scala.sys.process.Process). The second join site (the INV-nizom arm) was narrowed in PR #1159."  # a9ca

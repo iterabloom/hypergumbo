@@ -65,3 +65,24 @@
   clock: 7  # 06ce
   nonce: 06ce  # 06ce
   message: "STEP 4 DONE (PR #1159): slot_names_one_owner() exempts a disjunctive module slot whose every entry names the same owner (java's wildcard slot, e.g. redis.clients.jedis.System,...,java.lang.System) from the INV-nizom arm; cpp's #include set is still file context. Measured over 21 surveys: arm A (shipped) is IDENTICAL on all 21, so no shipped output changed. Arm B (JVM statics re-kinded) lost 41 classifications before and loses 0 now (jedis 160, petclinic 14, gatling 32 with one gained); the acceptance condition held. The ledger's JVM statics now name only WI-kilap as blocker. Next: step 5 (WI-kilap)."  # 06ce
+- op: discuss  # c3e8
+  at: '2026-09-23T23:23:47Z'  # c3e8
+  by: agent  # c3e8
+  actor: jgstern_agent  # c3e8
+  clock: 8  # c3e8
+  nonce: c3e8  # c3e8
+  message: "STEP 5 DONE (PR #1160, WI-kilap done): in kotlin and scala a static call now names its owner (the file's dotted import, else java.lang's closed list minus each language's shadows, never a project type). Classified calls: sbt 123->237, gatling 31->57, detekt 17->30, http4s 3->6. Of 28 verify-claims verdicts, one gained a flow (sbt host-secret-no-host-fs, 4->5, still violated). Residual filed as WI-jubim (Runtime.getRuntime().exec: kotlin/scala do not consume library signatures). FOUND WHILE PREPARING STEP 6: re-kinding the JVM statics exposes them to gate_named_entry's bare-name fallback. Arm B matched sbt's own now() as Instant.now and gatling's own readString() as Files.readString, both false. Java has no free functions, so step 6 also lists every re-kinded name in ambiguous_names, which keeps the no-context path exactly as it was."  # c3e8
+- op: discuss  # 5e53
+  at: '2026-09-24T00:17:31Z'  # 5e53
+  by: agent  # 5e53
+  actor: jgstern_agent  # 5e53
+  clock: 9  # 5e53
+  nonce: '5e53'  # 5e53
+  message: "STEP 6 DONE (PR #1161): the 34 java statics and 11 scala.util.Properties members are function-kind, and the ledger went 75 -> 30. Their names are in ambiguous_names (java has no free functions; arm B showed bare no-context calls matching project methods, sbt now() and gatling readString()). Over 21 surveys, classified counts, starvation and coverage are identical. Untyped-receiver disclosures that named a JDK static as a possible instance callee are gone (jedis env_read 6->0). verify-claims on 7 JVM repos: 49/49 verdicts identical, including caveats and details."  # 5e53
+- op: discuss  # 29cc
+  at: '2026-09-24T00:17:45Z'  # 29cc
+  by: agent  # 29cc
+  actor: jgstern_agent  # 29cc
+  clock: 10  # 29cc
+  nonce: 29cc  # 29cc
+  message: "CORRECTION to the entry above: step 6 merged as PR #1162, not #1161."  # 29cc
