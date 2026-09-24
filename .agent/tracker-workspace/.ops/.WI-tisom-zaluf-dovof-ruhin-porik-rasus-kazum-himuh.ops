@@ -1,0 +1,22 @@
+- op: create  # aaf8
+  at: '2026-09-24T07:43:35Z'  # aaf8
+  by: agent  # aaf8
+  actor: jgstern_agent  # aaf8
+  clock: 1  # aaf8
+  nonce: aaf8  # aaf8
+  data:  # aaf8
+    kind: work_item  # aaf8
+    title: "noise filter drops kind=property in EVERY language: swift computed properties and C# properties (callables with call edges) vanish from the default view -- 346 symbols / 206 call edges on Alamofire"  # aaf8
+    status: todo_hard  # aaf8
+    priority: 2  # aaf8
+    parent:  # aaf8
+    tags:  # aaf8
+    - analysis_quality  # aaf8
+    - swift  # aaf8
+    - csharp  # aaf8
+    isbefore: []  # aaf8
+    duplicate_of: []  # aaf8
+    not_duplicate_of: []  # aaf8
+    pr_ref:  # aaf8
+    description: "FOUND 2026-09-24 while measuring INV-midag's swift fix.\n\nnoise_filter._NOISE_SYMBOL_KINDS lists `property` for EVERY language. The entry is meant for CSS declarations (\"CSS structural, degree-0 in behavior maps\"), but `property` is a homonym. It is emitted by csharp.py, objc.py, properties.py, qml.py, rst.py and swift.py. In swift it is a COMPUTED PROPERTY, a callable with a body. In C# it is a property with get/set bodies. Both carry call edges, and the default survey view drops every one of them.\n\nMEASURED on Alamofire: analyze_swift emits 346 `property` symbols with 206 call edges from them. The default survey contains 0 `property` symbols, and every edge from them is lost at finalize, because its src no longer exists. Before INV-midag's position-keyed anchor, some of those calls were wrongly credited to a same-named METHOD, which hid the loss. With the right anchor they vanish instead: 12 on Alamofire.\n\nThe same homonym was already split for `variable` (CSS-only, _NOISE_CSS_VARIABLE_LANGUAGES) and `table` (config-only, INV-bovif). Do the same for `property`:\n- noise only for css/scss/sass/less, and for the config and doc producers (properties, rst);\n- adjudicate qml and objc (a declaration with no body);\n- keep swift and csharp.\nMeasure the edge SETS before and after on swift and csharp repos. Check WI-fadab, which is adjacent (compact's default selection never applies is_excluded_kind)."  # aaf8
+    fields: {}  # aaf8

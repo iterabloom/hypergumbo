@@ -26,3 +26,10 @@
   clock: 2  # 7c27
   nonce: 7c27  # 7c27
   message: "Filed as the residual of WI-paluk (PR #1167). Once that fix landed, every node row of the recorded rust harness matches a live survey; only the edge rows listed here still differ."  # 7c27
+- op: discuss  # 4eb9
+  at: '2026-09-24T09:18:37Z'  # 4eb9
+  by: agent  # 4eb9
+  actor: jgstern_agent  # 4eb9
+  clock: 3  # 4eb9
+  nonce: 4eb9  # 4eb9
+  message: "Update 2026-09-24: INV-midag stage 2 (rust) moved the harness's calls/in-repo row from 93/18/7 to 93/19/7, because 3 calls in aardvark-dns's From impls were re-anchored. The live-vs-harness comparison this row asks for must be re-taken against the new harness numbers."  # 4eb9

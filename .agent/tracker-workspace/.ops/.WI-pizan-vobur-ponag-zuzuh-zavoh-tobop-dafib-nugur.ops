@@ -1,0 +1,22 @@
+- op: create  # 52a9
+  at: '2026-09-24T09:51:02Z'  # 52a9
+  by: agent  # 52a9
+  actor: jgstern_agent  # 52a9
+  clock: 1  # 52a9
+  nonce: 52a9  # 52a9
+  data:  # 52a9
+    kind: work_item  # 52a9
+    title: "js_ts: the callback position lookup omits line_offset, so a .vue callback's calls are credited to the enclosing function while the same shape in .js/.ts is credited to the callback"  # 52a9
+    status: todo_hard  # 52a9
+    priority: 3  # 52a9
+    parent:  # 52a9
+    tags:  # 52a9
+    - javascript  # 52a9
+    - typescript  # 52a9
+    - analysis_quality  # 52a9
+    isbefore: []  # 52a9
+    duplicate_of: []  # 52a9
+    not_duplicate_of: []  # 52a9
+    pr_ref:  # 52a9
+    description: "FOUND 2026-09-24 while fixing INV-midag's javascript/typescript lookup, and deliberately NOT fixed there.\n\njs_ts.py _get_enclosing_function has an arrow/function-expression tail branch: \"not assigned to a variable, try position-based lookup\". It builds its key as (str(file_path), start_line, start_col) WITHOUT `line_offset`. Every other branch of the same function adds it: function declarations, methods, and since INV-midag the declarator branch. `line_offset` is how a `.vue` single-file component's `<script>` block is positioned. So in `.vue` files a callback's own symbol (the `_cb_*` symbols from WI-zavad) is NEVER found by that branch. The walk continues up, and the call is credited to the enclosing named function, while in a `.js` / `.ts` file the same shape is credited to the callback.\n\nWHY IT WAS NOT FIXED WITH INV-midag: adding the offset moves attribution for every `.vue` callback, from the enclosing function to the callback symbol. Both contain the call, so INV-midag's containment statement holds either way. It is a RELABEL at scale: a first cut of INV-midag's js fix that also resolved callbacks innermost-first moved 831 in-span srcs on koel alone. It needs its own A/B and its own decision on which attribution is wanted. Make .vue match .js, or make both credit the enclosing function."  # 52a9
+    fields: {}  # 52a9
