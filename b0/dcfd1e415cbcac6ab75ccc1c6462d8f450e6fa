@@ -1,0 +1,48 @@
+Original commit body from 70dd2c600736d107f32a13cc05977831c6df02d9:
+
+The gap was READING, not detection. The cron full-suite self-claims gate went
+red at ea22d7023c on 09-19 and sat unfiled for four days of sessions that merged
+past it (INV-fugus), the third occurrence of that symptom. On 2026-09-23 it
+happened again: full-suite went red at d31439e6, and it was noticed only because
+a premise check happened to run `ci-debug cron-status`. LIVE.md's "run
+cron-status at session start" was a memory aid, not a mechanism. The owner's
+08-30 decision to keep detection on the cron cadence is not reopened.
+
+`.agent/hooks/_shared/cron_status_nudge.py`, called from every mode branch of
+session_start_logic.sh as `_append_cron_status` (all four vendors source it):
+- Runs `scripts/ci-debug cron-status` (approved script; AGENTS.md allowed
+  use-case 2) and parses each red workflow's failing STEPS.
+- Walks back one cron verdict at a time (`cron-status <sha>^`) while the same
+  step stays red, to find where it FIRST went red, which is where a bisect
+  starts. The walk is bounded by a step count and a 25 s deadline. A failed
+  lookup reads "not determined", never a guess.
+- Suppresses a step when an OPEN row names it AND one of the red commits. The
+  step alone would match any row that ever mentioned `test-all-packages`.
+  Suppression is recomputed on every call, so a row filed in the meantime
+  silences it at once.
+- Is silent when green or pending, when the host is unreachable, when output
+  can't be parsed, and under `CI` / `HG_SKIP_CRON_NUDGE`. Any exception is
+  swallowed.
+- Caches the network half in .git/cron-status-nudge.json for an hour.
+
+BEHAVIOURAL EVIDENCE, live on 2026-09-24 (the cron is still red at d31439e6,
+awaiting the 13:00 UTC firing after the #1169 fix):
+  python3 .agent/hooks/_shared/cron_status_nudge.py .   rc=0, 17.4 s cold
+  -> "The cron CI is RED and no open tracker row names it: full-suite
+      (`test-all-packages`) red at d31439e6, 7 commit(s) back, first red at
+      d31439e6. ..."
+  `test-agent-infra` is suppressed: WI-juzoz's description names that step at
+  d31439e6. The second call takes 1.2 s from the cache. Sourcing
+  session_start_logic.sh in OFF mode shows it as an "ALSO (separate item)".
+
+Tests (tests/test_cron_status_nudge.py, 16): parsing of the real output,
+first-red walking (stop at green, follow a red step, unknown on a failed
+lookup), suppression (open row + commit only), cache reuse and refetch, a
+corrupt cache, opt-out, swallowed failure, and wiring into every branch.
+
+Governance path (.agent/hooks/**): standing owner approval for governance
+changes through auto-pr.
+
+Addresses WI-lapof.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
