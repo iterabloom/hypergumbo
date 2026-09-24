@@ -279,3 +279,54 @@ class TestARowFileThatIsWrongIsREFUSED:
                 load_library_signatures("go")
         finally:
             load_library_signatures.cache_clear()
+
+
+#: the stdlib import path behind each package name the shipped go
+#: ``package_variables`` rows use.
+_GO_PATHS = {"http": "net/http", "net": "net"}
+
+
+class TestPackageVariables:
+    """WI-jikik: a stdlib package variable's type, read from ``package_variables``."""
+
+    def test_the_shipped_go_rows_are_loaded(self) -> None:
+        from hypergumbo_core.library_signatures import load_library_package_variables
+
+        rows = load_library_package_variables("go")
+        assert rows["http.DefaultClient"] == "http.Client"
+        assert "http.DefaultClient" not in load_library_signatures("go"), (
+            "a package variable is not a producer: it has its own section")
+
+    def test_every_shipped_type_carries_a_catalogued_method(self) -> None:
+        """The file lists only variables whose type has method rows; a row whose type
+        has none would move calls out of `external` and classify nothing."""
+        from hypergumbo_core.io_boundary import load_catalog
+        from hypergumbo_core.library_signatures import load_library_package_variables
+
+        modules = {p.module for p in load_catalog("go").primitives}
+        for var, type_name in load_library_package_variables("go").items():
+            pkg, _, name = type_name.partition(".")
+            assert pkg == var.split(".", 1)[0], (var, type_name)
+            assert f"{_GO_PATHS[pkg]}.{name}" in modules, (var, type_name)
+
+    def test_a_user_row_is_loaded_and_a_bad_section_refused(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        from hypergumbo_core.library_signatures import load_library_package_variables
+
+        d = tmp_path / "hypergumbo" / "library_signatures.d"
+        d.mkdir(parents=True)
+        (d / "go.yaml").write_text(
+            "language: go\npackage_variables:\n  inhouse.Default: inhouse.Client\n")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        load_library_package_variables.cache_clear()
+        try:
+            rows = load_library_package_variables("go")
+            assert rows["inhouse.Default"] == "inhouse.Client"
+            assert rows["http.DefaultClient"] == "http.Client", "shipped rows must survive"
+            (d / "go.yaml").write_text("language: go\npackage_variables:\n  - a list\n")
+            load_library_package_variables.cache_clear()
+            with pytest.raises(ValueError, match="'package_variables' must be a mapping"):
+                load_library_package_variables("go")
+        finally:
+            load_library_package_variables.cache_clear()

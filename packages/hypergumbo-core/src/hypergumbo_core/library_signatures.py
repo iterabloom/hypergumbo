@@ -43,15 +43,16 @@ from typing import Any
 _DIR = Path(__file__).parent / "library_signatures"
 
 
-def _rows_from(path: "Path") -> dict[str, str]:
-    """One row file, validated. A mis-keyed row never matches and raises nothing, so
-    the shape of a row is checked where it is read rather than where it is used."""
+def _rows_from(path: "Path", section: str = "signatures") -> dict[str, str]:
+    """One section of a row file, validated. A mis-keyed row never matches and raises
+    nothing, so the shape of a row is checked where it is read rather than where it
+    is used."""
     import yaml
 
     raw: Any = yaml.safe_load(path.read_text()) or {}
-    rows: Any = raw.get("signatures") or {}
+    rows: Any = raw.get(section) or {}
     if not isinstance(rows, dict):
-        raise ValueError(f"{path}: 'signatures' must be a mapping")
+        raise ValueError(f"{path}: '{section}' must be a mapping")
     out: dict[str, str] = {}
     for key, value in rows.items():
         if not isinstance(key, str) or not isinstance(value, str) or not value:
@@ -86,4 +87,26 @@ def load_library_signatures(lang: str) -> dict[str, str]:
     for user_file in user_channel_files("library_signatures"):
         if user_file.stem == lang:
             out.update(_rows_from(user_file))
+    return out
+
+
+@lru_cache(maxsize=None)
+def load_library_package_variables(lang: str) -> dict[str, str]:
+    """``<package>.<Variable>`` -> ``<its type>`` for one language, or ``{}`` (WI-jikik).
+
+    A PACKAGE VARIABLE is the other way a library hands a program a typed value,
+    besides a producer call: ``http.DefaultClient`` is an ``*http.Client`` that no
+    call returned. The return-type rows above cannot key it, because nothing is
+    called, so it has its own section (``package_variables``) of the same row file.
+    It is read the same way, and the user's channel wins in the same way.
+    """
+    from hypergumbo_core.catalogue_home import user_channel_files
+
+    out: dict[str, str] = {}
+    path = _DIR / f"{lang}.yaml"
+    if path.is_file():
+        out.update(_rows_from(path, "package_variables"))
+    for user_file in user_channel_files("library_signatures"):
+        if user_file.stem == lang:
+            out.update(_rows_from(user_file, "package_variables"))
     return out
