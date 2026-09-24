@@ -154,6 +154,9 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
+    SymbolsAt,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -1819,6 +1822,7 @@ def _get_enclosing_function(
     source: bytes,
     local_symbols: dict[str, Symbol],
     file_symbol: Optional[Symbol] = None,
+    decl_index: Optional[SymbolsAt] = None,
 ) -> Optional[Symbol]:
     """Walk up the tree to find the symbol a call at ``node`` is anchored on.
 
@@ -1857,6 +1861,16 @@ def _get_enclosing_function(
     """
     current = node.parent
     while current is not None:
+        # INV-midag: a declaration is found by its POSITION first. Go lets a file
+        # declare ``func init()`` more than once, and the name lookup anchored
+        # every earlier init's calls to the last one. Position is exact; the
+        # name paths below remain for callers without an index.
+        if decl_index is not None and current.type in (
+            "function_declaration", "method_declaration",
+        ):
+            positioned = symbol_declared_by(current, decl_index)
+            if positioned is not None:
+                return positioned
         if current.type == "function_declaration":
             name_node = find_child_by_field(current, "name")
             if name_node:
@@ -3095,6 +3109,7 @@ def _extract_edges_from_file(
     interface_method_sets: dict[str, set[tuple[str, int, int]]] | None = None,
     method_return_type_registry: dict[str, str] | None = None,
     dot_imports: list[str] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -3118,6 +3133,10 @@ def _extract_edges_from_file(
     the resolver operates on repo-relative paths (e.g., ``pkg/log``)
     instead of full module paths (e.g., ``github.com/example/trivy/pkg/log``).
     """
+    # Every declaration of this file, by position (INV-midag).
+    decl_index = symbols_at(
+        file_symbols if file_symbols is not None
+        else list({s.id: s for s in local_symbols.values()}.values()))
     if import_aliases is None:
         import_aliases = {}
     if resolver is None:
@@ -3196,6 +3215,7 @@ def _extract_edges_from_file(
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(
                 node, source, local_symbols, file_symbol=file_pseudo_symbol,
+                decl_index=decl_index,
             )
             if current_function is not None:
                 # Get var_types scoped to the current enclosing function
@@ -3921,6 +3941,7 @@ def _extract_edges_from_file(
         elif node.type == "keyed_element":
             current_function = _get_enclosing_function(
                 node, source, local_symbols, file_symbol=file_pseudo_symbol,
+                decl_index=decl_index,
             )
             if current_function is not None:
                 # Get the value part: the last literal_element child
@@ -5429,6 +5450,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             interface_method_sets=all_interface_method_sets,
             method_return_type_registry=method_return_type_registry,
             dot_imports=analysis.dot_imports,
+            file_symbols=analysis.symbols,
         )
 
         # ADR-0015 Tier 1: annotate call edges with dataflow access modes

@@ -4905,21 +4905,50 @@ def _get_enclosing_function(
         # (WI-zavad: ``const f = function () {}`` / ``function* () {}`` attribute
         # their body calls to the variable-named symbol, like arrow functions.)
         if current.type in ("arrow_function", "function_expression", "generator_function"):
-            # First, try to find a variable_declarator parent (assigned fn)
+            # First, find a variable_declarator this expression is bound under
+            # (an assigned fn, or a callback inside one), collecting the
+            # function nodes on the way.
+            path_fns = [current]
             parent = current.parent
             while parent is not None:
                 if parent.type == "variable_declarator":
-                    for child in parent.children:
-                        if child.type == "identifier":
-                            name = _node_text(child, source)
-                            if name in global_symbols:
-                                sym = global_symbols[name]
-                                if sym.path == file_path_str:
-                                    return sym
-                    break  # pragma: no cover
+                    # INV-midag: the declarator's symbol is positioned at the
+                    # OUTERMOST function node between it and the call: the
+                    # outer arrow of ``const f = (a) => g(a, (x) => h(x))``, the
+                    # callback of ``var server = make(function () {...})``, the
+                    # IIFE of ``var Typeahead = (function () {...})()``. It is
+                    # found by that POSITION. It used to be found by the
+                    # declarator's NAME in the name-keyed global registry, so a
+                    # name bound twice in a file (``var server`` in two test
+                    # blocks) or an IIFE sharing the name of the constructor it
+                    # returns resolved to the wrong function: 135 javascript and
+                    # 33 typescript call edges on a 26-repo run.
+                    if symbol_by_position:
+                        # The declarator's own symbol first: a module object
+                        # (``const logger = { info: (m) => ... }``) is a
+                        # ``variable`` positioned at the declarator, and the name
+                        # lookup credited every call inside it there.
+                        key = (file_path_str, parent.start_point[0] + 1 + line_offset, parent.start_point[1])
+                        if key in symbol_by_position:
+                            return symbol_by_position[key]
+                        for fn in reversed(path_fns):
+                            key = (file_path_str, fn.start_point[0] + 1 + line_offset, fn.start_point[1])
+                            if key in symbol_by_position:
+                                return symbol_by_position[key]
+                    else:  # pragma: no cover - every production caller passes the index
+                        for child in parent.children:
+                            if child.type == "identifier":
+                                name = _node_text(child, source)
+                                if name in global_symbols:
+                                    sym = global_symbols[name]
+                                    if sym.path == file_path_str:
+                                        return sym
+                    break
                 # Don't go too far up
                 if parent.type in ("lexical_declaration", "variable_declaration", "program"):
                     break
+                if parent.type in ("arrow_function", "function_expression", "generator_function"):
+                    path_fns.append(parent)
                 parent = parent.parent
 
             # If not assigned to variable, try position-based lookup
