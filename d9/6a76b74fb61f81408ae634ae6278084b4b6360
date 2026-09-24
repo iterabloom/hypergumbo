@@ -1,0 +1,33 @@
+Original commit body from 974228dc2692ccb0106255cad93d7ca09970309a:
+
+INV-midag's haskell row: 119 of 3,012 call edges on a 26-repo run fell outside
+their src's span, and none of those srcs shared a name with another function.
+The row said so ("a different mechanism") and left it uninvestigated.
+
+The mechanism: a haskell function is written as consecutive EQUATIONS, one per
+pattern, and each is its own `function`/`bind` node. add_symbol emits one
+symbol per NAME from the FIRST equation, so the span ended where the second
+began (xmonad's `handle`: 287-292, while its equations run to 414). The
+enclosing lookup is by name, and haskell forbids a second top-level definition
+of a name, so every call was anchored to the RIGHT function. Its span was
+simply too short. This is the one INV-midag language where the anchor was
+correct and the span was not, so the position-keyed lookup is not adopted here.
+It would miss every equation after the first.
+
+FIX: a pre-pass records each module-level name's last equation end, and a
+function symbol's span runs from its first equation to its last. Haskell
+requires a function's equations to be adjacent, so that range is exactly the
+function. `line_span` follows the span. `cyclomatic_complexity` is still
+computed over the first equation only. That predates this change, and changing
+it would move a separate measurement.
+
+MEASURED, surveys from a pinned worktree:
+  out-of-span   haskell 119 -> 0 (xmonad, hadolint); 3,012 calls checked in both
+  edge sets     every lost edge has a gained twin at the same line with the same
+                dst name (29 on xmonad, 34 on hadolint, 0 unpaired). A symbol id
+                embeds its end line, so a multi-equation function's id changes,
+                and so does every edge that names it.
+
+Addresses INV-midag.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
