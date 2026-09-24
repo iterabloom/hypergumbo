@@ -1,0 +1,33 @@
+Original commit body from 0d2cbccc170828953e6a1d03d98456256b61c1cb:
+
+The callback branch of js_ts's enclosing lookup built its position key
+without the <script> block's line_offset. Every other branch adds it. So
+in a .vue or .svelte file the key named a line `offset` lines ABOVE the
+callback. When another callback started there at the same column, the
+call was credited to it: koel's HotkeyListener.vue, the last 9
+typescript call edges outside their src's span (INV-midag). Otherwise
+the walk went on and credited the enclosing function or the file.
+
+Correction to the row: it said the callback symbols were positioned
+without the offset. They are positioned correctly. The LOOKUP is what
+lacked it, and it matched a neighbouring callback.
+
+The decision the row asked for: make .vue match .js. A callback is
+credited with its own calls in .js by design (WI-zavad, the anonymous
+callback symbols exist for exactly that). The other option, crediting
+the enclosing function in both, would undo that design for .js.
+
+A/B, analyze_javascript from a pinned dev worktree vs this tree, calls
+edges keyed by (path, dst, line):
+  koel            OUT->in 9, file->callback 279
+  chatwoot        enclosing fn->callback 7
+  podman-desktop  file->callback 78, enclosing fn->callback 11
+  workadventure   file->callback 55, enclosing fn->callback 15
+  gitlab          file->callback 2, enclosing fn->callback 115
+No edge added or lost on any repo, and no in->out move. Every move is a
+relabel into the innermost function containing the call.
+
+Also re-pins the two line citations below the edit
+(signature_axis js_ts 5358 -> 5362, module_key_axis 6547 -> 6551).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
