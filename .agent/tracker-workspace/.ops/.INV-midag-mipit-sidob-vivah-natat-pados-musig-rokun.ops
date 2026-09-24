@@ -47,3 +47,18 @@
   clock: 5  # dc21
   nonce: dc21  # dc21
   message: "STAGE 3 MERGED, PR #1178: haskell 119 -> 0 (xmonad, hadolint). A different mechanism, as the row said: the ANCHOR was right, because the lookup is by name and haskell names are unique per module, but the symbol spanned only its first equation. The span now runs to the last equation. REMAINING: javascript 135, typescript 33, then the cross-language gate."  # dc21
+- op: discuss  # b6eb
+  at: '2026-09-24T11:09:53Z'  # b6eb
+  by: agent  # b6eb
+  actor: jgstern_agent  # b6eb
+  clock: 6  # b6eb
+  nonce: b6eb  # b6eb
+  message: "STAGE 4 MERGED, PR #1180 (+ tracker #1181). STATUS: STAYS VIOLATED, on 9 typescript edges with a different cause, now tracked as WI-pizan (isbefore this item).\n\nWHERE EVERY FILED LANGUAGE STANDS, re-measured on the INV-midag repos with surveys from pinned worktrees, calls edges, analyzer origin:\n  kotlin 2014 -> 0, scala 964 -> 0, swift 273 -> 0   (#1176, position-keyed lookup)\n  c 35 -> 0, rust 5 -> 0, ruby 3 -> 0, csharp 3 -> 0 (#1177)\n  haskell 119 -> 0                                    (#1178: the SPAN was short, not the anchor)\n  javascript 135 -> 0, typescript 33 -> 9             (#1180)\n  go: a second `func init()` in one file was mis-anchored. That was invisible on gin and logrus and found by fixture. Fixed in #1180.\n  java: verified clean with an overload fixture. elixir and erlang: INV-mozas.\n\nTHE 9: all in koel's components/utils/HotkeyListener.vue. Its anonymous-callback symbols are positioned WITHOUT the .vue <script> line_offset while their calls carry it. That is WI-pizan's mechanism, not the name lookup this item is about. The title condition (\"violated in ... TS\") still holds for them, so this item is not closed.\n\nTHE GATE the row asked for: test_call_anchor_gate.py (lang-mainstream), _common and _extended1. They enumerate from source all 42 analyzer modules that define an enclosing lookup. 13 are VERIFIED against a named, executing containment test. 29 are UNVERIFIED against WI-mapor. A new analyzer with a lookup and no classification fails the gate. The UNVERIFIED half is bookkeeping, and the docstrings say so.\n\nSIDE FINDINGS FILED: WI-tisom (P2, the noise filter drops swift/C# properties); WI-pizan (P3, .vue callback offset); WI-mapor (P3, 29 unverified analyzers).\n\nNOT ASSERTED: the general statement for the 29 unverified analyzers, or for any language on repositories outside this corpus."  # b6eb
+- op: update  # 0f13
+  at: '2026-09-24T11:09:54Z'  # 0f13
+  by: agent  # 0f13
+  actor: jgstern_agent  # 0f13
+  clock: 7  # 0f13
+  nonce: 0f13  # 0f13
+  set:  # 0f13
+    pr_ref: '1180'  # 0f13

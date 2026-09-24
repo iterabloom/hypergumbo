@@ -27,3 +27,12 @@
   clock: 2  # 4fa8
   nonce: 4fa8  # 4fa8
   message: "Instance, measured 2026-09-24 after INV-midag's js fix: 9 typescript call edges in koel's components/utils/HotkeyListener.vue remain out of span. The anonymous callback symbols (_cb_onKeyStroke) are positioned WITHOUT the .vue <script> line_offset (e.g. span 40-40), while their calls carry it (lines 44-46, 60-61). Same offset inconsistency, on the symbol-creation side. These 9 are the only typescript out-of-span edges left on the corpus: 33 -> 9 after INV-midag."  # 4fa8
+- op: update  # d1cd
+  at: '2026-09-24T11:09:53Z'  # d1cd
+  by: agent  # d1cd
+  actor: jgstern_agent  # d1cd
+  clock: 3  # d1cd
+  nonce: d1cd  # d1cd
+  set: {}  # d1cd
+  add:  # d1cd
+    isbefore: [INV-midag-mipit-sidob-vivah-natat-pados-musig-rokun]  # d1cd
