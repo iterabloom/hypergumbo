@@ -1,0 +1,13 @@
+Original commit body from 73f8cb6bd27514b2854c9455c5772c29a50de5fc:
+
+CI's changed-file coverage found two paths the stage-4 tests never reached:
+- js_ts: a declarator with no symbol of its own and no symbol on the path. A
+  LOCAL object literal inside a function, whose arrow has no symbol, falls
+  through to the function that contains it.
+- go: the qualified-name method path, now reached only by callers that pass
+  no position index, such as the route extractor. Pinned on one method name
+  across two receiver types.
+
+Addresses INV-midag.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
