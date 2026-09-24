@@ -20,3 +20,10 @@
     pr_ref:  # 52a9
     description: "FOUND 2026-09-24 while fixing INV-midag's javascript/typescript lookup, and deliberately NOT fixed there.\n\njs_ts.py _get_enclosing_function has an arrow/function-expression tail branch: \"not assigned to a variable, try position-based lookup\". It builds its key as (str(file_path), start_line, start_col) WITHOUT `line_offset`. Every other branch of the same function adds it: function declarations, methods, and since INV-midag the declarator branch. `line_offset` is how a `.vue` single-file component's `<script>` block is positioned. So in `.vue` files a callback's own symbol (the `_cb_*` symbols from WI-zavad) is NEVER found by that branch. The walk continues up, and the call is credited to the enclosing named function, while in a `.js` / `.ts` file the same shape is credited to the callback.\n\nWHY IT WAS NOT FIXED WITH INV-midag: adding the offset moves attribution for every `.vue` callback, from the enclosing function to the callback symbol. Both contain the call, so INV-midag's containment statement holds either way. It is a RELABEL at scale: a first cut of INV-midag's js fix that also resolved callbacks innermost-first moved 831 in-span srcs on koel alone. It needs its own A/B and its own decision on which attribution is wanted. Make .vue match .js, or make both credit the enclosing function."  # 52a9
     fields: {}  # 52a9
+- op: discuss  # 4fa8
+  at: '2026-09-24T10:29:46Z'  # 4fa8
+  by: agent  # 4fa8
+  actor: jgstern_agent  # 4fa8
+  clock: 2  # 4fa8
+  nonce: 4fa8  # 4fa8
+  message: "Instance, measured 2026-09-24 after INV-midag's js fix: 9 typescript call edges in koel's components/utils/HotkeyListener.vue remain out of span. The anonymous callback symbols (_cb_onKeyStroke) are positioned WITHOUT the .vue <script> line_offset (e.g. span 40-40), while their calls carry it (lines 44-46, 60-61). Same offset inconsistency, on the symbol-creation side. These 9 are the only typescript out-of-span edges left on the corpus: 33 -> 9 after INV-midag."  # 4fa8
