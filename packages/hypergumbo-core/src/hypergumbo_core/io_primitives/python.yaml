@@ -335,6 +335,9 @@ fs_read:
       module-filter path (untyped receivers stay suppressed by ambiguous_names).
 
 fs_write:
+  - module: urllib.request
+    functions: [urlcleanup]
+    notes: "WI-bakik: deletes the temporary files urlretrieve created (os.unlink)."
   # 2026-09-06 WI-dupok (see the fs_read block for the method).
   - module: codecs
     functions: [open]
@@ -565,16 +568,15 @@ net_send:
   - module: http.client.HTTPSConnection
     methods: [request, putrequest, endheaders, send]
   - module: urllib.request
-    functions: [urlopen, Request, urlretrieve]
+    functions: [urlopen, urlretrieve, ftpwrapper]
     notes: >-
-      `Request` builds a request object and sends nothing; `urlopen(req)` is the
-      send. The row is WRONG and KEPT (INV-gujoh). Removing it leaves the
-      `Request(...)` call unclassified in a module whose I/O surface is not
-      enumerated (module_completeness), and the coverage gate then withholds every
-      clean verdict for a program that builds one. Measured: all 18 of
-      hypergumbo's own self-claims went inconclusive, because hypergumbo_tracker
-      builds a Request. Remove it together with enumerating urllib.request
-      (WI-bakik), not before.
+      `ftpwrapper(user, passwd, host, port, dirs)` connects and logs in AT
+      CONSTRUCTION (its __init__ calls self.init(), which sends USER/PASS).
+      `Request` is NOT here: it builds a request object and sends nothing, and
+      `urlopen(req)` is the send (INV-gujoh). It carried this row until
+      urllib.request's surface was enumerated (module_completeness, WI-bakik),
+      because an unrowed call into an unenumerated module withholds every clean
+      verdict.
   - module: smtplib.SMTP
     methods: [sendmail, send_message]
   - module: xmlrpc.client.ServerProxy
@@ -609,6 +611,9 @@ net_recv:
   - module: socket
     functions: [gethostbyname, gethostbyname_ex, gethostbyaddr, getaddrinfo, getnameinfo, getfqdn]
     notes: "DNS resolution -- queries a name server and returns the answer it chose. getfqdn calls gethostbyaddr; getnameinfo is the reverse direction. gethostname is NOT here: it reads the local hostname from the kernel and sits under host_info_read."
+  - module: urllib.request
+    functions: [localhost, thishost]
+    notes: "WI-bakik: socket.gethostbyname('localhost') and gethostbyname_ex(socket.gethostname()) -- the same DNS query as the socket rows above, through urllib's cached helpers."
   - module: socket.socket
     methods: [recv, recvfrom, recv_into, recvmsg, accept]
   - module: ssl.SSLSocket
@@ -950,6 +955,15 @@ subprocess:
     notes: "Unix only"
 
 env_read:
+  - module: urllib.request
+    functions: [getproxies, getproxies_environment, proxy_bypass, proxy_bypass_environment, ProxyHandler, build_opener, URLopener, FancyURLopener]
+    notes: >-
+      WI-bakik. Each reads the *_proxy / no_proxy environment variables:
+      getproxies* directly, proxy_bypass* for no_proxy, ProxyHandler() when
+      `proxies` is None (the default), build_opener() because it always adds a
+      default ProxyHandler, and the deprecated URLopener / FancyURLopener in
+      __init__. A ProxyHandler given an explicit mapping reads nothing; the row
+      cannot see the argument and over-approximates that one call shape.
   - module: sysconfig
     functions: [get_platform]
     notes: "2026-09-06 WI-dupok: reads os.environ (MACOSX_DEPLOYMENT_TARGET and friends)."
@@ -1524,6 +1538,24 @@ module_completeness:
       Pure string work. Declared on its own line precisely because exact
       matching means this says NOTHING about urllib.request, which opens
       URLs - the worked counterexample in module_io_is_enumerated.
+  - module: urllib.request
+    completeness: complete
+    retrieved: "2026-09-24"
+    notes: >-
+      WI-bakik. The 46 own public callables (python 3.12, introspected; see
+      docs/surveys/python-stdlib-module-io-enumeration.md). ROWED: urlopen,
+      urlretrieve, ftpwrapper (net_send); localhost, thishost (net_recv, DNS);
+      getproxies, getproxies_environment, proxy_bypass,
+      proxy_bypass_environment, ProxyHandler, build_opener, URLopener,
+      FancyURLopener (env_read); urlcleanup (fs_write). NO I/O ON CALL:
+      Request, OpenerDirector, install_opener (sets a global), the other 22
+      handler and password-manager classes (their constructors store
+      arguments), url2pathname, pathname2url, parse_http_list,
+      parse_keqv_list, request_host, noheaders, ftperrors. urlretrieve also
+      writes a local file; it carries its net_send row, not a second one.
+      This entry covers the urllib.request SLOT only. An instance's methods
+      live at their own slots (urllib.request.OpenerDirector.open sends and
+      carries no row yet), which this entry does not reach or claim.
   - module: difflib
     completeness: complete
     retrieved: "2026-08-15"
@@ -1935,7 +1967,7 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-15"
     notes: >-
-      Namespace package - nothing is addressable at this slot; urllib.request stays refused, urllib.parse carries its own entry.
+      Namespace package - nothing is addressable at this slot; urllib.request and urllib.parse each carry their own entry.
   - module: file
     completeness: complete
     retrieved: "2026-08-15"

@@ -244,3 +244,49 @@ so the omission is a decision and not an oversight.
 **Why not refuse, as `importlib` was refused.** A refusal is affordable when
 the module is one dependency among many; it is not affordable for the module
 that every Python call site names. Refusing `builtins` is refusing Python.
+
+## Addendum 2026-09-24 — `urllib.request` (WI-bakik)
+
+`urllib.request` was refused above as "the network surface" and stayed
+unenumerated. That kept a WRONG row alive. `Request` builds a request object and
+sends nothing, and `urlopen(req)` is the send (INV-gujoh). But deleting the
+`Request` net_send row turned every `Request(...)` into an unclassified call
+into an unenumerated module, and the coverage gate then withheld the clean
+verdict. All 18 self-claims went `inconclusive`, because hypergumbo's tracker
+sync builds a `Request`. So the module was enumerated first, and only then was
+the row deleted.
+
+**The probe above, run on the module's 46 own public callables** (3.12; 28
+classes, 18 functions), then each hit read by hand. A class is judged by its
+`__init__`, because the call site is the construction:
+
+| callable | boundary | why |
+|---|---|---|
+| `urlopen`, `urlretrieve` | net_send | already rowed. `urlretrieve` also writes a local file; it keeps its one row |
+| `ftpwrapper` | net_send | **new**. `__init__` calls `self.init()`, which connects and sends USER/PASS |
+| `localhost`, `thishost` | net_recv | **new**. `gethostbyname` / `gethostbyname_ex`: the DNS rule, WI-dozul |
+| `getproxies`, `getproxies_environment` | env_read | **new**. Read `*_proxy` from `os.environ` |
+| `proxy_bypass`, `proxy_bypass_environment` | env_read | **new**. Read `no_proxy` |
+| `ProxyHandler` | env_read | **new**. `proxies=None` (the default) calls `getproxies()` |
+| `build_opener` | env_read | **new**. It always adds a default `ProxyHandler()` |
+| `URLopener`, `FancyURLopener` | env_read | **new**. `__init__` calls `getproxies()`; both are deprecated |
+| `urlcleanup` | fs_write | **new**. Unlinks `urlretrieve`'s temporary files |
+| `Request` | none | builds a value. **Its net_send row is DELETED** |
+| `OpenerDirector`, `install_opener` | none | a container, and a global assignment |
+| the other 22 handler / password-manager classes | none | their `__init__`s store arguments |
+| `url2pathname`, `pathname2url`, `parse_http_list`, `parse_keqv_list`, `request_host`, `noheaders`, `ftperrors` | none | string work, or they return an object |
+
+**What the grant does not cover.** Matching is exact. This covers the
+`urllib.request` slot, which is where module functions and constructors are
+called. An instance's methods live at their own slots:
+`urllib.request.OpenerDirector.open` sends and carries NO row. That slot is not
+declared complete, and this entry does not claim it.
+
+**Measured.** `scripts/check-self-claims --minimal` with `Request` deleted and
+the module declared: 18 claims unchanged (`confirmed_with_caveats`). A
+finding-level A/B (ADR-0049 Ruling 3) on fixtures:
+- `Request(url, data=secret)` -> `urlopen(req)` stays `violated`. Its evidence
+  moves from `Request` to `urlopen` and becomes ddg-`confirmed` there.
+- A proxy mapping from `getproxies()` sent with `urlopen` goes `inconclusive` ->
+  `violated`, the new source reaching the network.
+The cohort results are on WI-bakik.
