@@ -1,0 +1,20 @@
+- op: create  # c595
+  at: '2026-09-24T19:17:36Z'  # c595
+  by: agent  # c595
+  actor: jgstern_agent  # c595
+  clock: 1  # c595
+  nonce: c595  # c595
+  data:  # c595
+    kind: work_item  # c595
+    title: "scheme/fennel/janet: a call inside a nested definition emits no calls edge"  # c595
+    status: todo_hard  # c595
+    priority: 3  # c595
+    parent:  # c595
+    tags:  # c595
+    - analysis_quality  # c595
+    isbefore: []  # c595
+    duplicate_of: []  # c595
+    not_duplicate_of: []  # c595
+    pr_ref:  # c595
+    description: "FOUND 2026-09-24 while writing WI-mapor's fixtures. Scheme, fennel and janet emit NO calls edge for a call inside a nested definition.\n\nFixture (each language's own spelling): `(define (outer1) (define (inner) (one)) (inner))`. On dev, the calls at the nested definitions' bodies are absent: no edge at all, so reach fails, and WI-mapor had to fall back to a top-level redefinition to reach anything. The top-level shape anchors correctly (verified, pinned in the gate files).\n\nNOT INVESTIGATED: whether the nested definition gets no symbol, or its calls are dropped because the enclosing lookup finds no symbol for it and returns None. Both would lose the call. The outer function's calls to `(inner)` may be missing too.\n\nASKED: find which. If the nested definition has no symbol, a call inside it should still go to the outermost function that contains it, which is the rule js_ts and elixir already use. Assert reach on the nested fixture in each of the three languages."  # c595
+    fields: {}  # c595
