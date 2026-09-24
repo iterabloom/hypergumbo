@@ -1,0 +1,49 @@
+Original commit body from 57aa8439d306619e798050e58ad90900c17ac4d3:
+
+Stage 2 of INV-midag, the same rule as #1176 (kotlin, scala, swift): the
+enclosing declaration is found by its POSITION, via core `symbols_at` /
+`symbol_declared_by`, never by its name.
+
+- c: an `#ifdef`/`#else` pair defines one name twice in a file (tmux's
+  compat/closefrom.c). CAnalyzer overrides `analyze()` and NEVER set
+  `_current_file_symbols`, so `file_symbols()` fell back to the name-keyed
+  dict. Once the lookup was by position, that dropped the other alternative's
+  calls entirely; the fixture's reach assertion caught it. It is now set like
+  the base loop. It was the only override of analyze() that skipped it.
+- rust: already had a span index, built from `global_symbols`, which is keyed
+  by QUALIFIED name. Three `impl From<_> for AardvarkError` blocks share
+  `AardvarkError::from`, so two vanished from it. The index is now fed from
+  the per-file list.
+- ruby: a method defined twice (a reopened class; postal's
+  MessageInspection#scan).
+- csharp: one leaf name in two classes (livebook's ElixirKit.cs API.Stop /
+  Release.Stop).
+Each symbol span was checked to start at the node the walk reaches. Tests are
+production-path and reach-first, and each was red on dev.
+
+MEASURED, surveys from a pinned worktree, calls edge sets diffed:
+  tmux     c      35 src moved, all out -> in; gained 6, lost 0
+  just     rust    5 src moved, all out -> in; gained 3, lost 0
+  postal   ruby    3 src moved, all out -> in; gained 4, lost 0
+  livebook csharp  3 src moved, all out -> in; gained 4, lost 0
+  jedis    (7 c calls) identical
+These are exactly the INV-midag table's counts for these languages. Gains are
+calls that were merged into the wrong function's edge.
+
+Recorded aardvark-dns fixture: the same fix re-anchors 3 calls in its
+`From` impls (dev: 3 out of span, now 0). Two more IOError constructions gain
+their SCIP twin (twins 130 -> 132, twins_references_calls 9 -> 11), and one
+edge stops being merged (resolved calls rust-only 18 -> 19). Re-pinned, and
+audit 0019 regenerated: only that row and the date moved.
+
+Line pins re-derived by anchor: signature_axis csharp.py 442->445,
+1650->1651.
+
+Remaining for INV-midag: haskell 119 (a multi-equation function's span covers
+only its first equation, so the anchor is right and the SPAN is short),
+javascript 135 and typescript 33 (prototype methods and callbacks), and the
+cross-language gate.
+
+Addresses INV-midag.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
