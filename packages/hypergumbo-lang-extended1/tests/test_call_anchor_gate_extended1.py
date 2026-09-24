@@ -4,7 +4,8 @@ call's enclosing function is classified, so none can drift silently.
 
 The same gate as hypergumbo-lang-mainstream's test_call_anchor_gate.py; see its
 docstring for the statement and the mechanism. It enumerates every module in
-this package that DEFINES an enclosing-function lookup. Each must be VERIFIED
+this package that DEFINES an enclosing-function lookup or emits a ``calls``
+edge. Each must be VERIFIED
 (named containment test, which runs the analyzer on a same-named-declarations
 fixture) or UNVERIFIED (the residual row). The UNVERIFIED half is bookkeeping,
 not a check: it records that nobody has looked, so a new analyzer cannot arrive
@@ -18,6 +19,9 @@ from pathlib import Path
 
 _SRC = Path(__file__).resolve().parents[1] / "src" / "hypergumbo_lang_extended1"
 _LOOKUP = re.compile(r"^def _(?:get|find)_enclosing_(?:function|method|callable)\w*\(", re.M)
+#: A module that emits a ``calls`` edge anchors it somewhere, whatever its lookup
+#: is called. The name pattern alone missed 25 such modules (WI-tosum).
+_CALLS = re.compile(r"""edge_type=["']calls["']""")
 
 #: module -> ("verified", "test_module::test_name") | ("unverified", row id)
 CLASSIFIED: dict[str, tuple[str, str]] = {
@@ -33,11 +37,32 @@ CLASSIFIED: dict[str, tuple[str, str]] = {
     "pascal": ("verified", "test_call_anchor_gate_extended1::test_pascal_same_named_callables"),
     "solidity": ("verified", "test_call_anchor_gate_extended1::test_solidity_same_named_callables"),
     "v_lang": ("verified", "test_call_anchor_gate_extended1::test_v_lang_same_named_callables"),
+    "ada": ("unverified", "WI-tosum"),
+    "apex": ("unverified", "WI-tosum"),
+    "asm": ("unverified", "WI-tosum"),
+    "circom": ("unverified", "WI-tosum"),
+    "cobol": ("unverified", "WI-tosum"),
+    "haxe": ("unverified", "WI-tosum"),
+    "jsonnet": ("unverified", "WI-tosum"),
+    "luau": ("unverified", "WI-tosum"),
+    "nim": ("unverified", "WI-tosum"),
+    "pony": ("unverified", "WI-tosum"),
+    "tcl": ("unverified", "WI-tosum"),
+    "wolfram": ("unverified", "WI-tosum"),
+    "zig": ("unverified", "WI-tosum"),
 }
 
 
 def _modules_with_a_lookup() -> set[str]:
-    return {p.stem for p in _SRC.glob("*.py") if _LOOKUP.search(p.read_text(encoding="utf-8"))}
+    """Every module that defines an enclosing lookup by the conventional name, or
+    emits a ``calls`` edge. A literal ``edge_type="calls"`` is what the second
+    pattern sees; a module that spells the type through a variable is not seen."""
+    found = set()
+    for p in _SRC.glob("*.py"):
+        text = p.read_text(encoding="utf-8")
+        if _LOOKUP.search(text) or _CALLS.search(text):
+            found.add(p.stem)
+    return found
 
 
 def test_every_enclosing_lookup_is_classified() -> None:
