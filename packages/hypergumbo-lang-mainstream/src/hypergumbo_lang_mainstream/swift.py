@@ -79,6 +79,9 @@ from hypergumbo_core.analyze.base import (
     make_typed_stable_id,
     make_unresolved_edge,
     node_text,
+    symbol_declared_by,
+    symbols_at,
+    SymbolsAt,
     visibility_from_modifiers,
 )
 from hypergumbo_core.paths import normalize_path
@@ -323,44 +326,28 @@ def _make_swift_qualified_name(
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function, computed property, or subscript."""
+    """The function, computed property or subscript whose declaration contains
+    ``node``.
+
+    Keyed by the declaration's POSITION, not its name (INV-midag). The key was
+    the qualified name, which every overload of a method shares: Alamofire's
+    ``Session.webSocketRequest``, ``HTTPHeaders.add`` and
+    ``DataRequest.serializingResponse``. So 261 of 8,343 swift call edges on a
+    26-repo run were anchored to an overload that does not contain the call.
+    A declaration with no symbol is walked past.
+    """
     current = node.parent
     while current is not None:
-        if current.type == "function_declaration":
-            name_node = _find_child_by_field(current, "name")
-            if not name_node:  # pragma: no cover - defensive fallback
-                name_node = find_child_by_type(current, "simple_identifier")
-            if name_node:
-                func_name = node_text(name_node, source)
-                # Try qualified name first (methods are only registered qualified)
-                enclosing = _get_enclosing_type(current, source)
-                qualified = f"{enclosing}.{func_name}" if enclosing else func_name
-                if qualified in local_symbols:
-                    return local_symbols[qualified]
-                # Fallback: bare name for top-level functions
-                if func_name in local_symbols:  # pragma: no cover - qualified handles this
-                    return local_symbols[func_name]
-        elif current.type == "property_declaration" and find_child_by_type(current, "computed_property"):
-            # Computed property — look up by qualified name
-            pat = find_child_by_type(current, "pattern")
-            if pat:
-                id_node = find_child_by_type(pat, "simple_identifier")
-                if id_node:
-                    prop_name = node_text(id_node, source)
-                    enclosing = _get_enclosing_type(current, source)
-                    qualified = f"{enclosing}.{prop_name}" if enclosing else prop_name
-                    if qualified in local_symbols:
-                        return local_symbols[qualified]
-        elif current.type == "subscript_declaration":
-            # Subscript — look up by qualified subscript name
-            sub_name = _subscript_name(current, source)
-            if sub_name:
-                enclosing = _get_enclosing_type(current, source)
-                qualified = f"{enclosing}.{sub_name}" if enclosing else sub_name
-                if qualified in local_symbols:
-                    return local_symbols[qualified]
+        if (
+            current.type in ("function_declaration", "subscript_declaration")
+            or (current.type == "property_declaration"
+                and find_child_by_type(current, "computed_property"))
+        ):
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -1493,6 +1480,7 @@ def _extract_edges_from_file(
     method_return_type_registry: dict[str, str] | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
     arg_label_sets: dict[str, list[tuple[str | None, ...]]] | None = None,
+    file_symbols: "list[Symbol] | None" = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1505,6 +1493,11 @@ def _extract_edges_from_file(
     a type's method that no scope or file-level declaration types, through
     the enclosing type and its base classes.
     """
+    # Every declaration of this file, by position (INV-midag): ``local_symbols``
+    # keeps ONE symbol per qualified name, and overloads share one.
+    decl_index = symbols_at(
+        file_symbols if file_symbols is not None
+        else list({s.id: s for s in local_symbols.values()}.values()))
     if method_return_type_registry is None:
         method_return_type_registry = {}
     if arg_label_sets is None:
@@ -1677,7 +1670,7 @@ def _extract_edges_from_file(
                 ))
 
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, local_symbols)
+            current_function = _get_enclosing_function(node, source, decl_index)
             if current_function is not None:
                 # INV-fahub Site-1: enclosing type short name for a bare /
                 # implicit-``self`` call, so a deferred bare→method call can be
@@ -1916,7 +1909,7 @@ def _extract_edges_from_file(
                         target = lookup.symbol
                 if target is not None and target.kind in ("function", "method"):
                     current_function = _get_enclosing_function(
-                        node, source, local_symbols,
+                        node, source, decl_index,
                     )
                     if current_function is not None and target.id != current_function.id:
                         edges.append(Edge.create(
@@ -1947,7 +1940,7 @@ def _extract_edges_from_file(
                             target = lookup.symbol
                     if target is not None and target.kind in ("function", "method"):
                         current_function = _get_enclosing_function(
-                            node, source, local_symbols,
+                            node, source, decl_index,
                         )
                         if (
                             current_function is not None
@@ -2526,6 +2519,7 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
             method_return_type_registry=self._method_return_type_registry,
             arg_label_sets=self._arg_label_sets,
             field_type_registry=self._field_type_registry,
+            file_symbols=self.file_symbols(local_symbols),
         )
 
     def extract_usage_contexts_from_file(

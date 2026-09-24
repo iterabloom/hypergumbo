@@ -66,7 +66,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
@@ -82,6 +82,9 @@ from hypergumbo_core.analyze.base import (
     make_route_symbol,
     make_symbol_id,
     node_text,
+    symbol_declared_by,
+    SymbolsAt,
+    symbols_at as index_symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -451,18 +454,6 @@ def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]
 
 _DEF_KEYWORDS = ("def", "defp", "defmacro", "defmacrop")
 
-#: A def clause's symbol, keyed by where its declaration starts.
-SymbolsAt = dict[tuple[int, int], Symbol]
-
-
-def _symbols_at(symbols: Iterable[Symbol], file_path: str) -> SymbolsAt:
-    """Index this file's symbols by (start_line, start_col) of their node."""
-    return {
-        (s.span.start_line, s.span.start_col): s
-        for s in symbols if s.path == file_path and s.span is not None
-    }
-
-
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
@@ -489,9 +480,7 @@ def _get_enclosing_function(
         if current.type == "call":
             target = find_child_by_type(current, "identifier")
             if target and node_text(target, source) in _DEF_KEYWORDS:
-                sym = symbols_at.get(
-                    (current.start_point[0] + 1, current.start_point[1]),
-                )
+                sym = symbol_declared_by(current, symbols_at)
                 if sym is not None:
                     return sym
         current = current.parent
@@ -1287,7 +1276,7 @@ def _extract_edges_from_tree(
     # Every clause of this file, by position. ``file_symbols`` is the whole
     # list (TreeSitterAnalyzer.file_symbols); without it -- a direct call --
     # the name-keyed dict plus the clause index is the best available.
-    symbols_at = _symbols_at(
+    symbols_at = index_symbols_at(
         file_symbols if file_symbols is not None else
         [*local_symbols.values(),
          *(s for syms in (local_symbols_multi or {}).values() for s in syms)],
