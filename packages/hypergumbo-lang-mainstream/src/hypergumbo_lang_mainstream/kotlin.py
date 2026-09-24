@@ -93,6 +93,8 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     KOTLIN_SHADOWED_JAVA_LANG,
+    imported_elsewhere,
+    kotlin_import_path,
     static_owner_module,
 )
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -1263,6 +1265,38 @@ def _extract_symbols_from_file(
     return analysis
 
 
+def _kt_import_target(
+    sym: Symbol,
+    imported: str | None,
+    member: str | None,
+    project_by_qualified: dict[str, Symbol],
+) -> Symbol | None:
+    """The project symbol a call binds to, given the file's explicit import
+    (WI-tipoh), or ``None`` to withhold.
+
+    ``sym`` is what the name-keyed resolver returned. It stands when the import
+    does not contradict it. When the import names a different path, the call
+    binds to the project symbol at THAT path (``<import>.<member>`` for a call
+    on an imported type), and to nothing when the project has none. The
+    resolver keeps one symbol per name, so on detekt ``import
+    dev.detekt.test.assertj.assertThat`` had been bound to a compiler-plugin
+    helper of the same name.
+    """
+    if not imported_elsewhere(sym.qualified_name, imported):
+        return sym
+    assert imported is not None  # imported_elsewhere is False without one
+    path = kotlin_import_path(imported)
+    return project_by_qualified.get(f"{path}.{member}" if member else path)
+
+
+def _kt_names_project_path(imported: str | None, project_by_qualified: dict[str, Symbol]) -> bool:
+    """Whether an import names a symbol the project declares, or a member of one."""
+    if not imported:
+        return False
+    parts = kotlin_import_path(imported).split(".")
+    return any(".".join(parts[:i]) in project_by_qualified for i in range(len(parts), 0, -1))
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -1274,6 +1308,7 @@ def _extract_edges_from_file(
     method_resolver: ListNameResolver | None = None,
     extension_index: dict[str, list[Symbol]] | None = None,
     file_symbols: list[Symbol] | None = None,
+    project_by_qualified: dict[str, Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1281,7 +1316,13 @@ def _extract_edges_from_file(
     - Simple function calls: helper()
     - Navigation calls: Object.method(), instance.method()
     - Type inference from constructor assignments: val x = ClassName()
+
+    ``project_by_qualified`` maps every project symbol's qualified name to it. An
+    explicit import binds a call to the symbol at the imported path, which may
+    not be the one the name-keyed resolver returns (WI-tipoh).
     """
+    if project_by_qualified is None:
+        project_by_qualified = {}
     if resolver is None:
         resolver = NameResolver(global_symbols)
     if extension_index is None:
@@ -1471,13 +1512,16 @@ def _extract_edges_from_file(
                                 lookup_result = resolver.lookup(
                                     candidate, path_hint=import_hint, caller_path=_caller_path,
                                 )
-                                if (
-                                    lookup_result.found
-                                    and lookup_result.symbol is not None
-                                ):
+                                _target = (
+                                    _kt_import_target(lookup_result.symbol, import_hint,
+                                                      method_name, project_by_qualified)
+                                    if lookup_result.found and lookup_result.symbol is not None
+                                    else None
+                                )
+                                if _target is not None:
                                     edges.append(Edge.create(
                                         src=current_function.id,
-                                        dst=lookup_result.symbol.id,
+                                        dst=_target.id,
                                         edge_type="calls",
                                         line=node.start_point[0] + 1,
                                         confidence=0.85
@@ -1512,10 +1556,16 @@ def _extract_edges_from_file(
                             # Use import path as hint for disambiguation
                             import_hint = imports.get(receiver_name)
                             lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
-                            if lookup_result.found and lookup_result.symbol is not None:
+                            _target = (
+                                _kt_import_target(lookup_result.symbol, import_hint,
+                                                  method_name, project_by_qualified)
+                                if lookup_result.found and lookup_result.symbol is not None
+                                else None
+                            )
+                            if _target is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=lookup_result.symbol.id,
+                                    dst=_target.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     confidence=0.95 * lookup_result.confidence,
@@ -1524,7 +1574,7 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call_static",
                                 ))
                                 edge_added = True
-                                resolved_nav_sym = lookup_result.symbol
+                                resolved_nav_sym = _target
 
                         # Case 3: instance.method() - use type inference
                         elif receiver_name in var_types:
@@ -1533,10 +1583,16 @@ def _extract_edges_from_file(
                             # Use import path of the type as hint for disambiguation
                             import_hint = imports.get(type_class_name)
                             lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
-                            if lookup_result.found and lookup_result.symbol is not None:
+                            _target = (
+                                _kt_import_target(lookup_result.symbol, import_hint,
+                                                  method_name, project_by_qualified)
+                                if lookup_result.found and lookup_result.symbol is not None
+                                else None
+                            )
+                            if _target is not None:
                                 edges.append(Edge.create(
                                     src=current_function.id,
-                                    dst=lookup_result.symbol.id,
+                                    dst=_target.id,
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     confidence=0.85 * lookup_result.confidence,
@@ -1545,7 +1601,7 @@ def _extract_edges_from_file(
                                     evidence_type="ast_call_type_inferred",
                                 ))
                                 edge_added = True
-                                resolved_nav_sym = lookup_result.symbol
+                                resolved_nav_sym = _target
 
                         # Case 3b (WI-visaz → WI-lodij): ``receiver.extFn()``
                         # where ``extFn`` is a Kotlin extension function whose
@@ -1631,7 +1687,12 @@ def _extract_edges_from_file(
                             # symbol (the resolver suffix-matches a BARE name only),
                             # so this historical fallback resolves nothing in
                             # practice; kept for a receiver spelled like a class.
-                            if lookup_result.found and lookup_result.symbol is not None:  # pragma: no cover
+                            # It DOES exact-match ``Type.method`` when Case 2
+                            # withheld an object call for its import (WI-tipoh),
+                            # so the import is checked here too.
+                            if lookup_result.found and lookup_result.symbol is not None and not imported_elsewhere(  # pragma: no cover
+                                lookup_result.symbol.qualified_name, import_hint,
+                            ):  # WI-tipoh: Case 2 re-targets; this only refuses
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=lookup_result.symbol.id,
@@ -1677,7 +1738,22 @@ def _extract_edges_from_file(
                                 else static_owner_module(
                                     receiver_name, imports,
                                     shadowed=KOTLIN_SHADOWED_JAVA_LANG,
-                                    is_project_type=receiver_name in class_symbols,
+                                    # WI-tipoh: an explicit import of a path
+                                    # OUTSIDE the project outranks a same-named
+                                    # project type. An import of a project path
+                                    # keeps the placeholder the Tier-2 linkers
+                                    # resolve from (WI-kilap).
+                                    is_project_type=(
+                                        receiver_name in class_symbols
+                                        and (
+                                            not imported_elsewhere(
+                                                class_symbols[receiver_name].qualified_name,
+                                                imports.get(receiver_name),
+                                            )
+                                            or _kt_names_project_path(
+                                                imports.get(receiver_name), project_by_qualified)
+                                        )
+                                    ),
                                 )
                             )
                             edges.append(make_unresolved_edge(
@@ -1721,10 +1797,18 @@ def _extract_edges_from_file(
                     else:
                         import_hint = imports.get(callee_name)
                         lookup_result = resolver.lookup(callee_name, path_hint=import_hint, caller_path=_caller_path)
-                        if lookup_result.found and lookup_result.symbol is not None:
+                        # WI-tipoh: the file's explicit import outranks a
+                        # same-named project symbol in another package.
+                        _target = (
+                            _kt_import_target(lookup_result.symbol, import_hint, None,
+                                              project_by_qualified)
+                            if lookup_result.found and lookup_result.symbol is not None
+                            else None
+                        )
+                        if _target is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
-                                dst=lookup_result.symbol.id,
+                                dst=_target.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
@@ -1733,7 +1817,7 @@ def _extract_edges_from_file(
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "function"},
                             ))
-                            resolved_simple_sym = lookup_result.symbol
+                            resolved_simple_sym = _target
                         else:
                             edges.append(make_unresolved_edge(
                                 "kotlin", current_function.id, callee_name,
@@ -2187,6 +2271,15 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
         all_symbols: list[Symbol] = []
         all_edges: list[Edge] = []
 
+        # WI-tipoh: every project symbol by qualified name, from EVERY file.
+        # ``global_symbols`` keeps one symbol per name, which is how an import
+        # came to bind a same-named symbol at another path.
+        project_by_qualified: dict[str, Symbol] = {}
+        for analysis in file_analyses.values():
+            for sym in analysis.symbols:
+                if sym.qualified_name:
+                    project_by_qualified.setdefault(sym.qualified_name, sym)
+
         for kt_file, analysis in file_analyses.items():
             all_symbols.extend(analysis.symbols)
 
@@ -2194,6 +2287,7 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
                 kt_file, parser, analysis.symbol_by_name, global_symbols,
                 analysis.imports, run, resolver, method_resolver=method_resolver,
                 extension_index=extension_index, file_symbols=analysis.symbols,
+                project_by_qualified=project_by_qualified,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             try:
