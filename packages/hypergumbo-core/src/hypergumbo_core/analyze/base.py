@@ -1215,6 +1215,41 @@ def assemble_stable_id(
     return _short_sha256(sig)
 
 
+#: A declaration's symbol, keyed by where its declaration node starts.
+SymbolsAt = Dict[tuple[int, int], Symbol]
+
+
+def symbols_at(symbols: "Sequence[Symbol]", file_path: Optional[str] = None) -> SymbolsAt:
+    """Index symbols by the ``(start_line, start_col)`` of the node declaring them.
+
+    THE RULE (INV-mozas, INV-midag): an enclosing symbol is found by the
+    declaration's POSITION, never its name. A walk up from a call reaches the
+    declaration node that contains it, and that node IS the symbol's node, so
+    its start position identifies the symbol exactly. A name does not: two
+    methods ``parse`` in two classes of one file, an Erlang ``-ifdef``/``-else``
+    pair, an Elixir clause per arity or a C ``#ifdef`` alternative all share one,
+    and every name-keyed lookup returned whichever registered last. On a pinned
+    26-repo run that anchored 2,014 kotlin and 964 scala call edges to a function
+    that does not contain them.
+
+    It works only where the symbol's span starts at the declaration node the walk
+    reaches. Each analyzer adopting it verifies that for its own grammar, since
+    a symbol spanning from its annotations would start earlier than the node.
+    ``file_path`` filters a repo-wide list down to one file.
+    """
+    return {
+        (s.span.start_line, s.span.start_col): s
+        for s in symbols
+        if s.span is not None and (file_path is None or s.path == file_path)
+    }
+
+
+def symbol_declared_by(node: Any, index: SymbolsAt) -> Optional[Symbol]:
+    """The symbol whose declaration node is ``node``, or None when it has none
+    (a local function the analyzer does not emit, a ``quote``-d def)."""
+    return index.get((node.start_point[0] + 1, node.start_point[1]))
+
+
 def make_file_stable_id(language: str, path: str) -> str:
     """INV-sotiv: stable identity for ``kind="file"`` Symbols.
 

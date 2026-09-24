@@ -74,6 +74,7 @@ from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
+    SymbolsAt,
     TreeSitterAnalyzer,
     populate_docstrings_from_tree,
     find_child_by_type,
@@ -85,6 +86,8 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     make_variable_stable_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -420,19 +423,24 @@ def _make_kotlin_qualified_name(
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    declared: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function/method."""
+    """The function or method whose declaration contains ``node``.
+
+    Keyed by the declaration's POSITION, not its name (INV-midag). The key used
+    to be the short name, which ``HttpUrl.parse`` and ``Builder.parse`` share in
+    one file, as does one test name under two detekt ``describe`` objects. The
+    lookup returned whichever registered last, so 2,014 of 54,037 kotlin call
+    edges on a 26-repo run named a src that does not contain the call. A
+    ``function_declaration`` with no symbol (a local ``fun``) is walked past, to
+    the function that does have one.
+    """
     current = node.parent
     while current is not None:
         if current.type == "function_declaration":
-            name_node = _find_child_by_field(current, "name")
-            if not name_node:  # pragma: no cover - defensive fallback
-                name_node = find_child_by_type(current, "identifier")
-            if name_node:
-                func_name = node_text(name_node, source)
-                if func_name in local_symbols:
-                    return local_symbols[func_name]
+            sym = symbol_declared_by(current, declared)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -1265,6 +1273,7 @@ def _extract_edges_from_file(
     resolver: NameResolver | None = None,
     method_resolver: ListNameResolver | None = None,
     extension_index: dict[str, list[Symbol]] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1277,6 +1286,11 @@ def _extract_edges_from_file(
         resolver = NameResolver(global_symbols)
     if extension_index is None:
         extension_index = {}
+    # Every declaration of this file, by position (INV-midag). ``local_symbols``
+    # keeps ONE symbol per name, so it cannot tell two ``parse`` methods apart.
+    decl_index = symbols_at(
+        file_symbols if file_symbols is not None
+        else list({s.id: s for s in local_symbols.values()}.values()))
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -1384,7 +1398,7 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, local_symbols)
+            current_function = _get_enclosing_function(node, source, decl_index)
             if current_function is None:  # pragma: no cover
                 continue
 
@@ -1759,7 +1773,7 @@ def _extract_edges_from_file(
 
         # Callable references: ::functionName (unqualified)
         elif node.type == "callable_reference":
-            current_function = _get_enclosing_function(node, source, local_symbols)
+            current_function = _get_enclosing_function(node, source, decl_index)
             if current_function is None:  # pragma: no cover
                 continue
             # Structure: :: identifier
@@ -1795,7 +1809,7 @@ def _extract_edges_from_file(
             )
             if has_double_colon:
                 current_function = _get_enclosing_function(
-                    node, source, local_symbols,
+                    node, source, decl_index,
                 )
                 if current_function is None:  # pragma: no cover
                     continue
@@ -2179,7 +2193,7 @@ class KotlinAnalyzer(TreeSitterAnalyzer):
             edges = _extract_edges_from_file(
                 kt_file, parser, analysis.symbol_by_name, global_symbols,
                 analysis.imports, run, resolver, method_resolver=method_resolver,
-                extension_index=extension_index,
+                extension_index=extension_index, file_symbols=analysis.symbols,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             try:

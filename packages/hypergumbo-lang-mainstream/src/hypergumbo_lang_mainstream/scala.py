@@ -48,6 +48,7 @@ from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     defer_bare_method_call,
     find_child_by_type,
@@ -59,6 +60,8 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     make_variable_stable_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
     visibility_from_modifiers,
 )
 from hypergumbo_core.paths import normalize_path
@@ -373,17 +376,23 @@ def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function/method."""
+    """The function or method whose declaration contains ``node``.
+
+    Keyed by the declaration's POSITION, not its name (INV-midag). The short
+    name is shared by the ``apply`` of every companion in a file, and by
+    ``OneOf.show`` / ``WebSocketBodyOutput.show`` in tapir's EndpointIO.scala.
+    The lookup returned whichever registered last, so 964 of 16,531 scala call
+    edges on a 26-repo run named a src that does not contain the call. A
+    ``function_definition`` with no symbol (a local ``def``) is walked past.
+    """
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
-            name_node = find_child_by_type(current, "identifier")
-            if name_node:
-                func_name = node_text(name_node, source)
-                if func_name in local_symbols:
-                    return local_symbols[func_name]
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -1040,6 +1049,7 @@ def _extract_edges_from_file(
     run_id: str,
     resolver: "NameResolver",
     import_aliases: dict[str, str],
+    file_symbols: "list[Symbol] | None" = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1047,6 +1057,11 @@ def _extract_edges_from_file(
     (``val x = new Foo()``) to disambiguate method calls like ``x.bar()``.
     """
     _caller_path = str(file_path)
+    # Every declaration of this file, by position (INV-midag): ``local_symbols``
+    # keeps ONE symbol per name.
+    decl_index = symbols_at(
+        file_symbols if file_symbols is not None
+        else list({s.id: s for s in local_symbols.values()}.values()))
     edges: list[Edge] = []
     file_id = make_file_id("scala", str(file_path))
     var_types: dict[str, str] = {}
@@ -1105,7 +1120,7 @@ def _extract_edges_from_file(
                 var_types[node_text(pname_node, source)] = ptype_name
 
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, local_symbols)
+            current_function = _get_enclosing_function(node, source, decl_index)
             if current_function is not None:
                 # INV-fahub Site-1: the enclosing class short name for a bare /
                 # implicit-``this`` call, so a deferred bare→method call can be
@@ -1409,7 +1424,7 @@ def _extract_edges_from_file(
             ):
                 ref_name = node_text(children[0], source)
                 current_function = _get_enclosing_function(
-                    node, source, local_symbols,
+                    node, source, decl_index,
                 )
                 if current_function is not None:
                     target = local_symbols.get(ref_name)
@@ -1476,6 +1491,7 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
             tree, source, rel_path,
             local_symbols, global_symbols,
             run.execution_id, resolver, import_aliases,
+            file_symbols=self.file_symbols(local_symbols),
         )
 
 
