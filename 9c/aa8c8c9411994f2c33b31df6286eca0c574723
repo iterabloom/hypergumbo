@@ -1,0 +1,44 @@
+Original commit body from 19b55f9e3f546939d41eef470476a7c7f13a27c6:
+
+`ets:new` creates an empty table. `Req.new` and `Finch.build` build a request
+value. None of them stores or sends anything, yet each was rowed under the
+boundary its later executor crosses: db_write for ets.new, net_send for the two
+overlay rows. So a flow was credited one call early, and `ets.new` counted one
+logical write twice.
+
+ADR-0049 Ruling 3 licenses a removal only against a REPRESENTED crossing, tested
+at the finding level. Both checks were run:
+
+- Fixture A/B, claim host_secret -> network/database: violated before and
+  after. The evidence moves to ets.insert, Req.request! and Finch.request.
+- Cohort A/B, generic taint claims, from pinned worktrees on rebar3, cowboy,
+  ejabberd, vernemq, plausible and livebook: 0 verdicts moved. Every function
+  that lost constructor evidence gained it at its executor, with one exception
+  each way:
+  * plausible `opts |> Req.new() |> Req.Request.run_request()` was carried ONLY
+    by the Req.new row. `Req.Request.run_request` is now rowed under net_send,
+    in the same change, and the evidence moves there.
+  * livebook `build_req()` is `Req.new() |> ...` with NO argument. Its evidence
+    was a false attribution, and dropping it is a precision gain; the verdict
+    holds on 2 other flows.
+(~/hypergumbo_lab_notebook/gujoh_09242026/VC_AB.txt, FX_AB.txt)
+
+TWO ROWS OF THE SAME DEFECT STAY, as measured refusals:
+- go net/http.NewRequest. Deleting it LOSES the finding when the request is
+  sent through `http.DefaultClient.Do`, because the package variable is
+  untyped, so Client.Do is never reached. Blocked by WI-jikik.
+- python urllib.request.Request. The flow survives at urlopen. But the
+  `Request(...)` call then counts as an unclassified call into an unenumerated
+  module, and the coverage gate withholds the clean verdict. With it deleted,
+  scripts/check-self-claims moved all 18 self-claims to inconclusive (hypergumbo
+  builds a Request in hypergumbo_tracker). On dev, and with this change, the gate
+  is clean. Blocked by WI-bakik (enumerate urllib.request). The row now says
+  why it stays.
+
+Also filed: WI-hular (P3). A python sink called in a `with` item gets no
+confirmed DDG walk. It is the same in both arms, and it is why mlflow's and
+beads' strongest remaining evidence is `escaped`.
+
+Addresses INV-gujoh.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
