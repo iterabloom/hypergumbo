@@ -2768,7 +2768,9 @@ class TestLeafCallerExpansion:
 
     def test_leaf_callers_surface_concrete_notifiers(self) -> None:
         """Two concrete Notifier.Notify funcs share a 'request' helper that
-        calls http.NewRequest. leaf_callers must contain both Notifiers."""
+        calls http.Post. leaf_callers must contain both Notifiers. (It was
+        http.NewRequest until INV-gujoh removed that row: a constructor sends
+        nothing.)"""
         catalog = load_catalog("go")
         edges = [
             self._make_edge(
@@ -2789,7 +2791,7 @@ class TestLeafCallerExpansion:
             ),
             self._make_edge(
                 src="go:/notify.go:1:request:function",
-                dst="go:net/http:0-0:NewRequest:unresolved",
+                dst="go:net/http:0-0:Post:unresolved",
             ),
         ]
         entrypoint_ids = {"go:/api.go:1:postAlertsHandler:function"}
@@ -2824,7 +2826,7 @@ class TestLeafCallerExpansion:
             ),
             self._make_edge(
                 src="go:/notify.go:1:request:function",
-                dst="go:net/http:0-0:NewRequest:unresolved",
+                dst="go:net/http:0-0:Post:unresolved",
             ),
         ]
         entrypoint_ids = {
