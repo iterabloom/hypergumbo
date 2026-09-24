@@ -1,0 +1,28 @@
+- op: create  # 4766
+  at: '2026-09-24T01:00:31Z'  # 4766
+  by: agent  # 4766
+  actor: jgstern_agent  # 4766
+  clock: 1  # 4766
+  nonce: '4766'  # 4766
+  data:  # 4766
+    kind: work_item  # 4766
+    title: "audit 0019's recorded two-arm harness and a live survey disagree on edge rows at the same rust-analyzer version (calls 93/18/7 vs 92/16/8; 64 external imports live-only)"  # 4766
+    status: todo_hard  # 4766
+    priority: 3  # 4766
+    parent:  # 4766
+    tags:  # 4766
+    - adr_0057  # 4766
+    - rust_analyzer  # 4766
+    isbefore: []  # 4766
+    duplicate_of: []  # 4766
+    not_duplicate_of: []  # 4766
+    pr_ref:  # 4766
+    description: "The recorded two-arm harness behind docs/audits/0019 (test_recorded_fixtures.py `_two_arm_artifact`) and a LIVE `hypergumbo survey` of the same committed crate, at the SAME producer version (rust-analyzer 1.94.0, recorded and installed), disagree on the EDGE-overlap rows. Every NODE row matches (pairing, kind, name, span, docstring, is_exported, modifiers, qualified_name, signature). Once WI-paluk's harness fix lands, stable_id matches too.\n\nMeasured 2026-09-23. Live run: a copy of packages/hypergumbo-lang-rust-analyzer/recorded/aardvark_dns/crate, with `CARGO_NET_OFFLINE=true HYPERGUMBO_RUST_ANALYZER=1 hypergumbo survey . --out survey.json`, then `hypergumbo backend-agreement survey.json`.\n- calls / in-repo (both, rust only, rust_analyzer only): harness 93 / 18 / 7, live 92 / 16 / 8.\n- imports / external: absent from the harness; live has 0 / 64 / 0.\n- corroborated edges: harness 93, live 92.\n\nNOT DIAGNOSED. By its docstring the harness imitates only the merge pass, edge dedup, the resolution verdict and same-site supersession. A live survey also runs linkers and the rest of the orchestrator, so each difference could be a stage the harness omits by design. Or it could be a defect in either path. The audit's Reading draws production conclusions from harness numbers, so the question is which edge rows the audit can speak for.\n\nAcceptance:\n1. Name the stage behind each differing row.\n2. Either make the harness run it, or state in 0019's header that the edge rows describe the harness's stages, not a survey."  # 4766
+    fields: {}  # 4766
+- op: discuss  # 7c27
+  at: '2026-09-24T01:09:43Z'  # 7c27
+  by: agent  # 7c27
+  actor: jgstern_agent  # 7c27
+  clock: 2  # 7c27
+  nonce: 7c27  # 7c27
+  message: "Filed as the residual of WI-paluk (PR #1167). Once that fix landed, every node row of the recorded rust harness matches a live survey; only the edge rows listed here still differ."  # 7c27

@@ -1,0 +1,21 @@
+- op: create  # d725
+  at: '2026-09-24T02:08:49Z'  # d725
+  by: agent  # d725
+  actor: jgstern_agent  # d725
+  clock: 1  # d725
+  nonce: d725  # d725
+  data:  # d725
+    kind: work_item  # d725
+    title: "smart-test selects no root test for a catalogue YAML change: #1162's java.yaml re-kind reached dev and first failed on the cron (tests/test_measure_catalogue_exposure.py)"  # d725
+    status: todo_hard  # d725
+    priority: 2  # d725
+    parent:  # d725
+    tags:  # d725
+    - ci_infrastructure  # d725
+    - smart_test  # d725
+    isbefore: []  # d725
+    duplicate_of: []  # d725
+    not_duplicate_of: []  # d725
+    pr_ref:  # d725
+    description: "EVIDENCE:\n- PR #1162 (INV-zikab step 6) changed only java.yaml and scala.yaml catalogue rows, plus tests.\n- smart-test's per-PR selection did not include tests/test_measure_catalogue_exposure.py. That test loads the io_primitives catalogues through scripts/measure-catalogue-exposure.py and pins a Kotlin ratio that the java.yaml change moved: kotlin loads java.yaml, and 190/195 became 156/195.\n- The first time the test ran was the 2026-09-23 20:53 full-suite cron at d31439e6, in the test-agent-infra step. It went red there, with dev already carrying the change.\n\nMECHANISM, read from the code rather than measured on every path:\n- The reverse slice (`hypergumbo slice --files`) maps only packages/*/src PYTHON to tests.\n- The top-level map (.agent/hooks/_shared/top_level_test_map.py) keys on the basenames of scripts and hooks.\n- A DATA file under packages/*/src (io_primitives/*.yaml, taint_*/*.yaml, library_signatures/*.yaml) reaches a root test that reads it through a script by neither route.\n\nThe same shape probably covers other root tests that load catalogues through scripts. Not enumerated.\n\nASKED:\n1. Enumerate the root tests that read packages/*/src data files.\n2. Give smart-test a route from those data files to them: a declared map, or over-selection of the root suite whenever a catalogue changes.\n3. Mutation-check the route: re-apply #1162's java.yaml diff alone and confirm the exposure test is selected."  # d725
+    fields: {}  # d725
