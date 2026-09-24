@@ -1,0 +1,27 @@
+Original commit body from 9a439096d3c8f4862be9b59303fc14a72dcc670c:
+
+PR #1162 changed java.yaml alone. tests/test_measure_catalogue_exposure.py
+pins a ratio that change moved, and loads the catalogues through
+scripts/measure-catalogue-exposure.py, so it names none of the catalogue
+gate's grep terms. It was not selected, and first ran (and failed) on the
+full-suite cron with dev already red.
+
+Enumerated with an audit hook that logged every non-Python file under
+packages/*/src/*/<dir>/ opened by each root test, including by the scripts
+it runs as subprocesses (~/hypergumbo_lab_notebook/juzoz_09242026/):
+13 root test files open catalogue data. The term grep selected 0 of them.
+A second hop (terms -> the scripts that name them -> the root tests that
+name those scripts) reached 4; the other 9 load the data through the CLI or
+an import. So whenever the catalogue gate fires, smart-test now unions the
+whole root suite (1973 tests, 78 s locally), the same over-selection it
+already applies to unmapped top-level sources.
+
+End-to-end check, smart-test --manifest with #1162's java.yaml diff as the
+only change: before, 166 test files selected, the exposure test not among
+them, 7 of 116 root tests. After: 275, the exposure test selected, all 116.
+
+Scope: the tracer sees files opened by Python processes; a root test that
+reads catalogue data only from a shell pipeline would not have appeared in
+the enumeration, and is covered by the root-suite union regardless.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
