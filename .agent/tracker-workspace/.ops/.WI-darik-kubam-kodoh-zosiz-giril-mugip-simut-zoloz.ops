@@ -1,0 +1,21 @@
+- op: create  # 7c34
+  at: '2026-09-24T19:17:40Z'  # 7c34
+  by: agent  # 7c34
+  actor: jgstern_agent  # 7c34
+  clock: 1  # 7c34
+  nonce: 7c34  # 7c34
+  data:  # 7c34
+    kind: work_item  # 7c34
+    title: "pascal: a method implemented as `procedure TA.Run` emits no symbol, so every call in its body is lost"  # 7c34
+    status: todo_hard  # 7c34
+    priority: 3  # 7c34
+    parent:  # 7c34
+    tags:  # 7c34
+    - pascal  # 7c34
+    - analysis_quality  # 7c34
+    isbefore: []  # 7c34
+    duplicate_of: []  # 7c34
+    not_duplicate_of: []  # 7c34
+    pr_ref:  # 7c34
+    description: "FOUND 2026-09-24 while writing WI-mapor's pascal fixture. A method implemented as `procedure TA.Run; begin ... end;` emits NO symbol, so every call in its body is lost.\n\nRepro: a.pas with `type TA = class procedure Run; end;` and an implementation `procedure TA.Run; begin One(); end;`. analyze_pascal emits symbols for program P and the top-level procedures only. No TA.Run symbol, and no calls edge from its body. Top-level overloads anchor correctly (WI-mapor's fixture, pinned).\n\nThis is the ordinary Delphi/FreePascal method shape (a class declaration plus a qualified implementation), so on any object-pascal codebase most calls are likely missing. Not measured: there is no pascal repo in whole_bunch_of_repos.\n\nASKED: emit a method symbol for a qualified defProc (name TA.Run, owner TA). Then check that _find_enclosing_function's position-built id matches it."  # 7c34
+    fields: {}  # 7c34
