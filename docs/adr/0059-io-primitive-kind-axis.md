@@ -171,6 +171,11 @@ rows (WI-ziviv).
    so `Files.readAllBytes(p)` classifies in both languages instead of being
    disclosed as an untyped receiver.
 
+INV-zikab's last step rewrote INV-pimir's statement and the starvation gate's
+docstring and spec text. They had said a method-keyed row can be matched only
+by a method-construct call. With a module slot naming the module, the match is
+by name, and the gate is a proxy for whether the analyzer emitted the calls.
+
 ## Consequences
 
 ### Positive
