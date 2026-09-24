@@ -50,6 +50,20 @@ AN IMPORT VALUE WITH NO DOT IS NOT A PATH. scala's import parser records the
 relative wildcard ``import Parser.*`` as ``Parser -> "Parser"``, and writing
 that into the slot is the bare simple name INV-fazim forbids. It put 101 bare
 ``Def`` slots into sbt before this rule.
+
+AN EXPLICIT IMPORT OUTRANKS A SAME-NAMED PROJECT SYMBOL IN ANOTHER PACKAGE
+(WI-tipoh). The resolver matches a name across the whole project, and the hint
+kotlin and scala pass it is a DOTTED import path, which it compares against
+FILE paths, so it never matched. An exact name match also returns before any
+hint is read. So ``import scala.sys.process.Process`` followed by
+``Process(cmd)`` bound to spark's unrelated test ``case class Process``, and to
+scala3's sbt-build ``object Process``. It was a false call edge, and the launch
+never reached the catalogue. :func:`imported_elsewhere` is the check both
+check kotlin applies to a symbol the resolver hands back. The symbol stays only
+when its qualified name IS the import, or lies under it (``Issue.Entity`` under
+``dev.acme.api.Issue``). A symbol with no qualified name is kept. That is the
+old behaviour, and nothing can be decided without the name. scala applies a
+looser rule of its own (see ``scala._import_names_elsewhere``).
 """
 from __future__ import annotations
 
@@ -143,3 +157,33 @@ def static_owner_module(
     if receiver_name in JAVA_LANG_TYPES and receiver_name not in shadowed:
         return f"{IMPLICIT_IMPORT_PACKAGE}.{receiver_name}"
     return None
+
+
+def imported_elsewhere(qualified: str | None, imported: str | None) -> bool:
+    """Whether the file's explicit import binds the name to something other than
+    the project symbol whose qualified name is ``qualified``.
+
+    ``imported`` is the file's import of the call's LEADING simple name (the type
+    in ``Type.method``, the callee in a bare call). The answer is False when there
+    is nothing to contradict: no import, an import value with no dot (not a path,
+    see the module docstring), or a symbol with no qualified name.
+
+    This is kotlin's check, exact because kotlin's imports are always fully
+    qualified and its analyzer records a qualified name. kotlin's default
+    companion object is named ``Companion`` in an import (``import
+    okhttp3.Headers.Companion.headersOf``) but not in the member's qualified name
+    (``okhttp3.Headers.headersOf``), so that segment is dropped before comparing.
+    Reading it literally withheld 207 correct okhttp edges. scala's imports may be
+    relative and its symbol names omit enclosing objects, so scala applies its own
+    looser rule (``scala._import_names_elsewhere``).
+    """
+    if not imported or "." not in imported or not qualified:
+        return False
+    imported = kotlin_import_path(imported)
+    return qualified != imported and not qualified.startswith(imported + ".")
+
+
+def kotlin_import_path(imported: str) -> str:
+    """A kotlin import path as the imported member's qualified name spells it:
+    the default companion's ``Companion`` segment dropped."""
+    return ".".join(part for part in imported.split(".") if part != "Companion")
