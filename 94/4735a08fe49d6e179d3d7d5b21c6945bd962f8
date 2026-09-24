@@ -1,0 +1,30 @@
+Original commit body from 9bc499ea7c7c61462f3ff841265d428153ba2129:
+
+The full-suite cron at d31439e6 failed two steps. `ci-debug cron-status` names
+them.
+
+1. test-agent-infra: test_measure_catalogue_exposure's Kotlin control asserted
+   method-kind share > 0.8. INV-zikab step 6 (#1162) re-kinded the JDK statics
+   that Kotlin loads through java.yaml as function-kind, as ADR-0059 requires.
+   Measured in a worktree at the parent of step 6 and at HEAD: 190/195 -> 156/195.
+   That is exactly 0.8. The kind rule moved the number, not a census defect. The
+   control exists to show that Kotlin's exposure really does run through
+   method-kind rows, as the opposite of C's zero. It now pins that property
+   (the majority route, > 0.5) rather than the pre-ADR-0059 share. The ledgered
+   re-kinds WI-ziviv plans would take Kotlin to 151/190, which a 0.8 bound
+   would reject.
+   smart-test never selected this root test for a catalogue-only PR. Filed
+   separately as WI-juzoz.
+
+2. test-all-packages: backend_selection.py:281-283 (the rust-analyzer
+   default-probe branch) was uncovered, giving 99% total, with no change to
+   those lines. Every rust test in test_backend_selection injects
+   is_available, so the branch was covered only when another test in the same
+   xdist worker had left HYPERGUMBO_RUST_ANALYZER=1 set before a production
+   call. The previous cron at d917e022 had the file at 100%. The scip-python
+   twin of this branch already had a deterministic test; this adds the rust
+   one. Run alone, it covers 281-283.
+
+Tests only; no source change.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
