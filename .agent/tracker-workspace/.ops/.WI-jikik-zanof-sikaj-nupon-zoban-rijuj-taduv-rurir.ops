@@ -1,0 +1,22 @@
+- op: create  # 4ba9
+  at: '2026-09-24T04:41:12Z'  # 4ba9
+  by: agent  # 4ba9
+  actor: jgstern_agent  # 4ba9
+  clock: 1  # 4ba9
+  nonce: 4ba9  # 4ba9
+  data:  # 4ba9
+    kind: work_item  # 4ba9
+    title: "go: a method call on a stdlib package variable (http.DefaultClient.Do) has an untyped receiver, so net/http.Client.Do is unreachable -- the false NewRequest net_send row is compensating for it (blocks INV-gujoh's go row)"  # 4ba9
+    status: todo_hard  # 4ba9
+    priority: 2  # 4ba9
+    parent:  # 4ba9
+    tags:  # 4ba9
+    - go  # 4ba9
+    - io_boundary  # 4ba9
+    - receiver_typing  # 4ba9
+    isbefore: []  # 4ba9
+    duplicate_of: []  # 4ba9
+    not_duplicate_of: []  # 4ba9
+    pr_ref:  # 4ba9
+    description: "FOUND 2026-09-24 while adjudicating INV-gujoh's go row (net/http.NewRequest under net_send).\n\nA method call on a STDLIB PACKAGE VARIABLE has an untyped receiver. `http.DefaultClient.Do(req)` is emitted as `go:external:0-0:Do`, stamped method. So the catalogued net/http.Client.Do net_send row is never reached. The same call on a typed local (`client := &http.Client{}; client.Do(req)`) classifies as net/http.Client.Do.\n\nWHY IT MATTERS NOW: it is the reason INV-gujoh cannot delete the false constructor row net/http.NewRequest. Fixture (~/hypergumbo_lab_notebook/gujoh_09242026/fx/go_req*), claim host_secret !-> network:\n- DefaultClient.Do. Arm A: violated at NewRequest. Arm B (row deleted): INCONCLUSIVE, no evidence. The finding is lost.\n- typed client.Do. Arm A: violated. Arm B: violated, ddg CONFIRMED at Client.Do. The flow survives, with stronger evidence.\nSo the false row compensates for this gap, and deleting it first would be a false all-clear wherever DefaultClient is used. Corpus grep: `http.DefaultClient.Do` appears in 15 kubernetes files, 11 grafana, 7 keda, 5 loki, 5 gitlab.\n\nThe library-signature catalogue (library_signatures/go.yaml) keys PRODUCER CALLS. It has no home for a package variable's type, so this needs one: `http.DefaultClient: net/http.Client` read by go.py's receiver typing, or equivalent. Sibling package vars with the same shape: http.DefaultTransport, os.Stdin/Stdout/Stderr (typed os.File), and others. Enumerate them rather than fixing only DefaultClient.\n\nACCEPTANCE: the go_req fixture reads violated at Client.Do with NewRequest deleted. Then INV-gujoh's go row can be deleted by the same finding-level A/B."  # 4ba9
+    fields: {}  # 4ba9
