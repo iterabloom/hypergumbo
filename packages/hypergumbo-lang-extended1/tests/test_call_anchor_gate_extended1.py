@@ -124,10 +124,14 @@ function run
     one
 end
 function run
-    two
+    if true
+        two
+    end
 end
 """)
-    _assert_contained(analyze_fish(tmp_path), [6, 9])
+    # The second body nests its call in an ``if``, so the walk climbs past a
+    # node that is not a function before it reaches one.
+    _assert_contained(analyze_fish(tmp_path), [6, 10])
 
 
 def test_gdscript_same_named_callables(tmp_path: Path) -> None:
