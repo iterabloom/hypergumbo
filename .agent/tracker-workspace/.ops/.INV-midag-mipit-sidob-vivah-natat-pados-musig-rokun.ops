@@ -19,3 +19,10 @@
     fields:  # b9e1
       statement: "For every analyzer-origin calls edge with a line, the src symbol's span contains that line."  # b9e1
       root_cause: "For the majority mechanism: extract_edges_from_file receives symbol_by_name (one symbol per name), and each analyzer's enclosing-function lookup keys on the declaration's NAME. Same-named declarations in one file (overloads, #ifdef alternatives, same method name in two types) collapse to the last one registered. Haskell (0 of 119) and JavaScript (6 of 135) out-of-span sources do not share a name: a second, uninvestigated mechanism."  # b9e1
+- op: discuss  # 9982
+  at: '2026-09-24T02:06:21Z'  # 9982
+  by: agent  # 9982
+  actor: jgstern_agent  # 9982
+  clock: 2  # 9982
+  nonce: '9982'  # 9982
+  message: "PREMISE RE-CHECKED 2026-09-24. The same 26 repos were re-surveyed at dev 2c63301739 with the same flags (--budgets none --no-handler-slices), and aggregated with anchor_probe.py's rule, restricted to `calls`. The same aggregation reproduces the filed baseline exactly. The table is CURRENT: every listed language has the SAME out-of-span count.\n\n  kotlin 2014/54059, scala 964/16547, swift 273/8343, javascript 135/12573,\n  haskell 119/3012, c 35/11011, typescript 33/14980, rust 5/8842, ruby 3/1296.\n\n- kotlin and scala checked +22 and +16 edges: WI-kilap's newly slotted calls, none out of span.\n- erlang and elixir are now 0/45837 and 0/27903: INV-mozas, as the title says.\n\nTwo sources the filed table omits, both on livebook:\n- csharp, 3 of 36 (elixirkit_dotnet/ElixirKit.cs). Release.Stop, Release.WaitForExit and Client.Subscribe are credited with calls at lines 73-97. These are same-named methods in two classes: the majority mechanism.\n- 4 of 45 callable symbols with NO `language` (static/assets/app.js: minified single-letter functions). A symbol with no language is a separate oddity, not investigated.\n\nTable and scripts: ~/hypergumbo_lab_notebook/premise_check_09242026/MIDAG_TABLE.txt, midag_agg.py."  # 9982

@@ -19,3 +19,19 @@
     pr_ref:  # 9ced
     description: "On the recorded aardvark-dns two-arm fixture the rust-analyzer arm's records for every struct (10), enum (3) and trait (1) carry no `stable_id`, while its function/method/field/variable records do: `hypergumbo backend-agreement` (docs/audits/0019, row `stable_id`) counts 134 disagree and 14 one-sided to `rust`, and the 14 are exactly the struct/enum/trait pairs. Either `hypergumbo_lang_rust_analyzer.translate` skips the stable_id for type-shaped SymbolInformation kinds, or the stable_id derivation it calls has no rule for them. Find which, fix at the producer (ADR-0057 §7: fix the producer, not the merge), pin the count in `AARDVARK_DNS_ATTRIBUTE_AGREEMENT`, and regenerate 0019 with scripts/regenerate-backend-agreement-table."  # 9ced
     fields: {}  # 9ced
+- op: update  # d159
+  at: '2026-09-24T01:09:42Z'  # d159
+  by: agent  # d159
+  actor: jgstern_agent  # d159
+  clock: 2  # d159
+  nonce: d159  # d159
+  set:  # d159
+    status: done  # d159
+    pr_ref: '1167'  # d159
+- op: discuss  # 4b9b
+  at: '2026-09-24T01:09:42Z'  # 4b9b
+  by: agent  # 4b9b
+  actor: jgstern_agent  # 4b9b
+  clock: 3  # 4b9b
+  nonce: 4b9b  # 4b9b
+  message: "DONE in PR #1167. The row's premise was inverted, and so was its prescribed fix. No producer was changed; the defect was in the instrument harness.\n\nWHAT WAS FALSE. Audit 0019's columns are (agree, disagree, rust only, rust_analyzer only), so the 14 were one-sided to rust_analyzer. The row said they were one-sided to rust. Counted per arm on the recorded fixture:\n- translate_scip_to_hg gives every one of its 169 records a stable_id;\n- rust.py gives none to its 10 structs, 3 enums and 1 trait.\nThat is by design (WI-rihob). Those kinds get their id from populate_kind_stable_ids at the orchestrator chokepoint (all_analyzers.py:561), which a survey runs BEFORE the merge pass (cli.py:11580). The recorded harness called analyze_rust directly and skipped it.\n\nBEHAVIOURAL EVIDENCE (live, production path):\n- Setup: a copy of the committed crate; installed rust-analyzer 1.94.0, the recorded producer version.\n- Command: `CARGO_NET_OFFLINE=true HYPERGUMBO_RUST_ANALYZER=1 hypergumbo survey . --out survey.json`, exit 0. Then `hypergumbo backend-agreement survey.json`.\n- Result: stable_id 0 / 148 / 0 / 0. All 14 struct/enum/trait nodes carry a stable_id, with origin [rust, scip].\n- Every other node row (pairing, kind, name, span, docstring, is_exported, modifiers, qualified_name, signature) equals the committed table.\n\nTHE FIX:\n- Both recorded harnesses run populate_kind_stable_ids over both arms before merge_producer_records. The scip-python harness had the same mechanism: stable_id 8 / 2-one-sided, the 2 being the syntax arm's variables.\n- Re-pinned: rust stable_id (0, 148, 0, 0) and stable_id_alternatives 148; scip-python stable_id (0, 10, 0, 0).\n- Audit 0019 regenerated: only the stable_id row and the date moved. Its Reading carries a dated correction.\n- Two recorded-module comments stated false causes and are corrected: \"the SCIP arm emits them without one\", and \"14 single-line items where the parity helper matches\". The agree column was 0.\n- New reach-first tests: no record reaches the merge without a stable_id. Both were red before the fix.\n\nNOT ASSERTED:\n- The scip-python re-pin is by the shared code path, NOT a live run: scip-python is not installed here.\n- The arms still DISAGREE on every paired stable_id, because they hash different things (INV-dolud; WI-gojum, parked). This row did not touch that.\n- RESIDUAL filed as WI-vosop P3: the harness's EDGE rows differ from the live survey at the same producer version (calls in-repo 93/18/7 vs 92/16/8; 64 external imports live-only). Not diagnosed."  # 4b9b
