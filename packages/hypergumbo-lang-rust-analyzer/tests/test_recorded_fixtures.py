@@ -23,6 +23,7 @@ from hypergumbo_core.analyze.registry import (
     ensure_discovered,
     get_analyzer,
 )
+from hypergumbo_core.analyze.base import populate_kind_stable_ids
 from hypergumbo_core.analyze.merge_producers import merge_producer_records
 from hypergumbo_core.arbitration import ArbitrationPolicy
 from hypergumbo_core.finalize import SUPERSEDED_STUB_RANK_FACTOR, demote_superseded_stubs
@@ -259,7 +260,12 @@ def _both_arms() -> tuple[list[Symbol], list, list[dict[str, str]]]:
         {"execution_id": result.run.execution_id, "pass": "rust"},
         {"execution_id": "scip-run", "pass": "rust_analyzer"},
     ]
-    return tree_sitter + scip_symbols, list(result.edges) + scip_edges, runs
+    symbols = tree_sitter + scip_symbols
+    # What ``run_all_analyzers`` does to every producer's symbols before the
+    # merge pass sees them (WI-paluk): tree-sitter's struct/enum/trait carry
+    # their stable_id from this backstop, not from rust.py (WI-rihob).
+    populate_kind_stable_ids(symbols)
+    return symbols, list(result.edges) + scip_edges, runs
 
 
 def _two_arm_artifact(policy: "ArbitrationPolicy | None" = None) -> dict:
@@ -285,6 +291,29 @@ def _two_arm_artifact(policy: "ArbitrationPolicy | None" = None) -> dict:
         "nodes": [s.to_dict() for s in symbols],
         "edges": [e.to_dict() for e in edges],
     }
+
+
+class TestTheHarnessRunsWhatASurveyRunsBeforeTheMerge:
+    """WI-paluk: a survey fills a missing ``stable_id`` by kind at the
+    orchestrator chokepoint (``populate_kind_stable_ids``), BEFORE the merge
+    pass. While the harness skipped that step, the tree-sitter arm's 10
+    structs, 3 enums and 1 trait reached the merge with no ``stable_id``.
+    The committed 0019 table then read 14 one-sided to ``rust_analyzer``,
+    which a live survey of this crate does not reproduce (0 / 148 / 0 / 0)."""
+
+    def test_the_declaration_kinds_carry_the_backstop_id(self) -> None:
+        from hypergumbo_core.analyze.base import make_declaration_stable_id
+
+        symbols, _edges, _runs = _both_arms()
+        declarations = [s for s in symbols if s.origin == ["rust"] and s.kind in {"struct", "enum", "trait"}]
+        assert Counter(s.kind for s in declarations) == {"struct": 10, "enum": 3, "trait": 1}  # reach
+        assert all(
+            s.stable_id == make_declaration_stable_id(s.kind, "rust", s.path, s.name) for s in declarations
+        ), [(s.kind, s.name, s.stable_id) for s in declarations if not s.stable_id]
+
+    def test_no_arm_reaches_the_merge_without_a_stable_id(self) -> None:
+        symbols, _edges, _runs = _both_arms()
+        assert symbols and [s for s in symbols if s.stable_id is None] == []
 
 
 class TestTheMergePassOnBothArms:

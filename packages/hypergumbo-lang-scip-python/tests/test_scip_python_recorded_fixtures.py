@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
+from hypergumbo_core.analyze.base import populate_kind_stable_ids
 from hypergumbo_core.analyze.merge_producers import merge_producer_records
 from hypergumbo_core.analyze.registry import (
     MergeAnchor,
@@ -135,6 +136,9 @@ def _two_arm_artifact() -> tuple[dict, list[Symbol], list]:
     syntax, syntax_edges, run_id = _syntax_arm()
     scip_symbols, scip_edges = translate_scip_python_to_hg(sample_project_index_bytes(), run_id="scip-run")
     symbols = syntax + scip_symbols
+    # What ``run_all_analyzers`` does to every producer's symbols before the
+    # merge pass sees them (WI-paluk).
+    populate_kind_stable_ids(symbols)
     edges = syntax_edges + scip_edges
     runs = [{"execution_id": run_id, "pass": "python"}, {"execution_id": "scip-run", "pass": "scip_python"}]
     report = merge_producer_records(symbols, edges, runs)
@@ -150,6 +154,19 @@ def _two_arm_artifact() -> tuple[dict, list[Symbol], list]:
     assert demote_superseded_stubs(symbols, edges) == SAMPLE_PROJECT_SUPERSEDED
     artifact = {"analysis_runs": runs, "nodes": [s.to_dict() for s in symbols], "edges": [e.to_dict() for e in edges]}
     return artifact, symbols, edges
+
+
+class TestTheHarnessRunsWhatASurveyRunsBeforeTheMerge:
+    """WI-paluk: a survey fills a missing ``stable_id`` by kind
+    (``populate_kind_stable_ids``) before the merge pass. Skipping that step
+    sends the syntax arm's ``file`` and ``variable`` records to the merge
+    with no id, which a survey never does."""
+
+    def test_no_record_leaves_the_merge_without_a_stable_id(self) -> None:
+        artifact, _symbols, _edges = _two_arm_artifact()
+        kinds = Counter(n["kind"] for n in artifact["nodes"])
+        assert kinds["file"] == 3 and kinds["variable"] >= 2  # reach
+        assert [(n["kind"], n["name"]) for n in artifact["nodes"] if n.get("stable_id") is None] == []
 
 
 class TestWhatTheFoldActsOn:

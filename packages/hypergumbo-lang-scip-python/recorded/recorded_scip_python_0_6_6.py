@@ -91,6 +91,11 @@ SAMPLE_PROJECT_PAIRING = {
 # all 10 and the count is one-sided for the same reason at every record rather
 # than for two different reasons at six and four.
 # `span`: token vs item, by construction.
+# `stable_id`: contested on all 10, because the arms hash different things. It read 8 / 2-one-sided
+# while the harness skipped the kind backstop a survey runs before the merge:
+# the 2 were the syntax arm's variables, reaching the merge with no id
+# (WI-paluk). This follows from the survey's code path; it is not a live measurement,
+# because scip-python is not installed where this was pinned.
 SAMPLE_PROJECT_ATTRIBUTE_AGREEMENT = {
     "docstring": (0, 0, 2, 0),
     "is_exported": (0, 0, 10, 0),
@@ -99,7 +104,7 @@ SAMPLE_PROJECT_ATTRIBUTE_AGREEMENT = {
     "qualified_name": (0, 0, 8, 0),
     "signature": (0, 0, 7, 0),
     "span": (0, 10, 0, 0),
-    "stable_id": (0, 8, 0, 2),
+    "stable_id": (0, 10, 0, 0),
 }
 # Per (edge type, resolved) after the fold: (both, python only, scip_python only).
 # External `calls` BOTH is 8: the two sites where the syntax arm already knew

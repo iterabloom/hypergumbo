@@ -238,10 +238,11 @@ AARDVARK_DNS_AGREEMENT_TALLY: Final[dict[str, int]] = {
     # WI-binis, the provenance slot on the 148 merged records: ``span`` is
     # contested (token vs item) on all but the 2 unit enum variants, whose
     # tree-sitter span IS the bare name; ``stable_id`` is contested (moniker
-    # hash vs rust.py's) on all but the 14 single-line items for which the
-    # parity helper already reaches rust.py's id (INV-dolud's one case).
+    # hash vs rust.py's) on all 148 -- no pair shares an id (INV-dolud). This
+    # read 134 while the harness skipped the kind backstop: the 14 struct/enum/
+    # trait records had no incumbent value to contest (WI-paluk).
     "span_alternatives": 146,
-    "stable_id_alternatives": 134,
+    "stable_id_alternatives": 148,
 }
 
 #: The SCIP arm's occurrence edges on the recording and their tree-sitter
@@ -296,10 +297,14 @@ AARDVARK_DNS_SCIP_ONLY_PER_CATEGORY = {"namespace": 18, "type_alias": 2, "variab
 # 148 — `rust.py` computes exportedness for every item it emits (`"pub" in
 # modifiers`) and the SCIP arm computes none, so since INV-kubup its records
 # carry no value at all rather than a `False` that read as a measurement. `span`: the
-# item/token role split of §10, by construction. `stable_id`: derived from the
-# attributes above it; the 14 one-sided are the struct/enum/trait records the
-# SCIP arm emits without one. The one-sided rust-only columns are attributes
-# the SCIP translation never fills (signature, docstring, modifiers, qualified_name).
+# item/token role split of §10, by construction. `stable_id`: disagrees on all
+# 148, because the arms hash different things. tree-sitter uses the typed id, or the
+# orchestrator's declaration backstop for struct/enum/trait (WI-rihob); SCIP uses
+# `sha256(moniker)`, and its parity reassignment abstains (INV-dolud, WI-gojum). It read
+# 134 / 14-one-sided while the harness skipped the backstop a survey runs before the
+# merge (WI-paluk); a live survey reads 0 / 148 / 0 / 0. The one-sided rust-only columns
+# are attributes the SCIP translation never fills (signature, docstring, modifiers,
+# qualified_name).
 AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
     "docstring": (0, 0, 63, 0),
     "is_exported": (0, 0, 148, 0),
@@ -309,7 +314,7 @@ AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
     "qualified_name": (0, 0, 148, 0),
     "signature": (0, 0, 125, 0),
     "span": (2, 146, 0, 0),
-    "stable_id": (0, 134, 0, 14),
+    "stable_id": (0, 148, 0, 0),
 }
 # Per (edge type, resolved) after the fold: (both producers, rust only, rust_analyzer only).
 # The 93 "both" calls are the corroborated edges; the incumbent emits no
