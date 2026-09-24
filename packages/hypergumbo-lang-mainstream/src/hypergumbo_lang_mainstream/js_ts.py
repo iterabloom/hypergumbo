@@ -4952,11 +4952,15 @@ def _get_enclosing_function(
                 parent = parent.parent
 
             # If not assigned to variable, try position-based lookup
-            # This handles callback arrow functions like route handlers
+            # This handles callback arrow functions like route handlers.
+            # WI-pizan: the key carries ``line_offset`` like every other branch.
+            # Without it a .vue/.svelte callback's key named a line ``offset``
+            # lines above, so its calls went to whatever callback started there,
+            # or, when none did, to the enclosing function or the file.
             if symbol_by_position:
-                arrow_line = current.start_point[0] + 1  # 1-indexed
+                arrow_line = current.start_point[0] + 1 + line_offset
                 arrow_col = current.start_point[1]
-                position_key = (str(file_path), arrow_line, arrow_col)
+                position_key = (file_path_str, arrow_line, arrow_col)
                 if position_key in symbol_by_position:
                     return symbol_by_position[position_key]
 
