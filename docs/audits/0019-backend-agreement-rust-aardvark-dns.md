@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Axis** | backend agreement (ADR-0057 §5, §10 — the only evidence that may change an arbitration default or license an `authoritative_for` declaration) |
-| **Date** | 2026-09-19 |
+| **Date** | 2026-09-23 |
 | **Artifact** | `aardvark-dns-4444d90fee-two-arm-recorded.json` |
 | **Instrument** | `hypergumbo backend-agreement` (`hypergumbo_core.backend_agreement`) |
 | **Outcome** | Measurement, not a verdict: agreement says a value is uncontested, not that it is right. |
@@ -12,7 +12,7 @@
 ```yaml
 kind: backend_agreement
 artifact: aardvark-dns-4444d90fee-two-arm-recorded.json
-date: 2026-09-19
+date: 2026-09-23
 languages:
   - language: rust
     producers: [rust, rust_analyzer]
@@ -52,7 +52,7 @@ languages:
 | `qualified_name` | 0 | 0 | 148 | 0 | — |
 | `signature` | 0 | 0 | 125 | 0 | — |
 | `span` | 2 | 146 | 0 | 0 | `5:0-30:1` ← `5:3-5:7` x1; `12:0-25:1` ← `12:7-12:11` x1; `15:4-15:26` ← `15:4-15:10` x1; `18:4-18:21` ← `18:4-18:8` x1; `21:4-21:40` ← `21:4-21:24` x1; `24:4-24:22` ← `24:4-24:10` x1; `28:0-33:1` ← `28:5-28:15` x1; `30:4-30:17` ← `30:4-30:7` x1 |
-| `stable_id` | 0 | 134 | 0 | 14 | (hash derived from the attributes above) |
+| `stable_id` | 0 | 148 | 0 | 0 | (hash derived from the attributes above) |
 
 ### Edge overlap
 
@@ -76,6 +76,14 @@ Written by the agent on 2026-09-19 from the tables above; the numbers are the in
 - **`name`: 83 agree, 65 disagree, every one `Type::member` ← `member`** (38 fields, 27 methods). Both forms are true; the anchors' `name_key` folds them for pairing and incumbent-first keeps the qualified form as the scalar. Whether `name` should carry the leaf and `qualified_name` the qualified form is a vocabulary question for the owner, not a precedence exception.
 - **`is_exported`: 148 one-sided to `rust`, nothing contested.** Only the syntax arm observes exportedness (`"pub" in modifiers`); the SCIP translation assigns the field nowhere and now DECLARES that (`observes=()`), so the `Symbol.is_exported` default it would otherwise contribute on all 169 records is not a candidate (INV-huboz). **This row has been wrong twice, both times in the direction of claiming more than the evidence.** It first read `null ← false` ×41, which was this instrument reading a nested attribute from the top level (WI-pofih) — the carried value was always `true`. Corrected, it read 107 agree / 41 disagree, which counted a dataclass default as a measurement: 41 phantom contests and 107 phantom agreements. What is true is that one producer measured this attribute and the other never looked.
 - **`span`: 2 agree, 146 disagree, by construction** — the §10 role split (item vs identifier token); the two that agree are single-token items. Not a disagreement about the declaration.
-- **`stable_id`: 134 disagree, 14 one-sided to `rust`.** The 134 follow from `span` and `name` (the id hashes them). The 14 one-sided are the 10 structs, 3 enums and 1 trait the SCIP arm emits without a `stable_id` at all — filed as WI-paluk against the translation.
+- **`stable_id`: 148 disagree, none one-sided.** The arms hash different things, so they disagree on every paired record:
+  - tree-sitter uses the typed id for callables, and the orchestrator's declaration backstop for struct/enum/trait (WI-rihob).
+  - The SCIP arm uses `sha256(moniker)`, and its parity reassignment abstains (INV-dolud; whether the arms should share an identity is WI-gojum's).
+
+  **Correction (2026-09-23):** this row first read 134 / 14 one-sided, and was blamed on the SCIP translation. Both halves were wrong.
+  - The 14 were one-sided to `rust_analyzer`, not to `rust`.
+  - They were the tree-sitter arm's structs, enums and traits.
+  - Their cause was the harness, not a producer. It skipped `populate_kind_stable_ids`, which a survey runs before the merge pass.
+  - A live survey of this crate at the recorded rust-analyzer version reads 0 / 148 / 0 / 0 (WI-paluk).
 - **One-sided attributes.** `qualified_name` (148), `signature` (125), `docstring` (63) and `modifiers` (35) come from the syntax arm only: the SCIP translation fills none of them although `SymbolInformation` carries signature documentation. No agreement can be measured on them until it does.
 - **Edges.** The 93 in-repo `calls` both arms emit are exactly the corroborated edges (§13); 18 in-repo calls only tree-sitter sees, 7 only SCIP. The 269 `references` edges are SCIP-only (the syntax arm emits none), and every edge to an external stub — 244 `calls`, 26 `module_attr_ref`, 2 `implements`, 1 `decorated_by` — is tree-sitter-only, since the recorded index resolves nothing outside the crate. Three of the 244 stubs are superseded (§14).
