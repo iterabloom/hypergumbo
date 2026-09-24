@@ -67,3 +67,18 @@
   nonce: d091  # d091
   set:  # d091
     pr_ref: '1173'  # d091
+- op: update  # 084f
+  at: '2026-09-24T21:40:08Z'  # 084f
+  by: agent  # 084f
+  actor: jgstern_agent  # 084f
+  clock: 8  # 084f
+  nonce: 084f  # 084f
+  set:  # 084f
+    status: satisfied  # 084f
+- op: discuss  # 08b7
+  at: '2026-09-24T21:40:09Z'  # 08b7
+  by: agent  # 08b7
+  actor: jgstern_agent  # 08b7
+  clock: 9  # 08b7
+  nonce: 08b7  # 08b7
+  message: "SATISFIED ON THE FILED ROWS, 2026-09-24. All five rows named in the statement are gone from the loaded catalogue, each removal licensed against a represented crossing at the finding level (ADR-0049 Ruling 3):\n  erlang  ets.new             db_write  REMOVED #1173  -> ets.insert\n  elixir  ets.new             db_write  REMOVED #1173  (inherited)\n  elixir  Req.new             net_send  REMOVED #1173  -> Req.request! / Req.Request.run_request (rowed with it)\n  python  urllib.request.Request net_send  REMOVED #1187 -> urlopen   (after WI-bakik enumerated urllib.request)\n  go      net/http.NewRequest net_send  REMOVED #1188  -> Client.Do  (after WI-jikik typed http.DefaultClient)\nAlso removed in #1173: elixir Finch.build (same shape, found in the family sweep).\n\nBEHAVIORAL EVIDENCE, the pre-registered question \"does the flow survive the row going away?\", verify-claims on fixtures, claim host_secret !-> network/database, pinned worktrees:\n- python Request(data=secret) -> urlopen(req): violated both arms. It is now at urlopen, ddg confirmed.\n- go NewRequest(.., secret) -> http.DefaultClient.Do(req): violated, now at net/http.Do, ddg confirmed. With the row deleted but WI-jikik absent, it was inconclusive: the finding was LOST. That is why the go row waited.\n- erlang/elixir: violated both arms, at the executor (#1173, FX_AB.txt).\n- test_inv_gujoh_constructor_sinks.py pins every removal, every executor, and both represented crossings on real analyzer output. TestUrllibRequestIsEnumerated is a coverage gate with a control that can fail; test_default_client_do_reaches_the_client_send classifies DefaultClient.Do as Client.Do.\n- Cohorts, finding-level diff, generic taint claims, 0 verdict moves: 9 BEAM/py/go repos (#1173); beads, django, litellm, superset (python); keda, loki (go). Every function that lost constructor evidence gained it at its executor. The exceptions are disclosed on WI-bakik: `with urlopen(...)` evidence is not_attempted (WI-hular), and one sink-before-source evidence entry (WI-mojaz).\n- scripts/check-self-claims --minimal: 18 claims unchanged after the python removal.\n\nNOT ASSERTED:\n- The general statement for the constructor-shaped family beyond the filed rows. The 2026-09-08 scan's 181 candidates were read for credible members, not each adjudicated.\n- The objc ledger rows NSMutableURLRequest.requestWithURL: and NSFetchRequest.fetchRequestWithEntityName: have the same shapes and belong to WI-ziviv.\nFILED FROM THIS WORK: WI-dibit (python OpenerDirector.open sends, unrowed). WI-hular stands."  # 08b7
