@@ -1,0 +1,29 @@
+Original commit body from 26522c2e6391ba06c52141cb06b597eb31b31f54:
+
+http.NewRequest builds a request and sends nothing; Client.Do sends it.
+The row was kept because a request sent through http.DefaultClient
+never reached Client.Do, so deleting it lost the finding (INV-gujoh's
+measured refusal). The previous commit (WI-jikik) makes that call reach
+Client.Do, so the row goes.
+
+FINDING-LEVEL A/B (ADR-0049 Ruling 3): three pinned arms. A is dev, B is
+WI-jikik, C is WI-jikik with this deletion.
+Fixtures, claim host_secret !-> network:
+  go_req        NewRequest(.., secret) + DefaultClient.Do
+                A violated, only at NewRequest
+                C violated at net/http.Do, ddg confirmed
+  go_req_client the same through a typed client
+                violated in every arm, C at Do ddg confirmed
+  go_direct     http.Post(.., secret): unchanged (control)
+Cohort, generic taint claims: keda and loki, 0 verdict moves. keda's one
+function that lost NewRequest evidence gained Do evidence (same method,
+same walk). loki's findings cite no NewRequest.
+
+Tests: test_io_boundary's two leaf-caller tests used NewRequest only as
+an example go send; they now use http.Post. test_inv_gujoh_constructor_
+sinks moves go to the not-rowed list and pins the represented crossing
+on real analyzer output (DefaultClient.Do classifies as Client.Do,
+NewRequest as nothing). The kept-until-blocker test had no rows left
+and is removed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
