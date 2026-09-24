@@ -128,7 +128,10 @@ if TYPE_CHECKING:
     from hypergumbo_core.supply_chain import DependencyManifest
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
-from hypergumbo_core.library_signatures import load_library_signatures
+from hypergumbo_core.library_signatures import (
+    load_library_package_variables,
+    load_library_signatures,
+)
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
@@ -690,6 +693,38 @@ def _go_lookup_through_dot_imports(
         if result.found and result.match_type in ("exact", "path_hint"):
             return result
     return LookupResult(symbol=None)
+
+
+def _package_variable_import_path(
+    operand_node: "tree_sitter.Node",
+    source: bytes,
+    import_aliases: dict[str, str],
+) -> Optional[str]:
+    """Import path of the package holding ``pkg.Var``'s TYPE, when ``pkg.Var`` is a
+    catalogued stdlib package variable (WI-jikik); else None.
+
+    ``http.DefaultClient.Do(req)``'s receiver is a package variable, not a local,
+    so no ``var_types`` entry types it and the call fell to the ``external`` slot,
+    out of reach of ``net/http.Client.Do``'s row. library_signatures/go.yaml's
+    ``package_variables`` holds each variable's type. The key is the package's
+    own NAME, the import path's last element, so a renamed import
+    (``nethttp "net/http"``) resolves too. The type's package is the variable's
+    own unless the row names another, which the file must then import.
+    """
+    root = find_child_by_field(operand_node, "operand")
+    field = find_child_by_field(operand_node, "field")
+    if root is None or field is None or root.type != "identifier":
+        return None
+    var_path = import_aliases.get(node_text(root, source))
+    if var_path is None:
+        return None
+    var_pkg = var_path.rsplit("/", 1)[-1]
+    type_name = load_library_package_variables("go").get(
+        f"{var_pkg}.{node_text(field, source)}")
+    if type_name is None:
+        return None
+    type_pkg = type_name.split(".", 1)[0]
+    return var_path if type_pkg == var_pkg else import_aliases.get(type_pkg)
 
 
 def _external_package_for_type(
@@ -3335,6 +3370,24 @@ def _extract_edges_from_file(
                                             else:
                                                 import_path_hint = full_import_path
                                             receiver_module_hint = import_path_hint
+                        # WI-jikik: a method on a stdlib PACKAGE VARIABLE,
+                        # ``http.DefaultClient.Do(req)``. The root is a
+                        # package, so the field-chain walk below finds no
+                        # type, and the call fell to the ``external`` slot
+                        # where no catalogue row can reach it.
+                        elif (
+                            operand_node is not None
+                            and operand_node.type == "selector_expression"
+                            and callee_name
+                            and (_pv_path := _package_variable_import_path(
+                                operand_node, source, import_aliases,
+                            )) is not None
+                        ):
+                            full_import_path = _pv_path
+                            import_path_hint = (
+                                _strip_module_prefix(_pv_path, module_path)
+                                if module_path else _pv_path
+                            )
                         # Chained field access: r.integration.Notify()
                         # Walk selector chain through field_type_registry
                         # to resolve the receiver type.

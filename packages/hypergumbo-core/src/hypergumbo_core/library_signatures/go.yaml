@@ -40,3 +40,30 @@ signatures:
   bufio.NewScanner: bufio.Scanner
   bufio.NewReader: bufio.Reader
   bufio.NewWriter: bufio.Writer
+
+# WI-jikik: stdlib PACKAGE VARIABLES, and the type each holds. A method called on
+# one (`http.DefaultClient.Do(req)`) has no local variable to type, so the call
+# fell to the `external` slot and the catalogued `net/http.Client.Do` send was
+# unreachable -- while the same call on a typed local reached it. The false
+# `net/http.NewRequest` send row was compensating for exactly that (INV-gujoh).
+#
+# KEY SHAPE: the package's own NAME (the import path's last element), not the
+# alias a file imports it under, so `nethttp.DefaultClient` resolves too.
+# VALUE: the package-qualified type, as above.
+#
+# ONLY variables whose type carries catalogued methods are listed. Refused, each
+# for a reason, so the list is a decision rather than a sample:
+#   os.Stdin / os.Stdout / os.Stderr -- os.File carries no method rows; the std
+#     streams are already classified through io_target_kind (WI-dutah), and
+#     typing them would move every such call into the `os` slot, which is an
+#     unmeasured coverage-gate change.
+#   http.DefaultServeMux, flag.CommandLine -- route and flag registration; no
+#     method rows.
+#   crypto/rand.Reader, io.Discard -- an entropy source and a sink that
+#     discards; neither is a boundary in the vocabulary.
+package_variables:
+  http.DefaultClient: http.Client
+  # Declared `RoundTripper`; the value IS an `*http.Transport`, whose RoundTrip
+  # is the rowed send.
+  http.DefaultTransport: http.Transport
+  net.DefaultResolver: net.Resolver
