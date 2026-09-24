@@ -1,0 +1,61 @@
+Original commit body from 60bd9ff3e9455970ee1f258b27728465a8f4b5cf:
+
+Each analyzer found a call's enclosing function by the declaration's NAME, a
+name several declarations in one file share:
+- kotlin: the short name. `HttpUrl.parse` / `Builder.parse` in okhttp, and one
+  test name under two detekt `describe` objects.
+- scala: the short name. Every companion `apply`, and `OneOf.show` /
+  `WebSocketBodyOutput.show` in tapir.
+- swift: the qualified name, which every overload shares
+  (`Session.webSocketRequest`).
+The lookup returned whichever registered last. On a pinned 26-repo run (the
+INV-midag table, re-measured unchanged at 2c63301739), that anchored 2,014
+kotlin, 964 scala and 273 swift call edges to a src whose span does not contain
+the call.
+
+FIX: the rule INV-mozas shipped for elixir and erlang. The declaration node the
+walk reaches IS the symbol's node, so its start position identifies the symbol.
+Elixir's private `_symbols_at` moves to core as `symbols_at` /
+`symbol_declared_by` / `SymbolsAt` (its third user), and elixir now imports it.
+kotlin, scala and swift each build the index from the file's full symbol list:
+`analysis.symbols` for kotlin, `TreeSitterAnalyzer.file_symbols()` for the
+other two. Each analyzer's symbol span was checked to start at the declaration
+node the walk reaches: kotlin function_declaration; scala function_definition;
+swift function, subscript and computed-property declarations. A declaration
+with no symbol is walked past, as before.
+
+MEASURED, surveys from pinned worktrees, calls edge SETS diffed
+(~/hypergumbo_lab_notebook/premise_check_09242026/):
+  out-of-span   kotlin 2014 -> 0 (detekt, okhttp)
+                scala   964 -> 0 (tapir)
+                swift   273 -> 0 (Alamofire, SwiftyJSON)
+  src moved     3,320 edges, every one out-of-span -> in-span, none the other way
+  elixir        phoenix, plausible, livebook: calls edge sets IDENTICAL (the
+                refactor moves no edge)
+Gained edges: mostly calls the old anchor had merged into another function's
+`call_lines`, now distinct; calls between overloads that read as self-calls;
+and calls now resolved inside the right class (tapir: Codec.validate ->
+Codec.schema, not MultipartCodec.schema).
+Lost edges, each read in source:
+- tapir 40: re-resolved against the right class.
+- detekt 2 (method-call-recovery Issue.Entity / Issue.Location) and okhttp 1
+  (Idle.cancel): these existed ONLY because the wrong anchor put another
+  function's class hint, or class, in scope. The targets were plausible and the
+  evidence was false. `Issue.Entity(...)` loses its qualifier in kotlin, the
+  same shape as scala's WI-gunaj.
+- Alamofire 12: calls inside swift COMPUTED PROPERTIES. The old anchor credited
+  them to a same-named method. The property's own symbol is dropped from the
+  default view by noise_filter, which treats `property` as noise in every
+  language, so the edge now has no src and is finalized away. Filed as
+  WI-tisom (P2): 346 properties and 206 edges on Alamofire.
+
+Line pins moved with the edits: signature_axis (kotlin 1593->1607,
+1740->1754) and module_key_axis (swift 1900->1893, 1829->1822).
+
+Remaining INV-midag languages, not in this change: c 35, typescript 33, rust 5,
+ruby 3, csharp 3 (name collisions), and haskell 119 / javascript 135 (a second
+mechanism).
+
+Addresses INV-midag.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
