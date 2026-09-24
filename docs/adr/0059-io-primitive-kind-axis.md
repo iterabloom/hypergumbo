@@ -139,7 +139,10 @@ not re-kinded here. Each names the tracker item that blocks it:
   free functions, so a bare call with no module context is a project method
   (sbt's own `now()`, gatling's own `readString()`), and listing them keeps that
   path as it was when they were method rows.
-- **Scala `Process.apply`:** WI-narij.
+- **Scala `Process.apply`:** WI-narij. Re-kinded to `function` on 2026-09-24 and removed
+  from the ledger. It is called on the companion object. The analyzer emits the sugar
+  `Process(cmd)` under the name `Process`, so a `Process` function row joined it, the
+  constructor-named-row convention the Swift rows use.
 - **16 Swift constructors:** INV-gujoh. Left the ledger on 2026-09-23 once each
   boundary was adjudicated against ADR-0049. Eight crossed nothing and were
   deleted (`URLRequest`, `HTTPClientRequest`, `ClientBootstrap`,
@@ -157,9 +160,9 @@ size. So the ledger can only shrink, and a new exception is a visible diff. It
 records non-conformance; it does not approve it.
 
 **This ADR moved no row.** The order is measured, recorded on INV-zikab, and
-now complete through step 6. The ledger holds 30 rows: Scala `Process.apply`
-(WI-narij), and 3 Swift statics, 21 ObjC class methods and 5 `kotlin.io.FilesKt`
-rows (WI-ziviv).
+now complete through step 6. The ledger holds 29 rows, all WI-ziviv's: 3 Swift
+statics, 21 ObjC class methods and 5 `kotlin.io.FilesKt` rows. Scala
+`Process.apply` left it with WI-narij on 2026-09-24.
 1. The unconstrained rows went first (INV-dihun, PR #1155).
 2. The Swift boundaries are adjudicated before their kinds.
 3. The INV-nizom arm stops reading `method` as receiver evidence before the

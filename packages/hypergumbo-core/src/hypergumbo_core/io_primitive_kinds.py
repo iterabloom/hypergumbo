@@ -192,9 +192,6 @@ def _rows(language: str, module: str, names: Iterable[str],
 
 
 KNOWN_NONCONFORMING_ROWS: Final[tuple[NonconformingRow, ...]] = (
-    # Companion apply; the analyzer emits `Process(c)` under the name `Process`,
-    # so the row is unreachable whatever its kind (WI-narij).
-    NonconformingRow("scala", "scala.sys.process.Process", "apply", ("WI-narij",)),
     # No measured blocker; queued (WI-ziviv).
     *(NonconformingRow("swift", m, n, ("WI-ziviv",)) for m, n in (
         ("Date", "now"), ("DispatchTime", "now"), ("ProcessInfo", "processInfo"),

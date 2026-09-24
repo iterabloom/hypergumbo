@@ -3913,8 +3913,9 @@ def method_starved_modules(
     The proxy is loose in one direction, stated so it is not mistaken for more.
     One method-stamped edge satisfies route 1 for the WHOLE module, even an
     edge to a method the catalogue does not row. Scala's uncatalogued
-    ``Process.exitValue`` keeps ``scala.sys.process.Process`` from starving
-    while ``Process(cmd)`` itself is never classified (WI-narij).
+    ``Process.exitValue`` kept ``scala.sys.process.Process`` from starving on
+    sbt while ``Process(cmd)`` itself classified as nothing. That lasted until
+    WI-narij rowed the name the analyzer emits for the companion sugar.
 
     WHY NOT THE SIMPLER PREDICATES, measured before this one was written
     (``scripts/measure-blind-language-signal.py``, six fixtures):

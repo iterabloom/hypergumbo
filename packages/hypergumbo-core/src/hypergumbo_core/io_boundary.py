@@ -458,6 +458,8 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "java.lang.ProcessBuilder.start", "java.lang.Runtime.exec",
     "java.lang.ProcessBuilder.command",
     "scala.sys.process.Process.apply", "scala.sys.process.Process.run",
+    # `Process(cmd)`: the companion sugar, under the name the analyzer emits (WI-narij).
+    "scala.sys.process.Process.Process",
     "scala.sys.process.ProcessBuilder.run",
     "scala.sys.process.ProcessBuilder.lineStream",
     "scala.sys.process.ProcessBuilder.lazyLines",

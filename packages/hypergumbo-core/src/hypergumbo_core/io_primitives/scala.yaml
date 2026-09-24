@@ -155,10 +155,21 @@ fs_read:
 
 fs_write:
   - module: scala.sys.process.Process
-    methods: [apply, run]
+    functions: [apply, Process]
+    methods: [run]
     simultaneous: true
     notes: >-
       Scala process execution (can write to filesystem via shell commands).
+      WI-narij: `Process(cmd)` is companion-apply sugar for `Process.apply(cmd)`,
+      called on the object, so both are function-kind (ADR-0059). The analyzer
+      emits the sugar under the name `Process`, which the row must carry. That is
+      the constructor-named-row convention swift.yaml uses. Before this, the most
+      common launch classified as nothing: 6 of 6 on sbt. `Process` is
+      deliberately NOT in ambiguous_names. `import scala.sys.process._` leaves the
+      slot at `external`, so the bare name is how the wildcard spelling arrives.
+      On 11 scala repos, all 8 bare matches were genuine launches (0 lost, 0
+      changed), and a project `Process` resolves in-repo instead. `apply` IS
+      listed, as it always was.
       INV-zumin: declared `simultaneous` because BOTH this and the `subprocess`
       row below are true of the same call at the same moment — this row is a
       statement about what the LAUNCHED PROGRAM does. Before the marker,
@@ -172,7 +183,8 @@ fs_write:
 
 subprocess:
   - module: scala.sys.process.Process
-    methods: [apply, run]
+    functions: [apply, Process]
+    methods: [run]
     simultaneous: true
     notes: "Scala process execution — wraps java.lang.ProcessBuilder"
   - module: scala.sys.process.ProcessBuilder
