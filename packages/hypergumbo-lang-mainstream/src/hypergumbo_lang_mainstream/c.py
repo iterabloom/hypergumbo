@@ -61,6 +61,9 @@ from hypergumbo_core.analyze.base import (
     node_text,
     populate_docstrings_from_tree,
     stamp_io_mode_from_call,
+    symbol_declared_by,
+    symbols_at,
+    SymbolsAt,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
@@ -436,34 +439,24 @@ def _extract_symbols(
 
 def _get_enclosing_function(
     node: "tree_sitter.Node",
-    source: bytes,
-    file_path: Path,
-    global_symbols: dict[str, Symbol],
-    local_symbols: dict[str, Symbol] | None = None,
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up to find the enclosing function definition.
+    """The function definition that contains ``node``.
 
-    Checks ``local_symbols`` first (file-scoped, always has the current
-    file's definition), then falls back to ``global_symbols`` with a path
-    check.  This is essential for C repos where multiple files define the
-    same function name (e.g. ``cmd_main`` in git's per-binary entry points).
-    Without the local lookup, only the single global-registry winner
-    would produce outgoing edges.
+    Keyed by the declaration's POSITION, not its name (INV-midag). The name
+    lookup had two defects. Across files, it was fixed by preferring the
+    file-local symbol, because git defines ``cmd_main`` once per binary. Within
+    one file it could not be fixed: an ``#ifdef``/``#else`` pair defines one name
+    twice (tmux's compat/closefrom.c), and ``local_symbols`` keeps one of them,
+    so 35 of 11,011 c call edges on a 26-repo run were anchored to the other
+    alternative. The ``function_definition`` node IS the symbol's node.
     """
     current = node.parent
-    str_path = str(file_path)
     while current is not None:
         if current.type == "function_definition":
-            name = _get_function_name(current, source)
-            if name:
-                # Prefer file-local symbol (always matches current file)
-                if local_symbols and name in local_symbols:
-                    return local_symbols[name]
-                # Fall back to global symbol with path check
-                if name in global_symbols:
-                    func_sym = global_symbols[name]
-                    if func_sym.path == str_path:
-                        return func_sym
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -497,6 +490,7 @@ def _extract_edges(
     global_symbols: dict[str, Symbol],
     resolver: NameResolver | None = None,
     local_symbols: dict[str, Symbol] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed C tree (pass 2).
 
@@ -507,6 +501,16 @@ def _extract_edges(
     """
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
+    # Every declaration of this file, by position (INV-midag). Without the
+    # per-file list (a direct call), the local dict plus this file's entries of
+    # the global registry is the best available.
+    if file_symbols is None:
+        str_path = str(file_path)
+        file_symbols = list({
+            s.id: s for s in [*(local_symbols or {}).values(), *global_symbols.values()]
+            if s.path == str_path
+        }.values())
+    decl_index = symbols_at(file_symbols)
 
     edges: list[Edge] = []
     _caller_path = str(file_path)
@@ -553,9 +557,7 @@ def _extract_edges(
     for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
         if node.type == "call_expression":
-            current_function = _get_enclosing_function(
-                node, source, file_path, global_symbols, local_symbols,
-            )
+            current_function = _get_enclosing_function(node, decl_index)
             # INV-kaduh. Recorded before the branch and applied after it, so
             # every edge this ONE call produces carries the mode — rather than
             # at each Edge.create inside, which is the shape that drifts.
@@ -656,9 +658,7 @@ def _extract_edges(
                 )
                 if ident:
                     ref_name = node_text(ident, source)
-                    current_function = _get_enclosing_function(
-                        node, source, file_path, global_symbols, local_symbols,
-                    )
+                    current_function = _get_enclosing_function(node, decl_index)
                     if current_function:
                         lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                         if (
@@ -1404,6 +1404,7 @@ class CAnalyzer(TreeSitterAnalyzer):
         edges = _extract_edges(
             tree, source, file_path, run, global_symbols, resolver,
             local_symbols=local_symbols,
+            file_symbols=self.file_symbols(local_symbols),
         )
         _emit_stdio_identifier_refs(tree, source, file_path, run, edges)
         return edges
@@ -1496,6 +1497,11 @@ class CAnalyzer(TreeSitterAnalyzer):
             source = source_file.read_bytes()
             tree = parser.parse(source)
             rel_path = str(source_file.relative_to(repo_root))
+            # What the base ``analyze`` does and this override did not (INV-midag):
+            # without it ``file_symbols()`` falls back to ``symbol_by_name``,
+            # which keeps ONE of an #ifdef/#else pair, so the other's calls were
+            # anchored to it and, once found by position, dropped.
+            self._current_file_symbols = analysis.symbols
             edges = self.extract_edges_from_file(
                 tree, source, source_file, rel_path,
                 analysis.symbol_by_name, global_symbols, run,
@@ -1505,6 +1511,7 @@ class CAnalyzer(TreeSitterAnalyzer):
             if _df_config is not None:
                 annotate_dataflow(edges, tree, source, _df_config)
             all_edges.extend(edges)
+        self._current_file_symbols = None
 
         # Deduplicate: remove declaration-only symbols when a definition
         # exists for the same function name.  Declarations in headers produce

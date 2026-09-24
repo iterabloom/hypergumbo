@@ -83,6 +83,9 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     node_text,
     populate_docstrings_from_tree,
+    SymbolsAt,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -308,17 +311,21 @@ def _get_enclosing_class_or_module(node: "tree_sitter.Node", source: bytes) -> t
 def _get_enclosing_method(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing method (instance or class method)."""
+    """The method (instance or class method) whose ``def`` contains ``node``.
+
+    Keyed by the declaration's POSITION, not its name (INV-midag). Ruby lets one
+    file define a method twice, in a reopened class or as a redefinition, and the
+    name lookup returned whichever registered last (postal's
+    MessageInspection#scan). The ``def`` node IS the symbol's node.
+    """
     current = node.parent
     while current is not None:
         if current.type in ("method", "singleton_method"):
-            name_node = _find_child_by_field(current, "name")
-            if name_node:
-                method_name = node_text(name_node, source)
-                if method_name in local_symbols:
-                    return local_symbols[method_name]
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -2565,6 +2572,7 @@ def _extract_edges_from_file(
     require_hints: dict[str, str],
     method_candidates: dict[str, list[Symbol]] | None = None,
     method_resolver: ListNameResolver | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2581,6 +2589,11 @@ def _extract_edges_from_file(
             method-specific lookups.  When provided, used instead of ``resolver``
             for method name lookups (bare calls and receiver call fallbacks).
     """
+    # Every declaration of this file, by position (INV-midag): ``local_symbols``
+    # keeps ONE symbol per name.
+    decl_index = symbols_at(
+        file_symbols if file_symbols is not None
+        else list({s.id: s for s in local_symbols.values()}.values()))
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("ruby", str(file_path))
@@ -2634,7 +2647,7 @@ def _extract_edges_from_file(
                         if sym_node is not None:
                             ref_name = node_text(sym_node, source).lstrip(":")
                             current_method = _get_enclosing_method(
-                                node, source, local_symbols,
+                                node, source, decl_index,
                             )
                             if current_method is not None:
                                 # Class-qualified lookup: App#transform
@@ -2673,7 +2686,7 @@ def _extract_edges_from_file(
 
                 # Handle regular method calls
                 else:
-                    current_method = _get_enclosing_method(node, source, local_symbols)
+                    current_method = _get_enclosing_method(node, source, decl_index)
                     if current_method is not None:
                         # Try receiver-qualified resolution first
                         receiver_node = node.child_by_field_name("receiver")
@@ -2768,7 +2781,7 @@ def _extract_edges_from_file(
                 "call", "method_call", "element_reference", "scope_resolution"
             ):
                 continue
-            current_method = _get_enclosing_method(node, source, local_symbols)
+            current_method = _get_enclosing_method(node, source, decl_index)
             if current_method is not None:
                 callee_name = node_text(node, source)
 
@@ -2863,7 +2876,7 @@ def _extract_edges_from_file(
                         target = lookup_result.symbol
                 if target is not None and target.kind == "method":
                     current_method = _get_enclosing_method(
-                        node, source, local_symbols,
+                        node, source, decl_index,
                     )
                     if current_method is not None and target.id != current_method.id:
                         edges.append(Edge.create(
@@ -3142,6 +3155,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 require_hints=analysis.import_aliases,
                 method_candidates=method_candidates,
                 method_resolver=method_resolver,
+                file_symbols=analysis.symbols,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             _ruby_df = _get_dataflow_config("ruby")
