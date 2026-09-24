@@ -85,3 +85,58 @@ def test_every_call_is_inside_its_src(tmp_path: Path) -> None:
     assert [a[0] for a in anchors if a[3] == 40] == ["setup"], anchors
     for name, start, end, line in anchors:
         assert start <= line <= end, (name, start, end, line)
+
+
+# WI-pizan: a .vue <script> block is positioned by a line offset. Lines 6-12
+# hold one-line callbacks; the callback at line 13 starts, without the offset,
+# at "line 8", where another callback really starts. The callback at line 18
+# starts, without it, at "line 13": the callback above. So both used to credit
+# their calls to a neighbour. The callback at line 23 finds nothing at "line
+# 18" and used to fall through to the file.
+_VUE = """\
+<template>
+  <slot />
+</template>
+
+<script setup lang="ts">
+on('a', () => one())
+on('b', () => two())
+on('c', () => one())
+on('d', () => two())
+on('e', () => one())
+on('f', () => two())
+on('g', () => one())
+on('h', () => {
+  two()
+  one()
+})
+
+on('i', () => {
+  two()
+})
+
+
+on('j', () => {
+  one()
+})
+
+function one() {}
+function two() {}
+</script>
+"""
+
+
+def test_a_vue_callback_is_credited_with_its_own_calls(tmp_path: Path) -> None:
+    (tmp_path / "A.vue").write_text(_VUE)
+    result = analyze_javascript(tmp_path)
+    by_id = {s.id: s for s in result.symbols}
+    anchors = {
+        e.line: by_id[e.src]
+        for e in result.edges
+        if e.edge_type == "calls" and e.line and e.src in by_id
+    }
+    assert set(anchors) >= {6, 12, 14, 15, 19, 24}, sorted(anchors)  # reach
+    for line in (6, 12, 14, 15, 19, 24):
+        src = anchors[line]
+        assert src.name == "_cb_on", (line, src.name)
+        assert src.span.start_line <= line <= src.span.end_line, (line, src.span)
