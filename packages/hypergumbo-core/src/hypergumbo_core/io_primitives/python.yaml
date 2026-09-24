@@ -566,6 +566,15 @@ net_send:
     methods: [request, putrequest, endheaders, send]
   - module: urllib.request
     functions: [urlopen, Request, urlretrieve]
+    notes: >-
+      `Request` builds a request object and sends nothing; `urlopen(req)` is the
+      send. The row is WRONG and KEPT (INV-gujoh). Removing it leaves the
+      `Request(...)` call unclassified in a module whose I/O surface is not
+      enumerated (module_completeness), and the coverage gate then withholds every
+      clean verdict for a program that builds one. Measured: all 18 of
+      hypergumbo's own self-claims went inconclusive, because hypergumbo_tracker
+      builds a Request. Remove it together with enumerating urllib.request
+      (WI-bakik), not before.
   - module: smtplib.SMTP
     methods: [sendmail, send_message]
   - module: xmlrpc.client.ServerProxy
