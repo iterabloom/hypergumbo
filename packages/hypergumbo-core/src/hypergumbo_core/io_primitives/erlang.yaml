@@ -217,7 +217,11 @@ db_read:
 
 db_write:
   - module: ets
-    functions: [insert, insert_new, delete, delete_object, delete_all_objects, update_counter, update_element, new]
+    functions: [insert, insert_new, delete, delete_object, delete_all_objects, update_counter, update_element]
+    notes: >-
+      NOT `new`: it creates an empty table and stores nothing. Rowing it
+      credited one logical write twice, at ets:new and again at ets:insert
+      (INV-gujoh). A secret stored with ets:insert stays violated without the row.
   - module: dets
     functions: [insert, insert_new, delete, delete_object, delete_all_objects]
   - module: mnesia

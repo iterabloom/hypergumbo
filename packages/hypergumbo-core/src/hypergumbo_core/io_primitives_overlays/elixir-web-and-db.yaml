@@ -96,11 +96,25 @@ net_send:
     functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, options, request, request!]
     notes: "Tesla (middleware-based HTTP client)"
   - module: Req
-    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!, new]
-    notes: "Req (modern Elixir HTTP client, Phoenix team's preferred)"
+    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!]
+    notes: >-
+      Req (modern Elixir HTTP client, Phoenix team's preferred). NOT `new`: it
+      builds a %Req.Request{} and sends nothing. `Req.request!(req)` sends it
+      and is rowed (INV-gujoh).
+  - module: Req.Request
+    functions: [run_request]
+    notes: >-
+      Runs a built %Req.Request{} through its pipeline and performs the request.
+      Rowed with INV-gujoh's removal of `Req.new`, because it is the executor that
+      removal must be licensed against (ADR-0049 Ruling 3). plausible's
+      `opts |> Req.new() |> Req.Request.run_request()` carried a host_secret ->
+      network finding ONLY through the `Req.new` row. Without this row, deleting
+      `Req.new` lost it.
   - module: Finch
-    functions: [build, request, stream]
-    notes: "Finch (low-level, pooled HTTP client)"
+    functions: [request, stream]
+    notes: >-
+      Finch (low-level, pooled HTTP client). NOT `build`: it builds a
+      %Finch.Request{} and sends nothing. `Finch.request` sends it (INV-gujoh).
   - module: Mint.HTTP
     functions: [connect, request, stream]
     notes: "Mint (connection-level HTTP/1+2 client)"
