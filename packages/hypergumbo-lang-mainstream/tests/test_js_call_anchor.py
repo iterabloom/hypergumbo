@@ -57,6 +57,13 @@ const logger = {
     one();
   },
 };
+
+function setup() {
+  const handlers = {
+    info: (m) => two(),
+  };
+  return handlers;
+}
 """
 
 
@@ -69,9 +76,12 @@ def test_every_call_is_inside_its_src(tmp_path: Path) -> None:
         for e in result.edges
         if e.edge_type == "calls" and e.line and e.src in by_id and by_id[e.src].kind != "file"
     ]
-    assert {a[3] for a in anchors} >= {6, 12, 18, 21, 27, 30, 34}, anchors  # reach
+    assert {a[3] for a in anchors} >= {6, 12, 18, 21, 27, 30, 34, 40}, anchors  # reach
     # A call in an object-literal arrow with no symbol of its own is credited to
     # the module variable that contains it, as the name lookup did before.
     assert [a[0] for a in anchors if a[3] == 34] == ["logger"], anchors
+    # A LOCAL object has no symbol and neither has its arrow: the walk moves on
+    # past the declarator to the function that contains it.
+    assert [a[0] for a in anchors if a[3] == 40] == ["setup"], anchors
     for name, start, end, line in anchors:
         assert start <= line <= end, (name, start, end, line)
