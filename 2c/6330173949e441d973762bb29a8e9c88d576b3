@@ -1,0 +1,47 @@
+Original commit body from 9c53a2e37160bbe9fe14f8b6c19e4ccbace71bf8:
+
+Addresses WI-paluk. Its premise was inverted.
+
+WI-paluk said the rust-analyzer translation emits its 10 structs, 3 enums and 1
+trait with no stable_id, citing audit 0019's `stable_id | 0 | 134 | 0 | 14` row.
+The columns are (agree, disagree, rust only, rust_analyzer only), so the 14
+were one-sided to rust_analyzer. Counted per arm on the recorded fixture:
+- the SCIP translation gives every one of its 169 records a stable_id;
+- rust.py gives none to struct/enum/trait.
+That is by design (WI-rihob): those kinds get their id from
+populate_kind_stable_ids at the orchestrator chokepoint
+(all_analyzers.py:561). A survey runs it before the merge pass
+(cli.py:11580). The harness called analyze_rust directly and skipped it.
+
+Behavioural evidence: a live survey of a copy of the committed crate, with
+rust-analyzer 1.94.0 (the recorded producer version), run as
+`CARGO_NET_OFFLINE=true HYPERGUMBO_RUST_ANALYZER=1 hypergumbo survey .`.
+`hypergumbo backend-agreement` on that survey reads stable_id 0 / 148 / 0 / 0.
+All 14 records carry a stable_id on both arms. Every other node row equals
+the committed table.
+
+Changes:
+- _both_arms (rust-analyzer) and _two_arm_artifact (scip-python) call
+  populate_kind_stable_ids over both arms before merge_producer_records.
+- Re-pinned:
+  - rust stable_id (0, 148, 0, 0) and stable_id_alternatives 148;
+  - scip-python stable_id (0, 10, 0, 0). Its 2 one-sided records were the
+    syntax arm's variables, by the same mechanism.
+  The scip-python re-pin follows from the shared code path. scip-python is
+  not installed here, so it is not a live measurement.
+- Two recorded-module comments explained the 14 wrongly. One said the SCIP
+  arm emits them without an id; the other called them single-line items
+  where the parity helper matches. The instrument's agree column was 0 before
+  this change. Both are corrected.
+- Audit 0019 regenerated: only the stable_id row and the date moved. Its
+  Reading bullet now carries a dated correction.
+- Two new tests assert that no record reaches the merge without a stable_id,
+  with a reach check first. Both were red against the harnesses before this
+  change.
+
+Not changed: the two arms still disagree on every paired stable_id. They hash
+different things (INV-dolud; WI-gojum, parked). The harness's EDGE rows differ
+from the live survey at the same producer version; that is filed separately
+as WI-vosop and not diagnosed here.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
