@@ -148,7 +148,7 @@ class TestTheLiteralScanner:
 class TestTheLedger:
     #: Shrink-only. Lower it when a blocked row is fixed and its entry deleted;
     #: raising it is a new exception to the axiom and must be argued in review.
-    LEDGER_SIZE = 30
+    LEDGER_SIZE = 29
 
     def test_the_size_is_pinned(self) -> None:
         assert len(KNOWN_NONCONFORMING_ROWS) == self.LEDGER_SIZE
@@ -265,3 +265,48 @@ class TestJvmStaticsAreFunctions:
         hit = load_catalog(language).lookup_with_module(
             "readAllBytes", "java.nio.file.Files", call_construct="method")
         assert hit is not None and hit.kind == KIND_FUNCTION
+
+
+class TestScalaProcessLaunchIsReachable:
+    """WI-narij (ADR-0059). ``Process(cmd)`` is companion-apply sugar for
+    ``Process.apply(cmd)``, called on the object, so both rows are function-kind.
+    The analyzer emits the sugar under the name ``Process``, so the row must
+    carry that name too: the constructor-named-row convention the Swift rows
+    already use."""
+
+    _MODULE = "scala.sys.process.Process"
+
+    def test_the_launch_rows_are_function_kind(self) -> None:
+        kinds = {(p.name, p.boundary): p.kind for p in load_catalog("scala").primitives
+                 if p.module == self._MODULE}
+        for name in ("apply", "Process"):
+            for boundary in ("fs_write", "subprocess"):
+                assert kinds.get((name, boundary)) == KIND_FUNCTION, (name, boundary, kinds)
+
+    def test_a_slotted_launch_crosses_both_boundaries(self) -> None:
+        catalog = load_catalog("scala")
+        hit = catalog.lookup_with_module("Process", self._MODULE)
+        assert hit is not None and hit.name == "Process"
+        assert catalog.simultaneous_boundaries_for(f"{self._MODULE}.Process") == {"fs_write", "subprocess"}
+
+    def test_a_bare_apply_needs_module_context(self) -> None:
+        """``apply`` is the most common method name in scala; a no-context
+        ``apply`` is anything's companion. sbt alone has 11 unstamped or
+        function-stamped ``external:apply`` edges that would all read as
+        process launches."""
+        catalog = load_catalog("scala")
+        assert "apply" in catalog.ambiguous_names
+        assert catalog.lookup_with_module("apply", "external") is None
+
+    def test_a_bare_process_still_matches(self) -> None:
+        """Measured, not assumed. ``import scala.sys.process._`` (and scala 3's
+        ``.*``) leaves the slot at ``external``, so a bare ``Process`` is how the
+        wildcard spelling arrives. On 11 scala repos (sbt, tapir, lila,
+        playframework, pekko, spark, scala3, gatling, http4s, cats, zio), every
+        bare ``external:Process`` edge this row matched was a genuine
+        scala.sys.process launch: 8 of 8, 0 lost and 0 changed. A project type
+        named ``Process`` resolves in-repo and never reaches this path. If a
+        false positive is ever found, list the name in ``ambiguous_names``: that
+        was arm B1, which gave up those 8."""
+        hit = load_catalog("scala").lookup_with_module("Process", "external")
+        assert hit is not None and hit.module == self._MODULE
