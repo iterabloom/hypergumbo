@@ -3892,13 +3892,29 @@ def method_starved_modules(
     invisible", consumed by :func:`compute_boundary_coverage` so the boundary
     gate and the taint gate share one rule rather than growing a second copy.
 
-    A catalogue entry declares its own call shape: ``java.io.File`` carries
-    ``methods: [writeText, ...]``, so only a METHOD-construct call edge can ever
-    match it, while ``kotlin.io.ConsoleKt`` carries ``functions: [println]``
-    precisely because that receiver is compiler-synthesised and absent at AST
-    level. So when a repo calls into a method-keyed module and the analyzer
-    produced no method-construct edge for it, the catalogue was never given
-    anything it could match — the analysis did not look.
+    WHAT IT ASKS, AND WHAT IT DOES NOT. A row's kind says how the primitive is
+    reached from its own module (ADR-0059), and it is NOT what makes an edge
+    match. An edge whose module slot names the row's module is matched by NAME:
+    ``lookup_with_module``'s module filter never reads the kind. Kind is read
+    only on the no-context path (``gate_named_entry``, where a method row
+    cannot match at all) and by the INV-nizom arm on a slot that names several
+    owners. This used to say "only a METHOD-construct call edge can ever match"
+    a method-keyed entry. That premise was refuted by the 2026-09-23 concept
+    audit (INV-zikab).
+
+    So the question here is a PROXY. Did the analyzer emit, for a module that
+    has instance-method rows, the calls those rows describe? A module counts as
+    examined when some call edge into it carries a construct among the kinds
+    the module declares (route 1), or names one of its function-kind rows
+    (route 2). The blind-Kotlin case fails both: before WI-nasuf, a repo
+    reached ``java.io.File`` only through its constructor, so the analysis did
+    not look.
+
+    The proxy is loose in one direction, stated so it is not mistaken for more.
+    One method-stamped edge satisfies route 1 for the WHOLE module, even an
+    edge to a method the catalogue does not row. Scala's uncatalogued
+    ``Process.exitValue`` keeps ``scala.sys.process.Process`` from starving
+    while ``Process(cmd)`` itself is never classified (WI-narij).
 
     WHY NOT THE SIMPLER PREDICATES, measured before this one was written
     (``scripts/measure-blind-language-signal.py``, six fixtures):
