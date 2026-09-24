@@ -3489,17 +3489,23 @@ class RustAnalyzer(TreeSitterAnalyzer):
         else:
             mr = cache[1]
 
-        # Build span index from global_symbols for this file.
+        # Build span index from EVERY declaration of this file (INV-midag).
         # local_symbols (symbol_by_name) loses entries when short names
-        # collide — e.g., free function "caller" is overwritten by
-        # method "Foo::caller".  The global registry preserves all
-        # qualified names, so filtering by path gives a complete set.
-        # Symbols store paths as relative (rel_path), not absolute.
+        # collide -- free function "caller" is overwritten by method
+        # "Foo::caller". The global registry was the fix for that, and it
+        # has the same defect one level up: it is keyed by QUALIFIED name,
+        # which two ``impl IntoIterator for AttributeSet`` /
+        # ``for &AttributeSet`` blocks share (just's attribute_set.rs), so
+        # one ``AttributeSet::into_iter`` vanished and its calls fell back
+        # to the name lookup. ``file_symbols`` is the per-file list itself.
         file_syms = [
-            s for s in global_symbols.values()
+            s for s in self.file_symbols(local_symbols)
             if s.path == rel_path and s.kind in ("function", "method")
         ]
-        span_idx = {(s.span.start_line, s.span.end_line): s for s in file_syms}
+        span_idx = {
+            (s.span.start_line, s.span.end_line): s
+            for s in file_syms if s.span is not None
+        }
 
         # WI-milak / BUG-04: pull the kind-segregated multi-value index
         # populated by register_symbol so the impl_item handler can

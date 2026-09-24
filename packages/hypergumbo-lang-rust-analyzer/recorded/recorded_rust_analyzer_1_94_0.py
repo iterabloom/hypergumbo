@@ -247,7 +247,7 @@ AARDVARK_DNS_AGREEMENT_TALLY: Final[dict[str, int]] = {
 
 #: The SCIP arm's occurrence edges on the recording and their tree-sitter
 #: twins (WI-zapuk). A "twin" is a tree-sitter edge on the same (src, dst)
-#: after both endpoints are paired through the declared anchors. The nine
+#: after both endpoints are paired through the declared anchors. The eleven
 #: twins that still differ are tuple-struct / variant CONSTRUCTION sites the
 #: tree-sitter arm labels ``calls`` while the SCIP target is a struct or
 #: variant. (Named without "edge type": see AARDVARK_DNS_AGREEMENT_TALLY.)
@@ -256,9 +256,12 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     "calls": 130,
     "references": 368,
     "field_target_references": 113,
-    "twins": 130,
+    # 130 until INV-midag: the three `impl From<_> for AardvarkError` share the
+    # name `AardvarkError::from`, and the tree-sitter arm credited all their calls
+    # to one of them, so two `IOError(e)` constructions had no SCIP twin.
+    "twins": 132,
     "twins_calls_calls": 121,
-    "twins_references_calls": 9,
+    "twins_references_calls": 11,
     # After the merge pass rewires endpoints (WI-kokiz), the 121 calls/calls
     # twins fall onto 93 DISTINCT (src, dst, edge_type) keys — SCIP emits one
     # edge per call occurrence and within-arm dedup already folds repeats —
@@ -320,7 +323,7 @@ AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
 # The 93 "both" calls are the corroborated edges; the incumbent emits no
 # `references` edge and the SCIP arm no edge to an external stub.
 AARDVARK_DNS_EDGE_OVERLAP = {
-    ("calls", True): (93, 18, 7),
+    ("calls", True): (93, 19, 7),
     ("calls", False): (0, 244, 0),
     ("decorated_by", False): (0, 1, 0),
     ("implements", False): (0, 2, 0),
