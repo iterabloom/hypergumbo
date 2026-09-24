@@ -226,6 +226,23 @@ def _extract_symbols_from_file(
                 if sig:
                     type_signatures[name] = sig
 
+    # INV-midag: a function is written as consecutive EQUATIONS, one per
+    # pattern, and each is its own ``function``/``bind`` node. The symbol is
+    # emitted once per name, from the first equation, so its span must run to
+    # the LAST one. Otherwise every call in a later equation is anchored to the
+    # right function but falls outside its span: xmonad's ``handle`` spanned
+    # 287-292 while its equations run to 414. Haskell requires a function's
+    # equations to be adjacent, so first-to-last is exactly the function.
+    last_equation_end: dict[str, tuple[int, int]] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type in ("function", "bind") and (
+            node.parent is None or node.parent.type == "declarations"
+        ):
+            eq_name = _get_function_name(node, source)
+            if eq_name:
+                end = (node.end_point[0], node.end_point[1])
+                last_equation_end[eq_name] = max(last_equation_end.get(eq_name, end), end)
+
     def add_symbol(
         node: "tree_sitter.Node",
         name: str,
@@ -237,13 +254,17 @@ def _extract_symbols_from_file(
             return  # pragma: no cover - skip empty/duplicate names
         seen_names.add(name)
 
+        end_row, end_col = (
+            last_equation_end.get(name, (node.end_point[0], node.end_point[1]))
+            if kind == "function" else (node.end_point[0], node.end_point[1])
+        )
         start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
+        end_line = end_row + 1
         span = Span(
             start_line=start_line,
             end_line=end_line,
             start_col=node.start_point[1],
-            end_col=node.end_point[1],
+            end_col=end_col,
         )
         sym_id = make_symbol_id("haskell", file_path, start_line, end_line, name, kind)
         # WI-buvun: is_exported tri-state. No export list = all top-level
