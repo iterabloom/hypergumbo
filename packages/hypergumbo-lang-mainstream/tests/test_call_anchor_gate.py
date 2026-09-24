@@ -11,8 +11,11 @@ Two methods ``parse`` in two classes, an ``#ifdef`` pair, overloads, a companion
 cured one language at a time (INV-mozas, INV-midag).
 
 WHAT THIS GATE DOES, and what it does not. It enumerates every module in this
-package that DEFINES such a lookup, from the source rather than a hand-written
-list, and requires each to be classified:
+package that DEFINES such a lookup under the conventional name, or EMITS a
+``calls`` edge at all, from the source rather than a hand-written list, and
+requires each to be classified. (The name pattern alone missed 25 modules whose
+lookup is spelled otherwise, cpp and lua among them: WI-tosum.)
+Each is:
 - VERIFIED names a containment test that exists here. That test runs the real
   analyzer on a same-named-declarations fixture and asserts reach, then
   containment. That half is semantic.
@@ -31,6 +34,9 @@ import pytest
 
 _SRC = Path(__file__).resolve().parents[1] / "src" / "hypergumbo_lang_mainstream"
 _LOOKUP = re.compile(r"^def _(?:get|find)_enclosing_(?:function|method|callable)\w*\(", re.M)
+#: A module that emits a ``calls`` edge anchors it somewhere, whatever its lookup
+#: is called. The name pattern alone missed 25 such modules (WI-tosum).
+_CALLS = re.compile(r"""edge_type=["']calls["']""")
 
 #: module -> ("verified", "test_module::test_name") | ("unverified", row id)
 CLASSIFIED: dict[str, tuple[str, str]] = {
@@ -49,11 +55,24 @@ CLASSIFIED: dict[str, tuple[str, str]] = {
     "perl": ("verified", "test_call_anchor_gate::test_perl_same_named_callables"),
     "php": ("verified", "test_call_anchor_gate::test_php_same_named_callables"),
     "powershell": ("verified", "test_call_anchor_gate::test_powershell_same_named_callables"),
+    "bash": ("unverified", "WI-tosum"),
+    "cpp": ("unverified", "WI-tosum"),
+    "jupyter": ("unverified", "WI-tosum"),
+    "lua": ("unverified", "WI-tosum"),
+    "py": ("unverified", "WI-tosum"),
 }
 
 
 def _modules_with_a_lookup() -> set[str]:
-    return {p.stem for p in _SRC.glob("*.py") if _LOOKUP.search(p.read_text(encoding="utf-8"))}
+    """Every module that defines an enclosing lookup by the conventional name, or
+    emits a ``calls`` edge. A literal ``edge_type="calls"`` is what the second
+    pattern sees; a module that spells the type through a variable is not seen."""
+    found = set()
+    for p in _SRC.glob("*.py"):
+        text = p.read_text(encoding="utf-8")
+        if _LOOKUP.search(text) or _CALLS.search(text):
+            found.add(p.stem)
+    return found
 
 
 def test_every_enclosing_lookup_is_classified() -> None:
