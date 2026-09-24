@@ -47,11 +47,14 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -73,23 +76,22 @@ def find_hlsl_files(repo_root: Path) -> Iterator[Path]:
 
 def _find_enclosing_function_hlsl(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the enclosing function Symbol by walking up parents."""
+    """The function whose definition contains ``node``.
+
+    Keyed by the definition's POSITION, not its name (INV-midag, WI-mapor).
+    HLSL lets a file overload a function by parameter types, and the name
+    lookup credited every overload's calls to the last one.
+    """
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
-            func_decl = find_child_by_type(current, "function_declarator")
-            if func_decl:
-                name_node = find_child_by_type(func_decl, "identifier")
-                if name_node:
-                    func_name = node_text(name_node, source)
-                    sym = local_symbols.get(func_name)
-                    if sym:
-                        return sym
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
-    return None
+    return None  # pragma: no cover - no enclosing function found
 
 
 def _get_call_target_name_hlsl(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -211,7 +213,7 @@ def _extract_hlsl_edges(
     rel_path: str,
     source: bytes,
     tree: "tree_sitter.Tree",
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
     resolver: "NameResolver",
     run_id: str,
     edges: list[Edge],
@@ -219,7 +221,7 @@ def _extract_hlsl_edges(
     """Extract call edges from a tree-sitter tree (pass 2)."""
     for node in iter_tree(tree.root_node):
         if node.type == "call_expression":
-            caller = _find_enclosing_function_hlsl(node, source, local_symbols)
+            caller = _find_enclosing_function_hlsl(node, decl_index)
             if not caller:
                 continue
 
@@ -291,7 +293,7 @@ class HlslAnalyzer(TreeSitterAnalyzer):
         """Extract call edges from HLSL."""
         edges: list[Edge] = []
         _extract_hlsl_edges(
-            rel_path, source, tree, local_symbols,
+            rel_path, source, tree, symbols_at(self.file_symbols(local_symbols)),
             resolver, run.execution_id, edges,
         )
         return edges

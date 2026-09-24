@@ -49,6 +49,9 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     make_unresolved_edge,
     node_text,
+    SymbolsAt,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
@@ -123,19 +126,20 @@ def _get_current_package(node: "tree_sitter.Node", source: bytes) -> str:
 
 def _find_enclosing_function_perl(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
-    package_name: str,
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the subroutine that contains this node by walking up parents."""
+    """The subroutine whose declaration contains ``node``.
+
+    Keyed by the declaration's POSITION, not its name (INV-midag, WI-mapor).
+    A file holding two packages has one package name on record, the last, so
+    ``sub run`` in package A and in package B both qualified to ``B::run``.
+    """
     current = node.parent
     while current:
         if current.type == "subroutine_declaration_statement":
-            bareword = find_child_by_type(current, "bareword")
-            if bareword:
-                name = node_text(bareword, source)
-                qualified = f"{package_name}::{name}" if package_name != "main" else name
-                return local_symbols.get(qualified) or local_symbols.get(name)
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -166,8 +170,10 @@ class PerlAnalyzer(TreeSitterAnalyzer):
     qualified name (Package::sub) and the unqualified name (sub) are
     stored in the global registry for cross-file resolution.
 
-    Stores per-file package names on the instance (``_file_package_names``)
-    for access during Pass 2 edge extraction.
+    Pass 2 finds a call's enclosing sub by the declaration's position
+    (INV-midag), so it needs no per-file package state. It kept the file's
+    LAST package name for that, which qualified every sub of a two-package
+    file into the last package.
     """
 
     lang = "perl"
@@ -178,13 +184,6 @@ class PerlAnalyzer(TreeSitterAnalyzer):
     # base-class auto-emitted Symbol (span=1-1) would duplicate it under
     # the same id.
     create_file_symbols = False
-
-    def analyze(
-        self, repo_root: Path, max_files: Optional[int] = None
-    ) -> AnalysisResult:
-        """Reset per-file state and delegate to the base class."""
-        self._file_package_names: dict[str, str] = {}
-        return super().analyze(repo_root, max_files)
 
     def extract_symbols_from_file(
         self,
@@ -302,9 +301,6 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                     if "::" in qualified_name:
                         unqualified = qualified_name.rsplit("::", 1)[-1]
                         analysis.symbol_by_name[unqualified] = symbol
-
-        # Store package name for Pass 2
-        self._file_package_names[rel_path] = package_name
         return analysis
 
     def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
@@ -335,8 +331,9 @@ class PerlAnalyzer(TreeSitterAnalyzer):
         edges: list[Edge] = []
         _caller_path = str(file_path)
         file_id = make_file_id("perl", rel_path)
-        package_name = self._file_package_names.get(rel_path, "main")
         run_id = run.execution_id
+        # Every declaration of this file, by position (INV-midag).
+        decl_index = symbols_at(self.file_symbols(local_symbols))
 
         # INV-kokaj: look up the file pseudo-node by its new canonical
         # name (the rel_path the Pass 1 emitter stamped) for top-level
@@ -393,7 +390,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                     func_name = node_text(func_node, source)
                     if func_name not in _PERL_BUILTINS:
                         caller = _find_enclosing_function_perl(
-                            node, source, local_symbols, package_name,
+                            node, decl_index,
                         ) or module_symbol
                         if caller:
                             lookup_result = resolver.lookup(func_name, caller_path=_caller_path)
@@ -444,7 +441,7 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                 if method_node:
                     method_name = node_text(method_node, source)
                     caller = _find_enclosing_function_perl(
-                        node, source, local_symbols, package_name,
+                        node, decl_index,
                     )
                     if caller:
                         lookup_result = resolver.lookup(method_name, caller_path=_caller_path)

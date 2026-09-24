@@ -38,11 +38,14 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -124,18 +127,20 @@ def _extract_glsl_signature(func_def: "tree_sitter.Node", source: bytes) -> Opti
 
 def _find_enclosing_function_glsl(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the enclosing function Symbol by walking up parent nodes."""
+    """The function whose definition contains ``node``.
+
+    Keyed by the definition's POSITION, not its name (INV-midag, WI-mapor).
+    GLSL lets a file overload a function by parameter types, and the name
+    lookup credited every overload's calls to the last one.
+    """
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
-            for child in current.children:
-                if child.type == "function_declarator":
-                    func_name = _get_identifier(child, source)
-                    if func_name:
-                        return local_symbols.get(func_name.lower())
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - no enclosing function found
 
@@ -274,7 +279,7 @@ def _extract_glsl_symbols(
 def _extract_glsl_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
     edges: list[Edge],
     resolver: "NameResolver",
     *,
@@ -285,14 +290,14 @@ def _extract_glsl_edges(
     Args:
         tree: Tree-sitter tree to process
         source: Source file bytes
-        local_symbols: Dict of local function symbols for caller lookup
+        decl_index: The file's declarations by position, for caller lookup
         edges: List to append edges to
         resolver: NameResolver for callee lookup
     """
     for node in iter_tree(tree.root_node):
         if node.type == "call_expression":
             func_name = _get_identifier(node, source)
-            caller = _find_enclosing_function_glsl(node, source, local_symbols)
+            caller = _find_enclosing_function_glsl(node, decl_index)
             if func_name and caller:
                 start_line = node.start_point[0] + 1
 
@@ -358,7 +363,9 @@ class GlslAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract call edges from a GLSL file."""
         edges: list[Edge] = []
-        _extract_glsl_edges(tree, source, local_symbols, edges, resolver, run_id=run.execution_id)
+        _extract_glsl_edges(
+            tree, source, symbols_at(self.file_symbols(local_symbols)), edges,
+            resolver, run_id=run.execution_id)
         return edges
 
 

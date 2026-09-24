@@ -49,12 +49,15 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
     make_file_id,
     make_symbol_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -436,21 +439,20 @@ def _extract_symbols_from_file(
 
 def _get_enclosing_function_fsharp(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Symbol | None:
-    """Walk up parent chain to find enclosing function."""
+    """The ``let``-bound function whose definition contains ``node``.
+
+    Keyed by the definition's POSITION, not its name (INV-midag, WI-mapor).
+    Two nested modules of one file each binding ``let run`` share a name, and
+    the name lookup credited both bodies' calls to the last one.
+    """
     current = node.parent
     while current is not None:
         if current.type == "function_or_value_defn":
-            func_left = find_child_by_type(current, "function_declaration_left")
-            if func_left:
-                name_node = find_child_by_type(func_left, "identifier")
-                if name_node:
-                    func_name = node_text(name_node, source)
-                    sym = local_symbols.get(func_name)
-                    if sym:
-                        return sym
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None
 
@@ -522,8 +524,8 @@ def _extract_edges_from_file(
     if module_aliases is None:  # pragma: no cover - defensive
         module_aliases = {}
 
-    # Build local symbol map (name -> symbol)
-    local_symbols = {s.name: s for s in file_symbols}
+    # Every declaration of this file, by position (INV-midag).
+    decl_index = symbols_at(file_symbols)
 
     for node in iter_tree(tree.root_node):
         if node.type == "import_decl":
@@ -545,7 +547,7 @@ def _extract_edges_from_file(
 
         elif node.type == "application_expression":
             # Function application - first child is the function being called
-            caller = _get_enclosing_function_fsharp(node, source, local_symbols)
+            caller = _get_enclosing_function_fsharp(node, decl_index)
             if caller and node.children:
                 first_child = node.children[0]
                 # Look for long_identifier_or_op
@@ -670,8 +672,8 @@ class FsharpAnalyzer(TreeSitterAnalyzer):
         resolver: "NameResolver",
     ) -> list[Edge]:
         """Extract call and import edges from an F# file."""
-        # Build file_symbols list from local_symbols values
-        file_symbols = list(local_symbols.values())
+        # Every symbol of the file: ``local_symbols`` keeps one per name.
+        file_symbols = self.file_symbols(local_symbols)
         return _extract_edges_from_file(
             tree, source, rel_path,
             file_symbols, resolver,

@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
@@ -53,6 +54,8 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     make_unresolved_edge,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -119,17 +122,20 @@ def _extract_function_signature(func_node: "tree_sitter.Node", source: bytes) ->
 
 def _get_enclosing_function_gdscript(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up parent chain to find enclosing function Symbol."""
+    """The function whose definition contains ``node``.
+
+    Keyed by the definition's POSITION, not its name (INV-midag, WI-mapor).
+    Two inner classes of one script each declaring ``func run()`` share a
+    name, and the name lookup credited both bodies' calls to the last one.
+    """
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
-            name_node = find_child_by_type(current, "name")
-            if name_node:
-                func_name = node_text(name_node, source).strip()
-                return local_symbols.get(func_name)
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - no enclosing function found
 
@@ -243,6 +249,8 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract import and call edges from GDScript."""
         edges: list[Edge] = []
+        # Every declaration of this file, by position (INV-midag).
+        decl_index = symbols_at(self.file_symbols(local_symbols))
 
         for node in iter_tree(tree.root_node):
             if node.type == "call":
@@ -268,7 +276,7 @@ class GDScriptAnalyzer(TreeSitterAnalyzer):
                                     ))
                                     break
                     else:
-                        caller = _get_enclosing_function_gdscript(node, source, local_symbols)
+                        caller = _get_enclosing_function_gdscript(node, decl_index)
                         if caller:
                             if called_name not in ("print", "push_error", "push_warning", "printerr"):
                                 result = resolver.lookup(called_name)

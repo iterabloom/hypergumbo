@@ -45,6 +45,7 @@ from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
@@ -53,6 +54,8 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     make_typed_stable_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
     visibility_from_modifiers,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -85,25 +88,24 @@ def _get_enclosing_module(node: "tree_sitter.Node", source: bytes) -> Optional[s
 
 def _get_enclosing_function_julia(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function for Julia."""
+    """The function whose definition contains ``node``: a ``function`` block,
+    or a short-form ``f(x) = ...`` assignment.
+
+    Keyed by the definition's POSITION, not its name (INV-midag, WI-mapor).
+    Julia's multiple dispatch defines one name once per method signature, and
+    the name lookup credited every method's calls to the last one.
+    """
     current = node.parent
     while current is not None:
-        if current.type == "function_definition":
-            func_name = _extract_function_name(current, source)
-            if func_name and func_name in local_symbols:
-                return local_symbols[func_name]
-        elif current.type == "assignment":
-            # Check for short-form function definition
-            left_node = current.children[0] if current.children else None
-            if left_node and left_node.type == "call_expression":
-                id_node = find_child_by_type(left_node, "identifier")
-                if id_node:
-                    func_name = node_text(id_node, source)
-                    if func_name in local_symbols:
-                        return local_symbols[func_name]
+        if current.type == "function_definition" or (
+            current.type == "assignment"
+            and _julia_short_form_call_node(current) is not None
+        ):
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -733,10 +735,16 @@ def _extract_edges_from_tree(
     run_id: str,
     resolver: "NameResolver",
     import_aliases: dict[str, str],
+    file_symbols: list[Symbol],
 ) -> list[Edge]:
-    """Extract call and import edges from a parsed Julia file."""
+    """Extract call and import edges from a parsed Julia file.
+
+    ``file_symbols`` is every symbol of the file, for the position-keyed
+    enclosing lookup (INV-midag); ``local_symbols`` keeps one per name.
+    """
     edges: list[Edge] = []
     file_id = make_file_id("julia", file_path)
+    decl_index = symbols_at(file_symbols)
 
     for node in iter_tree(tree.root_node):
         # Detect import/using statements
@@ -765,7 +773,7 @@ def _extract_edges_from_tree(
 
         # Detect function calls
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function_julia(node, source, local_symbols)
+            current_function = _get_enclosing_function_julia(node, decl_index)
             if current_function is not None:
                 callee_name: Optional[str] = None
                 path_hint: Optional[str] = None
@@ -867,6 +875,7 @@ class JuliaAnalyzer(TreeSitterAnalyzer):
         return _extract_edges_from_tree(
             tree, source, rel_path, local_symbols,
             run.execution_id, resolver, import_aliases,
+            self.file_symbols(local_symbols),
         )
 
 

@@ -58,6 +58,9 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     make_unresolved_edge,
     node_text,
+    SymbolsAt,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -696,16 +699,21 @@ def _extract_message_receiver(node: "tree_sitter.Node", source: bytes) -> str | 
 
 def _get_enclosing_method_objc(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_methods: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find enclosing method definition."""
+    """The method whose definition contains ``node``.
+
+    Keyed by the definition's POSITION, not its selector (INV-midag, WI-mapor).
+    One selector implemented in two ``@implementation`` blocks of a file
+    (``-run`` in A and in B) shares a key in the selector map, and the lookup
+    returned whichever registered last.
+    """
     current = node.parent
     while current is not None:
         if current.type == "method_definition":
-            method_name = _extract_method_name(current, source)
-            if method_name and method_name in local_methods:
-                return local_methods[method_name]
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -843,8 +851,13 @@ def _extract_edges_from_file(
     project_classes: frozenset[str] = frozenset(),
     method_return_types: dict[str, str] | None = None,
     property_types: dict[str, str] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract edges from a file using global symbol knowledge.
+
+    ``file_symbols`` is every symbol of the file. ``local_methods`` keeps one
+    symbol per selector, so the enclosing method is found by position among
+    ``file_symbols`` (INV-midag).
 
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
@@ -852,6 +865,9 @@ def _extract_edges_from_file(
     _caller_path = str(file_path)
     rel_path = str(file_path)
     file_id = make_file_id("objc", rel_path)
+    decl_index = symbols_at(
+        file_symbols if file_symbols is not None
+        else list({s.id: s for s in local_methods.values()}.values()))
 
     try:
         source = file_path.read_bytes()
@@ -895,7 +911,7 @@ def _extract_edges_from_file(
         # Handle message expressions (method calls)
         elif node.type == "message_expression":
             selector = _extract_message_selector(node, source)
-            current_method = _get_enclosing_method_objc(node, source, local_methods)
+            current_method = _get_enclosing_method_objc(node, decl_index)
             if selector and current_method is not None:
                 line = node.start_point[0] + 1
 
@@ -1307,6 +1323,7 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
                 project_classes=_project_classes,
                 method_return_types=_method_return_types,
                 property_types=_property_types,
+                file_symbols=analysis.symbols,
             )
             all_edges.extend(edges)
 
