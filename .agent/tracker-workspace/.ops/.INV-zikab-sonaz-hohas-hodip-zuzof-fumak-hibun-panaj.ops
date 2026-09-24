@@ -86,3 +86,18 @@
   clock: 10  # 29cc
   nonce: 29cc  # 29cc
   message: "CORRECTION to the entry above: step 6 merged as PR #1162, not #1161."  # 29cc
+- op: update  # 29bc
+  at: '2026-09-24T00:52:28Z'  # 29bc
+  by: agent  # 29bc
+  actor: jgstern_agent  # 29bc
+  clock: 11  # 29bc
+  nonce: 29bc  # 29bc
+  set:  # 29bc
+    status: satisfied  # 29bc
+- op: discuss  # 252d
+  at: '2026-09-24T00:52:28Z'  # 252d
+  by: agent  # 252d
+  actor: jgstern_agent  # 252d
+  clock: 12  # 252d
+  nonce: 252d  # 252d
+  message: "SATISFIED ON THE FILED INSTANCES, 2026-09-23. The ratified order ran steps 1-7 in PRs #1155, #1157, #1158, #1159, #1160, #1162 and #1163, plus #1165 for the last two notes. The general claim \"every row in every catalogue conforms\" is NOT asserted: 30 rows remain, pinned in a shrink-only ledger with named blockers (below).\n\nWHAT WAS FILED, AND WHERE EACH INSTANCE STANDS:\n1. \"No definition was ever written.\" ADR-0059 declares the axis: registry, three predicates, a literal-drift check in check-io-boundary-drift, and property tests. IoPrimitive.kind, TaintSource.kind and TaintSink.kind declare it (#1157).\n2. The catalogue notes stating the other two rules:\n   - java.yaml R3 (\"java's analyzer stamps call_construct=method\"): rewritten when the statics moved (#1162).\n   - kotlin.yaml R3 (\"the analyzer emits them as function-kind calls\") and rust.yaml R1 (\"a method because that is what it IS\"): rewritten in #1165.\n   - INV-pimir's R1 statement: rewritten on the tracker (step 7).\n   Evidence: grep over io_primitives/*.yaml and the overlays for 'stamps call_construct' / 'what it IS' / 'analyzer emits them as' now finds none.\n3. Scala held two rules in one merged catalogue. The inherited java statics are now function-kind, like its own Source.fromFile (#1162).\n4. The consumers:\n   - The INV-nizom arm no longer reads a method stamp as receiver evidence on a slot naming one owner (#1159). Measured: re-kinding the java statics lost 41 classifications before and 0 after.\n   - Route 1 of method_starved_modules is still a construct x kind proxy. Its docstring and the spec now say so, and say where it is loose (#1163). INV-pimir stays violated for that join.\n5. The MEASURED CONSEQUENCES filed here:\n   - JS process classified-yet-starved (6/9 repos): fixed (#1155, INV-dihun).\n   - The java -41: fixed (#1159).\n   - The kotlin/scala qualifier drop: fixed (#1160, WI-kilap done). sbt 123 -> 237 classified.\n   - The 16 swift constructor rows: adjudicated (#1158).\n\nBEHAVIORAL EVIDENCE, through the production classify_call with dst_ref, the gates and compute_boundary_coverage (measure.py, kind_audit_09232026/):\n- After step 6, over 21 surveys, classified counts, starvation and coverage reasons are identical to before the re-kind.\n- verify-claims A/B on 7 JVM repos: 49/49 verdicts identical, including caveats and details.\nTests: test_io_primitive_kinds.py pins the ledger at 30, that every JDK static is function-kind in java/kotlin/scala, and that every java function row needs module context.\n\nRESIDUAL (filed, not closed here):\n- WI-ziviv: 3 swift statics, 21 objc class methods, 5 kotlin.io.FilesKt rows (29 ledgered). Its thread records which objc rows need a boundary ruling before any re-kind.\n- WI-narij: scala Process.apply (1 ledgered).\n- WI-jubim: kotlin/scala do not consume library signatures (Runtime.getRuntime().exec).\n- INV-pimir: route 1's join.\n- WI-vidof: scala.io.StdIn function rows are matched by bare project methods (11 false ipc_recv on gatling). This was pre-existing; it is the same shape step 6 blocked for the JDK statics."  # 252d
