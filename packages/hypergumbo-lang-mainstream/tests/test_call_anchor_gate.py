@@ -105,3 +105,24 @@ def test_java_overloads(tmp_path: Path) -> None:
     assert {a[3] for a in anchors} >= {6, 10}, anchors  # reach
     for name, start, end, line in anchors:
         assert start <= line <= end, (name, start, end, line)
+
+
+def test_go_without_an_index_falls_back_to_the_qualified_name(tmp_path: Path) -> None:
+    """Callers that pass no position index (the route extractor) keep the
+    qualified-name path: ``Type.Method`` distinguishes one method name on two
+    receiver types."""
+    import tree_sitter
+    import tree_sitter_go
+
+    from hypergumbo_core.analyze.base import iter_tree
+    from hypergumbo_lang_mainstream.go import _get_enclosing_function, analyze_go
+
+    source = (b"package main\n\nfunc one() {}\n\ntype A struct{}\ntype B struct{}\n\n"
+              b"func (a A) Run() {\n\tone()\n}\n\nfunc (b B) Run() {\n\tone()\n}\n")
+    (tmp_path / "a.go").write_bytes(source)
+    symbols = {s.name: s for s in analyze_go(tmp_path).symbols}
+    parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_go.language()))
+    calls = [n for n in iter_tree(parser.parse(source).root_node) if n.type == "call_expression"]
+    assert len(calls) == 2  # reach
+    got = [_get_enclosing_function(c, source, symbols).name for c in calls]
+    assert got == ["A.Run", "B.Run"], got
