@@ -26,3 +26,24 @@
   clock: 2  # 9982
   nonce: '9982'  # 9982
   message: "PREMISE RE-CHECKED 2026-09-24. The same 26 repos were re-surveyed at dev 2c63301739 with the same flags (--budgets none --no-handler-slices), and aggregated with anchor_probe.py's rule, restricted to `calls`. The same aggregation reproduces the filed baseline exactly. The table is CURRENT: every listed language has the SAME out-of-span count.\n\n  kotlin 2014/54059, scala 964/16547, swift 273/8343, javascript 135/12573,\n  haskell 119/3012, c 35/11011, typescript 33/14980, rust 5/8842, ruby 3/1296.\n\n- kotlin and scala checked +22 and +16 edges: WI-kilap's newly slotted calls, none out of span.\n- erlang and elixir are now 0/45837 and 0/27903: INV-mozas, as the title says.\n\nTwo sources the filed table omits, both on livebook:\n- csharp, 3 of 36 (elixirkit_dotnet/ElixirKit.cs). Release.Stop, Release.WaitForExit and Client.Subscribe are credited with calls at lines 73-97. These are same-named methods in two classes: the majority mechanism.\n- 4 of 45 callable symbols with NO `language` (static/assets/app.js: minified single-letter functions). A symbol with no language is a separate oddity, not investigated.\n\nTable and scripts: ~/hypergumbo_lab_notebook/premise_check_09242026/MIDAG_TABLE.txt, midag_agg.py."  # 9982
+- op: discuss  # 176e
+  at: '2026-09-24T08:14:17Z'  # 176e
+  by: agent  # 176e
+  actor: jgstern_agent  # 176e
+  clock: 3  # 176e
+  nonce: 176e  # 176e
+  message: "STAGE 1 MERGED, PR #1176: kotlin, scala and swift anchor by position. The fix uses the shared core helper symbols_at / symbol_declared_by / SymbolsAt, promoted from elixir's _symbols_at; elixir now imports it. Measured with surveys from pinned worktrees: out-of-span kotlin 2014 -> 0 (detekt, okhttp), scala 964 -> 0 (tapir), swift 273 -> 0 (Alamofire, SwiftyJSON). 3,320 src moves, all out -> in. The elixir edge sets on phoenix, plausible and livebook are identical. Every gain and loss was adjudicated in the commit message. Side finding filed as WI-tisom (P2): the noise filter drops swift computed properties and C# properties in the default view, so 12 correctly anchored swift edges now drop, where before they were wrongly anchored. REMAINING: c 35, typescript 33, rust 5, ruby 3, csharp 3, haskell 119, javascript 135. Rust already has a span_index cure wired into both call sites, so its 5 are a different gap. This item stays violated."  # 176e
+- op: discuss  # 9a00
+  at: '2026-09-24T09:18:37Z'  # 9a00
+  by: agent  # 9a00
+  actor: jgstern_agent  # 9a00
+  clock: 4  # 9a00
+  nonce: 9a00  # 9a00
+  message: "STAGE 2 MERGED, PR 1177: c 35 -> 0 (tmux), rust 5 -> 0 (just), ruby 3 -> 0 (postal), csharp 3 -> 0 (livebook). All src moves were out -> in, with 0 edges lost. C's analyze() override never set the per-file symbol list, and rust's span index was keyed through qualified names; both are fixed. The aardvark-dns recorded fixture was re-pinned (twins 130 -> 132) because the same rust fix re-anchored 3 calls there. REMAINING: haskell 119 (a multi-equation function's span is too short; the anchor is right), javascript 135 and typescript 33 (prototype methods, callbacks), then the cross-language containment gate."  # 9a00
+- op: discuss  # dc21
+  at: '2026-09-24T09:40:21Z'  # dc21
+  by: agent  # dc21
+  actor: jgstern_agent  # dc21
+  clock: 5  # dc21
+  nonce: dc21  # dc21
+  message: "STAGE 3 MERGED, PR #1178: haskell 119 -> 0 (xmonad, hadolint). A different mechanism, as the row said: the ANCHOR was right, because the lookup is by name and haskell names are unique per module, but the symbol spanned only its first equation. The span now runs to the last equation. REMAINING: javascript 135, typescript 33, then the cross-language gate."  # dc21
