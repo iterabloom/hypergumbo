@@ -241,6 +241,7 @@ Four threads run through this cycle.
 - **`smart-test` selects the right tests.**
   - It refuses to write the manifest of a repository the caller is not in; in CI that had turned PRs into full-suite runs of 964 test files.
   - A change to any of the ten YAML catalogue families selects its tests, where 146 of 169 files had selected none.
+  - A catalogue data change also selects the whole repo-root suite. 13 root test files read catalogue data, through a script, the CLI or an import, and the term grep selected none of them. One was `test_measure_catalogue_exposure.py`, which first ran, and failed, on the cron.
   - A test that cites a source path in a string runs when that source changes.
   - `--full` now includes the repo-root `tests/`.
   - Running one test file no longer overwrites the committed manifest with an empty one.
