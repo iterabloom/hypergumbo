@@ -1,0 +1,22 @@
+- op: create  # b2bc
+  at: '2026-09-24T21:39:50Z'  # b2bc
+  by: agent  # b2bc
+  actor: jgstern_agent  # b2bc
+  clock: 1  # b2bc
+  nonce: b2bc  # b2bc
+  data:  # b2bc
+    kind: work_item  # b2bc
+    title: "python: urllib.request.OpenerDirector.open sends and carries no row (opener = build_opener(); opener.open(url, data))"  # b2bc
+    status: todo_hard  # b2bc
+    priority: 3  # b2bc
+    parent:  # b2bc
+    tags:  # b2bc
+    - python  # b2bc
+    - catalogue  # b2bc
+    - io_boundary  # b2bc
+    isbefore: []  # b2bc
+    duplicate_of: []  # b2bc
+    not_duplicate_of: []  # b2bc
+    pr_ref:  # b2bc
+    description: "FOUND 2026-09-24 while enumerating urllib.request (WI-bakik). urllib.request.OpenerDirector.open(url, data) performs the request, the same send urlopen performs, and carries NO catalogue row.\n\nIt is its own slot (an instance method), so WI-bakik's completeness grant on the urllib.request slot does not reach it or claim it. The common shape is `opener = build_opener(...); opener.open(url, data)` (django's TemplateCommand.download; superset's csv.py). No catalogued boundary sits at that send.\n\nTWO PARTS:\n1. A net_send row: module urllib.request.OpenerDirector, methods [open].\n2. The receiver has to be typed for the row to fire. A library signature `urllib.request.build_opener: urllib.request.OpenerDirector` in library_signatures/python.yaml. Check the key shape python.py reads first.\nMeasure with a finding-level A/B on django and superset. A new sink can move verdicts toward violated."  # b2bc
+    fields: {}  # b2bc
