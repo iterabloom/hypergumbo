@@ -1,0 +1,48 @@
+Original commit body from 0914ae60c74f7fa47639415d35fda9df94d9a48d:
+
+`Process(cmd).!` is the most common way to launch a process in scala. It is
+companion-apply sugar for `scala.sys.process.Process.apply(cmd)`, and the scala
+analyzer emits it under the name `Process`, which no catalogue row carried. On
+sbt, 6 of 6 explicit-import launches classified as nothing. The module still
+counted as examined there, because uncatalogued `exitValue` / `destroy` calls
+satisfy the starvation proxy. So a `{subprocess, must_not_exist}` claim found no
+chain.
+
+FIX, shape (b) of the row: the catalogue rows the name the analyzer emits.
+- `module: scala.sys.process.Process` gains `functions: [apply, Process]` under
+  both simultaneous boundaries (fs_write, subprocess). This is the
+  constructor-named-row convention swift.yaml uses (NWListener, ServerBootstrap).
+- `apply` is re-kinded to function: it is called on the companion object
+  (ADR-0059). Its ledger entry is removed, so the ledger goes 30 -> 29.
+- `run` stays a method row. No change in scope here.
+- `scala.sys.process.Process.Process` joins HIGH_RISK_PRIMITIVES. The
+  subprocess drift guard caught its absence.
+
+MEASURED. 11 scala repos surveyed at 944735a08f: sbt, tapir, lila,
+playframework, pekko, spark, scala3, gatling, http4s, cats, zio. Each survey's
+unresolved scala call edges were classified under three catalogues, and the
+edge SETS were diffed (~/hypergumbo_lab_notebook/narij_09242026/AB.txt).
+- B1 (`Process` in ambiguous_names): +14 over A.
+- B2 (`Process` not listed): +22 over A.
+- Both: 0 lost, 0 changed. The controls (gatling, http4s, cats, zio) and lila
+  do not move.
+- B2's 8 extra edges are bare `external:Process`, how `import
+  scala.sys.process._` / `.*` arrives. Each was read in source: all 8 are
+  genuine scala.sys.process launches.
+- The rule was fixed before measuring: B2 only if every bare match is genuine.
+  B2 it is, and the choice and its fallback are written into the yaml note and
+  a test.
+- tapir, playframework and pekko stop reporting scala.sys.process.Process as
+  starved.
+
+NOT ASSERTED / RESIDUALS, filed:
+- WI-tipoh (P2): the scala analyzer resolves by simple name across the repo and
+  ignores the file's explicit import. Imported `Process(...)` links to an
+  unrelated project `Process`: 12 edges on spark, 10 on scala3. Those launches
+  stay unclassified, and the edges are false.
+- WI-gunaj (P3): fully qualified `scala.sys.process.Process(c)` loses its
+  qualifier and is stamped `method`: 2 edges on 11 repos.
+
+Addresses WI-narij.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
