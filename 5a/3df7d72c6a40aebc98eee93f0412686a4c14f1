@@ -1,0 +1,21 @@
+Original commit body from 715219885dd11996e90d53ed2fc6c8a2ad66ddbf:
+
+Phase 0/1: the 46 non-tracker commits since the last audit (d917e02282)
+are all represented; none touch packages/hypergumbo-tracker, so the
+tracker changelog needs no change.
+
+Phase 2:
+- Summary names a fifth thread: calls credited to the right function.
+- Call graph accuracy: the seven "credited to the function that
+  contains it" bullets become one, with a per-language tally; haskell's
+  span fix and the vue/svelte offset fix stay separate and shorter.
+  The two Elixir bullets merge.
+- The longest taint, dead-code, security and catalogue bullets are cut
+  to their effect and key numbers.
+- CI: "Pull requests that ran no tests" folds into the smart-test list;
+  auto-pr's stderr fix moves from Security into the auto-pr list.
+- Language names are capitalized consistently outside code spans.
+
+[Unreleased] goes 65,375 -> ~58,700 bytes.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
