@@ -46,90 +46,209 @@ least-recently-used and zipped rather than deleted) — it was measured at
 
 `SCHEMA_VERSION` advances 0.19.0 → 0.20.1.
 
+**8.1.0 makes the call graph and the I/O boundaries more exact, and makes
+records say what they do not know.** No output field is removed or renamed,
+but four things change what you will see:
+
+1. **`is_exported` can be `null`** (schema 0.20.12), meaning "not measured".
+   About ninety analyzers have no exportedness rule and had reported every
+   symbol as not exported. A reader that tests truthiness is unaffected; a
+   reader that tells `false` from absent must now handle `null`.
+2. **`dead-code-maybe` reports far less dead code**: 41.4% → 7.5% of this
+   repository in the default view. Re-baseline anything tuned to the old
+   numbers.
+3. **More clean `verify-claims` runs exit 3.** A clean verdict now names the
+   receivers it could not type, and that qualifies it. A gate that branches on
+   the exit code, as 8.0.0 asked, needs no change.
+4. **Some ids change**: Haskell functions (their span now covers every
+   equation) and Solidity contract members (now `method`). Regenerate; do not
+   diff across the boundary.
+
+Also in 8.1.0: calls are credited to the function that contains them in 25
+analyzers that had used a same-named one; method calls reach the I/O catalogue
+through typed receivers in ten languages; an opt-in second Python backend
+(scip-python) is merged with the first into one record per declaration; and
+taint's useful precision rises **24.1% → 30.9%**.
+
+`SCHEMA_VERSION` advances 0.20.1 → 0.20.13.
+
 ---
 
 ## Unreleased
 
-> Written as the work lands, promoted to a version heading at release-cut by
-> `scripts/prepare-release`. `SCHEMA_VERSION` is at 0.20.2 here, one patch
-> ahead of released 0.20.1.
+> `SCHEMA_VERSION` 0.20.1 → 0.20.13, the `verify-claims --json` envelope
+> (`VERIFY_CLAIMS_SCHEMA_VERSION`) 2.0 → 2.4, and
+> `DEAD_CODE_MAYBE_SCHEMA_VERSION` 0.2.0 → 0.3.0. Every step is additive or
+> widening for a reader of 8.0.0 output; see "For JSON consumers" for the one
+> exception, which concerns enum values rather than fields.
 
 ### At a glance
 
-- **A command-injection flow was visible or invisible depending on one capital
-  letter.** `subprocess.Popen(tainted)` verified **clean** while
-  `subprocess.run(tainted)` verified **violated** — because `py.py` types
-  `module.Attr()` as `instantiates` when the attribute is PascalCase and
-  `calls` otherwise, and the taint walk could not traverse a construction edge
-  at all. Two fixtures differing only in the sink's spelling produced
-  `violated` / exit 1 and `confirmed_with_caveats` / exit 3, the second
-  asserting that no untrusted input reaches the subprocess zone about a
-  program in which it plainly does. Construction edges are now traversable.
-- **Ruby object creation was omitted from every `instantiates` consumer.**
-  Ruby resolved `Klass.new` to `Klass#initialize` and emitted `calls`, while
-  the eight other analyzers that emit `instantiates` emitted that — so a
-  consumer filtering on `instantiates` silently dropped all Ruby construction.
-  Ruby now emits `instantiates`. Its `dst` is deliberately unchanged, still
-  the initializer symbol.
-- **A taint sink that provably cannot receive the tainted value no longer
-  reports a flow.** Taint models a flow as the tainted value reaching the sink
-  as an argument or as its receiver, so a call passing only literal constants
-  with no value receiver cannot carry one — 24 of 34 adjudicated false
-  positives were sinks taking *no arguments at all*
-  (`tempfile.TemporaryDirectory()`). This is a proof, not a heuristic, and it
-  costs no recall.
-- **More clean verdicts now come back caveated at exit 3, on both claim
-  kinds.** Two disclosures were added this cycle and they widen the exit-3
-  population. First, a clean *boundary* verdict now states that it is
-  **closed-world over the receivers the analysis could type**, with a count, a
-  denominator and the distinct method names — a corpus hunt over 32,593
-  non-test files found 90 real scopes reaching a genuine I/O verb through an
-  untyped receiver where the existing site-naming caveat fired on **zero**, and
-  the thing protecting those verdicts was a coverage gap the project intends to
-  close, so the protection was shrinking as the tool improved. Second, a clean
-  *taint* verdict now carries the same two disclosures, scoped by the claim's
-  prohibited sink zone. Before that, one invocation could name
-  `sock.sendall(payload)` as unadjudicable on a `net_send` boundary claim and,
-  two verdicts later, certify that no environment secret reaches the network
-  zone — with a tick on the silent verdict and a warning on the disclosing one.
-  Both **qualify** a verdict rather than withholding it, and both are capable
-  of not firing: a repository whose receivers are all typed still gets bare
-  `confirmed` at exit 0. If your gate branches on exit codes rather than
-  truthiness (see 8.0.0's breaking-change note), nothing further is required;
-  if it does not, more runs will now reach 3.
-- **Two of hypergumbo's own filesystem writes were outside the safety-zone
-  discipline its claims assert** — `gitleaks.py` and the rust-analyzer probe
-  called `tempfile.TemporaryDirectory()` directly. They were invisible for the
-  same reason as everything above, and surfaced the moment construction edges
-  became traversable.
+- **A call is credited to the function that contains it.** 25 analyzers found
+  a call's enclosing function by name, so overloads, redefinitions and
+  same-named methods in different classes took each other's calls. They now
+  use the declaration's position, and calls outside their caller's span go to
+  zero (D 15,126, Elixir 7,166, Kotlin 2,014). A test fails on any analyzer
+  that still anchors by name.
+- **Method calls reach the I/O catalogue through typed receivers, in ten
+  languages.** A call on a receiver the repository describes (an instance
+  field, a parameter, a declared return type, a chained call) used to stop at
+  the `external` sentinel. The Django ORM is typed end to end (+2,943 edges on
+  pretix, 0 lost).
+- **Two producers for one language give one record (ADR-0057).** scip-python
+  is an opt-in second Python backend (`--backend scip-python`); it never runs
+  the analysed code. When two backends see one declaration, their records
+  merge into one node or edge, with new `attribution` and `alternatives`
+  fields saying which producer said what. Agreement between them raises
+  confidence to 0.95 (`confidence_source="corroborated"`).
+  **`hypergumbo backend-agreement`** reports where they agree.
+- **A call that only opens or registers a network crossing is no longer
+  treated as the crossing (ADR-0049).** Starting a server or dialling a
+  connection creates no taint source; the new `net_listen` boundary discloses
+  it instead. Together with the fixes below, taint's **useful precision rises
+  24.1% → 30.9%** (`docs/measurements/0012`).
+- **Records say what they don't know.** `is_exported` can be `null`; a pass
+  that produced nothing says why (`silence_reason`); a linker declares which
+  passes it reads (`depends_on`) and what each edge was derived from
+  (`derived_from`, where `[]` means "consumed no graph record").
+- **User and project configuration (ADR-0045).** `config.toml` and
+  `<repo>/.hypergumbo.toml` can add I/O primitives, and
+  `hypergumbo init-catalogs` creates the user catalogue directories. Community
+  catalogue overlays now ship in the wheel and load by default, announced on
+  stderr; their rows cannot vouch for a verdict.
+
+### For `verify-claims` users
+
+- **More clean verdicts come back caveated at exit 3.** A clean verdict now
+  names what it could not see: receivers the analysis could not type (with a
+  count, a denominator and the method names), receivers of unknown scope, and
+  languages that emit no external instance-method calls. It also says how much
+  of the catalogue behind it is unverified. A corpus hunt over 32,593 files
+  found 90 scopes reaching real I/O through an untyped receiver where the
+  8.0.0 caveat fired on none. These disclosures qualify a verdict rather than
+  withhold it, and a repository whose receivers are all typed still gets bare
+  `confirmed` at exit 0.
+- **A verdict reports the fidelity it was reached at** (envelope 2.2),
+  telling a backend that is installed but disabled from one that is missing,
+  and **whether the data-flow walk ran**, so `flows_removed_by_walk: 0` can be
+  read. Each finding names the analysis that produced it (`analysis_method`)
+  and what the walk concluded (`walk_verdict`, `walk_blocked_by`).
+- **An unadjudicated flow is reported once per situation** (envelope 2.1):
+  six repositories had reported 359 flows for 78 situations.
+- **A catalogue row can declare that an argument only names the resource**
+  (envelope 2.4). Tainted data choosing *which* file `os.Chmod` acts on still
+  counts as a correct finding, but not a useful one.
+- **Wrong answers fixed:**
+  - `subprocess.Popen(tainted)` verified clean while `subprocess.run(tainted)`
+    verified violated, because construction edges could not be walked. They
+    now can.
+  - One catalogue mistake had sent all 18 of hypergumbo's own self-claims to
+    `inconclusive`.
+  - An unresolved bare-name call no longer installs a sanitizer that is not
+    there (a bare Java `doFinal(p)` had deleted findings). Every language now
+    needs positive evidence of the receiver.
+  - A sink that provably cannot receive the tainted value (a call passing
+    only constants) no longer reports a flow: 24 of 34 adjudicated false
+    positives were sinks taking no arguments at all.
+  - Taint reaches JavaScript callbacks registered with `addEventListener`,
+    `http.createServer` or `process.on`.
+  - `verify-claims` no longer crashes with `RecursionError` on deeply nested
+    code, where it had exited 1, the violated-claim code.
+- **[`docs/VERIFY-CLAIMS-SCOPE.md`](VERIFY-CLAIMS-SCOPE.md) publishes what
+  `verify-claims` cannot see**: every caveat kind, the exit-code contract, and
+  the limits of a clean verdict.
 
 ### For JSON consumers
 
-- **`SCHEMA_VERSION` 0.20.1 → 0.20.2.** `Edge.meta` gains `call_arg_shape`.
-  An addition, hence a patch bump: the key is sparse and opt-in, its absence
-  is the conservative reading, and every artifact written before this version
-  stays valid and unchanged under it.
-- **Four `call_construct` values named a different axis than the field does.**
-  `remote_external` (Erlang) and `application_external` (Haskell) differed
-  from their unsuffixed siblings only by whether the resolver found the
-  callee — recoverable from `dst` already. `chained_return_type` (Go) names
-  how a receiver's type was resolved and moves to `resolution_quality`.
-- **A C# method group moves from `call_construct` to `ref_construct`.** A
-  method group *references* a method without invoking it, and `call_construct`
-  is scoped to the call family; `ref_construct` is the reference-family key
-  that already lists `references` among its edge types.
-- **A meta key's edge scope now lives in `applicable_edge_types`,** the typed
-  field ADR-0038 ruling 2 built for it, rather than in a prose sentence.
+- **`is_exported` is `true`, `false` or `null`** (0.20.12). `null` means no
+  analyzer measured it; only a positive input fills the field.
+- **New fields, all additive:**
+  - `Edge.meta` gains `call_arg_shape`, `callee_name`, the bash per-call-site
+    keys and `io_target_kind` (0.20.2–0.20.5).
+  - `TaintFlowFinding` gains `walk_verdict` and `walk_blocked_by` (0.20.6).
+  - `AnalysisRun.silence_reason` and `limits.skipped_passes[].silence_reason`
+    say why a pass was silent, on one closed axis (0.20.7–0.20.10). An absent
+    reason means *not applicable*; `unreported` means *cannot determine*.
+    (A `skip_reason_code` key existed briefly in development and never
+    shipped.)
+  - `Symbol` and `Edge` gain `attribution` and `alternatives`, present only
+    when two producers' records were merged, so a one-producer artifact is
+    byte-identical to before (0.20.11).
+  - `derived_from` may be `[]` (0.20.13).
+  - `dead-code-maybe` gains `cross_language_demoted` (its schema 0.3.0).
+- **Enum values that moved** — the one non-additive change:
+  - `call_construct` loses `remote_external` (Erlang) and
+    `application_external` (Haskell), which differed from their unsuffixed
+    siblings only by whether the callee resolved; read `dst`.
+  - `call_construct: chained_return_type` (Go) moves to `resolution_quality`.
+  - A C# method group moves from `call_construct` to `ref_construct`.
+  - The I/O boundary `env_read` splits off `host_info_read`, so host and
+    identity reads, and clock reads, no longer count as secrets.
+- **Ids that change**: a Haskell function's span now covers all its equations
+  (its id and `line_span` change), and Solidity contract members are `method`.
+  **Ruby `Klass.new` now emits `instantiates`**, like the other eight
+  analyzers that emit it, instead of `calls`. A name mentioned in JSON, YAML,
+  TOML, XML or HTML no longer counts as cross-language dispatch for
+  `dead-code-maybe`.
+
+### For specific languages
+
+- **Call edges that were missing entirely**: Python bare builtins and calls on
+  an external-typed field; Go calls under a package-level `var` (every cobra
+  `Run:` handler); Haskell zero-argument IO actions; Erlang `?LOG_*` macros;
+  Rust grouped `use` lists; calls inside a Nim exported proc (nitter 648 →
+  2,460 call edges). Swift and C# properties are back in the default map.
+- **Wrong targets fixed**: in Scala and Kotlin an explicit import now outranks
+  a same-named project symbol; a Nim call resolves only to a declaration its
+  module can see (1,555 false edges gone); Elixir gives the same answer every
+  run (surveys had differed by 101 edges) and no longer binds qualified calls
+  by bare name; a Java wildcard import no longer turned `System` into
+  `java.io.System`; method-call recovery no longer overrides a producer that
+  named the module (precision 51% → 73%).
+- **The GraphQL linkers emit edges** (apollo-server 0 → 128).
+- **Rust**: the rust-analyzer backend's records are accounted for (1,308
+  validation violations → 2); function-local `let` bindings are no longer
+  nodes; symbol kinds come from the producer's declaration, so the two Rust
+  backends agree on kind for 133 of 148 paired records.
+- **Parsers**: tree-sitter-swift 0.0.1 → 0.7.3 (parses `#if` inside a type
+  body); Objective-C files that fail to parse go 74 → 38.
+- **The I/O catalogues** are corrected for direction and family in all
+  fifteen languages. Highlights: a C socket call is classified by its address
+  family, so an `AF_UNIX` channel is not network egress; standard input is
+  `ipc_recv` everywhere; a request builder (`urllib.request.Request`,
+  `http.NewRequest`) is no longer the crossing, the call that sends it is;
+  Go's `http.DefaultClient` and friends reach their boundary. The shipped
+  catalogues are stdlib-only.
+
+### Security and runtime safety
+
+- **`--backend tree-sitter` now actually disables the rust-analyzer backend**,
+  which runs the analysed crate's `build.rs`. With
+  the environment variable exported, opting out for one untrusted repository
+  had still run it. A repository's own `.hypergumbo.toml` cannot grant itself
+  that backend; `hypergumbo trust-backend` grants it per repository.
+- **Two of hypergumbo's own filesystem writes** (`gitleaks.py` and the
+  rust-analyzer probe) now go through the safety-zone wrapper its claims
+  assert, as does `backend-agreement --out`.
+- **A survey that raises no longer leaves its file index behind.**
+
+### Performance
+
+- **pretix's Python analysis goes 1700 s → 95 s** (17.9×, byte-identical
+  output): the symbol suffix index is built once per registry instead of once
+  per resolver.
 
 ### Known limitations
 
-- **The construction-edge widening was measured, and the trade is poor.**
-  `docs/measurements/0003` runs a delta census — baseline clone at the fix's
-  parent commit, one instrument, isolated analysis caches per arm — and finds
-  **35 flows added across six repositories, 0 removed, 1 true positive:
-  marginal precision 2.9%** against a ~41% baseline. The sink-argument gate
-  above lifts that to 16.7%. Precision remains the headline problem; treat
-  taint findings as leads to adjudicate.
+- **Taint precision remains the headline problem.** Useful precision is
+  30.9% on the measured 16-repository frame; treat taint findings as leads to
+  adjudicate. Widening the walk to construction edges was measured on its own
+  and added 35 flows, 1 of them a true positive (`docs/measurements/0003`).
+- **`untrusted_input` does not tell far-side-*authored* values from
+  far-side-*chosen* ones**; this is declared, not fixed.
+- **JavaScript arrow functions and function expressions do not reach the
+  data-flow graph** (class methods now do), and C# accessors carry no calls.
+- **Dart constructors' helpers** are a declared gap in the dead-code walk.
 
 ---
 
