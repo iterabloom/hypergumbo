@@ -1,0 +1,62 @@
+Original commit body from 26c55e105e071b8a6280c1332edda0ba29e4e430:
+
+Second docstring-staleness pass of the day (A+B+D bundle; notebook
+staleness_audit_09252026b.md). The co-change arm was exhausted by the
+morning's fixes (its 5 flags are the 5 files verified as matches), so the
+pool is the 28 files just under the flag threshold (11-14 body commits
+since the docstring), plus a registry pass the scan cannot do.
+
+REGISTRY PASS -- the morning sweep was incomplete. It grepped the retired
+names it knew. This run enumerated by pattern: every "<snake_name> edge(s)"
+in any source line, against the 25 live edge types. ~25 files still
+named edge types that no longer exist and described what the code emits
+under the retired name:
+  model_reference, ffi_bridge (lua, ruby), native_bridge, napi_bridge,
+  cgo_bridge, renders_component, template_calls, di_resolves,
+  di_registers, abi_call, ipc_calls, ipc_event, bridge_invokes,
+  crypto_flow, websocket_message, annotated_publishes, renders,
+  uses_mixin, includes_class, requires_resource, notifies_resource,
+  extends_template, includes_template, uses_vocabulary, type_ref,
+  signal_receiver, delegates_to, target_link_libraries, script_src,
+  base_image, build_tag_alternative_of, implements_rpc.
+Each now names the live edge type and the meta key that marks it. What
+remains of the pattern is fold notes (correct), evidence-type names and
+historical comments. cuda.py described consumers of "kernel_launch edges";
+no such edge exists anywhere in the tree.
+
+OTHER FALSE CLAIMS (B) and drift (A, D), each verified against the code:
+- verify_claims: "nine CAVEAT_* constants" (there are twelve); caveats
+  said to ride only confirmed_with_caveats (choice_shaped_source rides
+  violated; caveats survive a downgrade to inconclusive); confidence and
+  analysis_method values conflated; ClaimVerdict.caveats/verdict docs
+  said only one kind was populated; a caveat's comment block sat above
+  the wrong constant (moved).
+- analyze/base: assemble_stable_id credited to ADR-0034 (ADR-0035 §1);
+  analyzer file and package counts.
+- signature_axis: "Python populates none" (it does since WI-ribak);
+  nine parsers (eight).
+- ir: removal version of origin_run_signature; callee-name read order;
+  confidence_source omitted corroborated; create_boundary_nodes and
+  helpers described a file-id collapse the code no longer does.
+- evidence_types: stale Phase 4b condition, seed count, line citations.
+- cli: read commands and run_survey's connectivity default.
+- io_boundary: the retired catalogue status "complete" (provenance_declared).
+- js_ts: Pass 3 description, dst_ref overclaim, Vue omitted, return-type
+  inference said untracked. c.py: enclosing-function lookup is
+  symbols_at, not local_symbols.
+- twig, bitbake, lean, scss, robot, wgsl, puppet, v_lang, luau, pony,
+  pascal, gleam, janet, jsonnet: edge types, symbol kinds, pass counts.
+- ruby_ffi's module summary line was split across two lines, so
+  ARCHITECTURE.md published it truncated (joined).
+
+LINE PINS (INV-fogul): these edits moved six line-pinned citations in
+module_key_axis.py and signature_axis.py (bash.py, js_ts.py x3,
+analyze/base.py x2); each re-pinned to its anchor, 20 of 20 verified.
+
+Code defects the reviewers noticed, reproduced before filing: WI-sigit
+(pascal nested procedures, dangling src ids), WI-rokus (pony behaviours
+not extracted); name-keyed lookups noted on WI-tosum. Omissions (C)
+follow in a separate bundle.
+
+Tests: smart-test 24,128 passed, changed files at 100% coverage.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
