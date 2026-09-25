@@ -11,20 +11,22 @@ first argument to ``view("users.show")``.
 Although the mapping varies, every framework's view-template linker has the
 same shape:
 
-1. Enumerate "action symbols" (the source of a ``renders`` edge).
+1. Enumerate "action symbols" (the source of a view-render edge).
 2. Per action, propose one or more candidate template files.
 3. Probe the repository filesystem; for each candidate that exists, emit a
-   ``renders`` edge to a deduplicated template symbol.
+   ``references`` edge (``meta["ref_construct"] = "view_render"``) to a
+   deduplicated template symbol.
 
 This module factors steps 2-3 out so framework strategies need only implement
 step 1 and propose candidates. The two named strategy bases below match the
-two shapes called out in WI-mifif: ``MethodNameStrategy`` (Rails, Phoenix,
-Django CBV defaults) and ``ExplicitStringStrategy`` (Django ``render`` /
-``template_name``, Spring return value, Laravel ``view``).
+two shapes called out in WI-mifif: ``MethodNameStrategy`` (Rails, Phoenix)
+and ``ExplicitStringStrategy`` (Django ``render`` / ``template_name``, Spring
+return value, Laravel ``view``). Django's CBV-default strategy subclasses
+``TemplateStrategy`` directly.
 
 Why a single PASS_ID per emitter
 --------------------------------
-All ``renders`` edges produced through this core share one PASS_ID — they
+All view-render edges produced through this core share one PASS_ID — they
 describe the same conceptual relationship and the linker registry already
 isolates per-framework activation via separate ``register_linker`` entries.
 Detection-pattern detail flows through ``meta["detection_pattern"]`` instead

@@ -28,8 +28,8 @@ char  kind                      example
 ``()``  :class:`DescriptorKind.PARAMETER`      ``(x)``
 ====  ========================  ========================================
 
-Names can be either bare identifiers (anything other than the suffix
-delimiters ``/ # . : ! ( [``) or backtick-quoted (``\`like this\```)
+Names can be either bare identifiers (anything other than the
+delimiters ``/ # . : ! ( [ ] )``) or backtick-quoted (``\`like this\```)
 in which case a literal backtick is escaped by doubling
 (``\`has\`\`tick\```).
 
@@ -40,12 +40,13 @@ disambiguator ``(...)`` sub-grammar nested inside a descriptor. A
 small forward scanner is easier to read, easier to extend (future
 phases will decorate descriptors with per-indexer post-processing
 hooks — see :mod:`hypergumbo_lang_mainstream.rust_scip`), and keeps
-us free of any protobuf dependency at Phase 1: the translator can
+this parser free of any protobuf dependency: the translator can
 parse a symbol string without ever touching ``scip.proto``.
 
 This module is intentionally *only* a descriptor parser. Mapping a
 parsed symbol into a :class:`hypergumbo_core.ir.Symbol` or emitting
-edges from SCIP Occurrences is the job of later WI-mafut phases.
+edges from SCIP Occurrences is the job of :mod:`.index`, :mod:`.edges`
+and :mod:`.calls`.
 """
 from __future__ import annotations
 

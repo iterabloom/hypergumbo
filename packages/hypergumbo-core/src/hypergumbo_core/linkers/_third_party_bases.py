@@ -21,9 +21,11 @@ in a 15-repo non-Django corpus.
 Gating
 ------
 ``LinkerActivation(frameworks=["django"])`` — the linker only runs when
-Django is detected on the analyzed repo. The framework detector folds
-DRF / django-filter / Wagtail signals under the single "django" name,
-so a single gate covers all four families. Combined with the empirical
+Django is detected on the analyzed repo. The detector's "django"
+pattern matches a ``django`` dependency and, by hyphen prefix,
+``django-filter``; it does not match ``djangorestframework`` or
+``wagtail``, so DRF / Wagtail repos pass the gate only because they
+also declare Django itself. Combined with the empirical
 FP rate of 0/15 across a non-Django corpus, this hard-cutoff gate
 delivers AC-3: a non-Django repo emits zero edges from this linker.
 
@@ -39,7 +41,7 @@ existing framework-base linker discipline is cheap.
 
 Why not extend DJANGO_BASE_METHODS
 -----------------------------------
-1. Activation: the existing linker is ``always=True``; folding third-
+1. Activation: the existing linker is ``always_on_unreviewed()``; folding third-
    party entries there would fire on non-Django repos where the FP
    risk has not been measured.
 2. Provenance: a distinct ``framework_dispatch`` meta label keeps the

@@ -37,26 +37,30 @@ Detected Patterns
 - Class instantiation: ClassName()
 - Inheritance: ``extends`` edges from a class to its bases
 - Decorators: ``decorated_by`` edges from the decorated symbol to the decorator
-- Framework dispatch: ``dispatches_to`` edges (argparse ``set_defaults(func=)``)
+- Framework dispatch: ``dispatches_to`` edges for returned closures
+  (``dispatch_kind="closure_factory"``) and Django ``@receiver`` signals
 - Bare references: ``references`` edges where a symbol is named but not called
 - Module attribute reads: os.environ, sys.argv, sys.path — bare
   (non-called) ``imported_module.attribute`` accesses. Emits
   ``module_attr_ref`` edges so IO-primitive catalog ``attributes:``
   entries become reachable by ``io-boundaries`` (WI-guhok).
 - Imports: from X import Y, import X
-- Django URL patterns: path(), re_path(), url() calls in urls.py
+- Django URL patterns: path(), re_path(), url() calls
 - Flask / FastAPI / flask-restful URL rules: the call-based registration
   family in ``FLASK_URL_FUNCTIONS`` — ``add_url_rule``, ``add_api_route``,
   ``add_resource``
 - Starlette routes: ``Route(...)`` / ``WebSocketRoute(...)`` constructor calls,
   which are constructor-shaped rather than method-shaped and so take their own
   extraction path (``_extract_starlette_usage_contexts``)
-- Django ORM I/O: queryset and manager calls routed to db_read / db_write
+- Django ORM I/O: queryset and manager calls routed to db_read / db_write /
+  db_compose (lazy combinators such as filter / order_by / all)
 
 Route Detection Architecture
 -----------------------------
-Call-based URL routing (Django path(), Flask add_url_rule()) produces two
-outputs that serve different downstream consumers:
+Call-based URL routing (Django path(), Starlette Route(), Flask-RESTful
+add_resource()) produces two outputs that serve different downstream consumers.
+Flask add_url_rule() and FastAPI add_api_route() produce only the first
+(UsageContext records, the YAML-only path) and emit no route marker:
 
 1. **UsageContext records** — matched by YAML framework patterns (django.yaml,
    flask.yaml) to enrich *handler* symbols with ``concept: route`` metadata.
@@ -69,18 +73,21 @@ outputs that serve different downstream consumers:
    first-class nodes in the IR representing the route itself.
 
 Both are derived from the same extraction pass (_extract_django_usage_contexts,
-_extract_flask_usage_contexts). Route symbols are created from the UsageContext
-metadata at the callsite. This avoids duplicating the AST-walking logic while
-preserving both outputs. Go and JS/TS analyzers follow the same dual-output
-pattern.
+_extract_flask_usage_contexts, _extract_starlette_usage_contexts). Route symbols
+are created from the UsageContext metadata at the callsite. This avoids duplicating
+the AST-walking logic while preserving both outputs. Go and JS/TS analyzers follow
+the same dual-output pattern.
 
 ID Schemes
 ----------
-- **stable_id**: sha256 over the v6 tuple — kind, param count, arity flags,
-  decorators, ``name``, ``qualified_name``, and the file-anchored
-  ``containing_stable_id`` (ADR-0035 §2). It does NOT survive a rename or a
-  move: both the name and the containing file feed the hash. Use
-  ``fingerprint`` to join a symbol across a rename (INV-zudob).
+- **stable_id**: sha256 over the v6 tuple, anchored on the file-anchored
+  ``containing_stable_id`` (ADR-0035 §2). Functions and methods with a normalizable
+  signature use the typed tier (``make_typed_stable_id``: kind, normalized signature,
+  visibility, decorators, ``name``, ``qualified_name``); the untyped fallback hashes
+  kind, param count, arity flags, decorators, ``name``, ``qualified_name`` and
+  ``occurrence_index``. It does NOT survive a rename or a move: both the name and
+  the containing file feed the hash. Use ``fingerprint`` to join a symbol across a
+  rename (INV-zudob).
 - **shape_id**: sha256 of AST structure (control flow, nesting).
   Detects clones with different variable names.
 
@@ -98,7 +105,8 @@ Why This Design
 ---------------
 - Built-in ast module requires no dependencies and handles all Python syntax
 - Two-pass approach enables cross-file call resolution via imports
-- col_offset == 0 heuristic distinguishes top-level from nested functions
+- ``_enclosing_function_chain`` distinguishes top-level from nested functions;
+  the col_offset == 0 heuristic only decides ``is_exported``
 - Import resolution handles both absolute and relative imports
 - Rich metadata feeds YAML-driven framework pattern enrichment (ADR-3aaa)
 """

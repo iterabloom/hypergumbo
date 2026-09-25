@@ -30,8 +30,9 @@ recovers in-JVM reflective dispatch of the topology callbacks.
 Detection Criteria
 ------------------
 A class is treated as a Kafka Streams dispatch target when any of its
-declared base classes or interfaces resolves (by short last-segment name)
-to a known callback interface. Fully-qualified names like
+base classes or interfaces — declared directly or inherited through an
+in-tree ancestor, walked transitively — resolves (by short last-segment
+name) to a known callback interface. Fully-qualified names like
 ``org.apache.kafka.streams.kstream.ValueMapper<K, V, VR>`` are normalized
 to the short form ``ValueMapper`` before lookup, so both qualified and
 unqualified imports are matched the same way.
@@ -45,8 +46,9 @@ Edge Emission
 For every Kafka Streams callback impl class ``C`` whose short base-name
 is in :data:`KAFKA_STREAMS_CALLBACKS`, each method on ``C`` whose short
 name is listed for that interface in :data:`KAFKA_STREAMS_CALLBACKS`
-receives a ``dispatches_to`` edge from ``C`` with confidence 0.90 and
-evidence ``kafka_streams_dispatch``.
+receives a ``dispatches_to`` edge from ``C`` with confidence 0.90 (0.5
+on the fallback below), ``evidence_type`` ``ast_call_direct`` and meta
+``framework_dispatch: "kafka_streams"``.
 
 INV-zuhub disambiguation
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -55,7 +57,9 @@ distinguish kafka's external interface from an in-tree JVM class that
 happens to share the short name (e.g. a user-defined
 ``Transformer<T>`` in oauthbearer code that has no relation to
 ``org.apache.kafka.streams.kstream.Transformer``). Per INV-zuhub item 1,
-such ambiguous matches downgrade:
+such ambiguous matches downgrade. Each matched interface is classified
+as below, and if *any* match on a class is a fallback, *all* of that
+class's edges take the fallback confidence:
 
 - Raw entry FQN-prefixed with ``org.apache.kafka.*`` → precision match;
   the in-tree collision (if any) is irrelevant. ``confidence=0.90``.

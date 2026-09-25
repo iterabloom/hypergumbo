@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **338** Python modules (140 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 96 core, 4 CLI, 36 tracker)
-- **48790** symbols (functions, classes, methods)
-- **192627** edges by type:
-  - calls: 110436
-  - contains: 44735
-  - imports: 15453
-  - instantiates: 11711
-  - references: 7094
+- **48862** symbols (functions, classes, methods)
+- **192940** edges by type:
+  - calls: 110636
+  - contains: 44804
+  - imports: 15481
+  - instantiates: 11715
+  - references: 7104
   - module_attr_ref: 1667
-  - other: 1531
+  - other: 1533
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 48790 Symbols + 192627 Edges + UsageContexts           │
+│  Output: 48862 Symbols + 192940 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -280,20 +280,20 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 9873.4 | ir.py |
-| `len` | external_symbol | 7580.0 | <external> |
-| `write_text` | external_symbol | 6650.0 | <external> |
+| `len` | external_symbol | 7585.0 | <external> |
+| `write_text` | external_symbol | 6653.0 | <external> |
 | `Span` | class | 6507.5 | ir.py |
 | `LinkerContext` | class | 3544.1 | registry.py |
-| `get` | external_symbol | 3063.0 | <external> |
-| `load_catalog` | function | 2637.7 | io_boundary.py |
+| `get` | external_symbol | 3067.0 | <external> |
+| `load_catalog` | function | 2672.7 | io_boundary.py |
 | `Edge.create` | method | 2365.4 | ir.py |
 | `next` | external_symbol | 2145.0 | <external> |
-| `str` | external_symbol | 2124.0 | <external> |
+| `str` | external_symbol | 2125.0 | <external> |
+| `Path` | external_symbol | 2057.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `Path` | external_symbol | 2051.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1647.0 | <external> |
+| `append` | external_symbol | 1649.0 | <external> |
 
 ## Pattern System
 
@@ -868,7 +868,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.orm`**: Framework linker: ORM query for detecting ORM model references in a...
 - **`hypergumbo_core.linkers.otp`**: Framework linker: OTP GenServer dispatch for Elixir and Erlang.
 - **`hypergumbo_core.linkers.phoenix_ipc`**: Framework linker: Phoenix Channels IPC for detecting Elixir IPC pat...
-- **`hypergumbo_core.linkers.pyffi`**: Bridge linker: Python FFI for connecting Python ctypes/cffi calls t...
+- **`hypergumbo_core.linkers.pyffi`**: Bridge linker: Python FFI, joining ctypes/cffi calls to C/C++ and P...
 - **`hypergumbo_core.linkers.react_component`**: Framework linker: React component for detecting JSX composition edges.
 - **`hypergumbo_core.linkers.receiver_type_dispatch`**: Infrastructure linker: resolve non-hierarchy ``x.foo()`` calls via a
 - **`hypergumbo_core.linkers.route_handler`**: Framework linker: route-handler for connecting routes to their hand...
@@ -941,8 +941,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: df4019f77310
-  commit_count: 7579
+  commit: a53a2047a878
+  commit_count: 7592
   hypergumbo: 8.0.0
   python: 3.12.3
 -->

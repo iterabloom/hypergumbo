@@ -25,7 +25,7 @@ names a local binding at one call site; ``resp`` is not where ``read`` is
 defined. That is the same cut ADR-0023 made for ``Edge.edge_type`` -- properties
 of an endpoint are queried from the endpoint, not smuggled into the label -- and
 the receiver's type already has a home in ``Edge.meta["receiver_type_hint"]``
-(stamped by six analyzers, read by neither ``io_boundary`` nor ``taint``;
+(stamped by eight analyzers, read by neither ``io_boundary`` nor ``taint``;
 WI-monul).
 
 WHY THIS IS A STRUCTURAL-POLICY AXIS RATHER THAN A REGISTRY OF VALUES. Module
@@ -44,15 +44,17 @@ lack a declaration -- it carried a FALSE one:
     source-language grammar; consumers display/lookup, never branch on
     the value itself.
 
-``_module_matches`` branches on the value itself. It decides type-vs-sub-package
+``_module_matches`` branches on the value itself. It decided type-vs-sub-package
 from ORTHOGRAPHY (``longer_raw[shared][:1].isupper()``), on a rule its own
-docstring justifies by GO's naming convention while serving all fifteen
-catalogues -- so the discriminator is information-free wherever module names are
-capitalised (haskell 100%, swift 97%, objc 95%, elixir 52%, javascript 21%). The
-static linter accepted the declaration because a ``free-text`` justification is
-required to be PRESENT, not TRUE.
+docstring justified by GO's naming convention while serving all fifteen
+catalogues -- so the discriminator was information-free wherever module names are
+capitalised (haskell 100%, swift 97%, objc 95%, elixir 52%, javascript 21%). It
+now asks whether the extra component's case DISAGREES with the component it
+follows (``io_boundary._extra_component_names_a_type``) -- still a spelling
+proxy, not the axiom. The static linter accepted the declaration because a
+``free-text`` justification is required to be PRESENT, not TRUE.
 
-The measured consequence is roughly eighteen separately-filed tracker items that
+The measured consequence is twenty separately-filed tracker items that
 reduce to this one conflation -- INV-linub, INV-zuvib, INV-hahak, INV-fofoj,
 INV-januj, INV-kotob, INV-mumov, INV-safig, INV-fokik, INV-funuf, INV-zimud,
 INV-papih, INV-dijor, WI-zazul, WI-damir, WI-sugom, WI-gudak, WI-papar,

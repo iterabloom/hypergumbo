@@ -23,9 +23,10 @@ Identical reasoning to the Airflow framework-dispatch linker (WI-nutav):
 the inheritance detection is already handled by the ``inheritance``
 linker's ``base_classes`` metadata; the Django-specific knowledge is a
 single per-base method map that belongs in one place, not smeared across
-the Python analyzer. Extending to other Python ORM frameworks (e.g.,
-SQLAlchemy declarative bases, Peewee models) is a new entry in the map,
-not per-analyzer code.
+the Python analyzer. Extending to other base families is a new per-base
+method table, not per-analyzer code; third-party Django-ecosystem bases
+went into a separate, framework-gated table (``_third_party_bases``)
+rather than into this always-on map.
 
 Scope (WI-nosug)
 ----------------

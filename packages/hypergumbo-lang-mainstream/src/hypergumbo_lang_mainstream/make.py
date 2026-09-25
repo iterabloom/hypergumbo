@@ -28,7 +28,7 @@ Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-make package for grammar
-- Single-pass because target_link references need the registry built in-flight
+- Single-pass because prerequisite references need the registry built in-flight
 - Build-system-specific: targets, prerequisites, variables are first-class
 """
 from __future__ import annotations

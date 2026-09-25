@@ -8,7 +8,8 @@ Django apps connect view callables to templates by three routes:
    ``APP_DIRS`` lookup) or, less commonly, project-level ``templates/users/show.html``.
    The view callable doing the render is the source of the ``renders`` edge.
 
-2. **Class-attribute string on a ``TemplateView``.** ``class HomeView(TemplateView):
+2. **Class-attribute ``template_name`` string** (any class body, typically a
+   ``TemplateView``). ``class HomeView(TemplateView):
    template_name = "home/index.html"`` declares the template path at class scope.
    Source of the edge is the view class itself.
 
@@ -23,17 +24,20 @@ The Python analyzer captures class ``base_classes`` in symbol meta but does not
 emit call-site string arguments or class-body attribute values into the IR. To
 keep the IR small and avoid coupling analyzer schema to per-framework linker
 needs, the Django linker re-parses the view source files it cares about using
-the stdlib ``ast`` module. Scan scope is narrowed by the
-``_is_django_view_path`` heuristic (paths matching ``views.py``, ``views_*.py``,
-or somewhere under a ``views/`` directory), keeping the work bounded.
+the stdlib ``ast`` module. The explicit-string strategy narrows its scan scope
+by the ``_is_django_view_path`` heuristic (paths matching ``views.py``,
+``views_*.py``, or somewhere under a ``views/`` directory); the CBV-default
+strategy applies no path filter and parses only files declaring a class whose
+base resolves to a generic CBV. Both keep the work bounded.
 
 Why explicit-string and CBV-default are separate strategies
 -----------------------------------------------------------
 ``DjangoExplicitStringStrategy`` produces ``(action, string)`` pairs and lets
 the shared core do candidate generation via ``string_to_candidates``. The CBV
 default path cannot be expressed as an ``(action, string)`` pair because the
-template name is derived from class-name regex matching plus a model attribute
-lookup, not from a string literal. ``DjangoCBVDefaultStrategy`` subclasses
+template name is derived from the view's base-class name (matched against
+``_CBV_DEFAULT_SUFFIXES`` via ``ctx.base_name_origins``) plus the snake-cased
+``model`` attribute, not from a string literal. ``DjangoCBVDefaultStrategy`` subclasses
 ``TemplateStrategy`` directly so it can yield emissions whose ``action_symbol``
 is the view class and whose detection pattern is ``cbv_default_template``.
 """

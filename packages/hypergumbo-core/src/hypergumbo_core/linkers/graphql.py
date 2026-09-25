@@ -1,15 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework linker: GraphQL client-schema for detecting cross-file GraphQL calls.
 
-This linker detects GraphQL client calls (gql, useQuery, etc.) and links
+This linker detects GraphQL client calls (``gql`` literals/calls) and links
 them to GraphQL schema definitions detected by the GraphQL analyzer.
 
 Detected Client Patterns
 ------------------------
 JavaScript/TypeScript:
 - gql`query MyQuery { ... }` - Template literal
-- useQuery(QUERY) - Apollo React hook
-- useMutation(MUTATION) - Apollo React hook
 
 Python:
 - gql("query MyQuery { ... }") - gql library
@@ -18,8 +16,10 @@ Python:
 Operation Matching
 ------------------
 Operations are matched by:
-1. Operation name (query GetUsers matches schema query GetUsers)
-2. Operation type (query, mutation, subscription)
+1. Operation name (query GetUsers matches schema query GetUsers); the
+   name join ignores operation type
+2. Otherwise, the root field, where the operation type (query, mutation,
+   subscription) only selects the root type to look the field up on
 
 How It Works
 ------------

@@ -4,10 +4,10 @@
 Spring MVC's view resolver maps a controller method's string return value to
 a template path. ``return "users/show"`` resolves to
 ``src/main/resources/templates/users/show.html`` (Thymeleaf default),
-``src/main/resources/templates/users/show.ftl`` (FreeMarker),
+``src/main/resources/templates/users/show.ftlh`` or ``.ftl`` (FreeMarker),
 ``src/main/resources/templates/users/show.vm`` (Velocity), or
-``src/main/webapp/WEB-INF/views/users/show.jsp`` (JSP). The ``ModelAndView``
-constructor's first argument is also a view name.
+``src/main/webapp/WEB-INF/views/users/show.jsp`` (JSP) or ``.html``. The
+``ModelAndView`` constructor's first argument is also a view name.
 
 The Java analyzer captures class and method ``@Annotation`` metadata in
 ``sym.meta["decorators"]`` as a list of ``{name, args, kwargs}`` dicts but
@@ -32,8 +32,9 @@ Why ExplicitStringStrategy (not MethodNameStrategy)
 ---------------------------------------------------
 Spring view names are literal strings the developer types, not naming
 conventions derived from class + method names. Pairs with Laravel
-(WI-hokaj), which is the other ExplicitStringStrategy consumer; the
-``string_to_candidates`` hook is what differs between the two.
+(WI-hokaj) and Django's ``DjangoExplicitStringStrategy``, the other
+ExplicitStringStrategy consumers; the ``string_to_candidates`` hook is what
+differs between them.
 """
 
 from __future__ import annotations

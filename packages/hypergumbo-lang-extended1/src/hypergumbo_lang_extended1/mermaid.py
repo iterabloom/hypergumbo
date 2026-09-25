@@ -9,9 +9,8 @@ How It Works
 ------------
 Regex-based extraction (no tree-sitter grammar available on PyPI):
 1. Find all .mmd and .mermaid files
-2. Detect diagram type from first directive (flowchart, sequenceDiagram, etc.)
-3. Extract node definitions and named entities
-4. Extract relationships/edges between nodes
+2. Detect diagram type directives on any line (flowchart, sequenceDiagram, etc.)
+3. Extract node definitions and named entities (no edges are emitted)
 
 Symbols Extracted
 -----------------

@@ -10,8 +10,8 @@ Regex-based extraction (no tree-sitter grammar available on PyPI):
 1. Find all Gnuplot files
 2. Extract function definitions (f(x) = ...)
 3. Extract variable assignments (var = expr)
-4. Extract plot/splot commands as symbols
-5. Extract load/call directives as edges
+4. Extract plot/splot commands as symbols (no edges are emitted; load/call
+   directives are skipped)
 
 Symbols Extracted
 -----------------

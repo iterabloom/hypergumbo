@@ -12,11 +12,14 @@ Validation tiers:
   priorities, invalid timestamps.
 - **Field schema validation:** Required fields missing, type mismatches,
   integer range violations, unknown fields (with edit-distance suggestions).
-- **Cross-file validation:** Duplicate IDs across tiers, dangling parent
-  references, ID prefix/kind mismatches, cycles in isbefore links.
+- **Cross-file validation:** Duplicate IDs across tiers, dangling or
+  cross-tier (into stealth) parent / isbefore / duplicate_of /
+  not_duplicate_of references, ID prefix/kind mismatches, cycles in
+  isbefore links.
 - **Config comparison:** Kinds in config but not in template (and vice versa).
 - **Lock violation detection:** Agent updates touching locked fields.
-- **SimHash duplicate warnings:** Near-duplicate pairs not in not_duplicate_of.
+- **SimHash duplicate warnings:** Near-duplicate pairs not already marked
+  in duplicate_of or not_duplicate_of.
 - **Embedding duplicate warnings:** Deep semantic duplicates via dense embeddings.
 
 See ADR-0013 for the full design specification.

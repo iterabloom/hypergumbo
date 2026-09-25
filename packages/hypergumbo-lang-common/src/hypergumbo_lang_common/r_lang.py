@@ -24,7 +24,7 @@ Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - R is widely used in data science and statistics
-- Function definitions use assignment operators (<-, =, ->)
+- Function definitions use assignment operators (<-, =, <<-)
 - library() and require() for package imports
 - Useful for scientific computing and data analysis codebases
 """
@@ -201,7 +201,8 @@ def _extract_r_symbols(
                 symbols.append(sym)
                 symbol_registry[func_name] = sym
 
-        # Library/require imports and source() calls - extract as symbols
+        # Library/require imports (as ``imports`` edges) and source() calls
+        # (as ``source`` symbols)
         elif node.type == "call":
             func_name_node = None
             for child in node.children:
@@ -369,7 +370,8 @@ def _extract_r_edges(
             if not func_name:
                 continue
 
-            # Skip library/require/source - these are handled as symbols
+            # Skip library/require/source - handled in pass 1 (imports edges /
+            # source symbols)
             if func_name in ("library", "require", "source"):
                 continue
 

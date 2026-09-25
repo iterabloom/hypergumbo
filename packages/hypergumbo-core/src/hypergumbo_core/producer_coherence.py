@@ -12,10 +12,12 @@ not a module-level set assignment).
 
 This module closes the L3 gap. It walks ``Edge.create(...)`` /
 ``Edge(...)`` / ``Symbol.create(...)`` / ``Symbol(...)`` call sites
-across the package source tree and verifies that **literal-string**
-keyword arguments to axis-bearing parameters are in the corresponding
-canonical registry. F-string emits and module-constant references are
-classified as **advisories** (Phase-3 fold candidates per the parent
+under ``packages/``, ``scripts/`` and ``.agent/`` and verifies that
+**literal-string** keyword arguments to axis-bearing parameters (module
+constants resolve to their literal and are checked the same way) are in
+the corresponding canonical registry. F-string emits that cannot be
+expanded (the per-axis wrappers default to ``fstring_mode="expand"``)
+are classified as **advisories** (Phase-3 fold candidates per the parent
 ADR), not strict failures — they're the existing producer-side leak
 shape that Phase 3's per-cluster migration normalizes.
 
@@ -23,8 +25,10 @@ The check is field-agnostic: callers parameterize it with the
 ``constructor_names`` to match (e.g. ``{"Edge", "Edge.create"}``), the
 ``keyword_arg`` to inspect (``"evidence_type"``, ``"kind"``,
 ``"edge_type"``), and the ``registry_names`` frozenset. The wrapper at
-``scripts/check-producer-axis-coherence`` invokes it for all three
-sibling axes uniformly.
+``scripts/check-producer-axis-coherence`` does not call this gate: it
+runs a shrink-only baseline ratchet (``ratchet_diff``) over the
+``unregistered_{evidence_types,symbol_kinds,edge_types}`` enumerators
+for the three sibling axes.
 
 Why this lives next to ``axis_drift.py``: the two halves of axis
 enforcement (consumer-side L1, producer-side L3) share the same AST-

@@ -1,18 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Bridge linker: Python FFI for connecting Python ctypes/cffi calls to C/C++ implementations
-and PyO3 Rust functions to their Python callers.
+"""Bridge linker: Python FFI, joining ctypes/cffi calls to C/C++ and PyO3 Rust functions to callers.
 
-This linker creates ffi_bridge edges between Python code that calls native functions
-via ctypes or cffi and the corresponding C/C++ function implementations, as well as
-between Python code that imports PyO3-annotated Rust functions.
+This linker creates ``calls`` edges (meta ``bridge_kind: "ffi"``) between Python
+code that calls native functions via ctypes or cffi and the corresponding C/C++
+function implementations, as well as between Python code that imports
+PyO3-annotated Rust functions.
 
 How It Works
 ------------
 Four FFI mechanisms are detected by scanning Python source files:
 
-1. **ctypes**: Scans for ``ctypes.CDLL`` / ``ctypes.cdll.LoadLibrary`` patterns,
-   then finds ``lib.funcname()`` attribute calls on the loaded library variable.
-   Matches funcname against C/C++ function symbols.
+1. **ctypes**: Scans for ``ctypes.CDLL`` / ``ctypes.cdll.LoadLibrary`` (also
+   ``WinDLL`` / ``OleDLL`` / ``PyDLL``) patterns, then finds ``lib.funcname()``
+   attribute calls on the loaded library variable. Matches funcname against
+   C/C++ function symbols.
 
 2. **cffi**: Scans for ``ffi.dlopen()`` / ``ffi.verify()`` patterns, then finds
    ``lib.funcname()`` attribute calls. Same name-matching as ctypes.
@@ -24,16 +25,17 @@ Four FFI mechanisms are detected by scanning Python source files:
    (``go:C:0-0:<name>:unresolved``) so the io_boundary tagger can redirect
    to the C catalog and tag IO primitives like fopen, popen, fwrite.
 
-4. **PyO3**: Finds Rust symbols with ``pyfunction`` or ``pymethods`` in their
-   decorators metadata. When Python code has unresolved call edges whose name
-   matches a PyO3-annotated Rust function, creates ffi_bridge edges.
+4. **PyO3**: Finds Rust functions/methods with a PyO3 attribute (``pyfunction``,
+   ``pymethods``, ``pyclass``, ``pyo3``, bare or path-qualified) in their
+   ``annotations`` metadata. When Python code has unresolved call edges whose
+   name matches a PyO3-annotated Rust function, creates ``calls`` edges.
 
 Why This Design
 ---------------
 - Follows the analyze-then-link pattern established by JNI and cgo linkers
 - Source scanning for ctypes/cffi is necessary because Python's dynamic nature
   means these calls don't produce typed call edges from the analyzer
-- PyO3 detection piggybacks on the Rust analyzer's decorator metadata
+- PyO3 detection piggybacks on the Rust analyzer's annotation metadata
 - Simple name matching is sufficient: ctypes/cffi use the raw C function name
 - C stdlib unresolved edges follow the same pattern as cgo, enabling reuse
   of the io_boundary tagger's ``_resolve_ffi_catalog()`` redirect
@@ -278,7 +280,7 @@ def link_pyffi(
         edges: All existing edges (used for PyO3 unresolved call matching)
 
     Returns:
-        PyFFILinkResult with ffi_bridge edges.
+        PyFFILinkResult with ``calls`` edges (meta ``bridge_kind: "ffi"``).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

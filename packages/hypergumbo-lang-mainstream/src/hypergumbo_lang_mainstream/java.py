@@ -30,9 +30,11 @@ matrix's ``(java, edge_imports)`` cell until this was wired.
 Structured external targets
 ---------------------------
 Cross-file / cross-package call edges populate ``Edge.dst_ref`` with
-the canonical ``(lang, module_path, name)`` triple resolved through
-the static-import scope (WI-tihup). Aliased / starred imports bind
-``name`` to the imported symbol, not any local alias.
+the canonical ``(lang, module_path, name)`` triple, resolved through
+the static-import scope, the explicit-import scope (WI-tihup), the
+receiver's declared type, a fully-qualified receiver, or the
+wildcard / ``java.lang`` implicit-import candidates. Java has no
+import aliases; a wildcard import's ``imports`` edge names ``*``.
 
 Rich Metadata Extraction (ADR-3aaa)
 -----------------------------------
@@ -62,13 +64,14 @@ Example:
         "base_classes": ["BaseModel", "Serializable"]
     }
 
-If tree-sitter-java is not installed, the analyzer gracefully degrades
-and returns an empty result.
+If tree-sitter-java is not installed, the analyzer gracefully degrades:
+it emits a ``UserWarning`` and returns a skipped result.
 
 How It Works
 ------------
 1. Check if tree-sitter and tree-sitter-java are available
-2. If not available, return empty result (not an error, just no Java analysis)
+2. If not available, warn and return a result with ``skipped=True`` and
+   ``skip_reason_code=DEPENDENCY_UNAVAILABLE`` (no Java analysis)
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry,
      populate per-file import / static-import scope
@@ -88,6 +91,8 @@ Why This Design
 Population of ``is_exported`` follows Java's access-modifier rule: a type
 or member is considered exported only when its declaration carries the
 ``public`` keyword (package-private / protected / private items are not).
+Interface constants are the exception: they are implicitly public and are
+exported without the keyword.
 """
 from __future__ import annotations
 
