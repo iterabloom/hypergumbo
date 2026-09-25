@@ -13,19 +13,33 @@ Key IR Classes
   key or invalidate a cache (see the AnalysisRun "Readership note"). The
   provenance group is four fields, not two: ``config_fingerprint`` and
   ``pass_version`` sit alongside the run identifiers and participate in the
-  same cache-key question.
+  same cache-key question. It also carries per-pass productivity counters
+  (``nodes_emitted`` / ``edges_emitted``) and, for a pass that emitted
+  nothing, ``silence_reason`` (``unreported`` when the pass did not say why;
+  empty when it emitted output).
 - **Symbol**: Code elements (functions, classes) with location and identity
   hashes (stable_id, shape_id, fingerprint). The ``quality`` field is
   declared-but-empty — it has no producer (INV-nuzal) and is omitted from
-  serialization when ``None``.
+  serialization when ``None``. ``is_exported`` is ``Optional[bool]``: True
+  or False when a producer measured public-API membership, ``None`` when
+  nobody looked (INV-kubup). ``visibility`` is the one canonical visibility
+  level, ``None`` until ``finalize`` computes it (INV-jusot).
 - **Edge**: Relationships between symbols with confidence, evidence tracking,
   and edge_key for deduplication across passes. ``confidence_source`` names
   what produced the number and ``rank_score`` carries the ranking weight
-  (ADR-0039 rulings 2 and 3). Edges carry a structured
+  (ADR-0039 rulings 2 and 3); ``corroborated`` marks an edge the ADR-0057
+  merge pass folded from two producers' distinct inference pathways, whose
+  confidence is the declared corroboration level. Edges carry a structured
   ``dst_ref: Optional[ExternalRef]`` sibling alongside the legacy ``dst``
   colon-encoded id; consumers read the callee name through
   ``callee_name_of`` (``meta["callee_name"]``, then ``dst_ref.name``, then
   the span-anchored ``symbol_name_slot`` parse of ``dst``).
+- **attribution / alternatives** (on Symbol and Edge): the ADR-0057 §6
+  provenance slot, set only by the merge pass on a record folded from two
+  producers. ``attribution`` maps a field to the pass IDs whose value the
+  scalar carries; ``alternatives`` holds the contested values the scalar does
+  not carry. Both are ``None`` and omitted from the dict form on
+  single-producer records, so a one-backend artifact is unchanged.
 - **ExternalRef**: Frozen ``(lang, module_path, name)`` triple naming a
   call target outside the producer's translation unit. Aliased imports
   bind ``name`` to the imported symbol, not the local alias.
@@ -33,6 +47,25 @@ Key IR Classes
   how it is USED — ``kind`` is one of ``call`` / ``data_value`` / ``export`` /
   ``macro``. It is matched by the YAML framework-pattern system and is not an
   edge annotation.
+
+Helpers
+-------
+- **Edge identity and dedup**: ``mint_edge_id`` derives an edge id from
+  ``(src, dst, edge_type, line)``. ``deduplicate_edges`` collapses edges
+  sharing an ``edge_key`` (line-insensitive) to one per relationship; the
+  survivor's ``meta["call_lines"]`` records the union of the collapsed call
+  sites, and a single-site edge carries no such key.
+- **Symbol-id parsing**: ``symbol_path_slot`` / ``symbol_name_slot`` are the
+  shared parses of ``{lang}:{path}:{span}:{name}:{kind}`` ids, anchored on
+  the span so a colon-bearing path slot (``std::fs``, ``dart:io``) parses
+  correctly. ``validate_symbol_id_format`` checks an id against the
+  file-path and module-hint shapes and rejects a ``0-0``-span id whose
+  qualifier is a stringified file path.
+- **Boundary nodes**: ``create_boundary_nodes`` mints synthetic boundary
+  Symbols (with ``stable_id`` / ``display_label``) for dangling edge
+  endpoints and returns an id remap; ``apply_external_id_remap`` rewrites
+  edges onto the canonical boundary ids, collapsing edges that now coincide
+  while unioning their ``referring_paths`` and ``call_lines``.
 
 Provenance Fields
 -----------------

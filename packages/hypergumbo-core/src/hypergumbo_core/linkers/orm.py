@@ -18,6 +18,16 @@ How It Works
 5. Create ``references`` edges (``meta.framework_dispatch="orm_accessor"``)
    from that enclosing symbol to the Model
 
+Name Collisions (INV-zuhub)
+---------------------------
+Models are indexed by short name, so two files can define the same model
+name. ``_resolve_model_with_fallback`` resolves a reference as follows: a
+single candidate, or exactly one candidate in the referring file, wins
+outright (confidence 0.85). Otherwise it picks the lowest-id candidate (from
+the same-file candidates when there are several, else from all of them),
+and the edge gets confidence 0.5 and ``meta.disambiguation_fallback=True``
+so consumers can filter guessed edges.
+
 Why This Design
 ---------------
 Django/Flask-SQLAlchemy ORM calls use attribute chains (e.g., User.objects.filter())

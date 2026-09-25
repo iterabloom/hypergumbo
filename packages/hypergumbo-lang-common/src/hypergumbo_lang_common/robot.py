@@ -25,7 +25,13 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **calls**: Keyword invocations from test cases and keywords
+- **calls**: Keyword invocations from test cases and keywords. Invocations
+  of names in ``RobotAnalyzer.BUILTIN_KEYWORDS`` (BuiltIn-library keywords
+  such as ``Log``) emit no edge. An invocation outside any keyword or test
+  case uses the file-level ``robot:<path>`` id as its source. The target is
+  looked up by exact name in the cross-file keyword/test registry
+  (confidence 1.0); a name not found there gets the synthetic
+  ``robot:unresolved:<keyword>`` dst at confidence 0.6
 - **imports**: Resource settings only (file -> resource); Library settings
   create a ``library`` symbol but no edge
 

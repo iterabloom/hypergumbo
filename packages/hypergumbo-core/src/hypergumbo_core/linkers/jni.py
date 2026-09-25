@@ -14,7 +14,12 @@ How It Works
 4. Match Java native methods to C/C++/Rust JNI functions by name: each JNI
    function is indexed under both ``Class.method`` and (when a package is
    present) ``pkg.Class.method``, so either Java-side form resolves
-5. Create ``calls`` edges (``meta.bridge_kind="native"``) for matched pairs
+5. Create ``calls`` edges (``meta.bridge_kind="native"``) for matched pairs.
+   A unique match gets confidence 0.95. When the Java method's name matches
+   several JNI functions (for example, the short ``Class.method`` key shared
+   by ``Java_pkg1_...`` and ``Java_pkg2_...``), the lowest-id candidate is
+   chosen and the edge gets confidence 0.5 and
+   ``meta.disambiguation_fallback=True`` (INV-zuhub)
 
 JNI implementations can be written in C (.c), C++ (.cpp), or Rust (.rs) files.
 Android NDK projects commonly use C++ for their JNI implementations. Rust

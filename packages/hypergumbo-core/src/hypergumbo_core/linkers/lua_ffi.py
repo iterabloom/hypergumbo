@@ -18,6 +18,17 @@ Source scanning of Lua files for two FFI call patterns:
    (``local lib = ffi.load("mylib")``). The linker tracks the variable name
    and finds ``lib.<name>(`` calls, matching ``<name>`` against C symbols.
 
+Targets are C or C++ ``function``/``method`` symbols (the linker activates
+for both the lua/c and lua/cpp pairs). Call names starting with ``_`` are
+skipped in both patterns.
+
+Name collisions (INV-zuhub): when exactly one C/C++ symbol has the name,
+the edge gets confidence 0.85. When several do, the lowest-id candidate is
+chosen (no same-file preference, since caller and target are in different
+languages), and the edge gets confidence 0.5 and
+``meta.disambiguation_fallback=True``. This applies to both the source-scan
+edges and the unresolved-edge edges described below.
+
 After scanning, the linker also checks every existing edge whose destination
 is ``:unresolved`` (no language or edge-type filter is applied) and, when the
 trailing name matches a C/C++ function symbol, emits a ``calls`` edge with

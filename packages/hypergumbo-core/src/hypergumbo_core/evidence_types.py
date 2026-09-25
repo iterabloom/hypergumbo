@@ -17,10 +17,26 @@ subset of evidence types should call ``evidence_types_on_axis(...)``
 rather than maintain their own hardcoded set; the property test in
 ``tests/test_evidence_types.py`` enforces that every hardcoded set in
 the codebase whose name contains ``EVIDENCE_TYPE`` is a subset of this
-registry, and the L3 producer-coherence linter at
-``scripts/check-producer-axis-coherence`` enforces that
-``Edge.create(evidence_type="...")`` literal arguments are also in the
-registry.
+registry (via ``find_axis_drift``, which skips
+``ENTRYPOINT_EVIDENCE_TYPES``: that name matches the filter but the set
+enumerates the separate ``Entrypoint.meta`` pathway axis), and the L3
+producer-coherence linter at ``scripts/check-producer-axis-coherence``
+enforces that ``Edge.create(evidence_type="...")`` literal arguments are
+also in the registry.
+
+Confidence seeding (ADR-0039):
+
+- Each ``EvidenceTypeSpec`` may carry ``base_confidence``, the
+  detection-reliability seed ``Edge.confidence`` derives from when this
+  pathway is an edge's only evidence (``None``: not derived, the producer
+  keeps its own literal). Pathways whose reliability depends on resolution
+  (``ast_call``, ``ast_call_direct``, ``macro_expansion``) also carry
+  ``base_confidence_unresolved`` for edges with ``is_resolved=False``, set
+  inline on their specs. ``confidence.derive_confidence`` reads both.
+- Single-valued pathways are seeded from the ``_CONFIDENCE_SEEDS`` table
+  (disjoint from the inline seeds), which ``_apply_confidence_seeds``
+  overlays onto ``_RAW_EVIDENCE_TYPES`` to produce the public
+  ``EVIDENCE_TYPES``.
 
 Axis taxonomy (per ADR-0028 §1):
 

@@ -31,14 +31,47 @@ The authoritative set is derived from the parser itself —
 When no subcommand is given, sketch mode is assumed. This makes the
 common case (`hypergumbo .`) as simple as possible.
 
-The `survey` command orchestrates all language analyzers and all linkers,
-collecting their results into a unified behavior map. Analyzers run
-independently across 100+ languages. Linkers run after all analyzers
-complete, to recover edges the per-file analyzers could not see. Per
-ADR-3bbb they span four subcategories — Protocol, Bridge, Framework and
-Infrastructure — and only Bridge is language-pair; plenty of registered
-linkers (``argparse_dispatch``, ``django_orm_dispatch``, ...) recover
-edges *within* one language.
+The `survey` command (``run_survey``) builds the unified behavior map in
+this order:
+
+1. **Analyzers** run independently across 100+ languages
+   (``run_all_analyzers``).
+2. **Producer merge** (ADR-0057 §3, ``merge_producer_records``): when two
+   producers analyzed the same declarations (tree-sitter ``rust`` and the
+   SCIP ``rust_analyzer`` arm), their records fold into one symbol per
+   declaration. A producer with no merge declaration is refused, not passed
+   through.
+3. **Linkers** run after all analyzers complete, to recover edges the
+   per-file analyzers could not see (``run_all_linkers``). Per ADR-3bbb they
+   span four subcategories — Protocol, Bridge, Framework and Infrastructure —
+   and only Bridge is language-pair; plenty of registered linkers
+   (``argparse_dispatch``, ``django_orm_dispatch``, ...) recover edges
+   *within* one language.
+4. **Tier filtering** drops supply-chain tier 4 (derived) symbols unless
+   ``--max-tier`` says otherwise, then **noise filtering** drops non-code
+   node kinds (docs, config, CSS structure; ``is_noise_symbol``) and their
+   edges unless ``--include-docs``.
+5. **Boundary synthesis** (``create_boundary_nodes``) runs after both
+   filters, collapsing dangling external references into boundary symbols
+   and remapping the edges that pointed at them.
+6. ``finalize()`` is the single pre-serialization reconcile point
+   (ADR-0043 §6): it runs once the node and edge set is final.
+7. **Side outputs**: budget-tier files (``--budgets``), per-handler forward
+   slices in ``<stem>.slices/`` next to the map (``_emit_handler_slices``),
+   and a ``sketch_precomputed`` block embedded in the map so a later
+   ``sketch`` can skip recomputing its inputs.
+
+After a survey, ``cmd_run`` evicts stale cache entries
+(``_maybe_evict_cache``, never the entry just written) before reporting the
+cache footprint.
+
+``--backend {tree-sitter,rust-analyzer,scip-python}`` is a global flag.
+``main`` accepts it in any position relative to the subcommand, strips it
+from argv, and resolves it at parse time (``_apply_backend_choice``). A
+backend whose integration package or binary is missing exits with an error
+right there instead of silently falling back to tree-sitter; the resolved
+choice reaches the analyzer registry's backend gate through its environment
+variable.
 
 Why This Design
 ---------------
@@ -48,7 +81,10 @@ Why This Design
 - Read commands (slice, sketch, search, ...) work from a persisted survey:
   they reload it via ``survey_io.load_substrate`` and rehydrate it with
   ``Symbol.from_dict`` / ``Edge.from_dict`` (``_edge_from_dict`` is a thin
-  wrapper), and ``_get_or_run_analysis`` runs a survey first on a cache miss
+  wrapper), and ``_get_or_run_analysis`` runs a survey first on a cache miss.
+  The ``--minimal`` flag (``_add_minimal_argument``) on those commands skips
+  that auto-survey's side outputs (budget tiers, handler slices,
+  ``sketch_precomputed``); it has no effect when a cached survey is reused
 """
 import argparse
 import gc

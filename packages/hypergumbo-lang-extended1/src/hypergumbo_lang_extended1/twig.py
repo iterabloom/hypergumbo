@@ -25,13 +25,18 @@ Symbols Extracted
 - **Macros**: Reusable template functions ({% macro name() %})
 - **For loops**: Iteration structures ({% for item in items %})
 - **Conditionals**: If statements ({% if condition %})
+- **Call sites**: each ``{{ func() }}`` output call other than ``include()``
+  becomes a symbol of kind ``call_site`` (signature ``{{ func() }}``, meta
+  ``arg_count`` and ``call_kind="function"``); no call edge is emitted
 
 Edges Extracted
 ---------------
 - **extends**: template file -> ``twig:template:<name>`` for
   {% extends "base.twig" %}
 - **includes**: template file -> ``twig:template:<name>`` for
-  {% include "partial.twig" %} and {{ include() }}
+  {% include "partial.twig" %} and {{ include() }}; the function form
+  (template name taken from its first argument) is marked
+  ``meta.form="function"``
 
 Why This Design
 ---------------

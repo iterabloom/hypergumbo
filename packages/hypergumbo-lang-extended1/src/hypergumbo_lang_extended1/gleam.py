@@ -24,6 +24,13 @@ Key constructs extracted:
 - type_alias: Type aliases, emitted as kind ``type``
 - import: Module imports
 - function_call: Direct and qualified function calls
+
+Every symbol carries meta ``is_public`` (``pub`` present); custom types add
+``constructor_count`` and type aliases add ``is_alias=True``. A bare call
+``fn(x)`` is looked up by name among the cross-file symbols and becomes an
+unresolved edge when not found. A qualified call ``mod.fn(x)`` is always
+emitted unresolved (via ``make_unresolved_edge``, target ``mod.fn``): the
+module qualifier is not resolved against imports.
 """
 from __future__ import annotations
 

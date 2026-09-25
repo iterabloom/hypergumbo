@@ -28,6 +28,31 @@ Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 3. extract_edges_from_file: resolves source/dot imports and function calls
 4. _find_source_files: overridden for shebang-based file discovery
 
+The edge pass also emits I/O and environment edges:
+
+- **Environment reads**: each ``$VAR`` / ``${VAR}`` expansion of a name that
+  is not assigned in the file (or in a file joined to it by ``source``) and
+  is not bash-maintained shell state becomes a ``module_attr_ref`` edge with
+  ``meta.env_var``, from the enclosing function or the file node. Host
+  description names (``OSTYPE``) target a host-info node instead of the
+  environment node.
+- **Redirects**: each ``file_redirect`` with a modelled operator (``>``,
+  ``>>``, ...) becomes an unresolved ``calls`` edge carrying
+  ``io_primitive`` (``redirect.<op>``), ``io_mode``, ``io_target_kind``
+  (``host_path``, ``std_stream``, ``null_device`` or ``unresolved``) and,
+  when the file parsed cleanly, ``redirect_origin_names``: the
+  environment-derived names that can reach what the shell writes there.
+- **External programs**: a command that is not a defined function, not
+  resolved by the resolver, and not in ``SHELL_BUILTINS`` becomes one
+  unresolved ``calls`` edge per (caller, command) with
+  ``meta.io_boundary="command_launch"``.
+
+``_RepoBashIndex`` is built once per repo: it records the names each bash
+file assigns and resolves the ``source`` graph (both directions,
+transitively), so a name assigned in a sourcing or sourced script is not
+reported as an environment read. Unresolvable ``source`` targets contribute
+no names.
+
 Why override _find_source_files: Bash scripts can have no extension but
 a shebang line (#!/bin/bash), requiring special detection beyond glob patterns.
 """

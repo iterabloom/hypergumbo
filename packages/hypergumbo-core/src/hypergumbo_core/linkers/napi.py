@@ -17,13 +17,31 @@ Two-phase source scanning of C/C++ files:
    ``_NAPI_SET_NAMED_PROPERTY_RE`` pattern is defined but unused, so an export
    published under a different property name is not matched.
 
-2. **node-addon-api (C++)**: Scans for ``Napi::Function::New(env, FuncRef)``
-   inside ``exports.Set("name", ...)`` calls, and ``InstanceMethod("name", &Class::Method)``
-   declarations. These register C++ functions under JS-visible names.
+2. **node-addon-api (C++)**: Scans for these registrations of C++ functions
+   under JS-visible names:
+
+   - ``exports.Set("name", ...)`` or ``target.Set("name", ...)`` wrapping
+     ``Napi::Function::New(env, FuncRef)`` or the template form
+     ``Napi::Function::New<FuncRef>(env)``
+   - ``InstanceMethod("name", &Class::Method)`` and the template form
+     ``InstanceMethod<&Class::Method>("name")``
+   - ``StaticMethod("name", &Class::Method)`` and the template form
+     ``StaticMethod<&Class::Method>("name")``
+   - ``InstanceAccessor("name", &Class::Getter, &Class::Setter)``, which binds
+     only the getter; the setter is not linked
 
 After building a map of {js_export_name -> C/C++ symbol}, the linker iterates
 every existing edge whose destination is ``:unresolved`` (no language filter is
 applied) and resolves it against the export map by its trailing name.
+
+The export map is keyed by JS name only, so when two registrations (in the
+same file or different files) use the same JS name, the last one scanned
+wins and the earlier one is never linked.
+
+Name collisions (INV-zuhub): when the registered C/C++ name matches exactly
+one ``function``/``method`` symbol, the edge gets confidence 0.85. When it
+matches several, the lowest-id candidate is chosen and the edge gets
+confidence 0.5 and ``meta.disambiguation_fallback=True``.
 
 Why This Design
 ---------------
