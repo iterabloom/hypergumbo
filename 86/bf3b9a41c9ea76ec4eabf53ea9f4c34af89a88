@@ -1,0 +1,30 @@
+Original commit body from 2537ad88c0ae68d9d79c96d28bc0c7d83111354e:
+
+prepare-release 8.1.0 stopped at release-check with three failures
+(the suite otherwise passed 28,356 tests at 100.00% coverage, and every
+wheel, scip-python's included, built):
+
+1. Secrets: gitleaks (--no-git) flagged two verify-claims test fixtures.
+   The generic-api-key rule reads `secret", ` in
+   `source_taint="host_secret", prohibited_sink_zone=` as a key and
+   takes `prohibited_sink_zone=` as its value. Added to .gitleaks.toml's
+   regex allowlist of fixed benign strings, the mechanism its ignore file
+   prescribes for committed source; it also covers the two other fixtures
+   of that shape. gitleaks now exits 0 on the tree; before, 1.
+
+2. Lint: 3 ruff findings in repo-root tests/ (two imports placed mid-file,
+   one dict() over a generator). Per-PR CI linted only packages/*/src and
+   packages/*/tests while release-check also lints tests/, so these
+   accumulated with nothing to catch them. Fixed, and CI's ruff step now
+   includes tests/ like the release gate.
+
+3. Tests: tracker test_compile_properties::test_idempotency failed
+   Hypothesis's too_slow health check -- one draw took 0.94 s under the
+   full -n auto suite against ~10 ms for the rest. Not a property
+   failure. too_slow is suppressed on the file's four properties; the
+   properties and example counts are unchanged.
+
+Verified: ruff over packages/*/src packages/*/tests tests/ passes; the
+manifest's 2,000 tests pass; test_compile_properties passes (6).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
