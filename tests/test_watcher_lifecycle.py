@@ -1225,7 +1225,12 @@ def _fake_inotifywait_blocking(tmp_path: Path, child_pid_file: Path) -> Path:
     return bindir
 
 
-def _wait_for_file(path: Path, timeout: float = 5.0) -> bool:
+def _wait_for_file(path: Path, timeout: float = 20.0) -> bool:
+    # Every caller expects the file to APPEAR, and this returns as soon as it
+    # does, so the budget costs nothing on a pass. 5 s was too short for a
+    # detached launch on a loaded CI runner: PR #1213's run failed one launch
+    # while sibling launches in the same run succeeded, and it did not
+    # reproduce locally (3 of 3 runs green).
     deadline = time.time() + timeout
     while time.time() < deadline:
         if path.exists() and path.read_text().strip():
