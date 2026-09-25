@@ -1,0 +1,46 @@
+Original commit body from f02cd03212e9ceac7b2083120543160c8c1c37d5:
+
+The omission (C) half of the second staleness pass
+(staleness_audit_09252026b.md); the false claims in the same files were
+corrected in the A+B+D bundle. In the 21 documented files only the
+module docstring changed (an AST comparison against HEAD with the
+module docstring removed is identical), and every first line (published
+verbatim in ARCHITECTURE.md) is unchanged. module_key_axis.py and
+signature_axis.py change only re-pinned line= values (below).
+
+- analyze/base: a "Shared helpers" section, led by the position-keyed
+  enclosing-symbol rule (symbols_at / symbol_declared_by over
+  file_symbols: credit a call by POSITION, never by name), then file
+  anchors, edge/symbol minting, call-site annotation and the stable-id
+  constructors; the Pass 1 -> 2 registries and library signatures.
+- verify_claims: the coverage stage and its six gates, fidelity stamping,
+  production-scope exclusions and the sanitized / resource-naming
+  disclosures, the _require_coverage_to_confirm backstop, catalogue
+  provenance, and extra_catalogs load-time validation.
+- cli: the survey as a seven-step pipeline (analyzers, ADR-0057 merge,
+  linkers, tier/noise filtering, boundary synthesis, finalize, side
+  outputs), cache eviction, the global --backend flag, auto-survey and
+  --minimal.
+- ir: attribution / alternatives, corroborated, Optional is_exported,
+  visibility, AnalysisRun counters and silence_reason, and the id /
+  dedupe / boundary helpers. evidence_types: ADR-0039 confidence seeding.
+- js_ts: symbol kinds, the member-call cascade, handler-assignment
+  registration, the references edge kinds, post-passes; the
+  enclosing-function lookup is position-keyed WITH a name-keyed fallback
+  still live in two branches, stated plainly (noted on WI-tosum).
+- c.py, bash.py: include-set stamping, io_mode / io_target_kind,
+  declaration dedup, env-read and redirect edges, command_launch, the
+  repo-wide source index.
+- orm, lua_ffi, jni, napi: the INV-zuhub collision fallback (0.5 plus
+  disambiguation_fallback), napi's full registration-pattern list and
+  its last-registration-wins export map.
+- robot, scss, fennel, jsonnet, lean, pascal, luau, twig, gleam:
+  builtin filters, fallback callers, unresolved targets and their
+  confidences, resolution order.
+
+LINE PINS (INV-fogul): the added prose moved six line-pinned citations
+again (the same six as the A+B+D bundle); re-pinned by anchor, 20 of 20
+verified.
+
+Tests: smart-test 23,930 passed, changed files at 100% coverage.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
