@@ -322,6 +322,48 @@ proc caller() =
         assert resolved_call.confidence > 0.70
 
 
+class TestNimCallAnchor:
+    """A call is credited to the proc whose declaration contains it (WI-bujar)."""
+
+    def _callers(self, result) -> dict[int, str]:
+        by_id = {s.id: s for s in result.symbols}
+        return {
+            e.line: by_id[e.src].name
+            for e in result.edges
+            if e.edge_type == "calls" and e.src in by_id
+        }
+
+    def test_exported_proc_call_edge(self, temp_repo: Path) -> None:
+        """``proc exported*`` names itself through an ``exported_symbol`` node. The
+        lookup read a bare ``identifier`` child, found none, and dropped the call."""
+        (temp_repo / "a.nim").write_text(
+            "proc helper(): int = 1\n"
+            "proc exported*(): int = helper()\n"
+            "proc private(): int = helper()\n"
+        )
+        callers = self._callers(analyze_nim(temp_repo))
+        assert callers == {2: "exported", 3: "private"}
+
+    def test_nested_proc_call_goes_to_innermost(self, temp_repo: Path) -> None:
+        """A call inside a proc nested in an exported proc belongs to the nested one."""
+        (temp_repo / "a.nim").write_text(
+            "proc helper(): int = 1\n"
+            "proc outer*(): int =\n"
+            "  proc inner(): int = helper()\n"
+            "  inner()\n"
+        )
+        callers = self._callers(analyze_nim(temp_repo))
+        assert callers == {3: "inner", 4: "outer"}
+
+    def test_module_level_call_has_no_caller(self, temp_repo: Path) -> None:
+        """A top-level statement runs at module init; no proc contains it, so no edge."""
+        (temp_repo / "a.nim").write_text(
+            "proc helper(): int = 1\n"
+            "discard helper()\n"
+        )
+        assert self._callers(analyze_nim(temp_repo)) == {}
+
+
 class TestNimAnalysisUnavailable:
     """Tests for handling unavailable tree-sitter."""
 

@@ -33,6 +33,7 @@ CLASSIFIED: dict[str, tuple[str, str]] = {
     "hack": ("verified", "test_call_anchor_gate_extended1::test_hack_same_named_callables"),
     "janet": ("verified", "test_call_anchor_gate_extended1::test_janet_same_named_callables"),
     "llvm_ir": ("verified", "test_call_anchor_gate_extended1::test_llvm_ir_same_named_callables"),
+    "nim": ("verified", "test_call_anchor_gate_extended1::test_nim_same_named_callables"),
     "odin": ("verified", "test_call_anchor_gate_extended1::test_odin_same_named_callables"),
     "pascal": ("verified", "test_call_anchor_gate_extended1::test_pascal_same_named_callables"),
     "solidity": ("verified", "test_call_anchor_gate_extended1::test_solidity_same_named_callables"),
@@ -45,7 +46,6 @@ CLASSIFIED: dict[str, tuple[str, str]] = {
     "haxe": ("unverified", "WI-tosum"),
     "jsonnet": ("unverified", "WI-tosum"),
     "luau": ("unverified", "WI-tosum"),
-    "nim": ("unverified", "WI-tosum"),
     "pony": ("unverified", "WI-tosum"),
     "tcl": ("unverified", "WI-tosum"),
     "wolfram": ("unverified", "WI-tosum"),
@@ -256,6 +256,32 @@ define void @run() {
 }
 """)
     _assert_contained(analyze_llvm_ir(tmp_path), [8, 9])
+
+
+def test_nim_same_named_callables(tmp_path: Path) -> None:
+    """Same-named shape: an overload pair. Also the exported shape: ``proc api*`` wraps its
+    name in an ``exported_symbol`` node, so a lookup reading the name found no enclosing
+    proc and dropped every call from a module's public API (WI-bujar). Both went away when
+    the lookup keyed on position."""
+    from hypergumbo_lang_extended1.nim import analyze_nim
+
+    (tmp_path / "a.nim").write_text("""\
+proc one(): int = 1
+proc two(): int = 2
+proc run(x: int): int =
+  one()
+proc run(s: string): int =
+  two()
+proc api*(x: int): int =
+  one()
+func pure*(): int = two()
+method act*(x: int): int {.base.} =
+  one()
+proc outer*(): int =
+  proc inner(): int = two()
+  inner()
+""")
+    _assert_contained(analyze_nim(tmp_path), [4, 6, 8, 9, 11, 13, 14])
 
 
 def test_odin_same_named_callables(tmp_path: Path) -> None:
