@@ -1,0 +1,21 @@
+- op: create  # f5c1
+  at: '2026-09-25T21:54:53Z'  # f5c1
+  by: agent  # f5c1
+  actor: jgstern_agent  # f5c1
+  clock: 1  # f5c1
+  nonce: f5c1  # f5c1
+  data:  # f5c1
+    kind: work_item  # f5c1
+    title: "Package lists outside the release path omit hypergumbo-lang-scip-python (scheduled CI installs, 4 lint scanners)"  # f5c1
+    status: todo_hard  # f5c1
+    priority: 2  # f5c1
+    parent:  # f5c1
+    tags:  # f5c1
+    - ci  # f5c1
+    - release  # f5c1
+    isbefore: []  # f5c1
+    duplicate_of: []  # f5c1
+    not_duplicate_of: []  # f5c1
+    pr_ref:  # f5c1
+    description: "hypergumbo-lang-scip-python (added 2026-09-19, ea22d7023c) is missing from package lists OUTSIDE the release path. PR #1213 fixed the release-path lists (bump-version, release-check, cov-paths.sh, release.yml build loop, prepare-release) and pinned them with tests/test_release_package_lists.py, which enumerates packages/*/pyproject.toml.\n\nStill missing it (measured by grepping each file for rust-analyzer vs scip-python mentions, 2026-09-25):\n- Scheduled CI installs: .woodpecker/full-suite.yml:94 and .woodpecker/nightly.yml install every lang package EXCEPT scip-python, yet run packages/*/tests/. The scheduled suite is green, so either its scip-python tests error-skip somehow or they import from a path not visible in the install line -- NOT CHECKED. Verify whether scip-python's tests actually execute in the scheduled suite before assuming they do.\n- GitHub-side workflows (ci.yml, full-suite.yml, nightly.yml): same omission; whether those workflows still run is not checked.\n- Lint scanners whose package lists name rust-analyzer but not scip-python: scripts/check-id-construction:40, scripts/check-pass-id-agreement:44, scripts/check-multi-value-field-axis-declaration:66, scripts/check-docstring-drift:136. Each silently skips scip-python's source.\n\nStructural: every one of these is a hand-maintained copy of the package set. Extend the enumeration test to them (or have them read packages/*/pyproject.toml) so the next new package is caught the day it lands."  # f5c1
+    fields: {}  # f5c1
