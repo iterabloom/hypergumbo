@@ -1,0 +1,20 @@
+- op: create  # f5f6
+  at: '2026-09-25T06:33:11Z'  # f5f6
+  by: agent  # f5f6
+  actor: jgstern_agent  # f5f6
+  clock: 1  # f5f6
+  nonce: f5f6  # f5f6
+  data:  # f5f6
+    kind: work_item  # f5f6
+    title: "just: a recipe dependency declared further down the file is dropped; depends_on edges depend on declaration order"  # f5f6
+    status: todo_hard  # f5f6
+    priority: 3  # f5f6
+    parent:  # f5f6
+    tags:  # f5f6
+    - analysis_quality  # f5f6
+    isbefore: []  # f5f6
+    duplicate_of: []  # f5f6
+    not_duplicate_of: []  # f5f6
+    pr_ref:  # f5f6
+    description: "EVIDENCE (production entry point, 2026-09-25):\n  justfile A:  test: build / build:   -> edges: []\n  justfile B:  build: / test: build   -> edges: [test depends_on build]\nThe same recipes produce a different graph depending only on declaration order.\n\nMECHANISM: packages/hypergumbo-lang-common/src/hypergumbo_lang_common/just.py ~L155 `if dep and dep in recipe_symbols`. recipe_symbols is filled in the same single pass, so a dependency declared further down the file is not there yet, and the edge is silently dropped. just itself allows forward references.\n\nPRIOR ART: none found. No tracker row mentions the just analyzer or dropped forward references. The module docstring now states the limitation (PR #1197).\n\nASKED: collect the recipe symbols first, then emit the dependency edges (two passes, or a deferred list). Add a fixture in forward order. Then remove the limitation sentence from the docstring."  # f5f6
+    fields: {}  # f5f6
