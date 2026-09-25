@@ -27,3 +27,19 @@
   nonce: '0350'  # 0350
   set:  # 0350
     status: in_progress  # 0350
+- op: update  # 5075
+  at: '2026-09-25T17:28:19Z'  # 5075
+  by: agent  # 5075
+  actor: jgstern_agent  # 5075
+  clock: 3  # 5075
+  nonce: '5075'  # 5075
+  set:  # 5075
+    status: done  # 5075
+    pr_ref: '1202'  # 5075
+- op: discuss  # 9548
+  at: '2026-09-25T17:28:19Z'  # 9548
+  by: agent  # 9548
+  actor: jgstern_agent  # 9548
+  clock: 4  # 9548
+  nonce: '9548'  # 9548
+  message: "Fixed in PR #1202 (bb8142b887). A per-run _NimScope replaces the flat one-per-name lookup for calls. A call sees its own file, then the files `include` joins to it, then exported declarations of modules it imports (each module's whole include group), narrowed by from/except and extended through export m / export name / export m except x. A module-qualified call looks only in that module; if the module lacks the name, the receiver is a value shadowing the module name (UFCS). Several visible candidates go through ListNameResolver (1/sqrt N).\n\nBEHAVIOURAL EVIDENCE: the filed repro, re-run on merged dev via analyze_nim on nitter: edges into the private redis_cache `get` 104 (96 cross-file) -> 8 (all from redis_cache.nim itself); config.nim's `cfg.get(...)` calls go to config.nim's own `get*` (31 edges). Production-path tests: test_nim_scope_resolution.py (30 multi-file fixtures). Every negative case was red on the old lookup; competing-declaration fixtures call both sides, so discovery order cannot rescue them. The new branches were mutation-controlled.\n\nASKS: (1) private never cross-file: 1,555 -> 42 across nitter/chronos/pixie/nimble, and all 42 are inside chronos's selectors2 include group, where they are legal. (2) import scope with re-export closure: done. Resolved calls 15,354 -> 13,423 with call edges unchanged. Of the 800 removals whose old target was exported, sampling found 2 recall losses (included files of an imported module; a value shadowing a module name) and 1 parsing gap (export except), all fixed. A fresh sample of 20 after the fixes: 20 correct losses. (3) same-file preference: done. (4) receivers NOT typed in nim.py.\n\nNOT CLAIMED: the 1,657 overload guesses, or types.add* still taking seq.add (64; 63 from files that DO import types). That is argument-type selection, filed as WI-bivab (INV-fahub nim facet). Measured on 3 shallow clones beside nitter (the corpus has no other Nim repo): ~/ALL_REPOS/nim_extra_09252026/."  # 9548

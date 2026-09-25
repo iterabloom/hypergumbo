@@ -56,3 +56,18 @@
   nonce: '7481'  # 7481
   set:  # 7481
     status: todo_hard  # 7481
+- op: update  # 99af
+  at: '2026-09-25T18:01:12Z'  # 99af
+  by: agent  # 99af
+  actor: jgstern_agent  # 99af
+  clock: 7  # 99af
+  nonce: 99af  # 99af
+  set:  # 99af
+    status: done  # 99af
+- op: discuss  # 5c5b
+  at: '2026-09-25T18:01:12Z'  # 5c5b
+  by: agent  # 5c5b
+  actor: jgstern_agent  # 5c5b
+  clock: 8  # 5c5b
+  nonce: 5c5b  # 5c5b
+  message: "CLOSED done, 2026-09-25 (P2 review, dev e4a47383ab). DONE-AND-NEVER-CLOSED. This was a DECISION item, and the decision was made and shipped on 2026-08-27, the day after the row's last update. It never recorded that.\n\nTHE RULINGS, as cited in the shipped catalogue (packages/hypergumbo-core/src/hypergumbo_core/io_primitives/rust.yaml, module_completeness block):\n- FUTEX: \"WI-pavob, owner ruling 'ok out': thread contention does not cross an I/O boundary\". std::sync and std::sync::Mutex are granted `completeness: complete` (retrieved 2026-08-27), in cc1254d7d9 (WI-lutuh).\n- mpsc: the precedent the row asked to re-examine stands. std::sync::mpsc is granted, with the note \"no tenth kind exists, so the grant stands\".\n- CLOCK: \"WI-pavob ruled a clock read IS host_info_read\". std::time / std::time::SystemTime are deliberately NOT granted as no-I/O and instead carry rows, shipped cross-language by WI-tubij (done, PR #579, c6def4667c: \"a clock read is host_info_read in every catalogued language\").\n\nEVIDENCE through the production loader, `load_catalog('rust')`:\n  module_io_is_enumerated: std::sync True, std::sync::Mutex True, std::sync::mpsc True.\n  std::time False and std::time::SystemTime False: correct under the ruling, since a clock read IS I/O and so is not granted as none.\n  Clock rows present: std::time::Instant.{now, elapsed}, std::time::SystemTime.{now, elapsed}.\nSo all four of the row's \"unmarkable\" modules now have a ruled, shipped disposition."  # 5c5b

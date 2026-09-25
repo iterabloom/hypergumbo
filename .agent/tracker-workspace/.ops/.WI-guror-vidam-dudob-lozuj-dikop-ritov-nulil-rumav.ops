@@ -19,3 +19,18 @@
     pr_ref:  # 5e8e
     description: "ir._extract_path_slot (ir.py:1308) returns the WRONG path for any symbol id whose path slot contains a colon.\n\nREPRO (pure function, no fixture needed):\n    from hypergumbo_core.ir import _extract_path_slot\n    _extract_path_slot(\"dart:dart:io:0-0:module:module\")\n    -> \"dart\"        (actual)\n    -> \"dart:io\"     (correct)\n\nCAUSE. The body is parts = symbol_id.split(\":\") then return parts[1]. Per ADR-0036 D1a the path slot is the ONE colon-TOLERANT slot in the id grammar; lang, span, name and kind are colon-free, and the parse must be anchored from BOTH ENDS. Taking parts[1] assumes the path is colon-free, which is exactly the assumption the grammar declines to make.\n\nTHE CORRECT IMPLEMENTATION IS TWELVE LINES BELOW IT. ir._parse_dangling_id at ir.py:1321 does the right thing -- it joins everything between the language and the last three tokens -- and its docstring states the hazard explicitly: \"The path slot may itself contain colons (e.g. dart imports like dart:dart:io:0-0:module:module where path = dart:io)\". So the knowledge was present in the same file and the neighbouring function did not use it.\n\nCONSUMER IMPACT. The function's own docstring says it is \"used to record the original referring-site path on edges whose src was collapsed by apply_external_id_remap\" (ir.py:1618). For a symbol with a colon-bearing path the recorded provenance path is therefore a truncated fragment (dart rather than dart:io), silently, on an edge field whose entire purpose is to preserve where the reference came from.\n\nNOT MEASURED: how many symbols in a real corpus carry a colon in the path slot, so the live blast radius is unknown rather than known-small. Dart imports are the known producer. Count before downgrading this.\n\nFixed for free if the six-homes consolidation item lands; filed separately because the standalone fix is two lines plus a test and needs no refactor."  # 5e8e
     fields: {}  # 5e8e
+- op: update  # 62bf
+  at: '2026-09-25T17:53:48Z'  # 62bf
+  by: agent  # 62bf
+  actor: jgstern_agent  # 62bf
+  clock: 2  # 62bf
+  nonce: 62bf  # 62bf
+  set:  # 62bf
+    status: done  # 62bf
+- op: discuss  # 8542
+  at: '2026-09-25T17:53:48Z'  # 8542
+  by: agent  # 8542
+  actor: jgstern_agent  # 8542
+  clock: 3  # 8542
+  nonce: '8542'  # 8542
+  message: "CLOSED done, 2026-09-25 (P2 review, dev e4a47383ab). DONE-AND-NEVER-CLOSED: fixed by d1116cc1af (2026-08-04, \"fix(taint): one right-anchored parser for the symbol-id path slot\"), the day after filing.\n\nTHE ROW'S OWN REPRO, re-run verbatim on dev:\n    from hypergumbo_core.ir import _extract_path_slot\n    _extract_path_slot(\"dart:dart:io:0-0:module:module\")  ->  'dart:io'   (was 'dart')\n\nWHY IT HOLDS, from the code rather than one value:\n- ir._extract_path_slot (ir.py:1793) no longer splits. It delegates to the new chokepoint `ir.symbol_path_slot` (ir.py:1639), which is right-anchored and span-anchored (INV-fokik) and returns None only for a malformed id.\n- The consumer the row named, apply_external_id_remap's referring-site provenance (ir.py:2147 `orig_src_path = _extract_path_slot(edge.src)`), therefore records `dart:io`, not `dart`.\n- `symbol_path_slot(\"dart:dart:io:0-0:module:module\")` also returns 'dart:io'.\n\nNOT ASSERTED: the row's NOT-MEASURED note on corpus blast radius is still unmeasured (no count of colon-bearing path slots was taken). The fix is a total function over the grammar, so that count no longer gates correctness.\n\nThe general \"six homes\" consolidation is WI-ribuz, still open. Its current state is recorded there."  # 8542

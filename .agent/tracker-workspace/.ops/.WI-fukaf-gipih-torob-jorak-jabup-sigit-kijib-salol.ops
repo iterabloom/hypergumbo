@@ -1,0 +1,22 @@
+- op: create  # 7c82
+  at: '2026-09-25T17:55:02Z'  # 7c82
+  by: agent  # 7c82
+  actor: jgstern_agent  # 7c82
+  clock: 1  # 7c82
+  nonce: 7c82  # 7c82
+  data:  # 7c82
+    kind: work_item  # 7c82
+    title: "js-module-linker reads repo-relative Symbol.path as absolute: relative imports resolve against the process CWD (koel: -29% module_exports from outside the repo) and tsconfig path aliases never resolve (mint a phantom npm package)"  # 7c82
+    status: todo_hard  # 7c82
+    priority: 2  # 7c82
+    parent:  # 7c82
+    tags:  # 7c82
+    - linker  # 7c82
+    - javascript  # 7c82
+    - linker_protocol  # 7c82
+    isbefore: []  # 7c82
+    duplicate_of: []  # 7c82
+    not_duplicate_of: []  # 7c82
+    pr_ref:  # 7c82
+    description: "FOUND 2026-09-25 during the P2 open-item review, while re-running WI-sinol's repro. Prior-art search: every item (open and closed) mentioning tsconfig / phantom npm / js-module + relative|absolute / cwd. Nothing covers this. WI-sinol (module_exports to class members) is a different defect in the same linker.\n\nTHE SHARED CAUSE. linkers/js_module.py treats `Symbol.path` as ABSOLUTE, but the production pipeline hands it REPO-RELATIVE paths. A trace inside a survey shows the linker receives symbol paths ['a.ts', 'b.ts'] and import dsts `typescript:./b:0-0:module:module`. Two resolution paths break.\n\n(a) RELATIVE IMPORTS RESOLVE AGAINST THE PROCESS CWD, NOT THE REPO ROOT. js_module.py:743-744:\n      source_dir = Path(src_path).parent          # 'a.ts' -> '.'\n      base_path = (source_dir / import_path).resolve()   # resolves against os.getcwd()\n    linkers/vue_component.py:94 does it right: `(repo_root / source_file).parent`.\n    PRODUCTION-PATH A/B, same code (dev e4a47383ab), same repo (whole_bunch_of_repos/koel), only the cwd differs:\n      cwd = koel, `hypergumbo run .`:                   js-module-linker imports 4,078, module_exports 2,085\n      cwd = ~/hypergumbo, `hypergumbo run <koel path>`: js-module-linker imports 3,680, module_exports 1,471\n    That is -398 imports (-9.8%) and -614 module_exports (-29%), silently, with rc 0. scripts/bakeoff-broad:843/918 and bakeoff-deep:2027 invoke `hypergumbo run <repo_path>` with cwd unset (inherited), so every bakeoff measures the degraded arm. A 2-file fixture (a.ts imports \"./b\") emits 0 resolved imports and 0 module_exports when surveyed from outside, and resolves when surveyed from inside.\n    No false resolution was seen on koel (0 absolute-path nodes). But a cwd that happens to contain a matching relative file would resolve into a FOREIGN tree. Not measured.\n\n(b) tsconfig `paths` ALIASES NEVER RESOLVE, from any cwd. `_get_aliases_for_file` (js_module.py:~490-517) walks `Path(src_path).parent` upward, comparing str(dir) against `_build_tsconfig_alias_index`'s keys, which are absolute. A repo-relative 'src' never equals '/…/src', and the walk ends at '.'. Its own docstring says \"src_path: Absolute path to the source file.\"\n    Fixture, surveyed from INSIDE the repo: tsconfig.json {\"paths\": {\"@/*\": [\"src/*\"]}}, src/a.ts `import { g } from \"@/lib/b\"`, src/lib/b.ts. The linker emits NO resolved import, and instead mints a PHANTOM tier-3 npm package `typescript:npm:0-0:@/lib:package` with an `imports` edge to it: a first-party module reported as a third-party dependency. Vite aliases (repo-root-global) are unaffected, which is why koel is not zero.\n\nFIX SHAPE (not implemented): anchor both on repo_root, (repo_root / src_path) as vue_component does. Pin with a fixture surveyed from a DIFFERENT cwd, because every fixture run from its own directory passes (a) by accident. Measure (b)'s phantom-npm count on a tsconfig-alias corpus repo before and after."  # 7c82
+    fields: {}  # 7c82
