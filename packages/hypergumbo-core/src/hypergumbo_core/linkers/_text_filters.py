@@ -19,6 +19,24 @@ parent is ``module`` or ``block`` AND which is that parent's first
 non-comment named child is treated as a docstring. Regular string
 literals are preserved, because several linkers (``database_query``,
 ``graphql``, ``openapi``) rely on matching inside literals.
+
+Parsed trees go through a contextvar-bound parse cache that
+``run_all_linkers`` installs (the same dict as ``LinkerContext.parsed_trees``),
+so several linkers masking one file share a single parse.
+
+The module is also the linkers' counted file-read layer (WI-finij). Every
+reader here (``read_masked_source``, ``read_source_text`` for linkers that
+must see comments, ``read_source_bytes`` for tree-sitter input) records the
+path in a contextvar-bound read log, whose size fills
+``AnalysisRun.files_analyzed`` when the linker left it unset. Deriving the
+count here, rather than trusting each linker to assign it, keeps a linker
+that read files from reporting zero input and being stamped
+``no_candidate_files``; a test fails any direct
+``Path.read_text`` / ``read_bytes`` under ``linkers/`` that would bypass it.
+
+``js_ts_language_from_path`` gives linkers that fabricate JS/TS stand-ins the
+JS/TS analyzer's own ``typescript`` / ``javascript`` tag (INV-tofun), unlike
+``language_from_path``, which returns tree-sitter grammar names.
 """
 from __future__ import annotations
 

@@ -17,9 +17,15 @@ Operation Matching
 ------------------
 Operations are matched by:
 1. Operation name (query GetUsers matches schema query GetUsers); the
-   name join ignores operation type
+   name join ignores operation type. It needs another document (usually
+   a codegen ``.graphql`` file) declaring the same operation name, so it
+   links document to document rather than client to server
 2. Otherwise, the root field, where the operation type (query, mutation,
    subscription) only selects the root type to look the field up on
+   (``query { users { id } }`` -> ``Query.users``). This is the
+   client-to-server join; its schema fields come from ``graphql-sdl-linker``
+   (SDL embedded in a ``gql`` template), so it fires in repositories
+   with no ``.graphql`` files
 
 How It Works
 ------------

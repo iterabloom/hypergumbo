@@ -30,6 +30,13 @@ Four FFI mechanisms are detected by scanning Python source files:
    ``annotations`` metadata. When Python code has unresolved call edges whose
    name matches a PyO3-annotated Rust function, creates ``calls`` edges.
 
+Python test files are excluded as edge sources in every mechanism, so test
+fixtures that exercise ctypes/cffi don't become the linker's output. When
+several C/C++ or Rust symbols share the called name, the lowest-id candidate
+is picked (deterministic) and the edge drops to confidence 0.5 with
+``disambiguation_fallback`` set. When FFI call sites or PyO3 exports exist
+but nothing pairs up, the run records a ``silence_reason``.
+
 Why This Design
 ---------------
 - Follows the analyze-then-link pattern established by JNI and cgo linkers

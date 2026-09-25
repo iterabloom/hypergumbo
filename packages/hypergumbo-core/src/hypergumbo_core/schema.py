@@ -28,7 +28,7 @@ Version Distinction
 - **Per-view / per-sub-schema versions** (the third axis — WI-bobog / WI-romup):
   several JSON surfaces carry their OWN version, independent of both of the
   above. The CLI read-view envelopes (`routes` / `test-coverage` / `config` /
-  `catalog` / `cache-status`) share
+  `catalog` / `cache-status` / `repeat_finder`) share
   `READ_VIEW_SCHEMA_VERSION` — one placeholder until a view needs to evolve its
   wire shape independently, at which point it promotes to its own named
   constant, as `dead-code-maybe` (`DEAD_CODE_MAYBE_SCHEMA_VERSION`),
@@ -64,6 +64,10 @@ This module defines several versioned schemes:
 new_behavior_map() returns an empty structure with all top-level fields
 initialized, ensuring consistent output even for empty analyses. It also
 embeds a reproducibility_context block built by build_reproducibility_context().
+
+VIEW_NAMES enumerates the `view` values a behavior map may carry (the base
+`behavior_map` plus the `compact` / `tiered` budget projections), so the schema
+generator pins `view` to one single-sourced enum.
 
 Why This Design
 ---------------
@@ -131,7 +135,7 @@ SCHEMA_VERSION = "0.20.13"  # 0.20.13: ``Edge.derived_from`` drops ``minItems: 1
 VIEW_NAMES = ("behavior_map", "compact", "tiered")
 # Wire-format version carried by the CLI *read-view* JSON envelopes that project
 # or summarize a behavior map without BEING the behavior map (routes /
-# test-coverage / config / catalog / cache-status). These
+# test-coverage / config / catalog / cache-status / repeat_finder). These
 # share one placeholder version until a view needs to evolve its wire shape
 # independently — at which point it promotes to its own named constant, as
 # dead-code-maybe (DEAD_CODE_MAYBE_SCHEMA_VERSION, below), io-boundaries

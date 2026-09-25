@@ -17,6 +17,13 @@ Framework detection examines dependency manifests:
 - Python: pyproject.toml, requirements.txt, setup.py, Pipfile
 - JavaScript: package.json dependencies and devDependencies
 - And more: Rust (Cargo.toml), Go (go.mod), Java (pom.xml, build.gradle), etc.
+- Each manifest format has a structured parser that extracts the declared
+  dependency names, instead of substring-matching raw text (which matched
+  comments and collisions like ``transformers`` in ``sentence-transformers``).
+  pip ``-r`` / ``-c`` includes are followed transitively, within the repo.
+- Some frameworks come from file presence instead: ``.proto`` files
+  (protobuf), Solidity config files (Foundry, Hardhat) and
+  ``AndroidManifest.xml`` (android).
 
 Recursive Manifest Scanning
 ---------------------------
@@ -33,7 +40,20 @@ test-fixture directories; glob-based detectors (e.g. ``*.cabal``) do not.
 Profiling is intentionally shallow - we look for package names in
 dependency files rather than analyzing imports. This keeps profiling
 fast (milliseconds) even for large repos. Import edges are consulted
-only later, by ``refine_frameworks``, which promotes/demotes frameworks.
+only later, by ``refine_frameworks``, which promotes/demotes frameworks:
+- Promote: a framework the manifests missed is added when prod (non-test)
+  code imports one of its modules. Specific patterns (scoped npm names, Go
+  paths, Maven coords) promote on any such import; bare names such as
+  ``react`` need a submodule import (``react/jsx-runtime``), since a bare
+  import is too weak a signal, except for the dedicated web frameworks in
+  ``_BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS``.
+- Demote: a framework with no prod import moves to
+  ``RepoProfile.dev_frameworks``. ``_AUTOLOAD_BY_CONVENTION_FRAMEWORKS``
+  (Rails) are exempt: they load at boot without an explicit import.
+- The prod importer node ids of each confirmed framework are kept in
+  ``RepoProfile.framework_evidence`` as provenance.
+``IMPORT_OVERRIDES`` translates manifest names that differ from their
+import module (``scikit-learn`` imports as ``sklearn``).
 
 Framework Specification (ADR-3aaa)
 ----------------------------------

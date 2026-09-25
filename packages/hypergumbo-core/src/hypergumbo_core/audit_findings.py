@@ -22,6 +22,14 @@ as ``{cmd, expect}`` so that a future iteration can execute it and
 assert the result; today the parser only validates the structural
 shape.
 
+Two regression guards run over the parsed docs: one checks that no
+source file has since started producing a value a verdict marked
+DEPRECATE-NO-FOLD, and one checks that the hand-maintained index in
+``docs/audits/README.md`` still matches each doc's verdict status
+counts. Doc discovery skips ``docs/audits/`` files that declare a
+sibling format (a YAML ``kind`` other than ``audit_verdicts``, such as
+``backend_agreement``), so those are not linted as verdict tables.
+
 The three-state lifecycle (UNRESOLVED / PRELIM_RESOLVED / RESOLVED)
 is orthogonal to bakeoff validation, which lives on the migration's
 tracker item via the ``awaits_bakeoff_validation`` tag.

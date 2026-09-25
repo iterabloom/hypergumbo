@@ -46,10 +46,25 @@ resolver = ListNameResolver(global_symbols)
 result = resolver.lookup("Register", path_hint="grpc")
 ```
 
+For a single lookup, ``lookup_symbol`` and ``lookup_name`` wrap the first two.
+
 Design Rationale
 ----------------
-- **Lazy indexing**: Suffix index is built on first fuzzy lookup, not upfront
-- **Confidence tracking**: Fuzzy matches return lower confidence multipliers
+- **Lazy indexing**: Suffix index is built on first fuzzy lookup, not upfront.
+  SymbolResolver's indexes live in a small per-registry LRU cache
+  (``_INDEX_CACHE``), so every resolver over the same registry shares one
+  index instead of rebuilding it; ``clear_registry_index_cache`` resets it
+  (tests, or a registry mutated without changing its length).
+- **Confidence tracking**: Fuzzy matches return lower confidence multipliers.
+  An ambiguous match scales as 1/sqrt(N) in the candidate count, so a name
+  defined on dozens of types scores far below a two-way tie.
+- **Disambiguation**: NameResolver prefers non-test candidates when
+  ``caller_path`` is a non-test file. ListNameResolver matches path hints on
+  whole trailing directory components (an import of ``.../api`` matches files
+  directly in ``api/``, not in ``api/v2/client/``), can return unresolved
+  instead of guessing once a name reaches ``ambiguity_threshold`` candidates,
+  and with ``soft_hint`` treats the hint as a preference rather than a filter
+  (a Rust caller's directory versus a Go import path).
 - **Strategy composition**: Multiple strategies can be combined per lookup
 - **Language agnostic**: Core logic works for any language; strategies adapt
 

@@ -8,6 +8,10 @@ This analyzer uses tree-sitter to parse Scala files and extract:
 - Trait definitions (trait)
 - Method definitions (inside classes/objects/traits)
 - Secondary constructors (def this(...), kind=constructor)
+- Scala 3 enums (kind=enum) with one ``field`` symbol per case, and named
+  ``given`` instances (kind=instance), so their bodies' members have an owner
+- val/var declarations: ``field`` inside a class/object/trait/enum/given
+  body, ``variable`` at top level (local bindings are skipped)
 - Function call relationships
 - Import statements
 - Annotations/decorators (into symbol meta["decorators"], for functions, methods, classes, and val/var fields)
@@ -25,10 +29,22 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, classes, objects, traits with signatures
 2. Pass 2: Extract call edges, import edges, and eta-expansion references edges using NameResolver
+   - An explicit import outranks a same-named project symbol in another
+     package: the bind is refused when no reading of the import (absolute
+     or relative to a package or object in scope) can name that symbol.
+     Imports inside a block or body apply only within it.
+   - A method call not resolved in-file becomes an unresolved edge rather
+     than a short-name guess; the ``ExternalRef`` module slot carries the
+     receiver's import-qualified type, or the imported owner of a static
+     call such as ``Files.readAllBytes``. One- and two-letter callee
+     names (usually lambda parameters) take a confidence penalty on
+     short-name binds.
 
 The base class handles grammar checking, parser creation, file discovery,
-and result assembly. This module provides only the Scala-specific extraction
-logic.
+and result assembly. This module provides the Scala-specific extraction
+logic, plus a per-run file-to-package map (reset at the start of each
+``analyze()``, since the analyzer is a module singleton) that the import
+check above reads.
 
 Why This Design
 ---------------

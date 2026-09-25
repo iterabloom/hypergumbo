@@ -19,6 +19,11 @@ from each Airflow subclass to each of its override methods. With the class
 reachable from its enclosing module, the override methods are pulled out of
 the dead-code set.
 
+When a base on the chain is written unqualified (no ``airflow.`` prefix) and
+its short name also belongs to an in-tree Python class, the linker cannot tell
+which one is meant (INV-zuhub): the edges still fire, but at confidence 0.5
+with ``disambiguation_fallback`` set instead of 0.90.
+
 Why a Framework Linker (Not Per-Analyzer Logic)
 ------------------------------------------------
 The inheritance-detection half is language-agnostic and already ships via the

@@ -20,6 +20,25 @@ How It Works
    Exception: a registry availability of ``"core"`` (the decorator
    default) is overridden by an explicit ``_PASS_METADATA`` availability.
 
+Beyond the build, the module provides:
+
+- **``depends_on`` checks.** ``Pass.depends_on`` is CNF (an AND of
+  OR-clauses). ``validate_pass_name_resolution`` checks that every literal
+  names a known pass; ``validate_pass_dependencies`` raises when a clause
+  has no active member (forward-looking, no production caller yet).
+  ``find_falsified_dependencies`` instead reports, after the run, passes
+  that emitted edges while a clause had no producing member, which proves
+  the declaration wrong; ``emit_falsified_dependency_summary`` prints it as
+  a one-line stderr advisory on the survey path. It reports rather than
+  gates because a gate would abort surveys on stale declarations.
+- **Axis resolvers.** ``all_known_pass_ids`` and ``all_known_languages``
+  return the legal values of the ``pass-id`` and ``language`` field axes:
+  the registered names plus pipeline passes that emit runs without being
+  registered (``_BUILTIN_PIPELINE_PASS_IDS``, ``_SYNTHETIC_PASS_IDS``), and
+  the registered languages plus the taxonomy's.
+- **Suggestions.** ``suggest_passes_for_languages`` maps detected languages
+  to relevant passes, ignoring the config formats in ``CONFIG_LANGUAGES``.
+
 Why This Design
 ---------------
 - **Single source of truth.** Pass IDs come from the same registries that

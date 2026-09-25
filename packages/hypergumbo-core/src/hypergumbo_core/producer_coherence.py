@@ -21,6 +21,27 @@ are classified as **advisories** (Phase-3 fold candidates per the parent
 ADR), not strict failures — they're the existing producer-side leak
 shape that Phase 3's per-cluster migration normalizes.
 
+Name arguments are resolved too: function-local bindings (single
+literal, ternary, if/else chain) and dict-subscript lookups
+(``et = MAP[k]``) yield their candidate literals. What still cannot be
+resolved (parameters, loop targets, call results) is skipped silently by
+default, or reported as advisory / strict via ``variable_form_mode``.
+With ``descend_helpers=True`` the walk also follows module-local emission
+helpers, nested closures included, that receive the axis value
+positionally or by keyword; a per-module fixpoint finds helpers that
+forward to other helpers.
+
+Besides this gate the module enumerates. ``find_emitted_literal_values``
+(and its ``find_emitted_{symbol_kinds,evidence_types,edge_types}``
+wrappers) maps every emitted value to its sites regardless of registry
+membership, for audits that must assert "no producer emits X".
+``unregistered_emitted_values`` narrows that to non-registry values, and
+``ratchet_diff`` compares them with a committed baseline: a new value is
+a regression, and a baselined value no longer emitted must be removed,
+so the baseline only shrinks. ``edge_sites_without_evidence_type`` lists
+``Edge`` sites that omit ``evidence_type``, since the ``ast_call_direct``
+default would claim a direct call the producer never observed.
+
 The check is field-agnostic: callers parameterize it with the
 ``constructor_names`` to match (e.g. ``{"Edge", "Edge.create"}``), the
 ``keyword_arg`` to inspect (``"evidence_type"``, ``"kind"``,

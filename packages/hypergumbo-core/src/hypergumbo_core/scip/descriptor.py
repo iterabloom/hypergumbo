@@ -43,6 +43,10 @@ hooks — see :mod:`hypergumbo_lang_mainstream.rust_scip`), and keeps
 this parser free of any protobuf dependency: the translator can
 parse a symbol string without ever touching ``scip.proto``.
 
+The module also exports :func:`is_local_symbol`, a raw-string check for
+the ``local <id>`` form, so the translators can drop document-scoped
+locals (which have no cross-file identity) without parsing them first.
+
 This module is intentionally *only* a descriptor parser. Mapping a
 parsed symbol into a :class:`hypergumbo_core.ir.Symbol` or emitting
 edges from SCIP Occurrences is the job of :mod:`.index`, :mod:`.edges`

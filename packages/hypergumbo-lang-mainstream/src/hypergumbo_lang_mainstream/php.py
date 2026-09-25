@@ -4,12 +4,19 @@
 This analyzer uses tree-sitter-php to parse PHP files and extract:
 - Function declarations (symbols)
 - Class declarations (symbols)
+- Interface, trait and enum declarations (container symbols, so in-file
+  interfaces take part in dispatch instead of surfacing as placeholders)
 - Method declarations (symbols)
+- Properties and class constants (``field``) and global constants
+  (``variable``)
+- A per-file ``kind="file"`` pseudo-node that anchors file-level edges
 - Laravel route definitions (Route::get, Route::post, etc.)
 - Function call relationships (edges)
 - Method call relationships (edges)
 - Static method call relationships (edges)
 - Object instantiation relationships (edges)
+- Import relationships (edges): one ``imports`` edge per ``use`` statement,
+  carrying the full namespace so framework detection can match it
 
 If tree-sitter-php is not installed, the analyzer gracefully degrades:
 it emits a warning and returns a skipped result.
@@ -21,7 +28,8 @@ How It Works
    ``skip_reason_code=DEPENDENCY_UNAVAILABLE`` (no PHP analysis)
 3. Three-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
+   - Pass 2: Detect calls and resolve against global symbol registry, then
+     apply the ADR-0015 automatic dataflow annotation to the edges
    - Pass 3: Extract usage contexts and emit Laravel route Symbols
 4. Detect function calls, method calls, static calls, and instantiation
 
