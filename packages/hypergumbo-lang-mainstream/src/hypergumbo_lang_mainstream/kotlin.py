@@ -1289,10 +1289,8 @@ def _kt_import_target(
     return project_by_qualified.get(f"{path}.{member}" if member else path)
 
 
-def _kt_names_project_path(imported: str | None, project_by_qualified: dict[str, Symbol]) -> bool:
+def _kt_names_project_path(imported: str, project_by_qualified: dict[str, Symbol]) -> bool:
     """Whether an import names a symbol the project declares, or a member of one."""
-    if not imported:
-        return False
     parts = kotlin_import_path(imported).split(".")
     return any(".".join(parts[:i]) in project_by_qualified for i in range(len(parts), 0, -1))
 
@@ -1746,12 +1744,13 @@ def _extract_edges_from_file(
                                     is_project_type=(
                                         receiver_name in class_symbols
                                         and (
-                                            not imported_elsewhere(
+                                            receiver_name not in imports
+                                            or not imported_elsewhere(
                                                 class_symbols[receiver_name].qualified_name,
-                                                imports.get(receiver_name),
+                                                imports[receiver_name],
                                             )
                                             or _kt_names_project_path(
-                                                imports.get(receiver_name), project_by_qualified)
+                                                imports[receiver_name], project_by_qualified)
                                         )
                                     ),
                                 )
