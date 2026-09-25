@@ -1,0 +1,15 @@
+Original commit body from 230af598cb73ac2cea4a182d7fe1e45f2472346d:
+
+[Unreleased] goes 8,908 -> 6468 words: about 12.7 changelog words per
+non-tracker commit since v8.0.0 (509 with this one), against 8.0.0's
+12.5 (3,629 words over 291 commits).
+
+Every entry is kept; bullets are cut to effect, cause and headline
+number. Every ADR reference, version transition and heading survives.
+The catalogue section folds the five "a constructor is not the
+crossing" rows (ets.new, Req.new/Finch.build, urllib Request,
+http.NewRequest) into one bullet; the auto-pr and smart-test lists
+each collapse to fewer, denser items; Documentation shortens the
+ADR-0055/0056 narratives to their rulings.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
