@@ -1,0 +1,39 @@
+Original commit body from e696e546807f4aba5e3eafbf68c0b4cf2e1e54d4:
+
+`property` sat in the blanket noise set labelled "CSS structural". No CSS
+analyzer has ever emitted it: css.py and scss.py had no kind="property" when
+the entry was added (4eab1afde7) and have none now. Its real producers are
+five analyzers, and they mean different things by it:
+- swift: a computed property, a callable with a body;
+- C#: a property with get/set bodies;
+- .properties: a config key;
+- QML: a property declaration;
+- objective-c: a bodyless @property.
+
+MEASURED, analyzer level (~/hypergumbo_lab_notebook/tisom_09242026/):
+- swift, 5 repos: 3,323 property symbols, 12,552 call edges out, 364 in.
+- objective-c (4 repos), QML (1) and .properties (3): 91,695 property
+  symbols, 0 edges either way. They stay noise.
+- C#, 4 repos: 201 property symbols, 1 edge in, 0 out. A fixture shows why:
+  the analyzer emits no edge for a call inside an accessor (filed WI-binap).
+  C# properties become visible, but they carry no call edges until that is fixed.
+The row named rst as a producer. It is not: API_DIRECTIVES is a name set, and
+rst emits kind="directive".
+
+MEASURED, default survey, node and edge sets, dev 9f2e8f06d7 vs this commit.
+Nothing was removed; every added edge has a property endpoint:
+- Alamofire: +346 property nodes, +279 edges (278 calls, 1 reference).
+- Kingfisher: +282 property nodes, +681 edges (680 calls, 1 reference).
+- sherpa-onnx: +225 property nodes (146 C#, 79 swift), +175 swift edges.
+dead-code-maybe: Alamofire unchanged; Kingfisher 264 -> 262. The two leaving
+(getAssociatedObject, setRetainedAssociatedObject) are called only from
+computed-property getters.
+
+WI-fadab (compact's default path never applies is_excluded_kind) is not
+affected: `property` is not in EXCLUDED_KINDS.
+
+A new gate, test_every_property_producer_is_classified, requires every
+language-package module that emits kind="property" to be classified as noise
+or not, so a sixth producer cannot inherit the drop silently.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
