@@ -25,3 +25,10 @@
   clock: 2  # e90d
   nonce: e90d  # e90d
   message: "Concrete nim finding, 2026-09-25 staleness audit: _find_enclosing_proc_nim drops every call made from an exported proc (proc a*), because the name sits in an exported_symbol node with no direct identifier child. Filed as WI-bujar (P2) with a repro. It is a reach loss, which this row's step 2 (assert reach first) would catch. The containment check for nim still belongs to this row."  # e90d
+- op: discuss  # ca1d
+  at: '2026-09-25T16:12:11Z'  # ca1d
+  by: agent  # ca1d
+  actor: jgstern_agent  # ca1d
+  clock: 3  # ca1d
+  nonce: ca1d  # ca1d
+  message: "nim is now VERIFIED in test_call_anchor_gate_extended1 (PR #1201, WI-bujar): position-keyed lookup, fixture with an overload pair + exported proc/func/method + nested proc; reach and containment both failed against the old code. 24 unverified remain. The duplicated walk-up loop across the 21 position-keyed analyzers is filed as WI-gujab (P4 refactor)."  # ca1d

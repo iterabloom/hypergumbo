@@ -1,0 +1,21 @@
+- op: create  # b5b7
+  at: '2026-09-25T17:27:22Z'  # b5b7
+  by: agent  # b5b7
+  actor: jgstern_agent  # b5b7
+  clock: 1  # b5b7
+  nonce: b5b7  # b5b7
+  data:  # b5b7
+    kind: work_item  # b5b7
+    title: "nim: UFCS / overloaded calls bind without argument types -- seq.add takes types.add* 64x on nitter, 1,657 overload guesses on 4 repos (INV-fahub nim facet)"  # b5b7
+    status: todo_hard  # b5b7
+    priority: 3  # b5b7
+    parent:  # b5b7
+    tags:  # b5b7
+    - analysis_quality  # b5b7
+    - false_positive  # b5b7
+    isbefore: []  # b5b7
+    duplicate_of: []  # b5b7
+    not_duplicate_of: []  # b5b7
+    pr_ref:  # b5b7
+    description: "EVIDENCE (analyze_nim, dev bb8142b887, after WI-giloh / PR #1202 scoped resolution to visible declarations):\nnitter: 64 calls bind types.nim's `proc add*(timeline: var seq[Tweets]; tweet: Tweet)`, e.g. `result.add photo` on a `seq[GalleryPhoto]` in parser.nim, which is system's `add`. 63 come from files that import types, so types' `add*` IS visible there. Nim would pick by argument types, and the analyzer has none.\nAcross nitter + nim-chronos c679d29 + pixie 30bb510 + nimble 33a6bc8, 1,657 calls resolve as an overload guess among several visible modules (ListNameResolver, confidence 1/sqrt N).\n\nMECHANISM: a UFCS call `x.f(a)` means `f(x, a)`. With no receiver type, the scoped lookup binds the only visible project `f` even when x's type selects a library overload (system / std). Scope cannot decide this; types can.\n\nPRIOR ART:\n- INV-fahub (satisfied): cross-language \"unresolvable receiver misbinds to a same-named internal def\". Its fleet gate (PR 86a58ce952) excluded nim as having \"no cross-class magnet\". The UFCS form is nim's magnet.\n- WI-situj (D facet, done): value-receiver UFCS calls go unresolved with receiver_type_hint.\n- INV-vigaf (satisfied, META) + WI-panah: UFCS/extension resolution lives in the receiver_type_dispatch linker.\nNo nim row existed.\n\nASKED:\n1. Follow the D facet. A value-receiver call (receiver not a module) where the receiver's type is known from a typed parameter / `var x: T` emits unresolved with receiver_type_hint=T, for receiver_type_dispatch to match the first-parameter type.\n2. Decide the untyped-receiver case by measurement. Withholding loses the genuine UFCS edges (e.g. `component.data.parseListDetails(result)` in nitter); keeping them keeps the `add` misbinds. Diff the edge set and read a random sample of each arm; do not pick by count.\n3. Bare calls with several visible overloads: arity is known at the call site. Filtering candidates by parameter count is the cheap first cut; measure it."  # b5b7
+    fields: {}  # b5b7

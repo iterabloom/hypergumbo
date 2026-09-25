@@ -27,3 +27,19 @@
   nonce: '1703'  # 1703
   set:  # 1703
     status: in_progress  # 1703
+- op: update  # f702
+  at: '2026-09-25T16:12:06Z'  # f702
+  by: agent  # f702
+  actor: jgstern_agent  # f702
+  clock: 3  # f702
+  nonce: f702  # f702
+  set:  # f702
+    status: done  # f702
+    pr_ref: '1201'  # f702
+- op: discuss  # 8ef2
+  at: '2026-09-25T16:12:06Z'  # 8ef2
+  by: agent  # 8ef2
+  actor: jgstern_agent  # 8ef2
+  clock: 4  # 8ef2
+  nonce: 8ef2  # 8ef2
+  message: "Fixed in PR #1201 (d7e2948280). _find_enclosing_proc_nim now keys on the declaration's POSITION (symbols_at / symbol_declared_by over file_symbols()), not a name read from a bare `identifier` child.\n\nBEHAVIOURAL EVIDENCE: the filed repro, re-run on merged dev through analyze_nim: exported -> helper (line 2), private -> helper (3), fexp* -> helper (4), mexp* -> helper (5), inner -> helper (7), outer* -> inner (8). Before the fix, only private and inner had edges. Production-path tests: test_nim.py::TestNimCallAnchor (exported, nested, module-level) and test_call_anchor_gate_extended1::test_nim_same_named_callables. Against the old code the gate failed on reach (lines 8/9/11/14) AND containment (line 4 credited to an overload at 5-6).\n\nASKS: (1) position, as INV-midag. (2) fixture asserts reach, then containment. (3) nitter 648 -> 2,460 calls (+1,803 sites, 0 lost), resolved 257 -> 902, 4 re-anchored (addMedia overloads), uncontained 4 -> 0. (4) Every other identifier read in nim.py goes through _declared_name_node (declarations) or reads import expressions / call targets, which never carry `*`.\n\nNOT CLAIMED: resolution precision. The new sites reach a bare-name resolver with no visibility or import scope, filed as WI-giloh (P2; e.g. 96 cross-file edges into redis_cache's private `get`). Also filed during this row: WI-losaf (nim iterator/template/macro/converter never extracted, 62 on nitter) and the P4 refactor row for the duplicated walk."  # 8ef2

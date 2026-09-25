@@ -1,0 +1,20 @@
+- op: create  # 37a9
+  at: '2026-09-25T16:12:01Z'  # 37a9
+  by: agent  # 37a9
+  actor: jgstern_agent  # 37a9
+  clock: 1  # 37a9
+  nonce: 37a9  # 37a9
+  data:  # 37a9
+    kind: work_item  # 37a9
+    title: "refactor: 21 analyzers hand-copy the walk-up-to-declaration loop around symbol_declared_by; lift it into core"  # 37a9
+    status: todo_hard  # 37a9
+    priority: 4  # 37a9
+    parent:  # 37a9
+    tags:  # 37a9
+    - refactor  # 37a9
+    isbefore: []  # 37a9
+    duplicate_of: []  # 37a9
+    not_duplicate_of: []  # 37a9
+    pr_ref:  # 37a9
+    description: "21 analyzers under packages/*/src repeat one loop: walk `node.parent` upward, and at a\ndeclaration node of a language-specific type set, return `symbol_declared_by(current,\ndecl_index)` (grep `symbol_declared_by(current`). Examples: d_lang `_find_enclosing_function_d`,\nnim `_find_enclosing_proc_nim` (WI-bujar, PR #1201). Each copy differs only in the tuple of\ndeclaration node types and, in a few, an extra stop condition.\n\nCore already owns the rule (`symbols_at` / `symbol_declared_by`, INV-midag); the walk is the\npart every adopter re-types. A core helper `enclosing_declared(node, types, index)` would make\nthe INV-midag gate's \"verified\" a property of one function plus a per-language type tuple.\n\nRefactor only, no behaviour change expected: prove it by an unchanged call-edge set on the\ngate fixtures AND a pinned corpus survey per touched language (diff the edge set, not the count).\nSurfaced during WI-bujar's refactor phase and deliberately left out of that PR (scope).\nCheck first whether some copies carry language-specific stop conditions that a shared helper\nwould have to parameterise; if most do, the refactor may not pay."  # 37a9
+    fields: {}  # 37a9
