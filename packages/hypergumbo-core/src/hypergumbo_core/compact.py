@@ -1691,8 +1691,8 @@ def recompute_view_summary(
 
     The omitted universe (``population``) and ``centrality`` are caller-supplied rather than
     hardcoded so the tiered caller can pass its ``eligible_symbols`` (tests/examples/
-    boundary nodes pre-filtered) without baking that filter into the helper — a future
-    compact caller (WI-zotam) would pass its own universe. Iteration is over the
+    boundary nodes pre-filtered) without baking that filter into the helper — any other
+    caller would pass its own universe. Iteration is over the
     ``population`` list, so the bag-of-words tie-order (``Counter.most_common``) and the
     whole summary are independent of ``PYTHONHASHSEED``. (The *selection* upstream is still
     seed-dependent on score ties — that is WI-nivuj, deliberately out of scope here.)

@@ -20,7 +20,9 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **depends_on**: Recipe dependencies (test: build → test depends_on build)
+- **depends_on**: Recipe dependencies (test: build → test depends_on build),
+  only when the dependency recipe is defined earlier in the same file;
+  forward references are dropped
 
 Why This Design
 ---------------

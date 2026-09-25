@@ -364,7 +364,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-core/src/hypergumbo_core/"
             "linkers/jackson_dispatch.py"
         ),
-        line=296,
+        line=299,
         anchor='getattr(sym, "signature", None)',
         fact="parameter_arity",
         note=(

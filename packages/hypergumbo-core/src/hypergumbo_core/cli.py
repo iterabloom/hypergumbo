@@ -11834,7 +11834,8 @@ def run_survey(
 
     # Exclude non-code node kinds by default.  Documentation/config nodes
     # (markdown sections, TOML tables, INI settings), CSS structural nodes
-    # (selectors, properties, media queries), and config-metadata nodes
+    # (selectors, rule sets, media queries), bodyless property declarations
+    # (.properties keys, QML, objective-c @property), and config-metadata nodes
     # (.gitignore patterns, npm scripts) are typically degree-0 and add
     # noise without architectural insight.
     if not include_docs:

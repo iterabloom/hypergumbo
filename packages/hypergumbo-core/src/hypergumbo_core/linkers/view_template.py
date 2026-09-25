@@ -10,7 +10,8 @@ How It Works
 The Rails behavior is now implemented as a thin :class:`RailsStrategy`
 subclass of :class:`~._view_template_core.MethodNameStrategy`. The shared
 core (see ``_view_template_core.py``) handles the filesystem probe loop,
-``renders`` edge emission, and template-Symbol deduplication. The Rails
+``references`` edge emission (``meta["ref_construct"] = "view_render"``),
+and template-Symbol deduplication. The Rails
 strategy provides:
 
 * a controller-class predicate (transitive base walk for
@@ -19,8 +20,7 @@ strategy provides:
 * an action-method predicate (skip ``initialize`` and ``_``-prefixed helpers,
   skip class methods using ``.`` instead of ``#``),
 * a class-name → view-directory mapping (``Admin::UsersController`` →
-  ``admin/users`` per WI-votut's CSV-export edge cases and the existing
-  CamelCase-to-snake_case rules).
+  ``admin/users`` per the existing CamelCase-to-snake_case rules).
 
 Why This Matters
 ----------------
@@ -33,8 +33,9 @@ traverse when working in Rails.
 Sister Frameworks
 -----------------
 * Django (WI-mifif): ``view_template_django.py``
-* Phoenix (WI-dajom), Spring MVC (WI-hogik), Laravel Blade (WI-hokaj):
-  follow-up PRs against the same shared core.
+* Phoenix (WI-dajom): ``view_template_phoenix.py``
+* Spring MVC (WI-hogik): ``view_template_spring.py``
+* Laravel Blade (WI-hokaj): ``view_template_laravel.py``
 """
 
 from __future__ import annotations

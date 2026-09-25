@@ -25,10 +25,11 @@ Action gating
 Why ExplicitStringStrategy
 --------------------------
 Laravel view names are literal strings the developer types, not naming
-conventions. Pairs with Spring (WI-hogik), the other ExplicitStringStrategy
-consumer; the ``string_to_candidates`` hook is what differs between the
-two — Laravel maps dots to slashes and probes one root with two extensions,
-Spring probes multiple roots with multiple extensions per root.
+conventions. Pairs with Spring (WI-hogik) and Django's
+``DjangoExplicitStringStrategy``, the other ExplicitStringStrategy consumers;
+the ``string_to_candidates`` hook is what differs between them — Laravel maps
+dots to slashes and probes one root with two extensions, Spring probes
+multiple roots with multiple extensions per root.
 """
 
 from __future__ import annotations

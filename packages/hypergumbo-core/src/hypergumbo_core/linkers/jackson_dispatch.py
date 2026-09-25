@@ -51,7 +51,9 @@ For every serialization-target class ``C``, each method on ``C`` (by
 ``(path, qualified_name)`` where ``qualified_name == C.name + "." + method``)
 whose method name is a bean-convention accessor or carries a method-level
 Jackson annotation receives a ``dispatches_to`` edge from ``C`` with
-confidence 0.90 and evidence ``jackson_bean_dispatch``.
+confidence 0.90 (0.5 when ``C`` qualified only through an unqualified,
+name-colliding bean-marker base), ``evidence_type`` ``ast_decorator`` and meta
+``framework_dispatch: "jackson_bean"``.
 
 Bean-convention accessors are:
 
@@ -63,7 +65,8 @@ Bean-convention accessors are:
 * ``setX`` with one parameter — the caller of ``setX`` is Jackson, so the
   paired setter is reached via the same dispatch as the getter.
 
-Parameter-arity filtering uses ``meta.signature`` when present: a signature
+Parameter-arity filtering uses ``Symbol.signature`` (falling back to
+``meta['signature']``) when present: a signature
 of ``"()"`` is zero-arg, ``"(String s)"`` is one-arg, and so on. When the
 method has no signature metadata, conservative defaults apply: ``getX`` /
 ``isX`` are assumed to be zero-arg accessors and ``setX`` is assumed to be a

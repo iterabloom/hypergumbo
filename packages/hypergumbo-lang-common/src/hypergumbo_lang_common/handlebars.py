@@ -10,14 +10,14 @@ How It Works
 Regex-based extraction (no tree-sitter grammar available on PyPI):
 1. Find all .hbs and .handlebars files
 2. Extract partial references ({{> partialName}})
-3. Extract block helpers ({{#helperName}})
-4. Extract custom helper calls ({{helperName args}})
+3. Extract block helpers ({{#helperName}}), splitting built-ins from custom
+   block helpers (non-block {{helperName args}} calls are not extracted)
 
 Symbols Extracted
 -----------------
 - **partial**: Partial template references ({{> header}})
 - **block**: Block helper invocations ({{#each}}, {{#if}}, {{#with}})
-- **helper**: Custom helper calls ({{formatDate date}})
+- **helper**: Custom block helper invocations ({{#formatDate date}})
 
 Why This Design
 ---------------

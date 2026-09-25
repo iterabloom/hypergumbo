@@ -11,13 +11,14 @@ This analyzer uses tree-sitter-php to parse PHP files and extract:
 - Static method call relationships (edges)
 - Object instantiation relationships (edges)
 
-If tree-sitter-php is not installed, the analyzer gracefully degrades
-and returns an empty result.
+If tree-sitter-php is not installed, the analyzer gracefully degrades:
+it emits a warning and returns a skipped result.
 
 How It Works
 ------------
 1. Check if tree-sitter and tree-sitter-php are available
-2. If not available, return empty result (not an error, just no PHP analysis)
+2. If not available, warn and return a result with ``skipped=True`` and
+   ``skip_reason_code=DEPENDENCY_UNAVAILABLE`` (no PHP analysis)
 3. Three-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
@@ -28,12 +29,13 @@ Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - PHP support is separate from JS/TS to keep modules focused
-- Two-pass allows cross-file call resolution
+- Multi-pass allows cross-file call resolution
 - Same pattern as JS/TS analyzer for consistency
 
 Population of ``is_exported`` follows PHP's default-public rule: top-level
 functions and classes are exported; class members are exported unless the
-declaration carries ``private`` or ``protected``.
+declaration carries ``private`` or ``protected``, except class constants,
+which are always exported (their visibility modifier is not read).
 """
 from __future__ import annotations
 

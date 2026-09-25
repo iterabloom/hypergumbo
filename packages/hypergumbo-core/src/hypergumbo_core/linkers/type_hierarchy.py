@@ -6,7 +6,8 @@ to their concrete implementations, enabling polymorphic call resolution.
 
 How It Works
 ------------
-1. Build inheritance maps from `extends` and `implements` edges
+1. Build inheritance maps from inheritance-family edges (`extends`,
+   `implements`, and e.g. Solidity `inherits` / Ruby `includes`)
 2. For each class/interface with subclasses or implementors:
    - Find methods on that class/interface
    - Find matching methods (same short name) in child classes
@@ -28,9 +29,10 @@ Benefits
 
 Limitations
 -----------
-- Currently only works for languages with explicit `extends`/`implements` edges
-- Java: Full support
-- Other languages: Need `extends` edge creation for this linker to help
+- Only works where some pass emits inheritance edges: `inheritance-linker`
+  (e.g. Go struct embedding) or the analyzers listed in `depends_on`
+- Dispatch through concrete `extends` is disabled for Go, C++, Rust and C#
+  (`NO_VIRTUAL_EXTENDS_LANGUAGES`); `implements` dispatch is unaffected
 """
 
 from __future__ import annotations

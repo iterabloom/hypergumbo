@@ -25,9 +25,11 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, structs, enums, traits with signatures and annotations;
    extract struct field types for the base-class field type registry
 2. Pass 2: Extract call edges through a ladder of resolution strategies
-   (1b receiver-typed, 1.5 self.field.method(), 1.8/1.9 impl- and
-   trait-scoped, 2 short-name fallback), plus ``implements`` edges,
-   ``async_spawn`` call edges for spawned closures, calls appearing only
+   (1 full scoped name, 1b module-prefix-stripped name, 1.5
+   self.field.method(), 1.8 typed local/param var.method(), 1.9 chained
+   call receiver typed by return type, 2 short-name fallback), plus
+   ``implements`` edges, ``async_spawn`` call edges for a bare function
+   reference passed to a spawn function, calls appearing only
    inside macro bodies, ``module_attr_ref`` edges, use edges, and Axum
    usage contexts
 3. Post-process: Extract decorated_by edges from attribute metadata
@@ -57,8 +59,8 @@ exported only when its declaration carries an unqualified ``pub`` modifier;
 ``pub(crate)`` / ``pub(super)`` / private items are not exported. Two
 constructs cannot follow that rule and do not: a bodyless trait method
 carries no visibility modifier of its own and is always marked exported,
-and an enum variant inherits the *enum's* modifiers rather than carrying
-its own.
+and an enum variant inherits the *enum's* export status (its
+``modifiers`` remain the variant's own).
 """
 from __future__ import annotations
 

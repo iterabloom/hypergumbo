@@ -30,8 +30,12 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   one verdict; closes WI-kukuk/WI-zuhon/WI-ninuv/WI-mutuk. This slot is NOT a §6.1 stub fill;
   it is an ADR-0037 addition that postdates the §6.1 plan, placed before commit so the
   serialized edges carry the verdict and before referential-integrity so the FK predicate
-  validates it**); commit-dicts (8); referential-integrity validate_ir lift (10, now also
-  carrying the ADR-0037 ruling-5 ``is_resolved ⇒ first-party`` FK predicate).
+  validates it; it also re-derives an ``evidence_derived`` confidence from the verdict,
+  INV-fazim**); receiver-blind magnet demotion (6c, INV-fahub, before 7); same-site stub
+  demotion (7a, ADR-0057 §14); the visibility fold (7b, INV-jusot); repro-grammar pruning
+  (7c); commit-dicts (8); referential-integrity validate_ir lift (10, now also carrying the
+  ADR-0037 ruling-5 ``is_resolved ⇒ first-party`` FK predicate). Violations are sorted
+  before the validation report is built, so the serialized order is stable.
 * **Two §6.1 stub slots stayed empty.** ADR-0043 §6.1 planned three Phase-2 families each
   filling a named finalize stub with zero orchestrator change; none did. ``projection-finalize``
   became a downstream consumer (``compact.recompute_view_summary``), not a sub-step; and the
@@ -40,8 +44,10 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   finalize:
 
   - ``confidence`` (7): the confidence:F1/F2 IDs denote per-edge derivation / ranking-detection
-    separation (producer-side, ADR-0039, INV-suvil family), which ADR-0039 keeps *out* of
-    finalize (``Edge.confidence`` untouched). The behavior_map confidence aggregate this slot
+    separation (producer-side, ADR-0039, INV-suvil family), which ADR-0039 keeps out of
+    finalize. The one exception is sub-step 7 re-deriving an ``evidence_derived`` confidence
+    once the verdict flips ``is_resolved`` (INV-fazim): that corrects a construction-time
+    number, and is not a finalize-time confidence tenant. The behavior_map confidence aggregate this slot
     described already exists over the final set — ``metrics.avg_confidence`` (computed *after*
     finalize) and ``sketch.confidence_mass`` (EP/datamodel) — so there is no reconcile gap and
     no consumer for a finalize-time tenant.
@@ -55,9 +61,9 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   node/path count and does not close INV-gizik, whose real fix is a new provenance field). The
   config_fingerprint backstop-with-violation landed in WI-mipul's producer-side work (done). Of
   the tracked work, INV-gizik (satisfied — closed by the new nodes_emitted/edges_emitted
-  provenance field), WI-mipul (done), and INV-zotip (satisfied) are resolved; WI-libib
-  (per-(kind,field) writer-contract validator) and INV-suvil (evidence-derived confidence) remain
-  open. git carries the history.
+  provenance field), WI-mipul (done), INV-zotip (satisfied), WI-libib (per-(kind,field)
+  writer-contract validator, done) and INV-suvil (evidence-derived confidence, satisfied) are
+  resolved. git carries the history.
   See the ADR-0043 §6.1 amendment chain (#4/#5/#7/#9).
 
 `FinalizedMap` is a shallow ``frozen=True`` handle (ratified §6 #6): rebinding a field

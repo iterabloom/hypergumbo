@@ -10,15 +10,15 @@ This analyzer uses tree-sitter to parse Scala files and extract:
 - Secondary constructors (def this(...), kind=constructor)
 - Function call relationships
 - Import statements
-- Annotations/decorators (into symbol meta["decorators"], for functions, methods, and classes)
+- Annotations/decorators (into symbol meta["decorators"], for functions, methods, classes, and val/var fields)
 - Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes and traits)
 
-Modifiers (access/abstract/sealed/case) are captured on Symbol.modifiers,
-and parameter/variable types are tracked to disambiguate type-qualified
-method calls.
+Modifiers (access/abstract/final/sealed/override/implicit/lazy/case) are
+captured on Symbol.modifiers, and parameter/variable types are tracked
+to disambiguate type-qualified method calls.
 
-If tree-sitter with Scala support is not installed, the analyzer
-gracefully degrades and returns an empty result.
+If tree-sitter with Scala support is not installed, the analyzer warns and
+returns a skipped result (``skip_reason_code=DEPENDENCY_UNAVAILABLE``).
 
 How It Works
 ------------

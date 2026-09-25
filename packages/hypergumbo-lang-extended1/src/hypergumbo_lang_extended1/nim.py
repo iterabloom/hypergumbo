@@ -15,7 +15,8 @@ The tree-sitter-nim parser handles .nim, .nims, and .nimble files.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract proc/func/method/type definitions with signatures
+1. Pass 1: Extract proc/func/method definitions with signatures, plus
+   type definitions and field/variable symbols
 2. Pass 2: Extract import edges and call edges using NameResolver
 
 The base class handles grammar checking, parser creation, file discovery,

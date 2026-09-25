@@ -10,22 +10,27 @@ at runtime. The static call graph never sees those invocations — they happen
 through the Airflow framework's own dynamic dispatch — so every override
 method looks like a dead function to dead-code analysis.
 
-This linker scans symbols for classes that declare any Airflow base class in
-``meta.base_classes``, finds the framework-called methods defined on those
-classes (Python analyzer emits method names as ``ClassName.method_name``), and
-emits ``dispatches_to`` edges from each Airflow subclass to each of its
-override methods. With the class reachable from its enclosing module, the
-override methods are pulled out of the dead-code set.
+This linker scans symbols for classes whose transitive base chain (the
+class's own ``meta.base_classes`` plus those of in-tree ancestors reached via
+``extends``/``implements`` edges) names any Airflow base class, finds the
+framework-called methods defined on those classes (Python analyzer emits
+method names as ``ClassName.method_name``), and emits ``dispatches_to`` edges
+from each Airflow subclass to each of its override methods. With the class
+reachable from its enclosing module, the override methods are pulled out of
+the dead-code set.
 
 Why a Framework Linker (Not Per-Analyzer Logic)
 ------------------------------------------------
 The inheritance-detection half is language-agnostic and already ships via the
-``inheritance`` linker's ``base_classes`` extraction. The Airflow-specific
-knowledge is limited to two literals — the base class names and the
-framework-called method names — which belong in a single place, not smeared
+analyzers' ``base_classes`` extraction and the ``inheritance`` linker's
+``extends``/``implements`` edges. The Airflow-specific knowledge is limited to
+a few literals — the base class names, the framework-called method names and
+the ``airflow.`` FQN prefix — which belong in a single place, not smeared
 across every analyzer. Extending to other Python frameworks (Celery tasks,
-Django Channels consumers, Scrapy spiders) is a new entry in the
-``AIRFLOW_BASE_METHODS`` map, not new per-analyzer code.
+Django Channels consumers, Scrapy spiders) needs its own base-to-methods map,
+FQN prefixes and ``framework_dispatch`` label (here ``AIRFLOW_BASE_METHODS``,
+``_AIRFLOW_FQN_PREFIXES`` and the literal ``"airflow"``), not new per-analyzer
+code.
 
 Scope (WI-nutav)
 ----------------

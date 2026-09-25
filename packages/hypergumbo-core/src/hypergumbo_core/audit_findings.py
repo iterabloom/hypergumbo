@@ -13,7 +13,8 @@ a ``## Verdicts`` section heading. Both the heading and the in-block
 ``kind: audit_verdicts`` key are required so the parser can locate
 the block from either direction (Q3 belt-and-suspenders).
 
-The YAML block declares the axis it covers and a list of verdict
+The YAML block declares the axis it covers (``Edge.edge_type``,
+``Symbol.kind`` or ``Edge.evidence_type``) and a list of verdict
 rows. Each row carries enough structure that its current state can
 be checked against the live registry (the mechanical-check predicate
 per row's ``status``). The ``diagnostic_test`` field is structured
@@ -351,7 +352,9 @@ def validate_against_registry(findings: AuditFindings) -> list[str]:
     state per the mechanical-check predicates defined in
     ``docs/audits/README.md``:
 
-    - RESOLVED + verdict CANONICAL  → value present in registry as relationship.
+    - RESOLVED + verdict CANONICAL  → value present in registry on that
+      axis's canonical axis (relationship / language_construct /
+      inference_pathway).
     - RESOLVED + verdict FOLD or DEPRECATE-NO-FOLD → value absent from registry.
     - PRELIM_RESOLVED                → value present in registry as endpoint_shape.
     - UNRESOLVED                     → value present in registry (any axis).

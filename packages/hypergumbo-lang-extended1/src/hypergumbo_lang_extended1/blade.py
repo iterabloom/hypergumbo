@@ -9,9 +9,9 @@ How It Works
 ------------
 Regex-based extraction (no tree-sitter grammar available on PyPI):
 1. Find all .blade.php files
-2. Extract @section/@endsection blocks as symbols
-3. Extract @component/@extends directives as edges
-4. Extract @yield/@slot directives as symbols
+2. Extract single-line @section('name') directives as symbols
+3. Extract @extends directives as edges
+4. Extract @component/@yield directives as symbols
 
 Symbols Extracted
 -----------------
@@ -21,11 +21,11 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **extends_template**: layout inheritance — emitted from @extends('name').
+- **extends**: layout inheritance — emitted from @extends('name').
   Per ADR-0027 Cluster E sub-case (b) (audit-findings 0010), the per-@extends
   Symbol kind was dropped in favour of this companion Edge so the
   layout-inheritance relationship keeps representation in the graph. ``src``
-  is the blade file id; ``dst`` is a 5-part dangling id naming the parent
+  is the blade file id; ``dst`` is a 6-part dangling id naming the parent
   template (the local Blade scan does not enumerate layouts).
 
 Why This Design
@@ -116,9 +116,9 @@ def analyze_blade(
                 name = match.group(1)
                 # ADR-0027 Cluster E sub-case (b) shape 3 (audit-findings 0010,
                 # WI-kunag): drop the per-extends Symbol and emit a companion
-                # extends_template Edge so the layout-inheritance relationship
+                # ``extends`` Edge so the layout-inheritance relationship
                 # keeps representation. src is the blade file id; dst is a
-                # 5-part dangling id (Blade @extends always references an
+                # 6-part dangling id (Blade @extends always references an
                 # external template by name, no local registry of layouts at
                 # this analyzer scope).
                 edges.append(Edge.create(

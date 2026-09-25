@@ -17,6 +17,8 @@ How It Works
    backend) is taken from the registry entry when the analyzer/linker
    provides it via decorator kwargs; otherwise it falls back to
    ``_PASS_METADATA`` below for entries that haven't migrated yet.
+   Exception: a registry availability of ``"core"`` (the decorator
+   default) is overridden by an explicit ``_PASS_METADATA`` availability.
 
 Why This Design
 ---------------

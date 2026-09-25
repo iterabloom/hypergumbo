@@ -11,11 +11,11 @@ Registry Formats
    - Keys are (module_name, symbol_name) tuples
    - Suffix matching on module names: finds `backend.app.crud` for `app.crud`
 
-2. **NameResolver**: For `dict[str, Symbol]` (JS/TS, Java, C#, Kotlin, Rust)
+2. **NameResolver**: For `dict[str, Symbol]` (most analyzers, e.g. JS/TS, Java, Rust)
    - Keys are simple or qualified names ("foo" or "MyClass.foo")
    - Suffix matching on names: finds `MyClass.doWork` for `doWork`
 
-3. **ListNameResolver**: For `dict[str, list[Symbol]]` (Go)
+3. **ListNameResolver**: For `dict[str, list[Symbol]]` (e.g. Go, Java, C#, PHP)
    - Keys are names, values are lists (multiple symbols can share a name)
    - Disambiguates using path hints from import statements
 

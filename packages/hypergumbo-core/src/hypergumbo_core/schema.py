@@ -13,7 +13,10 @@ Version Distinction
   to `docs/schema.json`, which is a **unified schema** containing both behavior map
   output definitions AND framework pattern types for YAML validation. Breaking
   changes to output format bump minor; additions like new type definitions for
-  YAML patterns bump patch. Consumers can use this to check compatibility.
+  YAML patterns bump patch. One recorded exception: 0.20.10 renamed
+  `skip_reason_code` to `silence_reason` (breaking) as a patch bump, the old key
+  having shipped only one version earlier in 0.20.9. Consumers can use this to
+  check compatibility.
 
 - **__version__** (in __init__.py): The tool/package version. This increments
   with every release (new analyzers, bug fixes, performance improvements,
@@ -25,10 +28,11 @@ Version Distinction
 - **Per-view / per-sub-schema versions** (the third axis — WI-bobog / WI-romup):
   several JSON surfaces carry their OWN version, independent of both of the
   above. The CLI read-view envelopes (`routes` / `test-coverage` / `config` /
-  `catalog` / `cache-status` / `dead-code-maybe`) share
+  `catalog` / `cache-status`) share
   `READ_VIEW_SCHEMA_VERSION` — one placeholder until a view needs to evolve its
   wire shape independently, at which point it promotes to its own named
-  constant, as `io-boundaries` (`io_boundary.IO_BOUNDARIES_SCHEMA_VERSION`),
+  constant, as `dead-code-maybe` (`DEAD_CODE_MAYBE_SCHEMA_VERSION`),
+  `io-boundaries` (`io_boundary.IO_BOUNDARIES_SCHEMA_VERSION`),
   `verify-claims` (`verify_claims.VERIFY_CLAIMS_SCHEMA_VERSION`), and the
   embedded `validation_report` block
   (`spec_validator.VALIDATION_REPORT_SCHEMA_VERSION`) already have. A change to
@@ -47,7 +51,8 @@ How It Works
 The behavior map is the primary output format for hypergumbo analysis.
 This module defines several versioned schemes:
 
-- **schema_version**: Overall format version (breaking changes increment minor)
+- **schema_version**: Overall format version (breaking changes increment minor,
+  save the 0.20.10 patch-bump exception noted above)
 - **confidence_model**: How confidence scores are computed
 - **stable_id_scheme**: How stable_id hashes are generated
 - **shape_id_scheme**: How shape_id (structure) hashes are generated
@@ -126,10 +131,11 @@ SCHEMA_VERSION = "0.20.13"  # 0.20.13: ``Edge.derived_from`` drops ``minItems: 1
 VIEW_NAMES = ("behavior_map", "compact", "tiered")
 # Wire-format version carried by the CLI *read-view* JSON envelopes that project
 # or summarize a behavior map without BEING the behavior map (routes /
-# test-coverage / config / catalog / cache-status / dead-code-maybe). These
+# test-coverage / config / catalog / cache-status). These
 # share one placeholder version until a view needs to evolve its wire shape
 # independently — at which point it promotes to its own named constant, as
-# io-boundaries (IO_BOUNDARIES_SCHEMA_VERSION) and verify-claims
+# dead-code-maybe (DEAD_CODE_MAYBE_SCHEMA_VERSION, below), io-boundaries
+# (IO_BOUNDARIES_SCHEMA_VERSION) and verify-claims
 # (VERIFY_CLAIMS_SCHEMA_VERSION) already have. Single-sourced here (WI-bobog) so
 # the six view sites cannot drift; DISTINCT from the top-level bm.json
 # SCHEMA_VERSION (a read view is not the behavior map) and from __version__ (the

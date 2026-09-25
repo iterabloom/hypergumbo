@@ -6,9 +6,11 @@ languages and frameworks in a repository, without requiring full parsing.
 
 How It Works
 ------------
-Language detection scans file extensions using the discovery module:
-- Counts files matching each language's extension patterns
-- Tallies lines of code (LOC) for each detected language
+Language detection enumerates files per language: an analyzer's own
+``find_files`` when it registers one (e.g. extensionless shebang scripts),
+otherwise the language's extension patterns via the discovery module:
+- Counts files per language
+- Tallies lines of code (LOC) only when ``count_loc=True`` (default off)
 - Returns a RepoProfile with language statistics
 
 Framework detection examines dependency manifests:
@@ -24,19 +26,22 @@ in subdirectories. This enables detection in:
 - Non-standard layouts where manifests aren't at root
 - Multi-project repositories
 
-Common non-project directories (node_modules, vendor, venv, etc.) are skipped.
+Manifests found by name (``_find_manifest_files``) skip dot-directories,
+common non-project directories (node_modules, vendor, venv, etc.) and
+test-fixture directories; glob-based detectors (e.g. ``*.cabal``) do not.
 
-Detection is intentionally shallow - we look for package names in
+Profiling is intentionally shallow - we look for package names in
 dependency files rather than analyzing imports. This keeps profiling
-fast (milliseconds) even for large repos.
+fast (milliseconds) even for large repos. Import edges are consulted
+only later, by ``refine_frameworks``, which promotes/demotes frameworks.
 
 Framework Specification (ADR-3aaa)
 ----------------------------------
 The --frameworks flag controls which frameworks to check for:
 - none: Skip framework detection (base analysis only)
 - all: Check all known framework patterns for detected languages
-- explicit: Only check specified frameworks (e.g., "fastapi,celery")
-- auto (default): Auto-detect based on detected languages
+- explicit: Use the specified frameworks as-is, unchecked (e.g., "fastapi,celery")
+- auto (default): Auto-detect by scanning every ecosystem's manifests
 
 This enables users to:
 - Reduce noise by disabling framework detection (--frameworks=none)

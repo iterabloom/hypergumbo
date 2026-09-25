@@ -15,10 +15,10 @@ content unchanged so the masker only ever removes false positives — never
 real detections.
 
 The Python-docstring rule is positional: a ``string`` node whose direct
-parent is ``module`` or ``block`` AND which is that parent's first named
-child is treated as a docstring. Regular string literals are preserved,
-because several linkers (``database_query``, ``graphql``, ``openapi``)
-rely on matching inside literals.
+parent is ``module`` or ``block`` AND which is that parent's first
+non-comment named child is treated as a docstring. Regular string
+literals are preserved, because several linkers (``database_query``,
+``graphql``, ``openapi``) rely on matching inside literals.
 """
 from __future__ import annotations
 

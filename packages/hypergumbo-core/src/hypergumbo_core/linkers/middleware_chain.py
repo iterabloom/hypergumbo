@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework linker: middleware chain for connecting consecutive middleware functions.
 
-Creates ``middleware_chain`` edges between consecutive middleware symbols
-in the same file, ordered by source line. This enables forward/reverse
-slices to traverse the middleware execution pipeline.
+Creates ``references`` edges (meta ``framework_dispatch: "middleware_chain"``)
+between consecutive middleware symbols in the same file, ordered by source
+line. This enables forward/reverse slices to traverse the middleware
+execution pipeline.
 
 How It Works
 ------------
@@ -12,8 +13,9 @@ How It Works
    ``framework_patterns.py``; see INV-tuzub for the uniformity invariant).
 2. Group by file path (middleware in different files are independent chains)
 3. Sort each group by source line (registration/declaration order)
-4. Create ``references`` edges with ``evidence_type="middleware_chain"``
-   between consecutive middleware in each group
+4. Create ``references`` edges (``evidence_type="ast_call_direct"``, meta
+   ``framework_dispatch: "middleware_chain"``) between consecutive
+   middleware in each group
 
 Why This Design
 ---------------
@@ -24,7 +26,7 @@ call order. By chaining middleware symbols in source-line order, slices
 from a request entrypoint traverse the full middleware pipeline before
 reaching the route handler.
 
-JS/TS already creates middleware_chain edges inline in the analyzer
+JS/TS already creates these middleware-chain edges inline in the analyzer
 (Express ``app.get('/path', mw1, mw2, handler)``). This linker provides
 the same capability for Python, Go, and other frameworks where middleware
 is detected via YAML framework patterns rather than inline in route calls.
@@ -67,7 +69,7 @@ PASS_ID = make_pass_id("middleware-chain-linker")
     activation=always_on_unreviewed(),
 )
 def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
-    """Create middleware_chain edges between consecutive middleware symbols."""
+    """Create middleware-chain ``references`` edges between consecutive middleware symbols."""
     run = AnalysisRun.create(
         pass_id=PASS_ID,
         version=PASS_VERSION,

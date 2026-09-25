@@ -9,14 +9,13 @@ How It Works
 Uses tree-sitter-toml to parse TOML files and extract:
 - Table definitions (sections like [package], [dependencies])
 - Array of tables (like [[bin]], [[test]])
-- Key-value bindings for important configuration
 - Dependencies (from Cargo.toml and pyproject.toml)
 
 The analyzer produces Symbols for:
 - Tables and nested tables
-- Dependencies (Rust crates, Python packages). Dev / build /
-  optional / extras dependencies all fold to ``kind="dependency"``
-  with ``meta["dependency_scope"]`` discriminating (per WI-limas /
+- Dependencies (Rust crates, Python packages) as ``kind="dependency"``.
+  Cargo dev / build dependencies fold to the same kind, with
+  ``meta["dependency_scope"]`` discriminating (per WI-limas /
   ADR-0027 audit-findings 0006).
 - Cargo array-of-tables targets: ``[[bin]]``, ``[[test]]``,
   ``[[example]]``, ``[[bench]]``
@@ -27,10 +26,10 @@ The analyzer produces Symbols for:
   ``[project.gui-scripts]``), emitted as ``kind="file"`` +
   ``meta["entry_role"]="script"``
 
-The analyzer also emits ``defines_target`` edges from the manifest
-file to the inferred target paths for ``[[bin]]`` / ``[[test]]`` /
-``[[example]]`` / ``[[bench]]`` entries and for pyproject script
-entry points.
+The analyzer also emits ``defines_target`` edges from each
+``[[bin]]`` / ``[[test]]`` / ``[[example]]`` / ``[[bench]]`` target
+symbol to its explicit ``path`` (only when one is given), and from each
+pyproject script symbol to an unresolved Python id for its function.
 
 Why This Design
 ---------------

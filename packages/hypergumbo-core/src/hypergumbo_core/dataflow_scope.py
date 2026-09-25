@@ -38,10 +38,11 @@ self-documents that ``if err := do(); err != nil`` initializers are invisible to
 def/use — 700 of caddy's 6,596 ``if`` statements carry a call there — so Go reads
 ``dataflow_capable`` while containing functions the walk cannot see into, and a
 reader who took the bit for coverage would be making exactly the assumption
-clause (a3) forbids. ``coverage_granularity`` says so in the emitted record
-rather than here, where no consumer would find it. The finer signal is WI-joluk's
-(forfeit refutation for any function whose CFG statement extents miss a call node
-in its body); when it lands, this constant becomes ``function``.
+clause (a3) forbids. The finer signal is WI-joluk's per-function coverage gate
+(a function whose CFG statement extents miss a call node in its body forfeits
+refutation), which landed on 2026-08-26. So ``coverage_granularity`` reads
+``function`` in the emitted record, which counts the forfeiting functions, rather
+than leaving it here, where no consumer would find it.
 
 WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — II. ``inclusion_decided_by`` is a
 constant, not a measurement. **It changed on 2026-09-02, which is the R16
