@@ -17,8 +17,12 @@ How It Works
 1. Check if tree-sitter with R grammar is available
 2. If not available, return skipped result (not an error)
 3. Parse all .R and .r files
-4. Extract functions, library imports, function calls
-5. Create call edges for function invocations
+4. Pass 1: extract functions (with their docstrings) and library imports
+   into a global symbol registry
+5. Pass 2: create call edges, resolving callees across files through a
+   NameResolver; a ``pkg::func`` call passes the package as a path hint
+   and gets higher confidence. Calls that resolve to no repo symbol
+   target ``r:external:<pkg>::<func>`` (qualified) or ``r:builtin:<func>``
 
 Why This Design
 ---------------

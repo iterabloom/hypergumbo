@@ -21,6 +21,16 @@ Analysis proceeds in two passes for cross-file resolution:
 - Compute stable_id (signature-based) and shape_id (structure-based)
 - Extract rich metadata (decorators, base classes, parameters) per ADR-3aaa
 
+**Between the passes (repo-wide):**
+- Alias names re-exported by ``__init__.py`` and by plain facade modules, so
+  ``from pkg import helper`` resolves to the defining module's symbol
+- Type unannotated parameters from their call sites, keeping a position only
+  when every call site across the repo agrees on one type
+- Build every class's ``__init__`` field-type map once, keyed by class id, so
+  ``obj.field.method()`` binds in files that only import the class
+- For Django trees, build the model-relation index and type ``setUp`` fixture
+  fields (``self.x = Model.objects.create(...)``)
+
 **Pass 2 - Edge Extraction:**
 - Walk AST to find function/method call sites
 - Resolve callees using local symbols first, then imports
@@ -29,6 +39,10 @@ Analysis proceeds in two passes for cross-file resolution:
 - Detect ClassName() instantiation patterns
 - Track return type annotations for variable type inference
 - Create import edges from files to imported symbols
+- Annotate call edges with dataflow access modes (``annotate_dataflow_ast``)
+
+After both passes, a ``pyproject.toml`` dependency manifest is parsed so boundary
+nodes for declared dependencies classify as tier 2.
 
 Detected Patterns
 -----------------
@@ -40,6 +54,13 @@ Detected Patterns
 - Framework dispatch: ``dispatches_to`` edges for returned closures
   (``dispatch_kind="closure_factory"``) and Django ``@receiver`` signals
 - Bare references: ``references`` edges where a symbol is named but not called
+- Property reads: ``obj.prop`` on a typed instance emits a ``calls`` edge to the
+  ``@property`` getter, since reading it runs code
+- Builtin and unknown callees: bare calls to builtins (``print``, ``open``) emit
+  ``builtins`` edges, and bare names that are not imported or locally bound
+  emit ``external`` unresolved edges; names bound in an enclosing scope are skipped
+- Call-edge tags: ``io_mode`` records a literal mode argument (``open(p, "w")``),
+  and ``call_arg_shape="literal_only"`` marks calls passing only constants
 - Module attribute reads: os.environ, sys.argv, sys.path — bare
   (non-called) ``imported_module.attribute`` accesses. Emits
   ``module_attr_ref`` edges so IO-primitive catalog ``attributes:``
@@ -100,13 +121,16 @@ Symbols include structured metadata in `meta` dict:
   Example: `["BaseModel", "Generic[T]"]`
 - **parameters**: List of parameter info for functions/methods.
   Example: `[{"name": "x", "type": "int", "default": False}]`
+- **return_type**: the unparsed return annotation, when present.
+- **nesting_parent**: the immediately enclosing function's name, on nested defs.
 
 Why This Design
 ---------------
 - Built-in ast module requires no dependencies and handles all Python syntax
 - Two-pass approach enables cross-file call resolution via imports
 - ``_enclosing_function_chain`` distinguishes top-level from nested functions;
-  the col_offset == 0 heuristic only decides ``is_exported``
+  the col_offset == 0 heuristic only decides ``is_exported``, and a module-level
+  ``__all__``, when present, overrides the leading-underscore rule there
 - Import resolution handles both absolute and relative imports
 - Rich metadata feeds YAML-driven framework pattern enrichment (ADR-3aaa)
 """

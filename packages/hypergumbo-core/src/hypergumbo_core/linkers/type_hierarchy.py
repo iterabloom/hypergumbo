@@ -7,11 +7,18 @@ to their concrete implementations, enabling polymorphic call resolution.
 How It Works
 ------------
 1. Build inheritance maps from inheritance-family edges (`extends`,
-   `implements`, and e.g. Solidity `inherits` / Ruby `includes`)
+   `implements`, and e.g. Solidity `inherits` / Ruby `includes`), then
+   close them transitively so a grandparent method reaches an override
+   that skips the intermediate class
 2. For each class/interface with subclasses or implementors:
    - Find methods on that class/interface
    - Find matching methods (same short name) in child classes
    - Create `dispatches_to` edges from parent method to child methods
+3. Each edge keeps the flat 0.85 confidence; ranking adjustments live on
+   `rank_score` (a 1/sqrt(N) fan-out dampener over the N overrides, and a
+   fixed low score for test-file overrides) so wide interfaces and test
+   doubles don't dominate centrality. `derived_from` names the inheritance
+   edges along the path, not just the two endpoints
 
 Use Case
 --------
@@ -32,7 +39,8 @@ Limitations
 - Only works where some pass emits inheritance edges: `inheritance-linker`
   (e.g. Go struct embedding) or the analyzers listed in `depends_on`
 - Dispatch through concrete `extends` is disabled for Go, C++, Rust and C#
-  (`NO_VIRTUAL_EXTENDS_LANGUAGES`); `implements` dispatch is unaffected
+  (`NO_VIRTUAL_EXTENDS_LANGUAGES`) unless the child is itself abstract
+  (interface, trait, protocol, abstract class); `implements` is unaffected
 """
 
 from __future__ import annotations

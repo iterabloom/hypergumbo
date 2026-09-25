@@ -7,6 +7,13 @@ Detects:
 - Proc definitions (procedures)
 - Func definitions (pure functions)
 - Method definitions
+- Object fields and enum members (kind="field", named ``Owner.member``)
+- Module-level const/var/let (kind="variable"; proc-body locals excluded)
+
+Declarations carrying Nim's ``*`` export marker (``proc greet*``) are
+recognized and set ``is_exported``. Field and variable symbols are kept
+out of the call-resolution registry so a data name cannot shadow a
+same-named proc or method.
 
 Nim is a compiled systems programming language with Python-like syntax,
 combining low-level control with high-level expressiveness.

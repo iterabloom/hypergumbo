@@ -39,6 +39,9 @@ exclusive markers of "this type is serialized"):
   ``@JsonValue``, ``@JsonAnyGetter``, ``@JsonAnySetter``, ``@JsonRawValue``.
   (Field-level ``@JsonProperty`` is carried on the paired accessor in the
   default Java analyzer output, so the method sweep catches it.)
+* **Bean-marker base class** — the class extends a name in
+  ``BEAN_MARKER_BASE_CLASSES`` (``ConfigurationProperties``) anywhere on its
+  transitive base chain, including via in-tree intermediate classes.
 
 Qualified names like ``com.fasterxml.jackson.annotation.JsonProperty`` or
 ``jakarta.xml.bind.annotation.XmlRootElement`` are normalized to the short
@@ -53,7 +56,10 @@ whose method name is a bean-convention accessor or carries a method-level
 Jackson annotation receives a ``dispatches_to`` edge from ``C`` with
 confidence 0.90 (0.5 when ``C`` qualified only through an unqualified,
 name-colliding bean-marker base), ``evidence_type`` ``ast_decorator`` and meta
-``framework_dispatch: "jackson_bean"``.
+``framework_dispatch: "jackson_bean"``. Its ``derived_from`` lists the
+class, the method, and whatever qualified the class beyond itself: the
+ancestors and inheritance edges that carried a bean-marker base, or the
+annotated sibling methods (nothing extra on the class-annotation path).
 
 Bean-convention accessors are:
 

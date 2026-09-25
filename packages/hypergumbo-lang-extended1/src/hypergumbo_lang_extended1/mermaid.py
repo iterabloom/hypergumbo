@@ -17,6 +17,9 @@ Symbols Extracted
 - **diagram**: The diagram type declaration (flowchart, classDiagram, etc.)
 - **node**: Named nodes in flowcharts and graphs (A[Label])
 - **participant**: Sequence diagram participants
+- **class**: Class diagram classes (``class Name``)
+- **state**: State diagram states declared with an alias
+  (``state "Description" as Name``); the alias is the symbol name
 
 Why This Design
 ---------------

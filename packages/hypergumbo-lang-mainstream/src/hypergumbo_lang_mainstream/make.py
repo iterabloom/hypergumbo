@@ -22,7 +22,16 @@ during the same pass (single-pass symbol+edge extraction).
 2. If not available, return skipped result (not an error)
 3. Single-pass analysis: parse all files, extract all targets, variables,
    and prerequisite dependency edges together
-4. Create depends_on edges for target dependencies
+4. Create depends_on edges for target dependencies: 0.90 when the
+   prerequisite names an already-registered target, otherwise a dangling
+   ``makefile:external:<prereq>:target`` edge at 0.70 (a file on disk or a
+   target defined elsewhere). ``$``-variable prerequisites are skipped, not
+   resolved.
+
+Dot-prefixed targets (``.PHONY``, ``.SUFFIXES``) are emitted with kind
+``special_target`` rather than dropped. A variable assigned more than once
+in a file (``VAR := x`` then ``VAR += y``) yields one symbol, at its first
+definition (names compared case-insensitively).
 
 Why This Design
 ---------------
@@ -200,7 +209,7 @@ def _process_make_tree(
                 kind = "pattern_rule" if is_pattern else "target"
 
                 for target_name in target_names:
-                    # Skip special targets like .PHONY
+                    # Mark special targets like .PHONY (emitted, not skipped)
                     if target_name.startswith("."):
                         kind = "special_target"
 

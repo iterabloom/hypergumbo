@@ -24,6 +24,10 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, structs, enums, traits with signatures and annotations;
    extract struct field types for the base-class field type registry
+   and function/method return types for a return-type registry. A
+   function inherits ``#[cfg(test)]`` from an enclosing test module (so
+   the slicer can exclude test helpers) and its impl block's attributes
+   (e.g. PyO3 ``#[pymethods]``), which are written once on the impl.
 2. Pass 2: Extract call edges through a ladder of resolution strategies
    (1 full scoped name, 1b module-prefix-stripped name, 1.5
    self.field.method(), 1.8 typed local/param var.method(), 1.9 chained
@@ -32,6 +36,23 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    reference passed to a spawn function, calls appearing only
    inside macro bodies, ``module_attr_ref`` edges, use edges, and Axum
    usage contexts
+   - Local types (strategies 1.8/1.9) come from a file-scoped var-type
+     map: parameters, ``let`` annotations, constructor / struct-literal
+     initializers, enum-variant destructuring patterns, and
+     ``let x = recv.method()`` chained through the return-type registry.
+   - Generic trait methods (``into``, ``clone``, ...; the shared
+     ``SUPPRESSED_METHOD_NAMES`` set) are barred from short-name
+     resolution, and a bare call that matches a *different* impl's method
+     only by short name is deferred rather than bound (INV-fahub); both
+     guard against one method absorbing unrelated calls.
+   - An unresolved external call still records its owning module on the
+     ``ExternalRef``, rebuilt from ``use`` aliases, written type paths,
+     and the inferred type of a field or chained receiver, so
+     I/O-primitive catalogs can match it.
+   - ``impl Trait for T`` with a trait outside the analyzed files yields
+     an unresolved ``implements`` edge at confidence 0.70; std traits are
+     filtered out, except ``Display``/``From``/``Error``/``Default`` on
+     error types.
 3. Post-process: Extract decorated_by edges from attribute metadata
 
 Parity with the SCIP backend
@@ -40,7 +61,10 @@ Symbol ids and ``stable_id`` values emitted here must be byte-identical to
 those the ``rust-analyzer`` SCIP backend assigns the same item (WI-zakub), or
 the two backends would double-count every shared Rust symbol in a cached
 analysis. ``hypergumbo_lang_mainstream.rust_scip`` re-uses this module's own
-signature helpers to guarantee that rather than reimplementing them.
+signature helpers to guarantee that rather than reimplementing them. The
+analyzer registers as the ``tree-sitter`` backend with an ADR-0057 merge
+anchor (last ``::`` segment of the name, item span) so its records pair
+with the SCIP backend's.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Rust-specific extraction

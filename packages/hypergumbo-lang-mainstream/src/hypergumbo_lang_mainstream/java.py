@@ -7,16 +7,23 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
 - Enum declarations (symbols)
 - Method declarations (symbols)
 - Constructor declarations (symbols)
+- Field symbols (``kind="field"``): one per declarator of a class field or
+  interface constant, plus one per enum constant
 - Method call relationships (edges)
 - Inheritance relationships: extends, implements (edges)
-- Instantiation: new ClassName() (edges)
+- Instantiation: new ClassName() and ``ClassName::new`` (``instantiates`` edges)
+- Method references: ``Type::method`` / ``this::method`` (``references`` edges)
+- Annotations: ``decorated_by`` edges to the annotation type (unresolved for
+  project/framework annotations; standard ones like ``@Override`` are skipped)
+- Static field reads on imported classes and ``System`` (``System.out``):
+  ``module_attr_ref`` edges, so I/O catalog ``attributes:`` entries match
 - Import relationships: file → external ref, one per import declaration (edges)
 - Native method declarations for JNI bridge detection
 
-Per-file scope threading includes both regular ``imports`` and
-``static_imports`` (``import static pkg.Type.member;``), so call
-resolution can canonicalize unqualified method references to the
-imported owner.
+Per-file scope threading includes regular ``imports``,
+``static_imports`` (``import static pkg.Type.member;``) and
+``wildcard_imports`` (``import java.util.*;``), so call resolution can
+canonicalize unqualified method references to the imported owner.
 
 Import edges (INV-gojit)
 ------------------------
@@ -50,6 +57,11 @@ Symbols include rich metadata in the `meta` field:
   - Includes generic type parameters (e.g., "Repository<User, Long>")
   - Combines extends clause and implements clause
 
+Methods also carry ``return_type`` (plus ``inferred_return_type`` when an
+``Object`` return is really ``return new X(...)``), ``parent_base_classes``
+(the enclosing class's bases, for lifecycle-hook patterns) and ``is_native``.
+Classes carry ``fields`` (field name to declared type).
+
 Example:
     @Entity
     @Table(name = "users")
@@ -75,10 +87,20 @@ How It Works
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry,
      populate per-file import / static-import scope
+   - Between the passes: build the repo-wide class-parent and class-field maps
+     and a method return-type registry (merged with library signatures; in-repo
+     declarations win) so chained receivers like ``var w = f.make(); w.write()``
+     get typed
    - Pass 2: Detect calls/inheritance, resolve against global symbol
      registry, attach canonical ``dst_ref`` for cross-translation-unit
      edges
-4. Detect method calls, inheritance, and instantiation patterns
+4. Detect method calls, inheritance, and instantiation patterns. Calls on
+   inherited methods or typed receivers that do not resolve locally are emitted
+   unresolved with ``enclosing_class`` / ``receiver_type_hint`` hints; the
+   Tier-2 ``inherited_calls`` linker walks the hierarchy and resolves them
+5. Stamp ``io_target_kind`` on stream reads from the receiver's binding, and
+   annotate edges with dataflow access modes (ADR-0015)
+6. Parse Gradle/Maven dependencies so boundary nodes can be tier-classified
 
 Why This Design
 ---------------

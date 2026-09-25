@@ -17,6 +17,14 @@ each subclass to each of its framework-called override methods. With the
 class reachable from its enclosing module, the override methods are
 pulled out of the dead-code set.
 
+A class qualifies when any name on its transitive base chain (itself plus
+in-tree ancestors reached over ``extends`` / ``implements`` edges) matches,
+so ``Order(LoggedModel)`` with ``LoggedModel(models.Model)`` is caught. When
+a matching base is an unqualified short name that also names an in-tree
+Python class, the linker cannot tell Django's type from the local one
+(INV-zuhub): those edges drop to confidence 0.5 and carry
+``disambiguation_fallback``; ``django.``-qualified bases stay at 0.90.
+
 Why a Framework Linker (Not Per-Analyzer Logic)
 ------------------------------------------------
 Identical reasoning to the Airflow framework-dispatch linker (WI-nutav):
@@ -36,6 +44,14 @@ aggregate-v5 prospector run (2026-04-11), which pinned
 QuerySet subclasses, Admin subclasses, and Model subclasses with
 user-defined overrides of framework-called methods all fall into that
 bucket.
+
+Beyond that ORM/admin bucket the table also covers ``Form`` / ``ModelForm``
+validation hooks, the ``View`` request lifecycle and the generic CBVs
+(``TemplateView``, ``ListView``, ``DetailView``, ``CreateView``,
+``UpdateView``, ``DeleteView``), and migration ``apply`` / ``unapply``.
+Each generic CBV entry folds in the ``View`` lifecycle methods because
+Django's own hierarchy is outside the project, so the base walk never
+reaches ``View`` from ``class Foo(ListView)`` (WI-nipan).
 """
 
 from __future__ import annotations

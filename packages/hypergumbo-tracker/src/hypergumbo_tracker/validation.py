@@ -8,8 +8,13 @@ these functions directly.
 Validation tiers:
 - **Single-file structural:** Malformed YAML, missing create op, missing
   required fields, unknown op types.
+- **Serialization format (warnings):** Every line carries a ``# <nonce>``
+  comment matching its op's nonce, which ``merge=union`` relies on, and op
+  fields follow the canonical order (a mismatch suggests a manual edit).
 - **Value validation:** Unknown kinds, invalid statuses, out-of-range
-  priorities, invalid timestamps.
+  priorities, invalid timestamps. A kind's ``allowed_statuses`` (plus its
+  ``deprecated_statuses``) is checked against the compiled status only,
+  since historical ops may use statuses that were valid when written.
 - **Field schema validation:** Required fields missing, type mismatches,
   integer range violations, unknown fields (with edit-distance suggestions).
 - **Cross-file validation:** Duplicate IDs across tiers, dangling or
@@ -21,6 +26,8 @@ Validation tiers:
 - **SimHash duplicate warnings:** Near-duplicate pairs not already marked
   in duplicate_of or not_duplicate_of.
 - **Embedding duplicate warnings:** Deep semantic duplicates via dense embeddings.
+
+Strict mode promotes every warning to an error.
 
 See ADR-0013 for the full design specification.
 """
