@@ -203,6 +203,7 @@ Five threads run through this cycle.
 
 - **`auto-pr` reports what actually happened.** A merge that landed decides the outcome (41 of 481 runs had merged and exited 1), every exit path records a terminal state, and its stderr is no longer silenced after the lock line.
 - **`smart-test` selects the right tests.** A catalogue YAML, `conftest.py` or docs-only change now selects tests (each had selected none), `--full` includes the repo-root `tests/`, and it no longer writes another repository's manifest or empties the committed one.
+- **The release scripts ship `hypergumbo-lang-scip-python`.** Added this cycle, it was in none of the release scripts' hard-coded package lists: 8.1.0 would have left it at 8.0.0, never built or uploaded it, and shipped a `hypergumbo[scip-python]` extra pinned to a version that was never published. `bump-version`, `release-check`, its coverage set, `release.yml` and `prepare-release` now list it, and a test compares each list against `packages/*/pyproject.toml`, running `bump-version` on a copy of the real manifests.
 - **The self-claims drift gate runs on every scheduled CI run**, after a regression rode green `dev` for 63 commits.
 - **Git notes are pushed** again; none had been since 2026-01-22.
 - **hypergumbo works on Python 3.10 again** (an unguarded `import tomllib`). A killed `auto-pr` can no longer switch tracker self-healing off (see the tracker changelog), and test results no longer depend on test order.
