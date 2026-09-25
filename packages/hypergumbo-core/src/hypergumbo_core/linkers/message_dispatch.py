@@ -195,7 +195,7 @@ def link_message_dispatch(
         symbols: All symbols from all analyzers.
 
     Returns:
-        LinkerResult with message_dispatch edges and synthetic symbols.
+        LinkerResult with ``event_publishes`` edges and synthetic symbols.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

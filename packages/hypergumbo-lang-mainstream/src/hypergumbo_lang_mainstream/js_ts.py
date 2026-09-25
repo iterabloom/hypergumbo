@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""JavaScript/TypeScript/Svelte analysis pass using tree-sitter.
+"""JavaScript/TypeScript/Svelte/Vue analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse JS/TS/Svelte/Vue files and
 extract:
@@ -21,12 +21,19 @@ extract:
   ``evidence_type="ast_type_ref"`` (refactoring blast radius). The
   bespoke ``type_ref`` edge type was folded onto ``references``.
 
-UNRESOLVED cross-file call edges populate ``Edge.dst_ref`` with the
-canonical ``(lang, module_path, name)`` triple resolved through the
-per-file import scope's ``named_import_originals`` map, so renamed
-imports (``import { foo as bar }``) attribute to ``foo``, not ``bar``.
-A cross-file call that RESOLVES to a symbol in the graph carries no
-``dst_ref`` — ``dst`` already names the target.
+``Edge.dst_ref`` on UNRESOLVED call edges is populated only on some
+paths. A call to a named import sets it explicitly to the canonical
+``(lang, module_path, name)`` triple resolved through the per-file import
+scope's ``named_import_originals`` map, so renamed imports
+(``import { foo as bar }``) attribute to ``foo``, not ``bar``; a bare
+known-global call (``fetch``) sets it too. Edges built by
+``make_unresolved_edge`` get one derived from their module hint unless
+that hint is the ``external`` placeholder, in which case ``dst_ref`` is
+``None``. The namespace-alias, known-global-receiver and
+``<mod>.promises`` method-call fallbacks encode the module only in the
+``dst`` string and set no ``dst_ref``. A cross-file call that RESOLVES to
+a symbol in the graph carries no ``dst_ref`` — ``dst`` already names the
+target.
 
 Rich Metadata (ADR-3aaa)
 ------------------------
@@ -53,12 +60,14 @@ How It Works
 3. Three-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
-   - Pass 3: Extract usage contexts for resolved call edges
+   - Pass 3: Build framework UsageContexts straight from each file's AST
+     (Express/Hapi routes, Next.js file routes, index-file library
+     exports, SPA/Electron bootstrap calls and HTTP-server handler calls)
 4. For Svelte / Vue files, extract <script> blocks and parse as TS/JS
 
-Svelte Support
---------------
-Svelte files contain <script> blocks with TypeScript or JavaScript.
+Svelte / Vue Support
+--------------------
+Svelte and Vue files contain <script> blocks with TypeScript or JavaScript.
 We extract these blocks, preserving line numbers for accurate spans,
 and analyze them using the appropriate tree-sitter grammar.
 
@@ -2877,7 +2886,8 @@ def _extract_inheritance_edges(
     return edges
 
 
-# TypeScript built-in types that should not generate type_ref edges.
+# TypeScript built-in types that should not generate type-reference edges
+# (``references`` edges with evidence_type ``ast_type_ref``).
 _TS_BUILTIN_TYPES = frozenset({
     "string", "number", "boolean", "void", "null", "undefined",
     "never", "any", "unknown", "object", "symbol", "bigint",
@@ -2912,12 +2922,13 @@ def _extract_type_reference_edges(
     parsed_files: list["_ParsedFile"],
     run: "AnalysisRun",
 ) -> list[Edge]:
-    """Extract type_ref edges from TypeScript type alias bodies and interface signatures.
+    """Extract type-reference edges from TypeScript type aliases and interfaces.
 
-    For each type alias declaration (``type Foo = Bar & Baz``), creates type_ref
-    edges from the Foo symbol to Bar and Baz symbols. For each interface declaration,
-    creates type_ref edges from the interface to user-defined types referenced in
-    method signatures and property types.
+    Edges are ``references`` edges with ``evidence_type="ast_type_ref"``.
+    For each type alias declaration (``type Foo = Bar & Baz``), creates such
+    edges from the Foo symbol to Bar and Baz symbols. For each interface
+    declaration, creates them from the interface to user-defined types
+    referenced in method signatures and property types.
 
     This enables refactoring blast radius analysis: changing type User affects all
     type aliases and interfaces that reference it.
@@ -5061,8 +5072,9 @@ def _extract_edges(
     Type inference tracks types from:
     - Constructor calls: const client = new Client() -> client has type Client
     - Function parameters (TypeScript): function process(client: Client) -> client has type Client
-
-    Type inference does NOT track types from function returns (const client = getClient()).
+    - Function returns: const client = getClient() -> client has type Client,
+      when the in-repo callee is a function/method whose return-type
+      annotation names a known class
 
     Import-path disambiguation (INV-013):
     When multiple files define the same class name (e.g., NestJS monorepos),
@@ -6554,7 +6566,8 @@ def _analyze_javascript_impl(
             "navigator": "navigator",
         }
         # file_mod_sym is registered by Pass 1 for every file in
-        # parsed_files (see line 2827), so it is non-None here.  A
+        # parsed_files (see the INV-kokaj file pseudo-node emission in
+        # ``_extract_symbols``), so it is non-None here.  A
         # defensive ``is not None`` check is omitted intentionally.
         emit_module_attribute_refs(
             pf.tree.root_node,

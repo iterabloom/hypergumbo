@@ -23,8 +23,9 @@ Key IR Classes
   what produced the number and ``rank_score`` carries the ranking weight
   (ADR-0039 rulings 2 and 3). Edges carry a structured
   ``dst_ref: Optional[ExternalRef]`` sibling alongside the legacy ``dst``
-  colon-encoded id; consumers prefer ``dst_ref`` and fall back to
-  colon-splitting ``dst`` for pre-0.7.2 cached JSON.
+  colon-encoded id; consumers read the callee name through
+  ``callee_name_of`` (``meta["callee_name"]``, then ``dst_ref.name``, then
+  the span-anchored ``symbol_name_slot`` parse of ``dst``).
 - **ExternalRef**: Frozen ``(lang, module_path, name)`` triple naming a
   call target outside the producer's translation unit. Aliased imports
   bind ``name`` to the imported symbol, not the local alias.
@@ -40,7 +41,8 @@ Provenance Fields
   toolchain). Serialized as provenance only; not read back to key a cache.
 - repo_fingerprint: Hash of git state. Serialized as provenance only; the
   analysis cache keys on analyzer_identity, not on this field.
-- origin_run_signature: *Removed in 0.9.x (WI-gapin); never stamped by any producer.*
+- origin_run_signature: *Removed in 6.0.0 (SCHEMA_VERSION 0.10.0 -> 0.11.0,
+  WI-gapin); never stamped by any producer.*
 """
 import functools
 import hashlib
@@ -883,7 +885,7 @@ class Edge:
         dst_ref: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
         derived_from: Symbol (or Edge) IDs of the INPUT records the producer consumed to construct this Edge (INV-rukor) — the records whose presence decided it, e.g. the unresolved edge a linker resolved or the inheritance edges a dispatch walked. Ids the producer MINTED in the same run are not consumed and are left out, so a pass that builds both ends from a file scan records ``[]`` — a positive "consumed nothing", distinct from ``None``. A value naming only the endpoints is legal where the endpoints ARE the whole derivation, and every such linker site declares why in its source (``test_edge_derived_from.py``). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
         confidence: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
-        confidence_source: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+        confidence_source: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite`` / ``corroborated``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
         attribution: ADR-0057 §6 provenance slot, set only by the merge pass when two producers' edges for one ``(src, dst, edge_type)`` are folded: ``{field: [pass_id, ...]}`` for ``confidence`` / ``evidence_type`` — who holds the value the scalar carries. ``None`` (and omitted from the dict form) on every other edge.
         alternatives: ADR-0057 §6 candidate set on a folded edge: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar does not carry; under ``confidence_source="corroborated"`` both producers' original confidences are here.
         rank_score: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
@@ -1602,7 +1604,8 @@ def _canonical_external_stable_id(
     """Stable cross-run identity for a boundary Symbol.
 
     Identity is a function of the dedupe key ``(language, path, name)``
-    (``path`` is ``<external>`` for collapsed file-id groups). Per ADR-0036
+    (``path`` is the dangling id's path slot for every kind, file-id
+    pseudo-ids included; see :func:`_dedupe_key`). Per ADR-0036
     Ruling 2 the kind slot is uniformly ``external_symbol`` and no longer
     participates in boundary identity. Two runs against equivalent code produce
     the same stable_id for the same logical boundary.
@@ -1858,7 +1861,7 @@ def _dedupe_key(
     whose edges are deliberately kept (WI-pozur / ADR-0043 C2, pinned by
     ``test_pb2_import_srcs_resolved``). Measured on unmodified upstream repos:
     3 files on sqlalchemy, 2 on knex, 2 on sops, 1 on poetry, 0 on httpx —
-    not the 732-to-1 collapse the ``_REFERRING_PATHS_CAP`` note still quotes
+    not the 732-to-1 collapse the ``_REFERRING_PATHS_CAP`` note once quoted
     from before that synthesizer existed.
 
     SO THE FIX IS TO NAME THE FILE, NOT TO DROP THE EDGE. Dropping it was tried
@@ -1866,8 +1869,8 @@ def _dedupe_key(
     ``test_pb2_import_srcs_resolved`` fails loudly on it, which is that test
     working as designed.
 
-    ``kind`` decides the file-collapse but is **not** part of the returned
-    key — ADR-0036 Ruling 2 makes the boundary id kind-slot uniformly
+    ``kind`` is accepted but is **not** part of the returned key —
+    ADR-0036 Ruling 2 makes the boundary id kind-slot uniformly
     ``external_symbol``, so boundary identity is ``(language, path, name)``
     only. Two references to the same external via different use-site syntaxes
     therefore collapse to one node (measured lossless: no external is reached
@@ -1888,8 +1891,8 @@ def create_boundary_nodes(
     After all analyzers and linkers have run, some edges point to IDs
     that don't exist as symbols (calls to Go stdlib functions, imports
     of npm packages, references to Java standard library classes,
-    every Python file's ``make_file_id`` import-edge src…). Rather than
-    leaving these as dangling edges that break slice traversal, this
+    ``make_file_id`` import-edge srcs of files whose Symbol was removed…).
+    Rather than leaving these as dangling edges that break slice traversal, this
     function creates synthetic "boundary" nodes that mark where the
     analyzed codebase ends.
 
@@ -1901,26 +1904,17 @@ def create_boundary_nodes(
       consumers (sketch / slice / cross-run diff) can group and
       compare boundary nodes the same way ADR-0014 stable_ids work for
       first-party symbols.
-    * **Targeted dedupe of file-id pseudo-symbols.** For
-      ``kind="file"`` boundary ids — the per-Python-file
-      ``make_file_id`` synthetic ids that are dangling because the
-      module Symbol uses a different id format — all per-reference
-      variants per language collapse into one canonical "file"
-      boundary. Other externals (module imports, unresolved calls)
-      preserve their full path-slot identity, so two distinct modules
-      with the same exported name (e.g. ``urllib.request.urlopen`` vs
-      ``urllib.parse.urlopen``) stay distinct boundaries.
+    * **Path-slot identity for every kind.** Every external, file-id
+      pseudo-ids included, keeps its full path-slot identity in the
+      dedupe key (INV-rozob; see :func:`_dedupe_key`, which no longer
+      collapses ``kind="file"`` ids), so two distinct modules with the
+      same exported name (e.g. ``urllib.request.urlopen`` vs
+      ``urllib.parse.urlopen``) stay distinct boundaries. Only ids
+      sharing one ``(language, path, name)`` merge.
 
-    The structural mismatch driving file-id externals (``_make_file_id``
-    in analyzers ↔ module-Symbol id format) is tracked separately and
-    fixed at the producer side per the Plan B / file-id-emit-symbol
-    invariant.
-
-    Tier classification is **tier-min** across the collapsed group: if
-    *any* referring site classifies as tier-2 via the dependency
-    manifest, the canonical node is tier-2. One tier-2 signal means
-    "this external IS declared somewhere" — we don't want a second
-    tier-3 referring site to silently demote it.
+    Every boundary node is tier 3 (ADR-0041 §1/§2); the manifest's
+    direct/transitive/undeclared relationship is stamped as
+    ``meta["directness"]`` instead of promoting a node to tier 2.
 
     Args:
         symbols: All extracted symbols from analyzers and linkers.
@@ -1928,7 +1922,7 @@ def create_boundary_nodes(
         dependency_manifest: Optional DependencyManifest from
             supply_chain.py. When provided, boundary nodes for
             languages with a manifest parser (go, java, kotlin, python)
-            are classified tier-2 vs tier-3 based on declared deps.
+            get a ``meta["directness"]`` stamp from the declared deps.
 
     Returns:
         Tuple ``(boundary_symbols, id_remap)``.
@@ -1939,9 +1933,10 @@ def create_boundary_nodes(
           Callers MUST apply this to every edge's ``src`` / ``dst`` via
           :func:`apply_external_id_remap` before serialization, or the
           graph will contain edges pointing at the original (now-absent)
-          dangling ids. For most ids the remap is a no-op (canonical id
-          equals original); the file-id collapse case is the one that
-          actually changes ids.
+          dangling ids. Only ids whose canonical form differs are
+          remapped — e.g. a kind slot normalized to ``external_symbol``
+          (ADR-0036 Ruling 2), a sanitized name slot, or two use-site
+          syntaxes of one ``(language, path, name)`` merging.
 
         Does NOT modify the input lists.
     """
@@ -1981,8 +1976,8 @@ def create_boundary_nodes(
     if not dangling_ids:
         return [], {}
 
-    # Group dangling ids by dedupe key. The key collapses file-id
-    # pseudo-symbols per language; other kinds keep full identity.
+    # Group dangling ids by dedupe key ``(language, path, name)``; every kind,
+    # file-id pseudo-ids included, keeps its path-slot identity.
     groups: Dict[tuple[str, str, str], List[str]] = {}
     group_ref_kinds: Dict[tuple[str, str, str], set[str]] = {}
     for dangling_id in dangling_ids:
@@ -2110,11 +2105,12 @@ def apply_external_id_remap(
     :func:`create_boundary_nodes`, dedupe collapsed edges, and capture
     per-reference attribution on collisions.
 
-    The 732 ``file``-named externals on hypergumbo self-analysis collapse
-    to one canonical boundary Symbol. Every Python file's import edges
-    therefore acquire the same canonical ``src`` and need to dedupe
-    against each other — without preserving attribution, "which files
-    import click?" becomes unanswerable from the graph alone.
+    When several dangling ids remap to one canonical boundary Symbol, their
+    edges acquire the same canonical endpoint and need to dedupe against
+    each other; without preserving attribution, the referring sites would
+    be unanswerable from the graph alone. (The "732 file externals collapse
+    to one" case this was written for no longer exists; see the
+    ``_REFERRING_PATHS_CAP`` note.)
 
     For every edge whose ``src`` is remapped, the original ``src`` id's
     path slot is captured into ``edge.meta.referring_paths`` (capped at

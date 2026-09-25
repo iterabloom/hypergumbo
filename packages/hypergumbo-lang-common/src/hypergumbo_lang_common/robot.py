@@ -7,9 +7,10 @@ test cases are written in a tabular format.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
-Overrides analyze() because Robot Framework needs cross-file state for
-keyword registry resolution.
+Uses TreeSitterAnalyzer base class for grammar checking. Overrides
+_create_parser() to build the parser directly from the standalone
+tree_sitter_robot grammar, and overrides analyze() because Robot Framework
+needs cross-file state for keyword registry resolution.
 
 1. Pass 1: Extract keywords, test cases, variables, and library/resource imports
 2. Pass 2: Extract keyword invocation edges with registry lookup for resolution
@@ -17,7 +18,7 @@ keyword registry resolution.
 Symbols Extracted
 -----------------
 - **Keywords**: User-defined keywords (reusable test steps)
-- **Test Cases**: Individual test case definitions
+- **Test Cases**: Individual test case definitions (kind ``test``)
 - **Variables**: Suite-level variable definitions (${VAR})
 - **Libraries**: External library imports (Python libraries like SeleniumLibrary)
 - **Resources**: Imported .robot files that share keywords
@@ -25,7 +26,8 @@ Symbols Extracted
 Edges Extracted
 ---------------
 - **calls**: Keyword invocations from test cases and keywords
-- **imports**: Library and resource imports
+- **imports**: Resource settings only (file -> resource); Library settings
+  create a ``library`` symbol but no edge
 
 Why This Design
 ---------------

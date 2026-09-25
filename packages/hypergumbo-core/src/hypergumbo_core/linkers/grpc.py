@@ -912,7 +912,8 @@ def link_grpc(
     # Bridge servicer/server symbols to their proto service definition.
     # The client-side 'calls' edges (with meta['protocol']='grpc')
     # terminate at grpc_server/grpc_servicer, but route and
-    # implements_rpc edges originate from grpc_service symbols. Without
+    # ``implements`` (meta['protocol']='grpc') edges originate from
+    # grpc_service symbols. Without
     # this bridge, the call chain is disconnected: the client-side graph
     # (stub → server) and the handler-side graph (route → service → method)
     # are separate components. This dispatches_to edge connects them.

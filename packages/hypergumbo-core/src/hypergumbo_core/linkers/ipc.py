@@ -603,7 +603,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
 
     # ---- Phase 3: contextBridge.exposeInMainWorld wrapper resolution ----
     # For each preload file with bridge definitions, scan other files for
-    # window.<namespace>.<method>() calls and create bridge_invokes edges.
+    # window.<namespace>.<method>() calls and create calls edges
+    # (meta.bridge_kind="context_bridge").
 
     # Collect bridge wrapper definitions from all scanned files
     bridge_maps: dict[str, dict[str, tuple[str, str, str]]] = {}

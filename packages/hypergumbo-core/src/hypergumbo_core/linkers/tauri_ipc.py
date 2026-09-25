@@ -575,7 +575,9 @@ def link_tauri_ipc(
         rust_symbols: Rust symbols from analyzers.
 
     Returns:
-        TauriIPCLinkResult with ipc_calls edges.
+        TauriIPCLinkResult with ``calls`` edges (``meta.framework_dispatch`` =
+        ``"tauri_invoke"`` or ``"specta_wrapper"``) and ``event_publishes``
+        edges (``meta.framework_dispatch="tauri_emit_listen"``).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -828,7 +830,8 @@ def link_tauri_ipc(
 
     # Phase 5: Rust→TS event emission (emit/emit_all/emit_to → listen/once)
     # Scan Rust files for emit patterns and TS/JS files for listen patterns,
-    # then create ipc_event edges for matching event channel names.
+    # then create event_publishes edges (meta.framework_dispatch=
+    # "tauri_emit_listen") for matching event channel names.
     rust_emit_map: dict[str, list[str]] = {}  # event_name → [rust_file_paths]
     rust_scanned_paths: set[str] = set()
     for sym in rust_symbols:

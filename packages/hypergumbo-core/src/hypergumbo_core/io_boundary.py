@@ -287,7 +287,7 @@ PRODUCER_OPAQUE_BOUNDARIES: frozenset[str] = opacity_names(catalog_declarable=Fa
 # ``stdlib_provenance.source_url``.  Match is suffix-based, so
 # ``docs.python.org`` matches the ``python.org`` suffix.  This defends
 # against typos and unofficial sources: a catalog declaring
-# ``status: complete`` with provenance pointing at, say,
+# ``status: provenance_declared`` with provenance pointing at, say,
 # ``stackoverflow.com`` is rejected at load time.
 #
 # Adding to this list is a governance change — additions go through PR
@@ -1729,9 +1729,9 @@ class IoBoundaryCatalog:
 _CATALOG_DIR = Path(__file__).parent / "io_primitives"
 
 #: Status a PROJECT-LOCAL overlay must declare (INV-fotav). Deliberately
-#: NOT one of the shipped catalogue statuses: ``complete`` asserts a
-#: provenance-backed stdlib enumeration and ``in_progress`` asserts an
-#: incomplete one, and an overlay is making neither claim — it describes
+#: NOT one of the shipped catalogue statuses: ``provenance_declared`` asserts
+#: a citation of the language's stdlib source and ``in_progress`` asserts an
+#: incomplete catalogue, and an overlay is making neither claim — it describes
 #: third-party surface hypergumbo does not own (ADR-0016 §27).
 _OVERLAY_STATUS = "overlay"
 
@@ -1957,10 +1957,11 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
     mechanism that would drift from it.
 
     An overlay declares ``status: overlay``. It may NOT declare
-    ``status: complete``: that status asserts a provenance-backed enumeration of
-    a language's stdlib, and letting an overlay claim it would launder
-    third-party rows into the standing of the curated catalogue. It carries no
-    ``stdlib_modules`` either — see :func:`load_catalog` for why that matters.
+    ``status: provenance_declared``: that status marks a curated catalogue
+    citing an allowlisted stdlib source, and letting an overlay claim it would
+    launder third-party rows into the standing of the curated catalogue. It
+    carries no ``stdlib_modules`` either — see :func:`load_catalog` for why
+    that matters.
     """
     if not path.exists():
         raise IoPrimitiveOverlayError(

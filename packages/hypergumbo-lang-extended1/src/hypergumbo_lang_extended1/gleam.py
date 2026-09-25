@@ -19,8 +19,9 @@ logic.
 
 Key constructs extracted:
 - function: Public and private function declarations
-- type_definition: Custom types with constructors (similar to enums/ADTs)
-- type_alias: Type aliases
+- type_definition: Custom types with constructors (similar to enums/ADTs),
+  emitted as kind ``class``
+- type_alias: Type aliases, emitted as kind ``type``
 - import: Module imports
 - function_call: Direct and qualified function calls
 """

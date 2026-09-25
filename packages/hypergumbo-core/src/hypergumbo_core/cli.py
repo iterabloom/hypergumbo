@@ -45,8 +45,10 @@ Why This Design
 - Subcommand dispatch keeps each operation isolated and testable
 - Default sketch mode optimizes for the common "quick overview" use case
 - run_survey() is separate from cmd_run() for testability
-- Helper functions (Symbol.from_dict, _edge_from_dict) enable slice
-  to work with previously-generated JSON files
+- Read commands (slice, sketch, search, ...) work from a persisted survey:
+  they reload it via ``survey_io.load_substrate`` and rehydrate it with
+  ``Symbol.from_dict`` / ``Edge.from_dict`` (``_edge_from_dict`` is a thin
+  wrapper), and ``_get_or_run_analysis`` runs a survey first on a cache miss
 """
 import argparse
 import gc
@@ -11432,9 +11434,10 @@ def run_survey(
         connectivity: If True, use connectivity-aware selection for compact
             mode. Prioritizes nodes that bridge disconnected entrypoints,
             producing well-connected subgraphs instead of isolated high-centrality
-            nodes. Defaults to False (centrality-ranked selection, matching the
-            sketch, per D12); opt into connectivity-aware selection via
-            --connectivity.
+            nodes. This function's own default is False (centrality-ranked
+            selection, matching the sketch, per D12), but the CLI passes True
+            by default (``--connectivity`` is the default and a no-op);
+            ``--no-connectivity`` selects centrality-ranked selection.
         budgets: Token budget output specification. Comma-separated specs like
             "4k,16k,64k". Use "default" for DEFAULT_TIERS, "none" to disable.
             If None, defaults to generating DEFAULT_TIERS alongside full output.
@@ -11656,12 +11659,9 @@ def run_survey(
     # Run cross-language linkers
     show_progress("Running linkers", 55)
     #
-    # Linkers are being migrated to a registry pattern (like analyzers).
-    # New linkers should use @register_linker decorator in linkers/registry.py.
-    # The registry-based linkers run first, then existing explicit linkers below.
-    # Once all linkers are migrated, the explicit calls below can be removed.
-
-    # Run any registry-based linkers (new pattern)
+    # Every linker is registered via the @register_linker decorator in
+    # linkers/registry.py (like analyzers) and runs through run_all_linkers;
+    # there are no explicit per-linker calls here.
     # This enables new linkers to be added without modifying this file.
     # LinkerContext provides all inputs; each linker picks what it needs.
     linker_ctx = LinkerContext(

@@ -10,18 +10,19 @@ How It Works
 Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 1. Uses tree-sitter-scss grammar from tree-sitter-language-pack
 2. Extracts variables, mixins, functions, and rule sets
-3. Identifies variable usage and mixin includes
+3. Links mixin includes (@include) to mixin definitions
 
 Symbols Extracted
 -----------------
-- **Variables**: SCSS variables ($variable-name)
+- **Variables**: top-level SCSS variable declarations ($variable-name)
 - **Mixins**: Mixin definitions (@mixin name)
 - **Functions**: Function definitions (@function name)
 - **Rule sets**: CSS selectors with their blocks
 
 Edges Extracted
 ---------------
-- **uses_mixin**: Links @include to mixin definitions
+- **includes**: stylesheet file -> mixin for each @include (confidence 0.95
+  when the mixin is defined in the same file, else 0.6 to a dangling mixin id)
 
 Why This Design
 ---------------

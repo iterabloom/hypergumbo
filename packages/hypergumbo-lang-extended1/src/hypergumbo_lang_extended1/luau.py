@@ -20,7 +20,9 @@ Symbol Types
 ------------
 - function: Local and module function definitions
 - type: Type definitions (type and export type)
-- variable: Local variable declarations
+- variable: ``local`` declarations whose name starts with an uppercase letter
+  (meant for module tables such as ``local MyModule = {}``); the value is
+  not checked, and declarations nested inside functions are included too
 
 Edge Types
 ----------
@@ -239,8 +241,9 @@ def _extract_variable(
     analyzer: "LuauAnalyzer", file_anchor: str,
 ) -> None:
     """Extract a variable declaration."""
-    # Only extract top-level module tables (e.g., local MyModule = {})
-    # Skip simple local variables
+    # Target module tables (e.g., local MyModule = {}) by name only: skip
+    # lowercase locals. Depth is not checked -- the recursive walker calls
+    # this for nested declarations as well.
     for child in node.children:
         if child.type == "assignment_statement":
             for subchild in child.children:

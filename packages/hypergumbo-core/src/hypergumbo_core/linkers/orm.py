@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework linker: ORM query for detecting ORM model references in application code.
 
-Detects ORM query patterns in Python source files and creates model_reference
-edges from the enclosing function to the Model symbol. This increases the
+Detects ORM query patterns in Python source files and creates ``references``
+edges (tagged ``meta.framework_dispatch="orm_accessor"``) from the enclosing
+symbol to the Model symbol. This increases the
 in-degree centrality of Model classes, improving their ranking in behavior maps.
 
 How It Works
@@ -11,8 +12,11 @@ How It Works
 2. Build a regex from model class names matching ORM accessor patterns
 3. Scan Python source files for matches: ModelName.objects.<method> (Django)
    or ModelName.query.<method> (Flask-SQLAlchemy)
-4. For each match, find the enclosing function symbol via LinkerContext
-5. Create model_reference edges from the enclosing function to the Model
+4. For each match, find the innermost enclosing symbol via LinkerContext,
+   accepting kinds function/method/class/module/file (a module-level query
+   attaches to the file node)
+5. Create ``references`` edges (``meta.framework_dispatch="orm_accessor"``)
+   from that enclosing symbol to the Model
 
 Why This Design
 ---------------
@@ -200,7 +204,8 @@ def link_orm_queries(
     """Link ORM query patterns to model symbols.
 
     Scans Python source files for ORM accessor patterns (e.g., User.objects.filter)
-    and creates model_reference edges from the enclosing function to the Model
+    and creates ``references`` edges (``meta.framework_dispatch="orm_accessor"``)
+    from the enclosing function/method/class/module/file symbol to the Model
     symbol.
 
     Args:

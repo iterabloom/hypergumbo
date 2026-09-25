@@ -58,15 +58,19 @@ lives in ``FileAnalysis.method_return_types`` -- the language-neutral registry
 that go, rust, swift and objc populate in Pass 1 and that the base analyzer
 aggregates across files into ``_method_return_type_registry`` -- or in the
 registered ``return_type`` / ``inferred_return_type`` meta keys, which java,
-luau and apex populate. A field's declared type lives in
-``FileAnalysis.class_field_types`` (csharp, cpp). Parameters live in the
-``parameters`` / ``params`` meta keys. Python populates NONE of them and parses
-the display string instead, and ``py.py`` cites the home in a comment while
-doing so::
+luau, apex and (since WI-ribak) python populate. A field's declared type lives
+in ``FileAnalysis.class_field_types`` (csharp, cpp). Parameters live in the
+``parameters`` / ``params`` meta keys. When this axis was declared Python read
+its return types by parsing the display string instead, while ``py.py`` cited
+the home in a comment::
 
     #: THE CONCEPT'S HOME IS ``FileAnalysis.method_return_types``
     #: (INV-dihos / WI-kuroj), the language-neutral return-type registry Go
     #: and Rust already populate from parsed signatures.
+
+Since WI-ribak Python writes ``meta["return_type"]`` / ``meta["parameters"]``
+and reads the return type from its home; ``class_field_types`` is still
+unwritten by Python.
 
 That is ADR-0023's cut, which ADR-0051 section 2 reuses: properties of an
 endpoint are queried from the endpoint, not smuggled into the label. It is also
@@ -75,9 +79,10 @@ ADR-0024's Fold-residue rule 1 verbatim -- "if a property is queryable from
 in ``py.py``: "Deriving beats enumerating".
 
 SCOPE: THIS DECLARES AND CLOSES; IT DOES NOT MIGRATE. Nothing any analyzer
-emits changes, and the nine existing parsers keep working -- ADR-0051 left
-``_module_matches`` branching on orthography for the same reason, filing the
-replacement as its own row. What this adds is the closure: the
+emits changes, and the eight remaining grandfathered parsers keep working
+(nine when the axis was declared; ``py.py``'s left under WI-ribak) --
+ADR-0051 left ``_module_matches`` branching on orthography for the same
+reason, filing the replacement as its own row. What this adds is the closure: the
 grandfathered parsers are enumerated, and
 :func:`find_undeclared_value_parsers` fails on a new one. That is the owner's 2026-09-21 ruling ("A+no"): fix the category,
 stop widening, port the producers language by language. Migrating them is
@@ -242,7 +247,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
 FACT_HOMES: Final[dict[str, FactHome]] = {
     "return_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=227,
+        line=228,
         anchor="method_return_types: dict[str, str]",
         home="FileAnalysis.method_return_types",
         populated_by=("go", "rust", "swift", "objc"),
@@ -277,7 +282,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "value_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=189,
+        line=190,
         anchor="class_field_types: dict[str, dict[str, str]]",
         home="FileAnalysis.class_field_types",
         populated_by=("csharp", "cpp"),
@@ -347,7 +352,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/js_ts.py"
         ),
-        line=5362,
+        line=5374,
         anchor="callee.signature",
         fact="return_type",
         note="Chained-call receiver typing.",

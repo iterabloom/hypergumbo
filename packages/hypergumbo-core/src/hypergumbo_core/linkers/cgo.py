@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge linker: Cgo for connecting Go C function calls to C/C++ implementations.
 
-This linker creates cgo_bridge edges between Go functions that call C functions
-via the ``import "C"`` pseudo-package and the corresponding C/C++ function
-implementations found in the repository.
+This linker creates ``calls`` edges (tagged ``meta.bridge_kind="cgo"``) between
+Go functions that call C functions via the ``import "C"`` pseudo-package and the
+corresponding C/C++ function implementations found in the repository.
 
 How It Works
 ------------
@@ -11,7 +11,8 @@ How It Works
    (these are created when Go code calls ``C.funcName()`` and the Go analyzer can't resolve them)
 2. Build a lookup table from C/C++ function symbols by name
 3. Match the unresolved function names to C/C++ function symbols
-4. Create cgo_bridge edges linking the Go caller to the C/C++ implementation
+4. Create ``calls`` edges (``meta.bridge_kind="cgo"``) linking the Go caller to
+   the C/C++ implementation
 
 Cgo Mechanism
 -------------
@@ -148,7 +149,7 @@ def link_cgo(
         edges: All edges including unresolved cgo calls from Go analyzer
 
     Returns:
-        CgoLinkResult with cgo_bridge edges.
+        CgoLinkResult with ``calls`` edges (``meta.bridge_kind="cgo"``).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

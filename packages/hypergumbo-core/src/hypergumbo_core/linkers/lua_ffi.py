@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge linker: Lua FFI for connecting LuaJIT FFI calls to C function implementations.
 
-This linker creates ffi_bridge edges between Lua code that uses LuaJIT's FFI
-interface and the C function implementations those calls resolve to.
+This linker creates ``calls`` edges (tagged ``meta.bridge_kind="ffi"``) between
+Lua code that uses LuaJIT's FFI interface and the C function implementations
+those calls resolve to.
 
 How It Works
 ------------
@@ -17,16 +18,19 @@ Source scanning of Lua files for two FFI call patterns:
    (``local lib = ffi.load("mylib")``). The linker tracks the variable name
    and finds ``lib.<name>(`` calls, matching ``<name>`` against C symbols.
 
-After scanning, the linker also checks unresolved Lua call edges and resolves
-any whose name matches a C function symbol (for cases where the Lua analyzer
-produced an unresolved edge for an FFI call).
+After scanning, the linker also checks every existing edge whose destination
+is ``:unresolved`` (no language or edge-type filter is applied) and, when the
+trailing name matches a C/C++ function symbol, emits a ``calls`` edge with
+``evidence_type="luajit_ffi_lookup"`` and ``is_resolved=False`` (for cases
+where an analyzer produced an unresolved edge for an FFI call).
 
 Why This Design
 ---------------
 - LuaJIT FFI uses string-based function names that only appear in ffi.cdef or
   ffi.C.name call sites, not in function signatures. Source scanning is needed.
-- The ffi.cdef content is a C header string — we don't parse it, we just track
-  that it exists and match ffi.C.<name> calls against actual C symbols.
+- The ffi.cdef content is a C header string — we don't parse or detect it at
+  all; ``ffi.C.<name>`` and ``lib.<name>`` calls are matched directly against
+  C/C++ function symbols by name.
 - Simple regex matching is sufficient: ``ffi.C.name(`` and ``var.name(`` are
   syntactically rigid patterns.
 - Follows the source-scanning pattern established by pyffi and ruby_ffi linkers.
@@ -133,7 +137,7 @@ def link_lua_ffi(
         edges: All existing edges (used for unresolved call matching).
 
     Returns:
-        LuaFFILinkResult with ffi_bridge edges.
+        LuaFFILinkResult with ``calls`` edges (``meta.bridge_kind="ffi"``).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

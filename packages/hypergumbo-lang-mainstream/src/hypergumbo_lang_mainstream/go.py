@@ -50,8 +50,9 @@ How It Works
      an arbitrary candidate (which would produce a false-positive call edge).
    - EXCEPTION: when at least one candidate is an interface method, the
      interface-method test is itself the disambiguator, so the call IS
-     resolved — to that interface method, as an ``interface_dispatch`` edge
-     at confidence 0.75, or 0.5 with ``meta["disambiguation_fallback"]=True``
+     resolved — to that interface method, as a ``calls`` edge with
+     ``evidence_type="interface_dispatch"`` at confidence 0.75, or 0.5
+     with ``meta["disambiguation_fallback"]=True``
      when several interface methods tie (``min`` by symbol id). The
      ``dispatches_to`` edges then route a slice on to the concrete impls.
 7. Stdlib interface method guard:
@@ -5651,8 +5652,9 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    # WI-potun: emit build_tag_alternative_of edges for symbols that have
-    # the same qualified name but live in different build-tag-gated files.
+    # WI-potun: emit ``references`` edges (meta ref_construct
+    # ``build_tag_alternative``) between symbols that have the same
+    # qualified name but live in different build-tag-gated files.
     # This links e.g. Labels.Get in labels_stringlabels.go to Labels.Get in
     # labels_dedupelabels.go, unifying centrality and letting slice/explain
     # surface "this symbol has build-tag alternates".

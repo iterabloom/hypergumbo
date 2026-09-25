@@ -173,9 +173,10 @@ def link_solidity_abi(
 ) -> SolidityAbiLinkResult:
     """Link TypeScript/JavaScript contract calls to Solidity function definitions.
 
-    Creates ``abi_call`` edges from synthetic TS/JS call-site nodes to Solidity
-    function symbols. A synthetic ``abi_call`` node is created at each TS/JS
-    call site to anchor the edge source.
+    Creates ``calls`` edges (tagged ``meta.call_kind="abi"``) from synthetic
+    TS/JS call-site nodes to Solidity function symbols. A synthetic
+    ``abi_call`` node is created at each TS/JS call site to anchor the edge
+    source.
 
     Args:
         repo_root: Path to the repository root.

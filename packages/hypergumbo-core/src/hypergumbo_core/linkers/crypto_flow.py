@@ -221,7 +221,8 @@ def link_crypto_flow(
         symbols: All symbols from all analyzers.
 
     Returns:
-        LinkerResult with crypto_flow edges and synthetic symbols.
+        LinkerResult with ``data_flows_to`` edges
+        (``meta.ref_construct="crypto"``) and synthetic symbols.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

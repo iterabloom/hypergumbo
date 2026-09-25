@@ -14,7 +14,8 @@ How It Works
    can emit a HTML_ENTRY entry; other HTML files (templates, 404
    pages, docs) are not flagged
 4. Scan content with regex for <script src="..."> patterns
-5. Create script_src edges from the HTML file to referenced scripts
+5. Create ``references`` edges (meta ref_construct ``script_src``) from the
+   HTML file to referenced scripts
 6. Track line numbers for accurate source mapping
 
 The regex pattern handles both single and double quotes, and is

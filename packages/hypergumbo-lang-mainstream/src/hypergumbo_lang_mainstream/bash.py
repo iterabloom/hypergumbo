@@ -6,7 +6,8 @@ from Bash and shell scripts. It also emits a per-file ``file`` pseudo-node Symbo
 stamped with a ``shell_script`` entrypoint concept (INV-tajap), since every parsed
 bash/.sh/.bash file is treated as an executable entry point and is consumed by
 entrypoints.py as a SHELL_SCRIPT entrypoint. It uses tree-sitter-bash for parsing
-when available, falling back gracefully when the grammar is not installed.
+when available; when the grammar is not installed it warns and returns a
+skipped result.
 
 Node types handled:
 - function_definition: Both 'function name()' and 'name()' styles

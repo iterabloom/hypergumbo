@@ -6,7 +6,8 @@ Django apps connect view callables to templates by three routes:
 1. **Explicit string in a ``render()`` call.** ``render(request, "users/show.html",
    ctx)`` resolves under ``<app>/templates/users/show.html`` (Django's standard
    ``APP_DIRS`` lookup) or, less commonly, project-level ``templates/users/show.html``.
-   The view callable doing the render is the source of the ``renders`` edge.
+   The view callable doing the render is the source of the ``references`` edge
+   (``meta["ref_construct"] = "view_render"``, emitted by ``_view_template_core``).
 
 2. **Class-attribute ``template_name`` string** (any class body, typically a
    ``TemplateView``). ``class HomeView(TemplateView):
