@@ -1,0 +1,20 @@
+- op: create  # d15b
+  at: '2026-09-25T06:34:07Z'  # d15b
+  by: agent  # d15b
+  actor: jgstern_agent  # d15b
+  clock: 1  # d15b
+  nonce: d15b  # d15b
+  data:  # d15b
+    kind: work_item  # d15b
+    title: "view_template_django: _CBV_TEMPLATE_NAME_BASES has no reader; a CBV base-class gate designed and never wired, or dead"  # d15b
+    status: todo_hard  # d15b
+    priority: 3  # d15b
+    parent:  # d15b
+    tags:  # d15b
+    - framework_dispatch_linkers  # d15b
+    isbefore: []  # d15b
+    duplicate_of: []  # d15b
+    not_duplicate_of: []  # d15b
+    pr_ref:  # d15b
+    description: "EVIDENCE (2026-09-25): packages/hypergumbo-core/src/hypergumbo_core/linkers/view_template_django.py defines `_CBV_TEMPLATE_NAME_BASES` (~L69-87). grep over packages/ finds no reader.\n\nWHY IT MATTERS: DjangoCBVDefaultStrategy matches a class's base name against `_CBV_DEFAULT_SUFFIXES` with no path filter (~L336-351). `_template_name_sites` accepts `template_name` on ANY class, with no base check (~L299-320). A frozenset of CBV base names that nothing reads looks like a base-class gate that was designed and never wired. That is the \"value with no consumer\" shape.\n\nPRIOR ART: none found. WI-furap (wont_do) concerns the Rails path convention in the view-template linker, not Django.\n\nASKED: read the git history of the constant (git log -S). Then either wire it as the gate on `template_name` sites (measure edges before and after on a Django corpus repo; this may be a precision gain) or delete it and say why."  # d15b
+    fields: {}  # d15b
