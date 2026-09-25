@@ -19,3 +19,18 @@
     pr_ref:  # 4dc3
     description: "MEASURED on a fixture with positive controls firing in the same run. js_ts.py:777 carries JS_KNOWN_GLOBALS, a HAND-MAINTAINED mirror of the same class as python's EXTERNAL_CONSTRUCTOR_TYPES, and it has drifted: 'process' is absent though process.send/process.on match the bare-global Object.method() pattern its own comment describes, and 'new WebSocket(...)' receivers produce no edge at all.\n\nRELEVANT TO THE SECOND-LANGUAGE REQUIREMENT: JS/TS is the likeliest language in participants' repos (83 sinks vs TypeScript's 6). This is a recall hole in it.\n\nNOT VERIFIED whether process's absence is deliberate -- the surrounding comment reads as though it should be included."  # 4dc3
     fields: {}  # 4dc3
+- op: update  # d4dd
+  at: '2026-09-25T17:57:32Z'  # d4dd
+  by: agent  # d4dd
+  actor: jgstern_agent  # d4dd
+  clock: 2  # d4dd
+  nonce: d4dd  # d4dd
+  set:  # d4dd
+    status: done  # d4dd
+- op: discuss  # f3e5
+  at: '2026-09-25T17:57:32Z'  # f3e5
+  by: agent  # f3e5
+  actor: jgstern_agent  # f3e5
+  clock: 3  # f3e5
+  nonce: f3e5  # f3e5
+  message: "CLOSED done, 2026-09-25 (P2 review, dev e4a47383ab). DONE-AND-NEVER-CLOSED. Fixed by two later commits:\n- 'process': 566a8eae5b (2026-09-10) \"fix(javascript): process and performance are runtime globals, not external\". JS_KNOWN_GLOBALS now carries \"process\" (js_ts.py:882).\n- `new WebSocket(...)` receivers: bf8e138dac (2026-09-03, INV-misup / WI-nasuf) \"every instance-method call emits an edge, and a constructed or declared receiver carries its module\".\n\nBEHAVIORAL EVIDENCE on the production path, re-running the row's shape. a.js body:\n    process.send(m); process.on(\"message\", x => x); const ws = new WebSocket(\"ws://x\"); ws.send(m); console.log(m)\nFull survey, then `hypergumbo io-boundaries --format json`. Four chains, one per catalogued primitive:\n    ipc_recv  process.on      -> javascript:process:0-0:on:external_symbol\n    ipc_send  process.send    -> javascript:process:0-0:send:external_symbol\n    net_send  WebSocket.send  -> javascript:WebSocket:0-0:send:external_symbol\n    logging   console.log     (the positive control, as in the filed fixture)\nThe filed defect was \"emit NO edge despite being catalogued\"; each now emits a calls edge that reaches its catalogued boundary.\n\nNOT ASSERTED: that JS_KNOWN_GLOBALS has no OTHER drift. It is still hand-maintained, which is exactly what WI-nukub (open) is about."  # f3e5

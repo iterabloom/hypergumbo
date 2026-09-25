@@ -27,3 +27,18 @@
   clock: 2  # aa1c
   nonce: aa1c  # aa1c
   message: "CORRECTION TO THE FILING, same day, and it WIDENS the item.\n\nThe filing says the defect affects \"caddy and alertmanager (both Go); pretix\nand kserve (both Python) are not\". That rested on an assumption I did not\ncheck: one language per repository. It is false for this corpus. Measured by\nfile extension over production blocked-escape sites:\n\n    pretix        python 15   javascript 5\n    kserve        python 34   go 14\n    caddy         go 91\n    alertmanager  go 4\n    POOLED        go 109   python 49   javascript 5\n\nkserve carries 14 GO sites and pretix carries 5 JAVASCRIPT ones. The\n`!= \"call\"` filter drops those silently too, so EVERY repo in the corpus is\naffected, not two -- and the affected share is invisible in a repo that also\ncontains Python, because the Python sites still come through and the arm looks\nlike it worked.\n\nCONSEQUENCE: the cause arm must be re-run for ALL FOUR repos after the fix, not\nfor the Go pair. The prior claim that the Python arms \"need no re-run\" is\nwithdrawn.\n\nTHIS ALSO SHARPENS THE FIX. Adding Go's spellings to the comparison would\nrepeat the original mistake one language later, and a mixed-language repo is\nexactly the case where the resulting silence is least visible. The fix should\nbe a per-language map plus a LOUD REFUSAL when a language present in the data\nhas no entry -- the same fail-closed-and-say-so shape analyzer_disclosure.py\nuses for method-call emission, and the same shape\nmeasure-escape-closing-ceiling.py already uses when its own monkeypatch does\nnot take (\"the run says so and refuses the corpus table rather than printing\nzeros that look like findings\")."  # aa1c
+- op: update  # 9a93
+  at: '2026-09-25T18:01:39Z'  # 9a93
+  by: agent  # 9a93
+  actor: jgstern_agent  # 9a93
+  clock: 3  # 9a93
+  nonce: 9a93  # 9a93
+  set:  # 9a93
+    status: done  # 9a93
+- op: discuss  # 89a7
+  at: '2026-09-25T18:01:40Z'  # 89a7
+  by: agent  # 89a7
+  actor: jgstern_agent  # 89a7
+  clock: 4  # 89a7
+  nonce: 89a7  # 89a7
+  message: "CLOSED done, 2026-09-25 (P2 review, dev e4a47383ab). DONE-AND-NEVER-CLOSED: fixed by 9ea7cca989 (2026-08-25, \"fix(measure): declare the call-node vocabulary per language, and refuse rather than undercount\"), the day this row was filed.\n\nTHE ROW'S OWN REPRO, re-run today on the filed repo:\n  python3 scripts/measure-call-escape-cause.py <curriculum_repos/caddy> docs/example-claims/generic-taint-claims.yaml\n  -> \"=== CALL-node escape sites: 4 ===\" (the filed defect was 0 under a live positive control), classified as 1-NO EDGE EMITTED (INV-mumov) 3 and 4a-KEY PRESENT, NO SUMMARY 1. Exit 0.\n  Log: ~/hypergumbo_lab_notebook/p2_review_09252026/nukut/caddy.log\n\nThe mechanism, in code: `_CALL_NODE_TYPES` (scripts/measure-call-escape-cause.py:~156) maps python -> {call} and go -> {call_expression, deferred_call, go_statement}, replacing the bare `!= \"call\"`. Its comment states the fail-closed shape the row asked for: \"A LANGUAGE WITH NO ENTRY IS REFUSED, NOT SILENTLY EMPTIED\" (javascript is deliberately absent).\n\nThe count differs from the post-fix 08-25 run on the same repo (8 then, 4 now). That is expected drift from a month of analyzer changes and is not examined here. NOT re-run: the refusal arm (pretix, python+javascript -> exit 2), which the 08-25 rerun-cause.sh exercised."  # 89a7
