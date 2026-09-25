@@ -32,3 +32,10 @@
   clock: 3  # ca1d
   nonce: ca1d  # ca1d
   message: "nim is now VERIFIED in test_call_anchor_gate_extended1 (PR #1201, WI-bujar): position-keyed lookup, fixture with an overload pair + exported proc/func/method + nested proc; reach and containment both failed against the old code. 24 unverified remain. The duplicated walk-up loop across the 21 position-keyed analyzers is filed as WI-gujab (P4 refactor)."  # ca1d
+- op: discuss  # f00f
+  at: '2026-09-25T19:07:38Z'  # f00f
+  by: agent  # f00f
+  actor: jgstern_agent  # f00f
+  clock: 4  # f00f
+  nonce: f00f  # f00f
+  message: "2026-09-25 docstring-staleness audit, reviewer asides (read in code, NOT yet run through the gate or a fixture). Name-keyed enclosing/owner lookups still live, for cross-checking against this row's 24-module list:\n- bash.py `_get_enclosing_function`: `local_symbols[func_name]` (~L1057).\n- wgsl.py `_find_enclosing_function_wgsl`: lowercase `local_symbols` lookup (~L173-192).\n- robot.py: container found via `_symbol_registry.get(name)`, last-write-wins across files (~L477, L487).\n- luau.py: `symbol_registry.get(current_function)` (~L326-328). pony.py: `symbol_registry.get(full_name)` (~L487).\n- lean.py: the declaration that OWNS a `references` edge is found by `resolver.lookup(decl_name)` (~L392). That is a references edge, not calls, so the calls-emitting gate may not see it.\n- c.py: the dispatch-table body scan finds functions by name (~L820-827). The call path itself is position-keyed.\n- js_ts.py: position-keyed via `symbol_by_position`, but a name-keyed FALLBACK is still live in the function-declaration and method branches (~L4876-4882, L4891-4900).\nLine numbers are from dev e4a47383ab-era reads. Filed as a note, not a row: this row owns the family."  # f00f

@@ -1,0 +1,20 @@
+- op: create  # 9dc3
+  at: '2026-09-25T19:07:21Z'  # 9dc3
+  by: agent  # 9dc3
+  actor: jgstern_agent  # 9dc3
+  clock: 1  # 9dc3
+  nonce: 9dc3  # 9dc3
+  data:  # 9dc3
+    kind: work_item  # 9dc3
+    title: "pony: behaviours (be) are not extracted, so actor message handlers are not symbols and their calls are credited to the actor"  # 9dc3
+    status: todo_hard  # 9dc3
+    priority: 3  # 9dc3
+    parent:  # 9dc3
+    tags:  # 9dc3
+    - call_graph  # 9dc3
+    isbefore: []  # 9dc3
+    duplicate_of: []  # 9dc3
+    not_duplicate_of: []  # 9dc3
+    pr_ref:  # 9dc3
+    description: "pony: behaviours (`be`) are not extracted, so an actor's message handlers are not symbols and calls inside them are credited to the actor.\n\nFOUND 2026-09-25 by the docstring-staleness audit (reviewer aside), REPRODUCED on the production path (`analyze_pony`):\n\n    actor Main\n      new create(env: Env) => None\n      be ping() => helper()\n      fun helper() => None\n\n    symbols: Main (actor), Main.create (constructor), Main.helper (method) -- no Main.ping\n    calls Main(actor, 1-9) -> Main.helper      <- should be Main.ping -> Main.helper\n\nMECHANISM: the member walk handles only (\"constructor\", \"method\") node types; the grammar parses `be` as a `behavior` node, which is skipped. Behaviours are the actor model's entry points (asynchronous message handlers), so this hides every actor's receive surface, and the module docstring claims message passing is understood.\n\nFix direction: extract `behavior` nodes as symbols (kind to be decided against the registry: method, with a meta flag, is the likely fit) and credit their calls to them."  # 9dc3
+    fields: {}  # 9dc3
