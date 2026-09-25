@@ -1,0 +1,79 @@
+Original commit body from 8f417f29e5a5aeb465b2a7af646401eff42b7e8e:
+
+Addresses WI-giloh. nim.py resolved every call through the flat registry,
+which keeps ONE declaration per name (the last registered), with no import
+scope, no same-file preference and no visibility check. A call could bind a
+private proc (no `*`) of a module the caller never imported: 96 edges into
+nitter's private `redis_cache.get`, including `cfg.get(...)` in config.nim,
+which declares its own `get*` five lines up.
+
+A per-run `_NimScope` index replaces that lookup for calls. Pass 1 records
+each file's import / from / include / export statements; symbol registration
+records every same-named declaration. A call sees, nearest first:
+1. its own file;
+2. the files `include` joins to it, in either direction (an include pastes
+   the file in, so the group shares private declarations and imports;
+   chronos's selectors2 includes one of three platform files);
+3. exported declarations of the modules it imports (every file of each
+   imported module's include group), narrowed by `from ... import` and
+   `except`, extended transitively through `export m` (module), `export name`
+   (one symbol) and `export m except x`.
+A module-qualified call (`m.f()`, or through an `as` alias) looks only in
+that module. When the module declares no such name, the receiver is a value
+shadowing the module name (nitter: a `query` parameter and a `query`
+module), so the call is treated as UFCS. A library-module qualifier
+(`su.strip`) stays unresolved. Module paths resolve relative to the importer,
+then by module-path suffix anywhere in the repo (the search path, e.g. a
+nimble `src/`); `std/` and `pkg/` are never repo files. Several visible
+candidates go through ListNameResolver, whose confidence (1/sqrt N) says the
+pick is a guess; Nim chooses by argument types, which the analyzer lacks.
+
+The re-export closure is a worklist over (module, filter) states. An earlier
+draft memoised with an in-progress cycle guard, which cached a partial answer
+whose content depended on evaluation order; the include handling had the
+same flaw and became include groups.
+
+Tests: test_nim_scope_resolution.py, 30 multi-file fixtures on the production
+entry point. Every negative case was red on the old lookup; fixtures where
+two same-named declarations compete call BOTH sides, so a one-per-name
+registry fails whichever file registers last (the first draft passed four of
+them by discovery-order luck). The include-group grant, the from-filter
+narrowing, the shadowing fallback and export-except were each mutated back
+and watched go red.
+
+MEASURED (analyze_nim; nitter from the corpus, plus shallow clones of
+nim-chronos c679d29, pixie 30bb510, nimble 33a6bc8; the corpus holds no
+other Nim repo). Diffed by call site:
+- call edges: unchanged in all four (30,199). Only targets move.
+- cross-file edges into a private proc: 1,555 -> 42 (101/482/364/608 ->
+  0/42/0/0). All 42 are inside chronos's selectors2 include group, where
+  private visibility is legal.
+- resolved calls 15,354 -> 13,423 (nitter 902->827, chronos 7,749->7,002,
+  pixie 2,456->2,153, nimble 4,247->3,441).
+  1,931 went unresolved: 1,131 had bound a private proc of another module,
+  800 an exported proc of a module the caller cannot see. Reading samples of
+  those 800 found two recall losses in the draft (an imported module's
+  included files; a value shadowing a module name) and a parsing gap
+  (`export m except x`), all fixed and pinned. A fresh sample of 20 drawn
+  after the fixes: 20 correct losses (`add`, `len`, `inc`, `addLast`,
+  `Option.get`, `Result.error` bound to project procs; nimble's
+  `Path`-typed `dirExists` / `fileExists` / `writeFile` from paths.nim, which
+  the callers do not import; compat/syntaxes' `syntaxes.parseAll`, which
+  names the compiler's proc, not its own wrapper).
+- retargeted 2,528: 871 to a single visible candidate (14 sampled, all
+  corrections: own file over a sibling, the visible module over a private
+  one); 1,657 are now an overload guess among several visible modules, one
+  arbitrary pick replaced by another that lowers its confidence -- NOT
+  claimed as a precision gain either way.
+- nitter's named instances: redis_cache `get` 104 edges (96 cross-file) ->
+  8 (0 cross-file). types.nim `add*` 73 -> 64: 63 are in files that import
+  types directly and 1 is in types.nim; there seq's system `add` and types'
+  `add*` are both visible and only argument types decide. That residual is receiver
+  typing (INV-vigaf's linker direction), not scope.
+
+NOT DONE: templates / macros / iterators / converters are still not symbols
+(WI-losaf), so a call to a template stays unresolved and an included file's
+template calls can fall through to a sibling's proc. Imports inside a
+`when` branch count as visible (the analyzer cannot evaluate the condition).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
