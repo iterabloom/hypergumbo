@@ -30,3 +30,12 @@
     fields:  # 64f7
       statement: "Every call site an analyzer parses emits a calls edge anchored on SOME symbol (INV-foluz). A call inside a module/package-level function literal or initializer emits nothing in nine tree-sitter analyzers; the same site inside a named function emits in every one of them."  # 64f7
       root_cause: "Each analyzer's enclosing-scope walk looks for a function/method node and returns None at the file root, and the call arm skips a call with no enclosing symbol. Go's fix (INV-nopoh): anchor on the module-level declaration's own symbol, else the file pseudo-symbol; both scope walks (anchor and var_types) share one helper."  # 64f7
+- op: update  # 2df8
+  at: '2026-09-25T18:37:30Z'  # 2df8
+  by: agent  # 2df8
+  actor: jgstern_agent  # 2df8
+  clock: 2  # 2df8
+  nonce: 2df8  # 2df8
+  set: {}  # 2df8
+  add:  # 2df8
+    tags: [post_release_focus]  # 2df8

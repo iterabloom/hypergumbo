@@ -26,3 +26,12 @@
   clock: 2  # 458b
   nonce: 458b  # 458b
   message: "PREREQUISITE MET. INV-larol satisfied at dev d7b069b106: an external-program launch now keeps its opacity through the producer stamp, so a catalogue row that classifies a launch can no longer strip it. That was the blocker on this item — opening the overlay door for uncatalogued languages would otherwise hand the measured false confirm (a six-line curl -> net_send overlay making a script that writes into /etc/cron.d return confirmed rc 0) to any user who wrote the obvious overlay. Both dispositions are now safe to pursue on their own merits. Disposition 2 (warn when an overlay declares a language that resolved to no catalogue) remains the strictly smaller one and is correct even if disposition 1 never happens."  # 458b
+- op: update  # 7e02
+  at: '2026-09-25T18:37:27Z'  # 7e02
+  by: agent  # 7e02
+  actor: jgstern_agent  # 7e02
+  clock: 3  # 7e02
+  nonce: '7e02'  # 7e02
+  set: {}  # 7e02
+  add:  # 7e02
+    tags: [post_release_focus]  # 7e02
