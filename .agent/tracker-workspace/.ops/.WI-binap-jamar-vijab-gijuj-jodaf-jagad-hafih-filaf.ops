@@ -1,0 +1,21 @@
+- op: create  # 1feb
+  at: '2026-09-25T00:11:12Z'  # 1feb
+  by: agent  # 1feb
+  actor: jgstern_agent  # 1feb
+  clock: 1  # 1feb
+  nonce: 1feb  # 1feb
+  data:  # 1feb
+    kind: work_item  # 1feb
+    title: "csharp emits no call edge for a call inside a property accessor (get/set/=>): 0 edges from 201 properties on 4 repos"  # 1feb
+    status: todo_hard  # 1feb
+    priority: 3  # 1feb
+    parent:  # 1feb
+    tags:  # 1feb
+    - csharp  # 1feb
+    - analysis_quality  # 1feb
+    isbefore: []  # 1feb
+    duplicate_of: []  # 1feb
+    not_duplicate_of: []  # 1feb
+    pr_ref:  # 1feb
+    description: "FOUND 2026-09-24 while working WI-tisom (~/hypergumbo_lab_notebook/tisom_09242026/).\n\nTHE DEFECT: the C# analyzer emits NO call edge for a call made inside a property accessor: `get { return Helper(); }`, `set { Helper(); }`, and expression-bodied `public int Twice => Helper() * 2;`. In the same fixture, the same call from a method emits `A.Run -> A.Helper`. The property symbols exist (kind=property, spans cover the bodies); nothing is credited to them and nothing is emitted.\n\nMEASURED: on sherpa-onnx, grpc, rabbitmq and microservices-demo, analyze_csharp emits 201 property symbols, 142 of which span more than one line. There are 0 edges from any of them and 1 edge to one.\n\nWHY IT MATTERS: every call made in a C# getter or setter is missing from the call graph. The callee can read as dead, and a slice through the property is empty. WI-tisom stops the noise filter dropping C# properties, but they will carry no call edges until this is fixed.\n\nASKED: credit accessor calls to the property symbol, with the position-keyed enclosing lookup (INV-midag), and add csharp property accessors to the call-anchor gate fixture."  # 1feb
+    fields: {}  # 1feb
