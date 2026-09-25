@@ -203,7 +203,9 @@ def link_wasm_bindgen(
         rust_symbols: Rust symbols from analyzers.
 
     Returns:
-        WasmBindgenLinkResult with wasm_bridge edges.
+        WasmBindgenLinkResult with ``calls`` edges (``meta.bridge_kind="wasm"``).
+        The ``imports`` edges for dynamic WASM loading are added separately
+        by ``wasm_bindgen_linker`` via ``_create_wasm_load_edges``.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -446,7 +448,8 @@ def _create_wasm_load_edges(
                     supply_chain_reason="WASM module loaded dynamically",
                 ))
 
-            # Create wasm_load edge from JS file to WASM module
+            # Create an ``imports`` edge (meta.framework_dispatch=
+            # "wasm_instantiate") from the JS file to the WASM module
             rel_path = sym.path
             try:
                 rel_path = str(Path(sym.path).relative_to(repo_root))

@@ -1051,7 +1051,7 @@ def find_evidence_type_producer_violations(
 
     Defaults to ``fstring_mode="expand"`` per WI-nubuv ext B: the only
     live producer f-string for this axis is
-    ``linkers/inheritance.py:258`` (``f"ast_{edge_type}"``), and the
+    ``linkers/inheritance.py::_create_inheritance_edges`` (``f"ast_{edge_type}"``), and the
     expansion via function-local ``edge_type`` resolution yields
     ``{ast_extends, ast_implements}`` — both canonical members of the
     AXIS_INFERENCE_PATHWAY registry. Expansion mode silently accepts the

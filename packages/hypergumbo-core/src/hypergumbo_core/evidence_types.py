@@ -9,12 +9,12 @@ queried from ``Edge.meta`` rather than smuggled into the evidence label.
 
 This module is the single source of truth: ``scripts/generate-schema``
 imports ``EVIDENCE_TYPES`` to emit ``x-axis-of-values`` annotations on
-the ``Edge.evidence_type`` schema property. (The schema enum stays open
-— ``type: "string"`` only — until per-cluster Phase 4b producer
-migrations land; see ADR-0028 §"Phase 4" and the Path-B decision in the
-Phase 1 plan file.) Consumers that need a subset of evidence types
-should call ``evidence_types_on_axis(...)`` rather than maintain their
-own hardcoded set; the property test in
+the ``Edge.evidence_type`` schema property. (The schema property stays
+open — ``type: "string"`` with no ``enum`` — per the Path-B decision in
+the Phase 1 plan file; the Phase 4b enum closure (ADR-0028 §"Phase 4")
+closed this registry, not the schema enum.) Consumers that need a
+subset of evidence types should call ``evidence_types_on_axis(...)``
+rather than maintain their own hardcoded set; the property test in
 ``tests/test_evidence_types.py`` enforces that every hardcoded set in
 the codebase whose name contains ``EVIDENCE_TYPE`` is a subset of this
 registry, and the L3 producer-coherence linter at
@@ -44,7 +44,10 @@ audit-findings 0008 / 0012 / 0014 for per-value fold targets.
 
 Seeding completeness (per the Phase 1 plan file):
 
-- 207 static-literal evidence_type values from ``grep packages/*/src``.
+- Phase 1 seed: 207 static-literal evidence_type values from
+  ``grep packages/*/src``. After the Phase 3 folds and the Phase 4b
+  closure the registry holds 126 values (116 ``inference_pathway``,
+  10 ``pending_classification``).
 - 10 enumerable dynamic variants from the f-string emits
   (``{pattern_type}_emit`` / ``{pattern_type}_endpoint``) in
   ``websocket.py`` for the 6 registered ``pattern_type`` literals
@@ -55,13 +58,15 @@ Seeding completeness (per the Phase 1 plan file):
   no longer seeded.
 - The Phase-3 producer migration retired the former ``di_binding``
   colon-form placeholder: the DI-resolution site
-  (``di_resolution.py:628``) now emits the canonical ``ast_call_direct``
-  evidence type plus ``meta["framework_dispatch"]=binding.source`` and
+  (``_create_di_edges`` in ``linkers/di_resolution.py``) now emits the
+  canonical ``ast_call_direct`` evidence type plus
+  ``meta["framework_dispatch"]=binding.source`` and
   ``meta["mechanism"]="di"``, so ``di_binding`` is no longer seeded
   (``find_evidence_type('di_binding')`` returns None).
-- The dynamic ``f"ast_{edge_type}"`` at ``inheritance.py:368`` only
-  yields ``ast_extends`` / ``ast_implements``, both already in the
-  static set.
+- The dynamic ``f"ast_{edge_type}"`` in ``_create_inheritance_edges``
+  (``linkers/inheritance.py``) and in ``_extract_inheritance_edges``
+  (``js_ts.py``) only yields ``ast_extends`` / ``ast_implements``, both
+  already in the static set.
 """
 
 from __future__ import annotations

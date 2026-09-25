@@ -11,7 +11,10 @@ and Lazarus IDE. Modern Object Pascal supports object-oriented programming.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Collect all symbols (programs, units, procedures, functions)
+1. Pass 1: Collect programs (kind ``program``), units (kind ``module``) and
+   non-nested procedures/functions (kind ``function``, meta ``proc_kind``);
+   descent stops at each procedure, so nested procedures are not symbols
+   (WI-sigit)
 2. Pass 2: Extract call edges from exprCall and identifier-statement patterns
 
 The base class handles grammar checking, parser creation, file discovery,

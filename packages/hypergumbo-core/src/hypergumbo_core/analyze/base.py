@@ -2,8 +2,9 @@
 """Base classes and utilities for language analyzers.
 
 This module provides shared infrastructure for all language analyzers,
-eliminating duplication across the ~128 analyzer files spread across
-the four ``hypergumbo-lang-*`` packages.
+eliminating duplication across the analyzer files (119 call
+``register_analyzer``) spread across the five ``hypergumbo-lang-*``
+packages.
 
 Shared Components
 -----------------
@@ -20,7 +21,7 @@ Shared Components
 - **ID generation and stable identity**: ``make_symbol_id`` / ``make_file_id``
   build node ids; a separate layer builds the content-addressed
   ``stable_id`` that survives re-analysis. ``assemble_stable_id`` is the
-  construction chokepoint (ADR-0034), with typed and route-shaped variants
+  construction chokepoint (ADR-0035 §1), with typed and route-shaped variants
   (``make_typed_stable_id``, ``make_route_stable_id``) and post-pass
   populators that fill or widen identity once the whole symbol set is known
   (``populate_kind_stable_ids``, ``populate_synthetic_class_b_identity``,

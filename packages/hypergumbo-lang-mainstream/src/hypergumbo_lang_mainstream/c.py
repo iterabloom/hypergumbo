@@ -35,7 +35,7 @@ Why This Design
 - Optional dependency keeps base install lightweight
 - C support is separate from other languages to keep modules focused
 - Two-pass allows cross-file call resolution
-- Same pattern as PHP/JS analyzers for consistency
+- Same two-pass registry pattern as the PHP analyzer
 - .h dedup: Both C and C++ analyzers process .h files, creating 2x symbols.
   On Falco (C/C++ repo), 44/50 .h files were duplicated and C orphan rate
   was 92.1%. Fix: skip .h in C analyzer when C++ files exist.
@@ -495,8 +495,12 @@ def _extract_edges(
     """Extract edges from a parsed C tree (pass 2).
 
     Uses global symbol registry to resolve cross-file references.
-    Uses ``local_symbols`` (file-scoped) to correctly identify the enclosing
-    function even when multiple files define functions with the same name.
+    Identifies the enclosing function by position through
+    ``symbols_at(file_symbols)`` (this file's declarations only), so it stays
+    correct when multiple files define functions with the same name.
+    ``local_symbols`` is consulted only to look up the function symbol when
+    linking lookup functions to dispatch tables (and, when ``file_symbols``
+    is omitted, to rebuild this file's declaration list).
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     if resolver is None:  # pragma: no cover - defensive

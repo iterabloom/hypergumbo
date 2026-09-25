@@ -2,8 +2,12 @@
 """Framework linker: React component for detecting JSX composition edges.
 
 This linker scans JavaScript/TypeScript (JSX/TSX) files for component usage
-in JSX expressions and creates ``renders_component`` edges between the
-enclosing component and the rendered child component.
+in JSX expressions and creates ``references`` edges (tagged
+``meta.ref_construct="jsx"``, ``evidence_type="jsx_element"``) from the file
+doing the rendering to the rendered child component. The source is not the
+enclosing component: it is a per-file synthetic id
+``typescript:<rel_path>:0-0:<ComponentName>:jsx_usage`` (no symbol is emitted
+for it, and ``line`` is 0).
 
 How It Works
 ------------
@@ -17,8 +21,9 @@ Two-phase detection:
 
 2. **Scan for JSX usage**: Scan JS/TS source files for JSX element tags
    (``<ComponentName``) and match them against the component map. For each
-   match, create a ``renders_component`` edge from the file to the target
-   component.
+   match, create a ``references`` edge (``meta.ref_construct="jsx"``) from the
+   file's synthetic ``jsx_usage`` id to the target component, deduplicated per
+   (file, component name).
 
 Why This Design
 ---------------
@@ -200,7 +205,9 @@ def link_react_components(
         js_ts_symbols: JavaScript/TypeScript symbols from analyzers.
 
     Returns:
-        ReactComponentLinkResult with renders_component edges.
+        ReactComponentLinkResult with ``references`` edges
+        (``meta.ref_construct="jsx"``) from per-file synthetic ``jsx_usage``
+        ids to component definitions.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -338,7 +345,7 @@ REACT_COMPONENT_REQUIREMENTS = [
     priority=42,  # After IPC (40), before HTTP (45)
     description=(
         "React component composition - links JSX element usage "
-        "to component definitions via renders_component edges"
+        "to component definitions via references edges (ref_construct=jsx)"
     ),
     requirements=REACT_COMPONENT_REQUIREMENTS,
     activation=LinkerActivation(

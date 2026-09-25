@@ -1,26 +1,29 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge linker: Node.js N-API for connecting JavaScript/TypeScript calls to C/C++ addon functions.
 
-This linker creates napi_bridge edges between JavaScript/TypeScript code that
-calls into native addons and the C/C++ functions that register those exports
-via the N-API or node-addon-api interfaces.
+This linker creates ``calls`` edges (tagged ``meta.bridge_kind="napi"``)
+between JavaScript/TypeScript code that calls into native addons and the C/C++
+functions that register those exports via the N-API or node-addon-api
+interfaces.
 
 How It Works
 ------------
 Two-phase source scanning of C/C++ files:
 
 1. **N-API (C)**: Scans for ``napi_create_function(env, "funcName", ...)``
-   which registers a C function under a string name. The ``napi_set_named_property``
-   call exports that function on the addon's exports object. The linker maps
-   the registered string name to the C callback function and the export name
-   to the JS call target.
+   which registers a C function under a string name. The linker uses that
+   string literal as the JS-visible name and maps it to the C callback
+   function. ``napi_set_named_property`` is NOT consulted: the
+   ``_NAPI_SET_NAMED_PROPERTY_RE`` pattern is defined but unused, so an export
+   published under a different property name is not matched.
 
 2. **node-addon-api (C++)**: Scans for ``Napi::Function::New(env, FuncRef)``
    inside ``exports.Set("name", ...)`` calls, and ``InstanceMethod("name", &Class::Method)``
    declarations. These register C++ functions under JS-visible names.
 
 After building a map of {js_export_name -> C/C++ symbol}, the linker iterates
-unresolved JS/TS call edges and resolves them against the export map.
+every existing edge whose destination is ``:unresolved`` (no language filter is
+applied) and resolves it against the export map by its trailing name.
 
 Why This Design
 ---------------
@@ -203,7 +206,7 @@ def link_napi(
         edges: All existing edges (used for unresolved call matching).
 
     Returns:
-        NAPILinkResult with napi_bridge edges.
+        NAPILinkResult with ``calls`` edges (``meta.bridge_kind="napi"``).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

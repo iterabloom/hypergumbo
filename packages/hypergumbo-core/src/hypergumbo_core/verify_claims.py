@@ -40,10 +40,11 @@ Verdict Types
 -------------
 - ``confirmed``: Claim was actively checked and held (no violations found)
 - ``confirmed_with_caveats``: Clean, but the clean answer rests on something
-  the reader must see — a sanitizer supplied by the analysed repository, or
-  named opaque launch sites. Carries a structured ``caveats`` list and exits
-  **3** (ADR-0016 §4). A consumer testing ``verdict == "confirmed"`` will not
-  see these; use ``CONFIRMING_VERDICTS``.
+  the reader must see — for example a sanitizer supplied by the analysed
+  repository, or named opaque launch sites (see Caveats below for every
+  kind). Carries a structured ``caveats`` list and exits **3** (ADR-0016 §4).
+  A consumer testing ``verdict == "confirmed"`` will not see these; use
+  ``CONFIRMING_VERDICTS``.
 - ``violated``: Specific evidence contradicts the claim
 - ``inconclusive``: Verification couldn't proceed or couldn't be trusted —
   no machine-checkable constraint, broken input, missing catalog, or the
@@ -55,8 +56,9 @@ Verdict Types
 For taint-flow claims the adjudication travels with the verdict rather than
 being asserted by this module. Structural analysis produces ``approximate``
 confidence; the ADR-0017 §3a data-dependence walk produces ``precise`` where it
-confirms a dependence and ``approximate`` / ``ddg_mixed`` where it ran without
-confirming one. A verdict's ``analysis_methods`` breakdown and each evidence
+confirms a dependence and ``approximate`` where it ran without confirming one
+(the ``analysis_method`` field records the separate ``ddg`` / ``ddg_mixed`` /
+``structural`` axis). A verdict's ``analysis_methods`` breakdown and each evidence
 row's ``confidence`` / ``analysis_method`` report what actually happened. This
 module previously hardcoded the literal ``approximate`` into every violated
 verdict, which made a ``precise`` finding indistinguishable from a structural
@@ -76,10 +78,13 @@ therefore report clean.
 
 Caveats
 -------
-A ``confirmed_with_caveats`` verdict carries a structured ``caveats`` list,
-built through one shared constructor so the text and JSON renderers disclose
-identically. Nine ``CAVEAT_*`` constants exist, plus one unconstanted kind
-(``deferred_crossing``). The four longest-standing:
+Any verdict may carry a structured ``caveats`` list, built through one shared
+constructor so the text and JSON renderers disclose identically. On a clean
+verdict a non-empty list makes it ``confirmed_with_caveats``;
+``CAVEAT_CHOICE_SHAPED_SOURCE`` rides a ``violated`` verdict, and caveats
+raised on a clean path survive a coverage downgrade to ``inconclusive``
+(``_require_coverage_to_confirm``). Twelve ``CAVEAT_*`` constants exist, plus
+one unconstanted kind (``deferred_crossing``). The four longest-standing:
 
 - ``CAVEAT_USER_SUPPLIED_SANITIZER`` — the clean answer depends on a
   sanitizer, or a function summary, supplied by the analysed repository
@@ -102,10 +107,11 @@ identically. Nine ``CAVEAT_*`` constants exist, plus one unconstanted kind
   (``_ARM_TAINT``, ``untyped_receiver_sink_zones``), which discloses the sink
   receivers it could not type.
 
-The remaining six — ``CAVEAT_UNKNOWN_RECEIVER_SCOPE``,
-``CAVEAT_ANALYZER_METHOD_CALL_BLIND``, ``CAVEAT_ANALYZER_SUPPRESSED_METHODS``,
-``CAVEAT_ANALYZER_CONSTRUCT_BLIND``, ``CAVEAT_SINK_BEFORE_SOURCE_ONLY`` and
-``CAVEAT_HIGHER_FIDELITY_AVAILABLE`` — are each documented at their own
+The remaining eight — ``CAVEAT_ACCESSOR_NAME_RECEIVER``,
+``CAVEAT_UNKNOWN_RECEIVER_SCOPE``, ``CAVEAT_ANALYZER_METHOD_CALL_BLIND``,
+``CAVEAT_ANALYZER_SUPPRESSED_METHODS``, ``CAVEAT_ANALYZER_CONSTRUCT_BLIND``,
+``CAVEAT_SINK_BEFORE_SOURCE_ONLY``, ``CAVEAT_HIGHER_FIDELITY_AVAILABLE`` and
+``CAVEAT_CHOICE_SHAPED_SOURCE`` — are each documented at their own
 definition.
 
 A verdict may carry more than one kind at once.
@@ -592,6 +598,20 @@ CAVEAT_ANALYZER_SUPPRESSED_METHODS = "analyzer_suppressed_methods"
 #: shipped catalogue at render time.
 CAVEAT_ANALYZER_CONSTRUCT_BLIND = "analyzer_construct_blind"
 
+#: INV-muhij remedy (3). Every sink call in the finding precedes its source, so the
+#: walk had no route to demonstrate and the row is not evidence of one. The row is
+#: still REPORTED -- this is verdict-neutrality, not removal -- but it does not by
+#: itself hold a claim at ``violated``.
+#:
+#: WHY IT IS NOT SIMPLY DROPPED. A loop makes a textually-earlier sink genuinely
+#: reachable from a later source, so the marker means "the walk could not run", not
+#: "the flow is impossible". The census behind this rule read all 14 such rows on the
+#: 16-repository cohort against source: 1 was true (7.1%) and NO row had a loop
+#: enclosing both calls, which refutes the loop defence empirically -- but the walk
+#: cannot check enclosure per row (the decision is line-based and the DDG exposes no
+#: loop spans there), so the rule is broader than ideal and says so.
+CAVEAT_SINK_BEFORE_SOURCE_ONLY = "sink_before_source_only"
+
 #: A higher-fidelity analyzer for a language in this repository is INSTALLED on
 #: this machine and was not used (WI-lagod).
 #:
@@ -607,20 +627,6 @@ CAVEAT_ANALYZER_CONSTRUCT_BLIND = "analyzer_construct_blind"
 #: ID appears in ``analysis_fidelity`` and this caveat does not fire — if it
 #: fired either way, enabling the backend would leave the verdict looking just
 #: as qualified and nobody would enable it.
-#: INV-muhij remedy (3). Every sink call in the finding precedes its source, so the
-#: walk had no route to demonstrate and the row is not evidence of one. The row is
-#: still REPORTED -- this is verdict-neutrality, not removal -- but it does not by
-#: itself hold a claim at ``violated``.
-#:
-#: WHY IT IS NOT SIMPLY DROPPED. A loop makes a textually-earlier sink genuinely
-#: reachable from a later source, so the marker means "the walk could not run", not
-#: "the flow is impossible". The census behind this rule read all 14 such rows on the
-#: 16-repository cohort against source: 1 was true (7.1%) and NO row had a loop
-#: enclosing both calls, which refutes the loop defence empirically -- but the walk
-#: cannot check enclosure per row (the decision is line-based and the DDG exposes no
-#: loop spans there), so the rule is broader than ideal and says so.
-CAVEAT_SINK_BEFORE_SOURCE_ONLY = "sink_before_source_only"
-
 CAVEAT_HIGHER_FIDELITY_AVAILABLE = "higher_fidelity_available"
 
 #: The terminal segments of the catalogue source names whose value the far side
@@ -1166,20 +1172,23 @@ class ClaimVerdict:
             INV-gobob, INV-mofih, INV-nufob).
 
             ``confirmed_with_caveats`` means the claim held, but part of
-            the reasoning rests on something the tool could not verify —
-            today, an entry the ANALYSED REPOSITORY supplied about
-            itself. It is a CONFIRMING verdict (see
+            the reasoning rests on something the tool could not verify or
+            see (a repository-supplied sanitizer, an untyped receiver, a
+            deferred crossing, and the other kinds listed under
+            ``caveats``). It is a CONFIRMING verdict (see
             :data:`CONFIRMING_VERDICTS`), so the coverage gate still
             reaches it and blindness still downgrades it all the way to
             ``inconclusive``. See ``caveats`` for what qualified it.
-        caveats: Structured reasons the verdict is ``confirmed_with_caveats``,
-            empty otherwise. Each entry is ``{"kind": ..., "entries": [...],
-            "detail": ...}``. ``kind`` is the machine-branchable axis —
-            currently only :data:`CAVEAT_USER_SUPPLIED_SANITIZER`, and the
-            structure is a LIST of typed entries rather than a bool because
-            ADR-0016 §4's original consumer (opaque boundaries that could not
-            be verified) is the second kind and should not need a second
-            field. Shipped with exactly one kind populated.
+        caveats: Structured qualifications on the verdict; empty when there
+            are none. On a clean verdict a non-empty list is what makes it
+            ``confirmed_with_caveats``; a ``violated`` verdict can carry
+            :data:`CAVEAT_CHOICE_SHAPED_SOURCE`, and an ``inconclusive``
+            verdict keeps whatever caveats its clean path raised before the
+            coverage downgrade. Each entry is ``{"kind": ..., "entries":
+            [...], "detail": ...}``. ``kind`` is the machine-branchable axis —
+            one of the ``CAVEAT_*`` constants or ``deferred_crossing`` (see
+            the module docstring) — and the structure is a LIST of typed
+            entries rather than a bool so each new kind needs no new field.
         evidence_count: Number of I/O chains that violate the claim (0 if confirmed).
         details: Human-readable explanation.
         evidence: Bounded, deduplicated list of per-flow drill-down records for

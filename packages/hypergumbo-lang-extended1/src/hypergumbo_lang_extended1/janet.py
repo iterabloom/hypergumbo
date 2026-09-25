@@ -14,7 +14,9 @@ Implementation approach:
 - Handles Janet-specific constructs like defn, def, and tuple calls
 
 Key constructs extracted:
-- (defn name [args] body) - function definitions
+- (defn name [args] body) - function definitions: the grammar's
+  ``extra_defs`` node covers defn, defn-, defmacro and varfn, all emitted
+  as kind ``function``
 - (def name value) - variable definitions
 - (name args) - function calls (tuples)
 """

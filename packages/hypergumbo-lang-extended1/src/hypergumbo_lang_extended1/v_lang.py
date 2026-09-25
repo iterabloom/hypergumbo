@@ -10,11 +10,13 @@ fast, and safe. It aims to be a pragmatic alternative to C with modern features.
 Implementation approach:
 - Uses TreeSitterAnalyzer base class for two-pass orchestration
 - Uses tree-sitter-language-pack for V grammar
-- Handles V-specific constructs like pub visibility, modules, structs, enums
+- Handles V-specific constructs: pub visibility (meta ``is_public``), structs
+  (kind ``class``), enums and interfaces; ``module`` declarations are not
+  handled
 
 Key constructs extracted:
 - function_declaration: fn name(params) return_type { body }
-- struct_declaration: struct Name { fields }
+- struct_declaration: struct Name { fields } (kind ``class``)
 - enum_declaration: enum Name { variants }
 - interface_declaration: interface Name { methods }
 - import_declaration: import module

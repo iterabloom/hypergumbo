@@ -1644,8 +1644,9 @@ def _extract_ruby_delegates(
         delegate :auto_resolve_after, to: :account
         delegate :name, :email, to: :user
 
-    This creates ``delegates_to`` edges from the declaring class to the
-    target method on the associated class. The target class is inferred
+    This creates ``references`` edges (meta framework_dispatch
+    ``ruby_delegate``) from the declaring class to the target method on the
+    associated class. The target class is inferred
     by PascalCasing the ``to:`` symbol name (e.g., ``:account`` → ``Account``).
 
     Special targets like ``:class`` are skipped as they don't create
@@ -3192,7 +3193,8 @@ class RubyAnalyzer(TreeSitterAnalyzer):
             all_edges.extend(assoc_edges)
 
         # Pass 2d: Extract Ruby delegate edges (delegate :method, to: :association)
-        # These create delegates_to edges from class -> target method.
+        # These create references edges (meta framework_dispatch
+        # ``ruby_delegate``) from class -> target method.
         for rb_file, analysis in file_analyses.items():
             try:
                 source = rb_file.read_bytes()

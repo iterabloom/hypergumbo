@@ -7,28 +7,31 @@ template architecture and component relationships.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for single-pass orchestration:
-1. Pass 1: Extract blocks, extends, includes, macros, and control structures
-2. Identifies template inheritance and composition patterns
+Uses TreeSitterAnalyzer base class for two-pass orchestration:
+1. Pass 1 (``extract_symbols_from_file``): Extract blocks, macros and
+   control structures as symbols
+2. Pass 2 (``extract_edges_from_file``): Re-walk the AST to emit the
+   template inheritance and composition edges (``extends`` / ``includes``);
+   they need no cross-file resolution, so the walk is repeated rather than
+   resolved against a registry
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Twig-specific extraction
-logic. Edges (extends_template, includes_template) are created during Pass 1
-alongside symbols, since they don't require cross-file resolution.
+logic.
 
 Symbols Extracted
 -----------------
 - **Blocks**: Block definitions ({% block name %})
-- **Extends**: Template inheritance ({% extends "base.twig" %})
-- **Includes**: Template includes ({% include "partial.twig" %})
 - **Macros**: Reusable template functions ({% macro name() %})
 - **For loops**: Iteration structures ({% for item in items %})
 - **Conditionals**: If statements ({% if condition %})
 
 Edges Extracted
 ---------------
-- **extends_template**: Links child template to parent template
-- **includes_template**: Links include statements to templates
+- **extends**: template file -> ``twig:template:<name>`` for
+  {% extends "base.twig" %}
+- **includes**: template file -> ``twig:template:<name>`` for
+  {% include "partial.twig" %} and {{ include() }}
 
 Why This Design
 ---------------
@@ -475,9 +478,11 @@ class TwigAnalyzer(TreeSitterAnalyzer):
     ) -> FileAnalysis:
         """Extract Twig template symbols and edges from a Twig file.
 
-        Note: Twig edges (extends_template, includes_template) are extracted
-        during Pass 1 since they don't require cross-file symbol resolution.
-        We store them via import_aliases with a special key for later retrieval.
+        Note: the shared walker also collects the ``extends`` / ``includes``
+        edges here and serialises them into import_aliases under
+        ``__edge_<i>__`` keys, but nothing reads those entries back; the
+        emitted edges come from ``extract_edges_from_file`` re-walking the
+        AST in Pass 2.
         """
         analysis = FileAnalysis()
         # Collect edges during symbol extraction; will be added in post_process

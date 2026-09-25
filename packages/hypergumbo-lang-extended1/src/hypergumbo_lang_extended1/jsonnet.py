@@ -8,7 +8,8 @@ especially with Kubernetes (Ksonnet, Tanka), Grafana, and other systems.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-- Pass 1: Collect symbols (local functions, local variables, object methods)
+- Pass 1: Collect symbols (local functions, local variables, object methods,
+  object fields)
 - Pass 2: Extract edges (function calls, imports)
 
 The base class handles grammar checking, parser creation, file discovery,

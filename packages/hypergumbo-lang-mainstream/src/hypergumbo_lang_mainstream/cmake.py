@@ -389,10 +389,10 @@ class CMakeAnalyzer(TreeSitterAnalyzer):
 
     Uses tree-sitter-cmake to parse CMakeLists.txt and *.cmake files.
     Extracts projects, library/executable targets, functions, macros,
-    packages, subdirectories, and target_link_libraries edges.
+    packages, subdirectories, and ``links`` edges from target_link_libraries.
 
     Overrides ``analyze`` because CMake uses a single-pass approach: both
-    symbols and edges (target_link_libraries) are extracted together since
+    symbols and ``links`` edges (target_link_libraries) are extracted together since
     target link references need the target registry built during the same pass.
     """
 

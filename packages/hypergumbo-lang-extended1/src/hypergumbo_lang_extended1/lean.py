@@ -3,16 +3,19 @@
 
 This analyzer uses tree-sitter to parse Lean 4 files and extract:
 - Definition declarations (def, abbrev)
-- Theorem and lemma declarations
-- Structure definitions
+- Theorem and lemma declarations (kind ``theorem``; lemmas carry meta
+  ``is_lemma``)
+- Structure definitions (kind ``struct``)
 - Inductive type definitions
 - Class and instance definitions
 - Import statements
 
 Lean 4 is an interactive theorem prover and programming language.
 Unlike typical programming languages, "calls" are less meaningful than
-"references" (dependencies between theorems/lemmas). We model theorem
-dependencies as "imports" edges for now.
+"references" (dependencies between theorems/lemmas). Dependencies are
+``references`` edges (confidence 0.80) from each declaration to identifiers
+in its signature/body; ``imports`` edges are emitted only for import
+statements.
 
 How It Works
 ------------

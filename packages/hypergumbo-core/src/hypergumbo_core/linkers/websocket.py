@@ -800,7 +800,9 @@ def link_websocket(
         files_with_patterns[ep.file_path] = ep.pattern_type
 
     # Create file symbols for all files with WebSocket patterns
-    # These enable slice traversal of websocket_message edges.
+    # These enable slice traversal of the file-sourced edges this linker
+    # emits: event_publishes (meta.channel_kind="websocket"), references
+    # (meta.ref_construct="websocket_endpoint") and calls (meta.protocol="ws").
     #
     # INV-ronuf: skip synthesis when the canonical id is already present in
     # ``existing_ids`` (i.e., an analyzer or the orchestrator's dangling-

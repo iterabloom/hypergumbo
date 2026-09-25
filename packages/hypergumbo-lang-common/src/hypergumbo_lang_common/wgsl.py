@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""WGSL (WebGPU Shading Language) analysis pass using tree-sitter-wgsl.
+"""WGSL (WebGPU Shading Language) analysis pass using tree-sitter.
 
 This analyzer uses tree-sitter to parse WebGPU Shading Language files and extract:
 - Shader functions (entry points marked with @vertex, @fragment, @compute)
 - Struct definitions
-- Uniform/storage buffer bindings (@group/@binding)
+- Uniform/storage buffer bindings (kind ``uniform``/``storage``); any other
+  global carrying @group/@binding is kind ``variable`` with group/binding in meta
 - Function calls
 
-If tree-sitter-wgsl is not installed, the analyzer
-gracefully degrades and returns an empty result.
+If the wgsl grammar is not available, the analyzer warns and returns a
+skipped result.
 
 How It Works
 ------------
@@ -24,7 +25,7 @@ Why This Design
 ---------------
 - TreeSitterAnalyzer eliminates boilerplate orchestration code
 - Optional dependency keeps base install lightweight
-- Uses tree-sitter-wgsl package for grammar (via language_pack_name)
+- Uses the ``wgsl`` grammar from tree-sitter-language-pack (via language_pack_name)
 - WGSL-specific: shader entry points, bindings are first-class
 - Useful for WebGPU graphics and compute analysis
 - Complements GLSL analyzer for shader coverage

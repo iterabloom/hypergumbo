@@ -23,9 +23,11 @@ Include statements emit only edges, not Symbols (per audit-findings
 
 Edges Extracted
 ---------------
-- **includes_class**: Links the manifest file to included class definitions
-- **requires_resource**: Links resource dependencies
-- **notifies_resource**: Links ``notify`` resource relationships
+- **includes**: Links the manifest file to included class definitions
+- **depends_on**: Resource relationships from ``require`` (evidence_type
+  ``require``, meta ref_construct ``puppet_require``) and ``notify``
+  (evidence_type ``notify``, meta ref_construct ``puppet_notify`` and
+  ``refresh: True``) attributes
 
 Why This Design
 ---------------
@@ -317,14 +319,14 @@ class _PuppetExtractor:
         )
         self._symbols.append(symbol)
 
-        # Create requires_resource edges
+        # Create depends_on edges for require/notify relationships
         if "require" in attributes:
             self._create_require_edge(symbol_id, attributes["require"], line)
         if "notify" in attributes:
             self._create_notify_edge(symbol_id, attributes["notify"], line)
 
     def _create_require_edge(self, src_id: str, require_value: str, line: int) -> None:
-        """Create a requires_resource edge."""
+        """Create a depends_on edge for a ``require`` attribute."""
         # Parse require value like "Package['nginx']"
         edge = Edge.create(
             src=src_id,
@@ -339,7 +341,7 @@ class _PuppetExtractor:
         self._edges.append(edge)
 
     def _create_notify_edge(self, src_id: str, notify_value: str, line: int) -> None:
-        """Create a notifies_resource edge."""
+        """Create a depends_on edge for a ``notify`` attribute (meta refresh=True)."""
         edge = Edge.create(
             src=src_id,
             dst=f"puppet:resource:{notify_value}",

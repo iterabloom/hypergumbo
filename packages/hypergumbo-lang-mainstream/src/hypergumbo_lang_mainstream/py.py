@@ -6357,7 +6357,8 @@ def _extract_edges(
                     ))
 
             # Check for Django signal receiver decorator: @receiver(signal, ...)
-            # Creates signal_receiver edges from signal to handler
+            # Creates dispatches_to edges (meta framework_dispatch
+            # ``django_signal``) from signal to handler
             _process_signal_receiver(decorated_symbol, decorator, line)
 
     def _process_signal_receiver(
@@ -6365,10 +6366,12 @@ def _extract_edges(
         decorator: ast.expr,
         line: int,
     ) -> None:
-        """Create signal_receiver edges for Django @receiver decorators.
+        """Create ``dispatches_to`` edges for Django @receiver decorators.
 
         When a function is decorated with @receiver(signal) or @receiver([sig1, sig2]),
-        create signal_receiver edges from each signal to the decorated function.
+        create a ``dispatches_to`` edge (evidence_type ``ast_decorator``, meta
+        framework_dispatch ``django_signal``) from each signal to the decorated
+        function.
         """
         # Must be a call: @receiver(signal, ...)
         if not isinstance(decorator, ast.Call):
@@ -6399,7 +6402,7 @@ def _extract_edges(
             # Single signal: @receiver(post_save)
             signal_nodes = [first_arg]
 
-        # Create signal_receiver edges for each signal
+        # Create a dispatches_to edge for each signal
         for signal_node in signal_nodes:
             signal_symbol = None
 

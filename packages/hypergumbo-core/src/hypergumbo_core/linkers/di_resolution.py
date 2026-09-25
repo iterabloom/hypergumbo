@@ -578,7 +578,7 @@ def _create_di_edges(
     symbols: list[Symbol],
     run: AnalysisRun,
 ) -> list[Edge]:
-    """Create di_resolves edges from interface methods to implementation methods.
+    """Create ``dispatches_to`` edges from interface to implementation methods.
 
     For each binding (interface_name → impl_name), finds methods on both the
     interface and implementation with matching short names, then creates edges.
@@ -589,7 +589,8 @@ def _create_di_edges(
         run: AnalysisRun for provenance.
 
     Returns:
-        List of di_resolves edges.
+        List of ``dispatches_to`` edges (``meta.mechanism="di"``,
+        ``meta.framework_dispatch`` = the binding source).
     """
     # Index: class_name -> list of method symbols
     methods_by_class: dict[str, list[Symbol]] = defaultdict(list)
@@ -668,7 +669,7 @@ def _create_di_registers_edges(
     symbols: list[Symbol],
     run: AnalysisRun,
 ) -> list[Edge]:
-    """Create di_registers edges from NestJS module classes to providers.
+    """Create ``references`` edges from NestJS module classes to providers.
 
     For each ``nestjs:module`` binding (module_name → provider_name), finds the
     module and provider class symbols and creates a class-level edge.
@@ -679,7 +680,8 @@ def _create_di_registers_edges(
         run: AnalysisRun for provenance.
 
     Returns:
-        List of ``di_registers`` edges.
+        List of ``references`` edges (``meta.mechanism="di_registration"``,
+        ``meta.framework_dispatch="nestjs_module"``).
     """
     module_bindings = [b for b in bindings if b.source == "nestjs:module"]
     if not module_bindings:
@@ -779,15 +781,16 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
     # Step 1: Extract explicit DI bindings from source
     explicit_bindings = extract_bindings_from_source(ctx.repo_root)
 
-    # Step 2: Resolution cascade (for di_resolves method-level edges)
+    # Step 2: Resolution cascade (for method-level dispatches_to edges)
     all_bindings = resolve_bindings(
         ctx.symbols, ctx.edges, explicit_bindings,
     )
 
-    # Step 3: Create di_resolves edges
+    # Step 3: Create dispatches_to edges (meta.mechanism="di")
     new_edges = _create_di_edges(all_bindings, ctx.symbols, run)
 
-    # Step 4: Create di_registers edges for NestJS module registrations
+    # Step 4: Create references edges (meta.mechanism="di_registration")
+    # for NestJS module registrations
     new_edges.extend(_create_di_registers_edges(
         explicit_bindings, ctx.symbols, run,
     ))
@@ -805,10 +808,11 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
     "di-resolution-linker",
     priority=65,
     description=(
-        "Creates di_resolves edges from interface methods to DI-bound "
-        "implementation methods (Guice bind/provides/implementedBy, "
+        "Creates dispatches_to edges (mechanism=di) from interface methods "
+        "to DI-bound implementation methods (Guice bind/provides/implementedBy, "
         "Spring, ASP.NET Core, NestJS, Angular, Inversify, Koin, "
-        "Python injector, Java SPI)"
+        "Python injector, Java SPI), plus references edges "
+        "(mechanism=di_registration) for NestJS @Module registrations"
     ),
     activation=LinkerActivation(always=True),
     # CNF: per the description, DI patterns span Java (Guice/Spring/SPI),

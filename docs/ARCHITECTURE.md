@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **338** Python modules (140 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 96 core, 4 CLI, 36 tracker)
-- **48862** symbols (functions, classes, methods)
-- **192940** edges by type:
-  - calls: 110636
-  - contains: 44804
-  - imports: 15481
-  - instantiates: 11715
-  - references: 7104
+- **48937** symbols (functions, classes, methods)
+- **193199** edges by type:
+  - calls: 110788
+  - contains: 44875
+  - imports: 15492
+  - instantiates: 11721
+  - references: 7122
   - module_attr_ref: 1667
-  - other: 1533
+  - other: 1534
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 48862 Symbols + 192940 Edges + UsageContexts           │
+│  Output: 48937 Symbols + 193199 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -244,7 +244,7 @@ A relationship between two symbols (e.g., function calls).
 - `dst_ref`: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
 - `derived_from`: Symbol (or Edge) IDs of the INPUT records the producer consumed to construct this Edge (INV-rukor) — the records whose presence decided it, e.g. the unresolved edge a linker resolved or the inheritance edges a dispatch walked. Ids the producer MINTED in the same run are not consumed and are left out, so a pass that builds both ends from a file scan records ``[]`` — a positive "consumed nothing", distinct from ``None``. A value naming only the endpoints is legal where the endpoints ARE the whole derivation, and every such linker site declares why in its source (``test_edge_derived_from.py``). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
 - `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
-- `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+- `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite`` / ``corroborated``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
 - `attribution`: ADR-0057 §6 provenance slot, set only by the merge pass when two producers' edges for one ``(src, dst, edge_type)`` are folded: ``{field: [pass_id, ...]}`` for ``confidence`` / ``evidence_type`` — who holds the value the scalar carries. ``None`` (and omitted from the dict form) on every other edge.
 - `alternatives`: ADR-0057 §6 candidate set on a folded edge: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar does not carry; under ``confidence_source="corroborated"`` both producers' original confidences are here.
 - `rank_score`: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
@@ -281,19 +281,19 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9873.4 | ir.py |
 | `len` | external_symbol | 7585.0 | <external> |
-| `write_text` | external_symbol | 6653.0 | <external> |
+| `write_text` | external_symbol | 6658.0 | <external> |
 | `Span` | class | 6507.5 | ir.py |
 | `LinkerContext` | class | 3544.1 | registry.py |
-| `get` | external_symbol | 3067.0 | <external> |
+| `get` | external_symbol | 3072.0 | <external> |
 | `load_catalog` | function | 2672.7 | io_boundary.py |
 | `Edge.create` | method | 2365.4 | ir.py |
 | `next` | external_symbol | 2145.0 | <external> |
 | `str` | external_symbol | 2125.0 | <external> |
-| `Path` | external_symbol | 2057.0 | <external> |
+| `Path` | external_symbol | 2058.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1649.0 | <external> |
+| `append` | external_symbol | 1654.0 | <external> |
 
 ## Pattern System
 
@@ -704,7 +704,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_mainstream.html`**: HTML script tag analysis pass.
 - **`hypergumbo_lang_mainstream.ini`**: INI configuration file analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.java`**: Java analysis pass using tree-sitter-java.
-- **`hypergumbo_lang_mainstream.js_ts`**: JavaScript/TypeScript/Svelte analysis pass using tree-sitter.
+- **`hypergumbo_lang_mainstream.js_ts`**: JavaScript/TypeScript/Svelte/Vue analysis pass using tree-sitter.
 - **`hypergumbo_lang_mainstream.json_config`**: JSON configuration analysis pass using tree-sitter-json.
 - **`hypergumbo_lang_mainstream.jupyter`**: Jupyter notebook (.ipynb) analyzer.
 - **`hypergumbo_lang_mainstream.jvm_deps`**: JVM dependency manifest parsing for Gradle and Maven projects.
@@ -774,7 +774,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_common.svelte`**: Svelte component analyzer using tree-sitter.
 - **`hypergumbo_lang_common.thrift`**: Apache Thrift analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.vue`**: Vue.js component analyzer using tree-sitter.
-- **`hypergumbo_lang_common.wgsl`**: WGSL (WebGPU Shading Language) analysis pass using tree-sitter-wgsl.
+- **`hypergumbo_lang_common.wgsl`**: WGSL (WebGPU Shading Language) analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.ada`**: Ada analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.agda`**: Agda analysis pass using tree-sitter-agda.
 - **`hypergumbo_lang_extended1.apex`**: Apex language analyzer.
@@ -873,7 +873,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.receiver_type_dispatch`**: Infrastructure linker: resolve non-hierarchy ``x.foo()`` calls via a
 - **`hypergumbo_core.linkers.route_handler`**: Framework linker: route-handler for connecting routes to their hand...
 - **`hypergumbo_core.linkers.router_routes`**: Framework linker: router → route registrations containment.
-- **`hypergumbo_core.linkers.ruby_ffi`**: Bridge linker: Ruby FFI for connecting Ruby FFI gem calls and C ext...
+- **`hypergumbo_core.linkers.ruby_ffi`**: Bridge linker: Ruby FFI gem calls and C-extension registrations to ...
 - **`hypergumbo_core.linkers.rust_trait_dispatch`**: Framework linker: Rust trait-impl method dispatch (WI-kivut).
 - **`hypergumbo_core.linkers.solidity_abi`**: Bridge linker: Solidity ABI bridge for connecting TS/JS contract ca...
 - **`hypergumbo_core.linkers.subprocess_cli`**: Protocol linker: subprocess-to-CLI for detecting cross-process CLI ...
@@ -941,8 +941,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e195eeca49ed
-  commit_count: 7594
+  commit: cfd1beaa13e6
+  commit_count: 7603
   hypergumbo: 8.0.0
   python: 3.12.3
 -->

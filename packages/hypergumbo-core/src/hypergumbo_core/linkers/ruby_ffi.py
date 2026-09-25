@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Bridge linker: Ruby FFI for connecting Ruby FFI gem calls and C extension registrations
-to C/C++ function implementations.
+"""Bridge linker: Ruby FFI gem calls and C-extension registrations to C/C++ functions.
 
 This linker creates ``calls`` edges (tagged ``meta.bridge_kind="ffi"``) for two
 Ruby-C/C++ interop mechanisms (the bespoke ``ffi_bridge`` type was folded onto
@@ -171,7 +170,9 @@ def link_ruby_ffi(
         edges: All existing edges (not used currently, kept for interface consistency)
 
     Returns:
-        RubyFFILinkResult with ffi_bridge edges.
+        RubyFFILinkResult with ``calls`` edges tagged ``meta.bridge_kind="ffi"``
+        plus ``meta.framework_dispatch`` = ``"ruby_ffi_attach"`` (attach_function)
+        or ``"ruby_c_extension"`` (rb_define_method-style registration).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

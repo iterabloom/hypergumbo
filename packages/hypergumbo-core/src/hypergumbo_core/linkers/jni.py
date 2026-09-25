@@ -1,16 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge linker: JNI for connecting Java native methods to C/C++/Rust implementations.
 
-This linker creates native_bridge edges between Java native method declarations
-and their corresponding C/C++/Rust JNI function implementations.
+This linker creates ``calls`` edges (tagged ``meta.bridge_kind="native"``)
+between Java native method declarations and their corresponding C/C++/Rust JNI
+function implementations.
 
 How It Works
 ------------
-1. Find all Java method symbols marked as native (via modifiers field)
+1. Find all Java method symbols marked as native (via the ``modifiers`` field,
+   or the legacy ``meta.is_native`` flag)
 2. Find all C/C++/Rust function symbols with JNI naming pattern (Java_Package_Class_Method)
 3. Parse JNI function names to extract package, class, and method components
-4. Match Java native methods to C/C++/Rust JNI functions by fully qualified name
-5. Create native_bridge edges for matched pairs
+4. Match Java native methods to C/C++/Rust JNI functions by name: each JNI
+   function is indexed under both ``Class.method`` and (when a package is
+   present) ``pkg.Class.method``, so either Java-side form resolves
+5. Create ``calls`` edges (``meta.bridge_kind="native"``) for matched pairs
 
 JNI implementations can be written in C (.c), C++ (.cpp), or Rust (.rs) files.
 Android NDK projects commonly use C++ for their JNI implementations. Rust
@@ -23,11 +27,15 @@ Java class: com.example.MyClass
 Java native method: processData
 C/C++ function: Java_com_example_MyClass_processData
 
-Special encodings in JNI names:
+Special encodings in JNI names (per the JNI spec):
 - Underscore (_) in Java names becomes _1 in C
 - Semicolon (;) becomes _2
 - Left bracket ([) becomes _3
 - Unicode chars become _0xxxx
+
+``parse_jni_function_name`` decodes only the ``_1`` escape; ``_2``, ``_3`` and
+``_0xxxx`` are not decoded. A trailing ``__<sig>`` overload suffix is stripped
+before splitting, so overloaded natives match on the un-suffixed name.
 
 Why This Design
 ---------------
@@ -191,7 +199,7 @@ def _build_jni_lookup(native_symbols: list[Symbol]) -> dict[str, list[Symbol]]:
     Multi-value indexing surfaces cross-package short-name collisions
     (e.g. ``Java_pkg1_MyClass_method`` and ``Java_pkg2_MyClass_method``
     both share the short key ``MyClass.method``) so INV-zuhub fallback
-    annotation can downgrade the resulting native_bridge edges.
+    annotation can downgrade the resulting ``calls`` edges.
 
     JNI implementations can be in .c, .cpp, or .rs files.
     """
@@ -225,7 +233,7 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
         native_symbols: Symbols from C, C++, and Rust analyzers
 
     Returns:
-        JniLinkResult with native_bridge edges.
+        JniLinkResult with ``calls`` edges (``meta.bridge_kind="native"``).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

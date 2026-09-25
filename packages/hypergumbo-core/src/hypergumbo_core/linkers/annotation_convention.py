@@ -137,7 +137,9 @@ def link_annotations(
         symbols: All symbols from all analyzers.
 
     Returns:
-        LinkerResult with annotated_publishes edges and synthetic symbols.
+        LinkerResult with ``event_publishes`` (@hg:publishes) and
+        ``dispatches_to`` (@hg:dispatches) edges, both tagged
+        ``meta.mechanism="annotation"``, plus synthetic symbols.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
