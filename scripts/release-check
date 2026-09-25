@@ -227,12 +227,22 @@ pip install --upgrade pip wheel setuptools >/dev/null 2>&1 || true
 pip install "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.7.0" "idna>=3.15" \
     "msgpack>=1.2.1" "click>=8.3.3" "pyasn1>=0.6.4" "pillow>=12.3.0" \
     "cryptography>=50.0.0" "pyopenssl>=26.4.0" "nltk>=3.10.0" >/dev/null 2>&1 || true
+# Fixable deps this box carries beyond CI's closure (WI-totak, 2026-09-25):
+# anyio < 4.14.2 (CVE-2026-63374/-64847, via httpx/openai), transformers < 5.10.0
+# (PYSEC-2026-3929) and torch < 2.13.0 (CVE-2025-3000). Upgraded only when already
+# installed, so a box without the embeddings extra is not handed a 2 GB torch.
+for fixable in "anyio>=4.14.2" "transformers>=5.10.0,<6" "torch>=2.13.0"; do
+    if pip show "${fixable%%[<>=]*}" >/dev/null 2>&1; then
+        pip install "$fixable" >/dev/null 2>&1 || true
+    fi
+done
 
 echo "  Running pip-audit..."
 # --ignore-vuln list kept IN SYNC with .woodpecker/woodpecker.yml (the
-# authoritative CI audit), plus ONE LOCAL-ONLY carve-out this dev box pulls that
-# CI's closure does not: CVE-2025-69872 (diskcache, via CairoSVG/safety), which
-# still has no fix. The published packages do not depend on it.
+# authoritative CI audit), plus TWO LOCAL-ONLY carve-outs this dev box pulls that
+# CI's closure does not: CVE-2025-69872 (diskcache, via CairoSVG/safety) and
+# PYSEC-2026-3740 (nltk, via safety), neither with a fix. The published packages
+# depend on neither.
 #
 # WI-totak, answered with evidence on 2026-08-18 rather than by re-reading the
 # list: PYSEC-2026-597 (nltk) was carried here as "no fix available" and that had
@@ -245,6 +255,11 @@ echo "  Running pip-audit..."
 # The diskcache carve-out STAYS, and was re-tested the same way: dropping it
 # surfaces PYSEC-2026-2447 (the same advisory under its PYSEC id, still no fix
 # version). Fixable deps are pinned above, not ignored here.
+#
+# A second local-only no-fix carve-out, added 2026-09-25: PYSEC-2026-3740
+# (CVE-2026-81726, nltk 3.10.3, fix_versions: []). nltk reaches this box only via
+# the `safety` dev tool; no hypergumbo package depends on it. Drop it when nltk
+# ships a fix (WI-totak).
 #
 # WI-zisoj: `|| AUDIT_EXIT=$?`, NOT a bare `AUDIT_EXIT=$?` on the next line.
 # This script runs under `set -euo pipefail` (line 18), and a simple assignment
@@ -269,7 +284,7 @@ AUDIT_OUTPUT=$(pip-audit --skip-editable \
     --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277 \
     --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372 \
     --ignore-vuln PYSEC-2026-2289 --ignore-vuln PYSEC-2026-2290 \
-    --ignore-vuln CVE-2025-69872 2>&1) || AUDIT_EXIT=$?
+    --ignore-vuln CVE-2025-69872 --ignore-vuln PYSEC-2026-3740 2>&1) || AUDIT_EXIT=$?
 if [ $AUDIT_EXIT -eq 0 ]; then
     pass "No known vulnerabilities in dependencies"
 else
