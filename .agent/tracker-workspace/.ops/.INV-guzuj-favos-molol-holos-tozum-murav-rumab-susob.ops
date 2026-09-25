@@ -21,3 +21,12 @@
     fields:  # bd9b
       statement: "Every call site the Go analyzer parses emits a calls edge anchored on some symbol; a bare identifier call that is not a local symbol, is withheld by the resolver's ambiguity guard, and is not dot-imported emits nothing."  # bd9b
       root_cause: "The bare-identifier arm of _extract_edges_from_file has no make_unresolved_edge fallback after the dot-import arm; Python routes the same case through make_unresolved_edge since INV-foluz."  # bd9b
+- op: update  # 9c64
+  at: '2026-09-25T18:37:31Z'  # 9c64
+  by: agent  # 9c64
+  actor: jgstern_agent  # 9c64
+  clock: 2  # 9c64
+  nonce: 9c64  # 9c64
+  set: {}  # 9c64
+  add:  # 9c64
+    tags: [post_release_focus]  # 9c64

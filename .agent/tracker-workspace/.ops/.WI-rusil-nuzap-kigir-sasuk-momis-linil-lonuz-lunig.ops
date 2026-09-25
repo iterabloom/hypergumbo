@@ -27,3 +27,12 @@
   clock: 2  # 6934
   nonce: '6934'  # 6934
   message: "RE-SCOPED OUT OF THE CAMPAIGN'S PHASE 1, 2026-08-25, and the reason is a\nmis-grouping in the plan rather than anything about this item.\n\nPHASE 1'S INVARIANT IS: \"the analysis never looked\" must be distinguishable\nfrom \"the analysis looked and found nothing\", at every point where a verdict\ndepends on it. Every other member is a site where UNKNOWN currently reads as\nCLEAN -- the direction that produces false all-clears.\n\nTHIS ITEM POINTS THE OTHER WAY. _taint_blind_reason currently BLOCKS a claim\nwhen any language in the repo lacks a taint catalogue; claim-scoping it by\ndeclared sources makes it block LESS. That is a weakening of a safety gate, not\na closure of a fail-open, so it does not belong in the family and grouping it\nthere would have let it inherit a justification it does not have. This item's\nown description already says as much -- \"it is also a WEAKENING of a safety\ngate, so it needs its own PR, its own controls, and a positive control proving\nthe gate still fires when a claim's source IS in the uncatalogued language\".\n\nNOT STARTED, AND DELIBERATELY. Its third required control -- \"measure on a repo\nwhere the uncatalogued language IS an entry point (a shell-first repo), not\nonly on hypergumbo\" -- is the one that decides whether the rule is safe, and it\nis not something to do at the tail of a session that has already changed the\ngate's neighbours. The three controls stand as written.\n\nSTATUS UNCHANGED (todo_hard). Nothing here downgrades the design argument in the\ndescription, which still looks right to me: \"is the language ELIGIBLE to be an\nentry point for this claim\" is a statement about declared sources, and the\nreachability form it rejects is genuinely fail-open by construction (a\nsubprocess launch produces no edge, so \"bash is unreachable from this claim\"\nwould be true for every claim, always)."  # 6934
+- op: update  # e8d0
+  at: '2026-09-25T18:37:28Z'  # e8d0
+  by: agent  # e8d0
+  actor: jgstern_agent  # e8d0
+  clock: 3  # e8d0
+  nonce: e8d0  # e8d0
+  set: {}  # e8d0
+  add:  # e8d0
+    tags: [post_release_focus]  # e8d0

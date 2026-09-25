@@ -27,3 +27,12 @@
   clock: 2  # a7e8
   nonce: a7e8  # a7e8
   message: "PRIORITY CONFIRMED P2 2026-09-25 (agent's call, delegated by the owner). Half (a) makes JS/TS module-linker output depend on the process CWD, and bakeoffs run from outside the analyzed repo. Every bakeoff measurement of JS imports / module_exports is therefore taken in the degraded mode (koel: imports 4,078 -> 3,680, module_exports 2,085 -> 1,471). That contaminates the instrument the project steers by, which is P2 by the queue's own standard."  # a7e8
+- op: update  # 9618
+  at: '2026-09-25T18:37:29Z'  # 9618
+  by: agent  # 9618
+  actor: jgstern_agent  # 9618
+  clock: 3  # 9618
+  nonce: '9618'  # 9618
+  set: {}  # 9618
+  add:  # 9618
+    tags: [post_release_focus]  # 9618

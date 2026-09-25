@@ -32,3 +32,12 @@
     status: violated  # b91e
   add:  # b91e
     isbefore: [WI-vogos-nozav-jodas-rabor-jipis-vilab-namor-limok]  # b91e
+- op: update  # 89b1
+  at: '2026-09-25T18:37:26Z'  # 89b1
+  by: agent  # 89b1
+  actor: jgstern_agent  # 89b1
+  clock: 3  # 89b1
+  nonce: 89b1  # 89b1
+  set: {}  # 89b1
+  add:  # 89b1
+    tags: [post_release_focus]  # 89b1

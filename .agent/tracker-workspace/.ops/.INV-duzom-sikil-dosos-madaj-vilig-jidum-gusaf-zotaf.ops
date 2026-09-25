@@ -30,3 +30,12 @@
   clock: 2  # 5426
   nonce: '5426'  # 5426
   message: "ROOT CAUSE ESTABLISHED, and one filed detail corrected. 2026-09-16 at dev 1d38136c33.\nStatus unchanged (violated) -- this entry supplies evidence, not a resolution.\n\nThe root_cause field opens \"NOT YET ESTABLISHED -- stated as the next reader's\nstarting point, not as a finding\". It reads: \"The unresolved-call path rebuilds\nthe module slot from use_aliases alone; a fully-qualified call has no use\nstatement to consult, so no alias exists and the whole path stays in the name\nslot.\" A two-arm fixture confirms exactly that, so the next reader can treat it\nas a finding:\n\n  use std::io;\n  fn a() { let _ = std::io::stdin(); }   // fully qualified\n  fn b() { let _ = io::stdin(); }        // through the import\n\n  emitted edges:\n    line 2  dst = rust:external:0-0:std::io::stdin:unresolved\n    line 3  dst = rust:std::io:0-0:stdin:unresolved\n\nArm b resolves its module slot from the use alias; arm a, having no alias to\nconsult, keeps the entire path in the NAME slot and takes the external sentinel\nin the module slot. That is the stated mechanism, demonstrated as a difference\nbetween two lines of the same file.\n\nONE CORRECTION TO THE FILED TEXT. The statement predicts the id\n\"rust:external:0-0:std..io..stdin\". The analyzer emits\n\"rust:external:0-0:std::io::stdin:unresolved\" -- colons, not dots. The\nsubstance of the claim is unaffected (external module slot, whole path in the\nname slot, matches no io_primitives row), but the spelling in the statement\nwill not match a grep. The \"..\" spelling IS real, on materialized\nexternal_symbol NODES after the synthesis pass\n(e.g. rust:external:0-0:Vec..with_capacity:external_symbol on ripgrep); the\n\"::\" spelling is what the ANALYZER puts on the unresolved EDGE dst. Two\nstages, two spellings -- worth knowing before anyone greps for either."  # 5426
+- op: update  # 88fd
+  at: '2026-09-25T18:37:32Z'  # 88fd
+  by: agent  # 88fd
+  actor: jgstern_agent  # 88fd
+  clock: 3  # 88fd
+  nonce: 88fd  # 88fd
+  set: {}  # 88fd
+  add:  # 88fd
+    tags: [post_release_focus]  # 88fd
