@@ -24,7 +24,10 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract proc/func/method definitions with signatures, plus
    type definitions and field/variable symbols
-2. Pass 2: Extract import edges and call edges using NameResolver
+2. Pass 2: Extract import edges and call edges using NameResolver. A
+   call's caller is the proc whose declaration contains it, found by the
+   declaration's position, so exported (``proc a*``) and overloaded procs
+   keep their calls
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Nim-specific extraction
@@ -48,12 +51,15 @@ from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
     make_unresolved_edge,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -443,21 +449,27 @@ def _extract_import_edges(
 
 def _find_enclosing_proc_nim(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the enclosing proc/func/method Symbol by walking up parents."""
+    """The proc, func or method whose declaration contains ``node``.
+
+    Keyed by the declaration's POSITION, not its name (INV-midag, WI-bujar).
+    The name lookup read a bare ``identifier`` child, which an exported
+    ``proc api*`` does not have (the name sits inside ``exported_symbol``), so
+    every call from a module's public API was dropped; and Nim overloads by
+    parameter types, so a name credited every overload's calls to the last.
+    ``_make_symbol`` spans each symbol from its declaration node, so the node
+    the walk reaches is the one the index is keyed on. A call no proc
+    contains (module-init code at top level) has no caller.
+    """
     current = node.parent
     while current is not None:
         if current.type in ("proc_declaration", "func_declaration", "method_declaration"):
-            name_node = find_child_by_type(current, "identifier")
-            if name_node:
-                name = node_text(name_node, source)
-                sym = local_symbols.get(name)
-                if sym:
-                    return sym
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return None
 
 
 def _get_call_target_name_nim(
@@ -577,6 +589,7 @@ class NimAnalyzer(TreeSitterAnalyzer):
         """Extract import and call edges from a Nim file."""
         edges: list[Edge] = []
         file_stable_id = f"nim:{rel_path}:file:"
+        decl_index = symbols_at(self.file_symbols(local_symbols))
 
         for node in iter_tree(tree.root_node):
             if node.type == "import_statement":
@@ -587,7 +600,7 @@ class NimAnalyzer(TreeSitterAnalyzer):
             elif node.type == "call":
                 target_name, receiver = _get_call_target_name_nim(node, source)
                 if target_name:
-                    caller = _find_enclosing_proc_nim(node, source, local_symbols)
+                    caller = _find_enclosing_proc_nim(node, decl_index)
                     if caller:
                         path_hint: Optional[str] = None
                         if receiver:
