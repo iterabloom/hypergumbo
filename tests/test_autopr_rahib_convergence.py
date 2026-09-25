@@ -36,6 +36,8 @@ shape was used by `test_autopr_exit2_retry.py` for the WI-dotod fix.
 
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -843,8 +845,6 @@ def test_unknown_is_the_default_and_therefore_the_violation_signal() -> None:
 # missing the `-e` cannot observe this defect at all.
 # --------------------------------------------------------------------
 
-import os
-import re
 
 def _production_shell_flags() -> str:
     """The `set` line auto-pr actually runs under, read from auto-pr.

@@ -15,7 +15,7 @@ import copy
 import random
 from typing import Any
 
-from hypothesis import given, settings, assume
+from hypothesis import HealthCheck, given, settings, assume
 from hypothesis import strategies as st
 
 from hypergumbo_tracker.store import compile_ops
@@ -155,8 +155,13 @@ def op_sequence(draw: st.DrawFn) -> list[dict[str, Any]]:
 
 
 class TestCompileProperties:
+    # HealthCheck.too_slow is suppressed on every property here. The strategy
+    # draws in ~10 ms, but under a full `-n auto` suite one draw took 0.94 s of
+    # CPU contention and the health check failed the 8.1.0 release-check run.
+    # Suppressing it changes no property or example count; it stops the load
+    # on the machine from failing a test of compile_ops.
     @given(ops=op_sequence())
-    @settings(max_examples=50)
+    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
     def test_idempotency(self, ops: list[dict[str, Any]]) -> None:
         """compile(ops) produces the same result on repeated calls."""
         result1 = compile_ops(ops, "INV-test")
@@ -171,7 +176,7 @@ class TestCompileProperties:
         assert len(result1.discussion) == len(result2.discussion)
 
     @given(ops=op_sequence())
-    @settings(max_examples=50)
+    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
     def test_permutation_invariance(self, ops: list[dict[str, Any]]) -> None:
         """compile(shuffle(ops)) == compile(ops).
 
@@ -195,14 +200,14 @@ class TestCompileProperties:
         assert result1.locked_fields == result2.locked_fields
 
     @given(ops=op_sequence())
-    @settings(max_examples=50)
+    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
     def test_created_at_always_set(self, ops: list[dict[str, Any]]) -> None:
         """compiled item always has created_at from the create op."""
         result = compile_ops(ops, "INV-test")
         assert result.created_at != ""
 
     @given(ops=op_sequence())
-    @settings(max_examples=50)
+    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
     def test_updated_at_gte_created_at(self, ops: list[dict[str, Any]]) -> None:
         """updated_at is always >= created_at (lexicographic for ISO 8601)."""
         result = compile_ops(ops, "INV-test")
