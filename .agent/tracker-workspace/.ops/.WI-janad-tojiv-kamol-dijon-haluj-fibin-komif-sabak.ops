@@ -1,0 +1,22 @@
+- op: create  # 4c83
+  at: '2026-09-25T18:18:53Z'  # 4c83
+  by: agent  # 4c83
+  actor: jgstern_agent  # 4c83
+  clock: 1  # 4c83
+  nonce: 4c83  # 4c83
+  data:  # 4c83
+    kind: work_item  # 4c83
+    title: "swift: an existential annotation `name: any P` is not read as type P, so its receivers stay untyped (fixture: any Channel loses the catalogued Channel.writeAndFlush; 111 corpus sites, lower bound)"  # 4c83
+    status: todo_hard  # 4c83
+    priority: 3  # 4c83
+    parent:  # 4c83
+    tags:  # 4c83
+    - swift  # 4c83
+    - analysis_quality  # 4c83
+    - io_boundary  # 4c83
+    isbefore: []  # 4c83
+    duplicate_of: []  # 4c83
+    not_duplicate_of: []  # 4c83
+    pr_ref:  # 4c83
+    description: "FILED 2026-09-25 from the WI-dodop ruling (P2 review follow-up). Prior-art search (existential / `any X` / opaque type across swift rows): no hit. This is ONE CAUSE inside two populations already filed. It is NOT a fold: it names a mechanism, and WI-mofil asks for its 938 to be sized by cause. The populations are WI-mofil's 938 (`x.m()` where _type_of fails) and the 56 `self.<property>.<method>()` sites still untyped after #877. Record: ~/hypergumbo_lab_notebook/dodop_ruling_09252026/ (fixture2/, any_sizing.py, selfprop56.txt).\n\nMECHANISM. A Swift 5.6+ existential annotation, `name: any P`, is not read as type P. Fixture, analyze_swift at dev 7821064366:\n\n    let plain: Channel      ; self.plain.writeAndFlush(b)   -> swift:Channel:...:writeAndFlush   hint=Channel\n    let exist: any Channel  ; self.exist.writeAndFlush(b)   -> swift:external:...:writeAndFlush  hint=None\n    (implicit self) exist.writeAndFlush(b)                  -> external, hint=None\n    param ch: any Channel   ; ch.writeAndFlush(b)           -> external, hint=None\n    param ch: Channel       ; ch.writeAndFlush(b)           -> swift:Channel:...  hint=Channel   (control)\n\nChannel.writeAndFlush is a catalogued net_send row. On the fixture, the `any` spelling alone loses it.\n\nSIZED on the #877 corpus, as a LOWER bound (same-file declarations only, multi-call lines excluded). Untyped method-call receivers whose declaration reads `name: any X`:\n\n    vapor 10 · Alamofire 56 · Kingfisher 8 · hummingbird 37  =  111\n\nTop types: EventMonitor 17, URLRequestConvertible 12, RequestDelegate 8, Span 7, ResponseBodyWriter 6, Channel 5, EventLoop 4.\n\nCATALOGUE REACH ON CORPUS: 0 verified. The instrument first reported 6 hummingbird sites on `any Channel`. Read back, all six are `channel.pipeline.syncOperations.addHandler`: the receiver is not the Channel at all, and those sites belong to WI-sulas (the chain-head row filed the same day). Recorded rather than dropped, because the instrument made the same head error the sibling row is about. So this is a correctness gap with FIXTURE-proven catalogue reach and no corpus-proven reach yet on these four repos. `any` is idiomatic in current SwiftNIO code (`any Channel` appears 23 times in these 4 repos), so a newer corpus may differ.\n\nFIX DIRECTION (not built): strip the `any` / `some` keyword where the declared type is read (the same place the plain annotation is read). Measure the module-slot delta and primitives reached, not the typed share. A PROJECT protocol is typed and then rightly refused (INV-kotob)."  # 4c83
+    fields: {}  # 4c83
