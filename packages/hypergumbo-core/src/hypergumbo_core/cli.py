@@ -11448,9 +11448,10 @@ def run_survey(
             - "fastapi,celery": Only check specified frameworks
         include_docs: If True, include non-code node kinds in output. Default
             False excludes documentation (section, heading, paragraph, etc.),
-            config (setting, config, table), and CSS structural nodes
-            (class_selector, id_selector, rule_set, property, media, keyframes,
-            font_face) to reduce degree-0 noise.
+            config (setting, config, table), CSS structural nodes
+            (class_selector, id_selector, rule_set, media, keyframes,
+            font_face), and bodyless property declarations (.properties, QML,
+            objective-c) to reduce degree-0 noise.
         include_sketch_precomputed: If True (default), pre-extract config_info
             and readme_description for fast sketch generation.
             Set False to skip this (avoids loading embedding model).

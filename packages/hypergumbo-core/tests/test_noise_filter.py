@@ -23,8 +23,45 @@ def _sym(kind, language="python", meta=None):
 
 
 def test_noise_kinds_are_filtered():
-    for kind in ("section", "property", "pattern", "requirement", "label"):
+    for kind in ("section", "pattern", "requirement", "label"):
         assert is_noise_symbol(_sym(kind)) is True
+
+
+def test_a_property_is_noise_only_for_its_declaration_only_producers():
+    """WI-tisom: ``property`` is a homonym. A swift computed property and a C#
+    property are callables with bodies; a ``.properties`` key, a QML property
+    and an objective-c ``@property`` are declarations with no body. Measured on
+    the corpus, the first two carried 12,916 edges on five swift repos (all
+    dropped with their src), the last three 0 edges."""
+    for language in ("properties", "qml", "objc"):
+        assert is_noise_symbol(_sym("property", language=language)) is True, language
+    for language in ("swift", "csharp", "kotlin", "typescript"):
+        assert is_noise_symbol(_sym("property", language=language)) is False, language
+
+
+def test_every_property_producer_is_classified():
+    """A module that emits ``kind="property"`` must say whether its property is
+    noise, so a new producer cannot inherit the drop silently. That is how swift
+    and C# came to lose theirs: the entry was written for a CSS kind that no CSS
+    analyzer ever emitted."""
+    import re
+    from pathlib import Path
+
+    from hypergumbo_core.noise_filter import _NOISE_PROPERTY_LANGUAGES
+
+    root = Path(__file__).resolve().parents[2]
+    emits = re.compile(r"""kind\s*=\s*["']property["']""")
+    # The analyzers live in the language packages. Core's SCIP importer maps
+    # SCIP's ``Property`` to the kind for any language, and that passes through.
+    found = {p.stem for p in root.glob("hypergumbo-lang-*/src/*/*.py")
+             if emits.search(p.read_text(encoding="utf-8"))}
+    assert "swift" in found, "reach: the scan must see a known producer"
+    classified = {"swift": False, "csharp": False,
+                  "objc": True, "properties": True, "qml": True}
+    assert found == set(classified), (
+        f"unclassified: {sorted(found - set(classified))}; stale: {sorted(set(classified) - found)}")
+    for module, noise in classified.items():
+        assert (module in _NOISE_PROPERTY_LANGUAGES) is noise, module
 
 
 def test_css_variable_is_noise_but_other_variables_survive():
