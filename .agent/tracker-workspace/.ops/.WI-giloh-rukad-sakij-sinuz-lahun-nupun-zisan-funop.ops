@@ -1,0 +1,29 @@
+- op: create  # 9964
+  at: '2026-09-25T16:11:46Z'  # 9964
+  by: agent  # 9964
+  actor: jgstern_agent  # 9964
+  clock: 1  # 9964
+  nonce: '9964'  # 9964
+  data:  # 9964
+    kind: work_item  # 9964
+    title: "nim: call targets resolve by bare name with no visibility or import scope -- 96 cross-file edges into a private proc on nitter"  # 9964
+    status: todo_hard  # 9964
+    priority: 2  # 9964
+    parent:  # 9964
+    tags:  # 9964
+    - analysis_quality  # 9964
+    - false_positive  # 9964
+    isbefore: []  # 9964
+    duplicate_of: []  # 9964
+    not_duplicate_of: []  # 9964
+    pr_ref:  # 9964
+    description: "EVIDENCE (analyze_nim on nitter, dev d7e2948280, 2026-09-25):\nsrc/redis_cache.nim:71 declares `proc get(query: string)`, with NO `*`, so it is private: Nim\nlets only redis_cache.nim call it. 104 call edges resolve to it, 96 of them from other files:\n- `cfg.get(\"Cache\", \"redisHost\", \"localhost\")` in src/config.nim, which declares its OWN\n  `proc get*[T]` five lines up and does not import redis_cache;\n- jester's route DSL `get \"/@name/status/@id/?\":` in src/routes/*.nim;\n- `card.video.get()` (std/options `Option.get`) in src/routes/status.nim.\nAlso: `result.add photo` on a `seq[GalleryPhoto]` (system `add`) binds types.nim's\n`proc add*(timeline: var seq[Tweets]; tweet: Tweet)`: 73 edges.\n\nMECHANISM: nim.py calls `resolver.lookup(target_name, path_hint=...)` with a path_hint only for\nan `import X as Y` alias receiver. The registry keeps ONE symbol per name (last registered wins),\nso the lookup has no import scope, no same-file preference and no visibility check.\n\nSIZE CHANGE: WI-bujar (PR #1201) made calls inside exported procs reach the resolver (nitter\n648 -> 2,460 call edges), so this pre-existing error grew with them: redis_cache `get` 9 -> 104,\ntypes `add` 28 -> 73. Resolved edges into a module the caller neither is nor imports:\n62 -> 320 by a direct-import check. That count OVERSTATES the defect, since Nim re-exports\n(`export router_utils` etc.) and a re-exported target is legal. It is an upper bound only.\n\nPRIOR ART: import-aware resolution is language-specific here, and nim has none. Elixir did it in\nWI-dadid; D passes import-scope `path_hints`. WI-tipoh made Scala/Kotlin imports outrank a\nsame-named project symbol. INV-vigaf (satisfied, META) routes UFCS/extension call resolution to\na shared receiver-type-index linker; `cfg.get` / `.add` are UFCS calls. No row covers nim.\n\nASKED:\n1. Minimum and certain: a non-exported (no `*`) nim proc is never a cross-file target\n   (`Symbol.is_exported` is already measured for nim). Measure the edge-set diff.\n2. Import scope: pass the file's imports as `path_hints`, as D does, and handle `export`\n   re-export closure, or the scope will drop legal targets. Diff the edge set, read a random\n   sample, and don't count \"fewer resolved\" as a precision gain without reading.\n3. Same-file preference: config.nim's own `get*` should outrank any other module's.\n4. UFCS receiver calls (`x.add`, `x.get`) belong to INV-vigaf's linker direction; do not\n   type receivers inside nim.py."  # 9964
+    fields: {}  # 9964
+- op: update  # 0350
+  at: '2026-09-25T16:23:18Z'  # 0350
+  by: agent  # 0350
+  actor: jgstern_agent  # 0350
+  clock: 2  # 0350
+  nonce: '0350'  # 0350
+  set:  # 0350
+    status: in_progress  # 0350
