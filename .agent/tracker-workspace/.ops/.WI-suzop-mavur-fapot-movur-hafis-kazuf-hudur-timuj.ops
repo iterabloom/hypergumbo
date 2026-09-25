@@ -1,0 +1,28 @@
+- op: create  # 400d
+  at: '2026-09-25T07:16:42Z'  # 400d
+  by: agent  # 400d
+  actor: jgstern_agent  # 400d
+  clock: 1  # 400d
+  nonce: 400d  # 400d
+  data:  # 400d
+    kind: work_item  # 400d
+    title: "make: a target listed after a dotted target in the same rule inherits kind special_target (loop-carried kind)"  # 400d
+    status: todo_hard  # 400d
+    priority: 4  # 400d
+    parent:  # 400d
+    tags:  # 400d
+    - analysis_quality  # 400d
+    isbefore: []  # 400d
+    duplicate_of: []  # 400d
+    not_duplicate_of: []  # 400d
+    pr_ref:  # 400d
+    description: "EVIDENCE (production entry point analyze_make_files, 2026-09-25):\n  Makefile:  .PHONY all: dep\n  -> symbols [('.PHONY', 'special_target'), ('all', 'special_target')]\n`all` is an ordinary target but is labelled special_target.\n\nMECHANISM: make.py (the target loop near \"Mark special targets like .PHONY\") sets `kind = \"target\"` / \"pattern_rule\" once per rule, then does `kind = \"special_target\"` INSIDE the per-target loop and never resets it. Every target after the first dotted one in the same rule inherits the special kind (and its symbol id carries that kind slot).\n\nSCOPE: rules listing a dotted target before an ordinary one in the same targets list. This is uncommon in practice; `.PHONY: all` (the usual form) is unaffected because `all` is a prerequisite there, not a target. Not measured on the corpus.\n\nPRIOR ART: none found. WI-kunag and WI-dubab touched make.py for other reasons. Found by the 2026-09-25 docstring-staleness audit (PR #1198's review).\n\nASKED: compute the kind per target (a local per iteration). Add a two-target fixture. Check whether any corpus Makefile has the shape."  # 400d
+    fields: {}  # 400d
+- op: update  # 2544
+  at: '2026-09-25T07:17:08Z'  # 2544
+  by: agent  # 2544
+  actor: jgstern_agent  # 2544
+  clock: 2  # 2544
+  nonce: '2544'  # 2544
+  set:  # 2544
+    description: "EVIDENCE (production entry point analyze_make_files, 2026-09-25):\n  Makefile:  .PHONY all: dep\n  -> symbols [('.PHONY', 'special_target'), ('all', 'special_target')]\n`all` is an ordinary target but is labelled special_target.\n\nMECHANISM: make.py (the target loop near \"Mark special targets like .PHONY\") sets `kind = \"target\"` / \"pattern_rule\" once per rule, then does `kind = \"special_target\"` INSIDE the per-target loop and never resets it. Every target after the first dotted one in the same rule inherits the special kind (and its symbol id carries that kind slot).\n\nSCOPE: rules listing a dotted target before an ordinary one in the same targets list. This is uncommon in practice; `.PHONY: all` (the usual form) is unaffected because `all` is a prerequisite there, not a target. Not measured on the corpus.\n\nPRIOR ART: none found. WI-kunag and WI-dubab touched make.py for other reasons. Found by the 2026-09-25 docstring-staleness audit (verified while reviewing PR #1199).\n\nASKED: compute the kind per target (a local per iteration). Add a two-target fixture. Check whether any corpus Makefile has the shape."  # 2544
