@@ -1,0 +1,26 @@
+Original commit body from eeb26eecbbc00555bdf2f75c4c3ff03657a87808:
+
+Phase 2 of the changelog audit, emphasising a reader's first pass: each
+bullet leads with the user-visible effect, keeps at most one headline
+number, and drops the investigative narrative (how a defect was found,
+refuted alternatives, per-repository tallies) that belongs in commits
+and ADRs.
+
+- [Unreleased] 44,000 -> 25,139 characters (the released 8.0.0 section
+  is 24,509); 235 -> 205 lines.
+- Summary: five threads as a scannable list, versions on their own line.
+- Merged: "Declared blindnesses" into the verify-claims subsection; the
+  standard-input / deferred-crossing Fixed subsection into catalogue
+  rows; the anchoring follow-ons into one bullet; Node/Scala/Python
+  receiver fixes into one bullet.
+- Phase 1: added the 2026-09-25 module-docstring audit (#1197, #1199),
+  the only user-visible work since the last audit not already covered.
+- Every ADR reference and every SCHEMA_VERSION / envelope /
+  DEAD_CODE_MAYBE version transition from the previous text is kept
+  (checked mechanically against HEAD).
+
+The tracker changelog's [Unreleased] was re-read: no missing entries
+(no tracker-package commits since its last audit) and already at its
+released sections' density, so it is unchanged.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
