@@ -234,6 +234,26 @@ object T {
         assert by_line[6] == "scala:scala.sys.process.Process:0-0:Process:unresolved", by_line
         assert ":a/Process.scala:" in by_line[8], by_line
 
+    @pytest.mark.parametrize("target,resolves", [
+        ("package org.x {\n  object Process {\n    def apply(s: String): Int = 0\n  }\n}\n", False),
+        ("package org.x {\n  object Process {\n    def apply(s: String): Int = 0\n  }\n}\n"
+         "package org.y {\n  object Other\n}\n", True),
+    ], ids=["one-braced-package-is-known", "two-braced-packages-are-unknown"])
+    def test_a_braced_package(self, tmp_path: Path, target: str, resolves: bool) -> None:
+        """A braced ``package a { ... }`` names the package of what it encloses
+        when it is the file's only definition. A file holding two cannot be
+        given one package, so its symbols are never refused: the old behaviour."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        result = analyze_scala(_write(tmp_path, {
+            "a/Process.scala": target,
+            "b/T.scala": "package tools\n\nimport other.Process\n\n"
+                         "object T {\n  def run(c: String): Unit = { Process(c) }\n}\n",
+        }))
+        calls = _calls(result, "Process")
+        assert calls, "reach"
+        assert all(resolved is resolves for _, resolved in calls), [e.dst for e, _ in calls]
+
     def test_chained_package_clauses_make_one_package(self, tmp_path: Path) -> None:
         """``package org.apache.spark`` then ``package sql`` is org.apache.spark.sql."""
         from hypergumbo_lang_mainstream.scala import analyze_scala

@@ -326,8 +326,9 @@ def _is_project_type(
     if sym is None or sym.kind not in ("class", "object", "trait"):
         return False
     imported = (import_aliases or {}).get(name)
-    return (not _import_names_elsewhere(sym, imported, file_packages, import_aliases)
-            or _import_names_project_path(imported, project_packages))
+    if imported is None or not _import_names_elsewhere(sym, imported, file_packages, import_aliases):
+        return True
+    return _import_names_project_path(imported, project_packages)
 
 
 def _package_readings(file_packages: "dict[str, _ScalaFile]") -> "frozenset[str]":
@@ -341,11 +342,9 @@ def _package_readings(file_packages: "dict[str, _ScalaFile]") -> "frozenset[str]
     return frozenset(readings)
 
 
-def _import_names_project_path(imported: "str | None", project_packages: "frozenset[str]") -> bool:
+def _import_names_project_path(imported: str, project_packages: "frozenset[str]") -> bool:
     """Whether some reading of the import's package part lies in a package the
     project declares. ``project_packages`` is :func:`_package_readings`."""
-    if not imported:
-        return False
     parts = imported.removeprefix("_root_.").split(".")[:-1]
     return any(".".join(parts[:k]) in project_packages for k in range(1, len(parts) + 1))
 
