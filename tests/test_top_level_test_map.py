@@ -579,9 +579,7 @@ def test_smart_test_asks_the_name_rules_for_its_fallback() -> None:
 
 def test_a_marker_in_the_header_is_read() -> None:
     mod = _import_module()
-    declared = dict(
-        (pattern, name) for pattern, name in mod.declared_coverage(REPO_ROOT / "tests")
-    )
+    declared = dict(mod.declared_coverage(REPO_ROOT / "tests"))
     assert declared, "no declarations found at all"
     assert declared.get("scripts/lib/pool_utils.py") == "test_pool_utils.py"
 

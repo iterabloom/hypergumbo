@@ -117,7 +117,7 @@ steps:
     commands:
       - pip install --upgrade pip
       - pip install "ruff~=0.15.0" "bandit~=1.9.3"
-      - ruff check packages/*/src/ packages/*/tests/
+      - ruff check packages/*/src/ packages/*/tests/ tests/
       - bandit -r packages/*/src/ -c pyproject.toml
 
   # ── whole-tree strict mypy ratchet (BLOCKING — WI-rokup/INV-zogud) ─────────
