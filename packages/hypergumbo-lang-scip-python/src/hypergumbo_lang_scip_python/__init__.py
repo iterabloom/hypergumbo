@@ -23,7 +23,7 @@ from hypergumbo_lang_scip_python.invoke import (
 )
 from hypergumbo_lang_scip_python.translate import translate_scip_python_to_hg
 
-__version__ = "8.0.0"
+__version__ = "8.1.0"
 
 #: Module paths for analyzer discovery via entry-points (ADR-0012 Step 1).
 ANALYZER_MODULES = [

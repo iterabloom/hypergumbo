@@ -74,7 +74,7 @@ taint's useful precision rises **24.1% → 30.9%**.
 
 ---
 
-## Unreleased
+## 8.1.0 — 2026-09-25
 
 > `SCHEMA_VERSION` 0.20.1 → 0.20.13, the `verify-claims --json` envelope
 > (`VERIFY_CLAIMS_SCHEMA_VERSION`) 2.0 → 2.4, and
