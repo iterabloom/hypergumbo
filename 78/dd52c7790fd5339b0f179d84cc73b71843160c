@@ -1,0 +1,41 @@
+Original commit body from e803283a8d6cf4259bd67eaf6744d0da1bd8d4ed:
+
+scripts/check-docstring-drift flagged 44 files; 11 read-only review
+agents read each in full, and 39 had real drift (qml, tlaplus and the
+three package __init__ files matched). A retired-vocabulary pass the
+scan cannot see found 3 more (cli.py, dataflow_scope.py, compact.py).
+This is the A+B+D bundle: false claims removed or corrected, numbers
+fixed. Omissions (C) follow separately.
+
+Largest corrections:
+- py.py: argparse set_defaults is not handled here (argparse_dispatch
+  linker); Flask add_url_rule / FastAPI add_api_route emit no route
+  marker; stable_id has a typed tier; nesting comes from
+  _enclosing_function_chain, not col_offset.
+- finalize.py: sub-step 7 does re-derive confidence (INV-fazim);
+  WI-libib / INV-suvil are closed; sub-steps 6c/7a/7b/7c listed.
+- view-template family: no `renders` edge type exists; the core emits
+  `references` with ref_construct=view_render.
+- middleware_chain, jackson, kafka_streams, blade, pyffi: named edge or
+  evidence types that do not exist.
+- producer_coherence: the gate script runs a ratchet, not this gate.
+- toml_config: no key-value symbols, no optional/extras deps, and
+  defines_target runs from the target symbol, not the manifest file.
+- schema.py: dead-code-maybe has its own schema version; the 0.20.10
+  breaking rename shipped as a patch bump is recorded as the exception.
+- module_key_axis: the orthography rule was replaced by the
+  case-disagreement test.
+- dataflow_scope: coverage_granularity already reads `function`.
+- blade, gnuplot, mermaid, handlebars: claimed edges/constructs that
+  are never extracted.
+
+Also: pyffi's one-line summary no longer wraps; signature_axis re-pins
+jackson_dispatch.py 296 -> 299 (moved by a docstring edit); the
+module_key_axis pins were checked and hold. ARCHITECTURE.md
+regenerated. No code changes.
+
+Code defects found while verifying (nim exported-proc calls, just
+forward refs, php private constants, jackson/kafka depends_on, an
+unread view_template_django constant) are filed separately.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
