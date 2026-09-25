@@ -1,0 +1,91 @@
+- op: create  # bb7d
+  at: '2026-08-27T21:20:06Z'  # bb7d
+  by: agent  # bb7d
+  actor: jgstern_agent  # bb7d
+  clock: 1  # bb7d
+  nonce: bb7d  # bb7d
+  data:  # bb7d
+    kind: invariant  # bb7d
+    title: "auto-pr dies (exit 1, no PR, no gate) on any docs-only change: the INV-bigaz manifest-union guard trips set -e on a zero-selection manifest"  # bb7d
+    status: violated  # bb7d
+    priority: 1  # bb7d
+    parent:  # bb7d
+    tags:  # bb7d
+    - auto_pr  # bb7d
+    - ci  # bb7d
+    - governance  # bb7d
+    - regression  # bb7d
+    isbefore: []  # bb7d
+    duplicate_of: []  # bb7d
+    not_duplicate_of: []  # bb7d
+    pr_ref:  # bb7d
+    description: "GOVERNANCE FILE — scripts/lib/forgejo-api.sh. Filed for approval, NOT fixed.\nA verified one-line patch is given below; no PR has been created.\n\nSYMPTOM. auto-pr dies at \"Regenerating test manifest...\" with exit 1. No PR is\ncreated, no .git/PR_PENDING gate is left, the branch never reaches the remote,\nand the log simply stops -- the \"auto-pr CAN DIE MID-STEP AND LEAVE NOTHING\nBEHIND\" shape. Hit live on the ADR-0046 branch, 2026-08-27.\n\nROOT CAUSE. `_manifest_selected_tests` (forgejo-api.sh:1281) ends its happy\npath with a pipeline:\n\n    sed -n '/^# === SELECTED_TESTS ===/,$p' \"$f\" | grep -v '^#' | grep -v '^$'\n\nOn a manifest with ZERO selected tests, `sed` emits only the marker line,\n`grep -v '^#'` filters it out and exits 1, and the trailing `grep -v '^$'` gets\nno input and also exits 1. auto-pr runs under `set -euo pipefail`, so the\npipeline's non-zero status kills the shell BEFORE the function's own\n`return 0` on line 1290 can mask it. The function is called twice inside\n`_manifest_union`'s `{ ...; ...; } | sed | sort -u` group, so either call can\ntrip it.\n\nWHEN IT FIRES. Whenever `smart-test --manifest` regenerates a zero-selection\nmanifest -- i.e. ANY docs-only / config-only change, where the slicer correctly\nreports \"no test-relevant files changed (docs/config only)\".\n\nTHE IRONY, AND WHY IT IS A REGRESSION RATHER THAN AN OLD BUG.\n`_manifest_union` was introduced TODAY in de8403b14c, \"fix(auto-pr): the\nmanifest regen may add tests, never drop them (INV-bigaz)\". Its own comment\nsays the overwrite it replaced \"destroys authored intent\". The guard now\ndestroys the entire run instead, in exactly the population it was written to\nprotect: a data-file or docs change the slicer under-selects. The last\ndocs-only manifest committed before it is cd8b98bbcd (ADR-0045, 2026-08-23),\nso no docs-only PR has gone through auto-pr since the guard landed, and this\nis the first one to hit it.\n\nPROPOSED FIX (verified against a scratch copy of the whole scripts/lib tree,\nunder `set -euo pipefail`, with a real 3-test committed manifest and a real\n0-test regen -- union returned 0 and preserved all three paths):\n\n    -            | grep -v '^#' | grep -v '^$'\n    +            | grep -v '^#' | grep -v '^$' || true\n         else\n    -        grep -v '^#' \"$f\" 2>/dev/null | grep -v '^$'\n    +        grep -v '^#' \"$f\" 2>/dev/null | grep -v '^$' || true\n\nTwo lines, one per branch. `|| true` makes \"this manifest selects no tests\" the\nempty-output success it already meant to be; the existing `return 0` then does\nwhat it was always written to do. An empty selection is not an error.\n\nA SECOND, SEPARATE DEFECT IN THE SAME FUNCTION, which the patch above does NOT\nfix. `_manifest_union` builds the output header from the REGEN file\n(`sed -n '1,/^# === SELECTED_TESTS ===/p' \"$regen_file\"`) and then appends the\nUNIONED body. So after a successful union the header and body disagree:\n\n    # Selected tests: 0        <- from the regen\n    tests/test_adr_readme_index_sync.py\n    tests/test_adr_supersession_symmetry.py\n    tests/test_top_level_test_map.py\n\nThree tests in the body, \"0\" in the header. Nothing currently rejects this --\nthe pre-commit \"Test manifest\" check (.githooks/pre-commit:442) only refuses\n`# Mode: full-suite` -- so it is latent rather than breaking. But any consumer\nthat trusts the header count reads \"no tests selected\" for a manifest that\nselects three, which is the CI-runs-nothing-while-reporting-success failure the\nunion's own FAIL-SAFE comment says it exists to prevent. The count line should\nbe rewritten from the unioned body.\n\nTESTS TO ADD WITH THE FIX: (a) `_manifest_selected_tests` returns 0 and empty\noutput on a zero-selection manifest under `set -euo pipefail`; (b)\n`_manifest_union` of a populated committed manifest with a zero-selection regen\npreserves every committed path; (c) the unioned header's \"Selected tests:\"\ncount equals the body count.\n\nWORKAROUND IN USE MEANWHILE: land docs-only branches by manual push +\n`merge-pr` rather than `auto-pr`. AGENTS.md permits the manual route\nexplicitly."  # bb7d
+    fields:  # bb7d
+      statement: "auto-pr must complete or fail loudly for any change it accepts, including a docs-only change whose regenerated test manifest selects zero tests; and a manifest's declared 'Selected tests' count must equal the number of tests in its body."  # bb7d
+      root_cause: "_manifest_selected_tests (forgejo-api.sh:1281) ends its happy path with 'sed ... | grep -v ^# | grep -v ^$'. On a zero-selection manifest both greps match nothing and exit 1; auto-pr runs under 'set -euo pipefail', so the pipeline status kills the shell before the function's own 'return 0' can mask it. Introduced today in de8403b14c (_manifest_union, the INV-bigaz fix), which calls it twice inside a pipeline group."  # bb7d
+- op: update  # 8c5e
+  at: '2026-08-27T21:20:17Z'  # 8c5e
+  by: agent  # 8c5e
+  actor: jgstern_agent  # 8c5e
+  clock: 2  # 8c5e
+  nonce: 8c5e  # 8c5e
+  set:  # 8c5e
+    status: needs_human_review  # 8c5e
+- op: discuss  # 63cb
+  at: '2026-08-27T21:20:17Z'  # 63cb
+  by: agent  # 63cb
+  actor: jgstern_agent  # 63cb
+  clock: 3  # 63cb
+  nonce: 63cb  # 63cb
+  message: "GOVERNANCE APPROVAL REQUESTED. The fix touches scripts/lib/forgejo-api.sh, a governance file, so per AGENTS.md no PR has been created and none will be until a human approves. The proposed patch is two lines (one '|| true' per branch of _manifest_selected_tests), verified against a scratch copy of the whole scripts/lib tree under 'set -euo pipefail' with a real 3-test committed manifest and a real 0-test regen: union returned 0 and preserved all three paths. The second defect named in the description (unioned header keeps the regen's 'Selected tests: 0' while the body carries the union) is NOT covered by that patch and needs its own line, rewriting the count from the unioned body. Blast radius today: every docs-only branch must be landed by manual push + merge-pr instead of auto-pr, which is the route AGENTS.md already permits and the route ADR-0046 is taking."  # 63cb
+- op: update  # a41c
+  at: '2026-08-27T23:52:14Z'  # a41c
+  by: human  # a41c
+  actor: jgstern  # a41c
+  clock: 4  # a41c
+  nonce: a41c  # a41c
+  set:  # a41c
+    status: violated  # a41c
+- op: discuss  # 6837
+  at: '2026-08-27T23:52:25Z'  # 6837
+  by: human  # 6837
+  actor: jgstern  # 6837
+  clock: 5  # 6837
+  nonce: '6837'  # 6837
+  message: "approved"  # 6837
+- op: discuss  # 1870
+  at: '2026-08-27T23:52:51Z'  # 1870
+  by: human  # 1870
+  actor: jgstern  # 1870
+  clock: 6  # 1870
+  nonce: '1870'  # 1870
+  message: "approved for auto-pr without --gov"  # 1870
+- op: discuss  # 39d2
+  at: '2026-08-28T06:38:52Z'  # 39d2
+  by: agent  # 39d2
+  actor: jgstern_agent  # 39d2
+  clock: 7  # 39d2
+  nonce: 39d2  # 39d2
+  message: "APPROVAL RECEIVED AND ACTED ON. Thank you -- and the delay is mine to own: the\napproval landed 2026-08-27T23:52Z and I carried it as still-blocked for a day.\nFix committed on jgstern-agent/fix/zamoh-manifest-zero-selection, going out via\nauto-pr per the \"without --gov\" grant.\n\nWHAT SHIPPED -- BOTH defects named in the description, not just the approved\ntwo-liner.\n\n(1) The empty-selection death. \"|| true\" on BOTH branches of\n_manifest_selected_tests. Both, because the marker-less else branch serves\nmanifests written before the sections existed, and a fix applied to one arm of\nan if/else is how a defect survives its own patch.\n\n(2) The header/body contradiction, which the approved patch did NOT cover. The\nunion now restates \"# Selected tests:\" from what it actually wrote, AFTER the\nexistence filter, and only ever as a correction -- a header carrying no count\nline does not gain one. I checked who reads that count before deciding it\nmattered: ci.yml:935 recomputes it from the body it is about to run, and the\npre-commit hook gates only on \"# Mode: full-suite\". So it was a manifest that\nLIED, not one that broke, and I am reporting it that way rather than claiming a\nlive CI failure I did not observe.\n\nBEHAVIOURAL EVIDENCE (this item's statement is about auto-pr's runtime\nbehaviour, so a proxy will not do). Replayed the filed repro against the REAL\ncommitted manifest (334 paths) and a REAL zero-selection regen, both arms under\nset -euo pipefail, old library from git show HEAD:\n  pre-fix:  exit 1, and NO OUTPUT FILE WRITTEN AT ALL -- the shell died inside\n            the function, which is exactly the \"nothing left behind\" shape.\n  post-fix: exit 0, all 334 committed paths preserved, header restated 0 -> 334.\nAll three tests the description asked for are in, plus four more:\n1657 passed across 96 affected files; mypy strict ratchet clean at 669.\n\nTHE FINDING THAT MATTERS MORE THAN EITHER PATCH. The test file already had\nthirteen cases over this exact function and every one of them passed, before\nand after. They sourced the library into a plain bash -c with errexit and\npipefail OFF, so the very status that kills auto-pr was discarded by the\nharness. A test that does not reproduce the caller shell options is not testing\nthe caller. The harness now sets set -euo pipefail BEFORE the source, exactly\nas auto-pr does on line 3; all thirteen still pass, so the hardening cost\nnothing and would have caught this on the day the guard landed.\n\nANALOGUE SWEEP (structural protocol). Swept scripts/auto-pr and\nscripts/lib/forgejo-api.sh for other pipelines terminating in grep under\nset -e: none. Checked the same shape in ci.yml -- its selected-tests pipeline\nends in tr, which exits 0, so it is safe even under errexit. One genuine\nanalogue found and NOT fixed here: ci.yml counts the manifest with\ngrep -c \"^packages/\" at lines 717, 773 and 1116 -- the identical path-prefix\nmistake that _manifest_test_count exists to have fixed on the auto-pr side,\nstill standing in CI reporting, where it reads 0 for any manifest of\nroot-level tests/... entries. It is echoed to the log only and gates nothing.\nFiling it separately rather than widening this PR.\n\nI will move this item to satisfied after the merge, not before."  # 39d2
+- op: update  # df7a
+  at: '2026-08-28T06:59:02Z'  # df7a
+  by: agent  # df7a
+  actor: jgstern_agent  # df7a
+  clock: 8  # df7a
+  nonce: df7a  # df7a
+  set:  # df7a
+    status: satisfied  # df7a
+- op: discuss  # 2161
+  at: '2026-08-28T06:59:02Z'  # 2161
+  by: agent  # 2161
+  actor: jgstern_agent  # 2161
+  clock: 9  # 2161
+  nonce: '2161'  # 2161
+  message: "SATISFIED. Merged as PR #599, dev fa65f2352f. Both clauses of the statement are\nverified on the MERGED tree, by behaviour rather than by proxy, with a control\nin the same run.\n\nTHE FULL CAUSAL CHAIN, EVERY LINK A REAL ARTIFACT (no hand-written fixtures):\n  1. TRIGGER. A docs-only commit (one line appended to docs/hypergumbo-spec.md\n     on a scratch branch), then smart-test --manifest. It writes:\n       # Reason: no test-relevant files changed (docs/config only)\n       # Selected tests: 0        (body: 0 paths)\n     So the population is real and the generator produces it, not just my\n     reading of the code.\n  2. THE DEATH. That genuine zero manifest and the real committed manifest\n     (334 paths) into the PRE-FIX library, under set -euo pipefail:\n       exit 1, and NO OUTPUT FILE WRITTEN AT ALL.\n     The shell died inside the function -- the \"nothing left behind\" shape the\n     description reports from the live ADR-0046 branch.\n  3. THE FIX. Same two inputs, merged library, same shell options:\n       exit 0, all 334 committed paths preserved, header restated 0 -> 334.\n  4. CONTROL, same run: identical non-empty inputs (334 in) must not move --\n     exit 0, 334 out, header 334. It does not move.\n\nCLAUSE 2 (declared count equals body count) is covered by 3 and 4 above and by\nfive new tests, including the case the union makes uniquely awkward: the count\nis taken AFTER the existence filter, and after the fail-safe fallback, so it\ndescribes what was actually written rather than what the filter would have left.\n\nWHAT SHIPPED: \"|| true\" on BOTH branches of _manifest_selected_tests (the\napproved patch), plus the count restatement the approved patch did not cover.\nThe restatement is only ever a correction -- a header with no count line does\nnot gain one.\n\nTHE HARNESS GAP IS THE REAL LESSON, and it is fixed too. This function already\nhad thirteen tests and every one passed before and after. They sourced the\nlibrary into a plain bash -c with errexit and pipefail OFF, so the very status\nthat kills auto-pr was discarded by the harness. The tests now set\nset -euo pipefail BEFORE the source, exactly as scripts/auto-pr:3 does; all\nthirteen still pass, and seven new cases pin the empty selection. Had the\nharness matched the caller, this would have been caught the day the guard\nlanded.\n\nWHAT I HAVE NOT OBSERVED, stated plainly: no real docs-only branch has yet gone\nthrough a full auto-pr run post-fix -- PR #599 itself touches code. The library\nstep that killed it is verified end to end with the generator's own output; the\nfield confirmation is the next docs-only PR, and no workaround is needed for it\n(AUTO_PR_SKIP_MANIFEST=1 can be retired).\n\nANALOGUE SWEEP: no other grep-terminated pipeline under set -e in\nscripts/auto-pr or scripts/lib/forgejo-api.sh. ci.yml's selected-tests pipeline\nends in tr (exit 0), safe even under errexit. One genuine analogue found and\nfiled separately rather than widening this PR: ci.yml counts the manifest with\ngrep -c \"^packages/\" at lines 717, 773 and 1116, the same path-prefix mistake\n_manifest_test_count exists to have fixed, reading 0 for any manifest of\nroot-level tests/... entries. Diagnostic only -- it gates nothing."  # 2161
+- op: discuss  # fbf8
+  at: '2026-08-28T10:54:47Z'  # fbf8
+  by: agent  # fbf8
+  actor: jgstern_agent  # fbf8
+  clock: 10  # fbf8
+  nonce: fbf8  # fbf8
+  message: "FIELD CONFIRMATION, the one observation the closure said was outstanding.\n\nThat note read: \"no real docs-only branch has yet gone through a full auto-pr\nrun post-fix -- PR #599 itself touches code ... the field confirmation is the\nnext docs-only PR\". This is it.\n\nBranch jgstern-agent/docs/changelog-unreleased-audit touches CHANGELOG.md and\nnothing else. auto-pr regenerated the manifest during the push and produced\nEXACTLY the shape that used to kill it:\n\n    # Mode: targeted\n    # Reason: no test-relevant files changed (docs/config only)\n    # Selected tests: 0\n    (body: 0 paths)\n\nPre-fix, that manifest made _manifest_selected_tests exit 1 under\n`set -euo pipefail` and killed the shell at \"Regenerating test manifest...\",\nleaving no PR, no .git/PR_PENDING gate and no branch on the remote.\n\nPost-fix, observed live: \"Regenerating test manifest... Manifest updated --\namending commit\", then the full pre-commit battery (\"Test manifest... OK\"),\nthen \"Created PR #607\". The run completed.\n\nThe header/body agreement from the second half of the fix is also visible here\n-- header 0, body 0 -- though this particular case is not discriminating for it,\nsince a zero-selection regen unioned against a zero-selection committed manifest\nis 0 either way. The discriminating case (3-path body under a \"0\" header) is\ncovered by tests.\n\nThe AUTO_PR_SKIP_MANIFEST=1 workaround is retired in practice as well as in\nprinciple. Item stays satisfied."  # fbf8

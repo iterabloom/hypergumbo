@@ -29,7 +29,9 @@ prioritization session; after a dogfood tranche dumps many new items; when statu
 These are non-negotiable and several are inherited from AGENTS.md:
 
 - **Never read `.ops` files.** Read item state only through `scripts/tracker show <ID>` /
-  `show <ID> --json` and `scripts/tracker list --json`. The CLI compiles ops into current state.
+  `scripts/tracker --json show <ID>` and `scripts/tracker --json list`. The CLI compiles ops into
+  current state. **`--json` is global and goes BEFORE the subcommand** — the trailing form exits 2
+  and writes nothing to stdout, so a redirect captures an empty file rather than failing loudly.
 - **Never manually commit or push tracker `.ops`.** Auto-sync handles it. Do not stage
   `.agent/tracker/.ops/` or `.agent/tracker-workspace/.ops/`.
 - **No tracker mutations while an `auto-pr` run is in flight.** Check the `PR_PENDING` gate first
@@ -57,7 +59,7 @@ All sweep artifacts live under a single timestamped directory, never overwritten
 ${SWEEP_DIR}=~/hypergumbo_lab_notebook/tracker_hygiene_sweep_<UTC-START>/
   sweep_state.json              # orchestrator-only: start timestamp, repo HEAD, snapshot hash,
                                 #   cluster map, dispatch log, correction counter
-  snapshot/corpus.json          # frozen `tracker list --json` + per-item `show --json` (READ-ONLY for workers)
+  snapshot/corpus.json          # frozen `tracker --json list` + per-item `--json show` (READ-ONLY for workers)
   blackboard/
     corrections.md              # orchestrator → workers, APPEND-ONLY (the live-steering channel)
     claims.tsv                  # worker ↔ worker lease table (item_id, worker_label, state)
@@ -96,9 +98,9 @@ the precise moment the analysis begins is recorded before any work happens.
 3. **Freeze the corpus snapshot.** Pull the whole tracker once so every worker reads a *consistent*
    set (the live tracker mutates under auto-sync):
    ```bash
-   ./scripts/tracker list --json > "$SWEEP_DIR/snapshot/corpus.json"
+   ./scripts/tracker --json list > "$SWEEP_DIR/snapshot/corpus.json"
    ```
-   Then enrich with per-item `show --json` for every open item into the same snapshot dir (one file or
+   Then enrich with per-item `--json show` for every open item into the same snapshot dir (one file or
    a JSON map). Record the snapshot's sha256 and the item-id set in `sweep_state.json`. **Workers read
    only this frozen snapshot, never the live tracker**, so the corpus can't shift mid-sweep.
 

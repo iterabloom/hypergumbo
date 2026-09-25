@@ -118,6 +118,7 @@ import time
 from collections import defaultdict, deque
 from typing import Callable
 
+from ..edge_types import INHERITANCE_EDGE_TYPES
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from .method_call_recovery import parse_unresolved_name
 from .registry import (
@@ -133,9 +134,15 @@ from .type_hierarchy import (
 
 PASS_ID = make_pass_id("inherited-calls-linker")
 
-_INHERITED_CALL_EDGE_TYPES: tuple[str, ...] = (
-    "extends", "implements", "includes",
-)
+# INV-nosoz: the registry family plus ``includes`` for the Ruby mixin walk.
+# This read ``("extends", "implements", "includes")`` — it had the mixin but
+# omitted ``inherits``, so Solidity ancestors were never walked. ``includes``
+# is unioned rather than being registry-resident because eight of its nine
+# producers mean file inclusion; the MRO walkers below only ever see edges
+# whose src is a type, so a Makefile ``include`` cannot reach them.
+_INHERITED_CALL_EDGE_TYPES: tuple[str, ...] = tuple(sorted(
+    INHERITANCE_EDGE_TYPES | frozenset({"includes"})
+))
 
 # Confidence per Site (preserves Java/Ruby precedent; see module docstring).
 _SITE_1_CONFIDENCE = 0.90
@@ -151,7 +158,7 @@ _DEFAULT_DEPTH_CAP = 10
 # / includes are interfaces / mixin contributions consulted after the extends
 # chain is exhausted at the same depth.
 _EDGE_TYPE_PRIORITY: dict[str, int] = {
-    "extends": 0, "implements": 1, "includes": 2,
+    "extends": 0, "inherits": 0, "implements": 1, "includes": 2,
 }
 
 
@@ -857,14 +864,45 @@ def _extract_method_short_name(callee_name: str) -> str:
         "Java/Kotlin/Python/etc walkers and Site-2/3 receiver resolvers."
     ),
     activation=LinkerActivation(always=True),
-    # CNF: registered walkers exist for Java, Ruby, Groovy (per
-    # ``_MRO_WALKERS``). Future PRs extend the set to Python/Kotlin/etc.
-    # This linker also depends on the inheritance-linker pass producing
-    # extends/implements/includes edges first.
+    # CNF: the analyzers whose output can make this linker emit ANYTHING
+    # (WI-rasal, repaired from evidence — 226 surveys falsified the previous
+    # ``["java", "ruby", "groovy"]``, which was a snapshot of ``_MRO_WALKERS``
+    # taken when that dict had three entries and never updated when INV-fahub's
+    # fleet PR took it to fourteen).
+    #
+    # Derived, not hand-copied, from the three emission paths:
+    #   Site 1  — ``enclosing_class`` producers INTERSECT ``_MRO_WALKERS``
+    #             (dart/lua/zig stamp the hint but have no walker, deliberately)
+    #   Site 2  — ``receiver_type_hint`` producers; these need NO walker,
+    #             because step 1 resolves the method directly on the inferred
+    #             type (this is what adds ``d`` and ``kotlin``)
+    #   Site 3  — ``inherited_field_receiver`` producers
+    # ``test_depends_on_producer_sets.py`` re-derives all three and fails when
+    # the registry moves again. Note ``_MRO_WALKERS`` is keyed on
+    # ``Symbol.language``, a wider vocabulary than pass ids: its ``typescript``
+    # key maps onto the ``javascript`` pass.
+    #
+    # The former ``["inheritance-linker"]`` conjunct is GONE. It was falsified
+    # on 26 surveys and it was false: Site-2 step 1 emits
+    # ``ast_call_type_inferred`` with no inheritance edges in the graph at all.
+    # The ordering it recorded — run after inheritance-linker, whose
+    # extends/implements/includes edges the MRO walks traverse — is carried by
+    # ``priority=18`` against that linker's 15, which is the axis for it.
     depends_on=[
-        ["inheritance-linker"],
-        ["java", "ruby", "groovy"],
+        [
+            "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
+            "kotlin", "objc", "php", "python", "ruby", "rust",
+            "rust_analyzer",  # WI-juzig: the second producer of rust
+            "scala", "scip_python",  # WI-nanom: the second producer of python
+            "swift",
+        ],
     ],
+    # ADR-0057 §14.1: this pass's resolutions may demote the stub they were
+    # derived from. Granted on measurement, not on being a linker — audited
+    # 70 of 70 correct and consistent with the declared inheritance graph on
+    # 329 of 329 (docs/audits/0020). The sibling recovery pass is NOT granted
+    # it: 16 of its 64 edges are wrong and no shipped signal separates them.
+    supersedes_consumed_stub=True,
 )
 def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
     """See module docstring for the algorithm."""
@@ -1146,7 +1184,7 @@ def _resolve_site1(
         if src_lang in _SITE1_STRICT_LANGS and len(start_class_ids) > 1:
             return None
     resolved_target: Symbol | None = None
-    resolved_start_id: str | None = None
+    resolved_start_id: str = ""
     for start_id in start_class_ids:
         candidate = walker(
             start_id, callee_short, inheritance_index,
@@ -1162,7 +1200,6 @@ def _resolve_site1(
     # the walk's resolution in Python's real MRO — bias to unresolved.
     if (
         src_lang == "python"
-        and resolved_start_id is not None
         and _python_stdlib_base_shadows(
             resolved_start_id, callee_short, inheritance_index,
             class_symbols, method_index,
@@ -1177,7 +1214,7 @@ def _resolve_site1(
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited",
         is_resolved=True,
-        derived_from=[edge.src, resolved_target.id],
+        derived_from=[edge.id, resolved_start_id],
     )
 
 
@@ -1271,7 +1308,7 @@ def _resolve_site2(
             origin=PASS_ID, origin_run_id=run.execution_id,
             evidence_type="ast_call_type_inferred",
             is_resolved=True,
-            derived_from=[edge.src, direct.id],
+            derived_from=[edge.id, type_class_id],
         )
 
     # Step 2: MRO walk (requires a registered walker).
@@ -1297,7 +1334,7 @@ def _resolve_site2(
                     origin=PASS_ID, origin_run_id=run.execution_id,
                     evidence_type="ast_call_inherited_method",
                     is_resolved=True,
-                    derived_from=[edge.src, via_mro.id],
+                    derived_from=[edge.id, type_class_id],
                 )
 
     # Step 3: fallback to the type symbol itself.
@@ -1320,7 +1357,7 @@ def _resolve_site2(
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited_method",
         is_resolved=True,
-        derived_from=[edge.src, type_sym.id],
+        derived_from=[edge.id, type_class_id],
     )
 
 
@@ -1422,10 +1459,11 @@ def _resolve_site3(
     methods_by_class: dict[str, Symbol] = dict(candidates_by_short)
 
     resolved_target: Symbol | None = None
+    resolved_field_type_id: str = ""
     for ftid in field_type_class_ids:
         direct = methods_by_class.get(ftid)
         if direct is not None:
-            resolved_target = direct
+            resolved_target, resolved_field_type_id = direct, ftid
             break
         if walker is not None:
             via = walker(
@@ -1433,7 +1471,7 @@ def _resolve_site3(
                 method_index, _DEFAULT_DEPTH_CAP,
             )
             if via is not None:
-                resolved_target = via
+                resolved_target, resolved_field_type_id = via, ftid
                 break
 
     if resolved_target is None:
@@ -1448,5 +1486,5 @@ def _resolve_site3(
         origin=PASS_ID, origin_run_id=run.execution_id,
         evidence_type="ast_call_inherited_field",
         is_resolved=True,
-        derived_from=[edge.src, resolved_target.id],
+        derived_from=[edge.id, resolved_field_type_id],
     )

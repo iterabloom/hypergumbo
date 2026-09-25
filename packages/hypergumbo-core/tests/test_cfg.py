@@ -17,8 +17,11 @@ import pytest
 import tree_sitter
 from tree_sitter_language_pack import get_language
 
+from hypergumbo_core.taint import TaintFlowFinding
 from hypergumbo_core.cfg import (
-    uncovered_call_lines,
+    populate_def_use_for_cfg,
+    unaccounted_names,
+    uncovered_semantic_lines,
     BasicBlock,
     CfgBuilder,
     CfgEdge,
@@ -2159,22 +2162,34 @@ class _MockIoChain:
         self.primitive = "open"
 
 
-class _MockTaintFinding:
-    """Minimal TaintFlowFinding mock for testing."""
+def _MockTaintFinding(
+    source: str, sink: str, sanitized: bool = False,
+    path: list[str] | None = None,
+) -> TaintFlowFinding:
+    """Build a real ``TaintFlowFinding`` for the DDG-target selector tests.
 
-    def __init__(
-        self, source: str, sink: str, sanitized: bool = False, path: list[str] | None = None,
-    ) -> None:
-        self.source_symbol = source
-        self.sink_symbol = sink
-        self.sanitized = sanitized
-        self.path = path or []
-        self.taint_label = "plaintext"
-        self.source_primitive = "decrypt"
-        self.sink_primitive = "send"
-        self.sink_zone = "relay"
-        self.confidence = "approximate"
-        self.analysis_method = "structural"
+    THIS WAS A HAND-WRITTEN MOCK CLASS that re-declared nine of the dataclass's
+    fields, and it drifted the moment the dataclass gained a field the selector
+    reads: INV-karud added ``sink_symbols`` (a finding now stands for every
+    sink symbol it reached, not just the witness one) and every test here
+    raised ``AttributeError`` on a mock that could not have been wrong about
+    anything else. A stand-in that restates a type's shape is a second home for
+    it; constructing the real dataclass costs nothing here — it is a plain
+    dataclass with no I/O — and ``__post_init__`` keeps the derived tuples
+    correct without this file knowing they exist.
+    """
+    return TaintFlowFinding(
+        taint_label="plaintext",
+        source_symbol=source,
+        source_primitive="decrypt",
+        sink_symbol=sink,
+        sink_primitive="send",
+        sink_zone="relay",
+        sanitized=sanitized,
+        confidence="approximate",
+        analysis_method="structural",
+        path=path or [],
+    )
 
 
 class TestSelectDdgTargets:
@@ -2494,7 +2509,7 @@ class TestUncoveredCallLines:
         body = _get_go_function_body(tree)
         mapping = load_cfg_mapping("go")
         cfg = build_function_cfg(body, src, mapping, "go:x.go:2-8:f:function")
-        assert uncovered_call_lines(cfg, body, src, mapping) == frozenset({5})
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset({5})
 
     def test_fully_covered_function_reports_empty(self) -> None:
         """The negative half: a function with no unmodelled construct forfeits
@@ -2512,7 +2527,78 @@ class TestUncoveredCallLines:
         body = _get_go_function_body(tree)
         mapping = load_cfg_mapping("go")
         cfg = build_function_cfg(body, src, mapping, "go:x.go:2-6:f:function")
-        assert uncovered_call_lines(cfg, body, src, mapping) == frozenset()
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+
+    def test_go_range_clause_binding_is_uncovered(self) -> None:
+        """WI-mugop: THE SHAPE THE CALLS-ONLY PREDICATE COULD NOT SEE.
+
+        ``for _, c := range v`` binds ``c`` from ``v`` in a range clause the
+        loop hook never records, and the clause contains NO CALL — so the
+        original predicate returned an empty frozenset for a function whose
+        taint chain the extractor demonstrably had not followed, leaving the
+        §3a walk free to exhaust and refute. This is INV-lupav's live route,
+        not a hypothetical: measured on this exact source, calls-only reports
+        ``frozenset()`` and the widened predicate reports line 4.
+        """
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tv := source()\n"
+            "\tfor _, c := range v {\n"
+            "\t\tuse(c)\n"
+            "\t}\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-7:f:function")
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset({4})
+
+    def test_a_covered_function_with_literals_still_reports_empty(self) -> None:
+        """THE FLOOR, and it is the assertion that makes the class above mean
+        anything. Widening a coverage predicate is only useful if it can still
+        return "covered"; one that fires everywhere forfeits the whole cohort
+        and reads as a finding about the substrate rather than a broken gate.
+
+        Deliberately carries string and integer literals and a keyword-heavy
+        construct, because the widened predicate counts named LEAVES — if it
+        tripped on ordinary tokens inside recorded statements it would fail
+        here rather than silently on a corpus.
+        """
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tv := source()\n"
+            "\tn := 42\n"
+            '\ts := "banner"\n'
+            "\tw := g(v, n, s)\n"
+            "\tuse(w)\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-8:f:function")
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+
+    def test_interior_nodes_are_not_counted(self) -> None:
+        """The spelling that was measured and REJECTED. Counting any uncovered
+        NAMED node rather than named leaves forfeits every function on every
+        repository, because the function body is contained in no statement
+        extent by construction — a clean-looking 100% that says nothing about
+        coverage. Pinned here so nobody widens it that far by accident."""
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tv := source()\n"
+            "\tuse(v)\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-5:f:function")
+        # The body block itself is an uncovered NAMED node; it must not count.
+        assert body.is_named and body.child_count > 0
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
     def test_undeclared_language_returns_None_not_empty(self) -> None:
         """``None`` and ``frozenset()`` are DIFFERENT facts and must not fold.
@@ -2530,7 +2616,7 @@ class TestUncoveredCallLines:
         assert mapping.call_node_types == []
         body = tree.root_node
         cfg = build_function_cfg(body, src, mapping, "java:C.java:1-1:f:method")
-        assert uncovered_call_lines(cfg, body, src, mapping) is None
+        assert uncovered_semantic_lines(cfg, body, src, mapping) is None
 
     def test_python_and_rust_declare_their_call_types(self) -> None:
         """Every language with a def/use extractor must be checkable.
@@ -2543,3 +2629,219 @@ class TestUncoveredCallLines:
         assert "call" in load_cfg_mapping("python").call_node_types
         assert "call_expression" in load_cfg_mapping("rust").call_node_types
         assert "call_expression" in load_cfg_mapping("typescript").call_node_types
+
+
+@pytest.fixture
+def _real_extractors() -> None:
+    """Register the SHIPPED def/use extractors, surviving a prior clear.
+
+    Through ``ensure_def_use_extractors_registered`` and not a bare import:
+    registration is an import SIDE EFFECT, and this very file calls
+    ``clear_def_use_extractors()`` five times, so once the module is in
+    ``sys.modules`` an import here re-registers nothing and the tests below
+    would assert against an empty registry — every statement ``defines=[]
+    uses=[]``, which is the exact shape they are trying to detect.
+    """
+    from hypergumbo_core.dataflow_scope import (
+        ensure_def_use_extractors_registered,
+    )
+
+    assert ensure_def_use_extractors_registered()
+
+
+@pytest.mark.usefixtures("_real_extractors")
+class TestUnaccountedNames:
+    """INV-lupav clause L4: a variable MENTIONED inside a recorded statement.
+
+    THE HALF NO EXTENT TEST CAN REACH. ``uncovered_semantic_lines`` asks
+    whether code sits OUTSIDE every recorded statement. These constructs are
+    recorded, so there is no uncovered extent at any predicate width — and the
+    extractor then fills the statement with nothing. Both failures produce the
+    same downstream lie: the §3a walk exhausts, returns ``False``, and since
+    2026-09-02 that ``False`` REMOVES the reported flow.
+
+    EVERY CASE HERE WAS READ BACK AGAINST A FOUR-LANGUAGE SWEEP, not guessed —
+    one earlier guess at this clause's shape (a use captured inside a Go func
+    literal) does not reproduce, and nearly got the clause recorded as unreal.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _with_the_go_extractor_registered(self):
+        """``populate_def_use_for_cfg`` NO-OPS when no def/use extractor is
+        registered for the language, and that registry is populated by IMPORT
+        SIDE-EFFECT — analyzer discovery does not fill it; the production
+        dataflow path force-imports it
+        (``dataflow_scope.ensure_def_use_extractors_registered``, called from
+        ``cli``). Without that import every statement has empty ``defines``,
+        so there is no tracked name and this predicate answers EMPTY for any
+        input — the shape ``test_a_cfg_with_no_definitions_answers_empty``
+        pins deliberately, reached here by accident.
+
+        So these cases silently depended on whether some earlier test in the
+        same process had imported ``go_def_use``: green alone, green after
+        ``test_go_def_use.py``, and RED on an xdist worker that drew neither
+        (which is how CI saw it). Establish the production configuration
+        instead of inheriting whatever the worker happened to import.
+        """
+        from hypergumbo_core import cfg as _cfg
+        from hypergumbo_core.dataflow_scope import ensure_def_use_extractors_registered
+
+        ensure_def_use_extractors_registered()
+        assert "go" in _cfg._DEF_USE_EXTRACTORS, (
+            "the production force-import registered no Go def/use extractor; "
+            "without it this predicate answers empty for every input"
+        )
+
+    def test_go_grouped_var_declaration_hides_its_value(self) -> None:
+        """The motivating shape, live in alertmanager (api/v2/api.go:251).
+
+        The grammar nests grouped specs one level deeper — inside a
+        ``var_spec_list`` — than ``_handle_spec_declaration`` descends, so the
+        statement records ``defines=[] uses=[]`` while mentioning two names.
+        The handler IS registered for ``var_declaration``: membership in a
+        dispatch table is not evidence the dispatch was complete, which is why
+        a per-handler "I understood this" flag cannot close this clause.
+        """
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tcwd := source()\n"
+            "\ta := cwd\n"
+            "\tvar (\n"
+            "\t\tmsg = cwd\n"
+            "\t)\n"
+            "\tsink(msg)\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-9:f:function")
+        populate_def_use_for_cfg(cfg, body, src, "go")
+        # The coverage gate is SILENT here — that is the clause, not an aside.
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        assert unaccounted_names(cfg, body, src) == frozenset({"cwd"})
+
+    def test_ungrouped_var_declaration_is_the_control(self) -> None:
+        """One variable apart from the case above, and it must come back clean.
+
+        Without this the predicate could pass its own test by reporting every
+        name, which would withhold ``False`` from every walk on every
+        repository — the spelling a floor check already killed once (WI-mugop
+        phase 1). A gate that cannot return "accounted for" is not a gate.
+        """
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tcwd := source()\n"
+            "\ta := cwd\n"
+            "\tvar msg = cwd\n"
+            "\tsink(msg)\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-7:f:function")
+        populate_def_use_for_cfg(cfg, body, src, "go")
+        assert unaccounted_names(cfg, body, src) == frozenset()
+
+    def test_python_subscript_index_is_never_read(self) -> None:
+        """``c[key] = 1`` records ``defines=['c'] uses=[]``.
+
+        The dominant shape in the Python half of the sweep, and a DIFFERENT
+        construct from Go's — which is the argument against closing this clause
+        with a per-language list of gaps. A list written from either language
+        ships the other one invisible.
+        """
+        tree, src = _parse_python(
+            "def f():\n"
+            "    key = source()\n"
+            "    c = {}\n"
+            "    c[key] = 1\n"
+            "    sink(c)\n"
+        )
+        body = _get_function_body(tree)
+        mapping = load_cfg_mapping("python")
+        cfg = build_function_cfg(body, src, mapping, "python:x.py:1-5:f:function")
+        populate_def_use_for_cfg(cfg, body, src, "python")
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+        assert unaccounted_names(cfg, body, src) == frozenset({"key"})
+
+    def test_an_enclosing_statement_accounts_for_its_children(self) -> None:
+        """Go records ``defer`` as two NESTED statements, the inner one empty.
+
+        ``defer_statement`` reads ``msg`` correctly; the ``deferred_call``
+        inside it records nothing. Attributing each leaf to its INNERMOST
+        recorded statement — the obvious implementation — reports the empty
+        inner one and flags a variable the extractor demonstrably did follow.
+        This is a false positive the filed item asserted was a real one, and
+        it is the reason the accumulated ancestor set exists.
+        """
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tmsg := source()\n"
+            "\tdefer log.Printf(\"%s\", msg)\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-5:f:function")
+        populate_def_use_for_cfg(cfg, body, src, "go")
+        recorded = [
+            (s.node_type, tuple(s.uses))
+            for b in cfg.blocks.values() for s in b.statements
+        ]
+        assert ("deferred_call", ()) in recorded, recorded
+        assert unaccounted_names(cfg, body, src) == frozenset()
+
+    def test_only_names_this_function_defines_are_reported(self) -> None:
+        """Callee and package names are mentioned everywhere and never queried.
+
+        Every variable the §3a walk can be handed comes from a statement's
+        ``defines`` — ``defs_at`` and ``inherits`` are both built from them —
+        so reporting ``fmt``, ``sink`` or a type name would be noise no
+        consumer can act on. Restricting to defined names is what keeps the
+        measured floor at 12.6% of functions instead of all of them.
+        """
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tcwd := source()\n"
+            "\tvar (\n"
+            "\t\tmsg = cwd\n"
+            "\t)\n"
+            "\tfmt.Println(msg)\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-8:f:function")
+        populate_def_use_for_cfg(cfg, body, src, "go")
+        got = unaccounted_names(cfg, body, src)
+        assert "fmt" not in got and "Println" not in got and "sink" not in got
+        assert got == frozenset({"cwd"})
+
+    def test_a_cfg_with_no_definitions_answers_empty(self) -> None:
+        """PINS THE DOCUMENTED HAZARD rather than leaving it to the docstring.
+
+        With no statement defining anything there is no tracked name, so the
+        answer is empty — indistinguishable from "all accounted for". That is
+        exactly what a CFG that never saw ``populate_def_use_for_cfg`` looks
+        like, and it is safe ONLY because the sole production caller computes
+        this alongside DDG edges, which cannot exist without definitions.
+        Asserted here so a future caller that drops that pairing has to come
+        and edit a test that says why.
+        """
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tvar (\n"
+            "\t\tmsg = cwd\n"
+            "\t)\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-6:f:function")
+        # DELIBERATELY NOT populated.
+        assert unaccounted_names(cfg, body, src) == frozenset()

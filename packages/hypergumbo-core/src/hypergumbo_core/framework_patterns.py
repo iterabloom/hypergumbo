@@ -978,7 +978,26 @@ def load_framework_patterns(framework_id: str) -> FrameworkPatternDef | None:
     # Resolve alias if present (e.g., "chi" -> "go-web")
     resolved_id = _FRAMEWORK_ALIASES.get(framework_id, framework_id)
 
-    yaml_path = frameworks_dir / f"{resolved_id}.yaml"
+    # ADR-0047 ruling 10 (WI-sofov): the user's own conventions win.
+    #
+    # A FRAMEWORK DEFINITION IS REPLACED WHOLE, not merged row-by-row like an
+    # io_primitives overlay, and the difference is not an inconsistency. An I/O
+    # catalogue is a SET OF ROWS keyed by qualified name, so "later wins on
+    # collision" is well defined per row. A FrameworkPatternDef is a coherent
+    # description of one convention -- its detectors, its route extraction and
+    # its usage patterns are written to agree with each other -- and half-merging
+    # two of them yields a definition neither author wrote. So a user file for a
+    # framework id replaces the shipped one entirely, which is also the only
+    # sensible reading for the case this channel exists for: an IN-HOUSE
+    # framework hypergumbo has never heard of.
+    from .catalogue_home import user_channel_files
+
+    user_path = next(
+        (path for path in user_channel_files("frameworks")
+         if path.stem in (framework_id, resolved_id)),
+        None,
+    )
+    yaml_path = user_path or frameworks_dir / f"{resolved_id}.yaml"
     if not yaml_path.exists():
         _PATTERN_CACHE[cache_key] = None
         return None

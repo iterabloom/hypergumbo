@@ -20,11 +20,25 @@ Symbol Types
 ------------
 - function: Local and module function definitions
 - type: Type definitions (type and export type)
-- variable: Local variable declarations
+- variable: ``local`` declarations whose name starts with an uppercase letter
+  (meant for module tables such as ``local MyModule = {}``); the value is
+  not checked, and declarations nested inside functions are included too
 
 Edge Types
 ----------
 - calls: Function calls from one symbol to another
+
+Call resolution
+---------------
+- A call is dropped when either its first or its last ``.`` / ``:``
+  segment is in ``LUAU_BUILTINS`` (Lua builtins, ``string``/``table``/
+  ``math`` members, Roblox globals and services).
+- The callee is looked up by its full text (``Module.fn``) among the
+  cross-file symbol names; failing that, by its short name (the last
+  ``.`` / ``:`` segment) in the same table (confidence 1.0 either way).
+- An unmatched call is still emitted, to
+  ``luau:unresolved:0-0:<name>:unresolved`` with confidence 0.6. All call
+  edges carry evidence_type ``tree_sitter``.
 """
 
 from __future__ import annotations
@@ -239,8 +253,9 @@ def _extract_variable(
     analyzer: "LuauAnalyzer", file_anchor: str,
 ) -> None:
     """Extract a variable declaration."""
-    # Only extract top-level module tables (e.g., local MyModule = {})
-    # Skip simple local variables
+    # Target module tables (e.g., local MyModule = {}) by name only: skip
+    # lowercase locals. Depth is not checked -- the recursive walker calls
+    # this for nested declarations as well.
     for child in node.children:
         if child.type == "assignment_statement":
             for subchild in child.children:
@@ -490,7 +505,7 @@ def is_luau_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("luau")
+@register_analyzer("luau", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_luau(repo_root: Path) -> AnalysisResult:
     """Analyze Luau files in the repository.
 

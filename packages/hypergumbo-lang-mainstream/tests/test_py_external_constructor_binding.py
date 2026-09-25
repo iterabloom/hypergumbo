@@ -168,9 +168,11 @@ class TestBindingOwnershipDecidesTrust:
 
     def test_mismatched_binding_is_withheld(self, tmp_path: Path) -> None:
         """``fastapi.Path`` is a parameter declaration, not a filesystem path;
-        ``.replace`` on it is ``str.replace``."""
+        ``.replace`` on it is ``str.replace``. The CATALOGUED type is withheld;
+        the instance is typed as what the import actually supplied
+        (``fastapi.Path``, WI-makij's imported-class rule), which reaches no row."""
         edges = _analyse(tmp_path / "bad", self.BAD)
-        assert _module_slot(_dsts_named(edges, "replace")[0]) == "external"
+        assert _module_slot(_dsts_named(edges, "replace")[0]) == "fastapi.Path"
         assert _tagged(edges) == 0
 
     def test_mismatched_binding_is_withheld_from_taint_too(
@@ -297,7 +299,25 @@ class TestEveryBareConstructorKeyIsGuarded:
                 f"    v = {key}(spec)\n"
                 f"    return v.{method}()\n"
             )
-            assert _tagged(_analyse(tmp_path / f"unbound_{key}", body)) == 0, (
+            # MEASURE THE METHOD EDGE, NOT EVERY EDGE (WI-jabus). What this
+            # test is about is the RECEIVER HINT: an unbound `Path(spec)`
+            # minting a pathlib.Path type, so that `v.write_text()` tags. The
+            # CONSTRUCTOR call is a different mechanism with its own guard --
+            # a bare `Popen(spec)` matches subprocess.yaml's own launch row by
+            # short name, which it did long before any class-qualified rows
+            # existed and which is a DETECTION, not a fabrication. Counting
+            # every edge conflated the two and made this test fail on a row it
+            # was not written to police; scoping it to the method edge tests
+            # the hint and leaves the launch row alone. Adding `Popen` to
+            # ambiguous_names was the alternative and was refused: with the
+            # import present there is no bare Popen edge at all, so the only
+            # thing it would change is to DELETE the unbound detection -- the
+            # loosening direction, on a subprocess claim.
+            edges = [
+                e for e in _analyse(tmp_path / f"unbound_{key}", body)
+                if e.dst.endswith(f":{method}:unresolved")
+            ]
+            assert _tagged(edges) == 0, (
                 f"{key!r} is not a builtin, yet an UNBOUND use still minted a "
                 f"{module!r} receiver hint"
             )

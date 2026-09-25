@@ -68,3 +68,12 @@
   clock: 6  # b2be
   nonce: b2be  # b2be
   message: "Satisfied. Merged 4279d3a4bd (PR #343). The confusable pair is resolved: edge.meta key 'construct' renamed to 'ref_construct' at all 6 emission sites (react_component/websocket/solidity/c/cpp/html) + the axis_meta_keys MetaKeySpec; the two keys now read as parallel-but-distinct per-edge-family axes — ref_construct = reference-family (non-call) construct (jsx/script_src/websocket_endpoint/event_emit/dispatch_table); call_construct = call-edge SHAPE (method/function/cross_file). Both registered, distinct vocabularies, zero overlap; neither looks like a generalization of the other. Per the keep-distinct ruling (WI-dinih precedent). Behavioral repro on merged code: run_behavior_map on an <script src=app.js> HTML fixture now emits a references edge with meta['ref_construct']=='script_src' and ZERO edges carry the stale meta['construct']. Production-path tests: test_html_analysis.py (run_behavior_map → meta['ref_construct']=='script_src'), test_react_component_linker.py (meta.ref_construct=='jsx'). L3 producer-axis-coherence linter clean (catches unregistered/missed keys). call_construct unchanged (131 refs). No SCHEMA_VERSION bump (edge.meta free-form, no in-tree consumer branches on the key)."  # b2be
+- op: update  # f667
+  at: '2026-09-11T17:24:48Z'  # f667
+  by: agent  # f667
+  actor: jgstern_agent  # f667
+  clock: 7  # f667
+  nonce: f667  # f667
+  set:  # f667
+    fields:  # f667
+      severity:  # f667

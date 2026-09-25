@@ -353,7 +353,7 @@ def is_tcl_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("tcl")
+@register_analyzer("tcl", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_tcl(repo_root: Path) -> AnalysisResult:
     """Analyze Tcl source files in a repository.
 

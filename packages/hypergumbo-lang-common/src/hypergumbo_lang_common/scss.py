@@ -10,18 +10,27 @@ How It Works
 Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 1. Uses tree-sitter-scss grammar from tree-sitter-language-pack
 2. Extracts variables, mixins, functions, and rule sets
-3. Identifies variable usage and mixin includes
+3. Links mixin includes (@include) to mixin definitions
+
+``ScssAnalyzer.analyze()`` is overridden to do a single pass per file
+(symbols and edges together) with one mixin table shared across all files.
+An ``@include`` is resolved against the mixins seen so far, so an include
+processed before its mixin's definition (later in the same file, or in a
+file walked later) gets the dangling target even though the mixin exists.
+File processing order therefore affects which includes resolve.
 
 Symbols Extracted
 -----------------
-- **Variables**: SCSS variables ($variable-name)
+- **Variables**: top-level SCSS variable declarations ($variable-name)
 - **Mixins**: Mixin definitions (@mixin name)
 - **Functions**: Function definitions (@function name)
 - **Rule sets**: CSS selectors with their blocks
 
 Edges Extracted
 ---------------
-- **uses_mixin**: Links @include to mixin definitions
+- **includes**: stylesheet file -> mixin for each @include (confidence 0.95
+  when the mixin was already seen in any file processed so far, else 0.6 to
+  a dangling mixin id)
 
 Why This Design
 ---------------
@@ -48,6 +57,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -443,6 +453,7 @@ class ScssAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         files = find_scss_files(repo_root)
@@ -491,7 +502,7 @@ def is_scss_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("scss")
+@register_analyzer("scss", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_scss(repo_root: Path) -> AnalysisResult:
     """Analyze SCSS/Sass stylesheet files in a repository.
 

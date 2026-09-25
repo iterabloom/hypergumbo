@@ -25,7 +25,9 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **imports_component**: Links component usage to import paths
+- **imports**: Links component usage to import paths
+  (ADR-0023 §6 folded the former `imports_component` type into
+  canonical `imports`)
 
 Why This Design
 ---------------
@@ -432,7 +434,7 @@ class AstroAnalyzer(TreeSitterAnalyzer):
         """Extract symbols from an Astro file.
 
         Uses _AstroFileExtractor to handle the stateful frontmatter/template
-        two-pass extraction per file. Edges (imports_component) are also
+        two-pass extraction per file. Edges (canonical `imports`) are also
         created during this pass.
         """
         analysis = FileAnalysis()
@@ -482,7 +484,7 @@ def is_astro_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("astro")
+@register_analyzer("astro", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_astro(repo_root: Path) -> AnalysisResult:
     """Analyze Astro component files in a repository.
 

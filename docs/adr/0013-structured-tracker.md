@@ -4,6 +4,8 @@
 Date: 2026-02-13
 Status: Accepted
 
+> **Amendment (2026-09-12) — the OS-enforcement claim was false, and is replaced by a host-protected config layer.** This ADR stated twice that the agent "literally cannot `write()`" to `config.yaml` because the human owns it at mode 644. That is not how filesystems work: **replacing a file requires write permission on its DIRECTORY, not on the file** — create a tempfile, `rename()` over the target. The tracker's own `tag_catalog.save_catalog` does exactly that in the same directory as `config.yaml`, so the agent *must* have write there to function. On a two-account deployment the agent also typically owns the repo root and `.agent/` outright, and a directory's owner can re-`chmod` it at will — so **no file anywhere inside the checkout can be protected from the agent by permissions.** Three further divergences were found on a live deployment: the shipped code targets mode `0444`, not the `644` written below; `handle_init` had no actor guard while calling `config_lock`, whose cross-user fallback *transfers ownership of the config to the caller*; and the config had in fact become agent-owned. **Both of those are now enforced** (2026-09-12, second PR): `init` refuses to run as an agent — restoring the authority this ADR's own command table always designated — and `_config_chmod_fallback` refuses outright when the caller is an agent, so the ownership-transfer path is closed at the mechanism rather than at one call site. The remedy for the underlying gap is §"Host-protected config" below, added by this amendment: an authoritative `/etc/hypergumbo-tracker/<repo-id>/config.yaml` that the agent can read and cannot replace. Sentences asserting OS enforcement of the in-repo file are corrected in place. Tracker item: INV-mizid.
+
 ## Context
 
 The [hypergumbo](https://codeberg.org/iterabloom/hypergumbo) project uses AI agents for autonomous development. These agents are governed by a "stop hook" system (see [ADR-0008](0008-autonomous-governance-and-vendor-agnostic-hooks.md)) that decides whether an agent is allowed to stop working or must continue. The hook counts open work items and invariant violations to determine if the agent has finished.
@@ -91,13 +93,13 @@ Cache and ephemeral files (`.cache.db`, `.last_list`) live outside the repo tree
 
 **Canonical** (`.agent/tracker/`) is the repo's institutional memory — committed, shared across forks, included in upstream PRs. **Workspace** (`.agent/tracker-workspace/`) is the agent's personal working memory — committed and pushed to the fork's remote for backup, but excluded from upstream PRs by `scripts/contribute`. **Stealth** (`.agent/tracker-workspace/stealth/`) is gitignored and never leaves the machine.
 
-The store reads all three tiers transparently via `TrackerSet` — agents and humans see a unified merged view. Items are tagged `[C]`, `[W]`, or `[S]` in CLI output to indicate their tier. The agent writes to workspace by default; items are promoted to canonical explicitly (see [Three-Tier Visibility](#three-tier-visibility)). **Agents should never read op log files directly** — they use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to get compiled current state (see [Agent Context Protection](#agent-context-protection)).
+The store reads all three tiers transparently via `TrackerSet` — agents and humans see a unified merged view. Items are tagged `[C]`, `[W]`, or `[S]` in CLI output to indicate their tier. The agent writes to workspace by default; items are promoted to canonical explicitly (see [Three-Tier Visibility](#three-tier-visibility)). **Agents should never read op log files directly** — they use `scripts/tracker show <ID>` or `scripts/tracker --json show <ID>` (the `--json` flag is global and precedes the subcommand) to get compiled current state (see [Agent Context Protection](#agent-context-protection)).
 
 #### Config File
 
 The repo tracks a **template** (`config.yaml.template`). The actual config (`config.yaml`) is gitignored and human-owned via OS file permissions — the standard `.env.example` → `.env` pattern (see [Security Model](#security-model)).
 
-`scripts/tracker init` (run by the human user) copies the full template to `config.yaml`, then performs a YAML-aware merge of the per-deployment fields (see below) into the copy — for example, `stop_hook.scope` is merged into the existing `stop_hook` block alongside `blocking_statuses` and `resolved_statuses`, not appended as a duplicate top-level key. Finally, it sets ownership: `chown <human_user> config.yaml && chmod 644 config.yaml`. The result is a **complete** config file — not just overrides. The agent can read config (needs to, for validation) but cannot write it — the OS enforces this.
+`scripts/tracker init` (run by the human user) copies the full template to `config.yaml`, then performs a YAML-aware merge of the per-deployment fields (see below) into the copy — for example, `stop_hook.scope` is merged into the existing `stop_hook` block alongside `blocking_statuses` and `resolved_statuses`, not appended as a duplicate top-level key. Finally, it sets ownership: `chown <human_user> config.yaml && chmod 444 config.yaml` (the shipped `config_lock` targets `0444`; earlier revisions of this ADR said `644`). The agent can read config — it needs to, for validation — and these bits stop it *writing the file in place*. **They do not stop it replacing the file**, because a rename into the containing directory needs directory write, which the agent has; see §"Host-protected config" for the layer that actually enforces this.
 
 The validation code loads config from a chain: `config.yaml` if it exists, otherwise `config.yaml.template` (fallback, not merge). CI uses the template directly (which contains all governance rules but no per-deployment fields — `actor_resolution` and `stop_hook.scope` use built-in defaults when absent). `validate` warns in both directions: when `config.yaml` contains kinds or statuses not present in `config.yaml.template` (local-only additions that would fail in CI), and when `config.yaml.template` has been updated with new kinds or statuses that `config.yaml` doesn't have (stale local config — re-run `init` to regenerate).
 
@@ -406,7 +408,7 @@ Within the ready set, items are sorted by `(priority, created_at)`. For display 
 
 **Timestamps.** `created_at` is the timestamp of the first op (`create`). "Last updated" is derived from the timestamp of the last op in the file — computed by `compile()`, never stored as a separate field. Both are ISO 8601 UTC. Staleness detection ("this todo_hard item hasn't been touched in 14 days") uses the last op's timestamp.
 
-**Config-defined statuses.** Statuses, `blocking_statuses`, and `resolved_statuses` are all defined in `config.yaml` (see [Config File](#config-file)) — not hardcoded as a Python enum. "Hardcoded in code" provides no additional protection over "defined in config" — the agent can edit and auto-PR Python source just as easily as YAML. With the OS-permission-protected config model (see [Security Model](#security-model)), config-defined statuses are actually *harder* for the agent to modify than source code — the agent literally cannot `write()` to a file owned by the human user with mode 644. The Python code loads the status vocabulary from config at startup and validates ops against it. Adding a new status (e.g., `blocked_external`) is a config change made by the human — no code PR needed. `kind` is also validated against config at runtime — adding a new kind is purely a config change.
+**Config-defined statuses.** Statuses, `blocking_statuses`, and `resolved_statuses` are all defined in `config.yaml` (see [Config File](#config-file)) — not hardcoded as a Python enum. "Hardcoded in code" provides no additional protection over "defined in config" — the agent can edit and auto-PR Python source just as easily as YAML. With a host-protected config (see §"Host-protected config"), config-defined statuses are genuinely harder for the agent to modify than source code: a source change still passes through PR, CI and review, while a config change is impossible without root. **In-repo file permissions alone do not achieve this** — the agent can rename over a file in any directory it can write — which is why the protected layer exists. The Python code loads the status vocabulary from config at startup and validates ops against it. Adding a new status (e.g., `blocked_external`) is a config change made by the human — no code PR needed. `kind` is also validated against config at runtime — adding a new kind is purely a config change.
 
 **Hash-based IDs with kind prefix and proquint encoding.** IDs are `<kind prefix>-<proquint>` (e.g., `INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit`), where the proquint suffix is a [proquint](https://github.com/dsw/proquint) encoding of the first 128 bits of the SHA-256 hash of the **canonicalized `create` op content** — specifically the `data` dict, serialized with sorted keys. The hash input excludes `at`, `by`, `clock`, and `nonce` — so the same logical item created at different times by different actors produces the same ID.
 
@@ -866,7 +868,7 @@ Three layers of defense prevent agents from reading op logs directly:
 1. **Dotdir** (`.ops/`) — Agents are trained to skip dotdirs by convention. The op log directory is hidden from `ls`, file explorers, and casual glob patterns.
 2. **Dotfile** (`.INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops`) — Each op log file is itself a dotfile, doubly hidden. Even if an agent navigates into `.ops/`, the files don't appear in standard directory listings.
 3. **Explicit instruction in AGENTS.md** — The following rules are added:
-   - "Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state."
+   - "Always use `scripts/tracker show <ID>` or `scripts/tracker --json show <ID>` to read tracker item state."
    - "Always refuse to read files ending in `.ops`. These are internal operation logs that will pollute your context window with historical data you don't need."
 
 The `.ops` file extension (rather than `.yaml`) is also a signal — agents scanning for readable config or data files by extension will not match `.ops` files.
@@ -886,6 +888,146 @@ inotifywait -m -r -e access,open .agent/tracker/.ops/ .agent/tracker-workspace/.
 ```
 
 The tracker CLI's access pattern is a predictable burst (many files opened in rapid succession during `compile()`). Any isolated `.ops` file read without a temporally correlated CLI invocation indicates a direct agent read. This is a monitoring/awareness mechanism — it does not block access, just logs it for the human to review. `inotifywait` requires no root privileges (it uses Linux's inotify kernel API) and is available in the `inotify-tools` package on all major distributions.
+
+### Host-protected config
+
+*Added by the 2026-09-12 amendment.*
+
+`config.yaml` is the governance vocabulary every write is validated against, so
+an agent that can change it can grant itself statuses the stop hook cannot see.
+File ownership and mode cannot defend it, for the reason given in the amendment
+note: replacement needs directory write, and the agent legitimately has directory
+write (`tag_catalog.save_catalog` writes atomically into the very same
+directory). "The agent can write files here" and "one file here is protected from
+the agent" are mutually exclusive.
+
+The defence is therefore a location the agent owns no component of:
+
+```
+/etc/hypergumbo-tracker/<12-hex>_<legible path tail>/config.yaml
+```
+
+root-owned, directory `0755`, file `0644`. The requirement is precise — **the
+agent reads, cannot write the file, and cannot write the containing directory or
+any parent.**
+
+**Resolution order.** (0) the host-protected config, if the host has opted in;
+(1) in-repo `config.yaml`; (2) `config.yaml.template`; (3) built-in defaults.
+When layer 0 applies it is authoritative and the in-repo file is **ignored
+entirely**, never merged.
+
+**Absence is fatal, by design.** If a missing protected config fell through to
+layer 1, an agent would not need to write the protected file at all — only to
+stop it being found, and layer 1 is a file it fully controls. So the *existence
+of `/etc/hypergumbo-tracker/`* is the opt-in signal: once that directory exists,
+a repo with no config under it **refuses to load**. The agent can neither create
+nor remove it, so it cannot forge either answer. Hosts that never create it are
+unaffected — the layer is inert until someone opts in, and single-account
+deployments keep today's behaviour exactly.
+
+**No environment override.** The agent controls its own environment, so any
+variable able to redirect the root would reopen the hole. The root is a
+parameter for tests only and is never read from the environment.
+
+**Why `/etc` and not the human's home.** To look under `~<human>/` the tool must
+first know which user is the human — which it reads from `actor_resolution` in
+the config it is trying to find. Circular. `/etc` is discoverable with no prior
+knowledge, and the sudo cost is already paid by any two-account deployment
+(`groupadd` / `usermod` / `chgrp` / `chmod g+s`).
+
+**Naming.** The hash is the key and comes first; lookup globs on the hash prefix
+and treats the tail as a comment, so an administrator may rename
+`325ef6540f2a_home_jgstern_hypergumbo` to `325ef6540f2a_prod` without breaking
+resolution. Two directories claiming one hash is refused rather than resolved by
+guess. The hash is `journal._repo_id`, imported rather than re-derived; the ops
+journal keeps a bare hash deliberately, being machine-managed and never
+hand-administered.
+
+**What this does not protect.** The id keys on the toplevel path, so an agent
+that relocates or re-clones the checkout gets a different id and falls through to
+layer 1; it can also `pip install` its own tracker. Config protection cannot
+reach an agent running its own deployment. What it protects is *this*
+deployment's governance record.
+
+**Path spelling is not a downgrade lever** *(added 2026-09-12, second amendment).*
+Layer 0 keys on the git toplevel containing the config directory, and the helper
+that finds it walks parent directories — which for a **relative** path terminates
+at `.` without ever seeing `.git`. It therefore returned "no repo", and the
+loader treated that the same as "genuinely outside a repository" and fell through
+to layer 1. Since the agent controls its own argv, `--tracker-root ./.agent` was
+a one-flag downgrade of this entire section. The config directory is now resolved
+to an absolute path before the walk, so "no repo" means only what it is
+documented to mean. The non-git fallthrough itself is kept: outside a repository
+there is no id to key on, and no deployment to protect.
+
+**The wizard must follow layer 0, not the decoy** *(same amendment).* Once
+layer 0 is in force the in-repo `config.yaml` is inert, and a setup wizard that
+kept reading, validating and *editing* it would let a human make governance
+changes that silently do nothing — a strictly worse failure than the unprotected
+state, because it looks like it worked. Every config-reading check now resolves
+through one helper (`setup.authoritative_config`), `htrac setup configure`
+**refuses** rather than writing a file nothing reads, and the setup report names
+the leftover in-repo copies and tells the human to delete them. The wizard does
+not acquire root to edit `/etc` on the user's behalf: a config editor that
+silently escalates is its own governance problem.
+
+**Two checks may not disagree about one file** *(same amendment).* Check #10b set
+`config.yaml` to `0444`; check #12's group sweep then restored `g+rw` on every
+file in the shared-group directories, landing on `0464`. Both reported "fixed" on
+every run, so the wizard never converged despite documenting idempotence — and
+`0464` in a group containing the agent means the agent can write whichever config
+it does not own. Mode for `config.yaml` is now owned solely by #10b. Relatedly,
+the shared-group probe looked only at `.agent/` and the repo toplevel, which a
+correct two-user setup leaves at the owner's primary group (the instructions
+`chgrp` `.agent/tracker*` and `.git`), so it reported "single-user" on a properly
+configured box and the checks gated on it — including the one that creates
+missing directories with the shared group and setgid — silently did nothing.
+
+### Human-authority install provenance
+
+*Added by the 2026-09-12 amendment (INV-hivog).*
+
+The two-account split moved the **data** out of the agent's reach (§"Host-protected
+config") and the **authority decision** out of its reach (`resolve_actor` keys on
+`os.getuid()`, which is not forgeable). It never moved the **code**. On the
+deployment this ADR was written against there was exactly one install — an
+*editable* one, owned by the agent, pointing into a checkout the agent must be
+able to write — and `generate_human_shim` positively instructed the human to
+`source` it. So every human-authority command (`init`, `lock`, `unlock`,
+`stealth`, `reconcile-reset`, `fork-setup`, `configure`, `setup`) ran code the
+agent could rewrite in place, and the function deciding what "human authority"
+means was the agent's to edit.
+
+It bites hardest during opt-in to the host-protected config, because check 10c
+*composes the `sudo` commands the human then pastes* — including the destination
+path under `/etc`. An agent able to edit `setup.py` chooses where the human
+root-creates the protected config, defeating that layer at the moment of
+installation.
+
+Note the asymmetry this restores. A source change normally passes PR, CI and
+review before anything runs it; an in-place edit to the checkout passes none of
+those and is executed by the human on the next invocation. The remedy is
+therefore not "trust the agent less" but "run a build the agent did not
+produce": a **non-editable install, under the human's own account, from a
+reviewed commit**, invoked by absolute path. Content addressing does the work —
+an agent cannot make a pinned SHA contain different bytes — so the trust rests
+on the review and the pin, not on any code shipped here.
+
+**What is mechanism and what is only a guard.** The install and the pin are
+mechanism. Setup check 23 (`install_provenance`), which reports who can modify
+the running code, is **not**: it lives inside the artifact it audits, so an
+agent that can rewrite the package can rewrite the check. It is documented and
+labelled as an accident guard — it catches the human who forgot and used the
+agent's venv, which is the failure the shipped guidance used to *cause*. Claiming
+more for it would be the same error as ADR-0013's original OS-enforcement
+sentence, one layer up.
+
+The check tests **ownership as well as mode**, because mode alone misses the
+real case: the agent's package tree is `0755` the whole way down — nothing
+group-writable — yet every component is owned by the agent. It exempts
+root-owned components (root is already trusted by anyone running `sudo`) and
+sticky world-writable directories such as `/tmp`, where the sticky bit confines
+delete and rename to the entry's owner.
 
 ### Security Model
 
@@ -1443,7 +1585,7 @@ Absorbed into PR 1c. See above.
 
 #### PR 5: Pre-commit + AGENTS.md + commit convention + branch hygiene + contribute `[MERGED]` (commit 1e4a636)
 - Update `.githooks/pre-commit` with incremental tracker validation (staged `.ops` files only from both tiers, before Ruff — see [Pre-Commit Validation](#pre-commit-validation))
-- Update AGENTS.md: replace grep pattern instructions with `scripts/tracker` equivalents; add `tracker:` commit prefix convention and batching guidance (see [Commit Convention](#commit-convention-and-git-history-hygiene)); add task-selection guidance instructing agents to use `scripts/tracker ready` (not `list`) to pick their next work item; **add agent context protection rules: "Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state. Always refuse to read files ending in `.ops`."** (see [Agent Context Protection](#agent-context-protection)); add branch hygiene expectation (delete feature branches after merge); update contributor workflow to reference `fork-setup` and explain three-tier model for forks; document security model and two-user setup expectations
+- Update AGENTS.md: replace grep pattern instructions with `scripts/tracker` equivalents; add `tracker:` commit prefix convention and batching guidance (see [Commit Convention](#commit-convention-and-git-history-hygiene)); add task-selection guidance instructing agents to use `scripts/tracker ready` (not `list`) to pick their next work item; **add agent context protection rules: "Always use `scripts/tracker show <ID>` or `scripts/tracker --json show <ID>` to read tracker item state. Always refuse to read files ending in `.ops`."** (see [Agent Context Protection](#agent-context-protection)); add branch hygiene expectation (delete feature branches after merge); update contributor workflow to reference `fork-setup` and explain three-tier model for forks; document security model and two-user setup expectations
 - Update README.md: add section on recommended deployment setup — two OS user accounts (human + agent), VM with snapshots or container, with explicit setup steps (`groupadd`, `usermod`, `chgrp`, `chmod g+s`) and concise rationale (see [Security Model](#security-model))
 - Update `scripts/auto-pr`: delete local and remote feature branch after successful merge (keeps the scoped Lamport clock branch set small — see [Key Design Decisions](#key-design-decisions))
 - Update `scripts/contribute`: add workspace exclusion (~15 lines) to strip `.agent/tracker-workspace/` from upstream PRs

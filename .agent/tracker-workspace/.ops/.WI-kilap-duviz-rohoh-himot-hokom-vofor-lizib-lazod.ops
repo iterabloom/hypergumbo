@@ -1,0 +1,53 @@
+- op: create  # d321
+  at: '2026-09-07T22:51:12Z'  # d321
+  by: agent  # d321
+  actor: jgstern_agent  # d321
+  clock: 1  # d321
+  nonce: d321  # d321
+  data:  # d321
+    kind: work_item  # d321
+    title: "kotlin and scala never resolve a static receiver through their implicitly-imported packages, so 22 of 186 kotlin rows and 57 of 184 scala rows are unreachable -- INV-suril's shape, with the receiver DROPPED rather than kept"  # d321
+    status: todo_hard  # d321
+    priority: 2  # d321
+    parent:  # d321
+    tags:  # d321
+    - taint  # d321
+    - catalogue  # d321
+    - io_boundary  # d321
+    - kotlin  # d321
+    - scala  # d321
+    isbefore: []  # d321
+    duplicate_of: []  # d321
+    not_duplicate_of: []  # d321
+    pr_ref:  # d321
+    description: "Found 2026-09-07 while fixing INV-suril's java half; filed rather than chased\n(the java fix is one PR and this is two more analyzers). INV-linub's class in\nkotlin and scala: a catalogued call site that cannot reach its row because the\nmodule slot is a placeholder.\n\nTHE MECHANISM, identical in kind to INV-suril's java half. Each of these\nlanguages imports some packages into every compilation unit without the source\nwriting anything: java.lang under JLS 7.3 (which kotlin and scala BOTH inherit\non the JVM), plus kotlin.* / kotlin.io.* for kotlin and scala.Predef._ / scala._\nfor scala. Neither analyzer resolves a static receiver through those implicit\npackages, so the call carries `external` and never reaches its row.\n\nMEASURED ON THE CATALOGUE (rows that live on an auto-imported module):\n    kotlin   22 of 186 rows (11.8%)\n    scala    57 of 184 rows (31.0%)   -- scala's catalogue merges java's parent\nBoth include env_read (System.getProperty / getenv / getProperties) and\nsubprocess (Runtime.exec, ProcessBuilder.start / command), so the loss is on\nthe taint SOURCE and SINK sides, not only in the io-boundary map.\n\nMEASURED ON EMISSION (fixture through the production analyzer + classify_call,\n~/hypergumbo_lab_notebook/suril_09072026/fxkt, fxsc):\n    kotlin:external:0-0:getenv:unresolved            cc=method  -> NONE\n    kotlin:external:0-0:currentTimeMillis:unresolved cc=method  -> NONE\n    kotlin:external:0-0:exec:unresolved              cc=method  -> NONE\n    scala:external:0-0:getenv:unresolved             cc=method  -> NONE\n    scala:external:0-0:currentTimeMillis:unresolved  cc=method  -> NONE\n    scala:external:0-0:exec:unresolved               cc=method  -> NONE\nPOSITIVE CONTROL in the same run: kotlin's `println` classifies (logging), so\nthe instrument sees what is there.\n\nNOTE THE SHAPE DIFFERS FROM JAVA'S and the fix must not be copied blindly. java\nkeeps the receiver in the name (`System.getenv`); kotlin and scala DROP it and\nemit the bare method (`getenv`). So java needed only a module slot -- the\nexisting `strip_redundant_module_qualifier` then did the rest -- whereas here\nthe receiver identity is GONE from the edge entirely and has to be recovered\nbefore a slot can be written.\n\nA DATED DECLARATION IN SHIPPED CODE IS NOW FALSE, and that is the reason this\nis P2 rather than P3. `kotlin.py` (~line 737) records: \"no implicit-package\nguess is made here: kotlin auto-imports kotlin.* / kotlin.io.* / java.lang.*,\nand the catalogue's kotlin rows are all explicitly imported JDK / kotlin.io\ntypes, so a closed list buys nothing yet.\" The premise is refuted by the 22-row\ncount above; the comment is corrected in INV-suril's PR (a comment-only edit,\nso the correction ships with the finding rather than waiting on the fix).\n\nMEASURE BOTH DIRECTIONS BEFORE LANDING, as INV-suril did: a closed implicit-\npackage list ADDS matches, and the FP risk is a project class of the same name.\njava's answer was that `class_resolver` claims such a name first, verified on\ntwo fixtures; kotlin and scala need their own check, not java's."  # d321
+    fields: {}  # d321
+- op: discuss  # 59a8
+  at: '2026-09-23T18:09:41Z'  # 59a8
+  by: agent  # 59a8
+  actor: jgstern_agent  # 59a8
+  clock: 2  # 59a8
+  nonce: 59a8  # 59a8
+  message: "EVIDENCE 2026-09-23 (IoPrimitive.kind concept audit, INV-zikab): THE QUALIFIER DROP IS NOT LIMITED TO IMPLICIT PACKAGES. Fixture at d917e02282, production survey + classify_call with dst_ref:\n  kotlin  import java.nio.file.Files;  Files.readAllBytes(Paths.get(p))  -> kotlin:external:0-0:readAllBytes  cc=method -> NONE\n  kotlin  import java.time.Instant;    Instant.now()                     -> kotlin:external:0-0:now           cc=method -> NONE\n  scala   import java.nio.file.{Files, Paths}; Files.readAllBytes(...)   -> scala:external:0-0:readAllBytes   cc=method -> NONE\n  scala   import scala.util.Properties; Properties.envOrElse(...)        -> scala:external:0-0:envOrElse      -> NONE\n  scala   import scala.sys.process.Process; Process.apply(c)             -> scala:external:0-0:apply          -> NONE\nControl in the same run: kotlin `File(s).readText()` resolves java.io.File and classifies.\nON sbt: 76 untyped-receiver disclosure sites are real Files.x / System.getProperty / Instant.now calls with the qualifier dropped (split by source text: ~/hypergumbo_lab_notebook/kind_audit_09232026/split_dropped.py). The disclosure is currently their ONLY signal, and it exists only because these statics are keyed methods. So re-kinding JVM statics (INV-zikab's R2) must wait for this item, or those 76 sites go silent. The title's \"implicitly-imported\" scope is narrower than the measured defect. Not re-titled here; flagging for whoever picks this up."  # 59a8
+- op: discuss  # 2515
+  at: '2026-09-23T18:44:15Z'  # 2515
+  by: agent  # 2515
+  actor: jgstern_agent  # 2515
+  clock: 3  # 2515
+  nonce: '2515'  # 2515
+  message: "CORRECTION 2026-09-23 to my note above: re-kinding the JVM statics would NOT silence the 76 sbt sites. unknown_receiver_scope does not read kind, and its caveat still attaches (verified by reading, per the INV-zikab panel's soundness seat; not re-run). What is lost is their boundary-scoped naming, a precision loss, not the caveat. This item stays a prerequisite of the JVM re-kind on precision grounds."  # 2515
+- op: update  # fee9
+  at: '2026-09-23T23:22:19Z'  # fee9
+  by: agent  # fee9
+  actor: jgstern_agent  # fee9
+  clock: 4  # fee9
+  nonce: fee9  # fee9
+  set:  # fee9
+    status: done  # fee9
+- op: discuss  # 9598
+  at: '2026-09-23T23:22:19Z'  # 9598
+  by: agent  # 9598
+  actor: jgstern_agent  # 9598
+  clock: 5  # 9598
+  nonce: '9598'  # 9598
+  message: "DONE in PR #1160 (INV-zikab step 5). BEHAVIORAL EVIDENCE: I re-ran this item's filed repro (~/hypergumbo_lab_notebook/suril_09072026/fxkt, fxsc) on dev 8d6be9b562 through the production analyzers + classify_call:\n  kotlin System.getenv            -> kotlin:java.lang.System:0-0:getenv             -> env_read        (was NONE)\n  kotlin System.currentTimeMillis -> kotlin:java.lang.System:0-0:currentTimeMillis  -> host_info_read  (was NONE)\n  scala  System.getenv            -> scala:java.lang.System:0-0:getenv              -> env_read        (was NONE)\n  scala  System.currentTimeMillis -> scala:java.lang.System:0-0:currentTimeMillis   -> host_info_read  (was NONE)\n  control: kotlin println -> logging, as before.\nThe fix also covers the EXPLICIT-import half recorded on this item: Files.readAllBytes -> fs_read, Instant.now -> host_info_read, scala Properties.envOrElse -> env_read. These are pinned by test_jvm_static_owner_slot.py, which also pins the controls: an unimported type, an untyped value, a shadowed String/Long, and a project type named System all keep the placeholder.\nMechanism: jvm_implicit_imports.static_owner_module(). It uses the file's dotted import, else java.lang's closed JLS list minus each language's shadows, and never a project type.\nSurveys (pinned worktrees): classified calls sbt 123 -> 237, gatling 31 -> 57, detekt 17 -> 30, http4s 3 -> 6. No resolved edge was lost and no bare slot was written.\nNOT CLOSED BY THIS, and still failing in the filed repro: Runtime.getRuntime().exec(c). getRuntime now carries java.lang.Runtime, but exec is called on the VALUE that static returns, which carries no type. That is a return-type-propagation gap, not a static receiver: WI-lalot's class (\"a receiver typed from a library return value is not typed at all\"). Recorded there. Wildcard imports (import java.nio.file._) are also not expanded, by design; see the module docstring."  # 9598

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0012: Pass Unification and Multi-Fidelity Architecture
 
-Status: Step 1 implemented (analyzer registration unified); Steps 2-3 remain design targets. Counts corrected 2026-08-19: the Context section's linker count is as-of-filing (24) and the two-tier and reference sections no longer restate a total — they had drifted to 45 linkers / 24 linkers / 104 analyzers against a live registry of 61 and 118, contradicting the spec and ARCHITECTURE.md, both of which said 61.
+Status: Partially superseded by ADR-0057 — §Step 3, the multi-fidelity coexistence granularity (record → attribute; 2026-09-18). Step 1 implemented (analyzer registration unified); Step 2 remains a design target. Counts corrected 2026-08-19: the Context section's linker count is as-of-filing (24) and the two-tier and reference sections no longer restate a total — they had drifted to 45 linkers / 24 linkers / 104 analyzers against a live registry of 61 and 118, contradicting the spec and ARCHITECTURE.md, both of which said 61.
 
 > Amended in place — see docs/adr/README.md "ADR lifecycle" (status-line convention + Context/References reconciliation note).
 
@@ -102,9 +102,7 @@ Tier 1 analyzers receive an empty IR and populate it. Tier 2 refiners receive th
 
 ### Step 3: Multi-fidelity passes
 
-With the unified interface in place, a type-resolution pass slots in at a priority between Tier 1 analyzers and Tier 2 linkers. It reads AST-produced symbols from the IR and returns deltas that upgrade edge confidences. No architecture changes required — it's just another pass.
-
-An alternative or complementary path: build an importer that accepts externally-produced language server index data and maps it onto the IR with appropriate confidence upgrades. This avoids the substantial engineering cost of hosting language servers in-process.
+> §Step 3 (record-level coexistence of a higher-fidelity pass's output beside the AST pass's): superseded by ADR-0057. The importer path it named shipped as the rust-analyzer SCIP backend; how two passes' records for one declaration are reconciled — one record, every attribute a set of (value, provenance) pairs, arbitrated by a per-record property with one configured default — is ADR-0057's decision.
 
 ## Consequences
 
@@ -131,6 +129,7 @@ An alternative or complementary path: build an importer that accepts externally-
 - **ADR-0010** (Modular Packages): Introduced the `AnalyzerSpec` + entry-points system during the monorepo migration. Its bootstrap safety section previously referenced `analyze/registry.py` as the dispatch system; this has been corrected to reference `all_analyzers.py`.
 - **ADR-3aaa** (YAML-driven Framework Patterns): Framework enrichment is a Tier 2 refiner that would become a pass under the unified interface.
 - **ADR-0006** (Variable Type Inference): AST-based type inference is a precursor to multi-fidelity; the current heuristics would be refined (not replaced) by language server passes.
+- **ADR-0057** (Multi-Backend Coexistence at the Attribute): supersedes §Step 3 — two passes' records for one declaration merge into one, with per-attribute provenance and a single configured arbitration default.
 
 ## References
 

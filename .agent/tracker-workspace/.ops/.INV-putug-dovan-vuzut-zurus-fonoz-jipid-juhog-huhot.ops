@@ -1,0 +1,103 @@
+- op: create  # c820
+  at: '2026-09-07T10:53:41Z'  # c820
+  by: agent  # c820
+  actor: jgstern_agent  # c820
+  clock: 1  # c820
+  nonce: c820  # c820
+  data:  # c820
+    kind: invariant  # c820
+    title: "ADR-0017 taint walk advances along dispatches_to, a reachability edge: a sink inside a model method is paired with every function that merely mentions the class (33 of 33 class hops, 20 false findings on pretix)"  # c820
+    status: violated  # c820
+    priority: 2  # c820
+    parent:  # c820
+    tags:  # c820
+    - taint  # c820
+    - adr_0017  # c820
+    - analysis_quality  # c820
+    - io_boundary  # c820
+    isbefore: []  # c820
+    duplicate_of: []  # c820
+    not_duplicate_of: []  # c820
+    pr_ref:  # c820
+    description: "FOUND 2026-09-07 by measurement 0016 (WI-gamas, Phase 6 PR 4), whose subject arm placed a `db_write` sink inside Django model `save`/`delete` overrides for the first time and made this shape visible at scale. The defect is NOT in that change and predates it; what the change did was supply a sink in a position that the walk's edge selection reaches wrongly.\n\nTHE SHAPE, with the exact numbers (instruments: ~/hypergumbo_lab_notebook/mumov_instwrite_09072026/classhop_check.txt, RESULTS_ROUND1.md, and the two arms' ledgers):\n  class-node hops traversed by ALL flows in the round-1 subject arm   33\n  of those, on a class->method pair carrying `dispatches_to`          33  (100%)\n  class->method pairs carrying ONLY `contains` -- never traversed  16,010\n  situations where EVERY flow crosses a class node: baseline 0 of 122, subject 31 of 169\n\nTWO SITES READ AT SOURCE SHOW THE PAIRING IS WRONG, NOT MERELY UNPROVEN:\n  * pretix/base/payment.py:717 -- the `instantiates` edge is `InvoiceAddress()`, a NO-ARGUMENT constructor on the branch where the primary key is absent. The tainted value is not passed into it at all, yet the walk reports a flow from the read to `InvoiceAddress.save`.\n  * pretix/control/views/subevents.py:485 -- `SubEventItem(subevent=..., item=i)` DOES take the read value, but the sink the walk then reaches is `SubEventItem.delete`, a method this code never calls. The walk lands on an arbitrary ORM method of the class.\n\nCOST, measured: 20 of the 47 situations round 1 added were this shape, and 11 further situations that already existed had their representative re-keyed onto it. Every one is a false positive under measurement 0001's rubric. The consequence for the project was immediate and concrete: WI-gamas's `super().save()` rule is CORRECT at the site (61 sites read back with 0 wrong-type) and had to be WITHHELD from the shipped PR because its finding-level yield through this walk was 3 true against 20 false.\n\nWHAT IS NOT ESTABLISHED. (1) Whether the walk crosses OTHER non-value edges -- `contains` is exonerated on this corpus by the 16,010 untraversed pairs, but `extends`, `references` and `decorated_by` were not tested. (2) The volume outside pretix; this is one Django repository, chosen because it is the only one in the Phase 6 cohort. (3) Whether removing `dispatches_to` from the walk's edge set would lose any TRUE finding -- the 33 hops must be re-adjudicated after a fix, not assumed to be all false; the fix therefore needs its own before/after on the same two arms.\n\nTHE FIX SHAPE, not designed here: the walk's edge predicate (`_is_taint_call_edge` and whatever admits a node's successors) should admit only edge types that carry a value -- calls and dataflow -- and refuse reachability/containment types by NAME rather than by accident. Check the analogues before shipping (LIVE rule 4): every linker that emits a non-call edge between symbols is a candidate, and the axis registry already enumerates the edge types."  # c820
+    fields:  # c820
+      statement: "The ADR-0017 taint walk advances from a source to a sink only along edges that can CARRY A VALUE. A reachability or containment edge -- one that says a symbol is related to another without saying that a value passes between them -- is not such an edge, and a flow reported through one is a false positive by construction."  # c820
+      root_cause: "LOCALIZED AND MEASURED. The walk consumes the django-orm-dispatch linker's `dispatches_to` edge (class -> the model's ORM methods) as if it were a call carrying the source value. Combined with an `instantiates` edge into the same class node, that yields the path shape `function --instantiates--> Class --dispatches_to--> Class.<save|delete>`, which terminates at whatever ORM method the linker attached to the class -- including a method the function never calls. Measured on pretix (measurement 0016, round 1): 33 of 33 class-node hops traversed by the walk sat on a pair carrying `dispatches_to`, while the 16,010 `class -> method` pairs carrying only `contains` were never crossed, so `contains` is NOT implicated and `dispatches_to` is. WI-sozoj's own code documents `dispatches_to` as an \"orthogonal reachability concern\" belonging to the dispatch linker, which is exactly the claim the walk contradicts by reading it as dataflow."  # c820
+- op: update  # e180
+  at: '2026-09-07T10:53:49Z'  # e180
+  by: agent  # e180
+  actor: jgstern_agent  # e180
+  clock: 2  # e180
+  nonce: e180  # e180
+  set: {}  # e180
+  add:  # e180
+    isbefore: [WI-sihoh-buron-tupis-najul-vugol-zafaf-damog-hadop]  # e180
+- op: discuss  # 5300
+  at: '2026-09-09T00:54:08Z'  # 5300
+  by: agent  # 5300
+  actor: jgstern_agent  # 5300
+  clock: 3  # 5300
+  nonce: '5300'  # 5300
+  message: "Merged as PR #841, dev SHA 3ba0fda0859d."  # 5300
+- op: update  # dc7f
+  at: '2026-09-09T00:54:52Z'  # dc7f
+  by: agent  # dc7f
+  actor: jgstern_agent  # dc7f
+  clock: 4  # dc7f
+  nonce: dc7f  # dc7f
+  set:  # dc7f
+    status: pending_validation  # dc7f
+- op: discuss  # 699e
+  at: '2026-09-09T00:54:52Z'  # 699e
+  by: agent  # 699e
+  actor: jgstern_agent  # 699e
+  clock: 5  # 699e
+  nonce: 699e  # 699e
+  message: "FIXED AND MEASURED. Shipped in PR #841 (merged dev 3ba0fda085), measurement 0020.\nStatus pending_validation, not satisfied, and tagged awaits_bakeoff_validation --\nthe reasons are below and they are deliberate.\n\nTHE FIX. A `dispatches_to` edge whose SOURCE node is a type\n(`type_like_kind_names()`) is reachability, not dataflow. It lives in\n`_is_taint_call_edge` on the same \"one rule, one home\" reasoning the dispatch\nmembership was added under, and it FAILS OPEN on any id that does not parse\nagainst ADR-0036's span anchor.\n\nNOT A REVERT OF INV-zuhig, and that was checked rather than assumed. Five\nlinkers emit class-sourced dispatch, but `di_resolution` emits from an interface\nMETHOD and `type_hierarchy` from a parent METHOD -- ordinary virtual dispatch\nthat a linker-name blocklist would have wrongly caught. A separate two-arm\nself-proof shows INV-zuhig preserved field-for-field: 18/18 same verdicts, 28\ncredited flows both arms, findings_total 333 both, zero claims moved.\n\nTHE FIRST MEASUREMENT DESIGN MEASURED AN EMPTY POPULATION, and this item's own\ntext is why it should have been caught at pre-registration. On the shipped tree\nthe fix moves NOTHING (0 removed, 0 added, class-node hops 0), because the defect\nneeds a sink INSIDE a model method and WI-sihoh's rule was WITHHELD. This item\nsays the shape was \"made visible at scale\" by round 1's arm; the plan predicted a\nDECREASE anyway.\n\nHARNESS ARMS priced it on the population it exists for, pinning py.py to\n359880a105 in BOTH arms (common-mode, not shipped). Arm X reproduces measurement\n0016 round 1 EXACTLY -- 184 flows, 33 class-node hops -- which validates the\nharness against an independent run from another day.\n\n  pretix  183 -> 163 situations, 22 removed / 2 added, net -20\n  hops    33 -> 0\n  kserve  62 -> 62, control unmoved\n\nNet -20 matches this thread's own attribution of \"20 of the 47 situations round 1\nadded were this shape\".\n\nTHE RE-ADJUDICATION THIS ITEM DEMANDED (\"the 33 hops must be re-adjudicated after\na fix, not assumed to be all false\") WAS DONE, three ways, and it was the right\ninstruction: **11 of the 33 were NOT false and were KEPT.** `generate_invoice`\ngenuinely takes the tainted order, constructs `Invoice(order=order, ...)` and\nreaches `Invoice.save` through the annotated `build_invoice`, so the finding\nsurvives by its honest route. The fix deletes the dishonest PATH to a finding,\nnot the finding. 22 + 11 = 33 closes the accounting.\n\nOf the 22 removed: all 22 crossed a class node (ZERO collateral); none of the 22\nsource functions calls the named sink anywhere in its body; and the two sites\nthis item named read false at source (a no-argument `InvoiceAddress()` never\nsaved; a `SubEventItem.delete` this code never calls). 0 of 22 correct.\n\nWHY pending_validation RATHER THAN satisfied. The statement is about the walk in\ngeneral and this prices ONE edge type on ONE repository in ONE language. The\nfour sibling linkers (airflow, jackson, rust_trait, _third_party_bases) are\ncovered by unit test only. The bakeoff queue owns whether the -20 reproduces.\n\nRESIDUAL FILED: WI-kakup-bojus-dijak-burif-somuv-namul-rapuf-majur -- this item's own \"not established\" list, reshaped\nby reading the code. `extends`, `references` and `decorated_by` CANNOT be crossed\nat all: TAINT_CALL_EDGE_TYPES is {calls, dispatches_to, instantiates,\nmodule_attr_ref}, so they are excluded by construction rather than untested. What\nIS open is a GUARD making that permanent, and the `instantiates` question this\nfix exposes -- after it, a class node is a dead end, but `instantiates` still\nmodels a value entering a TYPE where only an INSTANCE can hold one."  # 699e
+- op: update  # 13ca
+  at: '2026-09-09T00:54:53Z'  # 13ca
+  by: agent  # 13ca
+  actor: jgstern_agent  # 13ca
+  clock: 6  # 13ca
+  nonce: 13ca  # 13ca
+  set: {}  # 13ca
+  add:  # 13ca
+    tags: [awaits_bakeoff_validation]  # 13ca
+- op: discuss  # 1f5a
+  at: '2026-09-09T04:55:55Z'  # 1f5a
+  by: agent  # 1f5a
+  actor: jgstern_agent  # 1f5a
+  clock: 7  # 1f5a
+  nonce: 1f5a  # 1f5a
+  message: "FIRST LIVE-POPULATION OBSERVATION OF THIS FIX, obtained by measurement 0021 (WI-sihoh).\n\nMeasurement 0020 could only price this fix with HARNESS ARMS pinning py.py, because on the shipped tree the fix moves nothing: the defect needs a taint SINK inside a model method, and the rule creating that sink was WI-sihoh, withheld behind this item. 0021 landed that rule and measured the fix where its population actually exists.\n\n  class-node hops traversed, arm S (rule present, fix present)     0\n  the same count in measurement 0016 round 1 (rule present,\n      defect live)                                                33\n  `dispatches_to` edges out of a TYPE node in the subject survey  896\n      django-orm-dispatch-linker                                  861\n      django-third-party-dispatch-linker                           35\n  distinct classes carrying one                                   440\n  newly typed ORM write sinks INSIDE such a class                  67\n\nTHE LAST TWO LINES ARE THE POINT. A hop count of 0 is satisfied just as well by an empty population as by a working fix, so a pre-registered control (PC1b) was added -- before any arm ran -- to distinguish them. 67 sinks sat behind 896 refusable edges and the walk crossed none of them. That is \"the walk declined to cross\", not \"there was nothing to cross\".\n\nThe canary itself was validated before use by replaying it against 0016 round 1, where it reads exactly 33.\n\nNO STATUS CHANGE YET, DELIBERATELY. The population described above exists on the WI-sihoh branch, not on dev. Once that PR merges the population is on dev permanently and this item can move to `satisfied` citing this evidence. Proposing that now would be closing on a population that is not in the shipped tree.\n\nSCOPE CORRECTION TO SOMETHING I NEARLY ASSERTED. It is tempting to say this item's population \"cannot exist\" without WI-sihoh. That is wrong and the numbers above refute it: the EDGE population is 896 and present on dev today. What is absent without WI-sihoh is a SINK positioned behind those edges, so the fix is inert ON FINDINGS rather than unexercised. Presence is not reachability (LIVE rule 9). The circularity is also scoped to the pretix/kserve pair: 18 linkers emit `dispatches_to`, and on another cohort a class-sourced edge may already sit in front of a catalogued sink, which would validate this item with no help from WI-sihoh. That is unmeasured and is this item's own open question (2). Full analysis: ~/hypergumbo_lab_notebook/sihoh_superwrite_09092026/DEADLOCK.md"  # 1f5a
+- op: update  # adbf
+  at: '2026-09-09T05:07:20Z'  # adbf
+  by: agent  # adbf
+  actor: jgstern_agent  # adbf
+  clock: 8  # adbf
+  nonce: adbf  # adbf
+  set:  # adbf
+    status: satisfied  # adbf
+- op: discuss  # 225c
+  at: '2026-09-09T05:07:20Z'  # 225c
+  by: agent  # 225c
+  actor: jgstern_agent  # 225c
+  clock: 9  # 225c
+  nonce: 225c  # 225c
+  message: "SATISFIED 2026-09-09 on BEHAVIOURAL evidence, with this item's OWN filed repro re-run on the shipped tree.\n\nWHY IT COULD NOT CLOSE BEFORE. This item's finding-level effect is INERT until a taint sink sits behind the edges it refuses, and the rule that creates that sink (WI-sihoh) was withheld behind this very item. Measurement 0020 could therefore only price the fix on harness arms pinning py.py. WI-sihoh merged as PR #846, so the population now exists on dev and the repro is runnable.\n\nTHE TREE THE EVIDENCE WAS TAKEN ON IS dev, VERIFIED BY BLOB, not asserted. Measurement 0021's subject arm is commit 14d01fde7f; `git diff 14d01fde7f origin/dev` over the two files this item depends on is EMPTY, and the blobs match: py.py 9eb1d14fc3cb, taint.py 0e62e420f265. So the arm's numbers are measurements of dev's behaviour.\n\nTHIS ITEM'S OWN FILED REPRO, RE-RUN (its description names both sites explicitly):\n    pretix/base/payment.py:717     (the no-argument `InvoiceAddress()` constructor)   0 flows\n    pretix/control/views/subevents.py:485  (`SubEventItem.delete`, never called)      0 flows\n    class-node hops across ALL 164 pretix flows                                        0\n    the same count in measurement 0016 round 1, same rule present, defect live        33\n\nAND THE ZERO IS EVIDENCE, NOT AN EMPTY POPULATION -- the distinction this item's own \"WHAT IS NOT ESTABLISHED\" clause demands. Pre-registered control PC1b, added before any arm ran, measured on the subject survey: 896 `dispatches_to` edges out of a TYPE node (861 django-orm-dispatch, 35 django-third-party-dispatch) across 440 classes, with 67 of the newly typed ORM write sinks sitting INSIDE such a class. The shape exists, the sinks are positioned where the defect fired, and the walk crossed none of them.\n\nThe hop counter itself was validated before use by replaying it against 0016 round 1, where it reads exactly 33.\n\nWHAT THIS DOES NOT ESTABLISH, carried forward from the item's own clause (2) rather than quietly dropped. Volume outside pretix is still unmeasured. 18 linkers emit `dispatches_to`; on this corpus only the two Django ones emit it from a TYPE node, and type-hierarchy (2,197) and route-handler (567) emit from methods and are correctly untouched. Clause (1) is now partly answered: `contains` was already exonerated, and the 896/2,197/567 split shows the fix lands on exactly the class-sourced population and nothing else. `extends`, `references` and `decorated_by` remain untested and are not claimed.\n\nThe `awaits_bakeoff_validation` tag is discharged by this measurement rather than by a bakeoff, because a default bakeoff on the shipped tree cannot see this fix -- which is the process gap filed as WI-divoz."  # 225c
+- op: update  # fcb6
+  at: '2026-09-09T05:07:38Z'  # fcb6
+  by: agent  # fcb6
+  actor: jgstern_agent  # fcb6
+  clock: 10  # fcb6
+  nonce: fcb6  # fcb6
+  set: {}  # fcb6
+  remove:  # fcb6
+    tags: [awaits_bakeoff_validation]  # fcb6
+- op: discuss  # e059
+  at: '2026-09-09T05:07:38Z'  # e059
+  by: agent  # e059
+  actor: jgstern_agent  # e059
+  clock: 11  # e059
+  nonce: e059  # e059
+  message: "awaits_bakeoff_validation STRIPPED. Discharged by measurement 0021's live-population evidence, not by a bakeoff, and the distinction matters: a default bakeoff on the shipped tree could not have seen this fix at all, because its finding-level effect was inert until WI-sihoh supplied a sink behind the refused edges. Filing this item's correct and predicted no_move as a regression sub-item -- what the tag's lifecycle prescribes -- would have manufactured a false finding. That process gap is filed as WI-divoz (needs_human_review, since the fix touches AGENTS.md)."  # e059

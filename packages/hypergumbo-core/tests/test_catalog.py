@@ -6,6 +6,9 @@ from unittest.mock import patch
 from hypergumbo_core.catalog import (
     Pass,
     Catalog,
+    emit_falsified_dependency_summary,
+    find_falsified_dependencies,
+    format_falsified_dependencies,
     get_default_catalog,
     is_available,
     validate_pass_dependencies,
@@ -510,13 +513,73 @@ class TestValidatePassDependencies:
 
 
 class TestCatalogStaticConsistency:
-    """get_default_catalog() must pass validate_pass_name_resolution()."""
+    """get_default_catalog() must pass validate_pass_name_resolution().
+
+    WI-jijor: this assertion was a CONTROL THAT COULD NOT FAIL. Linker modules
+    register via ``@register_linker`` import side-effects, and this class sits
+    ABOVE the one class in this file that imports them — so run in isolation
+    (or first in file order) the catalog held 118 analyzers, **zero** of which
+    declare ``depends_on``, and the validator passed over 0 conjuncts. Whether
+    it validated 73 clauses or nothing at all depended on which other test
+    module had happened to import ``hypergumbo_core.cli`` first.
+
+    Fixed by importing the linkers here and PINNING THE AIM, not just the
+    volume: a floor alone catches an EMPTY instrument but not a MIS-AIMED one
+    (LIVE.md §1.4), so the test also names a specific declaration it must have
+    actually seen.
+    """
+
+    def _full_catalog(self) -> Catalog:
+        # The registry is populated by import side-effect; cli.py carries the
+        # explicit import block that the runtime relies on.
+        import hypergumbo_core.cli
+        return get_default_catalog()
 
     def test_default_catalog_depends_on_names_all_resolve(self) -> None:
-        catalog = get_default_catalog()
+        catalog = self._full_catalog()
         # Should not raise: every literal in every clause resolves to a
         # registered pass.
         validate_pass_name_resolution(catalog.passes)
+
+    def test_the_validated_set_is_not_empty(self) -> None:
+        """The control's own control: prove there was something to validate."""
+        catalog = self._full_catalog()
+        conjuncts = sum(len(p.depends_on) for p in catalog.passes)
+        assert conjuncts >= 50, (
+            f"only {conjuncts} depends_on conjuncts visible — the linker "
+            "registry is unpopulated and the name-resolution assertion above "
+            "is passing vacuously"
+        )
+
+    def test_a_named_declaration_is_actually_present(self) -> None:
+        """Pins the AIM: a floor can be met by the wrong population."""
+        catalog = self._full_catalog()
+        by_id = {p.id: p for p in catalog.passes}
+        assert by_id["tauri-ipc-linker"].depends_on == [["javascript"], ["rust", "rust_analyzer"]]
+
+    def test_every_depends_on_declarer_is_a_linker(self) -> None:
+        """The premise ``find_falsified_dependencies`` keys falsification on.
+
+        A pass proves its own declaration wrong by emitting EDGES, because a
+        linker's product is edges (ADR-3bbb: Tier-2 edge recovery) and the
+        ``depends_on`` field is documented as what a linker needs to "produce
+        its intended edges at all". That reading is only safe while every
+        declarer is a linker. If an ANALYZER ever declares ``depends_on``, its
+        product is nodes and the edge-keyed detector would silently stop
+        auditing it — under-reporting, never lying, but stopping. This test is
+        the trigger to revisit the rule, not a prohibition on the declaration.
+        """
+        catalog = self._full_catalog()
+        from hypergumbo_core.linkers.registry import _LINKER_REGISTRY
+
+        declarers = {p.id for p in catalog.passes if p.depends_on}
+        assert declarers, "no declarations visible — registry unpopulated"
+        non_linkers = sorted(declarers - set(_LINKER_REGISTRY))
+        assert non_linkers == [], (
+            f"{non_linkers} declare depends_on but are not linkers; "
+            "find_falsified_dependencies keys falsification on edges_emitted "
+            "and will not audit a node-producing pass"
+        )
 
 
 class TestBridgeLinkerDependsOnPopulated:
@@ -549,7 +612,7 @@ class TestBridgeLinkerDependsOnPopulated:
 
     def test_jni_linker_cnf(self) -> None:
         p = self._pass_by_id("jni-linker")
-        assert p.depends_on == [["java"], ["c", "cpp", "rust"]]
+        assert p.depends_on == [["java"], ["c", "cpp", "rust", "rust_analyzer"]]  # WI-juzig
 
     def test_cgo_linker_cnf(self) -> None:
         p = self._pass_by_id("cgo-linker")
@@ -562,15 +625,15 @@ class TestBridgeLinkerDependsOnPopulated:
 
     def test_tauri_ipc_linker_cnf(self) -> None:
         p = self._pass_by_id("tauri-ipc-linker")
-        assert p.depends_on == [["javascript"], ["rust"]]
+        assert p.depends_on == [["javascript"], ["rust", "rust_analyzer"]]  # WI-juzig
 
     def test_wasm_bindgen_linker_cnf(self) -> None:
         p = self._pass_by_id("wasm-bindgen-linker")
-        assert p.depends_on == [["javascript"], ["rust"]]
+        assert p.depends_on == [["javascript"], ["rust", "rust_analyzer"]]  # WI-juzig
 
     def test_pyffi_linker_cnf(self) -> None:
         p = self._pass_by_id("pyffi-linker")
-        assert p.depends_on == [["python"], ["c", "cpp", "rust"]]
+        assert p.depends_on == [["python", "scip_python"], ["c", "cpp", "rust", "rust_analyzer"]]  # WI-juzig
 
     def test_lua_ffi_linker_cnf(self) -> None:
         p = self._pass_by_id("lua-ffi-linker")
@@ -587,6 +650,14 @@ class TestBridgeLinkerDependsOnPopulated:
     def test_swift_objc_linker_cnf(self) -> None:
         p = self._pass_by_id("swift-objc-linker")
         assert p.depends_on == [["swift"], ["objc"]]
+
+
+#: WI-zujan. The exact phrase a Bridge/Framework/Protocol linker must carry in
+#: its module docstring to be allowed an EMPTY ``depends_on``. A phrase rather
+#: than a flag or an allowlist, because the justification has to live next to
+#: the code it justifies -- an allowlist in the test drifts away from the linker
+#: and is satisfied by adding a name, which is the thing being prevented.
+_EMPTY_DEPENDS_ON_DECLARATION = "``depends_on`` is EMPTY because"
 
 
 class TestINVHujogClosureCriterion:
@@ -614,23 +685,96 @@ class TestINVHujogClosureCriterion:
                     break
         return result
 
-    def test_every_bridge_framework_protocol_linker_has_non_empty_depends_on(self) -> None:
+    def _module_docstrings(self) -> dict[str, str]:
+        """{pass_id: module docstring} for every registered linker."""
+        import importlib
+
+        import hypergumbo_core.cli  # linkers register by import side-effect
+        from hypergumbo_core.linkers.registry import _LINKER_REGISTRY
+
+        return {
+            name: (importlib.import_module(reg.func.__module__).__doc__ or "")
+            for name, reg in _LINKER_REGISTRY.items()
+        }
+
+    def _empty_depends_on_offenders(self) -> list[str]:
         catalog = get_default_catalog()
         subcategories = self._all_linkers_with_subcategory()
+        docstrings = self._module_docstrings()
         passes_by_id = {p.id: p for p in catalog.passes}
         offenders: list[str] = []
         for name, cat in subcategories.items():
-            if cat in ("Bridge", "Framework", "Protocol"):
-                p = passes_by_id.get(name)
-                if p is None:
-                    continue
-                if not p.depends_on or all(not clause for clause in p.depends_on):
-                    offenders.append(f"{name} ({cat})")
+            if cat not in ("Bridge", "Framework", "Protocol"):
+                continue
+            p = passes_by_id.get(name)
+            if p is None:
+                continue
+            if p.depends_on and any(clause for clause in p.depends_on):
+                continue
+            if _EMPTY_DEPENDS_ON_DECLARATION in docstrings.get(name, ""):
+                continue
+            offenders.append(f"{name} ({cat})")
+        return offenders
+
+    def test_every_bridge_framework_protocol_linker_has_non_empty_depends_on(self) -> None:
+        """...unless it PROVABLY consumes no pass output and says so (WI-zujan).
+
+        The criterion was written on the premise that a Bridge/Framework/
+        Protocol linker always reads some analyzer's output, and for almost all
+        of them that holds. ``message-queue-linker`` falsifies the premise: its
+        entry point is ``link_message_queues(root: Path)``, it scans the tree
+        itself and mints BOTH ENDS of every edge, so there is no pass to name.
+        Forcing a non-empty clause there does not make the declaration true --
+        it makes it a list of passes the linker never reads, which is the
+        too-wide, false-all-clear shape WI-ditir and WI-zujan exist to remove.
+
+        So the allowance is narrow and POSITIVE: the module docstring must say,
+        in the exact words of ``_EMPTY_DEPENDS_ON_DECLARATION``, why the clause
+        is empty. Silence plus an empty clause is still an offence, because
+        silence is indistinguishable from having forgotten to declare -- which
+        is the case the criterion exists to catch. Owner ruled this amendment
+        2026-09-22 after being shown the collision.
+        """
+        offenders = self._empty_depends_on_offenders()
         assert not offenders, (
             f"Linkers in Bridge/Framework/Protocol categories must declare "
-            f"non-empty depends_on (per WI-dilab closure criterion). Offenders: "
-            f"{offenders}"
+            f"non-empty depends_on (per WI-dilab closure criterion), OR carry "
+            f"{_EMPTY_DEPENDS_ON_DECLARATION!r} in their module docstring "
+            f"explaining why they consume no pass output. Offenders: {offenders}"
         )
+
+    def test_the_allowance_is_actually_exercised(self) -> None:
+        """A branch no linker takes is a branch nothing tests. If this fails,
+        the exception above has become dead and should be removed rather than
+        carried."""
+        catalog = get_default_catalog()
+        docstrings = self._module_docstrings()
+        passes_by_id = {p.id: p for p in catalog.passes}
+        declared_empty = [
+            name for name, doc in docstrings.items()
+            if _EMPTY_DEPENDS_ON_DECLARATION in doc
+            and name in passes_by_id
+            and not any(passes_by_id[name].depends_on)
+        ]
+        assert "message-queue-linker" in declared_empty, declared_empty
+
+    def test_an_undeclared_empty_clause_is_still_an_offence(self) -> None:
+        """The control: without the declaration the gate still fires, so a
+        green result above is evidence about the tree and not about a gate that
+        stopped checking."""
+        catalog = get_default_catalog()
+        passes_by_id = {p.id: p for p in catalog.passes}
+        subcategories = self._all_linkers_with_subcategory()
+        docstrings = dict(self._module_docstrings())
+        docstrings["message-queue-linker"] = "Protocol linker: no declaration."
+        offenders = [
+            name for name, cat in subcategories.items()
+            if cat in ("Bridge", "Framework", "Protocol")
+            and name in passes_by_id
+            and not any(passes_by_id[name].depends_on)
+            and _EMPTY_DEPENDS_ON_DECLARATION not in docstrings.get(name, "")
+        ]
+        assert "message-queue-linker" in offenders
 
     def test_infrastructure_linkers_have_explicit_depends_on(self) -> None:
         # Empty list is OK for Infrastructure; the requirement is that the
@@ -719,3 +863,220 @@ class TestSyntheticPassIds:
         assert "erb" in known
         assert "haml" in known
         assert "slim" in known
+
+
+class TestFindFalsifiedDependencies:
+    """WI-jijor / ADR-0056 W1: the same CNF predicate, re-pointed.
+
+    ``validate_pass_dependencies`` asks "may these passes run together?" and
+    RAISES. This asks "did a pass that already ran prove its own declaration
+    wrong?" and REPORTS. Falsification never suppresses anything, so it cannot
+    lose an edge — which is why it may be wired where a gate may not
+    (LIVE.md §2: raising is the withholding direction).
+    """
+
+    def _p(self, pass_id: str, depends_on: list[list[str]] | None = None) -> Pass:
+        return Pass(id=pass_id, description="", availability="core",
+                    depends_on=depends_on or [])
+
+    def _run(self, pass_id: str, *, nodes: int = 0, edges: int = 0) -> dict:
+        return {"pass": pass_id, "nodes_emitted": nodes, "edges_emitted": edges}
+
+    def test_empty_inputs_report_nothing(self) -> None:
+        assert find_falsified_dependencies([], []) == []
+
+    def test_satisfied_declaration_is_not_falsified(self) -> None:
+        passes = [self._p("rust"), self._p("tauri-ipc-linker", [["rust"]])]
+        runs = [self._run("rust", nodes=40), self._run("tauri-ipc-linker", edges=3)]
+        assert find_falsified_dependencies(passes, runs) == []
+
+    def test_emitting_pass_with_unsatisfied_conjunct_is_falsified(self) -> None:
+        """The headline case: it emitted, so the declaration is provably wrong."""
+        passes = [self._p("tauri-ipc-linker", [["rust"]])]
+        runs = [self._run("tauri-ipc-linker", edges=3)]
+        assert find_falsified_dependencies(passes, runs) == [
+            ("tauri-ipc-linker", [["rust"]]),
+        ]
+
+    def test_nodes_alone_do_not_falsify_a_declaration(self) -> None:
+        """RE-POINTED by WI-rasal's corpus re-read, not by taste.
+
+        The first cut counted ``nodes_emitted`` as proof, on the precedent that
+        keying on ``edges_emitted`` alone once called a 91-node pass silent.
+        That precedent is about SILENCE — "did this pass say anything?" — and
+        importing it here answered a different question wrong.
+        ``depends_on`` is documented as naming what a linker needs to "produce
+        its intended edges at all", and all 59 declarers are linkers (pinned by
+        ``test_every_depends_on_declarer_is_a_linker``).
+
+        The measurement: 68 of the 261 falsifying surveys were
+        ``database-query-linker`` runs with nodes and ZERO edges. It mints one
+        query node per SQL string it scrapes out of a host file, then needs the
+        ``sql`` analyzer's ``kind="table"`` symbols for the dst of every edge.
+        Nodes-with-no-edges is precisely the shape of "could NOT do its job
+        without the thing it declared" — the detector was reading a correct
+        declaration as a falsified one, on 26% of its own hits.
+        """
+        passes = [self._p("db-linker", [["sql"]])]
+        runs = [self._run("db-linker", nodes=15)]
+        assert find_falsified_dependencies(passes, runs) == []
+
+    def test_edges_falsify_even_when_no_nodes_were_minted(self) -> None:
+        """The complement: the five surviving clauses all emit edges, no nodes."""
+        passes = [self._p("inheritance-linker", [["java"]])]
+        runs = [self._run("inheritance-linker", edges=30)]
+        assert find_falsified_dependencies(passes, runs) == [
+            ("inheritance-linker", [["java"]]),
+        ]
+
+    def test_silent_pass_with_unsatisfied_conjunct_is_NOT_falsified(self) -> None:
+        """A pass that emitted nothing proves nothing about its declaration.
+
+        This is the whole difference from the gate. The declaration may be
+        perfectly correct and the repo may simply lack the construct; only
+        OUTPUT despite an unsatisfied conjunct is proof.
+        """
+        passes = [self._p("tauri-ipc-linker", [["rust"]])]
+        runs = [self._run("tauri-ipc-linker")]
+        assert find_falsified_dependencies(passes, runs) == []
+
+    def test_a_pass_that_ran_and_produced_NOTHING_does_not_satisfy_a_clause(
+        self,
+    ) -> None:
+        """RE-POINTED by WI-rasal. The old rule was not a function of its fact.
+
+        "Active" used to mean "has an ``analysis_runs`` row". Under the
+        WI-jadig / INV-manov file-presence pre-filter, an analyzer is
+        short-circuited into ``limits.skipped_passes`` only when EVERY language
+        it declares is in the taxonomy's ``LANGUAGE_EXTENSIONS``; every other
+        analyzer runs anyway and records a 0-file / 0-node row. So on caddy —
+        a Go repository — ``apex``, ``astro`` and ``pony`` are "active" and
+        ``java``, ``ruby`` and ``python`` are not, for the identical underlying
+        fact that the repo has no such files. Membership in ``analysis_runs``
+        answers "is this language in the taxonomy?", not "did this pass
+        contribute anything?".
+
+        Producing output is the same fact under both representations, so that
+        is what a clause now tests.
+        """
+        passes = [self._p("rust"), self._p("tauri-ipc-linker", [["rust"]])]
+        runs = [self._run("rust"), self._run("tauri-ipc-linker", edges=3)]
+        assert find_falsified_dependencies(passes, runs) == [
+            ("tauri-ipc-linker", [["rust"]]),
+        ]
+
+    def test_a_prerequisite_satisfies_a_clause_with_nodes_alone(self) -> None:
+        """The asymmetry is deliberate: an ANALYZER's product is nodes.
+
+        A pass falsifies its own declaration only by emitting edges (a linker's
+        product); a pass SATISFIES someone else's clause with nodes or edges
+        (an analyzer contributes symbols, a linker prerequisite contributes
+        edges). Collapsing the two halves onto one counter breaks one of them.
+        """
+        passes = [self._p("rust"), self._p("tauri-ipc-linker", [["rust"]])]
+        runs = [self._run("rust", nodes=40), self._run("tauri-ipc-linker", edges=3)]
+        assert find_falsified_dependencies(passes, runs) == []
+
+    def test_a_prerequisite_satisfies_a_clause_with_edges_alone(self) -> None:
+        """``type-hierarchy-linker`` depends on ``inheritance-linker``, which
+        emits edges and mints no nodes."""
+        passes = [
+            self._p("inheritance-linker"),
+            self._p("type-hierarchy-linker", [["inheritance-linker"]]),
+        ]
+        runs = [
+            self._run("inheritance-linker", edges=788),
+            self._run("type-hierarchy-linker", edges=12),
+        ]
+        assert find_falsified_dependencies(passes, runs) == []
+
+    def test_or_clause_satisfied_by_any_single_member(self) -> None:
+        passes = [self._p("c"), self._p("jni-linker", [["java"], ["c", "cpp", "rust"]])]
+        runs = [self._run("c", nodes=9), self._run("java", nodes=4),
+                self._run("jni-linker", edges=1)]
+        assert find_falsified_dependencies(passes, runs) == []
+
+    def test_multi_conjunct_reports_only_the_unsatisfied_ones(self) -> None:
+        passes = [self._p("java"), self._p("jni-linker", [["java"], ["c", "cpp"]])]
+        runs = [self._run("java", nodes=7), self._run("jni-linker", edges=1)]
+        assert find_falsified_dependencies(passes, runs) == [
+            ("jni-linker", [["c", "cpp"]]),
+        ]
+
+    def test_pass_absent_from_runs_is_never_reported(self) -> None:
+        """A pass that did not run cannot falsify its own declaration."""
+        passes = [self._p("tauri-ipc-linker", [["rust"]])]
+        assert find_falsified_dependencies(passes, []) == []
+
+    def test_run_with_no_catalog_entry_is_skipped(self) -> None:
+        """Synthetic pipeline passes (enclosure-linker, route-materializer)
+        emit real AnalysisRuns but are not registry entries, so they carry no
+        declaration to falsify."""
+        passes = [self._p("tauri-ipc-linker", [["rust"]])]
+        runs = [self._run("enclosure-linker", edges=99)]
+        assert find_falsified_dependencies(passes, runs) == []
+
+    def test_results_are_sorted_by_pass_id(self) -> None:
+        """Deterministic across runs so two surveys diff without churn."""
+        passes = [self._p("zed-linker", [["x"]]), self._p("abe-linker", [["x"]])]
+        runs = [self._run("zed-linker", edges=1), self._run("abe-linker", edges=1)]
+        assert [pid for pid, _ in find_falsified_dependencies(passes, runs)] == [
+            "abe-linker", "zed-linker",
+        ]
+
+    def test_run_without_a_pass_id_is_ignored(self) -> None:
+        """A malformed record must not be counted into the active set.
+
+        ABSENT is not EMPTY: a record with no ``pass`` key names no pass, and
+        admitting ``""`` to ``active_ids`` would let a clause be "satisfied" by
+        a literal nothing produced.
+        """
+        passes = [self._p("tauri-ipc-linker", [["rust"]])]
+        runs = [{"nodes_emitted": 5}, {"pass": "", "edges_emitted": 5},
+                self._run("tauri-ipc-linker", edges=1)]
+        assert find_falsified_dependencies(passes, runs) == [
+            ("tauri-ipc-linker", [["rust"]]),
+        ]
+
+    def test_missing_counter_keys_read_as_zero_output(self) -> None:
+        """A serialized run always carries both counters, but a hand-built or
+        older record may not; absent must read as "emitted nothing", never as
+        a falsification."""
+        passes = [self._p("tauri-ipc-linker", [["rust"]])]
+        assert find_falsified_dependencies(passes, [{"pass": "tauri-ipc-linker"}]) == []
+
+
+class TestFormatFalsifiedDependencies:
+    """The reader half. LIVE.md §1.7: a detector with no reader is the defect."""
+
+    def test_empty_gives_none_so_a_clean_run_is_silent(self) -> None:
+        assert format_falsified_dependencies([]) is None
+
+    def test_line_names_the_pass_and_the_unsatisfied_clause(self) -> None:
+        line = format_falsified_dependencies([("jni-linker", [["c", "cpp"]])])
+        assert line is not None
+        assert "jni-linker" in line
+        assert "c" in line and "cpp" in line
+
+    def test_counts_passes_not_clauses(self) -> None:
+        line = format_falsified_dependencies([("a", [["x"], ["y"]])])
+        assert line is not None
+        assert line.startswith("[passes] 1 ")
+
+
+class TestEmitFalsifiedDependencySummary:
+    """The wire-up, proven to fire — LIVE.md §1.7 wants the wire-up proven."""
+
+    def test_silent_when_nothing_is_falsified(self, capsys) -> None:
+        emit_falsified_dependency_summary([], [])
+        assert capsys.readouterr().err == ""
+
+    def test_writes_one_line_to_stderr_when_falsified(self, capsys) -> None:
+        passes = [Pass(id="jni-linker", description="", availability="core",
+                       depends_on=[["c"]])]
+        emit_falsified_dependency_summary(
+            passes, [{"pass": "jni-linker", "nodes_emitted": 0, "edges_emitted": 2}],
+        )
+        err = capsys.readouterr().err
+        assert err.count("\n") == 1
+        assert "jni-linker" in err

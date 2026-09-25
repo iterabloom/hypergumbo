@@ -1005,11 +1005,12 @@ def filter_edges_for_ranking(
         exclude_test_edges: If True, ignore edges originating from test
             files. Default True.
         exclude_import_edges: If True, ignore every member of
-            ``hypergumbo_core.edge_types.IMPORT_EDGE_TYPES``
-            (``imports``, ``imports_module``, ``imports_component``).
+            ``hypergumbo_core.edge_types.IMPORT_EDGE_TYPES`` (today a
+            single member, ``imports``: ADR-0023 §6 folded away the former
+            ``imports_module`` / ``imports_component`` specializations).
             If False (default), import edges are kept and weighted by
             edge_type_weights in compute_centrality (imports get 0.3x
-            weight, imports_module gets 0.2x). Default False.
+            weight). Default False.
         min_edge_confidence: Minimum edge confidence to include. Edges below
             this threshold are excluded. Default 0.0 (include all).
 
@@ -1212,8 +1213,8 @@ def rank_symbols(
         exclude_import_edges: If True, ignore every member of
             ``hypergumbo_core.edge_types.IMPORT_EDGE_TYPES`` when
             computing centrality. If False (default), import edges are
-            included but weighted via edge_type_weights (imports=0.3,
-            imports_module=0.2) rather than excluded entirely. This
+            included but weighted via edge_type_weights (imports=0.3)
+            rather than excluded entirely. This
             gives imported-but-not-called symbols a small centrality
             signal without overwhelming call-based rankings. Default
             False.

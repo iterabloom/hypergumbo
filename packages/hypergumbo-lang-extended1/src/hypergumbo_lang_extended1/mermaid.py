@@ -9,15 +9,17 @@ How It Works
 ------------
 Regex-based extraction (no tree-sitter grammar available on PyPI):
 1. Find all .mmd and .mermaid files
-2. Detect diagram type from first directive (flowchart, sequenceDiagram, etc.)
-3. Extract node definitions and named entities
-4. Extract relationships/edges between nodes
+2. Detect diagram type directives on any line (flowchart, sequenceDiagram, etc.)
+3. Extract node definitions and named entities (no edges are emitted)
 
 Symbols Extracted
 -----------------
 - **diagram**: The diagram type declaration (flowchart, classDiagram, etc.)
 - **node**: Named nodes in flowcharts and graphs (A[Label])
 - **participant**: Sequence diagram participants
+- **class**: Class diagram classes (``class Name``)
+- **state**: State diagram states declared with an alias
+  (``state "Description" as Name``); the alias is the symbol name
 
 Why This Design
 ---------------
@@ -58,7 +60,7 @@ _STATE_RE = re.compile(r"""^\s*state\s+["']([^"']+)["']\s+as\s+(\w+)""", re.MULT
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"mermaid:{path}:{line}:{name}:{kind}"
+    return f"mermaid:{path}:{line}-{line}:{name}:{kind}"
 
 
 def find_mermaid_files(

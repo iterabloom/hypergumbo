@@ -38,8 +38,10 @@ GPU/CPU execution space is carried instead on
 ``meta["cuda_execution_space"]`` (one of ``global`` / ``device`` /
 ``host_device`` / ``host``, or absent for a plain host function).
 ``__global__`` kernels additionally carry ``meta["is_kernel"] = True``,
-which downstream consumers (kernel_launch edges, GPU-entry-point
-detection) key on directly.
+a legacy flag kept for external consumers; nothing under packages/*/src
+reads it. Kernel launches are ``calls`` edges marked with
+``meta["mechanism"] = "kernel_launch"``, decided from the ``<<<...>>>``
+launch syntax at the call site rather than from this flag.
 """
 from __future__ import annotations
 
@@ -241,9 +243,9 @@ def _extract_cuda_symbols(
                 if exec_space is not None:
                     meta = {"cuda_execution_space": exec_space}
                     if is_global:
-                        # Preserve the legacy `is_kernel` flag — downstream
-                        # consumers (kernel_launch edges, GPU-entry-point
-                        # detection) key on it directly.
+                        # Preserve the legacy `is_kernel` flag for external
+                        # consumers; no in-tree code reads it (launch edges
+                        # are detected from the call-site syntax instead).
                         meta["is_kernel"] = True
 
                 start_line = node.start_point[0] + 1

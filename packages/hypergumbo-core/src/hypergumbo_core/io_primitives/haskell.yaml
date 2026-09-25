@@ -1,11 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # ADR-0016: I/O primitive catalog for Haskell
 #
-# Maps Haskell base/stdlib modules and common libraries to I/O boundary types.
-# Haskell uses qualified module names (Data.Map, System.IO, Network.Socket).
+# Maps `base` and the GHC BOOT LIBRARIES — the packages that ship with every
+# GHC installation (bytestring, text, time, directory, process) — to I/O
+# boundary types. Haskell uses qualified module names (Data.Map, System.IO).
 # Prelude functions are auto-imported so appear without qualification.
-# Third-party web frameworks (Servant, Yesod, Warp) call these primitives
-# transitively, so covering base + common libraries is sufficient.
+#
+# SCOPE (ADR-0016 §27, ADR-0047 ruling 8): what ships with the compiler. This
+# header used to say "and common libraries", which covered 43 rows from
+# Hackage — network, http-client, req, http-conduit, wai, warp and
+# typed-process. Those are now in io_primitives_overlays/haskell-network.yaml,
+# which LOADS BY DEFAULT and discloses itself.
+#
+# CONSEQUENCE WORTH KNOWING: this catalogue therefore has NO net_send or
+# net_recv rows at all, because `base` has no sockets. That is a fact about
+# Haskell rather than a gap in the file — see the comment where those sections
+# used to be.
 language: haskell
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``
@@ -38,63 +48,229 @@ ambiguous_names:
   - trace         # Debug.Trace.trace vs any .trace
   - yield         # Control.Concurrent.yield vs any .yield
 
+# ADR-0016 boundary order note: ipc_recv precedes fs_read here only because the
+# stdin family is the one a reader most often needs to find.
+ipc_recv:
+  - module: System.Process
+    functions: [readProcess, readProcessWithExitCode, readCreateProcess, readCreateProcessWithExitCode]
+    simultaneous: true
+    notes: >-
+      INV-lozat: the read* family RETURNS the child's stdout as a String
+      (`readProcessWithExitCode` as `(ExitCode, stdout, stderr)`), so each
+      is a transfer as well as a launch. The call*/spawn*/system forms stay
+      launch-only above -- they return unit, an ExitCode, or a handle.
+  - module: Prelude
+    functions: [getLine, getChar, getContents, readLn, interact]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing
+      is known at the call site with no argument to inspect. All five are fixed
+      to stdin: getContents is hGetContents stdin,
+      readLn is getLine >>= readIO, and interact reads all of stdin (its stdout
+      half is not represented here -- System.IO's handle-based writers carry
+      that, under their own INV-vaduk ruling). System.IO.hGetLine / hGetChar /
+      hGetContents take a Handle and are declared under BOTH boundaries below
+      (WI-lipis): which one is true is a property of that Handle.
+  - module: Data.Text.IO
+    functions: [getContents, getLine]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing
+      is known at the call site with no argument to inspect. The Data.Text
+      mirrors of Prelude's stdin readers. readFile stays fs_read; the hGet*
+      family takes a Handle and is declared under both boundaries below
+      (WI-lipis).
+
+  - module: System.IO
+    functions: [hGetContents, hGetLine, hGetChar]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: also declared fs_read, and BOTH are needed -- the boundary is a
+      property of the HANDLE ARGUMENT, so `hGetLine stdin` and `hGetLine h`
+      (from openFile) are one row and two different crossings (INV-bagok /
+      INV-zumin class (b)). The analyzer stamps io_target_kind from the
+      handle's origin and _narrow_by_target_kind keeps the matching row; a handle whose
+      origin cannot be recovered abstains to the FIRST-DECLARED row, which is
+      why fs_read stays above this one and why that order is pinned by a test.
+      Measured with a live control in one cold run: readProcess reaching
+      writeFile returned violated while `hGetLine stdin` with the identical
+      flow shape returned nothing.
+  - module: Data.ByteString
+    functions: [hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: the System.IO rule over a ByteString handle. Same argument,
+      same abstention, same declaration order.
+  - module: Data.ByteString.Lazy
+    functions: [hGetContents, hGet, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
+  - module: Data.ByteString.Char8
+    functions: [hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
+  - module: Data.ByteString.Lazy.Char8
+    functions: [hGetContents, hGet, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
+  - module: Data.Text.IO
+    functions: [hGetContents, hGetLine]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: the System.IO rule over a Text handle. Same argument, same
+      abstention, same declaration order.
+
 fs_read:
   - module: Prelude
-    functions: [readFile, getContents, readIO, readLn, interact]
+    functions: [readFile, readIO]
+    notes: >-
+      getContents/readLn/interact MOVED to ipc_recv (INV-muvis): they read
+      stdin, and fs_read is absent from AUTO_SOURCE_LABEL_MAP, so they minted no
+      taint source at all. readIO is left here under protest -- its type is
+      String -> IO a, so it parses a value already in hand and crosses NO
+      boundary; that is INV-zumin class (d) (a row that is simply wrong rather
+      than multi-valued) and it is filed separately rather than fixed here.
   - module: System.IO
-    functions: [hGetContents, hGetLine, hGetChar, hReady, hIsEOF, hSeek, hTell, hFileSize, openFile, openBinaryFile, withFile, withBinaryFile]
+    functions: [hReady, hIsEOF, hSeek, hTell, hFileSize, openFile, openBinaryFile, withFile, withBinaryFile]
+  - module: System.IO
+    functions: [hGetContents, hGetLine, hGetChar]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: the Handle-taking readers, split out of the row above because
+      their boundary is a property of the Handle argument. THIS ROW STAYS
+      FIRST -- an unstamped call abstains to the first-declared row. Declared
+      on both rows because `boundary_ruling` is a property of the primitive.
   - module: System.Directory
     functions: [listDirectory, getDirectoryContents, doesFileExist, doesDirectoryExist, getPermissions, getFileSize, getModificationTime, getCurrentDirectory, getHomeDirectory, getTemporaryDirectory, findFile, findFiles, canonicalizePath, makeAbsolute]
   - module: Data.ByteString
-    functions: [readFile, hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
+    functions: [readFile]
+  - module: Data.ByteString.Lazy
+    functions: [readFile]
+    notes: >-
+      WI-zozun: a SIBLING MODULE of Data.ByteString with the same I/O surface,
+      given its own row because arm 2 of _module_matches no longer infers
+      "capitalised means type" -- Data.ByteString + Lazy is orthographically
+      identical to elixir's Req + Response, which does NOT share its parent's
+      I/O, so the predicate cannot tell them apart and the catalogue must.
+      Measured before the row existed: stack (8), hls (3), servant (1) lost
+      real readFile/writeFile boundaries through these modules. Function
+      lists are the strict/lazy/Char8 export differences of bytestring
+      (Lazy has no hGetLine/hGetSome; Char8 adds hPutStrLn), verified
+      2026-09-02 against the calls the corpus actually makes.
+  - module: Data.ByteString.Char8
+    functions: [readFile]
+    notes: "WI-zozun sibling row; see Data.ByteString.Lazy above."
+  - module: Data.ByteString.Lazy.Char8
+    functions: [readFile]
+    notes: "WI-zozun sibling row; see Data.ByteString.Lazy above."
+  - module: Data.ByteString
+    functions: [hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-lipis: the System.IO rule over a ByteString handle."
+  - module: Data.ByteString.Lazy
+    functions: [hGetContents, hGet, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
+  - module: Data.ByteString.Char8
+    functions: [hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
+  - module: Data.ByteString.Lazy.Char8
+    functions: [hGetContents, hGet, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
   - module: Data.Text.IO
-    functions: [readFile, hGetContents, hGetLine, getContents, getLine]
+    functions: [readFile]
+    notes: "getContents/getLine MOVED to ipc_recv (INV-muvis) -- they read stdin."
+  - module: Data.Text.IO
+    functions: [hGetContents, hGetLine]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-lipis: the System.IO rule over a Text handle."
 
 fs_write:
   - module: Prelude
     functions: [writeFile, appendFile]
   - module: System.IO
     functions: [hPutStr, hPutStrLn, hPutChar, hPrint, hPutBuf, hPutBufNonBlocking, hSetFileSize, hSetBuffering, hFlush, hClose]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      Handle-based output. INV-vaduk: EXACTLY ONE of fs_write / logging is
+      true per call and the call site cannot know which, because the answer
+      is which Handle was passed -- stderr reads as logging, a file handle
+      as fs_write. Same shape as C unistd.write depending on the fd. The
+      `logging` row already said so in prose ("stderr handle used for
+      logging"); this is that sentence made machine-readable.
   - module: System.Directory
     functions: [createDirectory, createDirectoryIfMissing, removeFile, removeDirectory, removeDirectoryRecursive, removePathForcibly, renameFile, renameDirectory, copyFile, copyFileWithMetadata, setPermissions, setCurrentDirectory]
   - module: Data.ByteString
     functions: [writeFile, appendFile, hPut, hPutStr, hPutNonBlocking]
+  - module: Data.ByteString.Lazy
+    functions: [writeFile, appendFile, hPut, hPutStr, hPutNonBlocking]
+    notes: "WI-zozun sibling row; see the fs_read Data.ByteString.Lazy row."
+  - module: Data.ByteString.Char8
+    functions: [writeFile, appendFile, hPut, hPutStr, hPutStrLn, hPutNonBlocking]
+    notes: "WI-zozun sibling row; see the fs_read Data.ByteString.Lazy row."
+  - module: Data.ByteString.Lazy.Char8
+    functions: [writeFile, appendFile, hPut, hPutStr, hPutStrLn, hPutNonBlocking]
+    notes: "WI-zozun sibling row; see the fs_read Data.ByteString.Lazy row."
   - module: Data.Text.IO
     functions: [writeFile, appendFile, hPutStr, hPutStrLn]
 
-net_send:
-  - module: Network.Socket
-    functions: [send, sendTo, sendAll, sendMany, connect, close]
-  - module: Network.Socket.ByteString
-    functions: [send, sendAll, sendTo, sendMany, sendManyTo]
-  - module: Network.HTTP.Client
-    functions: [httpLbs, httpNoBody, httpBS, responseOpen, withResponse, newManager]
-  - module: Network.HTTP.Simple
-    functions: [httpBS, httpLBS, httpJSON, httpNoBody, httpSink, httpJSONEither]
-  - module: Network.HTTP.Req
-    functions: [req, runReq]
-
-net_recv:
-  - module: Network.Socket
-    functions: [recv, recvFrom, accept, listen, bind, socket, gracefulClose]
-  - module: Network.Socket.ByteString
-    functions: [recv, recvFrom]
-  - module: Network.Wai
-    functions: [responseLBS, responseFile, responseBuilder, responseStream]
-    notes: "WAI response constructors (used with Warp)"
-  - module: Network.Wai.Handler.Warp
-    functions: [run, runSettings, runTLS, runEnv]
-    notes: "Warp HTTP server"
+# NO net_send / net_recv ROWS, AND THAT IS A FACT ABOUT HASKELL, NOT A GAP
+# (ADR-0047 ruling 8, WI-surun). `base` has no sockets: every networking API
+# in Haskell arrives from Hackage -- the `network` package (Network.Socket),
+# http-client / req / http-conduit, wai and warp. All of those moved to
+# io_primitives_overlays/haskell-network.yaml, which loads by DEFAULT, so a
+# normal run is unchanged; a `--no-default-overlays` run genuinely sees no
+# Haskell network surface, because the standard library does not have one.
+# Adding a row back here would be re-asserting that Hackage is the stdlib.
 
 subprocess:
   - module: System.Process
-    functions: [callProcess, callCommand, readProcess, readProcessWithExitCode, readCreateProcess, readCreateProcessWithExitCode, createProcess, spawnProcess, spawnCommand, system, rawSystem, waitForProcess, terminateProcess, interruptProcessGroupOf, cleanupProcess]
-  - module: System.Process.Typed
-    functions: [runProcess, readProcess, startProcess, stopProcess, withProcessWait, withProcessTerm]
+    functions: [callProcess, callCommand, createProcess, spawnProcess, spawnCommand, system, rawSystem, waitForProcess, terminateProcess, interruptProcessGroupOf, cleanupProcess]
+    notes: >-
+      The forms that return unit, an ExitCode, or process HANDLES.
+      `createProcess` returns the three handles plus a ProcessHandle -- an
+      ADR-0049 deferred crossing, disclosed here and not minted. Split from
+      the read* row below by INV-lozat.
+  - module: System.Process
+    functions: [readProcess, readProcessWithExitCode, readCreateProcess, readCreateProcessWithExitCode]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
 
 env_read:
   - module: System.Environment
-    functions: [getArgs, getProgName, getEnvironment, lookupEnv, getEnv, getExecutablePath]
+    functions: [getArgs, getEnvironment, lookupEnv, getEnv]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: Data.Time.Clock
+    functions: [getCurrentTime]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused.
+  - module: Data.Time.Clock.System
+    functions: [getSystemTime]
+  - module: GHC.Clock
+    functions: [getMonotonicTime]
+    notes: >-
+      base's monotonic clock.
+  - module: System.Environment
+    functions: [getProgName, getExecutablePath]
   - module: System.Info
     functions: [os, arch, compilerName, compilerVersion]
 
@@ -109,30 +285,44 @@ logging:
     functions: [putStr, putStrLn, print, putChar]
   - module: System.IO
     functions: [hPutStr, hPutStrLn, hPrint, hPutChar]
-    notes: "Handle-based output; stderr handle used for logging"
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      Handle-based output. INV-vaduk: EXACTLY ONE of fs_write / logging is
+      true per call and the call site cannot know which, because the answer
+      is which Handle was passed -- stderr reads as logging, a file handle
+      as fs_write. Same shape as C unistd.write depending on the fd. The
+      `logging` row already said so in prose ("stderr handle used for
+      logging"); this is that sentence made machine-readable.
   - module: Debug.Trace
     functions: [trace, traceShow, traceShowId, traceIO, traceM, traceShowM, traceStack]
 
-db_read:
-  - module: Data.IORef
-    functions: [readIORef, newIORef]
-  - module: Data.STRef
-    functions: [readSTRef, newSTRef]
-  - module: Control.Concurrent.MVar
-    functions: [readMVar, takeMVar, tryTakeMVar, tryReadMVar, newMVar, newEmptyMVar, isEmptyMVar]
-  - module: Control.Concurrent.STM
-    functions: [readTVar, readTVarIO, newTVar, newTVarIO, atomically]
-    notes: "Software Transactional Memory"
-
-db_write:
-  - module: Data.IORef
-    functions: [writeIORef, modifyIORef, modifyIORef', atomicModifyIORef, atomicModifyIORef', atomicWriteIORef]
-  - module: Data.STRef
-    functions: [writeSTRef, modifySTRef, modifySTRef']
-  - module: Control.Concurrent.MVar
-    functions: [putMVar, tryPutMVar, modifyMVar, modifyMVar_, swapMVar]
-  - module: Control.Concurrent.STM
-    functions: [writeTVar, modifyTVar, modifyTVar', newTVar, newTVarIO]
+# db_read / db_write: DELETED (INV-nular, WI-rigut).
+#
+# Haskell's ENTIRE db_* surface was Data.IORef, Data.STRef,
+# Control.Concurrent.MVar and Control.Concurrent.STM -- 31 rows, and not one
+# database among them. These are in-process mutable references: no descriptor,
+# no syscall, and nothing outside this process can observe a write to one.
+#
+# THE ROWS DID NOT MERELY MISLABEL, THEY MINTED TAINT. db_read is an
+# auto-derived taint SOURCE (AUTO_SOURCE_LABEL_MAP: db_read -> untrusted_input)
+# and db_write an auto-derived SINK, so `readIORef` invented untrusted input at
+# every call site and `writeIORef` accepted it as a database write. All five
+# shellcheck true positives in measurement 0006 are real dataflow filed under
+# `untrusted-input-no-database` against exactly this family -- genuine value
+# chains making a vacuous claim, which is the mechanism behind that
+# measurement's headline being an upper bound on useful precision.
+#
+# THE QUESTION WAS ALREADY WRITTEN HERE AND DEFERRED, in the STM rows' own
+# `boundary_ruling: unruled` note: "the prior question is whether the db_*
+# classification of the whole Data.IORef / STRef / MVar / STM family is right
+# at all -- these are in-process mutable references, not a database -- which is
+# a vocabulary decision beyond this row." This is that decision.
+#
+# REMOVING THEM NARROWS NO CLAIM. Haskell rows no real database anywhere, so
+# the catalogue loses no ability it had; it stops asserting one it never had
+# the rows to support. Taint PROPAGATION through a ref is a dataflow question
+# and was never what these rows provided -- they fabricated a source, they did
+# not carry one across.
 
 process_send:
   - module: Control.Concurrent

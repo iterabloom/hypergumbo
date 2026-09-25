@@ -29,6 +29,8 @@ condition on a machine that is not CI, so this test fails if the declaration is
 ever deleted.
 """
 
+# covers: tests/test_rct_public_api_pinned.py
+
 from __future__ import annotations
 
 import subprocess  # nosec B404 - runs this repo's own pytest, no untrusted input

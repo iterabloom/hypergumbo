@@ -606,6 +606,9 @@ class TestTransitiveControllerBase:
         result = link_view_template(ctx)
         assert len(result.edges) == 1
         assert result.edges[0].src == method.id
+        # INV-rukor: the controller, the extends edge and the ancestor that
+        # carried ActionController::Base all qualified the action.
+        assert result.edges[0].derived_from == [method.id, leaf_ctl.id, edge.id, app_ctl.id]
 
     def test_two_intermediate_chain(self, tmp_path: Path) -> None:
         """Leaf -> Mid -> App -> ActionController::Base."""
@@ -719,3 +722,28 @@ class TestTransitiveControllerBase:
         )
         result = link_view_template(ctx)
         assert len(result.edges) == 1
+
+
+class TestRailsActionClassContract:
+    """``is_action_class`` is the abstract predicate; Rails answers it from the
+    same evidence walk ``action_class_evidence`` uses (INV-rukor)."""
+
+    def test_predicate_agrees_with_evidence(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.view_template import RailsStrategy
+
+        ctl = Symbol(
+            id="ruby:app/controllers/a_controller.rb:1-9:AController:class",
+            name="AController", kind="class", language="ruby",
+            path="app/controllers/a_controller.rb", span=Span(1, 9, 0, 3),
+            meta={"base_classes": ["ActionController::Base"]},
+        )
+        plain = Symbol(
+            id="ruby:app/models/b.rb:1-9:B:class", name="B", kind="class",
+            language="ruby", path="app/models/b.rb", span=Span(1, 9, 0, 3),
+            meta={"base_classes": ["ApplicationRecord"]},
+        )
+        ctx = LinkerContext(repo_root=tmp_path, symbols=[ctl, plain], edges=[])
+        strategy = RailsStrategy()
+        assert strategy.is_action_class(ctl, ctx) is True
+        assert strategy.action_class_evidence(ctl, ctx) == ()
+        assert strategy.is_action_class(plain, ctx) is False

@@ -5,6 +5,15 @@ Converts `.agent/invariant-ledger.md` (INV + META entries) and
 `work_items.md` (categorized backlog items) into structured YAML ops files
 suitable for the tracker's append-only op-log storage.
 
+This is a ONE-SHOT historical path: neither markdown file exists in the repo
+any more, and both reads are guarded by ``.exists()``, so on a current tree
+``migrate()`` converts nothing. What it still does on every run is SCAFFOLD —
+it creates the ``tracker-workspace/stealth/`` tree, the ``.gitattributes``
+carrying ``merge=union`` and ``diff=tracker``, a ``.gitignore``, and, via
+``write_config_template``, a read-only (0444) ``config.yaml`` from the
+embedded template. That scaffolding, not the conversion, is why the module
+is still wired into the CLI.
+
 Design decisions:
 - **Manual op construction (not Store.add()):** Store.add() uses live
   os.getuid() for actor resolution and live timestamps, which breaks

@@ -1,0 +1,24 @@
+- op: create  # a83d
+  at: '2026-09-09T06:48:13Z'  # a83d
+  by: agent  # a83d
+  actor: jgstern_agent  # a83d
+  clock: 1  # a83d
+  nonce: a83d  # a83d
+  data:  # a83d
+    kind: work_item  # a83d
+    title: "Django ORM instance-write re-key is confined to a BARE-NAME receiver: self.order.save() never reaches the catalogue (~1,110 pretix sites)"  # a83d
+    status: todo_hard  # a83d
+    priority: 3  # a83d
+    parent:  # a83d
+    tags:  # a83d
+    - taint  # a83d
+    - python  # a83d
+    - analyzer  # a83d
+    - receiver_typing  # a83d
+    - phase6  # a83d
+    isbefore: []  # a83d
+    duplicate_of: []  # a83d
+    not_duplicate_of: []  # a83d
+    pr_ref:  # a83d
+    description: "Found 2026-09-09 while building WI-zamud, and verified INDEPENDENT of it: the Django ORM instance-write re-key (WI-sozoj -> WI-gamas -> WI-sihoh) is structurally confined to a BARE-NAME receiver, so `self.order.save()` never reaches `django.db.models` no matter what typed `self.order`.\n\nMECHANISM. The whole re-key block lives inside `_process_call`'s\n\n    elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):\n\nbranch, which binds `receiver_name = func.value.id`. An ATTRIBUTE receiver (`self.order.save()`, `obj.rel.save()`) fails the `isinstance(func.value, ast.Name)` test and never enters the branch at all, so `_is_django_model_instance` is never called. Confirmed by instrumenting the gate: it does not fire once on such a site.\n\nNOT A SETUP PROBLEM, AND NOT NEW. Reproduced with no test class anywhere, on a DECLARED ForeignKey inside the model that declares it:\n\n    class Event(models.Model):\n        organizer = models.ForeignKey(Organizer, related_name=\"events\", ...)\n        def touch(self):\n            self.organizer.save()        # -> python:external:0-0:save:unresolved\n\n`relation_fields` types `self.organizer` correctly; the write branch simply cannot consume an attribute receiver. A SECOND cause stacks on the same line in the local form -- `o = self.organizer; o.save()` also yields `external`, because `var_types` is populated from constructors and manager calls, not from an attribute read of a typed field.\n\nVOLUME. ~1,110 pretix sites of the shape `self.<setUp-assigned field>.<save|delete|refresh_from_db|full_clean>()` (PC1 round 3, `~/hypergumbo_lab_notebook/zamud_setupfields_09092026/`), plus every FK-field write of the same shape in application code, which was not censused. Note this population is NOT in WI-zamud's filed 1,155 -- that census counted only the accessor-hop shape `<X>.<accessor>.<orm method>(`, which requires a hop and so structurally excludes every direct write.\n\nPINNED BY A TEST, not left implicit: `test_py_django_setup_fields.py::TestSetUpAssignedFieldsCarryTheModel::test_direct_write_on_an_attribute_receiver_is_a_KNOWN_GAP` asserts the current (wrong) answer AND asserts that the very same field one accessor hop on DOES reach the catalogue -- so the test proves the binding exists and only the write branch cannot read it. When this item lands, that assertion flips.\n\nWHY IT IS A SEPARATE ITEM. Widening the branch to an attribute receiver means re-reasoning the INV-fahub scope guard, the WI-supat receiver-type-id trust check and the WI-hiziz Site-1/Site-2 elif chain for a receiver shape none of them was written for. That is a structural change to a carefully-guarded branch and needs its own measurement, not a rider on WI-zamud's."  # a83d
+    fields: {}  # a83d

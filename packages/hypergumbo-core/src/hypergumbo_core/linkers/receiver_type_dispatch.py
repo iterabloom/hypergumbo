@@ -161,7 +161,7 @@ def link_receiver_type_dispatch(ctx: LinkerContext) -> LinkerResult:
             origin=PASS_ID, origin_run_id=run.execution_id,
             evidence_type=evidence_type,
             is_resolved=True,
-            derived_from=[edge.src, target_id],
+            derived_from=[edge.src, target_id, edge.id],
         )
         new_edges.append(resolved)
         existing_call_pairs.add((edge.src, target_id))

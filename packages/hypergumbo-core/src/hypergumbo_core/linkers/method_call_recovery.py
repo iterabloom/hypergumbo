@@ -33,6 +33,16 @@ A single post-analysis pass, language-agnostic. For each caller N:
      class has a ``contains`` child symbol whose short name matches
      ``unresolved_name``. If yes, emit a synthetic
      ``calls -> Class.method`` edge.
+  3z. Refuse outright when the unresolved edge carries a COMPLETE external
+     identity key (``dst_ref`` with a module path). The producer said where
+     the callee lives; a short-name match is less evidence, not more
+     (WI-rulik).
+  3a. Drop any hint that CONTRADICTS a ``receiver_type_hint`` the producer
+     stamped on the unresolved edge. The premise of step 1 is that the class
+     hint IS the receiver; a producer that named a different type for the
+     receiver has already refuted that, and ``audio.getSampleRate()`` in a
+     method that separately instantiates ``OfflineTts`` is the measured case
+     (WI-nakut). No stamp means no second opinion and nothing changes.
   4. Disambiguate by line proximity when multiple classes match.
   5. Skip if the caller already has a direct ``calls`` edge to the
      resolved method (no duplicates).
@@ -65,17 +75,28 @@ from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from ..member_names import member_short_name
-from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
-from .registry import LinkerContext, LinkerResult, register_linker
+from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id, stated_module_of
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
 
 PASS_ID = make_pass_id("method-call-recovery-linker")
 
-# Edge types that signal "this caller refers to this class" — could be a
-# fallback ``calls`` (Java/Kotlin/Python) or an explicit ``instantiates``
-# (JS/TS ``new Foo()``).
+# Edge types that signal "this caller refers to this class". This set is two
+# values because the ANALYZERS DISAGREE about the dst of an object-creation
+# edge, not because two different relationships are being collected: ruby
+# resolves ``Klass.new`` to ``Klass#initialize`` and emits ``calls`` with the
+# initialize METHOD as dst, while dart/csharp/java/py/js_ts/php/cpp/verilog emit
+# ``instantiates`` with the class (or constructor) as dst. Each is locally
+# correct under ADR-0023 for the dst its analyzer chose, so this linker has to
+# accept both. Tracked as INV-kahig; if that item rules one representation
+# canonical, this set collapses to one value.
+#
+# The previous comment here named "Java/Kotlin/Python" as the fallback-``calls``
+# languages and JS/TS as the ``instantiates`` one. That was stale in both
+# directions — java.py and py.py both emit ``instantiates`` today, and ruby is
+# the language that actually never does (WI-toruz).
 _CLASS_HINT_EDGE_TYPES = frozenset({"calls", "instantiates"})
 
 
@@ -113,6 +134,104 @@ _short_name = short_name
 _parse_unresolved_name = parse_unresolved_name
 
 
+def _declared_receiver_type(edge: Edge) -> str | None:
+    """The receiver type the PRODUCER declared for this call, if it declared one.
+
+    ``receiver_type_hint`` is the analyzer's statement about the receiver's
+    type; it is stamped whenever a producer could infer one and is absent
+    otherwise, so ``None`` means "no second opinion", never "any type".
+    """
+    value = (edge.meta or {}).get("receiver_type_hint")
+    return value if isinstance(value, str) and value else None
+
+
+# WI-fihun: TYPE NAMES WHOSE INSTANCES ARE NOT CALLABLE. The class objects are
+# (``int()`` builds an int), but a member DECLARED as one holds an instance, and
+# calling an instance of any of these is a TypeError. Deliberately the builtin
+# scalars and containers only: this list is read as PERMISSION TO REFUSE, so
+# anything not on it must leave the candidate standing.
+_NON_CALLABLE_VALUE_TYPES = frozenset({
+    "bool", "bytearray", "bytes", "complex", "dict", "float", "frozenset",
+    "int", "list", "set", "str", "tuple",
+})
+
+
+def _annotation_bases(annotation: str) -> set[str]:
+    """The unqualified head of every arm of a type annotation.
+
+    ``str | None`` -> ``{"str"}``; ``Optional[str]`` and ``typing.Optional[str]``
+    -> ``{"str"}``; ``list[str]`` -> ``{"list"}``; ``Callable[[], None]`` ->
+    ``{"Callable"}``. ``None`` arms are dropped -- an optional scalar is still a
+    scalar, and keeping the arm would defeat every refusal below.
+
+    WRAPPERS IT HAS NOT BEEN TAUGHT ARE LEFT WHOLE, on purpose. ``Union[...]``
+    and ``ClassVar[list[str]]`` return their own head, which is not in
+    ``_NON_CALLABLE_VALUE_TYPES``, so the caller refuses nothing. Under-refusal
+    is the safe direction here: a missed refusal leaves one wrong edge, while an
+    over-eager one silently deletes a correct recovery.
+    """
+    bases: set[str] = set()
+    for arm in annotation.split("|"):
+        head, _, rest = arm.strip().partition("[")
+        head = head.strip().rsplit(".", 1)[-1]
+        if head == "Optional" and rest.endswith("]"):
+            bases |= _annotation_bases(rest[:-1])
+        elif head and head not in ("None", "NoneType"):
+            bases.add(head)
+    return bases
+
+
+def _declares_non_callable_value(member: "Symbol") -> bool:
+    """Does the repository state that this member holds a non-callable value?
+
+    A POSITIVE refusal, per the polarity this linker already takes with
+    ``_hint_agrees_with_declared``: the answer is True only when a declaration
+    is PRESENT and every arm of it is a type we can vouch for as non-callable.
+    Absent evidence is not evidence -- a member with no declared type stays a
+    candidate.
+
+    A BLANKET ``kind == "field"`` REFUSAL WOULD BE WRONG, which is why this reads
+    the type instead: a JS/TS class property and a Python dataclass field can
+    both hold a callable, and ``js_ts.py`` records ``property_signature`` members
+    as ``field``.
+
+    ``Symbol.signature`` HOLDS BOTH A VALUE TYPE AND A CALL SIGNATURE depending
+    on the member, and the discriminator is a parenthesis: ``int`` is a type,
+    ``(self) -> int`` is a signature whose RETURN type is int and whose member is
+    perfectly callable. Reading the second as the first would refuse real
+    methods, so a parenthesised signature is declined outright rather than
+    parsed. (Reading this field at all is an eighth instance of an existing
+    pattern and is filed as INV-lotoh: its ``free-text`` axis justification
+    claims no consumer branches on the value, which eight shipped sites already
+    contradict. It is also the only place a Python field's declared type is
+    recorded.)
+    """
+    signature = (member.signature or "").strip()
+    if not signature or "(" in signature:
+        return False
+    bases = _annotation_bases(signature)
+    return bool(bases) and bases <= _NON_CALLABLE_VALUE_TYPES
+
+
+def _hint_agrees_with_declared(hint_class: "Symbol", declared: str) -> bool:
+    """Does this class hint name the type the producer declared for the receiver?
+
+    COMPARED ON SHORT NAMES IN BOTH DIRECTIONS. A stamped type may be qualified
+    (``java.io.File``, ``com.example.Tts``) while a class symbol carries its own
+    short name, and a class symbol may itself be nested (``Queue.WaitingItem``)
+    while the stamp is the bare ``WaitingItem``. Comparing the spellings as
+    given would refuse almost every recovery, which reads exactly like a working
+    guard while actually disabling the linker -- so both sides are reduced and
+    the reduction is pinned by a test.
+
+    Takes a ``Symbol`` rather than an optional one, because a hint edge is
+    admitted only when ``hint.dst in class_ids`` and ``class_ids`` is a subset
+    of ``sym_by_id``'s keys -- so a missing-symbol branch here would be dead
+    code, and the coverage gate said so.
+    """
+    return member_short_name(hint_class.name) == member_short_name(declared)
+
+
 @register_linker(
     "method-call-recovery-linker",
     priority=35,  # After containment (12) + inheritance (15); before rollups.
@@ -124,6 +243,7 @@ _parse_unresolved_name = parse_unresolved_name
     # CNF: class-based call patterns appear in every OO language analyzer that
     # emits class/method symbols.
     depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "cpp", "php"]],
+    activation=always_on_unreviewed(),
 )
 def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
     """See module docstring for the algorithm."""
@@ -168,12 +288,89 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
             continue
         already_resolved = resolved_targets[caller_id]
         for name, ucall in unresolved_for_caller:
+            # A DECLARED RECEIVER TYPE IS EVIDENCE AGAINST A HINT THAT
+            # DISAGREES WITH IT, not a detail to ignore (WI-nakut).
+            #
+            # This linker's premise is that the class hint IS the receiver --
+            # ``CliRunner().run(args)``, where the constructor edge and the
+            # unresolved call name two halves of one expression. Nothing
+            # checked that premise, because for most producers there was no
+            # second opinion available: ``parse_unresolved_name`` reads the id's
+            # name slot and the id says nothing about the receiver.
+            #
+            # java stamps one. Measured on sherpa-onnx after WI-nakut let
+            # java's variable-receiver calls reach this linker at all:
+            #
+            #   float d = audio.getSamples().length / (float) audio.getSampleRate();
+            #
+            # ``audio`` is a ``GeneratedAudio``, the enclosing ``main`` also
+            # instantiates ``OfflineTts``, SIX classes in that repository
+            # declare ``getSampleRate``, and the line-proximity tiebreaker below
+            # chose ``OfflineTts`` -- nine times, in nine example files. The
+            # edge carried ``receiver_type_hint="GeneratedAudio"`` throughout.
+            #
+            # REFUSING RATHER THAN RE-RANKING. A contradicting hint is dropped
+            # from the candidate set, so a caller whose only hint disagrees
+            # recovers NOTHING and the dangling edge stays dangling -- which is
+            # the honest answer, and the same direction ``taint.py`` takes for a
+            # sanitizer ("a typed receiver of the wrong type is evidence AGAINST
+            # this sanitizer, not permission to assume it").
+            #
+            # AS WIDE AS THE EVIDENCE AND NO WIDER. With no stamp nothing
+            # changes, which keeps the WI-gigoz shape this linker was built for
+            # (a constructor receiver has no variable to declare a type for) and
+            # every language that stamps nothing. A stamp naming a type the
+            # repository does not contain also recovers nothing, correctly: a
+            # receiver declared as a library type is not a project class.
+            if stated_module_of(ucall) is not None:
+                # A PRODUCER THAT NAMED THE MODULE IS NOT OVERRIDDEN BY A
+                # NAME MATCH (WI-rulik).
+                #
+                # ``dst_ref`` with a module path is the COMPLETE external
+                # identity key of ADR-0035, and ADR-0057 §15.1 rules that a
+                # producer states it positively or abstains -- never a
+                # sentinel. A complete key is a claim about WHERE the callee
+                # lives, made by the pass that read the imports and the
+                # scope. This linker has a short name, a class hint and a
+                # line-proximity tiebreaker; it is strictly less evidence,
+                # so an in-repo answer here CONTRADICTS the producer rather
+                # than filling a gap. §11 settles that contest by keeping
+                # both edges and §14 declines to demote -- this is the same
+                # rule applied one stage earlier, at the pass that would
+                # otherwise manufacture the contest.
+                #
+                # Measured on a single-backend Python self-survey: 28 of
+                # this linker's 92 edges overrode a stated module and ALL 28
+                # were wrong -- ``tree_sitter_rust.language()`` bound to the
+                # ``Symbol.language`` FIELD, ``builtins.id`` to ``Symbol.id``,
+                # ``os.environ.get`` to ``TrackerSet.get``.
+                #
+                # Read from the unresolved edge THIS recovery is derived
+                # from, not from the call site: ``a.b(c.d())`` puts two calls
+                # on one line and one sibling's claim says nothing about the
+                # other.
+                continue
+            declared = _declared_receiver_type(ucall)
             # Find candidate (class_hint_edge, method_symbol) pairs.
             candidates: list[tuple[Edge, Symbol]] = []
             for hint in hints:
+                if declared is not None and not _hint_agrees_with_declared(
+                    sym_by_id[hint.dst], declared,
+                ):
+                    continue
                 method = class_methods.get(hint.dst, {}).get(name)
-                if method is not None:
-                    candidates.append((hint, method))
+                if method is None:
+                    continue
+                # WI-fihun: a member the repository declares as a non-callable
+                # value cannot be what this call dispatched to. Dropped from the
+                # CANDIDATE SET rather than abandoning the site, so a sibling
+                # class that really does declare the method still wins -- the
+                # same shape as the declared-receiver refusal above. Measured:
+                # ``m.start()`` / ``m.end()`` on a ``re.Match`` bound to
+                # ``ItemIdMatch.start`` / ``.end``, both declared ``int``.
+                if _declares_non_callable_value(method):
+                    continue
+                candidates.append((hint, method))
             if not candidates:
                 continue
             # Pick the candidate whose hint is closest in line number to
@@ -211,7 +408,7 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 evidence_type="ast_call",
                 confidence=confidence,
                 meta=edge_meta,
-                derived_from=[caller_id, chosen_method.id],
+                derived_from=[ucall.id, chosen_hint.id],
             ))
             # Mark resolved so a second unresolved sibling on the same
             # method doesn't double-emit.

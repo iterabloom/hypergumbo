@@ -1,0 +1,22 @@
+- op: create  # 225f
+  at: '2026-09-09T08:11:48Z'  # 225f
+  by: agent  # 225f
+  actor: jgstern_agent  # 225f
+  clock: 1  # 225f
+  nonce: 225f  # 225f
+  data:  # 225f
+    kind: work_item  # 225f
+    title: "An edge locates to a LINE, not a column: two same-named calls on one line are indistinguishable to a consumer joining back to source"  # 225f
+    status: todo_hard  # 225f
+    priority: 3  # 225f
+    parent:  # 225f
+    tags:  # 225f
+    - edges  # 225f
+    - ir  # 225f
+    - measurement  # 225f
+    isbefore: []  # 225f
+    duplicate_of: []  # 225f
+    not_duplicate_of: []  # 225f
+    pr_ref:  # 225f
+    description: "Filed 2026-09-09, scoped deliberately narrowly because its predecessor (WI-divin) was filed wrong by conflating this with edge deduplication. These are different mechanisms on the same surface.\n\nTHE FACT. An Edge records a LINE, not a column. Two calls with the same callee NAME on one source line are therefore indistinguishable to any consumer that joins an edge back to source. Dedup is not involved: these are two DISTINCT edges, correctly emitted, often with different dst modules.\n\nWORKED EXAMPLE (pretix, src/tests/base/inhibit.go analogue in alertmanager, inhibit.go:112):\n\n    attribute.String(\"alerting.alert.fingerprint\", a.Fingerprint().String())\n\nemits BOTH `go.opentelemetry.io/otel/attribute:String` (the package call) and `external:String` (`.String()` on the chained value). Both are correct. Both carry line 112. Nothing in either edge says which text on line 112 it came from.\n\nMEASURED COST, to instruments rather than to users, on two independent occasions in one day:\n1. INV-tanom's receiver split (~/hypergumbo_lab_notebook/tanom_sizing_09092026/): 5 of the first 6 \"costly shape\" hits were this -- the receiver regex matched the package-qualified call on the line while the edge it was classifying was the OTHER call. Mitigated with an explicit AMBIGUOUS bucket: a no-module edge whose (file, line, callee) also carries a module-filled edge cannot be counted as evidence either way.\n2. Measurement 0022's refutation scan: 1,677 of 6,861 marker edges (24%) reported \"line/name join failed\", a share of which is this shape.\n\nWHY THIS MAY BE WORKING AS INTENDED, stated so the item is not read as a bug report. For the primary consumers -- an agent or a developer asking \"where is this called?\" -- a line is the natural granularity and a column would be noise. The cost falls on programs joining edges back to source, which is a narrower audience.\n\nWHAT TO DECIDE, not prejudged: whether Edge should carry a column (or a byte offset) at all. That is a SCHEMA change touching every analyzer's emit sites and the id grammar, so it needs its own sizing before it is chosen -- exactly the discipline INV-tanom was held to. A cheaper alternative worth pricing first: consumers that need disambiguation can already detect the hazard themselves (two edges sharing (src, line) with the same callee name), and documenting that recipe may be the whole fix.\n\nDO NOT CLOSE THIS BY POINTING AT `meta[\"call_lines\"]`. That field solves a different problem (which sites a DEDUPLICATED edge collapsed) and is fully working; conflating the two is precisely the error that made WI-divin wrong."  # 225f
+    fields: {}  # 225f

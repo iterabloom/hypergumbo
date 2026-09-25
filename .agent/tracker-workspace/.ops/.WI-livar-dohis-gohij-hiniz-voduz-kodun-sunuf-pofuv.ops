@@ -1,0 +1,84 @@
+- op: create  # 8b00
+  at: '2026-09-01T05:42:17Z'  # 8b00
+  by: agent  # 8b00
+  actor: jgstern_agent  # 8b00
+  clock: 1  # 8b00
+  nonce: 8b00  # 8b00
+  data:  # 8b00
+    kind: work_item  # 8b00
+    title: "PROPOSAL: the module key has no declared axis (no axiom, registry, consumer helper or drift linter) while edge_type/symbol_kind/evidence_type all do — ~18 filed items reduce to the gap"  # 8b00
+    status: needs_human_review  # 8b00
+    priority: 3  # 8b00
+    parent:  # 8b00
+    tags:  # 8b00
+    - io_boundary  # 8b00
+    - architecture  # 8b00
+    - analysis_quality  # 8b00
+    isbefore: []  # 8b00
+    duplicate_of: []  # 8b00
+    not_duplicate_of: []  # 8b00
+    pr_ref:  # 8b00
+    description: "PROPOSAL, NOT A DECISION. Raised 2026-09-01 by the module-key concept audit\n(cadence). Needs a human ruling before any ADR is written -- the ADRs, the spec\nand the tracker are SILENT on what the module key is for, so per the standing\n\"decide what you can, and if silent say so\" rule this is escalated rather than\ndecided. Full write-up:\n~/hypergumbo_lab_notebook/concept-audit-module-key_09012026.md\n\nTHE OBSERVATION. Three multi-value fields on the IR have a declared axis with the\nfull ADR-0024 four-artifact scaffolding -- an axiom, a registry module, a consumer\nhelper, and a drift linter:\n\n    Edge.edge_type       ADR-0023   edge_types_on_axis()   check-edge-type-drift\n    Symbol.kind          ADR-0027   symbol_kinds_on_axis()\n    Edge.evidence_type   ADR-0028\n\nThe MODULE KEY has none of the four. There is no axiom saying what may go in\nIoPrimitive.module or ExternalRef.module_path, no registry, no consumer helper,\nand no drift linter. What exists instead is _module_matches: one string predicate\nwith four hand-tuned arms, one of which infers \"type vs sub-package\" from\nCAPITALISATION using a rule its own docstring justifies by Go's naming convention\nwhile serving all 15 catalogues.\n\nWHAT THE FIELD ACTUALLY HOLDS, measured over 65,187 external refs on a 21-repo,\n10-language cold cohort:\n\n    88.1%  module-shaped name  -- itself a namespace (os, java.io), a TYPE\n                                  (std::fs::File, gin.Context), a global object\n                                  VALUE (process, window, navigator), or a\n                                  receiver VARIABLE name\n     6.2%  a DISJUNCTION -- cpp's comma-joined #include set (a SET, not a module)\n     2.7%  a relative path (legitimate module id in JS/TS)\n     1.5%  the sentinel 'external'\n     1.4%  a header name <string.h> (legitimate module id in C/C++)\n     0.1%  the sentinel 'redirect' (bash: not a call at all; name slot is '>')\n\n7.8% is not a single module identity at all. Objective-C's analyzer writes\n`module_path=receiver_name` literally; on the objc+swift repos 1,102 of 4,207\nexternal refs (26%) carry a local identifier -- expectation, request, session,\nresp, download, components.\n\nWHY THIS IS AN AXIS QUESTION AND NOT A PILE OF BUGS. Roughly eighteen\nseparately-filed tracker items reduce to the same conflation, and they are filed\nseparately BECAUSE no document says what the field is for, so each mismatch reads\nas a local analyzer defect:\n\n  INV-linub (the class), INV-zuvib, INV-hahak, INV-fofoj, INV-januj, INV-kotob,\n  INV-mumov, INV-safig, INV-fokik, INV-funuf, INV-zimud, INV-papih, INV-dijor,\n  WI-zazul, WI-damir, WI-sugom, WI-gudak, WI-papar, WI-kamin, WI-monul\n\nTwo of them were shown by this audit to be ONE defect in two languages\n(INV-fofoj's java half IS INV-januj), which is the signature of a missing axis\nrather than of unrelated bugs.\n\nTHE QUESTION FOR THE HUMAN, and it is genuinely a judgment call:\n\n(a) DECLARE AN AXIS. Split the notions -- namespace / type / value / variable --\n    give the row a declared discriminator instead of leaving _module_matches to\n    infer it orthographically, ship the four artifacts. Large: it touches 15\n    catalogues, ~35 analyzers, and the id grammar, and it would very likely\n    require a stable_id scheme bump (ADR-0032 / the v9/v10 gate), which is\n    release-gated by WI-talos.\n(b) DOCUMENT ONLY. Write the axiom and the consumer helper, leave the data\n    shape alone, and keep filing per-language defects against the axiom. Cheap,\n    and it makes the next mismatch legible as an axis violation rather than a\n    fresh mystery.\n(c) NEITHER. The per-item flow is working; the volume of harm is low (this\n    audit measured 32 of 1,676 tagged boundaries decided by the heuristic arms,\n    1 of 9 distinct shapes wrong) and the coordination cost of (a) exceeds it.\n\nMY READ, offered as input and not as a decision: (b). The measured harm today\ndoes not justify (a)'s blast radius, but the eighteen-item pile is real and is\nthe cost of having no axiom -- each new language pays the discovery cost again.\n(b) captures most of the value for a fraction of the risk, and leaves (a)\navailable if the module key ever needs a scheme bump for another reason."  # 8b00
+    fields: {}  # 8b00
+- op: discuss  # f52c
+  at: '2026-09-01T05:45:40Z'  # f52c
+  by: agent  # f52c
+  actor: jgstern_agent  # f52c
+  clock: 2  # f52c
+  nonce: f52c  # f52c
+  message: "INV-tafig (violated, P2) is the SAME SHAPE OF GAP on a different field -- the io_boundary VALUE axis (fs_read/net_send/...) is also absent from _known_axes() with no registry, axiom or drift linter. Related, not duplicate: that item is about the boundary vocabulary, this one about the module key. If the human rules (a) or (b) here, the two should be scoped together -- they would share the registry pattern and the drift-linter shape."  # f52c
+- op: discuss  # 3ac6
+  at: '2026-09-01T19:16:27Z'  # 3ac6
+  by: agent  # 3ac6
+  actor: jgstern_agent  # 3ac6
+  clock: 3  # 3ac6
+  nonce: 3ac6  # 3ac6
+  message: "OWNER RULING (2026-09-01): option (a) -- DECLARE THE AXIS -- and scoped TOGETHER\nwith INV-tafig. This supersedes my (b) input above. WI-livar moves out of\nneeds_human_review and becomes the campaign's design item.\n\nTWO PREMISES RE-VERIFIED IN CODE BEFORE PLANNING, and one is WORSE than filed.\n\n(1) The filed text says the module key has \"no declared axis\". It is sharper\n    than that: ir.py:743 declares one, and the declaration is FALSE.\n\n        module_path: str  # axis: free-text -- module import path in\n        source-language grammar; consumers display/lookup, never branch on\n        the value itself.\n\n    A consumer does branch on the value itself. io_boundary.py:3644\n    _module_matches decides type-vs-sub-package from ORTHOGRAPHY --\n    longer_raw[shared][:1].isupper() -- and the Swift carve-out branches on the\n    value being a single token the catalogue name ends with. So the field is not\n    merely undeclared; it carries a declaration whose stated justification is\n    contradicted by the code. The linter passes it because a free-text\n    justification is required to be PRESENT, not to be TRUE. This matters for\n    scoping: the fix is not only \"add an axis\", it is \"retire a false one\".\n\n(2) The catalogue side of BOTH axes is outside the linter's reach.\n    multi_value_field_axis.DEFAULT_CORE_FILES is exactly ir.py and\n    datamodels.py. IoPrimitive lives in io_boundary.py, so IoPrimitive.module\n    (this item) and IoPrimitive.boundary (INV-tafig) have NO axis comments at\n    all and nothing ever asked them for one. That is the single structural\n    reason both gaps survived: the two halves of each axis are split across a\n    linted file and an unlinted one.\n\nWHAT (a) MEANS HERE, AND WHY IT IS NOT BLOCKED BY THE v9/v10 GATE.\nThe concern recorded above -- that (a) needs a stable_id scheme bump, which\nWI-talos DECISION 3 gates behind two releases -- applies to CHANGING WHAT THE\nSLOT HOLDS, because external_symbol ids embed the module slot\n(rust:external:0-0:File::open). It does NOT apply to declaring the axis.\nADR-0024's own workflow already draws this line: steps 1-4 (ADR, registry,\nlinter, property test) are mandatory and additive; step 7 (migrate violators) is\nexplicitly optional and separate. So:\n\n  PHASE 1, SHIPS NOW, no id change, no scheme bump: axiom + registry + consumer\n  helper + drift linter + property test, and _module_matches reads a DECLARED\n  discriminator instead of inferring one from capitalisation.\n  PHASE 2, QUEUED BEHIND THE GATE: normalising what analyzers put in the slot\n  (objc writes module_path=receiver_name literally) changes emitted ids and is\n  ADR-0024 step 7. It queues behind v9/v10 per WI-talos.\n\nSHAPE OF THE MODULE-KEY AXIS: structural policy, not an enumerable value set --\nthe qualified_name_axis.py precedent (ADR-0024 section 4 \"use judgment\"), since\nmodule names cannot be enumerated. The axis declares WHICH NOTION the slot\ncarries per row (namespace / type / value / receiver-variable / disjunction /\nsentinel), which is exactly the discriminator _module_matches currently guesses.\nINV-tafig's io-boundary axis is the OTHER shape -- 19 enumerable values, so a\nheavyweight edge_types.py-style registry. Shared: the linter, the property-test\nshape, and the DEFAULT_CORE_FILES scope fix, which is why the owner scoped them\ntogether."  # 3ac6
+- op: update  # 5c1e
+  at: '2026-09-01T19:16:56Z'  # 5c1e
+  by: agent  # 5c1e
+  actor: jgstern_agent  # 5c1e
+  clock: 4  # 5c1e
+  nonce: 5c1e  # 5c1e
+  set:  # 5c1e
+    status: todo_hard  # 5c1e
+    priority: 1  # 5c1e
+  add:  # 5c1e
+    tags: [axis]  # 5c1e
+- op: discuss  # 18a2
+  at: '2026-09-01T19:16:56Z'  # 18a2
+  by: agent  # 18a2
+  actor: jgstern_agent  # 18a2
+  clock: 5  # 18a2
+  nonce: 18a2  # 18a2
+  message: "Owner ruled (a) on 2026-09-01 and scoped it with INV-tafig, so this leaves needs_human_review and becomes the campaign design item. P3 -> P1: the ~18-item pile the audit identified hangs off this axiom, and INV-tafig is now sequenced behind it."  # 18a2
+- op: discuss  # 7bbe
+  at: '2026-09-01T19:21:42Z'  # 7bbe
+  by: agent  # 7bbe
+  actor: jgstern_agent  # 7bbe
+  clock: 6  # 7bbe
+  nonce: 7bbe  # 7bbe
+  message: "DECOMPOSED under ruling (a), 6 items, flat. WI-kurod (P1) io-boundary axis, the enumerable one, ships FIRST and instantiates the shared registry/linter/property-test shape. WI-kijup (P1) the module-key axis itself, structural-policy shape per qualified_name_axis.py, and retires the FALSE free-text declaration at ir.py:743. WI-mubup (P1) widens DEFAULT_CORE_FILES to io_boundary.py -- the gate that would have caught both -- blocked on both axes existing. WI-zozun (P2) makes _module_matches read the declared discriminator instead of guessing from capitalisation; that is the behavioural payoff and dissolves INV-dijor arm 3. WI-marok (P3) is ADR-0024 step 7 value migration, isbefore-gated on WI-talos because external_symbol ids embed the module slot. WI-virav (P3) restates the ~18-item pile against the axiom, annotate-only. This item stays open as the design home until WI-kurod and WI-kijup have both landed."  # 7bbe
+- op: update  # 521e
+  at: '2026-09-01T19:21:59Z'  # 521e
+  by: agent  # 521e
+  actor: jgstern_agent  # 521e
+  clock: 7  # 521e
+  nonce: 521e  # 521e
+  set:  # 521e
+    title: "RULED (a): declare the module-key axis — axiom, registry, consumer helper, drift linter — scoped with INV-tafig; ~18 filed items reduce to the gap"  # 521e
+- op: update  # 2bc5
+  at: '2026-09-02T18:32:58Z'  # 2bc5
+  by: agent  # 2bc5
+  actor: jgstern_agent  # 2bc5
+  clock: 8  # 2bc5
+  nonce: 2bc5  # 2bc5
+  set:  # 2bc5
+    status: done  # 2bc5
+- op: discuss  # 9ab4
+  at: '2026-09-02T18:32:58Z'  # 9ab4
+  by: agent  # 9ab4
+  actor: jgstern_agent  # 9ab4
+  clock: 9  # 9ab4
+  nonce: 9ab4  # 9ab4
+  message: "CLOSING on this item's OWN stated criterion, which was that it stays open until\nWI-kurod and WI-kijup have both landed. Verified positively rather than assumed:\n\n  WI-kurod   done       io-boundary axis declaration (ADR + registry + linter)\n  WI-kijup   done       module-key axis declaration + retire the FALSE\n                        free-text declaration on ExternalRef.module_path\n  WI-mubup   done       axis lint widened to io_boundary.py, 20 fields declared\n  INV-tafig  satisfied  the invariant this was scoped with\n\nThe four ADR-0024 artifacts this item said the module key lacked now all exist,\nchecked on disk and not inferred from the tracker:\n\n  axiom      MODULE_KEY_AXIOM in module_key_axis.py, with MODULE_KEY_NOTIONS\n             and the six-notion vocabulary (AXIS_OWNER_PATH,\n             AXIS_CALL_SITE_PROPERTY, AXIS_UNCERTAINTY, AXIS_PENDING)\n  registry   packages/hypergumbo-core/src/hypergumbo_core/module_key_axis.py\n             (io-boundary peer: io_boundary_types.py)\n  helper     notions_on_axis / find_module_key_notion / is_axiom_conformant\n  linter     scripts/check-io-boundary-drift\n  ADRs       docs/adr/0050-io-boundary-axis.md, 0051-module-key-axis.md\n\nBEHAVIOURAL EVIDENCE, both gates run at this tree (dev c53e6de270):\n  scripts/check-io-boundary-drift                       rc=0, no output\n  scripts/check-multi-value-field-axis-declaration      rc=0, no output\n\nWHAT IS NOT CLOSED BY THIS, stated so the closure is not read as wider than it\nis. Declaring the axis is not migrating the values to it. The PAYOFF (WI-zozun,\nthe capitalisation arm at io_boundary.py:3644 that applies Go's naming\nconvention to all 15 catalogues) is open, and the Phase 2 VALUE migration\n(WI-marok) is deliberately out of scope and stays gated behind WI-talos v9/v10.\nWI-virav's ~18-item pile is annotated against the axiom, not folded."  # 9ab4

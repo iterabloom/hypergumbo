@@ -23,8 +23,11 @@ function — it operates at the symbol level. Its findings are labeled
 DDG-backed analysis has LANDED and is not the only producer any more: for
 languages with def/use extractors, :func:`propagate_taint_ddg` (see
 ``ddg_build.py`` / ``taint_refine.py``) walks reaching-definitions and stamps
-``analysis_method="ddg"`` when it confirms a dependence, or ``"ddg_mixed"``
-when the walk ran without confirming one. So do NOT assume every finding
+``analysis_method="ddg"`` when it confirms a dependence, ``"ddg_mixed"``
+when it does not — which covers the walk running without confirming
+(``unconfirmed``, ``escaped``) *and* the walk never running at all
+(``not_attempted``) — and ``"structural"`` where the walk is unavailable for
+the language. So do NOT assume every finding
 carries ``analysis_method="structural"`` — see the field's own docs below for
 what each value licenses.
 
@@ -49,6 +52,7 @@ from collections.abc import Set as AbstractSet
 from typing import (
     TYPE_CHECKING,
     Any,
+    Final,
     Iterator,
     NamedTuple,
     Optional,
@@ -56,9 +60,26 @@ from typing import (
     Union,
 )
 
+import re
+
 import yaml
 
-from .edge_types import is_grpc_rpc_implementation
+from .axis_meta_keys import call_family_edge_types
+from .edge_types import is_callback_registration, is_grpc_rpc_implementation
+from .member_names import MEMBER_NAME_SEPARATORS, member_owner
+from .symbol_kinds import type_like_kind_names
+from .io_primitive_kinds import KIND_FUNCTION, KIND_METHOD
+from .io_boundary import (
+    suppresses_resource_naming_finding,
+    _UNRESOLVED_MODULE_PLACEHOLDERS_IO,
+    call_site_modes,
+    call_site_target_kinds,
+    read_boundary_for_target_kind,
+    strip_redundant_module_qualifier,
+    target_kind_discriminated_primitives,
+    target_kind_fallback_boundaries,
+    target_kinds_cross_no_boundary,
+)
 from .ir import symbol_name_slot, symbol_path_slot
 
 if TYPE_CHECKING:
@@ -102,7 +123,7 @@ class TaintSource:
     taint_label: str
     module: str
     name: str
-    kind: str  # "function", "method", or "attribute"
+    kind: str  # axis: io-primitive-kind (ADR-0059) -- copied from IoPrimitive.kind or from the YAML section
     return_tainted: bool = True
     argument_tainted: tuple[int, ...] = ()
     start_at: str = "caller"  # "caller" or "callee"
@@ -122,6 +143,37 @@ class TaintSource:
     # database-write. Keeping the boundary makes them separable WITHOUT
     # changing the label, so no already-published claim changes meaning.
     source_boundary: str = ""
+    # WI-lipis: non-empty only for a source derived from a primitive whose
+    # boundary the STREAM ARGUMENT decides -- c's ``stdio.fgets`` is declared
+    # under fs_read AND ipc_recv, and which one is true depends on what the
+    # third argument was bound from. The sink side has carried the same idea as
+    # ``requires_mode`` since INV-rusof; this is that idea on the axis no mode
+    # literal can answer.
+    #
+    # WHY A SOURCE NEEDS IT AT ALL, given that ``_narrow_by_target_kind`` already
+    # picks the row for io-boundaries. Only the MINTING row survives derivation
+    # here -- ``fs_read`` is deliberately absent from AUTO_SOURCE_LABEL_MAP --
+    # so the fs_read row simply does not become a TaintSource, and the ipc_recv
+    # one would then match ``fgets`` by NAME at every call site, including the
+    # file reads the boundary tagger correctly classified fs_read. That is one
+    # fact with two homes and the second silently winning; measured on the c
+    # repro before this field existed, ``fgets`` over a ``popen`` handle minted
+    # untrusted_input while ``io-boundaries`` tagged the same edge fs_read.
+    #
+    # Empty means UNCONDITIONAL, which is what every other source is and must
+    # stay: ``scanf`` reads stdin whatever its arguments say.
+    requires_target_kind: str = ""
+    # INV-minol: True on the ONE entry of a target-kind-gated primitive that
+    # an ABSTAINING stamp (absent, unknown, or disagreeing across collapsed
+    # sites) still admits -- the entry derived from the row ``classify_call``
+    # falls back to (INV-fatok's ``abstains_to``, else the first declared).
+    # Without it the matcher admitted only unconditional entries on an
+    # abstention, and an unstamped ``bufio.NewScanner`` -- fallback
+    # ``ipc_recv`` on INV-bagok's own measurement -- minted nothing while
+    # ``io-boundaries`` tagged the same edge ``ipc_recv``: one catalogue, two
+    # answers, 19 lost sources on six repositories. Set by the derivation from
+    # the same reordered row list the classifier reads, never by hand.
+    abstention_fallback: bool = False
 
     @property
     def qualified_name(self) -> str:
@@ -152,14 +204,40 @@ class TaintSink:
             takes no mode, so gating it on mode evidence would delete every
             real deletion from the violation set — a false negative in a
             security gate, the expensive direction.
+        requires_target_kind: WI-suhug, the mirror of ``TaintSource``'s field
+            on the WRITE side. Non-empty only for a sink derived from a
+            primitive declared under two or more write boundaries -- go's
+            ``io.WriteString`` is ``fs_write`` to a file, ``ipc_send`` to a
+            child's ``StdinPipe``, ``net_send`` to a connection and ``logging``
+            to stderr, and which one depends on what its first argument was
+            bound from. The stamp is resolved in the WRITE direction
+            (``std_stream`` is ``logging`` here and ``ipc_recv`` for a source).
+        abstention_fallback: INV-minol; see ``TaintSource``. True on the sink
+            derived from the row an unstamped call falls back to, so that an
+            abstention keeps TODAY'S sink (``host_fs`` for ``io.WriteString``,
+            ``logging`` for ``fmt.Fprintf``) instead of deleting the finding.
     """
 
     zone: str
     trust_level: str
     module: str
     name: str
-    kind: str  # "function", "method", or "attribute"
+    kind: str  # axis: io-primitive-kind (ADR-0059) -- copied from IoPrimitive.kind or from the YAML section
+    resource_naming_only: bool = False
+    """The tainted value can only be SELECTING which resource this sink acts on.
+
+    WI-bulag / arc T9, owner ruling 2026-09-13. Set from the catalogue row's
+    ``resource_naming`` annotation via
+    :func:`io_boundary.suppresses_resource_naming_finding`, which requires all
+    three of: positions declared as resource-naming, an EXPLICIT declaration
+    that the sink takes no content argument, and ``danger`` false. The middle
+    condition is the soundness guard -- the walk carries no argument identity,
+    so for a sink that takes BOTH a resource name and content a finding cannot
+    be attributed to an argument and must not be suppressed.
+    """
     requires_mode: str = ""
+    requires_target_kind: str = ""
+    abstention_fallback: bool = False
 
     @property
     def qualified_name(self) -> str:
@@ -215,6 +293,133 @@ TaintEntry = Union[TaintSource, TaintSink]
 # sources back. Widening its return to TaintEntry would let a merged
 # source+sink mapping be assigned onto a sources-only catalog field.
 TEntry = TypeVar("TEntry", bound=TaintEntry)
+
+
+def _qualify(module: str, name: str) -> str:
+    """``module.name``, or the bare name when the entry declares no module.
+
+    A YAML-declared source may have no module at all, and ``".remove"`` is a
+    lookup key that matches nothing — worse than the bare name, because it
+    looks qualified.
+    """
+    return f"{module}.{name}" if module else name
+
+
+# ---------------------------------------------------------------------------
+# INV-zidur: what the ADR-0017 §3a walk RETURNED, as its own fact.
+# ---------------------------------------------------------------------------
+# ``analysis_method`` answers "which analysis produced this finding". It was
+# also being asked "and what did the walk conclude", and it cannot: the call
+# site collapses the walk's three-valued result with ``is True``, and the label
+# is then chosen on ``fn_has_ddg`` — *did the DDG cover the source function* —
+# so everything that is not a confirmation lands on ``ddg_mixed``.
+#
+# BIGGER THAN THE FILING. INV-zidur names two facts under that label (the walk
+# returned False vs the walk returned None). Re-derived at the call site there
+# are THREE, and the third is the one that matters most for pricing: every
+# guard above the walk (same-function, recorded sink call lines, a tracked
+# source def, sink lexically after source) can fail with ``fn_has_ddg`` still
+# true, and the finding is stamped ``ddg_mixed`` anyway. So ``ddg_mixed`` today
+# means "the DDG covered the function", and inside it live *refuted*, *escaped*
+# AND *never ran*. Pricing §7a as "drop every ddg_mixed" therefore proposes to
+# remove findings on the authority of a walk that did not execute — which is
+# what WI-kabif's pre-registered tripwire caught (26.8% measured against 18%
+# predicted).
+#
+# A SEPARATE FIELD, NOT A FOURTH METHOD VALUE. The precedent INV-zidur cites —
+# splitting ``structural`` out of ``ddg_mixed`` — separated two different
+# ANALYSES. This separates one analysis's RESULTS, a different axis; folding a
+# verdict into a method name would repeat the one-name-two-facts shape being
+# fixed, and would silently invalidate every published use of ``ddg_mixed``
+# (docs/measurements/0006, docs/VERIFY-CLAIMS-SCOPE.md).
+#
+# NOTHING IS ACTED ON *BY THIS FIELD*. §3a gained removal authority on
+# 2026-09-02 (WI-kabif) and now acts on ``walk_verdict``; this one is still
+# recorded only, so the addressable domain can be MEASURED rather than
+# upper-bounded. No verdict moves because of ``walk_blocked_by``.
+#: Why the §3a walk did not run, when the DDG DID cover the source function.
+#: The measurement that made this necessary: across the 11 cohort repositories
+#: that carry a ``ddg_mixed`` finding, 153 such rows split 0 ``unconfirmed`` /
+#: 14 ``escaped`` / 139 ``not_attempted``. Nothing rests on a walk that ran and
+#: refuted, so "which guard stopped it" is the only question left that can
+#: price a remedy, and answering it from outside the code would mean a second
+#: copy of the guard conditions — the disagreeing-copies shape this module has
+#: paid for repeatedly.
+WALK_BLOCKED_CROSS_FUNCTION: str = "cross_function"
+WALK_BLOCKED_NO_SOURCE_CALL_LINE: str = "no_source_call_line"
+WALK_BLOCKED_NO_SINK_CALL_LINE: str = "no_sink_call_line"
+WALK_BLOCKED_SOURCE_NOT_TRACKED: str = "source_not_tracked"
+WALK_BLOCKED_SINK_BEFORE_SOURCE: str = "sink_before_source"
+
+WALK_BLOCKERS: frozenset[str] = frozenset({
+    WALK_BLOCKED_CROSS_FUNCTION,
+    WALK_BLOCKED_NO_SOURCE_CALL_LINE,
+    WALK_BLOCKED_NO_SINK_CALL_LINE,
+    WALK_BLOCKED_SOURCE_NOT_TRACKED,
+    WALK_BLOCKED_SINK_BEFORE_SOURCE,
+})
+
+WALK_VERDICT_CONFIRMED: str = "confirmed"
+WALK_VERDICT_UNCONFIRMED: str = "unconfirmed"
+WALK_VERDICT_ESCAPED: str = "escaped"
+WALK_VERDICT_NOT_ATTEMPTED: str = "not_attempted"
+WALK_VERDICT_UNAVAILABLE: str = "unavailable"
+
+WALK_VERDICTS: frozenset[str] = frozenset({
+    WALK_VERDICT_CONFIRMED,
+    WALK_VERDICT_UNCONFIRMED,
+    WALK_VERDICT_ESCAPED,
+    WALK_VERDICT_NOT_ATTEMPTED,
+    WALK_VERDICT_UNAVAILABLE,
+})
+
+
+def walk_verdict_for(
+    reached: bool | None, *, ran: bool, covered: bool,
+) -> str:
+    """Name what the §3a walk did, from its result and whether it ran at all.
+
+    ``reached`` is :func:`_ddg_taint_reaches`'s three-valued return, whose
+    discipline is already documented there: ``True`` found a dependence,
+    ``False`` exhausted every route with nothing unexplained, ``None`` means
+    the value escaped tracked ground on some route. The two negatives are NOT
+    interchangeable — "I looked everywhere and it is not there" and "I lost
+    track of it" license opposite actions, and INV-busis measures escapes as
+    common (86.5% of production escape sites are not a call statement node).
+
+    ``ran`` and ``covered`` carry what ``reached`` cannot say, because the walk
+    is guarded: ``covered`` is ``fn_has_ddg`` (the DDG held reaching-def data
+    for this flow's source function at all) and ``ran`` is whether the
+    preconditions above the call were met. ``ran`` implies ``covered``; the
+    remaining pairing is not a state the caller can produce, and is resolved in
+    the informative direction rather than by an assertion that would turn a
+    labelling question into a crash.
+    """
+    if ran:
+        if reached is True:
+            return WALK_VERDICT_CONFIRMED
+        if reached is False:
+            return WALK_VERDICT_UNCONFIRMED
+        return WALK_VERDICT_ESCAPED
+    return (
+        WALK_VERDICT_NOT_ATTEMPTED if covered else WALK_VERDICT_UNAVAILABLE
+    )
+
+
+def method_for_walk_verdict(verdict: str) -> str:
+    """The PUBLISHED ``analysis_method`` name for a walk verdict.
+
+    One function so the two vocabularies cannot drift: the verdict is the finer
+    axis and the method is the coarse one every published document already
+    reads. Deliberately many-to-one — three verdicts share ``ddg_mixed``, which
+    is precisely the collapse INV-zidur exists to make visible WITHOUT changing
+    what the coarse name means to an existing consumer.
+    """
+    if verdict == WALK_VERDICT_CONFIRMED:
+        return "ddg"
+    if verdict == WALK_VERDICT_UNAVAILABLE:
+        return "structural"
+    return "ddg_mixed"
 
 
 @dataclass
@@ -300,6 +505,152 @@ class TaintFlowFinding:
     # "a row read from the database reached the database" without either
     # flow's taint_label changing — so no published claim changes meaning.
     source_boundary: str = ""
+    #: INV-zidur: WHAT THE §3a WALK RETURNED, which is a different fact from
+    #: WHICH analysis ran (``analysis_method``). One of :data:`WALK_VERDICTS`,
+    #: or ``""`` for a finding deserialized from a map written before the field
+    #: existed. ``ddg_mixed`` covers THREE of these — ``unconfirmed`` (the walk
+    #: exhausted every route and found no dependence), ``escaped`` (the value
+    #: left tracked ground, so the walk knows nothing) and ``not_attempted``
+    #: (the DDG covered the function but a guard above the call was not met, so
+    #: the walk never executed) — and treating them alike is what made ADR-0017
+    #: §7a's removal authority impossible to price: dropping every ``ddg_mixed``
+    #: removes findings on the authority of a walk that did not run.
+    #:
+    #: ACTED ON SINCE 2026-09-02 (WI-kabif). This field WAS recorded-only,
+    #: and the note here said so; §3a now removes a flow whose verdict is
+    #: ``unconfirmed`` -- and ONLY that one, since ``escaped`` is ignorance.
+    #: A consumer reading this field is therefore reading the thing that
+    #: decides removal, not a label beside it.
+    walk_verdict: str = ""
+    #: INV-zidur: the FIRST guard that stopped the §3a walk, for a finding whose
+    #: ``walk_verdict`` is ``not_attempted``. One of :data:`WALK_BLOCKERS`;
+    #: ``""`` for every other verdict, where the question does not arise.
+    #:
+    #: FIRST, not all: the guards are evaluated in a fixed order and reported in
+    #: that order, so the counts partition the population rather than
+    #: double-counting a flow that fails several. A remedy for the top blocker
+    #: therefore promotes flows to the NEXT one rather than to the walk, and a
+    #: reader must not add the categories up as if each were independently
+    #: addressable.
+    resource_naming_only: bool = False
+    """This finding's sink can only have been told WHICH resource to act on.
+
+    WI-bulag / arc T9. Carried from :attr:`TaintSink.resource_naming_only`, so
+    a consumer can DISCLOSE these rather than counting them in a headline --
+    the ADR-0049 shadow discipline, not a deletion. The finding remains a TRUE
+    POSITIVE on the correctness axis (WI-gohok's 2026-08-27 ruling is explicit
+    that the config flow stays true); what it is not is USEFUL, and the second
+    number is what this field feeds.
+    """
+    walk_blocked_by: str = ""
+    #: INV-muhij Finding A: what the WHOLE GROUP reported, for a collapsed row.
+    #:
+    #: The two scalars above describe ONE finding. On a collapsed row they are
+    #: ``grp[0]``'s and nothing recorded what the other members said, so a row
+    #: printed ``walk_blocked_by: sink_before_source`` while standing for
+    #: members whose walk ran, or was blocked somewhere else entirely. Measured
+    #: on beads through the production path: 208 groups contain a
+    #: ``sink_before_source`` member, 133 of them (63.9%) are NOT unanimous,
+    #: and only 349 of the 1,073 members under them (32.5%) carry it.
+    #:
+    #: THIS IS A PRECONDITION, NOT A REMEDY. No verdict moves because of
+    #: these two union fields -- §3a's removal authority (WI-kabif) reads the
+    #: scalar ``walk_verdict``, never these. But INV-muhij's remedy —
+    #: stop a ``sink_before_source`` row from carrying a verdict alone — has to
+    #: read a fact that is true of everything the row stands for, and the
+    #: scalar is not one. A rule may act on ``walk_blocked_by_values ==
+    #: ("sink_before_source",)``; it may not act on the scalar.
+    #:
+    #: UNIONED LIKE THEIR FIVE SIBLINGS in :func:`collapse_unadjudicated_flows`,
+    #: and NEVER EMPTY for the same reason the primitive tuples are not:
+    #: ``__post_init__`` derives the singleton. ``""`` is a VALUE here (the walk
+    #: ran), not an absence — dropping it would make a mixed group read as
+    #: unanimous, which is the exact misreading these fields exist to prevent.
+    #:
+    #: ``_values`` rather than a plural because ``walk_blocked_by`` does not
+    #: pluralise, and because that is already this project's spelling for
+    #: "the collapsed sites disagreed about a per-site key".
+    walk_verdict_values: tuple[str, ...] = ()
+    walk_blocked_by_values: tuple[str, ...] = ()
+    #: INV-karud: THE AUTHORITATIVE STATEMENT OF WHAT THIS FINDING CLAIMS.
+    #:
+    #: The scalar ``source_primitive`` / ``sink_primitive`` / ``sink_symbol``
+    #: fields above assert that ONE named primitive reached ONE other named
+    #: primitive. For a flow the ADR-0017 §3a walk adjudicated
+    #: (``analysis_method == "ddg"``) that claim is earned. For every other
+    #: flow inclusion rests on call-graph reachability alone, and emitting one
+    #: such finding per (source call site, sink call site) pair asserts n x m
+    #: data dependences from a walk that established none of them. Measured on
+    #: six repos: 359 reported flows describing 78 situations (4.60x), 78% of
+    #: rows restating a situation already reported.
+    #:
+    #: So an unadjudicated finding is collapsed to one per situation —
+    #: (taint_label, source_symbol, sink_zone, sanitized, source_boundary,
+    #: analysis_method) — and these tuples carry the full sets it stands for:
+    #: "symbol S reads {source_primitives} and reaches zone Z via
+    #: {sink_primitives}". Names are MODULE-QUALIFIED (clause a1: a reader must
+    #: be able to confirm the match by catalogue lookup, and the emitted symbol
+    #: frequently does not carry the module the entry declared — WI-joruv).
+    #:
+    #: They are NEVER empty: ``__post_init__`` derives singletons from the
+    #: scalars, so a hand-built finding is not silently primitive-less to the
+    #: consumers that read the tuple. The scalars survive as the witness the
+    #: ``path`` belongs to, and are always members of their tuple.
+    source_primitives: tuple[str, ...] = ()
+    sink_primitives: tuple[str, ...] = ()
+    sink_symbols: tuple[str, ...] = ()
+    #: Every sink CALL SITE this finding stands for, as ``(caller, callee)``
+    #: pairs. NOT the callers alone and NOT the callees alone — INV-kakad was
+    #: reopened once by recording only the caller, and the corrected shape is
+    #: the pair because BOTH sides multiply:
+    #:
+    #: * shellcheck ``striptests`` — ONE callee (``redirect.>``) reached from
+    #:   TWO callers (the file node, and ``sponge`` which it reaches). One
+    #:   sink name, two sites.
+    #: * kamaraflow ``train_script`` — FOUR callees (``open``, ``file.write``,
+    #:   ``os.makedirs``, ``shutil.copyfile``) all called from ONE caller.
+    #:   One caller, four sites.
+    #:
+    #: The record used to carry ``sink_symbols`` (callees) and nothing else, so
+    #: neither multiplicity was visible and three independent refuters read
+    #: ``collapsed_flow_count`` as unreconcilable against the repository. With
+    #: the pairs emitted the multiplier is bounded by
+    #: ``len(source_primitives) * len(sink_call_sites)``, and any shortfall is
+    #: reachability having excluded a pair.
+    sink_call_sites: tuple[tuple[str, str], ...] = ()
+    #: How many (source call site, sink call site) pairs this finding stands
+    #: for. 1 for an uncollapsed or adjudicated finding. Kept so the pair count
+    #: stays available to a consumer that wants it rather than being traded
+    #: away for the situation count.
+    collapsed_flow_count: int = 1
+
+    def __post_init__(self) -> None:
+        """Derive the tuples from the scalars when a caller did not set them.
+
+        A ``()`` default reads as "this finding names no primitives", which is
+        never true — so the derivation lives here rather than at the call
+        sites, where the two propagators, the collapse pass and every test
+        fixture would each have to remember it (L53: a second home for one
+        fact drifts immediately).
+        """
+        if not self.source_primitives:
+            self.source_primitives = (
+                _qualify(self.source_module, self.source_primitive),
+            )
+        if not self.sink_primitives:
+            self.sink_primitives = (
+                _qualify(self.sink_module, self.sink_primitive),
+            )
+        if not self.sink_symbols:
+            self.sink_symbols = (self.sink_symbol,)
+        # INV-muhij: ``not`` rather than ``is None`` would be wrong here in a
+        # way it is not above — ``("",)`` is a legitimate derived value and
+        # must not be re-derived on every construction, but ``()`` is the
+        # "caller did not set it" default. ``len(...) == 0`` says exactly that.
+        if len(self.walk_verdict_values) == 0:
+            self.walk_verdict_values = (self.walk_verdict,)
+        if len(self.walk_blocked_by_values) == 0:
+            self.walk_blocked_by_values = (self.walk_blocked_by,)
 
     @property
     def verdict(self) -> str:
@@ -335,6 +686,22 @@ class TaintFlowFinding:
             "sanitized": self.sanitized,
             "confidence": self.confidence,
             "analysis_method": self.analysis_method,
+            # INV-zidur. The finer axis beside the coarse one: three different
+            # walk outcomes share ``ddg_mixed``, and a JSON consumer that
+            # cannot tell them apart cannot tell removal-on-knowledge from
+            # removal-on-ignorance. Measured on the 0007 census, ``ddg_mixed``
+            # is 0 unconfirmed / 14 escaped / 139 not_attempted.
+            "walk_verdict": self.walk_verdict,
+            "walk_blocked_by": self.walk_blocked_by,
+            # WI-bulag / T9: a consumer that cannot see this cannot tell an
+            # excluded flow from an absent one.
+            "resource_naming_only": self.resource_naming_only,
+            # INV-muhij Finding A: the scalars are the REPRESENTATIVE's. A
+            # consumer deciding what a collapsed row is entitled to claim must
+            # read the union, so serializing only the scalars would leave the
+            # misreading in place for every JSON consumer.
+            "walk_verdict_values": list(self.walk_verdict_values),
+            "walk_blocked_by_values": list(self.walk_blocked_by_values),
             "path": self.path,
             # INV-pojib. Emitted because a JSON consumer asking "is this clean
             # verdict resting on something the analysed repo said about itself"
@@ -343,7 +710,149 @@ class TaintFlowFinding:
             # declared field to serialize, which is what caught them missing.
             "sanitized_by": list(self.sanitized_by),
             "sanitized_by_user_supplied": list(self.sanitized_by_user_supplied),
+            # INV-karud: the sets are what the finding actually claims.
+            # Serializing only the witness scalars would put the n x m
+            # over-claim back for every consumer that reads JSON.
+            "source_primitives": list(self.source_primitives),
+            "sink_primitives": list(self.sink_primitives),
+            "sink_symbols": list(self.sink_symbols),
+            "sink_call_sites": [list(site) for site in self.sink_call_sites],
+            "collapsed_flow_count": self.collapsed_flow_count,
         }
+
+
+#: The two ``analysis_method`` values that mean "inclusion rests on call-graph
+#: reachability, not on a confirmed data dependence". ``structural`` = no
+#: reaching-def data existed for the source function so no walk was possible;
+#: ``ddg_mixed`` = the walk ran and did not confirm one. Different facts, same
+#: consequence for what the finding is entitled to claim.
+UNADJUDICATED_METHODS = frozenset({"structural", "ddg_mixed"})
+
+
+def collapse_unadjudicated_flows(
+    findings: list[TaintFlowFinding],
+) -> list[TaintFlowFinding]:
+    """Collapse unadjudicated pair findings into one finding per situation.
+
+    INV-karud. A finding whose ``analysis_method`` is in
+    :data:`UNADJUDICATED_METHODS` was included because a call path exists, not
+    because a data dependence was shown — so "primitive P1 reached primitive
+    P2" is more than the analysis established. What it did establish is "symbol
+    S reads {P1..Pn} and reaches zone Z via {Q1..Qm}", which is one fact rather
+    than n x m of them.
+
+    TWO MULTIPLIERS DIE HERE, and the second had not been named before it was
+    measured (censused over six repos, 359 flows -> 78 situations, 4.60x):
+
+    * **2.87x** the |sources| x |sinks| product inside one symbol. It scales
+      with the CATALOGUE rather than the code — adding a seventh browser global
+      adds rows to a repo whose source did not change.
+    * **1.60x** distinct call-graph ROUTES to the same primitive pair, which
+      are distinct rows because the consumer's flow identity keys on ``path``.
+      ``path`` is documented as one witness route, not the route set, so a
+      second witness was never a second fact.
+
+    Grouping on neither primitive is what addresses both at once; a key built
+    from the pair would leave the route multiplier standing.
+
+    WHAT IS IN THE KEY, AND WHY EACH:
+
+    ``taint_label``, ``source_symbol``, ``sink_zone``
+        the situation itself — the unit a reader acts on ("is this function a
+        problem?"), and the granularity a claim is written at.
+    ``sanitized``
+        a sanitized flow is excluded from the violation set. A group that mixed
+        them would have to be counted both ways.
+    ``source_boundary``
+        WI-vazal split net_recv / ipc_recv / db_read inside the single
+        ``untrusted_input`` label precisely so "a request body reached the
+        database" and "a row read from the database reached the database" stay
+        separable. Merging across it would undo that.
+    ``analysis_method``
+        ``ddg_mixed`` and ``structural`` are different facts about how hard the
+        analysis looked, and INV-karud clause (a3) requires a reader to be able
+        to tell them apart from the record.
+
+    ADJUDICATED FLOWS PASS THROUGH UNTOUCHED. ``ddg`` means the walk confirmed
+    a reaching-def chain from the variable the source defines to a use at the
+    sink call site; that IS a pair claim, and it is 6 of 359 census flows.
+    Collapsing it would trade earned precision for 1.7% of the noise.
+
+    ORDER is first-appearance: each group is emitted where its first member
+    was, adjudicated findings in place. Deterministic, and it keeps the
+    consumer's "first five rows" rendering stable.
+
+    THIS DOES NOT CHANGE ANY VERDICT. A claim verdict is a disjunction over its
+    flows, and every filter the consumer applies — label, zone, ``sanitized``,
+    and the production-scope test, which reads ``source_symbol`` and nothing
+    else — tests a field that is in this key. So no group can be half-included,
+    and existence is preserved exactly.
+    """
+    slots: list[TaintFlowFinding | None] = []
+    at: dict[tuple[Any, ...], int] = {}
+    members: dict[tuple[Any, ...], list[TaintFlowFinding]] = {}
+    for f in findings:
+        if f.analysis_method not in UNADJUDICATED_METHODS:
+            slots.append(f)
+            continue
+        key = (
+            f.taint_label, f.source_symbol, f.sink_zone,
+            f.sanitized, f.source_boundary, f.analysis_method,
+        )
+        if key not in at:
+            at[key] = len(slots)
+            members[key] = [f]
+            slots.append(None)
+        else:
+            members[key].append(f)
+
+    for key, idx in at.items():
+        grp = members[key]
+        # ``replace`` rather than in-place assignment: this is a public
+        # function and mutating findings the caller still holds is a side
+        # effect the signature does not announce. ``__post_init__`` re-runs
+        # and leaves the explicit tuples alone (it only fills EMPTY ones).
+        slots[idx] = replace(
+            grp[0],
+            collapsed_flow_count=len(grp),
+            source_primitives=tuple(sorted(
+                {p for m in grp for p in m.source_primitives}
+            )),
+            sink_primitives=tuple(sorted(
+                {p for m in grp for p in m.sink_primitives}
+            )),
+            sink_symbols=tuple(sorted(
+                {sym for m in grp for sym in m.sink_symbols}
+            )),
+            # INV-kakad: unioned like its siblings, so the group names every
+            # site it stands for and ``collapsed_flow_count`` can be checked
+            # against |source_primitives| x |sink_call_sites|.
+            sink_call_sites=tuple(sorted(
+                {site for m in grp for site in m.sink_call_sites}
+            )),
+            # A route through a different barrier is a different sanitizer
+            # credit, and INV-pojib requires the user-supplied ones to stay
+            # individually nameable. Union, not the representative's tuple.
+            sanitized_by=tuple(sorted(
+                {b for m in grp for b in m.sanitized_by}
+            )),
+            sanitized_by_user_supplied=tuple(sorted(
+                {b for m in grp for b in m.sanitized_by_user_supplied}
+            )),
+            # INV-muhij Finding A. The scalars stay ``grp[0]``'s -- they are
+            # the witness the ``path`` belongs to -- but the row now also says
+            # what the REST of the group reported, because a rule deciding
+            # whether this row may carry a verdict alone has to read a fact
+            # true of every member. 63.9% of the groups containing a
+            # ``sink_before_source`` member are not unanimous.
+            walk_verdict_values=tuple(sorted(
+                {v for m in grp for v in m.walk_verdict_values}
+            )),
+            walk_blocked_by_values=tuple(sorted(
+                {v for m in grp for v in m.walk_blocked_by_values}
+            )),
+        )
+    return [s for s in slots if s is not None]
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +865,9 @@ class TaintFlowFinding:
 # one frozenset is what stops the pair drifting apart again — the live sink
 # matcher tested only the bare spelling for months while the (never-wired)
 # _sink_module_compatible tested both.
-_UNRESOLVED_MODULE_PLACEHOLDERS = frozenset({"external", "<external>"})
+#: Re-exported from :mod:`io_boundary`, which is the canonical home (the two
+#: consumers must not drift about what "no module" looks like).
+_UNRESOLVED_MODULE_PLACEHOLDERS = _UNRESOLVED_MODULE_PLACEHOLDERS_IO
 
 
 def _lookup_named_entry(
@@ -422,6 +933,31 @@ def _lookup_named_entry(
     )
 
 
+def _retry_name_unqualified(
+    idx: Mapping[str, Sequence[TaintEntry]],
+    callee_name: str,
+    module_hint: str | None,
+) -> str:
+    """Return the unqualified callee when the qualified one indexes nothing.
+
+    INV-januj / INV-fofoj. The public ``match_source`` / ``match_sink`` entry
+    points take a callee name a caller already extracted, so the retry cannot be
+    folded into :func:`_match_propagation_entry`'s copy; this is the shared shape
+    both use, and it returns the name to look up rather than the hits so the
+    caller's own ``idx.get`` stays the single lookup.
+
+    ONLY ON A MISS. A name that already indexes something is returned unchanged,
+    which is what makes this recall-only: no currently-matching call can be
+    re-pointed at a different entry.
+    """
+    if idx.get(callee_name):
+        return callee_name
+    bare = strip_redundant_module_qualifier(module_hint, callee_name)
+    if bare is not None and idx.get(bare):
+        return bare
+    return callee_name
+
+
 def _build_callee_index(
     entries: Sequence[TaintEntry],
 ) -> dict[str, list[TaintEntry]]:
@@ -442,6 +978,26 @@ def _build_callee_index(
     return idx
 
 
+def _target_kind_admits(entry: object, needed: Optional[str]) -> bool:
+    """Does the stamp's resolution in this entry's direction admit ``entry``?
+
+    Three admissions and nothing else: an UNCONDITIONAL entry (no
+    ``requires_target_kind`` -- every entry the catalogue does not gate,
+    including sanitizers, which carry neither field); a gated entry whose
+    boundary the stamp RESOLVED to; and, when the stamp ABSTAINS
+    (``needed is None``: no stamp, an unknown kind, a non-crossing kind, or
+    collapsed sites that disagree), the primitive's single
+    ``abstention_fallback`` entry. ``getattr`` because the index is typed
+    ``TaintEntry`` and sanitizer entries carry neither attribute.
+    """
+    required = getattr(entry, "requires_target_kind", "")
+    if not required:
+        return True
+    if needed is None:
+        return bool(getattr(entry, "abstention_fallback", False))
+    return bool(required == needed)
+
+
 def _match_propagation_entry(
     index: Mapping[str, Sequence[TaintEntry]],
     edge_dst: str,
@@ -450,7 +1006,8 @@ def _match_propagation_entry(
     *,
     is_resolved: bool = True,
     language: str = "",
-    io_mode: str | None = None,
+    io_modes: "Sequence[str] | None" = None,
+    io_target_kinds: "Sequence[str] | None" = None,
 ):
     """Match an edge's callee against a propagation source/sink ``index``.
 
@@ -502,7 +1059,21 @@ def _match_propagation_entry(
     callee_name = _extract_callee_name(edge_dst)
     hits = index.get(callee_name)
     if not hits:
-        return None
+        # INV-januj / INV-fofoj: the name slot may re-state the qualifier the
+        # module slot already carries (java ``System`` + ``System.in``, python
+        # ``sys`` + ``sys.stderr``). Retry once unqualified — STRICTLY after the
+        # miss, so no edge that matches today can change. The io-boundary seam
+        # carries the mirror of this; both call the one helper so they cannot
+        # drift about what "redundant" means.
+        bare = strip_redundant_module_qualifier(
+            _extract_callee_module(edge_dst), callee_name,
+        )
+        if bare is None:
+            return None
+        hits = index.get(bare)
+        if not hits:
+            return None
+        callee_name = bare
     # Mode gate for DUAL-CLASSIFIED primitives, applied before every other
     # arm so both the resolved and unresolved paths inherit it rather than
     # growing a second copy. Only entries that opted in via ``requires_mode``
@@ -511,11 +1082,47 @@ def _match_propagation_entry(
     # ``getattr`` for BOTH reads, not just the guard: the index is typed
     # ``TaintSource | TaintSink`` and only sinks carry ``requires_mode``, so
     # a direct attribute read is a strict-mode union-attr error.
-    from .io_boundary import resolve_mode_boundary
-    _needed = resolve_mode_boundary(io_mode)
+    from .io_boundary import (
+        resolve_mode_boundary_across_sites,
+        resolve_target_kind_across_sites,
+    )
+    # INV-vukiv: EVERY collapsed site's mode, not the first one's. A function
+    # that opens a path 'r' at one line and 'w' at another arrives here as one
+    # edge, and asking only the survivor's singular ``io_mode`` dropped the
+    # ``fs_write``-gated sink on the strength of a different call site — the
+    # same false-negative shape ``call_arg_shape``'s conservative merge exists
+    # to prevent, one key over.
+    _needed = resolve_mode_boundary_across_sites(io_modes)
     hits = [
         h for h in hits
         if getattr(h, "requires_mode", "") in ("", _needed)
+    ]
+    # WI-lipis: the same gate on the axis a mode literal cannot answer. Kept
+    # beside the mode gate rather than in a second pass so both dual-classified
+    # shapes are refused in one place, and ``getattr`` for the same reason --
+    # only sources carry this one.
+    #
+    # ``None`` from the resolver is an ABSTENTION, and it deliberately admits
+    # only the unconditional entries: a stream whose origin the analyzer could
+    # not recover keeps today's classification instead of minting on a guess.
+    # That is the conservative direction HERE because this seam ADDS findings,
+    # the mirror of ``_source_call_can_mint_taint``, which removes them.
+    #
+    # INV-minol / WI-suhug: an abstention admits the primitive's FALLBACK entry
+    # too -- the one derived from the row ``classify_call`` selects for an
+    # unstamped call -- so the two consumers of one catalogue give one answer.
+    # The stamp is resolved in the ENTRY'S direction: a source reads (a
+    # ``std_stream`` mints ``ipc_recv``), a sink writes (the same
+    # ``std_stream`` is a ``logging`` sink).
+    _needed_read = resolve_target_kind_across_sites(io_target_kinds)
+    _needed_write = resolve_target_kind_across_sites(
+        io_target_kinds, direction="write",
+    )
+    hits = [
+        h for h in hits
+        if _target_kind_admits(
+            h, _needed_write if isinstance(h, TaintSink) else _needed_read,
+        )
     ]
     if not hits:
         return None
@@ -544,10 +1151,39 @@ def _match_propagation_entry(
         # agree, while `log/slog` does not match `logging.go`.
         path_module = _module_from_symbol_path(edge_dst)
         if not path_module:
-            # No path evidence to judge on (synthetic or external-shaped id) —
-            # keep the legacy exact-name behaviour rather than silently
-            # dropping the finding.
-            return hits[0]
+            # INV-fazim. There is no path evidence to judge on — the dst is
+            # external-shaped (`_UNRESOLVED_MODULE_PLACEHOLDERS`) or malformed
+            # enough that `_extract_callee_module` returns falsy. This used to
+            # fall through to `return hits[0]`, "keep the legacy exact-name
+            # behaviour rather than silently dropping the finding" — but that
+            # is the SAME ungated bare-name match the block above exists to
+            # refuse, reached through a different door: not by being a
+            # first-party symbol, but by being flagged resolved while carrying
+            # nothing to verify the receiver against. ADR-0037 ruling 4 makes
+            # the flag authoritative (consumers may not string-check the
+            # `:unresolved` suffix), so a producer that sets it wrongly landed
+            # straight here.
+            #
+            # REFUSING IS MEASURED TO COST NOTHING, not argued to. The branch
+            # was instrumented on dev 09921c57a1 during real verify-claims runs,
+            # recording production's own inputs and classifying them with
+            # production's own `_module_from_symbol_path`: across sops, grype,
+            # act, poetry, winston and knex — 98,422 calls, 48,516 of them with
+            # is_resolved=True — this condition held ZERO times. The counted
+            # condition is a superset of the branch (it ignores the non-empty
+            # `hits` requirement), so it errs toward over-reporting. A positive
+            # control driving the branch deliberately fires it, so the zero is
+            # a property of the inputs and not of a probe that never attached.
+            #
+            # That measurement is what licenses the change, because this index
+            # also backs SANITIZER registration: losing a sanitizer match loses
+            # a barrier, which moves flows in the opposite direction from losing
+            # a sink. A line that never executes cannot do either.
+            #
+            # Pinned by test_taint_pathless_resolved_match_refused.py, which
+            # ships both refusal cases AND two positive controls — refusing
+            # unconditionally would satisfy the refusal tests alone.
+            return None
         from .io_boundary import _module_matches
         for h in hits:
             # An entry that declares no module carries no evidence to
@@ -729,6 +1365,7 @@ class TaintCatalog:
         rejected without the name needing to be in ``ambiguous_names``.
         """
         idx = self._source_by_name.get(language, {})
+        callee_name = _retry_name_unqualified(idx, callee_name, module_hint)
         return _lookup_named_entry(
             idx.get(callee_name), callee_name, module_hint,
             self._ambiguous_names.get(language, frozenset()),
@@ -752,6 +1389,7 @@ class TaintCatalog:
         rejected without the name needing to be in ``ambiguous_names``.
         """
         idx = self._sink_by_name.get(language, {})
+        callee_name = _retry_name_unqualified(idx, callee_name, module_hint)
         return _lookup_named_entry(
             idx.get(callee_name), callee_name, module_hint,
             self._ambiguous_names.get(language, frozenset()),
@@ -862,7 +1500,7 @@ def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
                     taint_label=label,
                     module=module,
                     name=func_name,
-                    kind="function",
+                    kind=KIND_FUNCTION,
                     return_tainted=return_tainted,
                     argument_tainted=arg_tainted,
                     start_at=start_at,
@@ -872,7 +1510,7 @@ def _load_source_yaml(path: Path) -> tuple[str, dict[str, list[TaintSource]]]:
                     taint_label=label,
                     module=module,
                     name=method_name,
-                    kind="method",
+                    kind=KIND_METHOD,
                     return_tainted=return_tainted,
                     argument_tainted=arg_tainted,
                     start_at=start_at,
@@ -905,7 +1543,7 @@ def _load_sink_yaml(path: Path) -> dict[str, list[TaintSink]]:
                     trust_level=trust_level,
                     module=module,
                     name=func_name,
-                    kind="function",
+                    kind=KIND_FUNCTION,
                 ))
             for method_name in entry.get("methods", []):
                 lang_sinks.append(TaintSink(
@@ -913,7 +1551,7 @@ def _load_sink_yaml(path: Path) -> dict[str, list[TaintSink]]:
                     trust_level=trust_level,
                     module=module,
                     name=method_name,
-                    kind="method",
+                    kind=KIND_METHOD,
                 ))
         sinks_by_lang[lang] = lang_sinks
 
@@ -1051,7 +1689,26 @@ AUTO_SINK_ZONE_MAP: dict[str, tuple[str, str]] = {
 
 AUTO_SOURCE_LABEL_MAP: dict[str, str] = {
     # io_primitives boundary -> taint_label for auto-derived source
+    #
+    # A BOUNDARY THAT AUTO-DERIVES A LABEL MUST MEAN WHAT THE LABEL MEANS
+    # (INV-tutar). ``env_read`` used to carry BOTH readings and this map read
+    # the wrong one: 134 of the 195 shipped ``env_read`` rows were host
+    # DESCRIPTION (``runtime.GOOS``, ``os.uname``, ``navigator.platform``,
+    # ``platform.system``) or user identity (``os.getlogin``, ``pwd.getpwnam``),
+    # and calling those a *secret* is why ``host-secret-*`` claims carried 48 of
+    # 85 adjudicated flows at 22.9% precision -- the weakest family in
+    # measurement 0001. The catalogue was already distorting itself to cope:
+    # ``python.yaml`` deliberately withheld ``getpid`` / ``cpu_count`` because
+    # rowing them here "would manufacture false sources", while ``go.yaml``
+    # rowed ``GOOS`` and ``Getwd`` -- one boundary value, two membership rules,
+    # two shipped files.
+    #
+    # THE SPLIT IS OF THE BOUNDARY, NOT THE LABEL, and not a per-row override.
+    # The boundary vocabulary is the registry-backed thing
+    # (``CATALOG_BOUNDARY_TYPES``); a per-row ``taint_label`` would let the row
+    # and the boundary each decide, which is one fact in two homes.
     "env_read": "host_secret",
+    "host_info_read": "host_description",
     "net_recv": "untrusted_input",
     "ipc_recv": "untrusted_input",
     "db_read": "untrusted_input",
@@ -1172,13 +1829,29 @@ def _derive_auto_imports_from_io_primitives(
         # no ``io_mode`` that deleted rust's only host_fs write sink outright
         # (INV-kaduh's control finding).
         mode_gated = mode_discriminated_primitives(catalog)
+        # WI-lipis: primitives this catalogue declares under two or more READ
+        # boundaries, so the source derived from the minting row records that
+        # it only applies when the call's stream argument says so. Derived from
+        # the catalogue for the same reason ``mode_gated`` is, and keyed on
+        # (module, name, kind) for INV-kaduh's reason -- a short name is shared
+        # across modules and gating on it would silence an unrelated row.
+        target_kind_gated = target_kind_discriminated_primitives(catalog)
+        # INV-minol: which row of each gated primitive an ABSTAINING stamp
+        # falls back to, read off the same reordered list the classifier
+        # reads so the two consumers cannot disagree about "first".
+        target_kind_fallback = target_kind_fallback_boundaries(catalog)
         for prim in catalog.primitives:
+            key = (prim.module, prim.name, prim.kind)
+            gated_boundary = prim.boundary if key in target_kind_gated else ""
+            is_fallback = target_kind_fallback.get(key) == prim.boundary
             if prim.boundary in AUTO_SOURCE_LABEL_MAP:
                 sources_by_lang[lang].append(TaintSource(
                     taint_label=AUTO_SOURCE_LABEL_MAP[prim.boundary],
                     module=prim.module,
                     name=prim.name,
                     kind=prim.kind,
+                    requires_target_kind=gated_boundary,
+                    abstention_fallback=is_fallback,
                     # The map above is many-to-one: net_recv, ipc_recv and
                     # db_read all become `untrusted_input`. Carry the
                     # boundary so the collapse is reversible downstream
@@ -1194,10 +1867,23 @@ def _derive_auto_imports_from_io_primitives(
                     name=prim.name,
                     kind=prim.kind,
                     requires_mode=(
-                        prim.boundary
-                        if (prim.module, prim.name, prim.kind) in mode_gated
-                        else ""
+                        prim.boundary if key in mode_gated else ""
                     ),
+                    # WI-bulag / arc T9. Derived from the catalogue row at
+                    # sink-derivation time, exactly like requires_mode above,
+                    # so the walk never re-reads the catalogue. True ONLY for
+                    # the class-R shape: the row declares which positions name
+                    # the resource, declares EXPLICITLY that it takes no
+                    # content argument, and does not declare that naming IS
+                    # the danger. Everything else -- including every
+                    # un-annotated row -- is False and behaves as before.
+                    resource_naming_only=suppresses_resource_naming_finding(
+                        prim
+                    ),
+                    # WI-suhug: the write-side twin of the source field above,
+                    # resolved in the WRITE direction at match time.
+                    requires_target_kind=gated_boundary,
+                    abstention_fallback=is_fallback,
                 ))
 
     return dict(sources_by_lang), dict(sinks_by_lang), ambiguous_by_lang
@@ -1601,8 +2287,18 @@ def _module_from_symbol_path(symbol_id: str) -> str:
 # bridges folding into ``calls`` + ``meta["bridge_kind"]`` continue to
 # match; bridge entries become dead-but-harmless and get pruned in
 # Phase 4.
-TAINT_CALL_EDGE_TYPES = frozenset({
-    "calls",
+# INV-lalad: the call-family half is DERIVED, not listed. It was
+# ``frozenset({"calls", ...})`` — a private copy that silently disagreed with
+# the registry once ``instantiates`` joined the family, and the disagreement
+# was measurable: ``subprocess.Popen(tainted)`` verified CLEAN while
+# ``subprocess.run(tainted)`` verified VIOLATED, because py.py types a
+# PascalCase ``module.Attr()`` as ``instantiates`` and this set could not
+# traverse it. Reading ``call_family_edge_types()`` means a future addition to
+# the call family reaches taint automatically.
+#
+# UNION, never replace. The two entries below are taint-specific and are NOT
+# call constructs; deriving this whole set from the registry would delete them.
+TAINT_CALL_EDGE_TYPES = call_family_edge_types() | frozenset({
     # WI-lokuv: attribute-read edges for IO primitives declared under
     # ``attributes:`` in io_primitives YAML (os.environ, sys.argv, ...).
     # Emitted by the Python analyzer per WI-guhok; extending to the
@@ -1636,6 +2332,81 @@ TAINT_CALL_EDGE_TYPES = frozenset({
 })
 
 
+#: The edge type whose value-carrying-ness depends on what emitted it.
+DISPATCH_EDGE_TYPE: Final[str] = "dispatches_to"
+
+#: The span slot of an ADR-0036 node id: ``{start}-{end}``, third from the
+#: right. Used as the ANCHOR that confirms a string really is a 5-slot id
+#: before its last slot is read as a kind.
+_ID_SPAN_SLOT = re.compile(r"^\d+-\d+$")
+
+
+def _id_kind_slot(symbol_id: str) -> Optional[str]:
+    r"""The ``kind`` slot of an ADR-0036 node id, or ``None`` if there is none.
+
+    The grammar is ``{lang}:{path}:{start}-{end}:{name}:{kind}`` and only the
+    PATH slot is colon-tolerant, so parsing is anchored from the RIGHT: kind is
+    the last slot, name the second-to-last, span the third-from-last. The span
+    is checked against ``\d+-\d+`` as the anchor rather than trusting a slot
+    count, because a colon-bearing path (Rust's ``std::cmp`` module ids) makes
+    the count vary.
+
+    Returns ``None`` — never a guess — for anything that does not parse, which
+    is what makes the caller FAIL OPEN. A synthetic stand-in, the ``external``
+    sentinel and any id predating the grammar all land here, and an edge whose
+    source cannot be identified must keep its old meaning rather than be
+    silently deleted from the walk.
+    """
+    parts = symbol_id.split(":")
+    if len(parts) < 5 or not _ID_SPAN_SLOT.match(parts[-3]):
+        return None
+    return parts[-1]
+
+
+def _dispatch_edge_carries_a_value(edge: dict[str, Any]) -> bool:
+    """Whether a ``dispatches_to`` edge moves a value, or only reachability.
+
+    INV-zuhig put ``dispatches_to`` in :data:`TAINT_CALL_EDGE_TYPES` because a
+    framework dispatcher really does hand data to the handler it invokes:
+    ``argparse_dispatch`` emits from the enclosing FUNCTION of a
+    ``set_defaults(func=cmd_x)`` registration to ``cmd_x``, and without it every
+    framework-dispatched handler was unmintable and 18 self-proof confirms were
+    vacuous. That ruling stands and this predicate preserves it.
+
+    INV-putug found the other half. Five linkers — ``django_orm_dispatch``,
+    ``airflow_framework_dispatch``, ``jackson_dispatch``, ``rust_trait_dispatch``
+    and ``_third_party_bases`` — emit from a TYPE to the framework-called
+    methods of that type, which says "the framework may call these on instances
+    of this class", not "a value passes from here to there". A type node holds
+    no value; an instance does. Consumed as dataflow it yields the path
+    ``function --instantiates--> Class --dispatches_to--> Class.save``, which
+    terminates at whatever ORM method the linker attached — including one the
+    function never calls. Measured on pretix: 33 of 33 class-node hops the walk
+    traversed sat on such a pair, the 16,010 ``contains``-only pairs were never
+    crossed, and 20 of the 47 situations that round added were this shape.
+
+    THE DISCRIMINATOR IS THE SOURCE NODE'S KIND, NOT THE EMITTING LINKER, and
+    that distinction is load-bearing: ``di_resolution`` emits from an interface
+    METHOD and ``type_hierarchy`` from a parent METHOD, both ordinary virtual
+    dispatch that does carry a value. A linker-name blocklist would take those
+    with it.
+
+    The vocabulary comes from :func:`type_like_kind_names` rather than a literal
+    tuple. Its own docstring records audit 0018 finding 26 hand-written copies
+    of that set across 24 vocabularies, five of which silently omitted
+    ``protocol``; a restated set here would be the 27th and would drift the day
+    a language adds a type kind.
+
+    The edges themselves are NOT deleted. They are correct as reachability, and
+    ``django_orm_dispatch``'s own code calls that an "orthogonal reachability
+    concern" — removing them would file this defect in the wrong artifact and
+    take the architecture consumers with it. Only the taint walk's reading of
+    them changes.
+    """
+    kind = _id_kind_slot(edge.get("src", ""))
+    return kind is None or kind not in type_like_kind_names()
+
+
 def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
     """True if *edge* (a behavior-map edge dict) carries taint like a call.
 
@@ -1644,10 +2415,364 @@ def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
     audit-findings 0016) — the one place taint recognizes the folded form,
     so gRPC taint propagation is preserved without demoting or over-
     including structural ``implements`` edges.
+
+    One narrowing (INV-putug): a ``dispatches_to`` edge out of a TYPE node is
+    reachability, not dataflow — see :func:`_dispatch_edge_carries_a_value`.
+    It lives here rather than in ``_build_adjacency`` on the same "one rule,
+    one home" reasoning the dispatch membership itself was added under, so the
+    minting, adjacency and sanitizer-registration surfaces cannot disagree
+    about what a dispatch edge means.
+
+    One widening (WI-nisud): a ``references`` edge that REGISTERS a callback is
+    call-shaped, via :func:`is_callback_registration`. javascript emits
+    ``references`` where python emits ``dispatches_to``, so before this a
+    callback taint source whose handler OWNS A SYMBOL was inert — including the
+    spellings that classify correctly, ``addEventListener`` and
+    ``http.createServer`` and ``process.on``. Not every callback source: an
+    inline ``ws.onmessage = function (ev) {...}`` is minted no symbol, collapses
+    onto its enclosing function, and reported its flow before this change on a
+    path that crosses no registration edge. It is a predicate and not a set member
+    because ``references`` also carries TypeScript type references and
+    object-literal field references, neither of which is dataflow; the set
+    itself is unchanged and bare ``references`` stays inert.
+
+    THIS ONE IS NOT MONOTONE-ADDITIVE, unlike the ``dispatches_to`` membership.
+    :func:`_register_sanitizer_callers` asks this same question, so a callback
+    handed to a sanitizer (``arr.map(escapeHtml)``) now installs a barrier that
+    was not there before, and a barrier can DELETE a flow. That is the right
+    reading of the construct — it is named here because "adjacency only grows"
+    is the usual justification for touching this predicate and it does not
+    apply.
     """
     etype = edge.get("type", "")
-    return etype in TAINT_CALL_EDGE_TYPES or is_grpc_rpc_implementation(
-        etype, edge.get("meta")
+    if etype == DISPATCH_EDGE_TYPE and not _dispatch_edge_carries_a_value(edge):
+        return False
+    meta = edge.get("meta")
+    return (
+        etype in TAINT_CALL_EDGE_TYPES
+        or is_grpc_rpc_implementation(etype, meta)
+        or is_callback_registration(etype, meta)
+    )
+
+
+LITERAL_ONLY_ARG_SHAPE: Final[str] = "literal_only"
+
+
+def _source_and_sink_are_one_call(
+    source_caller: str,
+    sink_caller: str,
+    source_callee: str,
+    sink_callee: str,
+    call_lines: Mapping[tuple[str, str], Sequence[int]],
+) -> bool:
+    """True when the source call site and the sink call site are ONE call.
+
+    A value a call RETURNS cannot be an argument to that same call, so this
+    pair anchors no flow. The third per-call-site gate in this module, and
+    deliberately the same shape as the other two: `_sink_call_can_carry_taint`
+    refuses a site that provably discards, `_source_call_can_mint_taint`
+    refuses a site that provably reads memory, and this refuses a *pair* that
+    is one invocation. None of the three is the ADR-0017 §3a walk. That walk
+    may now remove a flow (WI-kabif) but only on its own ``unconfirmed``
+    verdict; these three refusals are upstream of it and are about what
+    counts as a source/sink PAIR at all.
+
+    WHY THIS ONLY BECAME REACHABLE WITH INV-lozat. Until a content-returning
+    launch was catalogued, no shipped primitive was a taint source AND a taint
+    sink at the same call: `db_read` pairs with `db_write`, `net_recv` with
+    `net_send`, always two different calls. `exec.Command(...).Output()`
+    receives the child's bytes and IS a subprocess sink, so both propagators
+    paired the call with itself and reported "data from a subprocess reaches a
+    subprocess" over a call that cannot feed its own arguments. Measured on the
+    measurement-0006 cohort, both arms cold: hypergumbo's own
+    `walk_blocked_by == "sink_before_source"` marks 4 of 692 pre-existing
+    evidence rows (0.6%) and 18 of the 51 rows those catalogue rows add
+    (35.3%) -- sixty times the background rate, and two of the three verdicts
+    that moved `inconclusive -> violated` rested on one such row each.
+
+    POSITIVE EVIDENCE IS REQUIRED, and the asymmetry is the whole design.
+    Removal is the expensive direction for a security tool, so the gate fires
+    only when the edge records EXACTLY ONE call line:
+
+    * TWO OR MORE lines means the caller invokes the primitive twice, and
+      iteration N's output really can reach iteration N+1's arguments
+      (`out = check_output(out)`), so the flow stays.
+    * NONE recorded means we do not know how many calls there are. `meta.
+      call_lines` absence is documented as "exactly one site" only alongside
+      `edge["line"]`; with neither, an unknown count is not a known one, and
+      the flow stays.
+
+    The residual false negative is stated rather than hidden: a single call
+    site whose own output feeds its own arguments on a later loop iteration is
+    suppressed. That requires the primitive to take the value it returns, in a
+    loop, through no intervening call -- `exec.Cmd.Output` takes no arguments
+    at all, and no instance appears anywhere in the cohort.
+    """
+    if source_caller != sink_caller or source_callee != sink_callee:
+        return False
+    return len(set(call_lines.get((source_caller, source_callee), ()))) == 1
+
+
+def _source_call_can_mint_taint(edge: dict[str, Any]) -> bool:
+    """False when this call site provably reads nothing from outside.
+
+    WI-lipis, and the twin of :func:`_sink_call_can_carry_taint`. The sink side
+    already refuses a call site that hands its value to nothing
+    (``> /dev/null``); a source site that takes its value from nothing is the
+    same argument pointed the other way, and until now nothing asked it.
+
+    THE MEASURED CASE. ``go.yaml`` files ``bufio.{NewScanner,NewReader}`` as
+    ``ipc_recv`` -- which is in :data:`AUTO_SOURCE_LABEL_MAP`, so every call
+    site mints ``untrusted_input`` -- on the note "When wrapping os.Stdin", a
+    condition no catalogue row can enforce because the row sees the callee and
+    the answer is in the ARGUMENT. So
+    ``bufio.NewScanner(strings.NewReader(s))`` invented an untrusted-input
+    SOURCE out of a caller's string, and the DDG then confirmed a route from it
+    to ``exec.Command`` at ``confidence: precise`` -- a fully-confident false
+    positive built on a value that never left the process.
+
+    Measured on the ADR-0049 cohort's Go repositories: of the 83 bare-local
+    sites whose origin the shipped reaching-def solver resolves, 63 wrap an
+    ``os.Open`` handle (``fs_read``, deliberately NOT a taint source), 3 an
+    HTTP body, 1 a buffer, and **zero** wrap ``os.Stdin``. The row's own stated
+    condition holds nowhere in that population.
+
+    THE SAME VOCABULARY AS THE SINK SIDE, ON PURPOSE, and the second
+    deliverable generalised the question rather than adding a second gate
+    beside it. The sink side asks "does this site cross a boundary AT ALL"
+    (:func:`io_boundary.target_kinds_cross_no_boundary`). The source side needs
+    a strictly finer question -- "does it cross one that MINTS" -- because an
+    ``os.Open`` handle crosses a real boundary (``fs_read``) that is absent
+    from :data:`AUTO_SOURCE_LABEL_MAP` by design: the sensitivity of a file
+    read depends on what is stored. So this asks
+    :func:`io_boundary.read_boundary_for_target_kind`, which answers from the
+    non-crossing set FIRST and therefore still moves when that set is widened
+    at its single home. Both directions read one vocabulary; neither can drift.
+
+    THREE ANSWERS, AND THE DEFAULT IS THE CONSERVATIVE ONE:
+
+    * the vocabulary has NO opinion on some site's kind (``unresolved``, or a
+      value from a future analyzer) -- mint, and let the catalogue row decide;
+    * every site crosses nothing, or crosses only non-minting boundaries --
+      refuse;
+    * any site crosses a minting boundary -- mint. ANY, not every, for
+      INV-vukiv's reason: silencing a real receive on the strength of a
+      DIFFERENT collapsed call site is the false-negative trade.
+
+    WHAT IT STILL DOES NOT DO. A bare local whose binding the analyzer cannot
+    find in the enclosing function -- a parameter, a struct field -- stamps
+    nothing and is untouched here. INV-zumin's ruling forbids answering it by
+    emitting BOTH boundaries, so the abstention stays an abstention.
+    """
+    kinds = call_site_target_kinds(edge.get("meta") or {})
+    if not kinds:
+        return True
+    resolved = [read_boundary_for_target_kind(kind) for kind in kinds]
+    if any(not known for known, _boundary in resolved):
+        return True
+    return any(
+        boundary in AUTO_SOURCE_LABEL_MAP
+        for _known, boundary in resolved
+        if boundary is not None
+    )
+
+
+def _sink_call_can_carry_taint(edge: dict[str, Any]) -> bool:
+    """False when this call site provably cannot be the sink of a flow.
+
+    THREE INDEPENDENT PROOFS, and they live together because this is the one
+    place both propagators ask the question. The structural arm's own comment
+    at its call site says why: two copies of this question is how the
+    call-family set drifted across three consumers.
+
+    PROOF ONE — INV-fubag: no argument at this call site can be the tainted
+    value. PROOF TWO — INV-nular/INV-kosur: whatever is handed over is
+    discarded, so it reaches no zone at all. PROOF THREE — WI-zovuz: no
+    externally-derived NAME can reach what the shell itself writes at this
+    redirect. Any one makes the finding false rather than merely unproven,
+    which is what licenses a gate here at all.
+
+    PROOF THREE, and why it is a proof rather than a heuristic. bash carries no
+    dataflow, so a redirect-sink finding rested on reachability alone: "this
+    file reads the environment somewhere AND reaches a function that writes
+    somewhere". ``redirect_origin_names`` closes the derivation over the whole
+    file — assignments, and positional parameters bound at every call site of
+    the enclosing function — and reports which externally-derived names can
+    reach the three things the SHELL contributes: the target operand, a
+    heredoc body it expands itself, and every producing stage's arguments. An
+    EMPTY list therefore says no value this program holds can be what crossed,
+    and bash's only taint sources are name-derived.
+
+    IT IS DELIBERATELY NOT THE BYTE-PRODUCER QUESTION, which was measured
+    WRONG. "Is the writer an external program?" deletes
+    ``echo "$SIGNING_CERT" | base64 -d > cert.pfx`` (beads), where a real
+    certificate is written and only stage ONE is a builtin, and it mistakes
+    ``sed -E "s#x#${v}#" f > out`` (cilium), where an in-process value is
+    interpolated THROUGH an external command. Asking which NAME can reach
+    survives both.
+
+    THE FETCH CASE IS LEFT OPEN ON PURPOSE. ``curl -L "$URL" > "$DEST"``
+    credits ``URL`` here, because deciding that curl's argument SELECTS a
+    remote resource rather than being interpolated into its output is
+    per-command semantics this gate does not have. That is INV-fumod shape (b)
+    and it stays open; ablation measured the omission at 3 of 186 names and
+    zero of 69 files, so the conservative answer costs almost nothing.
+
+    INV-fubag. Taint models a flow as the tainted value being an ARGUMENT to
+    the sink call or its RECEIVER. When a producer can prove every argument at
+    a call site is a literal constant -- or that there are no arguments at all
+    -- neither can be the tainted value, and the receiver of a call like
+    ``tempfile.TemporaryDirectory()`` is a module. So the flow is not merely
+    unlikely, it is impossible under the model the tool itself uses. This is a
+    proof, which is why it needs no threshold and costs no recall.
+
+    Measured (docs/measurements/0003): of the 34 adjudicated false positives
+    the construction-edge widening added, 24 were sink calls with no arguments
+    at all. The constructor is the wrong anchor for a constructor-shaped I/O
+    sink -- ``ZipFile(path,'w')`` opens and ``zipp.writestr(...)`` writes -- so
+    anchored there the sink witnesses only "an fs resource was created in this
+    function" and any tainted value in scope produces a flow.
+
+    IT STAYS A SINK WHEN ITS ARGUMENT IS TAINTED. 0003's single true positive
+    is exactly that: mitmproxy's ``ZipFile(path, "w")`` where ``path`` came
+    from ``os.path.expanduser``. This gate must never remove it, which is what
+    the test of that name pins.
+
+    DEFAULT-DENY ON THE SILENCING DIRECTION. Only the one value we can prove
+    safe suppresses; an absent key, an unrelated key, or an unrecognised value
+    all keep the finding. Absence is the state of every edge in every behavior
+    map written before this key existed, and a gate whose default silenced
+    findings would be a false-negative generator on a security analysis.
+
+    INV-kosur — THE DISCARD CLAUSE, AND WHY IT IS HERE AND NOT UPSTREAM.
+    ``target_kinds_cross_no_boundary`` was wired into ``tag_io_boundaries``
+    and nowhere else, so ``echo "$API_KEY" > /dev/null`` returned ``confirmed``
+    against ``{boundary: fs_write, must_not_exist: true}`` and ``violated``
+    against ``{taint_flow: host_secret -> host_fs}``: same tree, same edge,
+    opposite verdicts, because the taint arm derives its sinks straight from
+    the catalogue (:data:`AUTO_SINK_ZONE_MAP` over every ``fs_write`` row) and
+    never saw the per-call-site fact. The gate's own reasoning — "the kernel
+    discards the bytes and no observation anywhere differs because the
+    redirect ran" — is about the CALL SITE and says nothing about claim shape,
+    so it belongs on every path that asks whether that site is a sink.
+
+    Refusing the match UPSTREAM in ``classify_call_in_catalog`` instead was
+    tried for INV-nular and measured worse: the coverage gate asks "did the
+    catalogue EXAMINE this call" and the answer is emphatically yes, so
+    refusing there traded a false ``violated`` for an ``inconclusive``. This
+    arm inherits that reasoning unchanged.
+
+    THE SOURCE SIDE IS DELIBERATELY NOT GATED. ``< /dev/null`` yields EOF and
+    is exactly as vacuous, but no boundary that can carry an
+    ``io_target_kind`` stamp derives a taint source: the stamp rides on bash
+    redirects, and bash files ``redirect`` under ``fs_write``/``fs_read``,
+    neither of which is in :data:`AUTO_SOURCE_LABEL_MAP`. A source-side clause
+    would be unreachable, and an unreachable gate proves nothing. The premise
+    is re-derived from the shipped catalogues by
+    ``test_no_shipped_catalogue_derives_a_source_from_a_redirect``, which
+    fails with the remedy if someone files ``redirect.<`` as ``ipc_recv``.
+    """
+    meta = edge.get("meta") or {}
+    if target_kinds_cross_no_boundary(call_site_target_kinds(meta)):
+        return False
+    origins = meta.get("redirect_origin_names")
+    if isinstance(origins, list) and not origins:
+        return False
+    return meta.get("call_arg_shape") != LITERAL_ONLY_ARG_SHAPE
+
+
+def _source_names_can_reach_sink(
+    source_names: Optional[frozenset[str]],
+    sink_names: Optional[frozenset[str]],
+) -> bool:
+    """False when no name this source carries can reach what the sink writes.
+
+    INV-fumod shape (b). A PAIR-level proof, which is why it lives beside
+    :func:`_source_and_sink_are_one_call` rather than inside either
+    per-call-site gate: neither edge alone answers it. The source edge knows
+    WHICH environment name it read (``env_var``); the sink edge knows which
+    names can reach what the shell writes there (``redirect_origin_names``);
+    the flow is false only if those sets are disjoint.
+
+    WHY THE PER-EDGE GATE IS NOT ENOUGH, on the item's own instance.
+    guacamole's ``curl -L "$URL" > "$DEST_PATH/$DEST_JAR"`` IS reached by a
+    name — ``DESTINATION``, via ``DEST_PATH="$DESTINATION/drivers/"`` — so
+    ``_sink_call_can_carry_taint`` keeps it, correctly. The row INV-fumod
+    filed is sourced at ``MYSQL_JDBC_VERSION``, read at line 87 on the FILE
+    symbol while ``DESTINATION`` is read at line 59 inside
+    ``download_driver``. Two source sites, one sink, so the false pair can be
+    refused while the other stands.
+
+    DEFAULT-DENY ON THE SILENCING DIRECTION. The pair survives unless BOTH
+    sides are known and provably disjoint. ``None`` on either side means the
+    question was not answered — a language with no name-level flow, a map
+    written before these keys existed — and an EMPTY source set means the
+    source carries no name at all, which is every source in every other
+    language. An empty SINK stamp is deliberately not answered here: "no name
+    reaches this redirect" is already a proof and it is
+    :func:`_sink_call_can_carry_taint`'s to make, so answering it twice would
+    put one fact in two homes.
+    """
+    if not source_names or sink_names is None:
+        return True
+    if not sink_names:
+        return True
+    return bool(source_names & sink_names)
+
+
+def _name_flow_indexes(
+    edges: list[dict[str, Any]],
+) -> tuple[dict[tuple[str, str], frozenset[str]],
+           dict[tuple[str, str], Optional[frozenset[str]]]]:
+    """Per (caller, callee): the names a source read, and the names a sink can write.
+
+    Both are keyed by the pair rather than by the edge because that is the
+    granularity the propagator pairs at. A source key unions every environment
+    name read at that site — guacamole's file symbol reads three JDBC version
+    variables and they share one ``env.environ`` callee — which is the
+    conservative direction: refusing the pair then requires ALL of them to be
+    unreachable.
+
+    A sink key is ``None`` the moment ANY edge under it lacks the stamp. A
+    partial answer must not read as a complete one: the unstamped edge could
+    be reached by a name the stamped ones are not.
+    """
+    source_names: dict[tuple[str, str], set[str]] = defaultdict(set)
+    sink_names: dict[tuple[str, str], Optional[set[str]]] = {}
+    for edge in edges:
+        meta = edge.get("meta") or {}
+        key = (edge.get("src", ""), edge.get("dst", ""))
+        env_var = meta.get("env_var")
+        if isinstance(env_var, str) and env_var:
+            source_names[key].add(env_var)
+        # ``<key>_values`` is where a collapsed edge's DISAGREEING per-site
+        # values live (:func:`ir._absorb_per_call_site_key`), and reading only
+        # the singular silently loses exactly the interesting case: guacamole's
+        # file symbol reads three JDBC version variables at three lines, so
+        # ``env_var`` is gone and ``env_var_values`` holds all three.
+        for value in meta.get("env_var_values") or ():
+            if isinstance(value, str) and value:
+                source_names[key].add(value)
+        if str(meta.get("io_primitive", "")).startswith("redirect."):
+            stamps = meta.get("redirect_origin_names_values")
+            if isinstance(stamps, list):
+                # Sites disagreed. Union them: any of those sites could be the
+                # one this pair flows to, and a bigger set keeps more findings.
+                merged = {str(n) for stamp in stamps
+                          if isinstance(stamp, list) for n in stamp}
+            elif isinstance(meta.get("redirect_origin_names"), list):
+                merged = {str(n) for n in meta["redirect_origin_names"]}
+            else:
+                sink_names[key] = None
+                continue
+            if key in sink_names and sink_names[key] is None:
+                continue
+            bucket = sink_names.setdefault(key, set())
+            assert bucket is not None  # narrowed by the branch above
+            bucket.update(merged)
+    return (
+        {k: frozenset(v) for k, v in source_names.items()},
+        {k: (None if v is None else frozenset(v)) for k, v in sink_names.items()},
     )
 
 
@@ -1802,7 +2927,6 @@ def _register_sanitizer_callers(
     edges: list[dict[str, Any]],
     sanitizer_by_callee: dict[str, list[TaintSanitizer]],
     sanitizer_callers: "dict[str, dict[str, list[TaintSanitizer]]]",
-    ambiguous_names: frozenset[str] = frozenset(),
     sanitizer_lines: "dict[tuple[str, str], list[int]] | None" = None,
 ) -> None:
     """Populate sanitizer_callers from edges + multi-sanitizer index.
@@ -1817,14 +2941,34 @@ def _register_sanitizer_callers(
     bare-name collision — which would silently SUPPRESS a real taint flow (a
     false negative, worse than a missed barrier for a security tool). A
     *resolved* edge trusts its resolution (exact-name match, unchanged). An
-    *unresolved* edge is the short-name-collision surface: a qualified callee
-    carries its own receiver evidence (an exact ``qualified_name`` match wins,
-    parity with ``_lookup_named_entry``'s qualified-first branch), but a bare
-    untyped *method* call (``call_construct == "method"``, threaded from the
-    edge meta) has no receiver evidence and must NOT match — ``x.encrypt()``
-    must not bind ``Fernet.encrypt`` and falsely sanitize a flow (the
-    INV-tapat/INV-maluk rule ``gate_named_entry`` enforces). An
-    ``ambiguous_names`` bare short name is the meta-absent safety net.
+    *unresolved* edge is the short-name-collision surface, and it binds ONLY on
+    positive receiver evidence, of which there are exactly two forms: an exact
+    ``qualified_name`` match on the callee name (parity with
+    ``_lookup_named_entry``'s qualified-first branch), or the MODULE slot plus
+    the callee name matching one. Anything else is refused.
+
+    INV-fuduz REPLACED AN ENUMERATION OF ABSENCE WITH ONE OF PRESENCE. The
+    refusal used to be two clauses and a fail-open: refuse a stamped
+    ``call_construct == "method"`` (INV-pirot), refuse an ``ambiguous_names``
+    short name, otherwise PERMIT. Both clauses are ways of spotting that
+    evidence is missing, and a missing thing cannot be enumerated — measured at
+    tip, a bare java ``doFinal(p)`` emits
+    ``java:external:0-0:doFinal:external_symbol`` with no ``call_construct``,
+    fell through, and registered ``javax.crypto.Cipher.doFinal`` as a barrier on
+    its caller. The ``ambiguous_names`` clause never covered it, or any sibling:
+    across every language that ships a sanitizer, NONE of the nine sanitizer
+    short names appears in its own language's ``ambiguous_names``, because that
+    list is sourced from the io_primitives I/O-collision vocabulary. The
+    parameter is gone rather than left dead.
+
+    THE INVERSION COSTS NO EXPRESSIVENESS, which is why it is preferred to
+    adding a third refusal clause for one language. All twelve shipped
+    sanitizers are receiver-shaped (``Fernet.encrypt``, ``Cipher.doFinal``,
+    ``AEAD.Seal``, ``Hkdf::expand``, ...), so binding one from a bare name with
+    no receiver was never justified in ANY language — java's lack of free
+    functions is a sufficient reason, not a necessary one. A sanitizer
+    catalogued under a genuinely bare name still binds through the first
+    branch. Direction is safe: refusing a barrier can only ADD findings.
 
     That receiver evidence is read from BOTH slots it can occupy. The
     name-slot form is the synthetic one; production analyzers put the
@@ -1886,12 +3030,46 @@ def _register_sanitizer_callers(
                     qualified = any(
                         s.qualified_name == fq for s in matched_list
                     )
+            if not qualified and member_owner(callee_name) is not None:
+                # THIRD FORM OF RECEIVER EVIDENCE: the callee NAME carries its
+                # own owner. A call site that says ``Fernet.encrypt`` names the
+                # receiver type even when the module slot holds the ``external``
+                # placeholder and the catalogue spells the entry out in full as
+                # ``cryptography.fernet.Fernet.encrypt``. That is evidence, and
+                # the two branches above both miss it — the first wants an exact
+                # whole-name match, the second wants a module slot.
+                #
+                # THE BOUNDARY IS WHAT MAKES IT EVIDENCE RATHER THAN A SUFFIX
+                # COLLISION. ``member_owner`` is what distinguishes
+                # ``Fernet.encrypt`` (an owner, so a receiver was named) from a
+                # bare ``encrypt`` (none, so nothing was named), and the match
+                # must land on a separator boundary or ``t.encrypt`` would bind
+                # ``...Fernet.encrypt``. The separator vocabulary is IMPORTED,
+                # never re-spelled: ``member_names`` fails the build on a
+                # hand-rolled copy, and ``::`` (rust) and ``#`` (ruby) are as
+                # load-bearing as ``.``.
+                qualified = any(
+                    s.qualified_name.endswith(f"{separator}{callee_name}")
+                    for s in matched_list
+                    for separator in MEMBER_NAME_SEPARATORS
+                )
             if not qualified:
-                call_construct = edge.get("meta", {}).get("call_construct")
-                if call_construct == "method":
-                    continue
-                if ambiguous_names and callee_name in ambiguous_names:
-                    continue
+                # INV-fuduz: ABSENCE OF EVIDENCE IS REFUSAL, NOT PERMISSION.
+                # The two branches above enumerate the ways receiver evidence
+                # can be PRESENT, and that set is bounded. What stood here
+                # instead was an attempt to enumerate the ways it can be
+                # ABSENT — ``call_construct == "method"``, then an
+                # ``ambiguous_names`` net — followed by a fail-open. An
+                # absence cannot be enumerated, and the enumeration was
+                # already incomplete in every language that ships a
+                # sanitizer: a BARE call carries no receiver token, so it is
+                # not syntactically a method call and cannot honestly be
+                # stamped one (``call_construct`` names the SYNTACTIC
+                # construct, ADR-0024 — stamping it would file a resolution
+                # fact under a construct name), while the net never held any
+                # sanitizer short name at all, being sourced from the
+                # io_primitives I/O-collision lists.
+                continue
         for matched in matched_list:
             # A LIST, NOT A SLOT (INV-pojib). This used to assign, so the LAST
             # short-name match won: all four shipped ``*.encrypt`` sanitizers
@@ -1909,6 +3087,94 @@ def _register_sanitizer_callers(
                 sanitizer_lines.setdefault(
                     (edge.get("src", ""), matched.input_taint), [],
                 ).extend(_edge_call_sites(edge))
+
+
+def subsume_slot_family_parents(
+    callers: Sequence[tuple[str, str, TEntry]],
+) -> list[tuple[str, str, TEntry]]:
+    """Drop a parent ATTRIBUTE match when its own slot family matched too.
+
+    INV-sukoh. ``python.yaml`` deliberately carries a parent attribute row
+    beside a child slot-family row — ``os`` / ``environ`` beside
+    ``os.environ`` / ``get`` — and the child's note says why: *"a method call
+    on the mapping carries os.environ as its module slot, where the parent's
+    attribute row cannot reach."* They were meant to be COMPLEMENTARY: parent
+    for a bare ``os.environ[...]`` read, child for ``os.environ.get(...)``.
+
+    On the ``.get`` form both reach, because the analyzer emits TWO edges for
+    the one expression — a ``module_attribute_reference`` to ``os.environ`` and
+    an ``ast_call_direct`` to ``os.environ.get``. So one read became two flows,
+    inflating the row denominator of every measurement taken over them.
+
+    THE RELATION IS COMPUTED FROM THE CATALOGUE, NOT LISTED HERE. An entry is a
+    slot-family PARENT when its qualified name is the MODULE SLOT of another
+    entry matched AT THE SAME CALLER. That is the catalogue's own structure, so
+    a user-supplied catalogue with the shape is covered without a table anyone
+    has to remember to extend. Four shipped rows have it today, all Python:
+    ``os.environ`` (env_read), ``sys.stdin`` (ipc_recv), ``sys.stdout`` and
+    ``sys.stderr`` (logging) — so it is SYMMETRIC, and this runs on the sink
+    side as well as the source side.
+
+    CONDITIONAL ON THE CHILD, which is what makes it safe. A bare
+    ``os.environ["X"]`` emits only the attribute edge; nothing subsumes it and
+    the read is still reported. Dropping the parent unconditionally would
+    delete the read outright.
+
+    A ``callee``-seeded source is never subsumed and never subsumes. Its BFS
+    seeds at the source callee rather than the caller, so parent and child
+    search DIFFERENT subgraphs; folding them would silently change which
+    subgraph was searched, which is not the duplicate-report this fixes.
+
+    WHAT IS DEDUCTED IS A NAME, NOT A FLOW. Where both forms genuinely occur in
+    one symbol, the two edges are indistinguishable from the single-form case:
+    edges are deduplicated on ``(src, dst, edge_type)`` (INV-vukiv), so the
+    multiplicity is already gone before this sees it. The coarser NAME is
+    dropped and the finding is still reported — no verdict moves, and the name
+    retained is the strictly more specific description of the same crossing.
+    """
+    children_by_caller: dict[str, set[str]] = defaultdict(set)
+    for caller_id, _callee_id, entry in callers:
+        if _seeds_at_caller(entry):
+            children_by_caller[caller_id].add(entry.module)
+
+    kept: list[tuple[str, str, TEntry]] = []
+    for caller_id, callee_id, entry in callers:
+        qualified = _qualify(entry.module, entry.name)
+        if (
+            _seeds_at_caller(entry)
+            and qualified != entry.module
+            and qualified in children_by_caller[caller_id]
+        ):
+            continue
+        kept.append((caller_id, callee_id, entry))
+    return kept
+
+
+def _subsume_sink_sites(
+    sink_callers: dict[str, list[tuple[str, TaintSink]]],
+) -> None:
+    """Apply :func:`subsume_slot_family_parents` to the sink index, in place.
+
+    The sink index is keyed by caller and holds ``(callee_id, sink)`` pairs
+    rather than the flat triples the source arm carries, so this adapts the
+    shape instead of duplicating the relation (L9: one fact, one home).
+    """
+    for caller_id, sites in list(sink_callers.items()):
+        kept = subsume_slot_family_parents(
+            [(caller_id, callee_id, sink) for callee_id, sink in sites],
+        )
+        sink_callers[caller_id] = [
+            (callee_id, sink) for _caller, callee_id, sink in kept
+        ]
+
+
+def _seeds_at_caller(entry: TaintEntry) -> bool:
+    """Whether this entry's BFS seeds at the CALL SITE rather than the callee.
+
+    Only :class:`TaintSource` carries ``start_at``; a sink has no seed of its
+    own, so it always answers True.
+    """
+    return not isinstance(entry, TaintSource) or entry.start_at == "caller"
 
 
 def propagate_taint_structural(
@@ -1970,10 +3236,16 @@ def propagate_taint_structural(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
-            io_mode=edge.get("meta", {}).get("io_mode"),
+            io_modes=call_site_modes(edge.get("meta")),
+            io_target_kinds=call_site_target_kinds(edge.get("meta")),
         )
-        if matched:
+        if matched and _source_call_can_mint_taint(edge):
             source_callers.append((edge["src"], edge["dst"], matched))
+
+    # INV-sukoh: one expression, one flow. ``os.environ.get(...)`` emits an
+    # attribute-reference edge AND a call edge, so the parent row and its own
+    # slot-family row both match the single read.
+    source_callers = subsume_slot_family_parents(source_callers)
 
     # Step 2: Find sink call sites — which symbol IDs call taint sinks?
     sink_callers: dict[str, list[tuple[str, TaintSink]]] = defaultdict(list)
@@ -1986,12 +3258,37 @@ def propagate_taint_structural(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
-            io_mode=edge.get("meta", {}).get("io_mode"),
+            io_modes=call_site_modes(edge.get("meta")),
         )
-        if matched:
+        if matched and _sink_call_can_carry_taint(edge):
             site = (edge["dst"], matched)
             if site not in sink_callers[edge["src"]]:
                 sink_callers[edge["src"]].append(site)
+
+    # INV-sukoh on the sink side: two of the four shipped parent rows are
+    # sinks, so ``sys.stdout.write(x)`` doubles exactly as the env read does.
+    _subsume_sink_sites(sink_callers)
+
+    # (caller, callee) -> every line that call occurs on, for
+    # ``_source_and_sink_are_one_call``. The DDG pass already builds this index
+    # for the §3a walk; the structural pass has no walk and needed it only when
+    # a primitive became both a source and a sink (INV-lozat), so it is built
+    # here rather than hoisted into a shared helper that one caller would use
+    # for two unrelated purposes.
+    # INV-fumod shape (b): which names a source read, and which can reach what
+    # a sink writes. Built here beside call_lines_by_pair for the same reason —
+    # the pairing loop is the only consumer.
+    source_name_index, sink_name_index = _name_flow_indexes(edges)
+
+    call_lines_by_pair: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for edge in edges:
+        if not _is_taint_call_edge(edge):
+            continue
+        sites = _edge_call_sites(edge)
+        if sites:
+            call_lines_by_pair[
+                (edge.get("src", ""), edge.get("dst", ""))
+            ].extend(sites)
 
     # Step 3: Find sanitizer call sites — multi-label-aware so one
     # caller of a barrier function picks up every input_taint label it
@@ -2000,7 +3297,7 @@ def propagate_taint_structural(
         defaultdict(dict)
     )
     _register_sanitizer_callers(
-        edges, sanitizer_by_callee, sanitizer_callers, ambiguous_names,
+        edges, sanitizer_by_callee, sanitizer_callers,
     )
 
     # Step 4: For each source, BFS forward to find reachable sinks
@@ -2037,6 +3334,19 @@ def propagate_taint_structural(
         for sink_node, sink_callee_id, taint_sink in _iter_sink_sites(
             sink_callers,
         ):
+            # INV-lozat: one call is not a source->sink pair with itself.
+            if _source_and_sink_are_one_call(
+                caller_id, sink_node, source_callee_id, sink_callee_id,
+                call_lines_by_pair,
+            ):
+                continue
+            # INV-fumod shape (b): the name this source read cannot reach what
+            # this sink writes, so the pair is false rather than unproven.
+            if not _source_names_can_reach_sink(
+                source_name_index.get((caller_id, source_callee_id)),
+                sink_name_index.get((sink_node, sink_callee_id)),
+            ):
+                continue
             if sink_node in reachable:
                 is_sanitized = False
                 path = _reconstruct_path(parent, seed_id, sink_node)
@@ -2060,15 +3370,34 @@ def propagate_taint_structural(
                 sink_primitive=taint_sink.name,
                 sink_module=taint_sink.module,
                 sink_zone=taint_sink.zone,
+                        # WI-bulag / T9: carried, never recomputed at the walk.
+                        resource_naming_only=taint_sink.resource_naming_only,
+                # INV-kakad: the SITE is the (caller, callee) pair. Recording
+                # the caller alone under-counts a function that calls four
+                # different sinks; recording the callee alone under-counts one
+                # sink reached from two callers. Both shapes are live.
+                sink_call_sites=((sink_node, sink_callee_id),),
                 sanitized=is_sanitized,
                 sanitized_by=sanitized_by,
                 sanitized_by_user_supplied=sanitized_by_user,
                 confidence="approximate",
                 analysis_method="structural",
+                # INV-zidur. This is the STRUCTURAL propagator: it is selected
+                # when the repo produced no DDG edges at all, so no walk was
+                # possible for any flow here. Stamped rather than left blank
+                # because "" is reserved for a finding deserialized from a map
+                # written before the field existed, and conflating "no walk was
+                # possible" with "this record predates the question" is the
+                # absence-means-two-things shape the field exists to remove.
+                walk_verdict=WALK_VERDICT_UNAVAILABLE,
                 path=path,
             ))
 
-    return findings
+    # INV-karud: every finding this arm emits is call-reachability-only, so
+    # none of them is entitled to a pair claim. Collapsing HERE rather than in
+    # the consumer keeps one home for the rule — a second consumer of
+    # ``propagate_taint_*`` would otherwise get the raw n x m product back.
+    return collapse_unadjudicated_flows(findings)
 
 
 def _reachability_past_sanitizers(
@@ -2315,12 +3644,26 @@ class EscapeSite(NamedTuple):
 #: * ``no_heir`` — the use derived nothing the DDG tracked and no catalogued
 #:   callee consumed it. This is the bucket ADR-0017 §7b's alias exclusion is
 #:   invoked for, and the only one for which that invocation can be correct.
+#: * ``unrecorded_heir`` — the use DID derive a variable, and the DDG holds no
+#:   uses for it while holding some for a sibling derived at the same line. An
+#:   EXTRACTION gap like ``source_undefined``, not a §7b scope exclusion, and
+#:   kept out of ``no_heir`` for exactly that reason: pooling an extractor gap
+#:   into the alias bucket is the misattribution :class:`EscapeSite` was split
+#:   into a triple to prevent.
+#: * ``unaccounted_mention`` — some statement the CFG RECORDED mentions this
+#:   variable and lists it in neither ``defines`` nor ``uses``, so the DDG's
+#:   picture of where the value goes is known to be incomplete (INV-lupav
+#:   clause L4). An EXTRACTION gap again, and the one no coverage predicate can
+#:   reach: the omission is INSIDE a covered extent. Go's grouped
+#:   ``var ( msg = cwd )`` and Python's ``c[key] = 1`` are the measured shapes.
 ESCAPE_REASONS = frozenset(
     {
         "source_undefined",
         "definition_unrecorded",
         "call_beside_heir",
         "no_heir",
+        "unrecorded_heir",
+        "unaccounted_mention",
     }
 )
 
@@ -2344,12 +3687,14 @@ def _ddg_taint_reaches(
     barrier_lines: AbstractSet[int] | None = None,
     forfeit_refutation: bool = False,
     escape_sites: list[EscapeSite] | None = None,
+    credited_user_summaries: set[str] | None = None,
+    unaccounted: AbstractSet[str] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
     TWO CALLERS ASK TWO QUESTIONS OF THIS ONE WALK. With no ``barrier_lines``
-    it answers §3a's "is there a data dependence from source to sink" — the
-    confirm-only adjudication. With the sanitizer call sites as barriers it
+    it answers §3a's "is there a data dependence from source to sink" — which
+    since WI-kabif both confirms a flow and, on ``False``, removes it. With the sanitizer call sites as barriers it
     answers "is there such a dependence that does NOT pass through a
     sanitizer", and the difference between the two runs is what earns
     ``sanitized`` for a same-function barrier (WI-fasub). Both readings rest on
@@ -2390,12 +3735,15 @@ def _ddg_taint_reaches(
     flow absent. Three of nine verified removals in the first cohort arm were
     this shape.
 
-    WHY NOTHING IS REMOVED TODAY, EVEN ON ``False``. Distinguishing a use that
+    WHAT A REMOVAL RESTS ON. Distinguishing a use that
     *terminates* the taint (``fmt.Printf(cwd)`` — argument consumed, result
     discarded) from one that *propagates* it (``lst.append(x)`` — argument
     escapes into the receiver) requires knowing whether the callee mutates its
     arguments. That is precisely ADR-0017 §4 function summaries, and §3a's own
-    step 3 says so: "At call sites, apply function summaries (§4)."
+    step 3 says so: "At call sites, apply function summaries (§4)." This
+    paragraph was headed "WHY NOTHING IS REMOVED TODAY, EVEN ON ``False``"
+    until WI-kabif granted §3a removal authority (2026-09-02); the heading is
+    corrected rather than the body, which is what the removal now rests on.
 
     THAT PARAGRAPH USED TO END "§4a and §4b have zero production callers, so
     the information does not exist at runtime". Half of it is now false and it
@@ -2413,10 +3761,15 @@ def _ddg_taint_reaches(
     state which direction it moves ``False``, and only the direction that
     produces FEWER of them is safe without new evidence.
 
-    Inclusion is still decided by call-graph reachability: the walk CONFIRMS
-    and never refutes, earning the ``precise`` label where it finds a
-    dependence. Removal authority is WI-kabif's, and it remains behind
-    INV-busis.
+    THE WALK NOW REFUTES, AND ONLY IN ONE DIRECTION. WI-kabif granted §3a
+    removal authority on 2026-09-02: a ``False`` REMOVES the flow. Inclusion
+    is still BOUNDED by call-graph reachability — the walk mints nothing, so
+    reading ``analysis_method == "ddg"`` as "inclusion decided by data flow"
+    remains the INV-sadah misreading — which is why the published
+    ``inclusion_decided_by`` is the compound
+    ``call_graph_reachability_minus_ddg_refutation``. This docstring said "the
+    walk CONFIRMS and never refutes ... removal authority remains behind
+    INV-busis" for twelve days after that stopped being true.
 
     The ADR-0017 §3a forward walk, over one function's reaching-definition
     edges. Seeds at the lines where the taint source is called — the value it
@@ -2444,6 +3797,14 @@ def _ddg_taint_reaches(
         source_lines: Lines where the taint source is called.
         sink_lines: Lines where the sink is called.
         ddg_uses: ``(symbol_id, variable, def_line) -> {use_line, ...}``.
+        unaccounted: Variable names this function's def/use extractor left
+            unaccounted at some statement that mentions them
+            (``cfg.unaccounted_names``). Popping one escapes: the DDG's picture
+            of that value is known to be partial, so an exhausted walk over it
+            is not evidence of absence. ``None`` means the caller has no such
+            evidence, NOT that there is none — an absent argument must never
+            read as a clean bill of health, which is why the sole production
+            caller passes it unconditionally.
         defs_at: ``(symbol_id, line) -> {variable, ...}`` defined at that line;
             used to seed on the source call site's own definitions.
         inherits: ``(symbol_id, line, used_variable) -> {variable, ...}`` —
@@ -2457,7 +3818,7 @@ def _ddg_taint_reaches(
             walk twice, once with barriers and once without, is what lets
             :func:`propagate_taint_ddg` tell "every data route to this sink
             passes through the sanitizer" from "some route does not" (WI-fasub).
-            Empty by default, so the §3a confirm-only walk is unaffected.
+            Empty by default, so the §3a adjudicating walk is unaffected.
         forfeit_refutation: The caller has established that this function's
             CFG statement extents do not cover every call node in its AST
             body — i.e. the def/use extractor did not see part of it. The
@@ -2511,6 +3872,33 @@ def _ddg_taint_reaches(
         if (var, line) in seen:
             continue
         seen.add((var, line))
+        if var in (unaccounted or frozenset()):
+            # INV-lupav CLAUSE L4. Some statement this function's CFG RECORDED
+            # mentions this variable and accounts for it in neither
+            # ``defines`` nor ``uses`` — Go's grouped ``var ( msg = cwd )``,
+            # Python's ``c[key] = 1``. The DDG therefore holds no edge out of
+            # that statement, the walk never visits it, and an exhausted walk
+            # reads as "this value goes nowhere" when the truth is "nobody
+            # looked". WI-joluk's coverage gate is blind to it by construction:
+            # the statement IS covered, so there is no uncovered extent at any
+            # predicate width.
+            #
+            # PER VARIABLE, NOT PER FUNCTION, which is why this is an escape
+            # rather than a forfeit. Only the walks that actually carry the
+            # unaccounted value lose their ``False``; a sibling walk over a
+            # variable the extractor did read keeps it.
+            #
+            # DOES NOT ``continue``. Falling through leaves the rest of this
+            # variable's recorded uses to be explored, so a ``True`` below
+            # still wins — the same asymmetry ``forfeit_refutation`` observes
+            # at the bottom of this function. Positive evidence of a dependence
+            # the walk DID find cannot be unmade by an incomplete picture, and
+            # downgrading it would turn a safety gate into a recall regression.
+            escaped = True
+            if escape_sites is not None:
+                escape_sites.append(
+                    EscapeSite(symbol_id, line, "unaccounted_mention")
+                )
         uses = ddg_uses.get((symbol_id, var, line))
         if not uses:  # pragma: no cover - unreachable; see below
             # DEFENSIVE, AND UNREACHABLE AS THE CODE STANDS. Two invariants
@@ -2578,12 +3966,42 @@ def _ddg_taint_reaches(
             # line, and a line-keyed step credited the taint in `server` with
             # reaching everything `path` later touches.
             followed = False
+            unrecorded_heir = False
             for heir in sorted((inherits or {}).get((symbol_id, use_line, var), ())):
                 if (symbol_id, heir, use_line) in ddg_uses:
                     if (heir, use_line) not in seen:
                         frontier.append((heir, use_line))
                     followed = True
+                else:
+                    # INV-lupav AT HEIR GRANULARITY. The DDG holds no uses for
+                    # this heir, which is the same fact the ``no_heir`` branch
+                    # below already treats as unknown when the heir is ALONE —
+                    # either it genuinely goes nowhere or the construct that
+                    # consumed it was never modelled, and nothing here can
+                    # tell those apart. Recording it means a RECORDED sibling
+                    # cannot close the line on its behalf; ``followed`` is a
+                    # disjunction, so without this flag one tracked heir
+                    # vouches for every untracked one beside it.
+                    unrecorded_heir = True
             if followed:
+                # AN HEIR THE DDG NEVER RECORDED IS NOT ACCOUNTED FOR, and
+                # this is asked BEFORE the call question because it is true
+                # whether or not the line calls anything. The permitting case
+                # written below — "no call at this line at all, so the heir
+                # really is the value's only exit" — reasons about THE heir,
+                # singular. With several, a recorded one does not make an
+                # unrecorded one an exit the walk understands.
+                #
+                # WI-joluk's coverage gate cannot reach this: it keys on CALL
+                # nodes, and the motivating statement (Go's ``a, b := cwd,
+                # cwd`` feeding a range clause, WI-losod) has no call at all.
+                if unrecorded_heir:
+                    escaped = True
+                    if escape_sites is not None:
+                        escape_sites.append(
+                            EscapeSite(symbol_id, use_line, "unrecorded_heir")
+                        )
+                    continue
                 # The taint continues along a chain we still understand — but
                 # ONE STATEMENT CAN DO TWO THINGS. ``acc.append(x); y = x``
                 # both hands ``x`` to a receiver we cannot follow and derives
@@ -2609,6 +4027,7 @@ def _ddg_taint_reaches(
                     continue
                 if _use_site_terminates(
                     symbol_id, use_line, callees_at, summaries,
+                    credited_user_summaries,
                 ):
                     continue
                 escaped = True
@@ -2625,6 +4044,7 @@ def _ddg_taint_reaches(
             # tell us the callee consumed it.
             if _use_site_terminates(
                 symbol_id, use_line, callees_at, summaries,
+                credited_user_summaries,
             ):
                 continue
             escaped = True
@@ -2690,6 +4110,7 @@ def _use_site_terminates(
     # rejects the ``defaultdict(set)`` every production caller builds.
     callees_at: Mapping[tuple[str, int], AbstractSet[str]] | None,
     summaries: Mapping[str, "FunctionSummary"] | None,
+    credited_user_summaries: set[str] | None = None,
 ) -> bool:
     """Does EVERY call at this line consume the tainted value and stop?
 
@@ -2733,6 +4154,21 @@ def _use_site_terminates(
         summary = summaries.get(qualified)
         if summary is None or not _summary_terminates(summary):
             return False
+    # ADR-0047 ruling 10 (WI-sofov). Record WHOSE word this closure rests on,
+    # and only once the line has actually terminated -- an entry consulted on a
+    # line that then escapes was not credited with anything.
+    #
+    # THIS IS COLLECTED HERE BECAUSE THERE IS NOWHERE ELSE TO READ IT FROM. A
+    # sanitized flow still surfaces as a finding carrying
+    # ``sanitized_by_user_supplied``, so the existing caveat reads it off the
+    # finding. A TERMINATED branch produces NO finding -- that is the whole
+    # point of terminating -- so if the walk does not say what it credited,
+    # nothing downstream can.
+    if credited_user_summaries is not None:
+        for qualified in callees:
+            summary = summaries.get(qualified)
+            if summary is not None and getattr(summary, "user_supplied", False):
+                credited_user_summaries.add(qualified)
     return True
 
 
@@ -2750,6 +4186,9 @@ def propagate_taint_ddg(
         str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]
     ] | None = None,
     forfeit_refutation: set[str] | None = None,
+    credited_user_summaries: set[str] | None = None,
+    refuted_flows: list["TaintFlowFinding"] | None = None,
+    unaccounted_names: Mapping[str, AbstractSet[str]] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -2830,14 +4269,6 @@ def propagate_taint_ddg(
     # `server`?" unanswered — and the edge set cannot answer it. The statement's
     # own defines/uses can: `keep = str(server)` consumes `server`,
     # `path = name` does not.
-    inherits: dict[tuple[str, int, str], set[str]] = defaultdict(set)
-    for sym_id, statements in (stmt_defuse or {}).items():
-        for line, defines, uses in statements:
-            if not defines:
-                continue
-            for used in uses:
-                inherits[(sym_id, line, used)].update(defines)
-
     # (caller, callee) → every line that call occurs on. A caller may invoke
     # the same callee more than once, and a flow is real if the taint reaches
     # ANY of those call sites, so this is a list rather than a single line.
@@ -2864,6 +4295,52 @@ def propagate_taint_ddg(
                 for site in sites:
                     callee_names[(src_id, site)].add(qualified)
 
+    # INV-fumod: a definition does NOT inherit taint across an I/O boundary.
+    #
+    # Built AFTER ``callee_names`` because it now asks a question about the
+    # defining line's callee, and the two indexes were previously built in the
+    # opposite order for no reason but history.
+    #
+    # THE RULE, and it is the 0001 rubric's own tie-break made executable:
+    # *taint flows through in-program computation, not through an external
+    # resource selected by the tainted value*. An I/O primitive's return value
+    # comes from the OTHER SIDE of the boundary — a handle on a resource the
+    # argument merely NAMED, or bytes the argument merely ADDRESSED — so it is
+    # not a computation on that argument.
+    #
+    # MEASURED, with a control that discriminates. `out = open(args.outfile,
+    # "w"); out.write("a constant banner")` reported TWO findings, `open` and
+    # `file.write`, where only the first is earned: nothing tainted is written.
+    # The control `out = open("/tmp/fixed.txt", "w"); out.write(args.payload)`
+    # reports `file.write` and MUST keep reporting it — there the tainted value
+    # reaches the write's own argument. The tool was already internally
+    # inconsistent about this, naming `open` correctly and then crediting the
+    # handle as well, which is what INV-fumod's statement calls out.
+    #
+    # DERIVED FROM THE CATALOGUE, NOT CURATED. Every I/O primitive is already
+    # enumerated per language; a hand-written list of "opening" calls would be
+    # the second home for that fact and would be wrong the moment a row is
+    # added. It costs nothing in recall where the far side is itself a source:
+    # `resp = requests.get(url)` stops inheriting `url`'s label and instead
+    # carries `untrusted_input` from the net_recv row, which is the more
+    # accurate statement of what `resp` holds.
+    _io_names: frozenset[str] = frozenset()
+    if language:
+        from .io_boundary import load_catalog
+        _io_names = frozenset(
+            f"{p.module}.{p.name}" if p.module else p.name
+            for p in load_catalog(language).primitives
+        )
+    inherits: dict[tuple[str, int, str], set[str]] = defaultdict(set)
+    for sym_id, statements in (stmt_defuse or {}).items():
+        for line, defines, uses in statements:
+            if not defines:
+                continue
+            if callee_names[(sym_id, line)] & _io_names:
+                continue
+            for used in uses:
+                inherits[(sym_id, line, used)].update(defines)
+
     # ADR-0017 §4b declared summaries, QUALIFIED KEYS ONLY.
     # ``load_function_summaries`` also indexes every entry under its bare last
     # component (``console.log`` → ``log``); an entry is its own qualified key
@@ -2888,6 +4365,11 @@ def propagate_taint_ddg(
     # Build call-graph adjacency for structural fallback
     forward_adj, _reverse_adj = _build_adjacency(call_edges)
 
+    # INV-fumod shape (b): the same two indexes the structural arm builds.
+    # Built from ``call_edges`` because that is where the analyzer's env-read
+    # and redirect edges live — ``ddg_edges`` carry def-use, not I/O meta.
+    source_name_index, sink_name_index = _name_flow_indexes(call_edges)
+
     # Step 1: Find source call sites (module + ambiguous_names aware — WI-razol)
     source_callers: list[tuple[str, str, TaintSource]] = []
     for edge in call_edges:
@@ -2898,10 +4380,19 @@ def propagate_taint_ddg(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
-            io_mode=edge.get("meta", {}).get("io_mode"),
+            io_modes=call_site_modes(edge.get("meta")),
+            io_target_kinds=call_site_target_kinds(edge.get("meta")),
         )
-        if matched:
+        if matched and _source_call_can_mint_taint(edge):
+            # WI-lipis: the ddg arm asks the identical question through the
+            # identical predicate. Two copies is how the sink side's call
+            # family drifted across three consumers.
             source_callers.append((edge["src"], edge["dst"], matched))
+
+    # INV-sukoh: one expression, one flow. ``os.environ.get(...)`` emits an
+    # attribute-reference edge AND a call edge, so the parent row and its own
+    # slot-family row both match the single read.
+    source_callers = subsume_slot_family_parents(source_callers)
 
     # Step 2: Find sink call sites (module + ambiguous_names aware — WI-razol)
     sink_callers: dict[str, list[tuple[str, TaintSink]]] = defaultdict(list)
@@ -2913,7 +4404,7 @@ def propagate_taint_ddg(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
-            io_mode=edge.get("meta", {}).get("io_mode"),
+            io_modes=call_site_modes(edge.get("meta")),
         )
         if matched:
             # ``sink_site``, not ``site``: the call-line loop above binds
@@ -2923,9 +4414,18 @@ def propagate_taint_ddg(
             # — i.e. as dead — when it is the deduplication this loop rests
             # on. The structural propagator's identical block keeps ``site``,
             # because there the name is not already taken.
+            if not _sink_call_can_carry_taint(edge):
+                # INV-fubag, through the SHARED predicate: the structural arm
+                # applies the identical gate. Two copies of this question is
+                # how the call-family set drifted across three consumers.
+                continue
             sink_site = (edge["dst"], matched)
             if sink_site not in sink_callers[edge["src"]]:
                 sink_callers[edge["src"]].append(sink_site)
+
+    # INV-sukoh, same as the structural arm: the parent attribute row and its
+    # own slot family both match one ``sys.stdout.write(x)``.
+    _subsume_sink_sites(sink_callers)
 
     # Step 3: Find sanitizer call sites — through the SHARED helper, so the
     # INV-finoh resolution-/kind-aware gate applies here too.
@@ -2946,7 +4446,7 @@ def propagate_taint_ddg(
     # disagree with the barrier set above about what counts as a sanitizer.
     sanitizer_lines: dict[tuple[str, str], list[int]] = {}
     _register_sanitizer_callers(
-        call_edges, sanitizer_by_callee, sanitizer_callers, ambiguous_names,
+        call_edges, sanitizer_by_callee, sanitizer_callers,
         sanitizer_lines=sanitizer_lines,
     )
 
@@ -2983,6 +4483,25 @@ def propagate_taint_ddg(
         for sink_node, sink_callee_id, taint_sink in _iter_sink_sites(
             sink_callers,
         ):
+            # INV-lozat: one call is not a source->sink pair with itself. This
+            # is NOT the §3a walk refuting -- that walk removes only on its own
+            # `unconfirmed` verdict, and its `sink_before_source` blocker stays
+            # recorded, never acted on.
+            if _source_and_sink_are_one_call(
+                caller_id, sink_node, source_callee_id, sink_callee_id,
+                call_lines,
+            ):
+                continue
+            # INV-fumod shape (b), the SECOND home of this question. A language
+            # with no DDG still reaches findings through this arm (bash reports
+            # analysis_method "structural" with walk "unavailable" from here),
+            # so gating only the structural propagator left the item's own
+            # instance standing while every unit test passed.
+            if not _source_names_can_reach_sink(
+                source_name_index.get((caller_id, source_callee_id)),
+                sink_name_index.get((sink_node, sink_callee_id)),
+            ):
+                continue
             is_sanitized = False
             # INV-pojib: the sanitizer the DDG arm credited, if that is the arm
             # that fired. Reset per sink site, because two sinks in one function
@@ -3033,6 +4552,27 @@ def propagate_taint_ddg(
             #     cannot see may well receive the taint, so the absence of a
             #     dependence to the one line we can see licenses nothing.
             adjudicated = False
+            # INV-zidur. ``adjudicated`` is the CONFIRMATION question and stays
+            # a bool because every consumer of it below asks exactly that. It is
+            # deliberately NOT the removal question: removal reads ``verdict``
+            # further down, so that ``False`` and ``None`` stay distinguishable
+            # right up to the point one of them acts. The
+            # walk's raw three-valued answer, and whether it ran at all, are
+            # kept alongside so the label can say which of the three
+            # non-confirming outcomes this was.
+            walk_result: bool | None = None
+            walk_ran = False
+            blocked_by = ""
+            if not fn_has_ddg:
+                pass
+            elif sink_node != source_fn:
+                # §3a is intraprocedural by construction. WI-kabif's own
+                # filing predicted this would dominate ("69 percent of flows
+                # have source and sink in different functions"), and it is the
+                # blocker §4 function summaries exist to lift.
+                blocked_by = WALK_BLOCKED_CROSS_FUNCTION
+            elif not source_call_lines:
+                blocked_by = WALK_BLOCKED_NO_SOURCE_CALL_LINE
             if fn_has_ddg and sink_node == source_fn and source_call_lines:
                 sink_call_lines = call_lines.get(
                     (sink_node, sink_callee_id), [],
@@ -3045,18 +4585,49 @@ def propagate_taint_ddg(
                     for sink_line in sink_call_lines
                     for source_line in source_call_lines
                 )
+                if not sink_call_lines:
+                    blocked_by = WALK_BLOCKED_NO_SINK_CALL_LINE
+                elif not source_tracked:
+                    blocked_by = WALK_BLOCKED_SOURCE_NOT_TRACKED
+                elif not sink_after_source:
+                    blocked_by = WALK_BLOCKED_SINK_BEFORE_SOURCE
                 if sink_call_lines and source_tracked and sink_after_source:
-                    # CONFIRM-ONLY. The walk raises confidence when it finds a
-                    # data dependence and never removes a flow, because a sound
-                    # refutation is not available on this substrate — see the
-                    # note on §4 below. ``None`` (escaped) and ``False``
-                    # (exhausted) are therefore treated alike: neither is
-                    # evidence the flow is absent.
-                    adjudicated = _ddg_taint_reaches(
+                    # ADJUDICATING, NOT CONFIRM-ONLY (WI-kabif, granted
+                    # 2026-09-02). ``None`` (escaped) and ``False``
+                    # (exhausted) are no longer alike: the first is ignorance
+                    # and keeps the flow, the second is positive evidence of
+                    # NO dependence and REMOVES it below. That asymmetry is
+                    # the entire grant, and it is why ``walk_verdict_for``
+                    # carries two names for the two negatives.
+                    walk_ran = True
+                    # INV-lupav L2, AND IT IS NO LONGER A NO-OP HERE. The rule
+                    # is that a site which CONSUMES the walk's ``False`` must
+                    # pass the forfeit gate; a site that COLLAPSES it with
+                    # ``is True`` need not, because ``False`` is then
+                    # indistinguishable from ``None``. This site used to
+                    # collapse and now consumes: ``walk_verdict`` distinguishes
+                    # ``unconfirmed`` from ``escaped``, so an UNEARNED ``False``
+                    # — the walk exhausted only because a later use sits in a
+                    # construct the extractor does not model — would be
+                    # published as "the walk looked everywhere and found
+                    # nothing", which is exactly the claim INV-lupav says is not
+                    # earned. Forfeiting downgrades it to ``None`` and the
+                    # finding reads ``escaped``, which is the true statement.
+                    #
+                    # ``test_taint_refutation_gate_contract`` asserts this
+                    # pairing structurally, and it FIRED on the first cut of
+                    # this change — the guard doing the job it was built for.
+                    walk_result = _ddg_taint_reaches(
                         source_fn, source_call_lines, sink_call_lines,
                         ddg_uses, callee_names, summaries,
                         defs_at=defs_at, inherits=inherits,
-                    ) is True
+                        forfeit_refutation=(
+                            source_fn in (forfeit_refutation or set())
+                        ),
+                        credited_user_summaries=credited_user_summaries,
+                        unaccounted=(unaccounted_names or {}).get(source_fn),
+                    )
+                    adjudicated = walk_result is True
 
                     # WI-fasub: a sanitizer in the SAME function as the source.
                     #
@@ -3093,16 +4664,20 @@ def propagate_taint_ddg(
                     # ``sanitized_reachable``). This check ADDS a way to earn
                     # the label and must never take one away.
                     #
-                    # WI-joluk, AND ONLY ON THIS ARM. The §3a arm above tests
-                    # `is True`, so `False` and `None` already collapse there
-                    # and the gate would change nothing. HERE a `False` earns
+                    # WI-joluk, ON BOTH ARMS NOW. This comment read "AND ONLY
+                    # ON THIS ARM ... the §3a arm above tests `is True`, so
+                    # `False` and `None` already collapse there" — true when
+                    # the gate landed here first (2026-08-26) and false since
+                    # the §3a arm began consuming the walk's `False`. Both
+                    # arms pass the gate today and the contract test requires
+                    # it. HERE a `False` earns
                     # `sanitized` and a sanitized flow is dropped from the
                     # claim's violation set — so a `False` from a function the
                     # extractor did not fully see suppresses a real violation.
                     # Forfeiting downgrades that to `None`, which produces
                     # strictly FEWER suppressions and therefore strictly MORE
                     # surviving violations: the safe direction, and the reason
-                    # this could land before removal authority exists.
+                    # this could land before removal authority existed.
                     if adjudicated and barrier_sites:
                         ddg_sanitized = _ddg_taint_reaches(
                             source_fn, source_call_lines, sink_call_lines,
@@ -3112,6 +4687,10 @@ def propagate_taint_ddg(
                             forfeit_refutation=(
                                 source_fn in (forfeit_refutation or set())
                             ),
+                            credited_user_summaries=credited_user_summaries,
+                            unaccounted=(
+                                unaccounted_names or {}
+                            ).get(source_fn),
                         ) is False
                         # INV-pojib: THIS ARM DECIDES THE SAME-FUNCTION SHAPE,
                         # and it is the arm the measured repro went through --
@@ -3153,15 +4732,20 @@ def propagate_taint_ddg(
             # unrelated language's presence, which is exactly what (a3)
             # forbids. Deciding it here, on whether the DDG actually covered
             # the source function, makes the label a property of the flow.
-            if adjudicated:
-                confidence = "precise"
-                method = "ddg"
-            elif fn_has_ddg:
-                confidence = "approximate"
-                method = "ddg_mixed"
-            else:
-                confidence = "approximate"
-                method = "structural"
+            #
+            # INV-zidur: the WALK'S OWN RESULT is carried beside the method now.
+            # ``method`` is derived from the verdict rather than recomputed, so
+            # the coarse name and the fine one cannot disagree — and the coarse
+            # name's published meaning is unchanged, which is why every
+            # ``ddg_mixed`` in docs/measurements/0006 still says what it said.
+            verdict = walk_verdict_for(
+                walk_result, ran=walk_ran, covered=fn_has_ddg,
+            )
+            method = method_for_walk_verdict(verdict)
+            confidence = (
+                "precise" if verdict == WALK_VERDICT_CONFIRMED
+                else "approximate"
+            )
 
             path = _reconstruct_path(
                 {**parent, **sanitized_parent} if is_sanitized else parent,
@@ -3182,6 +4766,65 @@ def propagate_taint_ddg(
                 sanitized_by_user = tuple(
                     b.qualified_name for b in ddg_barrier if b.user_supplied
                 )
+
+            # ADR-0017 §3a REMOVAL AUTHORITY (WI-kabif + WI-joluk).
+            #
+            # ``unconfirmed`` is the ONLY verdict that may remove a flow, and
+            # it means something narrow: the walk seeded on a definition the
+            # DDG actually recorded, followed every route out of it, and every
+            # route ended somewhere ACCOUNTED FOR -- a §4 terminating summary
+            # or a barrier -- without ever reaching a sink argument.
+            # ``escaped`` (the value went into a container, a field, a closure,
+            # or a callee nothing is declared about) is IGNORANCE and keeps its
+            # flow; ``not_attempted`` never ran.
+            #
+            # THREE THINGS KEEP THIS EARNED, EACH INDIVIDUALLY LOAD-BEARING.
+            # (1) WI-joluk's forfeit gate has already downgraded any ``False``
+            # from a function whose CFG missed a call node in its body, so an
+            # exhausted walk over a demonstrably incomplete graph never arrives
+            # here. (2) ``_summary_terminates`` is a conjunction in which any
+            # doubt reads as "no", so an unmodelled callee escapes rather than
+            # terminating. (3) The walk is intraprocedural, so "every route" is
+            # a claim about one function body, not about the program.
+            #
+            # WHAT IS BEING TRADED, IN WRITING. ADR-0017 §7b excludes alias
+            # analysis and states a preference for overapproximation, so this
+            # introduces FALSE NEGATIVES on container and alias mutation. The
+            # owner granted that trade explicitly on 2026-09-02. It is not a
+            # trade this code may make on its own authority.
+            #
+            # MEASURED EFFECT ON TODAY'S CORPUS: ZERO. hypergumbo-core reports
+            # 15 confirmed / 12 escaped / 0 unconfirmed across 27 walks, and
+            # the 11-repo cohort reports the same zero (153 ``ddg_mixed`` rows:
+            # 0 unconfirmed / 14 escaped / 139 not_attempted). These are live
+            # semantics over a currently EMPTY class; they activate as escape
+            # sites close, which is why ``refuted_flows`` exists -- a removal
+            # nobody can count is a security tool deleting findings in silence.
+            if verdict == WALK_VERDICT_UNCONFIRMED:
+                if refuted_flows is not None:
+                    refuted_flows.append(TaintFlowFinding(
+                        taint_label=taint_label,
+                        source_symbol=seed_id,
+                        source_primitive=taint_source.name,
+                        source_module=taint_source.module,
+                        source_boundary=taint_source.source_boundary,
+                        sink_symbol=sink_callee_id,
+                        sink_primitive=taint_sink.name,
+                        sink_module=taint_sink.module,
+                        sink_zone=taint_sink.zone,
+                        # WI-bulag / T9: carried, never recomputed at the walk.
+                        resource_naming_only=taint_sink.resource_naming_only,
+                        sink_call_sites=((sink_node, sink_callee_id),),
+                        sanitized=is_sanitized,
+                        sanitized_by=sanitized_by,
+                        sanitized_by_user_supplied=sanitized_by_user,
+                        confidence=confidence,
+                        analysis_method=method,
+                        walk_verdict=verdict,
+                        path=path,
+                    ))
+                continue
+
             findings.append(TaintFlowFinding(
                 taint_label=taint_label,
                 source_symbol=seed_id,
@@ -3192,12 +4835,23 @@ def propagate_taint_ddg(
                 sink_primitive=taint_sink.name,
                 sink_module=taint_sink.module,
                 sink_zone=taint_sink.zone,
+                        # WI-bulag / T9: carried, never recomputed at the walk.
+                        resource_naming_only=taint_sink.resource_naming_only,
+                sink_call_sites=((sink_node, sink_callee_id),),  # INV-kakad
                 sanitized=is_sanitized,
                 sanitized_by=sanitized_by,
                 sanitized_by_user_supplied=sanitized_by_user,
                 confidence=confidence,
                 analysis_method=method,
+                walk_verdict=verdict,
+                walk_blocked_by=(
+                    blocked_by
+                    if verdict == WALK_VERDICT_NOT_ATTEMPTED else ""
+                ),
                 path=path,
             ))
 
-    return findings
+    # INV-karud. This arm emits all three methods, and the collapse is
+    # method-aware: ``ddg`` findings pass through with their pair claim intact
+    # because the walk actually confirmed a dependence for them.
+    return collapse_unadjudicated_flows(findings)

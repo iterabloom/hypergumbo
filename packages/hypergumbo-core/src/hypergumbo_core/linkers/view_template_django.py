@@ -6,9 +6,11 @@ Django apps connect view callables to templates by three routes:
 1. **Explicit string in a ``render()`` call.** ``render(request, "users/show.html",
    ctx)`` resolves under ``<app>/templates/users/show.html`` (Django's standard
    ``APP_DIRS`` lookup) or, less commonly, project-level ``templates/users/show.html``.
-   The view callable doing the render is the source of the ``renders`` edge.
+   The view callable doing the render is the source of the ``references`` edge
+   (``meta["ref_construct"] = "view_render"``, emitted by ``_view_template_core``).
 
-2. **Class-attribute string on a ``TemplateView``.** ``class HomeView(TemplateView):
+2. **Class-attribute ``template_name`` string** (any class body, typically a
+   ``TemplateView``). ``class HomeView(TemplateView):
    template_name = "home/index.html"`` declares the template path at class scope.
    Source of the edge is the view class itself.
 
@@ -23,17 +25,20 @@ The Python analyzer captures class ``base_classes`` in symbol meta but does not
 emit call-site string arguments or class-body attribute values into the IR. To
 keep the IR small and avoid coupling analyzer schema to per-framework linker
 needs, the Django linker re-parses the view source files it cares about using
-the stdlib ``ast`` module. Scan scope is narrowed by the
-``_is_django_view_path`` heuristic (paths matching ``views.py``, ``views_*.py``,
-or somewhere under a ``views/`` directory), keeping the work bounded.
+the stdlib ``ast`` module. The explicit-string strategy narrows its scan scope
+by the ``_is_django_view_path`` heuristic (paths matching ``views.py``,
+``views_*.py``, or somewhere under a ``views/`` directory); the CBV-default
+strategy applies no path filter and parses only files declaring a class whose
+base resolves to a generic CBV. Both keep the work bounded.
 
 Why explicit-string and CBV-default are separate strategies
 -----------------------------------------------------------
 ``DjangoExplicitStringStrategy`` produces ``(action, string)`` pairs and lets
 the shared core do candidate generation via ``string_to_candidates``. The CBV
 default path cannot be expressed as an ``(action, string)`` pair because the
-template name is derived from class-name regex matching plus a model attribute
-lookup, not from a string literal. ``DjangoCBVDefaultStrategy`` subclasses
+template name is derived from the view's base-class name (matched against
+``_CBV_DEFAULT_SUFFIXES`` via ``ctx.base_name_origins``) plus the snake-cased
+``model`` attribute, not from a string literal. ``DjangoCBVDefaultStrategy`` subclasses
 ``TemplateStrategy`` directly so it can yield emissions whose ``action_symbol``
 is the view class and whose detection pattern is ``cbv_default_template``.
 """
@@ -45,10 +50,6 @@ from pathlib import Path
 from typing import Iterable, Iterator, Optional, Tuple
 
 from ..ir import Symbol
-from ._transitive_bases import (
-    build_inheritance_index,
-    collect_transitive_base_names,
-)
 from ._view_template_core import (
     ExplicitStringStrategy,
     TemplateCandidate,
@@ -57,6 +58,7 @@ from ._view_template_core import (
     link_via_strategies,
 )
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_source_text
 
 # CBV bases whose subclasses get model-derived default templates.
 _CBV_DEFAULT_SUFFIXES: dict[str, str] = {
@@ -201,7 +203,7 @@ def _language_for_extension(extension: str) -> str:
 def _parse_view_file(view_path: Path) -> Optional[ast.Module]:
     """Best-effort parse of a Django views file."""
     try:
-        source = view_path.read_text(encoding="utf-8", errors="ignore")
+        source = read_source_text(view_path, encoding="utf-8", errors="ignore")
     except OSError:
         return None
     try:
@@ -336,17 +338,15 @@ class DjangoCBVDefaultStrategy(TemplateStrategy):
     def find_emissions(
         self, ctx: LinkerContext
     ) -> Iterator[TemplateRenderEmission]:
-        inheritance_index = build_inheritance_index(ctx.edges)
-        symbol_by_id = {sym.id: sym for sym in ctx.symbols}
-
         for sym in ctx.symbols:
             if sym.kind != "class" or sym.language != "python":
                 continue
-            chain = collect_transitive_base_names(
-                sym, symbol_by_id, inheritance_index
-            )
-            matching_cbv = next(
-                (b for b in chain if b in _CBV_DEFAULT_SUFFIXES), None
+            matching_cbv, cbv_via = next(
+                (
+                    (b, via) for b, via in ctx.base_name_origins(sym)
+                    if b in _CBV_DEFAULT_SUFFIXES
+                ),
+                (None, ()),
             )
             if matching_cbv is None:
                 continue
@@ -378,6 +378,8 @@ class DjangoCBVDefaultStrategy(TemplateStrategy):
                 line=sym.span.start_line if sym.span else 0,
                 detection_pattern="cbv_default_template",
                 candidates=candidates,
+                # INV-rukor: the ancestor/edges the CBV base was read through.
+                consumed_ids=cbv_via,
             )
 
 

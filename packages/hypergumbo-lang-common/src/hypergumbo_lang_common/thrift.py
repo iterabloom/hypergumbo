@@ -59,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -219,6 +220,7 @@ def _extract_symbols_and_edges(
                         src=service_sym.id,
                         dst=func_sym.id,
                         edge_type="contains",
+                        evidence_type="enclosing_scope",
                         line=func_sym.span.start_line,
                         origin=PASS_ID,
                         origin_run_id=run_id,
@@ -259,6 +261,7 @@ def _extract_symbols_and_edges(
                         src=make_file_id("thrift", file_path),
                         dst=f"thrift:{include_path}:1-1:file:file",
                         edge_type="imports",
+                        evidence_type="include",
                         line=node.start_point[0] + 1,
                         origin=PASS_ID,
                         origin_run_id=run_id,
@@ -304,6 +307,7 @@ class ThriftAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()

@@ -1,0 +1,53 @@
+- op: create  # 52a9
+  at: '2026-09-24T09:51:02Z'  # 52a9
+  by: agent  # 52a9
+  actor: jgstern_agent  # 52a9
+  clock: 1  # 52a9
+  nonce: 52a9  # 52a9
+  data:  # 52a9
+    kind: work_item  # 52a9
+    title: "js_ts: the callback position lookup omits line_offset, so a .vue callback's calls are credited to the enclosing function while the same shape in .js/.ts is credited to the callback"  # 52a9
+    status: todo_hard  # 52a9
+    priority: 3  # 52a9
+    parent:  # 52a9
+    tags:  # 52a9
+    - javascript  # 52a9
+    - typescript  # 52a9
+    - analysis_quality  # 52a9
+    isbefore: []  # 52a9
+    duplicate_of: []  # 52a9
+    not_duplicate_of: []  # 52a9
+    pr_ref:  # 52a9
+    description: "FOUND 2026-09-24 while fixing INV-midag's javascript/typescript lookup, and deliberately NOT fixed there.\n\njs_ts.py _get_enclosing_function has an arrow/function-expression tail branch: \"not assigned to a variable, try position-based lookup\". It builds its key as (str(file_path), start_line, start_col) WITHOUT `line_offset`. Every other branch of the same function adds it: function declarations, methods, and since INV-midag the declarator branch. `line_offset` is how a `.vue` single-file component's `<script>` block is positioned. So in `.vue` files a callback's own symbol (the `_cb_*` symbols from WI-zavad) is NEVER found by that branch. The walk continues up, and the call is credited to the enclosing named function, while in a `.js` / `.ts` file the same shape is credited to the callback.\n\nWHY IT WAS NOT FIXED WITH INV-midag: adding the offset moves attribution for every `.vue` callback, from the enclosing function to the callback symbol. Both contain the call, so INV-midag's containment statement holds either way. It is a RELABEL at scale: a first cut of INV-midag's js fix that also resolved callbacks innermost-first moved 831 in-span srcs on koel alone. It needs its own A/B and its own decision on which attribution is wanted. Make .vue match .js, or make both credit the enclosing function."  # 52a9
+    fields: {}  # 52a9
+- op: discuss  # 4fa8
+  at: '2026-09-24T10:29:46Z'  # 4fa8
+  by: agent  # 4fa8
+  actor: jgstern_agent  # 4fa8
+  clock: 2  # 4fa8
+  nonce: 4fa8  # 4fa8
+  message: "Instance, measured 2026-09-24 after INV-midag's js fix: 9 typescript call edges in koel's components/utils/HotkeyListener.vue remain out of span. The anonymous callback symbols (_cb_onKeyStroke) are positioned WITHOUT the .vue <script> line_offset (e.g. span 40-40), while their calls carry it (lines 44-46, 60-61). Same offset inconsistency, on the symbol-creation side. These 9 are the only typescript out-of-span edges left on the corpus: 33 -> 9 after INV-midag."  # 4fa8
+- op: update  # d1cd
+  at: '2026-09-24T11:09:53Z'  # d1cd
+  by: agent  # d1cd
+  actor: jgstern_agent  # d1cd
+  clock: 3  # d1cd
+  nonce: d1cd  # d1cd
+  set: {}  # d1cd
+  add:  # d1cd
+    isbefore: [INV-midag-mipit-sidob-vivah-natat-pados-musig-rokun]  # d1cd
+- op: update  # 311f
+  at: '2026-09-24T18:43:01Z'  # 311f
+  by: agent  # 311f
+  actor: jgstern_agent  # 311f
+  clock: 4  # 311f
+  nonce: 311f  # 311f
+  set:  # 311f
+    status: done  # 311f
+- op: discuss  # b636
+  at: '2026-09-24T18:43:01Z'  # b636
+  by: agent  # b636
+  actor: jgstern_agent  # b636
+  clock: 5  # b636
+  nonce: b636  # b636
+  message: "DONE, PR #1183 (merged 2026-09-24, f77cb8af47).\n\nCORRECTION TO THIS ROW'S DIAGNOSIS: the callback symbols were positioned correctly, WITH the offset. The LOOKUP lacked it. Its key named a line `line_offset` lines above the callback, and in koel's HotkeyListener.vue another callback started at that line and column, so it was credited: _cb_onKeyStroke at 40-40 credited with calls at 44-46. Where nothing started there, the walk went on to the enclosing function or the file.\n\nFIX: the callback branch of js_ts._get_enclosing_function adds line_offset, like every other branch.\n\nDECISION (the row asked which attribution is wanted): .vue/.svelte now match .js. A callback is credited with its own calls, which is the WI-zavad design the _cb_* symbols exist for.\n\nBEHAVIORAL EVIDENCE:\n- test_js_call_anchor.py::test_a_vue_callback_is_credited_with_its_own_calls. It was red on dev (the call at line 6 was credited to the file) and is green with the fix. Collision, fall-through and in-span cases are all asserted.\n- A/B: analyze_javascript from a pinned dev worktree vs the fix, calls edges keyed by (path, dst, line):\n    koel            OUT->in 9 (all in HotkeyListener.vue), file->callback 279\n    chatwoot        enclosing fn->callback 7\n    podman-desktop  file->callback 78, enclosing fn->callback 11\n    workadventure   file->callback 55, enclosing fn->callback 15\n    gitlab          file->callback 2, enclosing fn->callback 115\n  On every repo, 0 edges were added or lost and 0 moved in->out.\nInstruments: ~/hypergumbo_lab_notebook/pizan_09242026/ (ab.py, diff.py, DIFF.txt)."  # b636

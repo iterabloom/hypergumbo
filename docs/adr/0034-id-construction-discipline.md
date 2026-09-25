@@ -109,13 +109,19 @@ This ADR addresses only `Symbol.id` construction. Three adjacent identity-discip
 
 The `id_format` validator class at `packages/hypergumbo-core/src/hypergumbo_core/spec_validator.py:_check_id_format` is the runtime enforcement. It iterates every Symbol in the emitted IR, applies the canonical regex, and produces a structured `ValidationViolation` for each non-conforming ID. The violation message includes a problem-category tag (`double_colon_separator (INV-sadiv)` / `wrong_field_count` / `non_canonical_language_prefix` / `malformed_span_segment` / `non_canonical_kind_suffix`) so operators can quickly diagnose which emit site needs migration.
 
-### Static check — known gap
+### Static check — landed 2026-09-11 (WI-vodin)
 
-There is **no static-AST check today** that flags `id=f"..."` patterns in source. A future static linter (analogous to `multi_value_field_axis.py`'s static enforcement of the `# axis:` annotation) could scan for f-string ID construction at PR-review time. Until that lands, the discipline relies on the runtime validator + reviewer awareness.
+`scripts/check-id-construction` (linter at `hypergumbo_core/check_id_construction.py`, pinned by `test_live_tree_passes`, wired into `.githooks/pre-commit`) is the static companion this section used to describe as a gap. It closes the gap in a shape the original wording did not anticipate, and the difference matters:
+
+- **The population is not the constructor.** Scanning for `id=f"..."` at the call site reaches **one** site in the tree. 231 of the 470 `id=` arguments are a bare local and 20 of the f-strings hide behind one, so the check resolves three hops — the argument, one in-function local assignment, one same-module helper — and stops there (a fourth needs real dataflow and would trade a sharp rule for a fuzzy one).
+- **The offence is not the f-string, it is the ungrammatical id.** A synthetic linker stand-in has no source span and legitimately writes `0-0` by hand; 14 of the 40 hand-built templates in the tree are conformant and stay. The rule is this ADR's grammar applied to the *template*, with a slot filled by an interpolation treated as opaque rather than guessed at.
+- **`Edge.id` answers to a different grammar** — `edge:sha256:<16hex>`, a content digest — and is checked against that, at both the producer (this linter) and the runtime (`_check_edge_id_format`). The two ids are counterparts in role, not in shape.
+
+Its first run found **26 sites** whose emitted ids this ADR's own runtime validator classifies as malformed, the commonest being a bare line number where the grammar requires `start-end`. All 26 were repaired in the same change.
 
 ### Reviewer-time check (this ADR's reviewer checklist)
 
-The checklist above is the documented manual gate. Until the static-AST companion lands, reviewers are the first line of defense for new emit sites; the runtime validator is the second.
+The checklist above remains the documented manual gate for judgement calls the linter cannot make — whether a slot holds the *right* value, as against a well-formed one. The mechanical shape is no longer a reviewer's job.
 
 ## Implementation status
 
@@ -128,6 +134,7 @@ The checklist above is the documented manual gate. Until the static-AST companio
   - `linkers/graphql.py::_create_client_symbol` (graphql_client function)
 - **Phase 5 PR2 (this ADR)**: policy documentation.
 - **Phase 6 PR1 (planned)**: extend the validator to `Symbol.stable_id` format, address INV-hunup multiplicity and INV-dulah escapes via the same validator-driven cleanup model.
+- **WI-vodin (landed 2026-09-11)**: the static-AST linter above, plus `Edge.id`'s own format validator. The deferred Phase 6 PR1 item asked for `Edge.id` to be checked against `Symbol.id`'s shape; measured against a live survey, every edge id is `edge:sha256:<16hex>`, so that rule would have reported a 100% violation rate on every repository. The discipline transferred; the pattern did not.
 
 ## Consequences
 

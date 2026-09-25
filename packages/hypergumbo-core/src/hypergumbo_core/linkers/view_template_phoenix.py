@@ -185,7 +185,9 @@ class PhoenixStrategy(MethodNameStrategy):
 
 @register_linker(
     "view_template_phoenix",
-    priority=67,  # After Rails (65) and Django (66); shares the renders edge type.
+    # After Rails (65) and Django (66); shares the family's references edge
+    # (meta["ref_construct"] = "view_render").
+    priority=67,
     description="Phoenix controller action → template binding",
     activation=LinkerActivation(frameworks=["phoenix"]),
     # CNF: Phoenix is Elixir-only.

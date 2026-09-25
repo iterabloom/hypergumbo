@@ -24,9 +24,13 @@ Electron IPC (main → renderer):
 - event.sender.send('channel', data)       -> event_publishes (channel_kind='ipc')
 
 Electron IPC (receive side — main and renderer):
-- ipcMain.on / .handle / .handleOnce       -> dropped (DEPRECATE-NO-FOLD per audit-findings 0002;
-- ipcRenderer.on / .once                      forward event_publishes captures the relationship,
-                                              and slice walks reverse direction natively)
+- ipcMain.on / .handle / .handleOnce       -> detected and used as the DST of the forward
+- ipcRenderer.on / .once                      edge; receive symbols are emitted. Only the
+                                              converse-direction edge is dropped
+                                              (DEPRECATE-NO-FOLD per audit-findings 0002:
+                                              forward event_publishes captures the
+                                              relationship, and slice walks reverse
+                                              direction natively)
 
 Electron contextBridge (preload → renderer):
 - contextBridge.exposeInMainWorld('ns', { method: () => ipcRenderer.invoke('ch') })
@@ -38,8 +42,11 @@ Electron contextBridge (preload → renderer):
   handler.
 
 Web Workers / postMessage:
-- worker.postMessage(data)                 -> event_publishes (channel_kind='ipc')
-- window.postMessage(data, origin)         -> event_publishes (channel_kind='ipc')
+- worker.postMessage(data)                 -> detected, but NO edge and NO symbol: the
+- window.postMessage(data, origin)            pattern names no channel, and the edge loop
+                                              skips a call whose channel is empty. Pairing
+                                              an unnamed postMessage with its listener needs
+                                              a channel the syntax does not carry.
 - addEventListener('message', handler)     -> dropped (per audit-findings 0002, as above)
 
 Channel Detection Strategy
@@ -60,7 +67,10 @@ How It Works
 4. Create edges linking files with matching channels/variables
 5. Detect contextBridge.exposeInMainWorld() wrappers in preload scripts,
    then scan other files for window.namespace.method() calls and create
-   bridge_invokes edges linking those calls to the IPC send symbols
+   canonical ``calls`` edges (``meta["bridge_kind"]="context_bridge"``; the
+   pre-fold edge type was ``bridge_invokes``) linking those calls to the IPC
+   send symbols. The same path also covers individually-exposed functions and
+   custom ``ipcInvoke`` / ``ipcSend`` wrappers
 
 Why This Design
 ---------------
@@ -81,13 +91,15 @@ from typing import Iterator
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ._text_filters import js_ts_language_from_path
+from ._text_filters import js_ts_language_from_path, read_source_bytes
 from .registry import (
     LinkerContext,
     LinkerRequirement,
     LinkerResult,
     register_linker,
+    always_on_unreviewed,
 )
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("ipc-linker")
 
@@ -451,7 +463,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     # Scan all JS/TS files for IPC patterns
     for file_path in _find_js_files(repo_root):
         try:
-            source = file_path.read_bytes()
+            source = read_source_bytes(file_path)
             language = _get_language(file_path)
             patterns = detect_ipc_patterns(source, language)
 
@@ -496,7 +508,10 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     created_symbol_ids: set[str] = set()
 
     def _make_symbol_id(pattern: IpcPattern, channel: str) -> str:
-        return f"ipc:{pattern.file_path}:{pattern.line}:{pattern.type}:{channel}"
+        return (
+            f"ipc:{pattern.file_path}:{pattern.line}-{pattern.line}"
+            f":{pattern.type}:{channel}"
+        )
 
     def _ensure_symbol(pattern: IpcPattern, channel: str) -> str:
         """Create symbol for IPC endpoint if not already created."""
@@ -573,7 +588,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                         "channel_kind": "ipc",
                         "channel_type": "variable" if is_variable_match else "literal",
                     },
-                    derived_from=[src_id, dst_id],
+                    # derived-from consumed-none: both ends are minted from a file scan and joined
+                    #   on the channel
+                    derived_from=[],
                 )
                 edges.append(edge)
 
@@ -586,7 +603,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
 
     # ---- Phase 3: contextBridge.exposeInMainWorld wrapper resolution ----
     # For each preload file with bridge definitions, scan other files for
-    # window.<namespace>.<method>() calls and create bridge_invokes edges.
+    # window.<namespace>.<method>() calls and create calls edges
+    # (meta.bridge_kind="context_bridge").
 
     # Collect bridge wrapper definitions from all scanned files
     bridge_maps: dict[str, dict[str, tuple[str, str, str]]] = {}
@@ -599,7 +617,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
 
     for file_path in _find_js_files(repo_root):
         try:
-            source = file_path.read_bytes()
+            source = read_source_bytes(file_path)
         except (OSError, IOError):
             continue
 
@@ -650,8 +668,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
 
                 # Create synthetic bridge caller symbol
                 caller_id = (
-                    f"ipc:bridge_caller:{rel_path}:{call_line}"
-                    f":{namespace}.{method_name}"
+                    f"ipc:{rel_path}:{call_line}-{call_line}"
+                    f":{namespace}.{method_name}:bridge_caller"
                 )
                 if caller_id not in created_symbol_ids:
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
@@ -730,7 +748,9 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                         "namespace": namespace,
                         "framework_dispatch": "electron_context_bridge",
                     },
-                    derived_from=[caller_id, preload_send_id],
+                    # derived-from consumed-none: both ends are minted from a file scan and joined
+                    #   on namespace/method
+                    derived_from=[],
                 )
                 edges.append(edge)
 
@@ -758,7 +778,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     pass
 
                 caller_id = (
-                    f"ipc:bridge_caller:{rel_path}:{call_line}:{func_name}"
+                    f"ipc:{rel_path}:{call_line}-{call_line}"
+                    f":{func_name}:bridge_caller"
                 )
                 if caller_id not in created_symbol_ids:
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
@@ -833,10 +854,13 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                         "function": func_name,
                         "framework_dispatch": "electron_context_bridge",
                     },
-                    derived_from=[caller_id, preload_send_id],
+                    # derived-from consumed-none: both ends are minted from a file scan and joined
+                    #   on the function name
+                    derived_from=[],
                 )
                 edges.append(edge)
 
+    run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
@@ -893,6 +917,7 @@ IPC_REQUIREMENTS = [
     requirements=IPC_REQUIREMENTS,
     # CNF: Electron IPC and browser postMessage are JS/TS-only.
     depends_on=[["javascript"]],
+    activation=always_on_unreviewed(),
 )
 def ipc_linker(ctx: LinkerContext) -> LinkerResult:
     """IPC linker for registry-based dispatch.

@@ -1,0 +1,39 @@
+- op: create  # 4c3d
+  at: '2026-08-30T05:08:22Z'  # 4c3d
+  by: agent  # 4c3d
+  actor: jgstern_agent  # 4c3d
+  clock: 1  # 4c3d
+  nonce: 4c3d  # 4c3d
+  data:  # 4c3d
+    kind: invariant  # 4c3d
+    title: "A docs-only PR selects only packages/*/tests/, so the 13 root-level gates that READ docs never run on the change class they exist to check (measured: #639 merged a measurement record that fails check-measurement-frame, CI green)"  # 4c3d
+    status: violated  # 4c3d
+    priority: 1  # 4c3d
+    parent:  # 4c3d
+    tags:  # 4c3d
+    - ci_infrastructure  # 4c3d
+    - docs  # 4c3d
+    - analysis_quality  # 4c3d
+    isbefore: []  # 4c3d
+    duplicate_of: []  # 4c3d
+    not_duplicate_of: []  # 4c3d
+    pr_ref:  # 4c3d
+    description: "FOUND 2026-08-30 while starting ADR-0049 step 3. `dev` was RED and had been\nsince PR #639 merged, on a test nobody could have seen fail.\n\nTHE OBSERVATION, run not reasoned:\n\n  $ python3 -m pytest tests/test_check_measurement_frame.py -q\n  FAILED TestTheLiveTree::test_the_shipped_records_pass\n    0009-deferred-crossing-reachability.md: no `## Frame` block (ADR-0048 A3)\n\nPR #639 added `docs/measurements/0009-*.md` with no `## Frame` block. ADR-0048\nA3 makes that block mandatory from 0009 onward and `scripts/check-measurement-frame`\nis the gate. CI passed the PR anyway.\n\nWHY IT PASSED, from the manifest #639 itself committed:\n\n  # Reason: no test-relevant files changed (docs/config only)\n  # Changed source files: 0\n  # Selected tests: 339        <- ALL under packages/*/tests/, NONE under tests/\n\n`smart-test` slices on `^packages/.*/src/.*\\.py$`. A docs-only change yields\nzero changed sources, and the docs/config fallback then selects the PACKAGE\nsuites only. The root suite is not selected.\n\nTHE INVERSION, which is the actual defect and not a coverage gap: the gates\nthat govern documents live in ROOT `tests/`. Thirteen of them read `docs/`:\n\n  test_check_measurement_frame       test_adr_readme_index_sync\n  test_adr_supersession_symmetry     test_concept_audit_record\n  test_generate_architecture_linker_inventory   test_generate_concepts\n  test_generate_security_md          test_generate_concept_axes\n  test_prepare_release_notes_promotion          test_ci_failover_retired\n  test_per_package_fallback          test_top_level_test_map  test_smart_test\n\nSo on the ONE change class these gates exist to check -- a PR that changes only\ndocuments -- the selector runs every test EXCEPT them. The fallback is not\nmerely incomplete; it is pointed the wrong way. An ADR-only PR likewise skips\nthe ADR supersession and index gates.\n\nI verified the other twelve are currently green (55 passed), so the live damage\nis one record. The exposure is not one record.\n\nREPRO\n  git checkout 4c82fe0131\n  python3 -m pytest tests/test_check_measurement_frame.py -q   # red\n  git show 4c82fe0131:.ci/affected-tests.txt | grep -c '^tests/'  # 0\n\nFIX SHAPE (structural, not a list): the docs/config fallback should select the\nroot suite, or -- better, because it does not decay -- the selector should map\nCHANGED DOC PATHS to the root tests that READ them, the way\n`top_level_test_map.py` already maps changed helpers to root tests. A hardcoded\n\"also run these 13\" list is the shape that rots (LIVE rule 10): the fourteenth\ndoc gate lands green and unrun.\n\nNOT THE SAME AS INV-sotam. That one is \"smart-test runs NOTHING and exits 0 on\na clean tree given explicit targets\". This one runs 339 tests and exits 0 while\nskipping the only ones that could fail.\n\nThe 0009 frame block is fixed forward in the same PR that files this; the\nselector is not, because changing test selection is a bigger change than a\nred-dev fix should carry."  # 4c3d
+    fields:  # 4c3d
+      statement: "Every gate that governs a document must run on the pull requests that change that document."  # 4c3d
+      root_cause: "smart-test slices on ^packages/.*/src/.*\\.py$; a docs-only change yields zero changed sources and the docs/config fallback then selects the package suites only, never the root suite where all 13 doc-reading gates live."  # 4c3d
+- op: update  # 8019
+  at: '2026-08-30T05:54:38Z'  # 8019
+  by: agent  # 8019
+  actor: jgstern_agent  # 8019
+  clock: 2  # 8019
+  nonce: '8019'  # 8019
+  set:  # 8019
+    status: satisfied  # 8019
+- op: discuss  # f332
+  at: '2026-08-30T05:54:38Z'  # f332
+  by: agent  # f332
+  actor: jgstern_agent  # f332
+  clock: 3  # f332
+  nonce: f332  # f332
+  message: "SATISFIED by PR #642 (0ae66a5965), with behavioural evidence rather than a proxy.\n\nBEFORE, on a tree whose only edits were docs/ + CHANGELOG.md:\n  $ ./scripts/smart-test --manifest\n  Manifest written to .ci/affected-tests.txt (0 tests - no Python source changed)\n  # Reason: no test-relevant files changed (docs/config only)\n  # Selected tests: 0\nAnd the live consequence: tests/test_check_measurement_frame.py::TestTheLiveTree::test_the_shipped_records_pass was RED on dev and had been since PR #639 merged, because measurement 0009 shipped without the ## Frame block ADR-0048 A3 requires and no pull request could have run the gate.\n\nAFTER, same shape of change:\n  # Selected tests: 14   <- 13 doc gates + the smart-test suite\nAnd the item's own repro, re-run on the merged tree: PR #643 is docs-only and its committed manifest selects 13 root tests, all of which read docs/. 203 tests, 6 seconds.\n\nDERIVED, NOT LISTED, which is the half that matters for durability. The selection greps tests/test_*.py for a docs/ reference rather than naming today's thirteen, so the fourteenth doc gate is covered by the commit that adds it. A hardcoded roster is the shape that decayed F2_LANGS to nine of fifteen shipped catalogues.\n\nA CONTROL REFUTED MY OWN COMMENT. The union has three grep spellings and I wrote that each was load-bearing; the test asserting strict inequality FAILED -- 'docs/' alone reaches all thirteen today and the two quoted-bareword arms are defensive for a Path(\"docs\") spelling no root test uses. Comment and test both corrected to say that.\n\nONE LATENT BUG THE FIX MADE REACHABLE, fixed in the same PR: grep -c . prints 0 AND exits 1 on empty input, so || echo 0 fired in addition and wrote a bare 0 line into the manifest header. Unreachable before, because a change with zero source files exited at the docs/config-only branch and never reached that writer."  # f332

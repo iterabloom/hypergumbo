@@ -199,3 +199,25 @@ def test_callers_use_do_merge_guarded() -> None:
             f"do_merge_guarded): {bare_calls}"
         )
         assert "do_merge_guarded" in text, f"{path.name} must call do_merge_guarded"
+
+
+def test_rejection_tells_you_not_to_narrate_it_in_the_rewrite(tmp_path: Path) -> None:
+    """The rejection must warn against quoting itself into the new message.
+
+    EARNED, not hypothetical. A PR was rejected for a bare ``Fixes <ID>``; the
+    corrected commit explained the rejection and quoted the offending phrase
+    while calling it a mistake — which re-matched the same regex verbatim and
+    burned a second CI cycle. The scan is a regex over the whole message and
+    has no notion of quotation or disapproval, so the guidance has to say so
+    at the moment of rejection, when the reader is about to rewrite.
+    """
+    rc, _out, err, _log = _run(
+        '_closure_guard_pre_merge "$TEXT"',
+        text="Fixes WI-bunag\n", status="todo_hard", tmp_path=tmp_path,
+    )
+    assert rc == 1
+    low = err.lower()
+    assert "describe the change" in low, err
+    assert "regex" in low, err
+    assert "re-trips" in low or "retrips" in low, err
+

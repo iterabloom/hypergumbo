@@ -5,12 +5,14 @@
 # Third-party packages (express, axios, etc.) trace through these.
 # Also used for TypeScript (same runtime primitives).
 language: javascript
-# Plan C, PR B / INV-titih: partial catalog. Promotion to
-# ``status: provenance_declared`` requires adding ``stdlib_provenance``
-# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py) — a
-# citation check only; coverage is claimed per-module via
-# ``module_completeness``.
-status: in_progress
+# WI-nolut (2026-09-06): promoted from ``in_progress``. The promotion is a
+# citation check only (ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES); coverage is
+# claimed per module via ``module_completeness`` at the end of this file,
+# and only the modules audited there are examined negatives.
+status: provenance_declared
+stdlib_provenance:
+  source_url: https://nodejs.org/api/
+  version: "20.19"
 
 # Method/function names that are too generic to match without module context.
 # Node.js uses the same names across many modules and user code.
@@ -54,25 +56,61 @@ ambiguous_names:
 
 fs_read:
   - module: fs
-    functions: [readFileSync, readFile, readdirSync, readdir, statSync, stat, lstatSync, lstat, existsSync, accessSync, access, readlinkSync, readlink, realpathSync, realpath]
+    functions: [readFileSync, readFile, readdirSync, readdir, statSync, stat, lstatSync, lstat, existsSync, exists, accessSync, access, readlinkSync, readlink, realpathSync, realpath,
+                open, openSync, openAsBlob, read, readSync, readv, readvSync, fstat, fstatSync, statfs, statfsSync, opendir, opendirSync, createReadStream, watch, watchFile]
+    notes: >-
+      WI-nolut (2026-09-06): the second list is the audit's addition -- every
+      fs export whose source reaches the binding on the read side (probe:
+      jsleg_completeness_09062026/probe_fs.out). `open` is ALSO declared under
+      fs_write, python's builtins.open shape: one row per direction, the mode
+      seam owns it, and because the javascript analyzer stamps no io_mode yet
+      an unstamped open keeps THIS first-declared row. The fd-taking family
+      (read/readv/fstat) reads a descriptor fs.open returned; a socket fd
+      reaches node code through net.Socket, not fs.read, so no ipc/net twin
+      is declared. `close`/`closeSync` are deliberately absent (INV-nular F4:
+      a lifecycle call transfers nothing). `unwatchFile` likewise.
   - module: fs.promises
-    functions: [readFile, readdir, stat, lstat, access, readlink, realpath]
-  - module: path
-    functions: [resolve, join, dirname, basename, extname, relative, normalize]
-    notes: "Path operations are not I/O but commonly precede fs_read"
+    functions: [readFile, readdir, stat, lstat, access, readlink, realpath, open, opendir, statfs, watch]
+  - module: process
+    functions: [dlopen]
+    notes: "WI-nolut: loads a native addon from a PATH -- a filesystem read of the given file, before any code runs."
+  # `path` rows REMOVED (INV-nular F7, WI-jojaf, 2026-09-06): join, dirname,
+  # basename, extname, relative, normalize and resolve are string arithmetic
+  # and touch no file; the row's own note said "not I/O" and declared fs_read
+  # anyway, so every path.join counted as an EXAMINED filesystem read.
+  # resolve reads process.cwd(), which is rowed on process where it is
+  # performed. The module is granted complete below.
   # Deno runtime API
   - module: Deno
     functions: [readFile, readTextFile, readDir, stat, lstat, readLink, realPath, open]
-    notes: "Deno runtime file read operations"
-  - module: Deno
-    methods: [readFile, readTextFile, readDir, stat, lstat]
+    notes: >-
+      Deno runtime file read operations. WI-komun (2026-09-06): a duplicate
+      `methods:` row for five of these names was REMOVED -- Deno is a named
+      global, the analyzer resolves `Deno.readFile(p)` with the module slot
+      filled and no method construct (typescript:Deno:0-0:readFile:unresolved),
+      and a method-kind row on a module the analyzer never calls as a method
+      made the coverage gate report the module "method-shaped but no method
+      call edge" on calls the classifier had already matched.
 fs_write:
   - module: fs
-    functions: [writeFileSync, writeFile, mkdirSync, mkdir, unlinkSync, unlink, rmdirSync, rmdir, renameSync, rename, copyFileSync, copyFile, chmodSync, chmod, chownSync, chown, appendFileSync, appendFile]
+    functions: [writeFileSync, writeFile, mkdirSync, mkdir, unlinkSync, unlink, rmdirSync, rmdir, renameSync, rename, copyFileSync, copyFile, chmodSync, chmod, chownSync, chown, appendFileSync, appendFile,
+                open, openSync, write, writeSync, writev, writevSync, fchmod, fchmodSync, fchown, fchownSync, fdatasync, fdatasyncSync, fsync, fsyncSync, ftruncate, ftruncateSync,
+                futimes, futimesSync, lchown, lchownSync, lutimes, lutimesSync, link, linkSync, symlink, symlinkSync, truncate, truncateSync, utimes, utimesSync,
+                mkdtemp, mkdtempSync, rm, rmSync, cp, cpSync, createWriteStream]
+    notes: >-
+      WI-nolut (2026-09-06): the second list is the audit's addition -- every
+      fs export whose source reaches the binding on the write side, including
+      the fd-taking family (write/writev/fchmod/fchown/fsync/ftruncate/futimes)
+      and the metadata writes (link/symlink/utimes/lutimes/lchown/truncate).
+      `open` here is the write half of its dual declaration (see fs_read).
+      `cp` reads and writes; declared on the write side, the direction that
+      creates the crossing, following copyFile.
   - module: fs.promises
-    functions: [writeFile, mkdir, unlink, rmdir, rename, copyFile, chmod, chown, appendFile, rm]
-  - module: fs
-    methods: [createWriteStream]
+    functions: [writeFile, mkdir, unlink, rmdir, rename, copyFile, chmod, chown, appendFile, rm, open, cp, lchmod, lchown, link, lutimes, mkdtemp, symlink, truncate, utimes]
+  # `fs.createWriteStream` moved into the fs functions list above (WI-komun,
+  # 2026-09-06): fs is a module object, the call resolves function-shaped, and
+  # a lone `methods:` row put fs in the method-keyed set the coverage gate
+  # starves on a `fs.createWriteStream(p)` call.
   # Deno runtime API
   - module: Deno
     functions: [writeFile, writeTextFile, mkdir, remove, rename, chmod, chown, truncate, create]
@@ -87,19 +125,24 @@ fs_write:
 # moved per WI-lokuv, reads moved per WI-kanir-huzuj.)
 browser_storage_write:
   - module: localStorage
-    methods: [setItem, removeItem, clear]
-    notes: "Browser localStorage write"
+    functions: [setItem, removeItem, clear]
+    notes: >-
+      Browser localStorage write. WI-komun (2026-09-06): `functions:`, not
+      `methods:` -- localStorage is a NAMED GLOBAL, and the analyzer resolves
+      `localStorage.setItem(k, v)` as javascript:localStorage:0-0:setItem with
+      no method construct, the same shape as fs.readFileSync; a method-kind
+      row here matched in the classifier but starved the coverage gate.
   - module: sessionStorage
-    methods: [setItem, removeItem, clear]
-    notes: "Browser sessionStorage write"
+    functions: [setItem, removeItem, clear]
+    notes: "Browser sessionStorage write (named global; see localStorage)"
 
 browser_storage_read:
   - module: localStorage
-    methods: [getItem, key, length]
-    notes: "Browser localStorage read"
+    functions: [getItem, key, length]
+    notes: "Browser localStorage read (named global; see the write row)"
   - module: sessionStorage
-    methods: [getItem, key, length]
-    notes: "Browser sessionStorage read"
+    functions: [getItem, key, length]
+    notes: "Browser sessionStorage read (named global; see localStorage)"
   - module: indexedDB
     functions: [open, databases]
     notes: "Browser IndexedDB read"
@@ -137,12 +180,44 @@ net_send:
     functions: [fetch]
     notes: "Browser window.fetch (same as global fetch)"
   - module: navigator
-    methods: [sendBeacon]
-    notes: "Browser navigator.sendBeacon for analytics/telemetry"
+    functions: [sendBeacon]
+    notes: "Browser navigator.sendBeacon for analytics/telemetry. WI-komun: navigator is a named global; the call resolves with the module slot and no method construct, so the row is function-kind."
   - module: XMLHttpRequest
     methods: [send, open, setRequestHeader]
     notes: "Browser XHR"
 net_recv:
+  # 2026-09-06 owner ruling (WI-dozul): A DNS LOOKUP IS A NETWORK RECEIVE.
+  # WI-nolut's node-builtin probe left `dns` unaudited, so javascript is the
+  # fifth language in the parity set rather than the fourth. Callback, promise
+  # and Resolver forms are the same query three ways; node's own docs split
+  # dns.lookup (which uses the OS resolver, getaddrinfo) from dns.resolve*
+  # (which queries the configured name servers directly) -- both reach a
+  # resolver and both return an answer this process did not choose.
+  - module: dns
+    functions: [lookup, lookupService, resolve, resolve4, resolve6, resolveAny, resolveCname, resolveCaa, resolveMx, resolveNaptr, resolveNs, resolvePtr, resolveSoa, resolveSrv, resolveTxt, reverse]
+    notes: "DNS resolution -- queries a name server and returns the answer it chose (ADR-0049: content the far side chose). Parity with erlang's inet rows, which have carried net_recv since 2026-05-24."
+  # DOTTED, matching `fs.promises` beside it, and MEASURED rather than assumed
+  # (2026-09-08). The analyzer emits `dns/promises` with a SLASH for
+  # `require('dns/promises')` and `import ... from 'node:dns/promises'`, and
+  # `normalize_module_separators` folds `/` into `.` before matching, so the dotted row
+  # catches both spellings and renders consistently with its fs sibling.
+  # WHAT NO KEY CATCHES: `require('dns').promises` and
+  # `import {promises} from 'dns'` emit the `external` SENTINEL, which yields
+  # an empty catalogue key by design -- an analyzer limit, not a catalogue one,
+  # and a row cannot be spelled around it.
+  - module: dns.promises
+    functions: [lookup, lookupService, resolve, resolve4, resolve6, resolveAny, resolveCname, resolveCaa, resolveMx, resolveNaptr, resolveNs, resolvePtr, resolveSoa, resolveSrv, resolveTxt, reverse]
+    notes: "The promise form of the same surface. Reached through require('dns/promises') / import from 'node:dns/promises' (the / folds to . at match time); the member-access spellings resolve to the external sentinel and reach no row."
+  # INERT ON ARRIVAL, AND SAID SO RATHER THAN COUNTED -- the rust
+  # ToSocketAddrs treatment. `new Resolver()` binds a local whose type the
+  # javascript analyzer does not infer, so `r.resolve4(h)` emits
+  # `javascript:external:0-0:resolve4:external_symbol` and reaches nothing.
+  # Measured, not assumed (2026-09-08). The rows stay because an inert row
+  # costs no precision and claims no coverage, and they start classifying the
+  # day the analyzer types a constructed instance (WI-tuzaf's family).
+  - module: dns.Resolver
+    methods: [resolve, resolve4, resolve6, resolveAny, resolveCname, resolveCaa, resolveMx, resolveNaptr, resolveNs, resolvePtr, resolveSoa, resolveSrv, resolveTxt, reverse]
+    notes: "The same queries through an explicit Resolver instance. INERT until the analyzer types a constructed receiver; written for correctness, not counted as coverage."
   - module: http
     functions: [createServer]
   - module: https
@@ -160,56 +235,169 @@ net_recv:
   # external_potential (Plan C, PR C).
   # Browser network sources (WI-banaf)
   - module: EventSource
-    methods: [addEventListener, onmessage, onerror]
-    notes: "Browser Server-Sent Events client"
+    methods: [addEventListener, onmessage]
+    notes: >-
+      Browser Server-Sent Events client. `onerror` REMOVED (INV-nular): the
+      error event is specified to carry no information -- deliberately, so a
+      cross-origin failure cannot leak why -- so it receives nothing, while
+      net_recv is an auto-derived taint SOURCE. onmessage and addEventListener
+      carry the real receive. REACH: `onmessage` is assigned, not called
+      (`es.onmessage = handler`), and the analyzer emits no edge for an
+      assignment, so that row is declared unreachable in
+      analyzer_disclosure.CONSTRUCT_BLIND_ROWS and disclosed on a clean
+      verdict (WI-zumoz); addEventListener is a call and is reached.
   - module: WebSocket
-    methods: [addEventListener, onmessage, onopen, onclose, onerror]
-    notes: "Browser WebSocket client receive"
-  - module: BroadcastChannel
-    methods: [postMessage, addEventListener]
-    notes: "Browser cross-tab messaging"
+    methods: [addEventListener, onmessage, onclose]
+    notes: >-
+      Browser WebSocket client receive. `onopen` and `onerror` REMOVED
+      (INV-nular): the open event carries no data and the error event is
+      specified to carry none, so both were minting untrusted_input at a
+      connection-lifecycle callback. `onclose` is KEPT and the distinction is
+      the point -- a CloseEvent carries `code` and `reason`, both chosen by the
+      peer, so it genuinely receives peer-controlled data. REACH: `onmessage`
+      and `onclose` are assigned, not called (`ws.onmessage = handler`), and
+      the analyzer emits no edge for an assignment, so both rows are declared
+      unreachable in analyzer_disclosure.CONSTRUCT_BLIND_ROWS and disclosed
+      on a clean verdict (WI-zumoz); addEventListener is a call and is reached.
 
 subprocess:
   - module: child_process
-    functions: [exec, execSync, execFile, execFileSync, spawn, spawnSync, fork]
+    functions: [exec, execFile, spawn, fork]
+    notes: >-
+      The ASYNCHRONOUS forms. Each returns a ChildProcess HANDLE; the
+      child's output arrives later, through a callback or a stream, which
+      is an ADR-0049 deferred crossing rather than a transfer. Split from
+      the *Sync row below by INV-lozat.
+  - module: child_process
+    functions: [execSync, execFileSync, spawnSync]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
 
 env_read:
   - module: process
-    attributes: [env, argv, platform, arch, version, cwd]
+    attributes: [env, argv]
+  - module: document
+    attributes: [cookie, location, referrer]
+    notes: "Browser document globals (cookie/referrer leak fingerprintable data)"
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+env_write:
+  - module: process
+    functions: [chdir]
+    notes: "WI-nolut: changes the process's working directory, python's os.chdir precedent (env_write)."
+
+host_info_read:
+  - module: Date
+    functions: [now]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Date.now(). `new
+      Date()` with no argument also samples the clock, but a constructor
+      call is not a named-function call here and gets no row rather than a
+      row that cannot match.
+  - module: performance
+    functions: [now]
+  - module: performance
+    attributes: [timeOrigin]
+  - module: process
+    functions: [hrtime, uptime, getuid, geteuid, getgid, getegid, getgroups, cpuUsage, memoryUsage, resourceUsage, constrainedMemory, availableMemory, umask]
+    notes: >-
+      WI-nolut (2026-09-06): the uid/gid getters, resource-usage readers and
+      umask() read the host's description of this process (INV-tutar's
+      class); none is a secret and none is a file.
+  - module: os
+    functions: [uptime]
+    notes: >-
+      Machine uptime is host information by the same argument that puts a
+      monotonic clock in scope.
+  - module: process
+    attributes: [platform, arch, version, pid, ppid, execPath, title, versions, release]
+  - module: process
+    functions: [cwd]
+    notes: "process.cwd() is CALLED, so it is not an attribute (INV-zikab); as an attribute it also denied the starvation gate its function-name route (INV-dihun)."
   - module: os
     functions: [hostname, platform, arch, release, type, cpus, totalmem, freemem, homedir, tmpdir, userInfo]
-  # Browser environment introspection (WI-banaf)
   - module: navigator
     attributes: [userAgent, language, languages, platform, geolocation, cookieEnabled, onLine]
     notes: "Browser environment / capability detection"
   - module: window
     attributes: [location, navigator, screen, document]
     notes: "Browser window globals"
-  - module: document
-    attributes: [cookie, location, referrer]
-    notes: "Browser document globals (cookie/referrer leak fingerprintable data)"
 
 ipc_send:
   - module: process
-    methods: [send]
-    notes: "IPC to parent process in child_process.fork()"
+    functions: [send]
+    notes: "IPC to parent process in child_process.fork(). Function-kind: named global (INV-dihun)."
+  - module: BroadcastChannel
+    methods: [postMessage]
+    notes: >-
+      Browser cross-tab messaging, moved out of net_* entirely (INV-nular).
+      Two defects in one row: `postMessage` SENDS and was declared net_recv --
+      a direction error that minted untrusted_input at a call that emits -- and
+      the channel is not network in either direction. It is same-origin
+      messaging between browsing contexts; nothing leaves the browser. Moving
+      rather than deleting keeps the send REPRESENTED, and the receive label is
+      unchanged because ipc_recv and net_recv both derive `untrusted_input`.
 
 ipc_recv:
+  - module: child_process
+    functions: [execSync, execFileSync, spawnSync]
+    simultaneous: true
+    notes: >-
+      INV-lozat: `execSync` and `execFileSync` RETURN the child's stdout;
+      `spawnSync` returns an object whose `stdout`/`stderr` are the same
+      bytes. The async siblings are deliberately absent -- they hand back a
+      handle, and a crossing that has not happened yet is disclosed, not
+      minted (ADR-0049).
+  - module: BroadcastChannel
+    methods: [addEventListener]
+    notes: "Browser cross-tab messaging: the receive side (INV-nular)"
   - module: process
     attributes: [stdin]
+  - module: process
+    functions: [openStdin]
+    notes: "WI-nolut: deprecated alias that returns process.stdin -- the same standard-input read."
   - module: process
     # Quote "on" so YAML 1.1 doesn't parse it as boolean True. Without
     # the quotes, the auto-derived TaintSource for process.on lands
     # with name=True, which trips `if "." in src.name` in
     # `propagate_taint_structural`.
-    methods: ["on"]
-    notes: "process.on('message', ...) for IPC from parent"
+    functions: ["on"]
+    notes: >-
+      process.on('message', ...) for IPC from parent. FUNCTION-kind: `process`
+      is a named global, so `process.on(...)` is a valid call as written
+      (INV-zikab's rule, owner-ratified 2026-09-23). Keyed `methods:` it
+      starved the module on 6 of 9 surveyed JS repos once WI-kikar gave
+      process member calls their slot (INV-dihun).
 
 logging:
   # Browser + Node share console.* (WI-banaf)
   - module: console
-    methods: [log, info, warn, error, debug, trace, dir, table, group, groupEnd, time, timeEnd]
-    notes: "Universal console logging (browser + Node)"
+    functions: [log, info, warn, error, debug, trace, dir, table, group, groupEnd, time, timeEnd]
+    notes: >-
+      Universal console logging (browser + Node). WI-komun (2026-09-06):
+      `functions:`, not `methods:` -- console is a named global and
+      `console.log(x)` resolves as javascript:console:0-0:log with no method
+      construct. As a method-kind module, console starved
+      method_starved_modules on every repository that logs (express, winston,
+      ioredis in the WI-nolut A/B), withholding NO-FSWRITE / NO-SUBPROC /
+      NO-NET verdicts the classifier had already adjudicated.
   # WI-dutah: process.{stdout,stderr} are terminal output, not IPC.
   # Same threat-model logic as Python sys.{stdout,stderr} (WI-tolif).
   # process.send stays in ipc_send (real fork-channel) and process.stdin
@@ -217,3 +405,67 @@ logging:
   - module: process
     attributes: [stdout, stderr]
     notes: "Node stdio writes; terminal / log output, not an IPC channel"
+
+# WI-nolut (2026-09-06): module_completeness grants for the node builtins the
+# corpus reaches (WI-lutuh's second leg). Each is a POSITIVE dated declaration
+# that every I/O primitive the module exposes is rowed above, reached by the
+# mechanical probe in ~/hypergumbo_lab_notebook/jsleg_completeness_09062026/
+# (probe.js: exports one level deep, function source scanned for binding
+# reach and I/O surface; a NONE verdict is a candidate, never a grant) and
+# then adjudicated with the source in view. Matching is exact: `fs` does not
+# vouch for `fs/promises`, so both are declared, under both spellings the
+# analyzer emits (`require('fs/promises')` -> fs/promises; the rows use
+# fs.promises).
+#
+# DELIBERATELY WITHHELD, and why:
+#   readline   its I/O is the STREAM passed to createInterface (process.stdin
+#              in the common case, a file in others), INV-zumin class (b);
+#              the javascript analyzer has no io_target_kind stamp, so a row
+#              would mint untrusted_input over every file-backed reader and a
+#              grant would call a stdin read a non-read. Withheld: a call
+#              into readline keeps a verdict inconclusive.
+#   http       `new http.Server()` / `new http.Agent()` are constructors the
+#              catalogue does not key, so the surface is not fully enumerated.
+#   net, dns, child_process, os, https, dgram, tls, worker_threads, cluster
+#              not audited in this leg.
+module_completeness:
+  - module: path
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "String arithmetic on paths; the seven fs_read rows were deleted (INV-nular F7). resolve/format flagged on cwd()/native code: cwd is rowed on process, format is string formatting."
+  - module: url
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "42 pure functions; the two probe signals are the literal 'http:' in the legacy Url.parse source. No descriptor, no binding reach."
+  - module: zlib
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Compression and decompression over buffers and streams; 37 functions, 125 constants, no binding reach to a descriptor."
+  - module: timers/promises
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "setTimeout/setImmediate/setInterval/scheduler as promises; no signal."
+  - module: stream/promises
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "pipeline/finished as promises; no signal. The streams they join carry their own rows."
+  - module: crypto
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "95 probe signals, every one [kHandle] -- a native crypto object handle, not a descriptor. randomBytes/randomUUID/getRandomValues draw OS entropy through the binding and are granted on the recorded python precedent (secrets/random/uuid): seeding belongs to the row of the module that PERFORMS it, not the consumer's surface; the same reasoning rust's HashMap grant cites. If python's grants ever go, this one loses its basis."
+  - module: fs
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "91 unrowed exports with binding reach were rowed above (open/read/write/fstat/symlink/link/truncate/utimes/rm/cp/watch/opendir and the fd family). Declared exclusions: close/closeSync/unwatchFile (lifecycle, INV-nular F4); the ReadStream/WriteStream/Dir/Dirent/Stats classes constructed directly (the catalogue keys calls; createReadStream/createWriteStream/opendir are rowed); constants and _toUnixTimestamp."
+  - module: fs/promises
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "The 13 unrowed exports with binding reach (open, opendir, statfs, watch, cp, lchmod, lchown, link, lutimes, mkdtemp, symlink, truncate, utimes) were rowed above under fs.promises; this entry is the slash spelling the analyzer emits for require('fs/promises') and import from 'node:fs/promises'."
+  - module: fs.promises
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "The dotted spelling the rows use; same audit as fs/promises."
+  - module: process
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "23 unrowed exports with a signal: the uid/gid getters, cpuUsage/memoryUsage/resourceUsage/constrainedMemory/availableMemory and umask rowed host_info_read; openStdin ipc_recv; chdir env_write; dlopen fs_read. Declared NOT I/O: exit/reallyExit/abort/kill/_kill (process control, no boundary in this vocabulary), binding/_rawDebug/_debug*/_fatalException/_getActive* (internal), nextTick/emitWarning/hrtime.bigint (no crossing)."

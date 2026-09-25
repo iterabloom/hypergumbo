@@ -4,23 +4,32 @@
 This analyzer uses tree-sitter-php to parse PHP files and extract:
 - Function declarations (symbols)
 - Class declarations (symbols)
+- Interface, trait and enum declarations (container symbols, so in-file
+  interfaces take part in dispatch instead of surfacing as placeholders)
 - Method declarations (symbols)
+- Properties and class constants (``field``) and global constants
+  (``variable``)
+- A per-file ``kind="file"`` pseudo-node that anchors file-level edges
 - Laravel route definitions (Route::get, Route::post, etc.)
 - Function call relationships (edges)
 - Method call relationships (edges)
 - Static method call relationships (edges)
 - Object instantiation relationships (edges)
+- Import relationships (edges): one ``imports`` edge per ``use`` statement,
+  carrying the full namespace so framework detection can match it
 
-If tree-sitter-php is not installed, the analyzer gracefully degrades
-and returns an empty result.
+If tree-sitter-php is not installed, the analyzer gracefully degrades:
+it emits a warning and returns a skipped result.
 
 How It Works
 ------------
 1. Check if tree-sitter and tree-sitter-php are available
-2. If not available, return empty result (not an error, just no PHP analysis)
+2. If not available, warn and return a result with ``skipped=True`` and
+   ``skip_reason_code=DEPENDENCY_UNAVAILABLE`` (no PHP analysis)
 3. Three-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
+   - Pass 2: Detect calls and resolve against global symbol registry, then
+     apply the ADR-0015 automatic dataflow annotation to the edges
    - Pass 3: Extract usage contexts and emit Laravel route Symbols
 4. Detect function calls, method calls, static calls, and instantiation
 
@@ -28,12 +37,13 @@ Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - PHP support is separate from JS/TS to keep modules focused
-- Two-pass allows cross-file call resolution
+- Multi-pass allows cross-file call resolution
 - Same pattern as JS/TS analyzer for consistency
 
 Population of ``is_exported`` follows PHP's default-public rule: top-level
 functions and classes are exported; class members are exported unless the
-declaration carries ``private`` or ``protected``.
+declaration carries ``private`` or ``protected``, except class constants,
+which are always exported (their visibility modifier is not read).
 """
 from __future__ import annotations
 
@@ -69,6 +79,7 @@ from hypergumbo_lang_mainstream.symbol_introspection import (
     extract_preceding_doc_comment,
 )
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -1461,6 +1472,7 @@ class PHPAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=skip_reason,
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = _get_php_parser()
@@ -1472,6 +1484,7 @@ class PHPAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=skip_reason,
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         # Pass 1: Parse all files and extract symbols

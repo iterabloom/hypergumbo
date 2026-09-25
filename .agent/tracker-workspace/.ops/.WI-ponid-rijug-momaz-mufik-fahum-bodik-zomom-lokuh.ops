@@ -1,0 +1,21 @@
+- op: create  # 76d3
+  at: '2026-09-10T22:41:37Z'  # 76d3
+  by: agent  # 76d3
+  actor: jgstern_agent  # 76d3
+  clock: 1  # 76d3
+  nonce: 76d3  # 76d3
+  data:  # 76d3
+    kind: work_item  # 76d3
+    title: "js receiver typing misses assignment-bound and field-bound receivers, so catalogued rows land on external"  # 76d3
+    status: todo_hard  # 76d3
+    priority: 3  # 76d3
+    parent:  # 76d3
+    tags:  # 76d3
+    - javascript  # 76d3
+    - linker_framework  # 76d3
+    isbefore: []  # 76d3
+    duplicate_of: []  # 76d3
+    not_duplicate_of: []  # 76d3
+    pr_ref:  # 76d3
+    description: "MEASURED 2026-09-10 while probing the WI-dosuh family (probe_parity.py in\n~/hypergumbo_lab_notebook/dosuh_family_09102026/). Not a regression; a\npre-existing limit the probe made visible, filed rather than fixed inside\nWI-dosuh (owner rule: close on the filed row, file the residual).\n\nWHAT THE PROBE ASKED. For each way of binding a WebSocket receiver, does\nws.send(x) reach the catalogue row WebSocket.send? Same statement, same\ncatalogue, only the receiver binding varies.\n\n  const ws = new WebSocket(u); ws.send(x)   -> javascript:WebSocket:0-0:send  TAGGED\n  function f(ws: WebSocket)   { ws.send(x) } -> typescript:WebSocket:0-0:send TAGGED\n  new WebSocket(u).send(x)                   -> javascript:WebSocket:0-0:send TAGGED\n  let ws; ws = new WebSocket(u); ws.send(x)  -> javascript:external:0-0:send  NOT tagged\n  this.ws = new WebSocket(u); this.ws.send(x)-> javascript:external:0-0:send  NOT tagged\n\nTHE MECHANISM. js_ts.py populates var_ctor_modules ONLY under\nnode.type == \"variable_declarator\" (the `if class_name and node.parent`\nblock near the new_expression handler). A receiver bound by a plain\nassignment_expression (`ws = new WebSocket(u)`) or stored on a field\n(`this.ws = ...`) never enters that map, so the INV-misup path that carries\nthe constructor's catalogue module into the module slot never runs, and the\ncall lands on `external` -- ADR-0051's marker for unreachable to the\ncatalogue, i.e. a false negative by construction.\n\nWHY IT MATTERS BEYOND STYLE. `this.ws = new WebSocket(url)` in a constructor\nwith `this.ws.send(...)` in a method is the ordinary class-based spelling of\na WebSocket client, not an exotic one. Every catalogued row on a\n`new`-constructed receiver (WebSocket, XMLHttpRequest, EventSource,\nBroadcastChannel, net.Socket, dgram.Socket) is unreachable through it.\n\nSCOPE. This is receiver TYPING, shared by the call path and the assignment\npath WI-dosuh adds -- fixing it here fixes both at once, which is why it\ndoes not belong inside WI-dosuh's construct work.\n\nNOT YET MEASURED: how many sites in a real corpus use these two bindings.\nDo that before sizing the fix; the probe was a fixture, n=1 per cell."  # 76d3
+    fields: {}  # 76d3

@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""WI-ratuv gate: a production function reachable only from test modules.
+
+Shrink-only ratchet over the cohort computed by
+``hypergumbo_core.test_only_reachability``. The logic lives in the package so
+it is covered by the package's own tests; this file is argument handling and
+exit codes.
+
+WHY THIS IS NOT A PER-PR GATE. It needs a behaviour map of this repository, and
+building one takes **13m40s and produces 236MB** (measured 2026-09-02). That is
+an order of magnitude past a per-PR check, so this reads a map somebody else
+already built and is wired into the twice-daily full-suite instead. Given a
+map, the gate itself runs in seconds.
+
+EXIT CODES, following the mypy ratchet's contract deliberately — an
+INFRASTRUCTURE failure is not a regression, and conflating them is how a gate
+gets disabled:
+
+    0   clean: no function newly test-only
+    1   REGRESSION: at least one new key
+    2   infrastructure: no map, or no baseline. Warn and continue.
+
+Usage:
+    scripts/check-test-only-reachability [--map PATH] [--write-baseline]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "packages/hypergumbo-core/src"))
+
+from hypergumbo_core.test_only_reachability import (  # noqa: E402
+    baseline_document,
+    collect_production_references,
+    compare_to_baseline,
+    find_test_only_symbols,
+    gated_cohort,
+    load_baseline,
+    production_source_files,
+)
+
+BASELINE = ROOT / ".ci/test-only-reachability-baseline.json"
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--map", dest="map_path", default=None,
+                    help="behaviour map JSON (hypergumbo survey --out)")
+    ap.add_argument("--write-baseline", action="store_true",
+                    help="freeze the current cohort as the new baseline")
+    opts = ap.parse_args(argv)
+
+    if not opts.map_path:
+        print("check-test-only-reachability: no --map given; skipping "
+              "(infrastructure, not a regression)", file=sys.stderr)
+        return 2
+    map_path = Path(opts.map_path)
+    if not map_path.is_file():
+        print(f"check-test-only-reachability: no map at {map_path}; skipping",
+              file=sys.stderr)
+        return 2
+
+    data = json.loads(map_path.read_text(encoding="utf-8"))
+    nodes = data.get("nodes") or data.get("symbols") or []
+    edges = data.get("edges") or []
+    if not nodes or not edges:
+        print("check-test-only-reachability: map has no nodes or no edges; "
+              "skipping rather than reporting a clean zero", file=sys.stderr)
+        return 2
+
+    symbols = find_test_only_symbols(nodes, edges)
+    refs = collect_production_references(production_source_files(ROOT), ROOT)
+    kept, census = gated_cohort(symbols, refs)
+
+    print(f"test-only-reachable symbols: {len(symbols)}")
+    for reason, count in sorted(census.items()):
+        print(f"  set aside: {count:5}  {reason}")
+    print(f"  GATED cohort (functions):  {len(kept)}")
+
+    if opts.write_baseline:
+        BASELINE.parent.mkdir(parents=True, exist_ok=True)
+        BASELINE.write_text(
+            json.dumps(baseline_document(kept), indent=1) + "\n",
+            encoding="utf-8",
+        )
+        print(f"wrote {BASELINE.relative_to(ROOT)} ({len(kept)} keys)")
+        return 0
+
+    if not BASELINE.is_file():
+        print(f"check-test-only-reachability: no baseline at "
+              f"{BASELINE.relative_to(ROOT)}; run --write-baseline once",
+              file=sys.stderr)
+        return 2
+
+    baseline = load_baseline(BASELINE)
+    new, gone = compare_to_baseline(kept, baseline)
+    if gone:
+        print(f"\n{len(gone)} function(s) NO LONGER test-only — the ratchet "
+              f"may be tightened by removing these keys:")
+        for key in gone[:20]:
+            print(f"  - {key}")
+    if new:
+        print(f"\nFAIL: {len(new)} function(s) are newly reachable only from "
+              f"their own tests:", file=sys.stderr)
+        for key in new:
+            print(f"  + {key}", file=sys.stderr)
+        print("\nWire it to production or retire it. The baseline is "
+              "shrink-only and may not be raised to accommodate this.",
+              file=sys.stderr)
+        return 1
+    print("\n✓ no new test-only-reachable functions")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

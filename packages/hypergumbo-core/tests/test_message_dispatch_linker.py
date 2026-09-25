@@ -309,3 +309,58 @@ class TestMessageDispatchRegistry:
         dispatch_results = [r for name, r in results if name == "message-dispatch-linker"]
         assert len(dispatch_results) == 1
         assert len(dispatch_results[0].edges) >= 1
+
+
+class TestSyntheticIdsCarryEachSiteHostLanguage:
+    """WI-dovog. The sender/handler ids took ``"typescript"`` from the WRITE
+    site's api kind -- every ``.js`` dispatch minted ``typescript:`` ids with no
+    typescript node behind them (openzeppelin-contracts: 38 event_publishes
+    edges), and a ``.ts`` handler paired with a ``.js`` sender took the
+    sender's language. Each id now carries ITS OWN file's language through
+    ``js_ts_language_from_path`` (ADR-0031 Class B)."""
+
+    def test_js_sites_mint_javascript_ids(self, tmp_path: Path) -> None:
+        sender = tmp_path / "src" / "sender.js"
+        sender.parent.mkdir(parents=True, exist_ok=True)
+        sender.write_text("ws.send(JSON.stringify({ type: 'JOIN', data }));\n")
+        handler = tmp_path / "src" / "handler.js"
+        handler.write_text("switch (msg.type) {\n  case 'JOIN': handleJoin(); break;\n}\n")
+        result = link_message_dispatch(
+            tmp_path, [_make_ts_sym("src/sender.js"), _make_ts_sym("src/handler.js")],
+        )
+        assert result.edges
+        for edge in result.edges:
+            assert edge.src.split(":", 1)[0] == "javascript", edge.src
+            assert edge.dst.split(":", 1)[0] == "javascript", edge.dst
+        for sym in result.symbols:
+            assert sym.id.split(":", 1)[0] == "javascript", sym.id
+            assert sym.discovery_language == "javascript"
+            assert sym.language is None
+
+    def test_a_ts_handler_keeps_its_own_language_beside_a_js_sender(self, tmp_path: Path) -> None:
+        sender = tmp_path / "src" / "sender.js"
+        sender.parent.mkdir(parents=True, exist_ok=True)
+        sender.write_text("ws.send(JSON.stringify({ type: 'JOIN', data }));\n")
+        handler = tmp_path / "src" / "handler.ts"
+        handler.write_text("switch (msg.type) {\n  case 'JOIN': handleJoin(); break;\n}\n")
+        result = link_message_dispatch(
+            tmp_path, [_make_ts_sym("src/sender.js"), _make_ts_sym("src/handler.ts")],
+        )
+        assert result.edges
+        edge = result.edges[0]
+        assert edge.src.split(":", 1)[0] == "javascript", edge.src
+        assert edge.dst.split(":", 1)[0] == "typescript", edge.dst
+
+    def test_ts_sites_still_mint_typescript_ids(self, tmp_path: Path) -> None:
+        """CONTROL: the literal was right for .ts files and stays right."""
+        sender = tmp_path / "src" / "sender.ts"
+        sender.parent.mkdir(parents=True, exist_ok=True)
+        sender.write_text("ws.send(JSON.stringify({ type: 'JOIN', data }));\n")
+        handler = tmp_path / "src" / "handler.ts"
+        handler.write_text("switch (msg.type) {\n  case 'JOIN': handleJoin(); break;\n}\n")
+        result = link_message_dispatch(
+            tmp_path, [_make_ts_sym("src/sender.ts"), _make_ts_sym("src/handler.ts")],
+        )
+        assert result.edges
+        assert result.edges[0].src.split(":", 1)[0] == "typescript"
+        assert result.edges[0].dst.split(":", 1)[0] == "typescript"

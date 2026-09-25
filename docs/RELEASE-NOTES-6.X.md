@@ -7,14 +7,47 @@ This file is the user-facing view of what's in each 6.x release. The
 test pin). When you upgrade, read here first; consult the changelog
 if you need the implementation detail behind a given change.
 
-One file exists per major version line; for the previous line see
-[RELEASE-NOTES-5.X.md](RELEASE-NOTES-5.X.md).
+One file exists per major version line. **The 6.x line is closed.** For the
+current line see [RELEASE-NOTES-8.X.md](RELEASE-NOTES-8.X.md); the lines either
+side of this one are [7.x](RELEASE-NOTES-7.X.md) and
+[5.x](RELEASE-NOTES-5.X.md).
 
 ---
 
-## Unreleased
+## TL;DR
 
-> **These versions are in active development.** Everything below is part of an ongoing correctness campaign, and it is *not* a stabilized release. In particular, **identity values (`stable_id`, fingerprints) and the `validation_report` schema are still moving between in-development versions** — diffing or persisting them across these versions is at your own risk. Re-run hypergumbo to regenerate; do not treat cross-version identity or validation output as stable. (This section is intentionally leaner than 6.0.0; it is expanded at release-cut.)
+**6.0.0 is the framework-and-provenance release.** View-template detection grows
+from Rails-only to five frameworks (Django, Phoenix, Spring MVC, Laravel Blade),
+five more frameworks are recognized for HTTP routes and dispatch, and every edge
+records which pass produced it.
+
+**6.1.0 is a correctness-campaign release** — largely internal, but with two
+consequences you can see:
+
+1. **Identity values differ from 6.0.0.** `stable_id` advanced **v5 → v8** and
+   fingerprinting was hardened. Do not diff or persist identity values across
+   the 6.0.0 / 6.1.0 boundary; regenerate instead. Within a single run,
+   identities still discriminate correctly.
+2. **A crashing analyzer no longer aborts your run.** Pass-level crashes are
+   contained and recorded in `limits.skipped_passes`, so you get partial results
+   rather than nothing.
+
+Also in 6.1.0: **the results cache now invalidates on a tree-sitter grammar
+upgrade** (an unchanged repo previously returned a stale hit computed by the
+*old* grammar), and **Python symbols finally carry `qualified_name`**, which was
+`null` for 100% of them.
+
+**If you are upgrading from 6.x today, read
+[7.x](RELEASE-NOTES-7.X.md) first** — it carries four breaking changes,
+including an edge-type migration that invalidates stored behavior maps.
+
+---
+
+## 6.1.0 — 2026-06-18
+
+> **Identity values and the `validation_report` schema moved in this release.** `stable_id` advanced v5 → v8 and the `validation_report` schema went 0.1 → 0.3, so neither is comparable across the 6.0.0 / 6.1.0 boundary. Re-run hypergumbo to regenerate; do not diff or persist cross-version identity or validation output. Within a single run, identities discriminate correctly.
+>
+> **These notes were promoted after the fact**, during the 8.x line — 6.1.0's release-cut missed the promotion step and the section sat under "Unreleased" for two major versions. They are leaner than 6.0.0's because they were written as in-progress notes and never expanded.
 
 ### At a glance
 
@@ -26,7 +59,7 @@ One file exists per major version line; for the previous line see
 
 ### For JSON consumers
 
-These are the consumer-visible field and schema changes since 6.0.0. Because the campaign is mid-flight, treat identity values and the `validation_report` schema as unstable across in-development versions.
+These are the consumer-visible field and schema changes since 6.0.0.
 
 - **Python `qualified_name` now populated.** Python functions, methods, and classes now carry `qualified_name` (the existing container-qualified name threaded through), where 6.0.0 emitted `null` for 100% of Python symbols. `name` is unchanged. Identity-neutral.
 - **Python call-graph `src` attribution corrected.** Caller resolution for `calls` / `instantiates` / `references` edges now keys on AST node identity rather than a last-write-wins bare-name dict, so each edge's `src` is attributed to the correct method (a paired guard keeps methods out of `inner_scope` so nested helpers aren't shadowed). Consumers reading the Python call graph will see corrected source attribution.
@@ -34,7 +67,7 @@ These are the consumer-visible field and schema changes since 6.0.0. Because the
 - **`AnalysisRun` productivity counters and timer** (SCHEMA_VERSION 0.14.1 → 0.14.2). New `nodes_emitted` / `edges_emitted` fields per `AnalysisRun`, and `duration_ms` now starts for *every* pass (previously IR-consuming passes reported `0ms` while emitting edges). A floor makes `0ms` now unambiguously mean "did nothing."
 - **`stable_id_stats` block added** (`validation_report` schema 0.1 → 0.2). An always-present stats block lands; per-file duplicate `stable_id` is now a hard validator error and the corpus-collision umbrella reports against an all-Symbols denominator with the `None`-cohort disclosed.
 - **`wired_checks` manifest added** (`validation_report` schema 0.2 → 0.3). `build_validation_report` now emits a `wired_checks` disclosure manifest so an unvalidated defect class is visible by its absence. New validator predicates cover dangling edge endpoints and the `origin_run_id → analysis_runs.execution_id` foreign key.
-- **Identity values differ from 6.0.0** (cross-version-stability caveat). `stable_id` advanced **v5 → v8** (full enclosing-scope chain folded into one shared formula, occurrence-index slot, path-anchoring of module/interface/type/entry/dependency IDs, cross-file disambiguation, and route/call-site path anchoring), decorated Python declarations now fingerprint name+signature+body whole (they previously collapsed to a body-only hash), and producer-side bare-hex fingerprint leaks are normalized to the canonical `hgfp2:` prefix at the output boundary. Net effect: identity values emitted by these in-development versions are *not* comparable to 6.0.0's. Detect the boundary and regenerate; do not diff identities across it.
+- **Identity values differ from 6.0.0** (cross-version-stability caveat). `stable_id` advanced **v5 → v8** (full enclosing-scope chain folded into one shared formula, occurrence-index slot, path-anchoring of module/interface/type/entry/dependency IDs, cross-file disambiguation, and route/call-site path anchoring), decorated Python declarations now fingerprint name+signature+body whole (they previously collapsed to a body-only hash), and producer-side bare-hex fingerprint leaks are normalized to the canonical `hgfp2:` prefix at the output boundary. Net effect: identity values emitted by 6.1.0 are *not* comparable to 6.0.0's. Detect the boundary and regenerate; do not diff identities across it.
 - **`Edge.is_resolved` semantics tightened.** `is_resolved` now contractually means the destination is a real in-repo first-party node; a finalization step derives both `is_resolved` and `dst_ref` from one verdict, so producer-stamped values are advisory. Consumers that branched on the prior looser meaning should re-check.
 - **GraphQL operation kinds now classified.** GraphQL mutation and subscription are registered as `language_construct`, and the anonymous-operation fallback as `pending_classification` (previously unclassified).
 

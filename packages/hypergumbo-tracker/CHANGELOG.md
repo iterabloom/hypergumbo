@@ -7,6 +7,30 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-25
+
+### Added
+
+#### Two-account governance
+
+- **The governance config can live where the agent cannot touch it.** File permissions never protected an in-repo `config.yaml`: replacing a file needs write access to its directory, and the agent must have that. A root-owned `/etc/hypergumbo-tracker/<12-hex>_<path tail>/config.yaml` is now authoritative when present, and the in-repo file is then ignored. Once that root directory exists, a repository with no entry under it refuses to load, so hiding the protected file is not a way around it.
+- **A custom `--field` key may not reuse a core attribute's name.** Eleven items had a stale copy of a core attribute stored as a custom field, so one item read `satisfied` at the top and `violated` in its fields. The check lives in `Store.add` and `Store.update`, has no `--force`, and still allows deleting such a field.
+
+#### Commands
+
+- **`tracker clusters` groups related open items**, using TF-IDF similarity over each item's text (with IDs masked) and Jarvis-Patrick clustering; defaults `k=6, shared=3` come from a parameter sweep. Standard library only; 332 items take 2.4 s.
+- **`tracker reconcile` finishes what a failed post-merge pull leaves behind**: it flushes pending ops, fast-forwards and restores the journal, skipping and reporting each step that is not needed. It replaces `tracker recover`, which stays as the primitive the hooks call.
+- **`tracker sync --prune` closes `tracker-sync/*` branches whose content is already on dev**, and a successful auto-sync prunes automatically. A branch is pruned only when a trial merge yields dev's own tree.
+
+### Fixed
+
+- **Ops self-healing could be left switched off by a killed `auto-pr`, silently, for hours.** The marker that pauses the self-healing hooks during a sync was a plain file removed by an exit trap, which bash does not run on SIGKILL. It is now a lock the OS releases on any exit, and every tracker command warns on stderr when a marker's recorded owner is gone.
+- **Human-authority commands ran code the agent could edit.** The only install was the agent's editable checkout, and the setup shim told the human to use it. The shim now installs a non-editable copy under the human's account, pinned to a reviewed commit. A new `install_provenance` check reports who can modify the running code; it is documented as an accident guard, not a security control.
+- **Two-account setups could report healthy while broken.** A relative `--tracker-root` silently disabled host protection; the shared-group probe checked the wrong directories and reported "single-user"; two checks fought over `config.yaml`'s mode and both reported "fixed"; and under host protection the wizard edited a copy the loader ignores. All four are fixed.
+- **`tracker init` refuses to run as an agent**, and the permission fallback that could make an agent the owner of the human's config refuses for every caller.
+- **`tracker validate --strict` passes.** The fields check read each op in isolation, so a field a later op had deleted was flagged forever (26 stale warnings); it now checks the compiled item.
+- **Smaller.** Thirteen tests no longer pass or fail depending on whether the host has opted into host protection. The managed AGENTS.md block no longer shows a `--json` position that exits 2. Nine empty, unmergeable `tracker-sync/*` PRs are explained (the forge does not run the client-side `merge=union` driver) and are what `--prune` cleans up. The TUI modal test helper raises when it times out, instead of returning as if it had succeeded.
+
 ## [0.8.0] - 2026-08-20
 
 ### Added

@@ -1,0 +1,29 @@
+- op: create  # aa77
+  at: '2026-09-25T19:07:16Z'  # aa77
+  by: agent  # aa77
+  actor: jgstern_agent  # aa77
+  clock: 1  # aa77
+  nonce: aa77  # aa77
+  data:  # aa77
+    kind: work_item  # aa77
+    title: "pascal: a nested procedure is never a symbol, so calls inside it get a dangling src id, and main-program calls emit no edge"  # aa77
+    status: todo_hard  # aa77
+    priority: 3  # aa77
+    parent:  # aa77
+    tags:  # aa77
+    - call_graph  # aa77
+    isbefore: []  # aa77
+    duplicate_of: []  # aa77
+    not_duplicate_of: []  # aa77
+    pr_ref:  # aa77
+    description: "pascal: a nested procedure is never a symbol, so every call inside it gets a src id that no node carries (dangling edge), and calls in the main program body emit no edge.\n\nFOUND 2026-09-25 by the docstring-staleness audit (reviewer aside), REPRODUCED on the production path (`analyze_pascal` over a one-file fixture):\n\n    program P;\n    procedure Helper; begin end;\n    procedure Outer;\n      procedure Inner; begin Helper; end;\n    begin Inner; end;\n    begin Outer; end.\n\n    symbols: Helper, Outer (function), P (program) -- no Inner\n    calls Inner(8-11) -> Helper      src_exists=False   <- dangling src\n    calls Outer -> Inner:unresolved  (the callee is the unemitted symbol)\n    (no edge for the main program's `Outer;`)\n\nMECHANISM: Pass 1 stops at the outer defProc (pascal.py `return  # Don't recurse into function bodies`), while `_find_enclosing_function` walks to the NEAREST defProc, which is the nested one, and mints its id from position. A position-keyed caller id for a declaration Pass 1 never registered.\n\nFix direction: register nested procedures (a nested defProc is a real declaration with its own scope) or have the caller walk skip unregistered declarations; decide the program body's caller (the program symbol). Check the family: other analyzers whose Pass 1 stops at the first function body but whose caller walk finds the innermost one."  # aa77
+    fields: {}  # aa77
+- op: update  # e5a3
+  at: '2026-09-25T19:07:38Z'  # e5a3
+  by: agent  # e5a3
+  actor: jgstern_agent  # e5a3
+  clock: 2  # e5a3
+  nonce: e5a3  # e5a3
+  set: {}  # e5a3
+  add:  # e5a3
+    not_duplicate_of: [WI-hukoh-bakob-gidij-nibag-puvaz-fadil-kizor-kitan, WI-zohuk-lagol-gupuk-mivil-hukiz-zomag-kogib-nujof]  # e5a3

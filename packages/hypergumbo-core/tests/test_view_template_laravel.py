@@ -106,6 +106,9 @@ class TestViewHelperCall:
         assert edge.dst.endswith(
             "resources/views/users/show.blade.php:1-1:show.blade.php:template"
         )
+        # INV-rukor: the controller class qualified the method; the template
+        # is minted here and is not a consumed record.
+        assert edge.derived_from == [method.id, klass.id]
 
     def test_view_call_without_data_arg(self, tmp_path: Path) -> None:
         _write(tmp_path, "resources/views/users/show.blade.php")

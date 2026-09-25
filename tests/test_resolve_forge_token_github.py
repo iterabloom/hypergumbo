@@ -13,6 +13,8 @@ Forgejo token used to take precedence over both. There is no failover any more,
 so that precedence — and its test — are gone.
 """
 
+# covers: scripts/lib/forgejo-api.sh
+
 from __future__ import annotations
 
 from _forge_github_harness import fake_repo, run_lib

@@ -61,7 +61,23 @@ PYPROJECT_FILES=(
     "packages/hypergumbo-lang-common/pyproject.toml"
     "packages/hypergumbo-lang-extended1/pyproject.toml"
     "packages/hypergumbo-lang-rust-analyzer/pyproject.toml"
+    "packages/hypergumbo-lang-scip-python/pyproject.toml"
     "packages/hypergumbo/pyproject.toml"
+)
+
+# Every lockstep-versioned package, by distribution name: an internal pin
+# `<name>==x.y.z` in any file above is rewritten to the new version. The meta
+# package's extras pin these, so a name missing here ships a pin to a version
+# that was never published (hypergumbo-lang-scip-python nearly did, at 8.1.0).
+# tests/test_release_package_lists.py checks this list, and the two above,
+# against packages/*/pyproject.toml.
+INTERNAL_PACKAGES=(
+    "hypergumbo-core"
+    "hypergumbo-lang-mainstream"
+    "hypergumbo-lang-common"
+    "hypergumbo-lang-extended1"
+    "hypergumbo-lang-rust-analyzer"
+    "hypergumbo-lang-scip-python"
 )
 
 # All main __init__.py locations with __version__
@@ -72,6 +88,7 @@ INIT_FILES=(
     "packages/hypergumbo-lang-common/src/hypergumbo_lang_common/__init__.py"
     "packages/hypergumbo-lang-extended1/src/hypergumbo_lang_extended1/__init__.py"
     "packages/hypergumbo-lang-rust-analyzer/src/hypergumbo_lang_rust_analyzer/__init__.py"
+    "packages/hypergumbo-lang-scip-python/src/hypergumbo_lang_scip_python/__init__.py"
 )
 
 # Extract current version from core package (source of truth)
@@ -140,11 +157,9 @@ for pyproject in "${PYPROJECT_FILES[@]}"; do
         sed -i "s/^version = \"[0-9]*\.[0-9]*\.[0-9]*[^\"]*\"/version = \"$NEW_VERSION\"/" "$pyproject"
 
         # Update internal dependencies (e.g., hypergumbo-core==x.y.z)
-        sed -i "s/hypergumbo-core==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-core==$NEW_VERSION/g" "$pyproject"
-        sed -i "s/hypergumbo-lang-mainstream==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-mainstream==$NEW_VERSION/g" "$pyproject"
-        sed -i "s/hypergumbo-lang-common==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-common==$NEW_VERSION/g" "$pyproject"
-        sed -i "s/hypergumbo-lang-extended1==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-extended1==$NEW_VERSION/g" "$pyproject"
-        sed -i "s/hypergumbo-lang-rust-analyzer==[0-9]*\.[0-9]*\.[0-9]*/hypergumbo-lang-rust-analyzer==$NEW_VERSION/g" "$pyproject"
+        for internal in "${INTERNAL_PACKAGES[@]}"; do
+            sed -i "s/$internal==[0-9]*\.[0-9]*\.[0-9]*/$internal==$NEW_VERSION/g" "$pyproject"
+        done
 
         echo "  Updated: $pyproject"
     fi

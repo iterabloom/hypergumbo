@@ -1539,7 +1539,19 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     """Get or create the results cache directory for current repo state.
 
     Cache structure (WI-panih):
-        ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/<analyzer_identity>/
+        ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>[-<backends>]/<analyzer_identity>/
+
+    The third segment is the repo state hash, suffixed (WI-givib) with the
+    RESOLVED opt-in backend set when it is non-empty — ``-rust_analyzer``
+    for a two-arm run — because which backends were ENABLED is run
+    configuration the analyzer identity (code identity) cannot see: a
+    tree-sitter-only run and a two-arm run of one tree used to share a
+    dir and return each other's artifact. The suffix is added only when a
+    backend will actually run (opt-in chain AND binary installed —
+    ``backend_selection.resolved_backend_set``), so every entry written
+    before this change is still reachable, and a read command finds a
+    two-arm artifact only under the same resolved set (the environment
+    variable or the per-repository trust grant, not a one-off flag).
 
     The fourth segment (``<analyzer_identity>``) keys on the analyzer
     surface that produces the cached output — ``__version__`` plus a
@@ -1557,10 +1569,14 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     Returns:
         Path to the results cache directory for current state.
     """
+    from . import backend_selection
     from .analyzer_identity import compute_analyzer_identity_hash
 
     fingerprint = _get_repo_fingerprint(repo_root)
     state_hash = _get_repo_state_hash(repo_root)
+    backends = backend_selection.resolved_backend_set(repo_root=repo_root)
+    if backends:
+        state_hash = f"{state_hash}-{'+'.join(backends)}"
     analyzer_identity = compute_analyzer_identity_hash()
     cache_base = _get_xdg_cache_base()
     cache_dir = (

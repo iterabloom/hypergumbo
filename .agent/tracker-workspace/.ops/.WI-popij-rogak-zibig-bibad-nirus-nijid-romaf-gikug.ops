@@ -1,0 +1,22 @@
+- op: create  # e7bc
+  at: '2026-09-15T04:41:51Z'  # e7bc
+  by: agent  # e7bc
+  actor: jgstern_agent  # e7bc
+  clock: 1  # e7bc
+  nonce: e7bc  # e7bc
+  data:  # e7bc
+    kind: work_item  # e7bc
+    title: "kotlin ::fn emits references + callable_reference, the same registration family WI-nisud made call-shaped for javascript -- held back pending a kotlin A/B"  # e7bc
+    status: todo_hard  # e7bc
+    priority: 3  # e7bc
+    parent:  # e7bc
+    tags:  # e7bc
+    - taint  # e7bc
+    - kotlin  # e7bc
+    - analyzer  # e7bc
+    isbefore: []  # e7bc
+    duplicate_of: []  # e7bc
+    not_duplicate_of: []  # e7bc
+    pr_ref:  # e7bc
+    description: "THE SIBLING WI-nisud DELIBERATELY DID NOT SHIP (PR #967).\n\nkotlin emits a `references` edge with evidence_type `callable_reference` for a\nmethod reference passed as a value (`::fn`), at kotlin.py:1764 and :1807. That is\nthe same family as javascript's `callback_argument_reference`: a callable handed\nto something that will invoke it with data the far side chooses. WI-nisud made\nthe javascript member of the family call-shaped for taint, via\nedge_types.is_callback_registration, and left `callable_reference` OUT of\n`_REGISTRATION_EVIDENCE_TYPES` on purpose.\n\nWHY IT WAS HELD BACK, so this is not read as an oversight. WI-nisud's widening\nwas justified by an eight-repository javascript A/B (78 -> 80 findings, 1 verdict\ninconclusive -> violated, none removed, 1 of 2 added findings a true positive).\nNothing equivalent exists for kotlin. The predicate feeds a precision-sensitive\nsurface, and it is NOT monotone-additive -- `_register_sanitizer_callers` asks\nthe same question, so a widening can DELETE findings as well as add them.\nFolding an unmeasured language in is the INV-putug error.\n\nWHAT CLOSING THIS LOOKS LIKE. Adding \"callable_reference\" to\n`_REGISTRATION_EVIDENCE_TYPES` is one line. The work is the measurement that\nlicenses it:\n\n  1. A fixture proving the shape is inert today and live after -- source\n     attributed to the enclosing function, sink inside the referenced function,\n     `::fn` the only join. Include a control whose value comes from a RETURNING\n     source, so \"inside the callee\" and \"IS the callee\" are separable.\n  2. Check FIRST whether kotlin has the javascript defect at all: `::fn` may\n     resolve to a symbol the walk already reaches by a `calls` edge from\n     elsewhere, in which case there is nothing to fix and that is the answer.\n  3. An A/B on kotlin repositories, reporting findings ADDED, findings REMOVED\n     (the sanitizer surface), and precision READ AGAINST SOURCE on each added\n     finding -- not a count.\n\nALSO WORTH ENUMERATING, not assumed: whether any OTHER language emits a\nregistration-shaped `references` edge under a third evidence type. The\njavascript audit found four evidence types riding `references` in one analyzer\n(callback_argument_reference, ast_type_ref, object_field_reference, and an\nast_call_direct middleware chain), of which exactly one is a dispatch. Sweep\nevidence_types.py by mechanism rather than by name."  # e7bc
+    fields: {}  # e7bc

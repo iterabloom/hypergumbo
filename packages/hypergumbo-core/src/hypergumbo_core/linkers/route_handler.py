@@ -54,7 +54,7 @@ from typing import TYPE_CHECKING
 
 from ..member_names import MEMBER_NAME_SEPARATORS
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
-from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     pass
@@ -781,6 +781,7 @@ def link_routes_to_handlers(
                 src=route.id,
                 dst=handler.id,
                 edge_type="dispatches_to",
+                evidence_type="dispatch_pattern",
                 line=route.span.start_line if route.span else 0,
                 confidence=0.5 if handler_is_fallback else 0.9,
                 origin=PASS_ID,
@@ -790,6 +791,8 @@ def link_routes_to_handlers(
                     else handler_meta
                 ),
                 origin_run_id=run.execution_id,
+                # derived-from endpoints: a handler-name string in the route's own meta, resolved by
+                #   name
                 derived_from=[route.id, handler.id],
             )
             new_edges.append(edge)
@@ -826,6 +829,7 @@ def link_routes_to_handlers(
                     src=route.id,
                     dst=target.id,
                     edge_type="dispatches_to",
+                    evidence_type="dispatch_pattern",
                     line=route_line,
                     confidence=0.5 if la_is_fallback else 0.85,
                     origin=PASS_ID,
@@ -835,6 +839,8 @@ def link_routes_to_handlers(
                         else la_meta_base
                     ),
                     origin_run_id=run.execution_id,
+                    # derived-from endpoints: a loader/action name string in the route's own meta,
+                    #   resolved by name
                     derived_from=[route.id, target.id],
                 )
                 new_edges.append(la_edge)
@@ -867,6 +873,7 @@ def _check_routes_available(ctx: LinkerContext) -> int:
     # Python (Flask/FastAPI/Django), JS/TS (Express/Koa/NestJS), Ruby (Rails),
     # Java (Spring), Go (Echo/Gin), C# (ASP.NET), Elixir (Phoenix), PHP (Laravel).
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "php"]],
+    activation=always_on_unreviewed(),
 )
 def link_route_handler(ctx: LinkerContext) -> LinkerResult:
     """Linker entry point for registry."""

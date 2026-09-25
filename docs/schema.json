@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.20.1"
+      "const": "0.20.13"
     },
     "confidence_model": {
       "type": "string",
@@ -475,6 +475,8 @@
             "property": "language_construct",
             "attribute": "language_construct",
             "field": "language_construct",
+            "parameter": "language_construct",
+            "type_parameter": "language_construct",
             "constructor": "language_construct",
             "getter": "language_construct",
             "setter": "language_construct",
@@ -890,8 +892,11 @@
               "description": "True if the file is generated code"
             },
             "is_exported": {
-              "type": "boolean",
-              "description": "True if the symbol is part of the package's public API"
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "True if the symbol is part of the package's public API, false if a producer measured that it is not, and null when no producer computed exportedness for this record (INV-kubup: seventeen analyzer modules have a rule and ninety-odd do not)"
             }
           },
           "required": [
@@ -996,6 +1001,28 @@
             }
           ],
           "description": "ADR-0032: fully-qualified name including ancestor containers, joined with the per-language separator declared in qualified_name_axis.py. Null when name already encodes the qualified form or no separator policy is declared."
+        },
+        "attribution": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0057 \u00a76 provenance slot, present only on a record the merge pass folded from two producers: field -> the pass ids whose value the scalar slot carries (agreement lists both producers; a contested field lists the arbitration winner; a field only one producer observed lists that producer)."
+        },
+        "alternatives": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0057 \u00a76: the values the scalar slot does NOT carry, present only for contested fields on a merged record: field -> [{value, origin: [pass_id, ...]}]. Nothing a producer emitted is discarded; the scalar is the one stamped default (\u00a74) and this is the candidate set."
         },
         "visibility": {
           "oneOf": [
@@ -1164,24 +1191,46 @@
               "type": "array",
               "items": {
                 "type": "string"
-              },
-              "minItems": 1
+              }
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; null for analyzer-originated edges."
+          "description": "Symbol (or Edge) IDs of the input records the producer consumed to construct this Edge (INV-rukor) -- the records whose presence decided it. Ids the producer minted in the same run are omitted, so [] is a linker's positive 'consumed no graph record' (both ends built from a file scan), distinct from null. Populated by linkers; null for analyzer-originated edges."
         },
         "confidence_source": {
           "type": "string",
           "enum": [
             "evidence_derived",
             "emitter_constant",
-            "composite"
+            "composite",
+            "corroborated"
           ],
-          "description": "Provenance of the confidence value (ADR-0039 ruling 2): evidence_derived (from the evidence_type registry base), emitter_constant (a declared hardcoded producer value), or composite (still fuses a ranking adjustment ruling 3 relocates to rank_score)."
+          "description": "Provenance of the confidence value (ADR-0039 ruling 2): evidence_derived (from the evidence_type registry base), emitter_constant (a declared hardcoded producer value), composite (still fuses a ranking adjustment ruling 3 relocates to rank_score), or corroborated (ADR-0057 \u00a713: two producers reached this edge by DISTINCT inference pathways, so the value is the declared corroboration level, not either producer's; both originals are in alternatives.confidence)."
+        },
+        "attribution": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0057 \u00a76 provenance slot, present only on an edge the merge pass folded from two producers: field -> the pass ids whose value the scalar carries."
+        },
+        "alternatives": {
+          "oneOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0057 \u00a76: the values the scalar slot does NOT carry, present only for contested fields on a folded edge: field -> [{value, origin: [pass_id, ...]}]."
         },
         "rank_score": {
           "oneOf": [
@@ -1206,8 +1255,14 @@
             "bridge_kind": {
               "description": "FFI / native-bridge mechanism on ``calls`` edges that absorb the bridge family (e.g. 'cgo', 'napi', 'wasm', 'ffi'). Value vocabulary tracked at ``edge_types.BRIDGE_KINDS``."
             },
+            "call_arg_shape": {
+              "description": "What the arguments at this call site CAN carry. One value today: 'literal_only' -- every positional and keyword argument is a literal constant, or there are no arguments at all. INV-fubag, and it exists to be a PROOF rather than a heuristic: taint models a flow as the tainted value being an argument to the sink call or its receiver, so a call passing only literals has nothing that could be the tainted value. Measured cost of not having it (docs/measurements/0003): 24 of 34 adjudicated false positives were sink calls with no arguments at all -- tempfile.TemporaryDirectory(), TemporaryFile(), NamedTemporaryFile(delete=True). ABSENCE IS THE CONSERVATIVE READING and is load-bearing: producers stamp this ONLY when they can prove the argument list is all-literal, so every un-stamped call -- including every edge in every behavior map written before this key existed -- keeps flowing. A default that silenced findings would make this a false-negative generator on a security analysis. Sparse by convention for the same reason: stamping 'dynamic' on every call edge would say nothing absence does not already say, at the cost of a key on every edge of every map. Scoped to the CALL FAMILY -- the question does not arise for an edge that is not an invocation."
+            },
+            "call_arg_shape_values": {
+              "description": "Every distinct ``call_arg_shape`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``call_arg_shape`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
+            },
             "call_construct": {
-              "description": "Source-language call construct collapsed under ``ast_call`` apex (e.g. 'method', 'function', 'pipe', 'application'). Fold residue per audit-findings 0012 / WI-nibis Wave 4."
+              "description": "Source-language call construct collapsed under ``ast_call`` apex (e.g. 'method', 'function', 'pipe', 'application'). Fold residue per audit-findings 0012 / WI-nibis Wave 4. Scoped to the CALL FAMILY -- ``calls`` and ``instantiates`` -- declared on ``applicable_edge_types`` below rather than asserted in this sentence, because a scope that lives only in prose cannot be checked and this one drifted (WI-toruz). ``instantiates`` is in scope deliberately: ``edge_type`` is NOT a function of the construct, since ruby emits ``calls`` for the same source construct that dart/csharp emit ``instantiates`` for (INV-kahig), so 'constructor' is the only cross-language invariant for object creation and is NOT redundant with ``edge_type``."
             },
             "call_kind": {
               "description": "Specialized call type for Cluster E sub-case (a) reclassifications (e.g. 'abi', 'subprocess', 'db_query'). Fold residue per audit-findings 0010."
@@ -1217,6 +1272,9 @@
             },
             "call_locality": {
               "description": "File-locality of a call edge \u2014 whether caller and callee live in the same source file ('same_file') or different files ('cross_file'). A SEPARATE axis from ``call_construct`` (which names the syntactic call shape): INV-vakaf split this out after bash/objc were found smuggling 'cross_file' through ``call_construct``. Sparse by convention: set to 'cross_file' on boundary-crossing calls; ABSENT means same-file (the common case)."
+            },
+            "callee_name": {
+              "description": "The callee's name at FULL FIDELITY, as the producer saw it at the call site -- the lossless home ADR-0036 Ruling 1 designates. The id's name slot is deliberately LOSSY (names containing ':' fold to '.') because the id is a location-addressed key, not a fidelity surface, and Ruling 1 says in as many words that consumers needing the exact name MUST read it from elsewhere and never re-derive it from the id. Until this key existed there was no elsewhere for an unresolved external: an Objective-C selector (writeToFile:atomically:) ENDS in a colon, so the id's second-to-last token was the EMPTY STRING, the boundary node synthesised from that id had name='', and the selector existed nowhere in the output (INV-divuf / WI-nakut). Stamped on EVERY edge make_unresolved_edge builds, including the cell where WI-huzuv correctly withholds dst_ref because the module is unknown -- carrying the name in dst_ref sometimes and here otherwise would give one fact two homes."
             },
             "channel": {
               "description": "Logical dataflow channel / conduit the data flows through on a dataflow-family edge \u2014 a message topic (``event_publishes``), IPC channel, CRDT document, crypto primitive, etc. The CONDUIT referent ONLY (WI-pozom): a WebSocket route path uses ``url_path`` and a dispatch target is the edge ``dst`` \u2014 never ``channel``. The transport family is on the co-occurring ``channel_kind`` key."
@@ -1239,6 +1297,12 @@
             "dispatch_kind": {
               "description": "Dispatch shape on ``dispatches_to`` edges (e.g. 'route', 'di_register', 'di_resolve', 'annotated'). Fold residue from ADR-0023 Phase 4b dispatch / publish family."
             },
+            "env_var": {
+              "description": "The variable name behind a synthesized environment read \u2014 the `API_KEY` in `$API_KEY`. Carried for the READER rather than for matching: bash's env_read catalogue is ONE row on the os.environ precedent, so the name never participates in the lookup. PER CALL SITE (INV-vukiv): `$HOME` then `$API_KEY` in one function collapsed to `env_var='HOME'`, which named the harmless read and dropped the secret one."
+            },
+            "env_var_values": {
+              "description": "Every distinct ``env_var`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``env_var`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
+            },
             "ffi_mechanism": {
               "description": "FFI mechanism for cross-language bridges where ``bridge_kind`` is too coarse (e.g. specific JNI / WASM-bindgen / luajit-ffi variants)."
             },
@@ -1255,10 +1319,19 @@
               "description": "Boundary classification on edges that cross an IO primitive (e.g. 'net_send', 'fs_read', 'process_spawn'). Two-source field per the WI-fakuv / WI-puvun io-boundary REFRAME: the full value-space is CONSUMER-TIME-derived by ``io_boundary.compute_boundary_map`` from the ``io_primitives`` YAML catalogs and is NOT persisted (it is stamped in memory only by the ``io-boundaries`` / ``verify-claims`` / ``slice --io-boundary`` paths). What survives into a persisted behavior map is only the analyzer producer-hints \u2014 currently just bash's ``command_launch`` (``bash.py``; bash has no ``io_primitives`` catalog so the analyzer stamps it directly), which is why the persisted field reads as ``command_launch``-only. Consumers that need the full classification must run ``compute_boundary_map`` rather than read the persisted meta key."
             },
             "io_mode": {
-              "description": "Read/write disambiguation for a mode-parameterised IO primitive \u2014 the ``'w'`` in ``fopen(path, 'w')`` \u2014 resolving one catalogue row to a directional boundary."
+              "description": "Read/write disambiguation for a mode-parameterised IO primitive \u2014 the ``'w'`` in ``fopen(path, 'w')`` \u2014 resolving one catalogue row to a directional boundary. PER CALL SITE (INV-vukiv): one function may open the same path 'r' at one line and 'w' at another, and those two calls collapse to ONE edge. Measured before the flag existed: adding a preceding open(p,'r') deleted a real truncating open(p,'w') from the boundary map outright, because the survivor carried the first site's mode and the gate eliminated the fs_write row."
+            },
+            "io_mode_values": {
+              "description": "Every distinct ``io_mode`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``io_mode`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
             },
             "io_primitive": {
               "description": "Fully-qualified IO primitive matched at the boundary (e.g. 'os.open', 'socket.socket'). Set on io_boundary edges by ``io_boundary.compute_boundary_map``."
+            },
+            "io_target_kind": {
+              "description": "What KIND of thing a call site's I/O target is, where the catalogue row cannot tell: 'host_path' (a place in a filesystem), 'null_device' (a kernel sink that discards), 'std_stream' (/dev/stdout, /dev/stderr, /dev/fd/N \u2014 a real crossing, but a logging one rather than a filesystem one), 'in_memory' (WI-lipis: the bytes never left the process \u2014 a `bufio.NewScanner(strings.NewReader(s))` wraps a buffer, not a channel), 'pipe' (WI-suhug: a channel whose far end is ANOTHER PROCESS \u2014 `cmd.StdinPipe()`, `os.Pipe()`), 'net_stream' (WI-suhug: a connection or a response writer), or 'unresolved' (a variable target; a real write to a place the analyzer cannot name). The kind names the TARGET, not the direction: `io_boundary` maps it to a boundary in the asker's direction (`_READ_TARGET_KIND_BOUNDARY` / `_WRITE_TARGET_KIND_BOUNDARY`), so one 'std_stream' is an `ipc_recv` for a reader and a `logging` for a writer. INV-nular: `redirect.>` is ONE catalogue row whose boundary depends on the target at the call site, exactly as `builtins.open`'s depends on the mode, so the discriminator is stamped by the analyzer and read by `io_boundary.classify_call`. Measured: without it, `echo \"$API_KEY\" > /dev/null` returned `violated` against a fs_write must-not-exist claim. PER CALL SITE for the same reason `redirect_target` is."
+            },
+            "io_target_kind_values": {
+              "description": "Every distinct ``io_target_kind`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``io_target_kind`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
             },
             "mechanism": {
               "description": "Dispatch/call mechanism on a ``dispatches_to`` or ``calls`` edge \u2014 names HOW the dispatch/call is wired when the canonical ``edge_type`` alone is too coarse. Current value space: 'otp_call' / 'otp_cast' (Elixir/Erlang GenServer synchronous call vs asynchronous cast, folded from the former otp_call/otp_cast edge_types per WI-rorul); 'callback' (Elixir/Erlang behaviour + Rails callbacks, folded from ``invokes_callback`` per audit-findings 0017); 'kernel_launch' (CUDA kernel launch, folded from ``kernel_launch``); 'template' (Vue template\u2192method call, folded from ``template_calls``). Distinct from ``framework_dispatch`` (framework name, e.g. 'otp_genserver') and ``call_construct`` (call-edge syntactic shape)."
@@ -1278,8 +1351,26 @@
             "receiver_type_hint": {
               "description": "Inferred type of a call edge's receiver, stamped by the analyzer receiver-type inference to aid cross-file method resolution (e.g. an external constructor's return type)."
             },
+            "redirect_origin_names": {
+              "description": "The externally-derived variable names that can reach what the SHELL ITSELF contributes at a redirect \u2014 its target operand, a heredoc body the shell expands, and every producing stage's arguments. WI-zovuz: bash carries no dataflow, so a redirect-sink taint finding rested on reachability alone ('this file reads the environment somewhere AND reaches a function that writes somewhere'). Measured over 15 cohort repos, 28 of the 186 environment names read in the 69 files that also carry a write redirect can reach one; 48 of those files have none. An EMPTY list is a PROOF that no value this program holds crossed here, and `_sink_call_can_carry_taint` consumes it as such \u2014 an ABSENT key keeps the finding, because absence is the state of every map written before this key existed. PER CALL SITE for the same reason `redirect_target` is (INV-vukiv): two redirects in one function reach different names."
+            },
+            "redirect_origin_names_values": {
+              "description": "Every distinct ``redirect_origin_names`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``redirect_origin_names`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
+            },
+            "redirect_target": {
+              "description": "The path (or `<unresolved>`) a shell redirection writes to or reads from \u2014 the `/etc/cron.d/pwned` in `echo x > /etc/cron.d/pwned`. Written by bash.py's file_redirect branch. PER CALL SITE, and the measurement that filed INV-vukiv: one function redirecting to /dev/null on one line and to /etc/cron.d/pwned on the next collapsed to a single edge reading '/dev/null', so the cron-dropper was reported as a write to the bit bucket."
+            },
+            "redirect_target_resolved": {
+              "description": "Whether ``redirect_target`` names a literal path rather than an unexpanded variable. Companion boolean so a consumer can tell 'wrote /tmp/x' from 'wrote somewhere I cannot name' without re-parsing the target. PER CALL SITE for the same reason ``redirect_target`` is."
+            },
+            "redirect_target_resolved_values": {
+              "description": "Every distinct ``redirect_target_resolved`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``redirect_target_resolved`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
+            },
+            "redirect_target_values": {
+              "description": "Every distinct ``redirect_target`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``redirect_target`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
+            },
             "ref_construct": {
-              "description": "Source-language construct on a reference-FAMILY (non-call) edge (``references`` / ``includes`` / ``extends`` / ``depends_on`` / ``contains`` / ``data_flows_to``) where the canonical ``edge_type`` alone is too coarse. Value space: 'jsx' (JSX render), 'script_src' (HTML ``<script src=...>``), 'websocket_endpoint' (WebSocket endpoint connectivity), 'event_emit' (Solidity event emission), 'dispatch_table' (C/C++ dispatch-table reference); and \u2014 from the ADR-0023 endpoint_shape fold-tail (audit-findings 0017, WI-pumav) \u2014 'markdown_link', 'rdf_vocabulary', 'association' (Ruby ActiveRecord), 'build_tag_alternative' (Go build tags), 'view_render' (controller\u2192template), 'template' (Twig/Blade extends/includes), 'puppet_class', 'sass_mixin', 'dockerfile_stage' (Docker FROM..AS), 'puppet_require', 'puppet_notify', 'crypto' (crypto write\u2192read on ``data_flows_to``); and \u2014 from the resolver/OpenAPI/RPC family fold (audit-findings 0016, WI-sumik) \u2014 'graphql_resolver_type' (a GraphQL ``@Resolver(() => Type)`` declaration-time association) and 'openapi_operation' (an OpenAPI spec operation referencing its realizing route handler, direction-preserving). Renamed from ``construct`` per INV-lajov to disambiguate from the sibling ``call_construct`` (which names the call SHAPE on ``calls`` edges): distinct vocabularies, distinct edge families, zero overlap."
+              "description": "Source-language construct on a reference-FAMILY (non-call) edge (``references`` / ``includes`` / ``extends`` / ``depends_on`` / ``contains`` / ``data_flows_to``) where the canonical ``edge_type`` alone is too coarse. Value space: 'jsx' (JSX render), 'script_src' (HTML ``<script src=...>``), 'websocket_endpoint' (WebSocket endpoint connectivity), 'event_emit' (Solidity event emission), 'dispatch_table' (C/C++ dispatch-table reference); and \u2014 from the ADR-0023 endpoint_shape fold-tail (audit-findings 0017, WI-pumav) \u2014 'markdown_link', 'rdf_vocabulary', 'association' (Ruby ActiveRecord), 'build_tag_alternative' (Go build tags), 'view_render' (controller\u2192template), 'template' (Twig/Blade extends/includes), 'puppet_class', 'sass_mixin', 'dockerfile_stage' (Docker FROM..AS), 'puppet_require', 'puppet_notify', 'crypto' (crypto write\u2192read on ``data_flows_to``); and \u2014 from the resolver/OpenAPI/RPC family fold (audit-findings 0016, WI-sumik) \u2014 'graphql_resolver_type' (a GraphQL ``@Resolver(() => Type)`` declaration-time association) and 'openapi_operation' (an OpenAPI spec operation referencing its realizing route handler, direction-preserving); and -- per WI-diruk -- 'method_group' (a C# method group, ``Action h = Handle;`` or ``items.ForEach(Process)``, which REFERENCES a method without invoking it; it was emitted on ``call_construct`` until the concept audit found it on ``references`` edges, where a call construct cannot belong). Renamed from ``construct`` per INV-lajov to disambiguate from the sibling ``call_construct`` (which names the call SHAPE on the CALL family -- ``calls`` and ``instantiates``, see that key's ``applicable_edge_types``): distinct vocabularies, distinct edge families. INV-lajov originally wrote 'zero overlap' here on the strength of a corpus measurement in which every observed ``call_construct`` sat on a ``calls`` edge; that described the sample rather than the field, and was already false by five ``constructor``-on-``instantiates`` sites (WI-toruz)."
             },
             "referring_paths": {
               "description": "The list of source file paths that referred to a deduplicated edge \u2014 the only list-of-paths meta value, minted at the edge-dedup merge in ir.py so one canonical edge retains every referring site."
@@ -1288,10 +1379,16 @@
               "description": "Boolean flag on a ``depends_on`` edge marking an ordering dependency that ALSO triggers a refresh-on-change of the dst (Puppet ``notify``, folded from the former ``notifies_resource`` edge_type per audit-findings 0017). Present-and-true only on the refresh subset; a plain ordering ``depends_on`` (e.g. Puppet ``require``, ``ref_construct='puppet_require'``) omits it. Makes the require-vs-notify distinction queryable without a distinct edge type; no consumer branches on it yet."
             },
             "resolution_quality": {
-              "description": "Pathway-quality label on ``ast_call`` edges (e.g. 'recovery', 'ambiguous'), ORTHOGONAL to ``Edge.is_resolved``. It names uncertainty in the resolution *pathway* (heuristic line-proximity vs. direct binding), NOT target locality \u2014 in-repo-ness lives on ``is_resolved`` (ADR-0037 ruling 1/3), and resolution certainty proper lives in ``confidence`` / ``evidence_type`` (ADR-0028). A recovery edge to a real in-repo method is correctly ``is_resolved=True`` with ``resolution_quality='recovery'``."
+              "description": "Pathway-quality label on ``ast_call`` edges (e.g. 'recovery', 'ambiguous'), ORTHOGONAL to ``Edge.is_resolved``. It names uncertainty in the resolution *pathway* (heuristic line-proximity vs. direct binding), NOT target locality \u2014 in-repo-ness lives on ``is_resolved`` (ADR-0037 ruling 1/3), and resolution certainty proper lives in ``confidence`` / ``evidence_type`` (ADR-0028). A recovery edge to a real in-repo method is correctly ``is_resolved=True`` with ``resolution_quality='recovery'``. INV-tadup added 'chained_return_type' (Go: the receiver's type came from a chained call's return type) \u2014 it named a resolution MECHANISM and was being smuggled through ``call_construct``, which is the syntactic-construct axis. INV-mumov added 'accessor_name' (Python/Django: the module slot was filled from a relation- accessor NAME this project's models declare, with NOTHING known about the root) for the same reason \u2014 it was shipping as 'type_inferred', indistinguishable from a receiver typed off a resolved class, and the difference is load-bearing: ``verify_claims.accessor_name_receiver_sites`` reads it back so a CLEAN security verdict stays qualified instead of going silent about calls whose typing rests on a name."
             },
             "server_framework": {
               "description": "Server-side framework of a WebSocket edge \u2014 same vocabulary as ``client_framework``, naming the endpoint that accepts the connection."
+            },
+            "superseded_by": {
+              "description": "ADR-0057 \u00a714 (WI-lihis): the id of the RESOLVED edge that superseded this unresolved edge to an external stub \u2014 same src, a shared call line, the same edge type and the same declared callee name, from a producer this edge's origin lacks. Stamped by finalize sub-step 7a when it multiplies this edge's rank_score by SUPERSEDED_STUB_RANK_FACTOR, so the low rank is a stated fact rather than an unexplained number. Present only on a superseded edge; confidence is untouched and the edge is never deleted."
+            },
+            "superseded_by_origin": {
+              "description": "ADR-0057 \u00a714: the origin (pass ids) of the superseding edge named in ``superseded_by`` \u2014 which producer saw the site as first-party. Present only beside ``superseded_by``."
             },
             "table_name": {
               "description": "Database table a database-query edge reads or writes, extracted from the query by the database_query linker."
@@ -1361,6 +1458,7 @@
                 "dockerfile_from": "inference_pathway",
                 "enclosing_scope": "inference_pathway",
                 "eta_expansion": "inference_pathway",
+                "macro_expansion": "inference_pathway",
                 "extends": "inference_pathway",
                 "function_pointer": "inference_pathway",
                 "function_pointer_arg": "inference_pathway",
@@ -1548,6 +1646,10 @@
         "edges_emitted": {
           "type": "integer",
           "description": "Number of Edges this pass contributed (INV-gizik / INV-pitab); a pass with edges_emitted>0 must carry duration_ms>0"
+        },
+        "silence_reason": {
+          "type": "string",
+          "description": "WHY this pass emitted nothing (INV-bikaj, arc T6), on the pass-silence-reason axis. Present ONLY when the pass was silent: its ABSENCE means the pass emitted output, which is NOT APPLICABLE rather than unknown. 'unreported' is the distinct CANNOT-DETERMINE value -- the pass read files, produced nothing and did not say why. The orchestrator stamps only what it can derive with certainty and never infers 'no_candidate_construct' (looked, construct absent) or 'candidates_unresolved' (found the construct, carried none through resolution) -- only a pass body can report either"
         }
       },
       "required": [
@@ -1661,9 +1763,20 @@
         "skipped_passes": {
           "type": "array",
           "items": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+              "pass": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "silence_reason": {
+                "type": "string"
+              }
+            }
           },
-          "description": "Passes skipped at dispatch time or crashed mid-run, with reasons (a 'crashed: ' prefix marks a contained pass crash)"
+          "description": "Passes that DID NOT RUN, with both a prose reason and a structured silence_reason on the closed pass-silence-reason axis (WI-dukoh / ADR-0056 W2). It is the SAME field name AnalysisRun carries, because it is the same question about the same axis: why did this pass say nothing. Which of the two hosts answers it is decided by whether the pass ran, not by any property of the silence (WI-mamiv) -- so a consumer asking 'which passes had no input?' must read both, and pass_silence.census_silence() is the union. Three values can only appear here, because a pass that did not run produces no AnalysisRun to carry a field: dependency_unavailable (grammar/toolchain absent), backend_disabled (opt-in backend off) and pass_crashed (a contained raise, including a parser constructor that failed). no_candidate_files appears on BOTH hosts and is 80% of the volume. The two hosts also differ in their ABSENCE rule: on AnalysisRun a missing silence_reason means the pass emitted output, whereas an entry here always carries one. An entry with the code 'unreported' means the producer did not classify itself -- NOT that the repository lacked the files. The prose reason stays as human-readable detail (it carries the pip command and the exception text); one channel, two fields."
         },
         "truncated_files": {
           "type": "array",

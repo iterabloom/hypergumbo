@@ -38,6 +38,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | go_memberlist | Framework | HashiCorp `memberlist.Create(delegate)` call sites → `NodeMeta` / `NotifyJoin` / etc. delegate callback methods. |
 | graphql | Framework | `gql` client queries / mutations → GraphQL schema type definitions. |
 | graphql_resolver | Framework | Resolver implementations (JS, Python) → GraphQL schema type / field definitions. |
+| graphql_sdl | Infrastructure | GraphQL SDL embedded in `gql` tagged template literals → schema type / interface / field symbols, for the two linkers above. Emits no edges. |
 | grpc | Framework | Protobuf services, generated stubs, and servicer implementations across languages. Cross-language in use, but framework-specific by protocol. |
 | http | Protocol | `fetch()`, `axios`, `requests`, `http.Get`, `RestTemplate`, etc. HTTP client calls → server route handlers via URL pattern matching. |
 | inheritance | Infrastructure | `base_classes` analyzer metadata → `extends` / `implements` edges. Shared across all languages. |
@@ -80,7 +81,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | websocket | Protocol | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket — senders ↔ receivers by event name. |
 | yjs_crdt | Framework | Yjs shared-type reactive data flow — writers → observers via `crdt_publishes` edges. |
 
-**Count:** 61 linkers — Protocol 11, Bridge 10, Framework 32, Infrastructure 8. One row is keyed by module rather than linker name: `_third_party_bases` registers `django-third-party-dispatch-linker`.
+**Count:** 62 linkers — Protocol 11, Bridge 10, Framework 32, Infrastructure 9. One row is keyed by module rather than linker name: `_third_party_bases` registers `django-third-party-dispatch-linker`.
 
 Subcategory assignments above are the initial baseline per ADR-3bbb Appendix B; borderline cases (e.g., `grpc` is framework-specific in protocol but cross-language in use) are documented in that ADR's appendix and will be refined as the subcategory vocabulary matures.
 

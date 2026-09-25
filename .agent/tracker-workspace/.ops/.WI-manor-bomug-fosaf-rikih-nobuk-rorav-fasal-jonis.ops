@@ -1,0 +1,22 @@
+- op: create  # 6f9f
+  at: '2026-09-10T06:16:03Z'  # 6f9f
+  by: agent  # 6f9f
+  actor: jgstern_agent  # 6f9f
+  clock: 1  # 6f9f
+  nonce: 6f9f  # 6f9f
+  data:  # 6f9f
+    kind: work_item  # 6f9f
+    title: "tracker reconcile reports 'flush failed' on a CI POLL timeout that the flush survived, declines the fast-forward, and opens a new sync branch per retry (5 in one day)"  # 6f9f
+    status: todo_hard  # 6f9f
+    priority: 2  # 6f9f
+    parent:  # 6f9f
+    tags:  # 6f9f
+    - tracker  # 6f9f
+    - autosync  # 6f9f
+    - devex  # 6f9f
+    isbefore: []  # 6f9f
+    duplicate_of: []  # 6f9f
+    not_duplicate_of: []  # 6f9f
+    pr_ref:  # 6f9f
+    description: "`scripts/tracker reconcile` flushes pending ops by opening a sync PR and polling\nCI. The poll's default deadline is 300s (`--timeout`). When CI outlives it,\nreconcile prints\n\n    reconcile: flush failed, not fast-forwarding — CI timed out after 300s\n\nand stops. Two things are wrong with that.\n\n(1) THE MESSAGE IS FALSE. The flush did not fail; the POLL gave up. Observed\n    2026-09-10: the first attempt's sync PR merged on its own and its commit\n    (`b22d757849`, \"tracker: 1 file (38 ops) — WI-dolaf\") is on origin/dev,\n    while reconcile had already reported failure and exited. An agent reading\n    \"flush failed\" reasonably concludes the ops did not reach the remote.\n\n(2) THE FAILURE IS NOT IDEMPOTENT — it accrues. Because flush \"failed\",\n    reconcile declines the fast-forward, so the pending .ops stays in the\n    working tree and the repo stays behind. Re-running does not resume the\n    earlier sync; it opens a NEW sync branch and starts a NEW CI run. Three\n    reconcile invocations produced five `tracker-sync/*` remote branches in one\n    day (003519, 011053, 013409, 014004, 014625).\n\nNOTHING WAS LOST. A per-line absorption check (each branch's .ops lines against\ndev's current version of the same file) shows all five at 0 lines not in dev.\nThat matches the prior incident recorded in the tracker CHANGELOG, where nine\n`tracker-sync/*` PRs sat unmergeable and every one contributed zero lines. The\ncost is branch accumulation, redundant CI runs, and an agent misled about\nwhether its ops are durable.\n\nWORKAROUND THAT WORKS: `scripts/tracker reconcile --timeout 1800` completed\nfirst try — \"sync: merged via rebase / flushed 1 file(s) via PR #883 /\nfast-forwarded to the upstream\". So 300s is simply the wrong default for a CI\nrunner on the owner's LAN.\n\nCANDIDATE FIXES, not mutually exclusive:\n  - Raise the default, or derive it from observed recent CI wall-clock rather\n    than a constant.\n  - SEPARATE THE TWO OUTCOMES. \"CI still pending at deadline\" is not\n    \"flush failed\" — exit with a distinct code/message saying the PR is open\n    and may merge on its own, and name the branch so the next run can ADOPT it.\n  - Make a subsequent reconcile RESUME an existing open sync branch instead of\n    opening another one. This alone converts the accrual into a no-op.\n  - Prune absorbed `tracker-sync/*` branches (the check above is cheap and\n    safe: a branch with 0 unabsorbed lines is a pure leftover).\n\nNOT FIXED HERE — filed rather than chased, since it is process machinery and\nsits outside the arc."  # 6f9f
+    fields: {}  # 6f9f

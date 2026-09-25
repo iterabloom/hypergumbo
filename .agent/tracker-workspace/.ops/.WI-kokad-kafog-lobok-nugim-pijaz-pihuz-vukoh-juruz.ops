@@ -1,0 +1,22 @@
+- op: create  # 2406
+  at: '2026-09-11T04:03:28Z'  # 2406
+  by: agent  # 2406
+  actor: jgstern_agent  # 2406
+  clock: 1  # 2406
+  nonce: '2406'  # 2406
+  data:  # 2406
+    kind: work_item  # 2406
+    title: "elixir: defdelegate registers no symbol under the delegating module, so Phoenix.CodeReloader.sync() resolves to nothing (it used to resolve to the WRONG module via bare-name lookup)"  # 2406
+    status: todo_hard  # 2406
+    priority: 3  # 2406
+    parent:  # 2406
+    tags:  # 2406
+    - elixir  # 2406
+    - analysis_quality  # 2406
+    - call_graph  # 2406
+    isbefore: []  # 2406
+    duplicate_of: []  # 2406
+    not_duplicate_of: []  # 2406
+    pr_ref:  # 2406
+    description: "FOUND 2026-09-10 while measuring WI-kafor, and disclosed in that PR's code\ncomment rather than special-cased.\n\n`defdelegate` registers no function symbol under the delegating module, so a\ncall to a delegated function cannot be resolved by name.\n\nMEASURED on phoenix-framework:\n    lib/phoenix/endpoint.ex:28 (and :16, :31)  `Phoenix.CodeReloader.sync()`\n    `Phoenix.CodeReloader` IS a project module and DOES expose `sync/0` --\n    through `defdelegate` to `Phoenix.CodeReloader.Server.sync/0`.\n\nBEFORE WI-kafor this bound to `Phoenix.CodeReloader.Server.sync`, which is the\nWRONG MODULE: the call site names `Phoenix.CodeReloader`, and it reached the\nServer only through the bare-name resolver that item removed. It now emits\n`elixir:Phoenix.CodeReloader:0-0:sync:unresolved` -- an \"unresolved external\"\ndestination for a module this project defines, which is honest about what the\nanalyzer knows but is still not the right answer.\n\nTHE RIGHT FIX IS PRODUCER-SIDE: register a function symbol for each\n`defdelegate` in the delegating module, ideally with an edge to the delegate\ntarget so the hop is visible rather than skipped. Then the existing\n`qualified_name in global_symbols` check resolves these with no special case in\nthe call path at all.\n\nSIZE, stated honestly: 3 call sites on phoenix-framework, and no survey of how\ncommon `defdelegate` is across Elixir repositories generally. It is a\nfirst-class Elixir construct (`Kernel.defdelegate/2`) and commonly used for\nfacade modules, so the phoenix count is unlikely to be representative -- but\nthat is a prediction, not a datum.\n\nNOT AN INV-linub INSTANCE: the destination is first-party, so no catalogue row\nis at stake. This is call-graph completeness."  # 2406
+    fields: {}  # 2406

@@ -46,6 +46,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
+from ._text_filters import js_ts_language_from_path, read_source_text
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -54,6 +56,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("solidity-abi-linker")
 
@@ -85,7 +88,7 @@ def _collect_solidity_functions(
     for sym in symbols:
         if sym.language != "solidity":
             continue
-        if sym.kind not in ("function", "constructor"):
+        if sym.kind not in SOLIDITY_CALLABLE_DECLARATION_KINDS:
             continue
         result[sym.name].append(sym)
         # Also index by unqualified name for cross-language matching.
@@ -128,7 +131,7 @@ def _scan_contract_calls(
             continue
 
         try:
-            content = ts_file.read_text(errors="replace")
+            content = read_source_text(ts_file, errors="replace")
         except OSError:  # pragma: no cover
             continue
 
@@ -170,9 +173,10 @@ def link_solidity_abi(
 ) -> SolidityAbiLinkResult:
     """Link TypeScript/JavaScript contract calls to Solidity function definitions.
 
-    Creates ``abi_call`` edges from synthetic TS/JS call-site nodes to Solidity
-    function symbols. A synthetic ``abi_call`` node is created at each TS/JS
-    call site to anchor the edge source.
+    Creates ``calls`` edges (tagged ``meta.call_kind="abi"``) from synthetic
+    TS/JS call-site nodes to Solidity function symbols. A synthetic
+    ``abi_call`` node is created at each TS/JS call site to anchor the edge
+    source.
 
     Args:
         repo_root: Path to the repository root.
@@ -188,6 +192,7 @@ def link_solidity_abi(
     sol_functions = _collect_solidity_functions(sol_symbols)
     if not sol_functions:
         run.duration_ms = int((time.time() - start_time) * 1000)
+        run.silence_reason = silence_reason_for_candidates(sol_functions)
         return SolidityAbiLinkResult(edges=[], symbols=[], run=run)
 
     known_names = set(sol_functions.keys())
@@ -201,19 +206,30 @@ def link_solidity_abi(
         if not targets:
             continue  # pragma: no cover - should not happen given known_names filter
 
-        # Create synthetic call-site node
+        # Create synthetic call-site node. WI-dovog: the id's language slot and
+        # discovery_language come from the HOST FILE, the way ADR-0031 Class B
+        # prescribes and database_query / graphql_resolver / event_sourcing /
+        # ipc already do. The literal "typescript" this carried put
+        # `typescript` into verify-claims' languages-with-calls for every .js
+        # call site with no typescript node behind it, and every claim over
+        # openzeppelin-contracts was withheld as "typescript has no I/O
+        # catalog" (WI-mital's family).
+        host_language = js_ts_language_from_path(Path(rel_path))
         syn_id_input = f"abi_call:{rel_path}:{line_num}:{func_name}"
         syn_hash = hashlib.sha256(syn_id_input.encode()).hexdigest()[:12]
-        syn_id = f"typescript:{rel_path}:{line_num}-{line_num}:abi_call:{func_name}:{syn_hash}"
+        syn_id = (
+            f"{host_language}:{rel_path}:{line_num}-{line_num}"
+            f":{func_name}.{syn_hash}:abi_call"
+        )
 
         # ADR-0031 Class B: synthetic stand-in for a Solidity ABI call
-        # site discovered in a JS/TS file. Was LITERAL-HOST ("typescript").
+        # site discovered in a JS/TS file.
         syn_sym = Symbol(
             id=syn_id,
             name=f"abi_call:{func_name}",
             kind="call_site",
             language=None,
-            discovery_language="typescript",
+            discovery_language=host_language,
             protocol_origin="solidity_abi",
             path=rel_path,
             span=Span(
@@ -240,9 +256,12 @@ def link_solidity_abi(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta={"detection_pattern": "abi_name_match", "call_kind": "abi"},
-                derived_from=[syn_id, target.id],
+                # derived-from endpoints: the call-site node is minted here; the function is joined
+                #   by name
+                derived_from=[target.id],
             ))
 
+    run.silence_reason = silence_reason_for_candidates(call_sites)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return SolidityAbiLinkResult(
@@ -264,7 +283,8 @@ def _count_solidity_functions(ctx: LinkerContext) -> int:
     """Count Solidity function symbols."""
     return sum(
         1 for sym in ctx.symbols
-        if sym.language == "solidity" and sym.kind in ("function", "constructor")
+        if sym.language == "solidity"
+        and sym.kind in SOLIDITY_CALLABLE_DECLARATION_KINDS
     )
 
 

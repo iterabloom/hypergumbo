@@ -20,7 +20,8 @@
 # Supply third-party primitives through a PROJECT-LOCAL OVERLAY instead:
 #     hypergumbo io-boundaries . --io-primitives my-overlay.yaml
 # or `extra_catalogs: io_primitives:` in a claims file. Worked example:
-# docs/io-primitives-overlays/python-http-clients.yaml.
+# hypergumbo_core/io_primitives_overlays/python-http-clients.yaml, which
+# ships in the wheel and loads by default (ADR-0047).
 language: python
 
 # Plan C, PR B: this is the worked-example catalog — Python's stdlib
@@ -59,6 +60,7 @@ ambiguous_names:
   - close         # file.close vs any .close()
   - send          # socket.send vs generator.send, queue.send
   - recv          # socket.recv vs multiprocessing.Pipe.recv
+  - exit          # optparse.OptionParser.exit vs builtin exit(); WI-dupok 2026-09-06 -- a bare exit() is the builtin, the row matches only with the module hint
   - get           # requests.get vs dict.get, queue.get
   - post          # requests.post vs any .post()
   - put           # requests.put vs dict.__setitem__, queue.put
@@ -75,7 +77,24 @@ ambiguous_names:
   - start         # Process.start vs any .start()
   - next          # Scanner.next vs builtins.next()
   - dump          # json.dump vs any .dump()
-  - input         # fileinput.input vs builtins.input (not IO boundary)
+  - input         # fileinput.input (fs_read) vs builtins.input (ipc_recv):
+  # WI-jabus: the class-qualified receiver rows added for the self-claims gate
+  # put these method names in the catalogue, and a bare name that matches
+  # without module context is the INV-fazim bite -- an unbound `Popen(spec)`
+  # followed by `v.communicate()` tagged as subprocess purely on the method
+  # name, with no import binding it. Caught by
+  # test_each_non_builtin_bare_key_withholds_when_unbound.
+  - communicate   # subprocess.Popen.communicate vs any .communicate()
+  - poll          # subprocess.Popen.poll vs any poller
+  - terminate     # subprocess.Popen.terminate vs any .terminate()
+  - send_signal   # subprocess.Popen.send_signal vs any .send_signal()
+  - extractall    # zipfile.ZipFile/tarfile.TarFile vs any .extractall()
+  - extract       # same pair vs any .extract()
+  - getvalue      # io.BytesIO/StringIO vs any .getvalue()
+  - load          # coverage.Coverage.load vs json.load, any .load()
+  - analysis2     # coverage.Coverage.analysis2
+  - parse_source  # coverage.parser.PythonParser.parse_source
+                  # BOTH are boundaries, so a bare .input() must not pick one
   # INV-maluk: Path.replace and Path.rename are method primitives whose
   # short names collide with str / bytes / list / dict.replace and various
   # .rename() helpers (e.g. pandas DataFrame.rename). The 2026-04-23 audit
@@ -102,6 +121,12 @@ ambiguous_names:
   - remove        # os.remove vs list.remove, set.remove
   - update        # django.db.models.update vs dict.update, set.update
   - values        # django.db.models.values vs dict.values
+  # WI-gulaz (2026-09-07): the RelatedManager write rows the python-web-and-orm
+  # overlay added. Flagged by the same mechanical test the day they landed.
+  # Both are reached only through the analyzer's relation index, which puts
+  # the django.db.models hint on the edge, so the bare forms stay refused.
+  - add           # django.db.models.add (RelatedManager) vs set.add
+  - set           # django.db.models.set (RelatedManager) vs builtins.set()
   # 2026-08-15 stdlib climb. Two populations, one lesson. The first six were
   # flagged mechanically by test_ambiguous_names_completeness (dict-method
   # collisions on the new os.environ rows). The rest were flagged by a LIVE
@@ -135,8 +160,83 @@ ambiguous_names:
   - metadata      # importlib.metadata.metadata vs common attribute-ish name
   - files         # importlib.metadata.files vs common local name
   - platform      # platform.platform vs the module name used bare
+  # INV-bofab. Derived by the same mechanical rule as the INV-mivud block
+  # above (test_ambiguous_names_completeness flagged all six on the day they
+  # landed): the rows added when `builtins` was enumerated are builtins BY
+  # CONSTRUCTION, so each short name collides with itself. Suppression still
+  # fires only on a HINT-LESS bare call -- every edge INV-foluz emits for a
+  # bare builtin carries `builtins` in the module slot and matches through
+  # the module path (the `open` / `input` precedent above). What a hint-less
+  # match would have fabricated is a logging crossing at a repo's own
+  # `help()` / `credits()` helper or a `self.print(...)` method the analysis
+  # could not resolve. test_ambiguous_names_completeness pins both
+  # directions: hinted still matches, hint-less is refused.
+  - print         # builtins.print vs any local print() / .print() method
+  - breakpoint    # builtins.breakpoint vs any local breakpoint()
+  - copyright     # builtins.copyright vs any local copyright() or attribute
+  - credits       # builtins.credits vs any local credits()
+  - license       # builtins.license vs any local license() or attribute
+  - help          # builtins.help vs any local help() / .help() (CLI frameworks)
 
 fs_read:
+  # ---------------------------------------------------------------
+  # 2026-09-06 WI-dupok, third completeness leg. Rows found by the python
+  # probe (~/hypergumbo_lab_notebook/dupok_python_09062026/probe_py.py:
+  # public members one level deep, source scanned for open( / os. /
+  # sys.std* / socket signals; NATIVE refuses) over the 41 stdlib module
+  # strings the 08-24 scope audit found uncatalogued, then read at the
+  # flagged member. Reads from a CALLER-OPENED object are not rowed (the
+  # open is the caller's I/O, tomllib's rule); a path argument is.
+  - module: glob
+    functions: [glob, iglob]
+    notes: "Walks directories (os.scandir) for the pattern; escape() is pure and unrowed."
+  - module: mimetypes
+    functions: [init, read_mime_types, guess_type]
+    notes: "init/read_mime_types open the system mime.types files; guess_type triggers init on first use. The MimeTypes class's read/readfp are the same surface."
+  - module: mimetypes.MimeTypes
+    methods: [read, readfp]
+  - module: filecmp
+    functions: [cmp, cmpfiles]
+    notes: "stat + read of both files; dircmp is the class form."
+  - module: filecmp.dircmp
+    methods: [report, report_partial_closure, report_full_closure]
+  - module: sysconfig
+    functions: [get_config_h_filename, get_makefile_filename, is_python_build, get_config_vars, get_config_var]
+    notes: "Stat and read the build's config files; get_platform reads os.environ (env_read row)."
+  - module: pstats.Stats
+    methods: [load_stats]
+    notes: "Reads a stats file by path; dump_stats is the write and sits under fs_write with cProfile's run / runctx / Profile.dump_stats."
+  - module: xml.dom.minidom
+    functions: [parse]
+    notes: "parse(path) opens the path (parseString is pure; parse of a caller-opened object is the caller's read, tomllib's rule) -- the ElementTree precedent."
+  - module: unittest.TestLoader
+    methods: [discover]
+    notes: "Walks the start directory for test modules."
+  - module: optparse.Values
+    methods: [read_file, read_module]
+  - module: doctest
+    functions: [testfile]
+    notes: "Opens the named file; DocFileTest/DocFileSuite build cases over the same open."
+  - module: codecs
+    functions: [open]
+    notes: "codecs.open(path, mode) opens a path, builtins.open's shape: fs_read AND fs_write, settled by io_mode (python's producer knows codecs.open's mode sits at positional 1 like open)."
+  - module: ctypes
+    functions: [CDLL, PyDLL, OleDLL, WinDLL]
+    notes: "A shared object is loaded from a PATH (dlopen) -- a filesystem read that then runs foreign code; INV-buzab's own live false confirm. cdll.LoadLibrary is the method form."
+  - module: ctypes.cdll
+    functions: [LoadLibrary]
+    notes: >-
+      FUNCTION-kind: `ctypes.cdll` is a module-level LibraryLoader INSTANCE, so
+      `ctypes.cdll.LoadLibrary(p)` is a valid call as written (INV-zikab). Keyed
+      `methods:`, the unstamped module-rooted chain classified fs_read while the
+      gate reported ctypes.cdll starved (INV-dihun, INV-fugus's shape on an object
+      owner, which the class-only sweep could not see).
+  - module: ctypes.util
+    functions: [find_library]
+    notes: "Searches the library path on disk (and shells out to ldconfig / gcc on some platforms -- disclosed here, rowed as the read)."
+  - module: ssl.SSLContext
+    methods: [load_cert_chain, load_verify_locations, load_dh_params, load_default_certs]
+    notes: "Read certificate / key material from paths (or the system store)."
   # ---------------------------------------------------------------
   # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
   # measured unmatched call target on hypergumbo's own artifact-scoped
@@ -155,8 +255,8 @@ fs_read:
   - module: os.path
     functions: [islink, lexists, getctime, samefile]
   - module: posixpath
-    functions: [exists, isfile, isdir, islink, lexists, getsize, getmtime, getatime, getctime, realpath, abspath, samefile]
-    notes: "posixpath IS os.path on POSIX; a call addressed through this name must classify identically."
+    functions: [exists, isfile, isdir, islink, lexists, getsize, getmtime, getatime, getctime, realpath, samefile]
+    notes: "posixpath IS os.path on POSIX; a call addressed through this name must classify identically. `abspath` REMOVED (INV-nular F7, WI-jojaf, 2026-09-06): it normalises against os.getcwd() and touches no file; realpath, which follows symlinks, stays."
   - module: gzip
     functions: [open, GzipFile]
     notes: "Dual-classified: mode-dependent, like builtins.open."
@@ -166,6 +266,25 @@ fs_read:
   - module: zipfile
     functions: [ZipFile, Path]
     notes: "Dual-classified: mode-dependent. zipfile.Path is the archive-membership path class, not pathlib's."
+  - module: zipfile.ZipFile
+    methods: [write]
+    notes: >-
+      WI-jabus. `ZipFile.write(filename, arcname)` puts THE BYTES FROM
+      `filename` into the archive, so it READS that path off disk -- true even
+      when the archive itself is an in-memory buffer, which is exactly the shape
+      at safety_zones.py:253-255 (`zipfile.ZipFile(io.BytesIO(), "w")` then
+      `zf.write(member, ...)`). The archive's destination is a separate
+      question answered by whoever opened it.
+  - module: typing.TextIO
+    methods: [read, readline, readlines]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-jabus. A `TextIO` may be a file, a pipe or an in-memory buffer, so no
+      single boundary is true -- EXACTLY the shape haskell's System.IO handle
+      family carries (INV-vaduk: exactly one of these is true per call and the
+      call site cannot know which, because the answer is which stream was
+      passed). THIS ROW STAYS FIRST so an unresolvable receiver keeps fs_read,
+      which mints no taint source.
   - module: io
     functions: [open_code, FileIO]
     notes: "FileIO's CONSTRUCTOR opens the path; dual-classified."
@@ -185,12 +304,19 @@ fs_read:
   - module: builtins
     functions: [open]
     notes: "Dual-classified: fs_read when mode is 'r'/'rb' (default), fs_write when 'w'/'a'/'x'"
+  - module: builtins
+    functions: [license]
+    simultaneous: true
+    notes: >-
+      INV-bofab. The fs_read half of site's license(): _Printer.__setup opens
+      LICENSE.txt candidates on first call, then prints (the logging twin).
   - module: pathlib.Path
     methods: [read_text, read_bytes, stat, exists, is_file, is_dir, iterdir, glob, rglob]
   - module: os
     functions: [listdir, scandir, stat, access, readlink, walk]
   - module: os.path
-    functions: [exists, isfile, isdir, getsize, getmtime, getatime, realpath, abspath]
+    functions: [exists, isfile, isdir, getsize, getmtime, getatime, realpath]
+    notes: "`abspath` REMOVED (INV-nular F7, WI-jojaf, 2026-09-06): string arithmetic against os.getcwd(), no file touched; realpath stays."
   - module: shutil
     functions: [which, disk_usage]
   - module: importlib.resources
@@ -209,6 +335,20 @@ fs_read:
       module-filter path (untyped receivers stay suppressed by ambiguous_names).
 
 fs_write:
+  - module: urllib.request
+    functions: [urlcleanup]
+    notes: "WI-bakik: deletes the temporary files urlretrieve created (os.unlink)."
+  # 2026-09-06 WI-dupok (see the fs_read block for the method).
+  - module: codecs
+    functions: [open]
+    notes: "The write half of codecs.open's dual declaration; see fs_read."
+  - module: cProfile
+    functions: [run, runctx]
+    notes: "Write the profile to the optional filename argument; Profile.dump_stats is the method form. WRITE only -- an earlier draft also declared these fs_read, which the mode-parity gate refused: a dual row with no mode argument is a mode-decided primitive no analyzer can settle."
+  - module: cProfile.Profile
+    methods: [dump_stats]
+  - module: pstats.Stats
+    methods: [dump_stats]
   # ---------------------------------------------------------------
   # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
   # measured unmatched call target on hypergumbo's own artifact-scoped
@@ -233,6 +373,40 @@ fs_write:
     functions: [open, GzipFile]
   - module: tarfile
     functions: [open, TarFile]
+  - module: tarfile.TarFile
+    methods: [extractall, extract]
+    notes: >-
+      WI-jabus. The SIBLING the zipfile rows made visible, and the more
+      dangerous of the two: `tarfile` extraction defaults to the
+      `fully_trusted` filter, so a member may name an absolute path, a `..`
+      escape, or a SYMLINK whose target no path check sees -- where CPython's
+      zipfile._extract_member already strips drives, leading separators and
+      every `..` component. It was ABSENT here for the same reason
+      zipfile.ZipFile was: `tarfile` the MODULE is declared complete and
+      MATCHING IS EXACT, so the module entry never reached the class. Rowing
+      only the zip class would have left the branch almost every user takes
+      invisible -- `_get_download_url` picks `.zip` only on Windows.
+  - module: zipfile.ZipFile
+    methods: [extractall, extract]
+    notes: >-
+      WI-jabus. An UNARCHIVE TO DISK: `extractall(path)` writes every member
+      under `path`. Found at gitleaks.py:231 carrying a bandit S202
+      suppression, inside the very subcommand `install-gitleaks-no-host-fs`
+      makes a claim about -- the catalogue could not see it, so the claim was
+      being adjudicated without it. The gate going inconclusive was PROTECTIVE
+      here, not noise.
+  - module: typing.TextIO
+    methods: [write, writelines]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-jabus. fs_write / logging, the haskell System.IO.hPutStr shape
+      exactly: one of them is true per call and which one depends on the stream
+      the caller passed -- sys.stderr reads as logging, an `open(p, "w")`
+      handle as fs_write. THIS ROW STAYS FIRST, matching haskell's declaration
+      order, so an unresolvable receiver keeps fs_write: the TIGHTENING
+      direction. Abstaining to logging instead would grant a clean host-fs
+      verdict to every unresolvable stream write, which is the false-all-clear
+      direction this project refuses.
   - module: zipfile
     functions: [ZipFile]
   - module: io
@@ -258,15 +432,6 @@ fs_write:
   - module: json
     functions: [dump]
     notes: "json.dump writes to a file object; json.dumps returns a string (not I/O)"
-  - module: ujson
-    functions: [dump]
-    notes: >-
-      WI-nibav. Drop-in for stdlib json; flows through it were previously
-      reached only by the retired substring predicate ('json' in 'ujson').
-      SURFACE READ, NOT ASSUMED: ujson exposes dump/dumps/load/loads, so it
-      mirrors the catalogued json.dump file-write. orjson is deliberately NOT
-      listed beside it -- its API is dumps/loads only, with no dump, so it has
-      no file-write surface to catalogue and adding it would match nothing.
   - module: pickle
     functions: [dump]
   - module: csv
@@ -304,8 +469,20 @@ fs_write:
 # (never the short-name gate) — no ``dict.get()`` false positive. Admission
 # criterion for any future framework datastore entry (the "principled
 # stopping point"): (a) keyed to a real, distinctive module namespace,
-# (b) matched only via a type-verified receiver / qualified name — never a
-# bare ambiguous short name, (c) a bounded, closed method set. Self-throttled
+# (b) matched only via a MODULE-QUALIFIED dst — never a bare ambiguous short
+# name, (c) a bounded, closed method set.
+#
+# (b) USED TO SAY "type-verified receiver", AND THAT IS NO LONGER ACCURATE
+# (ADR-0053). The module-filter property it protects is unchanged — every one
+# of these rows still fires only on a ``django.db.models``-qualified dst, so a
+# ``dict.get()`` still cannot reach them. What changed is how that qualified
+# dst is reached: INV-mumov also fills it from a relation-accessor NAME the
+# project's own models declare, with nothing known about the receiver's root.
+# That is an INFERENCE, not a verification, and it is 78.9:1 against a
+# frequency-matched wrong index rather than certain. Edges so filled carry
+# ``resolution_quality="accessor_name"`` and ``verify-claims`` discloses them
+# on any clean verdict they touch, so the weaker provenance is visible to a
+# reader rather than hidden behind a module name that looks verified. Self-throttled
 # by the per-framework receiver-typing cost (SQLAlchemy is deferred, not
 # free). Do NOT add ``django.db.models`` to ``stdlib_modules`` /
 # ``stdlib_module_completeness`` — it is third-party (would mis-suppress
@@ -338,17 +515,14 @@ db_read:
   - module: shelve
     functions: [open]
     notes: "Persistent dict backed by dbm (module-hint-disambiguated open)"
-  # WI-sozoj: Django ORM Manager/QuerySet READ surface. Latent — fires only
-  # when py.py types the receiver via the ``.objects`` Manager marker
-  # (module-filter path, never the short-name gate). ``get``/``all``/etc. are
-  # ambiguous by short name (dict.get, list.count); the ``django.db.models``
-  # module hint disambiguates. See the type-verified carve-out note above.
-  - module: django.db.models
-    methods: [all, filter, exclude, get, count, exists, first, last,
-              values, values_list, annotate, aggregate, order_by, distinct,
-              none, iterator, earliest, latest, in_bulk,
-              select_related, prefetch_related]
-    notes: "Django ORM Manager/QuerySet query surface (type-verified receiver)"
+  # WI-sozoj: Django ORM Manager/QuerySet READ surface -- the rows live in the
+  # ``python-web-and-orm`` overlay (ADR-0047). Latent — fires only when py.py
+  # types the receiver via the ``.objects`` Manager marker (module-filter
+  # path, never the short-name gate). ``get``/``all``/etc. are ambiguous by
+  # short name (dict.get, list.count); the ``django.db.models`` module hint
+  # disambiguates. See the type-verified carve-out note above. Since WI-fasap
+  # the lazy combinators (``filter``/``all``/``order_by``...) are ``db_compose``
+  # there, and the evaluation (``__iter__``/``__getitem__``) is the read.
 
 db_write:
   # ---------------------------------------------------------------
@@ -375,20 +549,34 @@ db_write:
   # (``Model.objects.create()``/``bulk_create()``/``update()``) and instance
   # writes (``models.Model``-subclass ``self.save()``/``self.delete()``).
   # Latent — same type-verified module-filter path as the read block above.
-  - module: django.db.models
-    methods: [create, bulk_create, update, bulk_update, delete,
-              get_or_create, update_or_create, save]
-    notes: "Django ORM Manager/instance write surface (type-verified receiver)"
 
 net_send:
   - module: socket.socket
     methods: [send, sendto, sendall, sendmsg, connect, connect_ex]
+  # 2026-09-06 WI-dupok: the ssl module had ZERO rows (INV-buzab named it as a
+  # live false confirm). SSLSocket wraps socket.socket; its own methods are
+  # the surface a program calls.
+  - module: socket
+    functions: [create_connection]
+    notes: "Connects to the address (and resolves it); the module-level twin of socket.socket.connect."
+  - module: ssl.SSLSocket
+    methods: [send, sendall, sendto, sendmsg, write, connect, connect_ex, do_handshake]
+    notes: "The SOCKET-backed class: these really do cross. Its BIO-backed twin
+      ssl.SSLObject is rowed NOWHERE -- see the net_recv block (INV-kazuk)."
   - module: http.client.HTTPConnection
     methods: [request, putrequest, endheaders, send]
   - module: http.client.HTTPSConnection
     methods: [request, putrequest, endheaders, send]
   - module: urllib.request
-    functions: [urlopen, Request, urlretrieve]
+    functions: [urlopen, urlretrieve, ftpwrapper]
+    notes: >-
+      `ftpwrapper(user, passwd, host, port, dirs)` connects and logs in AT
+      CONSTRUCTION (its __init__ calls self.init(), which sends USER/PASS).
+      `Request` is NOT here: it builds a request object and sends nothing, and
+      `urlopen(req)` is the send (INV-gujoh). It carried this row until
+      urllib.request's surface was enumerated (module_completeness, WI-bakik),
+      because an unrowed call into an unenumerated module withholds every clean
+      verdict.
   - module: smtplib.SMTP
     methods: [sendmail, send_message]
   - module: xmlrpc.client.ServerProxy
@@ -412,39 +600,71 @@ net_send:
   # INV-miniz / Plan C / stop-stripping plan PRs for the rationale.
 
 net_recv:
+  # 2026-09-06 owner ruling (WI-dozul): A DNS LOOKUP IS A NETWORK RECEIVE.
+  # ADR-0049's question -- does the call return a value whose content the FAR
+  # SIDE chose? -- is answered by the resolver, not by this process, so these
+  # mint untrusted_input and a resolver-poisoning threat model is exactly what
+  # that expresses. erlang has rowed the same family under net_recv since
+  # 2026-05-24 (WI-tukif); rowing python to match is parity, not a new opinion.
+  # NOT HERE, deliberately: gethostname (the LOCAL host's name, host_info_read,
+  # as c files it) and the services-table readers.
+  - module: socket
+    functions: [gethostbyname, gethostbyname_ex, gethostbyaddr, getaddrinfo, getnameinfo, getfqdn]
+    notes: "DNS resolution -- queries a name server and returns the answer it chose. getfqdn calls gethostbyaddr; getnameinfo is the reverse direction. gethostname is NOT here: it reads the local hostname from the kernel and sits under host_info_read."
+  - module: urllib.request
+    functions: [localhost, thishost]
+    notes: "WI-bakik: socket.gethostbyname('localhost') and gethostbyname_ex(socket.gethostname()) -- the same DNS query as the socket rows above, through urllib's cached helpers."
   - module: socket.socket
     methods: [recv, recvfrom, recv_into, recvmsg, accept]
-  - module: http.server.HTTPServer
-    methods: [serve_forever, handle_request]
-  - module: socketserver.TCPServer
-    methods: [serve_forever, handle_request]
+  - module: ssl.SSLSocket
+    methods: [recv, recvfrom, recv_into, recvfrom_into, recvmsg, recvmsg_into, read, accept]
+    notes: "2026-09-06 WI-dupok. accept returns the peer's connection (peer-chosen, as socket.socket.accept)."
+  # INV-kazuk, 2026-09-21: ssl.SSLObject carried read (net_recv) here and
+  # write/do_handshake (net_send) above. ALL THREE ARE REMOVED. CPython's own
+  # docstring: the class "does not provide any network IO itself. IO needs to be
+  # performed through separate "BIO" objects", and against SSLSocket it "lacks
+  # ... Any form of network IO, including methods such as recv and send". The
+  # rows were kind-asserted by NAME -- SSLObject spells its methods like
+  # SSLSocket, whose methods do cross. Under the File-object rule
+  # (docs/surveys/stdlib-module-completeness-scope.md) a read from a
+  # caller-opened object is the CALLER's I/O: wrap_bio is handed two MemoryBIOs
+  # the caller made and feeds, so SSLObject.read is pickle.load for a memory
+  # buffer, and io.BytesIO.read carries no row either. ADR-0049 ruling 3 is
+  # paid at the finding level in test_sslobject_bio_rows.py: the crossing is
+  # still represented, at the caller's own socket.socket.recv/sendall.
+  - module: ssl
+    functions: [get_server_certificate]
+    notes: "Connects and returns the certificate the far side presented -- content the far side chose (ADR-0049)."
   - module: ftplib.FTP
     methods: [retrbinary, retrlines]
-  - module: xmlrpc.server.SimpleXMLRPCServer
-    methods: [serve_forever, handle_request]
-  # asyncio networking
-  - module: asyncio
-    functions: [start_server, start_unix_server]
-    notes: "asyncio TCP server"
   - module: asyncio.StreamReader
     methods: [read, readline, readexactly, readuntil]
-  # Popular web frameworks
-  - module: flask.Flask
-    methods: [run]
-    notes: "Flask development server"
-  # WI-harin: django.core.management.execute_from_command_line was here as
-  # net_recv — a false positive. It is a CLI dispatcher (the manage.py entry
-  # routing to migrate / collectstatic / runserver / …), not itself a
-  # network receive, and it is third-party framework code (out of scope
-  # under the same Plan-C strict-stdlib rule the net_send side enforces).
-  # Removed. A framework's server-start (runserver) surfaces via the
-  # external_potential bucket, not a mislabeled stdlib-catalog entry.
-  - module: uvicorn
-    functions: [run]
-    notes: "ASGI server (used by FastAPI, Starlette)"
-  - module: aiohttp.web
-    functions: [run_app]
-    notes: "aiohttp web server"
+
+# ADR-0049 DEFERRED CROSSINGS. The call ARRANGES a crossing whose data arrives
+# in a scope it does not name; net_listen mints no taint and shadows net_recv,
+# so the crossing is DISCLOSED rather than either minted or silently dropped.
+net_listen:
+  - module: socket
+    functions: [create_server]
+    notes: "2026-09-06 WI-dupok. SETUP (ADR-0049): binds and listens, returns the listening socket; the bytes arrive through socket.socket.accept / recv, which stay net_recv."
+  - module: http.server.HTTPServer
+    methods: [serve_forever, handle_request]
+    notes: >-
+      LAUNCH (ADR-0049 ruling 4 row 2, measurement 0010). Blocks and serves;
+      returns None. The request reaches the handler class the server was
+      constructed with. socket.socket.accept and .recv stay net_recv and carry
+      the real receive -- the represented-crossing probe confirms accept still
+      fires after this move.
+  - module: socketserver.TCPServer
+    methods: [serve_forever, handle_request]
+  - module: xmlrpc.server.SimpleXMLRPCServer
+    methods: [serve_forever, handle_request]
+  - module: asyncio
+    functions: [start_server, start_unix_server]
+    notes: >-
+      SETUP. Returns a Server object; the bytes arrive at the client-connected
+      callback, and asyncio.StreamReader.read* -- still net_recv -- is where a
+      program reads them.
 
 ipc_send:
   # ---------------------------------------------------------------
@@ -456,6 +676,13 @@ ipc_send:
   # resolve INV-ponad: the parent's attribute row speaks about REFERENCE
   # edges, these speak about CALL edges on the attribute object.
   # ---------------------------------------------------------------
+  # 2026-09-08 WI-dozul, from the socket-grant enumeration. SCM_RIGHTS
+  # descriptor passing works only over AF_UNIX, so unlike the generic
+  # socket.socket.sendmsg beside it the family here is KNOWN and the row can
+  # say ipc rather than defer to a call-site stamp.
+  - module: socket
+    functions: [send_fds]
+    notes: "sendmsg with SCM_RIGHTS -- AF_UNIX only, so the boundary is decided, not call-site-undecidable. The payload is a file descriptor: a capability handed to another process."
   - module: os
     functions: [kill, killpg]
     notes: "Signalling another process."
@@ -463,8 +690,39 @@ ipc_send:
     methods: [put, put_nowait]
   - module: multiprocessing.Pipe
     methods: [send, send_bytes]
+  - module: multiprocessing.Process
+    methods: [kill, terminate]
+    notes: "2026-09-06 WI-dupok: signals the child (os.kill's row is the module-level form); start() is the launch and sits under subprocess."
 
 logging:
+  # 2026-09-06 WI-dupok: writers to sys.stdout / sys.stderr by default
+  # (python's print precedent). A stream argument the caller supplies is
+  # the caller's I/O; the default is what makes these rows.
+  - module: pprint
+    functions: [pprint, pp]
+  - module: pprint.PrettyPrinter
+    methods: [pprint]
+  - module: traceback
+    functions: [print_tb, print_exception, print_exc, print_last, print_stack, print_list]
+  - module: traceback.TracebackException
+    methods: [print]
+  - module: pstats.Stats
+    methods: [print_stats, print_callers, print_callees]
+  - module: unittest
+    functions: [main]
+    notes: "The runner writes results to stderr; TextTestRunner.run is the class form."
+  - module: unittest.TextTestRunner
+    methods: [run]
+  - module: doctest
+    functions: [testmod, run_docstring_examples]
+    notes: "Reports to stdout; testfile is rowed fs_read for its open and reports the same way."
+  - module: doctest.DocTestRunner
+    methods: [run, summarize]
+  - module: optparse.OptionParser
+    methods: [print_help, print_usage, print_version, error, exit]
+    notes: "help/usage/version to stdout, error/exit to stderr (argparse's twins)."
+  - module: cProfile.Profile
+    methods: [print_stats]
   # ---------------------------------------------------------------
   # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
   # measured unmatched call target on hypergumbo's own artifact-scoped
@@ -482,12 +740,54 @@ logging:
   - module: sys
     functions: [displayhook, excepthook, unraisablehook, breakpointhook]
     notes: "The interpreter hooks that write the standard streams - what keeps sys's completeness entry honest."
+  - module: builtins
+    functions: [print, breakpoint, copyright, credits]
+    notes: >-
+      INV-bofab. The vocabulary's own rule -- a module that PRINTS does I/O --
+      applied to the module every bare builtin call names since INV-foluz.
+      print writes sys.stdout; breakpoint delegates to sys.breakpointhook
+      (rowed above); copyright and credits are site's _Printer objects and
+      print. The builtins completeness entry rests on these rows.
+  - module: builtins
+    functions: [license]
+    simultaneous: true
+    notes: >-
+      INV-bofab. site's _Printer: on first call it OPENS its LICENSE.txt
+      candidates (the fs_read twin) and then prints them. Both happen in the
+      one call, hence `simultaneous` on both rows.
+  - module: builtins
+    functions: [help]
+    boundary_ruling: unruled
+    notes: >-
+      INV-bofab. help() renders through pydoc to stdout on every call; on a
+      tty pydoc.getpager hands the text to pipepager, which is
+      subprocess.Popen(cmd, shell=True) over less/more (the subprocess twin).
+      Not `simultaneous` -- the launch is conditioned on the ENVIRONMENT, not
+      the arguments -- and not `call_site_undecidable`, because both can be
+      true at once. `unruled` on both rows, per INV-vaduk: a visible open
+      question beats an absent one. The question is stated in
+      test_multi_boundary_ruling's EXPECTED_UNRULED and owned by WI-kapak.
+      A THIRD surface is disclosed here and NOT rowed: help() with no
+      argument runs pydoc's interactive loop, which reads stdin through
+      input(). help returns None, so nothing the far side chose reaches
+      the caller, and ADR-0049 says never mint -- an ipc_recv row would
+      mint an untrusted_input source at a call that hands the program
+      nothing.
   - module: warnings
     functions: [warn, warn_explicit, showwarning]
     notes: "showwarning writes stderr; warn reaches it. The audit's disqualifier for warnings, now a row."
   - module: typing
     functions: [reveal_type]
     notes: "The one I/O surface in typing - writes to stderr. The survey probe's catch."
+  - module: typing.TextIO
+    methods: [write, writelines]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-jabus. The logging twin; the selection rule is on the fs_write row.
+      NOTE THE SLOT: `typing` and `typing.TextIO` are different modules and the
+      completeness entry for one says nothing about the other -- which is the
+      whole reason this row is needed even though `typing` has been declared
+      complete since 2026-08-15.
   - module: argparse.ArgumentParser
     methods: [print_help, print_usage, error]
     notes: "error prints usage to stderr then raises SystemExit."
@@ -508,6 +808,13 @@ logging:
     notes: "Terminal / log output; redirectable to file or pipe but not by itself an IPC channel"
 
 ipc_recv:
+  - module: typing.TextIO
+    methods: [read, readline, readlines]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-jabus. The ipc_recv twin of the fs_read TextIO row; a TextIO bound to
+      sys.stdin is an ipc_recv. The fs_read row stays FIRST, so an unresolvable
+      receiver keeps the boundary that mints no taint source.
   # ---------------------------------------------------------------
   # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
   # measured unmatched call target on hypergumbo's own artifact-scoped
@@ -517,9 +824,38 @@ ipc_recv:
   # resolve INV-ponad: the parent's attribute row speaks about REFERENCE
   # edges, these speak about CALL edges on the attribute object.
   # ---------------------------------------------------------------
+  - module: builtins
+    functions: [input]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. input() reads a line from stdin and is the canonical untrusted
+      source in Python. INV-foluz is the other half: py.py emits no call edge
+      for a bare input(), because BUILTIN_CONSTRUCTOR_NAMES is a hardcoded
+      frozenset({"open"}) rather than the catalogue-derived set that item's
+      root_cause describes -- so this row alone does not make the call visible.
+  # 2026-09-08 WI-dozul, from the socket-grant enumeration. The receive half of
+  # SCM_RIGHTS descriptor passing; see send_fds under ipc_send. Mints
+  # untrusted_input, which is the point -- a descriptor arriving from another
+  # process is a capability this program did not choose.
+  - module: socket
+    functions: [recv_fds]
+    notes: "recvmsg with SCM_RIGHTS -- AF_UNIX only, so the boundary is decided, not call-site-undecidable."
   - module: sys.stdin
     functions: [read, readline, readlines]
     notes: "INV-ponad slot family; consistent with the sys attribute row in this section. functions:, not methods: - see the os.environ note."
+  - module: subprocess
+    functions: [check_output, getoutput, getstatusoutput]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
   - module: os
     functions: [wait, waitpid, wait3, wait4, waitid]
     notes: "Reaping a child collects its exit status - data received from another process."
@@ -534,6 +870,26 @@ ipc_recv:
     methods: [recv, recv_bytes]
 
 subprocess:
+  - module: subprocess.Popen
+    methods: [communicate, wait, poll, terminate, kill, send_signal]
+    notes: >-
+      WI-jabus. LAUNCH-ONLY, on `run`'s precedent and NOT on check_output's.
+      Whether `communicate()` transfers the child's bytes back depends on
+      `stdout=PIPE`, an argument the catalogue cannot read -- and here that
+      argument is on the CONSTRUCTOR, one hop further away than `run`'s own
+      `capture_output=`. The shipped treatment for exactly that is a
+      launch-only row with the omission DISCLOSED rather than silent, which is
+      what this is. It deliberately does NOT mint untrusted_input: ADR-0049
+      ruling 1 mints only where the far side chose the value, and
+      check_output / getoutput / getstatusoutput already carry that for the
+      case where the capture is unconditional. WI-bimik's premise that
+      subprocess output mints nothing is STALE and recorded so on that item.
+  - module: multiprocessing.Process
+    methods: [start]
+    notes: "2026-09-06 WI-dupok: forks or spawns the child (Popen in the spawn context); the launch site of every multiprocessing worker."
+  - module: multiprocessing
+    functions: [Pool]
+    notes: "Pool's constructor starts its workers."
   # ---------------------------------------------------------------
   # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
   # measured unmatched call target on hypergumbo's own artifact-scoped
@@ -545,14 +901,53 @@ subprocess:
   # ---------------------------------------------------------------
   - module: subprocess
     functions: [getoutput, getstatusoutput]
-    notes: "Shell-string conveniences the run/Popen rows did not cover."
+    simultaneous: true
+    notes: >-
+      Shell-string conveniences the run/Popen rows did not cover.
+
+      INV-lozat: both RETURN the command's output (`getstatusoutput` as
+      `(status, output)`), so they also carry an ipc_recv row and mint an
+      untrusted_input source. See that row for why `simultaneous` is
+      required here rather than optional.
+  - module: builtins
+    functions: [help]
+    boundary_ruling: unruled
+    notes: >-
+      INV-bofab. The pager half of help(): pydoc.pipepager launches less/more
+      via subprocess.Popen(shell=True) when stdout is a tty. See the logging
+      twin for why this pair is `unruled` rather than `simultaneous`.
   - module: asyncio
     functions: [create_subprocess_exec, create_subprocess_shell]
     notes: "asyncio carried net rows and NO subprocess rows - the one-boundary-vouches-for-all shape INV-zubuh measured on os."
   - module: os
     functions: [posix_spawn, posix_spawnp, startfile]
   - module: subprocess
-    functions: [run, Popen, call, check_call, check_output]
+    functions: [run, Popen, call, check_call]
+    notes: >-
+      INV-lozat, on why `check_output` left this row and these four did
+      not. `call` and `check_call` return a returncode; `Popen` returns a
+      HANDLE, which is an ADR-0049 deferred crossing rather than a
+      transfer. `run` is the contested one: its `CompletedProcess.stdout`
+      is the child's bytes ONLY when the caller passed `capture_output=` or
+      `stdout=PIPE`, and the catalogue matches on name, not on keyword
+      arguments. Rowing it would mint a source at every `subprocess.run`
+      call in the corpus, most of which capture nothing -- so it stays out
+      until the argument shape can be read, and that omission is disclosed
+      rather than silent.
+  - module: subprocess
+    functions: [check_output]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
   - module: os
     functions: [system, popen, execl, execle, execlp, execlpe, execv, execve, execvp, execvpe, spawnl, spawnle, spawnlp, spawnlpe, spawnv, spawnve, spawnvp, spawnvpe]
   - module: os
@@ -560,30 +955,86 @@ subprocess:
     notes: "Unix only"
 
 env_read:
-  # ---------------------------------------------------------------
-  # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
-  # measured unmatched call target on hypergumbo's own artifact-scoped
-  # self-survey, or a peer required so its module's completeness entry
-  # stays honest. os.open + os.write close INV-zubuh's measured
-  # false-confirm pair. Slot-family rows (os.environ.*, sys.stdout.*)
-  # resolve INV-ponad: the parent's attribute row speaks about REFERENCE
-  # edges, these speak about CALL edges on the attribute object.
-  # ---------------------------------------------------------------
-  - module: os
-    functions: [getuid, getgid, geteuid, getegid, getgroups, getcwd, getcwdb, uname, getlogin, getrandom, sysconf, confstr]
-    notes: "Host- and user-identifying reads plus OS randomness. Deliberately NOT getpid / cpu_count / times: env_read rows auto-derive host_secret TAINT SOURCES (AUTO_SOURCE_LABEL_MAP), and a pid is not a secret - rowing it would manufacture false sources. Inert process state is vouched for by the module_completeness entry instead. And deliberately NOT urandom: hypergumbo ships a HAND-WRITTEN taint source for os.urandom, and an auto-derived twin DISPLACES it, tripping the INV-faput caveat on every python repo (measured: rc 0 fixtures went rc 3)."
+  - module: urllib.request
+    functions: [getproxies, getproxies_environment, proxy_bypass, proxy_bypass_environment, ProxyHandler, build_opener, URLopener, FancyURLopener]
+    notes: >-
+      WI-bakik. Each reads the *_proxy / no_proxy environment variables:
+      getproxies* directly, proxy_bypass* for no_proxy, ProxyHandler() when
+      `proxies` is None (the default), build_opener() because it always adds a
+      default ProxyHandler, and the deprecated URLopener / FancyURLopener in
+      __init__. A ProxyHandler given an explicit mapping reads nothing; the row
+      cannot see the argument and over-approximates that one call shape.
+  - module: sysconfig
+    functions: [get_platform]
+    notes: "2026-09-06 WI-dupok: reads os.environ (MACOSX_DEPLOYMENT_TARGET and friends)."
+  - module: xml.dom
+    functions: [getDOMImplementation]
+    notes: "2026-09-06 WI-dupok: consults os.environ (PYTHON_DOM) to pick an implementation."
   - module: os.environ
     functions: [get, keys, items, values, copy]
     notes: "INV-ponad slot family: a method call on the mapping carries os.environ as its module slot, where the parent's attribute row cannot reach. The mutation half sits under env_write. `functions:`, NOT `methods:` - the analyzer emits these attribute-chain calls with NO method construct (call_construct=None on every one in the self-survey), and a methods: kind starves the method-starvation gate exactly as tokenizers.Tokenizer did (its own row carries the same lesson)."
-  - module: pathlib.Path
-    methods: [cwd, home, expanduser, absolute]
   - module: os.path
-    functions: [expanduser, expandvars]
+    functions: [expandvars]
   - module: posixpath
-    functions: [expanduser, expandvars]
+    functions: [expandvars]
   - module: argparse.ArgumentParser
     methods: [parse_args, parse_known_args]
     notes: "Reads sys.argv, consistent with the sys attribute row in this section."
+  - module: os
+    functions: [getenv, get_exec_path]
+    attributes: [environ]
+  - module: sys
+    attributes: [argv]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: time
+    functions: [time, time_ns, monotonic, monotonic_ns, perf_counter, perf_counter_ns, process_time, process_time_ns, thread_time, thread_time_ns, clock_gettime, clock_gettime_ns, clock_getres, get_clock_info]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Enumerated
+      against the Python 3.12.3 stdlib. REFUSED, with reasons:
+      sleep/mktime/strptime/tzset (no clock sampled);
+      clock_settime/clock_settime_ns (a host WRITE, a different boundary
+      question); localtime/gmtime/ctime/asctime/strftime (an argument
+      REPLACES the read, and the catalogue matches on name not arity, so a
+      row would mark pure conversions too).
+  - module: datetime.datetime
+    functions: [now, utcnow, today]
+    notes: >-
+      Classmethods that always sample the clock; the optional tz argument
+      shapes the result, it does not replace the read.
+      fromtimestamp/utcfromtimestamp convert a supplied value and get no
+      row. FUNCTION-kind because a classmethod takes no receiver (INV-nular's
+      Path.cwd rule, checked with inspect.getattr_static). Keyed `methods`,
+      `_dt.date.today()` -- a module-rooted chain the analyzer emits with no
+      call_construct -- left datetime.date method-starved and withheld every
+      self-claim verdict (INV-fugus).
+  - module: datetime.date
+    functions: [today]
+  - module: os
+    functions: [getuid, getgid, geteuid, getegid, getgroups, getcwd, getcwdb, uname, getlogin, sysconf, confstr]
+    notes: "Host- and user-identifying reads. THE REASON getpid / cpu_count / times WERE HELD OUT IS GONE (INV-tutar): they were excluded because env_read auto-derived the host_secret label and a pid is not a secret, which is the catalogue distorting itself to protect a consumer. Under host_info_read they would be ordinary rows; adding them is an ADDITION and is deliberately not folded into the split. urandom stays out for a different and still-live reason: hypergumbo ships a HAND-WRITTEN taint source for os.urandom and an auto-derived twin DISPLACES it, tripping the INV-faput caveat on every python repo (measured: rc 0 fixtures went rc 3). os.getrandom was REMOVED outright by the split -- a CSPRNG read is not an environment read under any reading."
+  - module: pathlib.Path
+    functions: [cwd, home]
+    notes: >-
+      CLASSMETHODS, not instance methods — `Path.cwd()` and `Path.home()` are
+      called on the class with no receiver, so a method-kind entry can never
+      match the call site (INV-nular). Verified mechanically with
+      inspect.getattr_static, not from recall. `expanduser` and `absolute`
+      below DO take a receiver and stay method-kind; the split is the point.
+  - module: pathlib.Path
+    methods: [expanduser, absolute]
+  - module: os.path
+    functions: [expanduser]
+  - module: posixpath
+    functions: [expanduser]
   - module: pwd
     functions: [getpwuid, getpwnam, getpwall]
   - module: grp
@@ -594,15 +1045,20 @@ env_read:
     functions: [get_terminal_size]
   - module: tempfile
     functions: [gettempdir, gettempprefix]
-  - module: os
-    attributes: [environ]
-    functions: [getenv, get_exec_path]
   - module: sys
-    attributes: [argv, executable, path, platform, version]
+    attributes: [executable, path, platform, version]
   - module: platform
     functions: [system, node, release, version, machine, processor, python_version]
   - module: locale
     functions: [getlocale, getdefaultlocale, getpreferredencoding]
+  # 2026-09-08 WI-dozul. The LOCAL half of socket's lookup surface, rowed
+  # because the module_completeness grant below makes SILENCE mean "this call
+  # crosses no boundary" -- so an unrowed host read under a grant is a false
+  # all-clear, the expensive direction. None of these queries a name server;
+  # the six that do are under net_recv.
+  - module: socket
+    functions: [gethostname, getservbyname, getservbyport, getprotobyname, if_nameindex, if_nametoindex, if_indextoname, has_dualstack_ipv6]
+    notes: "gethostname reads the local hostname from the kernel (c files unistd.gethostname the same way, and platform.node is the same fact one module over). getservbyname/getservbyport/getprotobyname read /etc/services and /etc/protocols -- LOCAL system tables, the pwd/grp precedent in this section. if_* enumerate the host's network interfaces. has_dualstack_ipv6 probes a kernel capability, as platform.system does."
 
 env_write:
   # 2026-08-15 stdlib climb - this catalogue's first env_write section
@@ -616,6 +1072,15 @@ env_write:
   - module: contextlib
     functions: [chdir]
     notes: "The survey probe's catch: contextlib.chdir mutates process state."
+  # 2026-09-08 WI-dozul, from the socket-grant enumeration. sethostname mutates
+  # the MACHINE's name, not this process's state -- a stronger fact than its
+  # neighbours here, and env_write is the closest value the vocabulary has. A
+  # `host_info_write` twin of host_info_read would be its honest home; that is a
+  # new registry value and goes through an ADR-0024 family audit, not a row.
+  # Rowed rather than left silent because the grant makes silence a claim.
+  - module: socket
+    functions: [sethostname]
+    notes: "Privileged mutation of the host's name. See the comment above on why it is filed here."
 
 stdlib_modules:
   # BEGIN generated by scripts/refresh-stdlib-modules python
@@ -1073,6 +1538,24 @@ module_completeness:
       Pure string work. Declared on its own line precisely because exact
       matching means this says NOTHING about urllib.request, which opens
       URLs - the worked counterexample in module_io_is_enumerated.
+  - module: urllib.request
+    completeness: complete
+    retrieved: "2026-09-24"
+    notes: >-
+      WI-bakik. The 46 own public callables (python 3.12, introspected; see
+      docs/surveys/python-stdlib-module-io-enumeration.md). ROWED: urlopen,
+      urlretrieve, ftpwrapper (net_send); localhost, thishost (net_recv, DNS);
+      getproxies, getproxies_environment, proxy_bypass,
+      proxy_bypass_environment, ProxyHandler, build_opener, URLopener,
+      FancyURLopener (env_read); urlcleanup (fs_write). NO I/O ON CALL:
+      Request, OpenerDirector, install_opener (sets a global), the other 22
+      handler and password-manager classes (their constructors store
+      arguments), url2pathname, pathname2url, parse_http_list,
+      parse_keqv_list, request_host, noheaders, ftperrors. urlretrieve also
+      writes a local file; it carries its net_send row, not a second one.
+      This entry covers the urllib.request SLOT only. An instance's methods
+      live at their own slots (urllib.request.OpenerDirector.open sends and
+      carries no row yet), which this entry does not reach or claim.
   - module: difflib
     completeness: complete
     retrieved: "2026-08-15"
@@ -1095,6 +1578,30 @@ module_completeness:
   - module: gc
     completeness: complete
     retrieved: "2026-08-15"
+
+  # ---------------------------------------------------------------------
+  # 2026-08-23. Added because hypergumbo itself began reading TOML
+  # (user_config.py, ADR-0045) and the coverage gate correctly refused to
+  # treat silence about an unenumerated module as evidence: every one of
+  # the 18 self-claims dropped from confirmed_with_caveats to inconclusive,
+  # since `qualifying_only` is `not unknown` and tomllib made `unknown`
+  # non-empty. That is INV-buzab's distinction working as designed —
+  # `is_stdlib_module` recognises the name, `module_io_is_enumerated` is
+  # the one that vouches for the silence — so the fix is a POSITIVE dated
+  # declaration, not a widening of the gate.
+  # ---------------------------------------------------------------------
+  - module: tomllib
+    completeness: complete
+    retrieved: "2026-08-23"
+    notes: >-
+      load(fp) reads from a binary file OBJECT the caller opened and loads(s)
+      is pure string parsing, so the open is the caller's I/O and is rowed
+      where it happens - the same shape as json, declared above. Probe
+      (docs/surveys/python-stdlib-module-io-enumeration.md) run on 2026-08-23:
+      the public API is load/loads/TOMLDecodeError, and the single `open(`
+      match in tomllib._parser is inside the TypeError text "File must be
+      opened in binary mode, e.g. use `open('foo.toml', 'rb')`" - the
+      docstring/message false-positive class the survey documents, not a call.
 
   # ---------------------------------------------------------------------
   # 2026-08-15b - the stdlib climb's completeness pass. Each entry was
@@ -1211,6 +1718,104 @@ module_completeness:
     retrieved: "2026-08-15"
     notes: >-
       open/open_code/FileIO rowed; BytesIO/StringIO/TextIOWrapper operate on in-memory buffers or already-open objects.
+  # -------------------------------------------------------------------
+  # WI-jabus, retrieved 2026-09-14. CLASS-QUALIFIED RECEIVERS.
+  #
+  # Each names a CLASS, and each is here because MATCHING IS EXACT --
+  # `module_io_is_enumerated`'s own docstring: "Not a prefix, not a suffix,
+  # not a component", because `urllib` would otherwise vouch for
+  # `urllib.request` and Go's `os` for `os/exec`. So `io` being complete (just
+  # above, and it even NAMES BytesIO in its note) does not reach `io.BytesIO`.
+  #
+  # Phase 6 receiver typing is what made these reachable: the calls used to
+  # land on an untyped receiver, which is DISCLOSED through the
+  # untyped_receiver caveat, and now land on a class the gate had no opinion
+  # about. `qualifying_only = not unknown`, so ONE of these withheld ALL
+  # EIGHTEEN of this repository's self-claims (WI-jabus; third recorded
+  # instance after builtins/INV-bofab and uvicorn).
+  #
+  # THESE DECLARE THE SURFACE ENUMERATED, NOT I/O-FREE. sys.stdout is the
+  # precedent in this very file: declared complete AND carrying logging rows.
+  # -------------------------------------------------------------------
+  - module: io.BytesIO
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      An in-memory byte buffer. read/write/getvalue/seek/tell move bytes
+      inside the process and cross nothing; `getbuffer` exposes the same
+      memory. The `io` entry above already says this in prose -- exact
+      matching is why it must also be said here.
+  - module: io.StringIO
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      The text twin of io.BytesIO; same surface, same reasoning.
+  - module: random.Random
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      A PRNG over in-process state: choice/randint/shuffle/sample/random draw
+      from the instance's Mersenne state. `seed()` with no argument reads
+      os.urandom, which is entropy rather than a host DESCRIPTION or a secret
+      -- no boundary in this vocabulary, and INV-tutar's split is what keeps
+      that from being filed as one.
+  - module: concurrent.futures.ThreadPoolExecutor
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      `submit` / `map` SCHEDULE a callable; whatever I/O happens is the
+      callable's own, reached through its own edges. Rowing the executor would
+      attribute every worker's crossing to the scheduler. shutdown joins
+      threads.
+  - module: urllib.request.Request
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      CONSTRUCTS AND SENDS NOTHING -- already adjudicated by INV-gujoh and
+      WI-gihif. add_header / add_data / get_full_url mutate an object;
+      `urlopen` is what crosses, and it is rowed under net_send at the
+      urllib.request slot, which this entry does not reach or claim to.
+  - module: subprocess.Popen
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      The launch surface is rowed above (the constructor is the launch, and
+      the opaque-boundary caveat names it); communicate/wait/poll/terminate/
+      kill/send_signal are rowed launch-only there too. stdin/stdout/stderr are
+      ATTRIBUTES holding file objects -- a read through one is a call on that
+      object, classified where that object's own class is declared, not here.
+  - module: tarfile.TarFile
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      extractall/extract (fs_write) are rowed above. `open`/`extractfile`
+      operate on members of an archive the constructor already opened, which
+      carries its own dual row at the `tarfile` module slot;
+      getmembers/getnames/list read the central directory the constructor has.
+      NOT a claim that TarFile is I/O-free -- it plainly is not, which is why
+      the rows come first.
+  - module: zipfile.ZipFile
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      extractall/extract (fs_write) and write (fs_read) are rowed above.
+      `open`/`read` operate on members of an archive already opened by the
+      constructor, which carries its own dual row; namelist/infolist/testzip
+      read the central directory the constructor has. NOT a claim that ZipFile
+      is I/O-free -- it plainly is not, which is why the rows come first.
+  - module: typing.TextIO
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      read/readline/readlines and write/writelines are rowed above under
+      call_site_undecidable, because a TextIO may be a file, a pipe or a
+      buffer. The remainder -- close, flush, seek, tell, fileno, isatty,
+      readable, writable, seekable, __enter__/__exit__ -- is state and
+      queries. This is the entry WI-jabus was BLOCKED on, and the block was a
+      misreading: the item recorded that "declaring typing.TextIO complete
+      would assert it does no I/O, which is false", but `completeness` asserts
+      the surface is ENUMERATED, not that it is empty. sys.stdout in this same
+      file is declared complete and carries three logging rows.
   - module: fcntl
     completeness: complete
     retrieved: "2026-08-15"
@@ -1256,6 +1861,33 @@ module_completeness:
     retrieved: "2026-08-15"
     notes: >-
       connect rowed under db_read.
+  # 2026-09-08 WI-dozul. WI-dupok WITHHELD this grant on 2026-09-06 for a
+  # stated reason -- four module-level functions performed a network exchange
+  # with no row and no ruling -- and the 2026-09-06 owner ruling supplies the
+  # ruling, so the reason is discharged. Granted only after enumerating all 35
+  # module-level callables against the live module (dir(socket) +
+  # introspection, not recall), because a grant makes SILENCE mean "this call
+  # crosses no boundary" and an unrowed I/O function under a grant is a false
+  # all-clear.
+  - module: socket
+    completeness: complete
+    retrieved: "2026-09-08"
+    notes: >-
+      All 35 module-level callables adjudicated. ROWED: the six resolver
+      functions (net_recv); create_connection (net_send); create_server
+      (net_listen); gethostname / getservbyname / getservbyport /
+      getprotobyname / if_nameindex / if_nametoindex / if_indextoname /
+      has_dualstack_ipv6 (host_info_read -- local kernel and system-table
+      reads, the pwd/grp precedent); send_fds / recv_fds (ipc_send / ipc_recv,
+      SCM_RIGHTS over AF_UNIX); sethostname (env_write, the nearest value the
+      vocabulary has for a privileged mutation of the MACHINE's name). NOT
+      ROWED, each for a stated reason: socket / socketpair / fromfd / dup /
+      close (descriptor lifecycle -- the F2 family creates a handle and
+      transfers nothing); htonl / htons / ntohl / ntohs / inet_aton /
+      inet_ntoa / inet_ntop / inet_pton / CMSG_LEN / CMSG_SPACE (pure
+      conversions); getdefaulttimeout / setdefaulttimeout (process-local
+      setting). The socket CLASS's own methods are catalogued separately under
+      module socket.socket and are not covered by this module-level grant.
   - module: sqlite3.Connection
     completeness: complete
     retrieved: "2026-08-15"
@@ -1335,7 +1967,7 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-15"
     notes: >-
-      Namespace package - nothing is addressable at this slot; urllib.request stays refused, urllib.parse carries its own entry.
+      Namespace package - nothing is addressable at this slot; urllib.request and urllib.parse each carry their own entry.
   - module: file
     completeness: complete
     retrieved: "2026-08-15"
@@ -1343,3 +1975,234 @@ module_completeness:
       WI-fuvuj's synthetic module for typed open() results. Read half under
       fs_read, write half under fs_write; the remainder (seek, tell, close,
       fileno) is handle management on a file the caller already opened.
+  - module: builtins
+    completeness: complete
+    retrieved: "2026-09-03"
+    notes: >-
+      INV-bofab. Enumerated because INV-foluz (a33de088bc) made every bare
+      builtin call name this module, and an unenumerated module withholds
+      every verdict on every Python repo -- hypergumbo's own 18 self-claims
+      went inconclusive at the next cron firing. The survey probe cannot see
+      a C module, so the surface was walked by hand over dir(builtins) on
+      3.12 (144 public callables): 66 exception classes and the type
+      constructors do no I/O; open (fs_read/fs_write), input (ipc_recv),
+      print/breakpoint/copyright/credits (logging), license (fs_read +
+      logging) and help (logging + subprocess pager, `unruled` -- WI-kapak;
+      its no-argument interactive stdin loop returns nothing to the caller
+      and is disclosed on the row rather than rowed, per ADR-0049) carry
+      rows; exit/quit
+      raise SystemExit; exec/eval/compile evaluate in-process and cross no
+      boundary of their own. __import__ is a dunder, outside the
+      public-callable rule the whole audit applies, and is the import
+      statement's callable form -- no catalogue models an import as I/O;
+      importlib's refusal above is the related open question.
+
+  # ---------------------------------------------------------------------
+  # 2026-09-06 WI-dupok, third completeness leg (WI-lutuh's order: rust ->
+  # javascript -> python). Working set: the 41 stdlib module strings the
+  # 08-24 scope audit found uncatalogued across 11 corpus repos. Probe:
+  # ~/hypergumbo_lab_notebook/dupok_python_09062026/probe_py.py (public
+  # members one level deep, source scanned; NATIVE refuses; never grants).
+  # Rows above were added FIRST for every SIGNAL member that opens a path,
+  # writes a default stream, launches, or signals; then these grants.
+  #
+  # REFUSED, with reasons (a grant list is only as good as its refusals):
+  #   tkinter        4031 members; GUI I/O to a display server -- out of this
+  #                  leg's scope; the display is an I/O boundary the vocabulary
+  #                  does not name.
+  #   socket         module functions gethostbyname / gethostbyaddr /
+  #                  getaddrinfo / getfqdn perform a DNS query that returns
+  #                  data the resolver chose; whether that is net_recv
+  #                  (ADR-0049's question says yes) or host_info_read is
+  #                  UNRULED in every catalogue -- escalated; the module stays
+  #                  ungranted until ruled. socket.socket's rows stand.
+  #   ssl            rowed above but SSLContext.wrap_socket / SSLSocket's
+  #                  descriptor plumbing (fileno, makefile) were not read one
+  #                  by one; PARTIAL, not granted. THE MemoryBIO SURFACE HAS
+  #                  NOW BEEN READ (INV-kazuk, 2026-09-21) and the reading
+  #                  REMOVED rows rather than adding them: ssl.SSLObject
+  #                  carried read/write/do_handshake asserting a network
+  #                  crossing at a class CPython documents as performing no
+  #                  network I/O at all. The module stays ungranted on the
+  #                  descriptor plumbing alone.
+  #   unittest.mock  patches module state; 10 probe signals in its
+  #                  os.environ / open patch helpers -- not read; not granted.
+  #   multiprocessing  rowed above; Manager / shared_memory / connection
+  #                  (Listener, Client: a socket surface) were not read --
+  #                  PARTIAL, not granted.
+  - module: errno
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Constants only; the probe found no callable member."
+  - module: xml
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Namespace package; no member of its own. xml.etree.ElementTree carries its rows and grant; xml.dom.minidom's parse is rowed above."
+  - module: xml.etree
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Namespace package; ElementTree is the surface and is granted separately."
+  - module: xml.dom
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "getDOMImplementation reads os.environ (rowed env_read); the rest is the DOM object model, in-process."
+  - module: xml.dom.minidom
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "parse(path) rowed fs_read; parseString is pure; the 47 probe signals are Node.writexml / toprettyxml writing to a CALLER-supplied writer (the caller's I/O, tomllib's rule)."
+  - module: glob
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "glob / iglob rowed fs_read; escape, has_magic, translate are string work."
+  - module: mimetypes
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "init / read_mime_types / guess_type rowed fs_read (the mime.types files); guess_extension / guess_all_extensions / add_type consult the loaded tables in memory."
+  - module: mimetypes.MimeTypes
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "read / readfp rowed; the rest is table lookup."
+  - module: filecmp
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "cmp / cmpfiles rowed fs_read; clear_cache is in-memory; dircmp is granted on its own."
+  - module: filecmp.dircmp
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "The report* methods print to stdout and phase* stat/listdir the two trees -- the constructor's directories are the reads, rowed on the report methods a program calls; every phase runs under them."
+  - module: sysconfig
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Config-file stats rowed fs_read, get_platform rowed env_read; get_paths / get_scheme_names / parse_config_h are in-memory over the loaded values."
+  - module: pprint
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "pprint / pp rowed logging; pformat / saferepr / isreadable / isrecursive return strings."
+  - module: pprint.PrettyPrinter
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "pprint rowed logging; pformat and the format hooks return strings."
+  - module: traceback
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "The print_* family rowed logging; format_* / extract_* / walk_* return data. FrameSummary reads source lines through linecache -- a read of the running program's own source, the same class as inspect.getsource, which the 08-15 audit refused for inspect and this audit treats the same way: NOT a grant blocker, disclosed here."
+  - module: traceback.TracebackException
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "print rowed logging; format / format_exception_only return data."
+  - module: threading
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "In-process concurrency: the probe's three signals are list.remove in Condition.wait/notify and a docstring mention of sys.stderr in Thread.__init__ (excepthook writes to stderr through the traceback module, whose print rows carry it)."
+  - module: cProfile
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "run / runctx rowed for their optional output file; Profile.dump_stats / print_stats rowed on the class; enable / disable / create_stats are in-process."
+  - module: cProfile.Profile
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "dump_stats rowed fs_write, print_stats rowed logging; the rest is in-process."
+  - module: pstats.Stats
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "load_stats / dump_stats rowed, print_* rowed logging; sort_stats / strip_dirs / add are in-memory."
+  - module: pstats
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Module-level: SortKey, f8, func_strip_path are string work; Stats is granted on its own."
+  - module: struct
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented (probe: NATIVE only); pack / unpack / calcsize are byte arithmetic with no descriptor or path argument, per the module documentation."
+  - module: binascii
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented; binary/ASCII conversions over buffers."
+  - module: operator
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented; operator functions over in-memory objects."
+  - module: marshal
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented; dump / load take a CALLER-opened file object (tomllib's rule, the json precedent), dumps / loads are bytes."
+  - module: zlib
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented; compression over buffers and streaming objects; no descriptor or path."
+  - module: decimal
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented arithmetic; getcontext / setcontext are thread-local state."
+  - module: enum
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Class machinery; the probe's 160 NATIVE members are the metaclass and descriptor slots."
+  - module: string
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Template / Formatter / the constants; string work."
+  - module: atexit
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "register / unregister record callbacks for interpreter exit; the callbacks' I/O is theirs."
+  - module: queue
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "In-process queues (Queue, LifoQueue, PriorityQueue, SimpleQueue); the multiprocessing.Queue that crosses a process is rowed and is a different module."
+  - module: pickle
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "dump rowed fs_write (writes INTO a caller-opened object, the json.dump precedent); load reads a caller-opened object (the open is the caller's); dumps / loads are bytes. Unpickling runs code from the data -- a trust question the taint labels carry, not a boundary."
+  - module: codecs
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "codecs.open rowed fs_read + fs_write; encode / decode / lookup / register and the incremental codecs are in-memory; StreamReader / StreamWriter wrap a caller-supplied stream."
+  - module: ctypes
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "CDLL / PyDLL / OleDLL / WinDLL and cdll.LoadLibrary rowed fs_read (a shared object loaded from a path); the foreign functions a loaded library exposes are outside any catalogue -- the disclosure is the load row. The type constructors, byref, cast, sizeof, Structure are in-memory."
+  - module: ctypes.util
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "find_library rowed fs_read."
+  - module: optparse
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "OptionParser's print_* / error / exit rowed logging, Values.read_file / read_module rowed fs_read; HelpFormatter reads COLUMNS from os.environ for width (a description, not a secret) -- disclosed here."
+  - module: optparse.OptionParser
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "See optparse."
+  - module: optparse.Values
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "read_file / read_module rowed fs_read."
+  - module: doctest
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "testfile rowed fs_read, testmod / run_docstring_examples and DocTestRunner.run / summarize rowed logging; DocTestFinder / DocTestParser are in-memory over source the caller loaded (getsource through inspect, the traceback/inspect class above)."
+  - module: doctest.DocTestRunner
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "run / summarize rowed logging."
+  - module: unittest
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "main rowed logging (the runner writes to stderr), TestLoader.discover rowed fs_read + fs_write, TextTestRunner.run rowed logging; TestCase's assert* / setUp / tearDown are in-process. unittest.mock is NOT granted (see the refusals)."
+  - module: unittest.TestLoader
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "discover rowed; loadTestsFrom* import already-loaded modules."
+  - module: unittest.TextTestRunner
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "run rowed logging."
+  - module: multiprocessing.Process
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "start rowed subprocess, kill / terminate rowed ipc_send; join / is_alive / exitcode wait on or read the child's state (os.waitpid) -- a process-state read of a child THIS process launched, the same class as os.getpid on the 08-15 os grant -- disclosed here."
+  - module: multiprocessing.Pool
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Constructor rowed subprocess (starts the workers); map / apply / imap dispatch over the rowed multiprocessing.Queue / Pipe."

@@ -33,6 +33,7 @@ from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, mak
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -297,6 +298,7 @@ class MatlabAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         import uuid as uuid_module
@@ -366,7 +368,7 @@ def is_matlab_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("matlab")
+@register_analyzer("matlab", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_matlab(repo_root: Path) -> AnalysisResult:
     """Analyze MATLAB source files in a repository.
 

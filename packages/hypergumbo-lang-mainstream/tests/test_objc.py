@@ -972,3 +972,42 @@ class TestObjcCyclomaticComplexity:
         for s in result.symbols:
             if s.kind != "method":
                 assert s.cyclomatic_complexity is None, (s.kind, s.name)
+
+
+class TestObjCImportDstIsCanonical:
+    """INV-dulah, lang-slot limb. An ``#import`` edge's dst is a canonical
+    5-slot id, not the bare header path.
+
+    The bare path is not an id: finalize's 4-part fallback rendered
+    ``Foundation/Foundation.h:<unknown>:0-0:Foundation/Foundation.h:external_symbol``
+    -- the header path in the LANG slot -- and the validator flagged every one
+    as ``non_canonical_language_prefix`` (Mantle: 44 of 44 id_format
+    violations). The shape mirrors cpp's include edge.
+    """
+
+    def test_framework_import_dst(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "MyClass.m").write_text("#import <Foundation/Foundation.h>\n@implementation MyClass\n@end\n")
+        result = analyze_objc(tmp_path)
+        dsts = [e.dst for e in result.edges if e.edge_type == "imports"]
+        assert dsts == ["objc:Foundation/Foundation.h:0-0:header:header"]
+
+    def test_local_import_dst(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "MyClass.m").write_text('#import "Utils/Helper.h"\n@implementation MyClass\n@end\n')
+        result = analyze_objc(tmp_path)
+        dsts = [e.dst for e in result.edges if e.edge_type == "imports"]
+        assert dsts == ["objc:Utils/Helper.h:0-0:header:header"]
+
+    def test_every_import_dst_has_five_slots_with_objc_in_the_lang_slot(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.objc import analyze_objc
+
+        (tmp_path / "A.m").write_text('#import <UIKit/UIKit.h>\n#import "A.h"\n#include <stdio.h>\n')
+        result = analyze_objc(tmp_path)
+        for e in result.edges:
+            if e.edge_type != "imports":
+                continue
+            parts = e.dst.split(":")
+            assert len(parts) == 5 and parts[0] == "objc", e.dst

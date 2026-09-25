@@ -1,0 +1,21 @@
+- op: create  # 500b
+  at: '2026-09-02T05:40:43Z'  # 500b
+  by: agent  # 500b
+  actor: jgstern_agent  # 500b
+  clock: 1  # 500b
+  nonce: 500b  # 500b
+  data:  # 500b
+    kind: work_item  # 500b
+    title: "haskell analyzer emits one calls edge PER CURRIED APPLY LEVEL, so an n-argument call produces n identical edges (11 edges / 7 distinct ids on a 7-call probe)"  # 500b
+    status: todo_hard  # 500b
+    priority: 3  # 500b
+    parent:  # 500b
+    tags:  # 500b
+    - haskell  # 500b
+    - analysis_quality  # 500b
+    isbefore: []  # 500b
+    duplicate_of: []  # 500b
+    not_duplicate_of: []  # 500b
+    pr_ref:  # 500b
+    description: "FOUND 2026-09-02 while baselining the haskell analyzer for INV-fofoj, by\nprinting the analyzer's raw edge list rather than a downstream count.\n\nTHE SHAPE. haskell's `_extract_edges_from_file` walks every node and handles\n`apply`. tree-sitter spells an n-ary application as NESTED applies --\n`readProcess \"uname\" [] \"\"` is apply(apply(apply(readProcess,...),...),...) --\nand the loop reaches each level. At the outer levels the code walks down to the\ninnermost head (the branch marked `# pragma: no cover - curried application`)\nand recovers the SAME callee name, so an n-argument call emits n identical\nedges.\n\nMEASURED on a purpose-built file, straight off HaskellAnalyzer().analyze():\n\n    11 calls edges, 7 DISTINCT ids\n    readProcess \"uname\" [] \"\"   (3 args)  -> 3 identical edges\n    writeFile \"o\" s             (2 args)  -> 2 identical edges\n    putStrLn \"x\"                (1 arg)   -> 1 edge\n\nWHAT IS AND IS NOT HARMED, stated separately because they differ. The copies\nshare an edge id, so anything keyed on id collapses them, and the io-boundary\nchain counts measured either side of INV-fofoj's fix are consistent with that\ncollapse -- this is NOT a chain-count inflation bug. What it does cost:\n  * any consumer counting edges BEFORE dedup sees an arity-weighted count;\n  * duplicate work proportional to argument count on every call in every\n    haskell file;\n  * the `# pragma: no cover` on the curried branch reads as \"unreachable\" when\n    it is reached by every multi-argument call in the language. That is not a\n    coverage lie (a pragma excludes from measurement, it does not assert\n    non-execution) but it is misleading to the next reader, which is how the\n    duplication stayed invisible.\n\nNOT MEASURED: whether any other tree-sitter analyzer with a nested-application\ngrammar has the same shape. INV-fofoj's own standing instruction --\ndon't fix one and assume the other -- applies; several grammars model\napplication left-recursively and would be worth the same one-line probe.\n\nREPRO: build a .hs file with calls of arity 1, 2 and 3, run\nHaskellAnalyzer().analyze(dir), and compare len(calls) with len({e.id})."  # 500b
+    fields: {}  # 500b

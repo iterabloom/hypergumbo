@@ -358,119 +358,21 @@ def test_map_stem_with_no_alphanumerics_matches_nothing(tmp_path: Path) -> None:
 
 #: Root tests no name-based rule can reach, with the reason each is exempt.
 #: Shrink-only — removing an entry is the goal, adding one needs justification.
-KNOWN_UNREACHABLE = {
-    # INV-vazuh. Its subject is another TEST file, not a top-level source:
-    # it re-runs tests/test_rct_public_api_pinned.py in a child interpreter
-    # with the in-repo package source roots scrubbed, pinning that the module
-    # declares the sys.path it needs instead of inheriting one from whichever
-    # sibling happened to share its xdist worker. No source-file name can map
-    # it, because no source change is what breaks it — deleting one line of
-    # the test under guard is. It runs in the same suite as its subject, so
-    # the two never drift apart.
-    "test_rct_pinned_standalone.py",
-    # scripts/lib/* is deliberately unmapped (the module's own docstring
-    # records the decision: sub-script basenames are generic and would
-    # over-match). These test scripts/lib/pool_utils.py and forgejo-api.sh.
-    "test_pool_utils.py",
-    "test_forge_backend_github.py",
-    # WI-ditav/WI-ninar. Its primary subject is scripts/lib/forgejo-api.sh
-    # (ci_verdict_permits_merge + poll_ci's dispatch test), which falls under
-    # the scripts/lib/* exemption above. Unlike the other entries in this list
-    # the per-PR gap is CLOSED rather than merely disclosed: the file is named
-    # explicitly in the `forge-arms` step of .woodpecker/woodpecker.yml, which
-    # runs on any `scripts/**` change — so editing the forge library, merge-pr
-    # or auto-pr does execute it before merge, just via a dedicated job instead
-    # of the smart-test manifest.
-    "test_ci_verdict_default_deny.py",
-    "test_resolve_forge_token_github.py",
-    "test_ci_status_endpoints_failover_aware.py",
-    "test_hg_github_token_documented.py",
-    # Cover the transcript pipeline across several sources at once, which no
-    # name-based rule reaches. (Vendor hook dirs are no longer exempt: the
-    # 2026-08-01 INV-lizor extension maps them by name + parity floor, which
-    # is what removed test_session_start_respawn / _agent_notes and
-    # test_stop_hook_state_write_discipline from this list.)
-    "test_watcher_lifecycle.py",
-    "test_transcript_scrub_wiring.py",
-    "test_transcript_pipeline_properties.py",
-    "test_training_log_parse_misses.py",
-    # Named for the behaviour under test rather than the file under test, so
-    # no name-based rule can reach them. test_bakeoff_resolve_workdir_prefix
-    # covers bakeoff-broad AND bakeoff-deep; test_workflow_cli_invocation
-    # covers check-schema-coverage; test_dead_code_prospector's name is a
-    # prefix OF its source (dead-code-prospector-run.py), the inverse
-    # direction. These want a declarative "covers:" marker, not a heuristic.
-    "test_bakeoff_resolve_workdir_prefix.py",
-    "test_workflow_cli_invocation.py",
-    "test_dead_code_prospector.py",
-    "test_rct_public_api_pinned.py",
-    # Assert over governance/workflow artifacts, not a single source file.
-    "test_codeowners_governance.py",
-    "test_full_suite_coverage_teeth.py",
-    # WI-modur: drives the per-PR pytest gate extracted from
-    # .woodpecker/woodpecker.yml. Its subject is a YAML file, so no Python
-    # source can map to it by name — the mapper covers scripts/ and
-    # .agent/hooks/_shared/, not CI config. Consequence, stated rather than
-    # hidden by the exemption: an edit to that workflow does NOT select this
-    # test per-PR, so a reintroduction of the source-keyed skip is caught by
-    # full-suite rather than before merge. That is the same "who guards the
-    # guard" gap this list keeps recording, and it wants the declarative
-    # "covers:" marker rather than another rename.
-    "test_ci_pytest_selection_gate.py",
-    # WI-fodad: asserts every .woodpecker/*.yml clone step sets
-    # `partial: false` (plugin-git's default produces a --filter=tree:0
-    # promisor checkout, which made one history walk take 1,185,559 ms).
-    # Same shape as the entry above and the SECOND of its kind: the subject is
-    # YAML, the mapper covers scripts/ and .agent/hooks/_shared/, and the
-    # mapper itself is a governance file. Consequence, stated rather than
-    # hidden: editing a workflow does NOT select this test per-PR.
-    # What makes that tolerable HERE and not merely tolerated: the regression
-    # this guards is also caught at RUN TIME by prepare-git, which inspects
-    # remote.origin.partialclonefilter on every pipeline and exits non-zero.
-    # So the per-PR hole costs the static gate, not the protection. Removing
-    # the runtime half would make this exemption load-bearing, which is why
-    # test_ci_clone_is_complete.py asserts that half exists.
-    "test_ci_clone_is_complete.py",
-    # WI-hajif: a recurrence guard over the ABSENCE of the retired CI-failover
-    # layer. It scans scripts/, .githooks/, .agent/hooks/ and packages/*/src for
-    # failover tokens, so it maps to no single source by construction — the
-    # thing it guards is a property of the tree, not a file. Consequence stated
-    # plainly rather than hidden by the exemption: it therefore runs in the full
-    # suite and not per-PR, so a PR that reintroduces failover machinery is
-    # caught after merge rather than before it. Fixing that needs the
-    # declarative "covers:" marker this list keeps asking for, not a rename.
-    "test_ci_failover_retired.py",
-    # Asserts ADR supersession is symmetric, per docs/adr/README.md's own
-    # lifecycle law. Its subject is docs/adr/*.md — markdown, a FOURTH category
-    # this mapper does not claim, alongside CI YAML and test helpers. No source
-    # rename can reach it, because no source change is what breaks it: editing
-    # an ADR is. Consequence stated rather than hidden by the exemption, and it
-    # is the sharp one here — smart-test writes a zero-test manifest when only
-    # docs changed, so a docs-ONLY ADR edit (the exact PR shape this guards)
-    # runs no tests at all per-PR, and the asymmetry lands in full-suite hours
-    # later instead of before merge. Closing it properly means teaching the
-    # mapper to claim docs/adr/**, and the mapper lives in .agent/hooks/_shared/
-    # — a governance file needing human approval. Filed rather than worked
-    # around: this list keeps asking for the declarative "covers:" marker, and
-    # a docs path is the case that most needs it.
-    "test_adr_supersession_symmetry.py",
-    # Same fourth category as its sibling above: its subject is
-    # docs/adr/README.md's index table checked against docs/adr/*.md status
-    # lines — markdown on both sides, which no source-file name maps. It
-    # catches the index understating an ADR (a bare "Accepted" against a file
-    # recording a partial landing), the same lifecycle law the symmetry test
-    # enforces from the other side. Runs post-merge in full-suite's
-    # `pytest tests/`; it imports nothing from hypergumbo, so the root
-    # container's missing package install does not reach it.
-    "test_adr_readme_index_sync.py",
-    # Covers tests/_forge_github_harness.py -- a TEST HELPER, which is a third
-    # category this mapper does not claim: it maps scripts/ and
-    # .agent/hooks/_shared/, not tests/. Extending it to tests/_<name>.py
-    # would be a rule for a category of exactly one (that helper is the only
-    # underscore-prefixed module under tests/), so this is an exemption rather
-    # than a mapping. Revisit if a second test helper acquires a test.
-    "test_forge_github_harness.py",
-}
+#: Root tests no rule can reach. EMPTY, and the ratchet is what keeps it so.
+#:
+#: It held 25 entries, each carrying a reason and most of them asking, in their
+#: own words, for the declarative marker that now exists. The last three went
+#: when the objection to declaring them turned out to be aesthetic rather than
+#: real: two have another TEST as their subject (a standalone re-run of a
+#: pinning module; a shared harness), and `# covers:` expresses that exactly --
+#: "when this path changes, run me" is true of a test file as much as of a
+#: source. The third pins four package modules by import path and can simply
+#: name them.
+#:
+#: Adding an entry here is still allowed and still needs a reason. But the bar
+#: moved: a test that cannot say what it covers is now the exception, not the
+#: rule, and "no name-based rule reaches it" stopped being one.
+KNOWN_UNREACHABLE: set[str] = set()
 
 
 def _real_top_level_sources() -> list[str]:
@@ -499,9 +401,27 @@ def _real_top_level_sources() -> list[str]:
     return out
 
 
+def _every_tracked_file() -> list[str]:
+    """Every tracked path in the repository, as the declarations' domain.
+
+    ``_real_top_level_sources`` enumerates what the NAME rules claim. A
+    ``# covers:`` marker can name anything — a pipeline YAML, ``CODEOWNERS``,
+    a package source tree — so the ratchet has to ask the whole tree, or a
+    test that declares its subject perfectly still reads as unreachable.
+    Tracked files only, and tracker op logs excluded: they are machine state,
+    not a surface anything covers.
+    """
+    listing = subprocess.run(
+        ["git", "ls-files"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    return [p for p in listing if "/.ops/" not in p]
+
+
 def _real_unreachable() -> set[str]:
     mod = _import_module()
-    reachable = set(mod.map_to_tests(_real_top_level_sources(), REPO_ROOT))
+    candidates = _real_top_level_sources() + _every_tracked_file()
+    reachable = set(mod.map_to_tests(candidates, REPO_ROOT))
     every = {f"tests/{p.name}" for p in (REPO_ROOT / "tests").glob("test_*.py")}
     return {Path(t).name for t in every - reachable}
 
@@ -607,7 +527,177 @@ def test_githooks_stays_unmapped_by_decision() -> None:
     """.githooks/** is deliberately NOT name-mapped (recorded in the module
     docstring): its hooks have no name-shaped tests, and smart-test's
     root-suite fallback for unmapped top-level sources covers it. This test
-    pins the decision so a silent mapping change is visible."""
+    pins the decision so a silent mapping change is visible.
+
+    NAME rules only, and that is the decision this pins. A ``# covers:``
+    marker naming ``.githooks/*`` is legitimate — test_ci_failover_retired.py
+    really does scan that directory — but it must not make the path count as
+    MAPPED, because smart-test keys its root-suite union on exactly this
+    question and would trade 108 tests for one. This test failed the moment
+    that marker landed, which is how the distinction came to exist."""
     mod = _import_module()
     root = Path(__file__).parent.parent
-    assert mod.map_to_tests([".githooks/reference-transaction"], root) == []
+    assert mod.map_to_tests(
+        [".githooks/reference-transaction"], root, declarations=False
+    ) == []
+
+
+def test_a_declaration_adds_without_withdrawing_over_selection() -> None:
+    """The two mechanisms compose one way only: declarations may ADD."""
+    mod = _import_module()
+    root = Path(__file__).parent.parent
+    declared = mod.map_to_tests([".githooks/reference-transaction"], root)
+    by_name = mod.map_to_tests(
+        [".githooks/reference-transaction"], root, declarations=False
+    )
+    assert declared, "no test declares .githooks/ — the arm is untested"
+    assert by_name == [], by_name
+    assert set(by_name) <= set(declared)
+
+
+def test_smart_test_asks_the_name_rules_for_its_fallback() -> None:
+    """The wiring, not just the capability.
+
+    A `--names-only` mode nothing calls is the same defect as an instrument
+    with no reader: it would leave the union switched off by the first
+    declaration that names an unmapped directory.
+    """
+    text = (Path(__file__).parent.parent / "scripts" / "smart-test").read_text()
+    assert "--names-only" in text
+    unmapped_arm = text.split("UNMAPPED_TOP_LEVEL=", 1)[1].split("\nfi\n", 1)[0]
+    assert "--names-only" in unmapped_arm
+
+
+# ---------------------------------------------------------------------------
+# The declarative `covers:` marker (INV-lizor limb (a), 2026-09-16). Name-based
+# mapping has a floor: a test named for the BEHAVIOUR it pins, or covering
+# several sources, or whose subject is a pipeline YAML rather than a source at
+# all, cannot be reached by any rule of that shape. Twenty-two entries on
+# KNOWN_UNREACHABLE said so in their own words and asked for this by name.
+# ---------------------------------------------------------------------------
+
+
+def test_a_marker_in_the_header_is_read() -> None:
+    mod = _import_module()
+    declared = dict(mod.declared_coverage(REPO_ROOT / "tests"))
+    assert declared, "no declarations found at all"
+    assert declared.get("scripts/lib/pool_utils.py") == "test_pool_utils.py"
+
+
+def test_a_marker_below_the_header_is_test_data_not_a_claim(tmp_path) -> None:
+    """The scan stops at the first import, def, class or decorator.
+
+    This file necessarily contains marker-shaped strings in its own fixtures.
+    Without a header boundary they would register as real declarations, and a
+    test file could silently claim coverage of anything it happened to mention.
+    """
+    mod = _import_module()
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_thing.py").write_text(
+        '"""Doc."""\n'
+        "# covers: scripts/real-one\n"
+        "import os\n"
+        "\n"
+        "# covers: scripts/not-a-claim\n"
+        "def test_x():\n"
+        "    pass\n"
+    )
+    patterns = {pattern for pattern, _ in mod.declared_coverage(tests_dir)}
+    assert "scripts/real-one" in patterns
+    assert "scripts/not-a-claim" not in patterns
+
+
+def test_several_globs_on_one_line(tmp_path) -> None:
+    mod = _import_module()
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_thing.py").write_text(
+        '"""Doc."""\n# covers: .woodpecker/*.yml, CODEOWNERS\nimport os\n'
+    )
+    hits = mod.map_to_tests([".woodpecker/nightly.yml"], tmp_path)
+    assert hits == ["tests/test_thing.py"]
+    assert mod.map_to_tests(["CODEOWNERS"], tmp_path) == ["tests/test_thing.py"]
+    assert mod.map_to_tests(["scripts/anything"], tmp_path) == []
+
+
+def test_no_declared_glob_has_rotted() -> None:
+    """A marker naming nothing in the tree is a claim about a file that moved.
+
+    Two-sided, like KNOWN_UNREACHABLE: the list can only be honest if a stale
+    entry fails rather than quietly covering nothing. This is the arm that
+    catches a renamed script whose test still claims the old path.
+    """
+    import fnmatch
+
+    mod = _import_module()
+    tracked = _every_tracked_file()
+    rotted = [
+        f"{name}: {pattern}"
+        for pattern, name in mod.declared_coverage(REPO_ROOT / "tests")
+        if not any(fnmatch.fnmatchcase(path, pattern) for path in tracked)
+    ]
+    assert not rotted, rotted
+
+
+def test_the_ci_config_surface_is_no_longer_dark() -> None:
+    """Four KNOWN_UNREACHABLE entries recorded this and none closed it.
+
+    "Editing a workflow does NOT select this test per-PR" appears verbatim on
+    test_ci_pytest_selection_gate, test_ci_clone_is_complete,
+    test_ci_self_claims_gate_scope and test_full_suite_coverage_teeth.
+    """
+    mod = _import_module()
+    hits = mod.map_to_tests([".woodpecker/woodpecker.yml"], REPO_ROOT)
+    assert "tests/test_ci_pytest_selection_gate.py" in hits
+    assert "tests/test_ci_clone_is_complete.py" in hits
+    assert "tests/test_ci_self_claims_gate_scope.py" in hits
+
+
+def test_the_original_demonstration_is_reachable_now() -> None:
+    """test_watcher_lifecycle.py was INV-lizor's own 2026-07-29 red test."""
+    mod = _import_module()
+    hits = mod.map_to_tests(
+        [".agent/hooks/_shared/launch-transcript-sync.sh"], REPO_ROOT
+    )
+    assert "tests/test_watcher_lifecycle.py" in hits
+
+
+def test_a_marker_survives_a_docstring_that_starts_a_line_with_import(
+    tmp_path,
+) -> None:
+    """The header scan must not stop inside prose.
+
+    ``test_rct_public_api_pinned.py`` has a docstring line beginning "import
+    path + signature", and the first implementation of the header scan cut
+    there — before the marker. The declaration then did nothing, and the
+    failure named the TEST as unreachable rather than the parser as wrong,
+    which is the expensive kind of wrong.
+    """
+    mod = _import_module()
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_thing.py").write_text(
+        '"""Doc.\n'
+        "\n"
+        "The variants attach by\n"
+        "import path + signature, not by behaviour.\n"
+        '"""\n'
+        "\n"
+        "# covers: scripts/real-one\n"
+        "import os\n"
+    )
+    patterns = {pattern for pattern, _ in mod.declared_coverage(tests_dir)}
+    assert "scripts/real-one" in patterns
+
+
+def test_the_exempt_list_is_empty_and_the_ratchet_is_what_keeps_it_so() -> None:
+    """INV-lizor limb (a), closed rather than narrowed.
+
+    An empty list is a claim: every root test is selected by some change that
+    can break it. It is only worth anything because the two tests above fail
+    when it stops being true — one when a test becomes unreachable, one when
+    an entry here has gone stale.
+    """
+    assert KNOWN_UNREACHABLE == set()
+    assert _real_unreachable() == set()

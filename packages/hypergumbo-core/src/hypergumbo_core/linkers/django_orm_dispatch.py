@@ -17,15 +17,24 @@ each subclass to each of its framework-called override methods. With the
 class reachable from its enclosing module, the override methods are
 pulled out of the dead-code set.
 
+A class qualifies when any name on its transitive base chain (itself plus
+in-tree ancestors reached over ``extends`` / ``implements`` edges) matches,
+so ``Order(LoggedModel)`` with ``LoggedModel(models.Model)`` is caught. When
+a matching base is an unqualified short name that also names an in-tree
+Python class, the linker cannot tell Django's type from the local one
+(INV-zuhub): those edges drop to confidence 0.5 and carry
+``disambiguation_fallback``; ``django.``-qualified bases stay at 0.90.
+
 Why a Framework Linker (Not Per-Analyzer Logic)
 ------------------------------------------------
 Identical reasoning to the Airflow framework-dispatch linker (WI-nutav):
 the inheritance detection is already handled by the ``inheritance``
 linker's ``base_classes`` metadata; the Django-specific knowledge is a
 single per-base method map that belongs in one place, not smeared across
-the Python analyzer. Extending to other Python ORM frameworks (e.g.,
-SQLAlchemy declarative bases, Peewee models) is a new entry in the map,
-not per-analyzer code.
+the Python analyzer. Extending to other base families is a new per-base
+method table, not per-analyzer code; third-party Django-ecosystem bases
+went into a separate, framework-gated table (``_third_party_bases``)
+rather than into this always-on map.
 
 Scope (WI-nosug)
 ----------------
@@ -35,6 +44,14 @@ aggregate-v5 prospector run (2026-04-11), which pinned
 QuerySet subclasses, Admin subclasses, and Model subclasses with
 user-defined overrides of framework-called methods all fall into that
 bucket.
+
+Beyond that ORM/admin bucket the table also covers ``Form`` / ``ModelForm``
+validation hooks, the ``View`` request lifecycle and the generic CBVs
+(``TemplateView``, ``ListView``, ``DetailView``, ``CreateView``,
+``UpdateView``, ``DeleteView``), and migration ``apply`` / ``unapply``.
+Each generic CBV entry folds in the ``View`` lifecycle methods because
+Django's own hierarchy is outside the project, so the base walk never
+reaches ``View`` from ``class Foo(ListView)`` (WI-nipan).
 """
 
 from __future__ import annotations
@@ -44,12 +61,10 @@ from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ._transitive_bases import (
-    build_inheritance_index,
     build_short_name_collisions,
-    collect_transitive_base_names,
-    short_name_fallback,
+    match_framework_bases,
 )
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -203,7 +218,7 @@ def _find_django_subclasses(
     symbols: list["Symbol"],
     edges: list[Edge] | None = None,
     in_tree_collisions: frozenset[str] = frozenset(),
-) -> list[tuple["Symbol", frozenset[str], bool]]:
+) -> list[tuple["Symbol", dict[str, tuple[str, ...]], bool]]:
     """Return (class_symbol, framework_method_names, is_fallback) for every Django subclass.
 
     A class qualifies when **any** name in its transitive ``base_classes``
@@ -226,32 +241,13 @@ def _find_django_subclasses(
     classes downgrade to ``confidence <= 0.5`` with the
     ``disambiguation_fallback`` flag.
     """
-    edges = edges or []
-    inheritance_index = build_inheritance_index(edges)
-    symbol_by_id = {sym.id: sym for sym in symbols}
-
-    results: list[tuple[Symbol, frozenset[str], bool]] = []
-    for sym in symbols:
-        if sym.kind not in ("class", "struct"):
-            continue
-        if sym.language != "python":
-            continue
-        if not sym.meta or not sym.meta.get("base_classes"):
-            continue
-        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
-        methods: set[str] = set()
-        is_fallback = False
-        for raw in chain:
-            short = _short_base_name(raw)
-            if short in DJANGO_BASE_METHODS:
-                methods.update(DJANGO_BASE_METHODS[short])
-                if short_name_fallback(
-                    raw, short, in_tree_collisions, _DJANGO_FQN_PREFIXES,
-                ):
-                    is_fallback = True
-        if methods:
-            results.append((sym, frozenset(methods), is_fallback))
-    return results
+    return match_framework_bases(
+        symbols, edges or [], DJANGO_BASE_METHODS,
+        short_name=_short_base_name,
+        fqn_prefixes=_DJANGO_FQN_PREFIXES,
+        in_tree_collisions=in_tree_collisions,
+        language="python",
+    )
 
 
 def _build_method_index(
@@ -282,6 +278,7 @@ def _build_method_index(
     description="Emit dispatches_to edges from Django Model/Manager/View/Form/Admin subclasses to their framework-called override methods (WI-nosug)",
     # CNF: Django is Python-only.
     depends_on=[["python"]],
+    activation=always_on_unreviewed(),
 )
 def link_django_orm_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Create dispatches_to edges from Django subclasses to their framework overrides.
@@ -347,7 +344,7 @@ def link_django_orm_dispatch(ctx: LinkerContext) -> LinkerResult:
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
-                    derived_from=[class_sym.id, target.id],
+                    derived_from=[class_sym.id, target.id, *framework_methods[method_name]],
                 ),
             )
 

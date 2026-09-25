@@ -347,7 +347,7 @@ class CfgNodeMapping:
     #: substring heuristic over node-type names is exactly the hand-rolled
     #: predicate this codebase keeps getting wrong.
     #:
-    #: Consumed by :func:`uncovered_call_lines` (WI-joluk). A language that
+    #: Consumed by :func:`uncovered_semantic_lines` (WI-joluk). A language that
     #: declares NONE cannot be checked, and the consumer treats that as
     #: "forfeit everything" rather than "nothing uncovered" — the permitting
     #: case is enumerated, so an unconfigured language fails CLOSED.
@@ -854,8 +854,7 @@ class CfgBuilder:
         None to skip it.
         """
         # Skip non-semantic nodes
-        if node.type in ("comment", "{", "}", "(", ")", ";", ",", ":", "newline", "indent",
-                         "dedent", "NEWLINE", "INDENT", "DEDENT"):
+        if node.type in _NON_SEMANTIC_NODE_TYPES:
             return None
         # Skip keyword tokens that are part of larger constructs
         if node.is_named is False and node.child_count == 0:
@@ -1485,22 +1484,49 @@ def populate_def_use_for_cfg(
     visit(body_node)
 
 
-def uncovered_call_lines(
+def uncovered_semantic_lines(
     cfg: FunctionCfg,
     body_node: Any,
     source: bytes,
     mapping: CfgNodeMapping,
 ) -> Optional[frozenset[int]]:
-    """Call sites in this function's AST that no CFG statement covers (WI-joluk).
+    """Lines whose code no CFG statement covers (WI-joluk, widened by WI-mugop).
+
+    WAS ``uncovered_call_lines`` and asked only about CALL nodes; the name is
+    changed with the predicate because the old one would now be a lie.
 
     The coverage question behind INV-lupav: did the def/use extractor actually
-    SEE all of this function? If a call node sits outside every statement the
-    CFG recorded, the extractor never ran over it, so any use of a tainted
-    value at that call is invisible to the DDG — and the §3a walk will happily
-    report ``False`` ("every step accounted for") for a value it never followed
-    there. ``False`` is the one verdict that may license removing a reported
-    flow, so the caller passes ``forfeit_refutation=True`` when this returns a
-    non-empty set.
+    SEE all of this function? If code sits outside every statement the CFG
+    recorded, the extractor never ran over it, so any use of a tainted value
+    there is invisible to the DDG — and the §3a walk will happily report
+    ``False`` ("every step accounted for") for a value it never followed.
+    ``False`` is the one verdict that may license removing a reported flow, so
+    the caller passes ``forfeit_refutation=True`` when this returns a non-empty
+    set.
+
+    WHY "CALL NODE" WAS TOO NARROW (WI-mugop). The omission that motivates this
+    gate is not a call. Go's ``for _, c := range v`` binds ``c`` from ``v`` in a
+    range clause the loop hook never records, and the clause contains no call at
+    all — so the original predicate returned an EMPTY set for a function whose
+    taint chain the extractor had demonstrably not followed, and the walk was
+    free to refute. Measured on that exact shape: calls-only reported
+    ``frozenset()``, the widened predicate reports the clause's line.
+
+    WHY A STRUCTURAL PREDICATE AND NOT A DECLARED VOCABULARY. The considered
+    alternative was a per-language list of node types that bind or use a
+    variable. That list is open-ended — it is coextensive with "everything the
+    def/use extractor does not model", which :func:`_ddg_taint_reaches` says
+    outright is not knowable from inside the walk — so an incomplete one reports
+    "fully covered" and PERMITS an unearned refutation, with nothing to diff it
+    against. The project has run that experiment: ``atomic_statement`` was
+    missing from ``rust.yaml`` and ``typescript.yaml`` and both emitted zero DDG
+    edges for months at 100% test coverage. :func:`_is_semantic_leaf` asks a
+    structural question instead and needs no vocabulary to keep in step.
+
+    PRICED BEFORE IT WAS WIDENED, on WI-joluk's own five repo-language pairs:
+    the forfeit share moves 12.5-35.5% to 18.8-51.6%, so refutation survives
+    on 48.4-81.2% of walkable functions. WI-joluk pre-registered "not near 100%,
+    so refutation stays viable on the remainder" as the condition; it is met.
 
     WHY BYTE EXTENTS AND NOT LINES. A line test cannot see the motivating case.
     ``CfgBuilder._process_conditional`` records ONLY the condition child of an
@@ -1525,8 +1551,9 @@ def uncovered_call_lines(
         mapping: The language's CFG node mapping.
 
     Returns:
-        Frozenset of 1-based lines carrying an uncovered call, empty when the
-        function is fully covered, or ``None`` when coverage is unknowable.
+        Frozenset of 1-based lines carrying an uncovered call or an uncovered
+        semantic leaf, empty when the function is fully covered, or ``None``
+        when coverage is unknowable.
     """
     if not mapping.call_node_types:
         return None
@@ -1540,22 +1567,30 @@ def uncovered_call_lines(
 
     call_types = frozenset(mapping.call_node_types)
     extents: list[tuple[int, int]] = []
-    calls: list[tuple[int, int, int]] = []
+    hits: list[tuple[int, int, int]] = []
 
-    def visit(node: Any) -> None:
+    # ITERATIVE. This recursed one frame per AST level, which is the crash
+    # INV-gotir fixed in ddg_build's own walk — keda's generated protobuf
+    # measures an AST depth of 1,171 against CPython's default limit of 1,000.
+    # Here the RecursionError would have been swallowed by the caller's
+    # ``except Exception`` and read as "function has no DDG edges".
+    stack: list[Any] = [body_node]
+    while stack:
+        node = stack.pop()
         key = (node.start_point[0] + 1, node.start_point[1], node.type)
         if key in recorded:
             extents.append((node.start_byte, node.end_byte))
-        if node.type in call_types:
-            calls.append((node.start_byte, node.end_byte, node.start_point[0] + 1))
-        for child in node.children:
-            visit(child)
-
-    visit(body_node)
+        # UNION, never a replacement. A call node is not a leaf, so the leaf
+        # predicate does not subsume the call one (``f()()`` has no identifier
+        # of its own to catch). Keeping both can only widen, and widening is
+        # the direction that produces FEWER refutations.
+        if node.type in call_types or _is_semantic_leaf(node):
+            hits.append((node.start_byte, node.end_byte, node.start_point[0] + 1))
+        stack.extend(node.children)
 
     return frozenset(
         line
-        for start, end, line in calls
+        for start, end, line in hits
         if not any(s <= start and end <= e for s, e in extents)
     )
 
@@ -1563,6 +1598,162 @@ def uncovered_call_lines(
 # ---------------------------------------------------------------------------
 # Reaching-def solver (ADR-0017 §1b)
 # ---------------------------------------------------------------------------
+
+#: Node types that carry no semantics for coverage purposes. Extracted from
+#: :meth:`CfgBuilder._classify_node`, which skipped exactly these, so the
+#: "is this node worth accounting for" question has ONE spelling and the
+#: coverage gate cannot drift from the builder that produces its input.
+_NON_SEMANTIC_NODE_TYPES = frozenset({
+    "comment", "{", "}", "(", ")", ";", ",", ":", "newline", "indent",
+    "dedent", "NEWLINE", "INDENT", "DEDENT",
+})
+
+
+def _is_semantic_leaf(node: Any) -> bool:
+    """A named terminal that carries meaning — an identifier, a literal.
+
+    GRAMMAR-NEUTRAL BY CONSTRUCTION, and that is the point. The alternative
+    considered for :func:`uncovered_semantic_lines` was a declared per-language
+    list of node types that bind or use a variable. That list is open-ended —
+    it is coextensive with "everything a def/use extractor does not model",
+    which is not knowable in advance — so an incomplete one would report
+    "fully covered" and PERMIT an unearned refutation, silently. This asks a
+    structural question instead: anonymous tokens (punctuation, keywords) and
+    comments carry nothing, everything else named and childless does.
+
+    Interior nodes are deliberately excluded. A function body is contained in
+    no statement extent by construction, so counting interior nodes forfeits
+    every function on every repository — a predicate that cannot return
+    "covered" is not a gate, and that spelling was measured and rejected
+    rather than reasoned away (WI-mugop phase 1).
+    """
+    return (
+        bool(node.is_named)
+        and node.child_count == 0
+        and node.type not in _NON_SEMANTIC_NODE_TYPES
+    )
+
+
+def unaccounted_names(
+    cfg: FunctionCfg,
+    body_node: Any,
+    source: bytes,
+) -> frozenset[str]:
+    """Variables MENTIONED inside a recorded statement that accounts for neither.
+
+    THE OTHER HALF OF THE COVERAGE QUESTION, and the half no extent test can
+    reach (INV-lupav clause L4). :func:`uncovered_semantic_lines` asks whether
+    any code sits OUTSIDE every statement the CFG recorded. This asks whether,
+    INSIDE a statement it did record, the def/use extractor accounted for the
+    variables the statement mentions. Both failures produce the same downstream
+    lie — the §3a walk exhausts and returns ``False``, "every step accounted
+    for", for a value it never followed — and since 2026-09-02 that ``False``
+    REMOVES a reported flow.
+
+    WHY THE EXTENT TEST CANNOT SEE THIS. Go's grouped ``var ( msg = cwd )`` is
+    recorded as one ``var_declaration`` statement whose extent covers the whole
+    block, and the extractor then fills it with ``defines=[] uses=[]``: the
+    grammar nests the specs one level deeper than the handler descends. There
+    is no uncovered region to find, so the coverage predicate is silent at any
+    width. Python's ``c[key] = 1`` is the same shape — ``defines=['c']
+    uses=[]``, the index never read — and so is a Go grouped ``const``.
+
+    MEASURED, NOT ARGUED: with the handler present and wrong in six of the
+    seven shapes found by a four-language sweep, a per-handler "I understood
+    this construct" flag — the remedy this clause was filed proposing — would
+    have claimed understanding in all six. Membership in a dispatch table is
+    not evidence that the dispatch was complete.
+
+    SAME PREDICATE AS THE EXTENT GATE, DELIBERATELY. "Worth accounting for" has
+    one spelling here (:func:`_is_semantic_leaf`), so the two questions cannot
+    drift apart, and neither needs a per-language vocabulary of binding
+    constructs — the list that ``atomic_statement`` already proved decays
+    silently in the direction that deletes findings.
+
+    ACCOUNTED FOR BY *ANY* ENCLOSING STATEMENT, not by the innermost one. Go
+    records ``defer log.Print(msg)`` as two nested statements: the outer
+    ``defer_statement`` reads ``msg`` correctly and the inner ``deferred_call``
+    is empty. Attributing each leaf to its innermost recorded statement reports
+    the empty inner one and flags a variable the extractor demonstrably did
+    follow. An enclosing statement that names the variable IS the extractor
+    accounting for it.
+
+    RESTRICTED TO NAMES THIS FUNCTION DEFINES, which costs nothing and removes
+    all of the noise. Every variable the §3a walk can ever be handed comes from
+    a statement's ``defines`` — seeds through ``defs_at`` and heirs through
+    ``inherits`` are both built from them — so a callee name, a type name, a
+    struct-literal key or a package qualifier can never be queried and is not
+    worth reporting. FLOOR-CHECKED on two real repositories rather than
+    reasoned about: 12.6% of alertmanager's functions and 4.9% of hypergumbo's
+    carry any unaccounted name at all (4.8% and 2.1% of tracked names), so this
+    withholds ``False`` from a minority and a predicate that fires everywhere —
+    the failure that killed one candidate spelling in WI-mugop phase 1 — is
+    ruled out by measurement.
+
+    EMPTY IS A REAL ANSWER HERE, AND ONLY BECAUSE OF THE CALLER. A function
+    whose statements define nothing yields an empty ``tracked`` set and so an
+    empty result, which reads as "all accounted for" — and that is exactly what
+    an un-populated CFG looks like. It is safe only because the sole production
+    caller computes this alongside DDG EDGES, which cannot exist without
+    definitions. Call it on a CFG that never saw
+    :func:`populate_def_use_for_cfg` and it will tell you everything is fine.
+
+    Args:
+        cfg: The function's CFG, AFTER :func:`populate_def_use_for_cfg`.
+        body_node: The tree-sitter node the CFG was built from.
+        source: Source bytes, for leaf text and the statement-index match.
+
+    Returns:
+        Frozenset of variable names the extractor left unaccounted at some
+        statement that mentions them. Empty when every mention is accounted
+        for.
+    """
+    # Same key as populate_def_use_for_cfg and uncovered_semantic_lines build.
+    recorded: dict[tuple[int, int, str], CfgStatement] = {}
+    tracked: set[str] = set()
+    for block in cfg.blocks.values():
+        for stmt in block.statements:
+            recorded[(stmt.line, stmt.col, stmt.node_type)] = stmt
+            tracked.update(stmt.defines)
+    if not tracked:
+        return frozenset()
+
+    out: set[str] = set()
+    # ITERATIVE, for the reason uncovered_semantic_lines is (INV-gotir): keda's
+    # generated protobuf measures an AST depth of 1,171 against CPython's
+    # default limit of 1,000, and the caller's ``except Exception`` would read
+    # the RecursionError as "this function has no DDG edges".
+    #
+    # The stack carries the accumulated ``accounted`` set of every ENCLOSING
+    # recorded statement, which is what makes the nested-statement case right.
+    stack: list[tuple[Any, frozenset[str], bool]] = [
+        (body_node, frozenset(), False)
+    ]
+    while stack:
+        node, accounted, inside = stack.pop()
+        # NOT named ``stmt``: that name is bound by the index loop above, where
+        # mypy infers it as a non-optional ``CfgStatement``, so re-binding a
+        # ``.get()`` result to it is a strict-mode regression rather than a
+        # style question.
+        covering = recorded.get(
+            (node.start_point[0] + 1, node.start_point[1], node.type)
+        )
+        if covering is not None:
+            accounted = (
+                accounted | frozenset(covering.defines) | frozenset(covering.uses)
+            )
+            inside = True
+        if inside and _is_semantic_leaf(node):
+            name = source[node.start_byte:node.end_byte].decode(
+                "utf-8", errors="replace"
+            )
+            if name in tracked and name not in accounted:
+                out.add(name)
+        for child in node.children:
+            stack.append((child, accounted, inside))
+
+    return frozenset(out)
+
 
 # Per-function bail-out threshold (same as Joern's ReachingDefPass default).
 # Functions exceeding this fall back to structural analysis.
@@ -1938,8 +2129,13 @@ def select_ddg_targets(
                 continue
             if _tier_ok(finding.source_symbol):
                 result.taint_relevant.add(finding.source_symbol)
-            if _tier_ok(finding.sink_symbol):
-                result.taint_relevant.add(finding.sink_symbol)
+            # INV-karud: read the SET. An unadjudicated finding now stands
+            # for every sink symbol it reached, and ``sink_symbol`` is only
+            # the witness the ``path`` belongs to — selecting on it would
+            # silently drop the rest of the group from DDG coverage.
+            for _sink in finding.sink_symbols:
+                if _tier_ok(_sink):
+                    result.taint_relevant.add(_sink)
             # Also include intermediate path nodes
             for sym_id in finding.path:
                 if _tier_ok(sym_id):

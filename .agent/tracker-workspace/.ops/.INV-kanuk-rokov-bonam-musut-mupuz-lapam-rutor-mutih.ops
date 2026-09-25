@@ -1,0 +1,96 @@
+- op: create  # 7886
+  at: '2026-08-28T21:30:17Z'  # 7886
+  by: agent  # 7886
+  actor: jgstern_agent  # 7886
+  clock: 1  # 7886
+  nonce: '7886'  # 7886
+  data:  # 7886
+    kind: invariant  # 7886
+    title: "Go's connection-lifecycle rows still mint taint sources: the INV-nular F2 gate is blind to them TWICE, by language scope and by case"  # 7886
+    status: violated  # 7886
+    priority: 1  # 7886
+    parent:  # 7886
+    tags:  # 7886
+    - taint  # 7886
+    - catalogue  # 7886
+    - io_boundary  # 7886
+    isbefore: []  # 7886
+    duplicate_of: []  # 7886
+    not_duplicate_of: []  # 7886
+    pr_ref:  # 7886
+    description: "VIOLATED IN GO, 8 rows, on the merged (shipped + default-overlay) view:\n\n    unix.Socket        unix.Bind        unix.Listen\n    syscall.Socket     syscall.Bind     syscall.Listen\n    net.Listen         github.com/gofiber/fiber/v2.App.Listen\n\nREPRO\n    python - <<'PY'\n    from hypergumbo_core.io_boundary import load_catalog\n    print(sorted(f\"{p.module}.{p.name}\" for p in load_catalog(\"go\").primitives\n                 if p.boundary == \"net_recv\" and p.name.lower() in\n                 {\"socket\", \"bind\", \"listen\"}))\n    PY\n  -> the 8 rows above. Go keeps 23 other net_recv rows, so the F2/F3 licence\n     rule (\"remove a setup row only while a real transfer call is still rowed\n     for the same channel\") is satisfiable here: net.Conn.Read and\n     syscall.Recvfrom / syscall.Recvmsg carry the actual receive.\n\nWHY IT SURVIVED WI-dosov, WHICH IS THE PART WORTH KEEPING. The enforcing gate\nis test_inv_nular_false_sources.py::test_socket_setup_is_not_a_network_receive,\nand it is blind to Go for TWO INDEPENDENT reasons, either of which alone would\nhave hidden it:\n\n  (1) SCOPE. It parametrises over F2_LANGS, a hardcoded 9-language inventory\n      (c, cpp, elixir, erlang, haskell, java, kotlin, rust, scala). Go, objc,\n      python, swift and bash are simply not asked. LIVE.md rule 9: a hardcoded\n      inventory decays.\n  (2) CASE. The predicate is a lowercase membership test, and Go capitalises\n      every exported identifier. ADDING GO TO F2_LANGS WOULD STILL REPORT\n      CLEAN -- verified: the case-sensitive predicate flags NONE of the 8 rows.\n      This is the WI-joruz instrument defect in a second form: a name-based\n      gate with an incomplete matcher does not fail, it exits 0.\n\nNOT A DUPLICATE OF WI-dosov (done). That item's statement is about the family;\nthis is about Go specifically PLUS the gate that was supposed to keep the family\nextinguished and cannot see Go at all. Fixing only the rows would leave the gate\nblind, so the fix is BOTH: case-fold the predicate, derive the language list\nfrom the tree rather than from F2_LANGS, then adjudicate what the widened gate\nsurfaces.\n\nDELIBERATELY EXCLUDED. javascript's Deno.listen is a documented, tested KEEP\n(test_javascript_is_deliberately_out_of_scope): JS's entire net_recv surface is\ncallback registration, so removing it would relocate the read to nothing. Any\nwidened gate must keep that exemption EXPLICIT rather than absorb it.\n\nSEQUENCING. Go's Listen / Serve rows are also members of the server-LAUNCH\nfamily filed as WI-johuk. Settle the launch ruling first, since it decides\nwhether net.Listen is a launch or a setup call, and only then strip what\nremains here."  # 7886
+    fields:  # 7886
+      statement: "No connection-SETUP call (socket / bind / listen) is declared net_recv in any catalogued language. Such a call transfers nothing, and net_recv is an auto-derived taint source, so the row mints untrusted_input at a call that observes nothing."  # 7886
+      root_cause: "Go's 8 setup rows were never asked about. The enforcing gate test_socket_setup_is_not_a_network_receive is blind twice over: it parametrises over F2_LANGS, a hardcoded 9-language inventory that omits Go, and its predicate matches lowercase names while Go capitalises every exported identifier -- so adding Go to F2_LANGS would STILL report clean."  # 7886
+- op: update  # 4583
+  at: '2026-08-28T21:31:10Z'  # 4583
+  by: agent  # 4583
+  actor: jgstern_agent  # 4583
+  clock: 2  # 4583
+  nonce: '4583'  # 4583
+  set:  # 4583
+    status: violated  # 4583
+- op: discuss  # 3176
+  at: '2026-08-28T21:31:10Z'  # 3176
+  by: agent  # 3176
+  actor: jgstern_agent  # 3176
+  clock: 3  # 3176
+  nonce: '3176'  # 3176
+  message: "Filed VIOLATED with a live repro (8 go rows on the merged view). Sequenced behind WI-johuk: the launch ruling decides whether net.Listen is a launch or a setup call."  # 3176
+- op: discuss  # 0bdc
+  at: '2026-08-29T07:18:10Z'  # 0bdc
+  by: agent  # 0bdc
+  actor: jgstern_agent  # 0bdc
+  clock: 4  # 0bdc
+  nonce: 0bdc  # 0bdc
+  message: "UNBLOCKED — WI-johuk reached a resolved state via ADR-0049 ('A Deferred Crossing Is Disclosed, Not Minted').\n\nWHAT THE RULING GIVES YOU. The discriminator is: does the call return, to its own caller, a value whose content is chosen by the far side? Go's syscall/unix {Socket,Bind,Listen} return a descriptor and nothing else, so they are deferred crossings under ADR-0049 ruling 1 -- the same verdict WI-dosov already reached for Haskell when it removed socket/bind/listen while keeping accept.\n\nTWO CORRECTIONS TO THIS ITEM'S SCOPE, BOTH FROM THE ADR WORK.\n\n1. ACCEPT IS NOT IN SCOPE. syscall.Accept, syscall.Accept4, unix.Accept, unix.Accept4 and net.Listener.Accept return a peer-chosen address or connection TO THEIR CALLER, so they are TRANSFERS and stay net_recv on their own merits (ADR-0049 ruling 4). They are now asserted as such across seven languages in TestServerLaunchStaysAReceive, explicitly so a family-wide retag cannot take them along. If this item's '8 setup rows' was counted to include the Accept variants, the count is wrong.\n\n2. PART OF THIS MAY ALREADY BE ADJUDICATED. Measurement 0006 §A carries the row 'c | socket | net_recv | returns a descriptor; receives nothing' -- an adjudicated verdict AGAINST a member of this family. Go's rows are the same shape in a different language.\n\nSEQUENCING. ADR-0049 ruling 3 licenses no row move before a represented crossing exists, so this item now runs behind WI-hazop (census) and WI-vapud (reachability per row) like the rest of the family. Run the reachability check first: flask.Flask.run turned out to be in python's ambiguous_names and mints nothing at all, and nobody has checked whether go's setup rows actually fire.\n\nTHE OTHER HALF OF THIS ITEM STANDS AND IS NOT ADDRESSED BY THE ADR: the F2 socket gate is blind to Go twice over -- a hardcoded 9-language scope AND a case-sensitive predicate against a language that capitalises every export. Adding Go to the list alone would still report clean. That is an instrument defect, not a catalogue defect, and it is the part of this item that no ruling can settle."  # 0bdc
+- op: discuss  # d405
+  at: '2026-08-29T08:16:08Z'  # d405
+  by: agent  # d405
+  actor: jgstern_agent  # d405
+  clock: 5  # d405
+  nonce: d405  # d405
+  message: "ADJUDICATED. The gate half is FIXED; the row half is NOT LICENSED, and the measurement says exactly why.\n\nWHAT SHIPPED: THE GATE. test_socket_setup_is_not_a_network_receive was blind twice over and both halves are closed. (1) SCOPE — F2_LANGS was a hardcoded nine names against fifteen shipped catalogues; the parametrisation is now derived from the tree by globbing io_primitives/*.yaml, so a catalogue added tomorrow is asked the F2 question on the commit that adds it. Deliberately NOT CATALOG_LANGUAGES, which names fourteen and would have reproduced the same decay. (2) CASE — the predicate is case-folded. RED PROOF: with the go exemption lifted, the widened gate fails naming all eight rows (unix.Socket/Bind/Listen, syscall.Socket/Bind/Listen, net.Listen, fiber.App.Listen). It catches what it was blind to.\n\nTwo new instrument gates ride along. test_the_f2_scope_is_derived_from_the_tree_not_maintained_beside_it asserts the derivation equals the tree and that F2_LANGS is a strict subset. test_the_f2_predicate_is_case_insensitive pins the fold on the MATCHER, independently of whether any language currently has an offender.\n\nWHAT DID NOT SHIP, AND WHY: THE ROWS. This item's filed licence — 'net.Conn.Read and syscall.Recvfrom carry the actual receive, so the F2/F3 licence rule is satisfiable here' — is TRUE OF THE CATALOGUE AND FALSE OF THE RUN. I wrote that claim myself in the unblock note above by reading rows rather than running them, and it is wrong.\n\nMEASURED on an idiomatic Go accept loop (net.Listen -> ln.Accept -> conn.Read -> os.WriteFile; rig ~/hypergumbo_lab_notebook/kanuk_go_08292026):\n\n  net_recv: 4 chains\n    syscall.Socket    src=rawSetup\n    syscall.Bind      src=rawSetup\n    syscall.Listen    src=rawSetup\n    net.Listen        src=serve\n\nEvery reported receive is a setup call that receives nothing. ln.Accept() and conn.Read() emit dst go:external:0-0:Accept / :Read — the module slot is 'external', so no net.Listener.Accept or net.Conn.Read row can ever match. external_potential_edges is 0, so they are not even disclosed as unresolved; they are absent.\n\nSo removing the four firing rows takes go's network-input surface to ZERO rather than relocating it. ADR-0049 ruling 3 licenses a removal only while the crossing stays represented, and here it would not be. That is the WI-lunav failure at four rows instead of one, and it is exactly what ruling 3's 'run, not reasoned' clause exists to catch.\n\nTHE BLOCKER IS FILED AS WI-doluf (P1, parent INV-linub), now isbefore this item. A DECLARED external receiver type reaches the module slot (func f(conn net.Conn) -> go:net:0-0:Read, matches); one INFERRED FROM A RETURN VALUE does not. The positive control is what makes that attributable: makeConn() is declared IN-REPO returning net.Conn, so the INV-dihos registry has something to register, and conn.Read() STILL emits go:external:0-0:Read. Without that control I would have filed 'stdlib has no declaration to register', which is the wrong mechanism.\n\nSCOPE CORRECTION TO THIS ITEM. Its description says the 8 rows are setup calls. Under ADR-0049 ruling 4 they are two shapes: six are setup (unix/syscall Socket/Bind/Listen) and net.Listen is arguably setup too, but github.com/gofiber/fiber/v2.App.Listen is a BLOCKING SERVE LOOP — a launch, not setup. When the removal is eventually licensed, fiber needs its own answer, because no sibling row represents a fiber app's ingress at all.\n\nSTATUS STAYS VIOLATED. The statement — 'no connection-SETUP call is declared net_recv in any catalogued language' — is still false in go, and nothing in this change made it true. What changed is that the violation is now VISIBLE to the gate instead of invisible to it, and the thing preventing the fix is named and filed rather than assumed absent."  # d405
+- op: discuss  # b506
+  at: '2026-08-29T08:33:46Z'  # b506
+  by: agent  # b506
+  actor: jgstern_agent  # b506
+  clock: 6  # b506
+  nonce: b506  # b506
+  message: "Merged as PR #633, dev SHA c78aff01c9e1."  # b506
+- op: discuss  # 8ed9
+  at: '2026-08-30T02:32:01Z'  # 8ed9
+  by: agent  # 8ed9
+  actor: jgstern_agent  # 8ed9
+  clock: 7  # 8ed9
+  nonce: 8ed9  # 8ed9
+  message: "UNBLOCKED, with the tranche order CHANGED by the measurement. WI-vapud / measurement 0009 is done: the deferred-crossing family is NOT largely inert (45 of 62 rows measured in real idiom fire, 72.6%), so the retag moves real output and is worth doing. Three things it settled that bear directly on this item. (1) THIS ITEM'S OWN CASE IS NOW MEASURED ON A RUN. In an ordinary go accept loop -- net.Listen, ln.Accept(), conn.Read() -- the chains that come back are net/http.ListenAndServe, net.Listen, syscall.{Socket,Bind,Listen} and unix.{Socket,Bind,Listen}: EIGHT false setup sources. ln.Accept() and conn.Read() produce NOTHING. So go's entire net_recv surface on a real server is eight false sources and zero true receives, and ADR-0049 ruling 3's represented-crossing licence is satisfied by the retag itself rather than by the Accept/Read rows. Fixture: idiom/go2 in ~/hypergumbo_lab_notebook/vapud_reach_08292026/. (2) TRANCHE ORDER. Go stdlib SETUP+LAUNCH fires completely and is the right first tranche. Go's seven THIRD-PARTY framework rows (gin/fiber/echo/grpc) are INERT in real code -- they are entered through constructor calls and blocked on WI-lalot -- so they go last; moving them changes no output and would make any A/B read a clean zero. (3) The register with per-row shape, which this item needs to cut tranches at all, is committed as the verdict table in docs/measurements/0009 and as verdict.json in the artifact dir."  # 8ed9
+- op: discuss  # b317
+  at: '2026-08-30T02:37:26Z'  # b317
+  by: agent  # b317
+  actor: jgstern_agent  # b317
+  clock: 8  # b317
+  nonce: b317  # b317
+  message: "Starting the retag. Plan, in ADR-0049's terms: the 8 rows are DEFERRED CROSSINGS, so they are RETAGGED to net_listen, not REMOVED. That distinction is what dissolves this item's own F2 exemption rationale -- 'removing them takes go's network-input surface to nothing rather than relocating it' is true of removal and false of a retag, because a net_listen row still CLASSIFIES (so the call stays examined under INV-buzab) and its shadow qualifies any clean net_recv verdict rather than granting one. Tranche, from measurement 0009: go stdlib SETUP (net.Listen*, syscall/unix Socket/Bind/Listen) and LAUNCH (net/http.ListenAndServe*, Serve) FIRE in real idiom and are the payload; the seven third-party framework rows are inert pending WI-lalot and are retagged for correctness while being expected to change no output. Evidence bar per ADR-0049 ruling 3: a represented-crossing proof on a RUN, plus an INV-buzab false-all-clear check."  # b317
+- op: discuss  # abcb
+  at: '2026-08-30T02:47:45Z'  # abcb
+  by: agent  # abcb
+  actor: jgstern_agent  # abcb
+  clock: 9  # abcb
+  nonce: abcb  # abcb
+  message: "RETAGGED. 11 rows moved from net_recv to net_listen: net.{Listen,ListenTCP,ListenUDP,ListenUnix,ListenPacket} and {syscall,unix}.{Socket,Bind,Listen}. THE MEASUREMENT, on the idiomatic accept-loop fixture (~/hypergumbo_lab_notebook/vapud_reach_08292026/idiom/go2): BEFORE 8 net_recv chains, net_listen_edges=0 -- every chain a setup or launch call, ZERO true receives. AFTER 7 net_listen + 1 net_recv, net_listen_edges=7. Every crossing still represented; nothing dropped. ADR-0049 ruling 3 met on a run. SCOPE NARROWED MID-CHANGE, and the reason is worth recording. I first moved 21 rows -- the setup rows PLUS every server-launch row (net/http.ListenAndServe*, Serve, gin.Run*, echo.Start*, fiber.Listen*, grpc.Serve). TestServerLaunchStaysAReceive went red on go/net/http.Serve, which is that pin doing exactly its job: its docstring makes the launch family's retag conditional on ADR-0049 open-work steps 1-4, and STEP 3 (adjudicated findings per shape) IS NOT DONE. Steps 1, 2 and 4 are (WI-hazop; WI-vapud/measurement 0009; the INV-buzab check re-proved end-to-end on the shipped catalogue). So the launch rows were reverted and this change is the SETUP rows only -- which is what this item's statement actually names. The launch-family retag needs step 3 and is not licensed yet. THE F2 EXEMPTION IS NOW ROW-LEVEL, NOT LANGUAGE-LEVEL, which is strictly narrower than what this item asked for. One offender survives the widened gate: github.com/gofiber/fiber/v2.App.Listen. It is a FALSE POSITIVE OF THE PREDICATE -- fiber's Listen blocks and serves, so it is launch rather than setup, and it is caught only because the predicate matches lowercase NAMES while the family is cut by MECHANISM. F2_EXEMPT_ROWS excuses that single (module, name) pair, a companion test fails if the row is ever retagged or removed, and the repro assertion now pins the EXACT remaining offender rather than asserting empty -- an empty assertion would have forced either a wrong retag or a language-wide skip, and both hide a row."  # abcb
+- op: update  # 581c
+  at: '2026-08-30T03:18:59Z'  # 581c
+  by: agent  # 581c
+  actor: jgstern_agent  # 581c
+  clock: 10  # 581c
+  nonce: 581c  # 581c
+  set:  # 581c
+    status: satisfied  # 581c
+- op: discuss  # dbf4
+  at: '2026-08-30T03:18:59Z'  # dbf4
+  by: agent  # dbf4
+  actor: jgstern_agent  # dbf4
+  clock: 11  # dbf4
+  nonce: dbf4  # dbf4
+  message: "SATISFIED. PR #640, merged as 51871f5edf, CI green. The statement -- 'No connection-SETUP call (socket/bind/listen) is declared net_recv in any catalogued language' -- now holds across all 15 catalogues with the widened, case-folded, tree-derived F2 gate enforcing it and NO language-level exemption for go. BEHAVIOURAL EVIDENCE, not a proxy. Re-ran this item's own repro on the merged tree: the 8 filed offenders are gone from net_recv. And the run-level check ADR-0049 ruling 3 demands, on an idiomatic go accept loop (net.Listen -> ln.Accept -> conn.Read): BEFORE 8 net_recv chains, every one a setup or launch call and ZERO true receives; AFTER 7 net_listen + 1 net_recv, net_listen_edges=7. Every crossing still represented, nothing dropped. End to end on the shipped catalogue, the same edge and claim that returned a bare confirmed now return confirmed_with_caveats naming the site -- so the retag did not buy a false all-clear (INV-buzab). ONE OFFENDER REMAINS AND IS NOT A SURVIVOR: github.com/gofiber/fiber/v2.App.Listen is a false positive of the F2 predicate, which matches lowercase NAMES while the family is cut by MECHANISM -- fiber's Listen blocks and serves. It is exempted at ROW granularity (F2_EXEMPT_ROWS), which is strictly narrower than the language-wide skip this item started with, and a companion test fails if the row is ever retagged or removed. It moves with the launch family. WHAT IS NOT DONE, STATED PLAINLY: the server-LAUNCH rows have not moved in ANY language. They are equally ADR-0049 deferred crossings and are pinned together across nine languages by TestServerLaunchStaysAReceive until ADR-0049 open-work STEP 3 (adjudicated findings per shape) clears. Steps 1, 2 and 4 are done. I initially moved all 21 rows; the pin went red and was right, and that is why this landed at 11."  # dbf4

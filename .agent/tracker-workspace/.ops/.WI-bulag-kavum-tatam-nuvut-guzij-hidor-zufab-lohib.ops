@@ -1,0 +1,100 @@
+- op: create  # eaec
+  at: '2026-09-07T20:51:00Z'  # eaec
+  by: agent  # eaec
+  actor: jgstern_agent  # eaec
+  clock: 1  # eaec
+  nonce: eaec  # eaec
+  data:  # eaec
+    kind: work_item  # eaec
+    title: "the SELECTS role on a sink argument: a content-shaped value that only NAMES the resource the sink acts on (the caddy config-to-os.Chmod shape) -- WI-gohok's sink half, needs an owner design decision"  # eaec
+    status: todo_hard  # eaec
+    priority: 2  # eaec
+    parent:  # eaec
+    tags:  # eaec
+    - taint  # eaec
+    - measurement  # eaec
+    - analysis_quality  # eaec
+    - adr_0017  # eaec
+    isbefore: []  # eaec
+    duplicate_of: []  # eaec
+    not_duplicate_of: []  # eaec
+    pr_ref:  # eaec
+    description: "WI-gohok's SINK HALF, filed 2026-09-07 on the owner's directive to integrate\nthe open owner-facing questions into the arc. Sits at the arc tail (T9), after\nthe source half (the sibling value_shape item), which it composes with.\nNEEDS AN OWNER DESIGN DECISION before implementation -- see THE QUESTION below.\n\nTHE SHAPE, in the owner's own case. caddy reads its config from stdin\n(`caddy run --config -`); that config names a log file; the bytes flow\ncmd/main.go:164 io.ReadAll(os.Stdin) -> caddy.Load -> changeConfig ->\nStrictUnmarshalJSON -> BaseLog.WriterRaw -> ctx.LoadModule ->\nFileWriter.Filename -> filewriter.go:239 os.Chmod(fw.Filename, mode). Every hop\ncitable in caddy's own source, the module constructor pinned by RegisterModule\nand a literal module ID, the field write by a json struct tag. It is a TRUE\nPOSITIVE under the 0001 rubric and it is uninformative: caddy's config IS a\nprogram for the filesystem, so \"untrusted input reached os.Chmod\" tells a\nreader nothing they did not know from running the binary.\n\nWHY THE SOURCE HALF DOES NOT COVER IT. The source here is stdin -- genuinely\ncontent-shaped, the far side authored the bytes. The SELECTS property is\nacquired at the SINK: the value ends up as the argument that NAMES THE RESOURCE\nthe sink acts on rather than as payload computed into what the sink does.\nvalue_shape cannot see this; it needs the sink-argument role.\n\nSIZE, such as it is. Measurement 0006 found at least 6 of 38 surviving true\npositives (15.8%) have a sink whose tainted argument is a path the value merely\nselects (jaeger#2, jaeger#6, ArkLib#2, ArkLib#3, ArkLib#4, kamaraflow#4). That\nis a FLOOR, not an estimate: bash redirect situations are excluded because the\nrecord does not say whether the tainted value was the redirect TARGET or the\nwritten BYTES. Independently, 0006's pass-4 refuters applied the computation\ntie-break to the analogous open-handle shape (jaeger#0, ArkLib#0, ArkLib#1)\nwithout being told to, which is evidence the distinction is legible to a\ncareful reader from the record alone. On 0005 the class is worth 10.6% -> 7.9%\non the row rate; on a config-heavy repo it could dominate, and would then\nreport a precision IMPROVEMENT that is purely a statement about how much config\nthat repo has.\n\nTHE QUESTION FOR THE OWNER, which is why this is filed rather than built.\nWhere does the argument role live, and who computes it? Three shapes, not\ncosted:\n  (i) A CATALOGUE PROPERTY ON THE SINK ROW -- name which parameter position(s)\n      of a sink are resource-naming (os.Chmod arg 0, os.MkdirAll arg 0,\n      exec.Command arg 0 vs its argv tail). Cheapest, purely declarative,\n      but it is per-row work across the whole sink catalogue and it is\n      wrong for sinks whose danger genuinely IS the path (path traversal).\n  (ii) A PER-FINDING ROLE COMPUTED AT THE WALK -- record which argument the\n      tainted value reached. Truthful per finding, needs the walk to carry\n      argument identity it does not carry today, and is unavailable for the\n      structural (non-DDG) majority.\n  (iii) NEITHER -- publish the useful-precision number using the source half\n      alone, and disclose the sink half as a named, dated blindness in the\n      measurement frame.\n(iii) is a legitimate outcome and would let WI-gohok's second number ship\nwithout this item; it is listed so the item cannot be read as a commitment to\nbuild (i) or (ii).\n\nTHE CONSTRAINT THAT SURVIVES WHICHEVER IS CHOSEN, from the owner's 2026-08-27\namendment: the exclusion is STRUCTURAL, by the shape of the path, never a\nper-case judgement of how interesting a finding is. And the exclusion must not\nabsorb INV-nular's vacuity-that-is-a-bug (the shellcheck Haskell IORef class),\nwhich gets fixed rather than excluded."  # eaec
+    fields: {}  # eaec
+- op: update  # 64dd
+  at: '2026-09-07T20:52:08Z'  # 64dd
+  by: agent  # 64dd
+  actor: jgstern_agent  # 64dd
+  clock: 2  # 64dd
+  nonce: 64dd  # 64dd
+  set: {}  # 64dd
+  add:  # 64dd
+    isbefore: [WI-jivih-rolok-botug-pumig-finub-nusin-tinuk-nukib]  # 64dd
+- op: update  # 035f
+  at: '2026-09-07T20:52:32Z'  # 035f
+  by: agent  # 035f
+  actor: jgstern_agent  # 035f
+  clock: 3  # 035f
+  nonce: 035f  # 035f
+  set: {}  # 035f
+  remove:  # 035f
+    isbefore: [WI-jivih-rolok-botug-pumig-finub-nusin-tinuk-nukib]  # 035f
+- op: discuss  # 7d66
+  at: '2026-09-11T10:57:51Z'  # 7d66
+  by: agent  # 7d66
+  actor: jgstern_agent  # 7d66
+  clock: 4  # 7d66
+  nonce: 7d66  # 7d66
+  message: "THE NUMBER T9 WAS HELD BEHIND T8 FOR NOW EXISTS, AND IT POINTS THE OPPOSITE WAY\nFROM THE ARC'S ORDERING. Memo:\n~/hypergumbo_lab_notebook/t9_bulag_decision_09112026/DECISION-MEMO.md.\nNOTHING IS DECIDED HERE -- this item says it needs an owner design decision and\nit still does.\n\nThe arc holds T9 behind T8 because \"T8's finding-weighted number is what makes\nthe third option evaluable\" (option 3: publish the second number on the source\nhalf alone and disclose the sink half as a named dated blindness).\n\n    half            what it is worth, measured\n    SOURCE (T8)     0 of 145 findings carry a choice-shaped source across\n                    pretix / workadventure / modsecurity / apollo-server -- on\n                    a corpus that CANNOT SEE 17 of the 24 choice-shaped names\n                    (no go, java, erlang or rust repository).\n    SINK (this)     >= 6 of 38 surviving true positives (15.8%) on measurement\n                    0006 have a sink whose tainted argument is a path the value\n                    merely SELECTS.\n\nTHE ORDERING IMPLIES THE SOURCE HALF IS THE LARGER ONE AND THE EVIDENCE SAYS\nTHE OPPOSITE. T8 sits first and `value_shape` is the cheaper mechanism\n(decidable per ROW, no path analysis), so the natural reading is \"do the easy\nbig one first\". On the only numbers either half has, the sink half is worth at\nleast 15.8% of surviving true positives and the source half is worth 0% of\nmeasured findings.\n\nBOTH ARE FLOORS, AND FOR DIFFERENT REASONS, which is why this is a memo rather\nthan a recommendation: the source figure is low because the corpus cannot see\nthe population; the sink figure is low because 0006's record cannot adjudicate\nthe bash redirect cases (TARGET vs BYTES). They are not commensurable as they\nstand.\n\nWHAT WOULD MAKE THEM COMMENSURABLE: ONE cohort answering both -- a corpus with\nat least one server in go, java, erlang and rust, adjudicated with the redirect\nTARGET-vs-BYTES distinction recorded. The T8 instrument reads any set of\n`vc.json` artifacts in under a second; only the cohort is missing, and the same\ncohort serves both halves.\n\nONE CONSTRAINT THE AGENT CAN STATE WITHOUT DECIDING: the owner's 2026-08-27\namendment binds either mechanism -- the exclusion is defined STRUCTURALLY, by\nthe SHAPE of the path, never by a per-case severity judgement. Option 2 (a role\ncomputed at the walk) is the one most at risk of drifting into \"is this\ninteresting?\", because the walk has the finding in front of it; option 1 keeps\nthe judgement in the catalogue, where it is written once and reviewed.\n\nTHE QUESTION PUT TO THE OWNER: given that the sink half carries the measured\nvolume and the source half currently carries none, SHOULD T8 AND T9 SWAP PLACES\nIN THE ARC? The order was set before either number existed."  # 7d66
+- op: update  # f95b
+  at: '2026-09-11T10:57:51Z'  # f95b
+  by: agent  # f95b
+  actor: jgstern_agent  # f95b
+  clock: 5  # f95b
+  nonce: f95b  # f95b
+  set:  # f95b
+    status: needs_human_review  # f95b
+- op: discuss  # 4741
+  at: '2026-09-11T11:16:06Z'  # 4741
+  by: agent  # 4741
+  actor: jgstern_agent  # 4741
+  clock: 6  # 4741
+  nonce: '4741'  # 4741
+  message: "CORRECTION to the memo entry above, from the second T8 cohort.\n\nThe memo's source-half figure was '0 of 145 findings' on a corpus that could not see the population. Since then: four servers chosen by protocol role returned 2 of 562 chains and 0 of 21 findings (all four zeros CORRECT REFUSALS -- they delegate their accept loop), and two repositories chosen by WHAT THE CODE OWNS returned passt reaching sys/socket.accept (2 chains) with the whole net_* surface live.\n\nSTILL STANDS: the INVERSION ON FINDINGS. Across six repositories the source half has produced 0 choice-shaped findings while the sink half is worth >=15.8% of surviving true positives. The question 'should T8 and T9 swap places in the arc?' is unchanged.\n\nNO LONGER STANDS: the stronger form of the argument -- that the source half's rows are unreachable and a value_shape field would be paid for by nothing. THEY ARE REACHABLE. What is unmeasured is what share of a real corpus owns its sockets, and that is the number this decision turns on. It is one cohort away and nobody has run it.\n\nRecorded as a retraction rather than a quiet revision."  # 4741
+- op: discuss  # 6ac4
+  at: '2026-09-11T16:08:08Z'  # 6ac4
+  by: agent  # 6ac4
+  actor: jgstern_agent  # 6ac4
+  clock: 7  # 6ac4
+  nonce: 6ac4  # 6ac4
+  message: "OWNER RULED SWAP 2026-09-11. T9 NOW PRECEDES T8 IN THE ARC; arc file updated. That settles the ORDERING question this item carried. It does NOT settle the item's own design question (i)/(ii)/(iii), which is why status stays needs_human_review.\n\nWHAT CHANGED: the three options are no longer 'not costed'. Memo:\n~/hypergumbo_lab_notebook/t9_bulag_decision_09112026/COSTING.md. Measured at tip:\n\n(ii) IS THE ONE THE DATA KILLS. A grep for arg_index|argument_index|arg_pos|param_index|argument_role|which_arg across packages/hypergumbo-core/src/hypergumbo_core/*.py returns ZERO hits -- there is no argument-identity field to widen. And the 'structural majority' now has a number: over 402 evidence rows from 23 repositories, analysis_method is structural 319 (79.4%) / ddg_mixed 79 (19.7%) / ddg 4 (1.0%), with confidence approximate on 398 of 402 (99.0%). So (ii) is unavailable for four findings in five and reliable for one in a hundred.\n\n(i) IS FAR CHEAPER THAN THIS ITEM ASSUMES, and that is the finding. The item calls it 'per-row work across the whole sink catalogue'. The whole sink catalogue is 1780 rows (every row whose boundary is in AUTO_SINK_ZONE_MAP, 15 languages). But only 114 distinct sink primitives are EVER REACHED across the 23 repositories -- 6.4% -- and the top 10 carry 46.7% of sink mentions, the top 20 carry 67.4%. So (i) is ~20 rows for two thirds of the effect, ~114 for the observed whole, ranked by measured volume. CAVEAT: 23 repos is a small corpus; the concentration SHAPE is the robust part, the membership of the head is not final.\n\nTHE PATH-TRAVERSAL OBJECTION SURVIVES AND DECIDES THE SHAPE. The reached head contains unistd.unlink (11), stdio.fopen (7), stdio.fclose (9) -- sinks where a tainted path argument IS the vulnerability. Marking their resource argument 'merely selects' would suppress true findings (the false-all-clear direction). But most of the head is not path-shaped (httpc.request 53, stdio.fprintf 44, mnesia.transaction 44, net/http.NewRequest 29). So the annotation needs TWO bits per sink -- resource_naming_args and resource_is_danger -- with suppression firing only when the first is set and the second is not.\n\nThis stays inside the owner's 2026-08-27 constraint. That constraint forbids a PER-CASE judgement of how interesting a finding is. A per-SINK declaration is a structural property of the sink, declared once and applied uniformly; the constraint bites on findings, not on catalogue rows.\n\nRECOMMENDATION (not a ruling): (i) restricted to the observed-reached head, two-bit annotation. (iii) survives as the fallback for the 1666 never-reached rows, disclosed rather than annotated speculatively."  # 6ac4
+- op: update  # 270d
+  at: '2026-09-13T05:17:21Z'  # 270d
+  by: agent  # 270d
+  actor: jgstern_agent  # 270d
+  clock: 8  # 270d
+  nonce: 270d  # 270d
+  set:  # 270d
+    status: todo_hard  # 270d
+- op: discuss  # 4a1f
+  at: '2026-09-13T05:17:21Z'  # 4a1f
+  by: agent  # 4a1f
+  actor: jgstern_agent  # 4a1f
+  clock: 9  # 4a1f
+  nonce: 4a1f  # 4a1f
+  message: "OWNER RULED 2026-09-13: OPTION (i). The design question this item has carried since it was filed is SETTLED, and the item moves from needs_human_review to actionable work.\n\nTHE RULING, as stated: a declarative per-row property on the sink catalogue, RESTRICTED TO THE OBSERVED-REACHED HEAD, with the TWO-BIT annotation.\n\n    resource_naming_args   which argument positions merely NAME the resource\n    resource_is_danger     whether naming the resource IS the finding\n\n    suppression fires only when the first is set AND the second is not.\n\nWHY TWO BITS AND NOT ONE, restated so the builder does not simplify it away: the reached head CONTAINS the path-traversal sinks -- unistd.unlink (11), stdio.fclose (9), stdio.fopen (7). For those the tainted path argument IS the vulnerability. A one-bit annotation would mark their resource argument \"merely selects\" and SUPPRESS TRUE FINDINGS, which is the false-all-clear direction. The second bit exists for exactly that population and is not optional.\n\nSCOPE, from the costing rather than from the item's own estimate: the item calls (i) \"per-row work across the whole sink catalogue\" and that framing is what made it look expensive. The whole sink catalogue is 1,780 rows across 15 languages, but only 114 distinct sink primitives are EVER REACHED across the 23-repository cohort (6.4%), the top 10 carry 46.7% of sink mentions and the top 20 carry 67.4%. So the build is about 20 rows for two thirds of the effect and about 114 for the observed whole, ranked by measured volume.\n\nTHE UNREACHED TAIL IS DISCLOSED, NOT ANNOTATED SPECULATIVELY. The 1,666 catalogued sink rows no finding has ever touched stay un-annotated, and that is a stated, dated limitation of the mechanism rather than a silent gap. This is the honest remnant of option (iii), and it survives INSIDE option (i).\n\nCARRIED FORWARD AS A CAVEAT ON THE RESULT, not buried: 23 repositories is a small corpus and the reached set grows with it. The CONCENTRATION SHAPE is the robust part; the MEMBERSHIP of the head is not final. A row entering the head later is an addition, not a correction.\n\n(ii) IS REFUSED ON MEASURED GROUNDS, recorded so it is not re-proposed. There is no argument-identity field to widen -- a grep for arg_index, argument_index, arg_pos, param_index, argument_role and which_arg across the core package returns ZERO hits -- and over 402 evidence rows from 23 repositories analysis_method is structural on 319 (79.4%), ddg_mixed on 79 (19.7%) and ddg on 4 (1.0%), with confidence approximate on 398 of 402 (99.0%). The walk cannot answer for four findings in five and is reliable for one in a hundred.\n\nSTILL INSIDE THE 2026-08-27 CONSTRAINT. That ruling forbids a per-case judgement of how interesting a finding is. A per-SINK structural declaration is not a per-case judgement: it is declared once on the row and applied uniformly to every finding that reaches it. The constraint bites on findings, not on catalogue rows.\n\nARC POSITION UNCHANGED BY THIS: the written order is still T5 then T6 then T9 then T8. This ruling unblocks T9; it does not promote it.\n\nRecord: ~/hypergumbo_lab_notebook/t9_bulag_decision_09112026/COSTING.md is the costing the ruling was taken on."  # 4a1f
+- op: update  # bb02
+  at: '2026-09-13T22:03:12Z'  # bb02
+  by: agent  # bb02
+  actor: jgstern_agent  # bb02
+  clock: 10  # bb02
+  nonce: bb02  # bb02
+  set:  # bb02
+    status: done  # bb02
+- op: discuss  # beb4
+  at: '2026-09-13T22:03:12Z'  # beb4
+  by: agent  # beb4
+  actor: jgstern_agent  # beb4
+  clock: 11  # beb4
+  nonce: beb4  # beb4
+  message: "MECHANISM SHIPPED, PR #945 (2c8c2ceb68). The design question this item carried\nsince it was filed is settled and built. Record:\n~/hypergumbo_lab_notebook/t9_bulag_09132026/ (SOUNDNESS.md, PLAN.md,\nclassify_head.py, head_classification.json).\n\nWHAT SHIPPED. A catalogue row declares, PER FUNCTION,\nresource_naming: {<fn>: {names: [...], content: [...], danger: bool}}. A flow\nwhose sink can only be NAMING the resource leaves evidence_count and is\ndisclosed as ClaimVerdict.resource_naming_flows, with a sentence on the\nconfirmed path (\"they are true flows excluded as not useful, not an absence of\nflows\"). VERIFY_CLAIMS_SCHEMA_VERSION 2.3 -> 2.4. It stays a TRUE POSITIVE on\nthe correctness axis per WI-gohok 2026-08-27; the exclusion is on USEFULNESS,\nstructural and per sink.\n\nTWO THINGS THE RULING DID NOT SETTLE, BOTH MEASURED FIRST.\n\n(1) THE SUPPRESSION RULE AS LITERALLY RULED WAS UNSOUND, and the owner ruled\nthe guard in. The walk carries NO argument identity (re-verified at tip: zero\nhits for arg_index and its synonyms; TaintFlowFinding records only the sink\nprimitive/module/symbol). At a MIXED sink -- fprintf(stream, fmt, ...) -- a\nfinding cannot be attributed to an argument, so \"names set AND danger false\"\nwould suppress one whose tainted value reached fmt. Classified the top-20\nreached head (476 of 706 mentions, reproducing the costing's 67.4% exactly):\n\n    R  no content argument at all      2 sinks   34 mentions    7.1%\n    D  naming IS the danger            6 sinks   83 mentions   17.4%\n    M  MIXED                           9 sinks  276 mentions   58.0%\n    C  no resource-naming argument     3 sinks   83 mentions   17.4%\n\nSuppression now additionally requires content: [] -- EXPLICITLY empty. ABSENT\nand [] are different: absent is CANNOT-DETERMINE and never suppresses.\n\n(2) A ROW IS NOT A PRIMITIVE. A catalogue row is a (module, boundary) group\nlisting many functions, and they do not share a class -- c.yaml's stdio row\nholds fourteen names spanning ALL FOUR (fflush R, fopen/fclose D, fprintf M,\nprintf C). 11 of the 20 head primitives sit in a row holding a different class,\nso a strictly per-ROW property could not express them. Splitting rows was\nconsidered and REFUSED: row ORDER is load-bearing (\"THIS ROW STAYS FIRST: an\nunstamped call abstains to the first-declared row\"), so reshuffling to carry an\nannotation would move abstention behaviour for unrelated primitives. Hence\nper-function keying. This is an implementation shape, not a change to what is\nsuppressed.\n\nCOVERAGE SHIPPED, MEASURED NOT ESTIMATED. Of 114 reached primitives / 706\nmentions: ANNOTATED 14 primitives / 122 mentions (17.3%); of those, SUPPRESSING\n(class R) 3 primitives / 36 mentions (5.1%) -- net.Dial, net.DialTimeout,\nstdio.fflush. UN-ANNOTATED: 100 primitives / 584 mentions.\n\nSO THE HONEST HEADLINE IS 5.1%, NOT THE ~65% THE LITERAL RULE IMPLIED. The\ndifference is the 58% of mixed sinks where suppressing would have silently\nkilled true findings. Closing this item on its FILED question (the design\ndecision and the mechanism) and FILING THE RESIDUAL for the remaining 100\nreached primitives rather than leaving it open indefinitely."  # beb4

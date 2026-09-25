@@ -12,9 +12,10 @@ language: erlang
 # HTTP), inet (DNS + socket options), ets/dets/mnesia (databases), erlang
 # process primitives + gen_server/gen_statem/gen_event/supervisor/proc_lib
 # (OTP behaviours), rpc/global (distributed), os/application/init
-# (environment), code (loading .beam files), io/io_lib/logger/error_logger
+# (environment), code (loading .beam files), io/logger/error_logger
 # (output). digraph_utils / digraph / crypto / random / rand are
-# intentionally absent — not IO. dist_util is internal-only.
+# intentionally absent — not IO, and io_lib joined them (INV-nular F6): it
+# formats into an iolist and writes nothing. dist_util is internal-only.
 status: provenance_declared
 stdlib_provenance:
   source_url: https://erlang.org/doc/apps/stdlib/index.html
@@ -61,6 +62,13 @@ ambiguous_names:
   - error         # logger:error vs erlang:error
 
 fs_read:
+  - module: io
+    functions: [read, get_line, get_chars]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      The file-device arm of the same primitives (INV-nular). See the ipc_recv
+      rows for the ruling: `io:read/2` may be handed a file IoDevice, and the
+      catalogue cannot tell that from `io:read/1` on standard input.
   - module: file
     functions: [read_file, read, read_line, pread, open, consult, path_consult, eval, script, list_dir, list_dir_all, read_file_info, read_link_info, read_link]
   - module: filelib
@@ -103,7 +111,24 @@ net_send:
   - module: gen_tcp
     functions: [send, connect]
   - module: gen_udp
-    functions: [send, open]
+    functions: [send]
+    notes: >-
+      INV-vaduk's open question, now ANSWERED and the row removed
+      (INV-nular, WI-dosov). `open` appeared under BOTH net_send and
+      net_recv, and the row itself recorded why that was incoherent:
+      opening a UDP socket enables both directions but "transfers
+      nothing at the call itself", while gen_udp send/recv are
+      catalogued separately. A socket-ACQUISITION call is not a net_*
+      crossing.
+
+      THE DEFERRAL'S REASONING WAS INVERTED, which is why it stood so
+      long: "removing them is a recall change and this is a
+      precision-band cycle". net_recv is an auto-derived taint SOURCE,
+      so this row MINTED untrusted_input at a call that observes
+      nothing -- removing it deletes false positives, which is what a
+      precision-band cycle is for. The same holds on the net_send side:
+      a sink at a call that emits nothing is a false egress claim. Both
+      real transfers stay rowed, so nothing real was relocated.
   - module: gen_sctp
     functions: [send, connect]
   - module: ssl
@@ -111,24 +136,76 @@ net_send:
   - module: httpc
     functions: [request]
     notes: "inets HTTP client"
-  - module: http_client
-    functions: [request]
+  # `http_client` REMOVED (ADR-0047 ruling 8, WI-surun). There is no OTP
+  # module by that name -- inets' client is `httpc`, one row above, and
+  # this was a phantom sitting beside it since the catalogue was written.
+  # It is DELETED rather than relocated to a community overlay, because an
+  # overlay row would assert that some package provides `http_client:request/1`
+  # and none does. The rule for removing a net_send row is "is the crossing
+  # still represented", not "does this call do the I/O" (WI-lunav): it is,
+  # by `httpc.request`. Positive evidence, not absence of evidence -- on
+  # ejabberd and emqx, `http_client` matched 0 times while `httpc` matched
+  # 10 and 9. A first-party module a project happens to name `http_client`
+  # was being classified as network egress on the strength of its name.
 
 net_recv:
   - module: gen_tcp
-    functions: [recv, listen, accept]
+    functions: [recv, accept]
   - module: gen_udp
-    functions: [recv, open]
+    functions: [recv]
+    notes: >-
+      INV-vaduk's open question, now ANSWERED and the row removed
+      (INV-nular, WI-dosov). `open` appeared under BOTH net_send and
+      net_recv, and the row itself recorded why that was incoherent:
+      opening a UDP socket enables both directions but "transfers
+      nothing at the call itself", while gen_udp send/recv are
+      catalogued separately. A socket-ACQUISITION call is not a net_*
+      crossing.
+
+      THE DEFERRAL'S REASONING WAS INVERTED, which is why it stood so
+      long: "removing them is a recall change and this is a
+      precision-band cycle". net_recv is an auto-derived taint SOURCE,
+      so this row MINTED untrusted_input at a call that observes
+      nothing -- removing it deletes false positives, which is what a
+      precision-band cycle is for. The same holds on the net_send side:
+      a sink at a call that emits nothing is a false egress claim. Both
+      real transfers stay rowed, so nothing real was relocated.
   - module: gen_sctp
-    functions: [recv, listen]
+    functions: [recv]
   - module: ssl
-    functions: [recv, listen, transport_accept, handshake]
+    functions: [recv, transport_accept]
+    notes: >-
+      `handshake` MOVED to net_listen (ADR-0049, measurement 0010): it upgrades
+      an accepted transport socket and returns {ok, SslSocket} -- a handle, not
+      a byte. transport_accept returns the peer's socket and recv returns the
+      bytes, so both stay.
+  # 2026-09-08 WI-dozul SORT. This row shipped 2026-05-24 (WI-tukif) carrying
+  # SEVEN functions under one note that is true of four of them. gethostname
+  # returns the LOCAL node's hostname from the kernel; getservbyname and
+  # getservbyport read the local services table. None queries a name server,
+  # and all three moved to host_info_read below. The four that remain are the
+  # rows the rest of this change achieves parity WITH.
+  - module: inet
+    functions: [getaddr, getaddrs, gethostbyname, gethostbyaddr]
+    notes: "DNS resolution -- queries a name server and returns the answer it chose (ADR-0049: content the far side chose). INHERITED BY elixir."
+
+# ADR-0049 DEFERRED CROSSINGS. The call ARRANGES a crossing whose data arrives
+# in a scope it does not name; net_listen mints no taint and shadows net_recv,
+# so the crossing is DISCLOSED rather than either minted or silently dropped.
+net_listen:
   - module: httpd
     functions: [start, start_service]
-    notes: "inets HTTP server"
-  - module: inet
-    functions: [getaddr, getaddrs, gethostbyname, gethostbyaddr, gethostname, getservbyname, getservbyport]
-    notes: "DNS resolution and service-name lookups (queries name servers)"
+    notes: >-
+      LAUNCH (ADR-0049 ruling 4 row 2, measurement 0010). inets starts serving;
+      the request reaches the configured mod_* callback, not this caller.
+      gen_tcp:accept/recv stay net_recv and carry the real receive -- the
+      represented-crossing probe confirms both still fire after this move.
+  - module: ssl
+    functions: [handshake]
+    notes: >-
+      SETUP. Upgrades an accepted transport socket and returns {ok, SslSocket}
+      -- a handle, not a byte. ssl:transport_accept returns the peer's socket
+      and ssl:recv returns the bytes; both stay net_recv.
 
 db_read:
   - module: ets
@@ -140,7 +217,11 @@ db_read:
 
 db_write:
   - module: ets
-    functions: [insert, insert_new, delete, delete_object, delete_all_objects, update_counter, update_element, new]
+    functions: [insert, insert_new, delete, delete_object, delete_all_objects, update_counter, update_element]
+    notes: >-
+      NOT `new`: it creates an empty table and stores nothing. Rowing it
+      credited one logical write twice, at ets:new and again at ets:insert
+      (INV-gujoh). A secret stored with ets:insert stays violated without the row.
   - module: dets
     functions: [insert, insert_new, delete, delete_object, delete_all_objects]
   - module: mnesia
@@ -191,6 +272,7 @@ process_send:
 subprocess:
   - module: os
     functions: [cmd]
+    simultaneous: true
     notes: >-
       os:cmd/1 runs a command through the OS shell and returns its output.
       Opaque by the ADR-0016 rule that a launch's own I/O is not in the edge
@@ -207,18 +289,53 @@ subprocess:
 
 env_read:
   - module: os
-    functions: [getenv, type, version, system_time, perf_counter]
-    notes: >-
-      WI-jupaf: `cmd` was REMOVED from this list. os:cmd/1 is the BEAM
-      shell-out, not an environment read — it was swept in with the rest of the
-      os module and now lives under `subprocess:` below. It is removed rather
-      than ALSO declared there, because a multi-boundary primitive is resolved
-      by YAML row order (INV-zumin), which would make the correct declaration
-      live or inert depending on where it was pasted.
+    functions: [getenv]
+    notes: "WI-jupaf: `cmd` was REMOVED from this list. os:cmd/1 is the BEAM shell-out, not an environment read — it was swept in with the rest of the os module and now lives under `subprocess:` below. It is removed rather than ALSO declared there, because a multi-boundary primitive is resolved by YAML row order (INV-zumin), which would make the correct declaration live or inert depending on where it was pasted."
   - module: application
-    functions: [get_env, get_all_env, get_key, get_all_key, get_application, loaded_applications, which_applications, info]
+    functions: [get_env, get_all_env, get_key, get_all_key]
+    notes: "Application config reads. Ruled and kept under env_read with elixir's Application.get_env (INV-nular, 2026-09-06): the boundary means 'may carry a credential', and application config is where runtime.exs / sys.config put credentials. The full ruling is on the elixir row."
   - module: init
-    functions: [get_argument, get_arguments, get_plain_arguments, get_status, script_id]
+    functions: [get_argument, get_arguments, get_plain_arguments]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  # 2026-09-08 WI-dozul SORT: three functions moved OUT of net_recv, where they
+  # had sat since 2026-05-24 under a note about querying name servers that was
+  # never true of them. c has filed unistd.gethostname under host_info_read all
+  # along, and python's pwd/grp rows are the precedent for a LOCAL system-table
+  # read landing here. This is a REMOVAL from a minting boundary (net_recv is in
+  # AUTO_SOURCE_LABEL_MAP, host_info_read is too but with a weaker label), so it
+  # is proved rather than reasoned -- see the represented-crossing check in
+  # test_dns_lookup_is_net_recv.py and the measurement that ships with it.
+  - module: inet
+    functions: [gethostname, getservbyname, getservbyport]
+    notes: "gethostname reads the LOCAL node's hostname; getservbyname/getservbyport read the local services table (/etc/services). No name server is queried. INHERITED BY elixir."
+  - module: erlang
+    functions: [monotonic_time, system_time, timestamp, time_offset, localtime, universaltime]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. erlang/otp
+      erts/preloaded/src/erlang.erl. convert_time_unit is pure arithmetic
+      and gets no row. INHERITED BY elixir.
+  - module: os
+    functions: [timestamp]
+    notes: >-
+      os:timestamp/0 was MISSING while its siblings os:system_time and
+      os:perf_counter were already catalogued — found by enumerating
+      lib/kernel/src/os.erl rather than trusting the existing rows.
+  - module: os
+    functions: [type, version, system_time, perf_counter]
+    notes: "WI-jupaf: `cmd` was REMOVED from this list. os:cmd/1 is the BEAM shell-out, not an environment read — it was swept in with the rest of the os module and now lives under `subprocess:` below. It is removed rather than ALSO declared there, because a multi-boundary primitive is resolved by YAML row order (INV-zumin), which would make the correct declaration live or inert depending on where it was pasted."
+  - module: application
+    functions: [get_application, loaded_applications, which_applications, info]
+  - module: init
+    functions: [get_status, script_id]
 
 env_write:
   - module: os
@@ -227,13 +344,85 @@ env_write:
   - module: application
     functions: [set_env, unset_env, load, start, stop, ensure_started, ensure_all_started]
 
+ipc_recv:
+  - module: os
+    functions: [cmd]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
+  - module: io
+    functions: [read, get_line, get_chars]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      Reads an Erlang term / line / chars from an IoDevice (INV-nular). These
+      were declared `logging`, an OUTBOUND sink, which was wrong twice over: a
+      tainted value "reaching logging" fired at a call that emits nothing, and
+      the data actually read was not a taint SOURCE at all, so the most
+      ordinary untrusted input a program has was invisible.
+
+      THE DIRECTION IS UNAMBIGUOUS; WHICH INBOUND BOUNDARY IS NOT, which is why
+      these carry a ruling rather than one boundary. `io:read/1` reads STANDARD
+      INPUT (ipc_recv, following the C precedent where a bare `stdin` classifies
+      that way); `io:read/2` reads from a given IoDevice, which may be a FILE
+      (fs_read). The catalogue matches on NAME, not arity, so exactly one is
+      true per call site and the call site cannot tell which — INV-vaduk's
+      `call_site_undecidable`, the same shape as C's `unistd.write`.
+
+      The sibling elixir `IO` module rows `read`/`gets`/`getn` as fs_read only,
+      which is the other half of this ambiguity picked without a ruling. Left
+      as is here rather than changed in passing.
+
 logging:
   - module: io
-    functions: [format, fwrite, put_chars, nl, write, read, get_line, get_chars]
-    notes: "io:format is Erlang's printf equivalent"
-  - module: io_lib
-    functions: [format, fwrite]
-    notes: "Returns iolist, not direct I/O, but typically written immediately"
+    functions: [format, fwrite, put_chars, nl, write]
+    notes: >-
+      io:format is Erlang's printf equivalent. `read`, `get_line` and
+      `get_chars` were HERE and have moved to ipc_recv (INV-nular): they read
+      from standard input, and `logging` is an outbound SINK. Declaring an
+      input as an output got it wrong twice — a tainted value "reaching
+      logging" fired at a call that emits nothing, and the data actually read
+      from stdin was not a taint SOURCE at all, so the most ordinary untrusted
+      input a program has was invisible.
+# io_lib: DELETED (INV-nular F6, measurement 0006 sensitivity S1).
+#
+# `io_lib:format/2` returns an iolist. It writes nothing. Erlang splits io_lib
+# from io for exactly that reason, and this row's own note conceded it --
+# "Returns iolist, not direct I/O, but typically written immediately" -- while
+# AUTO_SINK_ZONE_MAP turned `logging` into a taint SINK at every call site.
+#
+# ADJACENCY IS NOT A CROSSING. A boundary tag asserts the crossing happens AT
+# THIS CALL, in this call's scope (ADR-0049 ruling 1). "Typically written
+# immediately" describes a DIFFERENT call, one hop later -- which is rowed
+# above as `io:format`, so the crossing is represented and ruling 3 licenses
+# the removal.
+#
+# THE REMOVAL IS CORRECT; ONE ARGUMENT FIRST OFFERED FOR IT WAS NOT. A cold A/B
+# on rabbitmq showed `host-secret-no-logging` still violated, 100 -> 68 flows,
+# sink modules io_lib 94 -> 0 and io 5 -> 64, with measurement 0006's three
+# adjudicated true positives appearing to "re-root" onto io:format. That was
+# read as ruling 3's represented-crossing test being met. A BLIND PANEL REFUTED
+# IT (two independent passes, 0/7 disagreement, 2026-08-30): the re-rooted
+# route terminates at rabbit_misc:module_attributes/1, whose io:format takes
+# only [Module] -- bound from application:get_key -- so no source value reaches
+# it. The removal therefore deleted VACUOUS findings rather than relocating
+# real ones, which is still the right outcome and is why the row is gone.
+# Measurement 0006's sensitivity S1 STANDS; useful precision under it is 21.4%.
+# The vanished shape is `rabbit_misc:format/2` = lists:flatten(io_lib:format(
+# ...)), a pure function whose result is returned in an {error, _} tuple.
+#
+# NOT AN ARGUMENT FOR KEEPING IT: some vanished flows were real, logging via
+# ?LOG_DEBUG -- an OTP macro the analyzer does not expand. rabbitmq has 1,910
+# ?LOG_* uses against 187 direct `logger:` calls, so io_lib was covering that
+# gap BY COINCIDENCE. The macro gap is filed; a wrong row is not its fix.
   - module: error_logger
     functions: [info_msg, info_report, warning_msg, warning_report, error_msg, error_report]
     notes: "Legacy logging; replaced by logger in OTP 21+"

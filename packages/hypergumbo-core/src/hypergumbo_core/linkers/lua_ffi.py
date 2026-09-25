@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Bridge linker: Lua FFI for connecting LuaJIT FFI calls to C function implementations.
 
-This linker creates ffi_bridge edges between Lua code that uses LuaJIT's FFI
-interface and the C function implementations those calls resolve to.
+This linker creates ``calls`` edges (tagged ``meta.bridge_kind="ffi"``) between
+Lua code that uses LuaJIT's FFI interface and the C function implementations
+those calls resolve to.
 
 How It Works
 ------------
@@ -17,16 +18,30 @@ Source scanning of Lua files for two FFI call patterns:
    (``local lib = ffi.load("mylib")``). The linker tracks the variable name
    and finds ``lib.<name>(`` calls, matching ``<name>`` against C symbols.
 
-After scanning, the linker also checks unresolved Lua call edges and resolves
-any whose name matches a C function symbol (for cases where the Lua analyzer
-produced an unresolved edge for an FFI call).
+Targets are C or C++ ``function``/``method`` symbols (the linker activates
+for both the lua/c and lua/cpp pairs). Call names starting with ``_`` are
+skipped in both patterns.
+
+Name collisions (INV-zuhub): when exactly one C/C++ symbol has the name,
+the edge gets confidence 0.85. When several do, the lowest-id candidate is
+chosen (no same-file preference, since caller and target are in different
+languages), and the edge gets confidence 0.5 and
+``meta.disambiguation_fallback=True``. This applies to both the source-scan
+edges and the unresolved-edge edges described below.
+
+After scanning, the linker also checks every existing edge whose destination
+is ``:unresolved`` (no language or edge-type filter is applied) and, when the
+trailing name matches a C/C++ function symbol, emits a ``calls`` edge with
+``evidence_type="luajit_ffi_lookup"`` and ``is_resolved=False`` (for cases
+where an analyzer produced an unresolved edge for an FFI call).
 
 Why This Design
 ---------------
 - LuaJIT FFI uses string-based function names that only appear in ffi.cdef or
   ffi.C.name call sites, not in function signatures. Source scanning is needed.
-- The ffi.cdef content is a C header string — we don't parse it, we just track
-  that it exists and match ffi.C.<name> calls against actual C symbols.
+- The ffi.cdef content is a C header string — we don't parse or detect it at
+  all; ``ffi.C.<name>`` and ``lib.<name>`` calls are matched directly against
+  C/C++ function symbols by name.
 - Simple regex matching is sufficient: ``ffi.C.name(`` and ``var.name(`` are
   syntactically rigid patterns.
 - Follows the source-scanning pattern established by pyffi and ruby_ffi linkers.
@@ -133,7 +148,7 @@ def link_lua_ffi(
         edges: All existing edges (used for unresolved call matching).
 
     Returns:
-        LuaFFILinkResult with ffi_bridge edges.
+        LuaFFILinkResult with ``calls`` edges (``meta.bridge_kind="ffi"``).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -231,6 +246,7 @@ def link_lua_ffi(
                 evidence_type=evidence_type,
                 data_direction="src_to_dst",
                 meta=edge_meta,
+                # derived-from endpoints: the enclosing Lua symbol plus an FFI function-name match
                 derived_from=[src_sym.id, c_sym.id],
             ))
 
@@ -273,7 +289,7 @@ def link_lua_ffi(
             is_resolved=False,
             data_direction="src_to_dst",
             meta=edge_meta,
-            derived_from=[edge.src, c_sym.id],
+            derived_from=[edge.src, c_sym.id, edge.id],
         ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)

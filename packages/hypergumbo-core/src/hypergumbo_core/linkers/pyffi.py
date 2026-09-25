@@ -1,18 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Bridge linker: Python FFI for connecting Python ctypes/cffi calls to C/C++ implementations
-and PyO3 Rust functions to their Python callers.
+"""Bridge linker: Python FFI, joining ctypes/cffi calls to C/C++ and PyO3 Rust functions to callers.
 
-This linker creates ffi_bridge edges between Python code that calls native functions
-via ctypes or cffi and the corresponding C/C++ function implementations, as well as
-between Python code that imports PyO3-annotated Rust functions.
+This linker creates ``calls`` edges (meta ``bridge_kind: "ffi"``) between Python
+code that calls native functions via ctypes or cffi and the corresponding C/C++
+function implementations, as well as between Python code that imports
+PyO3-annotated Rust functions.
 
 How It Works
 ------------
 Four FFI mechanisms are detected by scanning Python source files:
 
-1. **ctypes**: Scans for ``ctypes.CDLL`` / ``ctypes.cdll.LoadLibrary`` patterns,
-   then finds ``lib.funcname()`` attribute calls on the loaded library variable.
-   Matches funcname against C/C++ function symbols.
+1. **ctypes**: Scans for ``ctypes.CDLL`` / ``ctypes.cdll.LoadLibrary`` (also
+   ``WinDLL`` / ``OleDLL`` / ``PyDLL``) patterns, then finds ``lib.funcname()``
+   attribute calls on the loaded library variable. Matches funcname against
+   C/C++ function symbols.
 
 2. **cffi**: Scans for ``ffi.dlopen()`` / ``ffi.verify()`` patterns, then finds
    ``lib.funcname()`` attribute calls. Same name-matching as ctypes.
@@ -24,16 +25,24 @@ Four FFI mechanisms are detected by scanning Python source files:
    (``go:C:0-0:<name>:unresolved``) so the io_boundary tagger can redirect
    to the C catalog and tag IO primitives like fopen, popen, fwrite.
 
-4. **PyO3**: Finds Rust symbols with ``pyfunction`` or ``pymethods`` in their
-   decorators metadata. When Python code has unresolved call edges whose name
-   matches a PyO3-annotated Rust function, creates ffi_bridge edges.
+4. **PyO3**: Finds Rust functions/methods with a PyO3 attribute (``pyfunction``,
+   ``pymethods``, ``pyclass``, ``pyo3``, bare or path-qualified) in their
+   ``annotations`` metadata. When Python code has unresolved call edges whose
+   name matches a PyO3-annotated Rust function, creates ``calls`` edges.
+
+Python test files are excluded as edge sources in every mechanism, so test
+fixtures that exercise ctypes/cffi don't become the linker's output. When
+several C/C++ or Rust symbols share the called name, the lowest-id candidate
+is picked (deterministic) and the edge drops to confidence 0.5 with
+``disambiguation_fallback`` set. When FFI call sites or PyO3 exports exist
+but nothing pairs up, the run records a ``silence_reason``.
 
 Why This Design
 ---------------
 - Follows the analyze-then-link pattern established by JNI and cgo linkers
 - Source scanning for ctypes/cffi is necessary because Python's dynamic nature
   means these calls don't produce typed call edges from the analyzer
-- PyO3 detection piggybacks on the Rust analyzer's decorator metadata
+- PyO3 detection piggybacks on the Rust analyzer's annotation metadata
 - Simple name matching is sufficient: ctypes/cffi use the raw C function name
 - C stdlib unresolved edges follow the same pattern as cgo, enabling reuse
   of the io_boundary tagger's ``_resolve_ffi_catalog()`` redirect
@@ -55,6 +64,7 @@ from .registry import (
     register_linker,
 )
 from ._text_filters import read_masked_source
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("pyffi-linker")
 
@@ -277,7 +287,7 @@ def link_pyffi(
         edges: All existing edges (used for PyO3 unresolved call matching)
 
     Returns:
-        PyFFILinkResult with ffi_bridge edges.
+        PyFFILinkResult with ``calls`` edges (meta ``bridge_kind: "ffi"``).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -315,6 +325,10 @@ def link_pyffi(
         ):
             python_files.add(sym.path)
 
+    # Every ctypes/cffi call this scan FINDS, matched or not: pyffi emits
+    # only PAIRING edges, so a call whose C symbol is missing leaves it
+    # silent while the construct is plainly present.
+    all_ffi_calls: list[tuple[str, str, int]] = []
     for py_path_str in python_files:
         py_path = Path(py_path_str)
         if not py_path.is_absolute():
@@ -324,6 +338,7 @@ def link_pyffi(
             continue
 
         ffi_calls = _scan_python_file_for_ffi_calls(py_path)
+        all_ffi_calls.extend(ffi_calls)
 
         for func_name, evidence_type, line_num in ffi_calls:
             is_stdlib = evidence_type in ("ctypes_stdlib_call", "cffi_stdlib_call")
@@ -388,6 +403,8 @@ def link_pyffi(
                     evidence_type=resolved_evidence,
                     data_direction="src_to_dst",
                     meta=edge_meta,
+                    # derived-from endpoints: a ctypes/cffi call-name string joined on the C
+                    #   symbol's name
                     derived_from=[src_sym.id, c_sym.id],
                 ))
             elif is_stdlib:
@@ -404,7 +421,8 @@ def link_pyffi(
                     evidence_type=evidence_type,
                     data_direction="src_to_dst",
                     meta={"bridge_kind": "ffi"},
-                    derived_from=[src_sym.id, dst],
+                    # derived-from endpoints: the dst is a minted stdlib placeholder
+                    derived_from=[src_sym.id],
                 ))
             else:
                 # Non-stdlib call with repo-local C symbol. INV-zuhub: multi-value
@@ -429,6 +447,8 @@ def link_pyffi(
                     evidence_type=evidence_type,
                     data_direction="src_to_dst",
                     meta=edge_meta,
+                    # derived-from endpoints: a ctypes/cffi call-name string joined on the C
+                    #   symbol's name
                     derived_from=[src_sym.id, c_sym.id],
                 ))
 
@@ -485,11 +505,16 @@ def link_pyffi(
                 evidence_type="ast_call_direct",
                 data_direction="src_to_dst",
                 meta=pyo3_meta,
-                derived_from=[edge.src, rust_sym.id],
+                derived_from=[edge.src, rust_sym.id, edge.id],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
 
+    # Both phases' candidates: a ctypes/cffi call site found by the scan,
+    # and a PyO3 export found in the Rust symbols. Either one present
+    # means the construct is here and merely unpaired.
+    _pyffi_candidates: list[object] = [*all_ffi_calls, *pyo3_lookup]
+    run.silence_reason = silence_reason_for_candidates(_pyffi_candidates)
     return PyFFILinkResult(edges=result_edges, run=run)
 
 
@@ -538,7 +563,10 @@ PYFFI_REQUIREMENTS = [
     ),
     # CNF: anchor (python) AND any-of-impls (c/cpp/rust — ctypes/cffi/PyO3
     # target one of these native languages).
-    depends_on=[["python"], ["c", "cpp", "rust"]],
+    # WI-juzig: rust has two producers (tree-sitter ``rust``, SCIP ``rust_analyzer``);
+    # either satisfies the impl-side clause.
+    # WI-nanom: python has two producers too (ast ``python``, SCIP ``scip_python``).
+    depends_on=[["python", "scip_python"], ["c", "cpp", "rust", "rust_analyzer"]],
 )
 def pyffi_linker(ctx: LinkerContext) -> LinkerResult:
     """Python FFI linker for registry-based dispatch.

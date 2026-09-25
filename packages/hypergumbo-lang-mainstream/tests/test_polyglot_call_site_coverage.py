@@ -25,13 +25,15 @@ other than Python).
   and the test now demands all 8 fixtures pass. Re-introducing an
   ``xfail_reason`` later is a regression signal.
 - **Kotlin, Scala, PHP, Swift, C#** — WI-zisov Phase 2 audit extension
-  (2026-05-31). Swift passes cleanly. Kotlin/Scala/PHP partially work
+  (2026-05-31). Swift passes cleanly. PHP partially works
   (bare-named-import constructs resolve, qualified-call constructs do
   not). C# is a deeper gap — the analyzer emits no unresolved external
-  call edges at all. The four gaps carry strict ``xfail_reason`` markers
+  call edges at all. The two gaps carry strict ``xfail_reason`` markers
   pointing at the WI-nigah Tier 2 backlog; closing those analyzer
   gaps flips XPASSED, which fails the test, forcing the fix-side PR to
-  strip the marker.
+  strip the marker. Kotlin's and Scala's qualified-call gap closed with
+  WI-kilap (2026-09-23): a call on an imported type carries the import
+  path in the module slot.
 
 ## Adding a new language
 
@@ -387,11 +389,6 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
             ("com.example.helpers", "doWork"),
             ("com.example.types", "create"),
         ),
-        xfail_reason=(
-            "Kotlin analyzer audit gap: imported-type qualified-call "
-            "``Item.create()`` emits no edge (only the bare-named import "
-            "construct resolves). See WI-nigah Tier 2 backlog."
-        ),
     ),
     PolyglotFixture(
         language="scala",
@@ -415,12 +412,6 @@ POLYGLOT_FIXTURES: list[PolyglotFixture] = [
         expected_targets=(
             ("com.example.helpers", "doWork"),
             ("com.example.types", "create"),
-        ),
-        xfail_reason=(
-            "Scala analyzer audit gap: imported-object qualified-call "
-            "``Item.create()`` emits ``external`` sentinel for module_hint "
-            "instead of threading the import-tracker output. See WI-nigah "
-            "Tier 2 backlog."
         ),
     ),
     PolyglotFixture(

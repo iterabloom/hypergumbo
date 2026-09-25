@@ -1,0 +1,21 @@
+- op: create  # ab17
+  at: '2026-08-26T00:50:17Z'  # ab17
+  by: agent  # ab17
+  actor: jgstern_agent  # ab17
+  clock: 1  # ab17
+  nonce: ab17  # ab17
+  data:  # ab17
+    kind: work_item  # ab17
+    title: "File-anchored spans end at count(newlines)+1; symbol spans exact except a 4-line shift in one C file"  # ab17
+    status: todo_hard  # ab17
+    priority: 3  # ab17
+    parent:  # ab17
+    tags:  # ab17
+    - measurement_0006  # ab17
+    isbefore: []  # ab17
+    duplicate_of: []  # ab17
+    not_duplicate_of: []  # ab17
+    pr_ref:  # ab17
+    description: "Found by the 0006 adversarial refutation pass; reported independently by 5 of 14 refuters.\n\nLow severity for output correctness -- it moved no label in 0006 -- but it is load-bearing for ANY consumer that uses the span to bound a search, which includes every human or agent reading a flow record to check it. The C 4-line shift is a separate and more worrying case because it is not explained by the newline rule and makes the anchor test unreliable wherever it occurs; it is recorded here rather than split out because 0006 saw it once and did not characterise it."  # ab17
+    fields:  # ab17
+      statement: "A file-anchored symbol span ends one line past the last real line whenever the file is newline-terminated: span_end = count(newlines) + 1. Confirmed on four repositories in 0006 -- session-desktop babel.config.js 510 lines spanned 1-511; kamaraflow train_script.py 391 lines spanned 1-392; spacedrive gradlew 251 lines spanned 1-252; ArkLib revert_nav.py 93 lines spanned 1-94 and inject_nav.py 78 lines spanned 1-79. The diagnosis is exact rather than approximate: ArkLib lint-style.py has 471 lines and NO trailing newline, and its span 1-471 is correct. SYMBOL-anchored spans are exact and inclusive by contrast, except server-fn.c where server_destroy_pane (309-383) is recorded 313-387, a uniform 4-line shift at both ends."  # ab17

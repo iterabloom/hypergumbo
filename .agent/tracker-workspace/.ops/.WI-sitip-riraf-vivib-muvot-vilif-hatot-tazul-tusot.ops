@@ -18,3 +18,17 @@
     pr_ref:  # 8e1d
     description: "- **Subject:** The routes command's provenance footer reports a content-hash-cached sibling path rather than the requested input.\n- **Mechanic:** The routes command content-hash-keys its cache. When a byte-identical file is already cached at another path, the provenance footer reports that first-cached path instead of the path actually passed via the input argument. (INVALIDATION-RISK: this depends on a content-identical sibling being cached elsewhere; the route content itself is correct.)\n- **Expectation:** The provenance footer should report the path the user actually requested.\n- **Scope:** The command found the 8 routes correctly (including the WS route) but its footer named a different (byte-identical) sibling file than the one passed as input; stable across re-runs.\n- **Exposure:** A consumer reading the provenance footer to learn which file produced the output, when a content-identical copy is cached at another path.\n- **Consequence:** The consumer is told a path that does not correspond to its own argument, so provenance-tracking or source-trail logic records the wrong source file.\n\n---\n\n(Filed from dogfooding.)"  # 8e1d
     fields: {}  # 8e1d
+- op: discuss  # 6214
+  at: '2026-09-25T17:48:18Z'  # 6214
+  by: agent  # 6214
+  actor: jgstern_agent  # 6214
+  clock: 2  # 6214
+  nonce: '6214'  # 6214
+  message: "P2 REVIEW 2026-09-25 (dev e4a47383ab). THE STATED MECHANISM IS CONTRADICTED BY THE CODE, and neither of two repro shapes reproduces. Status unchanged: non-reproduction is not grounds to close. Recorded so the next reader does not chase the stated mechanism.\n\nThe row says \"the routes command content-hash-keys its cache ... the footer reports that first-cached path instead of the path actually passed via the input argument\". In code:\n- EXPLICIT --input: `_get_or_run_analysis` (cli.py:606-610) returns `Path(explicit_input)` verbatim, with no cache lookup. `cmd_routes` then passes that same `input_path` as the footer's cached artifact (cmd_routes, cli.py:2295+, `cached_set = {input_path}`). git blame puts those lines at 55296f5440 (2026-01-30), BEFORE this row was filed (06-08). So this path never had a content-hash lookup to be wrong about.\n- NO --input: `_discover_input_file` looks under `_get_results_cache_dir(repo_root)`, which is keyed by a per-REPO fingerprint, not by file content.\n\nRepros run today:\n1. survey -> s1.json; byte-identical copy s2.json; `routes . --input s1.json` then `--input s2.json`. The footer prints s1.json then s2.json, each the requested path.\n2. Two byte-identical repo dirs r and r2, `routes r` then `routes r2` with no --input. They get different cache fingerprints (8142d09bfe444eb3 vs ef064f7332c7ff79), and each footer names its own.\n\nThe original invocation behind \"stable across re-runs\" is not recorded on the row, so I cannot re-run the filed repro itself. The owner may want the filer's exact command before this is worked; without it the row cannot be acted on."  # 6214
+- op: discuss  # c1f2
+  at: '2026-09-25T18:11:39Z'  # c1f2
+  by: agent  # c1f2
+  actor: jgstern_agent  # c1f2
+  clock: 3  # c1f2
+  nonce: c1f2  # c1f2
+  message: "OWNER 2026-09-25 (P2 review follow-up): the decision surfaced in the review entry above is DEFERRED. No action until the owner revisits it."  # c1f2

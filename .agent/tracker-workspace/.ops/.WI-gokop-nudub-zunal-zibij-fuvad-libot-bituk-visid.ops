@@ -1,0 +1,23 @@
+- op: create  # 3638
+  at: '2026-09-10T12:26:03Z'  # 3638
+  by: agent  # 3638
+  actor: jgstern_agent  # 3638
+  clock: 1  # 3638
+  nonce: '3638'  # 3638
+  data:  # 3638
+    kind: work_item  # 3638
+    title: "scala: type a receiver bound from a CALL RESULT, a for-binder or a lambda parameter — the return-type-registry shape objc and swift already have"  # 3638
+    status: todo_hard  # 3638
+    priority: 2  # 3638
+    parent:  # 3638
+    tags:  # 3638
+    - scala  # 3638
+    - analysis_quality  # 3638
+    - io_boundary  # 3638
+    - taint  # 3638
+    isbefore: []  # 3638
+    duplicate_of: []  # 3638
+    not_duplicate_of: []  # 3638
+    pr_ref:  # 3638
+    description: "FILED 2026-09-10 from WI-pokam, whose cheap half shipped in PR #892 while this,\nthe larger half, did not.\n\nWHAT IT IS. `scala.py` types a receiver only from a DECLARED type — a parameter\nannotation, a val annotation, a `new`, a class parameter. Scala's inference is\npervasive and idiomatic code writes none of these:\n\n    val x = mk()                    <- the return type of `mk`\n    for (y <- xs) { y.foo() }       <- a for-comprehension binder\n    xs.map(z => z.foo())            <- a lambda parameter\n    a.b().c()                       <- a chained receiver\n\nNone of them carries a declared type, so none reaches `var_types` and every\nreceiver among them falls to the sentinel.\n\nWHERE IT STANDS AFTER PR #892, measured on this tree rather than quoted:\n\n    repo   hinted share BEFORE   AFTER   external method edges\n    sbt          9.03%          23.43%          15,872\n    lila         4.50%           8.02%          38,008\n\nSo lila is still at 8% — barely out of the 5-10% band WI-pokam was filed on — and\nthe remaining ~92% is this item. The type-node fix took the shapes that WERE\ndeclared and merely mis-parsed; what is left needs INFERENCE.\n\nTHE SHAPE IS ALREADY BUILT TWICE, one language over each way. objc has\n`_objc_return_type_registry` and swift has `swift_return_type_registry`: a\nproject-wide map from a method to its declared return type, consulted when a\nreceiver is bound from a call. That is the WI-dizag-A / WI-garar shape, and it is\nwhy WI-pokam filed this separately rather than folding it in.\n\nSIZE THE SHAPES BEFORE BUILDING. `val x = mk()` is the one WI-pokam names, but\nthe probe pattern that found three shapes where the filing named one applies here\ntoo: enumerate the untyped-receiver population on sbt and lila by the SYNTAX that\nbound the receiver (call result, for-binder, lambda parameter, chained receiver,\nmatch binding, `implicit` parameter) before designing. A one-dimensional frame\ncannot predict its own counterexamples.\n\nPRECISION WARNING, EARNED IN PR #892 AND NOT HYPOTHETICAL. Widening what gets a\nhint widens what can reach the bare SHORT-NAME BIND, which is the funnel\n`scala.py` refuses for untyped receivers. That PR's first version bound 44 of 185\nnewly-resolved sbt edges to a project `Map.get` when the receiver was a\nstandard-library `Map[K,V]`. Any return-type work must count its newly-RESOLVED\nedges by owner, not just its newly-hinted ones — the item's nominal metric (the\nhinted share) rewarded the WORSE version there and will do so again."  # 3638
+    fields: {}  # 3638

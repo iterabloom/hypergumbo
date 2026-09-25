@@ -1,0 +1,47 @@
+- op: create  # 0690
+  at: '2026-09-18T08:38:59Z'  # 0690
+  by: agent  # 0690
+  actor: jgstern_agent  # 0690
+  clock: 1  # 0690
+  nonce: '0690'  # 0690
+  data:  # 0690
+    kind: invariant  # 0690
+    title: "the rust.py/rust_scip.py stable_id parity holds for 0 of 52 overlapping symbols on production input, and its test feeds tree-sitter spans back to itself so it cannot fail"  # 0690
+    status: violated  # 0690
+    priority: 2  # 0690
+    parent:  # 0690
+    tags:  # 0690
+    - rust  # 0690
+    - multi_fidelity  # 0690
+    - disclosure  # 0690
+    isbefore: []  # 0690
+    duplicate_of: []  # 0690
+    not_duplicate_of: []  # 0690
+    pr_ref:  # 0690
+    description: "MEASURED 2026-09-18 at d6174d5df9 on ~/whole_bunch_of_repos/aardvark-dns with the\nSCIP backend active.\n\nTHE CLAIM. The two Rust arms -- tree-sitter (rust.py) and SCIP (rust-analyzer)\n-- are supposed to assign the SAME stable_id to the same function, so a future\ncross-pass dedup can recognise the two records as one symbol. WI-gojum states it\nas \"stable_id parity is readiness for a future dedup, not a dedup that runs\ntoday\", and three shipped documents assert it in the PRESENT tense (see below).\n\nTHE MEASUREMENT. 669 SCIP nodes and 148 tree-sitter Rust nodes coexist in one\nartifact. 52 (path, name) pairs are emitted by BOTH arms. **ZERO of the 52 share\na stable_id.** Not \"few\" -- none.\n\n    TS   function  src/... lines 5-30   sha256:135eb49fd14f4ba1\n    SCIP method    src/... lines 5- 5   sha256:56a84a5ff063784c\n\nTHE CAUSE, and it is not a near-miss. rust_scip.py:135-137 requires an exact\nmatch on BOTH span endpoints:\n\n    if node_start != start_line or node_end != end_line:\n        continue\n\nProduction hands it the SCIP **Definition Occurrence range** (scip/index.py:235),\nwhich is the identifier TOKEN (5-5), never the enclosing function_item (5-30).\nSo the lookup returns None for every real symbol and the SCIP-derived id is\nretained. The helper's own docstring at rust_scip.py:91-93 contradicts the\npredicate three lines below it: \"Column precision is not required: a function\ndefinition is uniquely identified by its start line.\"\n\nTHE TEST CANNOT FAIL. test_rust_scip_stable_id.py:88-96 iterates `baseline`,\nwhich it collected from rust.py, and passes those (start_line, end_line) keys\nstraight back into the helper. It proves the helper agrees with rust.py given\nrust.py's own input. It says nothing about the SCIP-shaped spans production\nactually supplies. This is the LIVE.md \"A CONTROL THAT CANNOT FAIL IS NOT A\nCONTROL\" defect: the fix is a DIFFERENCE arm -- a recorded SCIP-span fixture --\nnot a level.\n\nAND IT WOULD BE UNDONE IF IT FIRED. split_within_file_stable_id_collisions\n(analyze/base.py:1748, called from cli.py) groups on (path, stable_id) and\nRE-MINTS the second member with an `:occ:<n>` re-hash, because its comment\n(base.py:1751-1754) reads such a group as \"distinct code SITES\". Two arms\nagreeing on an id is exactly the shape it exists to break apart. So parity is\nnon-functional, untested against production input, AND structurally opposed by a\nlater pass.\n\nTHREE UNSUPPORTED PRESENT-TENSE CLAIMS, all asserting a working mechanism:\n  - packages/hypergumbo-lang-rust-analyzer/README.md:35-38  \"so cross-pass dedup works\"\n  - CHANGELOG.md:508  \"prevents double-counting Rust functions across the two backends\"\n  - docs/hypergumbo-spec.md (stable_id v6->v7 history)  \"The rust.py <-> rust_scip.py\n    byte-for-byte SCIP-parity contract (WI-zakub) is preserved by threading the\n    identical repo-relative anchor on both backends.\"\nThe third is in the DESIGN CONTRACT, which is the one a reader is entitled to\ntrust. Two further sites -- analyzer.py:13-16 and rust_scip.py:114-116 -- use the\nfuture/conditional tense (\"when cross-pass dedup runs\") and are aspirational\nrather than false; they need a pointer to WI-gojum, not a retraction.\ndocs/future/scip-generalization-vision.md is correctly scoped as vision by its\ndirectory and is NOT at fault.\n\nFIX SHAPE. Either (a) make the span comparison tolerate the definition-occurrence\nrange (match on start_line, as the helper's own docstring already says), or\n(b) retract the parity claim and say plainly that the two arms carry independent\nidentities. Whichever is chosen, the test needs a recorded-SCIP-span fixture or\nit will keep passing over a dead feature. If (a), note that\nsplit_within_file_stable_id_collisions must learn to exclude cross-BACKEND\ngroups, or it will undo the parity the moment it starts working.\n\nREPRO: survey a cargo repo with and without HYPERGUMBO_RUST_ANALYZER=1; join the\ntwo node sets on (path, name); compare stable_id. Expect 0 matches today.\n\nNOT CLAIMED: that parity is the right design. WI-gojum owns coexist-vs-replace\nand ADR-0012 Steps 2-3 are parked. This row asserts only that the mechanism\ndescribed in three shipped documents does not do what they say."  # 0690
+    fields:  # 0690
+      statement: "If two analyzer arms are documented as assigning the same stable_id to the same construct, that parity must hold on the input production actually supplies, and the test that asserts it must consume producer-shaped input rather than the baseline it is compared against."  # 0690
+      root_cause: "rust_scip.py requires an exact match on both span endpoints while SCIP supplies the definition-occurrence (identifier-token) range rather than the enclosing item range, so every lookup misses; the parity test re-feeds rust.py's own spans, so the miss is invisible."  # 0690
+- op: update  # edbb
+  at: '2026-09-18T09:58:52Z'  # edbb
+  by: agent  # edbb
+  actor: jgstern_agent  # edbb
+  clock: 2  # edbb
+  nonce: edbb  # edbb
+  set:  # edbb
+    status: satisfied  # edbb
+- op: discuss  # 8a6a
+  at: '2026-09-18T09:58:52Z'  # 8a6a
+  by: agent  # 8a6a
+  actor: jgstern_agent  # 8a6a
+  clock: 3  # 8a6a
+  nonce: 8a6a  # 8a6a
+  message: "SATISFIED in PR #1044 (dev cc153c42b6), under the owner's 2026-09-18 ruling: the\nthree present-tense parity claims are RETRACTED and the two arms are documented\nas carrying independent identities; parity is NOT engineered.\n\nWHAT IS STILL TRUE, BY DECISION: parity holds for 0 of 52 shared functions on\naardvark-dns, exactly as this row's title says. The title's condition was not\nremoved; it was re-documented as the shipped state. The owner chose fix shape\n(b) from this row's own description. Shape (a) — match on start_line — was\nNOT taken because split_within_file_stable_id_collisions would re-mint the\nagreeing record as a second SITE, and sparing cross-backend groups encodes\nthe coexist/merge/replace answer that is WI-gojum's (parked). Engineering\nparity is therefore WI-gojum's, not this row's residual.\n\nTHE INVARIANT NOW HOLDS. Its antecedent — \"documented as assigning the same\nstable_id\" — is false everywhere it was true: README §\"Stable-ID parity\"\nrewritten; CHANGELOG 7.0.0 entry corrected IN PLACE (not rewritten); spec\nstable_id v6->v7 history corrected; docstrings in rust_scip.py, translate.py\nand analyzer.py (three sites) state the abstention and point at WI-gojum.\nIts consequent — \"the test must consume producer-shaped input\" — holds:\n  * test_rust_scip_stable_id.py: the baseline-fed test is re-titled\n    test_helper_reproduces_rust_py_ids_when_given_the_item_span (contract 1,\n    the helper's extraction), and\n    test_recorded_rust_analyzer_spans_reach_parity_only_for_single_line_items\n    feeds ranges RECORDED from `rust-analyzer scip` 1.94.0 (4a4ef49) on\n    RUST_SAMPLE itself: five multi-line callables abstain, the single-line\n    trait declaration (25-25) reaches parity.\n  * test_translate.py: the hedged test asserts the overwrite outright; a new\n    production-shaped case pins the retained SCIP id for a 3-line function\n    fed the token span.\nBEHAVIORAL EVIDENCE that these are controls: mutating the predicate to\n`if node_start != start_line:` fails exactly those two tests (2 failed, 24\npassed); restoring it passes all 26. They go red the day the fix lands and\nare re-pointed then.\n\nNOT CLAIMED: that parity is the right design (unchanged from filing).\n\nADDENDUM, found after the PR was cut and recorded here so the next reader\ndoes not re-derive it: rust-analyzer 1.94.0 POPULATES `Occurrence.enclosing_range`\non every Definition occurrence (20 of 20 on the recorded sample), and it IS the\nitem range — `increment` range=[13,11,20] (token) vs enclosing_range=[13,4,16,5]\n(lines 14-17). scip/index.py builds Symbol.span from `range`, never reads\n`enclosing_range`. So the token-span cause of this row has a one-line cure\n(span the Symbol from enclosing_range when present), after which the parity\nhelper WOULD match — and split_within_file_stable_id_collisions would then\nre-mint the SCIP record as a second SITE. The obstacle to parity is therefore\nONLY the WI-gojum ruling now, not a missing input. Filed the Symbol.span\ndefect separately (see the row referencing this one) with an isbefore on\nWI-gojum."  # 8a6a
+- op: update  # 3965
+  at: '2026-09-18T16:20:11Z'  # 3965
+  by: agent  # 3965
+  actor: jgstern_agent  # 3965
+  clock: 4  # 3965
+  nonce: '3965'  # 3965
+  set:  # 3965
+    pr_ref: '1044'  # 3965

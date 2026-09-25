@@ -2,7 +2,7 @@
 # ADR-0017: Taint-Zone Dataflow Analysis
 
 Date: 2026-03-22
-Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance); core STRUCTURAL taint analysis in force; §3a DDG-backed propagation, §3c–3d mixed-coverage verdicts, §4 function summaries and §7a field-sensitivity are SPECIFIED BUT NOT IMPLEMENTED — each has no production consumer (measured 2026-08-02); see Phased Implementation
+Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance), ADR-0052 (§3a removal-COVERAGE ambition retired — the removal capability itself stays in force; §7a untouched); core STRUCTURAL taint analysis in force. Per-subsection implementation state, re-measured 2026-08-26 on dev `daafb0abb1` — the single "measured 2026-08-02" verdict this line used to carry had gone stale in five places (INV-lataj), and it collapsed two different failure modes into one phrase: **§3a** DDG walk RUNS and, since 2026-09-02 (WI-kabif, PR #716), ADJUDICATES — it REMOVES a flow whose walk returns `unconfirmed`; the "never decides inclusion" this line carried until 2026-09-09 was stale from that date. **Confirm-only IN PRACTICE** (ADR-0052): removal is implemented but measurement 0007 found the `unconfirmed` population EMPTY on an 11-repo corpus, and growing it is a retired goal; **§3c–3d** mixed-coverage verdicts LIVE; **§4b** declared summaries LIVE (declared terminating entries reach `_use_site_terminates`; no count is pinned here — this catalogue's size moved 33 → 108 → 113 across two edits in two days, and `taint.py`'s own docstring already carries a stale "38" for exactly that reason); **§4a** inferred summaries IMPLEMENTED BUT UNWIRED (`infer_summary`, zero production callers — and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite IMPLEMENTED BUT UNWIRED (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it — those are different jobs, so the two are named separately here. See Phased Implementation for anchor commits
 
 > Amended in place — see the 2026-06-11 amendment banner below and the inline pointer markers in §3a and the "Interaction with ADR-0015 `access_mode` metadata" subsection.
 
@@ -547,32 +547,82 @@ transforms:
 
 #### 3a. On native DDG (primary path)
 
-> **NOT IMPLEMENTED — this subsection is a TARGET DESIGN, not a description of
-> current behaviour.** Stated up front rather than as a trailing note, because a
-> fragment read of the numbered steps below would otherwise be indistinguishable
-> from a description of what the code does.
+> §3a's removal-COVERAGE ambition — closing the walk's escape sites so refutation
+> fires at scale — is RETIRED by [ADR-0052](0052-taint-refutation-is-confirm-only.md).
+> The removal CAPABILITY described below stays in force and is unchanged; what is
+> retired is the goal of growing the coverage it needs. In practice the walk is
+> confirm-only: measurement 0007 found ZERO of 153 `ddg_mixed` rows across 11
+> repositories resting on a walk that ran and established no dependence.
 >
-> **What `propagate_taint_ddg` actually does today** (measured 2026-08-02): it
-> runs the same call-graph BFS as `propagate_taint_structural` and uses DDG data
-> only to choose a label. It builds the forward index `ddg_forward` and the
-> tainted-variable set `tainted_at` and **reads neither**; `ddg_symbols` selects
-> `confidence="precise"` vs `"approximate"` and nothing else. So no step below
-> influences which flows are reported, for any language, and has not since this
-> ADR's Phase 2 landed in March 2026.
+> **PARTIALLY IMPLEMENTED — the walk RUNS, and since 2026-09-02 it ADJUDICATES.**
+> Stated up front rather than as a trailing note, because a fragment read of the
+> numbered steps below would otherwise be indistinguishable from a description
+> of what the code does.
 >
-> A second, independent blocker: step 2's walk keys on `DdgEdge.def_block`, a
-> **function-local** basic-block id (`bb_5` recurs in every function — 306
-> distinct values across 1,306 functions on hypergumbo's own core), compared
-> against a *symbol* id. Those namespaces never intersect. `DdgEdge.symbol_id`
-> was added later to make the comparison expressible; that is a prerequisite,
-> not the fix.
+> **REMOVAL AUTHORITY IS GRANTED (WI-kabif + WI-joluk, one PR).** The §3a arm no
+> longer collapses `False` into `None`. A walk that seeded on a recorded
+> definition, followed every route out of it, and ended everywhere ACCOUNTED FOR
+> — a §4 terminating summary or a barrier — without reaching a sink argument now
+> REMOVES the flow. `escaped` is ignorance and removes nothing; `not_attempted`
+> never ran. WI-joluk's forfeit gate runs first and downgrades any `False` from
+> a function whose CFG missed a call node in its body, so an exhausted walk over
+> a demonstrably incomplete graph never reaches the removal.
 >
-> Implementing this is tracked, together with the four prerequisites and a
-> pre-registered expectation of its effect size. Note also that **step 5 as
-> written is underspecified in the load-bearing way**: "if tainted data reaches
-> a sink" must mean *a tainted variable is an argument at the sink call site*.
-> Read as "a tainted definition reaches the sink's block" it removes almost
-> nothing.
+> **The trade is a deliberate departure from §7b's stated preference for
+> overapproximation**, and it was granted by the owner in writing rather than
+> taken by the implementation: §7b excludes alias analysis, so this introduces
+> false negatives on container and alias mutation.
+>
+> **MEASURED EFFECT AT THE GRANT: ZERO.** hypergumbo-core reports 15 confirmed /
+> 12 escaped / **0 unconfirmed** across 27 walks, and the 11-repo cohort reports
+> the same zero (153 `ddg_mixed` rows: 0 unconfirmed / 14 escaped / 139
+> not_attempted). These are live semantics over a currently empty class. They
+> activate as escape sites close — the remaining ones on the self-tree belong to
+> INV-mumov (1) and INV-linub (3). Forcing every escape closed yields 7 `False`
+> on that corpus, which is the ceiling, not a prediction. `verify-claims`
+> publishes `dataflow_coverage.flows_removed_by_walk` every run so the number is
+> never inferred.
+>
+> **What `propagate_taint_ddg` actually does today** (re-measured 2026-08-26 on
+> dev `daafb0abb1`): steps 1–4 run. `_ddg_taint_reaches` *is* this subsection's
+> forward walk and has **two** production call sites — the confirm-only arm
+> (`taint.py:3589`, whose result is collapsed by `adjudicated = walk_result is
+> True`, so a `False` and a `None` are the same event and neither removes
+> anything) and the WI-fasub same-function sanitizer barrier arm
+> (`taint.py:3645`), where since PR #214 a `False` earns `sanitized` and DROPS
+> the flow from a claim's violation set. That second arm is the one where an
+> unearned `False` is a live falsehood.
+>
+> **Step 3 runs for DECLARED summaries only.** §4b is wired; §4a inferred
+> summaries are not, and the `FunctionSummary` dataclass has no
+> `param_to_calls`. So the walk cannot follow a value ACROSS a call boundary
+> and bails whenever the sink sits in a different function from the source —
+> **76.3% of all never-ran walks** (measurement 0007, 11 repositories). Lifting
+> that is WI-famig, not more catalogue work.
+>
+> **What it still does NOT do: ADD a flow.** Inclusion remains call-graph BFS —
+> the walk mints nothing, so `inclusion_decided_by` still opens with
+> `call_graph_reachability` and now reads
+> `call_graph_reachability_minus_ddg_refutation`. The walk raises confidence to
+> `precise` where it finds a dependence, and SUBTRACTS where it refutes one.
+> Reading `analysis_method == "ddg"` as "this flow's inclusion was decided by
+> data flow" is therefore still the INV-sadah misreading.
+>
+> **Two blockers this banner used to name are CLOSED**, recorded rather than
+> deleted because both were load-bearing here for months. (a) The walk keyed on
+> `DdgEdge.def_block`, a function-local basic-block id compared against a
+> *symbol* id — namespaces that never intersect; re-keyed on `symbol_id` in
+> #188 and refined to `(symbol_id, variable, def_line)` in #203. (b) Step 5 was
+> underspecified in the load-bearing way: "if tainted data reaches a sink" must
+> mean *a tainted variable is an argument at the sink call site*, and it is now
+> implemented that way (`taint.py:2048`).
+>
+> **Provenance of this correction.** The paragraph above previously described
+> the function as building `ddg_forward` and `tainted_at` and "reading
+> neither". Neither identifier occurs anywhere in `taint.py` any more, so the
+> description was not merely stale but unfalsifiable as written. It carried the
+> date 2026-08-02 and was never revisited after #188, #190, #192 and #197
+> landed in the six days following (INV-lataj).
 
 The target design: when a function has been analyzed by the native CFG builder + reaching-def solver (i.e., a def/use extractor exists for its language), taint propagation is a forward graph walk on the computed DDG edges:
 
@@ -831,7 +881,13 @@ Verdicts become more precise:
 
 #### 7a. Included capabilities (with precision limits)
 
-- **Field-sensitivity lite (Phase 2).** While full alias analysis is excluded (see §7b), *direct* field access on tainted objects is common enough — especially in CRDT-heavy code — that ignoring it produces unacceptable false positive rates. Phase 2 includes a limited form of field sensitivity: taint propagates through `.` member access and method returns on tainted receivers. Specifically:
+> STILL UNWIRED, and NOT superseded. `is_field_tainted` has zero production
+> callers. [ADR-0052](0052-taint-refutation-is-confirm-only.md) declined
+> INV-busis's option (b), which proposed repurposing this section as an
+> escape-CLOSING device so §3a could refute more often; it decided nothing about
+> the propagation design below, whose recall value remains an open question.
+>
+> - **Field-sensitivity lite (Phase 2).** While full alias analysis is excluded (see §7b), *direct* field access on tainted objects is common enough — especially in CRDT-heavy code — that ignoring it produces unacceptable false positive rates. Phase 2 includes a limited form of field sensitivity: taint propagates through `.` member access and method returns on tainted receivers. Specifically:
   - If `x` is tainted, then `x.field`, `x.method()`, and `x[key]` inherit `x`'s taint.
   - If `obj.field = tainted_value`, then `obj.field` is tainted but `obj.other_field` is not (field-level granularity for direct writes).
   - Aliased references (`y = x; y.field`) propagate taint through the assignment chain (covered by reaching definitions), but indirect aliasing (`container.get("key")` returning the same object as a different `container.get("key")` call) is not tracked.
@@ -909,7 +965,7 @@ ADR-0015's `access_mode` field (read/write/mutate/delete) classifies what an edg
 | 1b | Precision measurement against synthetic + open-source fixtures (§9) | Carried out; informed Phase 2 prioritization | n/a |
 | 2 | Language-parameterized CFG builder + reaching-def solver + Python / Rust / TypeScript def/use extractors (core patterns) + field-sensitivity lite (§7) | Shipped (CFG builder `6afcd40b03`, solver `7a0728b3c2`, Python `509de245f1`, Rust `b8fc35d173`, TypeScript `7e2ee83a90`) | **Split, and no longer a matter of prose — see §3e.** CFG builder + solver + Python and Go extractors: yes. Rust and TypeScript: **now yes** — WI-tohuk added `atomic_statement` to `rust.yaml` / `typescript.yaml` and force-imported both modules, closing the two independent reasons they emitted zero DDG edges for months while sitting at 100% coverage. **JavaScript: now yes (WI-nonad)** — the TypeScript extractor registered a second time under the `javascript` key, a `*.js` spec, and a `cfg._CFG_MAPPING_ALIASES` entry pointing at `typescript.yaml`, whose header already asserted it covers both grammars. It is the more consequential of that pair: TypeScript has 6 catalogued sources and **zero** sinks, JavaScript has 50 and **83**. All five are covered by a wiring gate over every *registered* extractor rather than a per-language checklist. **Java: mapping only** — `cfg_nodes/java.yaml` declares no `atomic_statement` and no extractor is registered, so its 69 catalogued sinks cannot be data-flow adjudicated. **§7a field-sensitivity: still NO production caller** (`is_field_tainted`). **§3a propagation: confirm-only — it raises confidence and does not decide flow inclusion**; see §3a and the `inclusion_decided_by` constant in §3e. The per-language state above is computed and emitted at runtime by `dataflow_scope`, so this row cannot silently decay the way its predecessor did. |
 | 2b | Rust hard patterns: borrow aliases, `ref`/`ref mut` bindings | Shipped (`03dee372c3`) | No — downstream of the Rust extractor, which has no production caller |
-| 3 | Function summaries (inferred from DDG + YAML-declared) | Shipped (inferred `942100377c`, declared `2df1ec8bf0`) | **No.** `infer_summary` and `load_function_summaries` have zero production callers; the only in-tree reference is a catalog-directory listing. |
+| 3 | Function summaries (inferred from DDG + YAML-declared) | Shipped (inferred `942100377c`, declared `2df1ec8bf0`) | **Split — and this row said "No" for both until 2026-08-26.** **§4b DECLARED: yes.** `propagate_taint_ddg` calls `load_function_summaries()` (`taint.py:3363`) and its declared terminating entries feed `_use_site_terminates` (#197). **§4a INFERRED: no.** `infer_summary` has zero production callers, and the shipped `FunctionSummary` omits `param_to_calls`, `param_to_param` and `symbol_id` — the first of which is what a cross-function walk needs (WI-famig). `infer_summary` also computes `return_sources` and drops it on the floor: the local is built and the return statement omits it. |
 | 4 | Cross-language taint propagation via existing linkers | Shipped (`749a73b47f`) | **Partly.** The bridge edge-types are admitted to the BFS, which is live. The §5 mechanism that looks up a callee's *summary* is dead with Phase 3. |
 
 The original ordering had Rust first (motivated by PlazaFlow's trust-boundary verification needs) with Python as a fallback if PlazaFlow code was delayed; the actual landing order put Python first via the accepted-ADR revision (see `fad503239213` and the "Python is the first extractor" rationale in Context). Phase 1 and Phase 2 together produce structural and DDG-precise taint analysis; Phase 2b extends Rust precision for borrow-mediated mutation; Phase 3 enables interprocedural taint flow via summaries; Phase 4 extends propagation across language boundaries via the existing linker edge types.

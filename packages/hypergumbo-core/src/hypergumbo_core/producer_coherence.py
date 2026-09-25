@@ -12,19 +12,44 @@ not a module-level set assignment).
 
 This module closes the L3 gap. It walks ``Edge.create(...)`` /
 ``Edge(...)`` / ``Symbol.create(...)`` / ``Symbol(...)`` call sites
-across the package source tree and verifies that **literal-string**
-keyword arguments to axis-bearing parameters are in the corresponding
-canonical registry. F-string emits and module-constant references are
-classified as **advisories** (Phase-3 fold candidates per the parent
+under ``packages/``, ``scripts/`` and ``.agent/`` and verifies that
+**literal-string** keyword arguments to axis-bearing parameters (module
+constants resolve to their literal and are checked the same way) are in
+the corresponding canonical registry. F-string emits that cannot be
+expanded (the per-axis wrappers default to ``fstring_mode="expand"``)
+are classified as **advisories** (Phase-3 fold candidates per the parent
 ADR), not strict failures — they're the existing producer-side leak
 shape that Phase 3's per-cluster migration normalizes.
+
+Name arguments are resolved too: function-local bindings (single
+literal, ternary, if/else chain) and dict-subscript lookups
+(``et = MAP[k]``) yield their candidate literals. What still cannot be
+resolved (parameters, loop targets, call results) is skipped silently by
+default, or reported as advisory / strict via ``variable_form_mode``.
+With ``descend_helpers=True`` the walk also follows module-local emission
+helpers, nested closures included, that receive the axis value
+positionally or by keyword; a per-module fixpoint finds helpers that
+forward to other helpers.
+
+Besides this gate the module enumerates. ``find_emitted_literal_values``
+(and its ``find_emitted_{symbol_kinds,evidence_types,edge_types}``
+wrappers) maps every emitted value to its sites regardless of registry
+membership, for audits that must assert "no producer emits X".
+``unregistered_emitted_values`` narrows that to non-registry values, and
+``ratchet_diff`` compares them with a committed baseline: a new value is
+a regression, and a baselined value no longer emitted must be removed,
+so the baseline only shrinks. ``edge_sites_without_evidence_type`` lists
+``Edge`` sites that omit ``evidence_type``, since the ``ast_call_direct``
+default would claim a direct call the producer never observed.
 
 The check is field-agnostic: callers parameterize it with the
 ``constructor_names`` to match (e.g. ``{"Edge", "Edge.create"}``), the
 ``keyword_arg`` to inspect (``"evidence_type"``, ``"kind"``,
 ``"edge_type"``), and the ``registry_names`` frozenset. The wrapper at
-``scripts/check-producer-axis-coherence`` invokes it for all three
-sibling axes uniformly.
+``scripts/check-producer-axis-coherence`` does not call this gate: it
+runs a shrink-only baseline ratchet (``ratchet_diff``) over the
+``unregistered_{evidence_types,symbol_kinds,edge_types}`` enumerators
+for the three sibling axes.
 
 Why this lives next to ``axis_drift.py``: the two halves of axis
 enforcement (consumer-side L1, producer-side L3) share the same AST-
@@ -1026,7 +1051,7 @@ def find_evidence_type_producer_violations(
 
     Defaults to ``fstring_mode="expand"`` per WI-nubuv ext B: the only
     live producer f-string for this axis is
-    ``linkers/inheritance.py:258`` (``f"ast_{edge_type}"``), and the
+    ``linkers/inheritance.py::_create_inheritance_edges`` (``f"ast_{edge_type}"``), and the
     expansion via function-local ``edge_type`` resolution yields
     ``{ast_extends, ast_implements}`` — both canonical members of the
     AXIS_INFERENCE_PATHWAY registry. Expansion mode silently accepts the
@@ -1279,6 +1304,69 @@ def ratchet_diff(
     if either is non-empty.
     """
     return sorted(live_values - baseline_values), sorted(baseline_values - live_values)
+
+
+def edge_sites_without_evidence_type(
+    repo_root: Path,
+    *,
+    search_roots: Iterable[str] = DEFAULT_SEARCH_ROOTS,
+    excluded_path_substrings: Iterable[str] = DEFAULT_EXCLUDED_PATH_SUBSTRINGS,
+) -> tuple[str, ...]:
+    """``file:line`` for every producer site that does not NAME its pathway.
+
+    ``Edge.evidence_type`` defaults to ``ast_call_direct`` on both the
+    dataclass and ``Edge.create``, and ADR-0028 makes that value a claim
+    about how the analyzer concluded the edge exists — the most specific
+    pathway in a 126-value vocabulary. A producer that omits the keyword
+    therefore does not abstain: it asserts a direct call site it never saw,
+    and `Edge.create` then DERIVES the edge's confidence from that
+    fabricated pathway and stamps it ``evidence_derived`` (INV-nudoj).
+    Fifty-one sites did exactly that, including three linkers that perform
+    no call analysis at all.
+
+    The cure is to make the omission impossible rather than to detect the
+    phantom afterwards: every producer names its pathway, so the merge
+    pass's candidate set (ADR-0057 §1) cannot contain an unobserved value.
+    A call that forwards ``**kwargs`` is not a site — what it passes cannot
+    be read statically — and neither are tests, which construct synthetic
+    edges (:data:`DEFAULT_EXCLUDED_PATH_SUBSTRINGS`).
+    """
+    excluded_tuple = tuple(excluded_path_substrings)
+    sites: list[str] = []
+    for root_name in search_roots:
+        root = repo_root / root_name
+        if not root.is_dir():
+            continue
+        for py_file in sorted(root.rglob("*.py")):
+            py_str = str(py_file)
+            if any(sub in py_str for sub in excluded_tuple):
+                continue
+            try:
+                tree = ast.parse(py_file.read_text(encoding="utf-8"))
+            except (OSError, SyntaxError):  # pragma: no cover - unparseable source
+                continue
+            try:
+                rel: Path | str = py_file.relative_to(repo_root)
+            except ValueError:  # pragma: no cover
+                rel = py_file
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                is_site = (
+                    (isinstance(func, ast.Name) and func.id == "Edge")
+                    or (
+                        isinstance(func, ast.Attribute) and func.attr == "create"
+                        and isinstance(func.value, ast.Name) and func.value.id == "Edge"
+                    )
+                )
+                if not is_site:
+                    continue
+                names = {kw.arg for kw in node.keywords}
+                if "evidence_type" in names or None in names:
+                    continue
+                sites.append(f"{rel}:{node.lineno}")
+    return tuple(sites)
 
 
 def unregistered_symbol_kinds(

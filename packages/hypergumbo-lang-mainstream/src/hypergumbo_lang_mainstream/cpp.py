@@ -6,11 +6,22 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Struct declarations
 - Enum declarations
 - Function definitions (standalone and class methods)
+- Pure-virtual methods, which carry ``modifiers=[visibility, "virtual",
+  "abstract"]``; the enclosing class is marked ``abstract`` in turn
+  (``_emit_cpp_pure_virtual`` / ``_cpp_has_pure_virtual``)
+- Data-member fields, one ``field`` Symbol per class/struct member
+  (``_emit_cpp_field_symbols``)
+- Enum members, one ``field`` Symbol per enumerator named ``Color::Red``
+  (WI-dorop)
+- Namespace- and module-scope variables (``variable`` Symbols)
 - Namespace aliases (used as resolution path hints, ADR-0007)
 - Function call relationships
 - Include directives
 - Object instantiation (new expressions, stack construction, and compound literals)
-- Dispatch table edges (function pointers in static array initializers)
+- Dispatch table edges (function pointers in static array initializers),
+  plus ``references`` edges carrying ``meta.ref_construct='dispatch_table'``
+  for the USE of a dispatch table inside a lookup function, which completes
+  the chain from caller through lookup to dispatched target
 - Function-pointer references (address-of expressions like `&func` or `&Class::method`)
 - Module attribute references for iostream IO (`std::cout`/`std::cerr`/`std::cin` and namespace-alias attribute reads; feeds io-boundaries)
 
@@ -1090,6 +1101,148 @@ def _resolve_cpp_field_chain(
     return current_type
 
 
+#: Namespaces whose qualified calls name a MODULE the catalogue keys on.
+#:
+#: WI-bapuk. cpp.yaml rows std::cout / std::cerr / std::cin under ``module: std``
+#: and the ATTRIBUTE path already emits ``std``; the CALL path discarded the
+#: namespace and used the file's #include list alone, so ``std::getline(...)``
+#: arrived as ``iostream,fstream,string`` and no ``std`` row could ever match.
+#: Keyed here rather than derived because an arbitrary namespace is a PROJECT's,
+#: and writing it into the module slot would be a present-but-wrong hint -- the
+#: INV-kotob shape, worse than untyped.
+_CPP_CATALOGUE_NAMESPACES: frozenset[str] = frozenset({"std"})
+
+#: Which ARGUMENT of a C++ stream read carries the stream (WI-bapuk).
+#:
+#: ``std::getline(stream, str)`` takes it FIRST, unlike C's ``fgets``, which is
+#: why this is a separate table from ``_C_STREAM_ARG_INDEX`` rather than an
+#: import of it: same mechanism, different argument order, and one table
+#: serving both would have to encode the language too.
+_CPP_STREAM_ARG_INDEX: dict[str, int] = {"getline": 0}
+
+#: Expressions naming a standard stream.
+_CPP_STD_STREAM_EXPRS: frozenset[str] = frozenset({"std::cin", "cin"})
+
+#: Declared types that name a filesystem stream.
+_CPP_PATH_STREAM_TYPES: frozenset[str] = frozenset({
+    "ifstream", "fstream", "ofstream",
+})
+
+#: Declared types over an in-process buffer.
+_CPP_MEMORY_STREAM_TYPES: frozenset[str] = frozenset({
+    "istringstream", "ostringstream", "stringstream", "istrstream",
+})
+
+
+def _cpp_short_type(text: str) -> str:
+    """Last ``::`` component of a type spelling, template arguments stripped."""
+    return text.strip().split("<", 1)[0].strip().rsplit("::", 1)[-1]
+
+
+def _cpp_classify_stream_text(text: str) -> Optional[str]:
+    """``io_target_kind`` for an expression that names a stream, or None.
+
+    ONE PLACE, so an inline ``std::getline(std::cin, s)`` and a resolved
+    declaration cannot drift into disagreeing -- the same reason
+    ``_c_classify_stream_text`` is one place.
+    """
+    stripped = text.strip()
+    if stripped in _CPP_STD_STREAM_EXPRS:
+        return "std_stream"
+    return None
+
+
+def _cpp_declared_type_kind(
+    node: "tree_sitter.Node", source: bytes, name: str,
+) -> Optional[str]:
+    """``io_target_kind`` from the DECLARED TYPE of *name*, or None.
+
+    C++ WRITES THE TYPE DOWN, so this reads it rather than chasing a value
+    origin the way c and go must. ``std::ifstream in(p);`` is the most-vexing-
+    parse shape -- a ``declaration`` whose type field is ``std::ifstream`` and
+    whose declarator is a ``function_declarator`` -- and ``std::ifstream in =
+    std::ifstream(p);`` is an ``init_declarator`` under the same declaration, so
+    both reach the same type node.
+
+    Scoped to the enclosing function and to DECLARATIONS, so a parameter
+    (``std::istream& is``) answers nothing: an istream may be a file, a pipe or
+    a buffer, and INV-zumin's rule is one answer per call site or none.
+    """
+    body = None
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            body = current.child_by_field_name("body")
+            break
+        current = current.parent
+    if body is None:
+        return None
+    use_line = node.start_point[0]
+    best_line = -1
+    best: Optional[str] = None
+    stack = [body]
+    while stack:
+        cur = stack.pop()
+        stack.extend(cur.children)
+        if cur.type != "declaration":
+            continue
+        if cur.start_point[0] > use_line or cur.start_point[0] < best_line:
+            continue
+        type_node = cur.child_by_field_name("type")
+        if type_node is None:  # pragma: no cover - a declaration always has one
+            continue
+        declared = None
+        for child in cur.children:
+            if child.type == "function_declarator":
+                ident = _find_child_by_type(child, "identifier")
+                if ident is not None:
+                    declared = _node_text(ident, source)
+            elif child.type == "init_declarator":
+                ident = child.child_by_field_name("declarator")
+                if ident is not None:
+                    declared = _node_text(ident, source)
+            elif child.type == "identifier":
+                declared = _node_text(child, source)
+        if declared != name:
+            continue
+        short = _cpp_short_type(_node_text(type_node, source))
+        if short in _CPP_PATH_STREAM_TYPES:
+            best, best_line = "host_path", cur.start_point[0]
+        elif short in _CPP_MEMORY_STREAM_TYPES:
+            best, best_line = "in_memory", cur.start_point[0]
+        else:
+            best, best_line = None, cur.start_point[0]
+    return best
+
+
+def _cpp_stream_target_kind(
+    call_node: "tree_sitter.Node", source: bytes, callee: str,
+) -> Optional[str]:
+    """``io_target_kind`` for a C++ stream read, or None to stay silent.
+
+    Returns None for everything not provable -- a parameter, a field, a stream
+    from a function this file does not declare. An unstamped edge classifies
+    exactly as it did before this existed, falling to the first-declared row.
+    """
+    index = _CPP_STREAM_ARG_INDEX.get(_cpp_short_type(callee))
+    if index is None:
+        return None
+    args = call_node.child_by_field_name("arguments")
+    if args is None:  # pragma: no cover - a call always carries arguments
+        return None
+    actual = [c for c in args.children if c.is_named]
+    if index >= len(actual):
+        return None
+    arg_text = _node_text(actual[index], source)
+    direct = _cpp_classify_stream_text(arg_text)
+    if direct is not None:
+        return direct
+    bare = arg_text.strip()
+    if not bare.isidentifier():
+        return None
+    return _cpp_declared_type_kind(call_node, source, bare)
+
+
 def _extract_edges_from_tree(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -1121,6 +1274,10 @@ def _extract_edges_from_tree(
     # include set. Without this, ``std::printf(...)`` after
     # ``#include <cstdio>`` produces a dst with no header context.
     system_includes: list[str] = []
+    # WI-bapuk: `using namespace std;` makes an UNQUALIFIED `getline(cin, s)`
+    # resolvable in std, which is the spelling teaching code and competitive
+    # C++ actually use. Collected file-wide, exactly as the includes are.
+    using_namespaces: list[str] = []
     for _n in iter_tree(tree.root_node):
         if _n.type == "preproc_include":
             _sys_lib = _find_child_by_type(_n, "system_lib_string")
@@ -1129,6 +1286,12 @@ def _extract_edges_from_tree(
                 _hdr = _node_text(_sys_lib, source).strip("<>")
                 if _hdr:
                     system_includes.append(_hdr)
+        elif _n.type == "using_declaration":
+            _kids = [c.type for c in _n.children]
+            if "namespace" in _kids:
+                _ident = _find_child_by_type(_n, "identifier")
+                if _ident is not None:
+                    using_namespaces.append(_node_text(_ident, source))
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the function name being called from a call_expression.
@@ -1389,14 +1552,57 @@ def _extract_edges_from_tree(
                             # could be from any of the included headers";
                             # downstream consumers may split the module_hint
                             # on commas if they need per-header resolution.
-                            if system_includes:
-                                module_hint = ",".join(system_includes)
+                            # WI-bapuk: the namespace the call NAMES is a
+                            # module home, and discarding it made every
+                            # `std::` row unreachable. ADDED to the
+                            # disjunction, never replacing it: classification
+                            # asks whether ANY disjunct names a primitive, so
+                            # adding one can only add matches, whereas
+                            # replacing would delete `std::printf`'s match
+                            # against c.yaml's inherited `stdio` row.
+                            _ns = (
+                                callee_name.split("::")[0]
+                                if "::" in callee_name else ""
+                            )
+                            _slots: list[str] = []
+                            if _ns in _CPP_CATALOGUE_NAMESPACES:
+                                _slots.append(_ns)
+                            elif not _ns:
+                                _slots.extend(
+                                    n for n in using_namespaces
+                                    if n in _CPP_CATALOGUE_NAMESPACES
+                                )
+                            # ONLY when the file HAS system includes. With none,
+                            # the slot stays the `external` SENTINEL, and that
+                            # sentinel is load-bearing: it is what enables
+                            # `lookup_with_module`'s SHORT-NAME FALLBACK. Naming
+                            # `std` there asserts a module the catalogue keys
+                            # nothing under -- cpp.yaml files chrono under
+                            # `std::chrono::system_clock`, not `std` -- so the
+                            # fallback switched off and the classification was
+                            # DELETED. Measured on modsecurity: two
+                            # `std::chrono::system_clock::now()` chains in
+                            # collection_data.cc (no system includes) went
+                            # host_info_read -> nothing. Caught by diffing the
+                            # A/B BOTH WAYS on a module-stable key; the naive
+                            # diff hid it as 112 added / 102 removed, because
+                            # changing the module slot changes every dst string
+                            # and so the diff key itself moved.
+                            _slots = (
+                                _slots + list(system_includes)
+                                if system_includes else []
+                            )
+                            _target_kind = _cpp_stream_target_kind(
+                                node, source, callee_name,
+                            )
+                            if _slots:
+                                module_hint = ",".join(_slots)
                                 ext_ref = ExternalRef(
                                     lang="cpp",
                                     module_path=module_hint,
                                     name=short_name,
                                 )
-                                edges.append(make_unresolved_edge(
+                                _e = make_unresolved_edge(
                                     "cpp", current_function.id, short_name,
                                     node.start_point[0] + 1, PASS_ID,
                                     run.execution_id,
@@ -1404,7 +1610,16 @@ def _extract_edges_from_tree(
                                     dst_ref=ext_ref,
                                     enclosing_class=_enclosing_type,
                                     call_construct=_unresolved_construct,
-                                ))
+                                )
+                                if _target_kind is not None:
+                                    # Rebuilt, not indexed: Edge.meta is
+                                    # Optional and `meta[k] = v` on it is the
+                                    # mypy ratchet's `index` code.
+                                    _e.meta = {
+                                        **(_e.meta or {}),
+                                        "io_target_kind": _target_kind,
+                                    }
+                                edges.append(_e)
                             else:
                                 edges.append(make_unresolved_edge(
                                     "cpp", current_function.id, short_name,
@@ -1572,7 +1787,8 @@ def _extract_edges_from_tree(
     # identical dispatch tables (command dispatch, plugin registries, etc.).
     #
     # After detecting dispatch tables, scan function bodies for references
-    # to the dispatch table variable, creating uses_dispatch_table edges.
+    # to the dispatch table variable, creating `references` edges carrying
+    # meta.ref_construct='dispatch_table'.
     dispatch_tables: dict[str, str] = {}  # variable name -> symbol ID
     for dt_node in iter_tree(tree.root_node):
         if dt_node.type != "init_declarator":
@@ -1636,7 +1852,8 @@ def _extract_edges_from_tree(
             dispatch_tables[array_name] = array_src_id
 
     # Scan function bodies for references to discovered dispatch table
-    # variables, creating uses_dispatch_table edges.
+    # variables, creating `references` edges carrying
+    # meta.ref_construct='dispatch_table'.
     if dispatch_tables:
         str_path = str(file_path)
         for dt_node in iter_tree(tree.root_node):
@@ -1722,6 +1939,57 @@ def _extract_edges_from_tree(
         call_node_kinds=("call_expression",),
         call_function_field_names=("function",),
         scoped_path=True,
+        # INV-pusin, the C++ half of the same defect: `using std::string;`
+        # is an import and `std::string f(int)` is a type, and the walk
+        # emitted both as attribute reads. A declaration's type sits
+        # DIRECTLY under the declaring node here (no `scoped_type_identifier`
+        # wrapper as in rust), so the declaration kinds themselves are the
+        # skip context -- a genuine read resolves to `binary_expression` /
+        # `init_declarator` instead and is unaffected.
+        # INV-sibij: `using S = std::string;` is a TYPE ALIAS and its scoped
+        # path sits under `type_descriptor`, which this tuple did not carry —
+        # so INV-pusin's statement held for cpp's `using_declaration` and
+        # failed for its alias. `type_descriptor` was NOT appended when the
+        # defect was filed, because in the cpp grammar it also covers casts
+        # and template arguments and "whether every member of that population
+        # is genuinely a type annotation" was not established. It is now,
+        # by parsing each form and calling the production `_scoped_context_kind`
+        # (docs + instrument: ~/hypergumbo_lab_notebook/sibij_cpp_08272026):
+        #
+        #   using S = std::string;              type_descriptor   type alias
+        #   static_cast<std::string>(y)         type_descriptor   cast
+        #   std::vector<std::string> v;         type_descriptor   template arg
+        #
+        # All three NAME a type and read no value. Template arguments are by
+        # far the largest member (rocksdb 2359 vs 126 aliases), so that is
+        # where the population actually is.
+        #
+        # `call_expression` is the OTHER context measured as leaking and is
+        # deliberately NOT added: it is where genuine calls live, an I/O call
+        # (`std::ofstream("f")`) is one, and suppressing it would be the silent
+        # recall loss this item warns about. Likewise `binary_expression`
+        # (`std::cout << 1`) and `init_declarator` (`std::string::npos`) are
+        # VALUE reads and keep emitting — pinned by positive controls in
+        # test_base.py, because removing withholding is the false-all-clear
+        # direction.
+        # A CLOSURE CAN SATISFY THE REPRO AND NOT THE STATEMENT, so twelve
+        # further forms were enumerated past the filed one. `base_class_clause`
+        # was the second leak found: `class A : public std::exception {}` NAMES
+        # a type. `for_range_loop` is the third and is deliberately ABSENT --
+        # that context covers BOTH halves of the loop:
+        #     for (std::string x : v)   -> std::string  TYPE
+        #     for (auto& l : std::cin)  -> std::cin     VALUE, a real stream
+        # so skipping it would suppress a genuine read, the same hazard as
+        # `std::cout << 1`. Separating the loop variable's TYPE from the RANGE
+        # EXPRESSION needs FIELD-level granularity, which this parameter does
+        # not have -- it matches ancestor KIND only. The residual over-
+        # withholds, which is the safe direction, and is recorded rather than
+        # forced.
+        skip_context_kinds=(
+            "using_declaration", "function_definition", "declaration",
+            "parameter_declaration", "field_declaration", "type_descriptor",
+            "base_class_clause",
+        ),
         # INV-fafol: anchor each read to the callable that performs it, not to
         # the file. A source and a sink must share a caller to propagate.
         enclosing_symbols=list(local_symbols.values()),
@@ -1829,7 +2097,7 @@ def is_cpp_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("cpp")
+@register_analyzer("cpp", find_files=find_cpp_files)
 def analyze_cpp(repo_root: Path) -> CppAnalysisResult:
     """Analyze all C++ files in a repository.
 

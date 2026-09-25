@@ -9,11 +9,31 @@ This analyzer uses tree-sitter-c to parse C files and extract:
 - Function call relationships (edges)
 - Function-pointer references and callback-argument calls (edges)
 - Dispatch tables from static-array and designated-struct initializers
-  (dispatches_to edges)
+  (dispatches_to edges), plus a ``references`` edge with
+  ``meta.ref_construct="dispatch_table"`` from each function whose body
+  names a dispatch table to that table
 - stdio global references (stdout/stderr/stdin) as module_attr_ref edges
 
 The analyzer also extracts function signatures (``_extract_c_signature``)
 and applies ADR-0015 Tier 1 dataflow annotation to the resulting edges.
+
+Call-edge details:
+
+- **Include-set module hint**: an unresolved call (no in-repo definition)
+  whose name is in the C catalogue's ``ambiguous_names`` (send, recv, read,
+  write, open, close, ...) gets ``module_hint`` set to the file's
+  comma-joined system ``#include`` headers, so the catalogue can match it.
+  Other unresolved calls keep the ``external`` hint; stamping them too was
+  measured to lose matches, because a hint disables the short-name fallback.
+- **I/O stamps**: ``stamp_io_mode_from_call`` records a literal mode
+  argument (``fopen(p, "w")``) as ``io_mode`` on the edges a call produced,
+  and ``_c_stream_target_kind`` / ``_c_socket_target_kind`` set
+  ``io_target_kind`` from where the stream or socket descriptor argument
+  came from; when that origin cannot be proven, nothing is stamped.
+- **Enclosing function**: found by position (``symbols_at`` /
+  ``symbol_declared_by`` on the ``function_definition`` node), not by name,
+  so ``#ifdef`` / ``#else`` definitions of one name in one file anchor to the
+  right alternative.
 
 If tree-sitter-c is not installed, the analyzer gracefully degrades
 and returns an empty result.
@@ -29,19 +49,25 @@ How It Works
    - Pass 2: Detect calls and resolve against global symbol registry
 5. Detect function calls, function-pointer references, and dispatch-table /
    designated-initializer function-pointer edges
+6. Declaration dedup: a function prototype (``declaration`` modifier) whose
+   name also has a definition is removed, and edges that pointed at the
+   prototype are remapped to the definition. Registration already prefers
+   definitions (.c definition, then .c declaration, then .h declaration),
+   so the remap target is deterministic
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - C support is separate from other languages to keep modules focused
 - Two-pass allows cross-file call resolution
-- Same pattern as PHP/JS analyzers for consistency
+- Same two-pass registry pattern as the PHP analyzer
 - .h dedup: Both C and C++ analyzers process .h files, creating 2x symbols.
   On Falco (C/C++ repo), 44/50 .h files were duplicated and C orphan rate
   was 92.1%. Fix: skip .h in C analyzer when C++ files exist.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -60,12 +86,16 @@ from hypergumbo_core.analyze.base import (
     node_text,
     populate_docstrings_from_tree,
     stamp_io_mode_from_call,
+    symbol_declared_by,
+    symbols_at,
+    SymbolsAt,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
 )
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -434,36 +464,47 @@ def _extract_symbols(
 
 def _get_enclosing_function(
     node: "tree_sitter.Node",
-    source: bytes,
-    file_path: Path,
-    global_symbols: dict[str, Symbol],
-    local_symbols: dict[str, Symbol] | None = None,
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up to find the enclosing function definition.
+    """The function definition that contains ``node``.
 
-    Checks ``local_symbols`` first (file-scoped, always has the current
-    file's definition), then falls back to ``global_symbols`` with a path
-    check.  This is essential for C repos where multiple files define the
-    same function name (e.g. ``cmd_main`` in git's per-binary entry points).
-    Without the local lookup, only the single global-registry winner
-    would produce outgoing edges.
+    Keyed by the declaration's POSITION, not its name (INV-midag). The name
+    lookup had two defects. Across files, it was fixed by preferring the
+    file-local symbol, because git defines ``cmd_main`` once per binary. Within
+    one file it could not be fixed: an ``#ifdef``/``#else`` pair defines one name
+    twice (tmux's compat/closefrom.c), and ``local_symbols`` keeps one of them,
+    so 35 of 11,011 c call edges on a 26-repo run were anchored to the other
+    alternative. The ``function_definition`` node IS the symbol's node.
     """
     current = node.parent
-    str_path = str(file_path)
     while current is not None:
         if current.type == "function_definition":
-            name = _get_function_name(current, source)
-            if name:
-                # Prefer file-local symbol (always matches current file)
-                if local_symbols and name in local_symbols:
-                    return local_symbols[name]
-                # Fall back to global symbol with path check
-                if name in global_symbols:
-                    func_sym = global_symbols[name]
-                    if func_sym.path == str_path:
-                        return func_sym
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+_C_AMBIGUOUS_CACHE: frozenset[str] | None = None
+
+
+def _c_ambiguous_names() -> frozenset[str]:
+    """The short names ``c.yaml`` declares too generic to match without module
+    context, read from the shipped catalogue rather than restated here.
+
+    A hand-copied list is a second home for one fact and drifts by default
+    (LIVE rule 10): the day someone adds ``poll`` to ``ambiguous_names`` the
+    copy keeps yesterday's answer and nothing errors. ``py_deps.py`` sets the
+    precedent for a language package reading the catalogue directly. Cached
+    because it is consulted once per unresolved call site.
+    """
+    global _C_AMBIGUOUS_CACHE
+    if _C_AMBIGUOUS_CACHE is None:
+        from hypergumbo_core.io_boundary import load_catalog
+
+        _C_AMBIGUOUS_CACHE = frozenset(load_catalog("c").ambiguous_names or ())
+    return _C_AMBIGUOUS_CACHE
 
 
 def _extract_edges(
@@ -474,26 +515,78 @@ def _extract_edges(
     global_symbols: dict[str, Symbol],
     resolver: NameResolver | None = None,
     local_symbols: dict[str, Symbol] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed C tree (pass 2).
 
     Uses global symbol registry to resolve cross-file references.
-    Uses ``local_symbols`` (file-scoped) to correctly identify the enclosing
-    function even when multiple files define functions with the same name.
+    Identifies the enclosing function by position through
+    ``symbols_at(file_symbols)`` (this file's declarations only), so it stays
+    correct when multiple files define functions with the same name.
+    ``local_symbols`` is consulted only to look up the function symbol when
+    linking lookup functions to dispatch tables (and, when ``file_symbols``
+    is omitted, to rebuild this file's declaration list).
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
+    # Every declaration of this file, by position (INV-midag). Without the
+    # per-file list (a direct call), the local dict plus this file's entries of
+    # the global registry is the best available.
+    if file_symbols is None:
+        str_path = str(file_path)
+        file_symbols = list({
+            s.id: s for s in [*(local_symbols or {}).values(), *global_symbols.values()]
+            if s.path == str_path
+        }.values())
+    decl_index = symbols_at(file_symbols)
 
     edges: list[Edge] = []
     _caller_path = str(file_path)
 
+    # WI-lajus: pre-collect system ``#include`` headers so the unresolved-call
+    # emit path can attribute a bare call to the file's include set. C has no
+    # namespaces, so ``c.yaml`` lists send/recv/read/write/open/close under
+    # ``ambiguous_names`` and ``gate_named_entry`` refuses them outright with no
+    # module evidence -- correctly, since a project-local ``send()`` exists in
+    # the wild (fluent-bit's vendored nuttx shim). The evidence that lifts the
+    # ambiguity is the file's own include set, and it is only consulted below on
+    # the branch where the repo-wide resolver found NO in-repo definition, so a
+    # project that defines its own ``send`` never reaches the stamp.
+    #
+    # THE STAMP IS RESTRICTED TO ``ambiguous_names`` AND THAT RESTRICTION IS
+    # LOAD-BEARING, measured rather than assumed. A module hint SUPPRESSES the
+    # permissive short-name fallback, so stamping every unresolved call makes
+    # PARTIAL evidence worse than none: a file that reaches ``fprintf``
+    # transitively through a quoted project header carries a slot naming only
+    # unrelated system headers, the module filter refuses it, and a row that
+    # used to match stops matching. Measured on qemu-dtc while building this:
+    # stamping unconditionally moved stdio.fclose 5 -> 2, stdio.fopen 1 -> 0,
+    # stdio.fprintf 35 -> 34 and stdio.fputc 6 -> 5. Names outside
+    # ``ambiguous_names`` never needed the hint -- they already match by short
+    # name -- so they keep the ``external`` sentinel and the fallback.
+    #
+    # THE MECHANISM IS PARITY, NOT A NEW DESIGN: cpp.py has stamped the
+    # comma-joined include set since WI-rupik / WI-mafik, and
+    # _module_hint_candidates (INV-funuf) already splits the slot on commas and
+    # normalises ``stdio.h`` to the ``stdio`` spelling c.yaml declares. C --
+    # whose catalogue cpp INHERITS -- was the only one not supplying it.
+    system_includes: list[str] = []
+    for _n in iter_tree(tree.root_node):
+        if _n.type == "preproc_include":
+            for _child in _n.children:
+                if _child.type != "system_lib_string":
+                    continue
+                # Strip the angle brackets: ``<unistd.h>`` -> ``unistd.h``.
+                _hdr = node_text(_child, source).strip("<>")
+                if _hdr and _hdr not in system_includes:
+                    system_includes.append(_hdr)
+    _include_hint = ",".join(system_includes) if system_includes else None
+
     for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
         if node.type == "call_expression":
-            current_function = _get_enclosing_function(
-                node, source, file_path, global_symbols, local_symbols,
-            )
+            current_function = _get_enclosing_function(node, decl_index)
             # INV-kaduh. Recorded before the branch and applied after it, so
             # every edge this ONE call produces carries the mode — rather than
             # at each Edge.create inside, which is the shape that drifts.
@@ -518,9 +611,22 @@ def _extract_edges(
                         )
                         edges.append(edge)
                     else:
+                        # WI-lajus: the include set is the module evidence.
+                        # Semantics is "this call could be from any of the
+                        # included headers"; _module_hint_candidates splits on
+                        # commas and asks ANY. Absent an include set the slot
+                        # stays the ``external`` sentinel -- a missing input
+                        # must not read as a resolved one.
+                        _hint = (
+                            _include_hint
+                            if _include_hint
+                            and callee_name in _c_ambiguous_names()
+                            else "external"
+                        )
                         edges.append(make_unresolved_edge(
                             "c", current_function.id, callee_name,
                             node.start_point[0] + 1, PASS_ID, run.execution_id,
+                            module_hint=_hint,
                         ))
 
                 # Callback argument detection: bare identifiers in the
@@ -558,6 +664,19 @@ def _extract_edges(
             stamp_io_mode_from_call(
                 edges, _edges_before_call, node, source, "c",
             )
+            # WI-lipis: the stream argument's origin, recorded the same way and
+            # in the same place as the mode -- once over the edges THIS call
+            # produced, keyed on the call node rather than a line, because two
+            # calls can share a line.
+            _kind = _c_stream_target_kind(node, source)
+            if _kind is None:
+                # WI-baran: a socket transfer's descriptor, by the family the
+                # descriptor was created with -- the same hop, one table over.
+                _kind = _c_socket_target_kind(node, source)
+            if _kind is not None:
+                for _edge in edges[_edges_before_call:]:
+                    _edge.meta = dict(_edge.meta or {})
+                    _edge.meta["io_target_kind"] = _kind
 
         # Explicit function pointer: &process
         elif node.type == "pointer_expression":
@@ -568,9 +687,7 @@ def _extract_edges(
                 )
                 if ident:
                     ref_name = node_text(ident, source)
-                    current_function = _get_enclosing_function(
-                        node, source, file_path, global_symbols, local_symbols,
-                    )
+                    current_function = _get_enclosing_function(node, decl_index)
                     if current_function:
                         lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                         if (
@@ -597,7 +714,8 @@ def _extract_edges(
     #
     # After detecting dispatch tables, we also scan function bodies for
     # references to the dispatch table variable (e.g., get_builtin accessing
-    # commands[]), creating uses_dispatch_table edges to complete the chain:
+    # commands[]), creating `references` edges carrying
+    # meta.ref_construct='dispatch_table' to complete the chain:
     # cmd_main -> get_builtin -> commands[] -> cmd_add, cmd_commit, ...
     _func_symbols = {
         name: sym for name, sym in global_symbols.items()
@@ -716,7 +834,8 @@ def _extract_edges(
         ))
 
     # Scan function bodies for references to discovered dispatch table
-    # variables, creating uses_dispatch_table edges.  This connects
+    # variables, creating `references` edges carrying
+    # meta.ref_construct='dispatch_table'.  This connects
     # lookup functions (e.g., get_builtin) to the dispatch table variable,
     # completing the chain from the caller through to the dispatched targets.
     if dispatch_tables:
@@ -807,6 +926,330 @@ def _analyze_c_file(
 # references, which then get tagged as ``ipc_send`` / ``ipc_recv`` by
 # ``io_boundary.tag_io_boundaries`` against the existing entries at
 # ``io_primitives/c.yaml:85,92``.
+#: Which ARGUMENT of a stdio read carries the ``FILE *``.
+#:
+#: WI-lipis. ``c.yaml`` files all five as ``fs_read`` and says why: their
+#: boundary "is a property of the argument (INV-bagok / INV-zumin class (b)),
+#: and moving them would assert an IPC crossing for every read over a file".
+#: That is the right DEFAULT; this table is how a call site can do better.
+#:
+#: THE INDEX IS PER FUNCTION and reading the wrong one silently classifies some
+#: other argument as the stream -- ``fread(buf, 1, n, stdin)`` puts it fourth
+#: while ``fscanf(stdin, ...)`` puts it first, and a single "last argument" rule
+#: would get ``fscanf`` wrong in the direction that INVENTS a crossing.
+_C_STREAM_ARG_INDEX: dict[str, int] = {
+    # WI-bapuk: POSIX getline(&buf, &n, stream) takes its stream THIRD, exactly
+    # as fgets does. A one-entry addition -- the mechanism already existed.
+    "getline": 2,
+    "fgets": 2,
+    "fscanf": 0,
+    "fread": 3,
+    "getc": 0,
+    "fgetc": 0,
+}
+
+#: Standard streams. A read here crosses ``ipc_recv`` via ``std_stream``.
+_C_STD_STREAMS: frozenset[str] = frozenset({"stdin", "stdout", "stderr"})
+
+#: Calls that produce a ``FILE *`` over a PATH. ``fdopen`` is deliberately
+#: absent: it takes a descriptor whose nature was established wherever that
+#: descriptor came from, which is INV-vaduk's whole point, so classifying it
+#: here would assert a filesystem read over a socket.
+_C_PATH_STREAM_PRODUCERS: tuple[str, ...] = ("fopen", "freopen")
+
+
+def _c_declarator_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The identifier a (possibly pointer/array) declarator declares."""
+    current = node
+    while True:
+        if current.type == "identifier":
+            return node_text(current, source)
+        nxt = current.child_by_field_name("declarator")
+        if nxt is None:
+            return None
+        current = nxt
+
+
+def _c_enclosing_body(
+    node: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """The body of the ``function_definition`` containing *node*, if any."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            return current.child_by_field_name("body")
+        current = current.parent
+    return None
+
+
+def _c_classify_stream_text(text: str) -> Optional[str]:
+    """``io_target_kind`` for an expression that produces a ``FILE *``.
+
+    ONE PLACE, so an inline ``fgets(b, 8, fopen(p, "r"))`` and a resolved
+    binding cannot drift into disagreeing about what ``fopen`` is -- the same
+    reason ``_go_classify_handle_text`` is one place.
+    """
+    stripped = text.strip()
+    if stripped in _C_STD_STREAMS:
+        return "std_stream"
+    head = stripped.split("(", 1)[0].strip()
+    if head in _C_PATH_STREAM_PRODUCERS and "(" in stripped:
+        return "host_path"
+    return None
+
+
+def _c_binding_rhs(
+    node: "tree_sitter.Node", source: bytes, name: str,
+) -> Optional[str]:
+    """Text of the LAST binding of *name* at or above *node*'s line.
+
+    Deliberately smaller than a reaching-def solver and its answers are a
+    SUBSET of one: the enclosing function only, textual line order only, no
+    branch or loop reasoning. The analyzer runs before any DDG exists, so the
+    alternative is not "use the solver" but "answer nothing".
+
+    ORDER IS THE POINT. A scan taking the last match in the FILE would read a
+    rebinding BELOW the call as if it reached it; one taking the first would
+    miss a rebinding above it. Both are pinned by tests.
+    """
+    body = _c_enclosing_body(node)
+    if body is None:
+        return None
+    use_line = node.start_point[0]
+    best_line = -1
+    best_text: Optional[str] = None
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.children)
+        if current.type not in ("init_declarator", "assignment_expression"):
+            continue
+        if current.start_point[0] > use_line or current.start_point[0] < best_line:
+            continue
+        left = current.child_by_field_name(
+            "declarator",
+        ) or current.child_by_field_name("left")
+        right = current.child_by_field_name(
+            "value",
+        ) or current.child_by_field_name("right")
+        if left is None or right is None:  # pragma: no cover - see below
+            # DEFENSIVE. tree-sitter-c gives ``init_declarator`` both a
+            # ``declarator`` and a ``value``, and ``assignment_expression``
+            # both a ``left`` and a ``right``, on every shape reachable here --
+            # including the malformed ones (``int a = ;`` still yields two
+            # fields). Kept because a field lookup that can return None must be
+            # handled where it is read, and marked because no C source can
+            # exercise it.
+            continue
+        if _c_declarator_name(left, source) != name:
+            continue
+        best_line = current.start_point[0]
+        best_text = node_text(right, source).strip()
+    return best_text
+
+
+def _c_stream_target_kind(
+    call_node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """``io_target_kind`` for a stdio read call, or None to stay silent.
+
+    Returns None for everything not provable -- a parameter, a ``popen`` pipe,
+    a value from a function this file does not bind. INV-zumin's ruling is that
+    a call site gets ONE answer or NONE, and an unstamped edge classifies
+    exactly as it did before this existed
+    (``read_boundary_for_target_kind`` answers ``known=False``).
+    """
+    func_node = call_node.child_by_field_name("function")
+    if func_node is None or func_node.type != "identifier":
+        return None
+    index = _C_STREAM_ARG_INDEX.get(node_text(func_node, source))
+    if index is None:
+        return None
+    args = call_node.child_by_field_name("arguments")
+    if args is None:  # pragma: no cover - a call always carries arguments
+        return None
+    actual = [c for c in args.children if c.is_named]
+    if index >= len(actual):
+        return None
+    arg_text = node_text(actual[index], source)
+    direct = _c_classify_stream_text(arg_text)
+    if direct is not None:
+        return direct
+    bare = arg_text.strip()
+    if not bare.isidentifier():
+        return None
+    rhs = _c_binding_rhs(call_node, source, bare)
+    return None if rhs is None else _c_classify_stream_text(rhs)
+
+
+#: Which ARGUMENT of a socket transfer carries the descriptor (WI-baran).
+#:
+#: All six take it FIRST, unlike the stdio table above, and the table keeps
+#: that table's shape anyway so the two lookups read alike and a seventh
+#: name with a different position has a place to go. ``connect`` is absent
+#: on purpose: it transmits nothing but the connection (ADR-0049's deferred
+#: shape) and stays single-rowed in ``c.yaml``.
+_C_SOCKET_FD_INDEX: dict[str, int] = {
+    "send": 0, "sendto": 0, "sendmsg": 0,
+    "recv": 0, "recvfrom": 0, "recvmsg": 0,
+}
+
+#: Address families whose endpoint is ANOTHER PROCESS on this host (a
+#: ``pipe`` target kind: ``ipc_send`` / ``ipc_recv``) ...
+_C_LOCAL_SOCKET_FAMILIES: frozenset[str] = frozenset({
+    "AF_UNIX", "AF_LOCAL", "PF_UNIX", "PF_LOCAL",
+})
+#: ... and whose endpoint is THE NETWORK (``net_stream``). Everything else --
+#: ``PF_NETLINK`` and ``PF_PACKET`` talk to the kernel, ``AF_VSOCK`` to a
+#: hypervisor, a variable to nobody the analyzer can name -- is neither, and
+#: a call over it stamps nothing rather than guessing: INV-zumin's one answer
+#: or none, and the catalogue's ``abstains_to`` row keeps today's answer.
+_C_NETWORK_SOCKET_FAMILIES: frozenset[str] = frozenset({
+    "AF_INET", "AF_INET6", "PF_INET", "PF_INET6",
+})
+
+#: Calls whose RESULT is a connected descriptor of the LISTENER's family.
+_C_ACCEPTORS: frozenset[str] = frozenset({"accept", "accept4"})
+
+
+def _c_call_head_and_first_arg(text: str) -> Optional[tuple[str, str]]:
+    """``("socket", "AF_UNIX")`` for ``socket(AF_UNIX, SOCK_STREAM, 0)``; None
+    when *text* is not a plain ``identifier(...)`` call.
+
+    Only the FIRST argument is cut out, at depth zero, so ``socket(PF_PACKET,
+    SOCK_RAW, htons(ETH_P_ALL))`` yields ``PF_PACKET`` and not the ``htons``
+    call's inside.
+    """
+    stripped = text.strip()
+    open_idx = stripped.find("(")
+    if open_idx <= 0 or not stripped.endswith(")"):
+        return None
+    head = stripped[:open_idx].strip()
+    if not head.isidentifier():
+        return None
+    depth = 0
+    first: list[str] = []
+    for ch in stripped[open_idx + 1:-1]:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            break
+        first.append(ch)
+    return head, "".join(first).strip()
+
+
+def _c_socketpair_binds(
+    call_node: "tree_sitter.Node", source: bytes, name: str,
+) -> bool:
+    """Whether a ``socketpair(.., .., .., name)`` call precedes *call_node* in
+    its function.
+
+    ``socketpair`` fills an ARRAY through its fourth argument, so the pair is
+    never the value of an assignment and :func:`_c_binding_rhs` cannot see
+    it; the call itself is the binding. Textual line order, enclosing
+    function only, the same limits as the helper it stands beside.
+    """
+    body = _c_enclosing_body(call_node)
+    if body is None:
+        return False
+    use_line = call_node.start_point[0]
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.children)
+        if current.type != "call_expression" or current.start_point[0] >= use_line:
+            continue
+        func = current.child_by_field_name("function")
+        args = current.child_by_field_name("arguments")
+        if func is None or args is None or node_text(func, source) != "socketpair":
+            continue
+        actual = [c for c in args.children if c.is_named]
+        if len(actual) >= 4 and node_text(actual[3], source).strip() == name:
+            return True
+    return False
+
+
+def _c_classify_socket_text(
+    text: str, call_node: "tree_sitter.Node", source: bytes, depth: int,
+) -> Optional[str]:
+    """``io_target_kind`` for an expression that PRODUCES a socket descriptor.
+
+    ``socket(FAMILY, ..)`` answers from the family alone. ``accept(l, ..)`` /
+    ``accept4`` answer with the family of ``l`` -- one more hop through
+    :func:`_c_socket_kind_of_expression`, and only from depth zero, so an
+    accept of an accept is not chased. ONE PLACE, for the reason
+    :func:`_c_classify_stream_text` is: an inline producer and a resolved
+    binding cannot drift into disagreeing about what ``socket`` is.
+    """
+    parsed = _c_call_head_and_first_arg(text)
+    if parsed is None:
+        return None
+    head, first = parsed
+    if head == "socket":
+        if first in _C_LOCAL_SOCKET_FAMILIES:
+            return "pipe"
+        if first in _C_NETWORK_SOCKET_FAMILIES:
+            return "net_stream"
+        return None
+    if head in _C_ACCEPTORS and depth == 0:
+        return _c_socket_kind_of_expression(first, call_node, source, depth=1)
+    return None
+
+
+def _c_socket_kind_of_expression(
+    arg_text: str, call_node: "tree_sitter.Node", source: bytes, depth: int = 0,
+) -> Optional[str]:
+    """``io_target_kind`` for a descriptor-valued expression at *call_node*.
+
+    Inline producer first; then ``sv[0]`` / ``sv[1]`` against a preceding
+    ``socketpair(.., sv)``; then a bare identifier through its last binding.
+    Anything else -- a parameter, a struct field, an arithmetic expression --
+    is None, and None is an answer (the ``abstains_to`` row).
+    """
+    direct = _c_classify_socket_text(arg_text, call_node, source, depth)
+    if direct is not None:
+        return direct
+    bare = arg_text.strip()
+    element = re.fullmatch(r"(\w+)\[[01]\]", bare)
+    if element is not None:
+        return "pipe" if _c_socketpair_binds(call_node, source, element.group(1)) else None
+    if not bare.isidentifier():
+        return None
+    rhs = _c_binding_rhs(call_node, source, bare)
+    return None if rhs is None else _c_classify_socket_text(rhs, call_node, source, depth)
+
+
+def _c_socket_target_kind(
+    call_node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """``io_target_kind`` for a socket send/recv call, or None to stay silent.
+
+    WI-baran. Where the descriptor was created decides the boundary -- INV-vaduk's
+    rule for ``unistd.read`` / ``write``, applied one hop back through the
+    descriptor variable -- and where it cannot be recovered the call classifies
+    exactly as before (``c.yaml`` declares ``abstains_to: net_*``). Measured on
+    324 corpus sites before building: the descriptor is a bare identifier at
+    222, a struct field at 77, a ``socketpair`` element at 10; tmux's own two
+    sites, the instance that filed the item, pass it as a parameter and abstain
+    here.
+    """
+    func_node = call_node.child_by_field_name("function")
+    if func_node is None or func_node.type != "identifier":
+        return None
+    index = _C_SOCKET_FD_INDEX.get(node_text(func_node, source))
+    if index is None:
+        return None
+    args = call_node.child_by_field_name("arguments")
+    if args is None:  # pragma: no cover - a call always carries arguments
+        return None
+    actual = [c for c in args.children if c.is_named]
+    if index >= len(actual):
+        return None
+    return _c_socket_kind_of_expression(node_text(actual[index], source), call_node, source)
+
+
 _C_STDIO_GLOBALS: dict[str, str] = {
     "stdout": "stdio",
     "stderr": "stdio",
@@ -990,6 +1433,7 @@ class CAnalyzer(TreeSitterAnalyzer):
         edges = _extract_edges(
             tree, source, file_path, run, global_symbols, resolver,
             local_symbols=local_symbols,
+            file_symbols=self.file_symbols(local_symbols),
         )
         _emit_stdio_identifier_refs(tree, source, file_path, run, edges)
         return edges
@@ -1022,6 +1466,7 @@ class CAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()
@@ -1081,6 +1526,11 @@ class CAnalyzer(TreeSitterAnalyzer):
             source = source_file.read_bytes()
             tree = parser.parse(source)
             rel_path = str(source_file.relative_to(repo_root))
+            # What the base ``analyze`` does and this override did not (INV-midag):
+            # without it ``file_symbols()`` falls back to ``symbol_by_name``,
+            # which keeps ONE of an #ifdef/#else pair, so the other's calls were
+            # anchored to it and, once found by position, dropped.
+            self._current_file_symbols = analysis.symbols
             edges = self.extract_edges_from_file(
                 tree, source, source_file, rel_path,
                 analysis.symbol_by_name, global_symbols, run,
@@ -1090,6 +1540,7 @@ class CAnalyzer(TreeSitterAnalyzer):
             if _df_config is not None:
                 annotate_dataflow(edges, tree, source, _df_config)
             all_edges.extend(edges)
+        self._current_file_symbols = None
 
         # Deduplicate: remove declaration-only symbols when a definition
         # exists for the same function name.  Declarations in headers produce

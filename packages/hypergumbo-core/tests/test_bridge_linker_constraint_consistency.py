@@ -69,19 +69,21 @@ def _import_all_linker_modules() -> None:
         importlib.import_module(f"hypergumbo_core.linkers.{modname}")
 
 
-def _build_language_to_pass_id() -> dict[str, str]:
-    """Build a {language: analyzer-pass-id} map from the analyzer registry.
+def _build_language_to_pass_ids() -> dict[str, list[str]]:
+    """Build a {language: [analyzer-pass-ids]} map from the analyzer registry.
 
     For each registered analyzer A with name N and ``languages=[L1, L2, ...]``,
-    every Li maps to N. When ``languages`` is empty, the analyzer name itself
-    is the language (the default behavior in ``@register_analyzer``).
+    every Li maps to N. WI-juzig: ``languages`` is the registry's gated
+    declaration in the taxonomy's vocabulary (no ``[name]`` fallback here —
+    a ``no_language`` pass produces nothing), and a language may have MORE
+    THAN ONE producer (``rust``: tree-sitter ``rust`` and SCIP
+    ``rust_analyzer``), so the value is the full producer set.
     """
     ensure_discovered()
-    mapping: dict[str, str] = {}
+    mapping: dict[str, list[str]] = {}
     for name, analyzer in _ANALYZER_REGISTRY.items():
-        langs = analyzer.languages or [name]
-        for lang in langs:
-            mapping[lang] = name
+        for lang in analyzer.languages:
+            mapping.setdefault(lang, []).append(name)
     return mapping
 
 
@@ -101,20 +103,25 @@ def _bridge_subcategory(linker: RegisteredLinker) -> bool:
 
 def _expected_depends_on(
     language_pairs: list[tuple[str, str]],
-    lang_to_pass: dict[str, str],
+    lang_to_passes: dict[str, list[str]],
 ) -> list[list[str]]:
     """Compute the CNF shape ``depends_on`` should have for the given pairs.
 
     Args:
         language_pairs: Activation language_pairs (each ``(anchor, impl)``).
-        lang_to_pass: Map from language name to analyzer pass id.
+        lang_to_passes: Map from language name to EVERY analyzer pass id
+            that produces it; a language with no producer stands for itself.
 
     Returns:
         Sorted CNF: ``[sorted(anchor_passes), sorted(impl_passes)]`` or
         ``[sorted(anchor_passes)]`` when both sides resolve to the same set.
     """
-    anchor_passes = sorted({lang_to_pass.get(a, a) for a, _ in language_pairs})
-    impl_passes = sorted({lang_to_pass.get(b, b) for _, b in language_pairs})
+    anchor_passes = sorted({
+        p for a, _ in language_pairs for p in lang_to_passes.get(a, [a])
+    })
+    impl_passes = sorted({
+        p for _, b in language_pairs for p in lang_to_passes.get(b, [b])
+    })
     if anchor_passes == impl_passes:
         return [anchor_passes]
     return [anchor_passes, impl_passes]
@@ -135,7 +142,7 @@ class TestBridgeLinkerConstraintConsistency:
         """
         _import_all_linker_modules()
         ensure_discovered()
-        lang_to_pass = _build_language_to_pass_id()
+        lang_to_pass = _build_language_to_pass_ids()
 
         divergences: list[str] = []
         bridge_count = 0
@@ -172,7 +179,7 @@ class TestBridgeLinkerConstraintConsistency:
 
     def test_expected_depends_on_distinct_anchor_and_impl(self) -> None:
         """Helper sanity: classic Bridge shape (java + c/cpp/rust) → 2-clause CNF."""
-        lang_to_pass = {"java": "java", "c": "c", "cpp": "cpp", "rust": "rust"}
+        lang_to_pass = {"java": ["java"], "c": ["c"], "cpp": ["cpp"], "rust": ["rust"]}
         pairs = [("java", "c"), ("java", "cpp"), ("java", "rust")]
         assert _expected_depends_on(pairs, lang_to_pass) == [
             ["java"],
@@ -181,7 +188,7 @@ class TestBridgeLinkerConstraintConsistency:
 
     def test_expected_depends_on_collapses_via_pass_id_resolution(self) -> None:
         """Helper sanity: TypeScript collapses to javascript pass id."""
-        lang_to_pass = {"typescript": "javascript", "javascript": "javascript", "rust": "rust"}
+        lang_to_pass = {"typescript": ["javascript"], "javascript": ["javascript"], "rust": ["rust"]}
         pairs = [("typescript", "rust"), ("javascript", "rust")]
         assert _expected_depends_on(pairs, lang_to_pass) == [
             ["javascript"],
@@ -190,13 +197,21 @@ class TestBridgeLinkerConstraintConsistency:
 
     def test_expected_depends_on_same_set_collapses_to_single_clause(self) -> None:
         """Helper sanity: when anchor and impl sets are equal, CNF is one clause."""
-        lang_to_pass = {"foo": "foo"}
+        lang_to_pass = {"foo": ["foo"]}
         pairs = [("foo", "foo")]
         assert _expected_depends_on(pairs, lang_to_pass) == [["foo"]]
 
+    def test_a_language_with_two_producers_expands_to_both(self) -> None:
+        """WI-juzig: ``rust`` is produced by the tree-sitter ``rust`` pass AND
+        the SCIP ``rust_analyzer`` backend; a dependency on rust symbols is
+        satisfied by either, so the impl clause names both."""
+        lang_to_pass = {"java": ["java"], "rust": ["rust", "rust_analyzer"]}
+        pairs = [("java", "rust")]
+        assert _expected_depends_on(pairs, lang_to_pass) == [["java"], ["rust", "rust_analyzer"]]
+
     def test_drift_guard_catches_simulated_divergence(self) -> None:
         """Negative test: a simulated impl-set divergence is caught by the helper."""
-        lang_to_pass = {"java": "java", "c": "c", "cpp": "cpp", "rust": "rust"}
+        lang_to_pass = {"java": ["java"], "c": ["c"], "cpp": ["cpp"], "rust": ["rust"]}
         pairs_with_added_impl = [
             ("java", "c"),
             ("java", "cpp"),

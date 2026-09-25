@@ -1,0 +1,20 @@
+- op: create  # 05c5
+  at: '2026-09-25T06:33:20Z'  # 05c5
+  by: agent  # 05c5
+  actor: jgstern_agent  # 05c5
+  clock: 1  # 05c5
+  nonce: 05c5  # 05c5
+  data:  # 05c5
+    kind: work_item  # 05c5
+    title: "jackson / kafka_streams linkers declare depends_on=[[java]] but read kotlin and scala symbols (too-narrow clause, never falsified on the corpus)"  # 05c5
+    status: todo_hard  # 05c5
+    priority: 3  # 05c5
+    parent:  # 05c5
+    tags:  # 05c5
+    - analysis_quality  # 05c5
+    isbefore: []  # 05c5
+    duplicate_of: []  # 05c5
+    not_duplicate_of: []  # 05c5
+    pr_ref:  # 05c5
+    description: "EVIDENCE (2026-09-25, dev 78dd52c779):\n- linkers/jackson_dispatch.py: `depends_on=[[\"java\"]]` (~L428), with the comment \"CNF: Jackson is Java-only\". The code filters `sym.language not in {\"java\",\"kotlin\",\"scala\"}` (~L324, ~L371), and registers `languages=frozenset({\"java\",\"kotlin\",\"scala\"})` (~L446).\n- linkers/kafka_streams_dispatch.py: `depends_on=[[\"java\"]]` (~L354), filtering on the same three languages (~L269).\n\nWHY IT MATTERS: owner ruling 09-22 says depends_on must name the HOST analyzers a linker reads. On a Kotlin-only or Scala-only repo, the java clause is unsatisfied, but the linker still runs and can emit edges. So its silence stamp says prerequisite absent while it actually read kotlin/scala symbols. find_falsified_dependencies (WI-jijor) catches exactly this too-narrow direction, but only on a repo whose Jackson or Kafka Streams classes are Kotlin/Scala with no Java. None of the 975 surveys was such a repo, so it has never fired.\n\nPRIOR ART: the WI-ditir -> WI-rasal -> WI-zujan family (all done) repaired too-wide clauses (WI-zujan) and six clauses the detector caught (WI-rasal). Neither enumerated these two linkers.\n\nASKED:\n1. Widen both to `[[\"java\", \"kotlin\", \"scala\"]]` (a disjunction), or rule that the narrow clause is deliberate and say why in the declaration.\n2. Sweep every linker's `languages=` / language filter against its depends_on. The two here are not proven to be the only mismatches.\n3. Add a Kotlin-only fixture per linker that shows the edges and a satisfied clause."  # 05c5
+    fields: {}  # 05c5

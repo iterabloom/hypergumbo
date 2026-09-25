@@ -5,9 +5,40 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
 - Module declarations (defmodule)
 - Function declarations (def/defp)
 - Macro declarations (defmacro/defmacrop)
-- Function call relationships
+- Function call relationships, in BOTH module-qualified receiver syntaxes:
+  an ``alias`` receiver for an Elixir module (``Logger.error``) and an
+  ``atom`` receiver for an Erlang/OTP one (``:ets.insert``). The atom form
+  is not a stylistic variant — it is the ONLY way Elixir can call OTP at
+  all, so ``:ets``, ``:file``, ``:gen_tcp``, ``:crypto`` and ``:httpc``
+  are reachable through no other spelling (WI-kigub). Its module slot is
+  emitted WITHOUT the leading colon, matching both the catalogue's rows
+  and what the erlang analyzer emits for the same OTP modules. Four other
+  receiver shapes the grammar puts in the same position are deliberately
+  refused and pinned as such: a variable (``mod.fun()``), a module
+  attribute (``@attr.thing()``), a quoted atom (``:"Elixir.Foo".bar()``)
+  and an anonymous call (``f.()``, which has no named callee at all).
 - Import relationships (use/import). ``alias`` produces NO edge — it is
-  collected only as a hint for call disambiguation.
+  collected only as a hint for call disambiguation, in all four spellings:
+  ``alias A.B.C``, ``alias A.B.C, as: X``, the MULTI-ALIAS BRACE FORM
+  ``alias A.B.{C, D}`` (whose tree is ``arguments -> dot -> [alias, ".",
+  tuple]``, so it has no ``alias`` child of ``arguments`` and used to
+  register nothing), and by FIRST COMPONENT — ``alias Mix.Tasks.Phx.Gen``
+  makes ``Gen.Context.build(...)`` mean
+  ``Mix.Tasks.Phx.Gen.Context.build/2``. The last two became load-bearing
+  when qualified calls stopped resolving by bare name (WI-kafor): a
+  qualified call is resolved by EXACT name only, so an alias that is not
+  read is a call that is not resolved.
+- A BARE call to a stdlib-named function takes the module its own file's
+  ``import`` directives establish, and NOTHING ELSE (WI-jozap). Three ordered
+  rules: an ``import M, only: [f: n]`` list that names the function wins; a
+  Kernel auto-import (``is_atom``, ``inspect``, ``raise``) gets no module-keyed
+  edge, because it is available with no directive at all and is therefore not
+  the imported module's function; an importable name (``IO.puts``,
+  ``Enum.map``, ``String.split``, ``Logger.error``) takes its owning module
+  only when that module is imported. Anything else is DECLINED. This replaced
+  ``next(iter(imported_modules))``, which took an arbitrary set member and,
+  because Python randomises string hashing per process, made the analyzer
+  non-deterministic across runs.
 - OTP/Phoenix/WebSocket behaviour callback edges (use GenServer, @behaviour Plug, etc.)
 
 If tree-sitter with Elixir support is not installed, the analyzer
@@ -51,6 +82,9 @@ from hypergumbo_core.analyze.base import (
     make_route_symbol,
     make_symbol_id,
     node_text,
+    symbol_declared_by,
+    SymbolsAt,
+    symbols_at as index_symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -94,7 +128,11 @@ BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
 # Local definitions shadow Kernel, so local_symbols_multi matches are
 # still allowed.  Only the cross-file (global_multi / resolver)
 # fallback is gated.
-_ELIXIR_STDLIB_FUNCTIONS: frozenset[str] = frozenset({
+#: Kernel and Kernel.SpecialForms names: available bare with NO ``import``
+#: directive at all. WI-jozap: membership here is precisely the statement "this
+#: is NOT the imported module's function", so a bare call to one of these must
+#: never be attributed to a module the file happens to import.
+_ELIXIR_KERNEL_AUTO_IMPORTS: frozenset[str] = frozenset({
     # Kernel — auto-imported, always available bare
     "inspect", "to_string", "to_charlist", "is_atom", "is_binary",
     "is_bitstring", "is_boolean", "is_float", "is_function",
@@ -110,18 +148,35 @@ _ELIXIR_STDLIB_FUNCTIONS: frozenset[str] = frozenset({
     "get_and_update_in", "pop_in", "match?", "dbg",
     # Kernel.SpecialForms — technically macros but called bare
     "import", "require", "alias", "use",
-    # IO — commonly called bare via import
-    "puts", "write", "gets",
-    # Enum — very common via import
-    "map", "filter", "reduce", "each", "sort", "flat_map",
-    "find", "reject", "any?", "all?", "count", "zip",
-    "uniq", "chunk_every", "group_by", "into",
-    # String — commonly imported
-    "split", "join", "trim", "replace", "starts_with?",
-    "ends_with?", "contains?", "downcase", "upcase",
-    # Logger
-    "debug", "info", "warn", "error",
 })
+
+#: Bare-callable names that DO come from an imported module, mapped to the
+#: module that exports them. The ownership was already written down as prose
+#: comments beside these names ("# IO — commonly called bare via import") and
+#: never used as data; WI-jozap is what that cost. Keyed by name because the
+#: name is what a bare call site gives us, and a dict lookup is deterministic
+#: where ``next(iter(<set>))`` is not.
+_ELIXIR_IMPORTABLE_BARE_FUNCTIONS: dict[str, str] = {
+    # IO
+    "puts": "IO", "write": "IO", "gets": "IO",
+    # Enum
+    "map": "Enum", "filter": "Enum", "reduce": "Enum", "each": "Enum",
+    "sort": "Enum", "flat_map": "Enum", "find": "Enum", "reject": "Enum",
+    "any?": "Enum", "all?": "Enum", "count": "Enum", "zip": "Enum",
+    "uniq": "Enum", "chunk_every": "Enum", "group_by": "Enum", "into": "Enum",
+    # String
+    "split": "String", "join": "String", "trim": "String",
+    "replace": "String", "starts_with?": "String", "ends_with?": "String",
+    "contains?": "String", "downcase": "String", "upcase": "String",
+    # Logger
+    "debug": "Logger", "info": "Logger", "warn": "Logger", "error": "Logger",
+}
+
+#: The union the rest of this module consults to decide "is this a bare call a
+#: project function could own?". Unchanged in membership; only split above.
+_ELIXIR_STDLIB_FUNCTIONS: frozenset[str] = (
+    _ELIXIR_KERNEL_AUTO_IMPORTS | frozenset(_ELIXIR_IMPORTABLE_BARE_FUNCTIONS)
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -184,6 +239,37 @@ def _extract_alias_hints(
                 if child.type == "alias":
                     module_node = child
                     break
+
+            if module_node is None:
+                # WI-kafor: the MULTI-ALIAS BRACE FORM, `alias Phx.New.{Project,
+                # Generator}`, which is ordinary Elixir and produces a different
+                # tree: `arguments -> dot -> [alias "Phx.New", ".", tuple]`, so
+                # there is no `alias` child of `arguments` to find and the
+                # directive used to register NO hint at all.
+                #
+                # It only became load-bearing when the module-ownership gate
+                # below stopped being a substring test. `"Project."` happened to
+                # be a substring of `Phx.New.Project.ecto?`, so the old gate let
+                # these calls through and the resolver bound them correctly BY
+                # ACCIDENT. An exact gate asks whether the project defines
+                # `Project`, which it does not -- it defines `Phx.New.Project` --
+                # so without this, 44 true first-party edges on phoenix-framework
+                # were lost. The gate is right; it needs the aliases to be read.
+                for child in args.children:
+                    if child.type != "dot":
+                        continue
+                    prefix_node = find_child_by_type(child, "alias")
+                    tuple_node = find_child_by_type(child, "tuple")
+                    if prefix_node is None or tuple_node is None:
+                        continue
+                    prefix = node_text(prefix_node, source)
+                    for member in tuple_node.children:
+                        if member.type != "alias":
+                            continue
+                        member_name = node_text(member, source)
+                        hints[member_name.rsplit(".", 1)[-1]] = (
+                            f"{prefix}.{member_name}"
+                        )
 
             if module_node:
                 full_path = node_text(module_node, source)
@@ -254,6 +340,103 @@ def _extract_imported_modules(
     return imported
 
 
+def _extract_import_only_bindings(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Map a bare function name to the module whose ``import ..., only:`` names it.
+
+    This is the DIRECT evidence WI-rakul's comment describes ("the explicit
+    import directive establishes module context") and which the code it guarded
+    never actually read -- it took an arbitrary member of the import SET
+    instead. An ``only:`` list names the functions, so the module follows from
+    the NAME rather than from iteration order.
+
+    Probing the grammar found five import shapes where the item named one::
+
+        import M                          -> no binding (nothing enumerated)
+        import M, only: [f: 1, g: 2]      -> f -> M, g -> M
+        import M, only: :macros           -> no binding (not enumerable)
+        import M, except: [f: 1]          -> no binding (says what is NOT there)
+        (several directives in one file)  -> first in DOCUMENT order wins
+
+    First-wins is a deliberate choice of a DETERMINISTIC rule over a
+    set-arbitrary one; two directives importing the same name is a compile
+    error in Elixir, so the case is not expected to arise in valid source.
+    """
+    bindings: dict[str, str] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+        target = find_child_by_type(node, "identifier")
+        if target is None or node_text(target, source) != "import":
+            continue
+        args = find_child_by_type(node, "arguments")
+        if args is None:  # pragma: no cover - `import` with no argument
+            continue
+        alias_node = find_child_by_type(args, "alias")
+        if alias_node is None:
+            continue
+        module = node_text(alias_node, source)
+        keywords = find_child_by_type(args, "keywords")
+        if keywords is None:
+            continue
+        for pair in keywords.children:
+            if pair.type != "pair":
+                continue
+            key = find_child_by_type(pair, "keyword")
+            if key is None or node_text(key, source).rstrip(": ") != "only":
+                continue
+            listing = find_child_by_type(pair, "list")
+            if listing is None:
+                continue          # ``only: :macros`` -- not enumerable
+            inner = find_child_by_type(listing, "keywords")
+            if inner is None:  # pragma: no cover - ``only: []``
+                continue
+            for entry in inner.children:
+                if entry.type != "pair":
+                    continue
+                entry_key = find_child_by_type(entry, "keyword")
+                if entry_key is None:  # pragma: no cover - defensive
+                    continue
+                bindings.setdefault(
+                    node_text(entry_key, source).rstrip(": ").strip(), module,
+                )
+    return bindings
+
+
+def _bare_call_source_module(
+    name: str,
+    imported_modules: set[str],
+    only_bindings: dict[str, str],
+) -> Optional[str]:
+    """Which module does a bare stdlib-named call belong to? (WI-jozap)
+
+    Three ordered rules and no set iteration anywhere:
+
+    1. an ``only:`` list that NAMES the function wins -- direct evidence;
+    2. a Kernel auto-import belongs to Kernel, so it gets NO module-keyed
+       edge. Membership of ``_ELIXIR_KERNEL_AUTO_IMPORTS`` is precisely the
+       statement "this is not the imported module's function";
+    3. an importable name whose OWNING stdlib module is imported takes that
+       module.
+
+    Anything else returns ``None`` and no edge is emitted. Declining is the
+    withholding direction, which is the safe one: a wrong module here is a
+    false edge into a catalogue, and the catalogue is what a security verdict
+    is read off.
+    """
+    bound = only_bindings.get(name)
+    if bound is not None:
+        return bound
+    if name in _ELIXIR_KERNEL_AUTO_IMPORTS:
+        return None
+    owner = _ELIXIR_IMPORTABLE_BARE_FUNCTIONS.get(name)
+    if owner is not None and owner in imported_modules:
+        return owner
+    return None
+
+
 def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]:
     """Walk up the tree to find all enclosing module names, innermost first."""
     modules: list[str] = []
@@ -269,24 +452,62 @@ def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]
     return list(reversed(modules))  # Return outermost first
 
 
+_DEF_KEYWORDS = ("def", "defp", "defmacro", "defmacrop")
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    symbols_at: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function."""
+    """Find the def clause whose declaration encloses ``node``.
+
+    Keyed by the declaration's POSITION, not its name. INV-mozas: the key
+    used to be the short name, but Elixir emits one symbol per clause and the
+    name carries no arity, so ``get_timeout/0``, ``get_timeout/2`` and a
+    same-named function in another module of the same file all share it. The
+    lookup returned whichever registered last, anchoring 22-27% of calls on
+    phoenix and plausible to a clause that does not contain them. The
+    enclosing ``def`` node IS the symbol's node, so its start position
+    identifies the clause exactly.
+
+    A def with no symbol -- one inside ``quote``, suppressed by INV-sinah
+    because it is injected into the module that runs ``use`` -- is walked
+    past, so the call is anchored to the macro whose text contains it
+    (``__using__``), not dropped.
+    """
     current = node.parent
     while current is not None:
         if current.type == "call":
             target = find_child_by_type(current, "identifier")
-            if target:
-                target_name = node_text(target, source)
-                if target_name in ("def", "defp", "defmacro", "defmacrop"):
-                    func_name = _get_function_name(current, source)
-                    if func_name and func_name in local_symbols:
-                        return local_symbols[func_name]
+            if target and node_text(target, source) in _DEF_KEYWORDS:
+                sym = symbol_declared_by(current, symbols_at)
+                if sym is not None:
+                    return sym
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return None
+
+
+def _is_def_head(node: "tree_sitter.Node", source: bytes) -> bool:
+    """True when ``node`` is the head of a def: ``def foo(a)`` / ``... when g``.
+
+    The grammar parses a head as a ``call`` to the function being defined,
+    so without this every clause emitted a call edge to every same-named
+    clause from its own first line. A guard (``when is_atom(a)``) and a
+    default argument (``a \\\\ build()``) sit INSIDE the head and are real
+    calls; only the head node itself is excluded.
+    """
+    parent = node.parent
+    if parent is not None and parent.type == "binary_operator":
+        if _unwrap_guard(parent) != node:
+            return False
+        parent = parent.parent
+    if parent is None or parent.type != "arguments":
+        return False
+    # The only call that sits DIRECTLY in a def's arguments is its head: a
+    # one-line body is inside a ``keywords`` pair, a block body in ``do_block``.
+    owner = parent.parent
+    target = find_child_by_type(owner, "identifier") if owner is not None else None
+    return target is not None and node_text(target, source) in _DEF_KEYWORDS
 
 
 def _get_module_name_from_call(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -1028,11 +1249,20 @@ def _extract_edges_from_tree(
     local_symbols_multi: dict[str, list[Symbol]] | None = None,
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
     imported_modules: set[str] | None = None,
+    import_only_bindings: dict[str, str] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Elixir tree.
 
     Args:
         alias_hints: Optional dict mapping short names to full module paths for disambiguation.
+        import_only_bindings: Function name -> module, from the ``only:``
+            lists of ``import`` directives (WI-jozap). Direct evidence of which
+            module a bare call belongs to; outranks the default ownership
+            table.
+        file_symbols: Every symbol of this file (INV-mozas). The enclosing
+            def is found by position among these; ``local_symbols`` keeps one
+            symbol per short name and so cannot tell clauses apart.
         imported_modules: Set of module names from ``import`` directives. When
             provided, bare cross-module calls are only resolved if the target
             function's module was imported. This prevents false edges from
@@ -1043,6 +1273,15 @@ def _extract_edges_from_tree(
 
     edges: list[Edge] = []
     file_id = make_file_id("elixir", file_path)
+    # Every clause of this file, by position. ``file_symbols`` is the whole
+    # list (TreeSitterAnalyzer.file_symbols); without it -- a direct call --
+    # the name-keyed dict plus the clause index is the best available.
+    symbols_at = index_symbols_at(
+        file_symbols if file_symbols is not None else
+        [*local_symbols.values(),
+         *(s for syms in (local_symbols_multi or {}).values() for s in syms)],
+        file_path,
+    )
 
     for node in iter_tree(tree.root_node):
         if node.type == "call":
@@ -1084,8 +1323,9 @@ def _extract_edges_from_tree(
                                 ))
 
                 # Detect function calls within a function body
-                elif target_name not in ("def", "defp", "defmacro", "defmacrop", "defmodule"):
-                    current_function = _get_enclosing_function(node, source, local_symbols)
+                elif (target_name not in (*_DEF_KEYWORDS, "defmodule")
+                      and not _is_def_head(node, source)):
+                    current_function = _get_enclosing_function(node, source, symbols_at)
                     if current_function is not None:
                         # Multi-clause: check local file for all clauses with this name
                         local_multi = local_symbols_multi.get(target_name) if local_symbols_multi else None
@@ -1114,17 +1354,32 @@ def _extract_edges_from_tree(
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
                             ))
-                        # WI-rakul: explicit ``import Mod, only: [name: N]``
-                        # + bare ``name(...)``. The auto-import skip below
-                        # would drop these silently, but the explicit import
-                        # directive establishes module context — surface an
-                        # unresolved edge keyed to the source module so
+                        # WI-rakul: a bare ``name(...)`` whose module the
+                        # file's ``import`` directives actually establish —
+                        # surface an unresolved edge keyed to that module so
                         # downstream linkers / io-boundaries can match.
+                        #
+                        # WI-jozap: WHICH module is decided by
+                        # ``_bare_call_source_module``, not by
+                        # ``next(iter(imported_modules))``. That took an
+                        # arbitrary member of a set, and Python randomises
+                        # string hashing per process, so the same code over the
+                        # same repository did not produce the same answer twice
+                        # (101 edges and up to 25 nodes moved between seeds on
+                        # phoenix-framework). Ordering the set would have fixed
+                        # determinism and kept a wrong answer: measured over
+                        # phoenix-framework and livebook, ALL 653 edges this
+                        # branch emitted were Kernel auto-imports —
+                        # ``Plug.Conn.inspect``, ``Ecto.Changeset.raise`` —
+                        # which no ``import`` directive establishes at all.
                         elif (
                             target_name in _ELIXIR_STDLIB_FUNCTIONS
                             and imported_modules
+                            and (source_module := _bare_call_source_module(
+                                target_name, imported_modules,
+                                import_only_bindings or {},
+                            )) is not None
                         ):
-                            source_module = next(iter(imported_modules))
                             ext_ref = ExternalRef(
                                 lang="elixir",
                                 module_path=source_module,
@@ -1194,7 +1449,7 @@ def _extract_edges_from_tree(
                 dot_node = find_child_by_type(node, "dot")
                 if dot_node:
                     _handle_dot_call(
-                        node, dot_node, source, local_symbols,
+                        node, dot_node, source, symbols_at,
                         global_symbols, resolver, alias_hints, edges, run_id,
                     )
 
@@ -1209,7 +1464,7 @@ def _extract_edges_from_tree(
                 rhs = children[2]
                 if rhs.type == "identifier":
                     func_name = node_text(rhs, source)
-                    current_function = _get_enclosing_function(node, source, local_symbols)
+                    current_function = _get_enclosing_function(node, source, symbols_at)
                     if current_function is not None:
                         local_multi = local_symbols_multi.get(func_name) if local_symbols_multi else None
                         if local_multi:
@@ -1251,11 +1506,35 @@ def _extract_edges_from_tree(
     return edges
 
 
+def _expand_alias(module_name: str, alias_hints: dict[str, str]) -> str:
+    """Resolve a written module against the file's ``alias`` directives.
+
+    An alias binds the FIRST COMPONENT, not the whole name:
+    ``alias Mix.Tasks.Phx.Gen`` makes ``Gen`` mean ``Mix.Tasks.Phx.Gen`` AND
+    makes ``Gen.Context`` mean ``Mix.Tasks.Phx.Gen.Context``. Looking the
+    whole written name up in the hint map answers the first case and misses
+    the second, which on phoenix-framework is 29 real first-party calls
+    (``Gen.Context.build``, ``Gen.Schema.*``, ``Gen.Notifier.*``).
+
+    That miss was invisible while module ownership was a substring test --
+    ``"Gen.Context."`` is a substring of ``Mix.Tasks.Phx.Gen.Context.build``,
+    so the old gate opened and the resolver bound the call correctly by
+    accident. Once ownership is an exact question, the expansion has to be
+    right for the answer to be.
+    """
+    if module_name in alias_hints:
+        return alias_hints[module_name]
+    head, _, rest = module_name.partition(".")
+    if rest and head in alias_hints:
+        return f"{alias_hints[head]}.{rest}"
+    return module_name
+
+
 def _handle_dot_call(
     call_node: "tree_sitter.Node",
     dot_node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    symbols_at: SymbolsAt,
     global_symbols: dict[str, Symbol],
     resolver: "NameResolver",
     alias_hints: dict[str, str],
@@ -1270,19 +1549,59 @@ def _handle_dot_call(
     the global symbol registry.  The *evidence_type* parameter allows callers
     (such as the pipe-operator handler) to supply a more specific tag.
     """
-    # Extract module alias and function name from dot node
+    # Extract the receiver and function name from the dot node.
+    #
+    # WI-kigub: the receiver is an ``alias`` for an Elixir module
+    # (``Logger.error``) but an ``atom`` for an Erlang/OTP one
+    # (``:ets.insert``), and the atom form is the ONLY way Elixir can reach
+    # OTP at all. Requiring an ``alias`` here returned before emitting
+    # anything, so every OTP module a project touches -- ``:ets``, ``:file``,
+    # ``:gen_tcp``, ``:crypto``, ``:httpc`` -- produced no call edge of any
+    # kind. Shapes the grammar puts here that are still refused, deliberately:
+    # a variable receiver (``mod.fun()``), a module attribute
+    # (``@attr.thing()``), a quoted atom (``:"Elixir.Foo".bar()``) and an
+    # anonymous call (``f.()``, which has no named callee at all).
     alias_node = find_child_by_type(dot_node, "alias")
+    atom_node = find_child_by_type(dot_node, "atom")
     func_id_node = find_child_by_type(dot_node, "identifier")
-    if alias_node is None or func_id_node is None:
+    if func_id_node is None:
         return
 
-    module_name = node_text(alias_node, source)
     func_name = node_text(func_id_node, source)
 
     # Find the enclosing function (caller)
-    current_function = _get_enclosing_function(call_node, source, local_symbols)
+    current_function = _get_enclosing_function(call_node, source, symbols_at)
     if current_function is None:
         return
+
+    if alias_node is None:
+        # Nested rather than folded into one compound guard so the atom is
+        # NARROWED here: `alias_node is None and atom_node is None` does not
+        # tell mypy that reaching this branch means `atom_node` is a Node.
+        if atom_node is None:
+            return
+        # An atom module is an OTP module BY CONSTRUCTION, so it goes straight
+        # to the unresolved fallback and never touches the first-party
+        # resolution branches below. That is a correctness requirement, not a
+        # shortcut: those branches end in a ``any(module_dot in k ...)``
+        # SUBSTRING test, and ``"ets."`` is a substring of any project key such
+        # as ``Foo.Sockets.insert``, so routing atoms through them would bind
+        # ``:ets.insert`` to a first-party function.
+        #
+        # The leading colon is STRIPPED. ``_module_matches`` is component-aware
+        # and does no colon stripping, so a module slot of ``:ets`` matches the
+        # catalogue's ``ets`` row not at all -- the edge would exist and reach
+        # nothing. Stripping is also the cross-language parity answer: the
+        # erlang analyzer, calling these same OTP modules, emits
+        # ``erlang:ets:0-0:insert:function``.
+        _emit_unresolved_dot_edge(
+            call_node, current_function,
+            node_text(atom_node, source).lstrip(":"), func_name,
+            edges, run_id,
+        )
+        return
+
+    module_name = node_text(alias_node, source)
 
     # Build the fully-qualified function name: Module.func_name
     qualified_name = f"{module_name}.{func_name}"
@@ -1303,9 +1622,9 @@ def _handle_dot_call(
         return
 
     # Try with alias hints: if module_name is an alias, resolve to full path
-    if module_name in alias_hints:
-        full_module = alias_hints[module_name]
-        full_qualified = f"{full_module}.{func_name}"
+    expanded_module = _expand_alias(module_name, alias_hints)
+    if expanded_module != module_name:
+        full_qualified = f"{expanded_module}.{func_name}"
         if full_qualified in global_symbols:
             callee = global_symbols[full_qualified]
             edges.append(Edge.create(
@@ -1320,45 +1639,68 @@ def _handle_dot_call(
             ))
             return
 
-    # Try resolver lookup, but only when the module name plausibly belongs
-    # to this project.  If no global symbol key contains the module name as
-    # a prefix component (e.g., "Greeter." in "App.Helpers.Greeter.greet"),
-    # the call targets an external library and the resolver's bare-name
-    # suffix matching would produce false positives (e.g., bare "compile"
-    # matching Phoenix.Digester.compile when the source says
-    # Plug.Builder.compile).
-    module_dot = f"{module_name}."
-    alias_expanded = alias_hints.get(module_name)
-    if alias_expanded:
-        module_dot = f"{alias_expanded}."
-    module_known = any(module_dot in k for k in global_symbols)
-    if module_known:
-        path_hint = alias_hints.get(module_name, module_name)
-        lookup_result = resolver.lookup(func_name, path_hint=path_hint)
-        if lookup_result.found and lookup_result.symbol is not None:
-            edges.append(Edge.create(
-                src=current_function.id,
-                dst=lookup_result.symbol.id,
-                edge_type="calls",
-                line=call_node.start_point[0] + 1,
-                evidence_type=evidence_type,
-                confidence=0.75 * lookup_result.confidence,
-                origin=PASS_ID,
-                origin_run_id=run_id,
-            ))
-            return
-
+    # NO BARE-NAME RESOLUTION FOR A QUALIFIED CALL (WI-kafor).
+    #
+    # What stood here asked whether the project plausibly owned the written
+    # module -- as a SUBSTRING test, `any(f"{module}." in k for k in
+    # global_symbols)`, though the comment described a component test -- and
+    # then let `resolver.lookup(func_name, path_hint=...)` bind by BARE NAME.
+    # On phoenix-framework that produced 202 false edges: `Logger.error(...)`
+    # landing on an `error/1` inside an EEx GENERATOR TEMPLATE, `Path.join(...)`
+    # on a Phoenix Channel's `join/3` in another template, `Mix.raise(...)` on a
+    # test controller's `raise/1`, and `Logger.info(...)` on a **defp**, which
+    # Elixir does not permit to be called from another module at all.
+    #
+    # Tightening the gate to an EXACT module-ownership question was tried and
+    # measured first. It is necessary and it is not sufficient: with the gate
+    # exact, every edge the bare-name lookup still produced on the whole corpus
+    # was STILL wrong -- `Phx.New.Umbrella.render()` to a template's `render`,
+    # `Router.call()` to an unrelated test helper's `call`. The gate decides
+    # WHICH modules may pass; the defect is the bare-name bind itself, so that
+    # is what goes.
+    #
+    # A qualified call now resolves ONLY by name: `Module.func` directly, or
+    # through the alias expansion above, both of which are exact. Anything else
+    # falls to the unresolved edge below, which names the right module and lets
+    # the catalogue and the linkers do their work -- and that is where the
+    # recall came from: `Logger.error` / `Logger.info` reach the Logger
+    # catalogue rows for the first time.
+    #
+    # KNOWN CONSEQUENCE, filed rather than special-cased: a function reached
+    # only through `defdelegate` (`Phoenix.CodeReloader.sync/0`) registers no
+    # symbol under its own module, so it now goes unresolved instead of binding
+    # to the delegate target's module -- which was the wrong module anyway.
     # Fallback: create an unresolved edge for cross-module calls
     # This allows linkers to match across files/languages.
     # WI-rakul: when ``module_name`` is an alias (``alias String, as: S``
     # → ``S.upcase``), surface the underlying module in the dst so
     # downstream consumers see ``String`` not ``S``. Populate dst_ref
     # with the canonical (module, name).
-    canonical_module = alias_hints.get(module_name, module_name)
-    dst_id = f"elixir:{canonical_module}:0-0:{func_name}:unresolved"
+    _emit_unresolved_dot_edge(
+        call_node, current_function, expanded_module, func_name, edges, run_id,
+    )
+
+
+def _emit_unresolved_dot_edge(
+    call_node: "tree_sitter.Node",
+    current_function: Symbol,
+    canonical_module: str,
+    func_name: str,
+    edges: list[Edge],
+    run_id: str,
+) -> None:
+    """Emit the cross-module fallback edge for a dot call.
+
+    Shared by the alias path (``Logger.error``, after alias expansion) and the
+    atom path (``:ets.insert``, after colon stripping) so the two cannot drift
+    apart in destination shape -- the id format, the ``ast_call_direct``
+    evidence tag and the structured ``dst_ref`` are what the boundary engine
+    and the linkers read, and they must be identical whichever receiver syntax
+    the source used.
+    """
     edges.append(Edge.create(
         src=current_function.id,
-        dst=dst_id,
+        dst=f"elixir:{canonical_module}:0-0:{func_name}:unresolved",
         edge_type="calls",
         line=call_node.start_point[0] + 1,
         evidence_type="ast_call_direct",
@@ -1458,6 +1800,7 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
                     local_symbols_multi[name] = local_matches
 
         file_imported_modules = _extract_imported_modules(tree, source)
+        file_only_bindings = _extract_import_only_bindings(tree, source)
 
         edges = _extract_edges_from_tree(
             tree, source, rel_path, local_symbols, global_symbols,
@@ -1466,6 +1809,8 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
             local_symbols_multi=local_symbols_multi,
             global_symbols_multi=global_multi,
             imported_modules=file_imported_modules,
+            import_only_bindings=file_only_bindings,
+            file_symbols=self.file_symbols(local_symbols),
         )
 
         # Behaviour callback edges (use GenServer, use Phoenix.LiveView, etc.)

@@ -29,6 +29,10 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from hypergumbo_tracker.journal import (
+    RecoverSuppressionLock,
+    _flock_is_held,
+)
 from hypergumbo_tracker.sync import (
     PreflightResult,
     SyncResult,
@@ -2591,14 +2595,20 @@ class TestDoSync:
         mock_time: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """The ``tracker-recover-disabled`` marker is present during every git
-        call and removed afterwards.
+        """The recovery-suppression LOCK is held during every git call and
+        released afterwards.
 
         Without it, the reference-transaction hook restores a
         journalled-but-uncommitted op as an untracked file during do_sync's
         fetch and then aborts its own ``merge --ff-only`` reconciliation. The
-        marker must therefore cover ALL of do_sync's git operations (the try
-        body AND the finally cleanup ff) and never leak past the call.
+        suppression must therefore cover ALL of do_sync's git operations (the
+        try body AND the finally cleanup ff) and never leak past the call.
+
+        WI-gokuv: this asserts the LOCK, not the file. Presence of the file was
+        what the hooks used to test, and a file cannot say whether anyone still
+        owns it -- which is how a SIGKILLed run left self-healing off for ten
+        hours. Asserting existence here would pass just as happily against the
+        defect.
         """
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
@@ -2614,7 +2624,7 @@ class TestDoSync:
         marker_seen: list[bool] = []
 
         def _git_side(*_args: Any, **_kwargs: Any) -> Any:
-            marker_seen.append(marker.exists())
+            marker_seen.append(_flock_is_held(marker))
             return next(results)
 
         mock_git.side_effect = _git_side
@@ -2627,10 +2637,10 @@ class TestDoSync:
 
         assert marker_seen, "expected do_sync to make git calls"
         assert all(marker_seen), (
-            "recover-disabled marker must be present during EVERY git call "
+            "the recovery-suppression lock must be HELD during EVERY git call "
             f"(saw {marker_seen.count(False)} call(s) without it)"
         )
-        assert not marker.exists(), "marker must be removed after do_sync"
+        assert not marker.exists(), "lock must be released after do_sync"
 
     @patch("hypergumbo_tracker.sync.time")
     @patch("hypergumbo_tracker.sync._merge_pr")
@@ -2646,17 +2656,24 @@ class TestDoSync:
         mock_time: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """A marker set by an OUTER caller (auto-pr) survives do_sync.
+        """A lock held by an OUTER caller (auto-pr) survives do_sync.
 
-        do_sync only removes the marker it created itself; otherwise nested
-        invocations would re-enable the recovery hook while the outer git
-        operation is still running.
+        do_sync releases only a lock it took itself; otherwise a nested
+        invocation -- auto-pr's post-merge ``tracker discuss`` can trigger one --
+        would re-enable the recovery hooks while the outer git operation is
+        still running.
+
+        WI-gokuv: the outer caller is simulated by actually TAKING the lock, not
+        by touching the file. Under the old flag semantics a touched file was
+        indistinguishable from a held one, which is precisely the conflation
+        that made the leak undetectable.
         """
         mock_time.strftime.return_value = "20260218-120000"
         mock_time.sleep = MagicMock()
         pre = _make_preflight(tmp_path)
         marker = pre.git_dir / "tracker-recover-disabled"
-        marker.touch()  # outer caller already set it
+        outer = RecoverSuppressionLock(pre.git_dir)
+        assert outer.try_acquire(), "test precondition: lock must start free"
 
         mock_git.side_effect = [
             *self._plumbing_setup(),
@@ -2671,8 +2688,12 @@ class TestDoSync:
         do_sync(repo_root=tmp_path, preflight=pre)
 
         assert marker.exists(), (
-            "do_sync must not remove a recover-disabled marker it did not create"
+            "do_sync must not release a suppression lock it did not take"
         )
+        assert _flock_is_held(marker), (
+            "the OUTER holder's lock must still be held after do_sync returns"
+        )
+        outer.release()
 
         # Gate file should be cleaned up
         assert not (tmp_path / ".git" / "TRACKER_SYNC_PENDING").exists()

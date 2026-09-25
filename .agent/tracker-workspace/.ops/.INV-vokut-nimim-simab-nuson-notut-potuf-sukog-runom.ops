@@ -1,0 +1,25 @@
+- op: create  # 846c
+  at: '2026-09-03T02:34:47Z'  # 846c
+  by: agent  # 846c
+  actor: jgstern_agent  # 846c
+  clock: 1  # 846c
+  nonce: 846c  # 846c
+  data:  # 846c
+    kind: invariant  # 846c
+    title: "scala.io.StdIn.readLine is catalogued ipc_recv but unreachable: emitted as a hint-less ambiguous short name (INV-linub class for scala)"  # 846c
+    status: violated  # 846c
+    priority: 2  # 846c
+    parent:  # 846c
+    tags:  # 846c
+    - taint  # 846c
+    - io_boundary  # 846c
+    - catalogue  # 846c
+    - analysis_quality  # 846c
+    isbefore: []  # 846c
+    duplicate_of: []  # 846c
+    not_duplicate_of: []  # 846c
+    pr_ref:  # 846c
+    description: "Split out of INV-muvis as its recall residual for scala. INV-muvis retagged\nscala.io.StdIn.{readLine,readInt,...} from fs_read to ipc_recv (correct: these\nread stdin unconditionally), but the row is PRESENT AND UNREACHABLE.\n\nWHY. The scala analyzer emits the call as scala:external:0-0:readLine with no\nmodule hint, and readLine is in scala.yaml's ambiguous_names (because in Scala\nACTOR code `read`/`readLine` are non-I/O). So gate_named_entry -- the hint-less\nshort-name fallback -- withholds it by design, exactly as it should for a bare\nambiguous name. The withholding is correct given the evidence; the missing\nevidence is the receiver/module slot naming scala.io.StdIn.\n\nRELATIVE TO INV-linub. This is INV-linub's class in scala: a catalogued I/O\ncall site does not reach its catalogue entry because the receiver syntax is not\nresolved to a module hint. StdIn.readLine and a bare imported readLine are the\nsame short name; only the receiver disambiguates, and scala does not stamp it.\n\nNOT A CATALOGUE FIX. Removing readLine from ambiguous_names would admit the\nfalse sources the ambiguity guard exists to prevent (every actor-code read).\nThe fix is receiver-type resolution for scala.io.StdIn, or a qualified-name\nemission for module-qualified calls -- the same shape WI-dizag addresses for\nrust/go.\n\nREPRO\n  val s = scala.io.StdIn.readLine(); scala.sys.process.Process(s).run()\n  -- emits scala:external:0-0:readLine, withheld, mints no source.\nMeasured under INV-muvis on fixtures (~/hypergumbo_lab_notebook/vutav_reads_08302026/reach/):\nscala readLine \"correct, NOT REACHED\"."  # 846c
+    fields:  # 846c
+      statement: "A scala.io.StdIn stdin reader must reach its ipc_recv catalogue entry. VIOLATED: the analyzer emits scala:external:0-0:readLine with no module hint, and readLine is in scala's ambiguous_names, so the no-module gate withholds it -- the row is correct (INV-muvis) but present-and-dead."  # 846c
+      root_cause: "The scala analyzer does not stamp a module/receiver hint for module-qualified calls, so scala.io.StdIn.readLine is indistinguishable from a bare ambiguous readLine and is correctly withheld for lack of evidence. INV-linub's receiver-typing class, in scala."  # 846c

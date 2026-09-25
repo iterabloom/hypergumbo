@@ -1,0 +1,21 @@
+- op: create  # 808e
+  at: '2026-09-24T03:52:29Z'  # 808e
+  by: agent  # 808e
+  actor: jgstern_agent  # 808e
+  clock: 1  # 808e
+  nonce: 808e  # 808e
+  data:  # 808e
+    kind: work_item  # 808e
+    title: "scala: a fully qualified call (scala.sys.process.Process(c), sys.process.Process(c)) loses its qualifier and is stamped method, so it never classifies"  # 808e
+    status: todo_hard  # 808e
+    priority: 3  # 808e
+    parent:  # 808e
+    tags:  # 808e
+    - scala  # 808e
+    - io_boundary  # 808e
+    isbefore: []  # 808e
+    duplicate_of: []  # 808e
+    not_duplicate_of: []  # 808e
+    pr_ref:  # 808e
+    description: "FOUND 2026-09-24 while measuring WI-narij.\n\nA fully qualified call loses its qualifier:\n- `scala.sys.process.Process(c).!` and `sys.process.Process(c).!` are emitted as `scala:external:0-0:Process`, stamped call_construct=method.\n- gate_named_entry never matches a method-stamped call with no context, so neither form classifies after WI-narij either.\nFixture: /tmp scratch; the three lines above reproduce it.\n\nCorpus: spark core/.../api/r/BaseRRunner.scala:282 and scala3 project/RepublishPlugin.scala:393 (`sys.process.Process(\"git rev-parse HEAD\").!!`). Those are 2 edges on 11 repos, so the volume is small.\n\nASKED: the scala analyzer writes a dotted qualifier into the module slot, as java.py does for `java.lang.System.getenv`. Measure what else changes; every qualified call is affected, not only Process."  # 808e
+    fields: {}  # 808e

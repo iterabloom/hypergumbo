@@ -1,0 +1,103 @@
+- op: create  # ce9d
+  at: '2026-09-23T18:07:51Z'  # ce9d
+  by: agent  # ce9d
+  actor: jgstern_agent  # ce9d
+  clock: 1  # ce9d
+  nonce: ce9d  # ce9d
+  data:  # ce9d
+    kind: invariant  # ce9d
+    title: "IoPrimitive.kind is written under three rules — the callee's construct (rust), whether a VALUE supplies its owner (python/cpp/scala/WI-komun), and what the analyzer stamps (java/kotlin) — and every consumer that branches on it needs the second"  # ce9d
+    status: violated  # ce9d
+    priority: 2  # ce9d
+    parent:  # ce9d
+    tags:  # ce9d
+    - axis  # ce9d
+    - io_boundary  # ce9d
+    - catalogue  # ce9d
+    - verify_claims  # ce9d
+    isbefore: []  # ce9d
+    duplicate_of: []  # ce9d
+    not_duplicate_of: []  # ce9d
+    pr_ref:  # ce9d
+    description: "FOUND 2026-09-23 by the fundamental concept audit of IoPrimitive.kind (dev d917e02282).\nWrite-up: ~/hypergumbo_lab_notebook/concept-audit-io-primitive-kind_09232026.md\nInstruments + 21 surveys: ~/hypergumbo_lab_notebook/kind_audit_09232026/\n\nTHE FIELD HAS NO DEFINITION, AND THE CATALOGUES STATE THREE, IN THEIR OWN WORDS:\n  R3 \"what the analyzer stamps\":  java.yaml:169 (\"Static methods, catalogued\n      method-kind ... java's analyzer stamps call_construct=method on every\n      selector-expression call\"), kotlin.yaml:156 (\"the analyzer emits them as\n      function-kind calls, so they are catalogued as functions\")\n  R2 \"owner named, no value receiver\": cpp.yaml:96 (\"Static member functions,\n      hence function-kind\"), scala.yaml:129 (companion factories, \"no value\n      receiver\"), python.yaml Path.cwd / datetime (INV-nular, INV-fugus),\n      test_associated_fn_kinds.py (\"A receiverless callee must not be catalogued\n      as a method\"), WI-komun (\"methods: means called on an instance whose type\n      must be known; a named global is resolved by NAME\")\n  R1 \"what the callee is\": rust.yaml:405 (\"catalogued as a method because that\n      is what it IS\"), and INV-pimir's statement (\"IoPrimitive.kind names the\n      construct of the DEFINITION\")\nScala holds two rules in one merged catalogue: its own Source.fromFile is R2,\nand the java.nio.file.Files statics it inherits via _CATALOG_PARENTS are R3.\n\nEVERY CONSUMER THAT BRANCHES ON IT NEEDS R2:\n  verify_claims method_starved_modules route 1 (joins to call_construct) and route 2\n  (function names = matchable without a stamp); io_boundary gate_named_entry (method\n  rows need receiver verification); the untyped-receiver disclosures (method rows are\n  \"reached through a receiver\"); io_boundary.py:1161, the INV-nizom arm (drops\n  function rows when the stamp is method and the slot is multi-candidate).\nAnd the starvation gate's own premise is false on the main path: with a definite\nmodule slot, `_qualified_rows` and the module filter never read kind at all.\n\nMEASURED CONSEQUENCES (arm A shipped vs arm B = rows with no value receiver\nre-kinded to function; nothing else differs):\n  - JS `process` classified-yet-starved on 6/9 JS-bearing repos (filed separately\n    as the INV-fugus family item).\n  - java: R3 is LOAD-BEARING through the INV-nizom join. Re-kinding statics loses\n    41 classifications (jedis 160->124, petclinic -3, gatling -2), because java emits\n    a multi-candidate slot for wildcard imports and stamps method on qualified statics.\n  - scala/kotlin: re-kinding drops untyped-receiver disclosures, and in sbt 76 of the\n    297 dropped are REAL Files./System./Instant. calls whose qualifier the analyzer\n    dropped (WI-kilap; explicit imports too), so the disclosure is their only signal.\n  - swift: 16 constructor rows are keyed methods and can never match (INV-gujoh\n    discussion).\n\nPROPOSED STATEMENT, NOT ADOPTED (two shipped rulings collide: WI-komun + INV-nular's\ntest say R2, INV-pimir's statement says R1; the owner decides): `methods:` iff the\ncallee's owner is supplied at the call site by a VALUE whose type must be inferred;\n`functions:` iff the owner is named at the call site (module, namespace, type,\ncompanion object, named global) or there is none; `attributes:` iff read, not called.\n\nSEQUENCING, MEASURED: the JVM re-kind waits on (a) the INV-nizom arm no longer reading\na `method` stamp as receiver evidence and (b) the kotlin/scala static-qualifier drop.\nSwift waits on boundary adjudication. JS process and python ctypes.cdll are\nunconstrained. WI-fazad (declare the enum) should carry whatever axiom is adopted."  # ce9d
+    fields:  # ce9d
+      statement: "A catalogue row's kind is a property of the primitive, stated one way in every catalogue: methods iff the callee's owner is supplied at the call site by a value whose type must be inferred; functions iff the owner is named at the call site or there is none; attributes iff read, not called. It never encodes what one analyzer stamps."  # ce9d
+      root_cause: "No definition was ever written (WI-fazad: undeclared bounded enum), so each catalogue tuned kind to make its own analyzer's call_construct stamp pass the construct-x-kind joins (method_starved_modules route 1; the INV-nizom arm of lookup_with_module). The value therefore encodes the analyzer, not the primitive; java.yaml and kotlin.yaml say so in their notes."  # ce9d
+- op: discuss  # 6123
+  at: '2026-09-23T18:43:33Z'  # 6123
+  by: agent  # 6123
+  actor: jgstern_agent  # 6123
+  clock: 2  # 6123
+  nonce: '6123'  # 6123
+  message: "PANEL RESULT 2026-09-23 (owner convened a 3-seat panel: axis-design purist, verdict-soundness adjudicator, polyglot catalogue author; independent, read-only). UNANIMOUS: R2. NOT YET RATIFIED BY THE OWNER.\n\nAXIOM AS REFINED BY THE PANEL (all three moved it off the call site, and onto the row):\n  A row's kind says how the primitive is reached from the row's own `module`: methods iff it is called on an INSTANCE (a value) of `module`; functions iff it is called on `module` itself (namespace, package, type, companion object, named global) or has no owner; attributes iff it is read on `module`, not called.\n  Decision procedure (catalogue-author seat): if `module.name(...)` in the language's own qualifier syntax (`module(...)` for a constructor) is a valid call, it is a function; if a value of type `module` must precede `.name`, it is a method; if neither holds, the `module` string is wrong.\n  The purist seat's reason for dropping the audit's \"at the call site\" phrasing: ADR-0051 §1 says the module key \"is not a property of the call site\", and the sibling field must not reintroduce that leak.\n\nWHY R1 AND R3 LOST (all three seats, each verified independently):\n  - R1 has no row that needs it. rust.yaml's \"what it IS\" note sits on Instant::elapsed(&self), a method under R2 as well. Rust's associated fns are all functions:, pinned by test_associated_functions_are_function_kind. R1 exists only in INV-pimir's wording.\n  - R3 cannot be a property of a row that two analyzers read: _CATALOG_PARENTS gives scala and kotlin java's rows, and typescript loads the javascript YAML. The WI-komun -> WI-kikar sequence is R3 failing when an analyzer changed.\n  - Every branching consumer states R2 in its own docstring: gate_named_entry, untyped_receiver_sites (\"a function-kind primitive is not reached through a receiver at all\"), analyzer_disclosure.py:252.\n\nCORRECTION TO THE AUDIT (soundness seat, verified by reading; I have not re-run it): re-kinding JVM statics does NOT silence the 76 sbt sites. unknown_receiver_scope (verify_claims.py ~3707) does not read kind, and its caveat attaches whenever the count is > 0, so the verdict stays confirmed_with_caveats. What is lost is the boundary-scoped NAMING of those sites (a precision loss under ADR-0046), not the caveat. The write-up and the WI-kilap note overstated this.\n\nNEW FINDINGS FROM THE PANEL (not verified by me):\n  - kotlin.yaml ~103: the kotlin.io.FilesKt rows fit neither kind. No Kotlin value has type FilesKt, and FilesKt.readText(f) is not valid Kotlin, so the module string is wrong.\n  - The swift-nio-and-log overlay (~69-122) lists constructors under methods: and keys some on NIOSSL, which is a module, not a type.\n  - The python getattr_static sweep, extended to module and instance owners (probe: scratchpad/panel_author/probe.py): 601 of 602 resolvable rows conform. The only failure is ctypes.cdll.LoadLibrary.\n  - Two gaps R2 does NOT close (soundness seat): (1) route 1 of method_starved_modules is still a proxy, since one method-stamped edge, even into an uncatalogued static (scala exitValue), satisfies the whole module; (2) a false all-clear on an unmatched call is prevented today only by module_completeness, which exists only in javascript, rust and python.\n\nORDER AGREED BY ALL THREE SEATS:\n  1. Adopt the axiom. Declare the axis: registry + helper replacing the literal \"method\"/\"function\" checks + drift linter + property test, plus a SHRINK-ONLY allowlist of the shipped rows that break it, each naming its blocker.\n  2. Re-kind JS process.on/send (to function) and process.cwd (attribute -> function), and python ctypes.cdll.LoadLibrary (INV-dihun).\n  3. Adjudicate the swift constructor rows' boundaries (INV-gujoh) before any re-kind there.\n  4. Stop the INV-nizom arm (io_boundary.py:1161) reading a method stamp as receiver evidence. Acceptance: jedis stays at 160 in the A/B.\n  5. WI-kilap, including its explicit-import half.\n  6. Re-kind the JVM statics; re-run measure.py.\n  7. Rewrite INV-pimir's statement and the method_starved_modules docstring premise; WI-fazad carries the declaration.\nWHAT WOULD REOPEN IT: after step 4, arm B still loses java classifications; OR >=1% of a row's matched call sites reach it both ways (unbound Path.read_text(p), obj.staticMethod()), which would need a fourth value or two fields; OR a consumer is shown to need \"member of a type\" regardless of static."  # 6123
+- op: discuss  # edb0
+  at: '2026-09-23T18:47:03Z'  # edb0
+  by: agent  # edb0
+  actor: jgstern_agent  # edb0
+  clock: 3  # edb0
+  nonce: edb0  # edb0
+  message: "OWNER RATIFIED 2026-09-23: R2 with the panel's wording (see the PANEL RESULT entry above). The axiom is: a row's kind says how the primitive is reached from the row's own module. methods iff it is called on an instance of module; functions iff it is called on module itself (namespace, package, type, companion object, named global) or has no owner; attributes iff it is read, not called. Proceeding in the panel's order, starting with step 2 (INV-dihun: JS process, python ctypes.cdll), which nothing blocks."  # edb0
+- op: discuss  # c553
+  at: '2026-09-23T19:03:44Z'  # c553
+  by: agent  # c553
+  actor: jgstern_agent  # c553
+  clock: 4  # c553
+  nonce: c553  # c553
+  message: "STEP 2 DONE (PR #1155): JS process.on/send/cwd and python ctypes.cdll.LoadLibrary are function-kind; INV-dihun satisfied on those instances, and the contradiction guard is filed as WI-bobuf. Remaining in the ratified order: step 1 (declare the axis: registry, helper, linter, property test, shrink-only allowlist), step 3 (swift constructor boundaries, INV-gujoh), step 4 (INV-nizom arm, io_boundary.py:1161), step 5 (WI-kilap), step 6 (JVM statics + re-measure), step 7 (INV-pimir statement, starvation docstring)."  # c553
+- op: discuss  # 00a6
+  at: '2026-09-23T19:45:03Z'  # 00a6
+  by: agent  # 00a6
+  actor: jgstern_agent  # 00a6
+  clock: 5  # 00a6
+  nonce: 00a6  # 00a6
+  message: "STEP 1 DONE (PR #1157, ADR-0059): the axis is declared with ADR-0024's four artifacts.\n- Registry and predicates: io_primitive_kinds.\n- Consumers: 18 literal sites converted, no behaviour change.\n- Static check: find_kind_literal_drift, run by check-io-boundary-drift.\n- Property tests: test_io_primitive_kinds.py.\nThe 91 non-conforming rows sit in a shrink-only ledger, each naming its blocker (INV-pimir, WI-kilap, WI-narij, INV-gujoh, WI-ziviv).\nNext in order: step 3 (swift constructor boundaries, INV-gujoh), step 4 (the INV-nizom arm), step 5 (WI-kilap), step 6 (JVM statics), step 7 (INV-pimir statement and the starvation docstring). WI-ziviv (objc, swift statics, FilesKt) is unconstrained and can go at any point."  # 00a6
+- op: discuss  # 8a8b
+  at: '2026-09-23T21:14:38Z'  # 8a8b
+  by: agent  # 8a8b
+  actor: jgstern_agent  # 8a8b
+  clock: 6  # 8a8b
+  nonce: 8a8b  # 8a8b
+  message: "STEP 3 DONE (PR #1158): the 16 swift constructor rows were adjudicated (8 deleted, 4 disclosed as net_listen/db_compose, 3 handles kept, CommandLine made an attribute) and keyed function. The ledger went 91 -> 75. Full breakdown on INV-gujoh. Next: step 4, the INV-nizom arm."  # 8a8b
+- op: discuss  # 06ce
+  at: '2026-09-23T21:43:43Z'  # 06ce
+  by: agent  # 06ce
+  actor: jgstern_agent  # 06ce
+  clock: 7  # 06ce
+  nonce: 06ce  # 06ce
+  message: "STEP 4 DONE (PR #1159): slot_names_one_owner() exempts a disjunctive module slot whose every entry names the same owner (java's wildcard slot, e.g. redis.clients.jedis.System,...,java.lang.System) from the INV-nizom arm; cpp's #include set is still file context. Measured over 21 surveys: arm A (shipped) is IDENTICAL on all 21, so no shipped output changed. Arm B (JVM statics re-kinded) lost 41 classifications before and loses 0 now (jedis 160, petclinic 14, gatling 32 with one gained); the acceptance condition held. The ledger's JVM statics now name only WI-kilap as blocker. Next: step 5 (WI-kilap)."  # 06ce
+- op: discuss  # c3e8
+  at: '2026-09-23T23:23:47Z'  # c3e8
+  by: agent  # c3e8
+  actor: jgstern_agent  # c3e8
+  clock: 8  # c3e8
+  nonce: c3e8  # c3e8
+  message: "STEP 5 DONE (PR #1160, WI-kilap done): in kotlin and scala a static call now names its owner (the file's dotted import, else java.lang's closed list minus each language's shadows, never a project type). Classified calls: sbt 123->237, gatling 31->57, detekt 17->30, http4s 3->6. Of 28 verify-claims verdicts, one gained a flow (sbt host-secret-no-host-fs, 4->5, still violated). Residual filed as WI-jubim (Runtime.getRuntime().exec: kotlin/scala do not consume library signatures). FOUND WHILE PREPARING STEP 6: re-kinding the JVM statics exposes them to gate_named_entry's bare-name fallback. Arm B matched sbt's own now() as Instant.now and gatling's own readString() as Files.readString, both false. Java has no free functions, so step 6 also lists every re-kinded name in ambiguous_names, which keeps the no-context path exactly as it was."  # c3e8
+- op: discuss  # 5e53
+  at: '2026-09-24T00:17:31Z'  # 5e53
+  by: agent  # 5e53
+  actor: jgstern_agent  # 5e53
+  clock: 9  # 5e53
+  nonce: '5e53'  # 5e53
+  message: "STEP 6 DONE (PR #1161): the 34 java statics and 11 scala.util.Properties members are function-kind, and the ledger went 75 -> 30. Their names are in ambiguous_names (java has no free functions; arm B showed bare no-context calls matching project methods, sbt now() and gatling readString()). Over 21 surveys, classified counts, starvation and coverage are identical. Untyped-receiver disclosures that named a JDK static as a possible instance callee are gone (jedis env_read 6->0). verify-claims on 7 JVM repos: 49/49 verdicts identical, including caveats and details."  # 5e53
+- op: discuss  # 29cc
+  at: '2026-09-24T00:17:45Z'  # 29cc
+  by: agent  # 29cc
+  actor: jgstern_agent  # 29cc
+  clock: 10  # 29cc
+  nonce: 29cc  # 29cc
+  message: "CORRECTION to the entry above: step 6 merged as PR #1162, not #1161."  # 29cc
+- op: update  # 29bc
+  at: '2026-09-24T00:52:28Z'  # 29bc
+  by: agent  # 29bc
+  actor: jgstern_agent  # 29bc
+  clock: 11  # 29bc
+  nonce: 29bc  # 29bc
+  set:  # 29bc
+    status: satisfied  # 29bc
+- op: discuss  # 252d
+  at: '2026-09-24T00:52:28Z'  # 252d
+  by: agent  # 252d
+  actor: jgstern_agent  # 252d
+  clock: 12  # 252d
+  nonce: 252d  # 252d
+  message: "SATISFIED ON THE FILED INSTANCES, 2026-09-23. The ratified order ran steps 1-7 in PRs #1155, #1157, #1158, #1159, #1160, #1162 and #1163, plus #1165 for the last two notes. The general claim \"every row in every catalogue conforms\" is NOT asserted: 30 rows remain, pinned in a shrink-only ledger with named blockers (below).\n\nWHAT WAS FILED, AND WHERE EACH INSTANCE STANDS:\n1. \"No definition was ever written.\" ADR-0059 declares the axis: registry, three predicates, a literal-drift check in check-io-boundary-drift, and property tests. IoPrimitive.kind, TaintSource.kind and TaintSink.kind declare it (#1157).\n2. The catalogue notes stating the other two rules:\n   - java.yaml R3 (\"java's analyzer stamps call_construct=method\"): rewritten when the statics moved (#1162).\n   - kotlin.yaml R3 (\"the analyzer emits them as function-kind calls\") and rust.yaml R1 (\"a method because that is what it IS\"): rewritten in #1165.\n   - INV-pimir's R1 statement: rewritten on the tracker (step 7).\n   Evidence: grep over io_primitives/*.yaml and the overlays for 'stamps call_construct' / 'what it IS' / 'analyzer emits them as' now finds none.\n3. Scala held two rules in one merged catalogue. The inherited java statics are now function-kind, like its own Source.fromFile (#1162).\n4. The consumers:\n   - The INV-nizom arm no longer reads a method stamp as receiver evidence on a slot naming one owner (#1159). Measured: re-kinding the java statics lost 41 classifications before and 0 after.\n   - Route 1 of method_starved_modules is still a construct x kind proxy. Its docstring and the spec now say so, and say where it is loose (#1163). INV-pimir stays violated for that join.\n5. The MEASURED CONSEQUENCES filed here:\n   - JS process classified-yet-starved (6/9 repos): fixed (#1155, INV-dihun).\n   - The java -41: fixed (#1159).\n   - The kotlin/scala qualifier drop: fixed (#1160, WI-kilap done). sbt 123 -> 237 classified.\n   - The 16 swift constructor rows: adjudicated (#1158).\n\nBEHAVIORAL EVIDENCE, through the production classify_call with dst_ref, the gates and compute_boundary_coverage (measure.py, kind_audit_09232026/):\n- After step 6, over 21 surveys, classified counts, starvation and coverage reasons are identical to before the re-kind.\n- verify-claims A/B on 7 JVM repos: 49/49 verdicts identical, including caveats and details.\nTests: test_io_primitive_kinds.py pins the ledger at 30, that every JDK static is function-kind in java/kotlin/scala, and that every java function row needs module context.\n\nRESIDUAL (filed, not closed here):\n- WI-ziviv: 3 swift statics, 21 objc class methods, 5 kotlin.io.FilesKt rows (29 ledgered). Its thread records which objc rows need a boundary ruling before any re-kind.\n- WI-narij: scala Process.apply (1 ledgered).\n- WI-jubim: kotlin/scala do not consume library signatures (Runtime.getRuntime().exec).\n- INV-pimir: route 1's join.\n- WI-vidof: scala.io.StdIn function rows are matched by bare project methods (11 false ipc_recv on gatling). This was pre-existing; it is the same shape step 6 blocked for the JDK statics."  # 252d

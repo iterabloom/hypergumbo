@@ -6,6 +6,8 @@ a collection-of-repos), ``iter_pool_repos`` (bounded one-level recursion
 through a pool root), and ``resolve_repo_path`` (explicit-name lookup with
 optional one-level descent).
 """
+
+# covers: scripts/lib/pool_utils.py
 import os
 import sys
 from pathlib import Path

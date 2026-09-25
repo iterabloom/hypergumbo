@@ -1,0 +1,23 @@
+- op: create  # b87b
+  at: '2026-09-09T17:57:42Z'  # b87b
+  by: agent  # b87b
+  actor: jgstern_agent  # b87b
+  clock: 1  # b87b
+  nonce: b87b  # b87b
+  data:  # b87b
+    kind: work_item  # b87b
+    title: "c.yaml declares NO module_completeness at all, so no C module is ever an examined negative -- WI-lajus's include stamp made this visible, moving 15 of 21 claim verdicts to inconclusive"  # b87b
+    status: todo_hard  # b87b
+    priority: 2  # b87b
+    parent:  # b87b
+    tags:  # b87b
+    - taint  # b87b
+    - catalogue  # b87b
+    - c  # b87b
+    - io_boundary  # b87b
+    isbefore: []  # b87b
+    duplicate_of: []  # b87b
+    not_duplicate_of: []  # b87b
+    pr_ref:  # b87b
+    description: "FILED 2026-09-09 from WI-lajus (measurement 0023). c.yaml declares NO\n`module_completeness` section at all -- only a comment at the top of the file\nreferring to one (\"coverage is claimed per-module via ``module_completeness``\").\n\nCONSEQUENCE: no C module is ever an EXAMINED NEGATIVE. `_adjudicate_external_modules`\npermits only what `module_io_is_enumerated` vouches for -- the permitting case is\nenumerated, not the blocking one, deliberately (INV-buzab / INV-zubuh: name\nrecognition and row presence each failed OPEN and each let a real exfiltration\ninto a `confirmed` verdict). With no entries, every C external call is\nunexamined by that gate's own test.\n\nWHY IT ONLY BECAME VISIBLE NOW. Before WI-lajus, C unresolved calls carried the\n`external` sentinel, `_module_from_symbol_path` returned the placeholder, and\nthe walk `continue`d before reaching the enumeration test -- the disclosed\nresidual, not a pass. WI-lajus stamps the file's #include set on ambiguous\ncalls, so those dsts now carry real module spellings and reach the test, where\nINV-zimud's ALL-expansion asks that EVERY disjunct be enumerated. None is.\n\nMEASURED (0023, three repos): 15 of 21 claim verdicts moved\nconfirmed_with_caveats -> inconclusive. ZERO moved toward confirmed. The\ndirection is safe -- it is the withholding direction -- and the retracted\nconfirmations were on repos whose socket I/O was invisible (passt is a\nuser-mode TCP/IP stack that confirmed \"no untrusted input reaches a subprocess\"\nwith zero send/recv classified). But it IS a loss of information at the label:\n`confirmed_with_caveats` carried \"The claim holds everywhere the analysis could\nsee\"; `inconclusive` with zero caveats does not.\n\nTHE DELIVERABLE: a `module_completeness` block for c.yaml, per-module and\ndated, in the shape the other catalogues use. Start with the headers the\ncorpus actually includes -- stdio, unistd, sys/socket, sys/stat, string,\nerrno, stdlib -- and enumerate what each declares for the boundaries under\nclaim. With it, a stamped call whose every included header is enumerated\nbecomes an examined negative and the labels return WITHOUT loosening any gate.\n\nDO NOT \"FIX\" THIS BY RELAXING THE GATE to ANY-expansion or by restoring\n`is_stdlib_module` / row-presence as a fallback. Both were measured to fail\nopen and are named in verify_claims.py as such: \"Restoring either as a fallback\nrestores the defect; there is none.\"\n\nNOT A REGRESSION OF WI-lajus. The recall gain is real and independent (13 new\nprimitives, 0 lost, send/recv reaching for the first time). This item is the\nL1 half that makes the recall legible in the verdict."  # b87b
+    fields: {}  # b87b

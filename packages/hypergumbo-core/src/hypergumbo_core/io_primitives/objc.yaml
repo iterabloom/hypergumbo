@@ -223,18 +223,32 @@ subprocess:
 
 env_read:
   - module: NSProcessInfo
-    methods:
-      - environment
-      - processName
-      - hostName
-      - operatingSystemVersionString
-      - physicalMemory
-      - processorCount
+    methods: [environment]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: NSDate
+    methods: [date, timeIntervalSinceReferenceDate]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused.
+      swift-corelibs-foundation Sources/Foundation/NSDate.swift: the
+      no-argument initialiser calls CFAbsoluteTimeGetCurrent(), and the
+      CLASS property timeIntervalSinceReferenceDate returns
+      Date().timeIntervalSinceReferenceDate. Instance arithmetic
+      (timeIntervalSince:, addingTimeInterval:) gets no row.
+  - module: NSProcessInfo
+    methods: [systemUptime]
+  - module: NSProcessInfo
+    methods: [processName, hostName, operatingSystemVersionString, physicalMemory, processorCount]
   - module: NSBundle
-    methods:
-      - bundleIdentifier
-      - infoDictionary
-      - "objectForInfoDictionaryKey:"
+    methods: [bundleIdentifier, infoDictionary, "objectForInfoDictionaryKey:"]
     notes: "App bundle metadata access"
 
 logging:

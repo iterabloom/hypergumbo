@@ -226,6 +226,23 @@ def _extract_symbols_from_file(
                 if sig:
                     type_signatures[name] = sig
 
+    # INV-midag: a function is written as consecutive EQUATIONS, one per
+    # pattern, and each is its own ``function``/``bind`` node. The symbol is
+    # emitted once per name, from the first equation, so its span must run to
+    # the LAST one. Otherwise every call in a later equation is anchored to the
+    # right function but falls outside its span: xmonad's ``handle`` spanned
+    # 287-292 while its equations run to 414. Haskell requires a function's
+    # equations to be adjacent, so first-to-last is exactly the function.
+    last_equation_end: dict[str, tuple[int, int]] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type in ("function", "bind") and (
+            node.parent is None or node.parent.type == "declarations"
+        ):
+            eq_name = _get_function_name(node, source)
+            if eq_name:
+                end = (node.end_point[0], node.end_point[1])
+                last_equation_end[eq_name] = max(last_equation_end.get(eq_name, end), end)
+
     def add_symbol(
         node: "tree_sitter.Node",
         name: str,
@@ -237,13 +254,17 @@ def _extract_symbols_from_file(
             return  # pragma: no cover - skip empty/duplicate names
         seen_names.add(name)
 
+        end_row, end_col = (
+            last_equation_end.get(name, (node.end_point[0], node.end_point[1]))
+            if kind == "function" else (node.end_point[0], node.end_point[1])
+        )
         start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
+        end_line = end_row + 1
         span = Span(
             start_line=start_line,
             end_line=end_line,
             start_col=node.start_point[1],
-            end_col=node.end_point[1],
+            end_col=end_col,
         )
         sym_id = make_symbol_id("haskell", file_path, start_line, end_line, name, kind)
         # WI-buvun: is_exported tri-state. No export list = all top-level
@@ -337,6 +358,530 @@ def _extract_symbols_from_file(
     return symbols
 
 
+#: Handle-taking READ functions whose boundary the handle argument decides.
+#:
+#: WI-lipis. ``haskell.yaml`` declares every one of these under BOTH ``fs_read``
+#: and ``ipc_recv``, because ``hGetLine stdin`` and ``hGetLine h`` are the same
+#: row and different crossings (INV-bagok / INV-zumin class (b)). This set is
+#: the producer half of that: it decides which calls are worth asking about.
+#:
+#: NO PER-FUNCTION ARGUMENT INDEX, unlike the C sibling, and the asymmetry is
+#: real rather than an omission -- every function here takes its Handle FIRST
+#: (``hGet h n``, ``hGetSome h n``), whereas C puts the stream third in
+#: ``fgets`` and first in ``fscanf``. A shared "last argument" rule would get
+#: ``fscanf`` wrong in the direction that INVENTS a crossing.
+_HS_HANDLE_READERS: frozenset[str] = frozenset({
+    "hGetContents", "hGetLine", "hGetChar",
+    "hGet", "hGetSome", "hGetNonBlocking",
+})
+
+#: Standard streams. A read here crosses ``ipc_recv`` via ``std_stream``.
+_HS_STD_HANDLES: frozenset[str] = frozenset({"stdin", "stdout", "stderr"})
+
+#: Calls that produce a ``Handle`` over a PATH.
+#:
+#: ``hDuplicate`` and friends are deliberately absent: they take a Handle whose
+#: nature was established wherever THAT handle came from, which is INV-vaduk's
+#: whole point, so classifying them here would assert a filesystem read over a
+#: standard stream.
+_HS_PATH_HANDLE_PRODUCERS: tuple[str, ...] = ("openFile", "openBinaryFile")
+
+
+def _hs_classify_handle_text(text: str) -> Optional[str]:
+    """``io_target_kind`` for an expression that produces a ``Handle``.
+
+    ONE PLACE, so an inline handle and a resolved binding cannot drift into
+    disagreeing about what ``openFile`` is -- the same reason the C and Go
+    siblings each have exactly one such function.
+
+    FAIL CLOSED: an expression this cannot name returns ``None`` and the call
+    is left classified exactly as the catalogue's first-declared row says. The
+    direction here ADDS findings, so an unrecognised handle must not guess.
+    """
+    stripped = text.strip().strip("()").strip()
+    if stripped in _HS_STD_HANDLES:
+        return "std_stream"
+    parts = stripped.split()
+    if len(parts) > 1 and parts[0] in _HS_PATH_HANDLE_PRODUCERS:
+        return "host_path"
+    return None
+
+
+#: Node types that can be the top-level definition enclosing a call.
+#:
+#: BOTH ARE REQUIRED and the second was found by a coverage gap rather than by
+#: reading the grammar. Haskell spells a definition with NO arguments
+#: (``f = do ...``) as ``bind`` and one WITH arguments (``f p = do ...``) as
+#: ``function`` -- and the second is the common shape for exactly the code this
+#: seam is about, since a ``Handle`` usually arrives as a parameter or is opened
+#: from one. Searching only ``bind`` silently abstained on every parameterised
+#: function, which is a false NEGATIVE in the direction that loses a source.
+_HS_DEFINITION_TYPES: frozenset[str] = frozenset({"bind", "function"})
+
+
+def _hs_enclosing_definition(
+    node: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """The OUTERMOST definition ancestor of *node*.
+
+    OUTERMOST, not nearest. Haskell spells both a top-level definition and a
+    ``do`` statement as ``bind``, so taking the first match walking up would
+    scope the search to the single statement the call sits in, where no earlier
+    binding can ever be found.
+    """
+    outermost: Optional["tree_sitter.Node"] = None
+    current = node.parent
+    while current is not None:
+        if current.type in _HS_DEFINITION_TYPES:
+            outermost = current
+        current = current.parent
+    return outermost
+
+
+def _hs_binding_rhs(
+    node: "tree_sitter.Node", source: bytes, name: str,
+) -> Optional[str]:
+    """Text of the LAST binding of *name* at or above *node*'s line.
+
+    Deliberately smaller than a reaching-def solver and its answers are a
+    SUBSET of one: the enclosing definition only, textual line order only, no
+    branch or guard reasoning. The analyzer runs before any DDG exists, so the
+    alternative is not "use the solver" but "answer nothing".
+
+    ORDER IS THE POINT, and both directions are pinned by tests. A scan taking
+    the last match in the FILE would read a rebinding BELOW the call as if it
+    reached it; one taking the first would miss a rebinding above it.
+    """
+    body = _hs_enclosing_definition(node)
+    if body is None:  # pragma: no cover - see below
+        # DEFENSIVE. Every call the analyzer emits an edge for sits inside a
+        # ``bind`` or a ``function``, because the edge needs a CALLER and the
+        # caller symbol comes from one of those nodes. It was reachable while
+        # this searched only ``bind`` -- a parameterised definition has neither
+        # a bind ancestor nor, at that point, a resolvable origin -- and adding
+        # ``function`` closed it. Kept because the walk can return None and
+        # that must be handled where it is read.
+        return None
+    use_line = node.start_point[0]
+    best_line = -1
+    best_text: Optional[str] = None
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.children)
+        if current.type != "bind" or len(current.children) < 3:
+            continue
+        target = current.children[0]
+        if target.type != "variable" or node_text(target, source) != name:
+            continue
+        # A MONADIC BIND, not a definition. Haskell spells both ``h <- expr``
+        # and ``f = expr`` as ``bind``, and only the first one binds a value in
+        # this scope: a definition's second child is a ``match`` holding the
+        # whole right-hand side including the ``=``. Requiring the ``<-`` token
+        # is what keeps ``f = do ...`` from being read as a binding of ``f``.
+        if current.children[1].type != "<-":
+            continue
+        line = current.start_point[0]
+        if line > use_line or line < best_line:
+            continue
+        best_line = line
+        best_text = node_text(current.children[2], source)
+    return best_text
+
+
+def _hs_handle_target_kind(
+    node: "tree_sitter.Node", source: bytes, callee_name: str,
+) -> Optional[str]:
+    """``io_target_kind`` for a handle-taking read at *node*, or ``None``.
+
+    *node* is the ``apply`` whose first child named ``callee_name``, so the
+    handle is ``children[1]`` -- true for both arities in this family, because
+    ``hGet h n`` parses as ``apply(apply(hGet, h), n)`` and the edge is emitted
+    at the INNER apply.
+    """
+    if callee_name not in _HS_HANDLE_READERS or len(node.children) < 2:
+        return None
+    arg_text = node_text(node.children[1], source)
+    direct = _hs_classify_handle_text(arg_text)
+    if direct is not None:
+        return direct
+    bound = _hs_binding_rhs(node, source, arg_text.strip())
+    if bound is None:
+        return None
+    return _hs_classify_handle_text(bound)
+
+
+def _hs_call_meta(
+    node: "tree_sitter.Node", source: bytes, callee_name: str,
+) -> dict[str, str]:
+    """Edge ``meta`` for one application, with the handle's origin when known.
+
+    ONE BUILDER FOR BOTH BRANCHES on purpose. The resolved and unresolved arms
+    below construct the same edge from the same AST node and differ only in
+    ``dst``; giving each its own meta literal is how the two drift, and a
+    stamp that reached only the unresolved arm would be invisible in exactly
+    the repositories that resolve their own helpers.
+    """
+    meta = {"call_construct": "application"}
+    kind = _hs_handle_target_kind(node, source, callee_name)
+    if kind is not None:
+        meta["io_target_kind"] = kind
+    return meta
+
+
+#: Monadic combinators whose ARGUMENT is an action they run.
+#:
+#: A NAME LIST IS UNAVOIDABLE HERE and the reason is the same one that makes
+#: this whole seam necessary: ``f act`` runs ``act`` for some ``f`` and passes
+#: it as a value for others, and nothing in the syntax says which. ``mapM_
+#: getLine`` does not run ``getLine``. So the choice is a list or nothing, and
+#: the list is kept to combinators whose ONLY purpose is to run the action.
+#:
+#: ``liftIO`` carries this bucket almost by itself -- most of the 142
+#: catalogued sites measured over the corpus, nearly all ``liftIO
+#: getCurrentTime``. ``fmap``/``mapM``/``traverse`` are deliberately ABSENT:
+#: they take a function and a container, so their first argument is exactly the
+#: passed-as-a-value case.
+_HS_ACTION_COMBINATORS: frozenset[str] = frozenset({
+    "void", "forever", "liftIO", "try", "replicateM", "replicateM_",
+})
+
+#: Node types that BIND a name inside a definition, so a use of that name is
+#: not a call to anything the analyzer can name.
+_HS_PATTERN_TYPES: frozenset[str] = frozenset({"patterns"})
+
+
+def _hs_bare_identifier(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, Optional[str]]]:
+    """``(name, module_alias)`` if *node* is a bare identifier, else ``None``.
+
+    A ``qualified`` node keeps its alias separate rather than folded into the
+    name, because the catalogue rows ``Data.Text.IO``'s ``getLine`` under a
+    DIFFERENT boundary note from Prelude's and the alias is what tells them
+    apart. Folding would produce ``T.getLine``, which is INV-januj's defect
+    (a module-qualified name in the NAME slot) reproduced in a new place.
+    """
+    if node.type == "variable":
+        return node_text(node, source), None
+    if node.type == "qualified":
+        module_node = find_child_by_type(node, "module")
+        var_node = find_child_by_type(node, "variable")
+        if var_node is None:
+            return None  # pragma: no cover - the grammar always pairs them
+        module_alias: Optional[str] = None
+        if module_node is not None:
+            module_id_node = find_child_by_type(module_node, "module_id")
+            if module_id_node is not None:
+                module_alias = node_text(module_id_node, source)
+        return node_text(var_node, source), module_alias
+    return None
+
+
+def _hs_collect_variables(node: "tree_sitter.Node", source: bytes) -> set[str]:
+    """Every ``variable`` name at or under *node* -- a pattern's bound names.
+
+    A pattern is not always one identifier (``(a, b) <- act``), so the whole
+    subtree is taken rather than the first child.
+    """
+    names: set[str] = set()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.children)
+        if current.type == "variable":
+            names.add(node_text(current, source))
+    return names
+
+
+def _hs_locally_bound_names(
+    definition: "tree_sitter.Node", source: bytes,
+) -> set[str]:
+    """Names bound INSIDE *definition*: ``<-`` binders, parameters, let/where.
+
+    FAIL CLOSED, the same rule ``_hs_classify_handle_text`` states for the
+    handle seam: this walker feeds a seam that ADDS edges, so a name the
+    definition binds for itself is left alone rather than guessed at. Measured
+    over eight repositories, 11.3% of ``pat <- act`` sites name something bound
+    in the enclosing definition -- ``act <- mkAction`` then ``act`` -- and an
+    edge there would assert a call to a local value.
+
+    THE DEFINITION'S OWN NAME IS NOT COLLECTED. A top-level ``main = do ...``
+    is spelled ``bind`` exactly like a ``let`` binding, so this looks only at
+    ``bind`` nodes carrying ``<-`` and at ``bind``/``function`` nodes under a
+    ``local_binds``; collecting every ``bind`` would suppress self-recursion.
+
+    THE COST IS A KNOWN FALSE NEGATIVE: ``let g = getLine`` then ``s <- g``
+    really does run ``getLine``, and this abstains. Resolving it needs
+    ``_hs_binding_rhs``-style origin chasing, which is a separate seam.
+    """
+    names: set[str] = set()
+    stack = [definition]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.children)
+        if current.type in _HS_PATTERN_TYPES:
+            names |= _hs_collect_variables(current, source)
+        elif current.type == "bind" and any(
+            child.type == "<-" for child in current.children
+        ):
+            names |= _hs_collect_variables(current.children[0], source)
+        elif current.type == "local_binds":
+            for child in current.children:
+                if child.type in _HS_DEFINITION_TYPES and child.children:
+                    names |= _hs_collect_variables(child.children[0], source)
+    return names
+
+
+def _hs_action_operands(
+    node: "tree_sitter.Node", source: bytes,
+) -> list["tree_sitter.Node"]:
+    """Sub-nodes of *node* that a bare identifier would be EXECUTED in.
+
+    Three positions, chosen by measurement over the EIGHT DISTINCT
+    repositories carrying INV-fofoj's population. Each site was classified as
+    catalogued / module-level-in-repo / bound-in-the-enclosing-definition:
+
+        position              catalogued   wrong (locally bound)
+        ``pat <- act``               267                  11.3%
+        bare ``do`` statement         33                  15.2%
+        ``liftIO act``               142                  15.5%
+        -- excluded --
+        ``<$>`` operand               23                  35.3%
+        ``>>=`` / ``=<<`` operand     16              32.9/26.1%
+        ``<*>`` / ``*>`` / ``<*``      1             32.6/18.0%
+
+    EIGHT, NOT NINE. ``cohort6_crypto`` and ``simplex-chat`` are the same
+    repository -- the second is a symlink into the first, and all 267 of
+    ``cohort6_crypto``'s ``.hs`` files live under ``simplex-chat/``. Counting
+    both inflated an earlier pass of this table from 505 catalogued sites to
+    794, and inflates INV-fofoj's own filed population (25 sites over 9
+    repositories) to the same degree; the honest figures are 505 and 19/8.
+
+    THE INFIX OPERATORS ARE EXCLUDED ON MEASUREMENT, NOT OVERSIGHT. They are
+    just as much execution positions semantically -- but Haskell spells
+    ``fmap`` over Maybe, lists and Either with the same operators it spells IO
+    with, and without types the two are indistinguishable. Together they add 63
+    catalogued sites for 3,812 more sites at 18-35% wrong, against the 442 the
+    three covered positions reach at the three lowest rates with real payoff.
+    """
+    kind = node.type
+    if kind == "bind" and any(child.type == "<-" for child in node.children):
+        return [node.children[-1]]
+    if kind == "exp" and node.parent is not None and node.parent.type == "do":
+        named = [child for child in node.children if child.is_named]
+        return named if len(named) == 1 else []
+    if kind == "apply":
+        named = [child for child in node.children if child.is_named]
+        if len(named) == 2:
+            head = _hs_bare_identifier(named[0], source)
+            if head is not None and head[0] in _HS_ACTION_COMBINATORS:
+                return [named[1]]
+    return []
+
+
+def _derive_haskell_gated_names() -> frozenset[str]:
+    """Catalogued haskell names the F3 gate REFUSES without a module hint.
+
+    ``gate_named_entry`` ends with ``if name in ambiguous_names: return None``,
+    so a bare AMBIGUOUS name reaches nothing while a bare unambiguous one still
+    matches through the permissive short-name path. That asymmetry is the whole
+    scope of WI-lokun: these are the only names a module hint can HELP, and
+    stamping any other name would switch module filtering on for a call that
+    already classifies -- buying nothing and risking the fallback (WI-lajus
+    stamped too broadly and moved verdicts the wrong way).
+
+    Derived from the catalogue rather than listed, so a row added to
+    ``ambiguous_names`` later is covered without editing this module.
+    """
+    from hypergumbo_core.io_boundary import load_catalog
+
+    catalog = load_catalog("haskell")
+    named = {p.name for p in catalog.primitives if p.name}
+    return frozenset(named & set(catalog.ambiguous_names or ()))
+
+
+HASKELL_GATED_NAMES: frozenset[str] = _derive_haskell_gated_names()
+
+#: Haskell imports ``Prelude`` implicitly, so it appears in NO import line.
+_HS_IMPLICIT_MODULE = "Prelude"
+
+
+def _extract_unqualified_imports(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> tuple[dict[str, str], set[str]]:
+    """Which module brings each UNQUALIFIED name into scope, and what Prelude hides.
+
+    Returns ``(explicit, prelude_hidden)``:
+
+    * ``explicit`` maps a name listed in an unqualified ``import M (name)`` to
+      ``M``. A ``qualified`` import is skipped deliberately -- it does NOT put
+      the bare name in scope, so a bare occurrence cannot have come from it.
+    * ``prelude_hidden`` is the set from ``import Prelude hiding (...)``, which
+      is the case that makes an otherwise-safe implicit-Prelude inference wrong.
+
+    Two imports cannot legally claim the same unqualified name in a module that
+    actually uses it, so a later entry overwriting an earlier one is not a case
+    worth arbitrating here.
+    """
+    explicit: dict[str, str] = {}
+    prelude_hidden: set[str] = set()
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import":
+            continue
+        kinds = [c.type for c in node.children]
+        if "qualified" in kinds:
+            continue
+        module_node = next(
+            (c for c in node.children if c.type == "module"), None,
+        )
+        import_list = next(
+            (c for c in node.children if c.type == "import_list"), None,
+        )
+        if module_node is None or import_list is None:
+            continue
+        names = [
+            node_text(c, source)
+            for c in import_list.children
+            if c.type == "import_name"
+        ]
+        module_name = node_text(module_node, source)
+        if "hiding" in kinds:
+            if module_name == _HS_IMPLICIT_MODULE:
+                prelude_hidden.update(names)
+            continue
+        for name in names:
+            explicit[name] = module_name
+    return explicit, prelude_hidden
+
+
+def _hs_bare_call_module(
+    callee_name: str,
+    explicit: dict[str, str],
+    prelude_hidden: set[str],
+    prelude_exports: frozenset[str],
+) -> Optional[str]:
+    """The module a BARE call's name came from, or None to stay ``external``.
+
+    Only two routes count as evidence, and everything else abstains:
+
+    (a) an unqualified import list names it -- ``import Network.Socket.ByteString
+        (recv)`` then bare ``recv``. This is the route WI-lokun filed.
+    (b) the IMPLICIT Prelude, which is where the filed INSTANCE actually lives:
+        ``print`` is catalogued under ``Prelude`` and Prelude is in no import
+        line at all. Taken only when nothing else claims the name and
+        ``import Prelude hiding (...)`` does not hide it -- ``import
+        Data.Text.IO (readFile)`` beside ``import Prelude hiding (readFile)``
+        must yield ``Data.Text.IO``, never ``Prelude``.
+
+    Abstaining is the safe direction: ``external`` keeps the permissive
+    short-name path, and a WRONG module hint would switch module filtering on
+    and kill it.
+
+    WHAT THE CORPUS ACTUALLY LOOKS LIKE, stated because route (b)'s name is
+    misleading there: all three servant sites this fixes are written
+    ``import Prelude ()`` + ``import Prelude.Compat`` -- the base-compat idiom,
+    where the empty import list SUPPRESSES the implicit Prelude and the name
+    arrives re-exported from ``Prelude.Compat``. Stamping ``Prelude`` is still
+    correct, because ``Prelude.Compat`` re-exports ``Prelude.print`` verbatim
+    and the catalogue rows a function's HOME module, not whichever module
+    re-exported it into a given file. Route (b) is therefore better read as
+    "the name's home module is Prelude and nothing in this file claims
+    otherwise" than as a claim about the implicit import specifically.
+    """
+    if callee_name in explicit:
+        return explicit[callee_name]
+    if callee_name in prelude_hidden:
+        return None
+    if callee_name in prelude_exports:
+        return _HS_IMPLICIT_MODULE
+    return None
+
+
+def _derive_haskell_prelude_exports() -> frozenset[str]:
+    """Catalogued names whose module is ``Prelude``.
+
+    The catalogue is not a model of Prelude's full export list and is not
+    treated as one: it is only consulted for names that ALREADY have a row,
+    which is the only population a module hint could help anyway.
+    """
+    from hypergumbo_core.io_boundary import load_catalog
+
+    return frozenset(
+        p.name for p in load_catalog("haskell").primitives
+        if p.module == _HS_IMPLICIT_MODULE and p.name
+    )
+
+
+HASKELL_PRELUDE_EXPORTS: frozenset[str] = _derive_haskell_prelude_exports()
+
+
+def _hs_emit_call_edge(
+    node: "tree_sitter.Node",
+    source: bytes,
+    callee_name: str,
+    path_hint: Optional[str],
+    meta: dict[str, str],
+    local_symbols: dict[str, Symbol],
+    resolver: NameResolver,
+    run_id: str,
+    unqualified_imports: tuple[dict[str, str], set[str]] = ({}, set()),
+) -> Optional[Edge]:
+    """One ``calls`` edge from *node*, resolved when the resolver knows it.
+
+    ONE BUILDER FOR BOTH CALL POSITIONS. An application and a bare monadic
+    action differ only in which AST node carries the name and in *meta*'s
+    ``call_construct``; giving each its own copy is how the resolved/external
+    split, the confidence numbers and the WI-nurun flag drift apart between
+    them -- the same reasoning ``_hs_call_meta`` records for its two arms.
+    """
+    caller = _find_enclosing_function_haskell(node, source, local_symbols)
+    if caller is None:
+        return None
+    lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
+    if lookup_result.found and lookup_result.symbol:
+        dst = lookup_result.symbol.id
+        confidence = (
+            0.85 * lookup_result.confidence * _short_name_penalty(callee_name)
+        )
+    else:
+        # Unresolved call -- a synthetic external node so I/O boundary tagging
+        # can match stdlib calls (readFile, putStrLn, getLine). The module hint
+        # comes from a qualified import when there is one, otherwise
+        # "external" so the tagger uses unfiltered short-name matching (not
+        # "?" which would fail module filtering and return None).
+        # WI-lokun: a bare AMBIGUOUS name is refused outright by the F3 gate
+        # with no module hint, so `print err` reached nothing while
+        # `putStrLn "x"` -- unambiguous, same module, same file -- classified
+        # fine. Only that population is stamped, and only from the file's own
+        # import context; everything else keeps `external` and the permissive
+        # short-name path it exists to enable.
+        module_hint = path_hint
+        if not module_hint and callee_name in HASKELL_GATED_NAMES:
+            module_hint = _hs_bare_call_module(
+                callee_name, unqualified_imports[0], unqualified_imports[1],
+                HASKELL_PRELUDE_EXPORTS,
+            )
+        dst = f"haskell:{module_hint if module_hint else 'external'}:0-0:{callee_name}:function"
+        # WI-nurun: confidence kept explicit -- this edge targets an *external*
+        # (unresolved) callee but is not flagged is_resolved=False, so
+        # derivation would over-score it as a resolved call.
+        confidence = 0.50
+    return Edge.create(
+        src=caller.id,
+        dst=dst,
+        edge_type="calls",
+        line=node.start_point[0] + 1,
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        evidence_type="ast_call",
+        confidence=confidence,
+        meta=meta,
+    )
+
+
 def _find_enclosing_function_haskell(
     node: "tree_sitter.Node",
     source: bytes,
@@ -412,11 +957,17 @@ def _extract_edges_from_file(
     """
     if import_aliases is None:  # pragma: no cover - defensive default
         import_aliases = {}
+    #: Which module brings each UNQUALIFIED name into scope, per file. Computed
+    #: once here rather than per call site: it is a property of the file's
+    #: import block, and Haskell's scoping is file-wide (WI-lokun).
+    unqualified_imports = _extract_unqualified_imports(tree, source)
     edges: list[Edge] = []
     file_id = make_file_id("haskell", file_path)
 
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
+    #: Locally-bound names per enclosing definition, computed once.
+    bound_name_cache: dict[tuple[int, int], set[str]] = {}
 
     for node in iter_tree(tree.root_node):
         if node.type == "import":
@@ -502,55 +1053,47 @@ def _extract_edges_from_file(
                 # I/O primitives like putStrLn, print, readFile, writeFile
                 # so they produce edges matchable by the I/O boundary catalog.
                 if callee_name and callee_name != "return":
-                    # Find the caller (enclosing function)
-                    caller = _find_enclosing_function_haskell(
-                        node, source, local_symbols
+                    call_edge = _hs_emit_call_edge(
+                        node, source, callee_name, path_hint,
+                        _hs_call_meta(node, source, callee_name),
+                        local_symbols, resolver, run_id,
+                        unqualified_imports,
                     )
-                    if caller:
-                        # Try to resolve callee via resolver only
-                        lookup_result = resolver.lookup(callee_name, path_hint=path_hint)
-                        if lookup_result.found and lookup_result.symbol:
-                            callee = lookup_result.symbol
-                            confidence = 0.85 * lookup_result.confidence * _short_name_penalty(callee_name)
-                            edge = Edge.create(
-                                src=caller.id,
-                                dst=callee.id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                origin=PASS_ID,
-                                origin_run_id=run_id,
-                                evidence_type="ast_call",
-                                confidence=confidence,
-                                meta={"call_construct": "application"},
-                            )
-                            edges.append(edge)
-                        else:
-                            # Unresolved call — create edge to synthetic
-                            # external node so I/O boundary tagging can match
-                            # stdlib calls (readFile, putStrLn, etc.).
-                            # Use module hint from qualified import when
-                            # available, otherwise "external" so the I/O
-                            # boundary tagger uses unfiltered short-name
-                            # matching (not "?" which would fail module
-                            # filtering and return None).
-                            module_hint = path_hint if path_hint else "external"
-                            ext_id = f"haskell:{module_hint}:0-0:{callee_name}:function"
-                            edge = Edge.create(
-                                src=caller.id,
-                                dst=ext_id,
-                                edge_type="calls",
-                                line=node.start_point[0] + 1,
-                                origin=PASS_ID,
-                                origin_run_id=run_id,
-                                evidence_type="ast_call",
-                                # WI-nurun: confidence kept explicit — this edge
-                                # targets an *external* (unresolved) callee but is
-                                # not flagged is_resolved=False, so derivation
-                                # would over-score it as a resolved call.
-                                confidence=0.50,
-                                meta={"call_construct": "application_external"},
-                            )
-                            edges.append(edge)
+                    if call_edge is not None:
+                        edges.append(call_edge)
+
+        # INV-fofoj: a zero-argument IO action is a BARE IDENTIFIER, not an
+        # application, so none of the branches above can see it. ``getLine``
+        # emitted no edge at all while ``readProcess "uname" [] ""`` in the
+        # identical flow shape emitted one -- which made every catalogued
+        # zero-argument row (getLine, getArgs, getEnvironment, exitFailure,
+        # getCurrentTime) unreachable no matter how it was classified.
+        for operand in _hs_action_operands(node, source):
+            identifier = _hs_bare_identifier(operand, source)
+            if identifier is None:
+                continue
+            action_name, action_alias = identifier
+            if action_name == "return":
+                continue
+            definition = _hs_enclosing_definition(operand)
+            if definition is None:  # pragma: no cover - an edge needs a caller
+                continue
+            key = (definition.start_byte, definition.end_byte)
+            # KEYED ON BYTE SPAN, NOT ``id()``: tree-sitter hands out a fresh
+            # ``Node`` object per access, so identity never matches itself.
+            if key not in bound_name_cache:
+                bound_name_cache[key] = _hs_locally_bound_names(definition, source)
+            if action_name in bound_name_cache[key]:
+                continue
+            action_edge = _hs_emit_call_edge(
+                operand, source, action_name,
+                import_aliases.get(action_alias) if action_alias else None,
+                {"call_construct": "monadic_action"},
+                local_symbols, resolver, run_id,
+                unqualified_imports,
+            )
+            if action_edge is not None:
+                edges.append(action_edge)
 
     return edges
 

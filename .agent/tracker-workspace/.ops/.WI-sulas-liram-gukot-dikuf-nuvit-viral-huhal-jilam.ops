@@ -1,0 +1,32 @@
+- op: create  # 99b3
+  at: '2026-09-25T18:18:42Z'  # 99b3
+  by: agent  # 99b3
+  actor: jgstern_agent  # 99b3
+  clock: 1  # 99b3
+  nonce: 99b3  # 99b3
+  data:  # 99b3
+    kind: work_item  # 99b3
+    title: "swift: a value chain v.p.m() is typed by its HEAD v, so receiver_type_hint / the module slot name the wrong type (1,020 sites on 4 repos, 20/20 sampled wrong) -- and the Channel.addHandler net_send row matches only through that error"  # 99b3
+    status: todo_hard  # 99b3
+    priority: 2  # 99b3
+    parent:  # 99b3
+    tags:  # 99b3
+    - swift  # 99b3
+    - analysis_quality  # 99b3
+    - io_boundary  # 99b3
+    - taint  # 99b3
+    isbefore: []  # 99b3
+    duplicate_of: []  # 99b3
+    not_duplicate_of: []  # 99b3
+    pr_ref:  # 99b3
+    description: "FILED 2026-09-25 from the WI-dodop ruling (P2 review follow-up). Prior-art search: no open or closed row covers it. WI-sizas deliberately does NOT guess `self.a.b.m()` (test_swift_self_property_receiver.py::test_a_DEEPER_self_chain_is_not_guessed_at). This is the non-self version of the same shape, and there the analyzer DOES guess. Record and instruments: ~/hypergumbo_lab_notebook/dodop_ruling_09252026/ (headtype_sizing.py, headtype_sample.txt, fixture3/).\n\nMECHANISM (read in the code, dev 7821064366). swift.py `_extract_call_target` (~:1234) returns `receiver_parts[0]`, the chain HEAD, as the receiver hint. For `v.p.m()` the receiver is `v.p`, but the emit site types `v` and stamps typeof(v) as `receiver_type_hint`. For an external type it also stamps it into the module slot. Minimal production repro through analyze_swift:\n\n    func a(ch: Channel, h: ChannelHandler) { ch.pipeline.addHandler(h) }\n      -> swift:Channel:0-0:addHandler   hint=Channel   (the receiver is a ChannelPipeline)\n    try ch.pipeline.syncOperations.addHandler(h)\n      -> swift:Channel:0-0:addHandler   hint=Channel   (the receiver is SynchronousOperations)\n\nSIZED on the #877 corpus. Production edges, call_construct=method, a hint stamped, the call re-found with the production parser, one receiver-bearing call per line (multi-call lines excluded and counted). Chains of 2+ hops whose head is a lowercase VALUE identifier:\n\n    vapor 572 · Alamofire 88 · Kingfisher 237 · hummingbird 123  =  1,020 sites (a lower bound)\n\nREAD BACK: a random sample of 20 (seed 20260925). 20 of 20 carry the HEAD's type, not the receiver's. Examples:\n- buffer.readableBytesView.map -> slot ByteBuffer\n- commandInput.executable.hasSuffix -> slot CommandInput (a String)\n- urlRequest.headers.update -> slot URLRequest\n- attachment.kf.setImage -> slot NSTextAttachment\n- app.routes.get -> hint Application\n- request.eventLoop.makeFailedFuture -> hint Request\n\n6 of the 20 fill the module slot with a WRONG external type. The other 14 carry a wrong PROJECT hint. That is not harmless: method_call_recovery step 3a treats a stamped receiver_type_hint as grounds to REFUTE a class hint (the reason #877 and WI-sizas refuse to guess).\n\nA CATALOGUE ROW IS KEYED TO THIS ERROR. hummingbird has 6 sites, all `channel.pipeline.syncOperations.addHandler(...)`, that match the default-loaded overlay row `Channel.addHandler` (net_send, io_primitives_overlays/swift-nio-and-log.yaml). They match only because the head is typed. In SwiftNIO, addHandler belongs to ChannelPipeline / its SynchronousOperations, not Channel, and the row's own note says \"pipeline setup\". DIRECTION WARNING: fixing the head typing LOSES those 6 net_send matches unless the row is re-keyed to the type that owns the method (an ADR-0059 kind/module question). Measure at L4 in both directions, and price on primitives reached (INV-linub rule).\n\nNOT SIZED: chains whose head is a TYPE (`URLSession.shared.dataTask`, 270 sites across the 4 repos). There the head typing is correct for a singleton accessor and wrong otherwise. Not read back. The analogous head-typing question in other analyzers (objc, kotlin, java chains) was NOT checked.\n\nWHAT WOULD FIX IT (not built): for a value chain of 2+ hops, either resolve member by member (typeof(v) -> the declared type of member p -> ...; WI-sizas names the same second resolution step for self.a.b) or return NO hint. Silence is the stance the self-chain test already pins, and a guess is worse than silence for the step-3a reason above."  # 99b3
+    fields: {}  # 99b3
+- op: update  # 27c3
+  at: '2026-09-25T18:37:33Z'  # 27c3
+  by: agent  # 27c3
+  actor: jgstern_agent  # 27c3
+  clock: 2  # 27c3
+  nonce: 27c3  # 27c3
+  set: {}  # 27c3
+  add:  # 27c3
+    tags: [post_release_focus]  # 27c3

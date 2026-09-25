@@ -20,6 +20,8 @@ the class of regression cannot silently reappear in a periodic-only job that
 push CI never exercises.
 """
 
+# covers: .woodpecker/*.yml, .github/workflows/*.yml
+
 from __future__ import annotations
 
 import re

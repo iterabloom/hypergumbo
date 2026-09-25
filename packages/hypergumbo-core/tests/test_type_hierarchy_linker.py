@@ -1938,3 +1938,85 @@ class TestBuildMethodIndexPublic:
         )
         assert legacy.methods_by_short_name == canonical.methods_by_short_name
         assert legacy.symbol_by_id.keys() == canonical.symbol_by_id.keys()
+
+
+class TestDerivedFromNamesInheritancePath:
+    """INV-rukor: a dispatch edge names the inheritance edges that justified it.
+
+    The linker joins a parent method to an override BECAUSE an
+    ``extends``/``implements`` path relates their classes. The endpoints alone
+    cannot recover which path that was, so ``derived_from`` must name the
+    consumed inheritance EDGES, ordered from the override's class upward.
+    """
+
+    @staticmethod
+    def _sym(sid: str, name: str, kind: str, path: str) -> Symbol:
+        return Symbol(
+            id=sid, name=name, kind=kind, language="typescript", path=path,
+            span=Span(1, 5, 0, 1), origin="typescript", origin_run_id="test",
+        )
+
+    def test_one_hop_names_the_implements_edge(self) -> None:
+        iface = self._sym("typescript:/a/I.ts:1-5:I:interface", "I", "interface", "/a/I.ts")
+        i_foo = self._sym("typescript:/a/I.ts:2-3:I.foo:method", "I.foo", "method", "/a/I.ts")
+        impl = self._sym("typescript:/a/C.ts:1-9:C:class", "C", "class", "/a/C.ts")
+        c_foo = self._sym("typescript:/a/C.ts:2-4:C.foo:method", "C.foo", "method", "/a/C.ts")
+        impl_edge = Edge.create(
+            src=impl.id, dst=iface.id, edge_type="implements", line=1,
+            origin="typescript", origin_run_id="test",
+        )
+        ctx = LinkerContext(
+            repo_root="/a", symbols=[iface, i_foo, impl, c_foo], edges=[impl_edge],
+        )
+        (edge,) = link_type_hierarchy(ctx).edges
+        assert edge.derived_from == [i_foo.id, c_foo.id, impl_edge.id]
+
+    def test_three_hop_path_is_named_child_first(self) -> None:
+        i0 = self._sym("typescript:/a/I0.ts:1-5:I0:interface", "I0", "interface", "/a/I0.ts")
+        i0_foo = self._sym("typescript:/a/I0.ts:2-3:I0.foo:method", "I0.foo", "method", "/a/I0.ts")
+        i1 = self._sym("typescript:/a/I1.ts:1-5:I1:interface", "I1", "interface", "/a/I1.ts")
+        i2 = self._sym("typescript:/a/I2.ts:1-5:I2:interface", "I2", "interface", "/a/I2.ts")
+        impl = self._sym("typescript:/a/C.ts:1-9:C:class", "C", "class", "/a/C.ts")
+        c_foo = self._sym("typescript:/a/C.ts:2-4:C.foo:method", "C.foo", "method", "/a/C.ts")
+        e_impl = Edge.create(src=impl.id, dst=i2.id, edge_type="implements", line=1, origin="t", origin_run_id="t")
+        e_21 = Edge.create(src=i2.id, dst=i1.id, edge_type="extends", line=1, origin="t", origin_run_id="t")
+        e_10 = Edge.create(src=i1.id, dst=i0.id, edge_type="extends", line=1, origin="t", origin_run_id="t")
+        ctx = LinkerContext(
+            repo_root="/a", symbols=[i0, i0_foo, i1, i2, impl, c_foo],
+            edges=[e_10, e_21, e_impl],
+        )
+        by_src = {e.src: e for e in link_type_hierarchy(ctx).edges}
+        assert by_src[i0_foo.id].derived_from == [
+            i0_foo.id, c_foo.id, e_impl.id, e_21.id, e_10.id,
+        ]
+
+    def test_names_only_edges_the_dispatch_gate_admitted(self) -> None:
+        """A Go concrete ``extends`` is filtered from the maps, so it can never
+        appear in a chain; the admitted ``implements`` path is the one named."""
+        iface = Symbol(
+            id="go:/a/i.go:1-5:Speaker:interface", name="Speaker", kind="interface",
+            language="go", path="/a/i.go", span=Span(1, 5, 0, 1),
+            origin="go", origin_run_id="t",
+        )
+        speak = Symbol(
+            id="go:/a/i.go:2-3:Speaker.Speak:method", name="Speaker.Speak", kind="method",
+            language="go", path="/a/i.go", span=Span(2, 3, 0, 1),
+            origin="go", origin_run_id="t",
+        )
+        dog = Symbol(
+            id="go:/a/d.go:1-9:Dog:struct", name="Dog", kind="struct",
+            language="go", path="/a/d.go", span=Span(1, 9, 0, 1),
+            origin="go", origin_run_id="t",
+        )
+        dog_speak = Symbol(
+            id="go:/a/d.go:2-4:Dog.Speak:method", name="Dog.Speak", kind="method",
+            language="go", path="/a/d.go", span=Span(2, 4, 0, 1),
+            origin="go", origin_run_id="t",
+        )
+        concrete = Edge.create(src=dog.id, dst=iface.id, edge_type="extends", line=1, origin="go", origin_run_id="t")
+        impl = Edge.create(src=dog.id, dst=iface.id, edge_type="implements", line=2, origin="go", origin_run_id="t")
+        ctx = LinkerContext(
+            repo_root="/a", symbols=[iface, speak, dog, dog_speak], edges=[concrete, impl],
+        )
+        (edge,) = link_type_hierarchy(ctx).edges
+        assert edge.derived_from == [speak.id, dog_speak.id, impl.id]

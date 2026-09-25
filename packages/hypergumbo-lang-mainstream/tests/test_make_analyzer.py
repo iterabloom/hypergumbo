@@ -247,7 +247,7 @@ def test_returns_skipped_when_unavailable(tmp_path):
     (tmp_path / "Makefile").write_text("all:")
 
     with patch.object(make_module._analyzer, "_check_grammar_available", return_value=False):
-        with pytest.warns(UserWarning, match="make analysis skipped"):
+        with pytest.warns(UserWarning, match="makefile analysis skipped"):  # WI-juzig: the LANGUAGE is named
             result = analyze_make_files(tmp_path)
 
     assert result.skipped is True
@@ -346,3 +346,41 @@ app: lib.o
     # Internal dependency should have higher confidence
     internal_deps = [e for e in app_deps if e.confidence == 0.90]
     assert len(internal_deps) >= 1
+
+
+def test_symbols_speak_the_taxonomy_language_makefile(tmp_path):
+    """WI-juzig / INV-nidul: the taxonomy, the profile and the file-anchor
+    synthesiser call this language ``makefile``. So must every symbol, file
+    node and id prefix this pass emits — ``make`` is the PASS, not the
+    language. Two vocabularies for one thing produced a false
+    ``limits.skipped_languages`` verdict on a shipped artifact."""
+    (tmp_path / "Makefile").write_text("""
+CC = gcc
+
+all: build
+
+build:
+\t$(CC) main.c
+
+define compile
+\t$(CC) $(1)
+endef
+""")
+    result = analyze_make_files(tmp_path)
+    assert not result.skipped
+    assert result.symbols, "fixture emitted nothing"
+    assert {s.language for s in result.symbols} == {"makefile"}
+    assert all(s.id.startswith("makefile:") for s in result.symbols), [s.id for s in result.symbols]
+    kinds = {s.kind for s in result.symbols}
+    assert {"variable", "target", "function"} <= kinds, kinds
+    assert result.run is not None
+    assert result.run.pass_id == "make"  # the pass keeps its name
+
+
+def test_registration_declares_the_taxonomy_language_and_backend():
+    """The registry entry is the declaration the finalize step reads."""
+    from hypergumbo_core.analyze.registry import get_analyzer
+    reg = get_analyzer("make")
+    assert reg is not None
+    assert reg.languages == ["makefile"]
+    assert reg.backend == "tree-sitter"

@@ -13,13 +13,22 @@ a ``## Verdicts`` section heading. Both the heading and the in-block
 ``kind: audit_verdicts`` key are required so the parser can locate
 the block from either direction (Q3 belt-and-suspenders).
 
-The YAML block declares the axis it covers and a list of verdict
+The YAML block declares the axis it covers (``Edge.edge_type``,
+``Symbol.kind`` or ``Edge.evidence_type``) and a list of verdict
 rows. Each row carries enough structure that its current state can
 be checked against the live registry (the mechanical-check predicate
 per row's ``status``). The ``diagnostic_test`` field is structured
 as ``{cmd, expect}`` so that a future iteration can execute it and
 assert the result; today the parser only validates the structural
 shape.
+
+Two regression guards run over the parsed docs: one checks that no
+source file has since started producing a value a verdict marked
+DEPRECATE-NO-FOLD, and one checks that the hand-maintained index in
+``docs/audits/README.md`` still matches each doc's verdict status
+counts. Doc discovery skips ``docs/audits/`` files that declare a
+sibling format (a YAML ``kind`` other than ``audit_verdicts``, such as
+``backend_agreement``), so those are not linted as verdict tables.
 
 The three-state lifecycle (UNRESOLVED / PRELIM_RESOLVED / RESOLVED)
 is orthogonal to bakeoff validation, which lives on the migration's
@@ -351,7 +360,9 @@ def validate_against_registry(findings: AuditFindings) -> list[str]:
     state per the mechanical-check predicates defined in
     ``docs/audits/README.md``:
 
-    - RESOLVED + verdict CANONICAL  → value present in registry as relationship.
+    - RESOLVED + verdict CANONICAL  → value present in registry on that
+      axis's canonical axis (relationship / language_construct /
+      inference_pathway).
     - RESOLVED + verdict FOLD or DEPRECATE-NO-FOLD → value absent from registry.
     - PRELIM_RESOLVED                → value present in registry as endpoint_shape.
     - UNRESOLVED                     → value present in registry (any axis).
@@ -611,16 +622,47 @@ def find_readme_index_drift(
 
 # --- Tree walker ---
 
+#: The ``kind`` this module's verdict-table format declares in its YAML.
+AUDIT_VERDICTS_KIND: Final[str] = "audit_verdicts"
+
+#: ``kind: <value>`` on its own line inside a document's fenced YAML.
+_DECLARED_KIND_RE: Final[re.Pattern[str]] = re.compile(
+    r"^kind:\s*(\S+)\s*$", re.MULTILINE,
+)
+
+
+def declared_kind(md_path: Path) -> str | None:
+    """The ``kind`` a ``docs/audits/`` document declares in its YAML, or None.
+
+    ``docs/audits/`` holds every committed per-value measurement, and
+    ``docs/audits/README.md`` asks a measurement whose shape is not the
+    CANONICAL / FOLD / DEPRECATE-NO-FOLD trichotomy to declare a sibling
+    format rather than shoehorn into this one. A sibling declares itself
+    the same way this format does — a fenced YAML block whose first key is
+    ``kind`` — so the verdicts lint can tell the two apart without parsing
+    either: the backend-agreement table (ADR-0057 §5, ``kind:
+    backend_agreement``) is the first. A document declaring no ``kind`` at
+    all returns None and is treated as a (possibly malformed) verdict
+    table, so the lint still reports it.
+    """
+    match = _DECLARED_KIND_RE.search(md_path.read_text())
+    return match.group(1) if match else None
+
+
 def find_audit_findings_docs(repo_root: Path) -> list[Path]:
     """Return all audit-findings .md files under ``docs/audits/``.
 
-    Excludes ``README.md`` (the format spec, not an audit). Returns
-    an empty list if ``docs/audits/`` does not exist (e.g., the
-    package is being tested in isolation outside the repo).
+    Excludes ``README.md`` (the format spec, not an audit) and any
+    sibling-format document — one whose YAML declares a ``kind`` other
+    than ``audit_verdicts`` (see :func:`declared_kind`). Returns an empty
+    list if ``docs/audits/`` does not exist (e.g., the package is being
+    tested in isolation outside the repo).
     """
     audits_dir = repo_root / "docs" / "audits"
     if not audits_dir.is_dir():
         return []
     return sorted(
-        p for p in audits_dir.glob("*.md") if p.name != "README.md"
+        p for p in audits_dir.glob("*.md")
+        if p.name != "README.md"
+        and declared_kind(p) in (None, AUDIT_VERDICTS_KIND)
     )

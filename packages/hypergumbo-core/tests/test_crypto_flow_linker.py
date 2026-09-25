@@ -387,3 +387,50 @@ class TestCryptoFlowRegistry:
         crypto_results = [r for name, r in results if name == "crypto-flow-linker"]
         assert len(crypto_results) == 1
         assert len(crypto_results[0].edges) >= 1
+
+
+class TestSyntheticIdsCarryEachSiteHostLanguage:
+    """WI-dovog, the crypto-flow sibling: producer/consumer ids took
+    ``"typescript"`` from the WRITE site's api kind, so every ``.js`` WebCrypto
+    site minted ``typescript:`` ids with no typescript node behind them, and a
+    ``.ts`` consumer beside a ``.js`` producer took the producer's language.
+    Each id now carries ITS OWN file's language (``js_ts_language_from_path``,
+    ADR-0031 Class B). ``data_flows_to`` is outside the coverage gate's edge
+    types, so this never withheld a verdict; it is the same misfilled
+    identifier slot and is fixed with the family."""
+
+    def test_js_sites_mint_javascript_ids(self, tmp_path: Path) -> None:
+        enc = tmp_path / "src" / "encrypt.js"
+        enc.parent.mkdir(parents=True, exist_ok=True)
+        enc.write_text("const ct = await crypto.subtle.encrypt({ name: 'AES-GCM' }, key, data);\n")
+        dec = tmp_path / "src" / "decrypt.js"
+        dec.write_text("const pt = await crypto.subtle.decrypt({ name: 'AES-GCM' }, key, ct);\n")
+        result = link_crypto_flow(tmp_path, [_make_ts_sym("src/encrypt.js"), _make_ts_sym("src/decrypt.js")])
+        assert result.edges
+        for edge in result.edges:
+            assert edge.src.split(":", 1)[0] == "javascript", edge.src
+            assert edge.dst.split(":", 1)[0] == "javascript", edge.dst
+        for sym in result.symbols:
+            assert sym.id.split(":", 1)[0] == "javascript", sym.id
+            assert sym.discovery_language == "javascript"
+
+    def test_a_ts_consumer_keeps_its_own_language_beside_a_js_producer(self, tmp_path: Path) -> None:
+        enc = tmp_path / "src" / "encrypt.js"
+        enc.parent.mkdir(parents=True, exist_ok=True)
+        enc.write_text("const ct = await crypto.subtle.encrypt({ name: 'AES-GCM' }, key, data);\n")
+        dec = tmp_path / "src" / "decrypt.ts"
+        dec.write_text("const pt = await crypto.subtle.decrypt({ name: 'AES-GCM' }, key, ct);\n")
+        result = link_crypto_flow(tmp_path, [_make_ts_sym("src/encrypt.js"), _make_ts_sym("src/decrypt.ts")])
+        assert result.edges
+        assert result.edges[0].src.split(":", 1)[0] == "javascript"
+        assert result.edges[0].dst.split(":", 1)[0] == "typescript"
+
+    def test_ts_sites_still_mint_typescript_ids(self, tmp_path: Path) -> None:
+        enc = tmp_path / "src" / "encrypt.ts"
+        enc.parent.mkdir(parents=True, exist_ok=True)
+        enc.write_text("const ct = await crypto.subtle.encrypt({ name: 'AES-GCM' }, key, data);\n")
+        dec = tmp_path / "src" / "decrypt.ts"
+        dec.write_text("const pt = await crypto.subtle.decrypt({ name: 'AES-GCM' }, key, ct);\n")
+        result = link_crypto_flow(tmp_path, [_make_ts_sym("src/encrypt.ts"), _make_ts_sym("src/decrypt.ts")])
+        assert result.edges
+        assert result.edges[0].src.split(":", 1)[0] == "typescript"

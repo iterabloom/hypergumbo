@@ -366,6 +366,8 @@ class TestModelDerivedDefaults:
 
         assert len(result.edges) == 1
         assert result.edges[0].src == my_detail.id
+        # INV-rukor: the CBV base was read off BaseDetail through the edge.
+        assert result.edges[0].derived_from == [my_detail.id, edges[0].id, base_detail.id]
 
 
 class TestDjangoLinkerIntegration:

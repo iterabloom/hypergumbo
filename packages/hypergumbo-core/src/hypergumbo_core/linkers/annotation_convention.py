@@ -55,13 +55,14 @@ from typing import TYPE_CHECKING
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..paths import is_test_file
 from ..analyze.base import make_route_symbol
-from ._text_filters import language_from_path
+from ._text_filters import language_from_path, read_source_text
 from .registry import (
     LinkerActivation,
     LinkerContext,
     LinkerResult,
     register_linker,
 )
+from ..pass_silence import silence_reason_for_candidates
 
 if TYPE_CHECKING:
     pass
@@ -102,7 +103,7 @@ def scan_file_for_annotations(file_path: Path, rel_path: str) -> list[Annotation
         List of AnnotationSite objects found in the file.
     """
     try:
-        content = file_path.read_text(errors="replace")
+        content = read_source_text(file_path, errors="replace")
     except OSError:  # pragma: no cover
         return []
 
@@ -136,7 +137,9 @@ def link_annotations(
         symbols: All symbols from all analyzers.
 
     Returns:
-        LinkerResult with annotated_publishes edges and synthetic symbols.
+        LinkerResult with ``event_publishes`` (@hg:publishes) and
+        ``dispatches_to`` (@hg:dispatches) edges, both tagged
+        ``meta.mechanism="annotation"``, plus synthetic symbols.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -187,7 +190,11 @@ def link_annotations(
             continue
 
         for pub in pub_sites:
-            pub_id = f"{pub.file_path}:{pub.line}:{channel}:annotated_publisher"
+            pub_lang = language_from_path(Path(pub.file_path)) or "unknown"
+            pub_id = (
+                f"{pub_lang}:{pub.file_path}:{pub.line}-{pub.line}"
+                f":{channel}:annotated_publisher"
+            )
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
                 result_symbols.append(Symbol(
@@ -223,7 +230,11 @@ def link_annotations(
                 ))
 
             for sub in sub_sites:
-                sub_id = f"{sub.file_path}:{sub.line}:{channel}:annotated_subscriber"
+                sub_lang = language_from_path(Path(sub.file_path)) or "unknown"
+                sub_id = (
+                    f"{sub_lang}:{sub.file_path}:{sub.line}-{sub.line}"
+                    f":{channel}:annotated_subscriber"
+                )
                 if sub_id not in seen_sym_ids:
                     seen_sym_ids.add(sub_id)
                     result_symbols.append(Symbol(
@@ -272,7 +283,9 @@ def link_annotations(
                     access_mode="write",
                     channel=channel,
                     meta={"mechanism": "annotation"},
-                    derived_from=[pub_id, sub_id],
+                    # derived-from consumed-none: both site nodes are minted from a file scan and
+                    #   joined on the channel
+                    derived_from=[],
                 ))
 
     # --- Create route symbols for @hg:route directives ---
@@ -333,7 +346,11 @@ def link_annotations(
         # ``confidence <= 0.5`` with the ``disambiguation_fallback`` flag.
         is_fallback = len(target_syms) > 1
 
-        disp_id = f"{disp.file_path}:{disp.line}:{target_name}:annotated_dispatcher"
+        disp_lang = language_from_path(Path(disp.file_path)) or "unknown"
+        disp_id = (
+            f"{disp_lang}:{disp.file_path}:{disp.line}-{disp.line}"
+            f":{target_name}:annotated_dispatcher"
+        )
         if disp_id not in seen_sym_ids:
             seen_sym_ids.add(disp_id)
             result_symbols.append(Symbol(
@@ -389,9 +406,12 @@ def link_annotations(
                 # meta.channel is reserved for the dataflow conduit/topic, so
                 # the (redundant) target-name channel is dropped here.
                 meta=edge_meta,
-                derived_from=[disp_id, target.id],
+                # derived-from endpoints: the src is minted here; the target is joined by the
+                #   directive's name string
+                derived_from=[target.id],
             ))
 
+    run.silence_reason = silence_reason_for_candidates(routes + dispatches)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return LinkerResult(

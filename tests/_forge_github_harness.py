@@ -104,6 +104,7 @@ outfile = None
 url = None
 headers = []
 data = None
+w_fmt = None
 i = 0
 while i < len(args):
     a = args[i]
@@ -115,7 +116,9 @@ while i < len(args):
         headers.append(args[i + 1]); i += 2; continue
     if a == "-d":
         data = args[i + 1]; i += 2; continue
-    if a in ("-w", "--max-time"):
+    if a == "-w":
+        w_fmt = args[i + 1]; i += 2; continue
+    if a == "--max-time":
         i += 2; continue
     if a.startswith("-"):
         i += 1; continue
@@ -135,14 +138,26 @@ for fx in fixtures:
         body = fx.get("body", "{}")
         break
 if outfile:
+    # Real curl: body to the file, -w format (the http code) to stdout.
     with open(outfile, "w") as fh:
         fh.write(body)
-sys.stdout.write(code)
+    sys.stdout.write(code)
+else:
+    # Real curl without -o: body to stdout; a trailing -w '\n%{http_code}'
+    # appends the code on its own line (the Woodpecker log-fetch shape).
+    # WI-ratam: this fake claimed to mirror test_forge_backend_github.py's
+    # and had drifted from it here -- it printed the CODE alone, so the
+    # first green-path log fetch through this harness parsed "200" as the
+    # log body ("returned int, not a log-entry list").
+    sys.stdout.write(body)
+    if w_fmt is not None:
+        sys.stdout.write("\n" + code)
 '''
 
-# Fake ``gh`` for contribute: logs argv; ``pr list`` prints $GH_PR_LIST,
-# ``pr create`` prints $GH_PR_CREATE_URL (default a github.com pull URL) and
-# exits $GH_EXIT, ``pr view`` prints $GH_PR_VIEW.
+# Fake ``gh`` for contribute: logs argv; ``auth status`` exits $GH_AUTH_EXIT
+# (contribute's usability probe), ``pr list`` prints $GH_PR_LIST, ``pr create``
+# prints $GH_PR_CREATE_URL (default a github.com pull URL) and exits $GH_EXIT,
+# ``pr view`` prints $GH_PR_VIEW.
 FAKE_GH = r'''#!/usr/bin/env python3
 import json, os, sys
 argv = sys.argv[1:]
@@ -151,6 +166,12 @@ if log:
     with open(log, "a") as fh:
         fh.write(json.dumps(argv) + "\n")
 sub = " ".join(argv[:2])
+if sub == "auth status":
+    # contribute's gh_is_usable probe. Its OWN knob, deliberately not GH_EXIT:
+    # a test that makes `pr create` fail (GH_EXIT=1) still needs the probe to
+    # succeed, or the script would route to the curl arm and that test would
+    # silently stop covering the gh failure path it was written for.
+    sys.exit(int(os.environ.get("GH_AUTH_EXIT", "0")))
 if sub == "pr list":
     sys.stdout.write(os.environ.get("GH_PR_LIST", ""))
     sys.exit(0)

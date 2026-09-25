@@ -37,18 +37,29 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id,
+    sanitize_id_name_segment,
+)
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import tree_sitter
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    """Generate a unique symbol ID."""
-    key = f"css:{path}:{line}:{name}:{kind}"
-    return f"css:sha256:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
+    """Generate a unique symbol ID.
+
+    WI-vodin: this returned ``css:sha256:<digest>`` -- three segments, which
+    ADR-0036's five-slot grammar cannot parse at all, so a css symbol's id
+    carried no language, path, span, name or kind a reader or a linker could
+    recover. The digest was buying uniqueness that the location-based form
+    already provides; the name slot is sanitized because a css selector may
+    contain a colon (``a:hover``) and a colon there shifts every anchor.
+    """
+    return f"css:{path}:{line}-{line}:{sanitize_id_name_segment(name)}:{kind}"
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
@@ -160,11 +171,16 @@ def _process_css_tree(
                 # the per-import Symbol was redundant with the imports Edge.
                 # Producer now emits only the Edge (src=file_symbol_id is
                 # independent of any dropped Symbol id).
+                # INV-dulah (lang-slot limb): a bare ``@import`` path is not
+                # an id -- finalize's 4-part fallback put it in the LANG slot.
+                # Same shape as the js/ts import edge (module name in the path
+                # slot, the ``module`` name/kind pair).
                 edges.append(
                     Edge.create(
                         src=file_symbol_id,
-                        dst=import_path,
+                        dst=f"css:{import_path}:0-0:module:module",
                         edge_type="imports",
+                        evidence_type="ast_import",
                         line=start_line,
                         confidence=1.0,
                         origin=PASS_ID,
@@ -386,6 +402,7 @@ class CSSAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()

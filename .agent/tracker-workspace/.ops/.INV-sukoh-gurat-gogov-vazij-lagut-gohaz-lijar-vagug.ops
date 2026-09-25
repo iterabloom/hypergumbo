@@ -1,0 +1,58 @@
+- op: create  # 6bfb
+  at: '2026-08-25T20:13:07Z'  # 6bfb
+  by: agent  # 6bfb
+  actor: jgstern_agent  # 6bfb
+  clock: 1  # 6bfb
+  nonce: 6bfb  # 6bfb
+  data:  # 6bfb
+    kind: invariant  # 6bfb
+    title: "One environment read matches two io_primitives rows and becomes two taint flows (os.environ + os.environ.get), inflating the pre-collapse row denominator by 5.3% on a 5-repo census"  # 6bfb
+    status: violated  # 6bfb
+    priority: 3  # 6bfb
+    parent:  # 6bfb
+    tags:  # 6bfb
+    - taint  # 6bfb
+    - io_boundary  # 6bfb
+    - analysis_quality  # 6bfb
+    - measurement  # 6bfb
+    isbefore: []  # 6bfb
+    duplicate_of: []  # 6bfb
+    not_duplicate_of: []  # 6bfb
+    pr_ref:  # 6bfb
+    description: "MEASURED IN 0005 (docs/measurements/0005-taint-precision-after-vocabulary-split.md), on the pre-collapse pair population of a 5-repo census.\n\nWHAT HAPPENS. A single Python source expression `os.environ.get(\"X\")` matches TWO io_primitives rows in python.yaml, and each match becomes its own taint flow:\n\n  env_read:\n    - module: os.environ                  # the INV-ponad \"slot family\" row\n      functions: [get, keys, items, values, copy]\n    - module: os\n      functions: [getenv, get_exec_path]\n      attributes: [environ]               # the attribute row\n\nThe first reports source primitive `os.environ.get`; the second reports `os.environ`. Both name the SAME read of the SAME expression at different granularities, and the flow record ends up carrying both in source_primitives with a pre-collapse row for each.\n\nTHIS IS NOT SUBSTRING MATCHING AND THE ROWS ARE NOT REDUNDANT IN GENERAL. The INV-ponad row exists deliberately, and its own note says why: \"a method call on the mapping carries os.environ as its module slot, where the parent's attribute row cannot reach.\" The two rows were intended to be COMPLEMENTARY -- attribute row for a bare `os.environ` read, slot-family row for `os.environ.get(...)`. The defect is that on the `.get` form BOTH reach, so a read that exactly one row was supposed to cover is counted twice.\n\nMEASURED SIZE, on 0005's population (170 pre-collapse rows, 37 situations, 5 repos): 7 of 37 situations carry both primitives. In FIVE of them the bare `os.environ[...]` form does not occur anywhere in the file -- verified by grep on mitmproxy's release/release.py, mitmproxy/log.py, docs/scripts/api-render.py and mitmproxy/tools/console/master.py, and poetry's src/poetry/utils/env/env_manager.py -- so both primitives describe one read. That accounts for 9 OF THE 170 ROWS (5.3%), one of which sits inside a true positive, so it inflates the row denominator by 9 and the numerator by 1. In the remaining two situations (mitmproxy's release/deploy-microsoft-store.py) both forms genuinely occur in the file and the two primitives are legitimate.\n\nWHY IT IS ROW-UNIT-ONLY, AND WHY THAT STILL MATTERS. INV-karud's situation collapse groups on (taint_label, source_symbol, sink_zone, sanitized, source_boundary, analysis_method), so both rows land in the same group and the situation count is unaffected -- 0005's 21.6% per-situation figure does not move. The per-ROW figure does: 10.0% is computed over a denominator inflated by these rows. Any future row-denominated precision number on Python code carries the same inflation, and it scales with how many attribute-plus-slot-family pairs the catalogue grows.\n\nSCOPE NOT MEASURED. Only Python was in 0005's population for this shape. Other catalogues carry the same slot-family pattern (the python.yaml notes mention `sys.stdout.*` as a sibling), and whether they double-match has NOT been checked. Do not assume the count above is the whole of it.\n\nNOT A CLAIM ABOUT VERDICTS. Every doubled row describes a read that really happened, so no verdict changes and no user is told something false -- they are shown one fact twice. This is a denominator-integrity defect, filed so a row-unit measurement can subtract it rather than a future reader re-deriving it."  # 6bfb
+    fields:  # 6bfb
+      statement: "A single source expression must produce at most one taint flow row per (sink primitive, sink symbol, route): two catalogue rows that describe the SAME read at different granularities must not each yield a row."  # 6bfb
+      root_cause: "python.yaml's env_read carries a deliberate INV-ponad slot-family row (module: os.environ, functions: [get, keys, items, values, copy]) alongside an attribute row (module: os, attributes: [environ]). They were intended to be complementary -- attribute row for a bare os.environ read, slot-family row for the method form -- but on os.environ.get(...) BOTH match, so one read is reported as two primitives and two pre-collapse rows."  # 6bfb
+- op: update  # 33dd
+  at: '2026-08-28T00:21:15Z'  # 33dd
+  by: agent  # 33dd
+  actor: jgstern_agent  # 33dd
+  clock: 2  # 33dd
+  nonce: 33dd  # 33dd
+  set:  # 33dd
+    status: satisfied  # 33dd
+  add:  # 33dd
+    tags: [awaits_bakeoff_validation]  # 33dd
+- op: discuss  # db28
+  at: '2026-08-28T00:21:15Z'  # db28
+  by: agent  # db28
+  actor: jgstern_agent  # db28
+  clock: 3  # db28
+  nonce: db28  # db28
+  message: "SATISFIED on the merged tree (dev 1a3145c9f0), PR #587.\n\nBEHAVIOURAL EVIDENCE, control in the same run. Four purpose-built repositories\nthrough the shipped verify-claims CLI:\n  repro   os.environ.get() only ....... 2 rows -> 1, keeps os.environ.get\n  repro   BOTH forms in one symbol .... 2 rows -> 1\n  repro   sys.stdout.write(x) ......... 2 rows -> 1, keeps sys.stdout.write\n  CONTROL bare os.environ[\"X\"] ........ 1 row  -> 1, still os.environ\nAll four return verdict=violated, so the runs are not vacuously inert.\n\nTHE PREMISE WAS RIGHT AND THE CAUSE IS NOT THE MATCHER. Read the IR first: the\nanalyzer emits TWO EDGES for the one expression --\n  module_attribute_reference -> python:os:0-0:os.environ:external_symbol\n  ast_call_direct            -> python:os.environ:0-0:get:external_symbol\nso each matches its own row. Fixed by subsuming a parent whose qualified name\nis the MODULE SLOT of another entry matched at the SAME caller. The relation is\ncomputed from the catalogue, so a user-supplied catalogue with the shape is\ncovered without a table to maintain.\n\nTWO THINGS THIS ITEM DID NOT HAVE, both from checking analogues.\n  1. IT IS SYMMETRIC. The item measured only the source side. Of the four rows\n     with the shape, TWO ARE SINKS -- sys.stdout and sys.stderr under logging\n     (sys.stdin is a source under ipc_recv) -- so sys.stdout.write(x) doubles a\n     sink exactly as os.environ.get() doubles a source.\n  2. IT IS NOT ROW-UNIT-ONLY, and the item's \"situation count is unaffected\" is\n     wrong in general. collapse_unadjudicated_flows runs on\n     {structural, ddg_mixed}; a confirmed ddg walk IS a pair claim and passes\n     through untouched, so on the ddg arm the two rows never merged and the\n     read was reported as two SITUATIONS. 0005's population was structural and\n     ddg_mixed, which is why it read as row-only THERE. Both arms are pinned.\n\nSCOPE-NOT-MEASURED IS NOW MEASURED, which was the item's own open question.\nEnumerated all 15 shipped catalogues for the parent/slot-family shape. It\nexists in exactly FOUR rows, ALL PYTHON: os.environ (env_read), sys.stdin\n(ipc_recv), sys.stdout and sys.stderr (logging). bash, go, javascript and rust\nare pinned at zero by a parametrised test, so a catalogue that later grows the\nshape fires rather than silently doubling.\n\nA/B ON THE TWO REPOSITORIES THIS ITEM NAMES, per-arm cache, arms strictly\nsequential, each arm PROVEN before it ran:\n  mitmproxy  summed collapsed_flow_count 29 -> 20 (-31.0%), 6 of 12 rows moved\n  poetry     summed collapsed_flow_count  5 ->  3 (-40.0%), 1 of  2 rows moved\nEvery moved row shows the filed shape exactly:\n  ['os.environ', 'os.environ.get'] -> ['os.environ.get']\nCONTROL: 8 of 8 claim verdicts unchanged, with violated on both repositories,\nand evidence_count / flow_origins / excluded_flows / sanitized_flows all\nunchanged. Situation counts did not move on either repository.\n\nA NEAR-MISS RECORDED: my first verdict comparison read a field named `status`\nthat came back None on BOTH arms -- a null reading as \"no change\". The real\nfield is `verdict`. The numbers above are from the real field.\n\nDISCLOSED LIMITATION: what is deducted is a NAME, not a flow. Where both forms\ngenuinely occur in one symbol -- 2 of the 7 situations this item measured -- the\ntwo edges are indistinguishable from the single-form case, because edges are\ndeduplicated on (src, dst, edge_type) per INV-vukiv and the multiplicity is gone\nbefore taint sees it. The coarser name is dropped, the finding is still\nreported, and no verdict moves.\n\nTagged awaits_bakeoff_validation: the -31% / -40% is measured on two named\nrepositories, not on a broad corpus, so whether it generalises is unvalidated."  # db28
+- op: update  # ec94
+  at: '2026-09-04T16:29:18Z'  # ec94
+  by: agent  # ec94
+  actor: jgstern_agent  # ec94
+  clock: 4  # ec94
+  nonce: ec94  # ec94
+  set: {}  # ec94
+  remove:  # ec94
+    tags: [awaits_bakeoff_validation]  # ec94
+- op: discuss  # 4548
+  at: '2026-09-04T16:29:18Z'  # 4548
+  by: agent  # 4548
+  actor: jgstern_agent  # 4548
+  clock: 5  # 4548
+  nonce: '4548'  # 4548
+  message: "VALIDATED on a broad corpus — tag stripped (2026-09-04 bakeoff-queue drain).\n\nThis item's own doubt was precise: \"the -31% / -40% is measured on two named repositories,\nnot on a broad corpus, so whether it generalises is unvalidated.\" Six repositories, every\nrun COLD: the shape this fix subsumes -- a parent row whose qualified name is the MODULE\nSLOT of another entry matched at the SAME caller -- survives ZERO times in 204 evidence\nrows.\n\n    beads 151 rows, pretix 17, caddy 13, gocryptfs 10, plausible 8, hypergumbo 5 -- 0 pairs\n\nThe check is POSITIVE EVIDENCE on the shipped output rather than a re-run A/B: the fix is\nmerged, and \"does it generalise\" is a question about what the tool emits now over a wider\ncorpus. Instrument and matrix:\n~/hypergumbo_lab_notebook/bakeoff_queue_09042026/ (verify_queue.py, matrix.txt,\nPHASE4_RESULTS.md). Status stays satisfied."  # 4548

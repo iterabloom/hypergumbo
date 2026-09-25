@@ -1,0 +1,80 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# COMMUNITY I/O primitive overlay — Python HTTP clients.
+#
+# THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT for Python, and
+# every run that loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
+#
+# HYPERGUMBO DOES NOT VOUCH FOR THESE ROWS. That is the point of the
+# `provenance: community` marker below, and it is a THIRD state, not a
+# softer form of either neighbour: the shipped stdlib catalogues are rows
+# hypergumbo stands behind, a user overlay is rows YOU stand behind, and
+# this is rows hypergumbo distributes and discloses without standing
+# behind. ADR-0016 §27 still scopes the *stdlib catalogues* to the stdlib;
+# what changed is that unvouched rows may ship ALONGSIDE them, disclosed.
+#
+# `retrieved:` is the date these rows were last checked against the
+# upstream APIs they describe — NOT the date this file was packaged. A
+# client that has changed its API since then will be described wrongly
+# here, and the date is what lets you judge that for yourself.
+#
+# To override a row, put your own file in
+# $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ — your entry wins on a
+# qualified-name collision. To turn these off entirely, see
+# `--no-default-overlays`.
+#
+# WHY YOU NEED THIS AT ALL. hypergumbo analyzes YOUR repository, not
+# site-packages. A call to `requests.post(url, data=secret)` therefore
+# produces no edge into requests' internals and no network boundary — the
+# library's own stdlib call is not in your tree to be found.
+
+language: python
+status: overlay
+provenance: community
+retrieved: 2026-08-11
+
+net_send:
+  - module: requests
+    functions: [get, post, put, patch, delete, head, options, request]
+    notes: >-
+      Module-level verbs. Every one issues an outbound request, so the body,
+      headers and URL leave the host. Catalogued as net_send (not net_recv)
+      for the same reason urllib.request.urlopen is: the response is a
+      consequence of the send, and the send is what a security claim is about.
+
+  - module: requests.Session
+    methods: [get, post, put, patch, delete, head, options, request, send]
+    notes: >-
+      Session-scoped equivalents. These reach the catalogue only when the
+      receiver's type is known — `s = requests.Session(); s.post(...)` types
+      via the constructor table, but a Session arriving as a bare function
+      parameter does not (INV-dulum / INV-linub). Declaring them costs nothing
+      and pays off wherever the receiver IS typed.
+
+  - module: httpx
+    functions: [get, post, put, patch, delete, head, options, request, stream]
+    notes: Module-level verbs, requests-compatible surface.
+
+  - module: httpx.Client
+    methods: [get, post, put, patch, delete, head, options, request, send, stream]
+    notes: Synchronous client.
+
+  - module: httpx.AsyncClient
+    methods: [get, post, put, patch, delete, head, options, request, send, stream]
+    notes: >-
+      Async client. The boundary is the same; `await` is control flow, not a
+      different crossing.
+
+  - module: urllib3.PoolManager
+    methods: [request, urlopen, request_encode_body, request_encode_url]
+    notes: >-
+      Lower-level pool manager. requests sits on top of urllib3, but that is
+      invisible here for the same reason the whole file exists — urllib3's
+      source is not in your tree either.
+
+  - module: aiohttp.ClientSession
+    methods: [get, post, put, patch, delete, head, options, request, ws_connect]
+    notes: >-
+      Client half of aiohttp. The shipped catalogue carries only
+      aiohttp.web.run_app, which is the SERVER side (net_recv) — the client
+      side is not covered by it.

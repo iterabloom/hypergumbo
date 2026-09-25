@@ -30,8 +30,12 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   one verdict; closes WI-kukuk/WI-zuhon/WI-ninuv/WI-mutuk. This slot is NOT a §6.1 stub fill;
   it is an ADR-0037 addition that postdates the §6.1 plan, placed before commit so the
   serialized edges carry the verdict and before referential-integrity so the FK predicate
-  validates it**); commit-dicts (8); referential-integrity validate_ir lift (10, now also
-  carrying the ADR-0037 ruling-5 ``is_resolved ⇒ first-party`` FK predicate).
+  validates it; it also re-derives an ``evidence_derived`` confidence from the verdict,
+  INV-fazim**); receiver-blind magnet demotion (6c, INV-fahub, before 7); same-site stub
+  demotion (7a, ADR-0057 §14); the visibility fold (7b, INV-jusot); repro-grammar pruning
+  (7c); commit-dicts (8); referential-integrity validate_ir lift (10, now also carrying the
+  ADR-0037 ruling-5 ``is_resolved ⇒ first-party`` FK predicate). Violations are sorted
+  before the validation report is built, so the serialized order is stable.
 * **Two §6.1 stub slots stayed empty.** ADR-0043 §6.1 planned three Phase-2 families each
   filling a named finalize stub with zero orchestrator change; none did. ``projection-finalize``
   became a downstream consumer (``compact.recompute_view_summary``), not a sub-step; and the
@@ -40,8 +44,10 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   finalize:
 
   - ``confidence`` (7): the confidence:F1/F2 IDs denote per-edge derivation / ranking-detection
-    separation (producer-side, ADR-0039, INV-suvil family), which ADR-0039 keeps *out* of
-    finalize (``Edge.confidence`` untouched). The behavior_map confidence aggregate this slot
+    separation (producer-side, ADR-0039, INV-suvil family), which ADR-0039 keeps out of
+    finalize. The one exception is sub-step 7 re-deriving an ``evidence_derived`` confidence
+    once the verdict flips ``is_resolved`` (INV-fazim): that corrects a construction-time
+    number, and is not a finalize-time confidence tenant. The behavior_map confidence aggregate this slot
     described already exists over the final set — ``metrics.avg_confidence`` (computed *after*
     finalize) and ``sketch.confidence_mass`` (EP/datamodel) — so there is no reconcile gap and
     no consumer for a finalize-time tenant.
@@ -55,9 +61,9 @@ What this carrier (run-lifecycle:F1) implements vs. defers
   node/path count and does not close INV-gizik, whose real fix is a new provenance field). The
   config_fingerprint backstop-with-violation landed in WI-mipul's producer-side work (done). Of
   the tracked work, INV-gizik (satisfied — closed by the new nodes_emitted/edges_emitted
-  provenance field), WI-mipul (done), and INV-zotip (satisfied) are resolved; WI-libib
-  (per-(kind,field) writer-contract validator) and INV-suvil (evidence-derived confidence) remain
-  open. git carries the history.
+  provenance field), WI-mipul (done), INV-zotip (satisfied), WI-libib (per-(kind,field)
+  writer-contract validator, done) and INV-suvil (evidence-derived confidence, satisfied) are
+  resolved. git carries the history.
   See the ADR-0043 §6.1 amendment chain (#4/#5/#7/#9).
 
 `FinalizedMap` is a shallow ``frozen=True`` handle (ratified §6 #6): rebinding a field
@@ -74,6 +80,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
+from .arbitration import BUILTIN_POLICY, ArbitrationPolicy
+from .arbitration import SUPERSEDED_STUB_RANK_FACTOR as SUPERSEDED_STUB_RANK_FACTOR  # re-export: the §14 level
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
 from .receiver_blind_magnets import demote_harmful_magnets
@@ -215,6 +223,9 @@ class FinalizeContext:
     pass_metadata: PassMetadataLookup
     violations: list[ValidationViolation] = field(default_factory=list)
     repo_fingerprint: str = ""  # set by sub-step 4; surfaced by _freeze
+    #: ADR-0057 §5 (WI-hukuf): the resolved arbitration policy; sub-step 7a
+    #: reads its supersession factor and producer order.
+    arbitration_policy: "ArbitrationPolicy" = field(default_factory=lambda: BUILTIN_POLICY)
 
 
 @dataclass(frozen=True)
@@ -287,10 +298,15 @@ def _detected_unanalyzed_languages(ctx: FinalizeContext) -> list[str]:
     ``pass`` id appears in ``analysis_runs`` — a skipped or grammar-failed analyzer
     never appends a run (``all_analyzers.collect_analyzer_result`` routes it to
     ``limits.skipped_passes`` instead), so its language falls out of this set and
-    surfaces as skipped. The pass_id→languages map mirrors the analyzer's own
-    ``set(languages) if languages else {name}`` convention (all_analyzers.py:202);
-    non-analyzer passes (linkers, synthesis) simply don't appear in the map and
-    contribute nothing. The difference is returned sorted for deterministic output.
+    surfaces as skipped. The pass_id→languages map is the registry's DECLARED
+    ``languages`` — the taxonomy's vocabulary, gated at registration (WI-juzig).
+    The old ``set(languages) if languages else {name}`` fallback is gone: it
+    re-inflated a ``no_language`` pass into a phantom language, and the
+    ``[name]`` default it mirrored is what made the ``make`` pass language
+    ``make`` while the profile said ``makefile`` — a FALSE "skipped" verdict on
+    a language whose pass ran (INV-nidul). Non-analyzer passes (linkers,
+    synthesis) simply don't appear in the map and contribute nothing. The
+    difference is returned sorted for deterministic output.
     """
     from .analyze.registry import ensure_discovered, get_all_analyzers
     from .catalog import CONFIG_LANGUAGES
@@ -300,10 +316,7 @@ def _detected_unanalyzed_languages(ctx: FinalizeContext) -> list[str]:
     if not detected:
         return []
     ensure_discovered()
-    pass_to_langs = {
-        a.name: (set(a.languages) if a.languages else {a.name})
-        for a in get_all_analyzers()
-    }
+    pass_to_langs = {a.name: set(a.languages) for a in get_all_analyzers()}
     analyzed: set[str] = set()
     for run in ctx.analysis_runs:
         analyzed.update(pass_to_langs.get(run.get("pass", ""), ()))
@@ -430,6 +443,214 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
         _rederive_confidence_from_verdict(edge)
 
 
+#: ADR-0057 §14 (WI-lihis): how far a superseded external stub's ``rank_score``
+#: falls — a multiplicative dampener, the ADR-0039 ruling-3 shape the
+#: type-hierarchy fan-out already uses, never a change to ``confidence``. A
+#: declared level rather than a formula; it joins the per-attribute table
+#: WI-hukuf makes configurable.
+
+
+def _stub_callee_name(edge: "Edge") -> str:
+    """The name the stub claims to call — :func:`ir.callee_name_of`, which is
+    the one home for this read (INV-difud). This used to skip
+    ``meta['callee_name']`` and parse the id positionally, so an escaped name
+    failed §14's key comparison and the demotion was silently missed."""
+    from .ir import callee_name_of
+
+    ref = edge.dst_ref
+    return callee_name_of(
+        edge.dst, meta=edge.meta, dst_ref_name=ref.name if ref is not None else None
+    )
+
+
+def _passes_that_may_supersede() -> frozenset[str]:
+    """Pass ids whose resolutions may demote the stub they name (§14.1).
+
+    Declared on the linker registration, never inferred from being a linker.
+    ADR-0057 §5's discipline applied to a different permission: a pass that
+    has not been measured does not get to rank a producer's answer below its
+    own, and the grant cites ``docs/audits/0020``.
+    """
+    from .linkers.registry import get_all_linkers
+    from .pass_metadata import _resolve_linker_pass_id
+
+    return frozenset(
+        _resolve_linker_pass_id(linker) for linker in get_all_linkers()
+        if linker.supersedes_consumed_stub
+    )
+
+
+def _demote_stubs_named_as_consumed(
+    edges: "list[Edge]", policy: ArbitrationPolicy,
+) -> int:
+    """ADR-0057 §14.1: a resolved edge demotes the stub it NAMES as its input.
+
+    The stated half of §14. Where the same-site rule reconstructs the relation
+    downstream from (src, line, edge_type, callee name key) — and cannot tell a
+    refinement from a collision, which is how Open question 4's 45 false
+    demotions arose — this reads it off ``Edge.derived_from``, where the pass
+    that consumed the stub recorded which one. No key, no line, no candidate
+    set, so no ambiguity to resolve.
+
+    ``derived_from`` mixes Symbol and Edge ids; only an id naming an
+    UNRESOLVED edge in this graph is a supersession. Runs BEFORE the same-site
+    pass and stamps ``meta["superseded_by"]``, which that pass skips, so one
+    stub is halved once however many rules reach it.
+    """
+    allowed = _passes_that_may_supersede()
+    if not allowed:
+        return 0  # pragma: no cover - every shipped grant is declared
+    by_edge_id = {edge.id: edge for edge in edges}
+    demoted = 0
+    for resolved in edges:
+        if not resolved.is_resolved or not resolved.derived_from:
+            continue
+        if not (set(resolved.origin) & allowed):
+            continue
+        for ref in resolved.derived_from:
+            stub = by_edge_id.get(ref)
+            if stub is None or stub.is_resolved:
+                continue
+            if "superseded_by" in (stub.meta or {}):
+                continue
+            base = stub.rank_score if stub.rank_score is not None else stub.confidence
+            stub.rank_score = base * policy.superseded_stub_rank_factor
+            stub.meta = {
+                **(stub.meta or {}),
+                "superseded_by": resolved.id,
+                "superseded_by_origin": list(resolved.origin),
+            }
+            demoted += 1
+    return demoted
+
+
+def demote_superseded_stubs(
+    symbols: "list[Symbol]", edges: "list[Edge]", *, policy: ArbitrationPolicy = BUILTIN_POLICY,
+) -> int:
+    """ADR-0057 §14: a resolved edge demotes a same-site edge to an external stub.
+
+    Runs after the resolution verdict, so ``is_resolved`` is settled. An
+    UNRESOLVED edge is superseded when a RESOLVED edge shares its ``src``, one
+    of its call lines, its ``edge_type`` and its declared callee name key, the
+    stub ABSTAINED on its target's module, and the resolved edge carries an
+    ANCHORED PRODUCER of the language that the stub's own ``origin`` lacks —
+    the syntactic backend said "outside the repo", the type-aware one "this
+    item, here". On the recorded aardvark-dns fixture 27 stub call sites share
+    a line and type with a resolved call, and only 3 name the same callee; the
+    other 24 are different calls on one line (``a.b(c.d())``), and a
+    producer's own two calls on a line are not a contradiction either.
+
+    The last two conditions were added when Open question 4 was ruled
+    (2026-09-20). The origin condition as first landed tested PASS-ID
+    INEQUALITY and stood in for a test on INDEPENDENT OBSERVATION; a
+    single-backend Python run of this repository demoted 419 stubs, every
+    superseder a LINKER, and those 419 superseders were 419 of the 421 edges
+    the two linkers emitted — each the linker's own resolution of the very
+    stub it superseded, built from that stub's ``src``, ``line`` and parsed
+    callee, so the key matched BY CONSTRUCTION. 45 of the 419 were wrong, 28
+    of them stubs whose external key was COMPLETE and CORRECT
+    (``tree_sitter_rust.language``, ``builtins.id``) ranked below a
+    same-short-name in-repo FIELD. A refinement of one observation is not a
+    second observation (§13 case 2), and a stub that STATES its module
+    contradicts rather than abstains, which §11 makes two edges (§15.1).
+    Under both conditions a single-backend run is byte-identical here, as it
+    already was through §3 — the ``merge_participants`` gate is now redundant
+    rather than load-bearing, and stays because what it reads from the
+    registry is a DECLARATION (the incumbent's ``name_key``), not an
+    observation.
+
+    The stub's ``rank_score`` is multiplied by :data:`SUPERSEDED_STUB_RANK_FACTOR`
+    (``confidence`` untouched — ADR-0039 ruling 3), and ``meta["superseded_by"]``
+    / ``meta["superseded_by_origin"]`` name the superseding edge and its
+    producers, so a low rank is a stated fact, not an unexplained number.
+    Nothing is deleted and the edge count is unchanged. Returns the number of
+    stubs demoted.
+    """
+    from .analyze.registry import (
+        MergeAnchor,
+        anchored_producer_tokens,
+        merge_participants,
+    )
+    from .ir import _edge_call_lines, stated_module_of
+
+    demoted = _demote_stubs_named_as_consumed(edges, policy)
+
+    by_id = {s.id: s for s in symbols}
+    languages = {s.language for s in symbols if s.language}
+    name_key_of: dict[str, Any] = {}
+    tokens_of: dict[str, frozenset[str]] = {}
+    for language in sorted(languages):
+        participants = merge_participants(language)
+        if len(participants) >= 2:
+            anchor = policy.order(participants)[0].merge
+            assert isinstance(anchor, MergeAnchor)  # merge_participants returns anchored ones
+            name_key_of[language] = anchor.name_key
+            tokens_of[language] = anchored_producer_tokens(language)
+    if not name_key_of:
+        return demoted
+
+    site: dict[tuple[str, int, str], list[Edge]] = {}
+    for edge in edges:
+        if not edge.is_resolved:
+            continue
+        target = by_id.get(edge.dst)
+        if target is None or target.language not in name_key_of:
+            continue
+        for line in _edge_call_lines(edge):
+            site.setdefault((edge.src, line, edge.edge_type), []).append(edge)
+    if not site:
+        return demoted
+
+    for stub in edges:
+        if stub.is_resolved:
+            continue
+        if "superseded_by" in (stub.meta or {}):
+            continue  # §14.1 already stated this one; halving twice would
+                      # quarter the rank and make the declared factor a lie
+        if stated_module_of(stub) is not None:
+            # §15.1: a COMPLETE external key STATES a module, so an in-repo
+            # answer contradicts it rather than filling it, and §11 keeps both
+            # edges. Only a key that abstained is superseded. Measured: 28 of
+            # the 419 stated a module and all 28 were correct.
+            continue
+        candidates = [
+            resolved
+            for line in _edge_call_lines(stub)
+            for resolved in site.get((stub.src, line, stub.edge_type), [])
+        ]
+        if not candidates:
+            continue
+        callee = _stub_callee_name(stub)
+        stub_origin = set(stub.origin)
+        for resolved in candidates:
+            target = by_id[resolved.dst]
+            key = name_key_of[target.language or ""]
+            if key(target.name) != key(callee):
+                continue  # a different call that shares the line
+            tokens = tokens_of[target.language or ""]
+            if not ((set(resolved.origin) - stub_origin) & tokens):
+                continue  # not a second ANCHORED PRODUCER: the same producer's
+                          # two calls on one line, or a linker's resolution of
+                          # this very stub — a derivation, not an observation
+            if not (stub_origin & tokens):
+                continue  # nor is the stub itself an anchored producer's edge
+            base = stub.rank_score if stub.rank_score is not None else stub.confidence
+            stub.rank_score = base * policy.superseded_stub_rank_factor
+            stub.meta = {
+                **(stub.meta or {}),
+                "superseded_by": resolved.id,
+                "superseded_by_origin": list(resolved.origin),
+            }
+            demoted += 1
+            break
+    return demoted
+
+
+def _finalize_demote_superseded_stubs(ctx: FinalizeContext) -> None:
+    """Sub-step 7a (ADR-0057 §14): see :func:`demote_superseded_stubs`."""
+    demote_superseded_stubs(ctx.symbols, ctx.edges, policy=ctx.arbitration_policy)
+
+
 def _rederive_confidence_from_verdict(edge: "Edge") -> None:
     """INV-fazim: re-derive ``evidence_derived`` confidence from the verdict above.
 
@@ -484,7 +705,9 @@ def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
 
     - ``is_exported`` — a public API cannot be non-public, so language
       visibility is a **necessary but not sufficient** condition:
-      ``is_exported`` is downgraded to False for any non-public symbol, but is
+      ``is_exported`` is set False for any non-public symbol (a non-public
+      level is always a language signal's verdict, never the default, so
+      this is an observation — INV-kubup), but is
       NOT set True merely because a symbol is language-public. (A pure
       ``is_exported = visibility=='public'`` alias would flip 58% of the
       self-corpus — 19k of them test-file symbols — from not-exported to
@@ -513,6 +736,10 @@ def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
         sym.meta["visibility_signal"] = signal
         sym.meta.pop("visibility", None)
         # is_exported requires public visibility (necessary, not sufficient).
+        # INV-kubup: this fills the field only when a language signal
+        # decided the level — ``compute_visibility`` returns public for the
+        # default, so a non-public level is always somebody's observation,
+        # and "not public" settles public-API membership on its own.
         if level != VISIBILITY_PUBLIC:
             sym.is_exported = False
         # modifiers keeps only non-visibility terms.
@@ -645,6 +872,7 @@ def finalize(ctx: FinalizeContext) -> FinalizedMap:
     _finalize_skipped_into_limits(ctx)      # 6  skipped → limits
     _finalize_demote_receiver_blind_magnets(ctx)  # 6c INV-fahub magnet demote (before 7)
     _finalize_edge_resolution(ctx)          # 7  edge-resolution verdict (ADR-0037; before 8)
+    _finalize_demote_superseded_stubs(ctx)  # 7a same-site stub demotion (ADR-0057 §14; after 7)
     _finalize_compute_visibility(ctx)       # 7b visibility fold (INV-jusot; before 8)
     _finalize_prune_repro_grammars(ctx)     # 7c repro grammars → used-only (WI-fonod/WI-givad; before 8)
     _finalize_commit_dicts(ctx)             # 8  commit reconciled view

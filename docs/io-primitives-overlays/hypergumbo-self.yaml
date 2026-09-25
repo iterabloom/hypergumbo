@@ -52,7 +52,31 @@ fs_read:
     functions: [Coverage]
     notes: >-
       The CONSTRUCTOR reads configuration (.coveragerc / pyproject) from
-      disk; load()/save() ride the untyped-receiver residual.
+      disk. This note used to end "load()/save() ride the untyped-receiver
+      residual" -- an accepted residual, honest while the receiver was
+      untyped, because an untyped receiver is DISCLOSED through the
+      untyped_receiver caveat rather than counted as blindness. Phase 6 typed
+      those receivers, so the residual became a BLOCKING unknown and the
+      calls needed rows of their own (WI-jabus). They are below.
+  - module: coverage.Coverage
+    methods: [load, analysis2]
+    notes: >-
+      WI-jabus, read back against source at coverage_census.py:336-341.
+      `load()` reads the .coverage SQLite database off disk -- that is what it
+      is for. `analysis2(path)` reads the MEASURED SOURCE FILE to work out
+      which lines are statements. `get_data()` is deliberately NOT rowed: it
+      is an in-memory accessor over what `load()` already read, and rowing it
+      would count one disk read twice.
+  - module: coverage.parser.PythonParser
+    methods: [parse_source]
+    notes: >-
+      WI-jabus. Constructed as `PythonParser(filename=path)` at
+      coverage_census.py:342, so `parse_source()` READS THAT FILE. The
+      `coverage.parser` completeness entry below used to say "PythonParser
+      parses source strings already in memory", which is true only of the
+      `text=` form and is NOT how this repository calls it -- a completeness
+      note that was wrong about its own caller. Corrected there.
+      `first_line` stays unrowed: computation over already-parsed state.
   - module: numpy
     functions: [load, loadtxt, genfromtxt, fromfile]
     notes: numpy reads array data straight from a path.
@@ -105,6 +129,31 @@ logging:
 net_recv:
   - module: starlette.websockets.WebSocket
     methods: [receive_text, receive_json, receive_bytes, accept]
+  - module: uvicorn
+    functions: [run]
+    notes: >-
+      The ASGI server `htrac serve` starts (hypergumbo_tracker/serve.py).
+      ADDED 2026-08-28 BY ADR-0047 RULING 1, and it belongs here for the
+      same reason starlette does: uvicorn is a third-party dependency of
+      hypergumbo, so hypergumbo declares it in its OWN overlay, by the same
+      mechanism any user would use. Until the ruling it was covered by a row
+      in the shipped python catalogue -- which is exactly the drift the
+      ruling corrects, and the reason this file declared starlette but not
+      the server starlette runs on.
+
+      WHY ITS ABSENCE WAS EXPENSIVE, since that is the part worth keeping.
+      Relocating the row made it UNVOUCHED, and an unvouched row does not
+      EXAMINE (#598). `uvicorn` therefore entered the uncatalogued-module
+      list, and in `_boundary_coverage` an opaque launch earns a QUALIFIED
+      verdict only when that list is empty (`qualifying_only=not unknown`).
+      One entry flipped ALL EIGHTEEN of hypergumbo's own claims from
+      confirmed_with_caveats to inconclusive -- caught by
+      scripts/check-self-claims, which is the gate that exists so a
+      self-proof cannot quietly change what it proves.
+
+      NO `module_completeness` ENTRY, deliberately: this row says what one
+      call does, not that uvicorn has no other I/O. It is a server; it
+      plainly has.
 
 # -------------------------------------------------------------------
 # module_completeness — "and there is nothing else here".
@@ -199,7 +248,12 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-16"
     notes: >-
-      PythonParser parses source strings already in memory.
+      WI-jabus corrected this note on 2026-09-14. It read "PythonParser parses
+      source strings already in memory", which is true of the `text=` form and
+      false of the `filename=` form this repository actually uses -- see the
+      coverage.parser.PythonParser rows and completeness entry, which is where
+      the class-qualified surface is now declared. This slot itself holds the
+      module's free functions, which are parsing helpers over in-memory text.
   - module: rich.console
     completeness: complete
     retrieved: "2026-08-16"
@@ -220,6 +274,64 @@ module_completeness:
     retrieved: "2026-08-16"
     notes: >-
       Table construction; rendering happens through rich.console's rowed methods.
+  # -----------------------------------------------------------------
+  # WI-jabus, retrieved 2026-09-14. THE CLASS-QUALIFIED RECEIVERS.
+  #
+  # Every entry below names a CLASS, not a module, and each is here because
+  # MATCHING IS EXACT: `coverage` being complete says nothing about
+  # `coverage.Coverage`, exactly as this file's own header says `tree_sitter`
+  # says nothing about `tree_sitter.Node`. Phase 6 receiver typing made these
+  # calls resolvable to their class, so each became a module the gate had no
+  # opinion on -- and `qualifying_only = not unknown` meant ONE of them
+  # withheld ALL EIGHTEEN of this repository's self-claims. The uvicorn note
+  # above records the identical failure; this is its third instance.
+  #
+  # These are declarations that the surface is ENUMERATED, not that it does no
+  # I/O -- the I/O these classes do is rowed above (sys.stdout is declared
+  # complete in the shipped catalogue and carries logging rows, the same
+  # shape).
+  # -----------------------------------------------------------------
+  - module: coverage.Coverage
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      load (the .coverage DB) and analysis2 (the measured source file) are
+      rowed fs_read above; get_data is an in-memory accessor over what load
+      already read; start/stop/erase/switch_context drive in-process tracing.
+      save() is NOT reached by this repository and is not rowed -- it writes,
+      and a row would be a claim about a call that does not exist here.
+  - module: coverage.parser.PythonParser
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      parse_source is rowed fs_read above (constructed with filename=). The
+      remainder -- first_line, lines, translate_lines, arcs -- is computation
+      over state parse_source already built.
+  - module: rich.table.Table
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      add_column / add_row / add_section build a renderable in memory. Writing
+      happens in rich.console, whose print methods are rowed above; a Table
+      that is never handed to a Console produces no output at all.
+  - module: ruamel.yaml.YAML
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      dump() and load() take a STREAM the caller opened -- store.py:335 is
+      `ry.dump([prepared], stream)` -- so the crossing belongs to the caller's
+      open(), which this repository's own rows already carry. The same shape
+      as json.dump / tomli.load, which this file treats identically. No row:
+      an fs_write row here would attribute the caller's file to the serializer
+      and double-count the one write.
+  - module: tree_sitter.Parser
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      parse() takes bytes already in memory and returns a tree; the grammar
+      .so was loaded by the tree_sitter_* binding packages, which the
+      tree_sitter entry above already addresses. Same rationale, one class
+      down, spelled out because exact matching does not carry it down.
   - module: rich.text
     completeness: complete
     retrieved: "2026-08-16"

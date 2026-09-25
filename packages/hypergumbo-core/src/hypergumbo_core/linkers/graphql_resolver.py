@@ -57,8 +57,9 @@ from ..analyze.base import (
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
-from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("graphql-resolver-linker")
 
@@ -541,7 +542,9 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                derived_from=[resolver_symbol.id, schema_sym.id],
+                # derived-from endpoints: the resolver node is minted here; the field is joined by
+                #   type.field
+                derived_from=[schema_sym.id],
             )
             edge.meta = {
                 "type_name": pattern.type_name,
@@ -570,7 +573,9 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                derived_from=[resolver_symbol.id, type_sym.id],
+                # derived-from endpoints: the resolver node is minted here; the type is joined by
+                #   name
+                derived_from=[type_sym.id],
             )
             edge.meta = {
                 "type_name": pattern.type_name,
@@ -580,6 +585,7 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
             }
             edges.append(edge)
 
+    run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned
 
@@ -624,11 +630,23 @@ RESOLVER_REQUIREMENTS = [
     priority=60,  # Run after analyzers have produced GraphQL symbols
     description="GraphQL resolver linking (resolvers to schema types/fields)",
     requirements=RESOLVER_REQUIREMENTS,
-    # CNF: resolvers live in the language hosting the GraphQL server —
-    # canonically JS/TS (apollo-server/yoga), Python (graphene/strawberry),
-    # Java (graphql-java), Ruby (graphql-ruby), Go (gqlgen). Schema docs
-    # via the graphql analyzer carry the type/field targets.
-    depends_on=[["javascript", "python", "java", "ruby", "go", "graphql"]],
+    # CNF: the passes that can supply the SCHEMA symbols this linker joins to —
+    # ``graphql`` for a schema document's types/fields/interfaces, and
+    # ``graphql-sdl-linker`` for ``kind="field"`` lifted out of SDL embedded in
+    # a ``gql`` template (WI-dinum), a kind the GraphQL analyzer has never
+    # emitted. The same pair ``graphql-linker`` declares, because both consume
+    # the same symbols.
+    #
+    # WI-zujan. The clause this replaces also named five HOST languages. The
+    # only read of pass output here is ``_get_graphql_schema_symbols``, which
+    # filters on ``language == "graphql"`` and nothing else; the RESOLVER side,
+    # where those languages would matter, is read off disk by
+    # ``link_graphql_resolvers(ctx.repo_root, ...)``. The old comment carried
+    # both readings side by side — "resolvers live in the language hosting the
+    # GraphQL server" is a statement about the world, where ``depends_on`` is
+    # the passes whose OUTPUT this pass reads.
+    depends_on=[["graphql", "graphql-sdl-linker"]],
+    activation=always_on_unreviewed(),
 )
 def graphql_resolver_linker(ctx: LinkerContext) -> LinkerResult:
     """GraphQL resolver linker for registry-based dispatch.

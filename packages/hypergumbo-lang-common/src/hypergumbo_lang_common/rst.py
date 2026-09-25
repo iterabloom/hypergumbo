@@ -11,6 +11,14 @@ How It Works
 2. Extracts document structure (sections, titles)
 3. Extracts directives (function, class, module definitions)
 4. Extracts cross-references and toctree relationships
+5. Populates docstrings onto the symbols just extracted
+   (``populate_docstrings_from_tree``)
+
+Every symbol here is minted through ``make_doc_symbol_ids``, which issues
+``id`` and ``stable_id`` together. That pairing is the INV-dulah contract
+for documentation families: the ``id`` carries the span so two same-named
+sections stay distinct, while the ``stable_id`` survives the section moving
+down the file.
 
 Symbols Extracted
 -----------------
@@ -43,6 +51,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _g
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_symbol_ids, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -417,6 +426,7 @@ class RSTAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         extractor = _RSTExtractor(repo_root)

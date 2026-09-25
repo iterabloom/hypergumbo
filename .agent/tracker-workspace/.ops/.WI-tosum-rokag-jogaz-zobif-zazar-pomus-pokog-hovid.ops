@@ -1,0 +1,41 @@
+- op: create  # 7028
+  at: '2026-09-24T19:18:46Z'  # 7028
+  by: agent  # 7028
+  actor: jgstern_agent  # 7028
+  clock: 1  # 7028
+  nonce: '7028'  # 7028
+  data:  # 7028
+    kind: work_item  # 7028
+    title: "INV-midag residual: 25 analyzers emit calls edges through an enclosing lookup the gate's name pattern did not see (cpp, lua, bash, zig, ocaml, ...) -- unverified, not clean"  # 7028
+    status: todo_hard  # 7028
+    priority: 3  # 7028
+    parent:  # 7028
+    tags:  # 7028
+    - analysis_quality  # 7028
+    isbefore: []  # 7028
+    duplicate_of: []  # 7028
+    not_duplicate_of: []  # 7028
+    pr_ref:  # 7028
+    description: "RESIDUAL OF INV-midag, whose statement is general: every analyzer-origin calls edge with a line lies inside its src's span.\n\nINV-midag's gate (test_call_anchor_gate*.py) enumerated the analyzers that DEFINE a function named `_(get|find)_enclosing_(function|method|callable)*`. That is a NAME pattern, not the mechanism. Found 2026-09-24 while closing WI-mapor, which verified all 42 modules the pattern sees.\n\n25 more analyzer modules emit `calls` edges and match no such name. Their lookup is spelled otherwise, or is inline, or comes from the base class:\n  lang-mainstream : bash cpp jupyter lua py\n  lang-common     : clojure commonlisp fortran ocaml purescript racket robot\n  lang-extended1  : ada apex asm circom cobol haxe jsonnet luau nim pony tcl wolfram zig\nExamples of the other spellings: _find_enclosing_defn (clojure), _find_enclosing_proc (tcl), _get_enclosing_fortran_symbol, _find_enclosing_lua_function, _find_enclosing_subprogram (ada).\npy is already verified by construction (WI-jafat keys on node id). cpp was not in INV-midag's 26-repo table: unmeasured, not clean.\n\nTHE GATE NOW ENUMERATES THEM (same change that closes INV-midag). A module counts if it defines such a lookup OR emits a calls edge. These 25 are UNVERIFIED against this row, so a 26th cannot arrive unclassified.\n\nASKED, per language, the WI-mapor procedure:\n1. Write a same-named-callables fixture in the language's own shape.\n2. Assert reach first, then containment.\n3. If it fails, key on position (symbols_at / symbol_declared_by).\n4. Move the entry to VERIFIED.\nMeasure on corpus repos where they exist (whole_bunch_of_repos has cpp, lua, bash, zig, ocaml, ...). WI-mapor's instruments are reusable: ~/hypergumbo_lab_notebook/mapor_09242026/ (probe.py, ab.py, diff.py)."  # 7028
+    fields: {}  # 7028
+- op: discuss  # e90d
+  at: '2026-09-25T06:34:21Z'  # e90d
+  by: agent  # e90d
+  actor: jgstern_agent  # e90d
+  clock: 2  # e90d
+  nonce: e90d  # e90d
+  message: "Concrete nim finding, 2026-09-25 staleness audit: _find_enclosing_proc_nim drops every call made from an exported proc (proc a*), because the name sits in an exported_symbol node with no direct identifier child. Filed as WI-bujar (P2) with a repro. It is a reach loss, which this row's step 2 (assert reach first) would catch. The containment check for nim still belongs to this row."  # e90d
+- op: discuss  # ca1d
+  at: '2026-09-25T16:12:11Z'  # ca1d
+  by: agent  # ca1d
+  actor: jgstern_agent  # ca1d
+  clock: 3  # ca1d
+  nonce: ca1d  # ca1d
+  message: "nim is now VERIFIED in test_call_anchor_gate_extended1 (PR #1201, WI-bujar): position-keyed lookup, fixture with an overload pair + exported proc/func/method + nested proc; reach and containment both failed against the old code. 24 unverified remain. The duplicated walk-up loop across the 21 position-keyed analyzers is filed as WI-gujab (P4 refactor)."  # ca1d
+- op: discuss  # f00f
+  at: '2026-09-25T19:07:38Z'  # f00f
+  by: agent  # f00f
+  actor: jgstern_agent  # f00f
+  clock: 4  # f00f
+  nonce: f00f  # f00f
+  message: "2026-09-25 docstring-staleness audit, reviewer asides (read in code, NOT yet run through the gate or a fixture). Name-keyed enclosing/owner lookups still live, for cross-checking against this row's 24-module list:\n- bash.py `_get_enclosing_function`: `local_symbols[func_name]` (~L1057).\n- wgsl.py `_find_enclosing_function_wgsl`: lowercase `local_symbols` lookup (~L173-192).\n- robot.py: container found via `_symbol_registry.get(name)`, last-write-wins across files (~L477, L487).\n- luau.py: `symbol_registry.get(current_function)` (~L326-328). pony.py: `symbol_registry.get(full_name)` (~L487).\n- lean.py: the declaration that OWNS a `references` edge is found by `resolver.lookup(decl_name)` (~L392). That is a references edge, not calls, so the calls-emitting gate may not see it.\n- c.py: the dispatch-table body scan finds functions by name (~L820-827). The call path itself is position-keyed.\n- js_ts.py: position-keyed via `symbol_by_position`, but a name-keyed FALLBACK is still live in the function-declaration and method branches (~L4876-4882, L4891-4900).\nLine numbers are from dev e4a47383ab-era reads. Filed as a note, not a row: this row owns the family."  # f00f

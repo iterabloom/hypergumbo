@@ -1,0 +1,24 @@
+- op: create  # 4dfe
+  at: '2026-09-02T00:10:39Z'  # 4dfe
+  by: agent  # 4dfe
+  actor: jgstern_agent  # 4dfe
+  clock: 1  # 4dfe
+  nonce: 4dfe  # 4dfe
+  data:  # 4dfe
+    kind: invariant  # 4dfe
+    title: "Call edges are attributed to the wrong one of two same-named cfg-gated functions, so a chain names a body that cannot make the call"  # 4dfe
+    status: violated  # 4dfe
+    priority: 3  # 4dfe
+    parent:  # 4dfe
+    tags:  # 4dfe
+    - rust  # 4dfe
+    - analysis_quality  # 4dfe
+    - id_format  # 4dfe
+    isbefore: []  # 4dfe
+    duplicate_of: []  # 4dfe
+    not_duplicate_of: []  # 4dfe
+    pr_ref:  # 4dfe
+    description: "FOUND 2026-09-01 while reading INV-zuvib's A/B results back against source. A\nnewly-visible chain in loro pointed at a function body that could not have\nmade the call; the chain was real and the ATTRIBUTION was wrong.\n\nTHE REPRO, isolated to one variable (two same-named cfg-gated functions):\n\n    #[cfg(not(target_arch = \"wasm32\"))]\n    pub fn ts() -> u64 {                       // lines 2-5\n        use std::time::SystemTime;\n        SystemTime::now().elapsed().unwrap().as_secs()\n    }\n\n    #[cfg(target_arch = \"wasm32\")]\n    pub fn ts() -> u64 { 0 }                   // lines 8-10\n\nBOTH symbols are recorded, correctly spanned:\n\n    rust:src/main.rs:2-5:ts:function\n    rust:src/main.rs:8-10:ts:function\n\nBut ALL THREE call edges from the body at 2-5 are attributed to the symbol at\n8-10 -- the twin whose entire body is the literal `0`:\n\n    rust:src/main.rs:8-10:ts:function -> rust:std::time::SystemTime:0-0:now\n    rust:src/main.rs:8-10:ts:function -> rust:external:0-0:elapsed\n    rust:src/main.rs:8-10:ts:function -> rust:external:0-0:as_secs\n\nSo the enclosing-symbol lookup is keyed on NAME with last-writer-wins and\nignores the span, even though the span is what distinguishes the two.\n\nNOT CAUSED BY INV-zuvib, and this is why the repro uses a SINGLE (non-grouped)\n`use`: the mis-attribution is present on `elapsed` and `as_secs` too, which are\nreceiver-method resolutions that INV-zuvib's change cannot touch. That fix\nmerely made one more edge visible through a defect that was already there.\n\nREAL-WORLD INSTANCE: loro crates/loro-internal/src/change.rs. Two cfg-gated\nget_sys_timestamp definitions -- the non-wasm one at 288-296 calls\nSystemTime::now() through a grouped use, the wasm one at 300-311 binds a\nJavaScript Date.now() via wasm_bindgen. The host_info_read chain is anchored to\n300-311, the function that makes no such call.\n\nWHY IT MATTERS BEYOND TIDINESS: the chain's entry point and leaf caller are\nwhat a reader follows to check a boundary claim, and ADR-0016 permits a\nqualified verdict precisely because those names can be checked. A name that\npoints at the wrong function removes what earned the qualification while\nkeeping the qualification. It also mis-seeds taint: the enclosing function is\nthe flow's source anchor.\n\nPOPULATION: NOT SIZED. cfg-gated twins are idiomatic Rust (wasm32 vs native,\nunix vs windows, feature flags) and the same shape exists wherever a language\npermits two same-named definitions in one file under conditional compilation --\nC/C++ #ifdef is the obvious analogue and was NOT checked. Count before fixing.\n\nFIRST STEP: determine whether the lookup is name-keyed by construction (a dict\nbuilt name -> symbol) or whether a span test exists and is being bypassed. Do\nnot assume the fix is \"prefer the enclosing span\" until the site is read -- a\nnested function or an impl block may rely on the current behaviour."  # 4dfe
+    fields:  # 4dfe
+      statement: "When one file defines two functions with the same name under mutually exclusive cfg attributes, both symbols are recorded with correct spans but every call edge from one body is attributed to the OTHER symbol. Isolated repro: two rust fn ts() at lines 2-5 and 8-10, the first calling SystemTime::now().elapsed().as_secs() and the second returning 0; all three call edges are emitted with src=rust:src/main.rs:8-10:ts:function. Live instance: loro crates/loro-internal/src/change.rs, where a host_info_read chain is anchored to the wasm_bindgen variant at 300-311 while the SystemTime::now() call is in the non-wasm variant at 288-296."  # 4dfe
+      root_cause: "NOT ESTABLISHED. The observable is that the enclosing-symbol lookup resolves by NAME and appears to be last-writer-wins, ignoring the span that distinguishes the twins. Whether the lookup is name-keyed by construction or has a span test that is bypassed has not been read, and the first step says to read the site before assuming the fix. NOT caused by INV-zuvib: the mis-attribution is present on receiver-method edges (elapsed, as_secs) that its change cannot touch."  # 4dfe

@@ -1,0 +1,21 @@
+- op: create  # e0f1
+  at: '2026-09-10T01:28:41Z'  # e0f1
+  by: agent  # e0f1
+  actor: jgstern_agent  # e0f1
+  clock: 1  # e0f1
+  nonce: e0f1  # e0f1
+  data:  # e0f1
+    kind: work_item  # e0f1
+    title: "objc: a bare argument-less project macro in a declaration-attribute position still breaks the parse of 38 of 387 files"  # e0f1
+    status: todo_hard  # e0f1
+    priority: 3  # e0f1
+    parent:  # e0f1
+    tags:  # e0f1
+    - objc  # e0f1
+    - analysis_quality  # e0f1
+    isbefore: []  # e0f1
+    duplicate_of: []  # e0f1
+    not_duplicate_of: []  # e0f1
+    pr_ref:  # e0f1
+    description: "FILED 2026-09-09 as WI-lafom's residual. Record:\ndocs/measurements/0027-objc-macro-parse-recovery.md.\n\nAfter WI-lafom's pre-parse rewrite, 38 of 387 objc files (9.8%) still carry a\nparse ERROR, down from 74 (19.1%). The residual is ONE characterised family,\nisolated the same way the shipped triggers were -- by parsing the construct alone,\nnever by reading the source at the first ERROR node's line:\n\n    bare DD_SENDABLE before an @interface        2 ERROR nodes alone\n    typedef NSString *X NS_STRING_ENUM;          1\n    QuickSpecBegin(S) ... QuickSpecEnd           3   (17 of Mantle's 53 files)\n\nA BARE, ARGUMENT-LESS project macro in a declaration-attribute position. The\nshipped rules all blank a macro APPLIED TO ARGUMENTS, whose extent the parens\ndelimit exactly; a bare identifier has no such delimiter, so blanking one is a\nmuch wider blast radius and is why this is filed rather than chased.\n\nTWO CONSTRUCTS THAT LOOK LIKE TRIGGERS AND ARE NOT, recorded so they are not\nre-suspected: `FOUNDATION_EXPORT <type> const <name>;` and\n`@property (class, nonatomic, readonly) A *shared;` BOTH PARSE CLEAN. Error\nrecovery in DDLog.h points at the `@property (class, ...)` line; that is where it\nre-parented to, not where the failure is.\n\nBIGGEST REMAINING FILES: CocoaLumberjack DDLog.h (171 ERROR nodes, `DD_SENDABLE`),\nDDLog.m (15), DDDispatchQueueLogFormatter.h (6), and 17 MantleTests/*.m\n(`QuickSpecBegin`). AFNetworking is down to 8 ERROR nodes across 5 files and fmdb\nto 3 across 2, so this is now overwhelmingly a CocoaLumberjack + Mantle shape.\n\nA CHEAP FIRST CUT WORTH SIZING BEFORE BUILDING: a bare SHOUTY identifier alone on\nits own line immediately before an `@interface` / `typedef` / `@property` line is\na much narrower rule than \"any bare identifier\", and would cover `DD_SENDABLE`.\nIt would NOT cover `NS_STRING_ENUM` (line-trailing) or `QuickSpecBegin` (which\ntakes an argument but expands to a whole @interface/@implementation pair and is a\nthird-party TEST macro -- and WI-bifob excludes test-sourced flows by default, so\nits payoff is smaller than its file count suggests). SIZE THE THREE SEPARATELY."  # e0f1
+    fields: {}  # e0f1

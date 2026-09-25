@@ -107,15 +107,30 @@ def _current_matrix(parser) -> dict[str, list[str]]:
 
 
 def _main_injection_subcommands() -> set[str]:
-    """The hardcoded subcommand-name set ``main()`` keys its default-``sketch``
-    argv injection off of (cli.py). This literal is the rule the *real* CLI
-    enforces; the gate asserts it agrees with ``build_parser()`` so it can't
-    silently diverge (a build_parser subcommand absent from this literal would
-    mis-inject ``sketch`` at runtime while this gate kept passing)."""
+    """The subcommand-name set ``main()`` keys its default-``sketch`` argv
+    injection off of (cli.py).
+
+    THIS USED TO PARSE A LITERAL OUT OF ``main``'s SOURCE, because the set was
+    a hand-written one and could diverge from ``build_parser()`` — a
+    build_parser subcommand missing from the literal mis-injects ``sketch`` at
+    runtime. WI-talaz removed the divergence instead of continuing to police
+    it: ``main`` now derives the set from the parser, so the two cannot differ.
+
+    The gate is kept and re-aimed rather than deleted. It now asserts the
+    DERIVATION is still in place, because reintroducing a literal would restore
+    the original hazard silently — and that hazard is not hypothetical, it cost
+    a run: ``init-catalogs`` parsed correctly and was then rejected as "not a
+    valid subcommand" with a suggestion to run a different one."""
     src = inspect.getsource(cli.main)
-    match = re.search(r"subcommands\s*=\s*\{([^}]+)\}", src)
-    assert match, "could not locate the main() injection subcommand literal"
-    return set(re.findall(r'"([^"]+)"', match.group(1)))
+    assert "subcommands = _registered_subcommands(parser)" in src, (
+        "main() no longer derives its subcommand set from the parser — if a "
+        "literal has come back, so has the two-homes divergence this gate "
+        "exists to prevent"
+    )
+    assert not re.search(r"subcommands\s*=\s*\{", src), (
+        "main() assigns a literal subcommand set; derive it from the parser"
+    )
+    return cli._registered_subcommands(cli.build_parser())
 
 
 def _help_all_text() -> str:

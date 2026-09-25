@@ -23,9 +23,11 @@ Include statements emit only edges, not Symbols (per audit-findings
 
 Edges Extracted
 ---------------
-- **includes_class**: Links the manifest file to included class definitions
-- **requires_resource**: Links resource dependencies
-- **notifies_resource**: Links ``notify`` resource relationships
+- **includes**: Links the manifest file to included class definitions
+- **depends_on**: Resource relationships from ``require`` (evidence_type
+  ``require``, meta ref_construct ``puppet_require``) and ``notify``
+  (evidence_type ``notify``, meta ref_construct ``puppet_notify`` and
+  ``refresh: True``) attributes
 
 Why This Design
 ---------------
@@ -47,6 +49,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _g
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_symbol_ids, make_file_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -316,14 +319,14 @@ class _PuppetExtractor:
         )
         self._symbols.append(symbol)
 
-        # Create requires_resource edges
+        # Create depends_on edges for require/notify relationships
         if "require" in attributes:
             self._create_require_edge(symbol_id, attributes["require"], line)
         if "notify" in attributes:
             self._create_notify_edge(symbol_id, attributes["notify"], line)
 
     def _create_require_edge(self, src_id: str, require_value: str, line: int) -> None:
-        """Create a requires_resource edge."""
+        """Create a depends_on edge for a ``require`` attribute."""
         # Parse require value like "Package['nginx']"
         edge = Edge.create(
             src=src_id,
@@ -338,7 +341,7 @@ class _PuppetExtractor:
         self._edges.append(edge)
 
     def _create_notify_edge(self, src_id: str, notify_value: str, line: int) -> None:
-        """Create a notifies_resource edge."""
+        """Create a depends_on edge for a ``notify`` attribute (meta refresh=True)."""
         edge = Edge.create(
             src=src_id,
             dst=f"puppet:resource:{notify_value}",
@@ -463,6 +466,7 @@ class PuppetAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         extractor = _PuppetExtractor(repo_root)
@@ -477,7 +481,7 @@ def is_puppet_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("puppet")
+@register_analyzer("puppet", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_puppet(repo_root: Path) -> AnalysisResult:
     """Analyze Puppet manifest files in a repository.
 

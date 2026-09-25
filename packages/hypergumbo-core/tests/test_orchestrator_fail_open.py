@@ -84,12 +84,16 @@ class TestLimitsRecordCrashedPass:
         """A crash lands in skipped_passes with a 'crashed:' reason + sets partial flag."""
         limits = Limits()
         limits.record_crashed_pass("python", RuntimeError("boom"))
+        # WI-dukoh: the prose keeps the exception text (payload a code cannot
+        # express) and the code carries the classification.
         assert limits.skipped_passes == [
-            {"pass": "python", "reason": "crashed: RuntimeError: boom"}
+            {"pass": "python", "reason": "crashed: RuntimeError: boom",
+             "silence_reason": "pass_crashed"}
         ]
         assert limits.partial_results_reason  # top-level honesty signal fires
         # And it surfaces in the serialized limits block consumers read.
-        assert {"pass": "python", "reason": "crashed: RuntimeError: boom"} in (
+        assert {"pass": "python", "reason": "crashed: RuntimeError: boom",
+                "silence_reason": "pass_crashed"} in (
             limits.to_dict()["skipped_passes"]
         )
 
@@ -108,11 +112,11 @@ class TestAnalyzerOrchestratorFailOpen:
     def test_crashing_analyzer_does_not_abort_run(self, tmp_path: Path) -> None:
         """A crashing analyzer is contained; sibling results + partial output survive."""
 
-        @register_analyzer("healthy-an", priority=10)
+        @register_analyzer("healthy-an", priority=10, language_state="no_language")
         def _healthy(root, **kwargs):
             return _healthy_analysis_result("healthy-an")
 
-        @register_analyzer("crash-an", priority=20)
+        @register_analyzer("crash-an", priority=20, language_state="no_language")
         def _crash(root, **kwargs):
             raise RuntimeError("analyzer boom")
 

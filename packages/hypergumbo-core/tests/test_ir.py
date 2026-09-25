@@ -528,6 +528,7 @@ def test_edge_from_dict_defaults_new_fields_for_legacy_artifact() -> None:
 def test_valid_confidence_sources_vocabulary() -> None:
     assert VALID_CONFIDENCE_SOURCES == {
         "evidence_derived", "emitter_constant", "composite",
+        "corroborated",  # ADR-0057 §13 (WI-binis)
     }
 
 
@@ -1688,7 +1689,11 @@ def test_symbol_from_dict_is_test_file_default_false() -> None:
 
 
 def test_symbol_is_exported_default() -> None:
-    """WI-zimum: Symbol.is_exported defaults to False."""
+    """INV-kubup: Symbol.is_exported defaults to None — nobody looked.
+
+    It was ``False``, which said "measured, and not part of the public API"
+    for every record from the ninety-odd analyzer modules that compute no
+    exportedness. A producer with a rule still writes True or False."""
     sym = Symbol(
         id="python:src/lib.py:1-2:helper:function",
         name="helper",
@@ -1697,7 +1702,7 @@ def test_symbol_is_exported_default() -> None:
         path="src/lib.py",
         span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
     )
-    assert sym.is_exported is False
+    assert sym.is_exported is None
 
 
 def test_symbol_to_dict_includes_is_exported() -> None:
@@ -1730,8 +1735,9 @@ def test_symbol_roundtrip_preserves_is_exported() -> None:
     assert restored.is_exported is True
 
 
-def test_symbol_from_dict_is_exported_default_false() -> None:
-    """WI-zimum: from_dict treats missing is_exported as False (back-compat)."""
+def test_symbol_from_dict_is_exported_unobserved_when_absent() -> None:
+    """INV-kubup: a missing key is not a measured False. An artifact that
+    does not carry the fact says nothing about it."""
     d = {
         "id": "python:src/lib.py:1-2:foo:function",
         "name": "foo",
@@ -1741,7 +1747,7 @@ def test_symbol_from_dict_is_exported_default_false() -> None:
         "supply_chain": {"tier": 1, "reason": "first_party"},
     }
     restored = Symbol.from_dict(d)
-    assert restored.is_exported is False
+    assert restored.is_exported is None
 
 
 def test_edge_from_dict() -> None:
@@ -2069,16 +2075,39 @@ class TestCreateBoundaryNodes:
         assert len(result) == 2
         assert result[0].id < result[1].id
 
-    def test_file_kind_collapses_per_language(self):
-        """WI-fozoh: ``kind="file"`` pseudo-IDs collapse per language.
+    def test_file_kind_boundaries_keep_their_path(self):
+        """INVERTED (INV-rozob). WI-fozoh's collapse is REVERSED, on a re-price
+        of the number that bought it.
 
-        On hypergumbo self-analysis, every Python file's import-edge src
-        is a ``make_file_id``-style id with a different per-reference
-        filesystem path but the same ``name="file"``, ``kind="file"``.
-        These all collapse to one canonical "file" boundary per language.
+        THIS TEST USED TO ASSERT THE OPPOSITE — that every ``kind="file"``
+        pseudo-id in a language collapses onto one
+        ``{lang}:<external>:0-0:file:external_symbol`` boundary — and the
+        rationale was a measurement: "732 of these on hypergumbo
+        self-analysis", every Python file's import-edge src dangling, so 732
+        boundary nodes was the alternative.
+
+        THAT PREMISE IS DEAD, and it was re-measured on WI-fozoh's own evidence
+        base rather than argued down. WI-ramuv's
+        ``synthesize_file_symbols_for_dangling_edges`` now mints a real
+        ``kind="file"`` Symbol for analyzer-emitted file ids, so a full
+        hypergumbo self-survey today carries **1,577 real file Symbols and
+        exactly 3 file-kind boundary anchors** — 732 → 3. The surviving
+        population is files whose Symbol something REMOVED, in practice tier-4
+        (DERIVED) files whose edges the tier filter deliberately keeps
+        (WI-pozur / ADR-0043 C2). Across five upstream repos it is 3 / 2 / 2 /
+        1 / 0. The collapse is no longer buying node-count relief; it is only
+        destroying attribution.
+
+        WHAT IT DESTROYED. ``make_file_id`` puts the literal ``"file"`` in the
+        name slot, so the collapsed id was a many-to-one bucket: a reader could
+        not tell which file imported what, and the node named no path at all —
+        19 of 104 adjudicated taint flows in ``docs/measurements/0001`` were
+        UNADJUDICABLE for exactly this reason. Keeping the path costs +2 nodes
+        on sqlalchemy, +1 on knex, +1 on sops, 0 on poetry, and loses ZERO
+        relationships (measured: every ``(dst, type)`` previously anchored on
+        the placeholder is still present, now from a real path).
         """
-        # Two real Python file pseudo-IDs (the symptom: 732 of these on
-        # hypergumbo self-analysis).
+        # Two real Python file pseudo-IDs.
         e1 = Edge.create(
             src="python:packages/foo/A.py:1-1:file:file",
             dst="python:click:0-0:click:unresolved",
@@ -2094,19 +2123,21 @@ class TestCreateBoundaryNodes:
             origin="test", origin_run_id="test",
         )
         result, remap = create_boundary_nodes([], [e1, e2])
-        # Two boundary nodes: 1 collapsed "file" boundary covering both
-        # source files, plus 1 click boundary from the shared dst.
+        # THREE boundary nodes now: one per source file, plus 1 click boundary
+        # from the shared dst. Was two, with the two files sharing one id.
         ids = {n.id for n in result}
         # ADR-0036 Ruling 2: kind slot is uniformly external_symbol; the "file"
         # reference syntax moves to meta.reference_syntax.
-        canonical_file = "python:<external>:0-0:file:external_symbol"
-        assert canonical_file in ids
-        file_node = next(n for n in result if n.id == canonical_file)
-        assert file_node.meta["reference_syntax"] == "file"
+        a_id = "python:packages/foo/A.py:0-0:file:external_symbol"
+        b_id = "python:packages/bar/B.py:0-0:file:external_symbol"
+        assert a_id in ids and b_id in ids
+        assert "python:<external>:0-0:file:external_symbol" not in ids
+        assert next(n for n in result if n.id == a_id).meta["reference_syntax"] == "file"
         assert "python:click:0-0:click:external_symbol" in ids
-        # Both distinct file-id srcs remap to the canonical "file" id.
-        assert remap["python:packages/foo/A.py:1-1:file:file"] == canonical_file
-        assert remap["python:packages/bar/B.py:1-1:file:file"] == canonical_file
+        # Each file-id src remaps to a boundary naming THAT file — the whole
+        # point: a reader can open it, and the two are distinguishable.
+        assert remap["python:packages/foo/A.py:1-1:file:file"] == a_id
+        assert remap["python:packages/bar/B.py:1-1:file:file"] == b_id
         # The click dst's id also changed (kind slot -> external_symbol), so it
         # is remapped onto its canonical id too.
         assert (

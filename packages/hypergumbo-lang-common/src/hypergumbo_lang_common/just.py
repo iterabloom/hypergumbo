@@ -20,7 +20,9 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **depends_on**: Recipe dependencies (test: build → test depends_on build)
+- **depends_on**: Recipe dependencies (test: build → test depends_on build),
+  only when the dependency recipe is defined earlier in the same file;
+  forward references are dropped
 
 Why This Design
 ---------------
@@ -53,7 +55,7 @@ _BODY_LINE_RE = re.compile(r"^[\s@#]")
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"just:{path}:{line}:{name}:{kind}"
+    return f"just:{path}:{line}-{line}:{name}:{kind}"
 
 
 def find_just_files(

@@ -754,10 +754,30 @@ class TestSanitizerKindGate:
         )
         assert len(findings) == 1
 
-    def test_unresolved_free_function_sanitizer_registers(self) -> None:
-        """A bare non-method, non-ambiguous unresolved sanitizer call still
-        registers (pass-through) — the reported bug is untyped method /
-        ambiguous collisions, not free-function barriers."""
+    def test_unresolved_free_function_sanitizer_does_NOT_register(self) -> None:
+        """REVERSED BY INV-fuduz, deliberately, and this is the one ruling in
+        the suite that INV-fuduz overturns rather than extends.
+
+        This test used to assert the opposite — that a bare ``encrypt`` call
+        stamped ``call_construct="function"`` DOES register ``Fernet.encrypt``
+        as a barrier — on the stated grounds that "the reported bug is untyped
+        method / ambiguous collisions, not free-function barriers". That was a
+        description of the SCOPE OF THE BUG REPORT (INV-finoh), not an argument
+        that free-function binding is sound, and INV-fuduz's statement governs
+        this function explicitly: a barrier binds an unresolved call only on
+        receiver evidence, "for every call shape, including one with no
+        receiver token".
+
+        A bare ``encrypt`` is not ``Fernet.encrypt``. ``Fernet.encrypt`` is a
+        method ON Fernet; a free function named ``encrypt`` is a different
+        callee, and the construct stamp says which SYNTAX was used, not which
+        callee was resolved. Binding it was the same category error as the java
+        bare call, one construct over.
+
+        DIRECTION, which is why the reversal is safe: refusing a barrier
+        un-suppresses a flow. The old behaviour could silently DELETE a real
+        finding; the new behaviour can only add one.
+        """
         edges = [
             _make_edge("py:a.py:1-5:handler:function",
                        "py:external:0-0:Fernet.decrypt:unresolved"),
@@ -773,10 +793,10 @@ class TestSanitizerKindGate:
         findings = propagate_taint_structural(
             edges, [self._SOURCE], [self._SINK], [self._SANITIZER],
         )
-        # As above: the barrier fired, and that is now visible as a labelled
-        # finding instead of as an absence.
+        # The barrier does NOT fire: the flow survives, unsanitized.
         assert len(findings) == 1
-        assert findings[0].sanitized is True
+        assert findings[0].sanitized is False
+        assert findings[0].taint_label == "plaintext"
 
 
 # ---------------------------------------------------------------------------
@@ -1788,6 +1808,116 @@ class TestFollowedHeirStillAsksTheEscapeQuestion:
         ) is False
 
 
+class TestUnrecordedHeirIsNotVouchedForByASibling:
+    """INV-lupav at HEIR granularity: a recorded sibling must not vouch.
+
+    WI-votom hole 2 closed the case where a followed heir suppressed the
+    escape question for a CALL on the same line. Its fix enumerated the
+    permitting cases, and one of them reads "no call at this line at all — a
+    pure rebinding, so the heir really is the value's only exit". That
+    reasoning is sound for ONE heir and unsound for several: ``followed`` is a
+    disjunction over heirs, and an heir the DDG holds no uses for is skipped
+    silently, so a RECORDED sibling closes the line on the UNRECORDED one's
+    behalf.
+
+    That is this project's ABSENT ≠ EMPTY defect one level below where
+    INV-lupav looks for it. The item's clause L2 is about a partially-recorded
+    DEFINITION; this is a partially-recorded SET OF HEIRS at a single
+    statement, and WI-joluk's coverage gate cannot see it — the gate keys on
+    CALL nodes, and the motivating statement has no call at all.
+
+    THE RULING ALREADY EXISTS AND THIS ONLY MAKES IT CONSISTENT. When the
+    unrecorded heir is ALONE the walk already escapes (``followed`` stays
+    False, the ``no_heir`` branch runs, and a line with no callee does not
+    terminate). So "an heir with no recorded uses is unknown" is shipped
+    behaviour; the multi-heir path simply disagreed with it.
+
+    DIRECTION, and it is the safe one: strictly FEWER ``False``s. Since
+    WI-kabif granted §3a removal authority a ``False`` DELETES a flow, so
+    fewer of them means strictly more surviving violations. This can never
+    suppress a finding.
+    """
+
+    # L1 `cwd := src()`; L2 `a, b := cwd, cwd` — NO CALL; L3 `pkg.Print(a)`.
+    # `b`'s own use sits in a construct the extractor never recorded (Go's
+    # range clause, WI-losod), so the DDG holds no entry for it.
+    _DEFS: ClassVar[dict] = {("f", 1): {"cwd"}}
+    _PRINT: ClassVar[FunctionSummary] = FunctionSummary(
+        function="pkg.Print", side_effect=True,
+    )
+    _CALLEES: ClassVar[dict] = {("f", 3): frozenset({"pkg.Print"})}
+    _SUMS: ClassVar[dict] = {"pkg.Print": _PRINT}
+
+    def test_a_recorded_sibling_does_not_account_for_an_unrecorded_heir(
+        self,
+    ) -> None:
+        """THE DEFECT. ``a`` is recorded and terminates; ``b`` is not
+        recorded at all. The walk must not call that "every step accounted
+        for"."""
+        assert _ddg_taint_reaches(
+            "f", [1], [9],
+            {("f", "cwd", 1): {2}, ("f", "a", 2): {3}},
+            self._CALLEES, self._SUMS,
+            defs_at=self._DEFS,
+            inherits={("f", 2, "cwd"): {"a", "b"}},
+        ) is None
+
+    def test_the_unrecorded_heir_alone_already_escaped(self) -> None:
+        """CONTROL: identical minus the recorded sibling. This is the ruling
+        the defect case contradicts, and it passes BEFORE and after — without
+        it a blanket ``None`` would satisfy the test above and look like a
+        fix."""
+        assert _ddg_taint_reaches(
+            "f", [1], [9], {("f", "cwd", 1): {2}},
+            self._CALLEES, self._SUMS,
+            defs_at=self._DEFS,
+            inherits={("f", 2, "cwd"): {"b"}},
+        ) is None
+
+    def test_all_heirs_recorded_at_a_callless_line_still_closes(self) -> None:
+        """CONTROL, THE OTHER WAY: the permitting case WI-votom wrote down is
+        untouched. Every heir is recorded, so nothing is unaccounted for and
+        the walk still earns its ``False``. A fix that forfeits here would be
+        over-forfeiting, and this is what catches it."""
+        assert _ddg_taint_reaches(
+            "f", [1], [9],
+            {("f", "cwd", 1): {2}, ("f", "a", 2): {3}, ("f", "b", 2): {3}},
+            self._CALLEES, self._SUMS,
+            defs_at=self._DEFS,
+            inherits={("f", 2, "cwd"): {"a", "b"}},
+        ) is False
+
+    def test_a_confirmation_survives_an_unrecorded_sibling(self) -> None:
+        """An incomplete picture cannot unmake positive evidence: if the
+        recorded heir reaches the sink, the answer is ``True``, not ``None``.
+        The escape only ever blocks the refutation."""
+        assert _ddg_taint_reaches(
+            "f", [1], [3],
+            {("f", "cwd", 1): {2}, ("f", "a", 2): {3}},
+            self._CALLEES, self._SUMS,
+            defs_at=self._DEFS,
+            inherits={("f", 2, "cwd"): {"a", "b"}},
+        ) is True
+
+    def test_the_escape_is_recorded_with_its_own_reason(self) -> None:
+        """The site is attributable. ``unrecorded_heir`` is an EXTRACTION
+        failure, so it must not be pooled into ``no_heir`` — that bucket is
+        the one ADR-0017 §7b's alias exclusion is correctly invoked for, and
+        mixing an extractor gap into it is the misattribution
+        :class:`EscapeSite` exists to prevent."""
+        sites: list[EscapeSite] = []
+        _ddg_taint_reaches(
+            "f", [1], [9],
+            {("f", "cwd", 1): {2}, ("f", "a", 2): {3}},
+            self._CALLEES, self._SUMS,
+            defs_at=self._DEFS,
+            inherits={("f", 2, "cwd"): {"a", "b"}},
+            escape_sites=sites,
+        )
+        assert EscapeSite("f", 2, "unrecorded_heir") in sites
+        assert {s.reason for s in sites} <= ESCAPE_REASONS
+
+
 class TestQualifiedCallee:
     """The ADR-0017 §4 catalogue lookup key (INV-rozaj).
 
@@ -2095,8 +2225,8 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         analyzed = {"caller"}
 
@@ -2123,9 +2253,9 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=2, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 2},
         ]
 
@@ -2159,9 +2289,9 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=5, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 2},
         ]
 
@@ -2193,9 +2323,9 @@ class TestPropagateTaintDdg:
                     use_block="bb_0", use_line=3, symbol_id="caller"),
         ]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 3},
         ]
 
@@ -2229,9 +2359,9 @@ class TestPropagateTaintDdg:
                     use_block="bb_0", use_line=3, symbol_id="caller"),
         ]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 3},
         ]
 
@@ -2263,9 +2393,9 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=7, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 2},
         ]
 
@@ -2294,11 +2424,11 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=14, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 10},
             # Recorded at 3, i.e. BEFORE the source. Real code may call this
             # sink again at 14, where the taint demonstrably arrives.
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 3},
         ]
 
@@ -2328,11 +2458,11 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=14, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 10},
             # Recorded line is 3 — before the source — but the dedup pass now
             # preserves the site at 14, which is where the taint arrives.
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 3,
              "meta": {"call_lines": [3, 14]}},
         ]
@@ -2358,10 +2488,10 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=14, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1,
              "meta": {"call_lines": [1, 10]}},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 14},
         ]
 
@@ -2385,9 +2515,9 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=14, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 10, "meta": {"call_lines": "nonsense"}},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 14,
              "meta": {"call_lines": [14, None, "x"]}},
         ]
@@ -2412,10 +2542,10 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=9, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
             {"src": "caller", "dst": "other", "type": "calls", "line": 2},
-            {"src": "other", "dst": "python:external:0-0:send:unresolved",
+            {"src": "other", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 40},
         ]
 
@@ -2434,9 +2564,9 @@ class TestPropagateTaintDdg:
             use_block="src_func", use_line=2,
         )]
         call_edges = [
-            {"src": "src_func", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "src_func", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "src_func", "dst": "mid_func", "type": "calls"},
-            {"src": "mid_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "mid_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         # Only source function analyzed
         analyzed = {"src_func"}
@@ -2475,8 +2605,8 @@ class TestPropagateTaintDdg:
             use_block="other_fn", use_line=2, symbol_id="other_fn",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
 
         findings = propagate_taint_ddg(
@@ -2510,11 +2640,13 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "caller", "dst": "sanitizer_func", "type": "calls"},
-            {"src": "sanitizer_func", "dst": "python:external:0-0:encrypt:unresolved", "type": "calls"},
+            # `crypto.encrypt` names its owner: the receiver evidence the
+            # barrier needs (INV-fuduz). A bare `encrypt` registers nothing.
+            {"src": "sanitizer_func", "dst": "python:external:0-0:crypto.encrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "sanitizer_func", "dst": "sink_func", "type": "calls"},
-            {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         analyzed = {"caller", "sink_func"}
 
@@ -2538,14 +2670,16 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             # Route A: through the sanitizer.
             {"src": "caller", "dst": "sanitizer_func", "type": "calls"},
-            {"src": "sanitizer_func", "dst": "python:external:0-0:encrypt:unresolved", "type": "calls"},
+            # `crypto.encrypt` names its owner: the receiver evidence the
+            # barrier needs (INV-fuduz). A bare `encrypt` registers nothing.
+            {"src": "sanitizer_func", "dst": "python:external:0-0:crypto.encrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "sanitizer_func", "dst": "sink_func", "type": "calls"},
             # Route B: straight there.
             {"src": "caller", "dst": "sink_func", "type": "calls"},
-            {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
 
         findings = propagate_taint_ddg(
@@ -2563,8 +2697,8 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
 
         findings = propagate_taint_ddg(
@@ -2580,9 +2714,9 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             # Sink is in a disconnected component
-            {"src": "other_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "other_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
 
         findings = propagate_taint_ddg(
@@ -2597,9 +2731,9 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "caller", "dst": "mid", "type": "calls"},
-            {"src": "mid", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "mid", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         analyzed = {"caller", "mid"}
 
@@ -2651,12 +2785,12 @@ class TestPropagateTaintDdg:
         # Build adjacency so both mid1 and mid2 can enqueue join_node
         # before it's dequeued, via _build_adjacency's set-based neighbors
         call_edges = [
-            {"src": "src", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "src", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "src", "dst": "mid1", "type": "calls"},
             {"src": "src", "dst": "mid2", "type": "calls"},
             {"src": "mid1", "dst": "join", "type": "calls"},
             {"src": "mid2", "dst": "join", "type": "calls"},
-            {"src": "join", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "join", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         findings = propagate_taint_ddg(
             ddg, call_edges, self._make_sources(), self._make_sinks(), [],
@@ -2670,8 +2804,8 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "imports"},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "imports"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "imports"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "imports"},
         ]
 
         findings = propagate_taint_ddg(
@@ -2816,10 +2950,10 @@ class TestCrossLanguageTaint:
             module="net", name="send", kind="function",
         )]
         edges = [
-            {"src": "ts_caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "ts_caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "ts_caller", "dst": "wasm_func", "type": "calls",
              "meta": {"bridge_kind": "wasm"}},
-            {"src": "wasm_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "wasm_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         findings = propagate_taint_structural(edges, sources, sinks, [])
         assert len(findings) == 1
@@ -2837,10 +2971,10 @@ class TestCrossLanguageTaint:
             module="fs", name="write", kind="function",
         )]
         edges = [
-            {"src": "frontend", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "frontend", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "frontend", "dst": "backend", "type": "calls",
              "meta": {"protocol": "ipc"}},
-            {"src": "backend", "dst": "python:external:0-0:write:unresolved", "type": "calls"},
+            {"src": "backend", "dst": "python:external:0-0:write:unresolved", "is_resolved": False, "type": "calls"},
         ]
         findings = propagate_taint_structural(edges, sources, sinks, [])
         assert len(findings) == 1
@@ -2853,10 +2987,10 @@ class TestCrossLanguageTaint:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "caller", "dst": "native_func", "type": "calls",
              "meta": {"bridge_kind": "ffi"}},
-            {"src": "native_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "native_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         sources = [TaintSource(
             taint_label="plaintext", module="crypto", name="decrypt",
@@ -3221,7 +3355,7 @@ class TestAutoImportFromIoPrimitives:
             # cfg_persister writes to the host FS via pathlib.Path.write_text
             {
                 "src": "python:/app/cfg.py:20-25:cfg_persister:function",
-                "dst": "python:external:0-0:pathlib.Path.write_text:unresolved",
+                "dst": "python:external:0-0:pathlib.Path.write_text:unresolved", "is_resolved": False,
                 "type": "calls",
             },
         ]
@@ -3643,11 +3777,13 @@ class TestTaintMultiLabelSanitizer:
         # Each entry appears under both keys, hence 4 total entries
         # across short-name and leaf-name indexing.
         assert len(index["mod.barrier"]) + len(index["barrier"]) >= 2
-        # Drive the registration helper too. The edge dst's short name
-        # is `barrier`, which matches the leaf fallback.
+        # Drive the registration helper too. The call site names its owner
+        # (`mod.barrier`), which is both an index key and the receiver evidence
+        # INV-fuduz requires -- a BARE `barrier` carries none and is refused,
+        # so using it here would test the fail-open rather than the barrier.
         edges = [
             _make_edge("py:a.py:1-5:caller:function",
-                       "py:external:0-0:barrier:unresolved"),
+                       "py:external:0-0:mod.barrier:unresolved"),
         ]
         callers: dict[str, dict[str, TaintSanitizer]] = defaultdict(dict)
         _register_sanitizer_callers(edges, index, callers)
@@ -4353,6 +4489,14 @@ class TestSinkCallersDoesNotOverwrite:
     ``sink_callers`` was a dict keyed on the CALLING symbol, so each sink
     overwrote the previous one and only the last edge encountered survived.
     Present in both passes; under-reports real findings.
+
+    THE CONTRACT IS UNCHANGED AND THE CARRIER MOVED (INV-karud). Both sinks
+    are still reported; they are now reported as the ``sink_primitives`` set of
+    ONE situation-level finding rather than as two findings, because an
+    unadjudicated flow may not claim which source value reached which sink.
+    Asserting ``len(found) == 2`` would pin the pair shape rather than the
+    property this class exists for, so the assertion reads the set — which
+    still fails outright if a sink is overwritten.
     """
 
     def _edges(self) -> list[dict]:
@@ -4372,7 +4516,10 @@ class TestSinkCallersDoesNotOverwrite:
         found = propagate_taint_structural(
             self._edges(), [_plaintext_source()], self._sinks(), [],
         )
-        assert {f.sink_primitive for f in found} == {"open", "remove"}
+        assert len(found) == 1
+        assert set(found[0].sink_primitives) == {
+            "builtins.open", "os.remove",
+        }
 
     def test_ddg_reports_both_sinks(self) -> None:
         ddg = [DdgEdge(variable="v", def_block="bb_0", def_line=2,
@@ -4381,7 +4528,9 @@ class TestSinkCallersDoesNotOverwrite:
             ddg, self._edges(), [_plaintext_source()], self._sinks(), [],
             ddg_symbols={_SRC},
         )
-        assert {f.sink_primitive for f in found} == {"open", "remove"}
+        assert {p for f in found for p in f.sink_primitives} == {
+            "builtins.open", "os.remove",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -4630,3 +4779,123 @@ class TestSanitizerAttributionOnTheCallGraphArm:
             "only the repo-supplied candidate may be marked, or the marking "
             "stops carrying information"
         )
+
+
+class TestAnUnaccountedMentionIsNotAnAbsence:
+    """INV-lupav clause L4: the omission INSIDE a statement the CFG recorded.
+
+    THE CLAUSE NO COVERAGE PREDICATE CAN REACH. Every other route to an
+    unearned ``False`` left an UNCOVERED region, which WI-joluk's gate —
+    widened to semantic leaves by WI-mugop — detects and forfeits. Here the
+    statement IS recorded and the extractor then fills it with nothing: Go's
+    grouped ``var ( msg = cwd )``, Python's ``c[key] = 1``. There is no
+    uncovered extent to find at any predicate width, so the gate is silent and
+    the walk exhausts over a graph missing the edge that mattered.
+
+    SO THE SIGNAL IS PER-VARIABLE, NOT PER-FUNCTION. Coverage is a property of
+    the function (part of its body was never visited); this is a property of a
+    VALUE (this one was mentioned where nobody read it). Forfeiting the whole
+    function would withhold ``False`` from every walk over it rather than from
+    the walks that actually carry the unaccounted value — measured at 12.6% of
+    alertmanager's functions against 4.8% of its tracked names.
+
+    LIVE REPRO, control first, both functions walkable and both reporting full
+    coverage, one variable apart::
+
+        covered  var msg = cwd  ->  True    ADMISSIBLE
+        leak     var ( msg = cwd ) -> False  <- true answer is True
+        leak     with this signal  -> None   escape: unaccounted_mention
+
+    The fixtures below carry that shape as indices rather than source, so they
+    test the walk rather than the extractor; ``test_cfg.py`` owns the other end.
+    """
+
+    # L1 `cwd := src()`; L2 `a := cwd` (recorded); L3 `pkg.Print(a)` — a
+    # catalogued consuming callee, which is what lets the recorded chain
+    # exhaust to ``False`` instead of escaping on its own. L4 mentions `cwd`
+    # inside a grouped var the extractor did not read, so no edge exists.
+    _USES: ClassVar[dict] = {("f", "cwd", 1): {2}, ("f", "a", 2): {3}}
+    _DEFS: ClassVar[dict] = {("f", 1): {"cwd"}}
+    _INHERITS: ClassVar[dict] = {("f", 2, "cwd"): {"a"}}
+    _PRINT: ClassVar[FunctionSummary] = FunctionSummary(
+        function="pkg.Print", side_effect=True,
+    )
+    _CALLEES: ClassVar[dict] = {("f", 3): frozenset({"pkg.Print"})}
+    _SUMS: ClassVar[dict] = {"pkg.Print": _PRINT}
+
+    def _walk(self, unaccounted, sites=None):
+        return _ddg_taint_reaches(
+            "f", [1], [9], self._USES, self._CALLEES, self._SUMS,
+            defs_at=self._DEFS, inherits=self._INHERITS,
+            unaccounted=unaccounted, escape_sites=sites,
+        )
+
+    def test_without_the_signal_the_walk_claims_it_accounted_for_everything(
+        self,
+    ) -> None:
+        """THE DEFECT, pinned so the fix cannot be mistaken for a no-op.
+
+        The recorded chain closes cleanly at a catalogued consuming callee, so
+        the walk exhausts and returns ``False`` — "every step accounted for" —
+        about a value it never followed past line 2.
+        """
+        assert self._walk(None) is False
+
+    def test_an_unaccounted_mention_escapes(self) -> None:
+        """One argument's difference, and the verdict becomes honest."""
+        assert self._walk(frozenset({"cwd"})) is None
+
+    def test_a_function_whose_mentions_are_all_accounted_still_refutes(
+        self,
+    ) -> None:
+        """THE FLOOR, and it is the assertion that makes this a gate.
+
+        An empty signal must leave ``False`` reachable. A predicate that can
+        only ever withhold refutation is not a safety gate — it is refutation
+        deleted, and it would read as a finding about the substrate rather
+        than as a broken instrument. This is the check that killed one
+        candidate spelling of the coverage predicate in WI-mugop phase 1.
+        """
+        assert self._walk(frozenset()) is False
+
+    def test_an_unrelated_unaccounted_variable_does_not_forfeit(self) -> None:
+        """Per-variable means per-variable.
+
+        ``other`` is unaccounted somewhere in this function, and the walk
+        carrying ``cwd`` is unaffected. Were this keyed on the FUNCTION the
+        assertion would be ``None`` and refutation would collapse toward zero
+        on any function with one unmodelled construct anywhere in it.
+        """
+        assert self._walk(frozenset({"other"})) is False
+
+    def test_positive_evidence_is_not_downgraded(self) -> None:
+        """``True`` survives, and that direction is deliberate.
+
+        The walk FOUND a dependence reaching the sink; an incomplete picture
+        cannot unmake a dependence that was actually traced. Downgrading it
+        would turn a safety gate into a recall regression — the same asymmetry
+        ``forfeit_refutation`` observes. This is why the escape sets the flag
+        and falls THROUGH rather than ``continue``-ing: the remaining uses of
+        the variable still get walked.
+        """
+        assert _ddg_taint_reaches(
+            "f", [1], [3], self._USES, self._CALLEES, self._SUMS,
+            defs_at=self._DEFS, inherits=self._INHERITS,
+            unaccounted=frozenset({"cwd"}),
+        ) is True
+
+    def test_the_escape_is_recorded_with_its_own_reason(self) -> None:
+        """An extraction gap must not be pooled into the alias bucket.
+
+        ``no_heir`` is the one bucket ADR-0017 §7b's alias exclusion can
+        correctly be invoked for. This is an EXTRACTION failure with an
+        entirely different owner and the opposite remedy, so it carries its
+        own reason — the misattribution ``EscapeSite`` was widened to a triple
+        to prevent.
+        """
+        sites: list[EscapeSite] = []
+        assert self._walk(frozenset({"cwd"}), sites) is None
+        assert [(s.line, s.reason) for s in sites] == [
+            (1, "unaccounted_mention"),
+        ]
+        assert {s.reason for s in sites} <= ESCAPE_REASONS

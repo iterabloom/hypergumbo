@@ -225,9 +225,13 @@ class TestTaintSeesTheSameProducerDecision:
 class TestRecordedNonGoals:
     """Pinned so a later PR that changes one argues with an assertion."""
 
-    def test_aliased_from_import_mints_nothing(self, tmp_path: Path) -> None:
-        """``from pathlib import Path as P`` misses the table by key. A false
-        NEGATIVE, in the safe direction, and measured at 0 of 136 corpus sites."""
+    def test_aliased_from_import_binds_through_the_alias(self, tmp_path: Path) -> None:
+        """``from pathlib import Path as P`` WAS a recorded non-goal: it missed the
+        constructor table by key (a false negative, safe direction, 0 of 136 corpus
+        sites). The imported-class rule (WI-makij) asks the BINDING rather than the
+        table, and the alias binds to ``pathlib.Path`` exactly, so the non-goal is
+        closed as a side effect rather than argued around: the instance is typed
+        and the catalogued row is reached."""
         edges = _edges(
             tmp_path / "aliasfrom",
             "from pathlib import Path as P\n"
@@ -236,7 +240,8 @@ class TestRecordedNonGoals:
             "    p = P(raw)\n"
             "    return p.write_text(data)\n",
         )
-        assert _slot(edges, "write_text") != "pathlib.Path"
+        assert _slot(edges, "write_text") == "pathlib.Path"
+        assert _tagged(edges) >= 1
 
     def test_stringio_is_deliberately_absent(self, tmp_path: Path) -> None:
         """160 corpus sites, and the catalogue's ``io`` module declares ZERO

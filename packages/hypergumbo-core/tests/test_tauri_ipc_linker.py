@@ -2363,3 +2363,56 @@ fn notify(app: &AppHandle) {
         event_edges = [e for e in result.edges if e.edge_type == "event_publishes"]
         assert len(event_edges) >= 1
         assert event_edges[0].meta["channel"] == "update-available"
+
+
+class TestTheSyntheticSymbolsCarryTheHostFileLanguage:
+    """WI-dovog, the tauri sibling of the solidity-abi defect: the linker
+    scans ``.ts``/``.tsx``/``.js``/``.jsx`` but minted every synthetic id with
+    the literal ``typescript:`` prefix and every ``discovery_language`` as
+    ``"typescript"``. A ``.js`` frontend therefore put ``typescript`` into
+    verify-claims' languages-with-calls with no typescript node behind it.
+    ``js_ts_language_from_path`` is the ADR-0031 Class B helper.
+    """
+
+    def test_a_js_frontend_mints_javascript_ids(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        js_file = tmp_path / "src" / "app.js"
+        js_file.parent.mkdir(parents=True)
+        js_file.write_text("invoke('greet');\n")
+        greet = _make_rust_symbol(
+            "greet", start_line=1, end_line=5,
+            annotations=[_tauri_command_annotation()],
+        )
+        js_sym = _make_ts_symbol("app", path=str(js_file))
+        result = link_tauri_ipc(
+            repo_root=tmp_path, ts_js_symbols=[js_sym], rust_symbols=[greet],
+        )
+        assert result.symbols, "the invoke() site must still mint a publisher"
+        for sym in result.symbols:
+            assert sym.id.split(":", 1)[0] == "javascript", sym.id
+            assert sym.discovery_language == "javascript"
+            assert sym.language is None
+        for edge in result.edges:
+            if edge.src.split(":", 1)[0] not in ("rust",):
+                assert edge.src.split(":", 1)[0] == "javascript", edge.src
+
+    def test_a_ts_frontend_still_mints_typescript_ids(self, tmp_path: Path) -> None:
+        """CONTROL: the literal was right for .ts files, and stays right."""
+        from hypergumbo_core.linkers.tauri_ipc import link_tauri_ipc
+
+        ts_file = tmp_path / "src" / "app.ts"
+        ts_file.parent.mkdir(parents=True)
+        ts_file.write_text("invoke('greet');\n")
+        greet = _make_rust_symbol(
+            "greet", start_line=1, end_line=5,
+            annotations=[_tauri_command_annotation()],
+        )
+        ts_sym = _make_ts_symbol("app", path=str(ts_file))
+        result = link_tauri_ipc(
+            repo_root=tmp_path, ts_js_symbols=[ts_sym], rust_symbols=[greet],
+        )
+        assert result.symbols
+        for sym in result.symbols:
+            assert sym.id.split(":", 1)[0] == "typescript", sym.id
+            assert sym.discovery_language == "typescript"

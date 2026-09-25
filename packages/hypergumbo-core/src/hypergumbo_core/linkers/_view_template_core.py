@@ -11,20 +11,22 @@ first argument to ``view("users.show")``.
 Although the mapping varies, every framework's view-template linker has the
 same shape:
 
-1. Enumerate "action symbols" (the source of a ``renders`` edge).
+1. Enumerate "action symbols" (the source of a view-render edge).
 2. Per action, propose one or more candidate template files.
 3. Probe the repository filesystem; for each candidate that exists, emit a
-   ``renders`` edge to a deduplicated template symbol.
+   ``references`` edge (``meta["ref_construct"] = "view_render"``) to a
+   deduplicated template symbol.
 
 This module factors steps 2-3 out so framework strategies need only implement
 step 1 and propose candidates. The two named strategy bases below match the
-two shapes called out in WI-mifif: ``MethodNameStrategy`` (Rails, Phoenix,
-Django CBV defaults) and ``ExplicitStringStrategy`` (Django ``render`` /
-``template_name``, Spring return value, Laravel ``view``).
+two shapes called out in WI-mifif: ``MethodNameStrategy`` (Rails, Phoenix)
+and ``ExplicitStringStrategy`` (Django ``render`` / ``template_name``, Spring
+return value, Laravel ``view``). Django's CBV-default strategy subclasses
+``TemplateStrategy`` directly.
 
 Why a single PASS_ID per emitter
 --------------------------------
-All ``renders`` edges produced through this core share one PASS_ID — they
+All view-render edges produced through this core share one PASS_ID — they
 describe the same conceptual relationship and the linker registry already
 isolates per-framework activation via separate ``register_linker`` entries.
 Detection-pattern detail flows through ``meta["detection_pattern"]`` instead
@@ -36,7 +38,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, Optional, Sequence, Tuple
+from typing import Iterable, Iterator, NamedTuple, Optional, Sequence, Tuple, Union
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult
@@ -74,6 +76,25 @@ class TemplateRenderEmission:
     line: int
     detection_pattern: str
     candidates: Tuple[TemplateCandidate, ...]
+    #: Records beyond the action symbol that qualified it -- the controller
+    #: class, the ancestor and inheritance edges its base was read through --
+    #: for the edge's ``derived_from`` (INV-rukor). The template is minted by
+    #: the core, so it is never here.
+    consumed_ids: Tuple[str, ...] = ()
+
+
+class StringSite(NamedTuple):
+    """One explicit template string found by an :class:`ExplicitStringStrategy`.
+
+    A strategy may yield a plain 4-tuple; ``consumed_ids`` then defaults to
+    ``()`` -- the action symbol alone decided the site.
+    """
+
+    action_symbol: Symbol
+    string_value: str
+    line: int
+    detection_pattern: str
+    consumed_ids: Tuple[str, ...] = ()
 
 
 class TemplateStrategy(ABC):
@@ -110,6 +131,17 @@ class MethodNameStrategy(TemplateStrategy):
     @abstractmethod
     def is_action_class(self, sym: Symbol, ctx: LinkerContext) -> bool: ...
 
+    def action_class_evidence(
+        self, sym: Symbol, ctx: LinkerContext,
+    ) -> Optional[Tuple[str, ...]]:
+        """``None`` when ``sym`` is not an action container; otherwise the ids
+        of records BEYOND ``sym`` that qualified it (INV-rukor).
+
+        The default reads only ``sym`` itself. A strategy that walks base
+        classes overrides this to return the ancestors and edges it read.
+        """
+        return () if self.is_action_class(sym, ctx) else None
+
     @abstractmethod
     def is_action_method(self, method_name: str) -> bool: ...
 
@@ -132,12 +164,17 @@ class MethodNameStrategy(TemplateStrategy):
         return class_part, method_part
 
     def find_emissions(self, ctx: LinkerContext) -> Iterator[TemplateRenderEmission]:
-        action_class_names: set[str] = set()
+        # name -> the container(s) of that name plus what qualified them; a
+        # name join cannot tell same-named containers apart, so all are named.
+        action_classes: dict[str, list[str]] = {}
         for sym in ctx.symbols:
-            if self.is_action_class(sym, ctx):
-                action_class_names.add(sym.name)
+            evidence = self.action_class_evidence(sym, ctx)
+            if evidence is None:
+                continue
+            ids = action_classes.setdefault(sym.name, [])
+            ids.extend(x for x in (sym.id, *evidence) if x not in ids)
 
-        if not action_class_names:
+        if not action_classes:
             return
 
         for sym in ctx.symbols:
@@ -145,7 +182,7 @@ class MethodNameStrategy(TemplateStrategy):
             if extracted is None:
                 continue
             class_part, method_part = extracted
-            if class_part not in action_class_names:
+            if class_part not in action_classes:
                 continue
             if not self.is_action_method(method_part):
                 continue
@@ -159,6 +196,7 @@ class MethodNameStrategy(TemplateStrategy):
                 line=sym.span.start_line if sym.span else 0,
                 detection_pattern=self.detection_pattern,
                 candidates=candidates,
+                consumed_ids=tuple(action_classes[class_part]),
             )
 
 
@@ -182,7 +220,7 @@ class ExplicitStringStrategy(TemplateStrategy):
     @abstractmethod
     def find_string_sites(
         self, ctx: LinkerContext
-    ) -> Iterator[Tuple[Symbol, str, int, str]]: ...
+    ) -> Iterator[Union[StringSite, Tuple[Symbol, str, int, str]]]: ...
 
     @abstractmethod
     def string_to_candidates(
@@ -190,19 +228,19 @@ class ExplicitStringStrategy(TemplateStrategy):
     ) -> Iterable[TemplateCandidate]: ...
 
     def find_emissions(self, ctx: LinkerContext) -> Iterator[TemplateRenderEmission]:
-        for action_symbol, string_value, line, detection_pattern in self.find_string_sites(
-            ctx
-        ):
+        for raw_site in self.find_string_sites(ctx):
+            site = StringSite(*raw_site)
             candidates = tuple(
-                self.string_to_candidates(string_value, action_symbol, ctx)
+                self.string_to_candidates(site.string_value, site.action_symbol, ctx)
             )
             if not candidates:
                 continue
             yield TemplateRenderEmission(
-                action_symbol_id=action_symbol.id,
-                line=line,
-                detection_pattern=detection_pattern,
+                action_symbol_id=site.action_symbol.id,
+                line=site.line,
+                detection_pattern=site.detection_pattern,
                 candidates=candidates,
+                consumed_ids=site.consumed_ids,
             )
 
 
@@ -277,7 +315,8 @@ def link_via_strategies(
                             "ref_construct": "view_render",
                         },
                         origin_run_id=run.execution_id,
-                        derived_from=[emission.action_symbol_id, template_id],
+                        # The template is minted here, so it is not a consumed record.
+                        derived_from=[emission.action_symbol_id, *emission.consumed_ids],
                     )
                 )
 

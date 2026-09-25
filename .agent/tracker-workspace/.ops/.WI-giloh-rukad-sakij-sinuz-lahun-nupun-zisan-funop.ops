@@ -1,0 +1,45 @@
+- op: create  # 9964
+  at: '2026-09-25T16:11:46Z'  # 9964
+  by: agent  # 9964
+  actor: jgstern_agent  # 9964
+  clock: 1  # 9964
+  nonce: '9964'  # 9964
+  data:  # 9964
+    kind: work_item  # 9964
+    title: "nim: call targets resolve by bare name with no visibility or import scope -- 96 cross-file edges into a private proc on nitter"  # 9964
+    status: todo_hard  # 9964
+    priority: 2  # 9964
+    parent:  # 9964
+    tags:  # 9964
+    - analysis_quality  # 9964
+    - false_positive  # 9964
+    isbefore: []  # 9964
+    duplicate_of: []  # 9964
+    not_duplicate_of: []  # 9964
+    pr_ref:  # 9964
+    description: "EVIDENCE (analyze_nim on nitter, dev d7e2948280, 2026-09-25):\nsrc/redis_cache.nim:71 declares `proc get(query: string)`, with NO `*`, so it is private: Nim\nlets only redis_cache.nim call it. 104 call edges resolve to it, 96 of them from other files:\n- `cfg.get(\"Cache\", \"redisHost\", \"localhost\")` in src/config.nim, which declares its OWN\n  `proc get*[T]` five lines up and does not import redis_cache;\n- jester's route DSL `get \"/@name/status/@id/?\":` in src/routes/*.nim;\n- `card.video.get()` (std/options `Option.get`) in src/routes/status.nim.\nAlso: `result.add photo` on a `seq[GalleryPhoto]` (system `add`) binds types.nim's\n`proc add*(timeline: var seq[Tweets]; tweet: Tweet)`: 73 edges.\n\nMECHANISM: nim.py calls `resolver.lookup(target_name, path_hint=...)` with a path_hint only for\nan `import X as Y` alias receiver. The registry keeps ONE symbol per name (last registered wins),\nso the lookup has no import scope, no same-file preference and no visibility check.\n\nSIZE CHANGE: WI-bujar (PR #1201) made calls inside exported procs reach the resolver (nitter\n648 -> 2,460 call edges), so this pre-existing error grew with them: redis_cache `get` 9 -> 104,\ntypes `add` 28 -> 73. Resolved edges into a module the caller neither is nor imports:\n62 -> 320 by a direct-import check. That count OVERSTATES the defect, since Nim re-exports\n(`export router_utils` etc.) and a re-exported target is legal. It is an upper bound only.\n\nPRIOR ART: import-aware resolution is language-specific here, and nim has none. Elixir did it in\nWI-dadid; D passes import-scope `path_hints`. WI-tipoh made Scala/Kotlin imports outrank a\nsame-named project symbol. INV-vigaf (satisfied, META) routes UFCS/extension call resolution to\na shared receiver-type-index linker; `cfg.get` / `.add` are UFCS calls. No row covers nim.\n\nASKED:\n1. Minimum and certain: a non-exported (no `*`) nim proc is never a cross-file target\n   (`Symbol.is_exported` is already measured for nim). Measure the edge-set diff.\n2. Import scope: pass the file's imports as `path_hints`, as D does, and handle `export`\n   re-export closure, or the scope will drop legal targets. Diff the edge set, read a random\n   sample, and don't count \"fewer resolved\" as a precision gain without reading.\n3. Same-file preference: config.nim's own `get*` should outrank any other module's.\n4. UFCS receiver calls (`x.add`, `x.get`) belong to INV-vigaf's linker direction; do not\n   type receivers inside nim.py."  # 9964
+    fields: {}  # 9964
+- op: update  # 0350
+  at: '2026-09-25T16:23:18Z'  # 0350
+  by: agent  # 0350
+  actor: jgstern_agent  # 0350
+  clock: 2  # 0350
+  nonce: '0350'  # 0350
+  set:  # 0350
+    status: in_progress  # 0350
+- op: update  # 5075
+  at: '2026-09-25T17:28:19Z'  # 5075
+  by: agent  # 5075
+  actor: jgstern_agent  # 5075
+  clock: 3  # 5075
+  nonce: '5075'  # 5075
+  set:  # 5075
+    status: done  # 5075
+    pr_ref: '1202'  # 5075
+- op: discuss  # 9548
+  at: '2026-09-25T17:28:19Z'  # 9548
+  by: agent  # 9548
+  actor: jgstern_agent  # 9548
+  clock: 4  # 9548
+  nonce: '9548'  # 9548
+  message: "Fixed in PR #1202 (bb8142b887). A per-run _NimScope replaces the flat one-per-name lookup for calls. A call sees its own file, then the files `include` joins to it, then exported declarations of modules it imports (each module's whole include group), narrowed by from/except and extended through export m / export name / export m except x. A module-qualified call looks only in that module; if the module lacks the name, the receiver is a value shadowing the module name (UFCS). Several visible candidates go through ListNameResolver (1/sqrt N).\n\nBEHAVIOURAL EVIDENCE: the filed repro, re-run on merged dev via analyze_nim on nitter: edges into the private redis_cache `get` 104 (96 cross-file) -> 8 (all from redis_cache.nim itself); config.nim's `cfg.get(...)` calls go to config.nim's own `get*` (31 edges). Production-path tests: test_nim_scope_resolution.py (30 multi-file fixtures). Every negative case was red on the old lookup; competing-declaration fixtures call both sides, so discovery order cannot rescue them. The new branches were mutation-controlled.\n\nASKS: (1) private never cross-file: 1,555 -> 42 across nitter/chronos/pixie/nimble, and all 42 are inside chronos's selectors2 include group, where they are legal. (2) import scope with re-export closure: done. Resolved calls 15,354 -> 13,423 with call edges unchanged. Of the 800 removals whose old target was exported, sampling found 2 recall losses (included files of an imported module; a value shadowing a module name) and 1 parsing gap (export except), all fixed. A fresh sample of 20 after the fixes: 20 correct losses. (3) same-file preference: done. (4) receivers NOT typed in nim.py.\n\nNOT CLAIMED: the 1,657 overload guesses, or types.add* still taking seq.add (64; 63 from files that DO import types). That is argument-type selection, filed as WI-bivab (INV-fahub nim facet). Measured on 3 shallow clones beside nitter (the corpus has no other Nim repo): ~/ALL_REPOS/nim_extra_09252026/."  # 9548

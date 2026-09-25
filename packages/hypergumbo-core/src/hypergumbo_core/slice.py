@@ -160,7 +160,26 @@ class AmbiguousEntryError(Exception):
             lines.append(f"  [{sym.language}] {sym.path}:{start}")
             lines.append(f"    ID: {sym.id}")
         lines.append("")
-        lines.append("Use a full node ID to disambiguate, or filter with --language.")
+        # WI-kutam: only offer ``--language`` when the language axis actually
+        # SPLITS this candidate set. The template appended it unconditionally,
+        # so an all-python ambiguity told the user to run ``--language python``
+        # and get the identical error back. Reported twice from dogfooding, on
+        # two candidate shapes: a real symbol against a
+        # ``python:external:0-0:...:unresolved`` synthetic, and a same-name
+        # collision across two packages (``cli:main``).
+        #
+        # NOTHING IS SUBSTITUTED FOR IT, and that is deliberate. ``--entry``
+        # accepts "symbol name, file path, node ID" and every candidate's ID is
+        # printed above, so the full-ID remedy is the applicable one and it was
+        # always there. The tempting additions are not: ``--path`` is the REPO
+        # ROOT rather than a file filter, and there is no ``--file`` flag — so
+        # suggesting either would reproduce this exact defect one flag over.
+        if len({sym.language for sym in candidates}) > 1:
+            lines.append(
+                "Use a full node ID to disambiguate, or filter with --language.",
+            )
+        else:
+            lines.append("Use a full node ID (shown above) to disambiguate.")
 
         super().__init__("\n".join(lines))
 

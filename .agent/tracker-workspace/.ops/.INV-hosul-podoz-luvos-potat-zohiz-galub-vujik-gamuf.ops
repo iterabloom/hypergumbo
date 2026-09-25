@@ -21,3 +21,18 @@
     fields:  # be14
       statement: "The opaque-launch caveat must name each site in a form a reader can act on."  # be14
       root_cause: "_launch_site_name joins module_path and name with a dot so both branches of _opaque_launch_sites spell a site identically. For a bash launch both slots hold the command itself, so a bare name renders curl.curl and a path renders ./scripts/auto-pr../scripts/auto-pr."  # be14
+- op: update  # e5ba
+  at: '2026-08-28T09:53:43Z'  # e5ba
+  by: agent  # e5ba
+  actor: jgstern_agent  # e5ba
+  clock: 2  # e5ba
+  nonce: e5ba  # e5ba
+  set:  # e5ba
+    status: satisfied  # e5ba
+- op: discuss  # 6418
+  at: '2026-08-28T09:53:43Z'  # 6418
+  by: agent  # 6418
+  actor: jgstern_agent  # 6418
+  clock: 3  # 6418
+  nonce: '6418'  # 6418
+  message: "SATISFIED. PR #603, dev e40b7df4ac.\n\nFIX. _join_site_name collapses the two slots when they hold the same thing, so\na bash launch renders `curl` and `./scripts/auto-pr` rather than `curl.curl` and\n`./scripts/auto-pr../scripts/auto-pr`.\n\nWHERE THE COLLAPSE LIVES IS THE LOAD-BEARING PART. It is in the shared spelling\nhelper that BOTH branches of _opaque_launch_sites call, not in either branch,\nbecause their having to agree is the entire reason _launch_site_name exists --\na fix on one branch would reintroduce the disagreement it was written to\nprevent. Pinned by a test on each branch (dst_ref and slot fallback).\n\nBEHAVIOURAL EVIDENCE: three existing tests asserted the doubled form (\"id.id\",\n\"curl.curl\") and now assert the single form. One of them -- the slot-fallback\ntest -- keeps its original property verbatim (\"must spell the site exactly as\nthe dst_ref branch does\") and gains a companion assertion that the doubling has\nnot returned. Controls: a genuine module.name (os.system) still joins.\n\nThis was filed as legibility, and it is: ADR-0016 s4 lets an opaque-launch\nverdict be QUALIFIED rather than withheld because the caveat names sites a\nreader can check. A name matching nothing in their repo removes what earned the\nqualification while keeping the qualification."  # 6418

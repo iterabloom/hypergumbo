@@ -70,11 +70,13 @@ The set-literal AST walker in
 :mod:`hypergumbo_core.axis_drift` is the wrong shape for meta keys —
 meta keys are accessed via ``meta["..."]`` *subscripts* and
 ``meta.get("...")`` *method calls*, not declared as set literals
-named ``*KEY*``. A subscript-access drift linter is a follow-on
-work item (filed at registry-establishment time); the registry
-without the linter is already useful as the canonical vocabulary
-for documentation, ADR cross-references, and the audit / fold
-trail.
+named ``*KEY*``. The subscript-access linter that was a follow-on work
+item at registry-establishment time has since shipped as
+:mod:`hypergumbo_core.meta_write_discipline` (driven by
+``scripts/check-meta-write-discipline``), and :func:`write_meta_key`
+enforces the same rule at runtime: an unregistered key raises. The
+registry remains the canonical vocabulary for documentation, ADR
+cross-references, and the audit / fold trail.
 
 Coverage scope
 --------------
@@ -179,9 +181,9 @@ class MetaKeySpec:
     # ``Edge.edge_type``, declare the two edge-type sets — ``applicable`` (a
     # ``None`` value means "missing data, fix the emitter") and ``na`` (a
     # ``None`` value means "the question does not arise"). Both stay ``None``
-    # for keys that apply uniformly. Only ``access_mode`` populates these today
-    # (its 17-type census, INV-tibob); the remaining canonical edge types are
-    # UNCLASSIFIED — deferred to the polyglot-census follow-up.
+    # for keys that apply uniformly. ``access_mode`` populated these first
+    # (its 17-type census, INV-tibob); the census is now COMPLETE (WI-pusuv) —
+    # every canonical edge type is classified, applicable plus na == 25.
     applicable_edge_types: frozenset[str] | None = None
     na_edge_types: frozenset[str] | None = None
     # INV-hazov: the arity answer. Defaults to ``unaudited`` so an omitted
@@ -191,6 +193,34 @@ class MetaKeySpec:
     # and say which one is authoritative. A discipline nobody can audit is a
     # pinky-swear with a field name.
     discipline_note: str = ""
+    # INV-vukiv: does this key's value VARY BY CALL SITE? ``deduplicate_edges``
+    # keeps one edge per ``(src, dst, edge_type)``; a per-site key on the
+    # survivor would otherwise report one arbitrary site's value as the whole
+    # relationship's. Declared keys collapse under the ``call_arg_shape`` rule
+    # generalized: the singular key survives ONLY if every collapsed site
+    # agreed, and the distinct values move to ``<name>_values`` when they did
+    # not. ``write_discipline`` answers a DIFFERENT question — how many
+    # PRODUCERS write the key — and the two are orthogonal: ``io_mode`` has one
+    # producer and many sites.
+    per_call_site: bool = False
+
+
+# WI-toruz / INV-lalad: the CALL FAMILY — the edge types on which a call
+# construct can appear, i.e. the edge types that carry an invocation.
+# ``instantiates`` is a member because a constructor call IS a call: data
+# passed to it crosses into a callable exactly as through ``calls``. Declared
+# ONCE here and read by both ``call_construct``'s ``applicable_edge_types``
+# and :func:`call_family_edge_types`, so consumers stop keeping private copies
+# — the disagreeing-copies defect INV-nosoz names for the inheritance family.
+#
+# NOT a general-purpose "taint cares about this" set: consumers legitimately
+# add their own extras (taint carries ``module_attr_ref`` per WI-lokuv and
+# ``dispatches_to`` per INV-zuhig, neither of which is a call construct).
+# Union with those; never replace them.
+_CALL_FAMILY_EDGE_TYPES: Final[frozenset[str]] = frozenset({
+    "calls",
+    "instantiates",
+})
 
 
 # ADR-0038 ruling 2: the ``access_mode`` per-edge-type applicability matrix.
@@ -239,7 +269,7 @@ _ACCESS_MODE_NA_EDGE_TYPES: Final[frozenset[str]] = frozenset({
 })
 
 
-META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
+_BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # ------------------------------------------------------------------
     # Edge.meta — Wave 5 framework-dispatch fold residues (ADR-0028).
     # Per audit-findings 0014, the framework-specific evidence types
@@ -276,7 +306,69 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Source-language call construct collapsed under "
                 "``ast_call`` apex (e.g. 'method', 'function', "
                 "'pipe', 'application'). Fold residue per "
-                "audit-findings 0012 / WI-nibis Wave 4."),
+                "audit-findings 0012 / WI-nibis Wave 4. Scoped to the CALL "
+                "FAMILY -- ``calls`` and ``instantiates`` -- declared on "
+                "``applicable_edge_types`` below rather than asserted in this "
+                "sentence, because a scope that lives only in prose cannot be "
+                "checked and this one drifted (WI-toruz). ``instantiates`` is "
+                "in scope deliberately: ``edge_type`` is NOT a function of the "
+                "construct, since ruby emits ``calls`` for the same source "
+                "construct that dart/csharp emit ``instantiates`` for "
+                "(INV-kahig), so 'constructor' is the only cross-language "
+                "invariant for object creation and is NOT redundant with "
+                "``edge_type``.",
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES),
+    MetaKeySpec("callee_name", AXIS_EDGE_META,
+                "The callee's name at FULL FIDELITY, as the producer saw it "
+                "at the call site -- the lossless home ADR-0036 Ruling 1 "
+                "designates. The id's name slot is deliberately LOSSY (names "
+                "containing ':' fold to '.') because the id is a "
+                "location-addressed key, not a fidelity surface, and Ruling 1 "
+                "says in as many words that consumers needing the exact name "
+                "MUST read it from elsewhere and never re-derive it from the "
+                "id. Until this key existed there was no elsewhere for an "
+                "unresolved external: an Objective-C selector "
+                "(writeToFile:atomically:) ENDS in a colon, so the id's "
+                "second-to-last token was the EMPTY STRING, the boundary node "
+                "synthesised from that id had name='', and the selector "
+                "existed nowhere in the output (INV-divuf / WI-nakut). "
+                "Stamped on EVERY edge make_unresolved_edge builds, including "
+                "the cell where WI-huzuv correctly withholds dst_ref because "
+                "the module is unknown -- carrying the name in dst_ref "
+                "sometimes and here otherwise would give one fact two homes.",
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: analyze.base.make_unresolved_edge, the "
+                    "factory all 57 unresolved-external call sites route "
+                    "through. Nothing refines or displaces it -- it records "
+                    "what the producer saw, so a later pass 'improving' it "
+                    "would be recording a different fact under one name.")),
+    MetaKeySpec("call_arg_shape", AXIS_EDGE_META,
+                "What the arguments at this call site CAN carry. One value "
+                "today: 'literal_only' -- every positional and keyword "
+                "argument is a literal constant, or there are no arguments at "
+                "all. INV-fubag, and it exists to be a PROOF rather than a "
+                "heuristic: taint models a flow as the tainted value being an "
+                "argument to the sink call or its receiver, so a call passing "
+                "only literals has nothing that could be the tainted value. "
+                "Measured cost of not having it (docs/measurements/0003): 24 "
+                "of 34 adjudicated false positives were sink calls with no "
+                "arguments at all -- tempfile.TemporaryDirectory(), "
+                "TemporaryFile(), NamedTemporaryFile(delete=True). "
+                "ABSENCE IS THE CONSERVATIVE READING and is load-bearing: "
+                "producers stamp this ONLY when they can prove the argument "
+                "list is all-literal, so every un-stamped call -- including "
+                "every edge in every behavior map written before this key "
+                "existed -- keeps flowing. A default that silenced findings "
+                "would make this a false-negative generator on a security "
+                "analysis. Sparse by convention for the same reason: stamping "
+                "'dynamic' on every call edge would say nothing absence does "
+                "not already say, at the cost of a key on every edge of every "
+                "map. Scoped to the CALL FAMILY -- the question does not "
+                "arise for an edge that is not an invocation.",
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
+                per_call_site=True),
     MetaKeySpec("call_locality", AXIS_EDGE_META,
                 "File-locality of a call edge — whether caller and "
                 "callee live in the same source file ('same_file') or "
@@ -326,11 +418,22 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "'graphql_resolver_type' (a GraphQL ``@Resolver(() => Type)`` "
                 "declaration-time association) and 'openapi_operation' (an "
                 "OpenAPI spec operation referencing its realizing route "
-                "handler, direction-preserving). Renamed from ``construct`` "
+                "handler, direction-preserving); and -- per WI-diruk -- "
+                "'method_group' (a C# method group, ``Action h = Handle;`` or "
+                "``items.ForEach(Process)``, which REFERENCES a method without "
+                "invoking it; it was emitted on ``call_construct`` until the "
+                "concept audit found it on ``references`` edges, where a call "
+                "construct cannot belong). Renamed from ``construct`` "
                 "per INV-lajov "
                 "to disambiguate from the sibling ``call_construct`` (which "
-                "names the call SHAPE on ``calls`` edges): distinct "
-                "vocabularies, distinct edge families, zero overlap."),
+                "names the call SHAPE on the CALL family -- ``calls`` and "
+                "``instantiates``, see that key's ``applicable_edge_types``): "
+                "distinct vocabularies, distinct edge families. INV-lajov "
+                "originally wrote 'zero overlap' here on the strength of a "
+                "corpus measurement in which every observed ``call_construct`` "
+                "sat on a ``calls`` edge; that described the sample rather "
+                "than the field, and was already false by five "
+                "``constructor``-on-``instantiates`` sites (WI-toruz)."),
     MetaKeySpec("refresh", AXIS_EDGE_META,
                 "Boolean flag on a ``depends_on`` edge marking an ordering "
                 "dependency that ALSO triggers a refresh-on-change of the dst "
@@ -368,7 +471,19 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "certainty proper lives in ``confidence`` / ``evidence_type`` "
                 "(ADR-0028). A recovery edge to a real in-repo method is "
                 "correctly ``is_resolved=True`` with "
-                "``resolution_quality='recovery'``."),
+                "``resolution_quality='recovery'``. INV-tadup added "
+                "'chained_return_type' (Go: the receiver's type came from a "
+                "chained call's return type) — it named a resolution MECHANISM "
+                "and was being smuggled through ``call_construct``, which is "
+                "the syntactic-construct axis. INV-mumov added 'accessor_name' "
+                "(Python/Django: the module slot was filled from a relation- "
+                "accessor NAME this project's models declare, with NOTHING "
+                "known about the root) for the same reason — it was shipping "
+                "as 'type_inferred', indistinguishable from a receiver typed "
+                "off a resolved class, and the difference is load-bearing: "
+                "``verify_claims.accessor_name_receiver_sites`` reads it back "
+                "so a CLEAN security verdict stays qualified instead of going "
+                "silent about calls whose typing rests on a name."),
     # ------------------------------------------------------------------
     # Edge.meta — protocol / bridge / dispatch vocabularies (predates
     # the axis-registry pattern; PROTOCOL_KINDS and BRIDGE_KINDS in
@@ -435,6 +550,120 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "consumer ever branches on io_primitive to decide "
                     "whether a crossing is opaque."
                 )),
+    # ------------------------------------------------------------------
+    # Edge.meta — bash's synthesized redirection / expansion edges.
+    # Registered as part of INV-vukiv: all three vary PER CALL SITE, and two
+    # of them were emitted by bash.py while unregistered, so nothing could
+    # have known to union them on collapse.
+    # ------------------------------------------------------------------
+    MetaKeySpec("io_target_kind", AXIS_EDGE_META,
+                "What KIND of thing a call site's I/O target is, where the "
+                "catalogue row cannot tell: 'host_path' (a place in a "
+                "filesystem), 'null_device' (a kernel sink that discards), "
+                "'std_stream' (/dev/stdout, /dev/stderr, /dev/fd/N — a real "
+                "crossing, but a logging one rather than a filesystem one), "
+                "'in_memory' (WI-lipis: the bytes never left the process — a "
+                "`bufio.NewScanner(strings.NewReader(s))` wraps a buffer, not "
+                "a channel), 'pipe' (WI-suhug: a channel whose far end is "
+                "ANOTHER PROCESS — `cmd.StdinPipe()`, `os.Pipe()`), "
+                "'net_stream' (WI-suhug: a connection or a response writer), "
+                "or "
+                "'unresolved' (a variable target; a real write to a place the "
+                "analyzer cannot name). The kind names the TARGET, not the "
+                "direction: `io_boundary` maps it to a boundary in the "
+                "asker's direction (`_READ_TARGET_KIND_BOUNDARY` / "
+                "`_WRITE_TARGET_KIND_BOUNDARY`), so one 'std_stream' is an "
+                "`ipc_recv` for a reader and a `logging` for a writer. INV-nular: `redirect.>` is ONE "
+                "catalogue row whose boundary depends on the target at the "
+                "call site, exactly as `builtins.open`'s depends on the mode, "
+                "so the discriminator is stamped by the analyzer and read by "
+                "`io_boundary.classify_call`. Measured: without it, "
+                "`echo \"$API_KEY\" > /dev/null` returned `violated` against "
+                "a fs_write must-not-exist claim. PER CALL SITE for the same "
+                "reason `redirect_target` is.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "TWO writers over DISJOINT edges, which is what this "
+                    "discipline permits and io_mode's two analyzer families "
+                    "already do. bash.py's _redirect_edge stamps it on "
+                    "redirect edges, in the same dict literal as "
+                    "redirect_target. go.py's _go_wrapped_handle_kind stamps "
+                    "it on handle-wrapper call edges (WI-lipis) and, since "
+                    "WI-suhug, on write call edges (fmt.Fprint*, "
+                    "io.WriteString) from the writer argument — a "
+                    "`bufio.NewScanner` edge is never a bash redirect, so no "
+                    "edge can receive both. The note previously read 'sole "
+                    "writer: bash.py' and anticipated exactly this second "
+                    "writer; it went stale when one arrived."
+                )),
+    MetaKeySpec("redirect_target", AXIS_EDGE_META,
+                "The path (or `<unresolved>`) a shell redirection writes to "
+                "or reads from — the `/etc/cron.d/pwned` in "
+                "`echo x > /etc/cron.d/pwned`. Written by bash.py's "
+                "file_redirect branch. PER CALL SITE, and the measurement "
+                "that filed INV-vukiv: one function redirecting to /dev/null "
+                "on one line and to /etc/cron.d/pwned on the next collapsed "
+                "to a single edge reading '/dev/null', so the cron-dropper "
+                "was reported as a write to the bit bucket.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: bash.py's _redirect_edge. No later pass "
+                    "refines it — the DDG is where a `> \"$OUT\"` target "
+                    "would be resolved, and that answer would be a different "
+                    "fact under a different name."
+                )),
+    MetaKeySpec("redirect_target_resolved", AXIS_EDGE_META,
+                "Whether ``redirect_target`` names a literal path rather than "
+                "an unexpanded variable. Companion boolean so a consumer can "
+                "tell 'wrote /tmp/x' from 'wrote somewhere I cannot name' "
+                "without re-parsing the target. PER CALL SITE for the same "
+                "reason ``redirect_target`` is.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: bash.py's _redirect_edge, stamped in the "
+                    "same dict literal as ``redirect_target``."
+                )),
+    MetaKeySpec("redirect_origin_names", AXIS_EDGE_META,
+                "The externally-derived variable names that can reach what "
+                "the SHELL ITSELF contributes at a redirect — its target "
+                "operand, a heredoc body the shell expands, and every "
+                "producing stage's arguments. WI-zovuz: bash carries no "
+                "dataflow, so a redirect-sink taint finding rested on "
+                "reachability alone ('this file reads the environment "
+                "somewhere AND reaches a function that writes somewhere'). "
+                "Measured over 15 cohort repos, 28 of the 186 environment "
+                "names read in the 69 files that also carry a write redirect "
+                "can reach one; 48 of those files have none. An EMPTY list is "
+                "a PROOF that no value this program holds crossed here, and "
+                "`_sink_call_can_carry_taint` consumes it as such — an ABSENT "
+                "key keeps the finding, because absence is the state of every "
+                "map written before this key existed. PER CALL SITE for the "
+                "same reason `redirect_target` is (INV-vukiv): two redirects "
+                "in one function reach different names.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: bash.py's _redirect_edge, stamped in the "
+                    "same dict literal as ``redirect_target`` from the "
+                    "whole-file closure ``_redirect_origin_names`` computes "
+                    "once per file. No later pass refines it."
+                )),
+    MetaKeySpec("env_var", AXIS_EDGE_META,
+                "The variable name behind a synthesized environment read — "
+                "the `API_KEY` in `$API_KEY`. Carried for the READER rather "
+                "than for matching: bash's env_read catalogue is ONE row on "
+                "the os.environ precedent, so the name never participates in "
+                "the lookup. PER CALL SITE (INV-vukiv): `$HOME` then "
+                "`$API_KEY` in one function collapsed to `env_var='HOME'`, "
+                "which named the harmless read and dropped the secret one.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: bash.py's simple_expansion/expansion branch."
+                )),
     MetaKeySpec("io_boundary", AXIS_EDGE_META,
                 "Boundary classification on edges that cross an IO "
                 "primitive (e.g. 'net_send', 'fs_read', "
@@ -487,7 +716,14 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     MetaKeySpec("io_mode", AXIS_EDGE_META,
                 "Read/write disambiguation for a mode-parameterised IO "
                 "primitive — the ``'w'`` in ``fopen(path, 'w')`` — resolving "
-                "one catalogue row to a directional boundary.",
+                "one catalogue row to a directional boundary. PER CALL SITE "
+                "(INV-vukiv): one function may open the same path 'r' at one "
+                "line and 'w' at another, and those two calls collapse to ONE "
+                "edge. Measured before the flag existed: adding a preceding "
+                "open(p,'r') deleted a real truncating open(p,'w') from the "
+                "boundary map outright, because the survivor carried the "
+                "first site's mode and the gate eliminated the fs_write row.",
+                per_call_site=True,
                 write_discipline=DISCIPLINE_SINGLE_WRITER,
                 discipline_note=(
                     "Two writers tree-wide, one per analyzer family and "
@@ -986,12 +1222,90 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "that model discards, which ADR-0017 §4 needs to map a "
                 "dataflow use at line U onto the callee invoked at line U. "
                 "Capped at ``ir._CALL_LINES_CAP`` (lowest N retained)."),
+    MetaKeySpec("superseded_by", AXIS_EDGE_META,
+                "ADR-0057 §14 (WI-lihis): the id of the RESOLVED edge that "
+                "superseded this unresolved edge to an external stub — same "
+                "src, a shared call line, the same edge type and the same "
+                "declared callee name, from a producer this edge's origin "
+                "lacks. Stamped by finalize sub-step 7a when it multiplies "
+                "this edge's rank_score by SUPERSEDED_STUB_RANK_FACTOR, so the "
+                "low rank is a stated fact rather than an unexplained number. "
+                "Present only on a superseded edge; confidence is untouched "
+                "and the edge is never deleted."),
+    MetaKeySpec("superseded_by_origin", AXIS_EDGE_META,
+                "ADR-0057 §14: the origin (pass ids) of the superseding edge "
+                "named in ``superseded_by`` — which producer saw the site as "
+                "first-party. Present only beside ``superseded_by``."),
+)
+
+
+def _per_call_site_values_specs() -> tuple[MetaKeySpec, ...]:
+    """The ``<key>_values`` companion each per-call-site key gains on collapse.
+
+    DERIVED rather than hand-listed, so a key declared ``per_call_site`` tomorrow
+    is documented in ``docs/schema.json`` the same day. Hand-listing them would
+    be the second home for one fact that this module exists to prevent — and the
+    failure mode is quiet: an undeclared companion is simply missing from the
+    schema, so a consumer reading it out of a behavior map cannot learn it
+    exists (the WI-zisig defect, one convention over).
+
+    They are NOT themselves ``per_call_site``: the companion is already the
+    site-wise answer, and flagging it would ask ``ir._absorb_call_site`` to
+    collapse the collapse.
+    """
+    return tuple(
+        MetaKeySpec(
+            f"{spec.name}_values",
+            spec.axis,
+            f"Every distinct ``{spec.name}`` among the call sites that "
+            f"collapsed into this edge, sorted, capped at "
+            f"``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` "
+            f"ONLY when the sites disagreed, in which case the singular "
+            f"``{spec.name}`` is removed — its presence would state one "
+            f"site's value of the whole relationship (INV-vukiv). Absence of "
+            f"this key therefore means every collapsed site agreed, exactly "
+            f"as absence of ``call_lines`` means there was one site.",
+            write_discipline=DISCIPLINE_SINGLE_WRITER,
+            discipline_note=(
+                "Sole writer: ir._absorb_call_site, at both collapse sites "
+                "(deduplicate_edges and apply_external_id_remap, which route "
+                "through the same function)."
+            ),
+        )
+        for spec in _BASE_META_KEYS
+        if spec.per_call_site
+    )
+
+
+META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
+    _BASE_META_KEYS + _per_call_site_values_specs()
 )
 
 
 def all_meta_key_names() -> frozenset[str]:
     """Return every canonical meta-key name."""
     return frozenset(spec.name for spec in META_KEYS)
+
+
+def per_call_site_keys() -> frozenset[str]:
+    """Meta keys whose value varies BY CALL SITE (INV-vukiv).
+
+    ``ir.deduplicate_edges`` keeps one edge per ``(src, dst, edge_type)``. For
+    every key named here the survivor may carry the value only if EVERY
+    collapsed site agreed on it; otherwise the singular key is dropped and the
+    distinct values move to ``<name>_values``. The rule is not new — INV-fubag
+    gave ``call_arg_shape`` exactly this treatment, hardcoded, because a
+    "every argument here is a literal" proof asserted from one of several sites
+    silences real flows. What was missing was any way to DECLARE a second key,
+    which is why ``io_mode`` (one producer, many sites) quietly deleted real
+    ``fs_write`` boundaries for as long as it did.
+
+    Read by ir.py rather than owned by it: the registry is where a key's
+    contract lives, and putting the list in the dedup function would make the
+    next per-site key someone adds invisible to it — the same "second home for
+    one fact" shape this module exists to prevent.
+    """
+    return frozenset(spec.name for spec in META_KEYS if spec.per_call_site)
 
 
 def meta_keys_on_axis(axis: str) -> tuple[MetaKeySpec, ...]:
@@ -1021,6 +1335,23 @@ def access_mode_applicable_edge_types() -> frozenset[str]:
     17-type census.
     """
     return _ACCESS_MODE_APPLICABLE_EDGE_TYPES
+
+
+def call_family_edge_types() -> frozenset[str]:
+    """The edge types that carry an invocation — the CALL FAMILY.
+
+    The single source for "is this edge a call?", read from
+    ``call_construct``'s declared ``applicable_edge_types`` (WI-toruz).
+    ``instantiates`` is a member: a constructor call is a call, and data
+    passed to it crosses into a callable exactly as through ``calls``.
+
+    Consumers that need the call family PLUS their own extras must UNION,
+    never replace: ``taint.TAINT_CALL_EDGE_TYPES`` also carries
+    ``module_attr_ref`` (WI-lokuv) and ``dispatches_to`` (INV-zuhig), and
+    neither is a call construct. Replacing rather than unioning deletes them
+    — the mistake INV-lalad's fix design flags because it reads as a cleanup.
+    """
+    return _CALL_FAMILY_EDGE_TYPES
 
 
 def access_mode_na_edge_types() -> frozenset[str]:

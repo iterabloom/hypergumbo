@@ -56,6 +56,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -259,6 +260,7 @@ def _extract_symbols_and_edges(
                         src=service_symbols[service_name].id,
                         dst=rpc_sym.id,
                         edge_type="contains",
+                        evidence_type="enclosing_scope",
                         line=rpc_sym.span.start_line,
                         origin=PASS_ID,
                         origin_run_id=run_id,
@@ -298,6 +300,7 @@ def _extract_symbols_and_edges(
                     src=make_file_id("proto", file_path),
                     dst=f"proto:{import_path}:1-1:file:file",
                     edge_type="imports",
+                    evidence_type="ast_import",
                     line=node.start_point[0] + 1,
                     origin=PASS_ID,
                     origin_run_id=run_id,
@@ -330,6 +333,7 @@ class ProtoAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()

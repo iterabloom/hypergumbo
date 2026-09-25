@@ -77,7 +77,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("tauri-ipc-linker")
 
@@ -575,7 +575,9 @@ def link_tauri_ipc(
         rust_symbols: Rust symbols from analyzers.
 
     Returns:
-        TauriIPCLinkResult with ipc_calls edges.
+        TauriIPCLinkResult with ``calls`` edges (``meta.framework_dispatch`` =
+        ``"tauri_invoke"`` or ``"specta_wrapper"``) and ``event_publishes``
+        edges (``meta.framework_dispatch="tauri_emit_listen"``).
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -635,7 +637,11 @@ def link_tauri_ipc(
             except ValueError:
                 pass
 
-            src_id = f"typescript:{rel_path}:0-0:{cmd_name}:ipc_publisher"
+            # WI-dovog: the host file's language, not a literal -- ADR-0031
+            # Class B via js_ts_language_from_path; a .js frontend minted
+            # `typescript:` ids with no typescript node behind them.
+            host_language = js_ts_language_from_path(Path(rel_path))
+            src_id = f"{host_language}:{rel_path}:0-0:{cmd_name}:ipc_publisher"
 
             # Create synthetic Symbol node for the IPC publisher so the
             # slicer's BFS can traverse through it. Without this node,
@@ -657,7 +663,7 @@ def link_tauri_ipc(
                     name=cmd_name,
                     path=rel_path,
                     language=None,
-                    discovery_language="typescript",
+                    discovery_language=host_language,
                     protocol_origin="tauri_ipc",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
@@ -696,7 +702,9 @@ def link_tauri_ipc(
                     "protocol": "ipc",
                     "framework_dispatch": "tauri_invoke",
                 },
-                derived_from=[src_id, target_sym.id],
+                # derived-from endpoints: the publisher node is minted here; the command is joined
+                #   by name
+                derived_from=[target_sym.id],
             ))
 
     # Phase 4: Specta wrapper resolution
@@ -762,8 +770,9 @@ def link_tauri_ipc(
                     continue
                 seen_caller_edges.add(dedup_key)
 
+                caller_language = js_ts_language_from_path(Path(rel_path))
                 caller_id = (
-                    f"typescript:{rel_path}:0-0:{func_name}:ipc_caller"
+                    f"{caller_language}:{rel_path}:0-0:{func_name}:ipc_caller"
                 )
 
                 if caller_id not in seen_caller_ids:
@@ -784,7 +793,7 @@ def link_tauri_ipc(
                         name=func_name,
                         path=rel_path,
                         language=None,
-                        discovery_language="typescript",
+                        discovery_language=caller_language,
                         protocol_origin="tauri_ipc",
                         span=Span(
                             start_line=0, end_line=0,
@@ -814,12 +823,15 @@ def link_tauri_ipc(
                     evidence_type="ast_import",
                     data_direction="src_to_dst",
                     meta={"framework_dispatch": "specta_wrapper", "protocol": "ipc"},
-                    derived_from=[caller_id, publisher_id],
+                    # derived-from consumed-none: both ends are minted by this pass and joined on
+                    #   the command name
+                    derived_from=[],
                 ))
 
     # Phase 5: Rust→TS event emission (emit/emit_all/emit_to → listen/once)
     # Scan Rust files for emit patterns and TS/JS files for listen patterns,
-    # then create ipc_event edges for matching event channel names.
+    # then create event_publishes edges (meta.framework_dispatch=
+    # "tauri_emit_listen") for matching event channel names.
     rust_emit_map: dict[str, list[str]] = {}  # event_name → [rust_file_paths]
     rust_scanned_paths: set[str] = set()
     for sym in rust_symbols:
@@ -867,7 +879,8 @@ def link_tauri_ipc(
                     seen_event_edges.add(dedup)
 
                     src_id = f"rust:{rust_path}:0-0:{event_name}:event_emitter"
-                    dst_id = f"typescript:{ts_path}:0-0:{event_name}:event_listener"
+                    listener_language = js_ts_language_from_path(Path(ts_path))
+                    dst_id = f"{listener_language}:{ts_path}:0-0:{event_name}:event_listener"
 
                     # Create synthetic symbols for emitter and listener
                     if src_id not in seen_publisher_ids:
@@ -915,7 +928,7 @@ def link_tauri_ipc(
                             name=event_name,
                             path=ts_path,
                             language=None,
-                            discovery_language="typescript",
+                            discovery_language=listener_language,
                             protocol_origin="tauri_ipc",
                             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                             origin=PASS_ID,
@@ -950,7 +963,9 @@ def link_tauri_ipc(
                             "channel_kind": "ipc",
                             "framework_dispatch": "tauri_emit_listen",
                         },
-                        derived_from=[src_id, dst_id],
+                        # derived-from consumed-none: both ends are minted from a file scan and
+                        #   joined on the event name
+                        derived_from=[],
                     ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
@@ -1021,7 +1036,8 @@ TAURI_IPC_REQUIREMENTS = [
     ),
     # CNF: javascript (JS/TS share the analyzer pass id) AND rust — both
     # required for Tauri's invoke() ↔ #[command] bridge.
-    depends_on=[["javascript"], ["rust"]],
+    # WI-juzig: rust has two producers (tree-sitter ``rust``, SCIP ``rust_analyzer``).
+    depends_on=[["javascript"], ["rust", "rust_analyzer"]],
 )
 def tauri_ipc_linker(ctx: LinkerContext) -> LinkerResult:
     """Tauri IPC linker for registry-based dispatch.

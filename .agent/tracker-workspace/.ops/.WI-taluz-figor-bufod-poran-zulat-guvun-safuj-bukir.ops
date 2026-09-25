@@ -1,0 +1,22 @@
+- op: create  # d3bb
+  at: '2026-09-11T02:53:39Z'  # d3bb
+  by: agent  # d3bb
+  actor: jgstern_agent  # d3bb
+  clock: 1  # d3bb
+  nonce: d3bb  # d3bb
+  data:  # d3bb
+    kind: work_item  # d3bb
+    title: "elixir: four dot-call receiver shapes still emit nothing -- quoted_atom, __MODULE__, a variable receiver, a module attribute; one handler branch, three different mechanisms"  # d3bb
+    status: todo_hard  # d3bb
+    priority: 3  # d3bb
+    parent:  # d3bb
+    tags:  # d3bb
+    - elixir  # d3bb
+    - analysis_quality  # d3bb
+    - io_boundary  # d3bb
+    isbefore: []  # d3bb
+    duplicate_of: []  # d3bb
+    not_duplicate_of: []  # d3bb
+    pr_ref:  # d3bb
+    description: "FILED 2026-09-10 from WI-kigub, which fixed the ATOM receiver and pinned these\nfour as known gaps rather than fixing them inside a construct change. Each is\npinned by a test in\npackages/hypergumbo-lang-common/tests/test_elixir_atom_module_calls.py\n(`TestKnownGapsStayGaps`), so a later change has to acknowledge them.\n\n`_handle_dot_call` now handles an `alias` receiver (`Logger.error`) and an\n`atom` receiver (`:ets.insert`). Probing the grammar found these remaining\nshapes in the same dot position, each emitting nothing. They are ONE ITEM\nbecause they share a handler branch, but they are THREE different mechanisms\nand a fix would not be one change:\n\n1. QUOTED ATOM — `:\"Elixir.Foo\".bar(1)`, dot children `[quoted_atom . identifier]`.\n   The module IS written literally, so this is the closest to what WI-kigub\n   fixed and the cheapest. Deliberately deferred on evidence: phoenix-framework\n   has ZERO quoted-atom call sites, and the normalisation is undecided —\n   `:\"Elixir.Foo\"` IS the BEAM's spelling of the Elixir module `Foo`, so the\n   module slot should plausibly be `Foo`, not `Elixir.Foo`, and no corpus\n   instance exists to decide it. Emitting `Elixir.Foo` would reach no catalogue\n   row, which is the failure mode WI-kigub's colon-stripping exists to avoid.\n\n2. `__MODULE__.helper(1)` — dot children `[identifier . identifier]`. The module\n   is statically known: it is the enclosing `defmodule`. Resolvable with no\n   inference. It targets FIRST-PARTY code, so it cannot reach a catalogue row\n   and is not an INV-linub instance — it is a call-graph completeness gap.\n\n3. A VARIABLE receiver — `mod.fun(1)`, also `[identifier . identifier]`. The\n   module is not known at this node; it needs value tracking. LANDMINE, pinned\n   by its own test: the dot node has TWO `identifier` children, so\n   `find_child_by_type(dot_node, \"identifier\")` returns `mod` — the RECEIVER,\n   not the function. Loosening the guard to admit this shape without resolving\n   the receiver first would emit an edge named after a local variable.\n\n4. A MODULE ATTRIBUTE receiver — `@attr.thing(1)`, dot children\n   `[unary_operator . identifier]`. Needs attribute-value tracking.\n\nALSO REFUSED, and CORRECTLY, so nobody \"fixes\" it: a dot call with no named\ncallee. `f.(1)` (anonymous call), `(fn x -> x end).(2)`, `foo().(3)`, and the\noperator forms `Kernel.+(1, 2)` / `:erlang.+(1, 2)` — the last two carry a\nreceiver this analyzer now handles but put an `operator_identifier` where the\nfunction name goes, so there is no name to key a destination on. A destination\nid of `elixir:erlang:0-0:+:unresolved` names no catalogue row and no project\nsymbol. All pinned by tests."  # d3bb
+    fields: {}  # d3bb

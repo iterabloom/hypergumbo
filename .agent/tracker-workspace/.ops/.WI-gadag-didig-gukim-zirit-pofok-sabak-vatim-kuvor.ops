@@ -1,0 +1,21 @@
+- op: create  # 9390
+  at: '2026-09-24T19:17:31Z'  # 9390
+  by: agent  # 9390
+  actor: jgstern_agent  # 9390
+  clock: 1  # 9390
+  nonce: '9390'  # 9390
+  data:  # 9390
+    kind: work_item  # 9390
+    title: "julia: every function emits a calls edge to itself from its own signature (the definition's call_expression is taken for a call)"  # 9390
+    status: todo_hard  # 9390
+    priority: 3  # 9390
+    parent:  # 9390
+    tags:  # 9390
+    - julia  # 9390
+    - analysis_quality  # 9390
+    isbefore: []  # 9390
+    duplicate_of: []  # 9390
+    not_duplicate_of: []  # 9390
+    pr_ref:  # 9390
+    description: "FOUND 2026-09-24 while writing WI-mapor's julia fixture. NOT FIXED there: it is a precision defect in call DETECTION, not in the enclosing lookup.\n\nEvery julia function emits a calls edge to ITSELF from its own definition, because the definition's signature is a call_expression and Pass 2 treats every call_expression as a call:\n- `function run(x::Int) ... end`: the signature `run(x::Int)` is a call_expression. The edge run -> run is at the signature line.\n- `one(x) = x`: the short-form LHS `one(x)` is a call_expression. The edge one -> one is at line 1.\nRepro (dev, before and after WI-mapor): a.jl containing `one(x) = x` / `function run(x::Int)\\n    one(x)\\nend`. analyze_julia emits calls one->one at line 1 and run->run at line 2, beside the real run->one at line 3.\n\nWHY IT MATTERS: a false self-loop on every function. A consumer that does not discount self-edges reads it as recursion, and sees an incoming calls edge on a function nothing calls. I have NOT checked which consumers discount self-edges.\n\nASKED: skip the call_expression that is a function_definition's signature and the LHS of a short-form assignment (_julia_short_form_call_node already finds the latter). Assert on a fixture that no function has a self-edge unless its body calls itself. Measure the edge delta on a julia corpus; none is in whole_bunch_of_repos."  # 9390
+    fields: {}  # 9390

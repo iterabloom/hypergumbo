@@ -1,0 +1,21 @@
+- op: create  # eeff
+  at: '2026-08-27T15:57:44Z'  # eeff
+  by: agent  # eeff
+  actor: jgstern_agent  # eeff
+  clock: 1  # eeff
+  nonce: eeff  # eeff
+  data:  # eeff
+    kind: work_item  # eeff
+    title: "34 emitted Edge.meta keys are unregistered though axis_meta_keys claims exhaustiveness — 2 of them (enclosing_class, inherited_field_receiver; 158,375 edges) are written by make_unresolved_edge itself"  # eeff
+    status: todo_hard  # eeff
+    priority: 3  # eeff
+    parent:  # eeff
+    tags:  # eeff
+    - axis  # eeff
+    - analysis_quality  # eeff
+    isbefore: []  # eeff
+    duplicate_of: []  # eeff
+    not_duplicate_of: []  # eeff
+    pr_ref:  # eeff
+    description: "FOUND 2026-08-27 by the fundamental concept audit of call_construct. Full\nwrite-up: ~/hypergumbo_lab_notebook/concept-audit-call_construct_08272026.md\n\naxis_meta_keys.py's module docstring states that \"every meta key used by\nproducers / consumers across the codebase is declared once here with its\naxis\". That claim is false as shipped.\n\nMEASURED over 42 cached surveys (lutuh_scope_08242026), counting keys that\nactually appear on serialised Edge.meta: 70 distinct keys observed, registry\nholds 100, and 34 OF THE OBSERVED KEYS ARE UNREGISTERED.\n\nTwo of the 34 are written by the CORE HELPER ITSELF -- make_unresolved_edge\nin analyze/base.py, the function every language analyzer calls for an\nunresolved external:\n\n    enclosing_class            121,576 occurrences   analyze/base.py:895\n    inherited_field_receiver    36,799 occurrences   analyze/base.py:898\n\nOthers include binding, call_type, receiver_type_id, enclosing_class_id,\nevent, action, controller, visibility, event_name, publisher_event_type,\npublisher_framework, subscriber_event_type, subscriber_framework,\ntarget_path, handler_ref, mixin_name, component_name, events, has_slot_attr,\nsource_path, reference_path, event_type, controller_action, url_type,\nimport_form, package, import_name, attributes, client_directive,\ntarget_function, include_file, sourced_path, target.\n\nMETHOD NOTE -- A CONTAMINATION I HAD TO REMOVE. The first pass reported 36\nunregistered keys including `evidence_lang` at 1,025,469 occurrences. That is\nNOT a producer writing an unregistered key: ir.py:993 folds the TYPED FIELDS\nEdge.evidence_type and Edge.evidence_lang into the serialised meta dict at\nto_dict() time. Both are excluded above. Anyone re-running this measurement\nmust exclude exactly those two and no others -- to_dict folds nothing else.\n\nWHY IT MATTERS. The registry's stated purpose (docstring, \"Why a registry\nrather than free-form strings\", point 1) is producer/consumer coherence: a\nproducer typo like meta[\"framewok_role\"] silently yields None at the\nconsumer. That guarantee only holds for keys the registry knows about. Two\nkeys written by the central unresolved-edge helper on 158,375 edges are\noutside it.\n\nRELATION TO WI-vusot. WI-vusot asked whether to establish the parallel\nregistry at all; the registry now exists with 100 keys, so its KEY half\nshipped. This item is the drift that accumulated afterwards. The VALUE half\nof WI-vusot (its discussion point 3, \"Validation is two-level. Both the KEY\nand the VALUE matter\") is still unbuilt and is reported separately on that\nitem.\n\nSUGGESTED SHAPE. There is already a linter trio -- check-meta-write-discipline,\ncheck-producer-axis-coherence, check-multi-value-field-axis-declaration. The\ngap is an AST-walking check that every meta key literal emitted by a producer\nis registered, which is the same shape as the edge-type drift linter and\nwhich the audit playbook's Step 4 note predicts will find more than a manual\nsweep does. Registering the 34 is the first half; the linter is what stops\nthe 35th."  # eeff
+    fields: {}  # eeff

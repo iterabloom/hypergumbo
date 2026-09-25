@@ -32,6 +32,45 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── WI-fopuh: this script writes the manifest of the repo it LIVES in ────────
+# Everything below is relative to REPO_ROOT (the `cd` at the end of this block)
+# and MANIFEST_DIR is the literal ".ci", so the caller's working directory never
+# enters the decision. Invoking /A/scripts/smart-test from inside repo /B
+# therefore does not produce /B's manifest and does not fail: it rewrites /A's
+# COMMITTED .ci/affected-tests.txt -- the artifact the next PR is measured with
+# -- and says nothing.
+#
+# That is not hypothetical. tests/test_autopr_*.py drive the real scripts/auto-pr
+# with cwd set to a throwaway fixture repo, and auto-pr regenerates the manifest
+# before pushing, so those runs rewrote the working tree's manifest as a side
+# effect. In CI the Woodpecker steps share ONE workspace and it was worse: the
+# forge-arms step installs pytest and nothing else, so the regen reached the
+# "no stable hypergumbo found" branch below and wrote a FULL-SUITE manifest over
+# the checked-out one. The pytest step ran later, read that file, and measured
+# PR #1107 against 964 files -- exactly the full-suite `find` -- from a manifest
+# that committed 75. Five CI rounds and three unrelated latent defects later,
+# the only evidence was a count with no traceable source.
+#
+# Refuse rather than guess which repo was meant. Scoped to the case shown to
+# bite: a cwd inside a DIFFERENT git repo. A cwd in no repo at all names no
+# competing manifest, so it keeps today's behaviour.
+_caller_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -n "$_caller_root" ]] &&
+	[[ "$(cd "$_caller_root" && pwd -P)" != "$(cd "$REPO_ROOT" && pwd -P)" ]]; then
+	echo "ERROR: smart-test belongs to $REPO_ROOT," >&2
+	echo "       but the current directory is inside $_caller_root." >&2
+	echo "" >&2
+	echo "Running it from here would rewrite" >&2
+	echo "  $REPO_ROOT/.ci/affected-tests.txt" >&2
+	echo "-- a committed artifact of a repo you are not in -- and report nothing." >&2
+	echo "" >&2
+	echo "Either:" >&2
+	echo "  1. cd $REPO_ROOT, then re-run, OR" >&2
+	echo "  2. run $_caller_root/scripts/smart-test (that repo's own copy)." >&2
+	exit 3
+fi
+
 cd "$REPO_ROOT"
 
 # ── Flock guard: prevent concurrent smart-test invocations ──
@@ -290,6 +329,7 @@ COV_PATHS=(
     "--cov=packages/hypergumbo-lang-common/src"
     "--cov=packages/hypergumbo-lang-extended1/src"
     "--cov=packages/hypergumbo-lang-rust-analyzer/src"
+    "--cov=packages/hypergumbo-lang-scip-python/src"
 )
 
 # Detect if embedding dependencies are available
@@ -630,6 +670,85 @@ run_pytest() {
     fi
 }
 
+# WI-ginuj: "FULL" HAS TO MEAN FULL, AND IT DID NOT. Five places ran or
+# enumerated the suite and every one of them named `packages/*/tests/` alone,
+# never the repo-root `tests/`. CI runs `.ci/affected-tests.txt`, which DOES
+# include root tests, so a green local `--full` was not a superset of what CI
+# runs and did not predict it: PR #890 went green locally over 26,702 tests and
+# red in CI on `test_adr_readme_index_sync.py`, a test the local gate holds and
+# simply did not run.
+#
+# THE FIVE SITES ARE WHY THIS IS A VARIABLE AND NOT FIVE EDITS. The item filed
+# three, found by grepping `run_pytest`; the background suite calls `pytest`
+# directly and the full-suite MANIFEST writer enumerates with `find`, so the
+# grep missed two. One definition, one test asserting nothing else names a
+# packages-only suite target, and the sixth site cannot be added silently.
+FULL_SUITE_PYTEST_TARGETS="packages/*/tests/ tests/"
+FULL_SUITE_FIND_ROOTS="packages/*/tests tests"
+
+# FIX (b) ON THE SAME ITEM, AND IT IS WORTH HAVING EVEN NOW THAT (a) HAS
+# LANDED: the next divergence will not be this one. A gate named for totality
+# that is silently partial is a wrong instrument that exits 0, and the reader
+# has no signal anything was skipped. So the suite says what it collected AND
+# what it did not -- derived by asking git which directories hold tests, so a
+# seventh test directory is disclosed by the commit that adds it rather than by
+# the CI failure that follows.
+disclose_full_suite_scope() {
+    # NO COMMAND SUBSTITUTION AROUND THIS HEREDOC, and that is not style. The
+    # first version captured it with `report=$(... << HEREDOC ... )` and died
+    # at RUNTIME with "syntax error near unexpected token `||'" while
+    # `bash -n` reported the whole script clean: a `)` at column 0 inside the
+    # Python body -- a continued call's closing paren -- ends the substitution
+    # early, and $() is re-parsed lazily so the static check never sees it.
+    # Python does its own chdir for the same reason: no subshell to close.
+    python3 - "$REPO_ROOT" "$FULL_SUITE_PYTEST_TARGETS" <<'PY' 2>/dev/null || true
+import fnmatch, glob, os, subprocess, sys
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - python < 3.11
+    tomllib = None
+
+os.chdir(sys.argv[1])
+targets = sys.argv[2].split()
+collected = sorted({os.path.normpath(p) for t in targets for p in glob.glob(t)})
+
+# WHAT COUNTS AS A TEST FILE IS PYTEST'S ANSWER, NOT OURS. The first version
+# asked git for "*test_*.py" and reported .agent/hooks/_shared and a package
+# src/ tree as uncollected -- top_level_test_map.py, test_masking.py,
+# test_only_reachability.py. None is a test; they are production modules whose
+# names contain the word. A disclosure that cries wolf on every run is a
+# disclosure nobody reads.
+patterns = ["test_*.py", "*_test.py"]
+if tomllib is not None:
+    try:
+        with open("pyproject.toml", "rb") as fh:
+            configured = tomllib.load(fh)["tool"]["pytest"]["ini_options"]["python_files"]
+        patterns = list(configured)
+    except (OSError, KeyError, ValueError):
+        pass
+
+listing = subprocess.run(["git", "ls-files", "*.py"], capture_output=True, text=True)
+holding = set()
+for path in listing.stdout.split():
+    if not any(fnmatch.fnmatch(os.path.basename(path), pat) for pat in patterns):
+        continue
+    # packages/<pkg>/src/** is the PRODUCTION tree by construction. A
+    # test-shaped name there is a different defect and has its own gate
+    # (test_only_reachability.py); it is not a suite this one is skipping.
+    parts = path.split("/")
+    if len(parts) > 2 and parts[0] == "packages" and parts[2] == "src":
+        continue
+    directory = os.path.dirname(path)
+    if directory:
+        holding.add(directory)
+skipped = sorted(d for d in holding if not any(d == c or d.startswith(c + os.sep) for c in collected))
+print("  collecting: " + " ".join(collected))
+if skipped:
+    print("  NOT collecting, though they hold tests: " + " ".join(skipped))
+PY
+}
+
 run_full_suite() {
     local reason="${1:-}"
     local changed_files="${2:-}"  # Optional: changed files to include in manifest
@@ -658,7 +777,7 @@ run_full_suite() {
         fi
         echo "# === SELECTED_TESTS ==="
         # Include both test_*.py and BRANCHES_test_*.py (branch coverage tests)
-        find packages/*/tests \( -name 'test_*.py' -o -name 'BRANCHES_test_*.py' \) -type f | sort
+        find $FULL_SUITE_FIND_ROOTS \( -name 'test_*.py' -o -name 'BRANCHES_test_*.py' \) -type f | sort
     } > "$MANIFEST_FILE"
 
     if [[ "$MANIFEST_ONLY" == "true" ]]; then
@@ -666,7 +785,8 @@ run_full_suite() {
         exit 0
     fi
 
-    run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
+    disclose_full_suite_scope
+    run_pytest "$FULL_SUITE_PYTEST_TARGETS" -n 2 "${PYTEST_ARGS[@]}"
     exit $?
 }
 
@@ -681,7 +801,7 @@ kick_off_background_suite() {
     log "Starting full suite in background..."
 
     (
-        pytest packages/*/tests/ -n 2 "${COV_PATHS[@]}" --cov-fail-under=100 > .ci/full-suite.log 2>&1
+        pytest $FULL_SUITE_PYTEST_TARGETS -n 2 "${COV_PATHS[@]}" --cov-fail-under=100 > .ci/full-suite.log 2>&1
         STATUS=$?
         rm -f "$LOCK"
         if [[ $STATUS -ne 0 ]]; then
@@ -708,18 +828,21 @@ fi
 if [[ "$HAS_EXPLICIT_TESTS" == "true" ]]; then
     log "Explicit test targets detected — skipping slice"
 
-    # Still write a manifest so CI knows what happened
-    mkdir -p "$MANIFEST_DIR"
-    {
-        echo "# Test selection manifest"
-        echo "# Generated by smart-test at $(date -Iseconds)"
-        echo "# Mode: explicit"
-        echo "# Reason: caller specified test targets directly"
-        echo "#"
-        echo "# === CHANGED_SOURCE_FILES ==="
-        echo "# === SELECTED_TESTS ==="
-        echo "# (explicit — see pytest args)"
-    } > "$MANIFEST_FILE"
+    # WI-duson: THIS USED TO OVERWRITE THE MANIFEST WITH A ZERO-SELECTION STUB.
+    # An explicit run is not a selection computation, so it has no business
+    # publishing one — and publishing one was destructive, because AGENTS.md
+    # instructs both "run only relevant tests during development" and "commit
+    # .ci/affected-tests.txt with every PR". Two individually correct
+    # instructions composed into a manifest that selected NOTHING, which CI
+    # then ran and reported green.
+    #
+    # The committed artifact is left exactly as it was. The manifest is a
+    # statement about a DIFF, this invocation was not asked about the diff, and
+    # the honest thing for a command with no answer is to say nothing rather
+    # than to publish an empty one. Re-run bare `pytest` to recompute it.
+    if [[ -f "$MANIFEST_FILE" ]]; then
+        log "Manifest left untouched (explicit run computes no selection)"
+    fi
 
     # Run pytest with the caller's args (test paths are already in PYTEST_ARGS)
     run_pytest "" "${PYTEST_ARGS[@]}"
@@ -920,6 +1043,45 @@ if [[ -n "$CHANGED_FIXTURE_FILES" ]]; then
     fi
 fi
 
+# INV-kinin's SIBLING, one filename over. A `conftest.py` is neither a
+# `test_`-prefixed test file nor package `src/`, so a change confined to one
+# matched NEITHER CHANGED_TEST_FILES nor CHANGED_SOURCE_FILES, selected
+# nothing, and printed "no test-relevant files changed (docs/config only)" --
+# a manifest with 0 tests, so ci.yml skipped pytest. Strictly worse than the
+# fixture case above: an `autouse` fixture declared in a conftest governs
+# EVERY test beneath it, not one gate's inputs.
+#
+# FOUND THE EXPENSIVE WAY: a conftest change that REPAIRED 13 failing tests
+# produced a 0-test manifest. The repair and the blindness arrived in the same
+# commit, and only the manifest header said so.
+#
+# ROUTING. A package conftest selects that package's suite, exactly as a
+# fixture does. A ROOT conftest (`conftest.py` or `tests/conftest.py`) selects
+# the root suite AND every package suite, because pytest applies a rootdir
+# conftest to everything collected beneath it -- selecting only `tests/` would
+# under-select precisely where the blast radius is widest.
+CHANGED_CONFTEST_FILES=$(echo "$CHANGED_FILES" | grep -E '(^|/)conftest\.py$' || echo "")
+if [[ -n "$CHANGED_CONFTEST_FILES" ]]; then
+    CONFTEST_TESTS=""
+    while IFS= read -r cf; do
+        [[ -z "$cf" ]] && continue
+        case "$cf" in
+            packages/*/tests/*)
+                pkg_tests="${cf%%/tests/*}/tests"
+                CONFTEST_TESTS+="$(cd "$REPO_ROOT" && ls "$pkg_tests"/test_*.py "$pkg_tests"/BRANCHES_test_*.py 2>/dev/null || true)"$'\n'
+                ;;
+            *)
+                CONFTEST_TESTS+="$(cd "$REPO_ROOT" && ls tests/test_*.py 2>/dev/null || true)"$'\n'
+                CONFTEST_TESTS+="$(cd "$REPO_ROOT" && ls packages/*/tests/test_*.py 2>/dev/null || true)"$'\n'
+                ;;
+        esac
+    done <<< "$CHANGED_CONFTEST_FILES"
+    if [[ -n "$(echo "$CONFTEST_TESTS" | sed '/^$/d')" ]]; then
+        log "conftest changes select their owning suite (INV-kinin's sibling)"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CONFTEST_TESTS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
 # Check if any Python source files changed (drives the version-only and
 # no-affected-tests branches below).
 CHANGED_SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/src/.*\.py$' || echo "")
@@ -930,13 +1092,25 @@ CHANGED_SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/src/.*\.py$
 # name-mapped (top_level_test_map.py records both decisions), so any
 # changed file here the map cannot reach gets the conservative treatment:
 # union the whole root suite, disclosed. Over-select, never under-select.
-CHANGED_TOP_LEVEL_SOURCES=$(echo "$CHANGED_FILES" | grep -E '^(scripts/|\.githooks/|\.agent/hooks/)' || echo "")
+# .woodpecker/ and .github/ join the executable surface here. They were
+# omitted when this union was built, and KNOWN_UNREACHABLE recorded the
+# consequence four separate times without closing it: "editing a workflow does
+# NOT select this test per-PR". Fifteen root tests read those files. The
+# `# covers:` declarations now select the right ones precisely; this arm is the
+# floor under a file nobody has declared yet, which is the case that produced
+# every entry on that list.
+CHANGED_TOP_LEVEL_SOURCES=$(echo "$CHANGED_FILES" | grep -E '^(scripts/|\.githooks/|\.agent/hooks/|\.woodpecker/|\.github/)' || echo "")
 UNMAPPED_TOP_LEVEL=""
 if [[ -n "$CHANGED_TOP_LEVEL_SOURCES" ]]; then
     if [[ -f "$TOP_LEVEL_MAP_HELPER" ]] && command -v python3 &>/dev/null; then
         while IFS= read -r tls; do
             [[ -z "$tls" ]] && continue
-            if [[ -z "$(echo "$tls" | python3 "$TOP_LEVEL_MAP_HELPER" "$REPO_ROOT" 2>/dev/null)" ]]; then
+            # --names-only: a `# covers:` DECLARATION must be able to ADD a
+            # test, never to withdraw the root-suite over-selection below.
+            # .githooks/** and scripts/lib/** are deliberately un-name-mapped
+            # and covered by that union; a declaration naming .githooks/*
+            # would otherwise make them "mapped" and trade 108 tests for one.
+            if [[ -z "$(echo "$tls" | python3 "$TOP_LEVEL_MAP_HELPER" --names-only "$REPO_ROOT" 2>/dev/null)" ]]; then
                 UNMAPPED_TOP_LEVEL+="$tls"$'\n'
             fi
         done <<< "$CHANGED_TOP_LEVEL_SOURCES"
@@ -950,6 +1124,160 @@ if [[ -n "$(echo "$UNMAPPED_TOP_LEVEL" | sed '/^$/d')" ]]; then
     log "$(echo "$UNMAPPED_TOP_LEVEL" | sed '/^$/d;s/^/  /')"
     ROOT_SUITE=$(cd "$REPO_ROOT" && ls tests/test_*.py 2>/dev/null || echo "")
     AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$ROOT_SUITE" | sed '/^$/d' | sort -u)
+fi
+
+# INV-kafak: the gates that GOVERN documents live in the root suite, and a
+# docs-only change selected NOTHING — measured, not inferred: `smart-test
+# --manifest` on a tree whose only edits were `docs/` and `CHANGELOG.md` wrote
+# "Selected tests: 0", and measurement 0009 merged green while failing
+# `check-measurement-frame`, the gate ADR-0048 §A3 built for exactly that file.
+# So on the one change class those gates exist to check, the selector ran every
+# test except them.
+#
+# THE SELECTION IS DERIVED FROM THE TREE, NOT LISTED. A hardcoded roster would
+# cover today's thirteen doc-reading root tests and leave the fourteenth green
+# and unrun on the commit that adds it — the decay that put nine of fifteen
+# languages in `F2_LANGS`. Grepping the root suite for a `docs/` reference is
+# the same shape as the reverse-slice: whatever reads the tree is what runs.
+# Over-select, never under-select — the whole set is ~180 tests in ~5 seconds.
+# INV-muvis / INV-kafak, second instance: the CATALOGUE has the same hole
+# documents had. The slice above keys on `^packages/.*/src/.*\.py$`, and an
+# io_primitives YAML is not a Python source file — so a change that moves a row
+# between boundaries in five languages selected TWO test files, both of them the
+# ones the same commit added. CI then runs that committed manifest, so the
+# io-boundary and taint suites the change could break would not have run at all.
+#
+# DERIVED FROM THE TREE, NOT LISTED, for the reason the doc gate gives: a
+# hardcoded roster covers the cases someone already thought of, while a grep
+# covers the next test on the commit that adds it. Three fixed strings, unioned:
+# `load_catalog` and `io_primitives` are the direct readers, `io_boundary` is
+# the module every consumer imports and is what catches a test that exercises
+# classification without naming a catalogue.
+# INV-kafak, third instance: a PLAYBOOK edit selected nothing. `.agent/hooks/`
+# is in the executable-surface union above and the playbook directory beside it
+# is NOT, yet playbooks are load-bearing input — AGENTS.md's "Creating a New
+# Playbook" requires each one to be registered in the transcript hook's
+# PLAYBOOKS list, and `test_on_transcript_change.py` is what checks that the
+# registry and the files agree. Renaming or deleting a playbook breaks that gate
+# and, before this, ran none of it.
+#
+# DERIVED, NOT LISTED, like its two siblings: union the root tests that name the
+# playbook directory, found by grep, so the next such gate is covered by the
+# commit that adds it rather than by an edit here.
+CHANGED_PLAYBOOK_FILES=$(echo "$CHANGED_FILES" | grep -E '^\.agent/agent_playbooks_protocols_sops_skills/' || echo "")
+if [[ -n "$CHANGED_PLAYBOOK_FILES" ]]; then
+    PLAYBOOK_GATE_TESTS=$(cd "$REPO_ROOT" && grep -lF 'agent_playbooks_protocols_sops_skills' tests/test_*.py 2>/dev/null || true)
+    if [[ -n "$PLAYBOOK_GATE_TESTS" ]]; then
+        log "Playbooks changed - unioning the root tests that read them (INV-kafak)"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$PLAYBOOK_GATE_TESTS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
+# INV-bigaz / INV-dohoj: the union above was RIGHT and its KEY was wrong. The
+# regex named io_primitives and its overlays -- 23 of the 169 YAML files the
+# wheel ships -- so a change confined to frameworks/ (107 files),
+# dataflow_patterns/, cfg_nodes/, function_summaries/ or taint_sources/
+# selected ZERO tests, fell through to the branch below, wrote a 0-test
+# manifest saying "no test-relevant files changed (docs/config only)", and
+# ci.yml skipped pytest. A fix keyed to ONE instance left the class and looked
+# done. Measured on dev 81f1a69f88, not inferred.
+#
+# The key is now the SHAPE of shipped data -- a YAML in a directory under a
+# package's src/ -- and the grep terms are derived PER FAMILY from
+# hypergumbo_core.yaml_catalogs.YAML_CATALOGS, the registry that already names
+# every catalogue directory and its loader and that validate_registry() gates
+# against the tree. So the eleventh family arrives covered by the commit that
+# registers it, exactly as the doc and playbook unions cover the next gate.
+# The helper's docstring carries the measurements and the non-narrowing
+# argument.
+# WHAT COUNTS AS DATA is the helper's to decide, and it is asked about every
+# changed file rather than a pre-filtered subset: keeping a second copy of the
+# predicate here is how a widening lands in one home and not the other. The
+# fallback below is the only duplicate, it is narrower on purpose, and a test
+# pins that the two agree on the live tree.
+CATALOGUE_TERMS_HELPER="$REPO_ROOT/scripts/catalogue_gate_terms.py"
+CHANGED_CATALOGUE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/[^/]+/src/[^/]+/[^/]+/' | grep -vE '\.pyi?$' || echo "")
+if [[ -n "$CHANGED_CATALOGUE_FILES" ]]; then
+    CATALOGUE_GATE_TERMS=""
+    if [[ -f "$CATALOGUE_TERMS_HELPER" ]] && command -v python3 &>/dev/null; then
+        CATALOGUE_GATE_TERMS=$(echo "$CHANGED_CATALOGUE_FILES" \
+            | python3 "$CATALOGUE_TERMS_HELPER" "$REPO_ROOT" 2>/dev/null || echo "")
+    fi
+    if [[ -z "$CATALOGUE_GATE_TERMS" ]]; then
+        # ABSENT IS NOT EMPTY. With no helper to read the registry, degrade to
+        # the directory names in the changed paths themselves -- narrower than
+        # the derived set, but the failure mode of a selector is
+        # under-selection and silence is the worst version of it.
+        CATALOGUE_GATE_TERMS=$(echo "$CHANGED_CATALOGUE_FILES" \
+            | sed -E 's|^packages/[^/]+/src/[^/]+/([^/]+)/.*|\1|' | sort -u)
+    fi
+    CATALOGUE_GATE_TESTS=$(cd "$REPO_ROOT" && echo "$CATALOGUE_GATE_TERMS" | while IFS= read -r term; do
+        if [[ -n "$term" ]]; then
+            grep -rlF "$term" packages/*/tests/*.py tests/*.py 2>/dev/null || true
+        fi
+    done | sort -u)
+    if [[ -n "$CATALOGUE_GATE_TESTS" ]]; then
+        log "Catalogue YAML changed - unioning the tests that read it (INV-muvis, INV-bigaz)"
+        log "  families: $(echo "$CATALOGUE_GATE_TERMS" | tr '\n' ' ')"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CATALOGUE_GATE_TESTS" | sed '/^$/d' | sort -u)
+    fi
+    # WI-juzoz: THE GREP CANNOT SEE A ROOT TEST THAT READS THE DATA THROUGH A
+    # SCRIPT OR THE CLI. It names none of the terms. PR #1162 changed java.yaml
+    # alone, and tests/test_measure_catalogue_exposure.py (which loads it through
+    # scripts/measure-catalogue-exposure.py) first ran, and failed, on the cron.
+    # Traced: 13 root test files open catalogue data, and the grep selected none
+    # of them. A second hop through the scripts that name a term reached 4. So
+    # union the whole root suite (1973 tests, 78s locally) whenever the data changes.
+    if [[ -n "$CATALOGUE_GATE_TERMS" ]]; then
+        log "Catalogue data changed - unioning the root suite (WI-juzoz)"
+        CATALOGUE_ROOT_SUITE=$(cd "$REPO_ROOT" && ls tests/test_*.py 2>/dev/null || true)
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CATALOGUE_ROOT_SUITE" | sed '/^$/d' | sort -u)
+    fi
+fi
+
+CHANGED_DOC_FILES=$(echo "$CHANGED_FILES" | grep -E '^docs/' || echo "")
+if [[ -n "$CHANGED_DOC_FILES" ]]; then
+    # Three spellings, unioned. `docs/` is the load-bearing one and today it
+    # alone reaches all thirteen gates; the two quoted-bareword arms are
+    # DEFENSIVE, for a gate spelled `Path("docs") / "adr"` — a form no root
+    # test currently uses. That is measured, not assumed: a test asserts the
+    # union is a superset of every arm and would fail if an arm ever went
+    # missing, and the redundancy is stated here rather than left for someone
+    # to discover and "tidy".
+    DOC_GATE_TESTS=$(cd "$REPO_ROOT" && {
+        grep -lF 'docs/'  tests/test_*.py 2>/dev/null || true
+        grep -lF '"docs"' tests/test_*.py 2>/dev/null || true
+        grep -lF "'docs'" tests/test_*.py 2>/dev/null || true
+    } | sort -u)
+    if [[ -n "$DOC_GATE_TESTS" ]]; then
+        log "Docs changed - unioning the root tests that read docs/ (INV-kafak)"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$DOC_GATE_TESTS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
+# WI-lujon: A STRING LITERAL IS AN EDGE THE IMPORT GRAPH CANNOT SEE. The three
+# unions above all key on the CHANGED path's directory. This one has to key the
+# other way -- on what some OTHER file's text contains -- which is why it
+# survived its own family's fix.
+#
+# The rot it is built from: test_module_key_axis.py pins that every file:line
+# citation in MODULE_KEY_NOTIONS still contains its quoted anchor. INV-sihom
+# added lines to bash.py and moved the cited emission out from under its
+# citation. The per-PR gate went GREEN -- the citation test is in
+# hypergumbo-core and names bash.py by STRING -- and it fired on the next cron,
+# repaired two firings later by a PR that happened to touch a core file.
+#
+# The helper's docstring carries the two-hop argument and the measurement that
+# rules out keying on a bare basename. Its cost is 0.1s here and 2s with every
+# source in the tree changed.
+CITATION_GATE_HELPER="$REPO_ROOT/scripts/citation_gate_tests.py"
+if [[ -f "$CITATION_GATE_HELPER" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_FILES" ]]; then
+    CITATION_GATE_TESTS=$(echo "$CHANGED_FILES" \
+        | python3 "$CITATION_GATE_HELPER" "$REPO_ROOT" 2>/dev/null || echo "")
+    if [[ -n "$CITATION_GATE_TESTS" ]]; then
+        log "Citation edges - unioning the tests that check a path this change moved (WI-lujon)"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CITATION_GATE_TESTS" | sed '/^$/d' | sort -u)
+    fi
 fi
 
 if [[ -z "$AFFECTED_TESTS" ]]; then
@@ -995,7 +1323,32 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
                 exit 0
             fi
 
-            echo "No test-relevant files changed (docs/config only) - skipping tests"
+            # INV-sotam: --full means "ignore the selection and run
+            # everything", so the selection's opinion about the diff must not
+            # override it. This branch used to exit 0 here, which meant that
+            # verifying merged work -- the case where the tree legitimately
+            # holds nothing test-relevant -- printed a reassuring line and ran
+            # nothing. A gate that cannot fire read identically to one that
+            # passed, which is the defect class this repo keeps finding in its
+            # own analysis.
+            #
+            # The empty TARGETED manifest written above is kept deliberately:
+            # it is the correct CI artifact for this diff. run_full_suite()
+            # would replace it with a full-suite manifest, which CI rejects by
+            # design as a signal that change detection went wrong -- trading a
+            # silent skip for a red gate on every docs-only PR. --full is a
+            # local convenience; it does not change what CI is told.
+            if [[ "$FULL_RUN" == "true" ]]; then
+                log "No test-relevant files changed, but --full was requested"
+                echo "Running full test suite (--full); manifest written with 0 targeted tests for CI"
+                disclose_full_suite_scope
+                run_pytest "$FULL_SUITE_PYTEST_TARGETS" -n 2 "${PYTEST_ARGS[@]}"
+                _full_rc=$?
+                fold_selection_index full
+                exit $_full_rc
+            fi
+
+            echo "smart-test: 0 tests ran - no test-relevant files changed (docs/config only)"
             exit 0
         fi
     else
@@ -1245,7 +1598,14 @@ if [[ "$VERBOSE" == "true" ]]; then
 fi
 
 # CHANGED_SOURCE_FILES already computed above (before the empty-tests check)
-SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || echo 0)
+#
+# `grep -c .` PRINTS 0 AND EXITS 1 ON EMPTY INPUT, so the old `|| echo 0` fired
+# IN ADDITION to grep's own "0" and made SOURCE_COUNT the two-line string
+# "0\n0" — writing a bare `0` line into the manifest header between two `#`
+# comments. It was unreachable until INV-kafak's doc-gate union, because a
+# change with zero source files used to exit at the docs/config-only branch
+# above and never reach this writer. `|| true` keeps grep's own count.
+SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || true)
 
 # Write manifest
 mkdir -p "$MANIFEST_DIR"
@@ -1278,8 +1638,9 @@ fi
 # This is for local testing when you want to verify the full suite passes
 if [[ "$FULL_RUN" == "true" ]]; then
     log "Running full test suite locally (--full flag)"
+    disclose_full_suite_scope
     echo "Running full test suite (manifest written with $TEST_COUNT targeted tests for CI)"
-    run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
+    run_pytest "$FULL_SUITE_PYTEST_TARGETS" -n 2 "${PYTEST_ARGS[@]}"
     _full_rc=$?
     fold_selection_index full
     exit $_full_rc

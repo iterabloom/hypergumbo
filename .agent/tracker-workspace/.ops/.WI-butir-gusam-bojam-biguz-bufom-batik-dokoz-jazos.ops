@@ -1,0 +1,22 @@
+- op: create  # 731c
+  at: '2026-08-27T15:33:08Z'  # 731c
+  by: agent  # 731c
+  actor: jgstern_agent  # 731c
+  clock: 1  # 731c
+  nonce: 731c  # 731c
+  data:  # 731c
+    kind: work_item  # 731c
+    title: "cpp: a range-for loop variable with an explicit std:: type still emits a module_attr_ref; for_range_loop cannot be skipped because it also covers the range expression"  # 731c
+    status: todo_hard  # 731c
+    priority: 4  # 731c
+    parent:  # 731c
+    tags:  # 731c
+    - io_boundary  # 731c
+    - cpp  # 731c
+    - verify_claims  # 731c
+    isbefore: []  # 731c
+    duplicate_of: []  # 731c
+    not_duplicate_of: []  # 731c
+    pr_ref:  # 731c
+    description: "RESIDUAL OF INV-sibij, filed rather than left inside a satisfied item, because\nthat item's own lesson is that a closure can satisfy the repro and not the\nstatement.\n\nINV-pusin's statement covers \"a module named solely by an import or a TYPE\nANNOTATION\". In cpp one type-annotation form still emits a module_attr_ref:\n\n    for (std::string x : v)     ctx = for_range_loop     LEAKS\n\nIt was NOT added to cpp's skip tuple, deliberately, because that context covers\nBOTH halves of the loop:\n\n    for (std::string x : v)     -> std::string   ctx=for_range_loop   TYPE\n    for (auto& l : std::cin)    -> std::cin      ctx=for_range_loop   VALUE\n\n`std::cin` is a genuine stream read -- the same thing `std::cout << 1` is, which\nINV-sibij already names as the reason its fix could not be a blanket one.\nSkipping `for_range_loop` would suppress it, which is the FALSE-ALL-CLEAR\ndirection.\n\nWHY IT CANNOT BE FIXED WITH THIS MECHANISM: `skip_context_kinds` matches\nancestor KIND only. Separating the loop variable's declared type from the range\nexpression needs FIELD-level granularity -- the `type` field of the\nfor_range_loop node versus its `right` field. That is a different mechanism\n(the same shape as INV-pusin's own second closure, which had to move from a\nproximate match to an ancestry match for a related reason).\n\nDIRECTION OF RISK: this residual OVER-withholds. It costs recall, not safety, so\nit is not urgent.\n\nPINNED, NOT JUST DESCRIBED:\n`test_cpp_range_for_range_expression_still_emits` in test_base.py asserts the\nRANGE EXPRESSION still emits, so anyone who \"fixes\" the type half by adding\n`for_range_loop` to the tuple sees immediately what it costs.\n\nSIZE IT BEFORE BUILDING IT: a range-for with an explicitly qualified std:: type\nis much rarer than a template argument (which was 2359 occurrences in rocksdb\nagainst 126 type aliases). Count the form on the cpp cohort before spending\nanything on field-level plumbing."  # 731c
+    fields: {}  # 731c

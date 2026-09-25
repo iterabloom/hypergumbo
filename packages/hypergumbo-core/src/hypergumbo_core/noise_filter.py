@@ -7,9 +7,30 @@ scaffolding. The decision lives here — as a module-level, unit-testable pure
 predicate — rather than as a closure inside ``run_survey`` (which made every
 branch reachable only through a full survey integration run).
 
-Three static branches (documentation/config kinds; CSS-family ``variable``
-custom-properties; config-language ``table`` section headers) plus one
-axis-refined branch for ``entry_role=script`` file symbols.
+Four static branches (documentation/config kinds; CSS-family ``variable``
+custom-properties; config-language ``table`` section headers; declaration-only
+``property`` producers) plus one axis-refined branch for ``entry_role=script``
+file symbols.
+
+**``property`` is a homonym too (WI-tisom).** It sat in the blanket set labelled
+"CSS structural", but no CSS analyzer has ever emitted it: css.py and scss.py
+had no ``kind="property"`` when the entry was added (commit 4eab1afde7) and have
+none now. Its real producers are five analyzers:
+- swift: a computed property, a callable with a body;
+- C#: a property with get/set bodies;
+- ``.properties``: a config key;
+- QML: a property declaration;
+- objective-c: a bodyless ``@property``.
+So the default view dropped every swift and C# property. It also dropped every
+call edge from them, since an edge whose src is gone is dropped at finalize.
+Measured with analyze_swift on five swift repos:
+- 3,323 property symbols;
+- 12,552 call edges out of them (Alamofire 206, swift-composable-architecture 9,765);
+- 364 edges into them.
+The declaration-only producers carried 0 edges on 8 repos (4 objective-c, 1 QML,
+3 ``.properties``, 91,695 symbols). They stay noise; swift and C# do not. C#
+carried 0 edges as well, because its analyzer credits no call in an accessor
+(WI-binap). That is an analyzer gap, not a reason to hide the declaration.
 
 **The ``entry_role=script`` split (WI-papag).** A single predicate
 (``kind=="file" and entry_role=="script"``) conflated two genuinely different
@@ -58,7 +79,7 @@ _NOISE_SYMBOL_KINDS = frozenset({
     "setting",
     # CSS structural (degree-0 in behavior maps)
     "class_selector", "id_selector", "rule_set",
-    "property", "media", "keyframes", "font_face",
+    "media", "keyframes", "font_face",
     # Config metadata (degree-0 across all tested repos)
     "pattern",      # .gitignore entries
     "requirement",  # pip requirements.txt entries
@@ -77,6 +98,13 @@ _NOISE_CSS_VARIABLE_LANGUAGES = frozenset({"css", "scss", "sass", "less"})
 # schema tables.
 _NOISE_TABLE_LANGUAGES = frozenset({"toml", "ini", "properties"})
 
+# WI-tisom: ``kind="property"`` is noise only from the producers whose property
+# is a declaration with no body and, measured, no edges. swift and C# properties
+# carry bodies and calls and pass through, as does a SCIP-imported ``Property``
+# in any language. ``test_every_property_producer_is_classified`` requires every
+# module that emits the kind to be classified here, one way or the other.
+_NOISE_PROPERTY_LANGUAGES = frozenset({"properties", "qml", "objc"})
+
 
 def is_noise_symbol(sym: "Symbol") -> bool:
     """Return True if ``sym`` is default-view noise (dropped when not
@@ -87,6 +115,8 @@ def is_noise_symbol(sym: "Symbol") -> bool:
     if sym.kind == "variable" and sym.language in _NOISE_CSS_VARIABLE_LANGUAGES:
         return True
     if sym.kind == "table" and sym.language in _NOISE_TABLE_LANGUAGES:
+        return True
+    if sym.kind == "property" and sym.language in _NOISE_PROPERTY_LANGUAGES:
         return True
     # WI-papag: entry_role=script is two populations (see module docstring).
     # Filter the bare npm run-script (no entry_point); exempt the

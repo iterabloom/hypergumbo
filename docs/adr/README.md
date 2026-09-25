@@ -20,7 +20,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0009](0009-feature-focused-bakeoff.md) | Feature-Focused Bakeoff Suite (DEEP mode) | Accepted | 2026-01-30 |
 | [0010](0010-modular-packages-and-smart-testing.md) | Modular Packages and Smart Testing | Implemented | |
 | [0011](0011-scoped-coverage-and-green-baseline.md) | Scoped Coverage and Green Baseline Tracking | Implemented | |
-| [0012](0012-pass-unification-and-multi-fidelity.md) | Pass Unification and Multi-Fidelity Architecture | Step 1 implemented; Steps 2–3 design targets | |
+| [0012](0012-pass-unification-and-multi-fidelity.md) | Pass Unification and Multi-Fidelity Architecture | Partially superseded by ADR-0057 (§Step 3); Step 1 implemented; Step 2 design target | |
 | [0013](0013-structured-tracker.md) | Structured Tracker | Accepted | 2026-02-13 |
 | [0014](0014-generalized-symbol-identity.md) | Generalized Symbol Identity (stable_id / shape_id) | Accepted — partially superseded by ADR-0035 (see amendment table) | 2026-02-20 |
 | [0015](0015-dataflow-access-modes.md) | Dataflow Access Modes on Edges | Accepted — partially superseded by ADR-0038 (emission guidance only) | 2026-03-15 |
@@ -51,6 +51,21 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0042](0042-survey-rename.md) | Survey Rename | Accepted | 2026-06-10 |
 | [0043](0043-stage-ordering-contract.md) | Stage-Ordering Contract for `run_behavior_map` | Accepted | 2026-06-12 |
 | [0044](0044-synthesis-mechanisms-are-synthetic-pass-ids.md) | Symbol-Synthesis Values Are Synthetic Pass IDs (WI-kadop field-split withdrawn) | Accepted | 2026-07-01 |
+| [0045](0045-user-config-and-backend-trust.md) | User Configuration and Backend Trust Are Separate Stores | Accepted | 2026-08-23 |
+| [0046](0046-two-axis-taint-precision.md) | Two-Axis Taint Precision — Correctness and Usefulness | Accepted | 2026-08-27 |
+| [0047](0047-catalogue-scope-and-user-visible-homes.md) | Catalogue Scope, and Where a User's Catalogue Data Lives | Accepted | 2026-08-27 |
+| [0048](0048-taint-precision-benchmark-frame.md) | The Taint-Precision Benchmark — Equal Allocation, Declared Frame, Pinned SHA | Accepted | 2026-08-28 |
+| [0049](0049-deferred-crossings-are-disclosed-not-minted.md) | A Deferred Crossing Is Disclosed, Not Minted (extends ADR-0016) | Accepted | 2026-08-29 |
+| [0050](0050-io-boundary-axis.md) | The I/O-Boundary Axis | Accepted | 2026-09-01 |
+| [0051](0051-module-key-axis.md) | The Module-Key Axis | Accepted | 2026-09-01 |
+| [0052](0052-taint-refutation-is-confirm-only.md) | Taint Refutation Is Confirm-Only — the escape-closing goal is retired (supersedes ADR-0017 §3a removal-coverage ambition) | Accepted | 2026-09-09 |
+| [0053](0053-accessor-name-typing-and-its-disclosure.md) | A Declared Relation-Accessor Name Types the Module Slot, and Says That It Did (amends WI-gulaz's implementation docstring clause) | Accepted | 2026-09-10 |
+| [0054](0054-pass-silence-candidates-unresolved.md) | `candidates_unresolved` — splitting the pass-silence residue (a pass that found its construct and resolved none of it is not "did not say why") | Accepted | 2026-09-16 |
+| [0055](0055-linker-activation-tightening-refused.md) | Linker activation tightening is refused, on measurement (criterion + blocking precondition + three triggers; no linker currently qualifies) | Accepted | 2026-09-16 |
+| [0056](0056-pass-silence-producerless-values.md) | The four producerless pass-silence values — three are mis-hosted on `AnalysisRun`, `prerequisite_absent` is kept and gated behind them | Accepted | 2026-09-16 |
+| [0057](0057-attribute-level-coexistence.md) | Multi-backend coexistence at the attribute, not the record — one node/edge per declaration, every attribute a set of (value, provenance) pairs, a Phase-C merge pass, a per-record arbitration property with one `config.toml` default, a per-backend merge-anchor declaration; partially supersedes ADR-0012 §Step 3 | Accepted — implementation in progress (§10 producer contract landed, WI-hohuh) | 2026-09-18 |
+| [0058](0058-callable-signature-axis.md) | The callable-signature axis — `Symbol.signature` retires a false `free-text` justification (ADR-0051's defect one field over), declares an axiom and two notions, and closes its nine value-parsing consumers behind a gate that fails on a tenth | Accepted | 2026-09-21 |
+| [0059](0059-io-primitive-kind-axis.md) | The I/O-primitive-kind axis — `functions:` / `methods:` / `attributes:` say how a primitive is reached from its row's own module (instance / the module itself / read), never what an analyzer stamps; 18 literal consumer sites behind three predicates; a shrink-only ledger of the 91 rows it rejects | Accepted | 2026-09-23 |
 
 > ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
 
@@ -115,7 +130,7 @@ Each ADR has a unique identifier; number collisions are resolved by renaming the
 
 ## Thematic grouping
 
-**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024, 0029, 0030, 0031, 0032, 0033, 0034, 0035, 0036, 0037, 0038, 0039, 0040, 0041, 0042, 0043, 0044
+**Analysis pipeline:** 0003, 0004, 0005, 0006, 0007, 0012, 0014, 0015, 0016, 0017, 0022, 0023, 0024, 0029, 0030, 0031, 0032, 0033, 0034, 0035, 0036, 0037, 0038, 0039, 0040, 0041, 0042, 0043, 0044, 0045, 0046, 0047, 0048, 0049, 0050, 0051, 0052, 0053
 
 **Agent infrastructure and governance:** 0001, 0008, 0009, 0013, 0018, 0019, 0020, 0021
 

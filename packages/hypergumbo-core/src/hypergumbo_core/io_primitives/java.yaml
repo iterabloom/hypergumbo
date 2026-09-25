@@ -43,6 +43,37 @@ ambiguous_names:
   - length        # File.length vs String.length, array.length — WI-gonav
   - copy          # Files.copy vs IOUtils.copy, any .copy()
   - find          # Files.find vs Stream.find, List.find, any .find()
+  # INV-zikab step 6 (ADR-0059): the JDK statics below are function-kind now,
+  # because each is called on its class (`Files.walk(p)`). Java has no free
+  # functions, so a BARE call with no module context can be one of them only
+  # through a static import, and java.py gives a static import its module
+  # slot. On the no-context path a bare `now()` / `readString()` is a project
+  # method: measured, arm B of the re-kind matched exactly that in sbt and
+  # gatling. Listing them keeps that path as it was when they were method
+  # rows; a call whose slot names the class matches as before.
+  # test_io_primitive_kinds pins that every java function row is listed.
+  - readAllBytes
+  - readAllLines
+  - readString
+  - walk
+  - isRegularFile
+  - isDirectory
+  - getLastModifiedTime
+  - writeString
+  - createFile
+  - createDirectory
+  - createDirectories
+  - deleteIfExists
+  - move
+  - createTempFile
+  - createTempDirectory
+  - getenv
+  - getProperty
+  - getProperties
+  - currentTimeMillis
+  - nanoTime
+  - now
+  - systemUTC
 
 fs_read:
   - module: java.io.File
@@ -53,13 +84,53 @@ fs_read:
     methods: [read]
   - module: java.io.BufferedReader
     methods: [readLine, read]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-tusav: the boundary is a property of the RECEIVER'S ORIGIN, not of the
+      method -- `new BufferedReader(new InputStreamReader(System.in))` and
+      `new BufferedReader(new FileReader(p))` are one row and two different
+      crossings (INV-zumin class (b), INV-bagok's shape one hop later). THIS ROW
+      STAYS FIRST: an unstamped call abstains to the first-declared row, so a
+      receiver whose origin cannot be recovered keeps the fs_read answer it had
+      before this split, and fs_read mints no taint source. See the ipc_recv
+      twin for the selection rule. `boundary_ruling` is declared on BOTH rows
+      because it is a property of the PRIMITIVE, not of one declaration.
+  - module: java.io.InputStreamReader
+    methods: [read]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-tusav. The decorator the canonical stdin idiom wraps System.in in, and
+      a read surface in its own right -- `new InputStreamReader(System.in).read()`
+      reaches the java.io.InputStreamReader slot, verified against the analyzer
+      before this row was written (LIVE rule 9: presence is not reachability).
+  - module: java.io.InputStream
+    methods: [read]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-tusav. ABSENT before this item: only the FileInputStream subclass was
+      rowed, so `InputStream is = System.in; is.read();` matched nothing at all.
+      The declared type is what the analyzer puts in the module slot, so the
+      base type needs its own row and cannot inherit FileInputStream's.
   - module: java.nio.file.Files
-    methods: [readAllBytes, readAllLines, readString, list, walk, find, exists, isRegularFile, isDirectory, size, getLastModifiedTime]
+    functions: [readAllBytes, readAllLines, readString, list, walk, find, exists, isRegularFile, isDirectory, size, getLastModifiedTime]
+    notes: >-
+      Static methods, called on the class (`Files.readAllBytes(p)`), so
+      function-kind (ADR-0059). They were keyed methods to get past the
+      INV-nizom arm, which read java's `method` stamp as instance-receiver
+      evidence; INV-zikab steps 4 and 5 removed that need.
   - module: java.nio.file.Path
     methods: [toFile, toRealPath]
   - module: java.util.Scanner
     methods: [next, nextLine, nextInt]
-    notes: "When reading from a file"
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-tusav. This row's note used to read, in full, "When reading from a
+      file" -- a disclosed residual that made the row true for `new Scanner(f)`
+      and false for `new Scanner(System.in)`, which is the more common of the
+      two in teaching code. Split rather than moved: the file scan keeps
+      fs_read and only a scanner whose receiver demonstrably originates at a
+      standard stream takes the ipc_recv twin. fs_read stays FIRST for the
+      reason the BufferedReader row gives.
   # Plan C, PR A: Apache Commons IO removed under strict-stdlib rule.
   # First-party calls into Commons IO surface in external_potential
   # (Plan C, PR C); project-local taint-source catalogs (WI-votan) handle
@@ -75,7 +146,7 @@ fs_write:
   - module: java.io.BufferedWriter
     methods: [write, newLine]
   - module: java.nio.file.Files
-    methods: [write, writeString, createFile, createDirectory, createDirectories, delete, deleteIfExists, move, copy, createTempFile, createTempDirectory]
+    functions: [write, writeString, createFile, createDirectory, createDirectories, delete, deleteIfExists, move, copy, createTempFile, createTempDirectory]
 
 net_send:
   - module: java.net.Socket
@@ -95,11 +166,16 @@ net_send:
 
 net_recv:
   - module: java.net.ServerSocket
-    methods: [accept, bind]
+    methods: [accept]
   - module: java.net.Socket
     methods: [getInputStream]
   - module: java.net.DatagramSocket
-    methods: [receive, bind]
+    methods: [receive]
+    notes: >-
+      bind REMOVED from ServerSocket and DatagramSocket (INV-nular,
+      WI-dosov): binding names a socket and receives nothing, while
+      net_recv is an auto-derived taint source. accept / receive /
+      getInputStream carry the real receive and are unchanged.
   # Plan C, PR A: Netty (io.netty.*) removed under strict-stdlib rule.
   # First-party calls into Netty surface in external_potential
   # (Plan C, PR C).
@@ -112,7 +188,47 @@ subprocess:
 
 env_read:
   - module: java.lang.System
-    methods: [getenv, getProperty, getProperties]
+    functions: [getenv, getProperty, getProperties]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: java.lang.System
+    functions: [currentTimeMillis, nanoTime]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Static methods,
+      called on the class, so function-kind (ADR-0059). INHERITED BY kotlin
+      AND scala via _CATALOG_PARENTS, which is why neither of those
+      catalogues repeats these rows.
+  - module: java.time.Instant
+    functions: [now]
+    notes: >-
+      now() and now(Clock) both query a clock; ofEpochMilli / ofEpochSecond
+      / from / parse convert a supplied value and get no row.
+  - module: java.time.LocalDateTime
+    functions: [now]
+  - module: java.time.LocalDate
+    functions: [now]
+    notes: >-
+      MEASURED, not assumed: across the corpus surveys java.time.LocalDate.now
+      is the MOST-CALLED clock in java code (10 edges, ahead of
+      java.time.Instant.now at 5), and the first cut of these rows omitted it
+      along with ZonedDateTime. Every java.time type exposes a static now();
+      the four below are the ones the corpus actually calls.
+  - module: java.time.LocalTime
+    functions: [now]
+  - module: java.time.ZonedDateTime
+    functions: [now]
+  - module: java.time.OffsetDateTime
+    functions: [now]
+  - module: java.time.Clock
+    functions: [systemUTC]
   - module: java.lang.Runtime
     methods: [availableProcessors, totalMemory, freeMemory, maxMemory]
 
@@ -123,12 +239,61 @@ ipc_send:
 ipc_recv:
   - module: java.lang.System
     attributes: [in]
+  - module: java.io.BufferedReader
+    methods: [readLine, read]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-tusav: the SAME methods the fs_read row declares, and BOTH declarations
+      are needed because the boundary is a property of the receiver's ORIGIN.
+      java.py resolves the receiver's last binding in the enclosing method and
+      unwraps the decorator chain -- BufferedReader over InputStreamReader over
+      System.in -- then stamps io_target_kind; _narrow_by_target_kind keeps the
+      matching row, and a receiver whose origin cannot be recovered abstains to
+      the FIRST-DECLARED row, which is why fs_read stays above this one and why
+      that order is pinned by a test rather than left to a reviewer.
+
+      WHAT CARRIES THE UNRESOLVED CASE, checked before this row was written
+      because an fs_read fallback with nothing behind it would leave the stdin
+      crossing represented NOWHERE: java emits no `calls` edge for
+      `object_creation_expression`, so there are no constructor rows to fall
+      back to and there never could be. The fallback is the
+      `java.lang.System.in` ATTRIBUTE row above, which fires on the
+      module_attr_ref edge. Measured on a four-method fixture before the split:
+      `fs_read: 4` (both the stdin and the file readers) plus `ipc_recv: 2` at
+      System.in -- so the crossing was VISIBLE but attributed to the wrong
+      boundary at the call that transfers the bytes, which is a
+      misclassification rather than the total absence the item recorded.
+
+      net_stream IS DELIBERATELY NEVER STAMPED and this row is why: narrowing
+      keeps only rows whose boundary equals the resolved one, so a net_stream
+      stamp with no net_recv twin would empty the candidate list and delete the
+      classification outright. `new Scanner(sock.getInputStream())` abstains to
+      fs_read instead, exactly as it did before, and c.yaml's stdio rows carry
+      the same two-row shape for the same reason.
+  - module: java.io.InputStreamReader
+    methods: [read]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-tusav. The ipc_recv twin; see the BufferedReader row for the selection rule."
+  - module: java.io.InputStream
+    methods: [read]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-tusav. The ipc_recv twin; `InputStream is = System.in` is the shape this exists for."
+  - module: java.util.Scanner
+    methods: [next, nextLine, nextInt]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-tusav. The ipc_recv twin of the row whose note used to say 'when reading from a file'."
 
 # WI-sakan: database access via JDBC and common JPA/Hibernate/Spring Data APIs.
 db_read:
   - module: java.sql.Connection
-    methods: [prepareStatement, prepareCall, createStatement]
-    notes: "JDBC statement preparation (query path)"
+    methods: [prepareStatement, prepareCall]
+    notes: >-
+      JDBC statement preparation. createStatement REMOVED (INV-nular,
+      WI-hikut): it returns an empty Statement and carries no SQL at all,
+      so it cannot be any kind of read; Statement.executeQuery is rowed
+      and carries it. prepareStatement / prepareCall are KEPT
+      deliberately: most drivers send the SQL to the server for parsing
+      at prepare time, so they may genuinely cross.
   - module: java.sql.Statement
     methods: [executeQuery, getResultSet]
   - module: java.sql.PreparedStatement
@@ -140,11 +305,25 @@ db_read:
     notes: "Row traversal; read-only rowset access"
   # Spring Data JPA / Hibernate query interfaces
   - module: javax.persistence.EntityManager
-    methods: [find, createQuery, createNamedQuery, createNativeQuery, getReference]
-    notes: "JPA EntityManager query path"
+    methods: [find, getReference]
+    notes: >-
+      JPA EntityManager query path. createQuery / createNamedQuery /
+      createNativeQuery REMOVED (INV-nular, WI-hikut): they build a
+      Query and issue nothing. db_read is an auto-derived taint
+      SOURCE, so each was minting untrusted_input at a call that
+      returns a builder. The read is rowed where it happens --
+      TypedQuery.getResultList / getSingleResult, below. find and
+      getReference are KEPT because they do load the entity.
   - module: jakarta.persistence.EntityManager
-    methods: [find, createQuery, createNamedQuery, createNativeQuery, getReference]
-    notes: "Jakarta EE 9+ EntityManager"
+    methods: [find, getReference]
+    notes: >-
+      Jakarta EE 9+ EntityManager. createQuery / createNamedQuery /
+      createNativeQuery REMOVED (INV-nular, WI-hikut): they build a
+      Query and issue nothing. db_read is an auto-derived taint
+      SOURCE, so each was minting untrusted_input at a call that
+      returns a builder. The read is rowed where it happens --
+      TypedQuery.getResultList / getSingleResult, below. find and
+      getReference are KEPT because they do load the entity.
   - module: javax.persistence.TypedQuery
     methods: [getSingleResult, getResultList, getResultStream]
   - module: jakarta.persistence.TypedQuery

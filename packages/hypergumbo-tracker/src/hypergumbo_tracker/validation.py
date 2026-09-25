@@ -8,16 +8,26 @@ these functions directly.
 Validation tiers:
 - **Single-file structural:** Malformed YAML, missing create op, missing
   required fields, unknown op types.
+- **Serialization format (warnings):** Every line carries a ``# <nonce>``
+  comment matching its op's nonce, which ``merge=union`` relies on, and op
+  fields follow the canonical order (a mismatch suggests a manual edit).
 - **Value validation:** Unknown kinds, invalid statuses, out-of-range
-  priorities, invalid timestamps.
+  priorities, invalid timestamps. A kind's ``allowed_statuses`` (plus its
+  ``deprecated_statuses``) is checked against the compiled status only,
+  since historical ops may use statuses that were valid when written.
 - **Field schema validation:** Required fields missing, type mismatches,
   integer range violations, unknown fields (with edit-distance suggestions).
-- **Cross-file validation:** Duplicate IDs across tiers, dangling parent
-  references, ID prefix/kind mismatches, cycles in isbefore links.
+- **Cross-file validation:** Duplicate IDs across tiers, dangling or
+  cross-tier (into stealth) parent / isbefore / duplicate_of /
+  not_duplicate_of references, ID prefix/kind mismatches, cycles in
+  isbefore links.
 - **Config comparison:** Kinds in config but not in template (and vice versa).
 - **Lock violation detection:** Agent updates touching locked fields.
-- **SimHash duplicate warnings:** Near-duplicate pairs not in not_duplicate_of.
+- **SimHash duplicate warnings:** Near-duplicate pairs not already marked
+  in duplicate_of or not_duplicate_of.
 - **Embedding duplicate warnings:** Deep semantic duplicates via dense embeddings.
+
+Strict mode promotes every warning to an error.
 
 See ADR-0013 for the full design specification.
 """
@@ -315,6 +325,22 @@ def validate_ops_file(
             except Exception:  # pragma: no cover
                 pass  # Compilation errors are caught elsewhere
 
+        # Fields schema against the COMPILED fields dict, same rationale as the
+        # status check above. compile_ops already applies per-key last-write-wins
+        # (a null value deletes the key, WI-lorip --remove-field), so a field
+        # removed and then re-added is still present here and is still flagged --
+        # "some op removed it" is not repair; the last write decides.
+        if kind_config.fields_schema:
+            item_id = filepath.stem.lstrip(".")
+            try:
+                compiled = compile_ops(ops, item_id)
+            except Exception:  # pragma: no cover
+                pass  # Compilation errors are caught elsewhere
+            else:
+                _validate_fields_schema(
+                    fname, compiled.fields, kind_config.fields_schema, result
+                )
+
     return result
 
 
@@ -359,13 +385,11 @@ def _validate_create_values(
                 f"{fname}: op {idx}: priority must be int 0-4, got {priority}"
             )
 
-    # Field schema validation
-    if kind is not None and kind in config.kinds:
-        kind_config = config.kinds[kind]
-        if kind_config.fields_schema:
-            _validate_fields_schema(
-                fname, idx, data.get("fields", {}), kind_config.fields_schema, result
-            )
+    # Field schema validation is NOT done here. It runs against the COMPILED
+    # item in validate_ops_file, for the same reason the allowed_statuses check
+    # moved there (f148a13a22): an op log is append-only, so a field written at
+    # create and deleted by a later op is already repaired, and flagging op 0 in
+    # isolation reports a defect that no longer exists.
 
 
 def _validate_update_values(
@@ -415,12 +439,15 @@ def _validate_timestamp(
 
 def _validate_fields_schema(
     fname: str,
-    idx: int,
     fields: dict[str, Any] | Any,
     schema: dict[str, Any],
     result: ValidationResult,
 ) -> None:
-    """Validate fields dict against kind's fields_schema."""
+    """Validate the COMPILED fields dict against a kind's fields_schema.
+
+    Takes no op index: the unit is the item, not the op. See the call site in
+    :func:`validate_ops_file` for why.
+    """
     if not isinstance(fields, dict):
         fields = {}
 
@@ -428,7 +455,7 @@ def _validate_fields_schema(
     for field_name, field_schema in schema.items():
         if field_schema.required and field_name not in fields:
             result.errors.append(
-                f"{fname}: op {idx}: required field '{field_name}' missing"
+                f"{fname}: required field '{field_name}' missing"
             )
 
     # Validate field values
@@ -438,22 +465,21 @@ def _validate_fields_schema(
             suggestions = _suggest_field(field_name, list(schema.keys()))
             if suggestions:
                 result.warnings.append(
-                    f"{fname}: op {idx}: unknown field '{field_name}'. "
+                    f"{fname}: unknown field '{field_name}'. "
                     f"Did you mean '{suggestions[0]}'?"
                 )
             else:
                 result.warnings.append(
-                    f"{fname}: op {idx}: unknown field '{field_name}'"
+                    f"{fname}: unknown field '{field_name}'"
                 )
             continue
 
         fs = schema[field_name]
-        _validate_field_value(fname, idx, field_name, value, fs, result)
+        _validate_field_value(fname, field_name, value, fs, result)
 
 
 def _validate_field_value(
     fname: str,
-    idx: int,
     field_name: str,
     value: Any,
     fs: Any,
@@ -465,37 +491,37 @@ def _validate_field_value(
     if expected_type == "text":
         if value is not None and not isinstance(value, str):
             result.errors.append(
-                f"{fname}: op {idx}: field '{field_name}' expects text, "
+                f"{fname}: field '{field_name}' expects text, "
                 f"got {type(value).__name__}"
             )
     elif expected_type == "integer":
         if value is not None:
             if isinstance(value, bool) or not isinstance(value, int):
                 result.errors.append(
-                    f"{fname}: op {idx}: field '{field_name}' expects integer, "
+                    f"{fname}: field '{field_name}' expects integer, "
                     f"got {type(value).__name__}"
                 )
             else:
                 if fs.min is not None and value < fs.min:
                     result.errors.append(
-                        f"{fname}: op {idx}: field '{field_name}' value {value} "
+                        f"{fname}: field '{field_name}' value {value} "
                         f"below minimum {fs.min}"
                     )
                 if fs.max is not None and value > fs.max:
                     result.errors.append(
-                        f"{fname}: op {idx}: field '{field_name}' value {value} "
+                        f"{fname}: field '{field_name}' value {value} "
                         f"above maximum {fs.max}"
                     )
     elif expected_type == "list":
         if value is not None and not isinstance(value, list):
             result.errors.append(
-                f"{fname}: op {idx}: field '{field_name}' expects list, "
+                f"{fname}: field '{field_name}' expects list, "
                 f"got {type(value).__name__}"
             )
     elif expected_type == "boolean":
         if value is not None and not isinstance(value, bool):
             result.errors.append(
-                f"{fname}: op {idx}: field '{field_name}' expects boolean, "
+                f"{fname}: field '{field_name}' expects boolean, "
                 f"got {type(value).__name__}"
             )
 

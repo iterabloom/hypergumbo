@@ -4,15 +4,104 @@
 # Maps std library functions to I/O boundary types. Covers Rust stable std.
 # Third-party crates (tokio, reqwest, etc.) trace through these primitives.
 language: rust
-# WI-tukif (Plan C, PR B): catalog audited against doc.rust-lang.org/std/
-# 2026-05-24 for Rust 1.78 stable. Coverage is complete for the strict-stdlib
-# IO surface: std::fs (file ops), std::io (stdin/stdout/stderr + Read/Write
-# traits handled via ambiguous_names), std::net (TcpStream/TcpListener/
-# UdpSocket), std::process::Command (subprocess), std::env (env_read), and
-# std::path::Path (path queries that touch the filesystem). std::os::*
-# raw-fd extensions, std::ffi (FFI types are meta-IO, not IO), and
-# std::sync/std::thread (concurrency primitives) are intentionally absent —
-# they are out of scope for the strict-stdlib IO catalog.
+# WI-tukif (Plan C, PR B) audited this catalog against doc.rust-lang.org/std/
+# on 2026-05-24 for Rust 1.78 and recorded that "coverage is complete for the
+# strict-stdlib IO surface", naming std::fs and std::path::Path among the
+# modules it covered.
+#
+# THAT COMPLETENESS CLAIM WAS FALSE AND IS WITHDRAWN (WI-bupor, 2026-08-27).
+# A total-surface audit against the installed toolchain found TWENTY missing
+# stable I/O primitives in exactly those modules: std::fs::File carried three
+# associated functions and NOT ONE of its eleven stable methods, and
+# std::fs::DirBuilder / std::fs::DirEntry / std::path were absent outright.
+# The module was IN the catalog, so it never appeared on any "unexamined
+# module" list while half its I/O surface was missing. CATALOGUE PRESENCE IS
+# NOT CATALOGUE COVERAGE, and a claim of completeness written from a doc index
+# is not the same evidence as an enumeration of the module's surface.
+#
+# AUDITED BY ENUMERATION (rustc 1.94.0, library/std/src, 2026-08-27):
+#   std::fs, std::fs::File, std::fs::DirBuilder, std::fs::DirEntry,
+#   std::path, std::path::Path, std::io (WI-gihos: the whole module, 556
+#   items across 15 files, traits and wrapper types included).
+# NOT YET AUDITED, and therefore NOT complete however full they look:
+#   std::net, std::process, std::env, std::path::PathBuf.
+#
+# WI-gihos, 2026-08-27: WHERE A ROW MAY BE KEYED. A row's module must be a
+# type RECEIVER INFERENCE CAN PRODUCE. Three kinds of module cannot be:
+#   * A TRAIT. No rust value has type `Read`; values have type `File`,
+#     `TcpStream`, `BufReader<R>`. `gate_named_entry` drops method-kind hits
+#     with no module hint, and a trait can never BE that hint. Measured: every
+#     edge whose slot is std::io::Read / ::Write / ::BufRead in the 42-repo
+#     cohort carries the name `module` — a `use` import, never a call. So
+#     std::io::Read / ::Seek / ::BufRead get NO ROWS; the four pre-existing
+#     std::io::Write rows are kept only because a `Box<dyn Write>` receiver
+#     could in principle resolve to the trait, and they are inert otherwise.
+#   * A WRAPPER. BufReader/BufWriter/Cursor/Take/Chain take their boundary
+#     from what they wrap, which the catalogue cannot know. MEASURED, not
+#     reasoned: in `rage`, 8 of ~10 `BufReader::new` sites wrap an in-memory
+#     byte slice, so an fs_read row would be MAJORITY-WRONG on the first real
+#     repository to exercise it. The boundary belongs at the wrapped thing's
+#     own constructor, and `File::open` is already rowed.
+#   * A GENERIC HELPER. `io::copy`'s measured call site in `rage` is
+#     `fn write_output<R: io::Read, W: io::Write>(input: R, output: W)` —
+#     generic by construction, so its boundary is unknowable rather than
+#     merely unknown. Same for `io::read_to_string`. Both ABSENT.
+# The trait methods therefore go on the CONCRETE types, which is what
+# std::net::TcpStream already did and what python.yaml does with WI-fuvuj's
+# synthetic `file` module. std::fs::File was missing all of them.
+# `is_terminal` (the IsTerminal trait, implemented on File and the four stdio
+# handles) IS ABSENT, and this one is genuinely borderline rather than clear.
+# FOR the refusal, and it is the rule already load-bearing in this file: it is
+# isatty(2) — a syscall that moves no data and changes nothing outside the
+# process, which is exactly why `try_clone` is absent. AGAINST it, stated so a
+# later reader can overturn this without re-deriving it: python.yaml rows
+# `os.isatty` and `os.ttyname` under fs_read, so the cross-language answer
+# points the other way, and a catalogue that disagrees with itself across
+# languages is the INV-nular defect. The refusal wins here only because the
+# rust spelling is a TRAIT (unmatchable per the rule above) and the
+# concrete-type spelling would have to assert fs_read on Stdout, whose
+# catalogued boundary is `logging`. REVERSIBLE, and narrow.
+#
+# ALSO ABSENT, each for a stated reason: empty/repeat/sink (null devices,
+# no data crosses); pipe (descriptor plumbing — python.yaml's precedent);
+# seek/rewind/seek_relative/stream_position (a syscall, but nothing crosses —
+# the rule that already excludes try_clone); flush (python.yaml excludes it
+# deliberately: it commits writes already counted); .lock() (takes a mutex,
+# moves no data); Error/ErrorKind (70 of the 102 measured bare-std::io edges
+# are error handling and none of it is I/O).
+#
+# std::ffi (FFI types are meta-IO, not IO) and std::sync / std::thread
+# (concurrency primitives — and a mutex changes no state outside the process)
+# are intentionally absent.
+#
+# std::os::*::fs IS IN SCOPE. OWNER RULING 2026-08-27, on WI-bupor.
+#
+# This header previously excluded "std::os::* raw-fd extensions". That noun is
+# correct for what it names and THAT PART STANDS: AsRawFd / FromRawFd /
+# IntoRawFd hand over a descriptor number and reach no syscall. But the
+# exclusion was being read as covering the whole of std::os::*, and those
+# modules also carry plain filesystem mutation. The cross-platform
+# std::fs::soft_link was catalogued while std::os::unix::fs::symlink was not,
+# so the tool flagged one way of creating a symlink and ignored the other —
+# and a Linux program calling chroot or chown through this module read as doing
+# nothing at all there, which is a false all-clear.
+#
+# IN: names that reach a syscall. unix — symlink, chown, fchown, lchown,
+#     chroot, and FileExt's read_at / read_exact_at / write_at / write_all_at.
+#     windows — symlink_file, symlink_dir, FileExt::seek_read / seek_write.
+# OUT: the raw-fd extension traits (the exclusion's real target); the
+#     MetadataExt / PermissionsExt / FileTypeExt / FileTimesExt / DirEntryExt
+#     accessors, which read an already-fetched struct and are MOST of
+#     std::os::unix::fs by method count; OpenOptionsExt and DirBuilderExt
+#     builder setters; and everything unstable in the audited toolchain
+#     (mkfifo, junction_point, seek_read_buf, read_buf_at, the vectored family).
+#
+# EVERY BOUNDARY HERE IS FIXED BY CROSS-LANGUAGE PRECEDENT RATHER THAN CHOSEN:
+# python.yaml already rules os.chroot, os.chown / lchown / fchown, os.symlink /
+# os.link and os.pwrite as fs_write, and os.chdir as env_write. A catalogue that
+# disagrees with itself across languages is the defect INV-nular's sweep exists
+# to find, so the rust rows follow python rather than re-litigating each name.
+#
 status: provenance_declared
 stdlib_provenance:
   source_url: https://doc.rust-lang.org/std/
@@ -60,23 +149,144 @@ ambiguous_names:
 
 fs_read:
   - module: std::fs
-    functions: [read, read_to_string, read_dir, metadata, symlink_metadata, canonicalize]
+    functions: [read, read_to_string, read_dir, metadata, symlink_metadata, canonicalize,
+                exists, read_link]
   - module: std::fs::File
-    methods: [open]
-    notes: "File::open is read-mode by default"
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact]
+    notes: >-
+      THE Read TRAIT'S METHODS, ROWED ON THE CONCRETE TYPE THAT IMPLEMENTS IT.
+      A trait is not a receiver type — no rust value has type `Read` — so a row
+      on `std::io::Read` can never match: `gate_named_entry` drops method-kind
+      hits when there is no module hint, and a module hint comes only from
+      receiver-type inference. Measured across the six rust-bearing surveys of
+      the 42-repo cohort: every edge whose module slot is `std::io::Read` or
+      `std::io::Write` carries the name `module` — a `use` IMPORT, never a
+      call. This is the pattern `std::net::TcpStream` already uses below, and
+      the one python.yaml uses for WI-fuvuj's synthetic `file` module.
+      THESE ROWS ARE CORRECT AND CURRENTLY INERT, and both halves of that
+      matter. Measured across 11,691 rust call edges in the 42-repo cohort,
+      the rust catalogue matches ZERO method-kind primitives — every match it
+      makes is function-kind. The 78 real trait-method call edges in that
+      cohort (46 write_all, 15 read_to_end, 10 read_to_string, 6 read_line)
+      all arrive as `rust:external:0-0:<name>:external_symbol` with a null
+      dst_ref, and `gate_named_entry` correctly refuses a method-kind hit that
+      carries no module hint. That is INV-linub L3/L4, and it makes EVERY
+      method row in this file dead today — TcpStream's read/write included, so
+      a file read and a socket read are equally invisible. The rows are still
+      right: the catalogue must describe the surface it claims to cover, the
+      omission was also an internal inconsistency with TcpStream, and these
+      become live the moment receiver evidence does. `File::open` alone is not
+      enough either:
+      the handle is where the flow STARTS and `read_to_end` is where the bytes
+      arrive — python recorded the same lesson when `f = open(p);
+      f.write(secret)` classified the open and lost the write.
+      seek / rewind / seek_relative / stream_position are ABSENT: a syscall,
+      but nothing crosses and nothing outside the process changes — the rule
+      that already excludes `try_clone`. by_ref / bytes / chain / take build an
+      adapter and perform no I/O. read_buf / read_buf_exact / read_array /
+      is_read_vectored are unstable in rustc 1.94.0.
+  - module: std::fs::File
+    functions: [open]
+    methods: [metadata]
+    notes: >-
+      File::open is read-mode by default. DECLARED AS A FUNCTION, NOT A
+      METHOD, and the distinction is load-bearing rather than pedantic:
+      `File::open(p)` is an ASSOCIATED function with no receiver, so a call
+      site can never produce a method-construct edge. Declared as a method it
+      was unmatchable by construction, AND it made
+      `verify_claims.method_starved_modules` report std::fs::File as a module
+      whose I/O is "structurally invisible" — withholding every verdict on any
+      Rust repo that opens a file. Measured on encrypted-dns-server: the edge
+      resolves correctly to std::fs::File / open and the verdict was withheld
+      anyway (INV-nular: kind asserted by name, never checked against
+      semantics).
   - module: std::path::Path
-    methods: [exists, is_file, is_dir, read_dir, metadata, symlink_metadata, canonicalize, read_link]
+    methods: [exists, is_file, is_dir, read_dir, metadata, symlink_metadata, canonicalize,
+              read_link, try_exists, is_symlink]
+  - module: std::fs::DirEntry
+    methods: [metadata, file_type]
+    notes: >-
+      `path` and `file_name` are in-memory and are deliberately absent.
+      `file_type` is platform-dependent — it returns a cached type where
+      readdir supplies d_type and stats otherwise — and is included on
+      refuse-by-default grounds: the wrong answer here is a false
+      all-clear.
+  - module: std::os::unix::fs::FileExt
+    methods: [read_at, read_exact_at]
+    notes: >-
+      Positional reads (pread). Catalogued under the TRAIT, following the
+      std::io::Write precedent. Not added to ambiguous_names: the names are
+      distinctive enough to match without a module hint, and rust method
+      edges mostly carry an unresolved receiver slot (INV-linub), so
+      requiring a hint would make them unmatchable in practice.
+  - module: std::os::windows::fs::FileExt
+    methods: [seek_read]
   - module: std::env
     functions: [current_dir]
+  - module: std::path
+    functions: [absolute]
+    notes: >-
+      `std::path::absolute` delegates to `env::current_dir()` for a
+      relative path, which is getcwd(2). Catalogued as fs_read to match
+      the boundary already assigned to `std::env::current_dir` directly
+      above — one fact, one kind. `is_separator` performs no I/O and is
+      absent.
   # Plan C, PR A: tokio::fs (async filesystem) removed under
   # strict-stdlib rule. tokio is ubiquitous but a third-party crate;
   # first-party calls into it surface in external_potential (Plan C, PR C).
 
 fs_write:
   - module: std::fs
-    functions: [write, create_dir, create_dir_all, remove_file, remove_dir, remove_dir_all, rename, copy, hard_link, soft_link]
+    functions: [write, create_dir, create_dir_all, remove_file, remove_dir, remove_dir_all,
+                rename, copy, hard_link, soft_link, set_permissions]
   - module: std::fs::File
-    methods: [create, create_new]
+    methods: [write, write_vectored, write_all, write_fmt]
+    notes: >-
+      The Write trait's methods on the concrete type — see the std::fs::File
+      fs_read note for why the trait itself cannot carry them.
+      `flush` IS DELIBERATELY ABSENT, by python.yaml's precedent for the same
+      name: it commits writes already counted, and a flush row there made every
+      bare `.flush()` in runtime code read as a direct unwrapped fs-write.
+      write_all_vectored / is_write_vectored are unstable in rustc 1.94.0.
+  - module: std::fs::File
+    functions: [create, create_new]
+    methods: [set_len, set_permissions, set_times, sync_all, sync_data,
+              lock, lock_shared, try_lock, try_lock_shared, unlock]
+    notes: >-
+      Associated functions, not methods — see the std::fs::File fs_read note.
+      `File::create(p)` takes no receiver.
+      THE LOCK FAMILY IS fs_write, AND THE CHOICE IS DELIBERATE. flock /
+      LockFileEx changes no byte of the file, so `fs_write` overstates it —
+      but a lock is observable to another PROCESS, which is the boundary
+      test that ruled std::sync::Mutex out, and it is the one case in that
+      discussion which passes. Omitting it is a false all-clear; fs_write
+      is the only one of the nine kinds that carries it without a new
+      heavyweight axis, and the residual over-claim is narrow — it can only
+      mislead a program that opens read-only and locks. Reversible: a
+      dedicated kind would be the alternative if this proves noisy.
+      `try_clone` is dup(2) and is ABSENT: a syscall, but nothing crosses
+      and nothing outside the process changes.
+  - module: std::os::unix::fs
+    functions: [symlink, chown, fchown, lchown, chroot]
+    notes: >-
+      chroot is fs_write by python.yaml's precedent for os.chroot, not by
+      taste. Its primary effect is on the calling process, but the
+      cross-language answer is already recorded and a catalogue that
+      disagrees with itself across languages is itself a defect.
+      chdir has no row here: python rules it env_write, and rust's
+      std::env::set_current_dir is not yet audited.
+  - module: std::os::unix::fs::FileExt
+    methods: [write_at, write_all_at]
+  - module: std::os::windows::fs
+    functions: [symlink_file, symlink_dir]
+  - module: std::os::windows::fs::FileExt
+    methods: [seek_write]
+  - module: std::fs::DirBuilder
+    methods: [create]
+    notes: >-
+      `create` takes &self and is a METHOD — `DirBuilder::new()` is the
+      associated function and performs no I/O, so it is absent.
+      `recursive` is a builder setter.
   - module: std::fs::OpenOptions
     methods: [open]
     notes: "When write/append/create flags are set"
@@ -86,7 +296,14 @@ fs_write:
 
 net_send:
   - module: std::net::TcpStream
-    methods: [connect, write, write_all]
+    functions: [connect]
+    notes: >-
+      Associated functions take no receiver, so a call site can never
+      produce a method-construct edge. Declared as methods they were
+      unmatchable by construction AND marked the module method-starved,
+      withholding every verdict on the repo (INV-nular).
+  - module: std::net::TcpStream
+    methods: [write, write_all]
   - module: std::net::UdpSocket
     methods: [send, send_to]
   # Plan C, PR A: tokio::net (async networking) and the Hyper /
@@ -95,31 +312,200 @@ net_send:
   # (Plan C, PR C).
 
 net_recv:
+  # TcpListener::bind and UdpSocket::bind REMOVED (INV-nular, WI-dosov):
+  # binding creates a listener/socket and receives nothing, while net_recv is
+  # an auto-derived taint source. accept / incoming / read / recv / recv_from
+  # below carry the real receive.
+  # 2026-09-06 owner ruling (WI-dozul): A DNS LOOKUP IS A NETWORK RECEIVE.
+  # WRITTEN FOR CORRECTNESS, INERT ON ARRIVAL, AND SAID SO RATHER THAN COUNTED.
+  # `ToSocketAddrs` is a TRAIT, and the call that matters is `"host:port"
+  # .to_socket_addrs()` on a str -- a trait method on a receiver the analyzer
+  # cannot type (WI-tuzaf), so this row classifies nothing today. It is here so
+  # the catalogue is not silent about a resolver call while four other languages
+  # row it, not as coverage: the parity test deliberately does not list rust.
+  - module: std::net::ToSocketAddrs
+    methods: [to_socket_addrs]
+    notes: "Resolves a host:port string through the system resolver and yields the addresses it chose (ADR-0049). INERT until WI-tuzaf gives trait methods on untyped receivers a resolvable owner; written, not counted as coverage."
   - module: std::net::TcpListener
-    methods: [bind, accept, incoming]
+    methods: [accept, incoming]
   - module: std::net::TcpStream
     methods: [read, read_to_end, read_to_string]
   - module: std::net::UdpSocket
-    methods: [recv, recv_from, bind]
+    methods: [recv, recv_from]
   # Plan C, PR A: tokio::net, hyper::Server, axum::Router, and
   # actix_web::HttpServer removed (third-party crates).
 
 subprocess:
   - module: std::process::Command
-    methods: [new, spawn, output, status]
+    functions: [new]
+    notes: >-
+      Associated functions take no receiver, so a call site can never
+      produce a method-construct edge. Declared as methods they were
+      unmatchable by construction AND marked the module method-starved,
+      withholding every verdict on the repo (INV-nular).
+  - module: std::process::Command
+    methods: [spawn, status]
+  - module: std::process::Command
+    methods: [output]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
   - module: std::process
     functions: [exit, abort]
 
 env_read:
   - module: std::env
-    functions: [var, var_os, vars, args, args_os, current_exe]
+    functions: [var, var_os, vars, vars_os, args, args_os]
+    notes: >-
+      `vars_os` is the OsString peer of `vars` and was simply missing.
+
+env_write:
+  - module: std::env
+    functions: [set_var, remove_var, set_current_dir]
+    notes: >-
+      BY PYTHON PRECEDENT, not by taste: python.yaml rules `os.putenv` /
+      `os.unsetenv` and `os.chdir` as env_write, and a catalogue that
+      disagrees with itself across languages is the defect INV-nular's
+      sweep exists to find. THIS ROW WAS PROMISED IN ADVANCE — the
+      std::os::unix::fs note below still reads "chdir has no row here:
+      python rules it env_write, and rust's std::env::set_current_dir is
+      not yet audited." It is audited now (WI-dadog).
+      `join_paths` / `split_paths` are ABSENT: pure OsString manipulation
+      that touches no environment.
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: std::time::Instant
+    functions: [now]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Instant::now
+      samples the monotonic clock.
+  - module: std::time::Instant
+    methods: [elapsed]
+    notes: >-
+      elapsed() IS a clock read: rustc 1.94.0 library/std/src/time.rs
+      defines it as `Instant::now() - *self`. duration_since / checked_* /
+      saturating_* are arithmetic on captured values and get NO row.
+      Method-kind because it is called on an INSTANCE (`start.elapsed()`), per
+      ADR-0059. Method-kind was inert in rust when measured (INV-linub L3/L4:
+      0 of 11,691 call edges matched it); that inertness belongs to INV-linub
+      and is not papered over by mis-keying the row a function.
+  - module: std::time::SystemTime
+    functions: [now]
+  - module: std::time::SystemTime
+    methods: [elapsed]
+    notes: >-
+      Defined as `SystemTime::now().duration_since(*self)`.
+  - module: std::env
+    functions: [current_exe, temp_dir, home_dir]
+    notes: >-
+      `temp_dir` follows python's `tempfile.gettempdir`, which is rowed
+      host_info_read; `home_dir` is the same shape — it reads HOME (or the
+      platform equivalent) and identifies the user. Both are reads of host
+      DESCRIPTION, which is exactly what INV-tutar split out of env_read so
+      the auto-derived taint label stops calling them secrets.
+      NOTE FOR A LATER SWEEP: python.yaml's own completeness entry for
+      tempfile says "gettempdir rowed under env_read" while the row sits
+      under host_info_read — the note predates the INV-tutar split and is
+      stale. Recorded here rather than chased.
   - module: std::env
     attributes: [consts]
     notes: "std::env::consts::OS, ARCH, etc."
 
+ipc_send:
+  - module: std::process::Child
+    methods: [kill]
+    notes: >-
+      Signalling another process — python.yaml's kind for `os.kill` /
+      `os.killpg`, in its words "Signalling another process".
+  - module: std::process::ChildStdin
+    methods: [write, write_vectored, write_all, write_fmt]
+    notes: >-
+      The Write trait's methods on the concrete pipe type, per WI-gihos's
+      rule: a TRAIT is never a receiver type, so the rows go on the type
+      that implements it. Bytes written here leave this process and enter
+      the child. `flush` is absent for the reason it is absent everywhere
+      else in this file (python: it commits writes already counted).
+  - module: std::io::PipeWriter
+    methods: [write, write_vectored, write_all, write_fmt]
+    notes: >-
+      The write end of `std::io::pipe()`; see the PipeReader note under
+      ipc_recv for why the constructor is absent and the methods are not.
+
 ipc_recv:
+  - module: std::process::Command
+    methods: [output]
+    simultaneous: true
+    notes: >-
+      INV-lozat: `Command::output` is the one-shot form of the
+      `Child::wait_with_output` rowed just below -- the stdlib implements it
+      as spawn-then-wait_with_output -- and it returns the same
+      `Output { stdout, stderr, status }`. The two were split across
+      boundaries in THIS FILE: the handle form minted an untrusted_input
+      source and the convenience form minted nothing, for identical bytes.
+      That intra-file disagreement is what made INV-lozat's diagnosis --
+      "no catalogue in any language treats the return direction as a
+      source" -- half wrong, and it is the precedent the other catalogues
+      now follow.
+  - module: std::process::Child
+    methods: [wait, try_wait, wait_with_output]
+    notes: >-
+      python.yaml's kind for `os.wait` / `waitpid`, in its words:
+      "Reaping a child collects its exit status - data received from
+      another process." `wait_with_output` takes `mut self` — a BY-VALUE
+      receiver is still a receiver, so it is a METHOD. An earlier cut of
+      the enumerating probe required a leading `&` and reported it, plus 46
+      other consuming methods in process.rs, as associated FUNCTIONS; that
+      would have shipped a row no call site could ever match (INV-nular).
+      `Child::id` is absent with `std::process::id`: python deliberately
+      holds `os.getpid` out of its rows.
+  - module: std::process::ChildStdout
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact]
+  - module: std::process::ChildStderr
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact]
+    notes: >-
+      The Read trait's methods on the two concrete pipe types; see the
+      ChildStdin note under ipc_send.
   - module: std::io
     functions: [stdin]
+  - module: std::io::Stdin
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact,
+              read_line, lines]
+    notes: >-
+      `stdin()` is already rowed above, but the handle is where the flow starts
+      and these are where the bytes arrive. StdinLock is rowed for the same
+      reason: `lock` itself is ABSENT — it acquires a mutex on the handle's
+      buffer and moves no data — so without these rows a read performed through
+      `stdin().lock()` would be invisible, which is the exact gap this item
+      found on std::fs::File.
+  - module: std::io::StdinLock
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact,
+              read_line, read_until, fill_buf]
+  - module: std::io::PipeReader
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact]
+    notes: >-
+      `std::io::pipe()` is stable since 1.87. The CONSTRUCTOR itself is absent
+      — descriptor plumbing moves no data, which is python.yaml's precedent for
+      os.pipe — but the read end is a concrete type and the bytes genuinely
+      cross a process boundary here, so the Read methods are rowed exactly as
+      Stdin's are. python rows the matching `os.read` rather than leaving a
+      pipe read invisible.
 
 logging:
   # WI-dutah: std::io.{stdout,stderr} are terminal output, not IPC.
@@ -127,3 +513,168 @@ logging:
   - module: std::io
     functions: [stdout, stderr]
     notes: "Terminal / log output; redirectable but not an IPC channel"
+  - module: std::io::Stdout
+    methods: [write, write_vectored, write_all, write_fmt]
+  - module: std::io::StdoutLock
+    methods: [write, write_vectored, write_all, write_fmt]
+  - module: std::io::Stderr
+    methods: [write, write_vectored, write_all, write_fmt]
+  - module: std::io::StderrLock
+    methods: [write, write_vectored, write_all, write_fmt]
+    notes: >-
+      The Write trait's methods on the four concrete stdio handle types.
+      `flush` is absent for the same reason it is absent from std::fs::File.
+      `lock` is absent: it takes a mutex and moves no data.
+
+# ---------------------------------------------------------------------------
+# module_completeness — 2026-08-27 audit (WI-lutuh).
+#
+# Scope, method, the probe, and every REFUSAL with its reason:
+#   docs/surveys/rust-stdlib-module-io-enumeration.md
+#
+# A grant asserts that EVERY I/O primitive the module exposes is catalogued,
+# which is what lets a consumer read silence as an examined negative. Matching
+# is EXACT: `std::collections` does not vouch for `std::collections::HashMap`,
+# so every audited module is declared on its own line. Refuse-by-default — 13
+# of the 33 modules audited are deliberately absent, `std` itself foremost.
+# ---------------------------------------------------------------------------
+module_completeness:
+  - module: std::borrow::Cow
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Clone-on-write value wrapper; borrow/to_mut/into_owned. No syscall reach
+      in its own items or one hop out.
+  - module: std::cmp
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Ordering and comparison only (min/max/Reverse/Ordering).
+  - module: std::collections
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Container re-exports. Its only reach outside itself is OS entropy through
+      `hash::RandomState`; see std::collections::HashMap for why that does not
+      withhold the grant.
+  - module: std::collections::BTreeSet
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Ordered set. No hasher, so not even the RandomState reach.
+  - module: std::collections::HashMap
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      `HashMap::new()` returns `HashMap<K, V, RandomState>` and RandomState's
+      initialiser calls `sys::random::hashmap_random_keys` — an OS entropy read
+      that a text scan of map.rs cannot see, because RandomState is defined in
+      another module. A DEFAULT TYPE PARAMETER CAN CARRY A BOUNDARY. Granted
+      anyway, on the shipped python precedent: python grants `secrets`,
+      `random` AND `uuid` on the reasoning that OS-RNG seeding belongs to the
+      PERFORMING module's row (os.urandom), not the consuming module's
+      surface — and `os.getrandom` was removed from env_read outright with "a
+      CSPRNG read is not an environment read under any reading", so this
+      vocabulary has no kind for entropy at all. Refusing here on a read python
+      grants would make module_completeness mean different things per language.
+  - module: std::collections::HashSet
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Same RandomState reach and same precedent as std::collections::HashMap.
+  - module: std::collections::hash_map::Entry
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      or_insert/or_default/and_modify/key. The entropy is read once when the
+      MAP is constructed, not by Entry; granted on the same precedent.
+  - module: std::ffi::CStr
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Borrowed NUL-terminated view: from_ptr/to_bytes/to_str. Reading through a
+      raw pointer is unsafe, not I/O.
+  - module: std::io::ErrorKind
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      A plain enum: ZERO pub fns and one `pub(crate) fn as_str`. It was refused
+      by the probe for `pub type RawOsError = sys::io::RawOsError;` — a SIBLING
+      declaration in the same file belonging to `Error`, not to ErrorKind.
+  - module: std::iter
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Iterator traits and adapters. Adapters are lazy over whatever they wrap;
+      a `BufReader` in the chain is that type's boundary, not iter's.
+  - module: std::mem
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      size_of/align_of/swap/replace/take/forget. Memory shape, not I/O.
+  - module: std::net::IpAddr
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Address value type: octets/is_loopback/parse. Naming an address is not
+      contacting it.
+  - module: std::net::SocketAddr
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Seven pub fns, all value accessors (new/ip/set_ip/port/set_port/
+      is_ipv4/is_ipv6). Its ONLY std-side impl is the identity
+      `impl ToSocketAddrs for SocketAddr { Ok(Some(*self).into_iter()) }`; the
+      DNS that reaches `sys::net::lookup_host` is on `str` and `(&str, u16)`,
+      a different receiver type. The probe had refused it on
+      `std/src/os/unix/net/addr.rs` — the unix-domain type of the same name.
+  - module: std::ptr
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Pointer arithmetic and volatile access. Refused originally on a bare
+      `metadata` match that was `ptr::metadata` — the non-address half of a fat
+      pointer. NOTE: this module exports `read`, `write`, `copy` and
+      `read_volatile`, names that collide exactly with I/O verbs, so the grant
+      is protective as well as correct — it makes those calls an examined
+      negative instead of leaving the spelling to be guessed at.
+  - module: std::slice
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Slice primitives. Same `ptr::metadata` false refusal; a deliberately
+      over-broad net (sys|libc|fd|open|socket|File|io::) finds nothing.
+  - module: std::sync
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      WI-pavob, owner ruling "ok out": thread contention does not cross an I/O
+      boundary. Uncontended a Mutex is a compare-and-swap in the process's own
+      memory; contended it parks the thread via futex, changing kernel
+      scheduler state while NO DATA CROSSES in either direction.
+  - module: std::sync::Arc
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Atomic reference count over a heap allocation.
+  - module: std::sync::Mutex
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Same WI-pavob ruling as std::sync.
+  - module: std::sync::mpsc
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      A channel is a queue inside one program, so it is not ipc_recv — that
+      kind names a CROSS-PROCESS boundary and a Rust channel never leaves the
+      process. WI-pavob briefly withdrew this grant pending a tenth
+      synchronisation kind; no tenth kind exists, so the grant stands.
+  - module: std::time::Duration
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Pure arithmetic, defined in core. Distinct from std::time and
+      std::time::SystemTime, which are deliberately NOT granted: WI-pavob ruled
+      a clock read IS host_info_read, so those need rows (WI-tubij), not a
+      no-I/O declaration.

@@ -22,6 +22,18 @@ Key constructs extracted:
 - (fn name [args] body) - function definitions
 - (local name value) - variable definitions
 - (name args) - function calls (lists)
+
+Call edges
+----------
+- Lists whose head is in ``_SPECIAL_FORMS`` (``let``, ``if``, ``each``,
+  ``->``, ...) or ``_BUILTINS`` (operators, Lua stdlib names such as
+  ``print`` or ``table.insert``) emit no edge.
+- The caller is the nearest enclosing named ``fn`` (anonymous ``fn`` forms
+  are skipped over); a call with no named ``fn`` around it, e.g. at module
+  top level, is dropped.
+- The callee is looked up by its exact head text among the cross-file
+  symbols (evidence ``ast_call_direct``); a call not found there becomes an
+  unresolved edge via ``make_unresolved_edge``.
 """
 from __future__ import annotations
 
@@ -298,7 +310,7 @@ class FennelAnalyzer(TreeSitterAnalyzer):
 _analyzer = FennelAnalyzer()
 
 
-@register_analyzer("fennel")
+@register_analyzer("fennel", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_fennel(repo_root: Path) -> AnalysisResult:
     """Analyze Fennel source files in a repository."""
     return _analyzer.analyze(repo_root)

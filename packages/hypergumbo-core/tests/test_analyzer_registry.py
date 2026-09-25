@@ -23,12 +23,28 @@ from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol, _default_config_
 from hypergumbo_core.limits import Limits
 from hypergumbo_core.analyze import registry as _registry_mod
 from hypergumbo_core.analyze.registry import (
+    AUDIT_CITATION_PREFIX,
+    LANGUAGE_STATE_NO_LANGUAGE,
+    LANGUAGE_STATE_NO_SPEC,
+    LANGUAGE_STATE_TAXONOMY,
+    SPAN_ROLE_ITEM,
+    SPAN_ROLE_TOKEN,
+    LanguageDeclarationError,
+    MergeAnchor,
+    MergeDeclarationError,
+    MergeDisjoint,
     RegisteredAnalyzer,
+    UndeclaredProducerError,
+    analyzers_for_language,
+    as_emitted,
+    backends_executing_analysed_code,
     clear_registry,
     ensure_discovered,
     get_all_analyzers,
     get_analyzer,
+    last_segment,
     list_registered,
+    merge_participants,
     register_analyzer,
     run_all_analyzers,
     run_analyzer,
@@ -299,7 +315,7 @@ class TestRegisterAnalyzer:
     def test_depends_on_defaults_to_empty_list(self) -> None:
         """WI-dilab: depends_on defaults to [] (CNF: empty outer list)."""
 
-        @register_analyzer("nodeps-analyzer")
+        @register_analyzer("nodeps-analyzer", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_nodeps(repo_root: Path) -> AnalysisResult:
             return AnalysisResult()
 
@@ -317,6 +333,7 @@ class TestRegisterAnalyzer:
 
         @register_analyzer(
             "jni-bridge-test-analyzer",
+            language_state=LANGUAGE_STATE_NO_LANGUAGE,
             depends_on=[["java"], ["c", "cpp"]],
         )
         def analyze_jni_bridge(repo_root: Path) -> AnalysisResult:
@@ -330,6 +347,169 @@ class TestRegisterAnalyzer:
 # ---------------------------------------------------------------------------
 # get_analyzer
 # ---------------------------------------------------------------------------
+
+
+class TestLanguageDeclarationGate:
+    """WI-juzig: an analyzer's languages are the taxonomy's vocabulary, or a declaration.
+
+    ``register_analyzer`` used to default ``languages`` to ``[name]`` and check
+    nothing, so a pass named ``make`` was language ``make`` while the taxonomy,
+    the profile and every file-anchored ``Symbol.language`` said ``makefile``
+    (INV-nidul: a FALSE ``limits.skipped_languages`` verdict), and two names
+    that are not languages at all (``rust_analyzer``, ``manifest_targets``)
+    became languages the spec validator would accept. It also conflated absent
+    with empty: an explicit ``languages=[]`` became ``[name]``.
+
+    The gate: every effective language is a taxonomy key (aliases
+    canonicalised) unless the registration DECLARES otherwise, and the
+    declaration is checked in both directions — a ``no_taxonomy_spec``
+    declaration on a language the taxonomy DOES carry is stale and raises.
+    """
+
+    def test_undeclared_non_taxonomy_name_raises_naming_analyzer_and_value(self) -> None:
+        with pytest.raises(LanguageDeclarationError) as exc:
+
+            @register_analyzer("foo_bar")
+            def analyze_foo(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+                return AnalysisResult()
+
+        assert "foo_bar" in str(exc.value)
+        assert "taxonomy" in str(exc.value)
+        assert get_analyzer("foo_bar") is None
+
+    def test_declared_language_outside_vocabulary_raises(self) -> None:
+        with pytest.raises(LanguageDeclarationError) as exc:
+
+            @register_analyzer("bash", languages=["klingon"])
+            def analyze_k(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+                return AnalysisResult()
+
+        assert "klingon" in str(exc.value)
+        assert "bash" in str(exc.value)
+
+    def test_taxonomy_name_default_is_gated_and_kept(self) -> None:
+        @register_analyzer("go")
+        def analyze_go(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+            return AnalysisResult()
+
+        reg = get_analyzer("go")
+        assert reg is not None
+        assert reg.languages == ["go"]
+        assert reg.language_state == LANGUAGE_STATE_TAXONOMY
+
+    def test_explicit_empty_list_is_not_absent(self) -> None:
+        """ABSENT != EMPTY: ``languages=[]`` used to be silently rewritten to
+        ``[name]``. It is now an error — the caller meant something and the
+        registry must not guess which."""
+        with pytest.raises(LanguageDeclarationError) as exc:
+
+            @register_analyzer("go", languages=[])
+            def analyze_go(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+                return AnalysisResult()
+
+        assert "languages=[]" in str(exc.value)
+        assert LANGUAGE_STATE_NO_LANGUAGE in str(exc.value)
+
+    def test_no_language_state_stores_an_empty_list(self) -> None:
+        @register_analyzer("synth-pass", language_state=LANGUAGE_STATE_NO_LANGUAGE)
+        def analyze_synth(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+            return AnalysisResult()
+
+        reg = get_analyzer("synth-pass")
+        assert reg is not None
+        assert reg.languages == []
+        assert reg.language_state == LANGUAGE_STATE_NO_LANGUAGE
+
+    def test_no_language_state_with_languages_raises(self) -> None:
+        with pytest.raises(LanguageDeclarationError) as exc:
+
+            @register_analyzer(
+                "synth-pass", languages=["go"], language_state=LANGUAGE_STATE_NO_LANGUAGE,
+            )
+            def analyze_synth(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+                return AnalysisResult()
+
+        assert "synth-pass" in str(exc.value)
+
+    def test_no_spec_state_accepts_a_language_the_taxonomy_lacks(self) -> None:
+        @register_analyzer("gleam", language_state=LANGUAGE_STATE_NO_SPEC)
+        def analyze_gleam(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+            return AnalysisResult()
+
+        reg = get_analyzer("gleam")
+        assert reg is not None
+        assert reg.languages == ["gleam"]
+        assert reg.language_state == LANGUAGE_STATE_NO_SPEC
+
+    def test_no_spec_state_on_a_taxonomy_language_is_stale_and_raises(self) -> None:
+        """The declaration is checked in BOTH directions: once a LanguageSpec
+        lands for the language, the declaration must go, or the gate says so."""
+        with pytest.raises(LanguageDeclarationError) as exc:
+
+            @register_analyzer("rust", language_state=LANGUAGE_STATE_NO_SPEC)
+            def analyze_rust(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+                return AnalysisResult()
+
+        assert "rust" in str(exc.value)
+        assert "stale" in str(exc.value)
+
+    def test_alias_key_is_canonicalised_to_the_taxonomy_name(self) -> None:
+        """``LANGUAGE_ALIASES`` keys are accepted and stored as the taxonomy
+        name, so the registry speaks one vocabulary (shell -> bash)."""
+        @register_analyzer("shell")
+        def analyze_shell(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+            return AnalysisResult()
+
+        reg = get_analyzer("shell")
+        assert reg is not None
+        assert reg.languages == ["bash"]
+
+    def test_unknown_language_state_raises(self) -> None:
+        with pytest.raises(LanguageDeclarationError) as exc:
+
+            @register_analyzer("go", language_state="maybe")
+            def analyze_go(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+                return AnalysisResult()
+
+        assert "maybe" in str(exc.value)
+
+    def test_registered_analyzer_dataclass_defaults_to_taxonomy_state(self) -> None:
+        ra = RegisteredAnalyzer(name="x", func=lambda root: AnalysisResult())
+        assert ra.language_state == LANGUAGE_STATE_TAXONOMY
+
+
+class TestAnalyzersForLanguage:
+    """WI-juzig: "who produces language L?" answered in the taxonomy vocabulary,
+    returning EVERY producer — a language can have two backends."""
+
+    def test_returns_every_producer_in_priority_order(self) -> None:
+        @register_analyzer("rust_scip", priority=45, languages=["rust"], backend="scip")
+        def analyze_scip(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+            return AnalysisResult()
+
+        @register_analyzer("rust", priority=50, backend="tree-sitter")
+        def analyze_rust(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+            return AnalysisResult()
+
+        @register_analyzer("go")
+        def analyze_go(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+            return AnalysisResult()
+
+        assert [a.name for a in analyzers_for_language("rust")] == ["rust_scip", "rust"]
+        assert [a.name for a in analyzers_for_language("go")] == ["go"]
+
+    def test_finds_a_producer_whose_pass_name_differs_from_the_language(self) -> None:
+        """``get_analyzer("makefile")`` is None — the pass is named ``make``.
+        Looking up by declared language finds it."""
+        @register_analyzer("make", languages=["makefile"])
+        def analyze_make(repo_root: Path) -> AnalysisResult:  # pragma: no cover
+            return AnalysisResult()
+
+        assert get_analyzer("makefile") is None
+        assert [a.name for a in analyzers_for_language("makefile")] == ["make"]
+
+    def test_unproduced_language_is_an_empty_list(self) -> None:
+        assert analyzers_for_language("cobol") == []
 
 
 class TestGetAnalyzer:
@@ -368,11 +548,11 @@ class TestGetAllAnalyzers:
     def test_returns_all(self) -> None:
         """Returns all registered analyzers."""
 
-        @register_analyzer("a")
+        @register_analyzer("a", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_a(root: Path) -> AnalysisResult:
             return AnalysisResult()
 
-        @register_analyzer("b")
+        @register_analyzer("b", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_b(root: Path) -> AnalysisResult:
             return AnalysisResult()
 
@@ -384,15 +564,15 @@ class TestGetAllAnalyzers:
     def test_sorted_by_priority(self) -> None:
         """Returns analyzers sorted by priority (ascending)."""
 
-        @register_analyzer("high", priority=90)
+        @register_analyzer("high", priority=90, language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_high(root: Path) -> AnalysisResult:
             return AnalysisResult()
 
-        @register_analyzer("low", priority=10)
+        @register_analyzer("low", priority=10, language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_low(root: Path) -> AnalysisResult:
             return AnalysisResult()
 
-        @register_analyzer("mid", priority=50)
+        @register_analyzer("mid", priority=50, language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_mid(root: Path) -> AnalysisResult:
             return AnalysisResult()
 
@@ -414,7 +594,7 @@ class TestRunAnalyzer:
     def test_runs_named_analyzer(self) -> None:
         """Runs the analyzer function for the given name."""
 
-        @register_analyzer("test_lang")
+        @register_analyzer("test_lang", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(repo_root: Path) -> AnalysisResult:
             return AnalysisResult(symbols=[MagicMock(name="sym1")])
 
@@ -425,7 +605,7 @@ class TestRunAnalyzer:
         """Passes extra kwargs to the analyzer function."""
         received_kwargs: dict = {}
 
-        @register_analyzer("test_lang")
+        @register_analyzer("test_lang", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(repo_root: Path, **kwargs) -> AnalysisResult:
             received_kwargs.update(kwargs)
             return AnalysisResult()
@@ -451,12 +631,12 @@ class TestRunAllAnalyzers:
         """Runs analyzers in priority order, returns (name, result) tuples."""
         call_order: list[str] = []
 
-        @register_analyzer("second", priority=50)
+        @register_analyzer("second", priority=50, language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_second(root: Path) -> AnalysisResult:
             call_order.append("second")
             return AnalysisResult()
 
-        @register_analyzer("first", priority=10)
+        @register_analyzer("first", priority=10, language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_first(root: Path) -> AnalysisResult:
             call_order.append("first")
             return AnalysisResult()
@@ -476,7 +656,7 @@ class TestRunAllAnalyzers:
         """Passes kwargs to each analyzer."""
         received: list[dict] = []
 
-        @register_analyzer("test")
+        @register_analyzer("test", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(root: Path, **kwargs) -> AnalysisResult:
             received.append(kwargs)
             return AnalysisResult()
@@ -496,7 +676,7 @@ class TestClearRegistry:
     def test_clears_all(self) -> None:
         """Clears all registered analyzers."""
 
-        @register_analyzer("a")
+        @register_analyzer("a", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_a(root: Path) -> AnalysisResult:
             return AnalysisResult()
 
@@ -587,6 +767,25 @@ class TestEnsureDiscovered:
         assert mock_import.call_count == 2
         mock_import.assert_any_call("fake_module_a")
         mock_import.assert_any_call("fake_module_b")
+
+    def test_language_declaration_error_is_not_swallowed_by_discovery(self) -> None:
+        """WI-juzig: ``_import_module_list`` swallows import failures so a
+        missing optional grammar cannot take the registry down. A
+        ``LanguageDeclarationError`` is not that — it is a defect in the
+        registration itself, and swallowing it would make the analyzer
+        silently vanish from the catalogue (ABSENT != EMPTY)."""
+        mock_ep = MagicMock()
+        mock_ep.load.return_value = ["good_module", "misdeclared_module"]
+
+        def side_effect(name):
+            if name == "misdeclared_module":
+                raise LanguageDeclarationError("analyzer 'x' declares language 'x'")
+
+        with patch(
+            "importlib.metadata.entry_points", return_value=[mock_ep]
+        ), patch("importlib.import_module", side_effect=side_effect):
+            with pytest.raises(LanguageDeclarationError):
+                ensure_discovered()
 
     def test_handles_import_error_gracefully(self) -> None:
         """Import errors for individual modules are caught and logged."""
@@ -705,7 +904,7 @@ class TestAnalyzerSpecTransition:
     def test_spec_does_not_overwrite_decorator(self) -> None:
         """Decorator-registered analyzers take priority over spec-based ones."""
 
-        @register_analyzer("already_registered")
+        @register_analyzer("already_registered", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_existing(root: Path) -> AnalysisResult:
             return AnalysisResult()
 
@@ -764,7 +963,7 @@ class TestClearAnalyzerCache:
     def test_clears_registry(self) -> None:
         """clear_analyzer_cache() delegates to clear_registry()."""
 
-        @register_analyzer("test_clear")
+        @register_analyzer("test_clear", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(root: Path) -> AnalysisResult:
             return AnalysisResult()
 
@@ -1004,8 +1203,14 @@ class TestCollectAnalyzerResult:
         )
 
         assert analysis_runs == []
+        # WI-dukoh: a BARE run=None result (nothing self-declared) is a
+        # no-input analyzer by construction, so the orchestrator may classify
+        # it with certainty — this is the one branch where NO_CANDIDATE_FILES
+        # is the orchestrator's own claim rather than a guess on a producer's
+        # behalf.
         assert limits.skipped_passes == [
-            {"pass": "matlab", "reason": "no files matched"}
+            {"pass": "matlab", "reason": "no files matched",
+             "silence_reason": "no_candidate_files"}
         ]
 
     def test_run_none_uses_declared_skip_reason(self) -> None:
@@ -1028,8 +1233,45 @@ class TestCollectAnalyzerResult:
             result, [], all_symbols, [], [], limits, analyzer_name="rust_analyzer"
         )
 
+        # WI-dukoh: this result self-declares PROSE but no code, so the code
+        # is UNREPORTED -- "the producer did not classify itself". It must NOT
+        # inherit no_candidate_files: the producer said something the axis
+        # cannot read, which is not the same as saying the repo had no files,
+        # and this analyzer's repo may be full of .rs files.
         assert limits.skipped_passes == [
-            {"pass": "rust_analyzer", "reason": "rust-analyzer backend not enabled"}
+            {"pass": "rust_analyzer",
+             "reason": "rust-analyzer backend not enabled",
+             "silence_reason": "unreported"}
+        ]
+
+    def test_run_none_uses_declared_skip_reason_code(self) -> None:
+        """WI-dukoh: a producer that declares its CODE keeps it verbatim.
+
+        The live rust_analyzer does declare one; this pins the plumbing that
+        carries a self-declared code from AnalysisResult through to
+        limits.skipped_passes, which is what makes the migration real rather
+        than a field nothing fills.
+        """
+        from hypergumbo_core.ir import Symbol
+        from hypergumbo_core.limits import Limits
+        from hypergumbo_core.pass_silence import BACKEND_DISABLED
+
+        result = AnalysisResult(
+            skipped=True,
+            skip_reason="rust-analyzer backend not enabled",
+            skip_reason_code=BACKEND_DISABLED,
+        )
+        all_symbols: list[Symbol] = []
+        limits = Limits()
+
+        collect_analyzer_result(
+            result, [], all_symbols, [], [], limits, analyzer_name="rust_analyzer"
+        )
+
+        assert limits.skipped_passes == [
+            {"pass": "rust_analyzer",
+             "reason": "rust-analyzer backend not enabled",
+             "silence_reason": "backend_disabled"}
         ]
 
     def test_run_none_without_analyzer_name_records_nothing(self) -> None:
@@ -1109,7 +1351,7 @@ class TestRunAllAnalyzersPathNormalization:
             skipped=False,
         )
 
-        @register_analyzer("test_abs_path")
+        @register_analyzer("test_abs_path", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(root: Path) -> AnalysisResult:
             return result
 
@@ -1155,7 +1397,7 @@ class TestRunAllAnalyzersPathNormalization:
             skipped=False,
         )
 
-        @register_analyzer("test_uc_path")
+        @register_analyzer("test_uc_path", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(root: Path) -> AnalysisResult:
             return result
 
@@ -1198,7 +1440,7 @@ class TestRunAllAnalyzersPathNormalization:
             skipped=False,
         )
 
-        @register_analyzer("test_outside_path")
+        @register_analyzer("test_outside_path", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(root: Path) -> AnalysisResult:
             return result
 
@@ -1241,7 +1483,7 @@ class TestRunAllAnalyzersPathNormalization:
             skipped=False,
         )
 
-        @register_analyzer("test_failed_path")
+        @register_analyzer("test_failed_path", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(root: Path) -> AnalysisResult:
             return result
 
@@ -1283,7 +1525,7 @@ class TestRunAllAnalyzersTruncatedFiles:
         run.pass_id = "test-trunc"
 
         # Analyzer that calls find_files — the global callback should fire
-        @register_analyzer("test_trunc")
+        @register_analyzer("test_trunc", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_trunc(root: Path) -> AnalysisResult:
             list(find_files(root, ["*.py"]))
             return AnalysisResult(run=run, skipped=False)
@@ -1338,7 +1580,7 @@ class TestRunAllAnalyzersDependencyManifest:
             "github.com/foo/bar": {"direct": True},
         })
 
-        @register_analyzer("test_manifest")
+        @register_analyzer("test_manifest", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(root: Path) -> AnalysisResult:
             return AnalysisResult(
                 run=run,
@@ -1367,7 +1609,7 @@ class TestRunAllAnalyzersDependencyManifest:
         run.to_dict.return_value = {"pass": "test-nomanifest"}
         run.pass_id = "test-nomanifest"
 
-        @register_analyzer("test_nomanifest")
+        @register_analyzer("test_nomanifest", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(root: Path) -> AnalysisResult:
             return AnalysisResult(run=run, skipped=False)
 
@@ -1421,7 +1663,7 @@ class TestRunAllAnalyzersFileSymbolSynthesis:
             run=run, skipped=False,
         )
 
-        @register_analyzer("test_file_synth")
+        @register_analyzer("test_file_synth", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(root: Path) -> AnalysisResult:
             return result
 
@@ -1477,7 +1719,7 @@ class TestRunAllAnalyzersFileSymbolSynthesis:
             run=run, skipped=False,
         )
 
-        @register_analyzer("test_file_no_dup")
+        @register_analyzer("test_file_no_dup", language_state=LANGUAGE_STATE_NO_LANGUAGE)
         def analyze_test(root: Path) -> AnalysisResult:
             return result
 
@@ -1663,7 +1905,11 @@ class TestRunAllAnalyzersFilePresencePreFilter:
         run.to_dict.return_value = {"pass": "gitignore"}
         run.pass_id = "gitignore"
 
-        @register_analyzer("gitignore", languages=["gitignore"])
+        # WI-juzig: a language the taxonomy lacks a spec for is DECLARED as
+        # such; the gate refuses an undeclared one.
+        @register_analyzer(
+            "gitignore", languages=["gitignore"], language_state=LANGUAGE_STATE_NO_SPEC,
+        )
         def analyze_gitignore(root: Path) -> AnalysisResult:
             called.append("gitignore")
             return AnalysisResult(run=run, skipped=False)
@@ -1683,3 +1929,266 @@ class TestRunAllAnalyzersFilePresencePreFilter:
         assert called == ["gitignore"]
         skipped_names = {s["pass"] for s in limits.skipped_passes}
         assert "gitignore" not in skipped_names
+
+
+    def test_no_language_analyzer_is_dispatched_without_profile_evidence(
+        self,
+    ) -> None:
+        """WI-juzig: a pass declared ``no_language`` has ``languages == []``.
+        The dispatcher used to re-inflate an empty list into ``{name}`` — a
+        phantom the profile never counted, retained by accident. Now the
+        empty declaration is retained on purpose: the profile has no opinion
+        about a pass that reads no language's files."""
+        from hypergumbo_core.analyze.all_analyzers import (
+            run_all_analyzers as facade_run_all,
+        )
+        from hypergumbo_core.ir import AnalysisRun
+
+        called: list[str] = []
+        run = MagicMock(spec=AnalysisRun)
+        run.to_dict.return_value = {"pass": "manifest-ish"}
+        run.pass_id = "manifest-ish"
+
+        @register_analyzer("manifest-ish", language_state=LANGUAGE_STATE_NO_LANGUAGE)
+        def analyze_manifest(root: Path) -> AnalysisResult:
+            called.append("manifest-ish")
+            return AnalysisResult(run=run, skipped=False)
+
+        profile = {"languages": {"python": {"files": 5}}}
+
+        with patch(
+            "hypergumbo_core.analyze.all_analyzers.ensure_discovered"
+        ):
+            _, _, _, _, limits, _, _ = facade_run_all(
+                Path("/test"), profile=profile,
+            )
+
+        assert called == ["manifest-ish"]
+        assert "manifest-ish" not in {s["pass"] for s in limits.skipped_passes}
+
+
+class TestProductiveRunlessResultIsNotSilentlyDropped:
+    """WI-didag: a producer that emits output without a run VANISHES.
+
+    ``collect_analyzer_result``'s run-is-None branch records a
+    ``skipped_passes`` entry only when the result produced nothing. A
+    producer that emitted symbols/edges but no run is drained and then
+    dropped from the accounting entirely — so it lands in NEITHER
+    ``analysis_runs`` NOR ``limits.skipped_passes``, breaking the WI-didil
+    completeness contract precisely when the pass SUCCEEDED.
+
+    Measured with the rust-analyzer backend enabled on aardvark-dns: 669
+    nodes + 637 edges from a pass appearing in neither bucket, the only one
+    of 118 registered analyzers for which that was true.
+
+    The output must still be kept — that part of the branch is correct and
+    deliberate — so this pins the accounting, not the drain.
+    """
+
+    def _productive_runless(self):
+        from hypergumbo_core.analyze.base import AnalysisResult
+        from hypergumbo_core.ir import Edge, Span, Symbol
+        sym = Symbol(
+            id="rust:src/lib.rs:1-2:foo:function", name="foo", kind="function",
+            language="rust", path="src/lib.rs", span=Span(1, 2, 0, 0),
+            origin="scip",
+        )
+        edge = Edge.create(
+            src=sym.id, dst=sym.id, edge_type="calls", line=1,
+            confidence=0.9, origin="scip", origin_run_id="uuid:fabricated",
+        )
+        return AnalysisResult(symbols=[sym], edges=[edge]), sym, edge
+
+    def test_a_runless_producer_appears_in_one_of_the_two_buckets(self) -> None:
+        from hypergumbo_core.analyze.all_analyzers import collect_analyzer_result
+        from hypergumbo_core.limits import Limits
+        result, _sym, _edge = self._productive_runless()
+        runs, syms, edges, ucs, limits = [], [], [], [], Limits()
+        collect_analyzer_result(
+            result, runs, syms, edges, ucs, limits, analyzer_name="rust_analyzer",
+        )
+        accounted = bool(runs) or any(
+            e.get("pass") == "rust_analyzer" for e in limits.skipped_passes
+        )
+        assert accounted, (
+            "a pass that produced 2 records is in neither analysis_runs nor "
+            "limits.skipped_passes — WI-didil completeness violated"
+        )
+
+    def test_its_output_is_still_kept(self) -> None:
+        """The drain is correct and must not regress while fixing accounting."""
+        from hypergumbo_core.analyze.all_analyzers import collect_analyzer_result
+        from hypergumbo_core.limits import Limits
+        result, sym, edge = self._productive_runless()
+        runs, syms, edges, ucs, limits = [], [], [], [], Limits()
+        collect_analyzer_result(
+            result, runs, syms, edges, ucs, limits, analyzer_name="rust_analyzer",
+        )
+        assert syms == [sym]
+        assert edges == [edge]
+
+
+# ---------------------------------------------------------------------------
+# ADR-0057 §10 / WI-hohuh: the producer contract
+# ---------------------------------------------------------------------------
+
+
+def _noop(repo_root: Path) -> AnalysisResult:
+    return AnalysisResult(symbols=[], edges=[], run=None)
+
+
+class TestMergeDeclaration:
+    """Each backend DECLARES how its records pair with another producer's.
+
+    The declaration is a value the registry validates at decoration time:
+    an anchor (name key + span role + measured authority) for a backend that
+    emits records for the same declarations another producer emits, or a
+    disjointness claim naming the producers it shares a language with but
+    never a record. Unknown keys raise, as ``user_config`` does for unknown
+    settings — a silently-ignored declaration would be the ABSENT != EMPTY
+    defect at registration.
+    """
+
+    def test_a_registration_without_a_declaration_stores_none(self) -> None:
+        register_analyzer("python")(_noop)
+        entry = get_analyzer("python")
+        assert entry is not None
+        assert entry.merge is None
+        assert entry.executes_analysed_code is False
+
+    def test_an_anchor_is_stored_as_declared(self) -> None:
+        anchor = MergeAnchor(name_key=last_segment("::"), span_role=SPAN_ROLE_ITEM)
+        register_analyzer("rust", merge=anchor)(_noop)
+        entry = get_analyzer("rust")
+        assert entry is not None
+        assert entry.merge is anchor
+        assert entry.merge.authoritative_for == {}
+
+    def test_a_span_role_outside_the_vocabulary_is_refused(self) -> None:
+        with pytest.raises(MergeDeclarationError, match="span_role"):
+            MergeAnchor(name_key=as_emitted, span_role="line")
+
+    def test_a_name_key_must_be_callable(self) -> None:
+        with pytest.raises(MergeDeclarationError, match="name_key"):
+            MergeAnchor(name_key="last_segment", span_role=SPAN_ROLE_ITEM)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("citation", ["", "measured it myself", "docs/adr/0057.md"])
+    def test_an_authority_claim_without_an_audit_citation_is_refused(
+        self, citation: str,
+    ) -> None:
+        """ADR-0057 §5/§10: no ``authoritative_for`` entry except by citing a
+        committed ``docs/audits/`` table produced by the agreement instrument."""
+        with pytest.raises(MergeDeclarationError, match=AUDIT_CITATION_PREFIX):
+            MergeAnchor(
+                name_key=as_emitted,
+                span_role=SPAN_ROLE_TOKEN,
+                authoritative_for={"kind": citation},
+            )
+
+    def test_a_cited_authority_claim_is_stored(self) -> None:
+        anchor = MergeAnchor(
+            name_key=as_emitted,
+            span_role=SPAN_ROLE_TOKEN,
+            authoritative_for={"kind": "docs/audits/99-example.md"},
+        )
+        assert anchor.authoritative_for == {"kind": "docs/audits/99-example.md"}
+
+    def test_an_unknown_declaration_key_raises(self) -> None:
+        with pytest.raises(TypeError):
+            MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN, authority="x")  # type: ignore[call-arg]
+
+    def test_a_dict_is_not_a_declaration(self) -> None:
+        """The decorator refuses anything but the two declaration types, naming
+        the analyzer — a dict with the right keys would be accepted by duck
+        typing and then silently ignore a misspelled one."""
+        with pytest.raises(MergeDeclarationError, match="rust"):
+            register_analyzer(
+                "rust", merge={"name_key": as_emitted, "span_role": "token"},  # type: ignore[arg-type]
+            )(_noop)
+
+    def test_a_disjoint_declaration_needs_at_least_one_partner(self) -> None:
+        with pytest.raises(MergeDeclarationError, match="partners"):
+            MergeDisjoint(partners=())
+
+    def test_name_key_helpers(self) -> None:
+        assert as_emitted("process_message") == "process_message"
+        assert last_segment("::")("CoreDns::process_message") == "process_message"
+        assert last_segment("::")("free_fn") == "free_fn"
+        assert last_segment(".")("Class.method") == "method"
+
+
+class TestMergeParticipants:
+    """``merge_participants(L)`` is what the merge pass (WI-kokiz) reads.
+
+    It returns the anchored producers of ``L`` the pass pairs among, and it
+    REFUSES — naming the analyzer — when a language has two producers and
+    one of them has not declared how its records relate to the other's.
+    Falling through would read as "nothing to merge".
+    """
+
+    _anchor = MergeAnchor(name_key=as_emitted, span_role=SPAN_ROLE_TOKEN)
+    _item = MergeAnchor(name_key=last_segment("::"), span_role=SPAN_ROLE_ITEM)
+
+    def test_a_sole_producer_has_nothing_to_merge_declared_or_not(self) -> None:
+        register_analyzer("rust")(_noop)
+        assert merge_participants("rust") == []
+        register_analyzer("python", merge=self._anchor)(_noop)
+        assert merge_participants("python") == []
+
+    def test_two_anchored_producers_are_returned_in_priority_order(self) -> None:
+        register_analyzer("rust", priority=50, merge=self._item)(_noop)
+        register_analyzer("rust_scip", priority=45, languages=["rust"], merge=self._anchor)(_noop)
+        assert [a.name for a in merge_participants("rust")] == ["rust_scip", "rust"]
+
+    def test_an_undeclared_producer_is_refused_by_name(self) -> None:
+        register_analyzer("rust", merge=self._item)(_noop)
+        register_analyzer("rust_scip", languages=["rust"])(_noop)
+        with pytest.raises(UndeclaredProducerError) as exc:
+            merge_participants("rust")
+        message = str(exc.value)
+        assert "rust_scip" in message
+        assert "'rust'" in message  # the language, so the reader knows which pair
+
+    def test_mutually_disjoint_producers_have_nothing_to_merge(self) -> None:
+        register_analyzer("javascript", languages=["javascript", "svelte"],
+                          merge=MergeDisjoint(partners=("svelte",)))(_noop)
+        register_analyzer("svelte", merge=MergeDisjoint(partners=("javascript",)))(_noop)
+        assert merge_participants("svelte") == []
+
+    def test_a_one_sided_disjoint_claim_covers_the_pair(self) -> None:
+        """An anchored incumbent need not name every template analyzer that
+        keeps out of its way; the analyzer that stays disjoint says so."""
+        register_analyzer("javascript", languages=["javascript", "svelte"],
+                          merge=self._anchor)(_noop)
+        register_analyzer("svelte", merge=MergeDisjoint(partners=("javascript",)))(_noop)
+        assert merge_participants("svelte") == []
+
+    def test_a_disjoint_claim_that_names_neither_side_is_refused(self) -> None:
+        register_analyzer("javascript", languages=["javascript", "svelte"],
+                          merge=self._anchor)(_noop)
+        register_analyzer("svelte", merge=MergeDisjoint(partners=("vue",)))(_noop)
+        with pytest.raises(UndeclaredProducerError) as exc:
+            merge_participants("svelte")
+        message = str(exc.value)
+        assert "svelte" in message and "javascript" in message
+
+    def test_disjoint_producers_are_excluded_from_the_anchored_set(self) -> None:
+        register_analyzer("rust", priority=50, merge=self._item)(_noop)
+        register_analyzer("rust_scip", priority=45, languages=["rust"], merge=self._anchor)(_noop)
+        register_analyzer("rust_docs", priority=60, languages=["rust"],
+                          merge=MergeDisjoint(partners=("rust", "rust_scip")))(_noop)
+        assert [a.name for a in merge_participants("rust")] == ["rust_scip", "rust"]
+
+
+class TestExecutesAnalysedCode:
+    """ADR-0045 §5: which store a backend's opt-in lands in follows from the
+    bit the backend DECLARES, not from a list someone remembers to update."""
+
+    def test_the_executing_set_is_derived_from_the_declarations(self) -> None:
+        register_analyzer("rust")(_noop)
+        register_analyzer("rust_scip", languages=["rust"], executes_analysed_code=True)(_noop)
+        register_analyzer("python", executes_analysed_code=False)(_noop)
+        assert backends_executing_analysed_code() == frozenset({"rust_scip"})
+
+    def test_an_empty_registry_executes_nothing(self) -> None:
+        assert backends_executing_analysed_code() == frozenset()

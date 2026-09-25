@@ -133,20 +133,6 @@ KNOWN_HOLES: dict[str, str] = {
         "for `class Square implements Shape` — so type_hierarchy has nothing to "
         "build its maps from."
     ),
-    "solidity": (
-        "CONSUMER VOCABULARY (INV-nosoz). Everything is emitted correctly, but the edge is "
-        "`inherits`, and linkers/type_hierarchy branches inline on "
-        "edge_type == 'extends' / == 'implements' — it never consults the "
-        "registry's INHERITANCE_EDGE_TYPES, which does contain `inherits`. "
-        "Methods are also kind='function' rather than 'method'."
-    ),
-    "ruby": (
-        "CONSUMER VOCABULARY (INV-nosoz). The mixin edge is `includes`, which is registered "
-        "on AXIS_RELATIONSHIP but is absent from the registry's "
-        "INHERITANCE_EDGE_TYPES — so no consumer built on that constant sees it "
-        "either. Ruby also mixes separators within one language "
-        "('Shape.area' vs 'Square#area')."
-    ),
     "elixir": (
         "PRODUCER (WI-vitas). `@callback area() :: integer` produces no symbol at all, so "
         "the behaviour's required function does not exist, and `@behaviour "

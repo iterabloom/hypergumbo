@@ -124,6 +124,41 @@ def _run(repo: Path, claims: Path) -> None:
     json.loads(buf.getvalue())
 
 
+#: CFG statement node types that ARE a call site, per language, keyed by the
+#: language slot of the symbol id.
+#:
+#: WHY A DECLARED MAP AND NOT A STRING COMPARISON (WI-nukut). This filter was
+#: ``!= "call"`` -- the PYTHON spelling -- so for a Go repository it discarded
+#: every site and the instrument printed "CALL-node escape sites: 0" while its
+#: own positive control was reporting 78,600 edges and 236 escape events. A
+#: zero under a live control is the shape a reader trusts, and read literally
+#: it said "Go produces no call-node escape sites", which is a claim about a
+#: LANGUAGE drawn from an instrument that never looked at it.
+#:
+#: WHY MIXED-LANGUAGE REPOS MAKE THIS WORSE RATHER THAN BETTER: kserve is 34
+#: python sites and 14 go, pretix is 15 python and 5 javascript. The dropped
+#: sites are invisible there, because the python ones still come through and
+#: the arm looks like it worked.
+#:
+#: EVERY ENTRY IS GROUNDED IN OBSERVED OUTPUT, not in grammar documentation --
+#: these are the call-shaped node types the CFG actually emitted across
+#: pretix / kserve / caddy / alertmanager. ``go_statement`` and
+#: ``deferred_call`` are included because the call HAPPENS at that line and the
+#: taxonomy below is about whether an edge was emitted for it; they are the
+#: only members that are wrappers rather than call expressions, so a reader
+#: comparing this instrument to measure-escape-shapes.py (which reports them
+#: separately) knows where the two differ.
+#:
+#: A LANGUAGE WITH NO ENTRY IS REFUSED, NOT SILENTLY EMPTIED. javascript is
+#: deliberately absent: the corpus produced no call-shaped node for it, so
+#: there is nothing to ground an entry on, and guessing a spelling here is
+#: exactly the failure this map exists to prevent.
+_CALL_NODE_TYPES: dict[str, frozenset[str]] = {
+    "python": frozenset({"call"}),
+    "go": frozenset({"call_expression", "deferred_call", "go_statement"}),
+}
+
+
 def _node_types(symbol_id: str, lines: set[int], root: Path) -> dict[int, str]:
     from tree_sitter_language_pack import get_parser
 
@@ -219,12 +254,24 @@ def main(argv: list[str]) -> int:
         lines_by_fn[sym].add(line)
 
     cache: dict[str, dict[int, str]] = {}
+    #: Sites this run could not classify because no call vocabulary is declared
+    #: for their language. Counted rather than ignored so the refusal below can
+    #: say HOW MUCH went unexamined, not merely that something did.
+    undeclared: collections.Counter[str] = collections.Counter()
     verdicts: collections.Counter[str] = collections.Counter()
     detail: list[dict[str, object]] = []
     for sym, line, reason in unique:
         if sym not in cache:
             cache[sym] = _node_types(sym, lines_by_fn[sym], repo)
-        if cache[sym].get(line) != "call":
+        node_type = cache[sym].get(line)
+        if node_type is None:
+            continue
+        language = sym.split(":", 1)[0]
+        known = _CALL_NODE_TYPES.get(language)
+        if known is None:
+            undeclared[language] += 1
+            continue
+        if node_type not in known:
             continue
         edges = at_line.get((sym, line), [])
         keys = keyed.get((sym, line), [])
@@ -270,6 +317,24 @@ def main(argv: list[str]) -> int:
         )
 
     total = sum(verdicts.values())
+    if undeclared:
+        # REFUSE THE TABLE RATHER THAN PRINT AN UNDERCOUNT. The same contract
+        # measure-escape-closing-ceiling.py holds for its own monkeypatch: a
+        # number produced by an instrument that could not see part of its
+        # population is worse than no number, because it reads as a finding.
+        named = ", ".join(
+            f"{lang} ({n} site{'s' if n != 1 else ''})"
+            for lang, n in sorted(undeclared.items())
+        )
+        print(
+            f"\nREFUSING THE TABLE: no call-node vocabulary is declared for "
+            f"{named}. Those sites were dropped unclassified, so the counts "
+            f"below would be an undercount of unknown size. Add the language "
+            f"to _CALL_NODE_TYPES with its observed call node types and "
+            f"re-run. (WI-nukut)",
+            file=sys.stderr,
+        )
+        return 2
     print(f"\n=== CALL-node escape sites: {total} ===")
     print(f"{'cause':<48}{'n':>6}{'%':>8}")
     print("-" * 62)

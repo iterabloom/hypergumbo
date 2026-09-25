@@ -1,0 +1,48 @@
+- op: create  # cd5a
+  at: '2026-09-20T03:44:19Z'  # cd5a
+  by: agent  # cd5a
+  actor: jgstern_agent  # cd5a
+  clock: 1  # cd5a
+  nonce: cd5a  # cd5a
+  data:  # cd5a
+    kind: invariant  # cd5a
+    title: "One edge, one callee name: finalize's supersession key reads the id positionally and skips meta['callee_name'], so an escaped Rust name misses its demotion"  # cd5a
+    status: violated  # cd5a
+    priority: 2  # cd5a
+    parent:  # cd5a
+    tags:  # cd5a
+    - adr_0057  # cd5a
+    - receiver_typing  # cd5a
+    isbefore: []  # cd5a
+    duplicate_of: []  # cd5a
+    not_duplicate_of: []  # cd5a
+    pr_ref:  # cd5a
+    description: "Two readers of one fact. verify_claims._callee_name reads meta[\"callee_name\"] first — the lossless home make_unresolved_edge stamps on every unresolved-external edge (ADR-0036 Ruling 1: \"Consumers that need the exact name MUST read Symbol.name, never re-derive it from the ID\") — and falls back to ir.symbol_name_slot. finalize._stub_callee_name reads dst_ref.name and then parses the id POSITIONALLY as parts[-2], never consulting meta at all.\n\nREPRO, measured on this repository's own survey (207,816 edges, 74,816 with an external dst): the two readers return different strings on 12 edges. Every one is a Rust id whose name slot escaped \"::\" to \"..\":\n\n  dst  = rust:external:0-0:String..from_utf8:external_symbol\n  meta = \"String::from_utf8\"   dst_ref = None\n  verify_claims._callee_name -> \"String::from_utf8\"\n  finalize._stub_callee_name -> \"String..from_utf8\"\n\nAlso divergent on a double-span external id (rust:external:0-0:Stdio:0-0:null:external_symbol): symbol_name_slot returns \"Stdio:0-0:null\", the positional read returns \"null\". Not observed on this corpus; the readers disagree on the shape regardless.\n\nWHY IT MATTERS. _stub_callee_name is the callee-name half of ADR-0057 section 14's four-part supersession key, and it is compared against a Symbol.name, which is lossless. A stub whose escaped name does not equal the resolved target's real name FAILS the comparison, so the demotion is silently missed — a false negative in the direction that leaves a wrong answer at equal standing with the right one, which is the exact tension section 14 exists to resolve.\n\nThe positional read is also the INV-fokik / INV-divuf pattern a third time: parts[-2] assumes a colon-free path and a colon-free name, and ADR-0036 Ruling 1 makes the path the one colon-TOLERANT slot. io_boundary._extract_callee_name was corrected to symbol_name_slot for exactly this; finalize was not.\n\nCURE. One chain, meta[\"callee_name\"] -> dst_ref.name -> ir.symbol_name_slot(dst), which is the superset of both existing readers and strictly more correct than either. io_boundary._extract_callee_name is NOT folded in: it takes an id STRING, so it cannot read meta or dst_ref and is an id parser rather than an edge reader.\n\nPREREQUISITE FOR. ADR-0057 section 15 (WI-hupod): the fold needs both branches, because the scip-python arm stamps no meta[\"callee_name\"] and the syntax arm stamps no dst_ref, so neither existing reader alone can pair the two edges."  # cd5a
+    fields:  # cd5a
+      statement: "Every reader of an edge's callee name returns the same string for that edge."  # cd5a
+      root_cause: "finalize._stub_callee_name reads dst_ref.name then parses the id positionally (parts[-2]), never consulting meta['callee_name'] — the lossless home make_unresolved_edge stamps — so on an id whose name slot escaped '::' to '..' it returns the escaped form while verify_claims._callee_name returns the lossless one, and section 14's key compares that against a lossless Symbol.name."  # cd5a
+- op: update  # 7f1e
+  at: '2026-09-20T03:45:03Z'  # 7f1e
+  by: agent  # 7f1e
+  actor: jgstern_agent  # 7f1e
+  clock: 2  # 7f1e
+  nonce: 7f1e  # 7f1e
+  set: {}  # 7f1e
+  add:  # 7f1e
+    isbefore: [WI-hupod-jigih-vomag-dofam-nazub-halir-vodak-duval]  # 7f1e
+    not_duplicate_of: [WI-hupod-jigih-vomag-dofam-nazub-halir-vodak-duval]  # 7f1e
+- op: update  # 1e71
+  at: '2026-09-20T04:22:20Z'  # 1e71
+  by: agent  # 1e71
+  actor: jgstern_agent  # 1e71
+  clock: 3  # 1e71
+  nonce: '1e71'  # 1e71
+  set:  # 1e71
+    status: satisfied  # 1e71
+- op: discuss  # cfe5
+  at: '2026-09-20T04:22:20Z'  # cfe5
+  by: agent  # cfe5
+  actor: jgstern_agent  # cfe5
+  clock: 4  # cfe5
+  nonce: cfe5  # cfe5
+  message: "SATISFIED. Both readers now delegate to ir.callee_name_of, whose order is meta['callee_name'] -> dst_ref.name -> symbol_name_slot(dst), returning \"\" rather than the raw id when the id yields nothing (symbol_name_slot's own contract: \"\" means no name information, and an unreadable name must not compare equal to a readable one).\n\nBEHAVIOURAL EVIDENCE.\n1. The filed repro, re-run on the same artifact with the fix in place: readers disagree on 0 of 74,816 external-dst edges, down from 12. All 12 escaped-name edges now read losslessly (String::from_utf8, not String..from_utf8).\n2. The missed demotion, as a production-path test that fails without the fix: test_finalize_superseded_stubs.py::TestTheCalleeNameIsReadFromItsLosslessHome::test_an_escaped_name_still_reaches_its_demotion. A stub whose id slot escaped '::' to '..', carrying the lossless name in meta and no dst_ref (the WI-huzuv sentinel cell), is now demoted by a resolved edge naming the same method; before the fix last_segment('.') read the stub as 'wrap' and the target as 'Result::wrap' and the comparison failed. Red before, green after.\n3. test_lossless_callee_name.py::TestOneReaderForOneFact pins the agreement itself on the production shape, plus the dst_ref branch and the malformed-id contract.\n\nSCOPE, stated rather than implied. io_boundary._extract_callee_name is NOT folded in: it takes an id STRING, so it can consult neither meta nor dst_ref, and is an id parser rather than an edge reader. The double-span external id shape (rust:external:0-0:Stdio:0-0:null:external_symbol), where symbol_name_slot gives 'Stdio:0-0:null' and a positional read gives 'null', is settled in practice by the chain — a real edge of that shape carries meta['callee_name'] and both readers agree there — but the id shape itself is not addressed here and no claim is made about it.\n\nFull affected slice green: 12 chunks, 21,643 tests, 0 failures; 100% coverage on ir.py, finalize.py and verify_claims.py. Unblocks WI-hupod (ADR-0057 section 15), which needs both the meta and dst_ref branches."  # cfe5

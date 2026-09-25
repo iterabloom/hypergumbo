@@ -314,7 +314,7 @@ class IniTreeSitterAnalyzer(TreeSitterAnalyzer):
 _analyzer = IniTreeSitterAnalyzer()
 
 
-@register_analyzer("ini")
+@register_analyzer("ini", find_files=find_ini_files)
 def analyze_ini(repo_root: Path) -> AnalysisResult:
     """Analyze INI configuration files in a repository.
 

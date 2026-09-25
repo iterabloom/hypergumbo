@@ -200,7 +200,7 @@ def is_properties_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("properties")
+@register_analyzer("properties", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_properties(repo_root: Path) -> AnalysisResult:
     """Analyze Java properties files in a repository.
 

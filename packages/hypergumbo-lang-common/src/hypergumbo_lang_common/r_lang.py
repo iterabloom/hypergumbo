@@ -17,14 +17,18 @@ How It Works
 1. Check if tree-sitter with R grammar is available
 2. If not available, return skipped result (not an error)
 3. Parse all .R and .r files
-4. Extract functions, library imports, function calls
-5. Create call edges for function invocations
+4. Pass 1: extract functions (with their docstrings) and library imports
+   into a global symbol registry
+5. Pass 2: create call edges, resolving callees across files through a
+   NameResolver; a ``pkg::func`` call passes the package as a path hint
+   and gets higher confidence. Calls that resolve to no repo symbol
+   target ``r:external:<pkg>::<func>`` (qualified) or ``r:builtin:<func>``
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - R is widely used in data science and statistics
-- Function definitions use assignment operators (<-, =, ->)
+- Function definitions use assignment operators (<-, =, <<-)
 - library() and require() for package imports
 - Useful for scientific computing and data analysis codebases
 """
@@ -38,6 +42,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
@@ -45,12 +50,15 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     node_text,
     populate_docstrings_from_tree,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -109,24 +117,24 @@ def _extract_r_signature(func_def: "tree_sitter.Node", source: bytes) -> Optiona
 
 def _find_enclosing_function_r(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the enclosing function Symbol by walking up parents."""
+    """The function whose assignment (``f <- function(...) ...``) contains ``node``.
+
+    The symbol is declared by the ASSIGNMENT, the ``binary_operator`` whose
+    right side is the ``function_definition``, and is found by that node's
+    POSITION, not its name (INV-midag, WI-mapor). A local helper of one name
+    in two functions (``inner <- function()`` in each) and a redefinition
+    share a name, and the name lookup credited both bodies' calls to the last.
+    """
     current = node.parent
     while current:
         if current.type == "function_definition":
-            # The function definition is the right side of an assignment
-            # The parent should be binary_operator with the function name on left
             parent = current.parent
             if parent and parent.type == "binary_operator":
-                for child in parent.children:
-                    if child.type == "identifier":
-                        func_name = source[child.start_byte:child.end_byte].decode("utf-8", errors="replace")
-                        sym = local_symbols.get(func_name)
-                        if sym:
-                            return sym
-                        break  # pragma: no cover - defensive
+                sym = symbol_declared_by(parent, decl_index)
+                if sym is not None:
+                    return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -197,7 +205,8 @@ def _extract_r_symbols(
                 symbols.append(sym)
                 symbol_registry[func_name] = sym
 
-        # Library/require imports and source() calls - extract as symbols
+        # Library/require imports (as ``imports`` edges) and source() calls
+        # (as ``source`` symbols)
         elif node.type == "call":
             func_name_node = None
             for child in node.children:
@@ -319,7 +328,7 @@ def _extract_r_edges(
     root_node: "tree_sitter.Node",
     source: bytes,
     edges: list[Edge],
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
     resolver: NameResolver,
     loaded_packages: set[str] | None = None,
     *,
@@ -334,7 +343,7 @@ def _extract_r_edges(
         root_node: Root tree-sitter node to process
         source: Source file bytes
         edges: List to append edges to
-        local_symbols: Local symbol registry for finding enclosing functions
+        decl_index: This file's function declarations by position
         resolver: NameResolver for callee resolution
         loaded_packages: Set of package names loaded via library/require (ADR-0007)
     """
@@ -365,12 +374,13 @@ def _extract_r_edges(
             if not func_name:
                 continue
 
-            # Skip library/require/source - these are handled as symbols
+            # Skip library/require/source - handled in pass 1 (imports edges /
+            # source symbols)
             if func_name in ("library", "require", "source"):
                 continue
 
             # Regular function call - create edge if inside a function
-            caller = _find_enclosing_function_r(node, source, local_symbols)
+            caller = _find_enclosing_function_r(node, decl_index)
             if caller:
                 # Use resolver for callee resolution with path_hint
                 lookup_result = resolver.lookup(func_name, path_hint=path_hint)
@@ -431,7 +441,7 @@ class RAnalyzer(TreeSitterAnalyzer):
         if not self._check_grammar_available():  # pragma: no cover
             return AnalysisResult(  # pragma: no cover
                 skipped=True,  # pragma: no cover
-                skip_reason="tree-sitter-r not installed (pip install tree-sitter-language-pack)",  # pragma: no cover
+                skip_reason="tree-sitter-r not installed (pip install tree-sitter-language-pack)", skip_reason_code=DEPENDENCY_UNAVAILABLE,  # pragma: no cover
             )  # pragma: no cover
 
         start_time = time.time()
@@ -453,6 +463,7 @@ class RAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"Failed to initialize parser: {e}",
+                skip_reason_code=PASS_CRASHED,
             )
 
         # WI-higap: create run before edge construction so Edge.__post_init__
@@ -502,14 +513,16 @@ class RAnalyzer(TreeSitterAnalyzer):
 
         # Pass 2: Extract edges using resolver
         for rel_path, source, tree, loaded_packages in parsed_files:
-            # Build local symbol map for this file (functions only)
-            local_symbols = {s.name: s for s in symbols if s.path == rel_path and s.kind == "function"}
+            # This file's functions by declaration position (INV-midag): a
+            # name-keyed map keeps one symbol per name.
+            decl_index = symbols_at(
+                [s for s in symbols if s.path == rel_path and s.kind == "function"])
 
             _extract_r_edges(
                 tree.root_node,
                 source,
                 edges,
-                local_symbols,
+                decl_index,
                 resolver,
                 loaded_packages,
 

@@ -1,0 +1,56 @@
+- op: create  # 5235
+  at: '2026-08-24T19:06:11Z'  # 5235
+  by: agent  # 5235
+  actor: jgstern_agent  # 5235
+  clock: 1  # 5235
+  nonce: '5235'  # 5235
+  data:  # 5235
+    kind: invariant  # 5235
+    title: "A repo referring to itself by its published package name (Cargo.toml/go.mod) is still reported as an unexamined third-party module"  # 5235
+    status: violated  # 5235
+    priority: 3  # 5235
+    parent:  # 5235
+    tags:  # 5235
+    - io_boundary  # 5235
+    - verify_claims  # 5235
+    - false_inconclusive  # 5235
+    - analysis_quality  # 5235
+    isbefore: []  # 5235
+    duplicate_of: []  # 5235
+    not_duplicate_of: []  # 5235
+    pr_ref:  # 5235
+    description: "MEASURED 2026-08-24 on bellman and caddy, recomputing the gate over each run's\nown cached survey.\n\nA repository that refers to itself by its PUBLISHED PACKAGE NAME -- rather than\nby a relative path or a self-reference keyword -- is still reported as an\nunexamined third-party module.\n\n  bellman  'bellman.VerificationError'  <- bellman's own crate name, from\n           edges like\n           rust:bellman.VerificationError:0-0:bellman.VerificationError.InvalidProof:external_symbol\n           This is the LAST first-party entry surviving INV-juvul's fix\n           (23 reported -> 18 after; 5 of the 6 first-party entries closed).\n\n  caddy    'github.com/caddyserver/caddy/v2'\n           'github.com/caddyserver/caddy/v2/caddyconfig/caddyfile'\n           'github.com/caddyserver/caddy/v2/internal/metrics'\n           'github.com/caddyserver/caddy/v2/modules/caddyhttp'\n           -- caddy's own go.mod module path. Its RELATIVE spellings\n           (modules/caddyhttp, caddyconfig/httpcaddyfile) ARE now suppressed,\n           so the same package is judged differently depending on how the\n           importing file happened to spell it.\n\nWHY INV-juvul DID NOT CLOSE IT. _analyzed_modules derives first-party names\nfrom SRC FILE PATHS, and a package's published name lives in a MANIFEST, not\nin the directory layout. No amount of separator normalisation or suffix\nmatching bridges Cargo.toml's [package] name to src/lib.rs.\n\nTHE SIGNAL EXISTS IN THE GRAPH ALREADY, which is why this is filed rather than\ndeferred indefinitely:\n\n    toml:Cargo.toml:7-22:bellman:package        kind=package  name=bellman\n    toml:groth16/Cargo.toml:1-16:groth16:package\n    json:package.json:1-99:express:package\n\nWHY IT WAS NOT USED. Dependency packages carry the SAME kind:\n\n    javascript:npm:0-0:morgan:package\n    javascript:npm:0-0:proxy-addr:package\n\nTelling the two apart currently requires reading the id's path slot and span\nshape (a real manifest path with a real span, versus the synthetic `npm` slot\nat 0-0). That is a shape heuristic over an id grammar, and this is a gate whose\nfailure direction is a false clean verdict, so it was not guessed at.\nsupply_chain_tier would be the principled discriminator and is None on EVERY\npackage node in both repos -- possibly a defect of its own, NOT investigated.\n\nALSO NOT MEASURED: whether _uncatalogued_external_modules can reach node data\nat all (it takes raw_edges only, so a first-party-package-name set would have\nto be threaded from the CLI, as higher_fidelity_available already is).\n\nSIZE: 1 of bellman's 18 remaining entries, 4 of caddy's 158. Noise reduction,\nNOT a safety hole -- over-reporting is the safe direction. Fixing it flips no\nverdict."  # 5235
+    fields:  # 5235
+      statement: "A module reference that resolves to a package THIS repository declares in its own manifest is first-party, and must not be reported as a third-party module whose I/O went unexamined -- regardless of whether the importing file spelled it as a relative path or as the published package name."  # 5235
+      root_cause: "_analyzed_modules derives first-party names from SRC FILE PATHS only, while a published package name lives in a manifest (Cargo.toml [package] name, go.mod module, package.json name). The graph already carries the fact as package-kind nodes, but dependency packages carry the same kind, and the only available discriminator today is the id's path-slot/span shape, which is a heuristic over an id grammar rather than a fact."  # 5235
+- op: update  # d4fc
+  at: '2026-08-24T20:00:15Z'  # d4fc
+  by: agent  # d4fc
+  actor: jgstern_agent  # d4fc
+  clock: 2  # d4fc
+  nonce: d4fc  # d4fc
+  set: {}  # d4fc
+  add:  # d4fc
+    isbefore: [INV-juvul-risuf-dojud-logoj-supur-kuvun-fogos-dojod]  # d4fc
+- op: discuss  # 9824
+  at: '2026-08-27T19:32:54Z'  # 9824
+  by: agent  # 9824
+  actor: jgstern_agent  # 9824
+  clock: 3  # 9824
+  nonce: '9824'  # 9824
+  message: "PREMISE REFUTED IN THE CODE, 2026-08-27 — the root_cause and description\nboth say supply_chain_tier \"is None on EVERY package node in both repos\".\nThat is a NULL-EXTRACTOR ARTIFACT, not a fact about the data.\n\nir.py:585 declares `supply_chain_tier: int = 1` (default first_party), and\nir.py:636-645 serialises it NESTED, under `supply_chain.tier`. A read of\nnode[\"supply_chain_tier\"] at top level therefore returns None for EVERY node\nof EVERY kind — package or not. Same shape as the claims/id vs\nverdicts/claim_id extractor bug.\n\nMEASURED over all 42 cached surveys (lutuh_scope_08242026), 796 package-kind\nnodes across 19 repos:\n    tier 1: 187    tier 3: 609    tier None: 0\nand 10 of the 19 repos carry BOTH tiers, so the field DOES discriminate.\nripgrep example: every one of its 11 package nodes is tier 1 with a real\nreason (\"in workspace globset\", \"in workspace matcher\", ...).\n\nBUT TIER IS STILL NOT THE RIGHT DISCRIMINATOR, for a reason the item did not\nanticipate. Tier on a package node is derived from the DECLARING FILE PATH, so\na genuinely third-party package declared in an in-repo manifest reads\nfirst_party:\n    cmake:CMakeLists.txt:204-204:\"GnuTLS\":package  tier=1  reason=\"default\"\nGnuTLS is not libzmq. Suppressing on tier-1-package would hand a false clean\nverdict to exactly the population this gate protects — the failure direction\nthe item correctly refused to guess at.\n\nSO THE CONCLUSION SURVIVES, WITH A CORRECTED REASON: first-party-ness must come\nfrom the MANIFEST, read directly (Cargo.toml [package] name, go.mod module,\npackage.json name, pyproject [project].name), not from a graph-node property.\nThat is also the cross-language follow-up already documented in\ncli._classify_symbols's own docstring.\n\nNOT REUSABLE, checked: sketch._detect_project_binary_names scrapes every\n`name = \"...\"` in Cargo.toml (including dependency tables) and keeps only the\nLAST component of the go module path — caddy needs the full\ngithub.com/caddyserver/caddy/v2. Wrong question."  # 9824
+- op: update  # 7829
+  at: '2026-08-27T20:45:19Z'  # 7829
+  by: agent  # 7829
+  actor: jgstern_agent  # 7829
+  clock: 4  # 7829
+  nonce: '7829'  # 7829
+  set:  # 7829
+    status: satisfied  # 7829
+- op: discuss  # e307
+  at: '2026-08-27T20:45:19Z'  # e307
+  by: agent  # e307
+  actor: jgstern_agent  # e307
+  clock: 5  # e307
+  nonce: e307  # e307
+  message: "SATISFIED in PR #580 (merged, dev at bd62f9330d). Re-verified on the MERGED\ntree, on the item's own repro and its own instrument (recomputing the gate over\neach repo's cached survey):\n\n  bellman  15 -> 14   no longer reports  bellman.VerificationError\n  caddy   158 -> 151  no longer reports  github.com/caddyserver/caddy/v2\n                      + caddyconfig/caddyfile, internal/metrics,\n                        modules/caddyhttp, modules/caddypki, modules/caddytls,\n                        notify   (4 named in the item, 3 it had not found)\n  Nothing ADDED in either arm.\n\nMECHANISM. A third first-party test, supply_chain.collect_first_party_package_names,\nreads the published name from Cargo.toml [package].name, go.mod module, and\npackage.json name; cli.cmd_verify_claims computes it once from repo_root and\nthreads it to both coverage call sites the way higher_fidelity_available does.\nThe match is component-bounded, so `caddy` cannot swallow `caddyserver` nor\n`bellman` swallow `bellmanx` -- pinned by tests, because suppression here can\nonly ever HIDE a real dependency.\n\nNOT VIA supply_chain_tier, per the refutation recorded above: the tier IS\npopulated (187/609/0 over 796 package nodes), but it is derived from the\nDECLARING FILE'S path, so a third-party package declared in an in-repo manifest\nreads first_party (cmake GnuTLS at tier 1). The manifest is read directly.\n\nCONTROLS, which are the actual result since this is the false-clean direction:\n  - bellman still reports blake2s_simd::Params, rand, rayon, ff.Field\n  - caddy still reports the whole Go stdlib (archive/tar, crypto/*, ...)\n  - corpus-wide over 42 surveys: 154 suppressed, 0 ADDED, 10/42 repos moved\n  - each of the 154 re-checked against its repo's DECLARED DEPENDENCIES:\n    90 collide, and all 90 are the workspace-sibling shape INV-nuzas/ADR-0041\n    D8a already rules first-party (ripgrep grep::pcre2; lila's 118 are all its\n    own ui/lib and ui/bits frontend modules).\n  - narrowing to names declared ONLY as a registry version leaves 4, in 2 repos\n    (@y-sweet/{client,react,sdk}, @simplex-chat/types): a monorepo that\n    publishes to npm and has a sub-project depend on itself BY VERSION. The\n    name is still the repo's own and the source is in the tree, so suppression\n    matches the statement; what is NOT established is whether that sub-project\n    resolves to the in-repo copy or an installed one. Disclosed in the\n    collector docstring rather than asserted away.\n\nSIZING CONFIRMED AS FILED: no verdict moves. qualifying_only is `not unknown`,\nand 14 / 151 entries still withhold both repos. This is noise reduction that\nmakes the remainder readable; the remainder is stdlib enumeration (WI-lutuh).\n\nSCOPE NOT TAKEN, filed rather than chased: Python is deliberately excluded (a\npyproject DISTRIBUTION name is not the module spelling, and path-derivation\nalready covers it). Java/pom.xml, Elixir/mix.exs, Ruby/gemspec, Swift/Package.swift\nand Haskell/.cabal are untested analogues -- 22 of the 42 corpus repos have no\ncargo/go/npm manifest name at all, several reporting hundreds of modules\n(eclipse.jdt.ls 643, ResearchKit 396, plasma-desktop 376), so whether any of\nthose counts include self-references is UNMEASURED, not known-absent."  # e307

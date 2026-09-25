@@ -31,3 +31,30 @@
   set: {}  # 56c1
   add:  # 56c1
     tags: [io_boundary, analysis_quality, external_potential]  # 56c1
+- op: update  # 0948
+  at: '2026-09-11T10:27:49Z'  # 0948
+  by: agent  # 0948
+  actor: jgstern_agent  # 0948
+  clock: 3  # 0948
+  nonce: '0948'  # 0948
+  set: {}  # 0948
+  add:  # 0948
+    tags: [dead_code]  # 0948
+- op: update  # 164c
+  at: '2026-09-11T10:29:16Z'  # 164c
+  by: agent  # 164c
+  actor: jgstern_agent  # 164c
+  clock: 4  # 164c
+  nonce: 164c  # 164c
+  set:  # 164c
+    fields:  # 164c
+      priority:  # 164c
+      status:  # 164c
+      tags:  # 164c
+- op: discuss  # 6476
+  at: '2026-09-25T17:59:23Z'  # 6476
+  by: agent  # 6476
+  actor: jgstern_agent  # 6476
+  clock: 5  # 6476
+  nonce: '6476'  # 6476
+  message: "P2 REVIEW 2026-09-25 (dev e4a47383ab). STILL EMPTY; two new data points. Status unchanged.\n- hypergumbo self (fresh `survey .` at dev, 53,828 nodes): 2,153 nodes carry meta.external_boundary. io-boundaries total_io_edges 1,830, external_potential_edges 0.\n- koel (TS/PHP, fresh `run .`): total_io_edges 75, external_potential_edges 0.\nRepos measured now number 6, all 0. The four candidate rejection points in the root_cause field were not re-investigated."  # 6476

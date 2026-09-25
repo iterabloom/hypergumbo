@@ -240,6 +240,19 @@ class TestSchemaValidation:
         validator = make_validator(schema, "Edge")
         validator.validate(edge.to_dict())
 
+    def test_edge_with_empty_derived_from_validates(self):
+        """INV-rukor: ``derived_from=[]`` is a linker's positive "consumed no
+        graph record" (both ends minted from a file scan), distinct from
+        ``null``. The schema had ``minItems: 1`` and rejected it."""
+        from hypergumbo_core.ir import Edge
+
+        edge = Edge.create(
+            src="a", dst="b", edge_type="calls", line=1,
+            origin="ipc-linker", origin_run_id="uuid:1", derived_from=[],
+        )
+        assert edge.to_dict()["derived_from"] == []
+        make_validator(load_schema(), "Edge").validate(edge.to_dict())
+
     def test_analysis_run_validates(self):
         """An AnalysisRun validates."""
         from hypergumbo_core.ir import AnalysisRun
@@ -542,6 +555,10 @@ class TestSchemaDataclassSync:
         run_sample.skipped_passes = [{"pass": "p", "reason": "r"}]
         run_sample.failed_files = [{"path": "x.py", "reason": "boom"}]
         run_sample.warnings = ["w"]
+        # INV-bikaj: silence_reason is conditional too — omitted when the pass
+        # emitted something (NOT APPLICABLE), so a productive sample would not
+        # carry the key. Populate it for the fully-populated comparison.
+        run_sample.silence_reason = "unreported"
         # INV-nuzal: node.quality is conditional (omitted when None), so populate
         # it for the fully-populated key-set comparison.
         symbol_sample = Symbol(
@@ -550,16 +567,23 @@ class TestSchemaDataclassSync:
             origin=["python"], origin_run_id="uuid:1",
         )
         symbol_sample.quality = {"score": 0.9, "reason": "sample"}
+        # ADR-0057 §6 (WI-binis): the provenance slot is conditional on both
+        # Symbol and Edge — present only on a record the merge pass folded.
+        symbol_sample.attribution = {"kind": ["python"]}
+        symbol_sample.alternatives = {"kind": [{"value": "method", "origin": ["pyscip"]}]}
+        edge_sample = Edge.create(
+            src="a", dst="b", edge_type="calls", line=1,
+            origin="python", origin_run_id="uuid:1",
+            evidence_lang="python",
+            dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
+            derived_from=["sym:1"],
+        )
+        edge_sample.attribution = {"confidence": ["python", "pyscip"]}
+        edge_sample.alternatives = {"confidence": [{"value": 0.5, "origin": ["python"]}]}
         samples = {
             "Span": span,
             "Symbol": symbol_sample,
-            "Edge": Edge.create(
-                src="a", dst="b", edge_type="calls", line=1,
-                origin="python", origin_run_id="uuid:1",
-                evidence_lang="python",
-                dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
-                derived_from=["sym:1"],
-            ),
+            "Edge": edge_sample,
             "AnalysisRun": run_sample,
         }
         for def_name, instance in samples.items():

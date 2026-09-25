@@ -1,0 +1,20 @@
+- op: create  # 3e1d
+  at: '2026-09-22T20:26:09Z'  # 3e1d
+  by: agent  # 3e1d
+  actor: jgstern_agent  # 3e1d
+  clock: 1  # 3e1d
+  nonce: 3e1d  # 3e1d
+  data:  # 3e1d
+    kind: work_item  # 3e1d
+    title: "wasm_bindgen mints the importing file id with 0-0, so its imports edge src never matches the canonical 1-1 file node"  # 3e1d
+    status: todo_hard  # 3e1d
+    priority: 3  # 3e1d
+    parent:  # 3e1d
+    tags:  # 3e1d
+    - analysis_quality  # 3e1d
+    isbefore: []  # 3e1d
+    duplicate_of: []  # 3e1d
+    not_duplicate_of: []  # 3e1d
+    pr_ref:  # 3e1d
+    description: "wasm_bindgen.py (~line 456) mints the importing file's id as\n\n    src_id = f\"{sym.language}:{rel_path}:0-0:file:file\"\n\n`0-0`, where the canonical `make_file_id` shape is `{lang}:{path}:1-1:file:file`. So the `imports` edge's src never equals the real file Symbol's id and dangles (a shadow id). Same class as INV-ronuf / INV-movor / INV-bahov, which fixed the non-canonical file id in websocket / js_module / vue_component.\n\nFound by the WI-latup derived_from sweep (verdict group 5).\n\nFIX SHAPE: `make_file_id(sym.language, rel_path)`; add a fixture test asserting the edge src is an existing node id. Check the sibling `wasm_import` id at ~line 272 (`0-0:{import_name}:wasm_import`) against the node-id grammar (ADR-0036) while there."  # 3e1d
+    fields: {}  # 3e1d

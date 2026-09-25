@@ -40,13 +40,27 @@ summaries:
     param_to_return: {}
     side_effect: true
 
+  # THE Fprint FAMILY IS NOT A DEAD END, and carried the dead-end marker until
+  # 2026-09-14. `side_effect` is the POSITIVE claim that "the taint stops here
+  # and nothing derived from it comes back" (see FunctionSummary's docstring),
+  # and that is false of a writer-first function: `fmt.Fprintf(&buf, "%s", x)`
+  # leaves x IN buf, which the caller then reads. Measured before removal, with
+  # fmt.Sprintf as a passing control:
+  #     secret -> Fprintf(&buf, ...) -> buf -> sink   walk returned False
+  # and since WI-kabif a False REMOVES the flow. The entry's own comment said
+  # "writes to arg 0" while the marker claimed otherwise.
+  #
+  # KEPT RATHER THAN DELETED, as a tombstone: an absent entry and an entry with
+  # no marker behave identically (both "unexpressed", so no termination), but
+  # only one of them tells the next author why it must stay that way.
+  #
+  # Modelling where the value actually GOES needs a param->param notion the
+  # dataclass does not have (`param_to_self` is receiver-oriented). That is
+  # WI-potan; not terminating is correct and safe without it.
   - function: "fmt.Fprintf"
-    param_to_return: {}       # writes to arg 0; the formatted args do not return
-    side_effect: true
-
+    param_to_return: {}
   - function: "fmt.Fprintln"
     param_to_return: {}
-    side_effect: true
 
   # Errorf and Sprintf PROPAGATE — the formatted arguments are exactly what the
   # returned error/string carries. Marking either terminating would delete real

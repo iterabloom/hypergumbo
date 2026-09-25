@@ -16,6 +16,16 @@ from hypergumbo_lang_extended1.solidity import (
 )
 
 
+# INV-lapas: these tests select the callable they care about; they do not
+# assert its kind. A Solidity function inside a contract is now a ``method``
+# and a file-scope one stays a ``function``, so a selector pinned to either
+# literal would silently find nothing and the test would fail for a reason
+# unrelated to its subject. The kind contract itself is owned by
+# ``test_solidity_member_kind.py`` — one test file owns it, the rest are
+# agnostic, so a future kind change breaks exactly one file on purpose.
+_CALLABLE_DECL_KINDS = frozenset({"function", "method"})
+
+
 def make_solidity_file(tmp_path: Path, name: str, content: str) -> None:
     """Create a Solidity file with given content."""
     (tmp_path / name).write_text(content)
@@ -94,7 +104,7 @@ contract Contract {
 }
 """)
         result = analyze_solidity(tmp_path)
-        funcs = [s for s in result.symbols if s.kind == "function"]
+        funcs = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS]
         assert any("add" in f.name for f in funcs)
 
 
@@ -172,6 +182,7 @@ pragma solidity ^0.8.0;
 
 import "./IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+
 """)
         result = analyze_solidity(tmp_path)
         imports = [e for e in result.edges if e.edge_type == "imports"]

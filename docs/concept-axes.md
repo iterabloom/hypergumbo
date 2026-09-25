@@ -193,6 +193,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`output`** — Output symbol (Terraform / shader). CANONICAL per audit-findings 0007.
 - **`package`** — Package declaration (CMake `find_package`, VHDL `package`, Go `package`, JS `package.json` synthesis, etc.). CANONICAL per audit-findings 0005.
 - **`paragraph`** — Paragraph symbol (markdown / docs). CANONICAL per audit-findings 0007.
+- **`parameter`** — Formal parameter in a callable's signature.
 - **`partial`** — Partial symbol (template). CANONICAL per audit-findings 0007.
 - **`participant`** — Participant symbol (mermaid). CANONICAL per audit-findings 0007.
 - **`pattern`** — Pattern symbol (DSL / regex). CANONICAL per audit-findings 0007.
@@ -243,6 +244,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`trigger`** — Pipeline / DB trigger symbol. CANONICAL per audit-findings 0006.
 - **`type`** — Type declaration (TypeScript type, Haskell type, etc.).
 - **`type_alias`** — Type alias declaration.
+- **`type_parameter`** — Generic type parameter on a type or callable (Rust/Java/TypeScript ``<T>``).
 - **`typedef`** — C/C++ typedef declaration.
 - **`union`** — Union / sum-type declaration.
 - **`value`** — Value symbol (key-value DSLs). CANONICAL per audit-findings 0007.
@@ -361,6 +363,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`jsx_element`** — Edge inferred from a JSX element reference.
 - **`link`** — Edge inferred from an OTP link/monitor relationship. _(derived confidence 0.95)_
 - **`luajit_ffi_lookup`** — Edge inferred from a LuaJIT FFI symbol lookup. Cluster B canonical for `luajit_ffi_unresolved` (ADR-0028 §Phase 3 Cluster B / WI-nunal).
+- **`macro_expansion`** — Edge inferred by expanding a preprocessor macro whose definition the analyzer did not parse (INV-zihor: erlang's OTP ?LOG_* levels). The call is real after preprocessing but was never in the AST, so it is NOT ``ast_call`` -- a consumer distinguishing a call the analyzer SAW from one it INFERRED reads this field. _(derived confidence 0.80; 0.40 when unresolved)_
 - **`make_prerequisite`** — Edge inferred from a Make/CMake prerequisite declaration.
 - **`message_send`** — Edge inferred from a message-send construct (Erlang `!`, Smalltalk). _(derived confidence 0.90)_
 - **`method_reference`** — Edge inferred from a method reference (Java `::method`, etc.). _(derived confidence 0.85)_
@@ -423,14 +426,14 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 
 `Edge.create` derives `Edge.confidence` from the edge's `evidence_type` via `derive_confidence(evidence_type, is_resolved)` — detection *reliability*, not ranking prominence (that lives on `rank_score`). Values sit in the analyzer/linker band **0.30–0.95**; 1.0 is a reserved ceiling, since no detection method is certain. See [spec §12](hypergumbo-spec.md#12-confidence-scoring) for the model and [ADR-0039](adr/0039-confidence-separation.md) for the ruling.
 
-**80 of 125 pathways are seeded.** Each base is the edge-weighted modal confidence that pathway's producers historically hardcoded, so the migration off literal `confidence=` sites preserved the dominant cohort and collapsed per-emitter outliers onto one canonical value.
+**81 of 126 pathways are seeded.** Each base is the edge-weighted modal confidence that pathway's producers historically hardcoded, so the migration off literal `confidence=` sites preserved the dominant cohort and collapsed per-emitter outliers onto one canonical value.
 
 | Derived confidence | Pathways |
 |---|---|
 | **0.95** | `ast_attribute`, `ast_decorator`, `ast_extends`, `ast_implements`, `ast_import`, `ast_new`, `behaviour`, `bridging_header_import`, `build_dependency`, `build_target_main`, `canonical_name`, `dockerfile_copy_from`, `dockerfile_from`, `extends`, `hg_annotation`, `import`, `import_declaration`, `import_directive`, `import_statement`, `import_static`, `include`, `include_directive`, `link`, `module_source`, `open`, `open_import`, `reference`, `require`, `require_statement`, `source_statement`, `static`, `subdir_include`, `trait_impl`, `use`, `use-package`, `use_declaration`, `use_directive`, `using_directive` |
 | **0.90** | `ast_method_this_property`, `behaviour_callback`, `enclosing_scope`, `import_to_manifest`, `instance`, `message_send`, `notify`, `require_static`, `span_overlap`, `typeclass_instance` |
 | **0.85** | `ast_call`, `ast_call_direct`, `ast_call_type_inferred`, `ast_method_type_inferred`, `ast_name_read`, `ast_type_ref`, `async_spawn`, `closure_wrapper`, `dispatch_table_reference`, `eta_expansion`, `function_pointer`, `method_reference`, `module_attribute_reference`, `module_identifier_reference`, `naming_convention`, `signal_constraint`, `stack_construction`, `type_hierarchy` |
-| **0.80** | `ast_call_extension`, `ast_call_ufcs`, `function_reference`, `hash_field_reference`, `object_field_reference` |
+| **0.80** | `ast_call_extension`, `ast_call_ufcs`, `function_reference`, `hash_field_reference`, `macro_expansion`, `object_field_reference` |
 | **0.75** | `callback_argument_reference`, `grpc_stub_resolution`, `module_export_heuristic` |
 | **0.70** | `ast_method_inferred`, `dispatch_pattern`, `function_reference_arg`, `struct_field_reference` |
 | **0.50** | `ast_annotation` |
@@ -442,6 +445,7 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 |---|---|---|
 | `ast_call` | 0.85 | 0.40 |
 | `ast_call_direct` | 0.85 | 0.50 |
+| `macro_expansion` | 0.80 | 0.40 |
 
 **Unseeded (45).** `derive_confidence` returns `None` for these, so the producer keeps whatever literal it emits and `confidence_source` stays `emitter_constant`. That is the honest state, not a gap to paper over: an unseeded pathway has no measured modal cohort to seed from. Seeding one is a producer-side migration (the ADR-0039 ruling-1 shape), not a documentation change.
 
@@ -450,3 +454,162 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 `alias_resolution`, `ast_call_inherited`, `ast_call_inherited_field`, `ast_call_inherited_method`, `ast_call_namespace`, `ast_call_static`, `ast_call_this`, `ast_call_this_property`, `ast_cite`, `ast_include`, `ast_includes`, `ast_method_this`, `ast_package`, `ast_perform`, `ast_ref`, `ast_static_call`, `callable_reference`, `cffi_call`, `cffi_stdlib_call`, `cgo_call`, `cmake_target_link`, `constructor_reference`, `ctypes_call`, `ctypes_stdlib_call`, `designated_init_fptr`, `dispatch_table_initializer`, `function_pointer_arg`, `import_resolution`, `interface_dispatch`, `ipc_channel_match`, `jsx_element`, `luajit_ffi_lookup`, `make_prerequisite`, `qualified_call`, `recipe_dependency`, `require_alias_call`, `schema_relation`, `scip_occurrence_ref`, `scip_relationship`, `sql_foreign_key`, `topic_match`, `tree_sitter`, `variable_match`, `verilog_instantiation`, `vhdl_architecture`
 
 </details>
+
+
+---
+
+## `io_boundary` — the I/O-boundary axis (ADR-0050)
+
+**Axiom.** A boundary value names *what data crosses the process boundary at
+this call site, in which direction* — not what the program is thereby arranged
+to do later.
+
+Six consumers branch on this vocabulary (`AUTO_SOURCE_LABEL_MAP`,
+`OPAQUE_BOUNDARIES`, `_DISCLOSED_ONLY_BOUNDARIES`, `DEFERRED_CROSSING_SHADOWS`,
+`verify-claims`' claim validation, and the CLI's `--io-boundary` filter), which
+is why it is registry-backed rather than a documented enumeration. Two
+properties are carried per value rather than as sections, because both cut
+across the axis partition: whether a catalogue may declare the value
+(`_parse_catalog` iterates exactly the declarable names) and whether it counts
+in the `total_io_edges` headline (`subprocess` is opaque *and* counted).
+
+### `data_crossing` — ADR-0050 compliant
+
+Values that name what data crosses the process boundary at this call site, and in which direction. Per ADR-0050 this is the only axis a new catalogue-declarable boundary should occupy.
+
+- **`browser_storage_read`** — Read from browser-local storage. Like fs_read and for the same reason, deliberately NOT in AUTO_SOURCE_LABEL_MAP: sensitivity depends on what is stored, so a project-local catalogue adds its own taint_sources rows for its threat model.
+- **`browser_storage_write`** — Write to browser-local storage (localStorage and peers). Structurally distinct from the host filesystem -- reachable via XSS, not via local-user FS access (WI-lokuv).
+- **`db_read`** — Read from a database or persistent store -- java.sql.Connection, erlang ets/dets, CoreData NSManagedObjectContext, sqlite3.
+- **`db_write`** — Write to a database or persistent store -- java.sql.Statement, erlang ets/dets, CoreData NSManagedObjectContext.
+- **`env_read`** — Read ambient CONFIGURATION -- values that may carry a credential. Narrowed by INV-tutar: host description and user identity are host_info_read, not this. Mints a host_secret taint source, which is why the narrowing mattered.
+- **`env_write`** — Mutate the process environment -- os.environ assignment, std::env::set_var, System.Environment setEnv.
+- **`fs_read`** — Read data from the local filesystem. Deliberately QUIET as a taint source -- sensitivity depends on what is stored, so it mints nothing (ADR-0016 risk-classification note).
+- **`fs_write`** — Write data to the local filesystem.
+- **`host_info_read`** — Read host DESCRIPTION or user identity -- not a secret (split from env_read by INV-tutar) -- INCLUDING THE CLOCK (WI-pavob). Fires almost universally, so its discriminating power is deliberately low and that was accepted on the record.
+- **`ipc_recv`** — Receive data from another process -- stdin, a pipe read, shared memory read.
+- **`ipc_send`** — Send data to another process -- stdout write, pipe write, shared memory write. See the module docstring's gap 2: the stdout half overlaps `logging`, unsettled.
+- **`logging`** — Emit data to a log sink -- java.util.logging.Logger, go fmt/io print, Prelude.putStrLn, Swift print. THE ONE CANONICAL VALUE NAMING A PURPOSE RATHER THAN A MEDIUM, and it overlaps ipc_send on stdout. First candidate for a per-value audit; see the module docstring, gap 2. No row moves on that note.
+- **`net_recv`** — Receive data from the network. Shadowed by net_listen: a deferred-crossing site blocks a clean net_recv verdict and nothing else (ADR-0049 ruling 2).
+- **`net_send`** — Send data to the network. Egress risk is additionally graded by the supply-chain dst_tier rather than by this value alone.
+- **`process_send`** — Send a message to another runtime-managed process or actor -- erlang send, Control.Concurrent. Distinct from ipc_send: the far side is a peer inside the same runtime, not an OS pipe.
+
+### `opacity` — control left this process
+
+The call is correctly classified and the analysis cannot see past it, so it does not license "I looked and found nothing". Split by channel: `subprocess` is catalogue-declared, `command_launch` is producer-stamped, and each is reachable through exactly one of them.
+
+- **`command_launch`** — The same question as subprocess -- did control leave this process? -- asked of the producer-stamped channel (INV-larol). bash.py stamps it directly because there is no bash catalogue and per ADR-0016 there is not going to be one: cataloguing curl as net_send would attribute curl's network activity to the shell script. Definite but uncurated, so disclosed and excluded from the headline.
+- **`subprocess`** — Launch or communicate with a child process. OPAQUE: control left this process for a program whose behaviour is not in the edge set, so a subprocess site withholds a clean verdict on EVERY boundary. Without that, a program whose only statement was subprocess.run(['curl', '-o', '/etc/cron.d/pwned', ...]) returned confirmed rc 0 for both fs_write and net_send must_not_exist claims. The one boundary carrying the display-only high_risk marker (ADR-0016).
+
+### `deferred_crossing` — disclosed, never minted (ADR-0049)
+
+The call ARRANGES a crossing it does not itself perform — exactly what the axiom's second clause excludes from `data_crossing`, which is why it is a section rather than a violation. Each value shadows the data boundary it makes unexaminable.
+
+- **`db_compose`** — Compose a query that has run nothing -- Django's QuerySet combinators (filter / exclude / order_by / ...), ADR-0049 ruling 4's Lazy row. The read happens when the query is EVALUATED (iterated, indexed, materialised), and the python analyzer emits that evaluation as its own db_read call site (WI-fasap); where the evaluation is in a scope this call does not name (a QuerySet returned, handed to a form or a paginator) the read is invisible, which is what the shadow over db_read discloses. DISCLOSED, NEVER MINTED, for net_listen's reason. NOT named `db_query`: that string is the database_query linker's call_kind and names a call that EXECUTES a query -- the opposite reading.
+- **`net_listen`** — Bind or accept: the call ARRANGES inbound network data to arrive somewhere it does not name, and returns no such data itself. DISCLOSED, NEVER MINTED (ADR-0049). Its shadow over net_recv is required, not optional -- since INV-buzab a classified call is what `examined` means, so a tag that mints nothing would still count as an examined negative and hand verify-claims a green tick over live ingress.
+
+### `speculative` — synthesised uncertainty
+
+Not a classification but an admission that the call could not be matched. Declarable by no catalogue, and excluded from the `total_io_edges` headline.
+
+- **`external_potential`** — Synthesised by _compute_external_potential for an unmatched first-party call edge: receiver-unresolved speculative noise that MIGHT be I/O. Not a classification, an admission of uncertainty -- hence no direction.
+
+
+---
+
+## `module_key` — the module-key axis (ADR-0051)
+
+**Axiom.** The module key names the STATIC OWNER PATH of the called symbol -- the namespace or type in which it is DEFINED, spelled in the source language's import vocabulary. It is not a property of the CALL SITE: not the receiver's variable name, not a set of candidates, and not a marker for the absence of an answer.
+
+One fact with two homes by design — `IoPrimitive.module` on the catalogue side
+and `ExternalRef.module_path` on the edge side — paired by
+`io_boundary._module_matches`.
+
+This is a **structural-policy** axis, not a registry of values: module names
+cannot be enumerated, so what is declared is the set of *notions* a slot may
+carry. `ExternalRef.module_path` previously declared `# axis: free-text` with
+the justification "consumers display/lookup, never branch on the value itself",
+which `_module_matches` contradicts — it infers type-vs-sub-package from
+capitalisation. The lint accepted it because a free-text justification must be
+*present*, not *true*.
+
+### `owner_path` — ADR-0051 compliant
+
+Notions that name where the callee is DEFINED. A type belongs here alongside a namespace: a method-shaped primitive is unaddressable without its owning type, and the catalogues have always spelled it that way.
+
+- **`namespace`** — A package, module or import path: os, java.io, net/http, std::fs, node:fs/promises, ./relative/module. The value that would appear in a clean import statement -- NOT the in-scope alias, which is a property of the importing file. C and C++ header names (<string.h>) are namespaces in this sense, and so are JS/TS relative paths: 2.7% of shipped refs, legitimate.
+- **`type`** — The class or type that OWNS a method-shaped primitive: net.Conn, std::fs::File, java.sql.Connection, pathlib.Path. Conformant because a type names where the symbol is DEFINED. This is not a concession -- a method primitive is unaddressable without it, and IoPrimitive.module's own docstring says 'the module or class path'. It is also what makes the capitalisation heuristic in _module_matches necessary: that predicate is trying to recover whether an extra component is a type (same owner) or a sub-package (different owner), which the axis says should be DECLARED rather than inferred from spelling.
+
+### `call_site_property` — belongs on the call site, not in the key
+
+Notions that name the CALL SITE rather than the definition. The same primitive reached through a differently-named variable gets a different key, which is the defect. Correct home is `Edge.meta`, where the receiver's type is already stamped.
+
+- **`receiver_variable`** — The spelling of the receiver at ONE call site -- resp, session, request, fileIO. Non-conformant: a local binding is not where the callee is defined, and the same primitive reached through a differently-named variable gets a different key. Its correct home is Edge.meta on the call site, where the receiver's TYPE is already stamped as receiver_type_hint. _module_matches carries an explicit Swift carve-out for this shape (catalogue name ends with hint, never the reverse), which is the tell: the predicate has a special case whose only purpose is to tolerate a non-conformant value.
+
+### `uncertainty` — honest admissions, not identities
+
+The analyzer genuinely does not know which module, and says so. Non-conformant as an identity while being the right answer to the question; these want their own field rather than removal.
+
+- **`disjunction`** — A comma-joined SET of candidate modules -- cpp joins every #include in the file, because a call in that unit could come from any of them, and since WI-bapuk PREPENDS the namespace a `std::`-qualified call names (or, for an unqualified call, a `using namespace` the file declares), because that is another home the call could have come from. 6.2% of shipped refs. Non-conformant as an IDENTITY while being the honest answer to the question: the analyzer genuinely does not know which. Already handled downstream by two deliberately different quantifiers -- _module_hint_candidates asks ANY (INV-funuf) and module_hint_disjuncts asks ALL (INV-zimud) -- which is why the shape wants its own field rather than removal.
+- **`sentinel`** — A fixed marker standing for 'no module identity was recovered': 'external' (1.5% of refs) and bash's 'redirect' (0.1%, whose name slot is '>' -- not a call at all). Non-conformant as an identity, and load-bearing as an admission: io_boundary and taint share _UNRESOLVED_MODULE_PLACEHOLDERS_IO precisely so the two cannot drift about what 'no module' looks like.
+
+### `pending_classification` — per-value audit pending
+
+Genuinely contested. Ruling these in the axis declaration would be the undisciplined move the axis exists to prevent; verdicts arrive with each value's audit-findings document.
+
+- **`global_object`** — An ambient runtime object used as the owner path: process, window, document, navigator, console, localStorage. DELIBERATELY UNRULED. The case FOR conformance is real -- you do not import `process` in node, so the global's name IS how JS's vocabulary spells that owner path, and js_ts.py maps each to itself in the import map for exactly that reason. The case AGAINST is that these name a VALUE rather than a definition site, which is the receiver-variable objection one step up. Ruling this in the declaration would be the undisciplined move the axis exists to prevent; it is the first candidate for a per-value audit under ADR-0024's family-audit methodology, and NO ROW MOVES on this note.
+
+
+---
+
+## `signature` — the callable-signature axis (ADR-0058)
+
+**Axiom.** Symbol.signature preserves the DECLARATION SURFACE of a callable, verbatim, in the source language's own grammar, for DISPLAY. Every fact inside it -- return type, parameter arity, a field's declared type -- is a property of the symbol and is read from its declared home, never parsed back out of this string.
+
+A **structural-policy** axis, for the same reason `module_key` is one:
+signature strings cannot be enumerated, so what is declared is the set of
+*notions* a slot may carry.
+
+`Symbol.signature` previously declared `# axis: free-text` with the
+justification "consumers display, never branch on the value itself", while
+nine shipped consumers parsed the value. That is ADR-0051's defect one field
+over, and it stood for the same reason: a `free-text` justification is
+required to be *present*, not *true*. ADR-0024 named this failure in advance
+when it made the justification mandatory — `free-text` is "the only category
+whose 'this is the right call' claim isn't anchored elsewhere ... so it would
+otherwise be the natural can-kicker."
+
+Measured over a survey of this repository: 38,573 of 52,983 symbols carry a
+signature, of which 36,662 are a callable surface and **1,911 (4.95%) are a
+bare value type on a symbol that is not callable** — 1,886 fields and 25
+variables, 1,817 of them Python.
+
+### `declaration_surface` — ADR-0058 compliant
+
+The callable's parameter-and-return surface, preserved verbatim for a reader. This is the only notion the field's name describes, and the only one a new producer should write.
+
+- **`callable_surface`** — The parameter-and-return surface of a callable as its own grammar spells it: '(self) -> int', 'func(a string) error', 'fn new(cfg: &Config) -> Self'. 36,662 of 38,573 populated slots. Conformant: it is the declaration, preserved for a reader, and it is the only notion the field's name describes.
+
+### `foreign_fact` — a fact with a home elsewhere
+
+A fact that is real and worth having but is not a signature, so the slot is answering a question the symbol did not ask. Each one names the declared home it belongs in; see the fact-home table below.
+
+- **`value_type`** — The declared type of a symbol that is NOT callable -- a field or a variable: 'int', 'list[Edge]', "'Mapping[str, str]'", "&'static str". 1,911 of 38,573 populated slots (4.95%): 1,886 fields and 25 variables; python 1,817, rust 49, typescript 35, and single digits in java, swift, csharp, go, solidity. Non-conformant: a field has no signature, so the slot is answering a question the field did not ask. The fact is real and worth having -- its home is FileAnalysis.class_field_types, which csharp and cpp populate.
+
+### `pending_classification` — per-value audit pending
+
+Not yet argued. Deriving conformance from the section means this reads as non-conformant until someone makes the case, which is the direction that cannot manufacture a false all-clear.
+
+_(empty — no values currently classified on this axis)_
+
+
+### Where the facts inside a signature are declared
+
+A consumer needing one of these reads its home. The nine that parse the string instead are grandfathered, not exemplary.
+
+| Fact | Declared home | Populated by |
+| --- | --- | --- |
+| `return_type` | `FileAnalysis.method_return_types` | go, rust, swift, objc |
+| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 15 analyzers, including py.py |
+| `value_type` | `FileAnalysis.class_field_types` | csharp, cpp |
+
+**Closed parser set.** 8 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on any site not among them. Adding one is a decision, and that gate is where it gets made. The count may only go DOWN — it was 9 at declaration and each drop is one language reading its declared home instead.

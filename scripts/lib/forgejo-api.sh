@@ -30,6 +30,29 @@ _FORGEJO_API_LOADED=1
 # shellcheck source=scripts/lib/github-api.sh
 source "${BASH_SOURCE[0]%/*}/github-api.sh"
 
+# WI-sidot: the vendor-attribution scrub. Every script that publishes text to
+# the forge sources THIS file, so wiring the scrub here is what makes one
+# pattern list govern every channel -- rather than the commit-msg hook governing
+# one channel and five others going unscrubbed because nobody thought of them.
+#
+# FAIL CLOSED. If the library is missing we do not quietly continue with no
+# scrub -- that is exactly the state this work exists to end. We install stubs
+# that refuse, so an attempt to publish dies loudly instead of publishing
+# unscrubbed text. A missing library is a broken checkout, not a licence.
+_FA_BRAND_SCRUB="$(cd "${BASH_SOURCE[0]%/*}/../.." 2>/dev/null && pwd)/.githooks/brand-scrub.sh"
+if [[ -r "$_FA_BRAND_SCRUB" ]]; then
+	# shellcheck source=.githooks/brand-scrub.sh
+	source "$_FA_BRAND_SCRUB"
+	bs_init
+else
+	bs_scrub_title() {
+		echo "❌ brand-scrub.sh not found at $_FA_BRAND_SCRUB — refusing to publish unscrubbed text" >&2
+		exit 1
+	}
+	bs_scrub_body() { bs_scrub_title "$@"; }
+	bs_report_scrub() { :; }
+fi
+
 # ------------------------------------------------------------------
 # detect_forge_backend [REMOTE_URL]
 #   Set FORGE_BACKEND ("github" or "forgejo").  The HYPERGUMBO_FORGE_BACKEND
@@ -102,6 +125,35 @@ detect_api_base() {
 		API_BASE="https://$host/api/v1/repos/$REPO_SLUG"
 	else
 		API_BASE="https://codeberg.org/api/v1/repos/$REPO_SLUG"
+	fi
+}
+
+# ------------------------------------------------------------------
+# pr_web_url PR_NUM
+#   The PR's HUMAN-FACING web URL, derived from the DETECTED forge rather
+#   than hardcoded. GitHub's web path is /pull/N (singular); Forgejo/Gitea
+#   use /pulls/N.
+#
+#   ONE HOME, because it already had two and the wrong one won. auto-pr
+#   carried a correct private `_autopr_pr_web_url`, while merge-pr printed a
+#   literal `https://codeberg.org/$REPO_SLUG/pulls/$n` in two places — so
+#   `merge-pr close` on a GitHub remote emitted a codeberg.org link that is
+#   wrong in BOTH host and path segment, for a repo whose API calls were
+#   already routing correctly to api.github.com. detect_api_base() has known
+#   the answer the whole time; only the display strings had not been told.
+#
+#   The non-GitHub branch derives the host from API_BASE instead of naming
+#   codeberg.org, so a self-hosted Forgejo/Gitea gets its own URL rather than
+#   a link to someone else's server.
+# ------------------------------------------------------------------
+pr_web_url() {
+	local pr_num="$1"
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		echo "https://github.com/$REPO_SLUG/pull/$pr_num"
+	else
+		local host="${API_BASE%%/api/v1/*}"
+		[[ "$host" == "$API_BASE" || -z "$host" ]] && host="https://codeberg.org"
+		echo "$host/$REPO_SLUG/pulls/$pr_num"
 	fi
 }
 
@@ -256,6 +308,48 @@ else:
 }
 
 # ------------------------------------------------------------------
+# json_text_state FIELD_PATH   (JSON object on stdin)
+#   Print exactly one of: present | empty | null | absent | other | unreadable
+#
+#   json_bool_state's sibling, for STRING fields, and it exists for the same
+#   reason: json_field answers every one of these questions with the empty
+#   string, so a caller cannot tell "the field is genuinely empty" from "the
+#   key is gone" from "the response was not JSON at all".
+#
+#   The case that forced it is a pull request's `body`. "This PR has no
+#   description" is a true statement about the PR; "the fetch came back as
+#   garbage" is a statement about the fetch. Rendering both as nothing turns
+#   the second into a false version of the first, and the caller reports a
+#   blank description with no indication it never read one.
+#
+#   `empty` covers whitespace-only too — a body of "\n\n" carries no more
+#   information than "" and a caller branching on it wants the same answer.
+#   A non-string (a number, an object) is `other`, never silently stringified.
+# ------------------------------------------------------------------
+json_text_state() {
+	local dotpath="$1"
+	python3 -c "
+import sys, json, functools
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print('unreadable'); raise SystemExit(0)
+try:
+    val = functools.reduce(lambda d, k: d[k], '$dotpath'.split('.'), data)
+except Exception:
+    print('absent'); raise SystemExit(0)
+if val is None:
+    print('null')
+elif not isinstance(val, str):
+    print('other')
+elif val.strip() == '':
+    print('empty')
+else:
+    print('present')
+" 2>/dev/null || echo "unreadable"
+}
+
+# ------------------------------------------------------------------
 # json_array_find FIELD_PATH VALUE
 #   Find element in JSON array (on stdin) by field match.
 #   Prints the matching JSON object. Returns 1 if not found.
@@ -343,10 +437,20 @@ create_pr() {
 		return 0
 	fi
 
+	# WI-sidot: scrub at the shared sink as well as at each caller. Callers
+	# scrub so the PUSH-OPTION copy of the same text is covered too (a `-o
+	# description=` never reaches this function); this scrubs so a caller that
+	# forgets still cannot publish. Idempotent, so the double pass is free.
+	local _scrub_seed="$title" _body_before="$body"
+	title="$(bs_scrub_title "$_scrub_seed" "$title")"
+	body="$(bs_scrub_body "$body")"
+	bs_report_scrub "$_body_before" "the PR body"
+
 	local payload
 	payload=$(python3 -c "import json,sys; print(json.dumps({'title': sys.argv[1], 'body': sys.argv[2], 'head': sys.argv[3], 'base': sys.argv[4]}))" \
 		"$title" "$body" "$head" "$base") || return 1
 
+	# forge-egress: scrubbed
 	if ! api_post "$API_BASE/pulls" "$payload"; then
 		return 1
 	fi
@@ -1239,6 +1343,156 @@ _find_job_from_log_probe() {
 #   Returns: 0 = success, 1 = failure
 # ------------------------------------------------------------------
 # ------------------------------------------------------------------
+# _manifest_selected_tests FILE
+#   Emit the SELECTED_TESTS section of a manifest, one path per line.
+#   The manifest is SECTIONED: CI reads everything after the
+#   "# === SELECTED_TESTS ===" marker as the test list, and the region
+#   between "# === CHANGED_SOURCE_FILES ===" and that marker as the
+#   changed-source list. A path-prefix match is NOT a valid reader here —
+#   entries are "tests/..." for root-level tests and
+#   "packages/<pkg>/tests/..." for package tests, and which of the two a
+#   given manifest holds depends entirely on what was selected.
+#
+#   AN EMPTY SELECTION IS A SUCCESS, NOT AN ERROR (INV-zamoh). Both branches
+#   end in `grep`, and a `grep` that matches nothing exits 1. On a manifest
+#   that selects no tests -- what smart-test correctly writes for ANY
+#   docs-only or config-only diff -- the marker line is the only thing `sed`
+#   emits, `grep -v '^#'` drops it and exits 1, and the trailing `grep -v '^$'`
+#   gets no input and exits 1 too. Callers run under `set -euo pipefail`
+#   (scripts/auto-pr:3), so that status killed the shell BEFORE the `return 0`
+#   below could mask it: auto-pr died mid-push with no PR, no PR_PENDING gate
+#   and no branch on the remote. The `|| true` on each branch makes "this
+#   manifest selects nothing" the empty-output success it always meant to be.
+#   It is deliberately on BOTH arms: the else arm is reached by any manifest
+#   written before the sections existed, and half a fix is how a defect
+#   survives its own patch.
+# ------------------------------------------------------------------
+_manifest_selected_tests() {
+	local f="$1"
+	[[ -f "$f" ]] || return 0
+	if grep -q '^# === SELECTED_TESTS ===' "$f" 2>/dev/null; then
+		sed -n '/^# === SELECTED_TESTS ===/,$p' "$f" \
+			| grep -v '^#' | grep -v '^$' || true
+	else
+		grep -v '^#' "$f" 2>/dev/null | grep -v '^$' || true
+	fi
+	return 0
+}
+
+# ------------------------------------------------------------------
+# _manifest_test_count FILE
+#   How many tests a manifest selects. Exists as its own function because
+#   the caller's first cut counted with `grep -c '^packages/'` — the same
+#   path-prefix mistake _manifest_selected_tests was written to remove,
+#   left behind in the REPORTING path after the merge path was fixed. The
+#   count came out 0 for any manifest of root-level `tests/...` entries,
+#   which is the common shape, so the "kept N entries" line that makes a
+#   silent narrowing VISIBLE never printed. A diagnostic that cannot fire
+#   is worse than none: it reads as "nothing was preserved" either way.
+# ------------------------------------------------------------------
+_manifest_test_count() {
+	_manifest_selected_tests "$1" | grep -c '' || true
+}
+
+# ------------------------------------------------------------------
+# _manifest_union — the test-selection twin of _ops_union_restore_file
+#
+# Arguments: committed_file regen_file out_file
+#
+# WHY THIS EXISTS. auto-pr regenerates .ci/affected-tests.txt during the
+# push so a STALE manifest — one missing a test the new diff affects —
+# cannot reach CI. It did that by overwriting the committed manifest with
+# the slicer's output, and an overwrite destroys authored intent.
+#
+# The slicer has no data-file -> test edge (INV-bigaz): a change to
+# io_primitives/*.yaml, or any other pure-data input, slices to roughly ONE
+# test file. An author who deliberately widens the manifest to the tests
+# that actually exercise the changed data had it silently narrowed back
+# during the push — the commit looked right locally and CI ran one file.
+# Measured across three merged catalogue PRs: every one shipped a 1-file
+# manifest while its notes recorded a working 19-file extension.
+#
+# THIS IS WI-buhov'S BUG ONE DIRECTORY OVER, and it takes WI-buhov's
+# remedy: the regen MAY ADD, and MUST NEVER DROP. Union keeps the regen's
+# real job intact while making the destructive half impossible.
+#
+# STRUCTURE IS PRESERVED, NOT REBUILT. Everything up to and including the
+# SELECTED_TESTS marker is copied VERBATIM from the regenerated file: it
+# carries the "# Mode:" line the pre-commit hook gates on and the
+# CHANGED_SOURCE_FILES section CI parses separately. Only the test list
+# below the marker is merged.
+#
+# Pure: no git, no network, cwd-relative existence checks only — so it is
+# testable directly, exactly like its sibling below.
+# ------------------------------------------------------------------
+_manifest_union() {
+	local committed_file="$1"
+	local regen_file="$2"
+	local out_file="$3"
+	local tmp_body tmp_kept
+	tmp_body="$(mktemp)" || return 1
+	tmp_kept="$(mktemp)" || { rm -f "$tmp_body"; return 1; }
+
+	if grep -q '^# === SELECTED_TESTS ===' "$regen_file" 2>/dev/null; then
+		sed -n '1,/^# === SELECTED_TESTS ===/p' "$regen_file" > "$out_file"
+	else
+		grep '^#' "$regen_file" 2>/dev/null > "$out_file" || : > "$out_file"
+	fi
+
+	{
+		_manifest_selected_tests "$committed_file"
+		_manifest_selected_tests "$regen_file"
+	} | sed '/^$/d' | sort -u > "$tmp_body"
+
+	# Existence filter: a deleted test must not come back from the
+	# committed side of the union. (It also drops any non-path junk a
+	# marker-less manifest may carry.)
+	while IFS= read -r _mu_path; do
+		[[ -n "$_mu_path" && -f "$_mu_path" ]] && printf '%s\n' "$_mu_path"
+	done < "$tmp_body" > "$tmp_kept"
+
+	# FAIL-SAFE. The existence check is cwd-relative, matching this
+	# caller's long-standing assumption that auto-pr runs from the repo
+	# root (the surrounding `grep .ci/affected-tests.txt` and
+	# `git add .ci/affected-tests.txt` already assume it). Should that
+	# assumption ever break, EVERY path would fail -f and the manifest
+	# would empty — turning a guard against silent loss into silent loss,
+	# and CI would run nothing while reporting success. A filter that
+	# removed absolutely everything is not a believable answer, so fall
+	# back to the unfiltered union and let CI complain about a missing
+	# path instead of passing vacuously.
+	if [[ -s "$tmp_body" && ! -s "$tmp_kept" ]]; then
+		cat "$tmp_body" >> "$out_file"
+	else
+		cat "$tmp_kept" >> "$out_file"
+	fi
+	rm -f "$tmp_body" "$tmp_kept"
+
+	# THE HEADER MUST NOT CONTRADICT THE BODY (INV-zamoh, second defect).
+	# Copying the header verbatim is what preserves "# Mode:" and the
+	# CHANGED_SOURCE_FILES section -- but it also copies the regen's own
+	# "# Selected tests:" count, which describes a body this function just
+	# replaced. After a docs-only union the file reads "Selected tests: 0"
+	# over three real paths. Nothing consumes the count today (ci.yml
+	# recomputes it from the body it is about to run), so this is a manifest
+	# that LIES rather than one that breaks -- but "CI runs nothing while
+	# reporting success" is the precise failure the fail-safe above exists to
+	# prevent, and a header already reading 0 is that failure pre-staged for
+	# whichever consumer trusts it first. Restate it from what was written.
+	#
+	# Only ever a CORRECTION: a header with no count line does not gain one,
+	# because the header is the generator's and this is not a licence to
+	# author lines it did not write.
+	if grep -q '^# Selected tests:' "$out_file"; then
+		local union_count
+		union_count="$(_manifest_test_count "$out_file")"
+		sed -i "s/^# Selected tests:.*/# Selected tests: ${union_count}/" \
+			"$out_file"
+	fi
+	return 0
+}
+
+# ------------------------------------------------------------------
 # _ops_union_restore_file — WI-buhov data-loss fix
 #
 # Arguments: backup_file target_file
@@ -1328,6 +1582,7 @@ do_merge() {
 		local merge_payload
 		merge_payload='{"do": "squash", "delete_branch_after_merge": true}'
 
+		# forge-egress: no-agent-text -- literal merge directive; the payload has no prose field
 		if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
 			echo "✅ Squash merged!"
 			_attach_git_note "$desc" "$orig_sha"
@@ -1356,6 +1611,7 @@ do_merge() {
 	local attempt
 
 	for attempt in $(seq 1 $max_retries); do
+		# forge-egress: no-agent-text -- literal merge directive; the payload has no prose field
 		if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
 			# HTTP 2xx — verify the PR was actually merged (Forgejo sometimes
 			# returns 200 with merged:false when branch protection blocks it)
@@ -1389,6 +1645,7 @@ do_merge() {
 			echo "   Trying rebase merge (preserves individual commits)..."
 
 			local rebase_payload='{"do": "rebase", "delete_branch_after_merge": true}'
+			# forge-egress: no-agent-text -- literal merge directive; the payload has no prose field
 			if api_post "$API_BASE/pulls/$pr_num/merge" "$rebase_payload"; then
 				if _check_pr_merged "$pr_num"; then
 					echo "✅ Rebase merged! (commits rebased onto $BASE_BRANCH)"
@@ -1515,6 +1772,7 @@ do_merge() {
 
 						local rebase_merge_response=""
 						if [ "$rebase_poll_rc" -eq 0 ]; then
+							# forge-egress: no-agent-text -- literal merge directive; the payload has no prose field
 							if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
 								if _check_pr_merged "$pr_num"; then
 									echo "✅ Fast-forward merged after local rebase (iteration $rebase_attempts/$rebase_max)!"
@@ -1627,6 +1885,7 @@ do_merge() {
 					# so an API-only check (_check_pr_merged) can miss the
 					# success — mirror the INV-lovih _pr_landed_in_base
 					# git-ancestor fallback the post-rebase path already uses.
+					# forge-egress: no-agent-text -- literal merge directive; the payload has no prose field
 					api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload" || true
 					if _check_pr_merged "$pr_num" \
 					   || _pr_landed_in_base "$orig_sha" "${BASE_BRANCH:-dev}"; then
@@ -1740,6 +1999,15 @@ _closure_guard_pre_merge() {
 		echo "          scripts/tracker update <ID> --status done --note \"…repro/PR…\"" >&2
 		echo "     2. or use the auto-close opt-in line in the commit/PR body:" >&2
 		echo "          Closes-with-evidence: <ID> (PR #N; repro: <cmd> -> <result>)" >&2
+		echo "" >&2
+		echo "   WHEN YOU REWRITE THE MESSAGE: describe the CHANGE. Do NOT narrate" >&2
+		echo "   this rejection in it. The scan is a REGEX over the whole message" >&2
+		echo "   and does not care that you are quoting the offending phrase" >&2
+		echo "   disapprovingly — writing \"...said 'Fixes <ID>' and tripped the" >&2
+		echo "   guard\" RE-TRIPS IT, verbatim, and costs another CI cycle. If the" >&2
+		echo "   supersession needs recording, it belongs in the PR comment or the" >&2
+		echo "   tracker item, not the commit body. Verify before pushing:" >&2
+		echo "     git log -1 --format=%B | grep -inE '(closes|fixes|resolves)[[:space:]:]+(WI|INV|META)-'" >&2
 		return 1
 	fi
 	return 0
@@ -1925,7 +2193,21 @@ _attach_git_note() {
 
 $desc" "$new_sha" 2>/dev/null || true
 
-	git push origin refs/notes/commits --quiet 2>/dev/null || \
-	git push origin refs/notes/* --quiet 2>/dev/null || true
-	echo "   Note attached to $new_sha"
+	# NON-FATAL BUT NOT SILENT (INV-nihaz). This used to end in
+	# `2>/dev/null || true`, which discarded both the error text and the exit
+	# status -- so when the pre-push DCO gate rejected every notes push for
+	# eight months (726 of them), nothing ever surfaced: the merge had already
+	# landed and this step reported nothing. A failure here must not fail a
+	# merge that succeeded, but it must be VISIBLE on the first occurrence
+	# rather than the 726th.
+	local notes_err
+	notes_err=$(mktemp -t htrac-notes-push.XXXXXX)
+	if git push origin refs/notes/commits --quiet 2>"$notes_err"; then
+		echo "   Note attached to $new_sha and pushed"
+	else
+		echo "⚠️  Note attached to $new_sha LOCALLY, but the push FAILED (non-fatal — the merge is unaffected):" >&2
+		sed 's/^/     /' "$notes_err" >&2
+		echo "     The note exists only in this working copy until the push succeeds." >&2
+	fi
+	rm -f "$notes_err"
 }

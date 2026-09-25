@@ -1,0 +1,22 @@
+- op: create  # d263
+  at: '2026-09-09T00:54:48Z'  # d263
+  by: agent  # d263
+  actor: jgstern_agent  # d263
+  clock: 1  # d263
+  nonce: d263  # d263
+  data:  # d263
+    kind: work_item  # d263
+    title: "The taint walk's edge set has no guard that its members carry a value, and `instantiates` still targets a TYPE rather than an instance"  # d263
+    status: todo_soft  # d263
+    priority: 3  # d263
+    parent:  # d263
+    tags:  # d263
+    - taint  # d263
+    - adr_0017  # d263
+    - analysis_quality  # d263
+    isbefore: []  # d263
+    duplicate_of: []  # d263
+    not_duplicate_of: []  # d263
+    pr_ref:  # d263
+    description: "RESIDUAL OF INV-putug, filed 2026-09-08 on its closure (CLOSE ON THE FILED ROW,\nFILE THE RESIDUAL). INV-putug closed on the `dispatches_to` row it names in its\ntitle, measured by 0020. Two things it listed as \"not established\" survive it,\nand READING THE CODE reshapes them from a measurement into a guard plus a\nquestion.\n\n(1) THE OTHER REACHABILITY EDGE TYPES ARE ALREADY EXCLUDED, BY CONSTRUCTION --\n    NOT UNTESTED. INV-putug says `extends`, `references` and `decorated_by`\n    \"were not tested\". They cannot be crossed at all: TAINT_CALL_EDGE_TYPES is\n    exactly {calls, dispatches_to, instantiates, module_attr_ref}. `contains`\n    is in the same position, which is why 0016 measured its 16,010 pairs\n    untraversed -- that measurement CONFIRMED the code rather than discovering\n    anything.\n\n    WHAT IS ACTUALLY MISSING IS A GUARD. Nothing stops a future edge type being\n    added to that set without asking whether it carries a value, which is\n    exactly how `dispatches_to` got there (INV-zuhig added it for a good reason\n    and the class-sourced half was not considered). Wanted: a test that\n    enumerates TAINT_CALL_EDGE_TYPES against the edge-type registry and fails\n    when a member is not value-carrying, so the question must be answered at the\n    time of the addition rather than by a measurement two months later.\n\n(2) `instantiates` MODELS A VALUE ENTERING A TYPE, WHERE ONLY AN INSTANCE CAN\n    HOLD ONE. INV-putug's path is\n    `function --instantiates--> Class --dispatches_to--> Class.save`. The fix\n    closes the SECOND hop, so a class node is now a dead end and the defect\n    cannot recur through it. But the FIRST hop is untouched and is the same\n    category error one step earlier: `Invoice(order=order)` does pass a value,\n    but it passes it to an INSTANCE, and the edge's dst is the TYPE. Today that\n    is harmless because nothing leaves the class node. It stops being harmless\n    the moment any other value-carrying edge type is emitted out of a type node\n    -- which is precisely what (1)'s guard would catch.\n\n    NOT ARGUING FOR A CHANGE. Filing the observation with its trigger: if a\n    value-carrying edge is ever emitted from a type node, revisit whether\n    `instantiates` should target the instance rather than the type.\n\nNOT MEASURED: anything outside pretix, and the four non-python sibling linkers\n(airflow_framework, jackson, rust_trait, _third_party_bases), which measurement\n0020 covers by unit test only because no corpus repository exercises them."  # d263
+    fields: {}  # d263

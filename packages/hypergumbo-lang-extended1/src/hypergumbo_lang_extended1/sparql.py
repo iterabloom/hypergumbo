@@ -21,7 +21,8 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **uses_vocabulary**: Links from queries to prefix declarations (vocabulary usage)
+- **references**: Links from queries to the prefix declarations they use
+  (meta ref_construct ``rdf_vocabulary``)
 
 Why This Design
 ---------------
@@ -336,7 +337,7 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
                 if sym:
                     analysis.symbols.append(sym)
                     # Index the prefix Symbol by name so Pass-2 edge extraction
-                    # can point uses_vocabulary edges at its actual node id.
+                    # can point vocabulary ``references`` edges at its actual node id.
                     # (INV-dulah: node.id now carries a start_line, so the edge
                     # dst must be the prefix node's own id — re-minting a
                     # line-less stand-in would no longer resolve to it.)
@@ -365,8 +366,8 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
         """Extract vocabulary usage edges from a SPARQL file."""
         edges: list[Edge] = []
 
-        # Map prefix label -> its declared prefix Symbol, so a uses_vocabulary
-        # edge can point at the prefix NODE's own id. (INV-dulah: node.id now
+        # Map prefix label -> its declared prefix Symbol, so a vocabulary
+        # ``references`` edge can point at the prefix NODE's own id. (INV-dulah: node.id now
         # carries a start_line; using prefix_sym.id directly keeps the edge dst
         # equal to the node id by construction, with no re-derivation.)
         prefix_syms = {
@@ -415,7 +416,7 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
 _analyzer = SPARQLAnalyzer()
 
 
-@register_analyzer("sparql")
+@register_analyzer("sparql", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_sparql(repo_root: Path) -> AnalysisResult:
     """Analyze SPARQL files in a repository.
 

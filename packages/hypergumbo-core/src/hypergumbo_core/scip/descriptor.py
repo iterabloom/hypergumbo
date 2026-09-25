@@ -28,8 +28,8 @@ char  kind                      example
 ``()``  :class:`DescriptorKind.PARAMETER`      ``(x)``
 ====  ========================  ========================================
 
-Names can be either bare identifiers (anything other than the suffix
-delimiters ``/ # . : ! ( [``) or backtick-quoted (``\`like this\```)
+Names can be either bare identifiers (anything other than the
+delimiters ``/ # . : ! ( [ ] )``) or backtick-quoted (``\`like this\```)
 in which case a literal backtick is escaped by doubling
 (``\`has\`\`tick\```).
 
@@ -40,12 +40,17 @@ disambiguator ``(...)`` sub-grammar nested inside a descriptor. A
 small forward scanner is easier to read, easier to extend (future
 phases will decorate descriptors with per-indexer post-processing
 hooks — see :mod:`hypergumbo_lang_mainstream.rust_scip`), and keeps
-us free of any protobuf dependency at Phase 1: the translator can
+this parser free of any protobuf dependency: the translator can
 parse a symbol string without ever touching ``scip.proto``.
+
+The module also exports :func:`is_local_symbol`, a raw-string check for
+the ``local <id>`` form, so the translators can drop document-scoped
+locals (which have no cross-file identity) without parsing them first.
 
 This module is intentionally *only* a descriptor parser. Mapping a
 parsed symbol into a :class:`hypergumbo_core.ir.Symbol` or emitting
-edges from SCIP Occurrences is the job of later WI-mafut phases.
+edges from SCIP Occurrences is the job of :mod:`.index`, :mod:`.edges`
+and :mod:`.calls`.
 """
 from __future__ import annotations
 
@@ -120,6 +125,28 @@ _SUFFIX_MAP = {
 }
 
 
+_LOCAL_PREFIX = "local "
+
+
+def is_local_symbol(symbol: str) -> bool:
+    """True when *symbol* is the SCIP ``local <id>`` form, judged on the raw string.
+
+    This is the grammar's own rule (a local symbol is the literal word
+    ``local``, a space, and an opaque id) exposed as a predicate so the
+    translators in :mod:`.index`, :mod:`.calls` and :mod:`.edges` can skip
+    a local before paying for a parse. It agrees with
+    ``parse_scip_symbol(symbol).is_local`` on every well-formed input.
+
+    Why the translators skip locals at all (WI-jikok / INV-kukiz): a local
+    id is a DOCUMENT-scoped index, not an identifier — ``local 0`` is a
+    different binding in every file of an index — so it can be neither a
+    Symbol with a cross-run identity nor an edge endpoint anything in
+    another file can reach. Every other hypergumbo backend already leaves
+    function-local bindings out of the map.
+    """
+    return symbol.startswith(_LOCAL_PREFIX)
+
+
 def parse_scip_symbol(symbol: str) -> ScipSymbol:
     """Parse a SCIP symbol string into a :class:`ScipSymbol`.
 
@@ -132,8 +159,8 @@ def parse_scip_symbol(symbol: str) -> ScipSymbol:
     if not symbol:
         raise ValueError("empty SCIP symbol string")
 
-    if symbol.startswith("local "):
-        local_id = symbol[len("local "):]
+    if is_local_symbol(symbol):
+        local_id = symbol[len(_LOCAL_PREFIX):]
         if not local_id:
             raise ValueError("local SCIP symbol missing identifier")
         return ScipSymbol(local_id=local_id)

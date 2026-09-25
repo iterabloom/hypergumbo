@@ -1,0 +1,70 @@
+- op: create  # 063b
+  at: '2026-09-16T02:52:41Z'  # 063b
+  by: agent  # 063b
+  actor: jgstern_agent  # 063b
+  clock: 1  # 063b
+  nonce: 063b  # 063b
+  data:  # 063b
+    kind: work_item  # 063b
+    title: "auto-pr exits without a declared terminal state (final_state=unknown) in 14 of 481 recorded runs"  # 063b
+    status: todo_hard  # 063b
+    priority: 2  # 063b
+    parent:  # 063b
+    tags:  # 063b
+    - ci_infrastructure  # 063b
+    - auto_pr  # 063b
+    isbefore: []  # 063b
+    duplicate_of: []  # 063b
+    not_duplicate_of: []  # 063b
+    pr_ref:  # 063b
+    description: "The residual half of INV-rahib after the post-merge boundary fix.\n\nOwner ruling 2026-08-03 (pinned in tests/test_autopr_rahib_convergence.py,\nsection \"The declared terminal-state vocabulary\") replaced the invariant's\noriginal \"merged or explicit failure, no third state\" wording with a DECLARED\nCLOSED SET of terminal states, in which `unknown` -- the initializer -- IS the\nviolation signal.\n\nMEASURED, not inferred. Reading .git/AUTOPR_HISTORY.jsonl (481 invocations,\n2026-08-03 -> 2026-09-16):\n\n    final_state              exit    n\n    merged                      0  359\n    ci_failed                   1   49\n    merged                      1   41   <- fixed by the post-merge boundary\n    unknown                     1   13   <- THIS ITEM\n    failed_merge                1    9\n    push_rejected_diverged      1    5\n    governance_pending          0    3\n    unknown                     0    1   <- THIS ITEM, worst case\n    queued_vpr                  0    1\n\n14 of 481 (2.9%) ended in no declared terminal state. Most recent 2026-09-11,\nso this is live, not historical. Nine of the 14 carry pr_number=null (died\nbefore PR creation); five carry a pr_number with merged_sha=null.\n\nThe exit-0 row (2026-08-17T08:09:02Z, PR 390, merged_sha=null) is the more\nserious shape: a run that reported SUCCESS while recording no terminal state\nand no merge. The PR numbering skips 390->394 with no `merged` row in between.\n\nMECHANISM, partly identified. `set -euo pipefail` means any unguarded command\nfailing before a state assignment aborts with the initializer still in place.\nOne confirmed contributor was fixed alongside the boundary work: gov_cleanup\nset `_autopr_state_final=\"merged\"` AFTER `cleanup_local`, so a cleanup abort\nlanded on `unknown` rather than `merged`. That accounts for the shape (pr_number\nset, merged_sha null) but has not been shown to account for all five.\n\nREFUTED HYPOTHESIS, recorded so it is not re-tried: the WI-sidot\nstderr-swallowing bug (`exec {FD}>>\"$f\" 2>/dev/null` applying the redirect\npermanently) produces exactly this signature -- an abort with empty stdout AND\nstderr. But it existed only between commits 27b46fd2ee and 8b166291a7, both on\n2026-09-15, while these rows span 2026-08-11 onward. It is not the cause.\n\nWHAT WOULD CLOSE THIS\n  (a) Enumerate the unguarded abort sites in do_pr/flush_queue that precede a\n      state assignment, the way the post-merge tail was enumerated.\n  (b) Make an undeclared abort SELF-REPORTING rather than silent: when\n      _autopr_finalize fires with the state still `unknown`, say so loudly on\n      stderr and name it as a convergence violation. Today it writes a ledger\n      row nobody reads and prints nothing.\n  (c) Re-measure the ledger after (a)/(b) and show the unknown count at 0 over\n      a comparable number of invocations.\n\nKNOWN ADJACENT, not in scope here: `auto-pr --squash` reads a confirmation\nprompt (auto-pr flag parsing) with no tty guard, so a non-interactive --squash\ndies at EOF with exit 1. It is BEFORE the trap is installed, so it writes no\nledger row at all -- invisible to this measurement rather than counted in it."  # 063b
+    fields: {}  # 063b
+- op: update  # 690f
+  at: '2026-09-16T02:55:03Z'  # 690f
+  by: agent  # 690f
+  actor: jgstern_agent  # 690f
+  clock: 2  # 690f
+  nonce: 690f  # 690f
+  set: {}  # 690f
+  add:  # 690f
+    duplicate_of: [INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup]  # 690f
+- op: update  # 10d7
+  at: '2026-09-16T02:55:56Z'  # 10d7
+  by: agent  # 10d7
+  actor: jgstern_agent  # 10d7
+  clock: 3  # 10d7
+  nonce: 10d7  # 10d7
+  set: {}  # 10d7
+  remove:  # 10d7
+    duplicate_of: [INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup]  # 10d7
+- op: update  # 26b1
+  at: '2026-09-16T02:56:39Z'  # 26b1
+  by: agent  # 26b1
+  actor: jgstern_agent  # 26b1
+  clock: 4  # 26b1
+  nonce: 26b1  # 26b1
+  set: {}  # 26b1
+  add:  # 26b1
+    not_duplicate_of: [INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup]  # 26b1
+- op: discuss  # 7b0f
+  at: '2026-09-16T02:56:39Z'  # 7b0f
+  by: agent  # 7b0f
+  actor: jgstern_agent  # 7b0f
+  clock: 5  # 7b0f
+  nonce: 7b0f  # 7b0f
+  message: "Not a duplicate: INV-rahib's misleading-status class (merged + exit 1) is fixed; this is the residual undeclared-terminal-state class (final_state=unknown), which owner ruling 2026-08-03 makes the violation signal. Distinct mechanism, distinct evidence, distinct closure criterion."  # 7b0f
+- op: update  # f789
+  at: '2026-09-16T04:47:47Z'  # f789
+  by: agent  # f789
+  actor: jgstern_agent  # f789
+  clock: 6  # f789
+  nonce: f789  # f789
+  set:  # f789
+    status: done  # f789
+- op: discuss  # 9823
+  at: '2026-09-16T04:47:48Z'  # 9823
+  by: agent  # 9823
+  actor: jgstern_agent  # 9823
+  clock: 7  # 9823
+  nonce: '9823'  # 9823
+  message: "Filed row closed. Both halves of the mechanism addressed, with behavioral evidence.\n\n(a) ENUMERATED. Ten deliberate exits in do_pr/flush_queue were reached with\n_autopr_state_final still at its \"unknown\" initializer: the branch-ownership\nguards before both amend paths, both re-push failures and both PR lookups in\nstuck-CI recovery, the simulated outage, and the unresolvable / non-linear vPR\nqueue checks. Each now declares what it decided. Four new states join the\ndeclared closed set (failed_branch_ownership, failed_repush,\nfailed_queue_unresolvable, failed_queue_not_linear); the existing bidirectional\nvocabulary check covers them.\n\nThe enumeration is a DOMINANCE analysis, not proximity. The assignment at\nauto-pr:2085 is in the `if _pre_scenario_b_gate` arm while the exits at\n2105/2114 are in the `else` arm, so \"is there an assignment earlier in this\nfunction\" clears them -- and a 25-line distance threshold hid 2105 outright\nduring the investigation. test_no_action_path_exit_leaves_the_state_undeclared\nwalks back from each exit treating else/elif at the current level as leaving the\nconditional, and carries a two-armed fixture so neither an always-empty scanner\nnor an always-flagging one can pass it.\n\n(b) SELF-REPORTING. The remaining cause -- a set -e abort at any unguarded\ncommand -- is not statically enumerable in a 700-line function, so the run\nattributes itself. auto-pr runs under errtrace with an ERR trap recording\nfile:line and the command; _autopr_finalize prints a CONVERGENCE VIOLATION\nbanner and persists abort_site / abort_command to the sentinel and the ledger.\n\n-E is load-bearing: without it an ERR trap is not inherited by shell functions,\nand every real auto-pr abort is inside a helper. My first version of the\nbehavioral test passed with -E removed, because its fixture aborted in the same\nframe that installed the trap -- the harness contaminating its own control. Now\npinned by test_an_abort_inside_a_helper_function_is_attributed_too, verified by\nmutation (removing -E turns it red).\n\nNAMED GAPS, disclosed rather than counted as zero. A set -u unbound variable\ndoes not fire ERR (bash raises it as an expansion error, not a command failure)\nand neither does a bare exit, so an instrumented run can still record no site.\naudit-autopr-convergence therefore reports THREE states, not two: a recorded\nsite (tallied, since two runs at the same line are one bug), \"not recorded\" (the\ntrap could not see it), and \"not instrumented\" (the row has no abort_site key\nbecause it predates this change). A null default would have merged the last two\nand reported the whole historical backlog as live instrument failures.\n\nSAFETY. BASH_COMMAND holds source text, not expansion, so a line carrying\n$HG_GITHUB_TOKEN records the name. Pinned by\ntest_a_recorded_command_never_expands_a_secret rather than asserted in a comment.\n\nEVIDENCE: 10 new tests in tests/test_autopr_nazoj_undeclared_state.py driving\nthe real extracted functions under production shell flags (read from auto-pr,\nnot copied -- the previous hardcoded copy would have gone stale the moment -E\nlanded, which is the same defect that blinded test_autopr_branch_cleanup.py for\nsix weeks). 4 new tests in tests/test_audit_autopr_convergence.py. 259 passed\nacross the auto-pr + forge surface; 312 passed in a minimal venv built the way\nthe forge-arms CI job builds one. Live ledger now reports all 14 historical\nundeclared rows as \"not instrumented\" rather than as instrument failures.\n\nNOT DONE, filed separately: criterion (c), re-measuring the ledger over a\ncomparable number of post-instrumentation invocations. 485 rows took six weeks;\nthat measurement cannot be produced in the session that ships the fix. Closing\non the filed row and filing the residual, per the standing owner ruling."  # 9823

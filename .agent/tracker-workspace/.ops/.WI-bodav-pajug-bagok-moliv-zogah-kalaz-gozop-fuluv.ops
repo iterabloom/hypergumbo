@@ -1,0 +1,22 @@
+- op: create  # da58
+  at: '2026-09-04T15:19:34Z'  # da58
+  by: agent  # da58
+  actor: jgstern_agent  # da58
+  clock: 1  # da58
+  nonce: da58  # da58
+  data:  # da58
+    kind: work_item  # da58
+    title: "swift: a receiver bound by collection ITERATION (for s in xs, xs.forEach { s in }) needs the collection element type"  # da58
+    status: todo_soft  # da58
+    priority: 4  # da58
+    parent:  # da58
+    tags:  # da58
+    - swift  # da58
+    - analysis_quality  # da58
+    - io_boundary  # da58
+    isbefore: []  # da58
+    duplicate_of: []  # da58
+    not_duplicate_of: []  # da58
+    pr_ref:  # da58
+    description: "FILED 2026-09-04 as the one shape WI-higob's loop-binding work (PR #772) did not close.\n\n`if let` / `guard let` bindings now take their RHS's type, and objc fast-enumeration takes\nits declared class. What remains is the swift COLLECTION-ITERATION family:\n\n    func go(sessions: [URLSession]) {\n        for s in sessions { s.invalidateAndCancel() }        // s is untyped\n        sessions.forEach { s in s.invalidateAndCancel() }    // s is untyped\n    }\n\nBoth need the ELEMENT type of a collection annotation, which nothing extracts today --\nand deliberately so. `_swift_bare_type` REFUSES `[T]`, `[K: V]` and tuples because a\ncollection is not a receiver type the catalogue knows; that refusal is load-bearing and\nmust NOT be loosened to serve this. Element extraction is a separate rule reading the\nannotation's inner node.\n\nAST SHAPES, PROBED (~/hypergumbo_lab_notebook/higob3_loops_09042026/DESIGN.md):\n    parameter `xs: [URLSession]`       -> array_type      -> user_type `URLSession`\n    parameter `m: [String: Manager]`   -> dictionary_type -> user_type x2 (VALUE is 2nd)\n    parameter `opt: [URLSession]?`     -> optional_type   -> array_type -> user_type\n    `for s in xs`                      -> for_statement -> pattern + the iterated expr\n    `xs.forEach { s in ... }`          -> lambda_literal -> lambda_function_type_parameters\n\nSo the rule is: unwrap `optional_type`, then `array_type` -> its one `user_type`,\n`dictionary_type` -> its SECOND. The `forEach` form additionally needs to know that the\nclosure's parameter IS the element, which is a per-callee fact (`forEach`, `map`,\n`compactMap`, `filter`) rather than a general one -- size that separately before building.\n\nWHAT NOT TO CLAIM. Four consecutive receiver-typing changes in this sequence moved\nio-boundaries by ZERO on every repository measured, because the io classifier already\nmatches by short name when the module slot is empty. Expect PRECISION, not recall, and\nmeasure the module-slot delta rather than io unless the target repository is one where the\nshort-name gate refuses."  # da58
+    fields: {}  # da58

@@ -1,0 +1,45 @@
+- op: create  # 647f
+  at: '2026-09-25T06:33:06Z'  # 647f
+  by: agent  # 647f
+  actor: jgstern_agent  # 647f
+  clock: 1  # 647f
+  nonce: 647f  # 647f
+  data:  # 647f
+    kind: work_item  # 647f
+    title: "nim: a call inside an exported proc (proc a*) emits no call edge; _find_enclosing_proc_nim misses the exported_symbol name (INV-bisom residual)"  # 647f
+    status: todo_hard  # 647f
+    priority: 2  # 647f
+    parent:  # 647f
+    tags:  # 647f
+    - analysis_quality  # 647f
+    - emission_parity  # 647f
+    isbefore: []  # 647f
+    duplicate_of: []  # 647f
+    not_duplicate_of: []  # 647f
+    pr_ref:  # 647f
+    description: "EVIDENCE (production entry point, 2026-09-25, dev 78dd52c779):\n  proc helper(): int = 1\n  proc exported*(): int = helper()\n  proc private(): int = helper()\nanalyze_nim emits `private -> helper` and NO edge from `exported`. All three symbols are extracted.\n\nMECHANISM: `_find_enclosing_proc_nim` names the enclosing proc via `find_child_by_type(current, \"identifier\")`. For `proc a*` tree-sitter wraps the name in an `exported_symbol` node, so there is no direct identifier child. The lookup finds no enclosing proc, and the call is dropped.\n\nPRIOR ART:\n- INV-bisom (satisfied) had the SAME root cause in the declaration processors: 0/246 exported procs extracted on nitter. That fix covered the declaration handlers but not this lookup. Its closure stands; this is the residual.\n- WI-tosum (todo_hard) lists nim among the 25 analyzers whose enclosing lookup is unverified against INV-midag. Its procedure (assert reach first) would catch this. This row is the concrete reach loss. WI-tosum still owns the containment check.\n\nSCOPE: every call made from an exported proc, which is a Nim module's public API. Not measured on the corpus yet (nitter is the known Nim repo).\n\nASKED:\n1. Name the enclosing proc through the same helper INV-bisom's fix uses, or key on position (symbols_at / symbol_declared_by), as INV-midag did elsewhere.\n2. Add a fixture with an exported proc. Assert reach, then containment.\n3. Measure calls_total before and after on nitter.\n4. grep for other `find_child_by_type(..., \"identifier\")` name reads in nim.py that could have the same gap."  # 647f
+    fields: {}  # 647f
+- op: update  # 1703
+  at: '2026-09-25T15:49:48Z'  # 1703
+  by: agent  # 1703
+  actor: jgstern_agent  # 1703
+  clock: 2  # 1703
+  nonce: '1703'  # 1703
+  set:  # 1703
+    status: in_progress  # 1703
+- op: update  # f702
+  at: '2026-09-25T16:12:06Z'  # f702
+  by: agent  # f702
+  actor: jgstern_agent  # f702
+  clock: 3  # f702
+  nonce: f702  # f702
+  set:  # f702
+    status: done  # f702
+    pr_ref: '1201'  # f702
+- op: discuss  # 8ef2
+  at: '2026-09-25T16:12:06Z'  # 8ef2
+  by: agent  # 8ef2
+  actor: jgstern_agent  # 8ef2
+  clock: 4  # 8ef2
+  nonce: 8ef2  # 8ef2
+  message: "Fixed in PR #1201 (d7e2948280). _find_enclosing_proc_nim now keys on the declaration's POSITION (symbols_at / symbol_declared_by over file_symbols()), not a name read from a bare `identifier` child.\n\nBEHAVIOURAL EVIDENCE: the filed repro, re-run on merged dev through analyze_nim: exported -> helper (line 2), private -> helper (3), fexp* -> helper (4), mexp* -> helper (5), inner -> helper (7), outer* -> inner (8). Before the fix, only private and inner had edges. Production-path tests: test_nim.py::TestNimCallAnchor (exported, nested, module-level) and test_call_anchor_gate_extended1::test_nim_same_named_callables. Against the old code the gate failed on reach (lines 8/9/11/14) AND containment (line 4 credited to an overload at 5-6).\n\nASKS: (1) position, as INV-midag. (2) fixture asserts reach, then containment. (3) nitter 648 -> 2,460 calls (+1,803 sites, 0 lost), resolved 257 -> 902, 4 re-anchored (addMedia overloads), uncontained 4 -> 0. (4) Every other identifier read in nim.py goes through _declared_name_node (declarations) or reads import expressions / call targets, which never carry `*`.\n\nNOT CLAIMED: resolution precision. The new sites reach a bare-name resolver with no visibility or import scope, filed as WI-giloh (P2; e.g. 96 cross-file edges into redis_cache's private `get`). Also filed during this row: WI-losaf (nim iterator/template/macro/converter never extracted, 62 on nitter) and the P4 refactor row for the duplicated walk."  # 8ef2

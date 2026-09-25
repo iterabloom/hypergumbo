@@ -578,8 +578,8 @@ class TestDocKindFiltering:
 class TestCssNoiseFiltering:
     """Test default exclusion of CSS structural node kinds.
 
-    CSS selector kinds (class_selector, id_selector, rule_set, property,
-    media, keyframes, font_face) and CSS custom property / SCSS variable
+    CSS selector kinds (class_selector, id_selector, rule_set, media,
+    keyframes, font_face) and CSS custom property / SCSS variable
     kinds ("variable") are degree-0 noise that add no architectural
     insight.  They are excluded by default alongside documentation/config
     kinds.
@@ -622,7 +622,7 @@ class TestCssNoiseFiltering:
         data = json.loads(out_path.read_text())
         css_noise_kinds = {
             "class_selector", "id_selector", "rule_set",
-            "property", "media", "keyframes", "font_face",
+            "media", "keyframes", "font_face",
             "variable",
         }
         for node in data["nodes"]:

@@ -15,7 +15,8 @@ How It Works
 1. Collect all ``directive`` symbols with ``handler_expression`` metadata
 2. Group JS/TS method/function symbols by their normalized file path
 3. For each directive, find matching method/function in the same file
-4. Create ``template_calls`` edges linking directive to method
+4. Create ``calls`` edges (tagged ``meta.framework_dispatch="vue_event_handler"``,
+   ``meta.mechanism="template"``) linking directive to method
 
 Why This Matters
 ----------------
@@ -81,7 +82,8 @@ def link_vue_template_methods(
         edges: Existing edges (not modified).
 
     Returns:
-        LinkerResult with new template_calls edges.
+        LinkerResult with new ``calls`` edges
+        (``meta.framework_dispatch="vue_event_handler"``).
     """
     # WI-higap: create run before edge loop so Edge.__post_init__ validates.
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -122,6 +124,7 @@ def link_vue_template_methods(
             evidence_type="ast_call_direct",
             confidence=0.90,
             meta={"framework_dispatch": "vue_event_handler", "mechanism": "template"},
+            # derived-from endpoints: a same-file handler-name join from the directive
             derived_from=[sym.id, target.id],
         )
         new_edges.append(edge)

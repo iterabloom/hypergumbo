@@ -84,3 +84,12 @@
   clock: 8  # 6ded
   nonce: 6ded  # 6ded
   message: "Satisfied — stale (verified on v5 self-survey of current dev, 2026-07-15). The field this invariant is about, node.canonical_name, was DEMOLISHED by ADR-0032 (it found 'three uses pretending to be one field' and split them into typed siblings display_label + qualified_name). v5 confirms 0/39831 nodes carry a canonical_name key (the item's own measurement was '99 bare + 1623 external_symbol 3-colon + 1 seven-colon'). The 3-format-multiplexing problem cannot recur on a removed field; its concepts now have typed homes. Re-verified during the identity-vocabulary concept audit (2026-07-15), which independently confirmed the demolition is complete with no residual field."  # 6ded
+- op: update  # 9489
+  at: '2026-09-11T17:24:47Z'  # 9489
+  by: agent  # 9489
+  actor: jgstern_agent  # 9489
+  clock: 9  # 9489
+  nonce: '9489'  # 9489
+  set:  # 9489
+    fields:  # 9489
+      severity:  # 9489

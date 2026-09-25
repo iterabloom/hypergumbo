@@ -1,0 +1,60 @@
+- op: create  # 8845
+  at: '2026-09-07T10:53:45Z'  # 8845
+  by: agent  # 8845
+  actor: jgstern_agent  # 8845
+  clock: 1  # 8845
+  nonce: '8845'  # 8845
+  data:  # 8845
+    kind: work_item  # 8845
+    title: "Django: type super().save()/super().delete() inside a model override (the write chokepoint, 61 pretix sites, correct at the site) -- BUILT AND MEASURED, withheld behind the dispatches_to walk defect"  # 8845
+    status: todo_hard  # 8845
+    priority: 3  # 8845
+    parent:  # 8845
+    tags:  # 8845
+    - taint  # 8845
+    - python  # 8845
+    - analyzer  # 8845
+    - receiver_typing  # 8845
+    - phase6  # 8845
+    isbefore: []  # 8845
+    duplicate_of: []  # 8845
+    not_duplicate_of: []  # 8845
+    pr_ref:  # 8845
+    description: "Residual of WI-gamas (Phase 6 PR 4), BUILT AND MEASURED BEFORE BEING WITHHELD -- this item is not a proposal, it is a finished rule waiting on a blocker. Full record: measurement 0016 and ~/hypergumbo_lab_notebook/mumov_instwrite_09072026/RESULTS_ROUND1.md.\n\nWHY IT IS WORTH HAVING. On a real Django project the ORM instance write is usually NOT at `x.save()`. Measured on pretix (write_scan.py): of the 306 `save`/`delete` sites whose receiver resolves to a model, 215 (70%) call a `save` the project OVERRIDES -- so that call correctly resolves to the project's own method and is not an I/O primitive at all -- and 56 of pretix's 66 `save` overrides and 20 of its 49 `delete` overrides then call `super().<m>()`. That `super()` call is the CHOKEPOINT every upstream write funnels through, and it emitted the bare `external` placeholder.\n\nTHE RULE, as built and tested: `super().save()` / `super().delete()` lexically inside a class in `DjangoRelationIndex.model_ids` carries `django.db.models`, REFUSED when a project base in the lineage defines that method (there the call reaches that base's own override, whose own `super()` call carries the write, so one logical write is counted once -- 2 of pretix's 63 sites, `OrderPosition` and `CartPosition` over `AbstractPosition`). The two-argument `super(Cls, self)` form is refused deliberately: it names the class the MRO starts AFTER, which need not be the lexically enclosing one, so the base-override test would be asked of the wrong class. Implementation shape (all of it was written, reviewed and reverted in one commit): `_is_super_call`, `_DjangoReceiverOracle.super_write_owner`, `DjangoRelationIndex.defines_in_bases` + a `class_methods` map, one emission branch in `_process_call`, and a `super()` arm in `instance_class` so the manager path and the write path answer `super()` the same way.\n\nTHE CAPABILITY IS CORRECT. Measurement 0016's RC3 read every `django.db.models` save/delete marker edge in the whole pretix production survey back against source through an INDEPENDENT bare-name scan: 61 `super()` sites typed, 0 wrong-type, 0 violations.\n\nWHY IT IS WITHHELD, and the exact trade. Typing it puts a taint SINK inside a model method, and the ADR-0017 walk reaches any such method from any function that merely mentions the class by crossing the django-orm-dispatch linker's `dispatches_to` edge (filed separately as the blocking invariant). Measured on pretix:\n    the lineage + typed-receiver rules alone     24 new situations   16 TP /  8 FP  = 66.7% correct\n    plus this rule                               47 new situations   19 TP / 28 FP  = 40.4% correct\nThree true findings for twenty false ones. Shipping it today would publish 20 false findings to buy 3 true ones, so it does not ship.\n\nRE-OPEN TRIGGER, written now so this is a deferral and not a drop: when the walk stops advancing along `dispatches_to`, restore the rule from the WI-gamas branch history and RE-MEASURE it on the same two arms (pretix subject, kserve control) -- do NOT quote the 3-against-20 figure as its precision, because that number was taken THROUGH the defect and says nothing about what the rule buys on a fixed walk."  # 8845
+    fields: {}  # 8845
+- op: discuss  # 0b5e
+  at: '2026-09-09T00:54:53Z'  # 0b5e
+  by: agent  # 0b5e
+  actor: jgstern_agent  # 0b5e
+  clock: 2  # 0b5e
+  nonce: 0b5e  # 0b5e
+  message: "YOUR BLOCKER IS FIXED, AND THE NUMBER THAT WITHHELD YOU IS THE NUMBER THAT WAS\nREMOVED. 2026-09-08, measurement 0020, INV-putug shipped.\n\nThis item was built, measured and reverted in one commit because its yield\nthrough the `dispatches_to` walk defect was 3 true against 20 false -- adding it\ntook 24 situations at 66.7% correct to 47 at 40.4%. That defect is now fixed: a\n`dispatches_to` edge out of a TYPE node is no longer read as dataflow.\n\nMEASURED ON YOUR OWN CODE. Measurement 0020's harness arms pin py.py to\n`359880a105` -- THIS RULE, present in both arms -- so the numbers below are\nexactly what this item produces with and without the walk fix:\n\n  with the rule, walk defect present   183 situations, 33 class-node hops\n  with the rule, walk defect FIXED     163 situations,  0 class-node hops\n                                        22 removed / 2 added\n\nAll 22 removals crossed a class node (zero collateral) and 0 of 22 are correct.\nThe 11 class-hop flows that had an honest route were KEPT -- including\n`generate_invoice`, which really does reach `Invoice.save` through the annotated\n`build_invoice`.\n\nSO THE TRADE THAT WITHHELD THIS ITEM NO LONGER HOLDS AS MEASURED. Re-landing is\nits own PR with its own measurement, and it must re-derive the correct/useful\nsplit on the FIXED walk rather than reusing the 40.4% -- that figure was taken\nTHROUGH the defect and is not this rule's precision. The capability itself was\nnever in doubt: 61 pretix `super().save()` sites typed, 0 wrong-type on an\nindependent whole-survey read-back.\n\nThe implementation is recoverable in full from `359880a105` (`_is_super_call`,\n`_DjangoReceiverOracle.super_write_owner`, `DjangoRelationIndex.defines_in_bases`\n+ the `class_methods` map, the `_process_call` emission branch, the `super()` arm\nin `instance_class`)."  # 0b5e
+- op: discuss  # e625
+  at: '2026-09-09T00:57:06Z'  # e625
+  by: agent  # e625
+  actor: jgstern_agent  # e625
+  clock: 3  # e625
+  nonce: e625  # e625
+  message: "THE isbefore EDGE FROM INV-putug STAYS, DELIBERATELY, AND THIS RECORDS WHY SO IT\nIS NOT REMOVED AS STALE.\n\nINV-putug is `pending_validation`, not `satisfied` -- the walk fix is shipped and\nmeasured (0020) but has not been through the bakeoff queue. `ready` therefore\nstill holds this item back, and that is the correct behaviour rather than a\nleftover: if the fix were later found wanting, re-landing this rule now would\nrestore exactly the 3-true-against-20-false trade it was withheld for.\n\nThere is precedent for removing such an edge once its purpose is served\n(WI-gotun's 2026-09-06 entry does it and records the removal), and this is\nNOT that case yet. The condition to remove it is simple and checkable:\n**INV-putug reaching `satisfied`.** At that point this item becomes actionable\nand the edge should go.\n\nNothing else blocks it. The implementation is recoverable in full from\n`359880a105` and the capability was never in doubt (61 pretix sites, 0\nwrong-type)."  # e625
+- op: update  # d9fe
+  at: '2026-09-09T04:55:55Z'  # d9fe
+  by: agent  # d9fe
+  actor: jgstern_agent  # d9fe
+  clock: 4  # d9fe
+  nonce: d9fe  # d9fe
+  set:  # d9fe
+    status: done  # d9fe
+- op: discuss  # 3bb0
+  at: '2026-09-09T04:55:55Z'  # 3bb0
+  by: agent  # 3bb0
+  actor: jgstern_agent  # 3bb0
+  clock: 5  # 3bb0
+  nonce: 3bb0  # 3bb0
+  message: "SHIPPED AND RE-MEASURED. Measurement 0021 (docs/measurements/0021-django-super-write-remeasured.md; instrument ~/hypergumbo_lab_notebook/sihoh_superwrite_09092026/).\n\nTHIS ITEM'S OWN RE-OPEN TRIGGER FIRED AND WAS FOLLOWED, not loosened. The trigger read: \"when the walk stops advancing along `dispatches_to`, restore the rule from the WI-gamas branch history and RE-MEASURE it on the same two arms (pretix subject, kserve control) -- do NOT quote the 3-against-20 figure as its precision.\" INV-putug shipped that walk fix in PR #841. The rule was ported (not wholesale-checked-out: dev's py.py carried a doc comment recording the withholding that the branch lacked) and re-measured on exactly those two arms.\n\nTHE NUMBER, on a walk that is no longer lying to it. pretix situations 133 -> 149: 16 NEW, 0 GONE. All 16 read at source in full function bodies. 9 TP / 7 FP = 56.3% correct, 0 vacuous, 0 wrong-type. One site (CartPosition.update_listed_price_and_voucher) is a judgement call whose strict reading gives 8/8 = 50.0%; the pre-registered ship bar (>= 50%) is met under BOTH readings, so the decision does not rest on it. kserve control unmoved; no claim verdict moved.\n\nCAPABILITY CONFIRMED INDEPENDENTLY: 61 `super()` sites typed (33 direct + 27 transitive + 1 third-party base), 0 violations across all 136 marker edges on a whole-survey read-back against a stdlib-only bare-name index that shares no code with the analyzer. Three routes agree on 61 -- the analyzer, that scan, and a hand calculation written down before the arm reported. The 14 `super().save` sites in NON-model classes stayed `external`.\n\nIT SHIPS AT THE BAR, NOT ABOVE IT, and this should not be read as a strong precision result: 50.0% on the strict reading is below every shipped precedent in this family (0013 87.5%, 0015 66.7%, 0016 72.7%). The case rests on the DIRECTION -- the ORM write chokepoint of an entire Django codebase was invisible, a false NEGATIVE on a write primitive, which is the expensive direction for a security tool -- and on the capability being verified at 61 sites. The seven remaining false positives are ordinary adjudication misses (control dependence in a retry loop, read-after-write, discarded `select_for_update` lock reads), all already filed elsewhere; none is a mechanism this rule introduces.\n\nTHE PRE-REGISTERED PREDICTION WAS WRONG AND THE ERROR WAS MINE. PLAN.md predicted ~3 TP / 0 FP, assuming round 1's eight \"ordinary adjudication misses\" belonged to the OTHER rules. Seven of those eight are `super()`-sink or lock-read sites that exist only when this rule is present -- they were this rule's FPs all along. Round 1 said the 28 FPs were \"two populations\"; it never said the 8 belonged elsewhere, and conflating those two statements produced the bad prediction. The half under test held: the 20-FP `dispatches_to` mechanism is gone.\n\nRound 1's \"23 situation marginal\" was a SUBTRACTION of arm totals (47 - 24), not a direct A/B of this rule. 0021 isolates it directly, so the two marginals are not comparable and no TP-count improvement is claimed."  # 3bb0
+- op: discuss  # 7831
+  at: '2026-09-09T05:04:54Z'  # 7831
+  by: agent  # 7831
+  actor: jgstern_agent  # 7831
+  clock: 6  # 7831
+  nonce: '7831'  # 7831
+  message: "Merged as PR #846, dev SHA b9c07e2e7b6f."  # 7831

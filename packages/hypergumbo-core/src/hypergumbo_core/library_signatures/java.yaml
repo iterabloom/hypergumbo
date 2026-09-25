@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Library signatures for Java.
+#
+# WI-lalot. Method rows are 97% of java's io_primitives catalogue, and measurement
+# 0009 (WI-vapud) isolated the discriminator inside one fixture: a receiver typed
+# from a CONSTRUCTOR or a DECLARED PARAMETER resolves, and a receiver typed from an
+# external function's RETURN VALUE does not resolve at all.
+#
+#     Socket s = new Socket(h, p);  s.getInputStream()          FIRES
+#     Connection c = DriverManager.getConnection(u);
+#                                   c.prepareStatement(s)       dst_ref module=None
+#
+# `java.sql.Connection.prepareStatement` / `.prepareCall` are named in WI-lalot's own
+# discussion as two of the nine rows that are INERT in real code until this lands.
+#
+# KEY SHAPE (java.py): a static factory is keyed `Class.method`; the VALUE is the
+# fully-qualified type, because java qualifies its module slot through the declaring
+# file's imports (WI-gajuh).
+language: java
+module_completeness: partial
+signatures:
+  DriverManager.getConnection: java.sql.Connection
+  Connection.prepareStatement: java.sql.PreparedStatement
+  Connection.prepareCall: java.sql.CallableStatement
+  Connection.createStatement: java.sql.Statement
+  Statement.executeQuery: java.sql.ResultSet
+  PreparedStatement.executeQuery: java.sql.ResultSet
+  Files.newInputStream: java.io.InputStream
+  Files.newOutputStream: java.io.OutputStream
+  Files.newBufferedReader: java.io.BufferedReader
+  Files.newBufferedWriter: java.io.BufferedWriter
+  Runtime.getRuntime: java.lang.Runtime
+  Runtime.exec: java.lang.Process
+  ProcessBuilder.start: java.lang.Process
+  Process.getInputStream: java.io.InputStream
+  Process.getOutputStream: java.io.OutputStream
+  Process.getErrorStream: java.io.InputStream
+  Socket.getInputStream: java.io.InputStream
+  Socket.getOutputStream: java.io.OutputStream
+  ServerSocket.accept: java.net.Socket

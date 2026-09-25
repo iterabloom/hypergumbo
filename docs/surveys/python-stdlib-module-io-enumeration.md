@@ -153,6 +153,36 @@ than the audit stopping early.
 | `resource`, `signal` | 3 | process-level surfaces, low volume, not audited |
 | `typing`, `contextlib`, `base64`, `shlex`, `pathlib` | 277 | overturned by the probe — see above |
 
+## Addendum 2026-08-23 — `tomllib`, and why one call flipped eighteen verdicts
+
+`tomllib` was declared `completeness: complete` on 2026-08-23. It was added
+because hypergumbo itself began reading TOML (`user_config.py`, ADR-0045), and
+a single call into one unenumerated stdlib module moved **all 18 self-claims**
+from `confirmed_with_caveats` to `inconclusive`.
+
+That leverage is not a bug and is worth stating plainly, because it is the
+property this audit exists to produce: `BoundaryCoverage.qualifying_only` is
+`not unknown`, so the uncatalogued-module list must be **exactly empty** for an
+opaque launch to be a qualifying caveat rather than a withheld verdict. The
+self-proof therefore sits on a knife edge by design — one unaudited import is
+enough to take it off, and the honest response is to audit the module, not to
+soften the gate.
+
+**Verdict and evidence.** `tomllib.load(fp)` reads from a binary file *object*
+the caller opened; `tomllib.loads(s)` is pure string parsing. The open is the
+caller's I/O and is rowed where it happens — the same shape as `json`. The
+probe above was re-run on 2026-08-23: the public API is
+`load` / `loads` / `TOMLDecodeError`, and the sole `open(` match anywhere in
+`tomllib._parser` is inside the `TypeError` message *"File must be opened in
+binary mode, e.g. use `open('foo.toml', 'rb')`"* — the docstring/message
+false-positive class this survey already documents, not a call.
+
+**Note on the section below.** Its closing claim that "the 18 claims remain
+`inconclusive`" was true when written on 2026-08-15 and is no longer: later
+work drove the uncatalogued count to zero, which is exactly why the `tomllib`
+call was able to move every verdict. The paragraph is kept as the record of
+what was measured then.
+
 ## What this audit does NOT do
 
 **It does not make hypergumbo's self-proof confirmable.** Measured end to end,
@@ -167,3 +197,96 @@ their parent module (`module: os, attributes: [environ]`). A method call on the
 attribute (`os.environ.get(...)`, `sys.stdout.write(...)`) carries the attribute
 as its module slot, so the row cannot reach it. Adding rows keyed on the
 attribute path would be a second home for one fact. Filed separately.
+
+## Addendum 2026-09-03 — `builtins`, and why a new emitter flipped eighteen verdicts (INV-bofab)
+
+`builtins` was never on either list above. It did not need to be: until
+2026-09-02 the Python analyzer emitted a call edge for a bare builtin only
+when the name was `open` (a gate keyed on the I/O catalogue rather than on the
+language — INV-foluz), so `builtins` reached the coverage gate only at sites
+that already carried a row.
+
+INV-foluz's fix (`a33de088bc`) made every bare builtin call emit an edge with
+`builtins` in the module slot — `len`, `str`, `isinstance`, thousands of sites
+per repo. The gate did exactly what it is written to do: a named module with
+no completeness entry is "none I could see", so every Python repo's clean
+verdicts were withheld. On hypergumbo itself all 18 self-claims moved
+`confirmed_with_caveats → inconclusive` at the 2026-09-02 13:00 UTC cron
+firing and four lost their credited flows; the aggregate commit status could
+only say "failure", so it took the per-step reader built for INV-bozid to see
+which gate had moved.
+
+**Enumerated by hand, because the probe cannot see a C module.** `dir(builtins)`
+on 3.12 lists 144 public callables. Walked against the rule above:
+
+| surface | boundary | row |
+|---|---|---|
+| `open` | fs_read / fs_write (mode) | already rowed |
+| `input` | ipc_recv | already rowed (INV-muvis) |
+| `print` | logging | **new** — the vocabulary's "a module that prints does I/O" |
+| `breakpoint` | logging | **new** — delegates to `sys.breakpointhook`, itself a row |
+| `copyright`, `credits` | logging | **new** — `site`'s `_Printer` objects print |
+| `license` | fs_read + logging, simultaneous | **new** — `_Printer.__setup` opens LICENSE candidates, then prints |
+| `help` | logging + subprocess, `unruled` | **new** — `pydoc.pipepager` is `Popen(shell=True)` over `less`/`more` on a tty, after `os.system` probes for a pager; neither `simultaneous` nor `call_site_undecidable` describes "logging always, launch only when the environment supplies a tty", so the question is registered in `EXPECTED_UNRULED` and owned by WI-kapak. The no-argument interactive stdin loop returns nothing to the caller and is disclosed, not rowed (ADR-0049) |
+| `exit`, `quit` | none | raise `SystemExit` |
+| `exec`, `eval`, `compile` | none | in-process evaluation; the code they run is the caller's, as a file object is the caller's |
+| 66 exception classes, the type constructors, `len`/`getattr`/… | none | — |
+
+**Two corrections the suite made on the day the rows landed.** The six new names are builtins by construction, so INV-mivud's derived completeness rule (`test_ambiguous_names_completeness`) put them in `ambiguous_names`; that suppresses only a hint-less bare call, and every edge INV-foluz emits carries the `builtins` hint, pinned in both directions. And `builtins.help` is the one entry in the unruled register INV-nular had emptied — see the row above.
+
+**What is deliberately outside the rule.** `__import__` is a dunder, which the
+probe and the rule both exclude, and it is the `import` statement's callable
+form: no catalogue models an import as I/O, and `importlib`'s refusal above is
+the related open question. Declaring `builtins` complete does not vouch for
+`__import__` any more than an `import` line is vouched for; it is named here
+so the omission is a decision and not an oversight.
+
+**Why not refuse, as `importlib` was refused.** A refusal is affordable when
+the module is one dependency among many; it is not affordable for the module
+that every Python call site names. Refusing `builtins` is refusing Python.
+
+## Addendum 2026-09-24 — `urllib.request` (WI-bakik)
+
+`urllib.request` was refused above as "the network surface" and stayed
+unenumerated. That kept a WRONG row alive. `Request` builds a request object and
+sends nothing, and `urlopen(req)` is the send (INV-gujoh). But deleting the
+`Request` net_send row turned every `Request(...)` into an unclassified call
+into an unenumerated module, and the coverage gate then withheld the clean
+verdict. All 18 self-claims went `inconclusive`, because hypergumbo's tracker
+sync builds a `Request`. So the module was enumerated first, and only then was
+the row deleted.
+
+**The probe above, run on the module's 46 own public callables** (3.12; 28
+classes, 18 functions), then each hit read by hand. A class is judged by its
+`__init__`, because the call site is the construction:
+
+| callable | boundary | why |
+|---|---|---|
+| `urlopen`, `urlretrieve` | net_send | already rowed. `urlretrieve` also writes a local file; it keeps its one row |
+| `ftpwrapper` | net_send | **new**. `__init__` calls `self.init()`, which connects and sends USER/PASS |
+| `localhost`, `thishost` | net_recv | **new**. `gethostbyname` / `gethostbyname_ex`: the DNS rule, WI-dozul |
+| `getproxies`, `getproxies_environment` | env_read | **new**. Read `*_proxy` from `os.environ` |
+| `proxy_bypass`, `proxy_bypass_environment` | env_read | **new**. Read `no_proxy` |
+| `ProxyHandler` | env_read | **new**. `proxies=None` (the default) calls `getproxies()` |
+| `build_opener` | env_read | **new**. It always adds a default `ProxyHandler()` |
+| `URLopener`, `FancyURLopener` | env_read | **new**. `__init__` calls `getproxies()`; both are deprecated |
+| `urlcleanup` | fs_write | **new**. Unlinks `urlretrieve`'s temporary files |
+| `Request` | none | builds a value. **Its net_send row is DELETED** |
+| `OpenerDirector`, `install_opener` | none | a container, and a global assignment |
+| the other 22 handler / password-manager classes | none | their `__init__`s store arguments |
+| `url2pathname`, `pathname2url`, `parse_http_list`, `parse_keqv_list`, `request_host`, `noheaders`, `ftperrors` | none | string work, or they return an object |
+
+**What the grant does not cover.** Matching is exact. This covers the
+`urllib.request` slot, which is where module functions and constructors are
+called. An instance's methods live at their own slots:
+`urllib.request.OpenerDirector.open` sends and carries NO row. That slot is not
+declared complete, and this entry does not claim it.
+
+**Measured.** `scripts/check-self-claims --minimal` with `Request` deleted and
+the module declared: 18 claims unchanged (`confirmed_with_caveats`). A
+finding-level A/B (ADR-0049 Ruling 3) on fixtures:
+- `Request(url, data=secret)` -> `urlopen(req)` stays `violated`. Its evidence
+  moves from `Request` to `urlopen` and becomes ddg-`confirmed` there.
+- A proxy mapping from `getproxies()` sent with `urlopen` goes `inconclusive` ->
+  `violated`, the new source reaching the network.
+The cohort results are on WI-bakik.

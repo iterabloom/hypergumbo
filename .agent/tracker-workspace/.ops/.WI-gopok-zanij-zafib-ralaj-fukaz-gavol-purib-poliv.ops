@@ -1,0 +1,20 @@
+- op: create  # 03df
+  at: '2026-09-22T23:13:32Z'  # 03df
+  by: agent  # 03df
+  actor: jgstern_agent  # 03df
+  clock: 1  # 03df
+  nonce: 03df  # 03df
+  data:  # 03df
+    kind: work_item  # 03df
+    title: "orm and subprocess linkers resolve a Python-side reference to a same-named destination in ANY language (model / command lookups are not language-filtered)"  # 03df
+    status: todo_hard  # 03df
+    priority: 3  # 03df
+    parent:  # 03df
+    tags:  # 03df
+    - analysis_quality  # 03df
+    isbefore: []  # 03df
+    duplicate_of: []  # 03df
+    not_duplicate_of: []  # 03df
+    pr_ref:  # 03df
+    description: "Found while deriving WI-zujan's producer sets. Both linkers read ONLY Python sources, but neither filters its DESTINATION lookup by language:\n\n  orm.py `_build_model_lookup` (~line 72): indexes every symbol with concept==\"model\" by short name, in any language. So `User.objects.filter(...)` in a .py file can bind a Ruby/Elixir/PHP `User` model that the framework YAML tagged, whenever no Python `User` model wins the same-file-preferred fallback.\n  subprocess_cli.py `command_by_name` (~line 790): indexes every concept==\"command\" symbol from `cli_symbols` by name, in any language, and the argparse fallback (`symbols_by_name`) is not language-scoped either. So a Python `subprocess.run([\"myapp\", \"serve\"])`, whose executable was resolved from the project's own pyproject/setup.py, can bind a Go cobra or Ruby Thor command that happens to be named `serve`.\n\nBoth are wrong edges by name coincidence: a Python accessor cannot reference a Ruby class, and an executable named by Python packaging metadata is not a Go binary. The one plausible legitimate cross-language subprocess case is a maturin project shipping a Rust binary under `project.name`. It is NOT verified whether clap symbol names can ever equal a lowercase subcommand string.\n\nNOT MEASURED: how often either fires on the corpus. Measure first (a polyglot repo with Python plus Rails/Phoenix/Laravel models, or Python plus Go/Ruby CLIs), then filter the lookup to the producers the (now honest) depends_on names -- `python`, plus `scip_python` for subprocess."  # 03df
+    fields: {}  # 03df

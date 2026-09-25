@@ -9,20 +9,26 @@ notice the rule applied. This module mechanizes the rule.
 What the linter does
 --------------------
 For each ``@dataclass``-decorated class in the configured "core files"
-list (``ir.py`` and ``datamodels.py`` by default), the linter walks
+list (``ir.py``, ``datamodels.py`` and ``io_boundary.py`` by default —
+see :data:`DEFAULT_CORE_FILES`), the linter walks
 every field annotation. For each field whose annotation is ``str``,
 ``Optional[str]``, ``str | None``, or a ``Literal[...]`` of strings,
 the linter requires a trailing source-line comment of the form
 ``# axis: <category>`` (optionally with extra text). The category must
 be one of:
 
-- A **known axis name** (``edge-type``, ``symbol-kind``,
+- A **known axis name** — see :func:`_known_axes` for the live set,
+  which is fourteen: ``edge-type``, ``symbol-kind``,
   ``evidence-type``, ``language``, ``pass-id``, ``protocol-origin``,
-  ``qualified-name``) — the field's value space is the legal set
-  returned by the axis's all-names function. ``language`` and
-  ``pass-id`` are derived from the analyzer/linker catalog
-  (:func:`hypergumbo_core.catalog`); the other five live in dedicated
-  ``*_types.py`` / ``*_origins.py`` / ``*_axis.py`` registry modules.
+  ``qualified-name``, ``io-boundary`` (ADR-0050), ``module-key``
+  (ADR-0051), ``callable-signature`` (ADR-0058), ``io-primitive-kind``
+  (ADR-0059), ``entrypoint-kind``, ``visibility`` and
+  ``pass-silence-reason`` (INV-bikaj, arc T6). The field's value
+  space is the legal set returned by the axis's all-names function.
+  ``language`` and ``pass-id`` are derived from the analyzer/linker
+  catalog (:func:`hypergumbo_core.catalog`); the rest live in dedicated
+  registry modules (``*_types.py`` / ``*_origins.py`` / ``*_axis.py``,
+  plus ``entrypoints.py`` and ``visibility.py``).
   The ``protocol-origin`` axis (ADR-0031) covers
   ``Symbol.protocol_origin`` values for synthetic stand-ins emitted by
   linkers that detect protocol patterns (Kafka, WebSocket, IPC, WASM,
@@ -80,9 +86,24 @@ from typing import Callable, Iterable, Iterator
 # Hard-coded core dataclass files. To add a file, append its path
 # (relative to repo root) here. A sentinel-comment opt-in mechanism
 # is reserved for a future PR if drift surfaces.
+#
+# WHY io_boundary.py IS HERE (WI-mubup). It was not, and that omission is the
+# single structural reason two axes went undeclared for as long as they did.
+# ``IoPrimitive`` lives in io_boundary.py, so ``IoPrimitive.boundary`` (the
+# io-boundary vocabulary, INV-tafig) and ``IoPrimitive.module`` (the module key,
+# WI-livar) carried no axis comment and nothing ever asked them for one -- while
+# their EDGE-side counterparts in ir.py were linted the whole time. Each axis was
+# split across a scanned file and an unscanned one, which is how two halves of
+# one key drift apart without a single gate firing.
+#
+# The lesson generalises past this one file: the scope of this constant IS the
+# scope of the discipline, so a dataclass that carries a vocabulary and is not
+# named here is unlinted by construction, however carefully its own module is
+# written.
 DEFAULT_CORE_FILES: tuple[str, ...] = (
     "packages/hypergumbo-core/src/hypergumbo_core/ir.py",
     "packages/hypergumbo-core/src/hypergumbo_core/datamodels.py",
+    "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py",
 )
 
 
@@ -92,30 +113,54 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     Imports are deferred so this module is importable from environments
     that don't have the catalog (and its transitive analyzer/linker
     registry walking) initialised. Each callable is invoked lazily by
-    :func:`check_axis_named` only when a field actually claims the
-    axis.
+    :func:`_check_field` (``known_axes[category]()``) only when a field
+    actually claims the axis.
     """
     from .edge_types import all_edge_type_names
     from .entrypoints import all_known_entrypoint_kinds
     from .evidence_types import all_evidence_type_names
+    from .io_boundary_types import all_io_boundary_names
+    from .io_primitive_kinds import all_io_primitive_kind_names
+    from .module_key_axis import all_module_key_notions
     from .protocol_origins import all_protocol_origin_names
     from .qualified_name_axis import all_qualified_name_languages
+    from .signature_axis import all_signature_notions
     from .symbol_kinds import all_symbol_kind_names
     from .visibility import all_known_visibility_levels
+    from .pass_silence import all_pass_silence_reason_names
     from .catalog import all_known_languages, all_known_pass_ids
 
     return {
         "edge-type": all_edge_type_names,
         "symbol-kind": all_symbol_kind_names,
         "evidence-type": all_evidence_type_names,
+        # INV-tafig/ADR-0050: the I/O-boundary vocabulary six
+        # consumers branch on. Registry-backed, heavyweight.
+        "io-boundary": all_io_boundary_names,
+        # WI-kijup/ADR-0051: what may occupy a module slot.
+        # Structural-policy axis (qualified-name shape): the
+        # resolver returns the axis's NOTIONS, not legal field
+        # values, which are unenumerable.
+        "module-key": all_module_key_notions,
+        # INV-zikab/ADR-0059: how a catalogued primitive is reached from its
+        # row's module (instance / named owner / read). Closed enum.
+        "io-primitive-kind": all_io_primitive_kind_names,
         "language": all_known_languages,
         "pass-id": all_known_pass_ids,
         "protocol-origin": all_protocol_origin_names,
         "qualified-name": all_qualified_name_languages,
+        # INV-lotoh/ADR-0058: what Symbol.signature may hold. Structural
+        # policy (qualified-name / module-key shape): the resolver returns
+        # the axis's NOTIONS, since signature strings are unenumerable.
+        "callable-signature": all_signature_notions,
         # WI-pupiz: entrypoint-kind catalog (single source = EntrypointKind).
         "entrypoint-kind": all_known_entrypoint_kinds,
         # INV-jusot: canonical visibility levels (closed enum).
         "visibility": all_known_visibility_levels,
+        # INV-bikaj/INV-hujog (arc T6): why a pass emitted nothing.
+        # Closed enum; '' is deliberately NOT a member (it means
+        # NOT APPLICABLE, where 'unreported' means CANNOT DETERMINE).
+        "pass-silence-reason": all_pass_silence_reason_names,
     }
 
 

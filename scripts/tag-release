@@ -19,8 +19,15 @@
 # What this script does:
 #   1. Switches to main and pulls latest
 #   2. Verifies the version matches expectations
-#   3. Creates a GPG-signed tag
-#   4. Pushes the tag (triggers release workflow)
+#   3. Refuses to clobber an existing tag without consent
+#   4. Verifies it can authenticate to origin, running `gh auth login` +
+#      `gh auth setup-git` when an https origin has no credential helper
+#   5. Creates a GPG-signed tag
+#   6. Pushes the tag (triggers release workflow)
+#
+# Step 4 runs BEFORE step 5 on purpose: a tag that is signed and then fails to
+# push leaves the release half-done, and re-running the script would offer to
+# delete the tag it had just created.
 #
 set -euo pipefail
 
@@ -111,6 +118,94 @@ run() {
     else
         "$@"
     fi
+}
+
+# The GitHub seats this org pays for. A push from any other account fails or
+# lands under the wrong identity, so the login is verified rather than assumed:
+# `josh-iterabloom` is the human maintainer, `jgstern-agent` the agent.
+ALLOWED_SEATS=("josh-iterabloom" "jgstern-agent")
+
+verify_push_credentials() {
+    # Fail BEFORE the tag is created, not after.
+    #
+    # WHY THIS EXISTS. v8.0.0 signed cleanly and then died at the push with
+    # "Password authentication is not supported for Git operations" — GitHub
+    # removed password auth in 2021, and an https origin with no credential
+    # helper prompts for one anyway. The release then sat half-done: a signed
+    # local tag, nothing on the remote, and a script that could not simply be
+    # re-run because step 3 offers to delete and recreate the tag it just made.
+    #
+    # THE PROBE IS `git ls-remote`, NOT a protocol-specific check. It exercises
+    # the same credential path the push will use, for ssh and https alike.
+    # GIT_TERMINAL_PROMPT=0 turns "hang waiting for a username" into a fast
+    # non-zero exit, which is what makes this usable as a preflight.
+    #
+    # NOTE ON `ssh -T git@github.com`: it exits 1 even on SUCCESS (GitHub
+    # refuses the shell but authenticates). Anything keying on its exit code
+    # reads a working key as broken, which is why it is only ever printed here
+    # as a human diagnostic and never branched on.
+    local probe_exit=0
+    GIT_TERMINAL_PROMPT=0 git ls-remote --heads origin >/dev/null 2>&1 \
+        || probe_exit=$?
+
+    # A token in the environment overrides `gh auth login` silently, so the
+    # human can log in as themselves and still push as whoever owns the token.
+    # Warn on the variables gh actually reads — HG_GITHUB_TOKEN is not one.
+    if [[ -n "${GH_TOKEN:-}${GITHUB_TOKEN:-}" ]]; then
+        echo -e "${YELLOW}!${NC} GH_TOKEN/GITHUB_TOKEN is set — gh will use that"
+        echo "    identity regardless of 'gh auth login'. Unset it if you mean"
+        echo "    to act as yourself."
+    fi
+
+    if (( probe_exit != 0 )); then
+        echo -e "${YELLOW}!${NC} Cannot authenticate to origin (git ls-remote exit $probe_exit)"
+        if [[ "$ORIGIN_URL" == https://* ]]; then
+            if ! command -v gh >/dev/null 2>&1; then
+                echo -e "${RED}✗${NC} https origin and no 'gh' to supply a credential helper."
+                echo "    Install gh, or switch to ssh:"
+                echo "      git remote set-url origin git@github.com:iterabloom/hypergumbo.git"
+                return 1
+            fi
+            echo "  https origin with no working credential helper — running gh auth."
+            if ! gh auth status >/dev/null 2>&1; then
+                run gh auth login || return 1
+            fi
+            run gh auth setup-git || return 1
+            probe_exit=0
+            GIT_TERMINAL_PROMPT=0 git ls-remote --heads origin >/dev/null 2>&1 \
+                || probe_exit=$?
+        else
+            echo -e "${RED}✗${NC} ssh origin whose key is not accepted. Diagnose with:"
+            echo "      ssh -T git@github.com   # success prints 'successfully authenticated' AND exits 1"
+            return 1
+        fi
+    fi
+
+    if (( probe_exit != 0 )); then
+        echo -e "${RED}✗${NC} Still cannot authenticate to origin after gh auth."
+        return 1
+    fi
+    echo -e "${GREEN}✓${NC} Authenticated to origin"
+
+    # Identity check. Advisory: a push can legitimately be credentialed by ssh
+    # with no gh login at all, so an unknown login warns rather than blocks.
+    if command -v gh >/dev/null 2>&1; then
+        local login=""
+        login=$(gh api user --jq .login 2>/dev/null) || login=""
+        if [[ -n "$login" ]]; then
+            local seat
+            for seat in "${ALLOWED_SEATS[@]}"; do
+                if [[ "$login" == "$seat" ]]; then
+                    echo -e "${GREEN}✓${NC} Authenticated as $login (paid seat)"
+                    return 0
+                fi
+            done
+            echo -e "${YELLOW}!${NC} gh is authenticated as '$login', which is not one of"
+            echo "    the org's paid seats (${ALLOWED_SEATS[*]}). The push may be"
+            echo "    rejected or attributed to the wrong account."
+        fi
+    fi
+    return 0
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -208,7 +303,22 @@ fi
 
 # ─────────────────────────────────────────────────────────────
 echo ""
-echo "━━━ Step 4: Create signed tag ━━━"
+echo "━━━ Step 4: Verify push credentials ━━━"
+# ─────────────────────────────────────────────────────────────
+
+# Deliberately BEFORE the tag is created. Signing a tag that cannot be pushed
+# leaves the release half-done and this script un-rerunnable (step 3 would
+# offer to delete the very tag it just signed).
+if ! verify_push_credentials; then
+    echo ""
+    echo -e "${RED}Aborting before creating the tag.${NC}"
+    echo "Nothing has been signed or pushed; fix the credential and re-run."
+    exit 1
+fi
+
+# ─────────────────────────────────────────────────────────────
+echo ""
+echo "━━━ Step 5: Create signed tag ━━━"
 # ─────────────────────────────────────────────────────────────
 
 # Check for GPG key
@@ -249,7 +359,7 @@ fi
 
 # ─────────────────────────────────────────────────────────────
 echo ""
-echo "━━━ Step 5: Push tag ━━━"
+echo "━━━ Step 6: Push tag ━━━"
 # ─────────────────────────────────────────────────────────────
 
 echo "Pushing tag to origin..."

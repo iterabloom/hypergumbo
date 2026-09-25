@@ -7,9 +7,10 @@ test cases are written in a tabular format.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
-Overrides analyze() because Robot Framework needs cross-file state for
-keyword registry resolution.
+Uses TreeSitterAnalyzer base class for grammar checking. Overrides
+_create_parser() to build the parser directly from the standalone
+tree_sitter_robot grammar, and overrides analyze() because Robot Framework
+needs cross-file state for keyword registry resolution.
 
 1. Pass 1: Extract keywords, test cases, variables, and library/resource imports
 2. Pass 2: Extract keyword invocation edges with registry lookup for resolution
@@ -17,15 +18,22 @@ keyword registry resolution.
 Symbols Extracted
 -----------------
 - **Keywords**: User-defined keywords (reusable test steps)
-- **Test Cases**: Individual test case definitions
+- **Test Cases**: Individual test case definitions (kind ``test``)
 - **Variables**: Suite-level variable definitions (${VAR})
 - **Libraries**: External library imports (Python libraries like SeleniumLibrary)
 - **Resources**: Imported .robot files that share keywords
 
 Edges Extracted
 ---------------
-- **calls**: Keyword invocations from test cases and keywords
-- **imports**: Library and resource imports
+- **calls**: Keyword invocations from test cases and keywords. Invocations
+  of names in ``RobotAnalyzer.BUILTIN_KEYWORDS`` (BuiltIn-library keywords
+  such as ``Log``) emit no edge. An invocation outside any keyword or test
+  case uses the file-level ``robot:<path>`` id as its source. The target is
+  looked up by exact name in the cross-file keyword/test registry
+  (confidence 1.0); a name not found there gets the synthetic
+  ``robot:unresolved:<keyword>`` dst at confidence 0.6
+- **imports**: Resource settings only (file -> resource); Library settings
+  create a ``library`` symbol but no edge
 
 Why This Design
 ---------------
@@ -53,6 +61,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -576,6 +585,7 @@ class RobotAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         start_time = time.time()
@@ -639,7 +649,7 @@ def is_robot_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("robot")
+@register_analyzer("robot", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_robot(repo_root: Path) -> AnalysisResult:
     """Analyze Robot Framework files in a repository.
 

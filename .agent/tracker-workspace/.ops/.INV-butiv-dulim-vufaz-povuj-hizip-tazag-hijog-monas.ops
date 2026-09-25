@@ -1,0 +1,24 @@
+- op: create  # 98af
+  at: '2026-09-13T06:26:26Z'  # 98af
+  by: agent  # 98af
+  actor: jgstern_agent  # 98af
+  clock: 1  # 98af
+  nonce: 98af  # 98af
+  data:  # 98af
+    kind: invariant  # 98af
+    title: "erlang application env_write row sweeps in five lifecycle functions (load/start/stop/ensure_started/ensure_all_started) that read .app files or send messages -- the WI-jupaf module-sweep defect recurring two lines below its own fix"  # 98af
+    status: violated  # 98af
+    priority: 2  # 98af
+    parent:  # 98af
+    tags:  # 98af
+    - catalogue  # 98af
+    - taint  # 98af
+    - analysis_quality  # 98af
+    isbefore: []  # 98af
+    duplicate_of: []  # 98af
+    not_duplicate_of: []  # 98af
+    pr_ref:  # 98af
+    description: ""  # 98af
+    fields:  # 98af
+      statement: "A catalogue row must name the boundary its call actually crosses. VIOLATED: erlang.yaml rows application [set_env, unset_env, load, start, stop, ensure_started, ensure_all_started] under env_write. set_env and unset_env are CORRECT under the 2026-09-06 INV-nular ruling recorded on the sibling env_read row, which states the boundary means \"may carry a credential\" and that application config is where runtime.exs and sys.config put credentials. The other five are application LIFECYCLE operations and the credential rationale does not reach them: ensure_started and ensure_all_started bottom out in erl_prim_loader:read_file reading the .app resource file (a filesystem read), stop is a gen_server call into application_master (a message send), and load reads the .app spec. Three independent workers flagged these from different chunks, proposing three different replacements, because the functions genuinely do three different things."  # 98af
+      root_cause: "Module-granularity attribution -- and it is the WI-jupaf defect recurring TWO LINES BELOW where it was already fixed in the same file. The os row in erlang.yaml carries the note \"WI-jupaf: cmd was REMOVED from this list. os:cmd/1 is the BEAM shell-out, not an environment read -- it was swept in with the rest of the os module\". The application row repeats exactly that: the two genuine env writers anchored the row and the module's remaining exports were swept in beside them."  # 98af

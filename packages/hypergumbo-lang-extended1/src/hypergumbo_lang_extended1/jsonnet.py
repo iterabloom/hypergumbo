@@ -8,7 +8,8 @@ especially with Kubernetes (Ksonnet, Tanka), Grafana, and other systems.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-- Pass 1: Collect symbols (local functions, local variables, object methods)
+- Pass 1: Collect symbols (local functions, local variables, object methods,
+  object fields)
 - Pass 2: Extract edges (function calls, imports)
 
 The base class handles grammar checking, parser creation, file discovery,
@@ -26,6 +27,19 @@ Edge Types
 ----------
 - calls: Function/method invocations
 - imports: Import relationships between files
+
+Edge details
+------------
+- Every edge starts at the file-level pseudo-node ``jsonnet:<path>:file``,
+  not at the enclosing function or method.
+- A call whose first dotted segment is in ``JSONNET_BUILTINS`` (``std``,
+  ``self``, ``super``, ``$``, ...) emits no edge.
+- The callee is looked up by the last dotted segment of its name
+  (``obj.method`` -> ``method``) in a name -> id table built from
+  ``global_symbols`` (confidence 1.0). An unmatched call gets the synthetic
+  dst ``jsonnet:unresolved:0-0:<name>:unresolved`` at confidence 0.6.
+- Call edges carry evidence type ``tree_sitter``; import edges point at
+  ``jsonnet:import:<path>`` with evidence type ``import``.
 """
 
 from __future__ import annotations

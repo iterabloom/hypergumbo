@@ -9,18 +9,34 @@ queried from ``Edge.meta`` rather than smuggled into the evidence label.
 
 This module is the single source of truth: ``scripts/generate-schema``
 imports ``EVIDENCE_TYPES`` to emit ``x-axis-of-values`` annotations on
-the ``Edge.evidence_type`` schema property. (The schema enum stays open
-— ``type: "string"`` only — until per-cluster Phase 4b producer
-migrations land; see ADR-0028 §"Phase 4" and the Path-B decision in the
-Phase 1 plan file.) Consumers that need a subset of evidence types
-should call ``evidence_types_on_axis(...)`` rather than maintain their
-own hardcoded set; the property test in
+the ``Edge.evidence_type`` schema property. (The schema property stays
+open — ``type: "string"`` with no ``enum`` — per the Path-B decision in
+the Phase 1 plan file; the Phase 4b enum closure (ADR-0028 §"Phase 4")
+closed this registry, not the schema enum.) Consumers that need a
+subset of evidence types should call ``evidence_types_on_axis(...)``
+rather than maintain their own hardcoded set; the property test in
 ``tests/test_evidence_types.py`` enforces that every hardcoded set in
 the codebase whose name contains ``EVIDENCE_TYPE`` is a subset of this
-registry, and the L3 producer-coherence linter at
-``scripts/check-producer-axis-coherence`` enforces that
-``Edge.create(evidence_type="...")`` literal arguments are also in the
-registry.
+registry (via ``find_axis_drift``, which skips
+``ENTRYPOINT_EVIDENCE_TYPES``: that name matches the filter but the set
+enumerates the separate ``Entrypoint.meta`` pathway axis), and the L3
+producer-coherence linter at ``scripts/check-producer-axis-coherence``
+enforces that ``Edge.create(evidence_type="...")`` literal arguments are
+also in the registry.
+
+Confidence seeding (ADR-0039):
+
+- Each ``EvidenceTypeSpec`` may carry ``base_confidence``, the
+  detection-reliability seed ``Edge.confidence`` derives from when this
+  pathway is an edge's only evidence (``None``: not derived, the producer
+  keeps its own literal). Pathways whose reliability depends on resolution
+  (``ast_call``, ``ast_call_direct``, ``macro_expansion``) also carry
+  ``base_confidence_unresolved`` for edges with ``is_resolved=False``, set
+  inline on their specs. ``confidence.derive_confidence`` reads both.
+- Single-valued pathways are seeded from the ``_CONFIDENCE_SEEDS`` table
+  (disjoint from the inline seeds), which ``_apply_confidence_seeds``
+  overlays onto ``_RAW_EVIDENCE_TYPES`` to produce the public
+  ``EVIDENCE_TYPES``.
 
 Axis taxonomy (per ADR-0028 §1):
 
@@ -44,7 +60,10 @@ audit-findings 0008 / 0012 / 0014 for per-value fold targets.
 
 Seeding completeness (per the Phase 1 plan file):
 
-- 207 static-literal evidence_type values from ``grep packages/*/src``.
+- Phase 1 seed: 207 static-literal evidence_type values from
+  ``grep packages/*/src``. After the Phase 3 folds and the Phase 4b
+  closure the registry holds 126 values (116 ``inference_pathway``,
+  10 ``pending_classification``).
 - 10 enumerable dynamic variants from the f-string emits
   (``{pattern_type}_emit`` / ``{pattern_type}_endpoint``) in
   ``websocket.py`` for the 6 registered ``pattern_type`` literals
@@ -55,13 +74,15 @@ Seeding completeness (per the Phase 1 plan file):
   no longer seeded.
 - The Phase-3 producer migration retired the former ``di_binding``
   colon-form placeholder: the DI-resolution site
-  (``di_resolution.py:628``) now emits the canonical ``ast_call_direct``
-  evidence type plus ``meta["framework_dispatch"]=binding.source`` and
+  (``_create_di_edges`` in ``linkers/di_resolution.py``) now emits the
+  canonical ``ast_call_direct`` evidence type plus
+  ``meta["framework_dispatch"]=binding.source`` and
   ``meta["mechanism"]="di"``, so ``di_binding`` is no longer seeded
   (``find_evidence_type('di_binding')`` returns None).
-- The dynamic ``f"ast_{edge_type}"`` at ``inheritance.py:368`` only
-  yields ``ast_extends`` / ``ast_implements``, both already in the
-  static set.
+- The dynamic ``f"ast_{edge_type}"`` in ``_create_inheritance_edges``
+  (``linkers/inheritance.py``) and in ``_extract_inheritance_edges``
+  (``js_ts.py``) only yields ``ast_extends`` / ``ast_implements``, both
+  already in the static set.
 """
 
 from __future__ import annotations
@@ -233,6 +254,14 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
                      "Edge inferred from an enclosing-scope relationship."),
     EvidenceTypeSpec("eta_expansion", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an eta-expansion (point-free → pointed)."),
+    EvidenceTypeSpec("macro_expansion", AXIS_INFERENCE_PATHWAY,
+                     "Edge inferred by expanding a preprocessor macro whose "
+                     "definition the analyzer did not parse (INV-zihor: "
+                     "erlang's OTP ?LOG_* levels). The call is real after "
+                     "preprocessing but was never in the AST, so it is NOT "
+                     "``ast_call`` -- a consumer distinguishing a call the "
+                     "analyzer SAW from one it INFERRED reads this field.",
+                     base_confidence=0.8, base_confidence_unresolved=0.4),
     EvidenceTypeSpec("extends", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a generic extends/inheritance relationship."),
     EvidenceTypeSpec("function_pointer", AXIS_INFERENCE_PATHWAY,

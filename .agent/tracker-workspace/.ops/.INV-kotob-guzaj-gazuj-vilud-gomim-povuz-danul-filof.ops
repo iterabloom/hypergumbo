@@ -22,3 +22,62 @@
     fields:  # 456f
       statement: "A call edge's module slot MUST carry a module or type identity, never a local variable name. A consumer reading it as a module hint cannot distinguish the two, and a present-but-wrong hint is refused outright rather than degrading to the no-hint path."  # 456f
       root_cause: "UNCONFIRMED. Observed once: a swift call on a local named 'fm' emitted swift:fm:0-0:fileExists. The emission site in the swift analyzer has not been located and the population has not been sized."  # 456f
+- op: discuss  # cf31
+  at: '2026-09-01T05:46:46Z'  # cf31
+  by: agent  # cf31
+  actor: jgstern_agent  # cf31
+  clock: 2  # cf31
+  nonce: cf31  # cf31
+  message: "ENRICHMENT from the module-key concept audit, 2026-09-01 (cadence). Full write-up:\n~/hypergumbo_lab_notebook/concept-audit-module-key_09012026.md\n\nTHIS ITEM'S root_cause SAYS \"UNCONFIRMED. Observed once... The emission site in the\nswift analyzer has not been located and the population has not been sized.\"\nCONFIRMED, SIZED, AND ONE EMISSION SITE LOCATED.\n\nPOPULATION, measured on the objc+swift repos of a 21-repo cold cohort\n(AFNetworking, fmdb, CocoaLumberjack, Alamofire, swift-argument-parser):\n\n    module slots starting LOWERCASE (receiver-variable shaped): 1,102 refs / 266 distinct\n    module slots starting UPPERCASE (type shaped)             : 3,105 refs / 413 distinct\n\nSo 26% of objc+swift external refs carry a local identifier where every other\nanalyzer puts a module or type. Most frequent: expectation x164, request x76,\ncompletionReceived x48, expect x40, eventMonitor x32, session x32, expectation1 x27,\ncontinuation x22, send x20, resp x20, mutableState x16, responses x16, download x16,\ncomponents x14.\n\nEMISSION SITE, objc: objc.py passes `module_path=receiver_name` directly into the\nExternalRef. That is the objc half stated literally in code; the swift half still\nneeds its own site located (swift.py has gate_path_hint / path_hint forms), so this\nenrichment does NOT close that part of the item.\n\nTHE MATCHER ALREADY ENCODES THE DEFECT AS A SUPPORTED CASE, which is the part worth\nkeeping. _module_matches carries an explicit Swift carve-out whose docstring says:\n\"Swift hints are receiver *variable* names (camelCase) against PascalCase catalog\ntypes, and the variable is often the type's trailing word -- fileIO for\nNonBlockingFileIO.\" So the predicate was extended to match variable names against\ntypes rather than the emission being fixed. The carve-out is direction-restricted\n(catalog must END WITH hint, never the reverse) precisely because the reverse\ndirection is the `chaos` ends with `os` bug.\n\nRELATED, NOT DUPLICATE: INV-dijor (filed today) is the same family from the other\nside -- there a catalogue module ENDING in a TYPE matches a bare lowercase hint via\n_module_matches arm 3, verified live on go/sops. This item is the producer side\n(the slot holds a variable name); INV-dijor is the matcher side (the predicate\naccepts one). Fixing either alone leaves the other live."  # cf31
+- op: discuss  # 499b
+  at: '2026-09-01T05:50:29Z'  # 499b
+  by: agent  # 499b
+  actor: jgstern_agent  # 499b
+  clock: 3  # 499b
+  nonce: 499b  # 499b
+  message: "ENRICHMENT from the module-key concept audit, 2026-09-01 (cadence). Full write-up:\n~/hypergumbo_lab_notebook/concept-audit-module-key_09012026.md\n\nTHIS ITEM'S root_cause SAYS \"UNCONFIRMED. Observed once... The emission site in the\nswift analyzer has not been located and the population has not been sized.\"\nCONFIRMED, SIZED, AND ONE EMISSION SITE LOCATED.\n\nPOPULATION, measured on the objc+swift repos of a 21-repo cold cohort\n(AFNetworking, fmdb, CocoaLumberjack, Alamofire, swift-argument-parser):\n\n    module slots starting LOWERCASE (receiver-variable shaped): 1,102 refs / 266 distinct\n    module slots starting UPPERCASE (type shaped)             : 3,105 refs / 413 distinct\n\nSo 26% of objc+swift external refs carry a local identifier where every other\nanalyzer puts a module or type. Most frequent: expectation x164, request x76,\ncompletionReceived x48, expect x40, eventMonitor x32, session x32, expectation1 x27,\ncontinuation x22, send x20, resp x20, mutableState x16, responses x16, download x16,\ncomponents x14.\n\nEMISSION SITE, objc: objc.py passes `module_path=receiver_name` directly into the\nExternalRef. That is the objc half stated literally in code; the swift half still\nneeds its own site located (swift.py has gate_path_hint / path_hint forms), so this\nenrichment does NOT close that part of the item.\n\nTHE MATCHER ALREADY ENCODES THE DEFECT AS A SUPPORTED CASE, which is the part worth\nkeeping. _module_matches carries an explicit Swift carve-out whose docstring says:\n\"Swift hints are receiver *variable* names (camelCase) against PascalCase catalog\ntypes, and the variable is often the type's trailing word -- fileIO for\nNonBlockingFileIO.\" So the predicate was extended to match variable names against\ntypes rather than the emission being fixed. The carve-out is direction-restricted\n(catalog must END WITH hint, never the reverse) precisely because the reverse\ndirection is the `chaos` ends with `os` bug.\n\nRELATED, NOT DUPLICATE: INV-dijor (filed today) is the same family from the other\nside -- there a catalogue module ENDING in a TYPE matches a bare lowercase hint via\n_module_matches arm 3, verified live on go/sops. This item is the producer side\n(the slot holds a variable name); INV-dijor is the matcher side (the predicate\naccepts one). Fixing either alone leaves the other live."  # 499b
+- op: discuss  # 723c
+  at: '2026-09-01T20:13:50Z'  # 723c
+  by: agent  # 723c
+  actor: jgstern_agent  # 723c
+  clock: 4  # 723c
+  nonce: 723c  # 723c
+  message: "SWIFT'S EMISSION SITE IS LOCATED. This item was carried as \"objc site located,\nswift's not\"; it is swift.py:1223, inside the INV-pirot method-call gate:\n\n    gate_path_hint = (\n        receiver_type                       # a TYPE      (var_types lookup)\n        or import_aliases.get(callee_name)  # a NAMESPACE (import alias)\n        or receiver_hint                    # a receiver VARIABLE\n        or \"external\"                       # a SENTINEL\n    )\n    ... ExternalRef(lang=\"swift\", module_path=gate_path_hint, name=callee_name)\n\nONE EXPRESSION, FOUR DIFFERENT NOTIONS, IN PRIORITY ORDER, ALL WRITTEN INTO ONE\nSLOT WITH NO RECORD OF WHICH ONE PRODUCED IT. This is the module-key conflation\nin its most literal form and is now the best single piece of evidence for\nWI-kijup's axiom -- better than the corpus percentages, because it is four lines\nof source rather than a measurement. Supporting reads: receiver_hint is\nreceiver_parts[0] (swift.py:1037), the first component of the receiver\nexpression, so a variable spelling; var_types is populated from variable\ndeclarations (:1108) and parameters (:1117), so receiver_type is a resolved type.\n\nThe second swift site (:1299) is NOT this shape: path_hint there is\nimport_aliases.get(callee_name) alone, a namespace, and the ExternalRef is\nwithheld entirely when it is absent. Only the gate site conflates.\n\nA CORRECTION TO WHAT THE AUDIT RECORDED ABOUT OBJC, since it changes the\nmigration target. The audit said objc \"writes module_path=receiver_name\nliterally\", and it does (objc.py:644) -- but the site is GATED on\nreceiver_name[0].isupper() (:637), and a capitalised Objective-C message\nreceiver is normally a CLASS name, not a variable. So objc's slot is\npredominantly a TYPE, not a receiver variable, and the lowercase identifiers the\naudit counted (expectation, request, session, resp, download, components) cannot\nhave come from that site. The receiver-VARIABLE notion is SWIFT's, via the third\nclause above. The \"26% of objc+swift refs\" figure was over the combined cohort\nand should not be attributed to objc.\n\nCONSEQUENCE FOR WI-marok (the gated Phase 2 migration): its objc bullet is\nmis-aimed as filed and should be re-derived per-language before any row moves.\nRecorded there too."  # 723c
+- op: update  # 70ea
+  at: '2026-09-03T08:57:10Z'  # 70ea
+  by: agent  # 70ea
+  actor: jgstern_agent  # 70ea
+  clock: 5  # 70ea
+  nonce: 70ea  # 70ea
+  set: {}  # 70ea
+  add:  # 70ea
+    tags: [axis, module_key]  # 70ea
+- op: discuss  # bf61
+  at: '2026-09-03T08:57:10Z'  # bf61
+  by: agent  # bf61
+  actor: jgstern_agent  # bf61
+  clock: 6  # bf61
+  nonce: bf61  # bf61
+  message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED: \"not a property of the call site: not the receiver's variable name\". NOTION THE SLOT CARRIES: receiver_variable (section call_site_property). ADR-0051 s2 is this item stated as principle; the module-key audit sized it (1,102 of 4,207 objc+swift refs, 26%, 266 distinct locals) and located objc's literal `module_path=receiver_name`. The conformant value -- the receiver TYPE -- already has a home in `receiver_type_hint`; WI-monul is the consumer half."  # bf61
+- op: discuss  # bb5a
+  at: '2026-09-04T03:02:56Z'  # bb5a
+  by: agent  # bb5a
+  actor: jgstern_agent  # bb5a
+  clock: 7  # bb5a
+  nonce: bb5a  # bb5a
+  message: "Sized 2026-09-03 (kotob_probe.py, ~/hypergumbo_lab_notebook/higob_swiftobjc_09032026/README.md): of the unresolved call_construct=method edges, Alamofire carries a lowercase receiver VARIABLE name in dst_ref.module_path on 1462 of 3501 (42%), VernissageServer on 2753 of 11014 (25%). The dst id's module slot is 'external' at all 2420 non-type Alamofire sites -- the variable rides only in dst_ref (swift.py gate_path_hint chain: receiver_type or import alias or receiver_hint or external); the swift:fm: id in the filing is a consumer re-rendering the id from dst_ref. Root cause confirmed at that one site. Fix shape: drop receiver_hint from the chain and write receiver_type into the id slot too (make_unresolved_edge), which will be done with WI-higob's swift half."  # bb5a
+- op: update  # 8ed1
+  at: '2026-09-04T05:18:50Z'  # 8ed1
+  by: agent  # 8ed1
+  actor: jgstern_agent  # 8ed1
+  clock: 8  # 8ed1
+  nonce: 8ed1  # 8ed1
+  set:  # 8ed1
+    status: satisfied  # 8ed1
+- op: discuss  # fe87
+  at: '2026-09-04T05:18:50Z'  # fe87
+  by: agent  # fe87
+  actor: jgstern_agent  # fe87
+  clock: 9  # fe87
+  nonce: fe87  # fe87
+  message: "Satisfied in PR #757 (dev 75f1373611). Root cause confirmed at one site: swift.py's `gate_path_hint = receiver_type or import_aliases.get(callee_name) or receiver_hint or \"external\"` — `receiver_hint` is the receiver VARIABLE. The dst id said `external` at the same site; the `swift:fm:` id in the filing is a consumer re-rendering the id from dst_ref. Behavioural evidence: (1) `kotob_probe.py` over every unresolved call_construct=method edge — Alamofire lowercase-variable dst_ref bucket 1462 → 0, VernissageServer 2753 → 0 (kotob_probe_A.json / kotob_probe_B.json); (2) tests in test_swift_receiver_type_in_module_slot.py assert the slot carries the TYPE for a declared parameter, an annotated local, a constructed local, a singleton local and an inline type head, and that an untyped local carries neither a module nor a dst_ref; (3) the filed repro shape (`let fm = FileManager.default; fm.fileExists`) now emits `swift:FileManager:0-0:fileExists:unresolved` with dst_ref.module_path `FileManager`. Measured (lab ~/hypergumbo_lab_notebook/higob_swiftobjc_09032026/): churn Alamofire 786 gains / 0 type losses / 9 Set<X>→Set re-keys / 5 resolved→typed (mis-bindings to test-only static extension members, un-bound), Vernissage 2236 gains / 0 losses / 1 re-key; io Alamofire 27→31 (6 real FileManager boundaries surfaced, 1 phantom Tier-2 URLSession.dataTask link gone), Vernissage 8→8 (3 lost in pass 1, all recovered). Three arm-B read-backs each found a shape (singleton locals, type heads, generics on project types, a static member captured by an instance call) — README passes 1-3. Two residuals filed: the Session.swift extraction miss and bare-name label-blind binding."  # fe87

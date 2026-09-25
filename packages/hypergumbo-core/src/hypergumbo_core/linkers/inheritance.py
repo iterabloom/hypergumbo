@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..symbol_kinds import type_like_kind_names
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     pass
@@ -254,6 +254,7 @@ def _create_includes_edges(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_includes",
                 meta=edge_meta,
+                # derived-from endpoints: the target is named by a string in the source's own meta
                 derived_from=[sym.id, target_sym.id],
             ))
 
@@ -358,6 +359,8 @@ def _external_base_edge(
         is_resolved=False,
         # INV-rukor: this edge is derived solely from the subclass symbol
         # (the base is external/unresolved, not an in-tree Symbol).
+        # derived-from endpoints: the dst is a minted external placeholder; other records only count
+        #   by absence
         derived_from=[sym.id],
     )
 
@@ -528,6 +531,7 @@ def _create_inheritance_edges(
                 origin_run_id=run.execution_id,
                 evidence_type=f"ast_{edge_type}",
                 meta=edge_meta,
+                # derived-from endpoints: the target is named by a string in the source's own meta
                 derived_from=[sym.id, target_sym.id],
             )
             edges.append(edge)
@@ -538,10 +542,25 @@ def _create_inheritance_edges(
 @register_linker(
     "inheritance-linker",
     priority=15,  # Before type_hierarchy (priority 20)
-    # CNF: inheritance edges come from any analyzer that populates
-    # base_classes / extends / implements / includes metadata. Covers every
-    # OO language with class/interface/trait/mixin constructs.
-    depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "php", "elixir"]],
+    # CNF: the analyzers that actually write the two Symbol.meta keys this
+    # linker reads — ``base_classes`` and ``included_modules`` — enumerated
+    # from their sources rather than from which languages have inheritance
+    # (WI-rasal; 18 surveys falsified the previous list, all of them Go repos).
+    #
+    # The old list was "every OO language with class/interface/trait/mixin
+    # constructs", which is a statement about programming languages. This is a
+    # statement about this tree: ``rust``, ``dart`` and ``elixir`` were declared
+    # and contribute NOTHING here — rust emits ``implements`` EDGES directly
+    # (so it is declared on ``type-hierarchy-linker``, which consumes those),
+    # and dart/elixir write neither key. ``apex``, ``cpp``, ``go``, ``groovy``
+    # and ``objc`` do write them and were missing.
+    depends_on=[
+        [
+            "apex", "cpp", "csharp", "go", "groovy", "java", "javascript",
+            "kotlin", "objc", "php", "python", "ruby", "scala", "swift",
+        ],
+    ],
+    activation=always_on_unreviewed(),
 )
 def link_inheritance(ctx: LinkerContext) -> LinkerResult:
     """Create extends/implements edges from base_classes metadata.

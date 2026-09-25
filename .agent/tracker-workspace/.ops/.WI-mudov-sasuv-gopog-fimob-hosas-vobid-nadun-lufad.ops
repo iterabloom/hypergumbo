@@ -1,0 +1,21 @@
+- op: create  # 1778
+  at: '2026-09-10T06:16:08Z'  # 1778
+  by: agent  # 1778
+  actor: jgstern_agent  # 1778
+  clock: 1  # 1778
+  nonce: '1778'  # 1778
+  data:  # 1778
+    kind: work_item  # 1778
+    title: "htrac setup ships 'holding' (deprecated) and 'wontfix' (never a status) in the managed AGENTS.md block injected into adopting repos"  # 1778
+    status: todo_soft  # 1778
+    priority: 3  # 1778
+    parent:  # 1778
+    tags:  # 1778
+    - tracker  # 1778
+    - governance  # 1778
+    isbefore: []  # 1778
+    duplicate_of: []  # 1778
+    not_duplicate_of: []  # 1778
+    pr_ref:  # 1778
+    description: "`setup.py`'s `MANAGED_BLOCK_CONTENT` — the governance text `htrac setup`\ninjects into an ADOPTING repo's AGENTS.md — documents two statuses that the\ntracker does not accept:\n\n    **Resolution Rationale:** When changing a tracker item to a resolved state\n    (`done`, `holding`, `wontfix`), always record WHY ...\n\nand a status table row `| `wontfix` | No | Decided against |`.\n\n  - `holding` is DEPRECATED. This repo's own AGENTS.md says so explicitly\n    (\"Do NOT use `holding` (deprecated) — it is ambiguous and will be rejected\n    by the tracker\"), and `tag_catalog.py` cites it as the precedent for how\n    deprecated values are retained-but-refused.\n  - `wontfix` was never a status. `models.py` defines\n    `resolved_statuses = [\"done\", \"wont_do\", \"deleted\"]`. Outside setup.py's\n    prose, the string `wontfix` appears nowhere in the tracker source.\n\nSo an adopting repo's agents are told to write a value that is rejected, and\nthe failure surfaces as a mutation that does not take.\n\nDISCOVERED alongside WI-dolaf (the `--json` flag position), in the same string\nconstant, and deliberately NOT folded into that fix: different mechanism —\na stale enum, not an argument-order hazard — and folding it in would have\nwidened a documentation PR into a vocabulary change without its own review.\n\nFIX: correct the block to `done` / `wont_do`, drop the `wontfix` table row (or\nmark it deprecated the way `holding` is handled), and check whether the same\nblock states anything else about the status vocabulary that has since moved.\nGovernance-adjacent: it ships outward to adopters, so it warrants a look at\nwhether any adopting repo has already copied it."  # 1778
+    fields: {}  # 1778

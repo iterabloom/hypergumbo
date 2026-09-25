@@ -1,0 +1,48 @@
+- op: create  # d0e2
+  at: '2026-09-18T20:06:55Z'  # d0e2
+  by: agent  # d0e2
+  actor: jgstern_agent  # d0e2
+  clock: 1  # d0e2
+  nonce: d0e2  # d0e2
+  data:  # d0e2
+    kind: work_item  # d0e2
+    title: "Recorded producer-shaped fixtures for backends CI cannot run; a cross-backend test may not derive the alternative arm's input from the incumbent's output (ADR-0057 §12)"  # d0e2
+    status: todo_hard  # d0e2
+    priority: 3  # d0e2
+    parent:  # d0e2
+    tags:  # d0e2
+    - multi_fidelity  # d0e2
+    - scip  # d0e2
+    - rust_analyzer  # d0e2
+    - testing  # d0e2
+    isbefore: []  # d0e2
+    duplicate_of: []  # d0e2
+    not_duplicate_of: []  # d0e2
+    pr_ref:  # d0e2
+    description: "ADR-0057 §12. rust-analyzer executes the analysed crate's build.rs, is\nopt-in (ADR-0045 trust grant), and will never run in CI. Every merge,\nparity and producer-contract test therefore runs on RECORDED\nproducer-shaped input or it tests nothing. The failure mode is on record:\nthe stable_id parity test collected a baseline from rust.py and fed rust.py's\nown spans back into the helper, passed for months, and the feature measured\n0 of 52 in production (INV-dolud, retracted in #1044). A control that cannot\nfail is not a control (LIVE.md rule 6).\n\nWHAT TO RECORD, per fixture crate: the emitted index.scip (or its parsed\nDocuments: per Definition occurrence the symbol string, `range`,\n`enclosing_range`, `symbol_roles`; per reference occurrence the same) plus\nthe producer version string. The #1044 pattern is the seed:\nRUST_ANALYZER_DEFINITION_LINES in\npackages/hypergumbo-lang-mainstream/tests/test_rust_scip_stable_id.py,\nrecorded from rust-analyzer 1.94.0 (4a4ef49 2026-03-02) on a scratch crate\nwhose src/lib.rs is RUST_SAMPLE byte for byte. Recording cost: scratch crate\n+ `rust-analyzer scip .` = 3 s; parse with scip_pb2.\n\nTHE RULE: a test of cross-backend behaviour may not derive the alternative\narm's input from the incumbent arm's output. Enforce it structurally, not by\nreview: fixtures live in a recorded module with the producer version in its\ndocstring; tests import from it; a lint (AST, per LIVE.md — a grep misses\ncall-site rules) flags any test under the merge/parity/contract families\nthat calls the incumbent analyzer to build the alternative arm's input.\n\nWHY NOW: the contract row's registry test (\"both backends' name_key map one\ndeclaration to one key\") and the merge row's acceptance (\"138/169 through\nthe declarations alone\") are only meaningful on recorded input. Blocks\nWI-kokiz.\n\nACCEPTANCE: a committed fixture for aardvark-dns-shaped input (or the\nscratch crate) sufficient to reproduce the pairing count; the lint fails on\na test that feeds rust.py spans to the merge; the existing recorded-span arm\nin test_rust_scip_stable_id.py is migrated onto the shared fixture module."  # d0e2
+    fields: {}  # d0e2
+- op: update  # 4e6f
+  at: '2026-09-18T20:07:46Z'  # 4e6f
+  by: agent  # 4e6f
+  actor: jgstern_agent  # 4e6f
+  clock: 2  # 4e6f
+  nonce: 4e6f  # 4e6f
+  set: {}  # 4e6f
+  add:  # 4e6f
+    isbefore: [WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid]  # 4e6f
+- op: update  # bf3f
+  at: '2026-09-19T02:08:23Z'  # bf3f
+  by: agent  # bf3f
+  actor: jgstern_agent  # bf3f
+  clock: 3  # bf3f
+  nonce: bf3f  # bf3f
+  set:  # bf3f
+    status: done  # bf3f
+    pr_ref: '1068'  # bf3f
+- op: discuss  # 2405
+  at: '2026-09-19T02:08:23Z'  # 2405
+  by: agent  # 2405
+  actor: jgstern_agent  # 2405
+  clock: 4  # 2405
+  nonce: '2405'  # 2405
+  message: "DONE (PR number in pr_ref). Row 2 of the owner-authorised 11-row sequence (2026-09-18).\n\nWHAT LANDED. (1) packages/hypergumbo-lang-rust-analyzer/recorded/ — owned by the producer's package, on pytest's pythonpath (pyproject), not in the wheel: recorded_rust_analyzer_1_94_0.py (producer version pinned; the 33-line sample crate with every Definition listed inline — moved from tests/ — plus aardvark-dns loaders and counts) and aardvark_dns/ (upstream 4444d90fee, Apache-2.0, LICENSE kept, src/+build.rs+Cargo.toml+Cargo.lock beside the raw index.scip rust-analyzer 1.94.0 emitted: 16 documents, 169 global definitions, 500 locals, 3,543 references; project_root normalised to file:///recorded/aardvark_dns/crate; README.md with provenance and re-recording steps). (2) hypergumbo_core/check_recorded_producer_input.py + scripts/check-recorded-producer-input, CI gate test_check_recorded_producer_input.py::TestLiveTree: per-test AST taint walk from a call to an incumbent producer (derived from the §10 declarations: the non-scip anchored producer of each shared language; plus run_analyzer(\"<name>\") and same-module helpers that call one, to a fixpoint) through assignment/unpacking/augmented/walrus/with/for/comprehension bindings into any cross-backend consumer (core SCIP shim, translate_scip_to_hg, rust_scip parity helpers; the merge pass joins CROSS_BACKEND_CONSUMERS when it has a name). @pytest.mark.incumbent_fed(\"<reason>\") registered; a bare marker is refused. (3) The rust_scip parity test reads RUST_ANALYZER_DEFINITION_LINES from the shared module (callable_item_to_token_lines()) instead of a transcribed dict; three extraction-contract tests are marked with their reasons (2 in test_rust_scip_stable_id.py, 1 in test_translate.py).\n\nEVIDENCE. Fixture tests: index parses with the shipped scip_pb2; counts equal the module's; every indexed document is a committed file and every .rs in the crate was indexed; under the declared anchors the live tree-sitter arm pairs 148/169 SCIP definitions one-to-one, 0 ambiguous — the 21 leftovers are 18 module namespaces + AardvarkResult and ThreadHandleMap (`type` aliases) + DNSBACKEND (`static`), constructs rust.py emits no Symbol for. Mutation: stripping one incumbent_fed marker -> the script exits 1 naming test_translate.py:197, the test, analyze_rust and reassign_rust_stable_ids. Lint unit tests pin 12 offence/allowed shapes (direct, for, comprehension, helper propagation, method, run_analyzer literal, augmented, walrus, with; recorded-input-with-incumbent-as-expectation allowed; bare marker refused; non-test modules unread). Slice 340 files / 13,996 passed; lint module 100%; ratchet 667.\n\nCORRECTION RECORDED (ADR-0057 §12 note, spec, CHANGELOG): the ADR's \"138 of 169\" was a scratch-script number; the committed rule on committed input gives 148. WI-kokiz reproduces 148.\n\nNOT ASSERTED. The lint's incumbent inference is `backend not in {\"scip\"}` among anchored producers — incumbency is not yet a per-language declaration (noted on WI-hukuf). Only packages/*/tests are read (the top-level tests/ suite has no cross-backend tests)."  # 2405

@@ -1,0 +1,47 @@
+- op: create  # 138d
+  at: '2026-09-18T20:06:59Z'  # 138d
+  by: agent  # 138d
+  actor: jgstern_agent  # 138d
+  clock: 1  # 138d
+  nonce: 138d  # 138d
+  data:  # 138d
+    kind: work_item  # 138d
+    title: "Results cache key ignores which backends ran: a tree-sitter run and a two-arm run share <fingerprint>/results/<state_hash>/<analyzer_identity> (split from WI-gojum sub-component 3)"  # 138d
+    status: todo_hard  # 138d
+    priority: 2  # 138d
+    parent:  # 138d
+    tags:  # 138d
+    - cache  # 138d
+    - multi_fidelity  # 138d
+    - rust_analyzer  # 138d
+    isbefore: []  # 138d
+    duplicate_of: []  # 138d
+    not_duplicate_of: []  # 138d
+    pr_ref:  # 138d
+    description: "Split out of WI-gojum sub-component 3 so it can be sequenced. The results\ncache key is <repo-fingerprint>/results/<state_hash>/<analyzer_identity>\n(cli.py:1183). `compute_analyzer_identity_hash()`\n(analyzer_identity.py:66) hashes the INSTALLED hypergumbo package code —\nwhich analyzers exist — not which backends were ENABLED for the run. The\nopt-in (HYPERGUMBO_RUST_ANALYZER, --backend, and after ADR-0045 the trust\ngrant) is nowhere in the key. A tree-sitter-only run and a two-arm run of\nthe same tree therefore share a cache dir and each can return the other's\nartifact.\n\nIMPACT TODAY: low while the backend is opt-in and rarely toggled. IMPACT\nNEXT: (1) the backend-agreement measurement (its own row) reads an artifact\nand trusts it — a stale artifact from the other backend set corrupts every\nnumber silently; (2) once the merge pass ships, the two runs differ in NODE\nCOUNT (138 merged vs 169+138), so a wrong cache hit is user-visible.\n\nFIX SHAPE: fold the RESOLVED backend set — the output of ADR-0045 ruling 4's\nprecedence chain, not the raw env var — into the state hash (it is run\nconfiguration, like max_files) rather than into analyzer identity (which is\ncode identity). Keep analyzer_identity as is.\n\nACCEPTANCE: two surveys of one tree with different resolved backend sets\nland in different cache dirs; the same set twice hits the cache; a survey\nwith the SCIP backend enabled but rust-analyzer absent on PATH (WI-luvud\nfall-through) is keyed as tree-sitter-only, since that is what ran."  # 138d
+    fields: {}  # 138d
+- op: update  # d529
+  at: '2026-09-18T20:07:46Z'  # d529
+  by: agent  # d529
+  actor: jgstern_agent  # d529
+  clock: 2  # d529
+  nonce: d529  # d529
+  set: {}  # d529
+  add:  # d529
+    isbefore: [WI-dajif-duzab-notah-guvij-likum-tigir-modoh-rurot]  # d529
+- op: update  # e5bc
+  at: '2026-09-19T07:04:54Z'  # e5bc
+  by: agent  # e5bc
+  actor: jgstern_agent  # e5bc
+  clock: 3  # e5bc
+  nonce: e5bc  # e5bc
+  set:  # e5bc
+    status: done  # e5bc
+    pr_ref: '1076'  # e5bc
+- op: discuss  # e1a0
+  at: '2026-09-19T07:04:55Z'  # e1a0
+  by: agent  # e1a0
+  actor: jgstern_agent  # e1a0
+  clock: 4  # e1a0
+  nonce: e1a0  # e1a0
+  message: "DONE (PR in pr_ref). Row 8 of the owner-authorised sequence (WI-gojum sub-component 3).\n\nWHAT LANDED. backend_selection.resolved_backend_set(repo_root=, environ=, flag_choice=, is_available=) -> tuple of registration names of the opt-in backends that WILL RUN: the ADR-0045 ruling-4 chain via resolve_rust_analyzer_optin (flag > environment > per-repository trust grant) AND rust_analyzer_install.is_rust_analyzer_available() — the same two conditions the backend's own gate (lang-rust-analyzer gate.should_use_rust_analyzer_backend) makes, so an opt-in with no binary on PATH keys as tree-sitter-only because that is what runs (the WI-luvud fall-through). The binary probe is not consulted unless the opt-in resolved True. Owned in backend_selection.py for the reason that module states (the CLI cannot import the optional backend package); a second opt-in backend (WI-nanom) adds a clause beside it.\n\nsketch_embeddings._get_results_cache_dir: the state segment is suffixed with the resolved set only when non-empty — `<state_hash>-rust_analyzer` — so <fingerprint>/results/<state>[-<backends>]/<analyzer_identity>. Chosen over folding into the hash: every entry written before this change keeps its key (no mass invalidation), and the suffix is readable in `hypergumbo cache-status`. analyzer_identity untouched (code identity). Eviction iterates state dirs by name with no format check, so a suffixed entry is evicted like any other.\n\nEVIDENCE. test_backend_selection.py::TestTheResolvedBackendSet (6): opted in + installed -> (\"rust_analyzer\",); opted in but not installed -> (); silent tiers -> (); explicit --backend tree-sitter beats env on; a trust grant is consulted when env is silent (live trust store under XDG_STATE_HOME); the binary probe is skipped when not opted in. test_sketch.py::TestRepoFingerprint::test_results_cache_dir_per_resolved_backend_set: on one git repo, tree-sitter-only and two-arm resolved sets land in different dirs under the same results/ root, the same set twice hits the same dir, the tree-sitter-only segment is the bare 16-hex state hash, the two-arm segment is `<hash>-rust_analyzer`, and the analyzer_identity leaf is identical. Mutation: disabling the fold turns the new test red.\n\nBEHAVIOUR CHANGE, stated: read commands (slice/search/explain/...) resolve the same chain, so a repo with a trust grant or the env var set finds its two-arm artifact; a survey run with a one-off `--backend rust-analyzer` flag is reachable only with the same flag/env. Recorded in CHANGELOG, the cli discovery docstring and the spec's cache section.\n\nNOT ASSERTED. A run that starts and produces nothing (wasmtime-class OOM, WI-luvud's other fall-throughs) cannot be known before it runs; it keys as two-arm. The acceptance's end-to-end \"two surveys of one tree land in different cache dirs\" is pinned at the cache-dir function with the resolved set patched, not by running the SCIP backend (it does not run in CI)."  # e1a0

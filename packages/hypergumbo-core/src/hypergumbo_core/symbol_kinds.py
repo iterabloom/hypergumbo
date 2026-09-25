@@ -13,8 +13,11 @@ axis annotations (under the ``x-axis-of-values`` extension keyword).
 Consumers that need a subset of kinds (for example, a "callable kinds"
 filter) should call ``symbol_kinds_on_axis(...)`` rather than maintain
 their own hardcoded set; the property test in
-``tests/test_symbol_kinds.py`` enforces that every hardcoded set in the
-codebase whose name contains ``KIND`` is a subset of this registry.
+``packages/hypergumbo-core/tests/test_symbol_kinds.py`` enforces that every
+hardcoded set in the codebase whose name contains ``KIND`` is a subset of this
+registry, except for the names on :func:`find_axis_drift`'s explicit exclusion
+list (consumers that are deliberately not registry-derived, each carrying its
+own reason and, where one exists, the tracker ID that will remove it).
 
 Axis taxonomy (per ADR-0027 §1):
 
@@ -22,9 +25,18 @@ Axis taxonomy (per ADR-0027 §1):
   source-language syntactic construct the symbol represents (Cluster A
   in the WI-dumiz audit, plus the Cluster B/G/H promotions per the
   per-cluster audit-findings docs).
-- ``pending_classification`` — deferred for the residual Cluster B / G
-  values still on the registry; per-value verdicts arrive with each
-  cluster's audit-findings doc.
+- ``pending_classification`` — deferred values still on the registry:
+  the residual Cluster B / G members, the Cluster H shading/storage
+  qualifiers awaiting their audit, and ``operation``, deferred to v6
+  under id-format:F3. Per-value verdicts arrive with each cluster's
+  audit-findings doc.
+
+Beyond the axis taxonomy this module also owns the **type-family** surface
+(audit-findings 0018): :data:`TYPE_FAMILY_ABSTRACT` / :data:`TYPE_FAMILY_CONCRETE`,
+``SymbolKindSpec.type_family``, :data:`ABSTRACT_KIND_LANGUAGES`, the query
+helpers :func:`type_like_kind_names` / :func:`abstract_type_kind_names` /
+:func:`is_abstract_type`, and a second registry scanner,
+:func:`find_partial_abstract_family_literals`.
 
 The ``endpoint_shape`` axis was retired in PR #3633 (Phase 4b enum
 closure / WI-butol). All 71 deprecated values that occupied that axis
@@ -42,6 +54,17 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
+
+# INV-nosoz: these generic AST-literal helpers are shared with
+# ``edge_types.find_partial_inheritance_family_literals``. They moved to
+# ``_literal_scan`` rather than being copied, because a fact kept in two
+# homes that drift apart is the defect this very linter exists to catch.
+from .member_names import member_short_name
+from ._literal_scan import (
+    declared_linker_languages as _declared_linker_languages,
+    language_guarded_line_spans as _language_guarded_line_spans,
+    string_literal_members as _string_literal_members,
+)
 
 
 # Type-family taxonomy over the language_construct axis (audit-findings 0018).
@@ -206,6 +229,15 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Attribute declaration (Python class attribute, etc.)."),
     SymbolKindSpec("field", AXIS_LANGUAGE_CONSTRUCT,
                    "Field declaration on a struct / class / record."),
+    # INV-lagot: minted by the SCIP importer's DescriptorKind map, which had
+    # been emitting them unregistered. Both name a source-language syntactic
+    # construct directly, which is exactly what ADR-0027's axiom asks of a
+    # value, so they are registered rather than folded.
+    SymbolKindSpec("parameter", AXIS_LANGUAGE_CONSTRUCT,
+                   "Formal parameter in a callable's signature."),
+    SymbolKindSpec("type_parameter", AXIS_LANGUAGE_CONSTRUCT,
+                   "Generic type parameter on a type or callable "
+                   "(Rust/Java/TypeScript ``<T>``)."),
     SymbolKindSpec("constructor", AXIS_LANGUAGE_CONSTRUCT,
                    "Constructor / __init__ / init method."),
     SymbolKindSpec("getter", AXIS_LANGUAGE_CONSTRUCT,
@@ -710,6 +742,28 @@ def find_symbol_kind(name: str) -> SymbolKindSpec | None:
     return None
 
 
+SOLIDITY_CALLABLE_DECLARATION_KINDS: Final[frozenset[str]] = frozenset({
+    "function",
+    "method",
+    "constructor",
+})
+"""Kinds a Solidity ``function``/``constructor`` declaration can carry.
+
+Lives here, in core, because it has **two readers in different packages**:
+the producer (``hypergumbo_lang_extended1.solidity``) and the Solidity ABI
+linker (``hypergumbo_core.linkers.solidity_abi``). INV-lapas changed the
+producer to emit ``method`` for contract members while the ABI linker still
+read ``("function", "constructor")``, and the linker silently stopped
+minting call-site nodes — **1,250 of them on openzeppelin-contracts, taking
+6,689 resolved call edges with them**. Nothing failed; the count just
+dropped, and it was caught by re-running the corpus rather than by reading
+the diff.
+
+A constant duplicated across a package boundary drifts into a terminal
+rather than into CI, so the two readers share this one instead.
+"""
+
+
 def type_like_kind_names() -> frozenset[str]:
     """Every kind that declares a nominal type (abstract or concrete).
 
@@ -736,6 +790,66 @@ def abstract_type_kind_names() -> frozenset[str]:
     )
 
 
+# INV-rolok: which contained member is "the code that runs on construction".
+#
+# TWO MECHANISMS, because the analyzers genuinely disagree and neither is
+# wrong. java / csharp / apex / pony mint a dedicated ``constructor`` kind --
+# whose registry entry above already reads "Constructor / __init__ / init
+# method" -- so for them the KIND is the whole signal. python and js_ts emit
+# the initializer as an ordinary ``method`` (measured: 409 python
+# ``X.__init__`` and 625 javascript ``X.constructor`` methods in one pretix
+# survey, every one of them kind="method"), so for them the NAME is the only
+# signal there is.
+#
+# SCOPED PER LANGUAGE, NOT A GLOBAL BLOCKLIST. A python method named
+# ``constructor`` is an ordinary method and a javascript one named
+# ``__init__`` is too; an unscoped table would silently confer construction
+# reachability on both. Every entry here is a LANGUAGE fact (the keyword or
+# dunder the language itself reserves), not an analyzer convention, so it
+# cannot drift with an emitter.
+#
+# KNOWN GAP, stated rather than papered over: dart names a constructor after
+# its class (``Widget.Widget``, plus named constructors ``Widget.named``), so
+# no fixed name can identify it and dart is absent from this table. It needs
+# either a ``constructor`` kind from the analyzer or an owner-name comparison;
+# filed rather than guessed.
+_INITIALIZER_NAMES_BY_LANGUAGE: Final[dict[str, frozenset[str]]] = {
+    "python": frozenset({"__init__"}),
+    "javascript": frozenset({"constructor"}),
+    "typescript": frozenset({"constructor"}),
+    "ruby": frozenset({"initialize"}),
+    "php": frozenset({"__construct"}),
+}
+
+#: Kinds that can carry an initializer NAME. A ``class`` is never its own
+#: initializer, which matters because the caller walks ``contains`` edges out
+#: of a class and would otherwise be able to loop one back onto itself.
+_NAME_BEARING_INITIALIZER_KINDS: Final[frozenset[str]] = frozenset({
+    "method", "function",
+})
+
+
+def is_initializer(kind: str, name: str, language: str) -> bool:
+    """Return True iff this symbol is the code that runs on construction.
+
+    Answers the question a construction edge raises but does not settle: an
+    ``instantiates`` edge says an object was created, and on the analyzers
+    that land it on the CLASS node (py / js_ts / dart) the initializer is
+    reached only by asking which contained member this predicate selects.
+
+    ``name`` is split with :func:`member_names.member_short_name` rather than
+    a local ``rsplit`` -- ruby spells the member ``Widget#initialize`` and the
+    separator vocabulary has exactly one home (INV-tihim).
+    """
+    if kind == "constructor":
+        return True
+    if kind not in _NAME_BEARING_INITIALIZER_KINDS:
+        return False
+    return member_short_name(name) in _INITIALIZER_NAMES_BY_LANGUAGE.get(
+        language, frozenset(),
+    )
+
+
 def is_abstract_type(kind: str, modifiers: Sequence[str] = ()) -> bool:
     """Is a symbol of *kind* with *modifiers* an abstract type?
 
@@ -759,6 +873,49 @@ def is_abstract_type(kind: str, modifiers: Sequence[str] = ()) -> bool:
     if spec.type_family == TYPE_FAMILY_ABSTRACT:
         return True
     return "abstract" in modifiers
+
+
+def _collection_string_members(node: ast.AST) -> set[str]:
+    """Every string literal anywhere inside a collection literal."""
+    return {
+        sub.value
+        for sub in ast.walk(node)
+        if isinstance(sub, ast.Constant) and isinstance(sub.value, str)
+    }
+
+
+def _enclosing_collection_covers(
+    node: ast.AST, parents: dict[ast.AST, ast.AST], full: frozenset[str]
+) -> bool:
+    """Is this literal one ROW of a collection that covers the whole family?
+
+    A 1:1 translation table maps one foreign name to one local kind per row::
+
+        ("Trait", "trait"),
+        ("Interface", "interface"),
+        ("Protocol", "protocol"),
+
+    Read a row at a time, every one of those "omits" the other two, and the
+    per-literal rule flags all three -- which is backwards, because together
+    they are the most complete mapping the family admits. The rule this
+    function restores is the one the docstring above always stated: the
+    question is whether the *enumeration* covers the family, and a row is not
+    an enumeration.
+
+    The trade-off, stated rather than hidden: a genuinely partial literal
+    nested inside a large collection that happens to mention all three kinds
+    elsewhere is no longer flagged. That is a real loss of resolution, and it
+    is the cost of not flagging every bijection in the tree. The audit-0018
+    defect itself is untouched -- ``("class", "interface", "struct", "trait")``
+    sits in no collection containing ``protocol``, so it still fails.
+    """
+    cur = parents.get(node)
+    while cur is not None:
+        if isinstance(cur, (ast.Tuple, ast.List, ast.Set, ast.Dict)):
+            if full <= _collection_string_members(cur):
+                return True
+        cur = parents.get(cur)
+    return False
 
 
 def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
@@ -795,6 +952,11 @@ def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
                 continue
             guarded = _language_guarded_line_spans(tree)
             declared = _declared_linker_languages(tree)
+            parents: dict[ast.AST, ast.AST] = {
+                child: parent
+                for parent in ast.walk(tree)
+                for child in ast.iter_child_nodes(parent)
+            }
             seen: set[int] = set()
             for node in ast.walk(tree):
                 names = _string_literal_members(node)
@@ -808,6 +970,8 @@ def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
                 if not present or present == full:
                     continue
                 if any(lo <= lineno <= hi for lo, hi in guarded):
+                    continue
+                if _enclosing_collection_covers(node, parents, full):
                     continue
                 missing = sorted(
                     k for k in full - present
@@ -823,72 +987,6 @@ def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
                     f"abstract_type_kind_names() or is_abstract_type()",
                 )
     return offenders
-
-
-def _declared_linker_languages(tree: ast.AST) -> frozenset[str] | None:
-    """Languages named in a module's ``@register_linker(depends_on=...)``.
-
-    Returns ``None`` when the module declares none, which means "treat as
-    language-agnostic" — the conservative direction, since an undeclared
-    module may see any language.
-    """
-    langs: set[str] = set()
-    found = False
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.keyword) or node.arg != "depends_on":
-            continue
-        for sub in ast.walk(node.value):
-            if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-                langs.add(sub.value)
-                found = True
-    return frozenset(langs) if found else None
-
-
-def _string_literal_members(node: ast.AST) -> frozenset[str] | None:
-    """Return the string members of a literal collection, or None."""
-    if isinstance(node, (ast.Set, ast.Tuple, ast.List)):
-        elts = node.elts
-    elif (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in ("frozenset", "set")
-        and node.args
-        and isinstance(node.args[0], (ast.Set, ast.Tuple, ast.List))
-    ):
-        elts = node.args[0].elts
-    else:
-        return None
-    values = [
-        e.value for e in elts
-        if isinstance(e, ast.Constant) and isinstance(e.value, str)
-    ]
-    if len(values) != len(elts) or not values:
-        return None
-    return frozenset(values)
-
-
-def _language_guarded_line_spans(tree: ast.AST) -> list[tuple[int, int]]:
-    """Line spans of boolean expressions that also test a ``language``.
-
-    ``s.language == "graphql" and s.kind in ("type", "field", "interface")``
-    is a per-language predicate. Detecting the sibling comparison is what
-    lets the linter stay strict everywhere else instead of needing an
-    allow-list with a justification field.
-    """
-    spans: list[tuple[int, int]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.BoolOp):
-            continue
-        mentions_language = any(
-            isinstance(sub, ast.Attribute) and sub.attr == "language"
-            for sub in ast.walk(node)
-        ) or any(
-            isinstance(sub, ast.Name) and sub.id == "language"
-            for sub in ast.walk(node)
-        )
-        if mentions_language:
-            spans.append((node.lineno, node.end_lineno or node.lineno))
-    return spans
 
 
 def find_axis_drift(repo_root: Path) -> list[str]:
@@ -919,7 +1017,58 @@ def find_axis_drift(repo_root: Path) -> list[str]:
         # ``PROTOCOL_KINDS`` and ``BRIDGE_KINDS`` in ``edge_types.py``
         # are vocabularies for ``Edge.meta['protocol']`` /
         # ``Edge.meta['bridge_kind']`` — not ``Symbol.kind`` sets.
-        # They share the ``KIND`` substring but live on a different
+        # ``_NON_CROSSING_TARGET_KINDS`` in ``io_boundary.py`` is the same
+        # shape one axis over: the value space of
+        # ``Edge.meta['io_target_kind']`` (INV-nular), which describes what
+        # a call site's I/O TARGET is, not what a symbol is.
+        # All three share the ``KIND`` substring but live on a different
         # axis; exclude them by name.
-        excluded_target_names=("PROTOCOL_KINDS", "BRIDGE_KINDS"),
+        excluded_target_names=(
+            "PROTOCOL_KINDS", "BRIDGE_KINDS", "_NON_CROSSING_TARGET_KINDS",
+            # ``_GO_TYPED_TARGET_KINDS`` (go.py) is the same io_target_kind
+            # value space, keyed by a Go TYPE (WI-suhug): a declared
+            # ``net.Conn`` writer is a ``net_stream`` target, not a Symbol.kind.
+            "_GO_TYPED_TARGET_KINDS",
+            # --- surfaced by WI-jinuj's widening (dicts / tuples are now
+            # collected). Each of these is 0/N conformant with this
+            # registry, which is the test that separates a name collision
+            # from a consumer: a constant that shares the ``KIND`` substring
+            # but none of the vocabulary is a different axis.
+            #
+            # ``_RELATED_ENDPOINT_KINDS`` (cli.py) is the
+            # ``meta["framework_role"]`` vocabulary -- ADR-0027 Phase 3 /
+            # audit-findings 0013 folded these OFF Symbol.kind, and
+            # ``cmd_routes`` reads ``meta.framework_role`` first
+            # (cli.py:2239). Same shape as PROTOCOL_KINDS above.
+            "_RELATED_ENDPOINT_KINDS",
+            # ``_PROVENANCE_KINDS`` (verify_claims.py) enumerates catalogue
+            # PROVENANCE categories (io_primitives, taint_sinks, ...).
+            "_PROVENANCE_KINDS",
+            # ``_ANNOTATION_KINDS`` (tracker) is the TUI annotation-shape
+            # vocabulary (arrow, rect).
+            "_ANNOTATION_KINDS",
+            # ``_READ_TARGET_KIND_BOUNDARY`` (io_boundary.py) is a CROSS-AXIS
+            # map: keys are ``Edge.meta['io_target_kind']`` values, values
+            # are io-boundary names. Neither side is a Symbol.kind, so both
+            # are excluded here -- the io-boundary linter keeps the VALUES
+            # side, which is its own axis.
+            "_READ_TARGET_KIND_BOUNDARY",
+            # ``_WRITE_TARGET_KIND_BOUNDARY`` (io_boundary.py) is the same
+            # cross-axis map in the write direction (WI-suhug).
+            "_WRITE_TARGET_KIND_BOUNDARY",
+            # ``_PHP_CONTAINER_KINDS`` KEYS are tree-sitter NODE types
+            # (class_declaration, trait_declaration); its VALUES are real
+            # Symbol.kinds and stay checked, which is what the per-side
+            # exclusion is for.
+            "_PHP_CONTAINER_KINDS:keys",
+            # --- DEBT, NOT A COLLISION: INV-lagot. ``scip/index.py``'s
+            # ``_KIND_MAP`` IS a Symbol.kind consumer -- 5 of its 8 values
+            # are registered -- and the other 3 (parameter, type_parameter,
+            # meta) plus the ``"unknown"`` fallback at index.py:166 are
+            # phantom values this registry does not describe. Suppressed
+            # here so WI-jinuj's shared-machinery widening lands green, per
+            # that item's own instruction that per-axis residue is filed
+            # rather than fixed. DELETE THIS LINE when INV-lagot closes.
+            "_KIND_MAP",
+        ),
     )

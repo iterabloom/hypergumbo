@@ -6,11 +6,19 @@ to their concrete implementations, enabling polymorphic call resolution.
 
 How It Works
 ------------
-1. Build inheritance maps from `extends` and `implements` edges
+1. Build inheritance maps from inheritance-family edges (`extends`,
+   `implements`, and e.g. Solidity `inherits` / Ruby `includes`), then
+   close them transitively so a grandparent method reaches an override
+   that skips the intermediate class
 2. For each class/interface with subclasses or implementors:
    - Find methods on that class/interface
    - Find matching methods (same short name) in child classes
    - Create `dispatches_to` edges from parent method to child methods
+3. Each edge keeps the flat 0.85 confidence; ranking adjustments live on
+   `rank_score` (a 1/sqrt(N) fan-out dampener over the N overrides, and a
+   fixed low score for test-file overrides) so wide interfaces and test
+   doubles don't dominate centrality. `derived_from` names the inheritance
+   edges along the path, not just the two endpoints
 
 Use Case
 --------
@@ -28,9 +36,11 @@ Benefits
 
 Limitations
 -----------
-- Currently only works for languages with explicit `extends`/`implements` edges
-- Java: Full support
-- Other languages: Need `extends` edge creation for this linker to help
+- Only works where some pass emits inheritance edges: `inheritance-linker`
+  (e.g. Go struct embedding) or the analyzers listed in `depends_on`
+- Dispatch through concrete `extends` is disabled for Go, C++, Rust and C#
+  (`NO_VIRTUAL_EXTENDS_LANGUAGES`) unless the child is itself abstract
+  (interface, trait, protocol, abstract class); `implements` is unaffected
 """
 
 from __future__ import annotations
@@ -38,9 +48,14 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
+from ..edge_types import (
+    DISPATCH_ROLE_CONCRETE,
+    inheritance_dispatch_role,
+    is_inheritance_edge_record,
+)
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..paths import is_test_file
 from ..member_names import member_owner, member_short_name
@@ -147,29 +162,91 @@ def build_inheritance_maps(
         - parent_to_children: class_id -> [child_class_ids] (from extends)
         - interface_to_impls: interface_id -> [implementing_class_ids] (from implements)
     """
-    symbol_by_id = {s.id: s for s in symbols}
     parent_to_children: dict[str, list[str]] = defaultdict(list)
     interface_to_impls: dict[str, list[str]] = defaultdict(list)
+    for edge, is_concrete in admitted_inheritance_edges(symbols, edges):
+        target = parent_to_children if is_concrete else interface_to_impls
+        target[edge.dst].append(edge.src)
+    return dict(parent_to_children), dict(interface_to_impls)
 
+
+def admitted_inheritance_edges(
+    symbols: list[Symbol],
+    edges: list[Edge],
+) -> Iterator[tuple[Edge, bool]]:
+    """Yield ``(edge, is_concrete)`` for each inheritance edge the dispatch
+    gate admits — the one place the gate is applied.
+
+    Split out of :func:`build_inheritance_maps` so the linker can also record
+    WHICH edge justified each hop (INV-rukor): the maps keep only the class
+    ids, and a dispatch edge's ``derived_from`` needs the edge ids.
+    """
+    symbol_by_id = {s.id: s for s in symbols}
     for edge in edges:
-        if edge.edge_type == "extends":
-            # edge: child --extends--> parent
+        # INV-nosoz: the family and its dispatch split come from the registry.
+        # This loop used to branch on two string literals, so Solidity's
+        # ``inherits`` (516 edges on openzeppelin-contracts) and Ruby's mixin
+        # ``includes`` reached neither map and produced zero dispatch.
+        role = inheritance_dispatch_role(
+            edge.edge_type, evidence_type=edge.evidence_type,
+        )
+        if role is None:
+            continue
+        if role == DISPATCH_ROLE_CONCRETE:
+            # edge: child --extends/inherits--> parent. Virtual dispatch
+            # through concrete inheritance is language-dependent.
             child_sym = symbol_by_id.get(edge.src)
             child_lang = child_sym.language if child_sym else None
             child_kind = child_sym.kind if child_sym else None
             child_mods = child_sym.modifiers if child_sym else None
             if not _extends_admits_dispatch(child_lang, child_kind, child_mods):
                 continue
-            parent_id = edge.dst
-            child_id = edge.src
-            parent_to_children[parent_id].append(child_id)
-        elif edge.edge_type == "implements":
-            # edge: impl --implements--> interface
-            interface_id = edge.dst
-            impl_id = edge.src
-            interface_to_impls[interface_id].append(impl_id)
+            yield edge, True
+        else:
+            # edge: impl --implements--> interface, or includer --includes-->
+            # mixin module. Interface satisfaction and mixin inclusion are
+            # virtual in every language, so no language gate applies.
+            yield edge, False
 
-    return dict(parent_to_children), dict(interface_to_impls)
+
+def inheritance_path_edge_ids(
+    ancestor_id: str,
+    descendant_id: str,
+    one_hop: dict[str, list[str]],
+    hop_edge: dict[tuple[str, str], str],
+) -> list[str]:
+    """The inheritance edge ids joining ``descendant_id`` up to ``ancestor_id``.
+
+    Breadth-first over the one-hop ``parent -> [children]`` map, so the path is
+    a SHORTEST one; under a diamond it is one justification among several, not
+    all of them. Ordered from the descendant's own edge upward — the order a
+    reader follows ("C implements I2, I2 extends I1, ...").
+    ``hop_edge[(parent, child)]`` is the first admitted edge seen for that hop.
+    Returns ``[]`` when the descendant is unreachable, which the transitive
+    closure the linker iterates rules out.
+    """
+    predecessor: dict[str, str] = {}
+    frontier = [ancestor_id]
+    seen = {ancestor_id}
+    while frontier and descendant_id not in predecessor:
+        next_frontier: list[str] = []
+        for parent in frontier:
+            for child in one_hop.get(parent, ()):
+                if child in seen:
+                    continue
+                seen.add(child)
+                predecessor[child] = parent
+                next_frontier.append(child)
+        frontier = next_frontier
+    if descendant_id not in predecessor:  # pragma: no cover - closure guarantees reach
+        return []
+    path: list[str] = []
+    node = descendant_id
+    while node != ancestor_id:
+        parent = predecessor[node]
+        path.append(hop_edge[(parent, node)])
+        node = parent
+    return path
 
 
 def close_parent_to_children_transitively(
@@ -472,9 +549,28 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     # doesn't override), the edge ``Grandparent.foo → Grandchild.foo``
     # is never emitted because ``Grandchild`` is not in
     # ``parent_to_children[Grandparent]``.
+    #
+    # INV-nosoz: MERGE the two maps, do not ``update()`` one over the other.
+    # ``dict.update`` REPLACES the value for a shared key, so a type that is
+    # both extended (``interface Solid extends Shape``) and implemented
+    # (``class Box implements Shape``) lost one whole set of children. Latent
+    # rather than observed — three measured repositories (openzeppelin-
+    # contracts, postal, sherpa-onnx) emit zero ``implements`` edges between
+    # them, so no overlapping key was seen live — but widening the family
+    # here raises the odds of a shared key, so it is closed alongside the
+    # change that makes it reachable.
     one_hop_parents_to_children: dict[str, list[str]] = {}
-    one_hop_parents_to_children.update(parent_to_children)
-    one_hop_parents_to_children.update(interface_to_impls)
+    for source_map in (parent_to_children, interface_to_impls):
+        for key, children in source_map.items():
+            bucket = one_hop_parents_to_children.setdefault(key, [])
+            bucket.extend(c for c in children if c not in bucket)
+    # INV-rukor: which admitted edge justified each hop, so a dispatch edge can
+    # name the inheritance path it was derived from rather than restating its
+    # own two endpoints (342 of 342 did, with 259 extends/implements edges in
+    # the same graph going unnamed).
+    hop_edge: dict[tuple[str, str], str] = {}
+    for inh_edge, _concrete in admitted_inheritance_edges(ctx.symbols, ctx.edges):
+        hop_edge.setdefault((inh_edge.dst, inh_edge.src), inh_edge.id)
     all_parents_to_children = close_parent_to_children_transitively(
         one_hop_parents_to_children,
     )
@@ -489,9 +585,26 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     # track all candidates and disambiguate methods by file path.
     # Struct and trait are included to match the inheritance linker's
     # broader definition of "type with methods".
+    #
+    # INV-nosoz: an endpoint of an inheritance edge counts as a dispatchable
+    # type even when its ``kind`` is not type-like. Ruby's mixin target is
+    # ``kind="module"``, which is deliberately NOT in ``type_like_kind_names()``
+    # — Python and Go modules carry the same kind and are not types, so
+    # widening the kind registry would silently widen every predicate built on
+    # it. The edge is the better evidence: a producer that emitted
+    # ``Square --includes--> Greet`` with mixin evidence has already asserted
+    # that both ends participate in method resolution, and re-deriving that
+    # from the kind slot is a second opinion that disagreed. Endpoints with no
+    # contained methods contribute nothing downstream, so this widens the
+    # candidate set without widening the output.
+    inheritance_endpoints: set[str] = set()
+    for e in ctx.edges:
+        if is_inheritance_edge_record(e):
+            inheritance_endpoints.add(e.src)
+            inheritance_endpoints.add(e.dst)
     class_symbols = {
         s.id: s for s in ctx.symbols
-        if s.kind in type_like_kind_names()
+        if s.kind in type_like_kind_names() or s.id in inheritance_endpoints
     }
     class_ids_by_name: dict[str, list[str]] = defaultdict(list)
     for cid, csym in class_symbols.items():
@@ -514,6 +627,11 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     hierarchy_index = _TypeHierarchyIndex.build(
         ctx.symbols, class_ids_by_name, class_symbols,
     )
+    class_of_method = {
+        sym.id: class_id
+        for candidates in hierarchy_index.methods_by_short_name.values()
+        for class_id, sym in candidates
+    }
 
     # Create dispatches_to edges
     new_edges: list[Edge] = []
@@ -584,7 +702,13 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="type_hierarchy",
-                    derived_from=[parent_method.id, override.id],
+                    derived_from=[
+                        parent_method.id, override.id,
+                        *inheritance_path_edge_ids(
+                            parent_id, class_of_method[override.id],
+                            one_hop_parents_to_children, hop_edge,
+                        ),
+                    ],
                 )
                 new_edges.append(edge)
 
@@ -597,10 +721,22 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     priority=60,  # Run after analyzers, before final cleanup
     description="Creates dispatches_to edges for polymorphic method dispatch",
     activation=LinkerActivation(always=True),  # Run on all codebases
-    # CNF: polymorphic dispatch resolution is meaningful in any OO/trait
-    # language with class/method hierarchies — Java, C#, Kotlin, Scala, Python,
-    # Ruby, JS/TS, Rust (traits), Swift, Dart, PHP, Elixir (protocols).
-    depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "php", "elixir"]],
+    # CNF: the passes that produce the extends/implements EDGES this linker
+    # indexes (WI-rasal; 10 surveys falsified the previous list, all Go repos).
+    #
+    # The old list said where polymorphic dispatch is "meaningful" — a language
+    # property. This linker never looks at a language: it builds its inheritance
+    # map out of edges, whose language-agnostic producer is
+    # ``inheritance-linker`` (hence the pass id at the head of the clause), plus
+    # the analyzers that emit ``extends``/``implements`` themselves. That is why
+    # Go repos falsified it — ``go`` is not and need not be in this list, since
+    # inheritance-linker turns Go struct embedding into the edges.
+    depends_on=[
+        [
+            "inheritance-linker", "blade", "haskell", "java", "javascript",
+            "python", "ruby", "rust", "rust_analyzer", "scip_python", "twig", "vhdl",
+        ],
+    ],
 )
 def _link_type_hierarchy_entry(ctx: LinkerContext) -> LinkerResult:
     """Entry point for type hierarchy linker."""

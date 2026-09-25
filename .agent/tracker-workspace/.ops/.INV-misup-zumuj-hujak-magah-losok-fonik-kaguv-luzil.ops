@@ -1,0 +1,70 @@
+- op: create  # 489e
+  at: '2026-08-28T22:41:59Z'  # 489e
+  by: agent  # 489e
+  actor: jgstern_agent  # 489e
+  clock: 1  # 489e
+  nonce: 489e  # 489e
+  data:  # 489e
+    kind: invariant  # 489e
+    title: "11 javascript rows on constructor-style browser globals are unreachable: the analyzer never resolves a `new`-constructed receiver to its type at the io-boundary layer"  # 489e
+    status: violated  # 489e
+    priority: 2  # 489e
+    parent:  # 489e
+    tags:  # 489e
+    - taint  # 489e
+    - catalogue  # 489e
+    - javascript  # 489e
+    isbefore: []  # 489e
+    duplicate_of: []  # 489e
+    not_duplicate_of: []  # 489e
+    pr_ref:  # 489e
+    description: "FOUND 2026-08-28 while investigating WI-zumoz, whose stated mechanism turned out\nto be wrong. Write-up: ~/hypergumbo_lab_notebook/zumoz_probe_08282026/RESULT.md\n\nTHE CATALOGUE SIDE IS FINE. Feeding well-formed synthetic edges to\nclassify_call, every one of these rows matches -- including with construct\n\"assignment\" and with no construct meta at all:\n    WebSocket.onmessage / onclose, EventSource.onmessage  -> all matched\nSo \"a method-kind row cannot match a property assignment\" is NOT the mechanism.\n\nTHE ANALYZER NEVER EMITS THE EDGE. Four fixtures through\n`hypergumbo io-boundaries`, fresh cache each, two positive controls firing in\nthe same runs:\n    fetch(...)                          function-keyed global   MATCHED (control)\n    localStorage.setItem / getItem      method on NAMED global  MATCHED (control)\n    x.open(...) / x.send(...)  x = new XMLHttpRequest()         no chain\n    ws.send(...)               ws = new WebSocket(...)  module scope   no chain\n    ws.addEventListener('message', cb)  a REAL method call      no chain\n    ws.onmessage = cb                   property assignment     no chain\n    TypeScript: const ws: WebSocket = new WebSocket(...); ws.send(...)  no chain\n\nTHE DISCRIMINATOR IS RECEIVER SHAPE, NOT ASSIGNMENT-VS-CALL: a NAMED GLOBAL\nreceiver (localStorage.x, where the receiver IS the module name) resolves; a\nCONSTRUCTED INSTANCE (ws = new WebSocket(...); ws.x) never does -- in JS or TS,\nat module or function scope, called or assigned.\n\njs_ts.py EXPECTS THE OPPOSITE. The JS_KNOWN_GLOBALS comment says constructor-\nstyle globals \"are typically `new`'d first and reach io-boundaries through the\ninstance path, not this fallback.\" _ParsedFile documents the inference it relies\non (\"Direct constructor calls: client = new Client() -> var_types['client'] =\n'Client'\"). The instance path does not arrive at the io-boundary layer.\n\nAFFECTED ROWS -- 11, across 4 modules and 4 boundaries, ALL INERT:\n    net_recv  WebSocket.addEventListener, WebSocket.onclose, WebSocket.onmessage\n    net_send  WebSocket.send\n    net_recv  EventSource.addEventListener, EventSource.onmessage\n    net_send  XMLHttpRequest.open, XMLHttpRequest.send,\n              XMLHttpRequest.setRequestHeader\n    ipc_recv  BroadcastChannel.addEventListener\n    ipc_send  BroadcastChannel.postMessage\n\nWHY IT MATTERS BEYOND THE ROW COUNT.\n  * The browser WebSocket/SSE RECEIVE surface is not \"thinner than the catalogue\n    suggests\" (WI-zumoz's reading) -- it is EMPTY. addEventListener, the row\n    that reading leans on, is equally unreachable.\n  * The whole XHR EGRESS surface is empty. XMLHttpRequest.open is also one of\n    WI-lunav's eight builder rows, so no finding could ever have existed at that\n    row to adjudicate -- a silent zero that would have read as \"no problem here\".\n  * BroadcastChannel.postMessage's net_recv -> ipc_send direction correction is\n    inert: the row is right and unreachable.\n\nNO FALSE-COVERAGE RISK TODAY, which is what keeps this P2 rather than P1: a call\nthat never classifies is never counted as EXAMINED (INV-buzab), and javascript's\ncatalogue status is `in_progress`, so it makes no module_completeness claim. The\ndamage is missing recall, not a false all-clear.\n\nFIXING IT ADDS RECALL, so it is band-stopped under WI-sivuz. Filed so the gap is\naddressable and countable rather than rediscovered a third time (INV-linub is\nthe same family one level over: capability is not recall)."  # 489e
+    fields:  # 489e
+      statement: "Every row in a shipped io_primitives catalogue is reachable by the analyzer that owns its language: if the source contains the call the row describes, an edge is emitted that the row can classify."  # 489e
+      root_cause: "The JS/TS analyzer resolves a member access only when the receiver is a NAMED GLOBAL whose name is the module name (localStorage.setItem). A receiver bound by construction (ws = new WebSocket(...)) is never resolved to its type at the io-boundary layer, so no classifiable edge is emitted -- in JS or TS, at module or function scope, whether the member is called or assigned. js_ts.py's own JS_KNOWN_GLOBALS comment assumes the opposite, that these reach io-boundaries via the instance path."  # 489e
+- op: update  # fecc
+  at: '2026-08-28T22:42:09Z'  # fecc
+  by: agent  # fecc
+  actor: jgstern_agent  # fecc
+  clock: 2  # fecc
+  nonce: fecc  # fecc
+  set:  # fecc
+    status: violated  # fecc
+- op: discuss  # e2e2
+  at: '2026-08-28T22:42:09Z'  # e2e2
+  by: agent  # e2e2
+  actor: jgstern_agent  # e2e2
+  clock: 3  # e2e2
+  nonce: e2e2  # e2e2
+  message: "Filed VIOLATED with a controlled repro: 4 fixtures, 2 positive controls firing in the same runs (fetch, localStorage), all 11 constructor-style-global rows producing zero chains in JS and TS, module and function scope."  # e2e2
+- op: update  # 32d3
+  at: '2026-08-28T22:42:50Z'  # 32d3
+  by: agent  # 32d3
+  actor: jgstern_agent  # 32d3
+  clock: 4  # 32d3
+  nonce: 32d3  # 32d3
+  set: {}  # 32d3
+  add:  # 32d3
+    isbefore: [WI-zumoz-mamok-tofah-fusol-dodig-romif-luzas-nilad]  # 32d3
+- op: discuss  # ac21
+  at: '2026-08-30T02:31:49Z'  # ac21
+  by: agent  # ac21
+  actor: jgstern_agent  # ac21
+  clock: 5  # ac21
+  nonce: ac21  # ac21
+  message: "Independently re-derived by measurement 0009 (WI-vapud), from the deferred-crossing register rather than from WI-zumoz. Starting from a different population and a different question, the SAME six rows came back inert: WebSocket.addEventListener/onclose/onmessage, EventSource.addEventListener/onmessage, BroadcastChannel.addEventListener. Fixture: idiom/js2 in ~/hypergumbo_lab_notebook/vapud_reach_08292026/, positive controls fs.readFileSync and http.createServer firing in the same run; the constructor-bound receiver produces a 'uses' edge with dst_ref=None and never a 'calls' edge, exactly as this item states. Two additions. (1) These six are ALSO ADR-0049 deferred crossings, so they sit in INV-kanuk's retag scope while being unreachable -- retagging them changes no output, and 0009 recommends they go last. (2) A DIFFERENT javascript gap turned up beside them and is filed separately as INV-zudos: 'process' is absent from JS_KNOWN_GLOBALS, so require-less process.on(...) emits no calls edge while process.stdin still fires through module_attr_ref. That is a named-global omission, not this item's constructor mechanism."  # ac21
+- op: update  # 2d26
+  at: '2026-09-04T01:32:48Z'  # 2d26
+  by: agent  # 2d26
+  actor: jgstern_agent  # 2d26
+  clock: 6  # 2d26
+  nonce: 2d26  # 2d26
+  set:  # 2d26
+    status: satisfied  # 2d26
+- op: discuss  # e220
+  at: '2026-09-04T01:32:48Z'  # e220
+  by: agent  # e220
+  actor: jgstern_agent  # e220
+  clock: 7  # e220
+  nonce: e220  # e220
+  message: "FIXED IN PR #753 (dev 82a973b69f). Root cause as filed: the member-call branch\nresolved a typed receiver only in-repo (Case 3) and emitted nothing on a miss;\n`new ns.Class()` recorded the bare class and dropped the namespace. Now:\n`JS_CONSTRUCTOR_TYPES` is derived from javascript.yaml (bare PascalCase\nmodules + dotted `ns.Class` rows; a leaf claimed twice -- Socket under net and\ndgram -- is decided by the namespace, never the leaf); `var_ctor_modules`\nbeside `var_types` holds the catalogue module of a constructed local; a typed\nreceiver whose in-repo lookup misses emits `make_unresolved_edge(module_hint=\n<ctor module>, receiver_type_hint=<class>, call_construct=\"method\")`; the\ninline `new X(..).m()` shape (the receiver IS the construction) goes through\nthe same `_constructed_module` rule. JS and TS (`.ts` emits under the\n`typescript` prefix), module and function scope. The eleven filed rows are\nreachable; property ASSIGNMENT (`ws.onmessage = cb`) is an assignment, not a\ncall, and is NOT claimed here -- measure it separately if the catalogue's\n`assignment` construct path is meant to fire.\nMEASURED: per call site, both arms in one process: mobx 15,188 -> 35,743 sites, plausible 3,054 -> 5,244 (5 XMLHttpRequest typed), workadventure 25,116 -> 54,672 (35 XMLHttpRequest + 8 WebSocket typed), 0 sites lost a type; plausible's one resolved->typed site is `xhr.open` leaving a wrong short-name in-repo binding for XMLHttpRequest.open. io-boundaries: mobx 60 -> 60, plausible 54 -> 59 (+5, all XMLHttpRequest egress, every site read back), workadventure 60 -> 78 (+17 XMLHttpRequest in Emscripten's doXHR loader inside minified wasm glue, +1 BroadcastChannel.postMessage in a service worker); 0 chains lost."  # e220

@@ -1,0 +1,88 @@
+- op: create  # edff
+  at: '2026-09-18T19:33:03Z'  # edff
+  by: agent  # edff
+  actor: jgstern_agent  # edff
+  clock: 1  # edff
+  nonce: edff  # edff
+  data:  # edff
+    kind: work_item  # edff
+    title: "Merge pass at the top of Phase C: fold two producers' records for one declaration into one Symbol, new id, edges rewired, no-op for a single producer (ADR-0057 ruling 3)"  # edff
+    status: todo_hard  # edff
+    priority: 2  # edff
+    parent:  # edff
+    tags:  # edff
+    - scip  # edff
+    - multi_fidelity  # edff
+    - identity  # edff
+    - provenance  # edff
+    isbefore: []  # edff
+    duplicate_of: []  # edff
+    not_duplicate_of: []  # edff
+    pr_ref:  # edff
+    description: "ADR-0057 ruling 3: a declared MERGE PASS at the top of Phase C, before the\nfirst consumer (`refine_frameworks`, cli.py:11305), that folds records two\nproducers emitted for one declaration into ONE Symbol with every attribute's\nprovenance preserved. Today nothing merges: run_all_analyzers concatenates\nsymbols (all_analyzers.py, dedups edges by id only) and every Phase-C reader\nsees both records. WI-gojum's 2026-09-18 note established the dedup was never\nwritten.\n\nMERGE KEY (measured, aardvark-dns b1008d3b67): same path, same base name\n(last `::` segment), and the SCIP name-token span falling inside the\ntree-sitter item span; smallest containing item wins. Pairs 138 of 169 SCIP\nnodes with ZERO tree-sitter leftovers; the 31 unpaired are 18 module\nnamespaces, 11 variables, 2 classes. Neither `id` nor `stable_id` can be the\nkey: both are derived from span/name/kind, which are exactly the attributes\nthat disagree.\n\nMECHANICS: one linear pass over symbols grouping by key, one over edges\nrewiring src/dst to the survivor — the shape of dedup_logical_synthetic_identities\n(analyze/base.py). The merged record gets a NEW id (neither producer's);\nevery edge from BOTH producers is rewired and edge_key reset to None so\ndeduplicate_edges recomputes (precedent: analyze/base.py sets edge_key=None\non rewire). Span: the merged record's span is the ITEM span — rust-analyzer's\nDefinition `enclosing_range` (populated 20/20) — so INV-lodum's cure lands\nHERE, not as a separate index.py edit. NO-OP when one producer emitted: a\ntree-sitter-only run must be byte-identical before/after.\n\nORDERING CONSEQUENCE: split_within_file_stable_id_collisions runs later and\nis untouched; with the merge first no same-(path, stable_id) cross-backend\ngroup ever reaches it.\n\nACCEPTANCE: aardvark-dns two-arm run -> 138 merged + 31 SCIP-only + 0\ntree-sitter-only Rust nodes; each merged node carries origin=[rust, scip];\ntree-sitter-only run byte-identical; ADR-0043 §8 round-trip holds."  # edff
+    fields: {}  # edff
+- op: update  # dd73
+  at: '2026-09-18T19:38:18Z'  # dd73
+  by: agent  # dd73
+  actor: jgstern_agent  # dd73
+  clock: 2  # dd73
+  nonce: dd73  # dd73
+  set: {}  # dd73
+  add:  # dd73
+    isbefore: [INV-lodum-sotah-rudis-fivit-dalot-fosug-matuf-gobon]  # dd73
+- op: update  # 2c0d
+  at: '2026-09-18T19:39:04Z'  # 2c0d
+  by: agent  # 2c0d
+  actor: jgstern_agent  # 2c0d
+  clock: 3  # 2c0d
+  nonce: 2c0d  # 2c0d
+  set: {}  # 2c0d
+  add:  # 2c0d
+    isbefore: [WI-binis-hulud-hivir-nojup-lohob-rotor-javar-gofat]  # 2c0d
+- op: update  # aeb9
+  at: '2026-09-18T20:07:46Z'  # aeb9
+  by: agent  # aeb9
+  actor: jgstern_agent  # aeb9
+  clock: 4  # aeb9
+  nonce: aeb9  # aeb9
+  set:  # aeb9
+    description: "ADR-0057 ruling 3 (re-scoped 2026-09-18 after §10 landed): a declared MERGE\nPASS at the top of Phase C, before the first consumer (`refine_frameworks`,\ncli.py:11305), that folds records two producers emitted for one declaration\ninto ONE Symbol with every attribute's provenance preserved. Today nothing\nmerges: run_all_analyzers concatenates symbols (all_analyzers.py, dedups\nedges by id only) and every Phase-C reader sees both records. WI-gojum's\n2026-09-18 note established the dedup was never written.\n\nTHE KEY IS READ FROM THE PRODUCER DECLARATION (ADR-0057 §10, the contract\nrow), NOT HARDCODED. The pass pairs records whose declared name_key values\nare equal in the same path and whose spans satisfy the declared span roles\n(token inside item; item == item). For Rust the declarations are: tree-sitter\n`rust` — name_key = last `::` segment, span_role = item; `rust_analyzer` —\nname_key = name as emitted, span_role = token (or item once its Symbol.span\ncomes from enclosing_range). Measured through exactly that rule on\naardvark-dns (b1008d3b67): 138 of 169 SCIP nodes paired, ZERO tree-sitter\nleftovers; the 31 unpaired are 18 module namespaces, 11 variables, 2\nclasses. Neither `id` nor `stable_id` can be the key: both derive from\nspan/name/kind, the attributes that disagree.\n\nMECHANICS: one linear pass over symbols grouping by key, one over edges\nrewiring src/dst to the survivor — the shape of\ndedup_logical_synthetic_identities (analyze/base.py). The merged record gets\na NEW id (neither producer's); every edge from BOTH producers is rewired and\nedge_key reset to None so deduplicate_edges recomputes. Merged span = the\nITEM span (rust-analyzer's `enclosing_range`, populated 20/20) — INV-lodum's\ncure lands HERE. The pass REFUSES, naming the analyzer, to merge records\nfrom a producer with no declaration (no silent fallthrough). NO-OP when one\nproducer emitted: a tree-sitter-only run is byte-identical before/after.\n\nEDGES (ADR-0057 §11): src, dst and edge_type are identity. Two edges that\nagree on all three collapse via edge_key; a disagreement on any of them is\ntwo edges, each with its own origin — that IS the provenance of the\ndisagreement. Hence the SCIP edge-type row blocks this one: until SCIP\nemits `calls`, the 92 shared edges are not duplicates.\n\nORDERING: split_within_file_stable_id_collisions runs later and is\nuntouched; with the merge first no same-(path, stable_id) cross-backend\ngroup reaches it.\n\nTESTS run on RECORDED producer-shaped fixtures (the fixture row, which\nblocks this one) — never on the incumbent arm's spans fed back.\n\nACCEPTANCE: recorded aardvark-dns fixture -> 138 merged + 31 SCIP-only + 0\ntree-sitter-only Rust nodes, paired through the declarations alone (no `::`\nliteral in analyze/); each merged node origin=[rust, scip]; tree-sitter-only\nrun byte-identical; ADR-0043 §8 round-trip holds; an undeclared producer is\nrefused with its name in the error."  # aeb9
+- op: update  # 5863
+  at: '2026-09-18T20:43:20Z'  # 5863
+  by: agent  # 5863
+  actor: jgstern_agent  # 5863
+  clock: 5  # 5863
+  nonce: '5863'  # 5863
+  set: {}  # 5863
+  add:  # 5863
+    isbefore: [WI-lihis-dunav-durur-fimid-vulaj-fupir-notoz-loloz]  # 5863
+- op: discuss  # fb24
+  at: '2026-09-19T01:26:23Z'  # fb24
+  by: agent  # fb24
+  actor: jgstern_agent  # fb24
+  clock: 6  # fb24
+  nonce: fb24  # fb24
+  message: "PRECONDITION LANDED (WI-hohuh, PR #1066, dev 52d5763a39): the declaration this pass must READ exists. registry.merge_participants(language) returns the anchored producers to pair among (for \"rust\": [rust_analyzer, rust], priority order) and raises UndeclaredProducerError naming the analyzer otherwise — the pass should call it per language and let that exception be the refusal; do not re-implement the check. Each RegisteredAnalyzer.merge is a MergeAnchor with .name_key (callable Symbol.name -> key) and .span_role (\"token\" | \"item\"): rust = last \"::\" segment / item; rust_analyzer = as_emitted / token. Containment rule per §10: token inside item; item vs item is equality.\n\nFACTS PINNED FOR THIS PASS on the recorded rust-analyzer 1.94.0 sample (lang-rust-analyzer/tests/recorded_rust_analyzer_1_94_0.py): every callable's SCIP range is the single-line token; enclosing_range equals the tree-sitter item span line-for-line on 6/6 callables — so the INV-lodum fold (span the merged record from enclosing_range) will produce item == item on the recorded producer. Two same-named declarations (`greet` trait sig vs impl) are separated by containment, not by key — the pass must NOT pair on key alone.\n\nSCOPE NOTE: javascript/svelte/vue are MergeDisjoint on both sides; merge_participants returns [] for svelte and vue, so the pass is a no-op there by declaration. A future tsserver backend anchored on javascript would make javascript's own declaration (currently MergeDisjoint) insufficient — the contract test will refuse it until javascript declares an anchor; that is the intended forcing function."  # fb24
+- op: discuss  # b195
+  at: '2026-09-19T02:08:24Z'  # b195
+  by: agent  # b195
+  actor: jgstern_agent  # b195
+  clock: 7  # b195
+  nonce: b195  # b195
+  message: "FIXTURE LANDED (WI-romuh). Import from recorded_rust_analyzer_1_94_0: aardvark_dns_index_bytes(), aardvark_dns_crate_root(), AARDVARK_DNS_PAIRING. The SCIP arm's Symbols come from translate_scip_to_hg(aardvark_dns_index_bytes(), reader-over-crate); the tree-sitter arm runs live on aardvark_dns_crate_root(). ACCEPTANCE NUMBER CORRECTED: under the declared anchors the committed input pairs **148 of 169** (not 138), 0 ambiguous — test_recorded_fixtures.py::test_pairing_under_the_declared_rule is the reference computation (same path, equal name keys, token line inside item span). The 21 unpaired: 18 namespaces + 2 `type` aliases + 1 `static` (rust.py emits none). When the pass has a function name, add it to CROSS_BACKEND_CONSUMERS in check_recorded_producer_input.py so a test cannot feed it rust.py-derived input."  # b195
+- op: update  # 5406
+  at: '2026-09-19T04:11:09Z'  # 5406
+  by: agent  # 5406
+  actor: jgstern_agent  # 5406
+  clock: 8  # 5406
+  nonce: '5406'  # 5406
+  set:  # 5406
+    status: done  # 5406
+    pr_ref: '1072'  # 5406
+- op: discuss  # 6c54
+  at: '2026-09-19T04:11:09Z'  # 6c54
+  by: agent  # 6c54
+  actor: jgstern_agent  # 6c54
+  clock: 9  # 6c54
+  nonce: 6c54  # 6c54
+  message: "DONE (PR in pr_ref). Row 5 of the owner-authorised sequence.\n\nWHAT LANDED. analyze/merge_producers.py::merge_producer_records(symbols, edges, analysis_runs, usage_contexts=) — called in cli.run_behavior_map after _relativize_ir_paths and before refine_frameworks (top of Phase C). Producer of a record = origin_run_id -> AnalysisRun.pass (the registration name); anchors from registry.merge_participants (its UndeclaredProducerError IS the refusal, propagated, not caught); incumbent = registry.incumbent_first (non-scip backends first, then priority — ADR-0057 §5's built-in until WI-hukuf; ALTERNATIVE_BACKENDS moved from the lint into the registry so there is one home). Pairing: same path, equal declared name keys, token inside item (line containment) or item == item; a record with two candidate partners, or a partner claimed twice, is left unmerged and reported in MergeReport.ambiguous — never guessed. Merged record = copy of the incumbent's with: id minted from the merged attributes via make_symbol_id; the ITEM span (INV-lodum cured for every merged record); origin = [incumbent, alternative]; meta union with the incumbent winning shared keys (scip_symbol survives); attributes only the other producer observed filled in (signature, docstring, qualified_name, visibility, stable_id, ...); origin_run_id = the pass's own \"producer-merge\" run (registered in catalog._BUILTIN_PIPELINE_PASS_IDS), appended to analysis_runs only when it folded something (the file-symbol synthesizer's convention; a run for a no-op pass is the ADR-0056 question the owner reserved). Edges: src/dst/derived_from rewired, edge_key reset so deduplicate_edges collapses twins (§11); usage-context symbol_ref rewired. Single producer: byte-identical no-op. The §1 candidate set is kept per merged record in memory (MergedRecord.candidates: attribute -> [(value, producers)]) for WI-binis's slot.\n\nTWO READINGS SETTLED. (1) \"The merged record gets a NEW id (neither producer's)\": the id grammar (ADR-0036) has no slot that could make it differ, so the id is MINTED from the merged attributes and coincides with the incumbent's exactly when incumbent-first leaves every identity attribute the incumbent's — recorded in ADR §3's landing note. (2) The Python incumbent (py.py) now declares its anchor (last \".\" segment, item span) ahead of WI-nanom — required for the pipeline-level test and for any plugin backend to pair with it.\n\nEVIDENCE. (a) Fixture (test_recorded_fixtures.py::TestTheMergePassOnBothArms, live tree-sitter + recorded SCIP): 148 folded = AARDVARK_DNS_PAIRING[\"paired\"], 0 ambiguous, 21 SCIP-only left, 0 tree-sitter-only; every merged record origin == [\"rust\",\"scip\"], carries scip_symbol, multi-line item spans on callables, origin_run_id of the producer-merge run; the 121 shared call edges land on 93 distinct (src,dst,calls) keys and deduplicate_edges removes exactly 93 (pinned as AARDVARK_DNS_CALL_SITE_TALLY[\"shared_call_keys_after_fold\"]). (b) Pipeline (test_merge_pass_in_pipeline.py): a fake second Python producer registered beside the real one for one run_behavior_map -> \"f\" and \"Alias\" are ONE node each with origin [python, pyscip], Alias keeps the incumbent's kind on the contested attribute, the namespace record stays pyscip-only, a producer-merge run is recorded and the merged nodes' origin_run_id joins to it; with no second producer no merge run appears; stripping the incumbent's declaration makes the pipeline raise UndeclaredProducerError naming 'python'. (c) 21 unit tests on synthetic input (pairing, containment separating same-named greets, incumbent-first candidates, agreement = one value two producers, origin/meta union, fill-from-other, run join, edge/derived_from/usage-context rewiring, ambiguity both ways, no-op, non-producer records ignored, spanless never pairs, refusal, item-vs-item). Mutation: breaking containment turns 18 tests red.\n\nNOT ASSERTED. The provenance slot is not serialized (WI-binis, next). SCIP-only leftovers keep their token span (INV-lodum stays violated for those 21). The acceptance's \"138 merged + 31 SCIP-only\" is superseded by the committed-input numbers (148 + 21, per WI-romuh's correction)."  # 6c54

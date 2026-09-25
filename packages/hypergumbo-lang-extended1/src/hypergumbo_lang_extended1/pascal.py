@@ -11,8 +11,19 @@ and Lazarus IDE. Modern Object Pascal supports object-oriented programming.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Collect all symbols (programs, units, procedures, functions)
+1. Pass 1: Collect programs (kind ``program``), units (kind ``module``) and
+   non-nested procedures/functions (kind ``function``, meta ``proc_kind``);
+   descent stops at each procedure, so nested procedures are not symbols
+   (WI-sigit)
 2. Pass 2: Extract call edges from exprCall and identifier-statement patterns
+
+Name resolution is case-insensitive, matching Pascal itself:
+``PascalAnalyzer.register_symbol`` stores every symbol under its lowercased
+name and call names are lowercased before lookup. Calls to names in
+``_PASCAL_BUILTINS`` (``writeln``, ``inc``, ``length``, ``inttostr``, ...)
+emit no edge; calls with no enclosing procedure/function (e.g. in a
+program's main block) are dropped; unmatched calls become unresolved edges
+via ``make_unresolved_edge``.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Pascal-specific extraction
@@ -396,7 +407,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
 _analyzer = PascalAnalyzer()
 
 
-@register_analyzer("pascal")
+@register_analyzer("pascal", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_pascal(repo_root: Path) -> AnalysisResult:
     """Analyze Pascal source files in a repository."""
     return _analyzer.analyze(repo_root)

@@ -14,7 +14,9 @@ Implementation approach:
 - Handles Janet-specific constructs like defn, def, and tuple calls
 
 Key constructs extracted:
-- (defn name [args] body) - function definitions
+- (defn name [args] body) - function definitions: the grammar's
+  ``extra_defs`` node covers defn, defn-, defmacro and varfn, all emitted
+  as kind ``function``
 - (def name value) - variable definitions
 - (name args) - function calls (tuples)
 """
@@ -303,7 +305,7 @@ def is_janet_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("janet")
+@register_analyzer("janet", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_janet(repo_root: Path) -> AnalysisResult:
     """Analyze Janet source files in a repository.
 

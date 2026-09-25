@@ -21,6 +21,7 @@ Entry points:
   - **Sync and setup:** sync, init, setup, fork-setup, migrate
   - **Surfaces:** tui, serve, textconv
   - **Agent governance:** count-todos, hash-todos, guidance
+  - **Analysis:** clusters (predicted clusters of open items; see clusters.py)
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 
@@ -45,6 +46,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from hypergumbo_tracker.clusters import (
+    DEFAULT_K, DEFAULT_SHARED, compute_clusters, id_pattern_for,
+)
 from hypergumbo_tracker.models import (
     CompiledItem,
     DiscussionEntry,
@@ -573,6 +577,8 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
             fields[k] = v
         kwargs["fields"] = fields
 
+    if getattr(args, "force_field_key", False):
+        kwargs["force_field_key"] = True
     item_id = ts.add(kind=args.kind, title=args.title, tier=tier, **kwargs)
     # Catalog maintenance: stamp last_used (and seed created_on for first
     # sight) on every tag this op affixed. Failure mode this guards
@@ -828,6 +834,7 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
             set_fields=set_fields or None,
             add_fields=add_fields or None,
             remove_fields=remove_fields or None,
+            force_field_key=getattr(args, "force_field_key", False),
         )
 
     # Catalog maintenance: stamp last_used on every tag this op
@@ -1799,6 +1806,76 @@ def _cmd_guidance(args: argparse.Namespace, ts: TrackerSet) -> int:
         return EXIT_USER_ERROR
 
 
+def _cmd_clusters(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'clusters' subcommand — predicted clusters of the open items.
+
+    TF-IDF cosine on masked item text, mutual top-k neighbours sharing at
+    least `shared` neighbours (Jarvis-Patrick), ranked by mean pairwise cosine;
+    the vectorizer is fitted on every non-deleted item so the IDF is stable
+    while only the selected items are clustered. Rationale and the measurements
+    behind the defaults: the module docstring of clusters.py.
+    """
+    tiers_to_check: list[Tier]
+    if ts.config.scope == "workspace":
+        tiers_to_check = [Tier.WORKSPACE, Tier.STEALTH]
+    else:
+        tiers_to_check = list(Tier)
+    fit_items: list[CompiledItem] = []
+    for t in tiers_to_check:
+        for item in ts._tier_stores[t]._compile_all():
+            if item.status != "deleted":
+                item.tier = t
+                fit_items.append(item)
+    if args.all:
+        items = list(fit_items)
+    elif args.status:
+        wanted = {st for st in args.status.split(",") if st}
+        items = [i for i in fit_items if i.status in wanted]
+    else:
+        resolved = set(ts.config.resolved_statuses)
+        items = [i for i in fit_items if i.status not in resolved]
+    clusters = compute_clusters(
+        items, fit_items, id_pattern=id_pattern_for(ts.config), k=args.k, shared=args.shared,
+    )
+    clusters = [c for c in clusters if len(c.item_ids) >= args.min_size]
+    if args.limit:
+        clusters = clusters[: args.limit]
+    by_id = {i.id: i for i in items}
+
+    def members(cluster_ids: list[str]) -> list[CompiledItem]:
+        return sorted((by_id[i] for i in cluster_ids), key=lambda i: (i.priority, i.id))
+
+    if args.json:
+        payload: dict[str, Any] = {
+            "k": args.k, "shared": args.shared, "items": len(items), "fit_items": len(fit_items),
+            "clusters": [
+                {
+                    "rank": rank, "size": len(c.item_ids),
+                    "mean_similarity": round(c.mean_similarity, 4),
+                    "members": [
+                        {"id": m.id, "kind": m.kind, "status": m.status,
+                         "priority": m.priority, "title": m.title}
+                        for m in members(c.item_ids)
+                    ],
+                }
+                for rank, c in enumerate(clusters, 1)
+            ],
+        }
+        print(json.dumps(payload, indent=2))
+        return EXIT_SUCCESS
+    if not clusters:
+        print(f"(no clusters)  {len(items)} item(s) considered; k={args.k}, shared={args.shared}")
+        return EXIT_SUCCESS
+    covered = sum(len(c.item_ids) for c in clusters)
+    print(f"{len(clusters)} cluster(s) over {covered} of {len(items)} item(s)  "
+          f"(k={args.k}, shared={args.shared}; fit on {len(fit_items)} items)")
+    for rank, c in enumerate(clusters, 1):
+        print(f"\n#{rank}  size {len(c.item_ids)}  mean similarity {c.mean_similarity:.2f}")
+        for m in members(c.item_ids):
+            print(f"    {m.id}  [{m.status}]  {m.title}")
+    return EXIT_SUCCESS
+
+
 def _cmd_check_messages(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'check-messages' subcommand — show items with unread human messages."""
     tiers_to_check: list[Tier]
@@ -1890,8 +1967,46 @@ def _cmd_check_messages(args: argparse.Namespace, ts: TrackerSet) -> int:
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
-    """Handle 'init' subcommand — create tracker directory structure."""
+    """Handle 'init' subcommand — create tracker directory structure.
+
+    HUMAN ONLY (INV-mizid). ADR-0013's command table has always designated
+    ``init`` as a human command; nothing enforced it. That mattered because this
+    handler ends by calling ``config_lock`` on ``config.yaml`` whether or not the
+    file already existed — so an agent running ``init`` against an established,
+    human-owned config hit the cross-user chmod path, whose fallback rewrites the
+    file and hands ownership to the caller. That is the most likely way this
+    deployment's governance config became agent-owned. The guard mirrors
+    ``handle_setup_configure``'s, including its bootstrap: when no config exists
+    yet there is nothing to read ``agent_usernames`` from, so ``resolve_actor``
+    falls back to its ``["*_agent"]`` default, which is precisely the case
+    ``init`` runs in.
+    """
     root = Path(args.tracker_root) if args.tracker_root else Path.cwd() / ".agent"
+
+    import yaml  # lazy: cli.py has no other YAML dependency
+
+    agent_patterns = ["*_agent"]
+    existing_config = root / "tracker" / "config.yaml"
+    if existing_config.exists():
+        try:
+            with open(existing_config) as f:
+                raw = yaml.safe_load(f) or {}
+            actor_res = raw.get("actor_resolution", {})
+            if isinstance(actor_res, dict):
+                patterns = actor_res.get("agent_usernames")
+                if isinstance(patterns, list) and patterns:
+                    agent_patterns = patterns
+        except (yaml.YAMLError, OSError):
+            pass
+
+    by, username = resolve_actor(agent_patterns)
+    if by == "agent":
+        print(
+            f"error: init requires human authority "
+            f"(current user '{username}' is agent)",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
 
     dirs = [
         root / "tracker" / ".ops",
@@ -2078,7 +2193,11 @@ def _cmd_fork_setup(args: argparse.Namespace, ts: TrackerSet) -> int:
 
 def _cmd_sync(args: argparse.Namespace) -> int:
     """Handle 'sync' subcommand — push tracker changes via streamlined PR."""
-    from hypergumbo_tracker.sync import do_sync, preflight_check
+    from hypergumbo_tracker.sync import (
+        do_sync,
+        preflight_check,
+        prune_superseded_sync_branches,
+    )
 
     repo_root = Path(
         subprocess.run(  # nosec B603, B607
@@ -2088,6 +2207,24 @@ def _cmd_sync(args: argparse.Namespace) -> int:
             check=True,
         ).stdout.strip()
     )
+
+    if getattr(args, "prune", False):
+        # Deliberately BEFORE preflight: a superseded branch is by definition
+        # one whose ops already reached the base, so there is usually nothing
+        # local to sync when pruning is wanted. Gating this on changed_files
+        # would make the command a no-op exactly when it is needed.
+        pruned = prune_superseded_sync_branches(
+            repo_root, base_branch=args.base_branch, dry_run=args.dry_run,
+        )
+        if not pruned:
+            print("no superseded tracker-sync branches")
+            return EXIT_SUCCESS
+        verb = "would close" if args.dry_run else "closed"
+        print(f"{verb} {len(pruned)} superseded tracker-sync branch(es):")
+        for branch in pruned:
+            print(f"  {branch}")
+        return EXIT_SUCCESS
+
     pre = preflight_check(repo_root)
     if not pre.ok:
         print(f"error: {pre.error}", file=sys.stderr)
@@ -2325,6 +2462,12 @@ def _cmd_recover(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return EXIT_USER_ERROR
+    print(
+        "recover: DEPRECATED — use `tracker reconcile`, which also flushes "
+        "pending ops and fast-forwards. `recover` restores the journal and "
+        "leaves the repo behind, which is how the other two steps get skipped.",
+        file=sys.stderr,
+    )
     result = journal.recover(git_dir.parent)
     if result.restored:
         print(
@@ -2337,6 +2480,134 @@ def _cmd_recover(args: argparse.Namespace) -> int:
     else:
         print(
             f"recover: nothing to restore (journal: {result.journal_dir})",
+            file=sys.stderr,
+        )
+    return EXIT_SUCCESS
+
+
+def _reconcile_fast_forward(repo_root: Path) -> tuple[bool, str]:
+    """Fast-forward ``repo_root`` to its upstream; return (advanced, detail).
+
+    Deliberately does NOT set the ``tracker-recover-disabled`` marker.
+    ``do_sync`` sets it on purpose — without it a journalled-but-uncommitted op
+    is restored as an untracked file mid-fetch and the reconciling fast-forward
+    aborts on its own overwrite check. Here the opposite is wanted: the
+    post-checkout and reference-transaction hooks should be LIVE, because
+    restoring ops the pull disturbs is exactly their job.
+
+    Not "around its own fetch", which is what this said and what several sibling
+    comments still say: ``do_sync`` creates the marker before its ``try`` and
+    releases it in the matching ``finally``, so the span is the WHOLE sync — its
+    CI poll included. The understatement is not cosmetic; it is what WI-pohir
+    read when it proposed timing a leaked marker out at fifteen minutes.
+    """
+    from .sync import _git
+
+    # sync._git is this package's single mockable VCS entry point; going
+    # through it keeps the lint suppressions and the env handling in one place.
+    proc = _git(repo_root, "pull", "--ff-only", check=False)
+    return proc.returncode == 0, (proc.stderr or proc.stdout).strip()
+
+
+def _cmd_reconcile(args: argparse.Namespace) -> int:
+    """Handle 'reconcile' — flush pending ops, fast-forward, restore the journal.
+
+    These are the three steps that a failed post-merge pull leaves an operator to
+    run by hand, in order, each skipped when it is not needed. Every step reports
+    what it did or why it did nothing: a silent step is indistinguishable from a
+    step that was not needed, and that ambiguity is what sends the next reader
+    back to doing it manually.
+
+    Returns 0 on success (including a full no-op), 1 outside a repository or
+    while an auto-pr holds its gate, and ``do_sync``'s own exit code if the flush
+    fails.
+    """
+    from . import journal
+    from . import sync as _sync
+    from .store import _find_git_dir
+
+    start = Path(args.tracker_root) if args.tracker_root else Path.cwd()
+    git_dir = _find_git_dir(start.resolve())
+    if git_dir is None:
+        print(
+            "reconcile: not inside a git repository — nothing to reconcile.",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
+    repo_root = git_dir.parent
+
+    if (git_dir / "PR_PENDING").exists():
+        print(
+            "reconcile: .git/PR_PENDING exists — an auto-pr is in flight. It "
+            "copies the ops dirs aside and restores them around its own rebase, "
+            "so syncing or fast-forwarding underneath it makes the two fight "
+            "over the same files. Wait for it to finish, then re-run.",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
+
+    # 1. Flush pending ops upstream so the incoming commit no longer collides
+    #    with them. do_sync takes no threshold argument — the line-count gate
+    #    lives in its caller — so no synthetic mutation is needed to trip a
+    #    counter, and the append-only log stays free of entries that mean
+    #    nothing.
+    pre = _sync.preflight_check(repo_root)
+    if not pre.ok:
+        print(f"reconcile: not flushing — {pre.error}", file=sys.stderr)
+    elif not pre.changed_files:
+        print("reconcile: nothing to flush", file=sys.stderr)
+    elif args.dry_run:
+        print(
+            f"reconcile: would flush {len(pre.changed_files)} file(s)",
+            file=sys.stderr,
+        )
+    else:
+        result = _sync.do_sync(
+            repo_root=repo_root,
+            preflight=pre,
+            base_branch=args.base_branch,
+            ci_timeout=args.timeout,
+        )
+        if not result.success:
+            # Stop here on purpose: advancing on top of ops that never reached
+            # the remote is the collision this command exists to prevent.
+            print(
+                f"reconcile: flush failed, not fast-forwarding — {result.error}",
+                file=sys.stderr,
+            )
+            return result.exit_code
+        print(
+            f"reconcile: flushed {result.files_synced} file(s) "
+            f"via PR #{result.pr_number}",
+            file=sys.stderr,
+        )
+
+    # 2. Advance to the upstream now that the collision is gone.
+    if args.dry_run:
+        print("reconcile: would fast-forward to the upstream", file=sys.stderr)
+    else:
+        advanced, detail = _reconcile_fast_forward(repo_root)
+        if advanced:
+            print("reconcile: fast-forwarded to the upstream", file=sys.stderr)
+        else:
+            print(
+                f"reconcile: fast-forward did not run:\n{detail}",
+                file=sys.stderr,
+            )
+
+    # 3. Union-restore anything the journal holds that the worktree lacks.
+    recovered = journal.recover(repo_root)
+    if recovered.restored:
+        print(
+            f"reconcile: restored {len(recovered.restored)} ops file(s) from "
+            f"{recovered.journal_dir}:",
+            file=sys.stderr,
+        )
+        for rel in recovered.restored:
+            print(f"  {rel}", file=sys.stderr)
+    else:
+        print(
+            f"reconcile: nothing to restore (journal: {recovered.journal_dir})",
             file=sys.stderr,
         )
     return EXIT_SUCCESS
@@ -2424,6 +2695,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_add.add_argument("--pr-ref", dest="pr_ref", help="PR reference")
     p_add.add_argument("--field", action="append", help="Field key=value (repeatable)")
+    p_add.add_argument(
+        "--force-field-key", action="store_true",
+        help="Allow a custom --field key that differs from a DECLARED field "
+             "only in spelling. Never allows a core attribute name.",
+    )
     p_add.add_argument("--tier", choices=["canonical", "workspace", "stealth"],
                         default=None, help="Target tier (default: workspace)")
 
@@ -2466,6 +2742,11 @@ def _build_parser() -> argparse.ArgumentParser:
                            help="Field key=value (REPLACES entire fields dict — use --add-field for partial)")
     p_update.add_argument("--add-field", action="append", dest="add_field",
                            help="Add/update a single field key=value (repeatable, preserves other fields)")
+    p_update.add_argument(
+        "--force-field-key", action="store_true",
+        help="Allow a custom --field key that differs from a DECLARED field "
+             "only in spelling. Never allows a core attribute name.",
+    )
     p_update.add_argument("--remove-field", action="append", dest="remove_field",
                            help="Remove a field by key (repeatable)")
     p_update.add_argument("--note", help="Add a discussion note (shorthand for discuss)")
@@ -2556,12 +2837,44 @@ def _build_parser() -> argparse.ArgumentParser:
     p_checkmsg.add_argument("--autolimit", type=int, default=None,
                             help="Limit to last N unread messages per item")
 
+    # --- clusters ---
+    p_clusters = sub.add_parser("clusters",
+                                help="Predicted clusters of open items (TF-IDF cosine kNN, Jarvis-Patrick)")
+    p_clusters.add_argument("--k", type=int, default=DEFAULT_K,
+                            help=f"neighbours per item (default {DEFAULT_K})")
+    p_clusters.add_argument("--shared", type=int, default=DEFAULT_SHARED,
+                            help=f"shared neighbours required for an edge (default {DEFAULT_SHARED})")
+    p_clusters.add_argument("--status", default=None,
+                            help="comma-separated statuses to cluster (default: every non-resolved status)")
+    p_clusters.add_argument("--all", action="store_true", default=False,
+                            help="cluster every non-deleted item, resolved ones included")
+    p_clusters.add_argument("--min-size", dest="min_size", type=int, default=2,
+                            help="drop clusters smaller than this (default 2)")
+    p_clusters.add_argument("--limit", type=int, default=None, help="show only the top N clusters")
+
     # --- init ---
     sub.add_parser("init", help="Initialize tracker directory structure")
     sub.add_parser(
         "recover",
-        help="Restore pending ops from the out-of-repo journal "
-        "(after a reset --hard / checkout / clean dropped them)",
+        help="DEPRECATED (use `reconcile`): restore pending ops from the "
+        "out-of-repo journal only, leaving the repo behind the upstream",
+    )
+    p_reconcile = sub.add_parser(
+        "reconcile",
+        help="Flush pending ops, fast-forward, and restore the journal — the "
+        "three steps a failed post-merge pull leaves behind",
+    )
+    p_reconcile.add_argument(
+        "--base-branch", dest="base_branch", default="dev",
+        help="Target branch for the flush (default: dev)",
+    )
+    p_reconcile.add_argument(
+        "--timeout", type=int, default=300,
+        help="CI timeout in seconds for the flush (default: 300)",
+    )
+    p_reconcile.add_argument(
+        "--dry-run", dest="dry_run", action="store_true",
+        help="Report what each step would do without doing any of it",
     )
 
     # --- setup ---
@@ -2616,6 +2929,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sync.add_argument(
         "--dry-run", dest="dry_run", action="store_true",
         help="Show what would be synced without pushing",
+    )
+    p_sync.add_argument(
+        "--prune", action="store_true",
+        help=(
+            "Close superseded tracker-sync PRs instead of syncing. A branch is "
+            "superseded only when merging it into the base produces the base's "
+            "own tree, i.e. it carries nothing the base lacks. Combine with "
+            "--dry-run to report without closing."
+        ),
     )
 
     # --- tui ---
@@ -3037,6 +3359,7 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
         do_sync,
         pending_sync_lines,
         preflight_check,
+        prune_superseded_sync_branches,
     )
 
     try:
@@ -3172,6 +3495,35 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
                 f"via PR #{sync_result.pr_number}",
                 file=sys.stderr,
             )
+            # WI-torug: collect superseded sibling branches. Dev has just
+            # advanced, which is exactly when a sibling becomes redundant.
+            #
+            # HERE RATHER THAN INSIDE ``do_sync``, and the reason is worth
+            # recording: the first cut put it on do_sync's post-merge path and
+            # broke 23 existing tests, which script an EXACT sequence of ``_git``
+            # calls and got StopIteration from the extra fetch. That is a fair
+            # signal — do_sync is a long function pinned call-for-call, and
+            # litter collection is not part of the transaction it implements.
+            #
+            # THE SAFETY PROPERTY DOES NOT DEPEND ON THE SYNC GATE, which is why
+            # moving out from under it is sound. A concurrent sync pushes ops dev
+            # does not yet have, so its branch cannot satisfy "merging changes
+            # nothing" and is never a candidate. The predicate carries the
+            # guarantee; the gate was only ever belt-and-braces.
+            try:
+                pruned = prune_superseded_sync_branches(
+                    repo_root, dry_run=False,
+                )
+                if pruned:
+                    print(
+                        f"auto-sync: closed {len(pruned)} superseded "
+                        f"tracker-sync branch(es)",
+                        file=sys.stderr,
+                    )
+            except Exception as exc:
+                # The ops are already merged; litter collection must never turn
+                # a successful sync into a reported failure.
+                print(f"auto-sync: prune skipped ({exc})", file=sys.stderr)
         else:
             # Set failure marker — circuit breaker opens
             new_count = fail_count + 1
@@ -3193,6 +3545,37 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
 # ---------------------------------------------------------------------------
 # Sync reminder
 # ---------------------------------------------------------------------------
+
+
+def _warn_recover_suppressed(tracker_root: Path) -> None:
+    """Report a LEAKED ops-recovery suppression marker on stderr (WI-pohir).
+
+    Wired at the single ``main`` exit so it covers every subcommand at once —
+    including ``recover``, ``reconcile`` and ``count-todos``, the three a reader
+    reaches for when ops look wrong, and all three of which were silent about
+    the marker that had switched self-healing off underneath them.
+
+    Printed regardless of exit code, unlike the sync reminder: a ``reconcile``
+    that just failed is exactly when knowing self-healing is off changes what
+    you do next. Silent unless the marker is genuinely unowned — see
+    :func:`journal.recover_suppression_status` for why ownership is asked before
+    age, and why nothing here deletes the marker.
+
+    Never raises; a health report must not be able to break the command it
+    rides on.
+    """
+    try:
+        from hypergumbo_tracker.journal import recover_suppression_status
+        from hypergumbo_tracker.store import _find_git_dir
+
+        git_dir = _find_git_dir(tracker_root.resolve())
+        if git_dir is None:
+            return
+        warning = recover_suppression_status(git_dir).warning()
+        if warning is not None:
+            print(warning, file=sys.stderr)
+    except Exception:  # pragma: no cover - defensive; never break the command
+        pass
 
 
 def _print_sync_reminder(tracker_root: Path | None = None) -> None:
@@ -3278,6 +3661,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(_cmd_migrate(args))
     if args.command == "recover":
         raise SystemExit(_cmd_recover(args))
+    if args.command == "reconcile":
+        raise SystemExit(_cmd_reconcile(args))
     if args.command == "sync":
         raise SystemExit(_cmd_sync(args))
     if args.command == "serve" and (args.stop or args.status):
@@ -3374,6 +3759,7 @@ def main(argv: list[str] | None = None) -> None:
         "hash-todos": _cmd_hash_todos,
         "guidance": _cmd_guidance,
         "check-messages": _cmd_check_messages,
+        "clusters": _cmd_clusters,
         "cache-rebuild": _cmd_cache_rebuild,
         "reconcile-reset": _cmd_reconcile_reset,
         "fork-setup": _cmd_fork_setup,
@@ -3429,6 +3815,10 @@ def main(argv: list[str] | None = None) -> None:
 
     if exit_code == EXIT_SUCCESS:
         _print_sync_reminder(tracker_root)
+
+    # WI-pohir: last on stderr, so the most consequential line is the one
+    # closest to the prompt. Not gated on exit_code — see the helper docstring.
+    _warn_recover_suppressed(tracker_root)
 
     raise SystemExit(exit_code)
 

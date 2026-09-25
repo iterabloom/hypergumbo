@@ -15,6 +15,8 @@ Scope: the CI *dev-loop* workflows only. ``release.yml`` / ``release-mirror.yml`
 legitimately reference codeberg — releases are canonical-on-codeberg and
 human-gated — so they are intentionally excluded.
 """
+
+# covers: .github/workflows/*.yml
 from __future__ import annotations
 
 import re

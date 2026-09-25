@@ -299,7 +299,7 @@ def is_verilog_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("verilog")
+@register_analyzer("verilog", find_files=find_verilog_files)
 def analyze_verilog_files(repo_root: Path) -> AnalysisResult:
     """Analyze Verilog/SystemVerilog files in the repository."""
     return _analyzer.analyze(repo_root)

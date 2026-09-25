@@ -225,9 +225,26 @@ This script:
 This script:
 1. Switches to main and pulls latest
 2. Verifies version in pyproject.toml matches
-3. Creates GPG-signed tag: `git tag -s v0.8.0`
-4. Pushes tag to trigger release workflow
-5. Optionally syncs dev with main
+3. Refuses to clobber an existing tag without consent
+4. Verifies it can authenticate to `origin`, running `gh auth login` +
+   `gh auth setup-git` when an https origin has no credential helper
+5. Creates GPG-signed tag: `git tag -s v0.8.0`
+6. Pushes tag to trigger release workflow
+7. Optionally syncs dev with main
+
+**Why step 4 precedes step 5.** GitHub removed password authentication for Git
+in 2021, so an `https` origin with no credential helper prompts for a password
+that cannot work. Tagging v8.0.0 hit exactly that: the tag signed, the push
+failed, and the release was left half-done — a signed local tag, nothing on the
+remote, and a script that could not simply be re-run because step 3 offers to
+delete the tag it had just created. Authenticating first makes the failure free.
+
+**Which account.** The org pays for two GitHub seats: `josh-iterabloom` (human)
+and `jgstern-agent` (agent). Step 4 reports the authenticated login and warns if
+it is neither. Note that `GH_TOKEN` / `GITHUB_TOKEN` in the environment override
+`gh auth login` silently, so a human who has logged in as themselves can still
+push as the agent; the step warns when either is set. (`HG_GITHUB_TOKEN`, this
+repo's own variable, is not one `gh` reads and is not affected.)
 
 ### Alternative: Direct Release (No Branch Protection)
 

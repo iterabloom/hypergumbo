@@ -1,0 +1,96 @@
+- op: create  # 476a
+  at: '2026-09-06T14:27:54Z'  # 476a
+  by: agent  # 476a
+  actor: jgstern_agent  # 476a
+  clock: 1  # 476a
+  nonce: 476a  # 476a
+  data:  # 476a
+    kind: work_item  # 476a
+    title: "RULING NEEDED: a DNS lookup (socket.getaddrinfo / gethostbyname, net.LookupHost, ToSocketAddrs, getaddrinfo) returns resolver-chosen data and is rowed in no catalogue -- net_recv (ADR-0049's question), host_info_read, or a deferred-crossing shape"  # 476a
+    status: todo_hard  # 476a
+    priority: 2  # 476a
+    parent:  # 476a
+    tags:  # 476a
+    - taint  # 476a
+    - catalogue  # 476a
+    - vocabulary  # 476a
+    - needs_human_review  # 476a
+    isbefore: []  # 476a
+    duplicate_of: []  # 476a
+    not_duplicate_of: []  # 476a
+    pr_ref:  # 476a
+    description: "Escalated 2026-09-06 from WI-dupok (python completeness, third leg): the vocabulary has no ruling for a DNS lookup, and no catalogue rows one.\n\nTHE QUESTION. socket.gethostbyname / gethostbyaddr / getaddrinfo / getfqdn (python), net.LookupHost / LookupIP (go), std::net::ToSocketAddrs (rust), getaddrinfo (c) send a name over the network and return an answer the RESOLVER chose. ADR-0049's one question -- does the call return a value whose content the FAR SIDE chose? -- says yes, so by the ruling's letter these are net_recv and MINT untrusted_input. But a resolver answer is an address, not a payload; a program that then connects to it is already rowed at the connect; and host_info_read (\"a description of the host, may not be a secret\") is the other candidate. No catalogue rows any of them today (grep: zero rows across go/rust/c/python), so the silence is uniform and the question is unasked, not answered.\n\nWHY IT BLOCKS A GRANT. python's `socket` module cannot be granted complete while four of its module-level functions perform a network exchange with no row and no ruling; the same holds for go's net package and any future audit of c's netdb. WI-dupok refused `socket` on this ground and rowed the rest of its module-level surface (create_connection net_send, create_server net_listen).\n\nOWNER'S CALL (LIVE §2: when the record is silent, escalate): (a) net_recv -- consistent with ADR-0049's question; every DNS lookup mints untrusted_input; a resolver-poisoning threat model is exactly what that expresses; (b) host_info_read -- an address is a description, not data; (c) a new deferred-crossing shape beside net_listen (ADR-0049's axis) -- the lookup is setup for a later transfer. Whichever is ruled, the rows land in all four catalogues in one PR with the parity test."  # 476a
+    fields: {}  # 476a
+- op: update  # 0cf4
+  at: '2026-09-06T14:27:58Z'  # 0cf4
+  by: agent  # 0cf4
+  actor: jgstern_agent  # 0cf4
+  clock: 2  # 0cf4
+  nonce: 0cf4  # 0cf4
+  set:  # 0cf4
+    status: needs_human_review  # 0cf4
+- op: update  # bba0
+  at: '2026-09-06T19:38:23Z'  # bba0
+  by: agent  # bba0
+  actor: jgstern_agent  # bba0
+  clock: 3  # bba0
+  nonce: bba0  # bba0
+  set:  # bba0
+    status: todo_hard  # bba0
+  remove:  # bba0
+    tags: [needs_human_review]  # bba0
+- op: discuss  # a580
+  at: '2026-09-06T19:38:24Z'  # a580
+  by: agent  # a580
+  actor: jgstern_agent  # a580
+  clock: 4  # a580
+  nonce: a580  # a580
+  message: "OWNER RULING, 2026-09-06 (walk-through item 2 of 5). Owner: \"i confirm\" on the\nagent's decision memo, which was built from the ADRs, the spec, the tracker\nrecord and the commit history. RULED: (a) net_recv. Forward AND reverse\nlookups mint untrusted_input, per ADR-0049 ruling 1. No new boundary value\nnow; no host_info_read; no deferred-crossing shape.\n\nTHE RECORD THAT DECIDED IT (the premise of this item was wrong: the\nvocabulary was not silent):\n  1. erlang.yaml has rowed inet:getaddr/getaddrs/gethostbyname/gethostbyaddr\n     under net_recv since 2026-05-24 (WI-tukif, commit 0e2398a6f7), note\n     \"DNS resolution and service-name lookups (queries name servers)\". This\n     item's \"zero rows across go/rust/c/python\" grepped four catalogues, not\n     all. The choice was therefore parity-with-erlang vs retag-erlang, and\n     WI-pavob (c) rules that a vocabulary meaning different things per\n     language is the failure the axis discipline exists to prevent.\n  2. ADR-0049 ruling 1's own justification cites keeping `accept` because it\n     \"returns the peer address, network-controlled\": a network-chosen\n     ADDRESS is a transfer and mints. The format-constrained-address\n     argument was already subordinate when the ADR was written.\n  3. WI-vazal: a 28.2% source family (db_read -> db_write) was NOT split at\n     the label or the boundary because the split would silently flip 3 of\n     16 verdicts; the project carried source_boundary + flow_origins\n     instead. The record's answer to a noisy source family is report and\n     measure, not pre-split.\n  4. INV-tutar: env_read split AFTER measurement 0001 (22.9%, 134/195 rows\n     misfiled). ADR-0050's open question on `logging`: a new value goes\n     through an ADR-0024 family audit filed in docs/audits/, not an ad-hoc\n     ruling. Option (d) before a number is the explanation written before\n     the number.\n  5. (d) would also retag erlang's shipped minting rows -- a removal under\n     ADR-0049 ruling 3 (represented crossing + INV-buzab three-row check)\n     on top of the registry value; and the fs_read \"default quiet\"\n     precedent does not transfer (a file's sensitivity is what the program\n     stored; a resolver's answer is not the program's).\n\nWHAT SHIPS (one PR, parity test across languages):\n  - python: socket.gethostbyname / gethostbyname_ex / gethostbyaddr /\n    getaddrinfo / getnameinfo / getfqdn -> net_recv. Then the `socket`\n    module_completeness grant WI-dupok withheld on this item.\n  - go: net.LookupHost / LookupIP / LookupAddr / LookupCNAME / LookupMX /\n    LookupNS / LookupTXT / LookupSRV / LookupPort and net.Resolver's\n    Lookup* methods -> net_recv.\n  - c: netdb getaddrinfo / getnameinfo / gethostbyname / gethostbyaddr ->\n    net_recv.\n  - javascript: the `dns` module (lookup, resolve*, reverse; dns.promises)\n    -> net_recv. WI-nolut left dns unaudited, so parity is FIVE languages.\n  - rust: a `str` to_socket_addrs row for correctness only, INERT ON\n    ARRIVAL (WI-tuzaf: trait method on an untyped receiver); written, not\n    counted as coverage. WI-tuzaf stays open for the receiver problem.\n  - erlang: sort the existing row in the same pass. inet:gethostname is\n    the LOCAL hostname (c.yaml files gethostname under host_info_read);\n    getservbyname/getservbyport read the services table, not a name\n    server. Moving them out of net_recv is a REMOVAL under ruling 3:\n    represented crossing + INV-buzab three-row check, run not reasoned.\n  - repoint the INV-buzab examined-negative fixture that pins\n    socket.gethostbyname (test_verify_claims_examined_negative.py) at a\n    function that stays unrowed; keep gethostbyname as a positive control,\n    as ctypes and create_connection were.\n  - the PR ships the 0003 MARGINAL-PRECISION delta (baseline clone vs\n    subject, isolated caches, every added AND removed flow adjudicated\n    under ADR-0046's two-axis rubric) and carries awaits_bakeoff_validation.\n\nPRE-REGISTERED RE-OPEN TRIGGER, written before the number exists: if the\nadjudicated FORWARD-lookup flows are majority not-useful under ADR-0046\n(the lookup-then-connect idiom, getfqdn() / gethostbyname(gethostname())\nreaching logging), the forward-vs-reverse cut is filed as an ADR-0024\nfamily audit (docs/audits/<NN>-dns-lookup-family.md) and any new boundary\nis ruled on that number. Reverse lookups (a resolver-chosen NAME) stay\nnet_recv regardless.\n\nSequencing: off-arc; after Phase 6 / INV-busis unless the owner says\notherwise. Status -> todo_hard; needs_human_review tag removed."  # a580
+- op: update  # ffe4
+  at: '2026-09-06T20:06:55Z'  # ffe4
+  by: agent  # ffe4
+  actor: jgstern_agent  # ffe4
+  clock: 5  # ffe4
+  nonce: ffe4  # ffe4
+  set:  # ffe4
+    title: "DNS lookups are net_recv (ruled 2026-09-06): row python/go/c/js dns (+ rust str row, erlang inet sort), repoint the INV-buzab fixture, grant socket, ship the 0003 delta + awaits_bakeoff_validation"  # ffe4
+- op: discuss  # 7eca
+  at: '2026-09-06T20:06:55Z'  # 7eca
+  by: agent  # 7eca
+  actor: jgstern_agent  # 7eca
+  clock: 6  # 7eca
+  nonce: 7eca  # 7eca
+  message: "Re-titled 2026-09-06 now that the ruling is made; appended to the arc tail (WI-nazos) behind INV-busis by owner ruling (\"everything behind the arc is append to the end of the arc\"). Content of the work unchanged from the ruling entry above."  # 7eca
+- op: update  # 9316
+  at: '2026-09-06T20:19:56Z'  # 9316
+  by: agent  # 9316
+  actor: jgstern_agent  # 9316
+  clock: 7  # 9316
+  nonce: '9316'  # 9316
+  set: {}  # 9316
+  add:  # 9316
+    isbefore: [WI-lanos-busoj-lativ-minud-buton-vuviv-jihit-bumip]  # 9316
+- op: update  # a4c8
+  at: '2026-09-08T20:45:23Z'  # a4c8
+  by: agent  # a4c8
+  actor: jgstern_agent  # a4c8
+  clock: 8  # a4c8
+  nonce: a4c8  # a4c8
+  set:  # a4c8
+    status: done  # a4c8
+- op: discuss  # d539
+  at: '2026-09-08T20:45:23Z'  # d539
+  by: agent  # d539
+  actor: jgstern_agent  # d539
+  clock: 9  # d539
+  nonce: d539  # d539
+  message: "DONE. Shipped in PR #839 (merged dev 26578f5d7e). Rows in python / go / c /\njavascript, erlang parity by sort, rust inert-on-arrival, `socket` granted,\nINV-buzab arm 2 repointed, measurement 0019 published.\n\nTHIS ITEM'S OWN FILED REPRO, RE-RUN AT THE MERGE COMMIT rather than cited from\nthe measurement. The item's premise was \"grep: zero rows across\ngo/rust/c/python\". Through the production loader now:\n\n  python 6, go 20, c 7, rust 1  -- the four the item grepped, 34 rows where it\n  found zero -- plus javascript 46 and erlang 4, 84 total; and\n  AUTO_SOURCE_LABEL_MAP['net_recv'] == 'untrusted_input', so they mint.\n\nBEHAVIOURAL EVIDENCE beyond the row census: measurement 0019 ran the production\nCLI over an 11-repository cohort in two blob-asserted arms with a pre-registered\ncanary, and six fixtures ran the production CLI per spelling. A python fixture\nreports `socket.gethostbyname -> subprocess.run` at confidence `precise`.\n\nTHE MEASUREMENT IS A WELL-ATTRIBUTED NEGATIVE, and that is the deliverable:\n6 situations added, 0 removed, 0 verdicts moved, 0 OF 6 CORRECT, every one read\nback against source. Five of six are in c, where no def/use extractor exists.\n\nTHE PRE-REGISTERED RE-OPEN TRIGGER FIRED ON ITS CONDITION AND NOT ITS PREMISE,\nso it was REPORTED, NOT EXECUTED (LIVE section 2). It anticipated findings that\nwere correct but not useful; these are not correct, for a reason unrelated to\nforward-versus-reverse -- a reverse lookup in c would pair identically, and a\nforward lookup in python paired nothing. Filing an ADR-0024 boundary audit on\nthat number would attribute to the ROW a defect belonging to the WALK.\n\nAND THE IMPLIED REMEDY WAS PRICED BEFORE IT WAS FILED, which changed what got\nfiled. Six fixtures (three flow shapes x c and python): python, WITH the full\nextractor, reports the same co-located and discarded-at-source shapes, and\n`flows_removed_by_walk` is 0 in BOTH languages. The extractor changes the METHOD\nLABEL, not the population. 0019's own table already carried the refutation --\nthe vault false positive is in GO, which HAS an extractor, labelled `ddg_mixed`\n-- and 0019 is amended in place saying so. What the gap costs c is TRIAGE, filed\nas WI-himob-huhis-dimoh-dudam-bijuv-bozum-zusaz-tinig.\n\nThe rows are correct as catalogue rows and the ruling is unaffected: a resolver\nchooses the answer. Nothing here argues for removing them.\n\nTagged awaits_bakeoff_validation: 0019 is a quantitative claim on a cohort, so\nthe queue owns whether it reproduces.\n\nSHIPPING NOTE, recorded because the cause is reusable. The first pipeline for\nthis branch died mid-run: the runner dropped off the LAN during a UPS fault\nwhose window was 07:30-16:15 EDT, against a push at 07:09 EDT. pytest cleared\nthe nine fast steps, reached 24% of 6,434 items across 8 workers, and then\nemitted nothing for 9.5 hours -- no traceback, no summary, no terminal status\n-- so the commit status sat on `pending` forever. Woodpecker does not revisit a\nrun whose runner is gone, so the fix was a fresh SHA (an empty commit, which the\nrebase merge then dropped, leaving no noise in history). The freeze lands inside\nthe first 21 minutes of the outage, which is what rules OUT the competing\nexplanation of a genuinely hanging test in that band; the tree had already\npassed 26,538 tests locally. `merge-pr 839 --wait-for-ci` then went green and\nmerged on the first attempt."  # d539
+- op: update  # 3b9f
+  at: '2026-09-08T20:46:19Z'  # 3b9f
+  by: agent  # 3b9f
+  actor: jgstern_agent  # 3b9f
+  clock: 10  # 3b9f
+  nonce: 3b9f  # 3b9f
+  set: {}  # 3b9f
+  add:  # 3b9f
+    tags: [awaits_bakeoff_validation]  # 3b9f

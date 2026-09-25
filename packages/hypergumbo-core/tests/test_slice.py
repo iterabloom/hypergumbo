@@ -215,6 +215,67 @@ class TestAmbiguousEntryDetection:
         assert py_ping.id in [c.id for c in error.candidates]
         assert ts_ping.id in [c.id for c in error.candidates]
 
+    def test_language_hint_is_withheld_when_it_cannot_disambiguate(self) -> None:
+        """WI-kutam: the suggested remedy must be one that actually works.
+
+        The template appended "or filter with --language" unconditionally. When
+        every candidate shares a language the flag cannot split them, so the
+        error sent the user round a loop: ``--entry find_files`` lists two
+        python candidates, ``--language python`` reproduces the same error.
+        Reported twice from dogfooding, on two different candidate shapes — a
+        real symbol against a ``python:external:0-0:...:unresolved`` synthetic,
+        and a same-name collision across two packages (``cli:main``).
+
+        The invariant, as the item phrases it: an ambiguity error "should not
+        suggest --language as a remedy if the ambiguous candidates already share
+        a language; the suggested fix should be applicable."
+        """
+        a = make_symbol("find_files", path="pkg/a/util.py", language="python")
+        b = make_symbol("find_files", path="pkg/b/util.py", language="python")
+
+        message = str(AmbiguousEntryError("find_files", [a, b]))
+
+        assert "--language" not in message, (
+            "the error still suggests --language for candidates that share one"
+        )
+        # The remedy that remains must be one that WORKS. `--entry` accepts a
+        # node ID ("symbol name, file path, node ID"), and every candidate's ID
+        # is printed above, so pointing at those is applicable. Nothing else is:
+        # `--path` is the REPO ROOT, not a file filter, and there is no --file
+        # flag — suggesting either would repeat this very defect. Checked
+        # against `slice --help` rather than assumed.
+        assert "full node ID" in message
+        for sym in (a, b):
+            assert sym.id in message
+
+    def test_language_hint_is_kept_when_it_does_disambiguate(self) -> None:
+        """CONTROL. ``--language`` is a real remedy across languages, and the
+        cheapest way to pass the test above is to delete the suggestion
+        outright — which would make a working hint disappear from the case it
+        was written for."""
+        py = make_symbol("ping", path="src/app.py", language="python")
+        ts = make_symbol("ping", path="web/client.ts", language="typescript")
+
+        message = str(AmbiguousEntryError("ping", [py, ts]))
+
+        assert "--language" in message
+
+    def test_the_full_node_id_is_offered_either_way(self) -> None:
+        """The universal remedy is unconditional: it always disambiguates."""
+        same = [
+            make_symbol("f", path="a.py", language="python"),
+            make_symbol("f", path="b.py", language="python"),
+        ]
+        mixed = [
+            make_symbol("f", path="a.py", language="python"),
+            make_symbol("f", path="b.ts", language="typescript"),
+        ]
+        for candidates in (same, mixed):
+            message = str(AmbiguousEntryError("f", candidates))
+            assert "full node ID" in message
+            for sym in candidates:
+                assert sym.id in message
+
     def test_ambiguous_entry_error_none_span_renders_line_zero(self) -> None:
         """WI-hafap: a span-less candidate renders ``path:0`` in the
         disambiguation message instead of crashing the very error the

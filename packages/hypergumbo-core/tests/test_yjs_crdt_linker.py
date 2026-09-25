@@ -162,6 +162,9 @@ class TestLinkYjsCrdt:
         assert edge.meta is not None
         assert edge.meta["access_mode"] == "write"
         assert edge.meta.get("dest_access_mode") is None
+        # INV-rukor: both ends are minted from the scan; the manifest entry
+        # that opened the gate is the one graph record the pass consumed.
+        assert edge.derived_from == [_make_yjs_dep_sym().id]
 
     def test_awareness_writer_links_to_awareness_reader(self, tmp_path: Path) -> None:
         """Awareness write + awareness read creates an edge."""
@@ -545,3 +548,36 @@ class TestYjsCrdtRegistry:
         yjs_results = [r for name, r in results if name == "yjs-crdt-linker"]
         assert len(yjs_results) == 1
         assert len(yjs_results[0].edges) >= 1
+
+
+class TestSyntheticIdsCarryEachSiteHostLanguage:
+    """WI-dovog: publisher/subscriber ids and discovery_language carried the
+    literal ``"typescript"`` for every site; a ``.js`` site minted
+    ``typescript:`` event_publishes edges with no typescript node behind them.
+    Each id now carries ITS OWN file's language (``js_ts_language_from_path``)."""
+
+    def test_js_sites_mint_javascript_ids(self, tmp_path: Path) -> None:
+        w = tmp_path / "src" / "writer.js"
+        w.parent.mkdir(parents=True, exist_ok=True)
+        w.write_text("yMap.set('cursor', pos);\n")
+        r = tmp_path / "src" / "reader.js"
+        r.write_text("yMap.observe(handler);\n")
+        result = link_yjs_crdt(tmp_path, [_make_ts_sym("src/writer.js"), _make_ts_sym("src/reader.js"), _make_yjs_dep_sym()])
+        assert result.edges
+        for edge in result.edges:
+            assert edge.src.split(":", 1)[0] == "javascript", edge.src
+            assert edge.dst.split(":", 1)[0] == "javascript", edge.dst
+        for sym in result.symbols:
+            assert sym.id.split(":", 1)[0] == "javascript", sym.id
+            assert sym.discovery_language == "javascript"
+
+    def test_a_ts_reader_keeps_its_own_language_beside_a_js_writer(self, tmp_path: Path) -> None:
+        w = tmp_path / "src" / "writer.js"
+        w.parent.mkdir(parents=True, exist_ok=True)
+        w.write_text("yMap.set('cursor', pos);\n")
+        r = tmp_path / "src" / "reader.ts"
+        r.write_text("yMap.observe(handler);\n")
+        result = link_yjs_crdt(tmp_path, [_make_ts_sym("src/writer.js"), _make_ts_sym("src/reader.ts"), _make_yjs_dep_sym()])
+        assert result.edges
+        assert result.edges[0].src.split(":", 1)[0] == "javascript"
+        assert result.edges[0].dst.split(":", 1)[0] == "typescript"

@@ -11,7 +11,17 @@ permissions, ``core.sharedRepository``, the textconv driver,
 
 Each check returns a CheckResult with status ok/fixed/warn/error. The wizard
 is idempotent: running it twice with no changes between runs produces all
-"ok" results.
+"ok" results. That claim was FALSE for config.yaml until 2026-09-12 — check
+#10b set it to 0444 and check #12's group sweep put group-write straight back,
+so both reported "fixed" forever and the file settled at 0464. Two checks that
+disagree about one file cannot converge; ``_MODE_MANAGED_FILENAMES`` is the
+arbitration.
+
+**Host-protected deployments.** When ``/etc/hypergumbo-tracker`` is in force
+the in-repo ``config.yaml`` is ignored by the loader entirely. Every check that
+reads, validates or reports on config MUST resolve it through
+:func:`authoritative_config`; otherwise the wizard inspects and edits a decoy,
+which is a worse failure than no wizard because it looks like it worked.
 
 The check sequence covers three areas:
 1. **Core infrastructure** (checks 1-15): directory structure, git plumbing,
@@ -24,6 +34,9 @@ The check sequence covers three areas:
    ``status="fixed"``.
 3. **Sync prerequisites** (check 22): remote origin, FORGEJO_TOKEN,
    git identity — advisory check for ``htrac sync`` workflow.
+4. **Install provenance** (check 23): who can modify the running tracker
+   code. Advisory, and an accident guard rather than a security control —
+   it lives inside the artifact it audits (see the function docstring).
 
 Entry point: ``run_setup(root, repo_root, *, with_policy_template=False)``
 returns a list of CheckResult; the keyword drives policy-template scaffolding.
@@ -40,6 +53,7 @@ import pwd
 import re
 import shlex
 import shutil
+import sys
 import tempfile
 import subprocess  # nosec B404
 from dataclasses import dataclass, field
@@ -62,8 +76,22 @@ from hypergumbo_tracker.validation import ValidationResult, validate_all
 # ---------------------------------------------------------------------------
 
 
+class OwnershipTransferRefused(PermissionError):
+    """Raised when the chmod fallback would hand a governance file to an agent."""
+
+
 def _config_chmod_fallback(path: Path, mode: int) -> None:
     """Copy-then-atomic-rename fallback when chmod fails (cross-user).
+
+    **REFUSES WHEN THE CALLER IS AN AGENT (INV-mizid).** This fallback exists so
+    the HUMAN can reclaim a config the agent owns, and it works by writing a new
+    file — which the caller then owns. Run in the other direction it silently
+    transfers the governance config TO the agent, which is exactly how this
+    deployment lost `.agent/tracker/config.yaml`: `tracker init` had no actor
+    guard, called ``config_lock`` on an already-existing human-owned config,
+    ``chmod`` raised PermissionError for the non-owner, and this fallback
+    "fixed" it by making the agent the owner. The guard lives here rather than
+    only at that call site so every future caller inherits it.
 
     When the current user doesn't own config.yaml (e.g. human user vs agent
     user), path.chmod() raises PermissionError. This fallback writes a copy
@@ -82,6 +110,14 @@ def _config_chmod_fallback(path: Path, mode: int) -> None:
     ``store.py::_take_ownership_via_tmp`` for the same class of bug
     (2026-04-19 TUI crash on ``.INV-rikis-…ops``).
     """
+    by, username = resolve_actor()
+    if by == "agent":
+        raise OwnershipTransferRefused(
+            f"refusing to rewrite {path} as agent user {username!r}: the "
+            f"copy-and-rename fallback would transfer ownership of the "
+            f"governance config to the agent (INV-mizid)"
+        )
+
     fd, tmp_str = tempfile.mkstemp(
         suffix=".yaml", prefix=".htrac_config_", dir=str(path.parent),
     )
@@ -97,21 +133,94 @@ def _config_chmod_fallback(path: Path, mode: int) -> None:
 
 
 def config_unlock(path: Path) -> None:
-    """Temporarily make config.yaml writable (for human writes)."""
+    """Temporarily make config.yaml writable (for human writes).
+
+    An agent that cannot change the mode is the CORRECT outcome, not an error,
+    so the refusal is reported and swallowed rather than raised: the file simply
+    keeps the permissions it had.
+    """
     if path.exists():
         try:
             path.chmod(0o644)
         except OSError:
-            _config_chmod_fallback(path, 0o644)
+            try:
+                _config_chmod_fallback(path, 0o644)
+            except OwnershipTransferRefused as exc:
+                print(f"warning: {exc}", file=sys.stderr)
 
 
 def config_lock(path: Path) -> None:
-    """Set config.yaml read-only (0444)."""
+    """Set config.yaml read-only (0444).
+
+    See :func:`config_unlock` on why an agent's refusal is swallowed.
+    """
     if path.exists():
         try:
             path.chmod(0o444)
         except OSError:
-            _config_chmod_fallback(path, 0o444)
+            try:
+                _config_chmod_fallback(path, 0o444)
+            except OwnershipTransferRefused as exc:
+                print(f"warning: {exc}", file=sys.stderr)
+
+
+def authoritative_config(
+    root: Path, repo_root: Path | None
+) -> tuple[Path, bool]:
+    """The config ``load_config`` will ACTUALLY read, and whether it is protected.
+
+    Every check that reads, validates, edits or reports on ``config.yaml`` must
+    resolve it through here. Once the host opts into ``/etc/hypergumbo-tracker``
+    the in-repo file is ignored ENTIRELY — not merged, not a fallback — so a
+    wizard that kept editing ``.agent/tracker/config.yaml`` would let a human
+    make governance changes that silently do nothing, and would validate a file
+    with no bearing on what the tracker enforces. That is a worse failure than
+    the unprotected state it replaced, because it looks like it worked.
+
+    Returns ``(path, protected)``. When protection is on but this repo has no
+    config under the host root, the returned path is the one it SHOULD live at
+    — callers report it as missing rather than silently reverting to the in-repo
+    file. Check 10c owns the remediation text for that case.
+    """
+    from hypergumbo_tracker import protected_config as pc
+
+    in_repo = root / "tracker" / "config.yaml"
+    if repo_root is None or not pc.protection_enabled():
+        return in_repo, False
+    try:
+        found = pc.find_protected_config(repo_root)
+    except pc.ProtectedConfigError:
+        # Ambiguous (two directories claim one hash). Check 10c reports it;
+        # here we only need to say "protected, and not usable".
+        found = None
+    if found is not None:
+        return found, True
+    return pc.PROTECTED_ROOT / pc.legible_repo_id(repo_root) / "config.yaml", True
+
+
+def _agent_patterns_from(config_path: Path) -> list[str]:
+    """``actor_resolution.agent_usernames`` from a config file, or the default.
+
+    Five checks needed this and each had its own copy of the same nine lines;
+    they have to agree, because a deployment that renames its agent account is
+    exactly the case where one stale copy silently resolves the agent as human.
+    """
+    patterns = ["*_agent"]
+    # ``exists()`` rather than ``is_file()`` deliberately: several callers run
+    # under tests that patch ``Path.stat`` wholesale, and ``is_file`` unwraps
+    # ``st_mode`` where ``exists`` only needs the call not to raise.
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                raw = yaml.safe_load(f) or {}
+            actor_res = raw.get("actor_resolution", {})
+            if isinstance(actor_res, dict):
+                configured = actor_res.get("agent_usernames")
+                if isinstance(configured, list) and configured:
+                    patterns = configured
+        except (yaml.YAMLError, OSError):
+            pass
+    return patterns
 
 
 @dataclass
@@ -261,7 +370,10 @@ YAML-backed structured tracker. These rules govern correct tool usage in any \
 repo that adopts the tracker.
 
 **Agent Context Protection:** Always use `scripts/tracker show <ID>` or \
-`scripts/tracker show <ID> --json` to read tracker item state. Always refuse \
+`scripts/tracker --json show <ID>` to read tracker item state. `--json` is a \
+GLOBAL flag and goes BEFORE the subcommand; the trailing form exits 2 with a \
+usage error on stderr and empty stdout, which a JSON consumer misreads as a \
+missing item. Always refuse \
 to read files ending in `.ops`. These are internal operation logs that will \
 pollute your context window with historical data you don't need. The CLI \
 compiles ops into current state — that's what you want.
@@ -397,19 +509,57 @@ def _inject_managed_block(
     return new_content, "injected"
 
 
-def _detect_shared_group(root: Path) -> int | None:
-    """Detect a shared group on tracker directories or their parent.
+#: Probed in order by :func:`_detect_shared_group`, relative to ``.agent/``.
+#: Most specific first — these are the directories a two-user setup actually
+#: ``chgrp``s, and the ones whose group the check is trying to learn.
+_SHARED_GROUP_PROBES = (
+    "tracker",
+    "tracker/.ops",
+    "tracker-workspace",
+    "tracker-workspace/.ops",
+    "tracker-workspace/stealth",
+)
 
-    Checks the tracker root and its parent for a non-primary group.
-    Returns the gid if a non-primary group is found, else None.
-    This is used by directory creation and other checks to determine
-    whether the two-user setup is active.
+
+#: Filenames whose mode is owned by the config checks (#10b), NOT by the
+#: group-permission sweep (#12). Without this exclusion the two checks
+#: contradict each other on every run: #10b sets config.yaml to 0444, then #12
+#: sees a file "missing" g+rw and puts group-write back, landing on 0464. Both
+#: then report "fixed" forever, so the wizard never converges — and 0464 in a
+#: shared group means the agent can write whichever config it does not own,
+#: which is the exact boundary #10b exists to hold.
+_MODE_MANAGED_FILENAMES = frozenset({"config.yaml"})
+
+
+def _detect_shared_group(root: Path) -> int | None:
+    """Detect the shared group of a two-user setup, or None if single-user.
+
+    Returns the gid of the first probed directory whose group is not the
+    current user's primary group.
+
+    **It probes the TRACKER directories, not ``.agent/`` itself.** ``root`` here
+    is ``.agent/`` (see :func:`run_setup`), and the earlier version looked only
+    at ``root`` and ``root.parent`` — ``.agent/`` and the repo toplevel. Those
+    two are routinely left at the owning user's primary group even on a
+    correctly configured two-user box, because the setup instructions
+    ``chgrp`` the tracker directories and ``.git``, not the checkout. So the
+    check reported "single-user" on a genuine two-user deployment and the three
+    callers that gate on it silently did nothing. The one with teeth is
+    :func:`_check_directory_structure`, which then creates any missing tracker
+    directory WITHOUT the shared group or setgid bit — leaving a fresh ``.ops``
+    or ``stealth`` the other user cannot write.
+
+    The old ``root`` / ``root.parent`` probes are kept as a trailing fallback:
+    a deployment that did ``chgrp`` the whole checkout is still two-user.
     """
     current_primary_gid = pwd.getpwuid(os.getuid()).pw_gid
-    for candidate in [root, root.parent]:
+    candidates = [root / rel for rel in _SHARED_GROUP_PROBES]
+    candidates += [root, root.parent]
+    for candidate in candidates:
         if candidate.exists():
-            if candidate.stat().st_gid != current_primary_gid:
-                return candidate.stat().st_gid
+            gid = candidate.stat().st_gid
+            if gid != current_primary_gid:
+                return gid
     return None
 
 
@@ -634,10 +784,42 @@ def _check_config_template(root: Path) -> CheckResult:
     )
 
 
-def _check_config_yaml(root: Path) -> CheckResult:
-    """Check #6: Ensure config.yaml exists and is parseable YAML."""
-    config_path = root / "tracker" / "config.yaml"
+def _check_config_yaml(root: Path, repo_root: Path | None = None) -> CheckResult:
+    """Check #6: Ensure the AUTHORITATIVE config exists and is parseable YAML.
+
+    Under host protection the in-repo file is ignored by the loader, so
+    creating or repairing it here would be theatre. The protected file lives
+    under ``/etc`` and only root can create it — check 10c prints those
+    commands — so this check degrades to reporting.
+    """
+    config_path, protected = authoritative_config(root, repo_root)
     template_path = root / "tracker" / "config.yaml.template"
+
+    if protected:
+        if not config_path.is_file():
+            return CheckResult(
+                name="config_yaml",
+                status="error",
+                message="Protected config.yaml is missing — the tracker will REFUSE to load",
+                details=[f"  expected: {config_path}", "See the protected_config check for the commands."],
+            )
+        try:
+            with open(config_path) as f:
+                parsed = yaml.safe_load(f)
+            if not isinstance(parsed, dict):
+                raise yaml.YAMLError("config must be a YAML mapping")
+        except (yaml.YAMLError, OSError) as e:
+            return CheckResult(
+                name="config_yaml",
+                status="error",
+                message=f"Protected config.yaml is not usable: {e}",
+                details=[f"  {config_path}"],
+            )
+        return CheckResult(
+            name="config_yaml",
+            status="ok",
+            message=f"config.yaml (host-protected: {config_path})",
+        )
 
     if not config_path.exists():
         if template_path.exists():
@@ -694,9 +876,16 @@ def _check_config_yaml(root: Path) -> CheckResult:
     )
 
 
-def _check_config_validation(root: Path) -> CheckResult:
-    """Check #7: Validate config.yaml against TrackerConfig schema."""
-    config_path = root / "tracker" / "config.yaml"
+def _check_config_validation(
+    root: Path, repo_root: Path | None = None
+) -> CheckResult:
+    """Check #7: Validate the AUTHORITATIVE config against TrackerConfig schema.
+
+    Validating the in-repo file under host protection gets the answer wrong in
+    both directions — a green report on a broken protected config, and a red
+    one on a stale in-repo file the loader never opens.
+    """
+    config_path, protected = authoritative_config(root, repo_root)
     if not config_path.exists():
         return CheckResult(
             name="config_validation",
@@ -725,7 +914,20 @@ def _check_config_validation(root: Path) -> CheckResult:
             name="config_validation",
             status="error",
             message=f"Config validation failed: {e}",
-            details=["Fix the errors in .agent/tracker/config.yaml"],
+            details=[f"Fix the errors in {config_path}"],
+        )
+    except (AttributeError, TypeError, ValueError) as e:
+        # ``_parse_config_dict`` type-checks the VALUES it understands but not
+        # the shape of the containers around them, so a config whose ``kinds``
+        # is a scalar reaches ``.items()`` and raises AttributeError. A
+        # diagnostic that dies with a traceback is the one failure mode a
+        # setup wizard may not have — it is what a human runs precisely when
+        # the config is already wrong.
+        return CheckResult(
+            name="config_validation",
+            status="error",
+            message=f"Config validation failed: malformed config ({type(e).__name__}: {e})",
+            details=[f"Fix the errors in {config_path}"],
         )
 
     return CheckResult(
@@ -735,9 +937,14 @@ def _check_config_validation(root: Path) -> CheckResult:
     )
 
 
-def _check_config_drift(root: Path) -> CheckResult:
-    """Check #8: Compare config.yaml and config.yaml.template kind keys."""
-    config_path = root / "tracker" / "config.yaml"
+def _check_config_drift(root: Path, repo_root: Path | None = None) -> CheckResult:
+    """Check #8: Compare the AUTHORITATIVE config against the tracked template.
+
+    The template stays in-repo (it is tracked governance, and CI loads it
+    directly); only the live config moves under host protection. Drift between
+    the two is exactly as meaningful there as it is in the unprotected case.
+    """
+    config_path, _protected = authoritative_config(root, repo_root)
     template_path = root / "tracker" / "config.yaml.template"
 
     if not config_path.exists() or not template_path.exists():
@@ -786,59 +993,79 @@ def _check_config_drift(root: Path) -> CheckResult:
     )
 
 
-def _check_actor_resolution(root: Path) -> CheckResult:
-    """Check #9: Check if current user matches agent patterns."""
-    config_path = root / "tracker" / "config.yaml"
+def _check_actor_resolution(
+    root: Path, repo_root: Path | None = None
+) -> CheckResult:
+    """Check #9: Report how the current OS user resolves.
 
-    # Load agent patterns from config (or defaults)
-    agent_patterns = ["*_agent"]
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                raw = yaml.safe_load(f) or {}
-            actor_res = raw.get("actor_resolution", {})
-            if isinstance(actor_res, dict):
-                patterns = actor_res.get("agent_usernames")
-                if isinstance(patterns, list) and patterns:
-                    agent_patterns = patterns
-        except yaml.YAMLError:
-            pass  # Fall through to defaults
+    Running as the agent account is a WARNING on a single-user box (the user
+    probably did not mean to be an agent) but the EXPECTED state on a two-user
+    box, where the agent account exists precisely so it can run the tracker.
+    Warning unconditionally meant every agent-side run of the wizard carried a
+    permanent yellow line that no action could clear, which is how a report
+    teaches people to stop reading it.
+    """
+    config_path, _protected = authoritative_config(root, repo_root)
+    by, username = resolve_actor(_agent_patterns_from(config_path))
 
-    by, username = resolve_actor(agent_patterns)
-
-    if by == "agent":
+    if by != "agent":
         return CheckResult(
             name="actor_resolution",
-            status="warn",
-            message=f"Current user '{username}' matches agent pattern",
-            details=[
-                "Human-only commands (lock, stealth, discuss --clear) will be blocked.",
-                "To fix: edit actor_resolution.agent_usernames in",
-                "  .agent/tracker/config.yaml",
-            ],
+            status="ok",
+            message=f"Actor resolution: '{username}' is human",
+        )
+
+    blocked = "Human-only commands (lock, stealth, discuss --clear) are blocked."
+    if _detect_shared_group(root) is not None:
+        return CheckResult(
+            name="actor_resolution",
+            status="ok",
+            message=f"Actor resolution: '{username}' is the agent account (two-user setup)",
+            details=[blocked, "Run those from the human account."],
         )
 
     return CheckResult(
         name="actor_resolution",
-        status="ok",
-        message=f"Actor resolution: '{username}' is human",
+        status="warn",
+        message=f"Current user '{username}' matches agent pattern",
+        details=[
+            blocked,
+            "No shared group was detected, so this looks like a single-user",
+            "setup running under an agent-shaped username. To fix, edit",
+            f"actor_resolution.agent_usernames in {config_path}",
+        ],
     )
 
 
-def _check_config_ownership(root: Path) -> CheckResult:
-    """Check #10: Verify config.yaml is owned by the human user.
+def _check_config_ownership(
+    root: Path, repo_root: Path | None = None
+) -> CheckResult:
+    """Check #10: Verify the in-repo config.yaml is owned by the human user.
 
     Config files control governance (agent patterns, stop hook behavior,
     status lifecycle). The human user should own them so the agent can
     read but not modify governance settings.
 
     If the current user is human, auto-fix ownership. If agent, warn.
+
+    DEFENCE IN DEPTH ONLY, and inert under host protection. Ownership and mode
+    cannot actually stop an agent that can write the containing directory, and
+    once ``/etc/hypergumbo-tracker`` is in force the loader does not read these
+    files at all — chasing their owner would be busywork that reads like
+    security. Check 10c tells the human to delete the leftovers instead.
     """
+    authoritative, protected = authoritative_config(root, repo_root)
     config_paths = [
         root / "tracker" / "config.yaml",
         root / "tracker-workspace" / "config.yaml",
     ]
     existing = [p for p in config_paths if p.exists()]
+    if protected:
+        return CheckResult(
+            name="config_ownership",
+            status="ok",
+            message="Config ownership check skipped (host-protected config in force)",
+        )
     if not existing:
         return CheckResult(
             name="config_ownership",
@@ -846,22 +1073,7 @@ def _check_config_ownership(root: Path) -> CheckResult:
             message="Config ownership check skipped (no config.yaml yet)",
         )
 
-    # Determine current user role
-    agent_patterns = ["*_agent"]
-    config_path = root / "tracker" / "config.yaml"
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                raw = yaml.safe_load(f) or {}
-            actor_res = raw.get("actor_resolution", {})
-            if isinstance(actor_res, dict):
-                patterns = actor_res.get("agent_usernames")
-                if isinstance(patterns, list) and patterns:
-                    agent_patterns = patterns
-        except yaml.YAMLError:
-            pass
-
-    by, username = resolve_actor(agent_patterns)
+    by, username = resolve_actor(_agent_patterns_from(authoritative))
     current_uid = os.getuid()
 
     # Check if any config is NOT owned by the current human user
@@ -875,7 +1087,7 @@ def _check_config_ownership(root: Path) -> CheckResult:
                 details=[
                     "Config controls governance settings and should be owned",
                     "by the human user. As the human user, run:",
-                    f"  sudo chown $(whoami) {' '.join(str(p) for p in existing)}",
+                    f"  sudo chown $(whoami) {' '.join(str(p) for p in wrong_owner)}",
                 ],
             )
         return CheckResult(
@@ -930,20 +1142,265 @@ def _check_config_ownership(root: Path) -> CheckResult:
     )
 
 
-def _check_config_permissions(root: Path) -> CheckResult:
-    """Check #10b: Verify config.yaml is read-only (0444).
+def _check_protected_config(root: Path, repo_root: Path | None = None) -> CheckResult:
+    """Check #10c: host-protected config (``/etc/hypergumbo-tracker``).
 
-    Config files control governance (statuses, kinds, stop hook behavior).
-    They should be 0444 so agents cannot modify governance settings.
+    File ownership and mode cannot protect ``config.yaml`` from an agent that
+    can write the containing directory — and it must be able to, since
+    ``tag_catalog`` writes there atomically. This check reports whether the host
+    has opted into the one location the agent cannot reach, and prints the exact
+    commands when it has not.
+
+    ADVISORY ONLY, in both directions. It never creates or edits anything under
+    ``/etc``: that needs root, and a setup step that silently acquires root is
+    its own governance problem.
+    """
+    from hypergumbo_tracker import protected_config as pc
+    from hypergumbo_tracker.protected_config import (
+        ProtectedConfigError,
+        find_protected_config,
+        legible_repo_id,
+        protection_enabled,
+    )
+
+    PROTECTED_ROOT = pc.PROTECTED_ROOT
+
+    if repo_root is None:
+        git_dir = _find_git_dir(root)
+        repo_root = git_dir.parent if git_dir is not None else None
+    if repo_root is None:
+        return CheckResult(
+            name="protected_config",
+            status="ok",
+            message="Protected config check skipped (not a git repo)",
+        )
+
+    target = PROTECTED_ROOT / legible_repo_id(repo_root)
+    if not protection_enabled():
+        return CheckResult(
+            name="protected_config",
+            status="warn",
+            message=f"Not using a host-protected config ({PROTECTED_ROOT} absent)",
+            details=[
+                "The in-repo config.yaml CANNOT be protected from the agent by",
+                "file permissions: replacing a file needs write on its DIRECTORY,",
+                "and the agent must be able to write there. To opt in, as root:",
+                f"  sudo mkdir -p {target}",
+                f"  sudo cp {root / 'tracker' / 'config.yaml'} {target}/config.yaml",
+                f"  sudo chown -R root:root {PROTECTED_ROOT}",
+                f"  sudo chmod 755 {PROTECTED_ROOT} {target}",
+                f"  sudo chmod 644 {target}/config.yaml",
+                "Once the root directory exists, a repo with no config under it",
+                "REFUSES to load rather than falling back to the in-repo file.",
+            ],
+        )
+
+    try:
+        found = find_protected_config(repo_root)
+    except ProtectedConfigError as exc:
+        return CheckResult(
+            name="protected_config",
+            status="error",
+            message="Ambiguous protected config",
+            details=[str(exc)],
+        )
+    if found is None:
+        return CheckResult(
+            name="protected_config",
+            status="error",
+            message="Host uses protected configs but this repo has none — tracker will REFUSE to load",
+            details=[
+                f"  expected: {target}/config.yaml",
+                "As root:",
+                f"  sudo mkdir -p {target}",
+                f"  sudo cp {root / 'tracker' / 'config.yaml'} {target}/config.yaml",
+                f"  sudo chmod 755 {target} && sudo chmod 644 {target}/config.yaml",
+            ],
+        )
+
+    current_uid = os.getuid()
+    problems = [
+        str(p)
+        for p in (found, found.parent, PROTECTED_ROOT)
+        if p.stat().st_uid == current_uid or (p.stat().st_mode & 0o022)
+    ]
+    if problems:
+        return CheckResult(
+            name="protected_config",
+            status="warn",
+            message="Protected config is reachable by this user — protection is not in force",
+            details=[
+                "Owned by this user, or group/other-writable:",
+                *(f"  {p}" for p in problems),
+                "As root:  sudo chown -R root:root " + str(PROTECTED_ROOT),
+                "          sudo chmod -R go-w " + str(PROTECTED_ROOT),
+            ],
+        )
+    leftovers = [
+        str(c)
+        for c in (
+            root / "tracker" / "config.yaml",
+            root / "tracker-workspace" / "config.yaml",
+        )
+        if c.exists()
+    ]
+    if leftovers:
+        return CheckResult(
+            name="protected_config",
+            status="warn",
+            message="Host-protected config in force, but in-repo config.yaml files remain",
+            details=[
+                f"Authoritative (in use): {found}",
+                "IGNORED by the loader — kept only to mislead the next reader:",
+                *(f"  {c}" for c in leftovers),
+                "Delete them once you have confirmed the protected copy is correct:",
+                "  rm " + " ".join(leftovers),
+            ],
+        )
+    return CheckResult(
+        name="protected_config",
+        status="ok",
+        message=f"Host-protected config in force ({found})",
+    )
+
+
+def _writers_other_than(path: Path, uid: int) -> list[str]:
+    """Path components some user other than ``uid`` (or root) can modify.
+
+    Modifying a file needs write on its DIRECTORY, so this walks from the
+    target up to ``/`` and reports every component that is group- or
+    other-writable, or owned by a different non-root user.
+
+    **Ownership is the limb that matters here and a mode-only check misses it
+    entirely.** On the deployment that motivated this, the agent's package tree
+    is 0755 the whole way down — nothing is group-writable — yet every
+    component is owned by the agent account, so the agent may rewrite any of it
+    at will while a permissions-only audit reports all clear. root-owned
+    components are treated as safe: root is already trusted by anyone running
+    ``sudo``, and ``/`` and ``/home`` would otherwise be flagged forever.
+
+    A world-writable directory carrying the STICKY bit (``/tmp``, mode 1777) is
+    likewise safe and must not be flagged: sticky restricts delete and rename
+    to the entry's owner, and replacing a file needs exactly those. Omitting
+    this reported a false positive for anything under ``/tmp`` — including the
+    fixtures this function's own tests build.
+    """
+    problems: list[str] = []
+    current = path.resolve()
+    while True:
+        try:
+            st = current.stat()
+        except OSError:  # pragma: no cover - unreadable component
+            break
+        sticky_dir = bool(st.st_mode & 0o1000) and current.is_dir()
+        if st.st_mode & 0o022 and not sticky_dir:
+            problems.append(f"{current} is group/other-writable (mode {st.st_mode & 0o777:o})")
+        elif st.st_uid not in (uid, 0):
+            try:
+                owner = pwd.getpwuid(st.st_uid).pw_name
+            except KeyError:  # pragma: no cover - orphaned uid
+                owner = f"uid {st.st_uid}"
+            problems.append(f"{current} is owned by {owner}")
+        if current == current.parent:
+            break
+        current = current.parent
+    return problems
+
+
+def _check_install_provenance(
+    root: Path, repo_root: Path | None = None
+) -> CheckResult:
+    """Check #23: report who can modify the tracker code that is running.
+
+    **This is an ACCIDENT GUARD, NOT A SECURITY CONTROL, and the distinction is
+    not pedantic.** The check lives inside the artifact it is checking, so an
+    agent that can rewrite the package can rewrite this function too. It cannot
+    defend against a hostile agent and does not claim to. What it does is catch
+    the ordinary mistake the shipped guidance used to *cause*: a human running
+    human-authority commands out of the agent's virtualenv, which
+    ``generate_human_shim`` positively instructed them to do until 2026-09-12.
+
+    Why it matters at all: commands gated on human authority (``init``,
+    ``lock``, ``stealth``, ``reconcile-reset``, ``fork-setup``, ``configure``)
+    decide what that authority means in code. Run them from an agent-writable
+    install and the decision is the agent's. It bites hardest during opt-in to
+    the host-protected config, because check 10c composes the ``sudo`` commands
+    the human then pastes -- including the destination path under ``/etc``.
+
+    The real defence is an install the agent cannot write: a NON-EDITABLE
+    install, under the human's own account, from a reviewed commit. Content
+    addressing does the work -- an agent cannot make a pinned SHA contain
+    different bytes -- so the trust rests on the review, not on this code.
+    """
+    import hypergumbo_tracker
+
+    pkg_dir = Path(hypergumbo_tracker.__file__).resolve().parent
+    config_path, _protected = authoritative_config(root, repo_root)
+    by, username = resolve_actor(_agent_patterns_from(config_path))
+
+    in_checkout = repo_root is not None and str(pkg_dir).startswith(
+        str(repo_root.resolve()) + os.sep
+    )
+    shape = "editable, from the checkout" if in_checkout else "installed"
+
+    if by == "agent":
+        return CheckResult(
+            name="install_provenance",
+            status="ok",
+            message=f"Running as agent from {pkg_dir} ({shape})",
+        )
+
+    problems = _writers_other_than(pkg_dir, os.getuid())
+    if not problems:
+        return CheckResult(
+            name="install_provenance",
+            status="ok",
+            message=f"Human-authority code is writable only by {username} ({shape})",
+        )
+
+    return CheckResult(
+        name="install_provenance",
+        status="warn",
+        message="Human-authority commands are running from code another user can modify",
+        details=[
+            f"Running: {pkg_dir} ({shape})",
+            *(f"  {p}" for p in problems[:6]),
+            "",
+            "Install the tracker under your OWN account, non-editable, from a",
+            "commit you have reviewed -- then run human-authority commands from",
+            "that copy only, by absolute path. 'htrac setup' prints the exact",
+            "commands when run as the agent.",
+            "NOTE: this check cannot detect a hostile agent -- it lives in the",
+            "code it is checking. It catches the accident, not the attack.",
+        ],
+    )
+
+
+def _check_config_permissions(
+    root: Path, repo_root: Path | None = None
+) -> CheckResult:
+    """Check #10b: Verify the in-repo config.yaml is read-only (0444).
+
+    0444 matters for a reason narrower than it looks: it stops an in-place
+    write by a group member. It does NOT stop a create-and-rename in the
+    group-writable tracker directory, which is why the host-protected layer
+    exists. Under that layer this check is inert (see #10).
 
     If the current user is human and mode isn't 0444, auto-fix.
     If agent, warn with instructions.
     """
+    authoritative, protected = authoritative_config(root, repo_root)
     config_paths = [
         root / "tracker" / "config.yaml",
         root / "tracker-workspace" / "config.yaml",
     ]
     existing = [p for p in config_paths if p.exists()]
+    if protected:
+        return CheckResult(
+            name="config_permissions",
+            status="ok",
+            message="Config permissions check skipped (host-protected config in force)",
+        )
     if not existing:
         return CheckResult(
             name="config_permissions",
@@ -951,21 +1408,7 @@ def _check_config_permissions(root: Path) -> CheckResult:
             message="Config permissions check skipped (no config.yaml yet)",
         )
 
-    agent_patterns = ["*_agent"]
-    config_path = root / "tracker" / "config.yaml"
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                raw = yaml.safe_load(f) or {}
-            actor_res = raw.get("actor_resolution", {})
-            if isinstance(actor_res, dict):
-                patterns = actor_res.get("agent_usernames")
-                if isinstance(patterns, list) and patterns:
-                    agent_patterns = patterns
-        except yaml.YAMLError:
-            pass
-
-    by, username = resolve_actor(agent_patterns)
+    by, username = resolve_actor(_agent_patterns_from(authoritative))
 
     wrong_mode: list[Path] = []
     for p in existing:
@@ -1228,6 +1671,8 @@ def _check_group_permissions(
                         continue
                     fst = f.stat()
                 except OSError:
+                    continue
+                if f.name in _MODE_MANAGED_FILENAMES:
                     continue
                 if fst.st_uid != current_uid:
                     continue
@@ -2414,12 +2859,13 @@ def run_setup(
     results.append(_check_gitattributes(root))             # 3
     results.append(_check_gitignore(root, repo_root))       # 4
     results.append(_check_config_template(root))           # 5
-    results.append(_check_config_yaml(root))               # 6
-    results.append(_check_config_validation(root))         # 7
-    results.append(_check_config_drift(root))              # 8
-    results.append(_check_actor_resolution(root))          # 9
-    results.append(_check_config_ownership(root))          # 10
-    results.append(_check_config_permissions(root))        # 10b
+    results.append(_check_config_yaml(root, repo_root))    # 6
+    results.append(_check_config_validation(root, repo_root))  # 7
+    results.append(_check_config_drift(root, repo_root))   # 8
+    results.append(_check_actor_resolution(root, repo_root))   # 9
+    results.append(_check_config_ownership(root, repo_root))   # 10
+    results.append(_check_protected_config(root, repo_root))  # 10c
+    results.append(_check_config_permissions(root, repo_root))  # 10b
     results.append(_check_home_traversable(root, repo_root))  # 11
     results.append(_check_group_permissions(root, repo_root))  # 12
     results.append(_check_shared_repository(root, repo_root))  # 12b
@@ -2438,6 +2884,7 @@ def run_setup(
     results.append(_check_autonomous_mode(repo_root))      # 20
     results.append(_check_reflection_state(repo_root))     # 21
     results.append(_check_sync_prerequisites(root, repo_root))  # 22
+    results.append(_check_install_provenance(root, repo_root))  # 23
 
     return results
 
@@ -2503,6 +2950,98 @@ def results_to_json(results: list[CheckResult]) -> dict[str, Any]:
     }
 
 
+#: Where the human-owned, agent-unwritable install is suggested. A literal
+#: ``~`` because the block is pasted into the HUMAN's shell, where it expands
+#: to their home -- expanding it here would bake in the agent's.
+_HUMAN_VENV = "~/.local/share/hypergumbo-tracker"
+
+
+def _sanitize_remote(url: str) -> str:
+    """Strip any embedded ``user:password@`` from a remote URL.
+
+    Remotes routinely carry a token inline (this repo's dormant mirror does),
+    and this string is printed for a human to paste and quite possibly share.
+    """
+    return re.sub(r"//[^/@]*@", "//", url)
+
+
+def _git_https_url(repo_root: Path) -> str | None:
+    """``origin`` as an https URL suitable for ``pip install git+``, or None."""
+    try:
+        out = subprocess.run(  # noqa: S603  # nosec B603, B607
+            ["git", "-C", str(repo_root), "remote", "get-url", "origin"],  # noqa: S607
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover - env dependent
+        return None
+    if out.returncode != 0:
+        return None
+    url = _sanitize_remote(out.stdout.strip())
+    if not url:
+        return None
+    scp = re.match(r"^(?:ssh://)?git@([^:/]+)[:/](.+?)(?:\.git)?$", url)
+    if scp:
+        return f"https://{scp.group(1)}/{scp.group(2)}"
+    return re.sub(r"\.git$", "", url)
+
+
+def _head_sha(repo_root: Path) -> str | None:
+    try:
+        out = subprocess.run(  # noqa: S603  # nosec B603, B607
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],  # noqa: S607
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover - env dependent
+        return None
+    return out.stdout.strip() or None if out.returncode == 0 else None
+
+
+def _human_install_lines(repo_root: Path | None, pkg_dir: Path) -> list[str]:
+    """The one-time block that gives the human an install the agent cannot write.
+
+    Deliberately NOT a script: a helper the agent wrote, which the human then
+    runs as themselves, reintroduces exactly the dependency being removed. The
+    output is a handful of standard ``venv``/``pip`` commands the reader can
+    check by eye.
+
+    The pin is the whole mechanism -- an agent cannot make a reviewed SHA
+    contain different bytes -- so the SHA is printed as a SUGGESTION to be
+    verified on the forge, never as an instruction to trust this output.
+    """
+    lines = [
+        "# ── One-time: install the tracker under YOUR account ───",
+        "# Human-authority commands (init, lock, stealth, reconcile-reset,",
+        "# fork-setup, configure, setup) decide in CODE what human authority",
+        "# means. Run them from the agent's venv and that code is the agent's",
+        "# to rewrite. This install is non-editable and lives under your home.",
+    ]
+    url = _git_https_url(repo_root) if repo_root is not None else None
+    sha = _head_sha(repo_root) if repo_root is not None else None
+
+    lines.append(f"python3 -m venv {_HUMAN_VENV}")
+    lines.append(f"{_HUMAN_VENV}/bin/pip install --upgrade pip")
+    if url is not None and repo_root is not None:
+        try:
+            subdir = pkg_dir.resolve().parents[1].relative_to(repo_root.resolve())
+            sub = f"#subdirectory={subdir}"
+        except ValueError:
+            sub = ""
+        lines.append(
+            f'{_HUMAN_VENV}/bin/pip install "git+{url}@<REVIEWED-SHA>{sub}"'
+        )
+        lines.append("")
+        lines.append("# Replace <REVIEWED-SHA> with a commit you have reviewed ON THE")
+        lines.append("# FORGE. Pinning is what protects you here: the agent cannot make")
+        lines.append("# a given SHA contain different bytes. Do not take the SHA below")
+        lines.append("# on trust -- it is printed by code the agent can edit.")
+        if sha is not None:
+            lines.append(f"#   this checkout's HEAD right now: {sha}")
+    else:
+        lines.append(f"{_HUMAN_VENV}/bin/pip install hypergumbo-tracker")
+    lines.append("")
+    return lines
+
+
 def generate_human_shim(root: Path) -> str:
     """Generate a copy-paste command block for the human user's terminal.
 
@@ -2511,28 +3050,22 @@ def generate_human_shim(root: Path) -> str:
     the human user. This is printed when the setup wizard is run as the
     agent user and they decline to continue.
 
-    The shim covers three scenarios:
-    1. Running setup as the human user
-    2. Fixing group permissions (if two-user setup detected)
-    3. Ongoing TUI access from the human terminal
+    The shim covers four scenarios:
+    1. Installing the tracker under the human's own account
+    2. Running setup as the human user, from THAT install
+    3. Fixing group permissions (if two-user setup detected)
+    4. Ongoing TUI access from the human terminal
+
+    **It used to tell the human to ``source`` the agent's virtualenv**, which
+    is how this deployment came to run human-authority commands out of an
+    agent-writable install (INV-hivog). Every invocation it prints is now an
+    absolute path into the human's own copy; the agent's venv is not mentioned.
     """
     # Find repo root (git root or parent of .agent/)
     repo_root = root.parent.resolve()
     git_dir = _find_git_dir(repo_root)
     if git_dir is not None:
         repo_root = git_dir.parent
-
-    # Detect the venv
-    venv_path: Path | None = None
-    for candidate in [repo_root / ".venv", repo_root / "venv"]:
-        if (candidate / "bin" / "activate").exists():
-            venv_path = candidate
-            break
-    if venv_path is None:
-        # Check VIRTUAL_ENV env var
-        env_venv = os.environ.get("VIRTUAL_ENV")
-        if env_venv and (Path(env_venv) / "bin" / "activate").exists():
-            venv_path = Path(env_venv)
 
     # Detect shared group from .ops directories
     group_name: str | None = None
@@ -2557,13 +3090,16 @@ def generate_human_shim(root: Path) -> str:
     if needs_traversal:
         lines.append(f"sudo chmod o+rx {agent_home}")
 
+    lines.append("")
+
+    import hypergumbo_tracker
+
+    pkg_dir = Path(hypergumbo_tracker.__file__).resolve().parent
+    lines.extend(_human_install_lines(repo_root, pkg_dir))
+
+    lines.append("# ── Run setup from YOUR copy, by absolute path ─────────")
     lines.append(f"cd {repo_root}")
-
-    if venv_path is not None:
-        activate = venv_path / "bin" / "activate"
-        lines.append(f"source {activate}")
-
-    lines.append("htrac setup")
+    lines.append(f"{_HUMAN_VENV}/bin/htrac setup")
     lines.append("")
 
     # If two-user group setup is active or should be set up
@@ -2591,12 +3127,6 @@ def generate_human_shim(root: Path) -> str:
         lines.append("")
 
     lines.append("# ── Quick TUI access (anytime) ─────────────────────────")
-    tui_parts = []
-    if needs_traversal:
-        tui_parts.append(f"cd {repo_root}")
-    if venv_path is not None:
-        tui_parts.append(f"source {venv_path / 'bin' / 'activate'}")
-    tui_parts.append("htrac tui")
-    lines.append(" && ".join(tui_parts))
+    lines.append(f"cd {repo_root} && {_HUMAN_VENV}/bin/htrac tui")
 
     return "\n".join(lines)

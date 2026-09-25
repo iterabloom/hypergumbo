@@ -36,6 +36,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -478,6 +479,7 @@ class AnsibleAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()
@@ -583,7 +585,7 @@ def is_yaml_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("yaml_ansible", languages=["ansible"])
+@register_analyzer("yaml_ansible", languages=["ansible"], language_state="no_taxonomy_spec")  # WI-futin
 def analyze_ansible(root: Path) -> AnalysisResult:
     """Analyze Ansible YAML files in a directory.
 

@@ -208,6 +208,75 @@ class TestParser:
 
 
 class TestInitCommand:
+    @pytest.fixture(autouse=True)
+    def _as_human(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``init`` is human-only (INV-mizid); these cases exercise that path.
+
+        The test suite runs as the agent account, so without this every case
+        below would assert against the refusal rather than against init.
+        """
+        monkeypatch.setattr(
+            "hypergumbo_tracker.cli.resolve_actor",
+            lambda *a, **k: ("human", "alice"),
+        )
+
+    def test_init_refuses_when_run_by_an_agent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ) -> None:
+        """The guard this class's fixture suppresses.
+
+        init ends by calling config_lock on config.yaml whether or not it
+        already existed, and the cross-user chmod fallback hands ownership to
+        the caller — so an unguarded init is how an agent acquires the
+        governance config.
+        """
+        monkeypatch.setattr(
+            "hypergumbo_tracker.cli.resolve_actor",
+            lambda *a, **k: ("agent", "someone_agent"),
+        )
+        root = tmp_path / ".agent"
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(root), "init"])
+        assert exc.value.code == EXIT_USER_ERROR
+        assert "requires human authority" in capsys.readouterr().err
+        assert not (root / "tracker" / ".ops").exists(), "refused init must not create dirs"
+
+    def test_init_reads_agent_patterns_from_an_existing_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A deployment that renamed its agent accounts must still be guarded."""
+        root = tmp_path / ".agent"
+        (root / "tracker").mkdir(parents=True)
+        (root / "tracker" / "config.yaml").write_text(
+            "actor_resolution:\n  agent_usernames: ['bot-*']\n"
+        )
+        seen: list[list[str]] = []
+
+        def _spy(patterns=None, *a, **k):
+            seen.append(patterns)
+            return ("human", "alice")
+
+        monkeypatch.setattr("hypergumbo_tracker.cli.resolve_actor", _spy)
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(root), "init"])
+        assert seen == [["bot-*"]]
+
+    def test_init_tolerates_an_unparseable_existing_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A broken config must not make init crash before it can be repaired."""
+        root = tmp_path / ".agent"
+        (root / "tracker").mkdir(parents=True)
+        (root / "tracker" / "config.yaml").write_text("{[not: valid")
+        monkeypatch.setattr(
+            "hypergumbo_tracker.cli.resolve_actor",
+            lambda *a, **k: ("human", "alice"),
+        )
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(root), "init"])
+        assert exc.value.code == EXIT_SUCCESS
+
     def test_init(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         root = tmp_path / ".agent"
         with pytest.raises(SystemExit) as exc:

@@ -1,0 +1,68 @@
+- op: create  # 674c
+  at: '2026-08-29T07:13:34Z'  # 674c
+  by: agent  # 674c
+  actor: jgstern_agent  # 674c
+  clock: 1  # 674c
+  nonce: 674c  # 674c
+  data:  # 674c
+    kind: invariant  # 674c
+    title: "io_boundary is a 'canonical risk taxonomy' that consumers branch on, with no declared axis: absent from _known_axes(), no registry, no axiom, no drift linter"  # 674c
+    status: violated  # 674c
+    priority: 2  # 674c
+    parent:  # 674c
+    tags:  # 674c
+    - catalogue  # 674c
+    - io_boundary  # 674c
+    - axis  # 674c
+    isbefore: []  # 674c
+    duplicate_of: []  # 674c
+    not_duplicate_of: []  # 674c
+    pr_ref:  # 674c
+    description: "FILED BY ADR-0049 §\"Open work\". This is the ROOT CAUSE of why WI-johuk existed at\nall, stated separately because ADR-0049 is a value-level ruling that does not wait\non it.\n\nTHE FACT. `_known_axes()` lists edge-type, symbol-kind, evidence-type, language,\npass-id, protocol-origin, qualified-name, entrypoint-kind, visibility. `io-boundary`\nis ABSENT. There is no registry module, no one-sentence axiom, no drift linter, no\nAXIS_* name -- while ADR-0016 and taint.py BOTH call it \"hypergumbo's canonical\nI/O-boundary risk taxonomy\", and while several consumers branch on its values\n(AUTO_SOURCE_LABEL_MAP mints taint sources from three of them; OPAQUE_BOUNDARIES\nwithholds confirmations on one; _DISCLOSED_ONLY_BOUNDARIES excludes two from the\nheadline; verify-claims validates claim constraints against KNOWN_IO_BOUNDARIES).\n\nWHY IT MATTERS, AS MEASURED HISTORY RATHER THAN PRINCIPLE:\n  * INV-tutar. `env_read` carried TWO readings -- ambient configuration and secret\n    material -- and AUTO_SOURCE_LABEL_MAP read the wrong one. 134 of 195 shipped\n    env_read rows were host DESCRIPTION (runtime.GOOS, os.uname,\n    navigator.platform) or user identity (os.getlogin, pwd.getpwnam). Calling\n    those a secret is why host-secret-* claims carried 48 of 85 adjudicated flows\n    at 22.9% precision, the weakest family in measurement 0001. The catalogue was\n    already distorting itself to cope: python.yaml deliberately WITHHELD getpid\n    and cpu_count because rowing them \"would manufacture false sources\", while\n    go.yaml rowed GOOS and Getwd. One boundary value, two membership rules, two\n    shipped files.\n  * WI-johuk. The server-launch question was derived four times over five months\n    and ruled zero times, because there was no place a ruling could live. The only\n    governing text was a TEST DOCSTRING. Four independent censuses of the affected\n    rows produced four different numbers (37 / 52 / 63 / 75) because there was no\n    membership rule to count against.\n\nBoth are the same failure: a vocabulary that consumers branch on, with no axiom\nsaying what its values mean, drifts one row at a time and has nowhere to record a\ncorrection.\n\nWHAT TO DO (ADR-0024 four-artifact scaffolding, heavyweight):\n  1. a registry module mirroring edge_types.py, with the one-sentence axiom --\n     ADR-0049 ruling 1 is the candidate: a boundary value names WHAT DATA CROSSES\n     THE PROCESS BOUNDARY AT THIS CALL SITE, IN WHICH DIRECTION -- not what the\n     program is thereby arranged to do later;\n  2. a consumer helper;\n  3. a drift linter (parameterise scripts/check-edge-type-drift);\n  4. a runtime property test.\nThen wire io-boundary into _known_axes().\n\nSEQUENCING NOTE: this is a large PR and should land BEFORE the row moves, not\nafter -- otherwise the census (WI-hazop) and the retag (WI-nosah) are once again\nrecorded in prose that the next re-derivation is free to reinterpret. It is\nindependent of ADR-0049 itself, which stands as a value-level ruling either way."  # 674c
+    fields:  # 674c
+      statement: "Every multi-value vocabulary that consumers branch on must have a declared axis with a one-sentence axiom and a drift linter (ADR-0024); io_boundary has neither, while AUTO_SOURCE_LABEL_MAP, OPAQUE_BOUNDARIES, _DISCLOSED_ONLY_BOUNDARIES and verify-claims all branch on its values."  # 674c
+      root_cause: "The boundary vocabulary predates ADR-0024 and was never retrofitted, so there is no axiom stating what a boundary value means and no place a per-value ruling can be recorded. Measured consequences: INV-tutar (env_read carried two readings; 134 of 195 rows misclassified; 22.9% precision on host-secret claims) and WI-johuk (the same question derived four times over five months, ruled zero times, four incompatible censuses)."  # 674c
+- op: discuss  # 0e7d
+  at: '2026-09-01T19:16:46Z'  # 0e7d
+  by: agent  # 0e7d
+  actor: jgstern_agent  # 0e7d
+  clock: 2  # 0e7d
+  nonce: 0e7d  # 0e7d
+  message: "OWNER RULING (2026-09-01) on the sibling WI-livar: option (a), DECLARE THE AXIS,\nand INV-tafig is scoped TOGETHER with it. This item is no longer waiting on\nanything -- it is now half of one campaign.\n\nWHY THE TWO SHARE A ROOT AND NOT JUST A SHAPE. This item says io_boundary is\nabsent from _known_axes(). Verified, and the reason is structural rather than\noversight: multi_value_field_axis.DEFAULT_CORE_FILES is exactly ir.py and\ndatamodels.py, while IoPrimitive lives in io_boundary.py. So IoPrimitive.boundary\ncarries no axis comment and nothing ever asked it for one -- the linter cannot\nsee the file. The identical fact hides WI-livar's IoPrimitive.module. One scope\nfix un-hides both, and it is the gate that would have caught each of them.\n\nTHE TWO AXES ARE DIFFERENT SHAPES, WHICH IS WHY THIS IS TWO REGISTRIES AND NOT\nONE. io-boundary is ENUMERABLE -- CATALOG_BOUNDARY_TYPES is 17 values,\nKNOWN_IO_BOUNDARIES adds external_potential and command_launch for 19 -- so it\ntakes the heavyweight edge_types.py registry: AXIS_* constants, an IoBoundarySpec\nfrozen dataclass carrying name + axis + description, the tuple of specs,\nall_io_boundary_names() / io_boundaries_on_axis() / find_io_boundary().\nThe module key is NOT enumerable and takes the qualified_name_axis.py structural-\npolicy shape instead (ADR-0024 section 4 \"use judgment\").\n\nAXIOM CANDIDATE, as this item proposes and ADR-0049 ruling 1 supplies: a boundary\nvalue names WHAT DATA CROSSES THE PROCESS BOUNDARY AT THIS CALL SITE, IN WHICH\nDIRECTION -- not what the program is thereby arranged to do later. Adopting it\nverbatim keeps ADR-0049 the value-level ruling and this the axis that ruling\nlives on. It is falsifiable in the ADR-0024 sense: it is what makes net_listen a\ndisclosure rather than a crossing, and it is the sentence env_read failed when\nINV-tutar found 134 of 195 rows were host DESCRIPTION rather than secret\nmaterial.\n\nSEQUENCING, honouring this item's own note that the axis lands BEFORE the row\nmoves: the registry ships first, then the census (WI-hazop) and the retag\n(WI-nosah) are recorded against it rather than in prose. Also confirmed: the\nfive consumers this item names all still branch on the vocabulary --\nAUTO_SOURCE_LABEL_MAP, OPAQUE_BOUNDARIES, _DISCLOSED_ONLY_BOUNDARIES,\nDEFERRED_CROSSING_SHADOWS (added since filing, by ADR-0049) and verify_claims'\nKNOWN_IO_BOUNDARIES check. DEFERRED_CROSSING_SHADOWS is a sixth branching\nconsumer that did not exist when this was filed, which is the drift the item\npredicts."  # 0e7d
+- op: update  # f6e5
+  at: '2026-09-01T19:16:57Z'  # f6e5
+  by: agent  # f6e5
+  actor: jgstern_agent  # f6e5
+  clock: 3  # f6e5
+  nonce: f6e5  # f6e5
+  set:  # f6e5
+    priority: 1  # f6e5
+- op: discuss  # 2035
+  at: '2026-09-01T19:16:57Z'  # 2035
+  by: agent  # 2035
+  actor: jgstern_agent  # 2035
+  clock: 4  # 2035
+  nonce: '2035'  # 2035
+  message: "P2 -> P1: scoped with WI-livar by owner ruling (a) on 2026-09-01, and it ships FIRST of the two -- it is the enumerable axis, so it is the one that instantiates the shared registry/linter/property-test shape the module-key axis then reuses."  # 2035
+- op: discuss  # 3cf6
+  at: '2026-09-01T19:21:42Z'  # 3cf6
+  by: agent  # 3cf6
+  actor: jgstern_agent  # 3cf6
+  clock: 5  # 3cf6
+  nonce: 3cf6  # 3cf6
+  message: "Its four artifacts are now WI-kurod (P1), which carries the ADR, the io_boundary_types.py registry, scripts/check-io-boundary-drift, the property test and the _known_axes wiring. IoPrimitive.boundary's own axis comment is NOT in WI-kurod: it needs WI-mubup, which widens the linter to io_boundary.py, because DEFAULT_CORE_FILES is ir.py and datamodels.py only and cannot see the catalogue dataclass. This item stays violated until both land, and per its own sequencing note it precedes the WI-hazop census and the WI-nosah retag rather than following them."  # 3cf6
+- op: update  # dcbd
+  at: '2026-09-01T21:31:51Z'  # dcbd
+  by: agent  # dcbd
+  actor: jgstern_agent  # dcbd
+  clock: 6  # dcbd
+  nonce: dcbd  # dcbd
+  set:  # dcbd
+    status: satisfied  # dcbd
+- op: discuss  # 4c35
+  at: '2026-09-01T21:31:51Z'  # 4c35
+  by: agent  # 4c35
+  actor: jgstern_agent  # 4c35
+  clock: 7  # 4c35
+  nonce: 4c35  # 4c35
+  message: "SATISFIED. Both halves have landed: WI-kurod (PR #690, ADR-0050) declared the\naxis, WI-mubup (PR #693) put IoPrimitive in the linter's reach. dev fd8a7f39ef.\n\nTHIS ITEM'S FOUR STATED REQUIREMENTS, CHECKED ONE AT A TIME ON THE MERGED TREE:\n  1. one-sentence axiom     ADR-0050 section 1 + the registry module docstring.\n                            Taken VERBATIM from ADR-0049 ruling 1, as this item\n                            proposed: a boundary value names WHAT DATA CROSSES\n                            THE PROCESS BOUNDARY AT THIS CALL SITE, IN WHICH\n                            DIRECTION -- not what the program is thereby\n                            arranged to do later.\n  2. registry module        io_boundary_types.py, 19 specs, mirroring\n                            edge_types.py.\n  3. consumer helper        all_io_boundary_names / io_boundaries_on_axis /\n                            find_io_boundary / catalog_declarable_names /\n                            disclosed_only_names / opacity_names.\n  4. drift linter           scripts/check-io-boundary-drift, wired into\n                            .githooks/pre-commit (owner-approved governance\n                            edit, PR #691).\n  + io-boundary in _known_axes()                        True\n  + IoPrimitive.boundary declares `# axis: io-boundary`  True\n  + find_field_drift over all three scoped files         none\n\nWHAT ACTUALLY CHANGED BEYOND THE PAPERWORK. io_boundary.py no longer writes its\nfive vocabulary constants by hand -- CATALOG_BOUNDARY_TYPES,\nKNOWN_IO_BOUNDARIES, OPAQUE_BOUNDARIES, PRODUCER_OPAQUE_BOUNDARIES and\n_DISCLOSED_ONLY_BOUNDARIES are each derived. The channel split this item's own\ntext describes (\"each set is reachable through exactly one channel\") is now\nexecutable via the catalog_declarable field rather than a comment someone has\nto keep true. Property tests pin the pre-refactor membership, and for\nCATALOG_BOUNDARY_TYPES the pre-refactor ORDER, since _parse_catalog iterates it.\n\nA SIXTH BRANCHING CONSUMER EXISTED THAT THIS ITEM DID NOT NAME:\nDEFERRED_CROSSING_SHADOWS, added by ADR-0049 AFTER this was filed. That is\nprecisely the drift the item predicts, so it is recorded in the ADR as evidence\nrather than as a footnote.\n\nTHE HONEST CAVEAT, because \"has a drift linter\" is weaker here than for the\nsibling axes and should not be read as parity. Deriving the five constants\nremoved the last module-level string-literal set the shared AST walker can see,\nso the BOUNDAR-filtered scan collects ZERO assignments and exits 0 over an empty\ncollection -- it would exit 0 identically if it were broken. Two mitigations, in\ntree: test_the_drift_scanner_actually_fires proves non-vacuity against a\nsynthetic offender, and the three DICT consumers the walker structurally cannot\nsee (AUTO_SOURCE_LABEL_MAP, DEFERRED_CROSSING_SHADOWS,\n_READ_TARGET_KIND_BOUNDARY) carry explicit registry-membership assertions.\nWidening the walker to reach dicts, tuples and derived sets serves all four\ndeclared axes and is filed as WI-jinuj. This item is satisfied on its four\nrequirements; WI-jinuj is the residual, not a reason to hold it open.\n\nSEQUENCING NOTE HONOURED: this item asked that the axis land BEFORE the row\nmoves, so the WI-hazop census and the WI-nosah retag are recorded against a\nregistry rather than in prose. It did.\n\nSTILL OPEN AND DELIBERATELY UNANSWERED: `logging` is the one data_crossing value\nnaming a PURPOSE rather than a medium and it overlaps ipc_send on stdout (go\nfmt.Println and haskell Prelude.putStrLn are logging; stdout.write is ipc_send),\n46 rows across 12 catalogues. Recorded as the ADR's open question and the first\nper-value audit candidate. NO ROW MOVED -- having somewhere to ask the question\nis what this item was for."  # 4c35

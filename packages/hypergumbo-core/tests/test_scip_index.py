@@ -23,10 +23,19 @@ Behavioural contract pinned here:
 * SCIP is 0-indexed (``range[0]`` is the first source line); hypergumbo
   ``Span`` is 1-indexed. The +1 rewrite happens here so downstream
   ranking / slice / sketch code can keep its 1-indexed assumptions.
-* Local symbols (``local <id>``) emit with ``kind="local"`` and the
-  local id as the name. We don't drop them because rust-analyzer and
-  scip-python both emit locals that participate in cross-reference
-  resolution.
+* Local symbols (``local <id>``) are NOT minted (WI-jikok / INV-kukiz).
+  A SCIP local id is a document-scoped index, not an identifier — the
+  same ``local 0`` is a different binding in every file — so hashing the
+  moniker collided 498 of 1255 Symbols on one crate and resolving edges
+  through one index-wide map made 329 of 455 local-pointing edges
+  cross-file, which a document-scoped binding cannot be. And a
+  function-local binding is not part of a behavior map by the rule every
+  other backend already follows: py.py, kotlin.py, go.py and the
+  tree-sitter rust.py all read locals for resolution and mint nothing.
+  An earlier version of this bullet said locals were kept "because
+  rust-analyzer and scip-python both emit locals that participate in
+  cross-reference resolution"; the edges that resolution produced were
+  the false ones.
 * Malformed SCIP symbol strings are skipped, not raised, because a SCIP
   index from a buggy upstream emitter must not take down the whole
   translation pass.
@@ -119,7 +128,9 @@ def test_single_definition_becomes_symbol() -> None:
     s = result[0]
     assert isinstance(s, Symbol)
     assert s.name == "foo"
-    assert s.kind == "method"
+    # WI-gapup: ``module/path/foo().`` is a METHOD descriptor under a NAMESPACE,
+    # i.e. a free function; before the chain was consulted this said "method".
+    assert s.kind == "function"
     assert s.language == "python"
     assert s.path == "mod.py"
     assert s.span == Span(start_line=6, end_line=9, start_col=0, end_col=0)
@@ -142,7 +153,8 @@ def test_symbol_id_follows_hypergumbo_format() -> None:
         )],
     )
     [s] = scip_index_to_symbols(idx)
-    assert s.id == "python:mod.py:1-3:bar:method"
+    # WI-gapup: a METHOD descriptor under a NAMESPACE is a free function.
+    assert s.id == "python:mod.py:1-3:bar:function"
 
 
 # ---------------------------------------------------------------------------
@@ -225,15 +237,55 @@ def test_term_descriptor_becomes_variable_kind() -> None:
     assert s.kind == "variable"
 
 
-def test_local_symbol_keeps_local_kind() -> None:
+def test_local_symbol_is_not_minted() -> None:
+    """RE-POINTED from ``test_local_symbol_keeps_local_kind`` (WI-jikok).
+
+    The old test pinned ``local 7`` → ``Symbol(name="7", kind="local")``.
+    That name carries no lexical content and that kind is the registry's
+    Terraform ``local``; see the module docstring bullet for why the
+    binding is not part of the map at all.
+    """
     sym = "local 7"
     idx = _make_index(
         symbols=[scip_pb2.SymbolInformation(symbol=sym)],
         occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[1, 0, 4])],
     )
-    [s] = scip_index_to_symbols(idx)
-    assert s.name == "7"
-    assert s.kind == "local"
+    assert scip_index_to_symbols(idx) == []
+
+
+def test_global_symbol_beside_a_local_is_still_minted() -> None:
+    """Control for the test above: dropping locals must not drop the global
+    defined in the same document."""
+    local, glob = "local 7", _py_symbol("f")
+    idx = _make_index(
+        symbols=[
+            scip_pb2.SymbolInformation(symbol=local),
+            scip_pb2.SymbolInformation(symbol=glob),
+        ],
+        occurrences=[
+            scip_pb2.Occurrence(symbol=local, symbol_roles=DEFINITION_ROLE, range=[1, 4, 5]),
+            scip_pb2.Occurrence(symbol=glob, symbol_roles=DEFINITION_ROLE, range=[0, 0, 4, 0]),
+        ],
+    )
+    assert [s.name for s in scip_index_to_symbols(idx)] == ["f"]
+
+
+def test_document_scoped_local_ids_recur_across_documents_and_mint_nothing() -> None:
+    """INV-kukiz's shape in miniature: the SAME ``local 0`` string is
+    defined in two documents. Before the fix that minted two Symbols whose
+    ``stable_id`` (``sha256(moniker)``) collided; now it mints none."""
+    local = "local 0"
+    docs = [
+        scip_pb2.Document(
+            language="Rust", relative_path=path,
+            symbols=[scip_pb2.SymbolInformation(symbol=local)],
+            occurrences=[scip_pb2.Occurrence(
+                symbol=local, symbol_roles=DEFINITION_ROLE, range=[2, 8, 9],
+            )],
+        )
+        for path in ("src/a.rs", "src/b.rs")
+    ]
+    assert scip_index_to_symbols(scip_pb2.Index(documents=docs)) == []
 
 
 def test_malformed_symbol_string_is_skipped_not_raised() -> None:
@@ -271,13 +323,17 @@ def test_language_is_lowercased() -> None:
     assert s.language == "rust"
 
 
-def test_empty_language_falls_back_to_unknown() -> None:
+def test_empty_language_falls_back_to_the_extension_then_unknown() -> None:
+    """WI-nanom: an empty ``Document.language`` reads the file extension
+    (``mod.py`` → ``python``); only a path the taxonomy cannot place stays
+    ``unknown``."""
     sym = _py_symbol("foo")
-    idx = _make_index(language="",
-                     symbols=[scip_pb2.SymbolInformation(symbol=sym)],
-                     occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[0, 0, 1])])
-    [s] = scip_index_to_symbols(idx)
-    assert s.language == "unknown"
+    for path, expected in (("mod.py", "python"), ("mod.nope", "unknown")):
+        idx = _make_index(language="", path=path,
+                         symbols=[scip_pb2.SymbolInformation(symbol=sym)],
+                         occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[0, 0, 1])])
+        [s] = scip_index_to_symbols(idx)
+        assert s.language == expected
 
 
 def test_multiple_documents_emit_from_each() -> None:
@@ -310,3 +366,123 @@ def test_display_name_is_preserved_in_meta() -> None:
     assert s.meta["scip_symbol"] == sym
     assert s.meta["display_name"] == "foo"
     assert s.meta["scip_kind"] == 17
+
+
+# ---------------------------------------------------------------------------
+# WI-gapup / ADR-0057 §7: kind from the producer's declaration, else the chain
+# ---------------------------------------------------------------------------
+
+K = scip_pb2.SymbolInformation.Kind
+
+
+def _one(sym: str, *, kind: int = 0, rng: tuple[int, ...] = (0, 0, 3)) -> Symbol:
+    idx = _make_index(
+        language="Rust", path="src/lib.rs",
+        symbols=[scip_pb2.SymbolInformation(symbol=sym, kind=kind)],
+        occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=list(rng))],
+    )
+    [s] = scip_index_to_symbols(idx)
+    return s
+
+
+class TestKindFromTheProducersDeclaration:
+    """rust-analyzer sets ``SymbolInformation.kind`` on every global definition
+    (measured: 169 of 169 on aardvark-dns). That is the producer's own claim
+    and it wins over anything inferred from the descriptor string."""
+
+    @pytest.mark.parametrize("declared, expected", [
+        (K.Function, "function"),
+        (K.Method, "method"),
+        (K.StaticMethod, "method"),
+        (K.TraitMethod, "method"),
+        (K.AbstractMethod, "method"),
+        (K.Constructor, "constructor"),
+        (K.Field, "field"),
+        (K.Property, "property"),
+        (K.EnumMember, "field"),
+        (K.Constant, "constant"),
+        (K.StaticVariable, "variable"),
+        (K.Variable, "variable"),
+        (K.Struct, "struct"),
+        (K.Enum, "enum"),
+        (K.Trait, "trait"),
+        (K.Interface, "interface"),
+        (K.Class, "class"),
+        (K.TypeAlias, "type_alias"),
+        (K.Macro, "macro"),
+        (K.Module, "namespace"),
+    ])
+    def test_the_declared_kind_wins(self, declared: int, expected: str) -> None:
+        # The descriptor says METHOD-under-NAMESPACE for every case: only the
+        # declaration can be what decides.
+        s = _one("rust-analyzer cargo c 0.1.0 a/thing().", kind=declared)
+        assert s.kind == expected
+
+    def test_an_unmapped_declared_kind_falls_back_to_the_chain(self) -> None:
+        s = _one("rust-analyzer cargo c 0.1.0 a/Foo#bar().", kind=K.Axiom)
+        assert s.kind == "method"
+
+    def test_the_declared_kind_is_still_recorded_in_meta(self) -> None:
+        s = _one("rust-analyzer cargo c 0.1.0 a/thing().", kind=K.Function)
+        assert s.meta["scip_kind"] == int(K.Function)
+
+
+class TestKindFromTheDescriptorChain:
+    """The fallback for an emitter that leaves ``kind`` unset: a METHOD or
+    TERM leaf is placed by its nearest ancestor that is not a type
+    parameter — rust-analyzer spells an impl target as one
+    (``impl#[Counter]increment().``), and skipping it is what makes 26 of
+    27 aardvark-dns methods land as methods rather than free functions."""
+
+    @pytest.mark.parametrize("sym, expected", [
+        ("rust-analyzer cargo c 0.1.0 a/foo().", "function"),
+        ("rust-analyzer cargo c 0.1.0 foo().", "function"),
+        ("rust-analyzer cargo c 0.1.0 a/Foo#bar().", "method"),
+        ("rust-analyzer cargo c 0.1.0 a/impl#[Foo]bar().", "method"),
+        ("rust-analyzer cargo c 0.1.0 a/impl#[Foo][Tr]bar().", "method"),
+        ("rust-analyzer cargo c 0.1.0 a/Foo#x.", "field"),
+        ("rust-analyzer cargo c 0.1.0 a/x.", "variable"),
+        ("rust-analyzer cargo c 0.1.0 a/Foo#", "class"),
+        # A nested TYPE stays a class: in scip-python ``Outer#Inner#`` is a
+        # nested class. Only a DECLARED EnumMember is a variant.
+        ("rust-analyzer cargo c 0.1.0 a/Outer#Inner#", "class"),
+        ("rust-analyzer cargo c 0.1.0 a/", "namespace"),
+        ("rust-analyzer cargo c 0.1.0 a/m!", "macro"),
+        ("rust-analyzer cargo c 0.1.0 a/foo().[T]", "type_parameter"),
+        ("rust-analyzer cargo c 0.1.0 a/foo().(x)", "parameter"),
+    ])
+    def test_placement_by_nearest_non_type_parameter_ancestor(self, sym: str, expected: str) -> None:
+        assert _one(sym).kind == expected
+
+
+# ---------------------------------------------------------------------------
+# WI-nanom: a producer that leaves Document.language empty (scip-python 0.6.6
+# does, on every document) must not land every record in language "unknown"
+# — the merge pass keys on language, so nothing would ever pair. The file
+# extension is the fallback, through the taxonomy, backend-neutral.
+# ---------------------------------------------------------------------------
+
+
+def _one_definition(path: str, language: str = "") -> scip_pb2.Index:
+    sym = _py_symbol("f")
+    return _make_index(
+        language=language, path=path,
+        symbols=[scip_pb2.SymbolInformation(symbol=sym)],
+        occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[0, 0, 5])],
+    )
+
+
+def test_an_empty_document_language_falls_back_to_the_file_extension() -> None:
+    [symbol] = scip_index_to_symbols(_one_definition("pkg/mod.py"))
+    assert symbol.language == "python"
+    assert symbol.id.startswith("python:pkg/mod.py:")
+
+
+def test_a_declared_document_language_still_wins_over_the_extension() -> None:
+    [symbol] = scip_index_to_symbols(_one_definition("pkg/mod.py", language="Rust"))
+    assert symbol.language == "rust"
+
+
+def test_an_empty_language_and_an_unknown_extension_stay_unknown() -> None:
+    [symbol] = scip_index_to_symbols(_one_definition("pkg/mod.zzz"))
+    assert symbol.language == "unknown"

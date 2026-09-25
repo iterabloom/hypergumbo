@@ -50,6 +50,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
@@ -57,6 +58,8 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id,
     make_unresolved_edge,
     node_text,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id
@@ -176,19 +179,21 @@ def _make_powershell_symbol(
 
 def _find_enclosing_function_powershell(
     node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Find the enclosing function Symbol by walking up parents."""
+    """The function whose ``function`` statement contains ``node``.
+
+    Keyed by the statement's POSITION, not its name (INV-midag, WI-mapor).
+    PowerShell lets a script define a function twice (the later definition
+    wins at run time), and the name lookup credited both bodies' calls to
+    the last one.
+    """
     current = node.parent
     while current is not None:
         if current.type == "function_statement":
-            name_node = find_child_by_type(current, "function_name")
-            if name_node:
-                name = node_text(name_node, source).strip()
-                sym = local_symbols.get(name)
-                if sym:
-                    return sym
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -212,6 +217,7 @@ def _process_import_module(
                         src=make_file_id("powershell", file_path),
                         dst=f"powershell:?:?:{module_text}:module",
                         edge_type="imports",
+                        evidence_type="import",
                         line=node.start_point[0] + 1,
                         origin=PASS_ID,
                         origin_run_id=run_id,
@@ -241,6 +247,7 @@ def _process_using_command(
                 src=make_file_id("powershell", file_path),
                 dst=f"powershell:?:?:{module_name}:module",
                 edge_type="imports",
+                evidence_type="import",
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
                 origin_run_id=run_id,
@@ -306,7 +313,7 @@ def _extract_powershell_edges(
     source: bytes,
     file_path: str,
     edges: list[Edge],
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
     resolver: NameResolver,
     module_symbol: Optional[Symbol] = None,
     run_id: str = "",
@@ -325,7 +332,7 @@ def _extract_powershell_edges(
                     _process_using_command(node, source, file_path, edges, run_id=run_id)
                 else:
                     # Check if inside a function, fall back to module symbol
-                    caller = _find_enclosing_function_powershell(node, source, local_symbols) or module_symbol
+                    caller = _find_enclosing_function_powershell(node, decl_index) or module_symbol
                     if caller:
                         # Use resolver for callee resolution
                         lookup_result = resolver.lookup(command_name, caller_path=_caller_path)
@@ -334,6 +341,7 @@ def _extract_powershell_edges(
                                 src=caller.id,
                                 dst=lookup_result.symbol.id,
                                 edge_type="calls",
+                                evidence_type="ast_call",
                                 line=node.start_point[0] + 1,
                                 confidence=0.85 * lookup_result.confidence,
                                 origin=PASS_ID,
@@ -445,7 +453,8 @@ class PowerShellAnalyzer(TreeSitterAnalyzer):
         # global registry (kind="file", name=rel_path).
         module_symbol = global_symbols.get(rel_path)
         _extract_powershell_edges(
-            tree, source, rel_path, edges, local_symbols, resolver,
+            tree, source, rel_path, edges,
+            symbols_at(self.file_symbols(local_symbols)), resolver,
             module_symbol=module_symbol,
             run_id=run.execution_id,
         )

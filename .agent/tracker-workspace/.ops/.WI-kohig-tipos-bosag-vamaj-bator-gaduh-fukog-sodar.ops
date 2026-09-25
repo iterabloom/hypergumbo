@@ -1,0 +1,24 @@
+- op: create  # c6a8
+  at: '2026-08-27T15:57:19Z'  # c6a8
+  by: agent  # c6a8
+  actor: jgstern_agent  # c6a8
+  clock: 1  # c6a8
+  nonce: c6a8  # c6a8
+  data:  # c6a8
+    kind: work_item  # c6a8
+    title: "Fold the 5 off-axis call_construct values: application/pipe are synonyms for function, remote/local are call_locality, macro_body is a context that destroys a recoverable method construct (533 edges)"  # c6a8
+    status: todo_hard  # c6a8
+    priority: 3  # c6a8
+    parent:  # c6a8
+    tags:  # c6a8
+    - axis  # c6a8
+    - analysis_quality  # c6a8
+    - rust  # c6a8
+    - erlang  # c6a8
+    - haskell  # c6a8
+    isbefore: []  # c6a8
+    duplicate_of: []  # c6a8
+    not_duplicate_of: []  # c6a8
+    pr_ref:  # c6a8
+    description: "FOUND 2026-08-27 by the fundamental concept audit of call_construct. Full\nwrite-up: ~/hypergumbo_lab_notebook/concept-audit-call_construct_08272026.md\n\ncall_construct's registered purpose (axis_meta_keys.py:303) is the\n\"source-language call construct collapsed under ast_call apex\". Measured over\n42 cached surveys, 261,365 stamped edges, it takes 8 values. Five of them do\nnot name a call construct.\n\n  VALUE        n        VERDICT                          TEST FIRED\n  application  21,074   FOLD -> function                 1 (derivability)\n  remote       20,673   FOLD -> function + call_locality 1, 3\n  local        14,504   FOLD -> function + call_locality 1, 3\n  macro_body      844   FOLD -> real construct + meta    3, 4\n  pipe             19   FOLD -> function + meta          4 (mechanism)\n\nCANONICAL and explicitly NOT in scope: method, function, and constructor.\nThe registry defends `constructor` in as many words (INV-kahig: ruby emits\n`calls` where dart/csharp emit `instantiates`, so it is the only\ncross-language invariant for object creation). Do not touch it.\n\nWHY EACH IS OFF-AXIS.\n\n  application (haskell.py:524,553; ocaml.py:374,388) -- a synonym for\n  `function`. `f x` in Haskell IS a function call. This is the playbook's\n  second confusion type: saying the same thing with a different word.\n\n  remote / local (erlang.py:523,545,580) -- locality words, and\n  `call_locality` is the key INV-vakaf created for exactly this question\n  after bash/objc were caught smuggling 'cross_file' through\n  call_construct. MEASURED: remote/local is 89.7% derivable from the\n  endpoints alone (10,794 of 12,028 edges agree with cross_file/same_file\n  computed from the id path slots). NOT a pure duplicate -- the 1,233\n  `local x cross_file` residue is real, because the resolver finds\n  project-wide targets for unqualified calls -- but the question it answers\n  is call_locality's, and erlang has only functions, so the CONSTRUCT is\n  `function` in both cases.\n\n  macro_body (rust.py:2644) -- names WHERE the call is (inside a macro\n  body), not WHAT it is. The same call written outside a macro gets `method`\n  or `function`. THE TRUE CONSTRUCT IS RECOVERABLE AND IS BEING DESTROYED:\n  533 of the 844 macro_body edges target a symbol whose Symbol.kind is\n  `method`. Third instance of the identical INV-vakaf leak, in a language\n  that sweep did not cover.\n\n  pipe (elixir.py:1225,1244) -- `x |> f()` is a way of WRITING a function\n  call, not a different construct. Mechanism, not category.\n\nPRODUCER TRACE (Step 4.5, all five shapes, run 2026-08-27). Every one of the\nfive values has a live literal producer, so NO value here is dead vocabulary\nand no DEPRECATE-NO-FOLD verdict is available -- all five are FOLDs with\nnamed targets. shape 2 (helper) is make_unresolved_edge -> analyze/base.py:900;\nshape 3 (assignment-to-Name) has two producers, cpp.py:1365\n`_unresolved_construct` and java.py:2033 `pr4_call_construct`, both taking\nonly {\"method\", None}; shape 4 (f-string) RAN, ZERO HITS; shape 5\n(dict-subscript) is the single analyze/base.py:900 site.\n\nCONSEQUENCE. Every consumer of call_construct reads it as `== \"method\"` or\ntests membership against a definition-kind set (INV-pimir). All five values\nabove read as \"not a method call\" to every consumer, which is correct by\naccident for erlang/haskell and WRONG for the 533 rust macro-body method\ncalls.\n\nSEQUENCING. INV-pimir (the join site) is the consumer-side defect; this item\nis the producer-side one. Neither blocks the other, but folding these five\nshrinks INV-pimir's reachable surface substantially."  # c6a8
+    fields: {}  # c6a8

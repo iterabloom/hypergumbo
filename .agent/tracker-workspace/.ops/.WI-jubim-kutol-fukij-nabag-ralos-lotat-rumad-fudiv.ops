@@ -1,0 +1,23 @@
+- op: create  # e7ce
+  at: '2026-09-23T23:23:35Z'  # e7ce
+  by: agent  # e7ce
+  actor: jgstern_agent  # e7ce
+  clock: 1  # e7ce
+  nonce: e7ce  # e7ce
+  data:  # e7ce
+    kind: work_item  # e7ce
+    title: "kotlin and scala do not consume the library-signature catalogue, so a call on a JDK static's returned value (Runtime.getRuntime().exec) is untyped and the subprocess sink is unreachable"  # e7ce
+    status: todo_hard  # e7ce
+    priority: 3  # e7ce
+    parent:  # e7ce
+    tags:  # e7ce
+    - taint  # e7ce
+    - kotlin  # e7ce
+    - scala  # e7ce
+    - io_boundary  # e7ce
+    isbefore: []  # e7ce
+    duplicate_of: []  # e7ce
+    not_duplicate_of: []  # e7ce
+    pr_ref:  # e7ce
+    description: "RESIDUAL OF WI-kilap (PR #1160), 2026-09-23. It is the only line of WI-kilap's filed repro that still fails.\n\n  Runtime.getRuntime().exec(c)   (kotlin and scala)\n    getRuntime -> kotlin:java.lang.Runtime:0-0:getRuntime   (static owner, now named by WI-kilap)\n    exec       -> kotlin:external:0-0:exec  cc=method -> NONE\n\nexec is called on the VALUE getRuntime returns. java.lang.Runtime.exec is a method-kind subprocess row, so it needs a typed receiver. The library-signature catalogue already declares the producer (library_signatures/java.yaml: `Runtime.getRuntime: java.lang.Runtime`), and java.py, go.py, py.py and objc.py consume it via load_library_signatures. kotlin.py and scala.py do NOT. WI-lalot's sequencing note names WI-hijot (P4, someday) as scala's consumer and none for kotlin.\n\nWHY IT MATTERS: it is a SUBPROCESS SINK, a taint sink. A kotlin/scala program that pipes untrusted input into Runtime.getRuntime().exec gets no flow. Fixture: ~/hypergumbo_lab_notebook/suril_09072026/fxkt, fxsc.\n\nASKED: thread load_library_signatures into kotlin.py's chained_type / var_types and scala.py's var_types for the call-on-a-static's-return shape. Measure through the production path on sbt / gatling / detekt: count edges that gain a typed slot, and adjudicate any new subprocess/env findings. Do not assert a count before measuring it."  # e7ce
+    fields: {}  # e7ce

@@ -326,9 +326,11 @@ def test_cmd_io_boundaries_json_envelope_top_level_keys(
 ) -> None:
     """PR-B property test: --json envelope top-level shape locked.
 
-    The io-boundaries envelope (schema_version 2.0 since WI-huhit/WI-foduh
-    redefined total_io_edges + added external_potential_edges) is a wire
-    contract for downstream consumers (verify-claims, security audit
+    The io-boundaries envelope (schema_version 2.3 since WI-fasap added
+    db_compose_edges, the database twin of net_listen; 2.2 since
+    WI-nosah/ADR-0049 added net_listen_edges for deferred crossings; 2.1 added
+    command_launch_edges; 2.0 redefined total_io_edges + added
+    external_potential_edges) is a wire contract for downstream consumers (verify-claims, security audit
     scripts, RCT variants). Loud-fail on any silent change to the
     top-level keys, value types, or schema_version string.
     """
@@ -365,6 +367,8 @@ def test_cmd_io_boundaries_json_envelope_top_level_keys(
         "total_io_edges",
         "external_potential_edges",
         "command_launch_edges",
+        "net_listen_edges",
+        "db_compose_edges",
         "boundaries",
         "unsupported_languages",
     }
@@ -1292,7 +1296,7 @@ def test_typescript_alias_io_boundaries_detected(tmp_path: Path, capsys) -> None
         edges=[
             {
                 "src": "typescript:src/io.ts:1-5:writeFile:function",
-                "dst": "javascript:external:0-0:fs.writeFileSync:unresolved",
+                "dst": "javascript:external:0-0:fs.writeFileSync:unresolved", "is_resolved": False,
                 "type": "calls",
                 "confidence": 0.5,
             },

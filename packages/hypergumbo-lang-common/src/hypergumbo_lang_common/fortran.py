@@ -874,7 +874,7 @@ def is_fortran_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("fortran")
+@register_analyzer("fortran", find_files=find_fortran_files)
 def analyze_fortran_files(repo_root: Path) -> AnalysisResult:
     """Analyze Fortran files in the repository."""
     return _analyzer.analyze(repo_root)

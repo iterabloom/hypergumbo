@@ -86,6 +86,7 @@ from hypergumbo_core.analyze.base import (
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -823,6 +824,7 @@ class LuaAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=skip_reason,
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         import tree_sitter

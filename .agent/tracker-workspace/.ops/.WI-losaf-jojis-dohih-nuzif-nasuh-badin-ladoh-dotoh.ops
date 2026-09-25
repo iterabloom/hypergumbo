@@ -1,0 +1,21 @@
+- op: create  # 5867
+  at: '2026-09-25T15:50:30Z'  # 5867
+  by: agent  # 5867
+  actor: jgstern_agent  # 5867
+  clock: 1  # 5867
+  nonce: '5867'  # 5867
+  data:  # 5867
+    kind: work_item  # 5867
+    title: "nim: iterator / template / macro / converter declarations are never extracted as symbols (62 on nitter)"  # 5867
+    status: todo_hard  # 5867
+    priority: 3  # 5867
+    parent:  # 5867
+    tags:  # 5867
+    - analysis_quality  # 5867
+    - emission_parity  # 5867
+    isbefore: []  # 5867
+    duplicate_of: []  # 5867
+    not_duplicate_of: []  # 5867
+    pr_ref:  # 5867
+    description: "EVIDENCE (production entry point, 2026-09-25, dev 615471e2e7): tree-sitter-nim parses\n`iterator_declaration`, `template_declaration`, `macro_declaration` and `converter_declaration`\n(each with the same identifier / exported_symbol name shape as a proc), but nim.py's\nextract_symbols_from_file handles only proc / func / method / type / field / variable. None of\nthe four is extracted as a symbol, so:\n- a call to a template / macro / iterator / converter cannot resolve to an in-repo target;\n- a call inside one is either dropped (top-level declaration) or credited to the enclosing\n  proc (a declaration nested inside a proc).\n\nSIZE: nitter (the corpus Nim repo) declares 51 template, 9 macro, 1 iterator, 1 converter,\nagainst 350 proc + 2 func. Found while fixing WI-bujar (same analyzer, separate gap: that row is\ncalls lost FROM an extracted symbol; this one is symbols never extracted).\n\nPRIOR ART: searched every tracker item mentioning nim (13). INV-bisom fixed the exported NAME\nshape for proc/func/method/type only. No item covers these four declaration kinds.\n\nASKED:\n1. Decide each kind: templates and macros are compile-time expansions, and whether a call to one\n   is a `calls` edge is a modelling question -- check how the sibling analyzers treat macros (rust\n   `macro_rules!`, C `#define`, elixir `defmacro`) before choosing.\n2. Iterators and converters are ordinary callables and look like plain `function` symbols.\n3. Measure the edge-set diff on nitter (resolved calls gained, re-anchored sites), not the count."  # 5867
+    fields: {}  # 5867

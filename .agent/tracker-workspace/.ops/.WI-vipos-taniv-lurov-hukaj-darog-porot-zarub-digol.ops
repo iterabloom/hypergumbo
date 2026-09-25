@@ -1,0 +1,21 @@
+- op: create  # 8665
+  at: '2026-09-10T22:41:46Z'  # 8665
+  by: agent  # 8665
+  actor: jgstern_agent  # 8665
+  clock: 1  # 8665
+  nonce: '8665'  # 8665
+  data:  # 8665
+    kind: work_item  # 8665
+    title: "js computed-property call emits no edge at all, not even the external placeholder"  # 8665
+    status: todo_hard  # 8665
+    priority: 3  # 8665
+    parent:  # 8665
+    tags:  # 8665
+    - javascript  # 8665
+    - linker_framework  # 8665
+    isbefore: []  # 8665
+    duplicate_of: []  # 8665
+    not_duplicate_of: []  # 8665
+    pr_ref:  # 8665
+    description: "MEASURED 2026-09-10 while probing the WI-dosuh family (probe_parity.py in\n~/hypergumbo_lab_notebook/dosuh_family_09102026/).\n\n  const ws = new WebSocket(u); ws['send'](x)   -> NO EDGE AT ALL\n\nNot `external`, not a low-confidence fallback -- nothing. Compare the\ndotted spelling on the identical receiver in the same probe, which emits\n`javascript:WebSocket:0-0:send:unresolved` and tags net_send.\n\nTHE MECHANISM (unverified beyond the observation): js_ts.py's member-call\ncascade keys on a callee of node type `member_expression`. A computed\nproperty call parses as a `call_expression` whose function is a\n`subscript_expression`, which no branch of that cascade claims, so the call\nsite produces nothing rather than degrading to the `external` placeholder\nWI-nasuf added for untyped receivers.\n\nWHY THIS IS THE WORSE OF THE TWO FAILURE SHAPES. An `external` edge is a\ndisclosed unknown: the row is unreachable but the CALL is in the graph and\nthe coverage gate can count it. No edge at all means the call site is\nabsent from the graph, so a closed-world verdict over \"the constructs the\nanalysis emits call edges for\" silently excludes it -- the same shape\nCONSTRUCT_BLIND_ROWS exists to disclose for property assignment, with no\ndisclosure of its own.\n\nSISTER SPELLING NOT YET PROBED: `ws?.['send'](x)` and `obj[name](x)` with a\nnon-literal key. The non-literal key cannot name a row and should stay\nunresolved; the string-literal key can.\n\nNOT YET MEASURED: corpus frequency. Bracket-call spelling is most common in\ndispatch tables and minified/generated code."  # 8665
+    fields: {}  # 8665

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol
 from hypergumbo_core.linkers.method_call_recovery import (
     _parse_unresolved_name,
     _short_name,
@@ -449,3 +449,320 @@ class TestParseUnresolvedNamePublic:
             parse_unresolved_name,
         )
         assert parse_unresolved_name is _parse_unresolved_name
+
+
+class TestTheHintMustNotContradictTheDeclaredReceiver:
+    """A class hint that DISAGREES with the edge's own ``receiver_type_hint``
+    is evidence against the recovery, not permission to guess (INV-nakut-guard).
+
+    FOUND BY MEASUREMENT, not by reading. WI-nakut stopped java gluing the
+    receiver identifier into an unresolved call's name slot, which was the only
+    reason this linker had never seen java's variable-receiver calls: it reads
+    ``parts[-2]`` verbatim, so ``audio.getSampleRate`` matched no class member
+    and ``getSampleRate`` matches six. The A/B measured 9 newly-recovered rows
+    on sherpa-onnx and 241 on jenkins, and reading them back against source
+    found the failure this guard closes:
+
+        float d = audio.getSamples().length / (float) audio.getSampleRate();
+
+    ``audio`` is a ``GeneratedAudio``; the enclosing ``main`` also instantiates
+    ``OfflineTts``; six classes in that repository declare ``getSampleRate``;
+    and the line-proximity tiebreaker chose ``OfflineTts``. The edge itself
+    carried ``receiver_type_hint="GeneratedAudio"`` the whole time -- the
+    evidence to refuse was already stamped and nothing read it.
+
+    THE GUARD IS ONLY AS WIDE AS THE EVIDENCE. An edge with no stamp is
+    unchanged, which is the WI-gigoz shape this linker was built for
+    (``CliRunner().run()`` has no receiver variable to declare a type for), and
+    every language that stamps nothing keeps exactly the behaviour it had.
+    """
+
+    @staticmethod
+    def _fixture(declared: str | None) -> tuple[list[Symbol], list[Edge]]:
+        """``main`` instantiates ``Tts`` and calls ``m()`` on something else.
+
+        Both classes declare ``m``; only ``Tts`` is a class hint.
+        """
+        main = _sym("k:App.kt:5-9:main:function", "main", "function",
+                    start=5, end=9)
+        tts = _sym("k:Tts.kt:1-30:Tts:class", "Tts", "class", path="Tts.kt",
+                   start=1, end=30)
+        tts_m = _sym("k:Tts.kt:10-20:Tts.m:method", "Tts.m", "method",
+                     path="Tts.kt", start=10, end=20)
+        audio = _sym("k:Audio.kt:1-30:Audio:class", "Audio", "class",
+                     path="Audio.kt", start=1, end=30)
+        audio_m = _sym("k:Audio.kt:10-20:Audio.m:method", "Audio.m", "method",
+                       path="Audio.kt", start=10, end=20)
+        meta = {"call_construct": "method"}
+        if declared is not None:
+            meta["receiver_type_hint"] = declared
+        call = Edge.create(
+            src=main.id, dst="kotlin:external:0-0:m:unresolved",
+            edge_type="calls", line=7, origin="test",
+            evidence_type="ast_method_unresolved", origin_run_id="test",
+            meta=meta,
+        )
+        edges = [
+            _edge(main.id, tts.id, "calls", line=7),
+            _edge(tts.id, tts_m.id, "contains", line=10),
+            _edge(audio.id, audio_m.id, "contains", line=10),
+            call,
+        ]
+        return [main, tts, tts_m, audio, audio_m], edges
+
+    def test_a_contradicting_hint_recovers_nothing(self) -> None:
+        """The measured failure: the receiver is declared ``Audio`` and the
+        only class hint is ``Tts``."""
+        symbols, edges = self._fixture("Audio")
+        result = link_method_call_recovery(_ctx(symbols, edges))
+        assert result.edges == [], [e.dst for e in result.edges]
+
+    def test_an_agreeing_hint_still_recovers(self) -> None:
+        """CONTROL, and the majority of the measured population: ``wi.leave()``
+        where ``wi`` is declared ``WaitingItem`` and ``WaitingItem`` is the
+        hint. The guard must cost these nothing."""
+        symbols, edges = self._fixture("Tts")
+        result = link_method_call_recovery(_ctx(symbols, edges))
+        assert [e.dst for e in result.edges] == ["k:Tts.kt:10-20:Tts.m:method"]
+
+    def test_an_unstamped_edge_is_unchanged(self) -> None:
+        """CONTROL: the WI-gigoz shape this linker exists for, and every
+        language that stamps no receiver type."""
+        symbols, edges = self._fixture(None)
+        result = link_method_call_recovery(_ctx(symbols, edges))
+        assert [e.dst for e in result.edges] == ["k:Tts.kt:10-20:Tts.m:method"]
+
+    def test_the_declared_type_is_compared_on_its_SHORT_name(self) -> None:
+        """A stamped type may be qualified (``java.io.File``) while a class
+        symbol's name is its short form, so the comparison is short-to-short.
+        Asserted rather than assumed: comparing the qualified spelling against
+        a short class name refuses EVERY recovery, which would read as "the
+        guard works" while actually disabling the linker."""
+        symbols, edges = self._fixture("com.example.Tts")
+        result = link_method_call_recovery(_ctx(symbols, edges))
+        assert [e.dst for e in result.edges] == ["k:Tts.kt:10-20:Tts.m:method"]
+
+
+class TestAProducerThatNamedTheModuleIsNotOverridden:
+    """WI-rulik: a COMPLETE external identity key refuses the recovery.
+
+    This linker resolves by class-hint-and-short-name with a line-proximity
+    tiebreaker and NO receiver evidence. When the producer already stated
+    WHERE the callee lives — ``dst_ref`` with a module path, the complete
+    external identity key of ADR-0035 / ADR-0057 §15.1 — it made a positive
+    claim from strictly more evidence than a name match, and this linker has
+    nothing to refute it with.
+
+    Measured on a single-backend Python self-survey: 28 of this linker's 92
+    edges overrode such a claim, and all 28 were wrong —
+    ``tree_sitter.Language(tree_sitter_rust.language())`` bound to
+    ``Symbol.language``, ``id(stub)`` to ``Symbol.id``, ``type(e).__name__``
+    to ``IpcPattern.type``. It is the same rule ADR-0057 §11 applies to a
+    merge and §14 to a supersession, applied here at the producer instead:
+    an in-repo answer CONTRADICTS a stated module rather than filling it.
+    An ``ExternalRef`` with an EMPTY module path states nothing and does not
+    refuse — ``ir.stated_module_of`` is the one reader of that distinction.
+    """
+
+    @staticmethod
+    def _graph() -> tuple[list[Symbol], list[Edge], Edge]:
+        main = _sym("py:m.py:1-5:main:function", "main", "function", language="python")
+        cls = _sym("py:m.py:10-20:Symbol:class", "Symbol", "class", language="python")
+        member = _sym("py:m.py:11-15:Symbol.language:method",
+                      "Symbol.language", "method", language="python", start=11, end=15)
+        ucall = _edge(main.id, "python:external:0-0:language:unresolved", "calls", line=2)
+        edges = [
+            _edge(main.id, cls.id, "calls", line=2),
+            _edge(cls.id, member.id, "contains", line=11),
+            ucall,
+        ]
+        return [main, cls, member], edges, ucall
+
+    def test_an_abstaining_stub_is_still_recovered(self) -> None:
+        symbols, edges, ucall = self._graph()
+        assert ucall.dst_ref is None
+        assert len(link_method_call_recovery(_ctx(symbols, edges)).edges) == 1
+
+    def test_an_empty_module_path_states_nothing_and_is_still_recovered(self) -> None:
+        symbols, edges, ucall = self._graph()
+        ucall.dst_ref = ExternalRef(lang="python", module_path="", name="language")
+        assert len(link_method_call_recovery(_ctx(symbols, edges)).edges) == 1
+
+    def test_a_stated_module_refuses_the_recovery(self) -> None:
+        symbols, edges, ucall = self._graph()
+        ucall.dst_ref = ExternalRef(
+            lang="python", module_path="tree_sitter_rust", name="language",
+        )
+        assert link_method_call_recovery(_ctx(symbols, edges)).edges == []
+
+    def test_the_refusal_is_per_call_not_per_site(self) -> None:
+        """Two calls on one line, one stating a module and one abstaining:
+        ``a.b(c.d())``. The refusal reads the unresolved edge this recovery
+        was derived FROM, so the sibling's claim neither refuses it nor is
+        refused by it."""
+        symbols, edges, ucall = self._graph()
+        ucall.dst_ref = ExternalRef(
+            lang="python", module_path="tree_sitter_rust", name="language",
+        )
+        other_member = _sym("py:m.py:16-18:Symbol.wrap:method",
+                            "Symbol.wrap", "method", language="python", start=16, end=18)
+        sibling = _edge(symbols[0].id, "python:external:0-0:wrap:unresolved",
+                        "calls", line=2)
+        symbols.append(other_member)
+        edges.append(_edge(symbols[1].id, other_member.id, "contains", line=16))
+        edges.append(sibling)
+        recovered = link_method_call_recovery(_ctx(symbols, edges)).edges
+        assert [e.dst for e in recovered] == [other_member.id]
+
+
+# ── WI-fihun cure (2): a declared non-callable is evidence AGAINST a binding ──
+#
+# Measured on a single-backend Python self-survey, this linker emitted 64 edges
+# of which 16 were wrong. Two of the 16 bound a `calls` edge to a FIELD:
+# ``m.start()`` / ``m.end()`` on a ``re.Match`` became ``ItemIdMatch.start`` /
+# ``ItemIdMatch.end``, both declared ``int``. An int instance is not callable,
+# so the binding is outside this linker's own premise — it stamps
+# ``call_construct="method"``.
+#
+# A BLANKET ``kind == "field"`` REFUSAL IS NOT SAFE, which is why the gate reads
+# the declared type instead: a JS/TS class property and a Python dataclass field
+# can both hold a callable, and ``js_ts.py`` records ``property_signature``
+# members as ``field``. The safe polarity is a POSITIVE refusal — refuse when
+# the declared type is PRESENT and every arm of it names a non-callable value
+# type, never when it is absent or when any arm is something we cannot vouch for.
+#
+# READING ``Symbol.signature`` IS DELIBERATE AND DECLARED. Its ``# axis:
+# free-text`` justification claims no consumer branches on the value; that claim
+# is false today at eight shipped sites (five analyzers plus jackson_dispatch's
+# arity filter) and is filed as INV-lotoh. ADR-0033 §1 gives ``free-text`` "no
+# value check", and ADR-0051 records that such a justification "is required to be
+# present, not true" — so this is an eighth instance of an existing pattern, not
+# a new liberty. It is also the ONLY place a Python field's declared type is
+# recorded: field symbols carry exactly three meta keys corpus-wide
+# (visibility_signal, concepts, decorators) and no declared-type key.
+
+
+def _typed_sym(
+    sid: str, name: str, kind: str, signature: str | None,
+    *, path: str = "app.py", start: int = 1, end: int = 5,
+) -> Symbol:
+    sym = _sym(sid, name, kind, language="python", path=path, start=start, end=end)
+    sym.signature = signature
+    return sym
+
+
+def _one_candidate_ctx(member: Symbol) -> LinkerContext:
+    """A caller with one class hint and one unresolved call matching `member`.
+
+    The minimal shape this linker acts on: ``caller`` instantiates ``Holder``,
+    and has a sibling unresolved call whose bare name is the member's name.
+    """
+    caller = _typed_sym("py:caller", "caller", "function", None, start=20, end=30)
+    holder = _typed_sym("py:Holder", "Holder", "class", None, start=1, end=10)
+    symbols = [caller, holder, member]
+    edges = [
+        _edge(caller.id, holder.id, "instantiates", line=21),
+        _edge(holder.id, member.id, "contains", line=3),
+        _edge(
+            caller.id,
+            f"python:external:0-0:{member.name}:unresolved",
+            "calls",
+            line=22,
+        ),
+    ]
+    return _ctx(symbols, edges)
+
+
+class TestDeclaredNonCallableTargetIsRefused:
+    """WI-fihun: the 2 field mis-bindings, and the arms that must survive."""
+
+    def test_an_int_declared_member_is_not_a_call_target(self) -> None:
+        """THE regression: ``m.start()`` -> ``ItemIdMatch.start: int``."""
+        member = _typed_sym("py:Holder.start", "start", "field", "int")
+        recovered = link_method_call_recovery(_one_candidate_ctx(member)).edges
+        assert recovered == [], (
+            "the linker bound a `calls` edge to a member declared `int`; an int "
+            "instance is not callable, so this is outside its own premise"
+        )
+
+    def test_a_method_target_is_still_recovered(self) -> None:
+        """DIFFERENCE arm (L17). Without it, an always-refuse gate would pass."""
+        member = _typed_sym(
+            "py:Holder.start", "start", "method", "(self) -> int",
+        )
+        recovered = link_method_call_recovery(_one_candidate_ctx(member)).edges
+        assert [e.dst for e in recovered] == [member.id], (
+            "a method whose RETURN type is int was refused — the gate is reading "
+            "a call signature as if it were a value type"
+        )
+
+    def test_an_undeclared_member_is_still_recovered(self) -> None:
+        """Absent is not evidence. The item's own polarity: never when absent."""
+        member = _typed_sym("py:Holder.start", "start", "field", None)
+        recovered = link_method_call_recovery(_one_candidate_ctx(member)).edges
+        assert [e.dst for e in recovered] == [member.id]
+
+    def test_a_project_class_typed_member_is_still_recovered(self) -> None:
+        """An instance of a project class may define ``__call__``."""
+        member = _typed_sym("py:Holder.start", "start", "field", "Handler")
+        recovered = link_method_call_recovery(_one_candidate_ctx(member)).edges
+        assert [e.dst for e in recovered] == [member.id]
+
+    def test_a_callable_typed_member_is_still_recovered(self) -> None:
+        """The case a blanket field refusal would have destroyed."""
+        member = _typed_sym(
+            "py:Holder.start", "start", "field", "Callable[[], None]",
+        )
+        recovered = link_method_call_recovery(_one_candidate_ctx(member)).edges
+        assert [e.dst for e in recovered] == [member.id]
+
+    def test_an_optional_scalar_is_refused_through_both_spellings(self) -> None:
+        """``Optional[str]`` and ``str | None`` are the same declaration."""
+        for sig in ("Optional[str]", "str | None", "typing.Optional[str]"):
+            member = _typed_sym("py:Holder.start", "start", "field", sig)
+            recovered = link_method_call_recovery(_one_candidate_ctx(member)).edges
+            assert recovered == [], f"{sig!r} was not read as a non-callable"
+
+    def test_a_parameterised_container_is_refused(self) -> None:
+        """A ``list[str]`` instance is not callable either."""
+        member = _typed_sym("py:Holder.start", "start", "field", "list[str]")
+        recovered = link_method_call_recovery(_one_candidate_ctx(member)).edges
+        assert recovered == []
+
+    def test_a_wrapper_we_cannot_vouch_for_is_not_refused(self) -> None:
+        """Under-refusal is the safe direction (L54).
+
+        ``ClassVar[list[str]]`` is very likely non-callable, but the gate does
+        not unwrap qualifiers it has not been taught, and guessing in the
+        refusing direction is how recall is lost silently.
+        """
+        member = _typed_sym(
+            "py:Holder.start", "start", "field", "ClassVar[list[str]]",
+        )
+        recovered = link_method_call_recovery(_one_candidate_ctx(member)).edges
+        assert [e.dst for e in recovered] == [member.id]
+
+    def test_refusing_one_candidate_lets_another_win(self) -> None:
+        """The refusal drops a CANDIDATE, it does not abandon the call site.
+
+        Two hinted classes both declare ``start``; one is an int field, the
+        other a real method. The method must be recovered — otherwise the gate
+        would trade a wrong edge for a missing one.
+        """
+        caller = _typed_sym("py:caller", "caller", "function", None, start=20, end=30)
+        bad_cls = _typed_sym("py:Bad", "Bad", "class", None, start=1, end=10)
+        good_cls = _typed_sym("py:Good", "Good", "class", None, start=11, end=19)
+        bad = _typed_sym("py:Bad.start", "start", "field", "int")
+        good = _typed_sym("py:Good.start", "start", "method", "(self) -> int")
+        edges = [
+            # The int field's hint is NEARER the call, so without the gate the
+            # line-proximity tiebreaker picks it — this is the real failure mode.
+            _edge(caller.id, bad_cls.id, "instantiates", line=22),
+            _edge(caller.id, good_cls.id, "instantiates", line=5),
+            _edge(bad_cls.id, bad.id, "contains", line=3),
+            _edge(good_cls.id, good.id, "contains", line=13),
+            _edge(caller.id, "python:external:0-0:start:unresolved", "calls", line=23),
+        ]
+        ctx = _ctx([caller, bad_cls, good_cls, bad, good], edges)
+        recovered = link_method_call_recovery(ctx).edges
+        assert [e.dst for e in recovered] == [good.id]

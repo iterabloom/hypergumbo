@@ -19,3 +19,25 @@
     pr_ref:  # e831
     description: "Split-off from WI-kadop (ADR-0044). The SCIP-index import (rust-analyzer) sets Symbol.origin='scip' (bare) at scip/index.py:202 and Edge.origin='scip' at scip/edges.py:125 / scip/calls.py:178. synthetic:F1 gave the two orchestrator-level synthesizers (orchestrator_file_symbol_synthesis / boundary_external_symbol_synthesis) a real AnalysisRun whose pass_id is the origin value + threaded origin_run_id so nodes join. The SCIP pass was NOT given the same treatment: rust-analyzer translate.py:175 DOES create a scip AnalysisRun (pass_id=make_pass_id('rust-scip-translate')) and threads run_id to edges/calls, but (a) the SYMBOLS (scip_index_to_symbols) don't receive run_id at all, and (b) both symbols and edges use the bare literal 'scip' as origin instead of the run's real pass_id. So SCIP-sourced Symbols have no node->AnalysisRun provenance join. Fix: thread run_id into scip_index_to_symbols, and set origin=[the rust-scip-translate pass_id] on scip symbols + edges (replacing bare 'scip'); ensure that pass_id is in all_known_pass_ids; update the consumer rust_analyzer/analyzer.py:115 (any('scip' in edge.origin)). Then 'scip' can be removed from catalog._SYNTHETIC_PASS_IDS. Off-self-corpus (rust-analyzer SCIP path only) — validate via the rust-analyzer package tests, not self-analysis. Cross-package (touches hypergumbo-lang-rust-analyzer)."  # e831
     fields: {}  # e831
+- op: discuss  # 9ddd
+  at: '2026-09-17T20:06:03Z'  # 9ddd
+  by: agent  # 9ddd
+  actor: jgstern_agent  # 9ddd
+  clock: 2  # 9ddd
+  nonce: 9ddd  # 9ddd
+  message: "CONFIRMED AND SIZED, 2026-09-17 at 06699b1d91. This row's statement holds\nexactly as written, and the count is 669.\n\nHYPERGUMBO_RUST_ANALYZER=1 survey of ~/whole_bunch_of_repos/aardvark-dns:\n\n    nodes carrying origin=['scip']            669  (53% of all 1255 nodes)\n    of those, origin_run_id == ''             669  (ALL of them)\n    resulting Symbol.origin_run_id violations 669\n\n    kinds: local 500, method 79, variable 47, class 25, namespace 18\n\nTHE EDGE HALF IS WORSE AND IS THE SAME DEFECT. 637 scip edges carry a\nFABRICATED origin_run_id -- a well-formed UUID matching no AnalysisRun --\nbecause Edge.__post_init__ hard-raises on empty (WI-higap) and translate.py\nsatisfies the guard by constructing an AnalysisRun purely to harvest its\nexecution_id, then discarding it. Symbol has no such guard, which is why this\nside is honestly empty and the edge side is a convincing lie.\n\nROOT CAUSE AND FIX filed as WI-didag: the rust-analyzer success path returns\nAnalysisResult(symbols, edges) with no run=, and the run_id parameter that\nexists on translate_scip_to_hg is unreachable from production because\ntry_analyze_with_rust_analyzer does not thread it.\n\nCONSEQUENCE FOR THIS ROW: \"finish synthetic:F1 for the SCIP pass\" is likely not\nthe right fix. These symbols do not need a SYNTHETIC run -- the pass genuinely\nran and should have emitted a real AnalysisRun. Threading the real one closes\nthis row and the 637 edges together. Recommend re-pointing from synthetic:F1 to\n\"consume the real run once WI-didag threads it\". No status change made."  # 9ddd
+- op: update  # 749f
+  at: '2026-09-17T20:51:13Z'  # 749f
+  by: agent  # 749f
+  actor: jgstern_agent  # 749f
+  clock: 3  # 749f
+  nonce: 749f  # 749f
+  set:  # 749f
+    status: done  # 749f
+- op: discuss  # 1465
+  at: '2026-09-17T20:51:13Z'  # 1465
+  by: agent  # 1465
+  actor: jgstern_agent  # 1465
+  clock: 4  # 1465
+  nonce: '1465'  # 1465
+  message: "FIXED in f685e584ef, closed on this row's own repro.\n\nTHE STATEMENT: \"SCIP-import Symbols carry bare origin='scip' with no\nAnalysisRun join.\" Measured before the fix on\nHYPERGUMBO_RUST_ANALYZER=1 survey of ~/whole_bunch_of_repos/aardvark-dns:\n669 nodes carrying origin=['scip'], ALL with origin_run_id == ''.\n\nAFTER: 669 nodes, 0 with a dangling or empty origin_run_id. Every one joins\nto the rust_analyzer AnalysisRun, which is now present in analysis_runs.\nSymbol.origin_run_id violations 669 -> 0.\n\nWHERE THE STAMP LANDED, and why not where this row proposed. The title says\n\"finish synthetic:F1 for the SCIP pass\". That would have been the wrong fix:\nthese symbols never needed a SYNTHETIC run, because the pass genuinely ran and\nshould have emitted a real AnalysisRun. It now does (WI-didag), and\ntranslate_scip_to_hg stamps the symbols from the caller's run_id at the point\nof minting.\n\nDeliberately NOT relying on the orchestrator's WI-mosil backstop, which fills\nonly empty ids and only inside run_behavior_map: translate_scip_to_hg is an\nexported function, and a library caller using it directly would have kept the\nbare symbols. Stamping at the source covers both.\n\nThe edge half of the same defect -- 637 edges carrying a FABRICATED run id\nrather than an empty one, because Edge.__post_init__ hard-raises on empty and\nSymbol does not -- is fixed by the same change and is written up on WI-didag.\n\nFull suite 4835 passed; ratchet 667 (delta +0)."  # 1465

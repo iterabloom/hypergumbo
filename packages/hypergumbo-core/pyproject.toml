@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypergumbo-core"
-version = "8.0.0"
+version = "8.1.0"
 description = "Core infrastructure for hypergumbo repo behavior map generator"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,6 +18,12 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
 ]
 dependencies = [
+  # tomllib is stdlib only from 3.11; these packages declare
+  # requires-python = ">=3.10", so the backport is a REAL dependency on
+  # 3.10 rather than an optional nicety. Without it the guarded
+  # `except ModuleNotFoundError: import tomli` fallbacks in this package
+  # degrade silently (returning None) instead of parsing.
+  'tomli~=2.0; python_version < "3.11"',
   # Core tree-sitter for parsing
   "tree-sitter~=0.25.2",
   # CLI formatting

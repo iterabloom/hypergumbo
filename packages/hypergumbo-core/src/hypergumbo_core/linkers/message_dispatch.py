@@ -46,7 +46,8 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
+from ..pass_silence import silence_reason_for_candidates
 
 if TYPE_CHECKING:
     pass
@@ -194,7 +195,7 @@ def link_message_dispatch(
         symbols: All symbols from all analyzers.
 
     Returns:
-        LinkerResult with message_dispatch edges and synthetic symbols.
+        LinkerResult with ``event_publishes`` edges and synthetic symbols.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -232,6 +233,13 @@ def link_message_dispatch(
 
     if not all_writes or not all_reads:
         run.duration_ms = int((time.time() - start_time) * 1000)
+        # This branch fires for TWO unrelated reasons: nothing found at
+        # all, or one side found and the other absent. Only the first is
+        # an absent construct -- in the second the construct IS present
+        # and merely unpaired, and claiming otherwise would put a fresh
+        # false claim in the axis declared to cure false claims.
+        run.silence_reason = silence_reason_for_candidates(
+            all_writes + all_reads)
         return LinkerResult(edges=[], symbols=[], run=run)
 
     # Build read index by (api, channel) for efficient matching
@@ -254,9 +262,20 @@ def link_message_dispatch(
                 continue
             seen_edges.add(dedup)
 
-            lang = "typescript" if write.api == "js_dispatch" else "rust"
-            pub_id = f"{lang}:{write.file_path}:{write.line}:0:{write.channel}:message_sender"
-            sub_id = f"{lang}:{read.file_path}:{read.line}:0:{read.channel}:message_handler"
+            # WI-dovog: each site carries ITS OWN file's language (ADR-0031
+            # Class B via js_ts_language_from_path). The single `lang` taken
+            # from the WRITE site's api kind minted `typescript:` ids for every
+            # .js site and gave a .ts read the write's language.
+            pub_lang = js_ts_language_from_path(Path(write.file_path)) if write.api == "js_dispatch" else "rust"
+            sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "js_dispatch" else "rust"
+            pub_id = (
+                f"{pub_lang}:{write.file_path}:{write.line}-{write.line}"
+                f":{write.channel}:message_sender"
+            )
+            sub_id = (
+                f"{sub_lang}:{read.file_path}:{read.line}-{read.line}"
+                f":{read.channel}:message_handler"
+            )
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
@@ -276,7 +295,7 @@ def link_message_dispatch(
                     name=write.channel,
                     path=write.file_path,
                     language=None,
-                    discovery_language=lang,
+                    discovery_language=pub_lang,
                     protocol_origin="message_dispatch",
                     span=Span(
                         start_line=write.line, end_line=write.line,
@@ -308,7 +327,7 @@ def link_message_dispatch(
                     name=read.channel,
                     path=read.file_path,
                     language=None,
-                    discovery_language=lang,
+                    discovery_language=sub_lang,
                     protocol_origin="message_dispatch",
                     span=Span(
                         start_line=read.line, end_line=read.line,
@@ -341,10 +360,15 @@ def link_message_dispatch(
                 access_mode="write",
                 channel=write.channel,
                 meta={"channel_kind": "message_bus"},
-                derived_from=[pub_id, sub_id],
+                # derived-from consumed-none: both ends are minted from a file scan and joined on
+                #   (api, channel)
+                derived_from=[],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
+    # Reached only PAST the bail, so both sides were non-empty: candidates
+    # found, no pair matched.
+    run.silence_reason = silence_reason_for_candidates(all_writes + all_reads)
 
     return LinkerResult(
         edges=result_edges, symbols=result_symbols, run=run,

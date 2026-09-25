@@ -81,3 +81,72 @@
   clock: 9  # 2990
   nonce: '2990'  # 2990
   message: "ADR-0036 node.id member — sequencing set 2026-07-02 (hold lifted, standalone, patch bump, Option B). Order: Phase 0 prep (register meta.reference_syntax, fix slot-order doc comments, freeze baseline) -> Phase 1 core atomic train (WI-pubiv + WI-jopil, one PR) -> fast-follows (WI-kugaj, WI-zugob, npm_package/tsconfig) -> enforcement (WI-bovoh regex-scope gap, WI-popak advisory->error + ratchet baseline to 0, WI-dipim Ruling-3 sentinel, WI-vodin AST linter) -> closure (INV-dulah, then this umbrella's node.id member; other identifier-field members e.g. Edge.id stay scoped-open). isbefore edges wired on the fold items."  # 2990
+- op: update  # 9397
+  at: '2026-09-06T10:20:34Z'  # 9397
+  by: agent  # 9397
+  actor: jgstern_agent  # 9397
+  clock: 10  # 9397
+  nonce: '9397'  # 9397
+  set: {}  # 9397
+  add:  # 9397
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 9397
+- op: discuss  # dd79
+  at: '2026-09-06T13:03:05Z'  # dd79
+  by: agent  # dd79
+  actor: jgstern_agent  # dd79
+  clock: 11  # dd79
+  nonce: dd79  # dd79
+  message: "INSTANCE 2026-09-06 (WI-dovog): six linkers -- solidity_abi, tauri_ipc, message_dispatch, crypto_flow, yjs_crdt, wasm_bindgen, and grpc's client-pattern label -- wrote the LITERAL \"typescript\" into the language slot of every synthetic call-site id they minted, whatever the host file's extension, while the Symbol's language field was None (ADR-0031 Class B). A downstream reader that takes the id's first segment as a language claim (verify_claims' languages_with_calls) then withheld every claim over openzeppelin-contracts. Fixed at the emitters with js_ts_language_from_path; the reader-side guard (origin-keyed, per WI-mital) is WI-dovog's residual. This is the shape this META item names: an identifier slot filled by an emission path that never consulted the grammar's meaning for that slot."  # dd79
+- op: discuss  # 0c8e
+  at: '2026-09-06T15:45:17Z'  # 0c8e
+  by: agent  # 0c8e
+  actor: jgstern_agent  # 0c8e
+  clock: 12  # 0c8e
+  nonce: 0c8e  # 0c8e
+  message: "RE-SCOPED 2026-09-06 against what the population has drained to (arc stage 5; status stays violated, umbrella unchanged in kind).\n\nTHE node.id MEMBER, per the 2026-07-02 sequencing: Phase 1 core train DONE (WI-pubiv, WI-jopil), fast-follows DONE (WI-kugaj, WI-zugob), enforcement: WI-bovoh DONE, WI-popak and WI-dipim todo_soft P3, WI-vodin todo_hard P2 (the AST linter that would make this umbrella hold by construction). Closure item INV-dulah: THREE of its enumerated limbs drained (route kind-slot, linker name-slot constants, doc-family slot order) and today the LANG-slot limb (PR #808: objc/css/solidity import dsts were bare paths; Mantle id_format 44 -> 0); what remains under it is WI-banod T1's five stable_id = symbol_id config-family sites (todo_soft P3), the two scheme-gated kind-slot xfails (pony/robot), and a css limb filed today (hash-shaped 3-slot symbol ids; @import edges orphaned) that only shows under --include-docs.\n\nINSTANCES THIS SUMMER, all of the same shape the statement names -- a slot carrying something that is not its declared value: WI-dovog (literal `typescript` in the lang slot of six linkers' synthetic ids, 09-06), WI-fiham (javascript `node:` scheme kept on import-edge ids and stripped on call ids, 09-06), the css hash ids. Every one was found by a consumer misreading the slot, not by the validator: id_format 0 is fleet-silent on doc-family analyzers (filtered by default) and on synthetic ids whose slot values are well-formed but false.\n\nWHAT THE UMBRELLA STILL OWNS. (1) Enforcement at the emission boundary is the statement's own words and is exactly the undone half: WI-vodin (static linter on Symbol(id=f\"...\") and Edge.id) is the item that would retire the class rather than its instances; WI-popak/WI-dipim are the validator's round-trip/sentinel sub-checks. (2) The other identifier-bearing fields (Edge.id, stable_id schemes) were \"scoped-open\" in the sequencing and have no member item; the umbrella is their only home. PROPOSAL for the owner: re-title the umbrella to \"identifier-bearing fields are canonical BY CONSTRUCTION -- linter + validator sub-checks (WI-vodin, WI-popak, WI-dipim) close it\", and let INV-dulah keep the per-limb ledger; P2 stays only if WI-vodin is scheduled, else P3 with the three enforcement items."  # 0c8e
+- op: update  # ef29
+  at: '2026-09-06T15:45:19Z'  # ef29
+  by: agent  # ef29
+  actor: jgstern_agent  # ef29
+  clock: 13  # ef29
+  nonce: ef29  # ef29
+  set: {}  # ef29
+  remove:  # ef29
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # ef29
+- op: update  # f39b
+  at: '2026-09-06T20:06:09Z'  # f39b
+  by: agent  # f39b
+  actor: jgstern_agent  # f39b
+  clock: 14  # f39b
+  nonce: f39b  # f39b
+  set:  # f39b
+    title: "META: identifier-bearing fields are canonical BY CONSTRUCTION — emission-boundary linter + validator sub-checks (WI-vodin, WI-popak, WI-dipim) close it; INV-dulah keeps the per-limb ledger"  # f39b
+- op: discuss  # 5c88
+  at: '2026-09-06T20:06:09Z'  # 5c88
+  by: agent  # 5c88
+  actor: jgstern_agent  # 5c88
+  clock: 15  # 5c88
+  nonce: 5c88  # 5c88
+  message: "OWNER RULING 2026-09-06 (walk-through item 4): re-scope ACCEPTED as recommended. Re-titled to \"canonical BY CONSTRUCTION\"; stays P2 because WI-vodin (the emission-boundary linter that retires the class rather than its instances -- three fresh instances on 09-06 alone) is SCHEDULED: appended to the arc tail behind INV-busis. INV-dulah keeps the per-limb ledger; WI-popak / WI-dipim stay the validator sub-checks at P3."  # 5c88
+- op: discuss  # d0a4
+  at: '2026-09-25T17:42:39Z'  # d0a4
+  by: agent  # d0a4
+  actor: jgstern_agent  # d0a4
+  clock: 16  # d0a4
+  nonce: d0a4  # d0a4
+  message: "P2 REVIEW 2026-09-25 (dev e4a47383ab). STALE AGAINST ITS OWN TITLE; status stays violated.\n\n1. The title names three closers: \"WI-vodin, WI-popak, WI-dipim close it\". WI-vodin is DONE. PR #915 (dev 3f3d684166, 2026-09-11) shipped `hypergumbo_core/check_id_construction.py`, `scripts/check-id-construction`, the `test_live_tree_passes` CI gate and a pre-commit step, and repaired 26 malformed emitters. This row has not been updated since 09-06. Re-run today: `scripts/check-id-construction` exits 0 and prints nothing on dev.\n\n2. What the linter does NOT reach, per its own close note: it resolves three hops (the argument, one in-function local, one same-module helper) and stops. \"By construction\" therefore holds for templates up to three hops, not for every emission path. That is the residual this umbrella still names.\n\n3. Still live, and the reason the status stays violated: INV-dulah's two limbs, both re-verified today in code.\n   - WI-banod T1 has five `stable_id=symbol_id` sites: bitbake.py 194/304/344/384 and bibtex.py 122. The line numbers moved from 192/302/342/382 and 125.\n   - The pony/robot KIND_SLOT_HOLES strict xfails remain in test_doc_family_id_parity.py.\n   Both are scheme-gated behind WI-talos (todo_hard).\n\n4. SURFACED, NOT ACTED ON: the 2026-09-06 owner ruling kept this at P2 \"because WI-vodin ... is SCHEDULED\". That condition is now spent. What is left is WI-popak / WI-dipim (P3 todo_soft) plus release-gated INV-dulah limbs. Whether P2 still fits is the owner's call; I have not changed it."  # d0a4
+- op: update  # 1c43
+  at: '2026-09-25T18:11:37Z'  # 1c43
+  by: agent  # 1c43
+  actor: jgstern_agent  # 1c43
+  clock: 17  # 1c43
+  nonce: 1c43  # 1c43
+  set:  # 1c43
+    priority: 3  # 1c43
+- op: discuss  # b786
+  at: '2026-09-25T18:11:37Z'  # b786
+  by: agent  # b786
+  actor: jgstern_agent  # b786
+  clock: 18  # b786
+  nonce: b786  # b786
+  message: "OWNER RULING 2026-09-25 (P2 review follow-up): NOT P2. The 09-06 reason for P2 (\"WI-vodin is SCHEDULED\") is spent: WI-vodin shipped as #915. What remains is WI-popak / WI-dipim (P3 todo_soft), the linker's three-hop reach limit, and INV-dulah's release-gated limbs. Priority 2 -> 3. Status stays violated."  # b786

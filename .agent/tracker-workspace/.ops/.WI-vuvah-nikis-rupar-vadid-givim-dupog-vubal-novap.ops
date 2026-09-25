@@ -1,0 +1,21 @@
+- op: create  # 5804
+  at: '2026-09-11T10:19:51Z'  # 5804
+  by: agent  # 5804
+  actor: jgstern_agent  # 5804
+  clock: 1  # 5804
+  nonce: '5804'  # 5804
+  data:  # 5804
+    kind: work_item  # 5804
+    title: "roughly fifteen per-language _make_edge_id helpers each re-spell the edge:sha256:<16hex> grammar by hand"  # 5804
+    status: todo_hard  # 5804
+    priority: 3  # 5804
+    parent:  # 5804
+    tags:  # 5804
+    - identity  # 5804
+    - analysis_quality  # 5804
+    isbefore: []  # 5804
+    duplicate_of: []  # 5804
+    not_duplicate_of: []  # 5804
+    pr_ref:  # 5804
+    description: "FOUND 2026-09-11 while closing WI-vodin, which added `Edge.id`'s format\nvalidator and therefore had to establish what the canonical shape actually is.\n\n`Edge.id` is `edge:sha256:<16 lowercase hex>`. It is minted at `ir.py`'s\n`id=f\"edge:sha256:{edge_hash}\"` -- and then re-spelled by hand in roughly\nfifteen per-language `_make_edge_id` helpers (cuda, fortran, glsl, graphql,\nhlsl, nix, r_lang, wgsl, cmake, css, dockerfile, json_config, make, sql,\ntoml_config, xml_config), each hashing a slightly different payload:\n\n    return f\"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}\"\n\nALL OF THEM CURRENTLY AGREE -- checked, not assumed: a grep of every\n`_make_edge_id` return that does NOT start `edge:sha256:` comes back empty. So\nthis is not a live defect; it is the SHAPE of one. `Symbol.id` has exactly this\nhistory: ADR-0034 exists because six linker passes each spelled the node id\ntheir own way, and the fix was one factory plus a validator plus (now) a\nproducer-side linter.\n\nWHY IT IS WORTH DOING ANYWAY. The digest PAYLOAD differs per helper, which is\nfine, but the FORMAT does not and is copied sixteen times. The\n`make_symbol_id` / `make_file_id` precedent is a shared factory taking the\npayload and owning the format. A single `make_edge_id(payload) -> str` in\n`ir.py` would leave each analyzer choosing what to hash and none of them\nchoosing how to spell it.\n\nP3 because nothing is broken today. The re-open trigger is a sixteenth copy\ndisagreeing, which the new runtime `_check_edge_id_format` would now catch --\nso this is filed as prevention with a working detector already in place."  # 5804
+    fields: {}  # 5804

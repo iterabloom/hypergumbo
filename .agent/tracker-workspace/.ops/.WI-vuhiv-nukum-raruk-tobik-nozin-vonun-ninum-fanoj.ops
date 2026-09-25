@@ -1,0 +1,28 @@
+- op: create  # 0d94
+  at: '2026-08-23T09:10:51Z'  # 0d94
+  by: agent  # 0d94
+  actor: jgstern_agent  # 0d94
+  clock: 1  # 0d94
+  nonce: 0d94  # 0d94
+  data:  # 0d94
+    kind: work_item  # 0d94
+    title: "Call-site argument typing reaches almost nothing: 3 hint keys / 123 django-db files, 16 / 250 mitmproxy"  # 0d94
+    status: todo_hard  # 0d94
+    priority: 3  # 0d94
+    parent:  # 0d94
+    tags:  # 0d94
+    - analysis_quality  # 0d94
+    - receiver_typing  # 0d94
+    isbefore: []  # 0d94
+    duplicate_of: []  # 0d94
+    not_duplicate_of: []  # 0d94
+    pr_ref:  # 0d94
+    description: "MEASURED 2026-08-23 while shipping INV-fibis's interprocedural half (PR #487).\n\nThe whole interprocedural param-typing line -- WI-zilag's annotated-parameter\nroute, INV-fibis's call-site route for plain functions, and now the\nconstructor route -- is bottlenecked not on WIRING but on how rarely a call\nsite's ARGUMENT can be shown to name a type at all.\n\nINSTRUMENTED COUNTS, production collector, no mocks:\n  django/db    123 files -> 3 call-site hint keys total (2 constructor)\n  mitmproxy    250 files -> 16 hint keys total (13 constructor)\n\nAgainst a CANDIDATE POPULATION that is not small: django/db has 241\nunannotated __init__ parameters that become own instance fields, mitmproxy\n236. (httpx and poetry have 0 -- they are fully annotated, so they are not\nevidence either way and must not be cited as such.)\n\nWHY. `_call_site_argument_type` admits an argument as naming a type by exactly\ntwo routes: the receiver-type catalogue already knows the constructor\n(WI-fuvuj's binding-checked `_external_constructor_type`), or the resolved\npath's final segment is PascalCase. That narrowness is DELIBERATE and was paid\nfor -- the first cut resolved through import bindings alone and read\n`x = json.dumps(y)` as naming a TYPE, which `_module_matches`'s bidirectional\nsubstring match could then match to catalogue module `json`, minting a\nconfident false boundary. Do NOT widen it back without the measurement that\nrefused it.\n\nSO THIS ITEM IS A QUESTION, NOT A FIX: what OTHER evidence could type a call\nsite's argument without reintroducing that class? Candidates worth pricing\nbefore any of them is built --\n  (a) an argument that is itself an already-typed parameter or field (one more\n      hop through the maps INV-fibis just built; bounded, no new trust);\n  (b) a `with`-bound or assignment-bound local whose constructor is catalogued\n      but reached through an alias the binding check currently refuses;\n  (c) nothing, and the honest answer is that a type-resolution BACKEND\n      (WI-nanom, pyright/SCIP) is the only route with real reach here.\n\n(c) is a live possibility and would be a useful negative result: it would mean\nthis whole line is done and the remaining recall lives in WI-nanom.\n\nNOT MEASURED: any repo outside those four; whether the ratio differs for\nplain-function call sites vs constructor ones; how many of the 477 candidate\nparams are ever used as a method RECEIVER (the funnel's last stage), which is\nwhat decides whether typing them would change any edge at all."  # 0d94
+    fields: {}  # 0d94
+- op: discuss  # 2555
+  at: '2026-08-23T17:10:56Z'  # 2555
+  by: agent  # 2555
+  actor: jgstern_agent  # 2555
+  clock: 2  # 2555
+  nonce: '2555'  # 2555
+  message: "REPRO SCRIPTS RESCUED. This item's two numbers came from inline one-off scripts\nthat existed nowhere on disk; they are now at\n~/hypergumbo_lab_notebook/inv_fibis_recall_harness_08232026/ --\n`count_candidate_params.py` (the 241 / 236 candidate population, which refuted\nthe \"annotated codebase\" explanation) and `instrument_collector.py` (3 hint keys\n/ 123 django-db files, 16 / 250 mitmproxy). Re-run either before trusting or\ndisputing the figures in this item's description."  # 2555

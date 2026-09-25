@@ -34,3 +34,11 @@ packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py  packages/hypergumb
 packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ini.py  packages/hypergumbo-core/tests/test_doc_family_id_parity.py
 packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/properties.py  packages/hypergumbo-core/tests/test_doc_family_id_parity.py
 packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/requirements.py  packages/hypergumbo-core/tests/test_doc_family_id_parity.py
+
+# The WI-dorop enum-member loops in kotlin.py (enum_entry), scala.py and cpp.py
+# are covered solely by the shared enum-members test, which reaches each
+# analyzer through the registry (run_analyzer by name) and imports none of
+# them. PR #755 went false-red on kotlin.py:1027-1073 for exactly this reason.
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/kotlin.py  packages/hypergumbo-lang-mainstream/tests/test_scala_cpp_kotlin_enum_members.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/scala.py  packages/hypergumbo-lang-mainstream/tests/test_scala_cpp_kotlin_enum_members.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/cpp.py  packages/hypergumbo-lang-mainstream/tests/test_scala_cpp_kotlin_enum_members.py

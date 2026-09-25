@@ -1,0 +1,36 @@
+- op: create  # 10d5
+  at: '2026-09-19T17:59:54Z'  # 10d5
+  by: agent  # 10d5
+  actor: jgstern_agent  # 10d5
+  clock: 1  # 10d5
+  nonce: 10d5  # 10d5
+  data:  # 10d5
+    kind: work_item  # 10d5
+    title: "backend-agreement renders a nested attribute's carried value as null (is_exported is under supply_chain, not top level) — docs/audits/0019's shape column is wrong"  # 10d5
+    status: todo_hard  # 10d5
+    priority: 2  # 10d5
+    parent:  # 10d5
+    tags:  # 10d5
+    - adr_0057  # 10d5
+    - measurement  # 10d5
+    isbefore: []  # 10d5
+    duplicate_of: []  # 10d5
+    not_duplicate_of: []  # 10d5
+    pr_ref:  # 10d5
+    description: "`hypergumbo backend-agreement` renders a disagreement's CARRIED value with `_shape(node.get(attribute))` (backend_agreement.py, in the per-attribute loop). That reads a TOP-LEVEL key of the serialised node. Nine of the ten merge-pass TRACKED_ATTRIBUTES are top-level in `Symbol.to_dict()`; `is_exported` is NOT — it is nested under `supply_chain` (ir.py ~698, beside tier / is_test_file / …). So `node.get(\"is_exported\")` is None for EVERY node and the shape column prints `null` for a value that exists.\n\nMEASURED: docs/audits/0019 row `is_exported` reads \"`null` ← `false` x41\". Read from the merge pass in memory on the same fixture, the 41 records carry True with alternative False and attribution ('rust',) — the correct rendering is \"`true` ← `false` x41\". The scip-python sample fixture has the same shape column (6 disagreements) and the same error.\n\nSCOPE, stated rather than assumed: only the SHAPE (example values) column is affected. The agree/disagree/one-sided COUNTS come from `attribution` / `alternatives`, which the merge pass writes, and are correct — so no pinned tally in recorded_rust_analyzer_1_94_0.AARDVARK_DNS_ATTRIBUTE_AGREEMENT or recorded_scip_python_0_6_6.SAMPLE_PROJECT_ATTRIBUTE_AGREEMENT moves. WI-dajif's conclusions do not move either.\n\nTHIS IS THE INSTRUMENT FAULT LIVE.md RULE 5 NAMES, and it flattered me: reading `null` as a carried value is what made me file INV-huboz against the merge pass for carrying an absent value over a concrete one. The pass was correct; the reader was not. A wrong instrument exits 0 with a plausible number.\n\nFIX: read the value through a serialisation-aware accessor rather than assuming top level — either resolve the attribute against `to_dict()`'s nesting (a small declared map, or a search of one level of dict-valued keys), or take the carried value from the merge pass's own record instead of re-reading the node. Prefer the latter where available: the instrument already has `attribution`/`alternatives`, and the alternative entries carry their values directly — only the CARRIED side is re-read from the node, which is the asymmetry that caused this.\n\nACCEPTANCE: a unit test on a synthetic artifact whose node carries a nested `is_exported` disagreement renders `true` ← `false`, not `null`; then regenerate docs/audits/0019 with scripts/regenerate-backend-agreement-table (no rust-analyzer needed — it builds from the committed fixture) and confirm the only diff is that shape cell."  # 10d5
+    fields: {}  # 10d5
+- op: update  # 8aad
+  at: '2026-09-19T19:48:34Z'  # 8aad
+  by: agent  # 8aad
+  actor: jgstern_agent  # 8aad
+  clock: 2  # 8aad
+  nonce: 8aad  # 8aad
+  set:  # 8aad
+    status: done  # 8aad
+- op: discuss  # 7a59
+  at: '2026-09-19T19:48:34Z'  # 7a59
+  by: agent  # 7a59
+  actor: jgstern_agent  # 7a59
+  clock: 3  # 7a59
+  nonce: 7a59  # 7a59
+  message: "Fixed. The carried value is now read where the attribute actually serialises, and an absence is never rendered as a value.\n\nWHAT CHANGED (`backend_agreement.py`): `_carried(node, attribute)` returns `(found, value)` — the top-level key when there is one, otherwise the attribute inside one of the record's field groups (`supply_chain` is the only one that holds a tracked attribute today). The open payloads — `meta`, `quality`, `attribution`, `alternatives` — are skipped by name: their keys are not field names, so a `meta[\"kind\"]` must never answer a lookup for the record's `kind`. When the attribute is carried nowhere the table prints `(not serialised)`, never `null`: an absence a reader can mistake for a value is precisely how this instrument was wrong.\n\nBEHAVIOURAL EVIDENCE, on the item's own acceptance:\n1. Synthetic artifact (`test_a_nested_attributes_carried_value_is_read_where_it_serialises`): a merged node with `supply_chain.is_exported = true` and an alternative `false` now measures `shapes == [(\"true\", \"false\", 1)]`. Before the fix the same test measured `[(\"null\", \"false\", 1)]` — red, then green.\n2. Recorded producer input (ADR-0057 §12), the real thing: `test_recorded_fixtures.py::test_the_instrument_reproduces_the_merge_pass` now pins `by_attr[\"is_exported\"].shapes == [(\"true\", \"false\", 41)]` and passes (15 passed). That line pinned `(\"null\", \"false\", 41)` — the defect was committed, pinned and cited.\n3. `scripts/regenerate-backend-agreement-table` → `docs/audits/0019` diff is ONE line, exactly the shape cell: `| is_exported | 107 | 41 | 0 | 0 | null <- false x41 |` becomes `| ... | true <- false x41 |`. No count moved, as the item scoped it.\n4. A second test pins the honesty half: an `attribution` naming an attribute the node carries nowhere renders `(not serialised)`, not `null`.\n\nMUTATION-CHECKED (LIVE.md rule 6 — a control that cannot fail is not a control). Three mutants, each killed with a real `passed|failed` line: restoring the top-level-only lookup (4 failed); returning `(True, None)` instead of `(False, None)` on a miss (1 failed); letting the open payloads answer the lookup (4 failed).\n\nALSO CORRECTED, because the wrong reading was committed in four places and a citation is a claim: `docs/audits/0019`'s hand-written Reading bullet (which blamed the merge pass), ADR-0057 §5's landing note and its WI-dajif tracker-item line, and the comments in both recorded fixtures (`recorded_rust_analyzer_1_94_0.py`, `recorded_scip_python_0_6_6.py`) that described the alternative as beating the incumbent's `None`.\n\nNOT IN SCOPE, still true: the 41 records are a PHANTOM contest — the SCIP arm never assigns `is_exported` and contributes the dataclass default `False`. That is INV-huboz, re-scoped, and the owner has now ruled the cure's shape (the producer declares what it observes).\n\nONE UNRELATED GAP CLOSED: `measure_backend_agreement`'s \"an edge of another language is not this language's\" branch was covered only by the rust-analyzer package's tests, so `hypergumbo-core` did not cover its own module in isolation (99%, line 287). The synthetic artifact now carries a rust-to-rust edge and the core package covers the file 100% on its own."  # 7a59

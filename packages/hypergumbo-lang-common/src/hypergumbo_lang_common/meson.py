@@ -36,6 +36,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _g
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -360,6 +361,7 @@ class MesonAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason="tree-sitter-language-pack not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         import uuid as uuid_module
@@ -427,7 +429,7 @@ def is_meson_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("meson")
+@register_analyzer("meson", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_meson(repo_root: Path) -> AnalysisResult:
     """Analyze Meson build files in a repository.
 

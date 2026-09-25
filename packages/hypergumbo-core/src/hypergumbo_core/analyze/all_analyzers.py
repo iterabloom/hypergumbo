@@ -30,6 +30,11 @@ from ..ir import (
     _default_config_fingerprint, compute_config_fingerprint,
 )
 from ..limits import Limits
+from ..pass_silence import (
+    NO_CANDIDATE_FILES,
+    UNREPORTED,
+    derive_silence_reason,
+)
 from ..paths import normalize_path
 from .base import (
     populate_kind_stable_ids,
@@ -132,22 +137,76 @@ def collect_analyzer_result(
     # the same wording the pre-filter uses (a bare ``run=None`` result is a
     # no-input analyzer). Symbols/edges are still drained fail-open.
     if result.run is None:
+        # WI-didag: FIRST, the productive case. A producer that emitted output
+        # without a run used to fall off the accounting entirely — drained
+        # below and recorded in neither analysis_runs nor skipped_passes,
+        # breaking the WI-didil completeness contract precisely when the pass
+        # SUCCEEDED. Measured with the rust-analyzer backend enabled on
+        # aardvark-dns: 669 nodes and 637 edges from a pass visible nowhere in
+        # the catalog, the only one of 118 analyzers for which that was true.
+        #
+        # Recording it as a SKIP would be a lie — it plainly ran. So synthesize
+        # the AnalysisRun the producer should have supplied and re-enter
+        # through the normal path, which drains the output, stamps the
+        # counters and the silence reason, and backfills origin_run_id. This
+        # is NOT the fabrication WI-didag was filed about: THAT one minted an
+        # id for a run nobody serializes, while this run IS serialized, so the
+        # FK resolves. Output proves the pass ran, and an AnalysisRun is the
+        # honest record of a pass that ran.
+        #
+        # The warning names it a producer defect rather than absorbing it, so
+        # the real fix — attach the run at the source — stays visible.
+        if analyzer_name and (result.symbols or result.edges):
+            synthetic = AnalysisRun.create(
+                pass_id=analyzer_name, version=PASS_VERSION,
+            )
+            synthetic.warnings.append(
+                f"UserWarning: {analyzer_name} emitted "
+                f"{len(result.symbols)} symbol(s) and {len(result.edges)} "
+                f"edge(s) without an AnalysisRun; the orchestrator "
+                f"synthesized one so the pass is accounted for (WI-didag). "
+                f"The producer should return AnalysisResult(run=...)."
+            )
+            result.run = synthetic
+            collect_analyzer_result(
+                result, analysis_runs, all_symbols, all_edges,
+                all_usage_contexts, limits, analyzer_name=analyzer_name,
+            )
+            return
         all_symbols.extend(result.symbols)
         all_edges.extend(result.edges)
         all_usage_contexts.extend(getattr(result, "usage_contexts", []))
-        # Only a genuinely-empty result (no run, no output) is a skip. A
-        # producer that emitted symbols/edges without a run is a distinct
-        # anomaly (e.g. rust_analyzer's success path returns run=None with
-        # SCIP output) — keep its output, don't mislabel it a skip.
+        # Only a genuinely-empty result (no run, no output) is a skip. The
+        # productive case is handled above; reaching here means the producer
+        # emitted nothing at all.
         produced_nothing = not result.symbols and not result.edges
         if analyzer_name and produced_nothing:
-            reason = (
+            self_declared = (
                 getattr(result, "skip_reason", "")
                 if getattr(result, "skipped", False)
                 and getattr(result, "skip_reason", "")
-                else "no files matched"
+                else ""
             )
-            limits.skipped_passes.append({"pass": analyzer_name, "reason": reason})
+            # WI-dukoh: the CODE follows the same self-declare-or-fall-back
+            # rule as the prose, and the fallback is deliberately asymmetric.
+            # The prose falls back to "no files matched" because a bare
+            # run=None result IS a no-input analyzer by construction; the code
+            # falls back to NO_CANDIDATE_FILES only on that same branch, and a
+            # producer that self-declared prose WITHOUT a code falls back to
+            # UNREPORTED rather than inheriting the prose's certainty. It said
+            # something the axis cannot read, which is not the same as saying
+            # the repository had no files.
+            reason = self_declared or "no files matched"
+            code = (
+                (getattr(result, "skip_reason_code", "") or UNREPORTED)
+                if self_declared
+                else NO_CANDIDATE_FILES
+            )
+            limits.skipped_passes.append({
+                "pass": analyzer_name,
+                "reason": reason,
+                "silence_reason": code,
+            })
         return
 
     # Check if analyzer was skipped (optional deps missing)
@@ -159,6 +218,11 @@ def collect_analyzer_result(
         limits.skipped_passes.append({
             "pass": result.run.pass_id,
             "reason": skip_reason,
+            # WI-dukoh: an unconverted producer reads as UNREPORTED -- "it did
+            # not classify itself" -- never as a manufactured majority answer.
+            "silence_reason": (
+                getattr(result, "skip_reason_code", "") or UNREPORTED
+            ),
         })
     else:
         # INV-gizik / INV-pitab: stamp per-pass productivity counters at the
@@ -169,6 +233,27 @@ def collect_analyzer_result(
         # config_fingerprint stamps).
         result.run.nodes_emitted = len(result.symbols)
         result.run.edges_emitted = len(result.edges)
+        # INV-bikaj (arc T6): stamp WHY this pass emitted nothing, at the same
+        # chokepoint as the counters it is derived from. Only what is certain
+        # from the counters — an analyzer that read files and produced nothing
+        # is `unreported`, never `no_candidate_files`, because it plainly had
+        # candidates.
+        _derived = derive_silence_reason(
+            files_analyzed=result.run.files_analyzed,
+            nodes_emitted=result.run.nodes_emitted,
+            edges_emitted=result.run.edges_emitted,
+        )
+        # WI-finij question A: only a pass BODY can know it looked for its
+        # construct and found none, which is why derive_silence_reason refuses
+        # to infer NO_CANDIDATE_CONSTRUCT -- a reason invented on the producer's
+        # behalf is a fabricated disclosure. But this stamp ASSIGNED
+        # UNCONDITIONALLY, so it overwrote the only producer able to say it, and
+        # the declared value had no reachable producer anywhere in the tree.
+        # Guarded now: a body that spoke keeps its word. The one exception is
+        # "" -- a pass that EMITTED has no silence to explain, and NOT
+        # APPLICABLE is not the body's to override.
+        if _derived == "" or not result.run.silence_reason:
+            result.run.silence_reason = _derived
         analysis_runs.append(result.run.to_dict())
         # WI-mosil central origin_run_id backstop. Direct-constructor analyzers
         # (toml/json/wgsl/sql and any future ones that build Symbols by hand
@@ -217,11 +302,14 @@ def _filter_by_file_presence(
     cost of opening a parser / walking the FileIndex / building an empty
     tree for a pass with no input.
 
-    Analyzers whose declared languages are NOT in the taxonomy
-    (``gitignore``, ``requirements``, ``manifest_targets``, ``play-routes``,
-    ``yaml_ansible``, etc.) are dispatched unconditionally — the profile
-    has no opinion about them, so the safe default is to let the analyzer
-    self-determine via its own file walk.
+    Analyzers whose declared languages are NOT in the taxonomy (the
+    ``no_taxonomy_spec`` state: ``gitignore``, ``requirements``,
+    ``play-routes``, ``yaml_ansible``, ...) and analyzers that declare NO
+    language (``manifest_targets``, ``languages == []``) are dispatched
+    unconditionally — the profile has no opinion about them, so the safe
+    default is to let the analyzer self-determine via its own file walk.
+    WI-juzig: the empty list is retained on purpose, not re-inflated into
+    ``{name}`` (a phantom the profile never counted, retained by accident).
 
     When ``profile`` is ``None`` the filter is a no-op (callers outside the
     full ``run_behavior_map`` pipeline don't have a profile to consult).
@@ -233,13 +321,11 @@ def _filter_by_file_presence(
     profile_langs = profile.get("languages") or {}
     retained: list[RegisteredAnalyzer] = []
     for analyzer in analyzers:
-        analyzer_langs = (
-            set(analyzer.languages) if analyzer.languages else {analyzer.name}
-        )
-        # Defensive dispatch when any declared language is outside the
-        # taxonomy — profile didn't count files for those, so we can't
-        # tell whether the analyzer has work.
-        if not analyzer_langs <= known_langs:
+        analyzer_langs = set(analyzer.languages)
+        # Defensive dispatch when the analyzer declares no language, or any
+        # declared language is outside the taxonomy — the profile didn't
+        # count files for those, so we can't tell whether it has work.
+        if not analyzer_langs or not analyzer_langs <= known_langs:
             retained.append(analyzer)
             continue
         any_with_files = any(
@@ -252,6 +338,10 @@ def _filter_by_file_presence(
             limits.skipped_passes.append({
                 "pass": analyzer.name,
                 "reason": "no files matched",
+                # The one skip the ORCHESTRATOR can classify with certainty:
+                # it just read the profile and found zero files for every
+                # language this analyzer declares. WI-dukoh.
+                "silence_reason": NO_CANDIDATE_FILES,
             })
     return retained
 

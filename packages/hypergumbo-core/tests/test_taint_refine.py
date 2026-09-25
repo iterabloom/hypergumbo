@@ -573,7 +573,7 @@ def test_refine_external_edges_rewrites_module_segment():
     edges = [
         {
             "src": caller,
-            "dst": "python:external:0-0:get:unresolved",
+            "dst": "python:external:0-0:get:unresolved", "is_resolved": False,
             "type": "calls",
             "line": 4,
         },
@@ -583,7 +583,7 @@ def test_refine_external_edges_rewrites_module_segment():
     assert refined == [
         {
             "src": caller,
-            "dst": "python:os.environ:0-0:get:unresolved",
+            "dst": "python:os.environ:0-0:get:unresolved", "is_resolved": False,
             "type": "calls",
             "line": 4,
         },
@@ -596,7 +596,7 @@ def test_refine_external_edges_no_hint_passes_through():
     edges = [
         {
             "src": caller,
-            "dst": "python:external:0-0:get:unresolved",
+            "dst": "python:external:0-0:get:unresolved", "is_resolved": False,
             "type": "calls",
             "line": 4,
         },
@@ -633,7 +633,7 @@ def test_refine_external_edges_preserves_metadata():
     edges = [
         {
             "src": caller,
-            "dst": "python:external:0-0:get:unresolved",
+            "dst": "python:external:0-0:get:unresolved", "is_resolved": False,
             "type": "calls",
             "line": 4,
             "confidence": 0.40,
@@ -654,7 +654,7 @@ def test_refine_external_edges_returns_new_list():
     caller = "python:t.py:2-4:f:function"
     original = {
         "src": caller,
-        "dst": "python:external:0-0:get:unresolved",
+        "dst": "python:external:0-0:get:unresolved", "is_resolved": False,
         "type": "calls",
         "line": 4,
     }
@@ -672,7 +672,7 @@ def test_refine_external_edges_no_caller_match():
     edges = [
         {
             "src": "python:t.py:2-4:f:function",
-            "dst": "python:external:0-0:get:unresolved",
+            "dst": "python:external:0-0:get:unresolved", "is_resolved": False,
             "type": "calls",
             "line": 4,
         },
@@ -691,7 +691,7 @@ def test_refine_external_edges_caller_has_hints_but_not_for_this_call():
     edges = [
         {
             "src": caller,
-            "dst": "python:external:0-0:get:unresolved",
+            "dst": "python:external:0-0:get:unresolved", "is_resolved": False,
             "type": "calls",
             "line": 5,
         },
@@ -721,7 +721,7 @@ def test_refine_external_edges_non_python_lang_ignored():
     edges = [
         {
             "src": "go:t.go:2-4:f:function",
-            "dst": "go:external:0-0:Get:unresolved",
+            "dst": "go:external:0-0:Get:unresolved", "is_resolved": False,
             "type": "calls",
             "line": 4,
         },

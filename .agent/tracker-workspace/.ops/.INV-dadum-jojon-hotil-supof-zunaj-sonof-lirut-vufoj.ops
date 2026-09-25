@@ -1,0 +1,23 @@
+- op: create  # f4ce
+  at: '2026-08-25T08:37:47Z'  # f4ce
+  by: agent  # f4ce
+  actor: jgstern_agent  # f4ce
+  clock: 1  # f4ce
+  nonce: f4ce  # f4ce
+  data:  # f4ce
+    kind: invariant  # f4ce
+    title: "document.location / document.referrer are attacker-influenceable, so labelling them host_secret gets the DIRECTION of the trust relationship wrong (one catalogue row spans both ends of the axis)"  # f4ce
+    status: violated  # f4ce
+    priority: 3  # f4ce
+    parent:  # f4ce
+    tags:  # f4ce
+    - taint  # f4ce
+    - io_boundary  # f4ce
+    isbefore: []  # f4ce
+    duplicate_of: []  # f4ce
+    not_duplicate_of: []  # f4ce
+    pr_ref:  # f4ce
+    description: "FOUND during INV-tutar's env_read census, 2026-08-25, and deliberately NOT\nfolded into that split: it is a different defect on a different axis.\n\nINV-tutar separated a CONFIGURATION read from a DESCRIPTION read -- both are\nthings the program reads ABOUT its environment, and the question was how\nsensitive the value is. This is not that. document.location and\ndocument.referrer are values an ATTACKER can set, which makes a flow out of\nthem the untrusted-input shape (attacker data reaching a sink), not the\nsecret-exfiltration shape (secret data reaching an egress). Labelling them\nhost_secret gets the DIRECTION of the trust relationship wrong, not just its\nmagnitude.\n\nTHE THIRD ROW-MATE IS GENUINELY DIFFERENT AGAIN. document.cookie holds session\ntokens; host_secret is right for it, and it should stay where it is. So one\ncatalogue row currently spans both ends of the trust axis.\n\nCURRENT STATE, verified at tip after PR #526:\n    javascript document.cookie   -> env_read -> host_secret   (correct)\n    javascript document.location -> env_read -> host_secret   (wrong direction)\n    javascript document.referrer -> env_read -> host_secret   (wrong direction)\n\nWHAT THE FIX PROBABLY IS, unbuilt: move location/referrer to net_recv, which\nalready derives untrusted_input, and split the row so cookie keeps its own.\nWhether net_recv is the right boundary for a DOM read is the open question --\nnothing was received over the network at that call site, the value merely\noriginated there -- so this may want the same treatment INV-tutar got rather\nthan a reuse. Do not assume; run the four leakage tests on\n(net_recv, untrusted_input) against a DOM read before moving anything.\n\nSCOPE NOT MEASURED. Three rows, javascript/typescript only. Whether it shows up\nin a real precision number depends on how often browser code in the corpus\nreads document.referrer; that was not counted."  # f4ce
+    fields:  # f4ce
+      statement: "A taint source label must name what the value IS. document.location and document.referrer carry ATTACKER-INFLUENCEABLE data, so they are untrusted_input sources; only document.cookie is credential material."  # f4ce
+      root_cause: "io_primitives/javascript.yaml files document.cookie, document.location and document.referrer under one env_read row with the note \"Browser document globals (cookie/referrer leak fingerprintable data)\". AUTO_SOURCE_LABEL_MAP derives host_secret from env_read, so all three become SECRET sources. Two of the three are the opposite end of the trust axis: an attacker controls the referrer and can control the URL, so a flow FROM them is untrusted INPUT reaching a sink, not a secret escaping."  # f4ce

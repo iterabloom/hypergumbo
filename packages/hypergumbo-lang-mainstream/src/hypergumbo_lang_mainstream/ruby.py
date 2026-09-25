@@ -7,9 +7,21 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - Module declarations (module)
 - Method call relationships
 - Require/require_relative statements
-- Rails callback edges (before_action, after_action, around_action)
+- Rails callback edges. The recognised set is ``RAILS_CALLBACK_METHODS``,
+  which is wider than the three action callbacks it started with: the
+  ``_filter`` spellings, the model lifecycle callbacks, the transaction
+  callbacks (``after_commit``, ``after_create_commit``, ...) and
+  ``validate``. Block-style callbacks are picked up too.
 - ActiveRecord association edges (has_many, belongs_to, has_one)
 - Ruby delegate macro edges (delegate :method, to: :association)
+- Rails / Sinatra route symbols, including namespaces, resources and
+  member/collection blocks (``_extract_rails_routes``)
+- ``instantiates`` edges for ``.new`` (INV-kahig)
+- ``event_publishes`` edges for ActiveJob / Sidekiq enqueue calls
+- ``extends`` inheritance edges, and mixin declarations recorded as
+  ``meta["included_modules"]`` for the linker to resolve (WI-hatip)
+- ``field`` / ``variable`` data anchors (``_emit_ruby_data_symbols``,
+  WI-jusus)
 - Receiver-type tracking for variable-receiver calls
 - Method parameter filtering to prevent bare-identifier false positives
 
@@ -20,12 +32,15 @@ How It Works
 ------------
 1. Check if tree-sitter-ruby is available
 2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
+3. Multi-pass analysis — Ruby overrides ``analyze()`` because it needs
+   more than the standard two passes:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
+   - Passes 2b / 2c / 2d and 3, plus a post-pass inheritance sweep
 4. Detect method calls and require statements
 5. Track variable types from constructor/factory calls (``var = Class.new``)
-   to resolve ``var.method`` → ``Class#method`` (typed_receiver_call evidence)
+   to resolve ``var.method`` → ``Class#method`` (``ast_call`` evidence
+   carrying ``meta["resolution_quality"] = "typed_receiver"``)
 6. Filter method parameters from bare-identifier handler to prevent
    false-positive edges from parameter references
 
@@ -68,12 +83,16 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     node_text,
     populate_docstrings_from_tree,
+    SymbolsAt,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -292,17 +311,21 @@ def _get_enclosing_class_or_module(node: "tree_sitter.Node", source: bytes) -> t
 def _get_enclosing_method(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing method (instance or class method)."""
+    """The method (instance or class method) whose ``def`` contains ``node``.
+
+    Keyed by the declaration's POSITION, not its name (INV-midag). Ruby lets one
+    file define a method twice, in a reopened class or as a redefinition, and the
+    name lookup returned whichever registered last (postal's
+    MessageInspection#scan). The ``def`` node IS the symbol's node.
+    """
     current = node.parent
     while current is not None:
         if current.type in ("method", "singleton_method"):
-            name_node = _find_child_by_field(current, "name")
-            if name_node:
-                method_name = node_text(name_node, source)
-                if method_name in local_symbols:
-                    return local_symbols[method_name]
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -1621,8 +1644,9 @@ def _extract_ruby_delegates(
         delegate :auto_resolve_after, to: :account
         delegate :name, :email, to: :user
 
-    This creates ``delegates_to`` edges from the declaring class to the
-    target method on the associated class. The target class is inferred
+    This creates ``references`` edges (meta framework_dispatch
+    ``ruby_delegate``) from the declaring class to the target method on the
+    associated class. The target class is inferred
     by PascalCasing the ``to:`` symbol name (e.g., ``:account`` → ``Account``).
 
     Special targets like ``:class`` are skipped as they don't create
@@ -2260,7 +2284,18 @@ def _try_receiver_call(
                     edges.append(Edge.create(
                         src=current_method.id,
                         dst=callee.id,
-                        edge_type="calls",
+                        # INV-kahig: object creation is ``instantiates`` in every
+                        # other analyzer that emits it (dart/csharp/java/py/js_ts/
+                        # php/cpp/verilog); ruby emitted ``calls`` and NEVER
+                        # ``instantiates``, so a consumer asking for object
+                        # creation by edge_type silently omitted all of ruby.
+                        # The DST is deliberately unchanged -- ruby resolves
+                        # ``Klass.new`` to ``Klass#initialize``, the initializer
+                        # symbol, which is the choice WI-fagit independently
+                        # converged csharp onto (PR #689) because anchoring on the
+                        # class conflates "referenced as a type" with
+                        # "instantiated" and breaks reverse-slice.
+                        edge_type="instantiates",
                         line=line,
                         evidence_type="ast_call",
                         origin=PASS_ID,
@@ -2538,6 +2573,7 @@ def _extract_edges_from_file(
     require_hints: dict[str, str],
     method_candidates: dict[str, list[Symbol]] | None = None,
     method_resolver: ListNameResolver | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2554,6 +2590,11 @@ def _extract_edges_from_file(
             method-specific lookups.  When provided, used instead of ``resolver``
             for method name lookups (bare calls and receiver call fallbacks).
     """
+    # Every declaration of this file, by position (INV-midag): ``local_symbols``
+    # keeps ONE symbol per name.
+    decl_index = symbols_at(
+        file_symbols if file_symbols is not None
+        else list({s.id: s for s in local_symbols.values()}.values()))
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("ruby", str(file_path))
@@ -2607,7 +2648,7 @@ def _extract_edges_from_file(
                         if sym_node is not None:
                             ref_name = node_text(sym_node, source).lstrip(":")
                             current_method = _get_enclosing_method(
-                                node, source, local_symbols,
+                                node, source, decl_index,
                             )
                             if current_method is not None:
                                 # Class-qualified lookup: App#transform
@@ -2646,7 +2687,7 @@ def _extract_edges_from_file(
 
                 # Handle regular method calls
                 else:
-                    current_method = _get_enclosing_method(node, source, local_symbols)
+                    current_method = _get_enclosing_method(node, source, decl_index)
                     if current_method is not None:
                         # Try receiver-qualified resolution first
                         receiver_node = node.child_by_field_name("receiver")
@@ -2741,7 +2782,7 @@ def _extract_edges_from_file(
                 "call", "method_call", "element_reference", "scope_resolution"
             ):
                 continue
-            current_method = _get_enclosing_method(node, source, local_symbols)
+            current_method = _get_enclosing_method(node, source, decl_index)
             if current_method is not None:
                 callee_name = node_text(node, source)
 
@@ -2836,7 +2877,7 @@ def _extract_edges_from_file(
                         target = lookup_result.symbol
                 if target is not None and target.kind == "method":
                     current_method = _get_enclosing_method(
-                        node, source, local_symbols,
+                        node, source, decl_index,
                     )
                     if current_method is not None and target.id != current_method.id:
                         edges.append(Edge.create(
@@ -3040,6 +3081,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         # 2. Initialize parser
@@ -3051,6 +3093,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"Failed to load Ruby parser: {e}",
+                skip_reason_code=PASS_CRASHED,
             )
 
         # Pass 1: Extract all symbols from all files
@@ -3113,6 +3156,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 require_hints=analysis.import_aliases,
                 method_candidates=method_candidates,
                 method_resolver=method_resolver,
+                file_symbols=analysis.symbols,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             _ruby_df = _get_dataflow_config("ruby")
@@ -3149,7 +3193,8 @@ class RubyAnalyzer(TreeSitterAnalyzer):
             all_edges.extend(assoc_edges)
 
         # Pass 2d: Extract Ruby delegate edges (delegate :method, to: :association)
-        # These create delegates_to edges from class -> target method.
+        # These create references edges (meta framework_dispatch
+        # ``ruby_delegate``) from class -> target method.
         for rb_file, analysis in file_analyses.items():
             try:
                 source = rb_file.read_bytes()

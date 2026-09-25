@@ -8,21 +8,21 @@ Linux development. It processes recipe files (.bb, .bbappend) and class files
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract variable assignments, inherit directives, task functions,
-   addtask statements. Edges for inherits and depends are collected during
-   symbol extraction and emitted in Pass 2.
+1. Pass 1: Extract variable assignments, task functions and addtask
+   statements as symbols. Edges for inherit directives and DEPENDS/RDEPENDS
+   are collected during symbol extraction and emitted in Pass 2.
 2. Pass 2: No additional edges needed (all edges come from Pass 1 data).
 
 Symbols Extracted
 -----------------
 - **Variables**: Key recipe metadata (SUMMARY, LICENSE, SRC_URI, DEPENDS, etc.)
-- **Inherits**: Class inheritance declarations
-- **Tasks**: Shell task functions (do_fetch, do_configure, do_compile, etc.)
+- **Tasks**: Shell and python task functions (do_fetch, do_configure,
+  do_compile, etc.), kind ``task``, plus addtask directives, kind ``addtask``
 
 Edges Extracted
 ---------------
 - **inherits**: Inheritance from .bbclass files
-- **depends**: Package dependencies from DEPENDS variable
+- **depends_on**: Package dependencies from DEPENDS/RDEPENDS assignments
 
 Why This Design
 ---------------
@@ -67,8 +67,14 @@ def find_bitbake_files(repo_root: Path) -> list[Path]:
 
 
 def _make_symbol_id(path: Path, name: str, kind: str) -> str:
-    """Create a stable symbol ID."""
-    return f"bitbake:{path}:{kind}:{name}"
+    """Create a stable symbol ID.
+
+    The span slot is ``0-0`` rather than absent: BitBake symbol ids are keyed
+    by name within a file and do not encode a line (every caller does build a
+    Span for the Symbol itself), and ADR-0036's grammar has a spelling for
+    "no source span" (WI-vodin).
+    """
+    return f"bitbake:{path}:0-0:{name}:{kind}"
 
 
 # Important BitBake variables to track
@@ -88,10 +94,10 @@ IMPORTANT_VARIABLES = frozenset({
 class BitBakeAnalyzer(TreeSitterAnalyzer):
     """Analyzer for BitBake files using TreeSitterAnalyzer base class.
 
-    BitBake is unusual: edges (inherits, depends) are derived during symbol
+    BitBake is unusual: edges (inherits, depends_on) are derived during symbol
     extraction (Pass 1), not from cross-file call resolution (Pass 2).
-    We store pending edges in the FileAnalysis.import_aliases dict (repurposed
-    as a lightweight mechanism) and emit them in extract_edges_from_file.
+    We store pending edges in the module-level ``_pending_edge_store`` dict,
+    keyed by rel_path, and pop them in extract_edges_from_file.
     """
 
     lang = "bitbake"
@@ -109,9 +115,8 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
         for _ in rel_parts:
             repo_root = repo_root.parent
 
-        # We store pending edges as a list in _pending_edges attribute on analysis
-        # Since FileAnalysis doesn't have an edges field, we collect them
-        # and store edge data serialized in import_aliases for retrieval in Pass 2
+        # FileAnalysis has no edges field, so collect pending edges here and
+        # hand them to Pass 2 through the module-level _pending_edge_store
         pending_edges: list[Edge] = []
 
         self._extract_symbols_recursive(
@@ -119,8 +124,7 @@ class BitBakeAnalyzer(TreeSitterAnalyzer):
             analysis, pending_edges,
         )
 
-        # Store pending edges count in import_aliases as a signal
-        # We'll use a module-level dict keyed by rel_path to pass edges between passes
+        # Module-level dict keyed by rel_path passes edges between passes
         _pending_edge_store[rel_path] = pending_edges
 
         return analysis
@@ -411,7 +415,7 @@ def is_bitbake_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("bitbake")
+@register_analyzer("bitbake", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_bitbake(repo_root: Path) -> AnalysisResult:
     """Analyze BitBake files in a repository.
 

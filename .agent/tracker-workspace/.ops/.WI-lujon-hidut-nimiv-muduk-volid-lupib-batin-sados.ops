@@ -1,0 +1,43 @@
+- op: create  # f2d2
+  at: '2026-09-03T03:55:50Z'  # f2d2
+  by: agent  # f2d2
+  actor: jgstern_agent  # f2d2
+  clock: 1  # f2d2
+  nonce: f2d2  # f2d2
+  data:  # f2d2
+    kind: work_item  # f2d2
+    title: "smart-test does not select a citation test when the file it cites by string changes: bash.py:1353 rotted under a green per-PR gate and fired two crons later"  # f2d2
+    status: todo_hard  # f2d2
+    priority: 2  # f2d2
+    parent:  # f2d2
+    tags:  # f2d2
+    - ci_infrastructure  # f2d2
+    - smart_test  # f2d2
+    isbefore: []  # f2d2
+    duplicate_of: []  # f2d2
+    not_duplicate_of: []  # f2d2
+    pr_ref:  # f2d2
+    description: "FOUND 2026-09-03 while attributing a red full-suite firing (INV-bozid).\n\nTHE MISS. `test_module_key_axis.py::test_every_cited_emission_site_still_exists`\npins that every `file:line` citation in `module_key_axis.MODULE_KEY_NOTIONS`\nstill contains its quoted anchor. The INV-sihom fix (0b8815fd2d) added lines\nto `hypergumbo_lang_mainstream/bash.py`, shifting the redirect emission from\n:1353 to :1399. The per-PR smart-test gate on that PR was GREEN: the citation\ntest lives in hypergumbo-core and names bash.py by STRING, so the import-graph\nreverse slice never selected it. It fired on the next full-suite cron\n(2026-09-03 01:00 UTC, pipeline 2189: `1 failed, 25483 passed`) and was\nrepaired in passing by 59a396395a -- two firings later, and only because a\ndifferent PR happened to touch a core file that selected it.\n\nTHE CLASS. Any test that pins a path-plus-line citation into another package\n(a \"citation test\") is invisible to a slice that follows imports. The\nsame shape exists wherever a docstring, ADR, or axis registry cites a\nproducer site by `file:line` and a test checks it against the tree.\n\nWHAT TO DO. smart-test already unions non-import selectors for data files\nand playbooks (INV-kafak's three change classes). Add a fourth: a test file\nthat contains a string literal naming a changed source path (by basename or\nrepo-relative path) is selected when that path changes. Cheap to derive from\nthe tree, and it makes a citation test fire on the commit that rots the\ncitation rather than on the next cron."  # f2d2
+    fields: {}  # f2d2
+- op: discuss  # 5f20
+  at: '2026-09-16T06:10:32Z'  # 5f20
+  by: agent  # 5f20
+  actor: jgstern_agent  # 5f20
+  clock: 2  # 5f20
+  nonce: 5f20  # 5f20
+  message: "CONFIRMED LIVE 2026-09-16 on dev 81f1a69f88, with a fresh end-to-end repro of\nthis item's own example.\n\nAppended a line to\npackages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/bash.py and\nran `smart-test --manifest`:\n\n    selected test files:                      213\n    tests/test_module_key_axis.py present:    NO\n\nThat test pins every file:line citation in module_key_axis.MODULE_KEY_NOTIONS,\nand module_key_axis.py:306 cites the string\n\"hypergumbo_lang_mainstream/bash.py\" -- so the citation and the cited file are\nboth in the tree, the citing package is selected 213 ways, and the one test that\nchecks the two against each other is not among them. Two years of import edges\ncannot see a string literal.\n\nWHY IT DID NOT GET FIXED BY THE THREE UNIONS THAT LANDED SINCE FILING. This item\nproposed \"a fourth [union]: a test file that contains a string literal naming a\nchanged source path is selected when that path changes\". Three derived unions\nnow exist in scripts/smart-test -- playbooks (:1032), catalogue YAML (:1041),\ndocs (:1054), plus fixtures (:900) and a conftest arm -- and all of them key on\nthe CHANGED path's directory. This one has to key the other way: on what the\nTEST files contain. That is why it was not swept up by the siblings, and it is\nworth stating so the next reader does not assume the family fix covered it.\n\nSECOND, UNRELATED CLAIMANT FOR THE SAME UNION. KNOWN_UNREACHABLE in\ntests/test_top_level_test_map.py says test_stdlib_version_guarded_imports.py\nneeds \"a fourth derived union in smart-test\", filed separately -- I could not\nfind that item by title search, and the tracker has no full-text search. If it\ndoes not exist, these two wants should be weighed together: both are \"a root\ntest whose subject is named by content, not by import\"."  # 5f20
+- op: update  # 0a33
+  at: '2026-09-16T07:32:06Z'  # 0a33
+  by: agent  # 0a33
+  actor: jgstern_agent  # 0a33
+  clock: 3  # 0a33
+  nonce: 0a33  # 0a33
+  set:  # 0a33
+    status: done  # 0a33
+- op: discuss  # faf4
+  at: '2026-09-16T07:32:06Z'  # faf4
+  by: agent  # faf4
+  actor: jgstern_agent  # faf4
+  clock: 4  # faf4
+  nonce: faf4  # faf4
+  message: "DONE 2026-09-16 by PR #997 (8d3bff18c1). Behavioral evidence: this item's own\nrepro, re-run on the merged tree.\n\n    appended a line to hypergumbo_lang_mainstream/bash.py, smart-test --manifest\n\n    before   213 selected, test_module_key_axis.py NOT among them\n    after    230 selected, test_module_key_axis.py PRESENT\n\nTHIS ITEM'S PROPOSED FIX WOULD HAVE MISSED THIS ITEM'S OWN EXAMPLE, which is\nthe finding worth recording. The filing asked for \"a test file that contains a\nstring literal naming a changed source path\". Measured: test_module_key_axis.py\ndoes not contain the string \"bash\" at all. The citation lives in the SOURCE the\ntest reads (module_key_axis.py:306), so one hop is not enough:\n\n  1. find every file whose text contains a literal naming the changed path;\n  2. a citer that IS a test is selected; a citer that is a source or a script\n     contributes the tests that name IT, by its import path.\n\nA one-hop gate would have shipped, measured clean against a tree where nothing\nwas wrong, and left the defect where it was. That is now a named test.\n\nA CITATION HAS A SLASH IN IT, measured rather than assumed. Slash-bearing\nliterals name 12 shipped sources from 9 citing files across the whole tree. The\nbare basename bash.py appears in five test files with nothing to do with the\ncitation, so keying on it would trade a precise edge for noise. Same reasoning\nin hop 2: for hypergumbo_core/taint.py the bare stem matches 142 test files and\nthe import path 64, and both reach the module's own test.\n\nTWO INSTRUMENT FAULTS OF MY OWN, both in the test rather than the fix, both\nfound by CI and worth recording because the second refutes the first.\n  * The test file, written with its subjects spelled out, became a CITER of\n    them -- so two controls silently became assertions about their own text.\n    Paths are assembled from parts now and a guard enforces it; the guard\n    caught a second instance in a docstring on its own first run.\n  * The enumeration reported ZERO citers in CI against 9 locally, twice. The\n    first diagnosis (a glob divergence under Python 3.11) was WRONG. The cause\n    was parts.index(\"src\") on an ABSOLUTE path: CI checks out at\n    /woodpecker/SRC/github.com/iterabloom/hypergumbo, so the search found the\n    workspace's src and every key came out malformed. Reproduced by symlinking\n    the repo under a CI-shaped path. A floor on the population size did not\n    catch it -- 348 sources were found every time -- because a floor guards\n    against an EMPTY instrument, not a MIS-AIMED one. The accessor now asserts\n    the SHAPE of what it produced.\n\nNOT CLOSED BY THIS, and disclosed rather than left to be discovered: docs cite\nshipped sources the same way (7 files under docs/ plus CHANGELOG.md), and none\nis scanned. That is deliberate -- no test today checks a doc's citations\nagainst the tree, so the edge would have no reader. The helper's docstring\nnames where such a gate would attach.\n\nTHE SECOND CLAIMANT NAMED IN THE 2026-09-16 ENTRY IS STILL OPEN.\nKNOWN_UNREACHABLE's test_stdlib_version_guarded_imports.py wants a union\nselecting it on ANY production-source change; this union keys on citations, so\nit does not cover that. It belongs to INV-lizor limb (a)."  # faf4

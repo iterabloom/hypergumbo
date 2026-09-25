@@ -35,6 +35,8 @@ Two independent gates guard it, because there are two distinct failure modes:
 Both are DEFAULT-DENY (L54): they require the safe value to be stated, rather
 than enumerating the filter values known to hurt.
 """
+
+# covers: .woodpecker/*.yml
 from __future__ import annotations
 
 from pathlib import Path

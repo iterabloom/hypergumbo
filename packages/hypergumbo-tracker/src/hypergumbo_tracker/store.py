@@ -53,6 +53,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 
 from hypergumbo_tracker import journal
+from hypergumbo_tracker.field_keys import check_field_key
 from hypergumbo_tracker.models import (
     CompiledItem,
     DiscussionEntry,
@@ -1211,6 +1212,7 @@ class Store:
         duplicate_of: list[str] | None = None,
         not_duplicate_of: list[str] | None = None,
         pr_ref: str | None = None,
+        force_field_key: bool = False,
     ) -> str:
         """Add a new item to the store.
 
@@ -1256,6 +1258,17 @@ class Store:
             raise ValueError(
                 f"Status '{status}' is not allowed for kind '{kind}'. "
                 f"Allowed: {kind_config.allowed_statuses}"
+            )
+
+        # INV-varil / INV-linan: a custom field key may not shadow a core
+        # attribute, and may not differ from a declared one only in spelling.
+        # Checked HERE rather than in the CLI because a gate that lives only in
+        # the CLI is bypassed by every other writer of the store.
+        for custom_key in (fields or {}):
+            check_field_key(
+                custom_key,
+                declared=(kind_config.fields_schema or {}),
+                force=force_field_key,
             )
 
         # Validate required fields from fields_schema at creation time
@@ -1388,6 +1401,7 @@ class Store:
         set_fields: dict[str, Any] | None = None,
         add_fields: dict[str, list[Any]] | None = None,
         remove_fields: dict[str, list[Any]] | None = None,
+        force_field_key: bool = False,
     ) -> None:
         """Append an update op to an item.
 
@@ -1449,6 +1463,40 @@ class Store:
                             f"Unknown field '{key}' in {label}. "
                             f"Valid fields: {', '.join(sorted(_UPDATABLE_FIELDS))}"
                         )
+
+        # INV-linan layer 1: the loop above validates the TOP-LEVEL keys and
+        # never looks inside ``set_fields["fields"]`` -- which is exactly where
+        # a custom key goes. That is how ``fields.status`` reached eleven items
+        # under a top-level ``status`` that disagreed with it.
+        # A REMOVAL (``--remove-field status`` -> value None) must never be
+        # refused: deleting an offending key is the remedy, and a gate that
+        # blocked it would freeze the eleven corpus items in their broken state
+        # permanently. Only keys being WRITTEN are checked.
+        # The nested dict is bound to a local before it is iterated: mypy
+        # cannot narrow `field_dict["fields"]` from an `isinstance` test on
+        # `field_dict.get("fields")`, because those are two expressions.
+        custom_keys: list[str] = []
+        for field_dict, _label in all_dicts:
+            if not field_dict:
+                continue
+            nested = field_dict.get("fields")
+            if not isinstance(nested, dict):
+                continue
+            custom_keys.extend(k for k, v in nested.items() if v is not None)
+        if custom_keys:
+            kind_for_fields = compile_ops(
+                _parse_ops_file(item_path), item_id,
+            ).kind
+            kind_config_for_fields = self._config.kinds.get(kind_for_fields)
+            declared = (
+                (kind_config_for_fields.fields_schema or {})
+                if kind_config_for_fields
+                else {}
+            )
+            for custom_key in custom_keys:
+                check_field_key(
+                    custom_key, declared=declared, force=force_field_key,
+                )
 
         # Check locked fields
         if by == "agent":

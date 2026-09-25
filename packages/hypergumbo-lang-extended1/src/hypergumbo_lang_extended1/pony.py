@@ -24,7 +24,7 @@ Symbols Extracted
 - **Primitives**: Singleton value types
 - **Constructors**: new constructors within types
 - **Methods**: fun methods within types
-- **Fields**: var/let field definitions
+- **Fields**: var/let field definitions whose name does not start with ``_``
 
 Edges Extracted
 ---------------
@@ -32,9 +32,13 @@ Edges Extracted
 
 Why This Design
 ---------------
-- Pony's actor model makes understanding message passing important
-- Reference capabilities (iso, trn, ref, val, box, tag) are captured
-- Interface/trait relationships help understand type hierarchies
+- Pony's actor model makes understanding message passing important, but
+  behaviours (``be``) are NOT extracted yet (WI-rokus), so asynchronous
+  message handlers are missing from the graph
+- Reference capabilities (iso, trn, ref, val, box, tag) are captured only for
+  method (``fun``) receivers, as meta ``capability``
+- Interface/trait relationships (``is`` clauses) are NOT emitted as edges;
+  interfaces and traits appear only as symbols
 """
 
 from __future__ import annotations
@@ -562,7 +566,7 @@ class PonyAnalyzer(TreeSitterAnalyzer):
 _analyzer = PonyAnalyzer()
 
 
-@register_analyzer("pony")
+@register_analyzer("pony", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_pony(repo_root: Path) -> AnalysisResult:
     """Analyze Pony files in a repository.
 

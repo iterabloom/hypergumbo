@@ -404,6 +404,9 @@ class TestTransitiveCallbackInterface:
         edges = [Edge.create(src=leaf.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test")]
         result_edges = self._link([leaf, base, proc], edges=edges)
         assert proc.id in {e.dst for e in result_edges}
+        # INV-rukor: the callback interface was read off BaseImpl via the edge.
+        (dispatch,) = [e for e in result_edges if e.dst == proc.id]
+        assert dispatch.derived_from == [leaf.id, proc.id, edges[0].id, base.id]
 
     def test_two_intermediate_chain(self) -> None:
         """Leaf -> Mid -> Base implements ValueMapper (two intermediates)."""

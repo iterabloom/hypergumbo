@@ -3446,3 +3446,13 @@ class TestFleetSite1Walkers:
             )
             assert resolved[0].dst == base_m.id, lang
             assert resolved[0].evidence_type == "ast_call_inherited", lang
+
+
+class TestC3MergeDegradesOnAnInconsistentHierarchy:
+    def test_an_inconsistent_hierarchy_takes_the_first_head_rather_than_raising(self) -> None:
+        """Two bases that each precede the other have no C3 head; the walk
+        degrades to the first candidate instead of raising, and terminates."""
+        from hypergumbo_core.linkers.inherited_calls import _c3_merge
+
+        assert _c3_merge([["A", "B"], ["B", "A"]]) == ["A", "B"]
+        assert _c3_merge([["X"], ["Y", "X"]]) == ["Y", "X"]  # consistent input is untouched

@@ -539,12 +539,22 @@ end
         )
         assert unresolved[0].confidence == 0.50
 
-    def test_dot_call_resolver_fallback(self, tmp_path: Path) -> None:
+    def test_dot_call_resolves_through_an_alias_directive(self, tmp_path: Path) -> None:
         """Partial module name resolved via NameResolver suffix/exact match.
 
-        When a call uses a short module alias (e.g., Greeter.greet) but the
-        symbol is stored under the full module path (App.Helpers.Greeter.greet),
-        the resolver falls back to looking up the function name with a path hint.
+        The call uses a short module alias (``Greeter.greet``) and the symbol
+        is stored under the full module path (``App.Helpers.Greeter.greet``),
+        so the ALIAS DIRECTIVE is what resolves it.
+
+        WI-kafor re-pointed this test rather than deleting it. Its fixture
+        carried no ``alias`` line at all, and a bare ``Greeter.greet()`` in a
+        different module is not something Elixir can resolve -- the call would
+        raise at runtime. It passed because the analyzer bound qualified calls
+        by BARE NAME whenever any global symbol key merely CONTAINED the text
+        ``"Greeter."``, which is the same mechanism that bound
+        ``Logger.error(...)`` to an ``error/1`` inside a generator template on
+        phoenix-framework. The scenario the docstring always described -- an
+        alias -- is the one now written, and it resolves exactly.
         """
         from hypergumbo_lang_common.elixir import analyze_elixir
 
@@ -557,9 +567,11 @@ defmodule App.Helpers.Greeter do
 end
 """)
 
-        # Call using only the short module name (no alias declaration)
+        # Call through the alias, which is how Elixir reaches a nested module.
         (tmp_path / "caller.ex").write_text("""
 defmodule App.Main do
+  alias App.Helpers.Greeter
+
   def run() do
     Greeter.greet("world")
   end
@@ -582,8 +594,8 @@ end
             f"Expected 1 resolver-fallback edge, got {len(resolver_edges)}. "
             f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
         )
-        # Confidence = 0.75 * resolver confidence (suffix match ~0.85)
-        assert 0.60 <= resolver_edges[0].confidence <= 0.75
+        # The alias branch's own confidence, not the retired bare-name path's.
+        assert resolver_edges[0].confidence == 0.85
 
     def test_dot_call_outside_function_ignored(self, tmp_path: Path) -> None:
         """Module-qualified call at module level (not inside def) is ignored."""

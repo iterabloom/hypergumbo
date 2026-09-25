@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass, field
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
-from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 
 PASS_ID = make_pass_id("dependency-linker")
 
@@ -226,7 +226,7 @@ def link_dependencies(
             origin=PASS_ID,
             origin_run_id=run.execution_id,
             evidence_type="import_to_manifest",
-            derived_from=[edge.src, dep_sym.id],
+            derived_from=[edge.src, dep_sym.id, edge.id],
             meta={"disambiguation_fallback": True} if ambiguous else None,
         )
         edges.append(link_edge)
@@ -280,6 +280,7 @@ DEPENDENCY_REQUIREMENTS = [
     # provides partial value; together they produce dep edges. Single OR-clause
     # spanning every language whose imports/manifests this linker consumes.
     depends_on=[["python", "javascript", "ruby", "java", "go", "rust", "csharp", "kotlin", "scala", "elixir", "php", "swift", "dart"]],
+    activation=always_on_unreviewed(),
 )
 def dependency_linker(ctx: LinkerContext) -> LinkerResult:
     """Dependency linker for registry-based dispatch.

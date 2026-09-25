@@ -1,0 +1,43 @@
+- op: create  # e4e5
+  at: '2026-09-25T18:27:51Z'  # e4e5
+  by: agent  # e4e5
+  actor: jgstern_agent  # e4e5
+  clock: 1  # e4e5
+  nonce: e4e5  # e4e5
+  data:  # e4e5
+    kind: invariant  # e4e5
+    title: "verify-claims' TAINT arm ignores the ADR-0049 deferred-crossing shadow: a net_listen site qualifies the net_recv boundary verdict but not an untrusted_input taint verdict in the same run (bare confirmed over a Go server writing a request-chosen path)"  # e4e5
+    status: violated  # e4e5
+    priority: 2  # e4e5
+    parent:  # e4e5
+    tags:  # e4e5
+    - verify_claims  # e4e5
+    - taint  # e4e5
+    - false_confirm  # e4e5
+    isbefore: []  # e4e5
+    duplicate_of: []  # e4e5
+    not_duplicate_of: []  # e4e5
+    pr_ref:  # e4e5
+    description: "FOUND 2026-09-25 while ruling WI-vogos (ADR-0049 JavaScript retag). Record and fixtures: ~/hypergumbo_lab_notebook/vogos_09252026/ (fx/, out/, run_arm.sh).\n\nTHE ASYMMETRY, IN ONE INVOCATION ON SHIPPED dev (7821064366). Fixture fx/go_clean2/main.go:\n\n    type app struct{}\n    func (app) ServeHTTP(w http.ResponseWriter, r *http.Request) {\n        os.WriteFile(\"/var/data/\"+r.URL.Path, []byte(\"x\"), 0600)\n    }\n    func main() { http.ListenAndServe(\":8080\", app{}) }\n\nClaims file with untrusted-input-no-host-fs (generic-taint-claims.yaml) plus a `net_recv must_not_exist` boundary claim:\n\n    untrusted-input-no-host-fs   confirmed               caveats []\n    no-net-recv                  confirmed_with_caveats  caveats [deferred_crossing: net/http.ListenAndServe]\n    rc 3\n\nThe boundary verdict names the listen site as data it cannot see arrive. The taint verdict certifies a bare `confirmed`, with no caveat, that no network input reaches the filesystem, over a handler that writes to a request-chosen path. This is INV-nuhun's defect (the two arms contradict each other about one call in one invocation), for ADR-0049 ruling 2 clause 3's disclosure rather than INV-fibis's.\n\nJAVASCRIPT MAKES IT LOAD-BEARING. In an arm with the JS launch rows moved to net_listen (~/hg_arms/vogos_B), fixture fx/node_http_clean:\n\n    function handle(req, res) { fs.writeFileSync('/var/data/' + req.url, 'x'); }\n    http.createServer(handle);\n\ngoes from `violated` to a bare `confirmed`, rc 0. That is the false all-clear ADR-0049 ruling 2 clause 3 says makes a disclosure boundary \"worse than the status quo it replaces\".\n\nROOT CAUSE (code, not inference). `deferred_crossing_sites` has exactly one consumer: `_verify_claim_uncredited` (verify_claims.py:4514, the BOUNDARY arm), which reads it keyed by `claim.constraint_boundary`. `_verify_taint_claim_uncredited` (:5084) never reads it. WI-nosah scoped the shadow as \"a listen site must not reach an fs_write claim\", which is right for boundary claims. But no reading was ever given for a TAINT claim whose SOURCE label derives from the shadowed boundary. AUTO_SOURCE_LABEL_MAP maps net_recv (and db_read, db_compose's shadow) to untrusted_input, so a net_listen site is exactly \"data of this label arrives where the call does not name\".\n\nA CITED CLAIM THIS CONTRADICTS. Measurement 0010 (§ the 0006 arm) and ADR-0049 §Implementation state attribute gocryptfs's untrusted-input-no-host-fs moving from `violated` to `inconclusive` to \"the disclosure boundary's shadow doing exactly what clause 3 specifies\". The taint verdict function does not read the shadow, and the shadow yields `confirmed_with_caveats`, not `inconclusive`. So that attribution cannot be right; the likely cause is the coverage gate (an uncatalogued module call). I have NOT re-run gocryptfs (it is not on disk).\n\nFIX SHAPE, following INV-nuhun's precedent (the scope rides on the taint arm's own key). On a CLEAN taint verdict, attach the deferred_crossing caveat when coverage.deferred_crossing_sites holds any boundary B with AUTO_SOURCE_LABEL_MAP[B] == the claim's source label. Build it through `_deferred_crossing_caveat`, never a second spelling. It qualifies and does not withhold, like the boundary arm.\n\nControls:\n- go_clean2 on dev: untrusted-input-no-host-fs moves bare `confirmed` -> `confirmed_with_caveats[deferred_crossing]`.\n- The scope does NOT widen: a host-secret-* claim over the same program stays uncaveated, since host_secret does not derive from net_recv.\n- The db_compose -> db_read twin gets the same treatment in the same change."  # e4e5
+    fields:  # e4e5
+      statement: "A deferred-crossing call site that shadows boundary B must qualify EVERY clean verdict B would have fed: the boundary verdict on B AND every taint verdict whose source label AUTO_SOURCE_LABEL_MAP derives from B (INV-nuhun's both-arms rule, applied to ADR-0049 ruling 2 clause 3)."  # e4e5
+      root_cause: "deferred_crossing_sites has one consumer, _verify_claim_uncredited (verify_claims.py:4514, boundary arm, keyed by claim.constraint_boundary); _verify_taint_claim_uncredited (:5084) never reads it. WI-nosah scoped the shadow for boundary claims only and gave no reading for a taint claim whose SOURCE label derives from the shadowed boundary."  # e4e5
+- op: update  # b91e
+  at: '2026-09-25T18:27:59Z'  # b91e
+  by: agent  # b91e
+  actor: jgstern_agent  # b91e
+  clock: 2  # b91e
+  nonce: b91e  # b91e
+  set:  # b91e
+    status: violated  # b91e
+  add:  # b91e
+    isbefore: [WI-vogos-nozav-jodas-rabor-jipis-vilab-namor-limok]  # b91e
+- op: update  # 89b1
+  at: '2026-09-25T18:37:26Z'  # 89b1
+  by: agent  # 89b1
+  actor: jgstern_agent  # 89b1
+  clock: 3  # 89b1
+  nonce: 89b1  # 89b1
+  set: {}  # 89b1
+  add:  # 89b1
+    tags: [post_release_focus]  # 89b1

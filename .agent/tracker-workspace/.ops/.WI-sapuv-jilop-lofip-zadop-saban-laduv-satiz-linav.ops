@@ -1,0 +1,22 @@
+- op: create  # 59d0
+  at: '2026-09-06T13:21:44Z'  # 59d0
+  by: agent  # 59d0
+  actor: jgstern_agent  # 59d0
+  clock: 1  # 59d0
+  nonce: 59d0  # 59d0
+  data:  # 59d0
+    kind: work_item  # 59d0
+    title: "javascript: node:http survives into the module slot and os reaches the uncatalogued-module list although both have rows -- a clean express/winston verdict withholds one rung longer than necessary"  # 59d0
+    status: todo_hard  # 59d0
+    priority: 4  # 59d0
+    parent:  # 59d0
+    tags:  # 59d0
+    - catalogue  # 59d0
+    - javascript  # 59d0
+    - verify_claims  # 59d0
+    isbefore: []  # 59d0
+    duplicate_of: []  # 59d0
+    not_duplicate_of: []  # 59d0
+    pr_ref:  # 59d0
+    description: "Observed 2026-09-06 in WI-komun's A/B read-back (jsleg_completeness_09062026/compare_komun.out). Two module names in the uncatalogued-module reason of clean javascript verdicts belong to modules that HAVE rows:\n  express  NO-FSWRITE / NO-SUBPROC: \"... could not classify (assert, body-parser, document, mime-types, node:http (+4 more))\"   -- `http` has rows (net_send request/get, net_recv createServer); `node:http` is the same module under the Node 16+ canonical import spelling.\n  winston  NO-NET / NO-SUBPROC:     \"... (assert, hock, logform, os, rimraf (+4 more))\"                                   -- `os` has 12 host_info_read rows.\njs_ts.py strips the `node:` prefix for import resolution (its docstring at ~391-404: \"node:fs -> fs\"), so some emission path still carries `node:http` into the module slot -- find it by fixture (`import http from 'node:http'; http.get(u)` vs `const http = require('node:http')`). `os` reaching the list means a call into os with a name the catalogue does not row (os.EOL? os.constants? a pure helper) -- the uncatalogued-module rung counts the MODULE, and a module with rows but an unrowed name is exactly what a module_completeness grant answers (WI-nolut granted 10 modules; os was not audited). Two small pieces: (1) the `node:` slot leak, a reach defect; (2) an `os` audit + grant, the js leg's next module.\n\nBoth keep a clean express/winston verdict withheld one rung longer than necessary; neither is a false all-clear. Phase 5 residue shape (a clean verdict reachable), small."  # 59d0
+    fields: {}  # 59d0

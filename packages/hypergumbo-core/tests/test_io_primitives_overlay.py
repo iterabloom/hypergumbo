@@ -192,7 +192,7 @@ class TestOverlayLoading:
         Measured on hypergumbo's own tree: wiring its own python overlay into
         its own claims file failed with "declares language 'python' but was
         loaded for 'javascript'". The two overlays already shipped under
-        docs/io-primitives-overlays/ (python + go) could never be declared
+        io_primitives_overlays/ (python + go) could never be declared
         together either, which is the obvious thing a polyglot repo does.
 
         An overlay names its language; applying it only to that language is
@@ -238,8 +238,13 @@ class TestPrecedence:
         self, tmp_path: Path,
     ) -> None:
         overlay = _write(tmp_path, "o.yaml", REQUESTS_OVERLAY)
-        base = load_catalog("python")
-        with_overlay = load_catalog("python", overlay_paths=[overlay])
+        # ``include_defaults=False`` is what "the BUILT-IN catalogue" now
+        # spells: ADR-0047 ships community rows for requests BY DEFAULT, and
+        # this test is about the stdlib-scoped file underneath them.
+        base = load_catalog("python", include_defaults=False)
+        with_overlay = load_catalog(
+            "python", overlay_paths=[overlay], include_defaults=False,
+        )
 
         assert not any(p.module == "requests" for p in base.primitives), (
             "the BUILT-IN catalogue must stay stdlib-scoped (ADR-0016); if "
@@ -256,7 +261,7 @@ class TestPrecedence:
         built-in would silently change every later caller in the process."""
         overlay = _write(tmp_path, "o.yaml", REQUESTS_OVERLAY)
         load_catalog("python", overlay_paths=[overlay])
-        after = load_catalog("python")
+        after = load_catalog("python", include_defaults=False)
         assert not any(p.module == "requests" for p in after.primitives)
 
     def test_a_later_overlay_overrides_an_earlier_one(
@@ -485,10 +490,18 @@ class TestTheMotivatingDefect:
     """Behavioural: the overlay actually makes the invisible egress visible."""
 
     def test_requests_post_is_undetectable_without_an_overlay(self) -> None:
-        """The premise, pinned. If this ever fails, someone added requests to
-        the built-in catalogue and ADR-0016's scope decision needs revisiting
-        rather than this test needing updating."""
-        cat = load_catalog("python")
+        """The premise, pinned — and REVISITED once, deliberately.
+
+        This test used to read ``load_catalog("python")`` and carried the
+        instruction that a failure meant "ADR-0016's scope decision needs
+        revisiting rather than this test needing updating". That revisiting
+        happened: ADR-0047 is the owner-accepted amendment, and it keeps the
+        shipped catalogue stdlib-only while allowing unvouched community rows
+        to ship beside it. So the premise still holds exactly where the
+        tripwire aimed it — at the catalogue file — and the argument records
+        that the change was authorised, not worked around.
+        """
+        cat = load_catalog("python", include_defaults=False)
         assert not any(p.module.startswith("requests") for p in cat.primitives)
 
     def test_the_overlay_supplies_the_net_send_primitive(
@@ -514,8 +527,9 @@ class TestTheShippedExampleOverlay:
 
     def test_the_example_overlay_loads_and_is_non_trivial(self) -> None:
         example = (
-            Path(__file__).resolve().parents[3]
-            / "docs" / "io-primitives-overlays" / "python-http-clients.yaml"
+            Path(__file__).resolve().parents[1]
+            / "src" / "hypergumbo_core" / "io_primitives_overlays"
+            / "python-http-clients.yaml"
         )
         assert example.exists(), f"example overlay missing at {example}"
         cat = load_overlay_catalog(example)
@@ -554,7 +568,17 @@ class TestTheCliContract:
         return repo
 
     @staticmethod
-    def _net_send(repo: Path, overlay: "Path | None") -> int:
+    def _net_send(
+        repo: Path, overlay: "Path | None", *, defaults: bool = False,
+    ) -> int:
+        """``defaults=False`` by default, and that is deliberate.
+
+        ADR-0047 ships community rows for ``requests`` and loads them without
+        a flag, so the BEFORE arm of this test would otherwise already see the
+        egress and the contrast would read as a passing zero that proves
+        nothing. Turning defaults off restores the comparison the test is
+        for — and exercises ``--no-default-overlays`` while doing it.
+        """
         import argparse
         import io as _io
         import json
@@ -568,6 +592,7 @@ class TestTheCliContract:
             exclude_tests=True, include_tests=False,
             show_external_potential=False,
             io_primitives=[str(overlay)] if overlay else None,
+            no_default_overlays=not defaults,
         )
         buf = _io.StringIO()
         with redirect_stdout(buf):
@@ -586,8 +611,9 @@ class TestTheCliContract:
         cannot silently rot into a passing zero."""
         repo = self._fixture(tmp_path)
         example = (
-            Path(__file__).resolve().parents[3]
-            / "docs" / "io-primitives-overlays" / "python-http-clients.yaml"
+            Path(__file__).resolve().parents[1]
+            / "src" / "hypergumbo_core" / "io_primitives_overlays"
+            / "python-http-clients.yaml"
         )
         assert self._net_send(repo, None) == 0, (
             "requests.post produced a net_send chain WITHOUT an overlay — "
@@ -643,16 +669,29 @@ class TestOneDeclarationFeedsBothArms:
         )
         return list(cat.sinks_for_language("python"))
 
+    # ADR-0047 ships `requests` rows BY DEFAULT, so an overlay declaring
+    # requests no longer ADDS anything and a delta measured with it would be
+    # vacuously empty. These two tests are about the delta a USER overlay
+    # makes, so they use a client hypergumbo does not ship.
+    UNSHIPPED_OVERLAY = """\
+language: python
+status: overlay
+net_send:
+  - module: niquests
+    functions: [get, post]
+    notes: A third-party HTTP client hypergumbo ships no rows for.
+"""
+
     def test_an_overlay_primitive_becomes_a_taint_sink(
         self, tmp_path: Path,
     ) -> None:
-        overlay = _write(tmp_path, "o.yaml", REQUESTS_OVERLAY)
+        overlay = _write(tmp_path, "o.yaml", self.UNSHIPPED_OVERLAY)
         before = {(s.module, s.name) for s in self._python_sinks(None)}
         after = self._python_sinks(overlay)
         assert before, "no built-in python sinks — assertion vacuous"
-        assert ("requests", "post") not in before
-        hit = [s for s in after if s.module == "requests" and s.name == "post"]
-        assert len(hit) == 1, f"expected one requests.post sink, got {hit}"
+        assert ("niquests", "post") not in before
+        hit = [s for s in after if s.module == "niquests" and s.name == "post"]
+        assert len(hit) == 1, f"expected one niquests.post sink, got {hit}"
         assert hit[0].zone == "network"
         assert hit[0].trust_level == "untrusted"
 
@@ -660,7 +699,7 @@ class TestOneDeclarationFeedsBothArms:
         """DIRECTION. Adding sinks can only ADD findings, never delete one —
         the safe direction. A sink that disappeared would silently drop a
         violation, so non-destruction is asserted rather than assumed."""
-        overlay = _write(tmp_path, "o.yaml", REQUESTS_OVERLAY)
+        overlay = _write(tmp_path, "o.yaml", self.UNSHIPPED_OVERLAY)
         before = {(s.module, s.name, s.kind) for s in self._python_sinks(None)}
         after = {(s.module, s.name, s.kind) for s in self._python_sinks(overlay)}
         assert before <= after, (

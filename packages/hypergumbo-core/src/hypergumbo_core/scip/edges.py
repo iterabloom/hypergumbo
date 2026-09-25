@@ -13,16 +13,18 @@ Scope pinned in Slice C:
   refs (non-``Definition`` ``Occurrence`` entries, which conceptually
   represent call / read / write sites) are **not** turned into edges by
   this shim. Converting a ref occurrence to a call-graph edge requires
-  resolving the *enclosing* symbol that contains the occurrence span,
-  which SCIP does not encode directly on the ``Occurrence`` (the
-  ``enclosing_range`` field is rarely populated in practice). That
-  span-based resolution against the Symbol list produced by Slice B is
-  owned by ``calls.py`` (Slice D, WI-kopav, done); it walks each
-  Document's ``Occurrence`` list and attributes each non-Definition
-  occurrence to its enclosing Definition by span containment. Keeping
-  Slice C narrow means the shim is a
-  pure, deterministic projection of explicit SCIP relationships, which
-  is easy to test and review.
+  resolving the *enclosing* symbol that contains the occurrence span.
+  That resolution is owned by ``calls.py`` (Slice D, WI-kopav, done);
+  it walks each Document's ``Occurrence`` list and attributes each
+  non-Definition occurrence to the innermost Definition whose extent
+  contains it — the Definition's ``enclosing_range`` when the emitter
+  populated it (rust-analyzer does, on every Definition), else its
+  ``range``. An earlier version of this paragraph said
+  ``enclosing_range`` "is rarely populated in practice"; that was
+  false for rust-analyzer and cost every SCIP edge its caller
+  (INV-mofiv). Keeping Slice C narrow means this shim is a pure,
+  deterministic projection of explicit SCIP relationships, which is
+  easy to test and review.
 
 * Per WI-zakub §1, rust-analyzer leaves ``relationships`` empty; its
   trait-dispatch information lives inside the SCIP symbol string's
@@ -50,6 +52,11 @@ Multiple flags on the same Relationship entry fan out to multiple
 Edges. A Relationship with no flag set produces nothing (legal but
 uninformative per the SCIP spec). Self-relationships (``src == dst``)
 are dropped because downstream rank / slice code treats them as noise.
+A Relationship touching a local symbol (``local <id>``) at either end
+produces nothing (WI-jikok / INV-kukiz): :mod:`.index` does not mint
+locals, so the edge would name an endpoint no Symbol carries. The same
+predicate guards :mod:`.calls`; rust-analyzer leaves ``relationships``
+empty, so this arm is a contract for the other SCIP emitters.
 
 Symbol resolution:
 
@@ -68,6 +75,7 @@ from typing import Callable, List, Optional
 
 from ..ir import Edge
 from ._generated import scip_pb2
+from .descriptor import is_local_symbol
 
 
 _RELATION_EDGE_TYPES: "list[tuple[str, str]]" = [
@@ -107,12 +115,14 @@ def scip_index_to_edges(
     for doc in index.documents:
         for sym_info in doc.symbols:
             src_raw = sym_info.symbol
+            if is_local_symbol(src_raw):
+                continue
             src_resolved = _resolve(src_raw, resolve_symbol)
             if src_resolved is None:
                 continue
             for rel in sym_info.relationships:
                 dst_raw = rel.symbol
-                if dst_raw == src_raw:
+                if dst_raw == src_raw or is_local_symbol(dst_raw):
                     continue
                 dst_resolved = _resolve(dst_raw, resolve_symbol)
                 if dst_resolved is None:

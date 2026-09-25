@@ -35,5 +35,6 @@ COV_PATHS_ALL=(
     "--cov=packages/hypergumbo-lang-extended1/src"
     "--cov=packages/hypergumbo-lang-mainstream/src"
     "--cov=packages/hypergumbo-lang-rust-analyzer/src"
+    "--cov=packages/hypergumbo-lang-scip-python/src"
     "--cov=packages/hypergumbo-tracker/src"
 )

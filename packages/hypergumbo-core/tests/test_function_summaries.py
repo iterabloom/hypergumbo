@@ -344,3 +344,67 @@ class TestInferSummary:
         ]
         summary = infer_summary("test_func", ["a", "b"], ddg, cfg)
         assert summary.param_to_return == {0: True, 1: True}
+
+
+class TestMeasuredBuiltinCallees:
+    """The two builtins the §3a walk was measured consulting at a real escape site.
+
+    ENUMERATION-DERIVED, per ``python_stdlib.yaml``'s own scope rule. These two
+    are not a sample of "common builtins" — they are the entire ``4a`` bucket
+    (key present, no summary) of ``measure-call-escape-cause.py`` run against
+    hypergumbo-core at dev c53e6de270, read back against source:
+
+        cli.py:11933   ``if hasattr(args, "_path_flag"):``
+        cli.py:4086    ``if float(e["last_used"]) != ...``
+
+    THE TWO VERDICTS DIFFER, AND THAT IS THE POINT. A frequency-ranked list of
+    builtins would have stamped both the same way and been half wrong in the
+    DELETING direction — since PR #214 a wrong terminating summary licenses a
+    ``False``, earns ``sanitized`` and drops a flow.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self) -> None:
+        clear_summary_cache()
+
+    def test_hasattr_is_declared_terminating(self) -> None:
+        s = load_function_summaries()["builtins.hasattr"]
+        assert s.param_to_return == {}
+        assert s.side_effect is True
+
+    def test_hasattr_terminates_the_walk(self) -> None:
+        from hypergumbo_core.taint import _summary_terminates
+        s = load_function_summaries()["builtins.hasattr"]
+        assert _summary_terminates(s) is True
+
+    def test_float_is_declared_propagating(self) -> None:
+        s = load_function_summaries()["builtins.float"]
+        assert s.param_to_return == {0: True}
+        assert s.side_effect is False
+
+    def test_float_does_not_terminate_the_walk(self) -> None:
+        from hypergumbo_core.taint import _summary_terminates
+        s = load_function_summaries()["builtins.float"]
+        assert _summary_terminates(s) is False
+
+    def test_the_two_measured_verdicts_disagree(self) -> None:
+        """Pinned executably so a later bulk edit cannot quietly align them."""
+        from hypergumbo_core.taint import _summary_terminates
+        summaries = load_function_summaries()
+        assert _summary_terminates(summaries["builtins.hasattr"]) is not (
+            _summary_terminates(summaries["builtins.float"])
+        )
+
+    def test_a_declared_return_from_self_still_does_not_terminate(self) -> None:
+        """``side_effect`` is the POSITIVE marker, not ``param_to_return == {}``.
+
+        ``builtins.list.pop`` returns the removed element — a flow no field on
+        ``FunctionSummary`` can express — so its empty ``param_to_return`` must
+        not be read as "nothing comes out". Pinned here beside ``hasattr``
+        because the two entries look identical in that one field and mean
+        opposite things.
+        """
+        from hypergumbo_core.taint import _summary_terminates
+        s = load_function_summaries()["builtins.list.pop"]
+        assert s.param_to_return == {}
+        assert _summary_terminates(s) is False

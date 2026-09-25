@@ -1,0 +1,21 @@
+- op: create  # 7680
+  at: '2026-09-06T15:43:21Z'  # 7680
+  by: agent  # 7680
+  actor: jgstern_agent  # 7680
+  clock: 1  # 7680
+  nonce: '7680'  # 7680
+  data:  # 7680
+    kind: work_item  # 7680
+    title: "Five more analyzers emit dangling dsts with too few id slots (json_config defines_target, make depends_on, jsonnet imports + file ids, astro and svelte imports), the same <unknown>-slot fallback INV-dulah's lang-slot limb names"  # 7680
+    status: todo_hard  # 7680
+    priority: 3  # 7680
+    parent:  # 7680
+    tags:  # 7680
+    - analysis_quality  # 7680
+    - axis  # 7680
+    isbefore: []  # 7680
+    duplicate_of: []  # 7680
+    not_duplicate_of: []  # 7680
+    pr_ref:  # 7680
+    description: "FOUND 2026-09-06 by the fleet count run after PR #808 (INV-dulah lang-slot limb: objc/css/solidity import dsts) was cut. Same invariant, same fallback, five more producers -- filed as one item because the fix per site is one line and the gate already exists.\n\nTHE MECHANISM, once. finalize's dangling-dst materialisation (ir.py, the 4-part fallback) needs a 5-slot id; anything shorter is rendered with `<unknown>` in the path slot and whatever the first segment was in the LANG slot, and spec_validator flags each such node non_canonical_language_prefix / wrong_field_count. The objc/css/solidity fix covered the BARE-PATH shape; these five are that shape plus two \"id built with too few slots\" shapes, which the `dst=<identifier>` sweep could not see.\n\nTHE FIVE, with the count of edges into `<unknown>`-slot nodes over 28 surveys (dulah_objc_09062026/fleet_langslot.py; taint cohort 9 + js cohort 11 + python cohort 5 + Mantle + fixtures), and the site:\n  json_config  defines_target  156   json_config.py:344 and :399 -- `dst=target` where target is the package.json `bin`/`main` path (`dist/cjs/index.js`); apollo-server alone contributes the 156. Shape: bare path.\n  make         depends_on      118   make.py:242 -- `dst_id = f\"make:external:{prereq}:target\"`, FOUR slots (no span), so `test` lands as `make:<unknown>:0-0:test:external_symbol`. Shape: too few slots.\n  jsonnet      imports           5   jsonnet.py:297-298 -- `dst=f\"jsonnet:import:{import_path}\"` (3 slots); AND the file SRC at :274 / :297 is `f\"jsonnet:{rel_path}:file\"` (3 slots), so the jsonnet file node itself is malformed (`jsonnet:<unknown>:0-0:doc/alertmanager-mixin/alerts.jsonnet:`); :271's unresolved-call dst is 5-slot and fine. Shape: too few slots, on BOTH endpoints.\n  astro        imports           4   astro.py:314 -- `edge_dst = import_path` (bare) while :317 builds a proper component id. Shape: bare path.\n  svelte       imports           1   svelte.py:237 -- `edge_dst = import_path` (bare) while :240 builds a proper component id. Shape: bare path.\n\nCONVENTIONS TO MIRROR (settled by the parent PR): an import of a MODULE/FILE -> `<lang>:<path>:0-0:module:module` (js/ts, now css/solidity); a header -> `<lang>:<path>:0-0:header:header` (cpp, now objc); make's external prerequisite is a file target -> `make:<prereq>:0-0:<prereq>:target` or route it through make_symbol_id; jsonnet's file id -> make_file_id(\"jsonnet\", rel_path).\n\nGATE: add each language to CASES in packages/hypergumbo-core/tests/test_import_dst_ids_are_canonical.py (run_survey + validator, with the non-vacuity guard) -- jsonnet and make need include_docs or their family flag, check before asserting; the css case is blocked separately (its edges never reach the survey, own item). CLOSE CONDITION for INV-dulah's lang-slot limb: this item DONE and the fleet count reading 0 on the same 28 surveys re-run."  # 7680
+    fields: {}  # 7680

@@ -19,6 +19,8 @@ exercise the pure helper directly so they don't depend on subprocess/stdout
 scraping.
 """
 
+# covers: scripts/bakeoff-broad, scripts/bakeoff-deep
+
 import importlib.machinery
 import importlib.util
 import json

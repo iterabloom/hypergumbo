@@ -18,6 +18,13 @@
 #   1. Bumps version via bump-version (main + optional tracker)
 #   2. Updates CHANGELOG.md (Unreleased → new version)
 #   3. Optionally updates tracker CHANGELOG.md
+#   3b. Promotes docs/RELEASE-NOTES-<MAJOR>.X.md (Unreleased → new version),
+#       creating the file for a new major line. This step exists because it
+#       did NOT before: 6.1.0 and 7.0.0 both shipped with their notes stranded
+#       under "## Unreleased", and 8.0.0 shipped with no notes file at all,
+#       while README kept pointing at the 6.x file. The changelog was promoted
+#       every time because THIS script did it; the release notes were not
+#       because nothing did.
 #   4. Commits the changes
 #   5. Runs release-check validations
 #   6. Creates PR from dev → main
@@ -256,6 +263,38 @@ if [[ -n "$TRACKER_VERSION" && -f "$TRACKER_CHANGELOG" ]]; then
     fi
 fi
 
+# User-facing release notes, one file per major version line.
+#
+# Promotion is only half the job: when VERSION opens a NEW major line the file
+# does not exist yet, and a release that silently skips it is exactly how the
+# 6.x file ended up being the newest one on disk three major versions later.
+# So a missing file is a hard stop, not a warning — the notes are a writing
+# task a human or agent must do, and the script refuses to let the release
+# proceed pretending otherwise.
+MAJOR="${VERSION%%.*}"
+RELEASE_NOTES="docs/RELEASE-NOTES-${MAJOR}.X.md"
+if [[ ! -f "$RELEASE_NOTES" ]]; then
+    echo -e "${RED}✗${NC} $RELEASE_NOTES does not exist."
+    echo "  v$VERSION opens the ${MAJOR}.x line, which needs its own release-notes file."
+    echo "  Copy the newest docs/RELEASE-NOTES-*.X.md as a template, keep the TL;DR"
+    echo "  section at the top, write the notes, then re-run prepare-release."
+    exit 1
+elif grep -q "^## Unreleased$" "$RELEASE_NOTES"; then
+    if ! $DRY_RUN; then
+        sed -i "s/^## Unreleased$/## $VERSION — $TODAY/" "$RELEASE_NOTES"
+        echo -e "${GREEN}✓${NC} Promoted $RELEASE_NOTES: Unreleased → $VERSION — $TODAY"
+    else
+        echo -e "${BLUE}[dry-run]${NC} Would promote $RELEASE_NOTES: Unreleased → $VERSION — $TODAY"
+    fi
+elif grep -q "^## $VERSION " "$RELEASE_NOTES"; then
+    echo -e "${GREEN}✓${NC} $RELEASE_NOTES already has a $VERSION section"
+else
+    echo -e "${RED}✗${NC} $RELEASE_NOTES has no '## Unreleased' section and no '## $VERSION' section."
+    echo "  Write the user-facing notes for v$VERSION under a '## Unreleased' heading,"
+    echo "  then re-run prepare-release."
+    exit 1
+fi
+
 # ─────────────────────────────────────────────────────────────
 echo ""
 echo "━━━ Step 4: Commit changes ━━━"
@@ -313,7 +352,7 @@ echo "━━━ Step 6: Push release commit to dev ━━━"
 if ! $DRY_RUN; then
     # Feature branch was created in Step 4.  auto-pr pushes, polls CI,
     # and merges to dev, then switches back to dev and cleans up the branch.
-    if ./scripts/auto-pr; then
+    if ./scripts/auto-pr --foreground; then
         echo -e "${GREEN}✓${NC} Release commit merged to dev via auto-pr"
     else
         echo -e "${RED}✗${NC} Failed to push release commit to dev"
@@ -387,6 +426,11 @@ else
     # auth, refspec rejection) propagates as a non-zero exit so this
     # script aborts loudly instead of falling through to a misleading
     # "(check Codeberg for PR)" success message.
+    # forge-egress: no-agent-text -- title and description are built from a
+    # version string and a fixed reviewer checklist; no authored prose. The
+    # marker sits ABOVE the command on purpose: a comment between continuation
+    # lines TERMINATES the command, so placing it beside `-o title=` would have
+    # pushed with no title and no description at all.
     if ! PR_OUTPUT=$(git push origin "dev:refs/for/main/release-$VERSION" \
         -o title="$PR_TITLE" \
         -o description="$PR_DESCRIPTION Reviewer checklist: version bumped correctly, CHANGELOG updated, CI passes." 2>&1); then
@@ -436,6 +480,7 @@ echo "  - hypergumbo-lang-mainstream $VERSION"
 echo "  - hypergumbo-lang-common $VERSION"
 echo "  - hypergumbo-lang-extended1 $VERSION"
 echo "  - hypergumbo-lang-rust-analyzer $VERSION"
+echo "  - hypergumbo-lang-scip-python $VERSION"
 echo "  - hypergumbo (meta-package) $VERSION"
 
 if [[ -n "$TRACKER_VERSION" ]]; then

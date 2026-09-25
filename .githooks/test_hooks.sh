@@ -1,5 +1,22 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
+
+# WI-gokuv: the hooks test the recovery-suppression LOCK, not the file. A helper
+# that HOLDS the lock for the duration of one command, the way auto-pr and
+# do_sync hold it for a run. `flock -x <fd>` in a subshell that keeps the fd open
+# is the whole mechanism; when the subshell exits the OS drops it, which is the
+# property the conversion exists for.
+with_recover_lock_held() {
+  local marker="$1"; shift
+  (
+    exec 9>"$marker"
+    flock -x 9 || exit 1
+    printf 'pid=%s started=%s holder=test\n' "$$" "$(date +%s)" >"$marker"
+    "$@"
+  )
+}
+
+# SPDX-License-Identifier: AGPL-3.0-or-later
 set -u
 
 # ==============================================================================
@@ -55,6 +72,11 @@ BAD_EMAIL="${FERRET_SLUG}@racialcapitalism.isbad"
 COMMIT_MSG_HOOK="$HOOKS_DIR/commit-msg"
 cp "$REAL_HOOK" "$COMMIT_MSG_HOOK"
 chmod +x "$COMMIT_MSG_HOOK"
+
+# The hook sources brand-scrub.sh from beside itself, so the sandbox needs it
+# too. The sandbox is deliberately bare -- no repo, no git dir -- which is why
+# the library resolves by $hook_dir rather than by repo root.
+cp "$SCRIPT_DIR/brand-scrub.sh" "$HOOKS_DIR/brand-scrub.sh"
 
 echo "📋 Copied real hook to sandbox"
 
@@ -230,6 +252,142 @@ Signed-off-by: Developer <dev@example.com>"
 
 run_test "Scenario 7: unstable (Prefix Preserved)" "$INPUT_7" "$EXPECTED_7"
 
+# ------------------------------------------------------------------------------
+# Scenarios 8-12: a brand in a trailer KEY, and the body scan window.
+#
+# The key used to pass through untouched -- only the VALUE was tested, and
+# "${key}${ws}${val}" put the key back verbatim. The scrub removed the half that
+# IMPLIES a vendor (the hostname) and kept the half that NAMES one.
+# ------------------------------------------------------------------------------
+
+INPUT_8="fix: a thing
+
+Body line.
+
+Claude-Session: https://claude.ai/code/session_01ABC
+Signed-off-by: Jane Doe <jane@example.com>"
+EXPECTED_8="fix: a thing
+
+Body line.
+
+Racial-Capitalism-Is-Bad: $FERRET_PHRASE
+Signed-off-by: Jane Doe <jane@example.com>"
+run_test "Scenario 8: branded trailer KEY is replaced" "$INPUT_8" "$EXPECTED_8"
+
+# Pins a deliberate policy choice, not an incidental behaviour: a vendor-named
+# key means the WHOLE trailer is vendor provenance, so the value goes too even
+# when it carries no brand of its own. Without this, a scrubbed key over an
+# intact value would still publish the session id the key pointed at.
+INPUT_9="fix: a thing
+
+Body line.
+
+Claude-Session: 12345-plain-identifier
+Signed-off-by: Jane Doe <jane@example.com>"
+EXPECTED_9="fix: a thing
+
+Body line.
+
+Racial-Capitalism-Is-Bad: $FERRET_PHRASE
+Signed-off-by: Jane Doe <jane@example.com>"
+run_test "Scenario 9: branded KEY forces a CLEAN value to be replaced too" "$INPUT_9" "$EXPECTED_9"
+
+# git-semantic keys are never renamed: interpret-trailers, %(trailers:key=...)
+# and DCO validation all key off the exact token.
+INPUT_10="fix: a thing
+
+Body line.
+
+Signed-off-by: Jane Doe <jane@example.com>"
+EXPECTED_10="fix: a thing
+
+Body line.
+
+Signed-off-by: Jane Doe <jane@example.com>"
+run_test "Scenario 10: Signed-off-by survives verbatim" "$INPUT_10" "$EXPECTED_10"
+
+# The allowlist is matched case-insensitively via nocasematch, set ~100 lines
+# earlier in the hook. This history carries BOTH spellings of the key, so the
+# capitalised one is the discriminating case: with nocasematch off it would fall
+# through to the wildcard arm and be renamed.
+INPUT_11="fix: a thing
+
+Body line.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Signed-off-by: Jane Doe <jane@example.com>"
+EXPECTED_11="fix: a thing
+
+Body line.
+
+Co-Authored-By: $FERRET_PHRASE <$BAD_EMAIL>
+Signed-off-by: Jane Doe <jane@example.com>"
+run_test "Scenario 11: Co-Authored-By key survives, value is scrubbed" "$INPUT_11" "$EXPECTED_11"
+
+# Idempotence. `git commit --amend` re-runs commit-msg over already-scrubbed
+# text, so the rewrite must be a fixed point. The whole design rests on
+# "Racial-Capitalism-Is-Bad" not matching brand_re -- an invariant that spans
+# two files, so a future brand-patterns.txt edit could break it silently.
+echo "--------------------------------------------------------"
+echo "TEST: Scenario 12: rewrite is idempotent under --amend"
+IDEM_FILE="$TEST_DIR/COMMIT_EDITMSG_IDEM"
+printf '%s' "$INPUT_8" > "$IDEM_FILE"
+"$COMMIT_MSG_HOOK" "$IDEM_FILE" 2>/dev/null
+IDEM_PASS1="$(cat "$IDEM_FILE")"
+"$COMMIT_MSG_HOOK" "$IDEM_FILE" 2>/dev/null
+IDEM_PASS2="$(cat "$IDEM_FILE")"
+if [[ "$IDEM_PASS1" == "$IDEM_PASS2" ]]; then
+  echo "✅ PASS"
+  ((PASS_COUNT++))
+else
+  echo "❌ FAIL: second pass changed the message"
+  printf 'pass1:\n%s\npass2:\n%s\n' "$IDEM_PASS1" "$IDEM_PASS2"
+  ((FAIL_COUNT++))
+fi
+
+# The body scan window. A body hit DELETES THE WHOLE LINE with no marker, so a
+# false positive is silent and unrecoverable -- and the pattern list contains
+# ordinary English words. `Stable` stands in here for the real-world case:
+# `falcon` is a web framework this project SUPPORTS (it ships falcon.yaml), so
+# an ordinary commit about the falcon analyzer lost a body line.
+#
+# Vendor self-attribution clusters at the subject and the trailers, both of
+# which are scanned unconditionally by their own passes. The window narrows only
+# the body sweep. Window=1 here so the fixture stays short; the shipped default
+# is 10.
+echo "--------------------------------------------------------"
+echo "TEST: Scenario 13: body scan window spares the middle, scans both ends"
+WIN_FILE="$TEST_DIR/COMMIT_EDITMSG_WIN"
+printf 'fix: a thing\n\nStable at the top.\nordinary prose\nStable in the middle.\nordinary prose\nStable at the bottom.\n\nSigned-off-by: J <j@e.com>\n' > "$WIN_FILE"
+HOOK_BODY_SCAN_WINDOW=2 "$COMMIT_MSG_HOOK" "$WIN_FILE" 2>/dev/null
+WIN_OUT="$(cat "$WIN_FILE")"
+if [[ "$WIN_OUT" == *"Stable in the middle."* ]] \
+   && [[ "$WIN_OUT" != *"Stable at the top."* ]] \
+   && [[ "$WIN_OUT" != *"Stable at the bottom."* ]]; then
+  echo "✅ PASS"
+  ((PASS_COUNT++))
+else
+  echo "❌ FAIL: window did not discriminate"
+  printf '%s\n' "$WIN_OUT"
+  ((FAIL_COUNT++))
+fi
+
+# Non-vacuity floor for the window: with the window wide open the SAME fixture
+# must lose all three lines. Without this, a sweep that deleted nothing at all
+# would satisfy the "middle survives" half above.
+echo "--------------------------------------------------------"
+echo "TEST: Scenario 14: control — a wide window deletes all three"
+printf 'fix: a thing\n\nStable at the top.\nordinary prose\nStable in the middle.\nordinary prose\nStable at the bottom.\n\nSigned-off-by: J <j@e.com>\n' > "$WIN_FILE"
+HOOK_BODY_SCAN_WINDOW=99 "$COMMIT_MSG_HOOK" "$WIN_FILE" 2>/dev/null
+if ! grep -q "Stable" "$WIN_FILE"; then
+  echo "✅ PASS"
+  ((PASS_COUNT++))
+else
+  echo "❌ FAIL: wide window left a brand line behind"
+  cat "$WIN_FILE"
+  ((FAIL_COUNT++))
+fi
+
 # 7. Pre-commit branch guard tests
 # ------------------------------------------------------------------------------
 
@@ -382,6 +540,16 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
     echo "  PASS (signed range allowed)"; ((PASS_COUNT++))
   else
     echo "  FAIL (signed range should be allowed)"; ((FAIL_COUNT++))
+  fi
+
+  echo "--------------------------------------------------------"
+  echo "TEST: Pre-push DCO: ALLOW an unsigned commit on refs/notes/* (INV-nihaz)"
+  # The same unsigned commit that is blocked on a branch must pass on a notes
+  # ref: git writes notes commits itself and they can never carry a trailer.
+  if dco_hook "refs/notes/commits $dco_unsigned refs/notes/commits $dco_signed"; then
+    echo "  PASS (notes ref exempt from DCO)"; ((PASS_COUNT++))
+  else
+    echo "  FAIL (notes ref must be exempt — it can never carry a sign-off)"; ((FAIL_COUNT++))
   fi
 
   echo "--------------------------------------------------------"
@@ -645,20 +813,39 @@ TRK
     ((FAIL_COUNT++))
   fi
 
-  # TEST: recover-disabled marker present → hook SKIPS recover.
-  # The tracker's own git operations (do_sync's fetch+ff, auto-pr) set this
-  # marker so the hook does not restore journalled-uncommitted ops mid-merge —
+
+  # TEST: recover-suppression lock HELD → hook SKIPS recover.
+  # The tracker's own git operations (do_sync, auto-pr) hold this lock for their
+  # whole run so the hook does not restore journalled-uncommitted ops mid-merge —
   # which otherwise collides with the very ff that reconciles them.
   echo "--------------------------------------------------------"
-  echo "TEST: reference-transaction committed + recover-disabled marker → skips recover"
+  echo "TEST: reference-transaction committed + recover lock HELD → skips recover"
+  reset_reftx_log
+  with_recover_lock_held "$REFTX_DIR/.git/tracker-recover-disabled" \
+    bash -c 'cd "$1" && echo "" | ./.githooks/reference-transaction committed' _ "$REFTX_DIR" >/dev/null 2>&1
+  if [[ -z "$(reftx_calls)" ]]; then
+    echo "  ✅ PASS (recover skipped while the lock is held)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (a held lock must suppress recover; got: $(reftx_calls))"
+    ((FAIL_COUNT++))
+  fi
+  rm -f "$REFTX_DIR/.git/tracker-recover-disabled"
+
+  # TEST: the file left behind with NO live holder → hook still recovers.
+  # This is the shape a SIGKILLed auto-pr leaves, and the exact state that used
+  # to disable self-healing silently for ten hours (WI-pohir). It must now be
+  # inert — this is the difference arm that makes the test above mean something.
+  echo "--------------------------------------------------------"
+  echo "TEST: reference-transaction committed + UNHELD leftover file → still recovers"
   reset_reftx_log
   touch "$REFTX_DIR/.git/tracker-recover-disabled"
   ( cd "$REFTX_DIR" && echo "" | ./.githooks/reference-transaction committed ) >/dev/null 2>&1
-  if [[ -z "$(reftx_calls)" ]]; then
-    echo "  ✅ PASS (recover skipped while marker present)"
+  if [[ -n "$(reftx_calls)" ]]; then
+    echo "  ✅ PASS (a leftover file suppresses nothing)"
     ((PASS_COUNT++))
   else
-    echo "  ❌ FAIL (marker should suppress recover; got: $(reftx_calls))"
+    echo "  ❌ FAIL (an unheld leftover file must NOT suppress recover)"
     ((FAIL_COUNT++))
   fi
   rm -f "$REFTX_DIR/.git/tracker-recover-disabled"
@@ -827,17 +1014,33 @@ TRK
     ((FAIL_COUNT++))
   fi
 
-  # TEST: branch checkout + recover-disabled marker → skip recover.
+  # TEST: branch checkout + recover lock HELD → skip recover.
   echo "--------------------------------------------------------"
-  echo "TEST: post-checkout branch switch + recover-disabled marker → skips recover"
+  echo "TEST: post-checkout branch switch + recover lock HELD → skips recover"
+  reset_pco
+  with_recover_lock_held "$PCO_DIR/.git/tracker-recover-disabled" \
+    bash -c 'cd "$1" && ./.githooks/post-checkout 0000000 1111111 1' _ "$PCO_DIR" >/dev/null 2>&1
+  if ! pco_ran; then
+    echo "  ✅ PASS (recover skipped while the lock is held)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (a held lock must suppress recover on checkout)"
+    ((FAIL_COUNT++))
+  fi
+  rm -f "$PCO_DIR/.git/tracker-recover-disabled"
+
+  # TEST: UNHELD leftover file → post-checkout still recovers. The difference
+  # arm for the test above; see the reference-transaction pair for why.
+  echo "--------------------------------------------------------"
+  echo "TEST: post-checkout branch switch + UNHELD leftover file → still recovers"
   reset_pco
   touch "$PCO_DIR/.git/tracker-recover-disabled"
   ( cd "$PCO_DIR" && ./.githooks/post-checkout 0000000 1111111 1 ) >/dev/null 2>&1
-  if ! pco_ran; then
-    echo "  ✅ PASS (recover skipped while marker present)"
+  if pco_ran; then
+    echo "  ✅ PASS (a leftover file suppresses nothing)"
     ((PASS_COUNT++))
   else
-    echo "  ❌ FAIL (marker should suppress recover on checkout)"
+    echo "  ❌ FAIL (an unheld leftover file must NOT suppress recover)"
     ((FAIL_COUNT++))
   fi
   rm -f "$PCO_DIR/.git/tracker-recover-disabled"
@@ -845,6 +1048,266 @@ TRK
   rm -rf "$PCO_DIR"
 else
   echo "⚠️  Skipping post-checkout tests: $PCO_HOOK not found"
+fi
+
+# 8b. Brand-scrub library + forge-text egress
+# ------------------------------------------------------------------------------
+# WI-sidot. The scrub was a commit-msg hook and nothing else, so every PR body
+# reached the forge unscrubbed -- a channel gap, not a matching failure. These
+# tests cover the extracted library and the egress linter that keeps a SIXTH
+# channel from appearing unrouted.
+
+echo ""
+echo "========================================================"
+echo "BRAND-SCRUB LIBRARY + FORGE EGRESS TESTS"
+echo "========================================================"
+
+BS_LIB="$SCRIPT_DIR/brand-scrub.sh"
+
+if [[ ! -f "$BS_LIB" ]]; then
+  echo "❌ FAIL: brand-scrub library not found at $BS_LIB"
+  ((FAIL_COUNT++))
+else
+  # Sandbox the library's inputs so these tests never touch the real key or
+  # the shipped pattern list.
+  BS_SECRET_PATH="$TEST_DIR/brand-scrub.key"
+  printf 'test-secret-not-a-real-key\n' > "$BS_SECRET_PATH"
+
+  # shellcheck source=/dev/null
+  BRAND_SCRUB_SECRET_FILE="$BS_SECRET_PATH" source "$BS_LIB"
+  bs_init "$HOOKS_DIR/brand-patterns.txt" "$HOOKS_DIR/absurd-phrases.txt"
+
+  bs_case() {
+    local name="$1" got="$2" want="$3"
+    echo "--------------------------------------------------------"
+    echo "TEST: $name"
+    if [[ "$got" == "$want" ]]; then
+      echo "  ✅ PASS"
+      ((PASS_COUNT++))
+    else
+      echo "  ❌ FAIL"
+      echo "  --- expected ---"; printf '%s\n' "$want" | sed 's/^/    /'
+      echo "  --- actual ---";   printf '%s\n' "$got"  | sed 's/^/    /'
+      ((FAIL_COUNT++))
+    fi
+  }
+
+  # The fixture. Synthetic on purpose: committing the real observed URL would
+  # publish a live session id permanently in THIS file, which the scrubber never
+  # sees -- the fix would have leaked the thing it exists to catch.
+  FIXTURE_URL="https://claude.ai/up/your_buttANdaroundthEcorner92"
+
+  # 1. The defect itself: a vendor URL on a PR body line is removed.
+  OUT="$(bs_scrub_body "a real change"$'\n'"${FIXTURE_URL}")"
+  if [[ "$OUT" != *"claude"* && "$OUT" == *"a real change"* ]]; then
+    echo "--------------------------------------------------------"
+    echo "TEST: vendor URL line is swept from a PR body"
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "--------------------------------------------------------"
+    echo "TEST: vendor URL line is swept from a PR body"
+    echo "  ❌ FAIL: got [$OUT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # 2. The sweep reports what it did. Silent deletion is the accepted policy;
+  #    an invisible MECHANISM is not -- INV-nihaz. Absent a count there is no
+  #    signal the scrub runs at all, which is how this gap survived.
+  bs_scrub_body "x"$'\n'"${FIXTURE_URL}" >/dev/null
+  bs_case "sweep reports a scrubbed-line count" "$BS_SCRUBBED_COUNT" "1"
+
+  bs_scrub_body "nothing to see here" >/dev/null
+  bs_case "clean body reports a zero count" "$BS_SCRUBBED_COUNT" "0"
+
+  # REGRESSION (WI-sidot). The real call shape at every egress site is
+  #     X="$(bs_scrub_body "$X")"
+  # which is a SUBSHELL. A reporter that read BS_SCRUBBED_COUNT back from the
+  # parent therefore died on an unbound variable under `set -u` -- and because
+  # auto-pr's `exec {FD}>>"$f" 2>/dev/null` makes that stderr redirect
+  # PERMANENT, the message went to /dev/null and the whole run surfaced as
+  # `exit 1` with empty stdout AND empty stderr. Nothing in the suite would
+  # have caught it: every library test calls the sweep directly, where the
+  # variable does survive. This test uses the shape the callers actually use.
+  echo "--------------------------------------------------------"
+  echo "TEST: scrub + report survives set -u inside command substitution"
+  SUBSH="$TEST_DIR/subshell_case.sh"
+  cat > "$SUBSH" <<SUBEOF
+set -euo pipefail
+export BRAND_SCRUB_SECRET_FILE="$BS_SECRET_PATH"
+source "$BS_LIB"
+bs_init "$HOOKS_DIR/brand-patterns.txt" "$HOOKS_DIR/absurd-phrases.txt"
+D="keep this"\$'\n'"$FIXTURE_URL"
+BEFORE="\$D"
+D="\$(bs_scrub_body "\$D")"
+bs_report_scrub "\$BEFORE" "the PR body"
+[[ "\$D" == "keep this" ]]
+SUBEOF
+  if bash "$SUBSH" 2>/dev/null; then
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL: the caller-shaped invocation did not survive set -u"
+    bash "$SUBSH"
+    ((FAIL_COUNT++))
+  fi
+
+  # The report must be VISIBLE on stderr when it fires -- INV-nihaz. A scrub
+  # nobody can see running is how five channels went unenforced.
+  echo "--------------------------------------------------------"
+  echo "TEST: the scrub announces itself on stderr"
+  REPORT="$(bash "$SUBSH" 2>&1 >/dev/null || true)"
+  if [[ "$REPORT" == *"brand scrub"* && "$REPORT" == *"1 line"* ]]; then
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL: expected a scrub report on stderr, got [$REPORT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # REGRESSION (WI-sidot): the library is SOURCED at forge-script start-up, so
+  # it must survive an environment with no HOME. Reading $HOME eagerly under
+  # `set -u` turned a missing one into an unbound variable, which killed the
+  # source and exited the caller 1 with no output at all. The auto-pr suite
+  # runs with `env={"PATH": "/usr/bin:/bin"}` precisely to reproduce the real
+  # caller's shell, and that is what surfaced it.
+  echo "--------------------------------------------------------"
+  echo "TEST: library sources and scrubs with no HOME in the environment"
+  NOHOME="$TEST_DIR/nohome.sh"
+  cat > "$NOHOME" <<NHEOF
+set -euo pipefail
+source "$BS_LIB"
+bs_init "$HOOKS_DIR/brand-patterns.txt" "$HOOKS_DIR/absurd-phrases.txt"
+OUT="\$(bs_scrub_body "keep me"\$'\n'"$FIXTURE_URL")"
+[[ "\$OUT" == "keep me" ]]
+# phrase selection is the ONLY consumer of the key; exercise it too
+T="\$(bs_scrub_title seed "fix: teach Claude to behave")"
+[[ -n "\$T" && "\$T" != *Claude* ]]
+NHEOF
+  if env -i PATH=/usr/bin:/bin TMPDIR="$TEST_DIR" bash "$NOHOME" 2>/dev/null; then
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL: library did not survive a HOME-less environment"
+    env -i PATH=/usr/bin:/bin TMPDIR="$TEST_DIR" bash "$NOHOME"
+    ((FAIL_COUNT++))
+  fi
+
+  # 3. Window parity with commit-msg (HUMAN DECISION, WI-sidot). The first and
+  #    last N lines are swept; a long body's middle is deliberately NOT. The
+  #    unscanned middle is the accepted cost of strict parity -- pin it, so a
+  #    later "why not just sweep everything" cannot silently widen it.
+  LONGBODY="$(printf 'Stable at the top.\nfiller\nfiller\nStable in the middle.\nfiller\nfiller\nStable at the bottom.')"
+  OUT="$(BS_BODY_SCAN_WINDOW=2 bs_scrub_body "$LONGBODY")"
+  if [[ "$OUT" == *"Stable in the middle."* \
+     && "$OUT" != *"Stable at the top."* \
+     && "$OUT" != *"Stable at the bottom."* ]]; then
+    echo "--------------------------------------------------------"
+    echo "TEST: body window spares the middle, sweeps both ends"
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "--------------------------------------------------------"
+    echo "TEST: body window spares the middle, sweeps both ends"
+    echo "  ❌ FAIL: got [$OUT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # 4. Non-vacuity floor for the window: wide open, the SAME fixture loses all
+  #    three. Without this a sweep that deleted nothing would satisfy test 3.
+  OUT="$(BS_BODY_SCAN_WINDOW=99 bs_scrub_body "$LONGBODY")"
+  if [[ "$OUT" != *"Stable"* ]]; then
+    echo "--------------------------------------------------------"
+    echo "TEST: control — a wide window sweeps all three"
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "--------------------------------------------------------"
+    echo "TEST: control — a wide window sweeps all three"
+    echo "  ❌ FAIL: got [$OUT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # 5. A FALSE POSITIVE COSTS A LINE, NOT A RUN. The pattern list is ordinary
+  #    English -- Nova, Titan, Granite, Arctic, Falcon, Phi. `falcon` is a
+  #    framework this project ships support for. The human priced this
+  #    explicitly: a fulsome PR body losing a few words beats handing a human a
+  #    blocked PR. So the sweep must DROP the line and SUCCEED, never refuse.
+  if OUT="$(bs_scrub_body "we fixed the Stable analyzer")" && [[ -z "$OUT" ]]; then
+    echo "--------------------------------------------------------"
+    echo "TEST: a false-positive line is dropped, exit stays 0"
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "--------------------------------------------------------"
+    echo "TEST: a false-positive line is dropped, exit stays 0"
+    echo "  ❌ FAIL: rc=$? out=[$OUT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # 6. A TITLE IS SUBSTITUTED, NOT DELETED. Same rule the subject line has
+  #    always had: a PR with no title is not a PR.
+  OUT="$(bs_scrub_title "seed" "fix: teach Claude to behave")"
+  if [[ -n "$OUT" && "$OUT" != *"Claude"* && "$OUT" == *"fix: teach"* ]]; then
+    echo "--------------------------------------------------------"
+    echo "TEST: a branded title is substituted, not emptied"
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "--------------------------------------------------------"
+    echo "TEST: a branded title is substituted, not emptied"
+    echo "  ❌ FAIL: got [$OUT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # 7. Idempotence. auto-pr PATCHes a body it may have already pushed, so the
+  #    scrub runs twice over the same text on the normal path.
+  ONCE="$(bs_scrub_body "keep this"$'\n'"${FIXTURE_URL}")"
+  TWICE="$(bs_scrub_body "$ONCE")"
+  bs_case "body sweep is idempotent" "$TWICE" "$ONCE"
+
+  T_ONCE="$(bs_scrub_title "seed" "fix: teach Claude to behave")"
+  T_TWICE="$(bs_scrub_title "seed" "$T_ONCE")"
+  bs_case "title substitution is idempotent" "$T_TWICE" "$T_ONCE"
+fi
+
+# The egress linter. The real structural guard: there is no single choke point
+# (auto-pr alone emits a body at three distinct points), so the gate lives at
+# each construction site AND a linter refuses a new unrouted one.
+EGRESS_LINTER="$SCRIPT_DIR/../scripts/check-forge-text-egress"
+
+echo "--------------------------------------------------------"
+echo "TEST: egress linter passes on the live tree"
+if [[ ! -x "$EGRESS_LINTER" ]]; then
+  echo "  ❌ FAIL: linter missing or not executable at $EGRESS_LINTER"
+  ((FAIL_COUNT++))
+elif "$EGRESS_LINTER" >/dev/null 2>&1; then
+  echo "  ✅ PASS"
+  ((PASS_COUNT++))
+else
+  echo "  ❌ FAIL: linter reports an unrouted egress site on the live tree"
+  "$EGRESS_LINTER" 2>&1 | sed 's/^/    /'
+  ((FAIL_COUNT++))
+fi
+
+# Non-vacuity: a linter that passes everything is not a linter. Plant an
+# unrouted egress site in a throwaway tree and require a refusal.
+echo "--------------------------------------------------------"
+echo "TEST: egress linter refuses a planted unrouted site"
+if [[ -x "$EGRESS_LINTER" ]]; then
+  PLANT_DIR="$TEST_DIR/plant/scripts"
+  mkdir -p "$PLANT_DIR"
+  printf '#!/usr/bin/env bash\napi_patch "$API_BASE/pulls/1" "$unscrubbed_payload"\n' \
+    > "$PLANT_DIR/rogue-script"
+  if FORGE_EGRESS_SCAN_ROOT="$TEST_DIR/plant" "$EGRESS_LINTER" >/dev/null 2>&1; then
+    echo "  ❌ FAIL: linter accepted an unrouted api_patch"
+    ((FAIL_COUNT++))
+  else
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  fi
+else
+  echo "  ⏭️  SKIP (linter missing; covered by the test above)"
 fi
 
 # 9. Summary

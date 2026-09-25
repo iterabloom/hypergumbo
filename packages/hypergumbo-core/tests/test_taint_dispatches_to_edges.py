@@ -19,8 +19,17 @@ into them is argparse dispatch, and sources minted ZERO flows — every
 Membership is monotone-additive: adjacency and minting only grow, so
 this cannot delete a finding by itself (sanitizer registration over
 dispatch edges is the one non-additive surface; the last test pins the
-``references`` boundary so the analyzer's registration-reference edges
-stay inert).
+``references`` boundary).
+
+THAT BOUNDARY HAS SINCE BEEN NARROWED, NOT REMOVED (WI-nisud). A BARE
+``references`` edge is still inert and the SET is still unchanged -- which
+is exactly what the tests below assert. What moved is that a ``references``
+edge carrying ``evidence_type='callback_argument_reference'`` is now read as
+call-shaped, via ``edge_types.is_callback_registration``, because javascript
+emits that edge where python emits ``dispatches_to`` and every callback
+whose handler owns a symbol was therefore unreachable. The python
+registration edge this file is about carries no such evidence type and is
+unaffected.
 """
 from __future__ import annotations
 
@@ -54,6 +63,10 @@ class TestDispatchesToIsCallShaped:
     def test_references_still_excluded(self) -> None:
         # The analyzer's ``set_defaults(func=cmd_x)`` registration edge is
         # a ``references`` edge; only the LINKER's call-shaped edge mints.
+        # WI-nisud narrowed this boundary rather than removing it: a BARE
+        # ``references`` edge -- no meta, no evidence type -- is still inert,
+        # and that is what this pins. The javascript callback-registration
+        # form is carved out by evidence type in is_callback_registration.
         assert _is_taint_call_edge({"type": "references"}) is False
 
 

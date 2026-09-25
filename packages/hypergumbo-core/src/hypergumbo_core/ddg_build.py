@@ -89,9 +89,11 @@ class LanguageDdgSpec:
         file_glob: ``rglob`` pattern for source files.
         function_node_types: AST node types that introduce a function
             scope. Each is expected to expose ``name`` and ``body`` fields.
-        name_for: Optional callable ``(node, source) -> str`` overriding
-            the plain ``name`` field. Go uses this to prepend a receiver
-            type so method ids match the analyzer's.
+        name_for: Optional callable ``(node, source) -> str | None``
+            overriding the plain ``name`` field. Go uses this to prepend a
+            receiver type so method ids match the analyzer's. ``None`` means
+            the node carries no name and is skipped, as a missing ``name``
+            field is by the default.
         kind_for: Optional callable ``(node) -> str`` choosing the id's
             kind slot; defaults to ``"function"``.
         refine: Optional callable invoked per function to derive extra
@@ -101,7 +103,7 @@ class LanguageDdgSpec:
     language: str
     file_glob: str
     function_node_types: frozenset[str]
-    name_for: Optional[Callable[[Any, bytes], str]] = None
+    name_for: Optional[Callable[[Any, bytes], Optional[str]]] = None
     kind_for: Optional[Callable[[Any], str]] = None
     refine: Optional[Callable[..., dict[tuple[int, str], str]]] = None
 
@@ -141,6 +143,21 @@ class RepoDdg:
     #: case, because the permitting case is the one being enumerated: a
     #: language nobody configured must forfeit rather than silently qualify.
     forfeit_refutation: set[str] = field(default_factory=set)
+    #: ``symbol_id -> {variable, ...}`` the def/use extractor did not account
+    #: for (INV-lupav clause L4).
+    #:
+    #: A name lands here when some statement the CFG RECORDED mentions it and
+    #: lists it in neither ``defines`` nor ``uses`` — Go's grouped
+    #: ``var ( msg = cwd )``, Python's ``c[key] = 1``. Distinct from
+    #: ``forfeit_refutation`` in granularity and that is the point: coverage is
+    #: a property of the FUNCTION (part of its body was never visited), while
+    #: this is a property of a VARIABLE (this one value was mentioned somewhere
+    #: the extractor did not read). Forfeiting the whole function for it would
+    #: withhold ``False`` from every walk over the function instead of from the
+    #: walks that actually carry the unaccounted value.
+    #:
+    #: Populated alongside ``stmt_defuse``, for functions WITH edges only.
+    unaccounted_names: dict[str, frozenset[str]] = field(default_factory=dict)
 
 
 _DDG_LANGUAGES: dict[str, LanguageDdgSpec] = {}
@@ -188,24 +205,57 @@ def _walk_functions(
     mapping: Any,
     refine_ctx: dict[str, Any],
 ) -> None:
-    """Recurse an AST collecting per-function DDG edges and refinement hints."""
-    if node.type in spec.function_node_types:
-        name = _function_name(node, source, spec)
-        body_node = node.child_by_field_name("body")
-        if name is not None and body_node is not None:
-            kind = spec.kind_for(node) if spec.kind_for else "function"
-            sym_id = make_symbol_id(
-                spec.language, rel_path,
-                node.start_point[0] + 1, node.end_point[0] + 1,
-                name, kind,
-            )
-            _solve_one_function(
-                node, body_node, source, spec, sym_id, out, deps, mapping, refine_ctx,
-            )
-    for child in node.children:
-        _walk_functions(
-            child, source, spec, rel_path, out, deps, mapping, refine_ctx,
-        )
+    """Walk an AST collecting per-function DDG edges and refinement hints.
+
+    ITERATIVE, NOT RECURSIVE, AND THAT IS THE WHOLE POINT (INV-gotir). This was
+    a per-child recursion, so the Python stack depth WAS the tree-sitter AST
+    depth — one frame per level — and CPython's default limit is 1000. Machine
+    generated code exceeds that without being pathological: keda's
+    ``vendor/go.temporal.io/api/workflowservice/v1/request_response.pb.go``
+    (725,832 bytes of generated protobuf) measures an **AST depth of 1171**,
+    because one ``const`` is a string built as ``"..." + "..." + "..."`` 1,165
+    times and ``+`` is left-associative. ``verify-claims`` aborted with
+    ``RecursionError`` and exited 1 with an empty stdout — and exit 1 is also
+    what VIOLATED returns, so a CI gate could not tell a crash from a finding.
+
+    THE TRANSFORMATION IS EXACTLY EQUIVALENT, and it is worth saying why rather
+    than asserting it: there is no work after the child loop. The recursion
+    carried no state a worklist cannot hold, no accumulator unwound on the way
+    back up, and no post-order step. Children are pushed REVERSED so ``pop()``
+    yields them left to right, preserving pre-order visit order — which matters
+    because ``out`` accumulates in visit order and a consumer diffing two runs
+    would otherwise see a spurious reordering.
+
+    ``sys.setrecursionlimit`` was rejected: it trades a catchable
+    ``RecursionError`` for a C-stack segfault, which is strictly worse for a
+    failure mode already indistinguishable from a verdict.
+
+    SCOPE. An AST sweep finds 72 self-recursive child-loop walks in this tree,
+    so the shape is a class rather than one bug. A corpus depth census sizes
+    the realized exposure narrowly — keda has 7 files at depth >= 900, all
+    generated Go under ``vendor/``, while dash.js, caddy and mitmproxy top out
+    at 74/37/79 — and ``survey`` over the same input does not crash. So the
+    class is filed (INV-gotir) rather than rewritten wholesale, and this is the
+    one walk with a measured failure.
+    """
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type in spec.function_node_types:
+            name = _function_name(current, source, spec)
+            body_node = current.child_by_field_name("body")
+            if name is not None and body_node is not None:
+                kind = spec.kind_for(current) if spec.kind_for else "function"
+                sym_id = make_symbol_id(
+                    spec.language, rel_path,
+                    current.start_point[0] + 1, current.end_point[0] + 1,
+                    name, kind,
+                )
+                _solve_one_function(
+                    current, body_node, source, spec, sym_id, out, deps,
+                    mapping, refine_ctx,
+                )
+        stack.extend(reversed(current.children))
 
 
 def _solve_one_function(
@@ -234,7 +284,7 @@ def _solve_one_function(
         # WI-joluk. Computed only for functions that HAVE edges: a function the
         # walk can never run on cannot forfeit anything, and adding it would
         # inflate the set with entries no consumer reads.
-        uncovered = deps["uncovered_call_lines"](cfg, body_node, source, mapping)
+        uncovered = deps["uncovered_semantic_lines"](cfg, body_node, source, mapping)
         if uncovered is None or uncovered:
             out.forfeit_refutation.add(sym_id)
         # Collected only alongside edges: a function with no edges cannot be
@@ -247,6 +297,13 @@ def _solve_one_function(
         ]
         if stmts:
             out.stmt_defuse[sym_id] = stmts
+        # INV-lupav L4. Collected on the same terms as ``stmt_defuse`` and for
+        # the same reason: a function with no edges is never walked, and the
+        # empty answer this returns for an unpopulated CFG would be a lie about
+        # one that was.
+        unaccounted = deps["unaccounted_names"](cfg, body_node, source)
+        if unaccounted:
+            out.unaccounted_names[sym_id] = unaccounted
     if spec.refine is not None:
         hints = spec.refine(
             node=node,
@@ -285,7 +342,8 @@ def build_repo_ddg(
             load_cfg_mapping,
             populate_def_use_for_cfg,
             solve_reaching_defs,
-            uncovered_call_lines,
+            unaccounted_names,
+            uncovered_semantic_lines,
         )
     except ImportError:  # pragma: no cover - tree-sitter is a hard dep but defend
         return out
@@ -294,7 +352,8 @@ def build_repo_ddg(
         "build_function_cfg": build_function_cfg,
         "populate_def_use_for_cfg": populate_def_use_for_cfg,
         "solve_reaching_defs": solve_reaching_defs,
-        "uncovered_call_lines": uncovered_call_lines,
+        "uncovered_semantic_lines": uncovered_semantic_lines,
+        "unaccounted_names": unaccounted_names,
     }
 
     for language in languages:
@@ -385,9 +444,77 @@ def _python_refine(
     )
 
 
+def _python_enclosing_scope(node: Any) -> Any:
+    """The IMMEDIATELY enclosing ``class_definition`` / ``function_definition``.
+
+    Walks past everything that is not itself a scope — ``block``, and
+    ``decorated_definition`` for a decorated member — so a decorator does not
+    hide the class a method belongs to.
+    """
+    parent = node.parent
+    while parent is not None:
+        if parent.type in ("class_definition", "function_definition"):
+            return parent
+        parent = parent.parent
+    return None
+
+
+def _python_named_scope_prefix(node: Any, source: bytes) -> str:
+    """``<immediate scope name>.`` or ``""`` when there is no named scope."""
+    scope = _python_enclosing_scope(node)
+    if scope is None:
+        return ""
+    scope_name = scope.child_by_field_name("name")
+    if scope_name is None:  # pragma: no cover - both scope types name a child
+        return ""
+    text = source[scope_name.start_byte:scope_name.end_byte].decode(
+        "utf-8", errors="replace",
+    )
+    return f"{text}."
+
+
+def _python_function_name(node: Any, source: bytes) -> str:
+    """Name a python callable exactly as ``py.py`` names it (WI-ripas).
+
+    py.py prefixes with the IMMEDIATE enclosing scope, one level, whether that
+    scope is a class or a function — derived from the analyzer over all four
+    shapes rather than assumed:
+
+        top-level function      ``top``
+        nested function         ``top.inner``
+        method                  ``Outer.meth``
+        method of nested class  ``Inner.deep``   (not ``Outer.Inner.deep``)
+
+    Without this the default bare-``name`` fallback stored every method under a
+    key the taint walk never constructs, so ``fn_has_ddg`` was false for 68.5%
+    of python callables and their findings degraded to ``structural`` by
+    construction. Nested FUNCTIONS were mis-keyed by the same fallback.
+    """
+    name_node = node.child_by_field_name("name")
+    if name_node is None:  # pragma: no cover - grammar always supplies a name
+        return ""
+    name = source[name_node.start_byte:name_node.end_byte].decode(
+        "utf-8", errors="replace",
+    )
+    return _python_named_scope_prefix(node, source) + name
+
+
+def _python_symbol_kind(node: Any) -> str:
+    """``method`` exactly when the immediate enclosing scope is a class.
+
+    A function nested in a function stays ``function`` — which is what py.py
+    emits for ``top.inner`` — so this is not "is it nested" but "is its owner a
+    class".
+    """
+    scope = _python_enclosing_scope(node)
+    return "method" if scope is not None and scope.type == "class_definition" else "function"
+
+
 register_ddg_language(LanguageDdgSpec(
     language="python",
     file_glob="*.py",
     function_node_types=frozenset({"function_definition"}),
+    name_for=_python_function_name,
+    kind_for=_python_symbol_kind,
     refine=_python_refine,
 ))

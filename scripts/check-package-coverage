@@ -29,6 +29,7 @@ declare -A PACKAGES=(
     ["common"]="packages/hypergumbo-lang-common/tests packages/hypergumbo-lang-common/src"
     ["extended"]="packages/hypergumbo-lang-extended1/tests packages/hypergumbo-lang-extended1/src"
     ["rust-analyzer"]="packages/hypergumbo-lang-rust-analyzer/tests packages/hypergumbo-lang-rust-analyzer/src"
+    ["scip-python"]="packages/hypergumbo-lang-scip-python/tests packages/hypergumbo-lang-scip-python/src"
     ["tracker"]="packages/hypergumbo-tracker/tests packages/hypergumbo-tracker/src"
 )
 
@@ -40,14 +41,14 @@ for arg in "$@"; do
     case $arg in
         --quick) QUICK=true ;;
         --serial) SERIAL=true ;;
-        core|mainstream|common|extended|tracker|rust-analyzer) TARGETS+=("$arg") ;;
+        core|mainstream|common|extended|tracker|rust-analyzer|scip-python) TARGETS+=("$arg") ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
 done
 
 # Default to all packages
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
-    TARGETS=("core" "mainstream" "common" "extended" "tracker" "rust-analyzer")
+    TARGETS=("core" "mainstream" "common" "extended" "tracker" "rust-analyzer" "scip-python")
 fi
 
 # Skip extended in quick mode

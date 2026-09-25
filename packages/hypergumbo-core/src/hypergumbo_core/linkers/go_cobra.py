@@ -65,6 +65,7 @@ from pathlib import Path
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_source_bytes
 
 PASS_ID = make_pass_id("go-cobra-linker")
 
@@ -182,7 +183,7 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
 
     for file_path in _find_go_files(ctx.repo_root):
         try:
-            source = file_path.read_bytes()
+            source = read_source_bytes(file_path)
         except (OSError, IOError) as e:  # pragma: no cover
             files_skipped += 1
             run.record_failed_file(
@@ -261,6 +262,8 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
                         origin_run_id=run.execution_id,
                         evidence_type="ast_call_direct",
                         meta=edge_meta,
+                        # derived-from endpoints: the enclosing symbol plus a handler-name match;
+                        #   both strings are in meta
                         derived_from=[enclosing.id, handler_sym.id],
                     ),
                 )

@@ -1,0 +1,21 @@
+- op: create  # 01a1
+  at: '2026-08-23T05:25:45Z'  # 01a1
+  by: agent  # 01a1
+  actor: jgstern_agent  # 01a1
+  clock: 1  # 01a1
+  nonce: 01a1  # 01a1
+  data:  # 01a1
+    kind: work_item  # 01a1
+    title: "untyped_receiver caveat does not consult ambiguous_names, so half its disclosed sites are known builtin collisions"  # 01a1
+    status: todo_hard  # 01a1
+    priority: 3  # 01a1
+    parent:  # 01a1
+    tags:  # 01a1
+    - verify_claims  # 01a1
+    - analysis_quality  # 01a1
+    isbefore: []  # 01a1
+    duplicate_of: []  # 01a1
+    not_duplicate_of: []  # 01a1
+    pr_ref:  # 01a1
+    description: "MEASURED on hypergumbo's own tree at dev 30370c4cd6, via the 18 self-claims\nthat PR #482 moved to confirmed_with_caveats.\n\nOf the 119 sites the untyped_receiver caveat raises against EACH host_fs\nclaim, 63 (53%) are .replace() -- overwhelmingly str.replace, which is the\nliteral INV-maluk collision. The disclosure is not WRONG (the analysis\ngenuinely could not type those receivers, and pathlib.Path.replace is a real\nhost_fs sink), but 53% of the sites a reader is asked to check are a name the\nproject has ALREADY adjudicated as a builtin collision.\n\nThe remainder is genuinely actionable and should not be lost in the noise:\nmkdir 19, write_text 12, write 11, unlink 9, rename 2, truncate 2, touch 1;\nand on the network claim write 11, close 6, send_json 1.\n\nTHE INFORMATION TO FIX THIS ALREADY EXISTS AND IS ALREADY LOADED. Each\ncatalogue carries ambiguous_names -- the hand-maintained short-name collision\nlist retained as the meta-absent / non-Python safety net after\nio_boundary.gate_named_entry replaced it as the primary mechanism. The\ndisclosure does not consult it. Cheapest useful change: when the caveat\nrenders its distinct-method list, mark (or sort last) the names that appear\nin the language's ambiguous_names, so a reader can triage at a glance instead\nof opening 63 str.replace call sites.\n\nSCOPE: affects BOTH arms identically -- the boundary arm shipped this shape\nin PR #481 and has the same property. Not a regression introduced by either\nPR; a precision gap in the disclosure layer, surfaced by dogfooding.\n\nNOT MEASURED: the ratio on any repository other than hypergumbo; whether\nambiguous_names has adequate coverage of the names that actually dominate\n(mkdir and write_text are NOT collisions and must not be suppressed);\nwhether sorting is enough or the sentence needs an explicit marker."  # 01a1
+    fields: {}  # 01a1

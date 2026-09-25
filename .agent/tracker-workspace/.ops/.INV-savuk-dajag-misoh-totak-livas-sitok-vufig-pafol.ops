@@ -1,0 +1,24 @@
+- op: create  # 0c70
+  at: '2026-08-30T09:34:56Z'  # 0c70
+  by: agent  # 0c70
+  actor: jgstern_agent  # 0c70
+  clock: 1  # 0c70
+  nonce: 0c70  # 0c70
+  data:  # 0c70
+    kind: invariant  # 0c70
+    title: "haskell Prelude.readIO is declared fs_read but its type is String -> IO a: it parses a value already in hand and crosses no boundary, so an fs_read claim can be violated by a pure parse"  # 0c70
+    status: violated  # 0c70
+    priority: 2  # 0c70
+    parent:  # 0c70
+    tags:  # 0c70
+    - catalogue  # 0c70
+    - io_boundary  # 0c70
+    - analysis_quality  # 0c70
+    isbefore: []  # 0c70
+    duplicate_of: []  # 0c70
+    not_duplicate_of: []  # 0c70
+    pr_ref:  # 0c70
+    description: "FOUND 2026-08-30 while moving haskell's stdin readers to ipc_recv under\nINV-muvis. Left in place deliberately and filed rather than folded in, because\nINV-zumin's closure says a class (d) row -- one where the declared boundary is\nsimply WRONG rather than multi-valued or undecidable -- \"needs its own item; do\nNOT let a multi-boundary fix quietly resolve it\".\n\nTHE OBSERVATION. haskell.yaml declares Prelude.readIO under fs_read. Its type is\n\n    readIO :: Read a => String -> IO a\n\nIt takes a String the caller already holds and parses it, throwing on failure.\nIt opens nothing, reads no handle, and touches no descriptor. The IO in its\nreturn type is the failure effect, not a crossing. It sat in a row alongside\nreadFile, getContents, readLn and interact -- four functions that genuinely read\nsomething -- and the company is most likely how it got there.\n\nIts sibling readLn IS a read (readLn = getLine >>= readIO) and moved to ipc_recv\nunder INV-muvis. That pairing is the tell: the composite crosses a boundary and\nthe parser it delegates to does not.\n\nDIRECTION, and it is the opposite of INV-muvis's. fs_read mints no taint source,\nso this row invents no flow. What it does is satisfy a BOUNDARY QUERY: a\n`{boundary: fs_read, must_not_exist: true}` claim over a Haskell program that\nmerely parses a string reports a violation with a real-looking call site, and\n`io-boundaries` counts the call in total_io_edges as a filesystem read that never\nhappened. A false VIOLATION and an inflated denominator, not a false source.\n\nTHE FIX IS A REMOVAL, WHICH IS THE EXPENSIVE KIND. ADR-0049 ruling 3 and LIVE\nrule 17 both say a removal must show the crossing is still represented, and here\nthe honest answer is that there IS no crossing to represent -- which is the\nargument FOR removing it, but it has to be made on a run and not asserted. The\ncheck is cheap: no fs_read chain rooted at Prelude.readIO should exist in the\ncorpus after the row is dropped, and none should have been true before.\n\nSWEEP THE FAMILY, DO NOT FIX THE INSTANCE (LIVE rule 5). The shape is \"a pure\nfunction declared as a boundary because it sits in an IO-flavoured module\". Peers\nworth checking in the same pass, none yet adjudicated:\n  haskell  Prelude.readIO, and anything else in an fs_read row whose type takes\n           its input as an argument rather than a handle\n  python   ast.literal_eval, json.loads (parse, no IO) vs json.load (reads a fp)\n  go       fmt.Sscan / Sscanf / Sscanln (parse a string; the Fscan family reads a\n           reader and the Scan family reads stdin -- three families, one prefix)\nGo's Sscan family is the sharpest control: it is NOT catalogued today, which is\ncorrect, and it proves the distinction is already understood somewhere in the\ntree.\n\nREPRO\n  packages/hypergumbo-core/src/hypergumbo_core/io_primitives/haskell.yaml\n    (the fs_read Prelude row now carries a note saying exactly this)\n  ~/hypergumbo_lab_notebook/vutav_reads_08302026/"  # 0c70
+    fields:  # 0c70
+      statement: "A catalogue row's boundary must name a crossing the call actually performs. VIOLATED: Prelude.readIO :: Read a => String -> IO a opens nothing and reads no handle, yet is declared fs_read, so it answers a {boundary: fs_read, must_not_exist: true} claim with a false violation and inflates total_io_edges. Its sibling readLn (= getLine >>= readIO) IS a read and moved to ipc_recv under INV-muvis; the composite crosses and the parser does not."  # 0c70
+      root_cause: "The row was populated by module company rather than by signature: readIO sat in an fs_read list beside readFile/getContents/readLn/interact, four functions that do read. Nothing in the catalogue checks whether a declared reader takes a HANDLE or takes its input as an ARGUMENT, which is the discriminator; go's uncatalogued fmt.Sscan family shows the distinction is understood elsewhere in the tree but is not enforced anywhere."  # 0c70

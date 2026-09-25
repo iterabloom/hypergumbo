@@ -1,0 +1,23 @@
+- op: create  # 07b1
+  at: '2026-08-24T07:57:42Z'  # 07b1
+  by: agent  # 07b1
+  actor: jgstern_agent  # 07b1
+  clock: 1  # 07b1
+  nonce: 07b1  # 07b1
+  data:  # 07b1
+    kind: work_item  # 07b1
+    title: "The suppressed-sink-method caveat is language-level, so a Rust crate that calls none of the nine names still gets it; scoping needs an analyzer->verdict channel and a schema bump"  # 07b1
+    status: todo_soft  # 07b1
+    priority: 3  # 07b1
+    parent:  # 07b1
+    tags:  # 07b1
+    - verify_claims  # 07b1
+    - io_boundary  # 07b1
+    - rust  # 07b1
+    - analysis_quality  # 07b1
+    isbefore: []  # 07b1
+    duplicate_of: []  # 07b1
+    not_duplicate_of: []  # 07b1
+    pr_ref:  # 07b1
+    description: "FOUND while shipping INV-polad's disclosure (PR3) and filed rather than left\nas an unstated limitation of it.\n\nWHAT SHIPPED. A clean boundary or taint verdict on a repository containing\nrust now carries CAVEAT_ANALYZER_SUPPRESSED_METHODS naming the nine method\nnames that are BOTH on rust.py's 77-name resolution denylist and declared\nmethod-kind sinks by rust.yaml (flush, new, output, read, recv, send, spawn,\nstatus, write -- ten catalogue rows, `write` appearing for both io::Write and\nTcpStream).\n\nTHE LIMITATION. That caveat is LANGUAGE-LEVEL: it fires whenever rust is\npresent and the verdict is clean, whether or not the code actually calls one\nof the nine. A crate that never calls any of them gets a caveat about an\nexposure it does not have. LIVE.md's own warning applies -- a caveat that is\nalways there is discounted by its reader -- and this one is closer to\nalways-on than its sibling CAVEAT_ANALYZER_METHOD_CALL_BLIND, which is honest\nat language level because kotlin's blindness really is total.\n\nWHY IT SHIPPED THAT WAY, so the trade is visible rather than implied. The\nsuppressed calls leave NO EDGE -- verified: `s.send(b)` emits nothing in three\nsyntactic positions -- so the edge set cannot say whether a denylisted name\nwas called. Scoping the caveat needs a channel from the ANALYZER, which knows,\nto verify_claims, which does not.\n\nTHE CHEAP SHAPE, and why it is still not free: AnalysisResult grows a\n`suppressed_method_names: set[str]` (at most 77 short strings per run, not one\nmarker per call site), which then has to reach the behaviour map -- i.e. the\nSCHEMA -- for verify_claims to read it. That is a schema-surface change with a\nversion bump, which is why it is a separate item and not a quiet addition to\nthe disclosure PR.\n\nREJECTED ALTERNATIVE, measured before rejecting: emit the suppressed calls as\nordinary unresolved-external edges and let the consumer count them. On two\nreal crates that took TOTAL edges +33% (bellman 2867 -> 3819) and +67%\n(tiktoken-rs 375 -> 627), and the EXTERNAL edge population +115% and +207%,\nbecause the same denylist holds `clone` / `unwrap` / `map`. Paying that in\ncentrality, dead-code, slice and supply-chain output on every Rust repository,\nto scope one caveat, is the wrong trade.\n\nNOT MEASURED: what fraction of real Rust repos actually call one of the nine\n(i.e. how often the caveat is currently overstating); whether any other\nlanguage's analyzer has a denylist overlapping its own catalogue -- js_ts.py\ncarries an analogous blocklist and javascript is already covered by the\nlanguage-level blindness declaration, but the OVERLAP there was not computed."  # 07b1
+    fields: {}  # 07b1

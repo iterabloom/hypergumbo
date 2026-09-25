@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-commit / CI lint: every forge-egress site must DECLARE how its
+agent-authored text was scrubbed (WI-sidot).
+
+Why this exists
+---------------
+The vendor-attribution scrub lived inside the ``commit-msg`` git hook, so
+it covered exactly one channel: a git commit message. A PR title, a PR
+body and a PR comment are none of those, and all three reached the forge
+unscrubbed. The leak that surfaced it was a vendor session URL on the
+last line of a merged PR body -- a line the shipped pattern list matches
+correctly and the existing scan window already covers. Nothing was wrong
+with the matching. The rule was simply enforced at one of six egress
+points, because it lived inside the hook that discovered it first.
+
+Patching those five sites fixes today's leak and nothing else. There is
+no single choke point to defend instead: ``auto-pr`` alone emits a PR
+body at three distinct points (a ``git push -o`` option, ``create_pr``,
+and a follow-up REST PATCH), because ``-o`` cannot carry newlines. So a
+sixth channel added next year would reopen this exactly the way the
+fifth did. This script is the backstop that makes that a CI failure
+rather than a discovery.
+
+What this checks -- and what it does NOT
+----------------------------------------
+This enforces DECLARATION, not dataflow. It does not trace a variable
+back to a scrub call; bash makes that unreliable enough that a linter
+attempting it would be trusted more than it deserves. What it does is
+require a human decision at every site that can publish text, in a form
+that greps. This is the same shape as the ``# axis:`` discipline on core
+dataclasses (``check-multi-value-field-axis-declaration``): the gate is
+that an answer EXISTS and is written down, which is what author
+discipline empirically fails to supply on its own.
+
+Every egress line must carry one of two markers, on the line itself or
+on the line immediately above:
+
+- ``# forge-egress: scrubbed`` -- the text was routed through
+  ``bs_scrub_title`` / ``bs_scrub_body`` from ``.githooks/brand-scrub.sh``.
+  A file making this claim must actually source that library; claiming
+  it without sourcing is itself an error.
+- ``# forge-egress: no-agent-text -- <reason>`` -- the payload carries no
+  agent-authored prose. The reason is mandatory. Two real cases:
+  ``{"state": "closed"}`` is a literal, and ``prepare-release``
+  interpolates only a version number.
+
+A literal JSON payload written inline (``'{"state": "closed"}'``) needs
+no marker: there is no variable for agent text to arrive through, so
+demanding a declaration there would be noise that trains people to add
+markers without reading them.
+
+Usage
+-----
+    scripts/check-forge-text-egress [--verbose]
+
+Exit 0 when every site is declared, 1 when any is not. Set
+``FORGE_EGRESS_SCAN_ROOT`` to lint a tree other than the repo root (the
+test suite plants an undeclared site under a throwaway root to prove the
+linter is not vacuous).
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+# Text-bearing egress. Each pattern marks a line that can publish prose to
+# the forge. `api_*` calls whose payload is an inline literal are filtered
+# out separately (see _is_literal_payload).
+EGRESS_PATTERNS = [
+    (re.compile(r"-o\s+(title|description)="), "push option"),
+    # COMMAND POSITION, not mere mention. The trailing `\s+["$]` demands an
+    # argument, and _in_command_position demands the left context be a shell
+    # command boundary. Without both, the linter flags its own failure message
+    # -- `echo "... accepted an unrouted api_patch"` -- which is how a linter
+    # teaches people that its output is noise.
+    (re.compile(r"\bapi_(post|patch|put)\s+[\"$]"), "forge REST write"),
+]
+
+# Left context that can legitimately precede a command.
+_CMD_BOUNDARY = re.compile(r"(^|[;&|(]|\b(if|then|else|elif|do|while|until)\b|!)\s*$")
+
+SCRUBBED_MARKER = re.compile(r"#\s*forge-egress:\s*scrubbed\b")
+EXEMPT_MARKER = re.compile(r"#\s*forge-egress:\s*no-agent-text\s*--\s*(?P<reason>\S.*)")
+ANY_MARKER = re.compile(r"#\s*forge-egress:")
+
+SOURCES_LIB = re.compile(r"brand-scrub\.sh")
+
+# A payload written inline as a JSON literal cannot carry agent text.
+_LITERAL_PAYLOAD = re.compile(r"""['"]\{[^$]*\}['"]""")
+
+# Definition sites, not call sites: the api_* helpers are declared in the
+# shared library, and `grep`ping their own definitions would demand a marker
+# on the plumbing rather than on the publishers.
+_DEFINITION = re.compile(r"^\s*(api_(post|patch|put)\s*\(\s*\)|function\s+api_)")
+
+
+def _is_literal_payload(line: str) -> bool:
+    return bool(_LITERAL_PAYLOAD.search(line))
+
+
+def _scan_root() -> Path:
+    env = os.environ.get("FORGE_EGRESS_SCAN_ROOT")
+    if env:
+        return Path(env)
+    try:
+        top = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        return Path(top)
+    except (subprocess.CalledProcessError, FileNotFoundError):  # pragma: no cover
+        return Path.cwd()
+
+
+def _candidate_files(root: Path) -> list[Path]:
+    out: list[Path] = []
+    for sub in ("scripts", ".githooks"):
+        d = root / sub
+        if not d.is_dir():
+            continue
+        for p in sorted(d.rglob("*")):
+            if not p.is_file() or p.is_symlink():
+                continue
+            if p.suffix in {".py", ".md", ".txt", ".json", ".yaml", ".yml"}:
+                continue
+            if "__pycache__" in p.parts:
+                continue
+            try:
+                head = p.open("rb").read(2048)
+            except OSError:  # pragma: no cover
+                continue
+            if b"\0" in head:
+                continue
+            if not (head.startswith(b"#!") or p.suffix == ".sh"):
+                continue
+            if b"bash" not in head and b"sh\n" not in head and p.suffix != ".sh":
+                continue
+            out.append(p)
+    return out
+
+
+def _scrub_reachable(files: list[Path]) -> set[Path]:
+    """Files that reach brand-scrub.sh directly OR through a chain of sources.
+
+    ``contribute``, ``merge-pr`` and ``auto-pr`` all reach the scrub through
+    ``lib/forgejo-api.sh``, which is where it is wired precisely so one line
+    governs every caller. A direct-reference-only check would report all three
+    as unscrubbed and push authors to re-source a library they already have.
+
+    Resolution is by BASENAME rather than by resolved path: bash spells the
+    same source a dozen ways (``$SCRIPT_DIR/lib/x.sh``,
+    ``${BASH_SOURCE[0]%/*}/x.sh``, a relative path), and a linter that has to
+    win an argument with shell quoting to do its job will lose it quietly.
+    """
+    texts = {p: p.read_text(encoding="utf-8", errors="replace") for p in files}
+    reachable = {p for p, t in texts.items() if SOURCES_LIB.search(t)}
+    changed = True
+    while changed:
+        changed = False
+        names = {p.name for p in reachable}
+        for p, t in texts.items():
+            if p in reachable:
+                continue
+            if any(re.search(rf"\b{re.escape(n)}\b", t) for n in names):
+                reachable.add(p)
+                changed = True
+    return reachable
+
+
+def check(root: Path, verbose: bool = False) -> list[str]:
+    errors: list[str] = []
+    files = _candidate_files(root)
+    scrubbed_reachable = _scrub_reachable(files)
+    for path in files:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        lines = text.splitlines()
+        sources_lib = path in scrubbed_reachable
+        rel = path.relative_to(root) if path.is_relative_to(root) else path
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if _DEFINITION.search(line):
+                continue
+
+            kind = None
+            for pat, label in EGRESS_PATTERNS:
+                m = pat.search(line)
+                if not m:
+                    continue
+                if label == "forge REST write" and not _CMD_BOUNDARY.search(
+                    line[: m.start()]
+                ):
+                    continue
+                kind = label
+                break
+            if kind is None:
+                continue
+            if kind == "forge REST write" and _is_literal_payload(line):
+                continue
+
+            # A `-o title=` sits inside a `git push ... \` continuation, and a
+            # continuation line cannot carry a trailing comment -- the backslash
+            # must be last. So the marker attaches to the LOGICAL command: walk
+            # up to the first line of the continuation, then read the line above
+            # it. Exact, rather than a fuzzy N-line lookback that would let a
+            # marker vouch for a site it does not belong to.
+            start = i
+            while start > 0 and lines[start - 1].rstrip().endswith("\\"):
+                start -= 1
+            # ONLY two positions are legal, and the exclusion is load-bearing:
+            # a comment placed BETWEEN continuation lines terminates the
+            # command. Accepting one there would bless a marker that silently
+            # strips the very `-o title=` / `-o description=` it vouches for --
+            # observed during this change, and invisible to `bash -n`.
+            parts = []
+            if not line.rstrip().endswith("\\"):
+                parts.append(line)
+            # The whole contiguous comment block above the command, not just
+            # its last line: a multi-line rationale is the house style here,
+            # and requiring the marker on one particular line of it would be a
+            # rule no author would guess and no reader could see.
+            j = start - 1
+            while j >= 0 and lines[j].lstrip().startswith("#"):
+                parts.append(lines[j])
+                j -= 1
+            context = "\n".join(parts)
+            if EXEMPT_MARKER.search(context):
+                continue
+            if SCRUBBED_MARKER.search(context):
+                if not sources_lib:
+                    errors.append(
+                        f"{rel}:{i + 1}: claims '# forge-egress: scrubbed' but the "
+                        f"file never sources .githooks/brand-scrub.sh"
+                    )
+                elif verbose:
+                    print(f"  ok  {rel}:{i + 1}  ({kind}, scrubbed)")
+                continue
+            if ANY_MARKER.search(context):
+                errors.append(
+                    f"{rel}:{i + 1}: unrecognized forge-egress marker; expected "
+                    f"'scrubbed' or 'no-agent-text -- <reason>'"
+                )
+                continue
+
+            errors.append(
+                f"{rel}:{i + 1}: undeclared {kind} — add "
+                f"'# forge-egress: scrubbed' (routed through bs_scrub_*) or "
+                f"'# forge-egress: no-agent-text -- <reason>'\n"
+                f"    {stripped}"
+            )
+    return errors
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--verbose", action="store_true")
+    args = ap.parse_args()
+
+    root = _scan_root()
+    errors = check(root, verbose=args.verbose)
+    if errors:
+        print("❌ Undeclared forge-text egress site(s):\n", file=sys.stderr)
+        for e in errors:
+            print(f"  {e}", file=sys.stderr)
+        print(
+            f"\n{len(errors)} site(s). Every line that can publish agent-authored "
+            f"text to the forge must declare how it was scrubbed (WI-sidot).",
+            file=sys.stderr,
+        )
+        return 1
+    print("✅ forge-text egress: all sites declared")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

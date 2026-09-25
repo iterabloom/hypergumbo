@@ -1,0 +1,21 @@
+- op: create  # 2d2e
+  at: '2026-09-24T19:18:26Z'  # 2d2e
+  by: agent  # 2d2e
+  actor: jgstern_agent  # 2d2e
+  clock: 1  # 2d2e
+  nonce: 2d2e  # 2d2e
+  data:  # 2d2e
+    kind: work_item  # 2d2e
+    title: "nix: a curried application emits one duplicate calls edge per application level"  # 2d2e
+    status: todo_hard  # 2d2e
+    priority: 3  # 2d2e
+    parent:  # 2d2e
+    tags:  # 2d2e
+    - nix  # 2d2e
+    - analysis_quality  # 2d2e
+    isbefore: []  # 2d2e
+    duplicate_of: []  # 2d2e
+    not_duplicate_of: []  # 2d2e
+    pr_ref:  # 2d2e
+    description: "FOUND 2026-09-24 in WI-mapor's nix A/B (postgrest). A curried application emits one calls edge per application level.\n\n`checkedShellScript { name = ...; } ''...''` parses as apply_expression(apply_expression(checkedShellScript, {...}), ''...''). Pass 2 visits BOTH apply_expression nodes, and each resolves its innermost function to checkedShellScript, so one call site yields 2 identical edges at one line. Present on dev before WI-mapor (13 edges on postgrest, 6 of them in 3 duplicate pairs), and unchanged by it.\n\nASKED: emit the edge from the OUTERMOST apply_expression of a chain only (skip an apply_expression whose parent is an apply_expression with it as the function child). Measure the edge delta on postgrest and loki."  # 2d2e
+    fields: {}  # 2d2e

@@ -1,0 +1,20 @@
+- op: create  # 2a6b
+  at: '2026-09-10T23:12:30Z'  # 2a6b
+  by: agent  # 2a6b
+  actor: jgstern_agent  # 2a6b
+  clock: 1  # 2a6b
+  nonce: 2a6b  # 2a6b
+  data:  # 2a6b
+    kind: work_item  # 2a6b
+    title: "js analyzer derives its emission sets from the shipped catalogue at import, so overlay rows are inert"  # 2a6b
+    status: todo_hard  # 2a6b
+    priority: 4  # 2a6b
+    parent:  # 2a6b
+    tags:  # 2a6b
+    - javascript  # 2a6b
+    isbefore: []  # 2a6b
+    duplicate_of: []  # 2a6b
+    not_duplicate_of: []  # 2a6b
+    pr_ref:  # 2a6b
+    description: "NOTED 2026-09-10 while building WI-dosuh's assignment emitter.\n\njs_ts.py derives two sets FROM the io-boundary catalogue, at IMPORT time:\n\n    JS_CONSTRUCTOR_TYPES = _derive_js_constructor_types()   # new-able receivers\n    JS_ASSIGNABLE_ROWS   = _derive_js_assignable_rows()     # assignable props\n\nBoth call load_catalog(\"javascript\") at module scope, so both snapshot the\nSHIPPED catalogue exactly once per process and never see anything layered on\ntop of it.\n\nTHE CONSEQUENCE. A project-local overlay (ADR-0047) that adds, say, a\n`MyTransport` method row cannot cause an edge to be emitted for\n`new MyTransport().onmessage = h`, or for `t.someMethod()` on a\n`new`-constructed receiver -- because the ANALYZER, not the tagger, decides\nwhether to emit, and the analyzer is reading a catalogue the overlay never\nreached. io-boundaries would classify such an edge correctly if one existed.\nSo an overlay can add a row that is, for these two paths, inert.\n\nWHY IT IS SMALL BUT REAL. It does not affect any SHIPPED row, and it does not\naffect the ordinary tagger path where the catalogue is consulted per run with\noverlays layered. It is confined to the two places where the analyzer needs a\ncatalogue-derived answer to decide EMISSION.\n\nWHY IT IS FILED RATHER THAN FIXED IN WI-dosuh. Fixing it means giving the\nanalyzer a per-run catalogue -- a threading change through analyze_javascript\nand its callers, plus a decision about what a per-run derivation costs when it\nis currently a module-level constant read on every member call. That is a\ndesign question, not a line change, and it should not ride along inside a\nconstruct fix.\n\nNOT MEASURED: whether any overlay in use today adds a method row on a\nconstructible javascript type. If none does, this is theoretical; check before\nsizing.\n\nALSO WORTH DECIDING: whether the two sets should share one derivation entry\npoint, since they read the same catalogue for adjacent purposes and would\nthen need threading only once."  # 2a6b
+    fields: {}  # 2a6b

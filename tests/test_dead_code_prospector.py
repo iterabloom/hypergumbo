@@ -7,6 +7,8 @@ hypergumbo invocations during the bakeoff; here we exercise the
 language-counting and polyglot-detection helpers in isolation so
 regressions are caught without depending on external repos.
 """
+
+# covers: scripts/dead-code-prospector-run.py
 from __future__ import annotations
 
 import importlib

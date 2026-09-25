@@ -15,6 +15,7 @@ status: in_progress
 # to avoid false positives like t.Run() → gin.Engine.Run.
 ambiguous_names:
   - Read          # io.Reader.Read vs any .Read() method
+  - Scan          # fmt.Scan vs bufio.Scanner.Scan, sql.Rows.Scan
   - Write         # io.Writer.Write vs any .Write() method
   - Run           # exec.Cmd.Run vs testing.T.Run, cobra.Command.Run
   - Start         # exec.Cmd.Start vs any .Start() method
@@ -53,12 +54,91 @@ fs_read:
     notes: "Deprecated in Go 1.16 but still widely used"
   - module: filepath
     functions: [Walk, WalkDir, Glob]
+  - module: bufio
+    functions: [NewScanner, NewReader]
+    boundary_ruling: call_site_undecidable
+    abstains_to: ipc_recv
+    notes: >-
+      INV-bagok. These wrap an arbitrary io.Reader, so WHICH boundary the
+      crossing is depends entirely on the argument -- and the ipc_recv twin
+      carried the whole primitive on the note "When wrapping os.Stdin", a
+      condition holding at 11 of 236 censused sites (4.7%).
+
+      THE ANALYZER HAS BEEN STAMPING THE ANSWER SINCE WI-lipis AND NOTHING
+      COULD USE IT. `io_target_kind` resolves correctly (os.Stdin ->
+      std_stream, `f, _ := os.Open(p)` -> host_path, bytes.NewReader ->
+      in_memory, an unresolvable receiver -> absent), but
+      `_target_kind_discriminated_keys` requires TWO OR MORE read boundaries
+      before a stamp may choose between them, and this primitive had one row.
+      This row is the second.
+
+      `abstains_to: ipc_recv` IS LOAD-BEARING (INV-fatok). An unstamped call
+      falls back to the first row, which is otherwise the order of
+      CATALOG_BOUNDARY_TYPES -- fs_read, globally. Measured over six Go
+      repositories, that fallback moves 5 network reads off ipc_recv onto
+      fs_read, which mints no source: alertmanager
+      cluster/tls_connection.go:136 wraps a TLS connection and caddy
+      httpredirectlistener.go:90 wraps a net.Conn from Accept, both with
+      io_target_kind ABSENT. Each would lose a TRUE untrusted_input source.
+      Go needs the OPPOSITE fallback from c.yaml and haskell.yaml, which
+      started fs_read-only (a false negative) where this started ipc_recv-only
+      (a false positive).
+
+      The net_recv row exists since WI-suhug, when `net_stream` joined the
+      target-kind vocabulary (it was withheld before that because no kind
+      could select it -- an unreachable declaration would have made the
+      catalogue look more capable than it is). See it under net_recv.
+  - module: bufio.Reader
+    methods: [ReadString, ReadBytes, ReadLine, ReadRune, ReadSlice, Read]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: >-
+      WI-vutav. The call that TRANSFERS the bytes, one binding after the
+      wrapper rowed above: `reader := bufio.NewReader(f)`, then
+      `reader.ReadString('\n')`. What it crosses is whatever the handle wraps,
+      so it is dual and narrowed by the same `io_target_kind` the wrapper
+      stamps -- go.py resolves the RECEIVER's last binding, finds the wrapper
+      call, and classifies that call's argument (INV-zumin class (b) forbids a
+      fixed boundary for this population). Reachable from the `bufio` slot the
+      receiver's type puts the edge in; a `bufio.ReadWriter` receiver reaches
+      these rows through the same package hint.
+
+      `abstains_to: fs_read` IS THE OPPOSITE OF THE CONSTRUCTOR'S, ON PURPOSE.
+      An unstamped read is one whose receiver came from a scope go.py cannot
+      see -- a parameter, a struct field -- and the wrapper that built it lives
+      in THAT scope, where the constructor row already carries the unresolved
+      case's ipc_recv fallback. A second ipc_recv here would mint a second
+      untrusted_input source on one crossing; fs_read mints nothing and leaves
+      the crossing where it already is. Measured on six Go repositories (alertmanager, beads, caddy,
+      cert-manager, cilium, jaeger; WI-vutav's thread): 179 read sites reach
+      these rows, 0 rows removed, the constructor rows unmoved. 8 are stamped
+      `std_stream` and every one read back to a local
+      `bufio.New*(os.Stdin)`; 91 `host_path` (a file); 41 `in_memory`, which
+      classify here and are refused as sources at the mint gate; 39 are
+      unstamped -- 2 parameter receivers, 9 struct fields, and 28 locals
+      whose wrapper argument is itself a parameter, an in-repo wrapper
+      function, a pipe, an `io.LimitReader`, or `&buf` of a declared
+      `bytes.Buffer` -- and each read back as a shape the one-hop rule
+      cannot prove, not a missed `os.Open`.
+
+      NOT rowed, disclosed: a reader built by `bufio.NewReaderSize` or
+      `bufio.NewReadWriter` is not in go.py's wrapper set, so its reads are
+      unstamped and fall back here. `bufio.Scanner` is the sibling row.
+  - module: bufio.Scanner
+    methods: [Scan, Text, Bytes]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: >-
+      WI-vutav: `bufio.Reader`'s sibling, same mechanism, same fallback and
+      the same reason for it (see that row). `Scan` is declared ambiguous
+      above, so an UNTYPED receiver's `.Scan()` -- sql.Rows, fmt -- is
+      refused; only a receiver go.py typed as `bufio.Scanner` reaches this.
+      `Text` and `Bytes` return what the last `Scan` read, so they carry the
+      crossing too: a program that scans and never calls either has read
+      nothing it can act on.
   # Low-level syscall IO (important for kernel/runtime projects like gvisor)
   - module: syscall
     functions: [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Getdents]
-  - module: unix
-    functions: [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Fstatat]
-    notes: "golang.org/x/sys/unix"
 
 fs_write:
   - module: os
@@ -67,6 +147,50 @@ fs_write:
     functions: [WriteFile, TempFile, TempDir]
   - module: io
     functions: [WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: >-
+      WI-suhug. The first argument is ANY io.Writer, so WHICH boundary the
+      write crosses is a property of that argument -- INV-zumin class (b), the
+      WRITE-side twin of INV-bagok's bufio rows -- and the row was fixed at
+      fs_write: measurement 0012's entire VACUOUS class (gocryptfs writing a
+      plaintext to cmd.StdinPipe(), a pipe to a child, reported as a
+      host-filesystem crossing). Declared under fs_write, ipc_send, net_send
+      and logging; go.py stamps `io_target_kind` from the writer argument
+      (os.Stdout/os.Stderr -> std_stream -> logging per WI-dutah; an os.Create
+      handle -> host_path -> fs_write; cmd.Std*Pipe()/os.Pipe() -> pipe ->
+      ipc_send; a net.Conn / http.ResponseWriter -> net_stream -> net_send; a
+      bytes.Buffer / strings.Builder / hash / io.Discard crosses nothing), and
+      `_narrow_by_target_kind` selects the row in the WRITE direction.
+
+      `abstains_to: fs_write` IS TODAY'S ANSWER (INV-fatok): an unstamped call
+      -- an io.Writer or *os.File parameter, a struct field, a value the file
+      does not bind -- classifies exactly as it did before these rows, and
+      keeps its host_fs sink (INV-minol: the taint entry derived from this row
+      is the abstention fallback). Sized on six Go repositories before the
+      change: 8 `io.WriteString` call edges (the METHOD forms
+      `strings.Builder.WriteString` 435 / `bytes.Buffer.WriteString` 62 /
+      `bufio.Writer.WriteString` 10 / `os.File.WriteString` 7 are different
+      primitives; the first two are in-memory and correctly unrowed, the last
+      two are NOT rowed and are disclosed here, not claimed). io.Copy is
+      DEFERRED: fs_read + fs_write is a mode-discriminated pair and would enter
+      the mode seam; its row's note says so.
+  - module: fmt
+    functions: [Fprint, Fprintln, Fprintf]
+    boundary_ruling: call_site_undecidable
+    abstains_to: logging
+    notes: >-
+      WI-suhug: the same mechanism and fallback rule as `io.WriteString` (see
+      that row under fs_write); `abstains_to: logging` because that is what
+      every Fprint* call classified as before the rows existed. Sized on six
+      Go repositories: 1,940 Fprint* call edges, first argument os.Stdout /
+      os.Stderr at 913, a bare identifier at 749 (172 io.Writer parameters,
+      81 *bufio.Writer and 68 *tabwriter.Writer parameters -- abstain; ~210
+      locals bound to tabwriter.NewWriter / bufio.NewWriter over stdout, a
+      buffer or a file -- followed through the wrapper), &buf over a declared
+      strings.Builder / bytes.Buffer at 105, a struct field at 166 (abstains).
+      Print/Println/Printf write stdout unconditionally and stay single-row
+      below.
   - module: testing.T
     methods: [TempDir]
     notes: "Go testing stdlib — creates temp dir scoped to test"
@@ -75,13 +199,32 @@ fs_write:
     notes: "Go benchmark stdlib — creates temp dir scoped to benchmark"
   - module: syscall
     functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Rename, Chmod, Fchmod, Chown, Fchown, Truncate, Ftruncate]
-  - module: unix
-    functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Unlinkat, Renameat, Mkdirat]
-    notes: "golang.org/x/sys/unix"
 
 net_send:
   - module: net
     functions: [Dial, DialTCP, DialUDP, DialUnix, DialTimeout]
+    # WI-bulag / arc T9. class R -- the dial functions take an address that
+    # NAMES the endpoint and no content argument at all, so a tainted value
+    # reaching one can only be selecting which endpoint is dialled. The bytes
+    # are written later through the returned Conn, which is a different
+    # primitive and carries its own row. DialTimeout(network, address, timeout)
+    # -- position 1 is the address; Dial(network, address) -- position 1 too.
+    resource_naming:
+      Dial:        {names: [1], content: [], danger: false}
+      DialTCP:     {names: [1], content: [], danger: false}
+      DialUDP:     {names: [1], content: [], danger: false}
+      DialUnix:    {names: [1], content: [], danger: false}
+      DialTimeout: {names: [1], content: [], danger: false}
+  - module: io
+    functions: [WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-suhug: the net_send twin of the fs_write row (see it); selected by a `net_stream` stamp -- a net.Conn, *tls.Conn or http.ResponseWriter writer."
+  - module: fmt
+    functions: [Fprint, Fprintln, Fprintf]
+    boundary_ruling: call_site_undecidable
+    abstains_to: logging
+    notes: "WI-suhug: the net_send twin of the logging row (see it)."
   - module: net.Conn
     methods: [Write]
   - module: crypto/tls
@@ -95,60 +238,182 @@ net_send:
   - module: net/smtp.Client
     methods: [Mail, Rcpt, Data, Close]
   - module: net/http
-    functions: [Get, Post, PostForm, Head, NewRequest]
+    functions: [Get, Post, PostForm, Head]
   - module: net/http.Client
     methods: [Do, Get, Post, Head]
   - module: net/http.Transport
     methods: [RoundTrip]
   # gRPC client
-  - module: grpc
-    functions: [Dial, DialContext, NewClient]
-    notes: "gRPC client connection"
   - module: syscall
-    functions: [Connect, Sendto, Sendmsg]
-  - module: unix
     functions: [Connect, Sendto, Sendmsg]
 
 net_recv:
+  # 2026-09-06 owner ruling (WI-dozul): A DNS LOOKUP IS A NETWORK RECEIVE.
+  # The resolver chooses the answer, so ADR-0049's question is answered yes and
+  # these mint untrusted_input. LookupPort and the Resolver methods are here
+  # too: a Resolver is the same query through an explicit resolver object.
+  # net.Interfaces / net.InterfaceAddrs are NOT here -- they enumerate the
+  # LOCAL host's interfaces and query no name server.
   - module: net
-    functions: [Listen, ListenTCP, ListenUDP, ListenUnix, ListenPacket]
+    functions: [LookupHost, LookupIP, LookupAddr, LookupCNAME, LookupMX, LookupNS, LookupTXT, LookupSRV, LookupPort]
+    notes: "DNS resolution -- queries a name server and returns the answer it chose (ADR-0049: content the far side chose). Parity with erlang's inet rows, which have carried net_recv since 2026-05-24. LookupPort reads the local services table in the pure-Go resolver but goes to getaddrinfo under cgo, so it stays with its family rather than being split on a build tag."
+  - module: net.Resolver
+    methods: [LookupHost, LookupIP, LookupIPAddr, LookupAddr, LookupCNAME, LookupMX, LookupNS, LookupTXT, LookupSRV, LookupPort, LookupNetIP]
+    notes: "The same queries through an explicit resolver."
   - module: net.Listener
     methods: [Accept]
+    notes: >-
+      KEPT (ADR-0049 ruling 4). Accept returns a PEER-CHOSEN connection to its
+      own caller, so it is a transfer and not a member of the deferred-crossing
+      family -- the same verdict WI-dosov reached for Haskell when it dropped
+      socket/bind/listen while keeping accept.
   - module: net.Conn
     methods: [Read]
+  - module: bufio
+    functions: [NewScanner, NewReader]
+    boundary_ruling: call_site_undecidable
+    abstains_to: ipc_recv
+    notes: >-
+      WI-suhug: the row INV-bagok's note withheld "until the vocabulary
+      grows". It has: `net_stream` names a connection (a net.Conn / *tls.Conn
+      parameter by type, `c, _ := ln.Accept()`, `net.Dial(...)` by binding),
+      and `_READ_TARGET_KIND_BOUNDARY` maps it to net_recv, so
+      `bufio.NewScanner(conn)` -- alertmanager's TLS connection reader, caddy's
+      redirect listener -- selects THIS row and mints untrusted_input from a
+      network receive rather than an IPC one. Same fallback as its siblings:
+      an unstamped wrapper is still ipc_recv (INV-fatok; and, since INV-minol,
+      that fallback mints on the taint side too).
+  - module: bufio.Reader
+    methods: [ReadString, ReadBytes, ReadLine, ReadRune, ReadSlice, Read]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: "WI-suhug: the net_recv twin of the fs_read / ipc_recv read rows (WI-vutav), selected by a `net_stream` stamp on the receiver's binding. Fallback unchanged: fs_read."
+  - module: bufio.Scanner
+    methods: [Scan, Text, Bytes]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: "WI-suhug: `bufio.Reader`'s sibling, same mechanism, same fallback."
+  - module: syscall
+    functions: [Accept, Accept4, Recvfrom, Recvmsg]
+    notes: >-
+      Socket/Bind/Listen MOVED to net_listen (INV-kanuk, ADR-0049 ruling 1):
+      they return a descriptor or an error and transfer nothing, while net_recv
+      auto-derives a taint source via AUTO_SOURCE_LABEL_MAP. Accept/Accept4
+      return a peer-chosen connection and Recvfrom/Recvmsg return bytes, so
+      those four stay.
+
+# ADR-0049 DEFERRED CROSSINGS: the call ARRANGES a crossing whose data arrives
+# somewhere it does not name. net_listen mints no taint and shadows net_recv,
+# so the crossing is DISCLOSED rather than either minted or silently dropped.
+net_listen:
+  - module: net
+    functions: [Listen, ListenTCP, ListenUDP, ListenUnix, ListenPacket]
+    notes: >-
+      SETUP. Returns a net.Listener; nothing has been received. The bytes
+      arrive at a later Accept/Read, which are rowed separately under net_recv.
+  - module: syscall
+    functions: [Socket, Bind, Listen]
+    notes: >-
+      SETUP. Returns a file descriptor or an error.
   - module: net/http
     functions: [ListenAndServe, ListenAndServeTLS, Serve]
-  - module: syscall
-    functions: [Socket, Bind, Listen, Accept, Accept4, Recvfrom, Recvmsg]
-  - module: unix
-    functions: [Socket, Bind, Listen, Accept, Accept4, Recvfrom, Recvmsg]
+    notes: >-
+      LAUNCH (ADR-0049 ruling 4 row 2, measurement 0010). These block and
+      serve; their only value is an error, and the request bytes reach the
+      handler the runtime invokes. Adjudicated live: BOTH findings rooted here
+      in the 0010 cohort are false positives, and in one of them the sink path
+      begins at a call that runs BEFORE the ListenAndServe statement. The real
+      receive stays rowed under net_recv as net.Listener.Accept /
+      net.Conn.Read, which the represented-crossing probe confirms still fire.
 
 subprocess:
   - module: os/exec
     functions: [Command, CommandContext, LookPath]
   - module: os/exec.Cmd
-    methods: [Run, Start, Output, CombinedOutput]
-  - module: golang.org/x/sys/execabs
-    functions: [Command, CommandContext, LookPath]
-    notes: "execabs wraps os/exec with PATH-attack prevention"
+    methods: [Run, Start]
+  - module: os/exec.Cmd
+    methods: [Output, CombinedOutput]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1. These hand back the CHILD'S BYTES, so the
+      call is a TRANSFER as well as a launch: the return value's content was
+      chosen by a program hypergumbo cannot see, which is the same fact that
+      makes `net_recv` a source. Before this row a Go program that piped
+      `exec.Command("git","log").Output()` straight into `sh -c` returned
+      `confirmed_with_caveats` on "untrusted input never reaches a subprocess",
+      with `os/exec.Cmd.Output` NAMED in the caveat as a door the analysis
+      could not see through -- opacity reported over live ingress.
+
+      `simultaneous: true` because BOTH facts are true at once, which is the
+      `scala.sys.process.Process.apply` shape INV-zumin built the marker for --
+      not the undecidable shape it forbids. Control leaves the process (the
+      arguments are a subprocess sink and the callee stays opaque) AND the
+      return value is data from another process. Without the marker
+      `io_boundaries` is not written, and since `ipc_recv` parses before
+      `subprocess` the launch chain would be the one that vanished.
+
+      `Run` and `Start` stay launch-only in the row above: they return an
+      error, not the child's message. The precedent is rust.yaml's
+      `std::process::Child.wait_with_output` / `ChildStdout.read`, which cite
+      python.yaml's `os.wait` in turn -- the return direction of a subprocess
+      was already modelled in two catalogues, and this makes the rest agree.
   - module: syscall
     functions: [Exec, ForkExec]
 
 env_read:
   - module: os
-    functions: [Getenv, LookupEnv, Environ, Hostname, UserHomeDir, UserCacheDir, UserConfigDir, Executable, Getwd]
+    functions: [Getenv, LookupEnv, Environ]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: time
+    functions: [Now, Since, Until]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. golang/go
+      src/time/time.go: Since and Until are documented as shorthand for
+      Now()-based expressions and sample the clock internally, so they are
+      reads, not arithmetic.
+  - module: os
+    functions: [Hostname, UserHomeDir, UserCacheDir, UserConfigDir, Executable, Getwd]
   - module: runtime
     functions: [GOOS, GOARCH]
-    notes: "Constants, not functions, but captured as env_read"
+    notes: "Constants, not functions, but captured as host_info_read"
 
 ipc_send:
   - module: os
     attributes: [Stdout, Stderr]
+  - module: io
+    functions: [WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-suhug: the ipc_send twin of the fs_write row (see it); selected by a `pipe` stamp -- cmd.StdinPipe(), os.Pipe(). The 0012 gocryptfs row lands here."
+  - module: fmt
+    functions: [Fprint, Fprintln, Fprintf]
+    boundary_ruling: call_site_undecidable
+    abstains_to: logging
+    notes: "WI-suhug: the ipc_send twin of the logging row (see it)."
 
 logging:
   - module: fmt
-    functions: [Print, Println, Printf, Fprint, Fprintln, Fprintf]
-    notes: "Console output — logging, not IPC"
+    functions: [Print, Println, Printf]
+    notes: "Console output — logging, not IPC. Unconditional: these write os.Stdout whatever their arguments say."
+  - module: fmt
+    functions: [Fprint, Fprintln, Fprintf]
+    boundary_ruling: call_site_undecidable
+    abstains_to: logging
+    notes: "WI-suhug: the row an UNSTAMPED Fprint* falls back to -- today's answer -- and the one a `std_stream` stamp (os.Stdout, os.Stderr, a tabwriter over either) selects. The mechanism and the sizing are on the fs_write row of the same functions."
+  - module: io
+    functions: [WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-suhug: the logging twin of the fs_write row (see it); selected by a `std_stream` stamp. WI-dutah: terminal output is logging, not IPC."
   - module: log
     functions: [Print, Println, Printf, Fatal, Fatalln, Fatalf, Panic, Panicln, Panicf]
     notes: "Go stdlib log package — writes to stderr by default"
@@ -160,8 +425,53 @@ logging:
     notes: "slog.Logger instance methods"
 
 ipc_recv:
+  - module: os/exec.Cmd
+    methods: [Output, CombinedOutput]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
+  - module: fmt
+    functions: [Scan, Scanln, Scanf]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. fmt.Fscan/Fscanf take an io.Reader and fmt.Sscan takes a string,
+      so neither family is here. Scan is declared ambiguous above because
+      bufio.Scanner.Scan shares the short name and Go leaves an untyped
+      receiver with no module hint at all.
   - module: os
     attributes: [Stdin]
   - module: bufio
     functions: [NewScanner, NewReader]
-    notes: "When wrapping os.Stdin"
+    boundary_ruling: call_site_undecidable
+    abstains_to: ipc_recv
+    notes: >-
+      INV-bagok: the ipc_recv twin of the fs_read row, and the row an UNSTAMPED
+      call falls back to (see `abstains_to` there for the measurement). Selected
+      when the analyzer stamps `io_target_kind: std_stream` -- the "When
+      wrapping os.Stdin" condition this row used to assert unconditionally, now
+      asserted only where the argument's origin says so. Both markers are
+      repeated here because they are properties of the PRIMITIVE, not of one
+      declaration, and c.yaml states the same rule for stdio.fgets.
+  - module: bufio.Reader
+    methods: [ReadString, ReadBytes, ReadLine, ReadRune, ReadSlice, Read]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: >-
+      WI-vutav: the ipc_recv twin of the fs_read row, selected only when go.py
+      stamps `io_target_kind: std_stream` from the receiver's binding. Both
+      markers are repeated because they are properties of the PRIMITIVE; the
+      fallback and its measurement are on the fs_read row.
+  - module: bufio.Scanner
+    methods: [Scan, Text, Bytes]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: >-
+      WI-vutav: the ipc_recv twin of the fs_read row; see `bufio.Reader` above.

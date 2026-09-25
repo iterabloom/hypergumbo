@@ -26,8 +26,10 @@ class TestMakeHelperFunctions:
 
     def test_make_symbol_id_format(self) -> None:
         """Test symbol ID format."""
-        symbol_id = make_symbol_id("make", "Makefile", 1, 5, "build", "target")
-        assert symbol_id == "make:Makefile:1-5:build:target"
+        # WI-juzig: the id prefix is the LANGUAGE (the taxonomy's name), not
+        # the pass name.
+        symbol_id = make_symbol_id("makefile", "Makefile", 1, 5, "build", "target")
+        assert symbol_id == "makefile:Makefile:1-5:build:target"
 
     def test_make_edge_id_deterministic(self) -> None:
         """Test edge ID is deterministic."""

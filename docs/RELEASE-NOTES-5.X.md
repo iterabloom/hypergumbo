@@ -8,7 +8,8 @@ Headlines: the Rust SCIP backend became usable end-to-end via
 subcommands collapsed into the `add-extras` / `remove-extras` pair.
 
 For the current major version line, see
-[RELEASE-NOTES-6.X.md](RELEASE-NOTES-6.X.md).
+[RELEASE-NOTES-8.X.md](RELEASE-NOTES-8.X.md). The intervening lines are
+[6.x](RELEASE-NOTES-6.X.md) and [7.x](RELEASE-NOTES-7.X.md).
 
 > This file previously carried the in-progress notes for the release
 > that ultimately shipped as 6.0.0 (the unreleased work contained

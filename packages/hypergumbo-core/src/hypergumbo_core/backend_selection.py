@@ -1,0 +1,295 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Precedence resolution for per-backend opt-in decisions (ADR-0045 ruling 4).
+
+WHY THIS MODULE EXISTS. A multi-fidelity backend (ADR-0012) can be selected
+from several places — a CLI flag, an environment variable, and eventually a
+project config file and a user config file (ADR-0045 ruling 4 fixes the order:
+**flag > env > project config > user config > built-in default**). Before this
+module there was no single place that owned that ordering, and the CLI
+expressed the flag by *writing the environment variable*, which erased the
+distinction between the two highest tiers entirely. The observable consequence
+was not theoretical: ``--backend tree-sitter`` did not disable a backend that
+``HYPERGUMBO_RUST_ANALYZER=1`` had enabled, so the opt-out the tool advertises
+in its own warning was inert — and for the SCIP backend that warning is a
+*security* disclosure, because indexing executes the analysed repository's
+``build.rs`` and proc macros as the invoking user. A user who exported the
+variable (the only durable opt-in hypergumbo offers) and then deliberately
+opted out for one untrusted repo executed its build scripts anyway.
+
+THE THREE-VALUED RETURN IS THE POINT. :func:`resolve_optin` returns
+``True`` / ``False`` / ``None``, where ``None`` means *no tier consulted so far
+expressed an opinion* and ``False`` means *a tier said no*. Today both make the
+backend not run, so a two-valued version would behave identically and pass the
+same tests. It would also be a latent bug: the moment a config tier is added,
+an explicit ``HYPERGUMBO_RUST_ANALYZER=0`` collapsed into "no opinion" would
+start LOSING to a config file that says on, silently re-enabling code
+execution the user had turned off. The distinction is unobservable through any
+current caller, which is exactly why it is pinned by tests in this package
+rather than left for the config work to get right later.
+
+UNRECOGNISED VALUES FAIL SAFE, AND FAIL AS A DECISION. The shipped gate read
+"anything not truthy" as not-enabled. This module preserves that (``garbage``
+and ``""`` resolve to ``False``, not ``None``) so that a future config tier
+cannot turn the backend on for a user whose environment variable says
+something the parser did not understand. Fail safe; and fail loudly enough
+that a lower tier is not asked.
+
+ON THE ENVIRONMENT VARIABLE AS A TRANSPORT. The CLI still writes the resolved
+decision into the environment variable, because the gate runs deep inside the
+analyzer registry and threading a parameter to it would touch every caller.
+That is sound *only* under a rule this module's callers must keep: **the CLI
+may write the variable only with a decision that came from a tier ABOVE it**
+— in practice, the flag. Writing a decision sourced from a config tier into
+the variable would make it shadow the environment it is supposed to lose to,
+which is the same class of bug as the one above, pointed the other way.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Callable, FrozenSet, Mapping, Optional
+
+#: The rust-analyzer/SCIP backend's selection vocabulary, owned here rather
+#: than in ``hypergumbo-lang-rust-analyzer`` because the CLI must resolve the
+#: same choice and cannot import that package — it is an optional extra that
+#: is frequently absent. A second copy in the CLI is precisely the
+#: two-homes-for-one-fact shape ADR-0045 ruling 4 was written to end.
+RUST_ANALYZER_ENV_VAR = "HYPERGUMBO_RUST_ANALYZER"
+RUST_ANALYZER_ON_FLAGS: FrozenSet[str] = frozenset(
+    {"rust-analyzer", "rust_analyzer", "scip"},
+)
+RUST_ANALYZER_OFF_FLAGS: FrozenSet[str] = frozenset(
+    {"tree-sitter", "tree_sitter", "default"},
+)
+
+#: The scip-python backend (WI-nanom): the second opt-in backend, and the
+#: first that executes nothing — so ADR-0045 ruling 4's CONFIG tiers are
+#: consulted for it, below the environment (``[backends] scip_python``).
+SCIP_PYTHON_ENV_VAR = "HYPERGUMBO_SCIP_PYTHON"
+SCIP_PYTHON_ON_FLAGS: FrozenSet[str] = frozenset(
+    {"scip-python", "scip_python", "pyright"},
+)
+#: ``--backend tree-sitter`` turns EVERY opt-in backend off: one flag, one
+#: meaning. (``ast`` is the Python incumbent's backend name; accepted too.)
+SCIP_PYTHON_OFF_FLAGS: FrozenSet[str] = RUST_ANALYZER_OFF_FLAGS | frozenset({"ast"})
+
+#: Environment-variable values meaning "yes, opt in" (case-insensitive,
+#: surrounding whitespace ignored). Matches the set the shipped
+#: rust-analyzer gate already accepted — widening or narrowing it here would
+#: change who has a backend enabled without anyone requesting it.
+TRUTHY_VALUES: FrozenSet[str] = frozenset({"1", "true", "yes", "on"})
+
+
+def _resolve_flag_tier(
+    flag_choice: Optional[str],
+    on_flag_values: FrozenSet[str],
+    off_flag_values: FrozenSet[str],
+) -> Optional[bool]:
+    """Decide from the CLI flag alone, or ``None`` if it says nothing.
+
+    A flag naming neither backend (``--backend other``) is *no opinion*, not a
+    refusal: reading an unrecognised spelling as "off" would let a typo
+    silently override an explicit opt-in from a lower tier.
+    """
+    if flag_choice is None:
+        return None
+    normalised = flag_choice.strip().lower()
+    if normalised in on_flag_values:
+        return True
+    if normalised in off_flag_values:
+        return False
+    return None
+
+
+def _resolve_env_tier(
+    environ: Mapping[str, str], env_var: str,
+) -> Optional[bool]:
+    """Decide from the environment variable alone, or ``None`` if unset.
+
+    Presence is the decision boundary — an *unset* variable is silence, while
+    a variable set to anything at all is an answer (see the module docstring on
+    failing safe).
+    """
+    if env_var not in environ:
+        return None
+    return environ[env_var].strip().lower() in TRUTHY_VALUES
+
+
+def resolve_optin(
+    *,
+    flag_choice: Optional[str],
+    environ: Mapping[str, str],
+    env_var: str,
+    on_flag_values: FrozenSet[str],
+    off_flag_values: FrozenSet[str],
+    config_decision: Optional[bool] = None,
+) -> Optional[bool]:
+    """Resolve a backend opt-in across the tiers.
+
+    Returns ``True`` (run it), ``False`` (a tier explicitly said no), or
+    ``None`` (nothing has an opinion — a lower-precedence tier may still
+    decide, and with none left the built-in default applies).
+
+    Tiers are consulted highest-first and the first opinion wins: the flag,
+    the environment, then ``config_decision`` — the CONFIG tiers' answer,
+    already merged project-over-user by :func:`_config_tier` (ADR-0045
+    rulings 1, 3 and 4; wired for the first non-executing backend,
+    WI-nanom). It sits inside this function, below the environment, rather
+    than at the call sites — which is how the flag/environment conflation
+    this module replaced came about in the first place. A backend whose
+    opt-in is a TRUST grant passes no config decision (ruling 2).
+    """
+    decision = _resolve_flag_tier(flag_choice, on_flag_values, off_flag_values)
+    if decision is not None:
+        return decision
+    decision = _resolve_env_tier(environ, env_var)
+    if decision is not None:
+        return decision
+    return config_decision
+
+
+def _config_tier(
+    backend_name: str, repo_root: "Path", environ: Optional[Mapping[str, str]],
+) -> Optional[bool]:
+    """``[backends] <backend_name>`` from the two config tiers, project winning.
+
+    Abstains (``None``) on a file the loader refuses: the gate runs deep
+    inside the analyzer registry, and ``run_survey`` has already validated
+    the same files before any analysis — a bad key is reported there, with
+    the file named, at exit 2. Abstaining here keeps a library caller from
+    crashing in a place that cannot explain the error.
+    """
+    from .user_config import ConfigError, load_layered_config
+
+    try:
+        config = load_layered_config(repo_root=repo_root, environ=environ)
+    except ConfigError:
+        return None
+    return config.backends.get(backend_name)
+
+
+def resolve_scip_python_optin(
+    *,
+    flag_choice: Optional[str] = None,
+    environ: Optional[Mapping[str, str]] = None,
+    repo_root: Optional["Path"] = None,
+) -> Optional[bool]:
+    """:func:`resolve_optin` bound to the scip-python backend's vocabulary.
+
+    Flag > environment > CONFIG tiers > built-in (WI-nanom). The config tiers
+    are consulted only with a ``repo_root`` in hand — they are the durable
+    per-project / per-user opt-in this backend is allowed to have because
+    pyright executes nothing (ADR-0045 ruling 5), where the Rust backend gets
+    a trust store instead.
+    """
+    import os
+
+    env = os.environ if environ is None else environ
+    config_decision = None if repo_root is None else _config_tier("scip_python", repo_root, environ)
+    return resolve_optin(
+        flag_choice=flag_choice,
+        environ=env,
+        env_var=SCIP_PYTHON_ENV_VAR,
+        on_flag_values=SCIP_PYTHON_ON_FLAGS,
+        off_flag_values=SCIP_PYTHON_OFF_FLAGS,
+        config_decision=config_decision,
+    )
+
+
+def resolve_rust_analyzer_optin(
+    *,
+    flag_choice: Optional[str] = None,
+    environ: Optional[Mapping[str, str]] = None,
+    repo_root: Optional["Path"] = None,
+) -> Optional[bool]:
+    """:func:`resolve_optin` bound to the rust-analyzer backend's vocabulary.
+
+    The one entry point both the CLI (which resolves the flag before argparse
+    sees it) and the backend's own gate should use, so the two cannot come to
+    disagree about what ``--backend tree-sitter`` means.
+
+    ``repo_root`` adds the TRUST-STORE tier, consulted only when the flag and
+    the environment are both silent (ADR-0045 rulings 4 and 7). It is below
+    them and above the built-in default, and it is the tier that makes the
+    opt-in durable per repository — the thing the global environment variable
+    could never express (WI-sobig). Config tiers are deliberately absent for
+    THIS backend: enabling something that executes the analysed repository's
+    build scripts is a trust grant, and ruling 2 keeps it out of config
+    entirely.
+
+    Passing no ``repo_root`` skips the tier rather than guessing a path, so a
+    caller analysing a cached map with no repository in hand simply gets the
+    higher tiers.
+    """
+    import os
+
+    decision = resolve_optin(
+        flag_choice=flag_choice,
+        environ=os.environ if environ is None else environ,
+        env_var=RUST_ANALYZER_ENV_VAR,
+        on_flag_values=RUST_ANALYZER_ON_FLAGS,
+        off_flag_values=RUST_ANALYZER_OFF_FLAGS,
+    )
+    if decision is not None or repo_root is None:
+        return decision
+
+    from .backend_trust import read_decision
+
+    recorded = read_decision(repo_root, "rust_analyzer", environ=environ)
+    return None if recorded is None else recorded.granted
+
+
+def resolved_backend_set(
+    *,
+    repo_root: "Path",
+    environ: Optional[Mapping[str, str]] = None,
+    flag_choice: Optional[str] = None,
+    is_available: Optional[Callable[[], bool]] = None,
+    is_scip_python_available: Optional[Callable[[], bool]] = None,
+) -> "tuple[str, ...]":
+    """The opt-in backends that WILL RUN for ``repo_root``, as registration names.
+
+    WI-givib (WI-gojum sub-component 3): the results cache is keyed on
+    ``<fingerprint>/results/<state>/<analyzer_identity>``, and
+    ``analyzer_identity`` hashes the INSTALLED code — which backends exist —
+    not which were ENABLED, so a tree-sitter-only run and a two-arm run of
+    one tree shared a cache dir and could return each other's artifact
+    (user-visible since the merge pass: the two differ in node count). The
+    enabled set is run configuration, like ``max_files``, and this is the one
+    place it is resolved for the cache key.
+
+    It names what will run, not what was asked for: the opt-in is the output
+    of the ADR-0045 ruling-4 chain (:func:`resolve_rust_analyzer_optin` —
+    flag > environment > per-repository trust grant), and it counts only when
+    the binary is actually installed (:func:`rust_analyzer_install
+    .is_rust_analyzer_available`, the same probe the backend's gate makes),
+    because an opt-in with no binary falls through to the tree-sitter arm
+    (WI-luvud) and must be keyed as tree-sitter-only. A run that starts and
+    produces nothing (a wasmtime-class OOM) cannot be known before it runs
+    and is accepted as the residual.
+
+    The vocabulary is owned here for the reason the module docstring gives —
+    the CLI must resolve the same choice and cannot import the optional
+    backend package. A second opt-in backend (WI-nanom) adds its own clause
+    beside this one.
+    """
+    names: "list[str]" = []
+    if resolve_rust_analyzer_optin(
+        flag_choice=flag_choice, environ=environ, repo_root=repo_root,
+    ) is True:
+        if is_available is None:
+            from .rust_analyzer_install import is_rust_analyzer_available
+
+            is_available = is_rust_analyzer_available
+        if is_available():
+            names.append("rust_analyzer")
+    if resolve_scip_python_optin(
+        flag_choice=flag_choice, environ=environ, repo_root=repo_root,
+    ) is True:
+        if is_scip_python_available is None:
+            from .scip_python_install import is_scip_python_available as _probe
+
+            is_scip_python_available = _probe
+        if is_scip_python_available():
+            names.append("scip_python")
+    return tuple(names)

@@ -65,6 +65,15 @@ def stub_env(tmp_path: Path):
 # Records api_get/api_patch/api_post calls and returns programmed
 # responses from a JSON control file.
 
+# WI-sidot: the real forgejo-api.sh sources the brand-scrub library and calls
+# bs_init, so every consumer gets bs_scrub_* for free. A stub that omits it is
+# not a stub of the real library -- merge-pr scrubs its --reason before posting
+# it as a public comment, and without this the script dies on
+# "bs_scrub_body: command not found". Sourcing the REAL library (rather than
+# faking the functions) means these tests exercise the actual scrub.
+source "{REPO_ROOT}/.githooks/brand-scrub.sh"
+bs_init
+
 API_BASE="https://forge.example/api/v1/repos/test/repo"
 API_RESPONSE=""
 API_HTTP_CODE="200"
@@ -161,6 +170,15 @@ api_get() {{
     code=$(_control_get "$http_key")
     API_HTTP_CODE="${{code:-200}}"
     [[ "$API_HTTP_CODE" == "200" ]]
+}}
+
+pr_web_url() {{
+    # Mirrors the real lib helper (scripts/lib/forgejo-api.sh). merge-pr prints
+    # the PR link through it instead of hardcoding a forge host, so the stub
+    # must define it or the call surfaces as a bash 127 inside an
+    # unrelated-looking assertion -- which is exactly what
+    # TestStubMirrorsTheRealLibrary exists to catch, and did.
+    echo "https://forge.example/${{REPO_SLUG:-o/r}}/pulls/$1"
 }}
 
 api_patch() {{

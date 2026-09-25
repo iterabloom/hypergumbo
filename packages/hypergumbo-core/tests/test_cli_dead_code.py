@@ -3,6 +3,7 @@
 
 import json
 from pathlib import Path
+from typing import Any, ClassVar
 
 import pytest
 
@@ -2085,3 +2086,56 @@ class TestPerCandidateReachabilityCohort:
         assert lines and "test-only" in lines[0]
         dead_lines = [ln for ln in out.splitlines() if "truly_dead" in ln]
         assert dead_lines and "test-only" not in dead_lines[0]
+
+
+class TestConstructionEdgesAreReachability:
+    """INV-kahig: constructing an object makes its constructor reachable.
+
+    ``_REACHABILITY_EDGE_TYPES`` was ``{"calls", "dispatches_to", "wraps"}``.
+    Every analyzer that emits ``instantiates`` — dart, csharp, java, py, js_ts,
+    php, cpp, verilog, and (as of INV-kahig) ruby — therefore had its
+    construction edges skipped by the dead-code BFS, so a class reached only by
+    ``new Foo()`` had its constructor AND everything transitively downstream of
+    it reported as dead.
+
+    This is the third consumer found holding a private edge-type set that
+    excluded ``instantiates``, after ``TAINT_CALL_EDGE_TYPES`` (INV-lalad, where
+    it hid a command-injection flow) and ``verify_claims._CALL_SITE_EDGE_TYPES``.
+    All three now derive the call-family half from the registry.
+    """
+
+    _EDGES: ClassVar[list[dict[str, Any]]] = [
+        {"src": "main", "dst": "init", "type": "instantiates"},
+        {"src": "init", "dst": "polish", "type": "calls"},
+    ]
+
+    def _reachable(self, edge_types: set[str]) -> set[str]:
+        from hypergumbo_core.cli import _bfs_reachable
+
+        graph: dict[str, list[str]] = {}
+        for edge in self._EDGES:
+            if edge["type"] in edge_types:
+                graph.setdefault(edge["src"], []).append(edge["dst"])
+        return set(_bfs_reachable({"main"}, graph))
+
+    def test_construction_edge_carries_reachability(self) -> None:
+        from hypergumbo_core.axis_meta_keys import call_family_edge_types
+
+        live = call_family_edge_types() | {"dispatches_to", "wraps"}
+        assert self._reachable(live) == {"main", "init", "polish"}
+
+    def test_the_old_narrow_set_loses_both_downstream_symbols(self) -> None:
+        """POSITIVE CONTROL — pins the defect this fixes, so the assertion
+        above is shown to depend on the widening rather than passing for some
+        unrelated reason. Without ``instantiates`` the BFS reaches ONLY the
+        seed: ``init`` is unreachable because nothing calls it, and ``polish``
+        is collateral because its only caller was.
+        """
+        assert self._reachable({"calls", "dispatches_to", "wraps"}) == {"main"}
+
+    def test_reachability_derives_the_call_family_from_the_registry(self) -> None:
+        """The set must not restate the call family — that is how it drifted."""
+        from hypergumbo_core.axis_meta_keys import call_family_edge_types
+
+        assert "instantiates" in call_family_edge_types()
+        assert "calls" in call_family_edge_types()

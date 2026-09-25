@@ -12,6 +12,7 @@ import pytest
 
 from hypergumbo_core.io_boundary import (
     HIGH_RISK_EXEMPTIONS_SUBPROCESS,
+    MULTI_BOUNDARY_REASON_SIMULTANEOUS,
     HIGH_RISK_PRIMITIVES,
     IO_BOUNDARIES_SCHEMA_VERSION,
     BoundaryMap,
@@ -28,6 +29,7 @@ from hypergumbo_core.io_boundary import (
     is_high_risk,
     load_catalog,
     match_edge_to_primitive,
+    multi_boundary_reason,
     tag_io_boundaries,
 )
 from hypergumbo_core.ir import Edge
@@ -149,7 +151,12 @@ class TestLoadCatalog:
         # answer is the external_potential bucket (PR C of the same plan):
         # tier-3 boundary calls surface as their own bucket, sub-grouped
         # by is_stdlib, without the catalog having to enumerate them.
-        catalog = load_catalog("python")
+        # ADR-0047 ruling 1 KEEPS this rule and changes only what may ship
+        # ALONGSIDE: "the shipped catalogues stay stdlib-only — ADR-0016 §27
+        # is unchanged for them", while community rows hypergumbo does not
+        # vouch for may ship as disclosed overlays. So the rule is asserted
+        # where it still holds, on the catalogue itself, rather than relaxed.
+        catalog = load_catalog("python", include_defaults=False)
         net_sends = {p.qualified_name for p in catalog.primitives
                      if p.boundary == "net_send"}
         # Originally added in WI-jihuj, reverted in PR3 of stop-stripping.
@@ -162,6 +169,11 @@ class TestLoadCatalog:
         assert not any(p.module == "aiohttp.ClientSession" for p in catalog.primitives)
         assert not any(p.module == "httpx.Client" for p in catalog.primitives)
         assert not any(p.module == "httpx.AsyncClient" for p in catalog.primitives)
+        # ...and the other half of the amendment: they ARE reachable by
+        # default, through the disclosed community channel rather than by
+        # being smuggled into the stdlib-scoped file.
+        with_defaults = load_catalog("python")
+        assert any(p.module == "requests" for p in with_defaults.primitives)
         # Stdlib HTTP clients stay.
         assert any(p.module == "urllib.request" for p in catalog.primitives)
         assert any(p.module == "http.client.HTTPConnection"
@@ -204,8 +216,15 @@ class TestLoadCatalog:
         # cannot false-tag. Any OTHER third-party db module is STILL forbidden —
         # this guards the boundary against untyped short-name ORM creep. A new
         # framework datastore entry must meet the criterion (a real distinctive
-        # module namespace + a type-verified receiver + a bounded method set) and
+        # module namespace + a MODULE-QUALIFIED dst + a bounded method set) and
         # be added to the allow-list below deliberately.
+        #
+        # "type-verified receiver" WAS THE OLD SPELLING OF THAT CRITERION and is
+        # no longer accurate (ADR-0053): the qualified dst is now ALSO reached by
+        # inferring the receiver from a relation-accessor name the project's own
+        # models declare. The property this test actually guards -- module-
+        # filtered, never short-name -- is unchanged, which is why the assertion
+        # below is on MODULE NAMES and needs no edit.
         catalog = load_catalog("python")
         _STDLIB_DB_MODULE_ROOTS = ("sqlite3", "dbm", "shelve")
         _TYPE_VERIFIED_DB_MODULES = ("django.db.models",)
@@ -557,7 +576,7 @@ class TestLoadCatalog:
         # framework rows declared a package-identifier module while the
         # analyzer emits the import path, so `gin` is a hint no Go program can
         # produce and the row was unreachable in production. Those rows now
-        # live in docs/io-primitives-overlays/go-web-frameworks.yaml, keyed on
+        # live in io_primitives_overlays/go-web-frameworks.yaml, keyed on
         # the real import path. The stdlib row that shares the name carries the
         # same assertion without depending on a fabricated hint.
         hit = catalog.lookup_with_module("Data", "net/smtp")
@@ -1204,7 +1223,7 @@ class TestCatalogStatus:
         # from this list. The catalogs still pending audit must continue to
         # declare status=in_progress.
         for lang in (
-            "c", "elixir", "go", "haskell", "java", "javascript",
+            "c", "elixir", "go", "haskell", "java",
             "kotlin", "objc", "scala", "swift",
         ):
             catalog = load_catalog(lang)
@@ -2031,12 +2050,25 @@ class TestTagIoBoundaries:
         assert edge.meta["io_boundary"] == "fs_write"
 
     def test_cgo_stdlib_socket_uses_c_catalog(self) -> None:
-        """Go cgo C.socket() is tagged as net_send via C catalog."""
+        """Go cgo C.send() is tagged as net_send via the C catalog.
+
+        Re-vehicled from ``C.socket()`` by INV-nular, which removed the
+        ``socket`` row: socket() creates an endpoint and transfers nothing,
+        while net_recv is an auto-derived taint source, so the row was minting
+        untrusted_input. What this test is ABOUT is unchanged — a cgo call
+        resolving through the C catalogue rather than Go's — so it keeps its
+        name and gains a vehicle that still ships.
+
+        ``sendto`` rather than ``send``: the C catalogue lists ``send`` in
+        ``ambiguous_names`` (socket send vs a project-local send()), so a bare
+        name under the synthetic ``C`` module is correctly refused by the
+        ambiguity gate. ``socket`` was never ambiguous, which is why it worked
+        as a vehicle and why swapping in the obvious neighbour did not."""
         c_catalog = load_catalog("c")
         go_catalog = load_catalog("go")
         edge = self._make_edge(
             src="go:/app/net.go:10-20:Connect:function",
-            dst="go:C:0-0:socket:unresolved",
+            dst="go:C:0-0:sendto:unresolved",
             edge_type="calls",
         )
         count = tag_io_boundaries(
@@ -2296,10 +2328,19 @@ class TestDjangoOrmIoBoundary:
 
     def test_catalog_classifies_manager_read_methods(self) -> None:
         catalog = load_catalog("python")
-        for method in ("filter", "get", "all", "count", "exists"):
+        for method in ("get", "count", "exists", "__iter__", "__getitem__"):
             hit = catalog.lookup_with_module(method, "django.db.models")
             assert hit is not None, method
             assert hit.boundary == "db_read", method
+
+    def test_catalog_classifies_lazy_combinators_as_composition(self) -> None:
+        """WI-fasap: ``filter`` / ``all`` compose a query and read nothing --
+        a deferred crossing, disclosed and never minted (ADR-0049)."""
+        catalog = load_catalog("python")
+        for method in ("filter", "all", "order_by", "select_related"):
+            hit = catalog.lookup_with_module(method, "django.db.models")
+            assert hit is not None, method
+            assert hit.boundary == "db_compose", method
 
     def test_catalog_classifies_write_methods(self) -> None:
         catalog = load_catalog("python")
@@ -2316,7 +2357,8 @@ class TestDjangoOrmIoBoundary:
         assert catalog.lookup_with_module("get", "external") is None
         assert catalog.lookup_with_module("delete", "external") is None
 
-    def test_tags_manager_filter_as_db_read(self) -> None:
+    def test_tags_manager_filter_as_db_compose(self) -> None:
+        """Was ``db_read`` until WI-fasap; the tag moved, the match did not."""
         catalog = load_catalog("python")
         edge = self._make_edge(
             src="python:/app/views.py:10-12:view:function",
@@ -2324,8 +2366,21 @@ class TestDjangoOrmIoBoundary:
         )
         count = tag_io_boundaries([edge], {"python": catalog})
         assert count == 1
-        assert edge.meta["io_boundary"] == "db_read"
+        assert edge.meta["io_boundary"] == "db_compose"
         assert edge.meta["io_primitive"] == "django.db.models.filter"
+
+    def test_tags_queryset_evaluation_as_db_read(self) -> None:
+        """WI-fasap: the ``__iter__`` call site py.py emits at a ``for`` over a
+        QuerySet is the read the combinators were standing in for."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/views.py:10-12:view:function",
+            dst="python:django.db.models:0-0:__iter__:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_read"
+        assert edge.meta["io_primitive"] == "django.db.models.__iter__"
 
     def test_tags_manager_create_as_db_write(self) -> None:
         catalog = load_catalog("python")
@@ -2713,7 +2768,9 @@ class TestLeafCallerExpansion:
 
     def test_leaf_callers_surface_concrete_notifiers(self) -> None:
         """Two concrete Notifier.Notify funcs share a 'request' helper that
-        calls http.NewRequest. leaf_callers must contain both Notifiers."""
+        calls http.Post. leaf_callers must contain both Notifiers. (It was
+        http.NewRequest until INV-gujoh removed that row: a constructor sends
+        nothing.)"""
         catalog = load_catalog("go")
         edges = [
             self._make_edge(
@@ -2734,7 +2791,7 @@ class TestLeafCallerExpansion:
             ),
             self._make_edge(
                 src="go:/notify.go:1:request:function",
-                dst="go:net/http:0-0:NewRequest:unresolved",
+                dst="go:net/http:0-0:Post:unresolved",
             ),
         ]
         entrypoint_ids = {"go:/api.go:1:postAlertsHandler:function"}
@@ -2769,7 +2826,7 @@ class TestLeafCallerExpansion:
             ),
             self._make_edge(
                 src="go:/notify.go:1:request:function",
-                dst="go:net/http:0-0:NewRequest:unresolved",
+                dst="go:net/http:0-0:Post:unresolved",
             ),
         ]
         entrypoint_ids = {
@@ -3229,11 +3286,14 @@ class TestIoBoundariesEnvelopeSchema:
     """
 
     def test_io_boundaries_schema_version_constant_pinned(self) -> None:
-        """The exported constant pins ``2.1`` (bumped from 2.0 by WI-javoh: the
-        new command_launch_edges disclosure key; 2.0 was WI-huhit/WI-foduh —
-        total_io_edges redefined to real categories + external_potential_edges).
+        """The exported constant pins ``2.3`` (bumped from 2.2 by WI-fasap /
+        ADR-0049: the db_compose_edges disclosure key, the database twin of
+        net_listen; 2.2 was WI-nosah's net_listen_edges for deferred
+        crossings; 2.1 was WI-javoh's command_launch_edges; 2.0 was
+        WI-huhit/WI-foduh — total_io_edges redefined to real categories +
+        external_potential_edges).
         """
-        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.1", (
+        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.3", (
             "io-boundaries schema_version is a wire-format contract. "
             "Do NOT change the value without bumping it deliberately "
             "AND updating the inline schema docs + CHANGELOG."
@@ -3254,7 +3314,8 @@ class TestIoBoundariesEnvelopeSchema:
         # this lock-set; the CLI integration test below covers it.
         expected_keys = {
             "schema_version", "total_io_edges", "external_potential_edges",
-            "command_launch_edges", "boundaries",
+            "command_launch_edges", "net_listen_edges", "db_compose_edges",
+            "boundaries",
         }
         assert set(d.keys()) == expected_keys, (
             f"Unexpected top-level keys in BoundaryMap.to_dict(): "
@@ -3953,10 +4014,16 @@ class TestAmbiguousNameFiltering:
         catalog = load_catalog("scala")
         edge = self._make_edge(
             src="scala:Main.scala:10:main:method",
-            dst="scala:java.net.ServerSocket:0-0:bind:unresolved",
+            dst="scala:java.net.ServerSocket:0-0:accept:unresolved",
         )
         count = tag_io_boundaries([edge], {"scala": catalog})
-        assert count == 1, "Ambiguous name 'bind' should match when module context confirms ServerSocket"
+        assert count == 1, (
+            "Ambiguous name 'accept' should match when module context confirms "
+            "ServerSocket. Re-vehicled from 'bind' by INV-nular, which removed "
+            "ServerSocket.bind as a false net_recv source; 'accept' is equally "
+            "ambiguous (java.yaml lists both) and is still rowed, so the "
+            "ambiguity mechanism under test is unchanged."
+        )
 
     def test_scala_mkstring_not_matched_as_source(self) -> None:
         """Scala's collection mkString should NOT match scala.io.Source.mkString."""
@@ -4818,13 +4885,19 @@ class TestStdlibModulesAndFilter2:
         # Long-tail non-stdlib should be absent.
         assert not cat.is_stdlib_module("requests")
         # Closed-world flags: math since May, os since the 2026-08-15
-        # stdlib climb (full I/O surface rowed + dated audit). The
-        # counterexample keeping the assertion honest is now a module
-        # that is genuinely NOT enumerated: socket carries rows and no
-        # audit, and third-party requests carries neither.
+        # stdlib climb (full I/O surface rowed + dated audit), socket
+        # since 2026-09-08 (WI-dozul: the DNS ruling discharged the reason
+        # WI-dupok withheld it, and all 35 module-level callables were
+        # adjudicated). The counterexample keeping the assertion honest
+        # has to be a module that is genuinely NOT enumerated, so it moved
+        # to `ssl` -- rowed for its sockets, never read one by one, and
+        # independently pinned as WITHHELD in
+        # test_python_completeness_third_leg.py. Third-party requests
+        # carries neither rows nor an audit.
         assert cat.module_io_is_enumerated("math")
         assert cat.module_io_is_enumerated("os")
-        assert not cat.module_io_is_enumerated("socket")
+        assert cat.module_io_is_enumerated("socket")
+        assert not cat.module_io_is_enumerated("ssl")
         assert not cat.module_io_is_enumerated("requests")
 
     def test_filter_2_skips_only_when_module_hint_is_present(self) -> None:
@@ -5058,17 +5131,22 @@ class TestSwiftCatalog:
         assert edges[4].meta is None
 
     def test_swift_has_swiftnio_server_primitives(self) -> None:
-        """Swift catalog covers SwiftNIO server infrastructure."""
+        """Swift catalog covers SwiftNIO server infrastructure.
+
+        INV-gujoh (2026-09-23): the server bootstrap ARRANGES inbound data, so
+        it is the ADR-0049 disclosure boundary ``net_listen``, not a receive;
+        an event-loop group (a thread pool) and a request VALUE cross nothing
+        and are not rowed.
+        """
         catalog = load_catalog("swift")
-        net_recvs = {p.name for p in catalog.primitives if p.boundary == "net_recv"}
-        net_sends = {p.name for p in catalog.primitives if p.boundary == "net_send"}
+        listens = {p.name for p in catalog.primitives if p.boundary == "net_listen"}
         process = {p.name for p in catalog.primitives if p.boundary == "process_send"}
-        # Event loop group creation is server infrastructure
-        assert "MultiThreadedEventLoopGroup" in net_recvs
+        names = {p.name for p in catalog.primitives}
+        assert "ServerBootstrap" in listens
         # Graceful shutdown is process lifecycle
         assert "syncShutdownGracefully" in process
-        # HTTP client request construction
-        assert "HTTPClientRequest" in net_sends
+        assert "MultiThreadedEventLoopGroup" not in names
+        assert "HTTPClientRequest" not in names
 
     def test_swift_has_websocket_handlers(self) -> None:
         """Swift catalog covers WebSocket event handlers."""
@@ -5077,12 +5155,12 @@ class TestSwiftCatalog:
         assert "onText" in net_recvs
         assert "onBinary" in net_recvs
 
-    def test_swift_has_tls_primitives(self) -> None:
-        """Swift catalog covers NIO TLS/SSL primitives."""
-        catalog = load_catalog("swift")
-        net_sends = {p.name for p in catalog.primitives if p.boundary == "net_send"}
-        assert "NIOSSLContext" in net_sends
-        assert "NIOSSLCertificate" in net_sends
+    def test_swift_tls_material_is_not_a_network_crossing(self) -> None:
+        """INV-gujoh (2026-09-23): building TLS material sends nothing. The
+        ``(file:)`` constructor forms read a file, but the analyzer carries no
+        argument label and most real uses are ``(bytes:)``, so no row."""
+        names = {p.name for p in load_catalog("swift").primitives}
+        assert not names & {"NIOSSLContext", "NIOSSLCertificate", "NIOSSLPrivateKey"}
 
     def test_swift_has_nio_channel_operations(self) -> None:
         """Swift catalog covers NIO async channel and pipeline operations."""
@@ -5114,14 +5192,17 @@ class TestSwiftCatalog:
             meta: Optional[Dict[str, Any]] = None
 
         catalog = load_catalog("swift")
-        # io-boundary:F3 — these are method-kind catalog entries, so the edge
-        # must carry the receiver module (no-receiver-evidence bare calls are
-        # now suppressed under INV-tapat). The module hints below are the
-        # PascalCase type names the receiver-type inference would supply.
+        # io-boundary:F3 — the method-kind entries need the receiver module (no-
+        # receiver-evidence bare calls are suppressed under INV-tapat); the
+        # module hints below are the PascalCase type names the receiver-type
+        # inference would supply. A CONSTRUCTOR is function-kind (ADR-0059), and
+        # the analyzer emits it with no module hint at all, so its edge says
+        # ``external`` -- which is exactly why the method-keyed constructor rows
+        # never matched before INV-gujoh.
         edges = [
             MockEdge(
                 src="swift:Sources/App/Server.swift:10:setup:method",
-                dst="swift:EventLoopGroup:0-0:MultiThreadedEventLoopGroup:unresolved",
+                dst="swift:external:0-0:ServerBootstrap:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/Server.swift:15:teardown:method",
@@ -5132,21 +5213,22 @@ class TestSwiftCatalog:
                 dst="swift:WebSocket:0-0:onText:unresolved",
             ),
             MockEdge(
-                src="swift:Sources/App/TLS.swift:5:configure:method",
-                dst="swift:NIOSSL:0-0:NIOSSLContext:unresolved",
+                src="swift:Sources/App/Chan.swift:5:serve:method",
+                dst="swift:external:0-0:NIOAsyncChannel:unresolved",
             ),
             MockEdge(
                 src="swift:Sources/App/Client.swift:8:fetch:method",
-                dst="swift:AsyncHTTPClient:0-0:HTTPClientRequest:unresolved",
+                dst="swift:external:0-0:HTTPClientRequest:unresolved",
             ),
         ]
         count = tag_io_boundaries(edges, {"swift": catalog})
-        assert count == 5, f"Expected 5 tagged edges, got {count}"
-        assert edges[0].meta["io_boundary"] == "net_recv"
+        assert count == 4, f"Expected 4 tagged edges, got {count}"
+        assert edges[0].meta["io_boundary"] == "net_listen"
         assert edges[1].meta["io_boundary"] == "process_send"
         assert edges[2].meta["io_boundary"] == "net_recv"
-        assert edges[3].meta["io_boundary"] == "net_send"
-        assert edges[4].meta["io_boundary"] == "net_send"
+        assert edges[3].meta["io_boundary"] == "net_recv"
+        # A request VALUE is not a send (INV-gujoh): no row, no tag.
+        assert edges[4].meta is None
 
     def test_swift_has_logger_methods(self) -> None:
         """Swift catalog covers swift-log Logger level methods."""
@@ -5405,20 +5487,73 @@ class TestTheBeamShellOutIsASubprocessNotAnEnvRead:
     the analyzer can never match is a ceiling rather than a payoff (INV-linub's
     L2-only fix measured as a win at the analyzer and produced zero findings).
     The Erlang analyzer emits ``erlang:os:0-0:cmd:external_symbol`` with
-    ``call_construct='remote_external'`` — module slot ``os``, name slot
+    ``call_construct='remote'`` (INV-tadup folded the ``_external`` suffix,
+    whose information already lives in the dst) — module slot ``os``, name slot
     ``cmd`` — and the POSITIVE CONTROL is that the existing (wrong) row already
     matches it end to end, producing an ``env_read`` chain. The key resolves;
     only the boundary was wrong.
     """
 
     def test_erlang_os_cmd_is_a_subprocess_launch(self) -> None:
+        """ASKED OVER EVERY ROW, not over the one ``lookup_with_module``
+        returns, and the difference became live rather than theoretical when
+        INV-lozat gave ``os:cmd`` its second (``ipc_recv``) declaration.
+
+        ``os:cmd/1`` both launches a program AND returns its output, so it is
+        now the INV-zumin class (c) shape one class over from
+        ``scala.sys.process.Process.apply``. ``CATALOG_BOUNDARY_TYPES`` lists
+        ``ipc_recv`` before ``subprocess``, so the single-slot answer is now
+        the receive — which is exactly the race
+        :meth:`declares_opaque_crossing` documents ("opacity can lose that
+        race"). Asserting the slot would therefore have pinned an artefact of
+        tuple order rather than WI-jupaf's guarantee.
+
+        WHAT WI-jupaf ACTUALLY MEASURED is asserted instead, and it is
+        STRICTLY STRONGER than the slot check it replaces: the launch reaches
+        the boundary map as a ``subprocess`` chain, which is what a
+        ``{boundary: subprocess, must_not_exist: true}`` claim counts, and the
+        call still declares an opaque crossing.
+        """
         cat = load_catalog("erlang")
-        got = cat.lookup_with_module("os.cmd", "os")
-        assert got is not None, "os.cmd must stay catalogued — this is a RE-KEY"
-        assert got.boundary == "subprocess", (
-            f"os:cmd/1 runs a command through the OS shell; it is not an "
-            f"environment read. Got boundary={got.boundary!r}"
+        assert cat.lookup_with_module("os.cmd", "os") is not None, (
+            "os.cmd must stay catalogued — this is a RE-KEY"
         )
+        assert "subprocess" in cat.all_boundaries_for("os.cmd"), (
+            f"os:cmd/1 runs a command through the OS shell; it is not an "
+            f"environment read. Got {sorted(cat.all_boundaries_for('os.cmd'))}"
+        )
+        assert cat.declares_opaque_crossing("os", "cmd"), (
+            "knowing what the child SAID is not seeing what it DID; the launch "
+            "must stay opaque (INV-gahuz)"
+        )
+        assert "subprocess" in set(self._boundary_map_for_os_cmd("erlang")), (
+            "the false-confirm WI-jupaf measured is back: no subprocess chain "
+            "reaches the boundary map for an os:cmd edge, so "
+            "`{boundary: subprocess, must_not_exist: true}` confirms over a "
+            "live shell-out."
+        )
+
+    @staticmethod
+    def _boundary_map_for_os_cmd(lang: str):
+        """One ``os:cmd`` call edge, exactly as the Erlang analyzer emits it
+        (``call_construct='remote'``, module slot ``os``, name slot ``cmd``),
+        put through the production tagger."""
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class _E:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        edge = _E(
+            src=f"{lang}:src/leak.erl:2-4:handler:function",
+            dst=f"{lang}:os:0-0:cmd:external_symbol",
+            meta={"call_construct": "remote"},
+        )
+        return compute_boundary_map([edge], {lang: load_catalog(lang)}).entries
 
     def test_erlang_open_port_is_a_subprocess_launch(self) -> None:
         """``erlang:open_port/2`` is the other launch primitive, and the one
@@ -5446,12 +5581,17 @@ class TestTheBeamShellOutIsASubprocessNotAnEnvRead:
         inherited answer, so a future edit that fixes only the child leaves the
         parent's defect visible here.
         """
-        got = load_catalog("elixir").lookup_with_module("os.cmd", "os")
-        assert got is not None
-        assert got.boundary == "subprocess", (
+        cat = load_catalog("elixir")
+        assert cat.lookup_with_module("os.cmd", "os") is not None
+        # Over every row, for the reason spelled out in
+        # ``test_erlang_os_cmd_is_a_subprocess_launch``: since INV-lozat this
+        # primitive carries two simultaneously-true boundaries and the
+        # single-slot answer is decided by tuple order, not by the catalogue.
+        assert "subprocess" in cat.all_boundaries_for("os.cmd"), (
             f"elixir inherits erlang's os module; :os.cmd/1 must be a launch "
-            f"there too. Got {got.boundary!r}"
+            f"there too. Got {sorted(cat.all_boundaries_for('os.cmd'))}"
         )
+        assert "subprocess" in set(self._boundary_map_for_os_cmd("elixir"))
 
     def test_the_shell_out_is_marked_high_risk(self) -> None:
         """``subprocess`` is flagged ``*** HIGH RISK ***`` on the invariant that
@@ -5471,15 +5611,36 @@ class TestTheBeamShellOutIsASubprocessNotAnEnvRead:
         pasted. The env rows are REMOVED, not supplemented.
         """
         for lang in ("erlang", "elixir"):
+            cat = load_catalog(lang)
             boundaries = {
-                p.boundary for p in load_catalog(lang).primitives
+                p.boundary for p in cat.primitives
                 if p.qualified_name == "os.cmd"
             }
-            assert boundaries == {"subprocess"}, (
-                f"{lang}: os.cmd must be declared under subprocess ALONE, or "
-                f"row order decides which declaration survives (INV-zumin). "
-                f"Got {sorted(boundaries)}"
+            assert not (boundaries & {"env_read", "env_write"}), (
+                f"{lang}: os.cmd is back under an env boundary. It runs a "
+                f"command through the OS shell. Got {sorted(boundaries)}"
             )
+            # THE PROPERTY, NOT THE PROXY. This assertion used to read
+            # ``== {"subprocess"}`` — sole declaration as a stand-in for "row
+            # order cannot decide the outcome". INV-lozat added a genuinely
+            # simultaneous ``ipc_recv`` row (os:cmd returns the command's
+            # output), which is INV-zumin's class (c): the marker makes every
+            # declaration reachable through ``io_boundaries``, so order decides
+            # nothing. Pinning sole-declaration would have forbidden the one
+            # multi-boundary shape the mechanism exists to support, while
+            # still permitting an unmarked pair — the actual hazard — anywhere
+            # else. So the check is now: no env row, and any multi-boundary set
+            # must declare WHY.
+            if len(boundaries) > 1:
+                assert (
+                    multi_boundary_reason(cat, "os.cmd")
+                    == MULTI_BOUNDARY_REASON_SIMULTANEOUS
+                ), (
+                    f"{lang}: os.cmd is declared under {sorted(boundaries)} "
+                    f"without saying why, so `lookup_with_module` returns one "
+                    f"row decided by YAML order and the rest are unreachable "
+                    f"(INV-zumin)."
+                )
 
 
 class TestSimultaneouslyTrueBoundariesAreAllReachable:
@@ -5959,8 +6120,11 @@ class TestCppMultiIncludeModuleSlot:
         highest-count miss in the measured population."""
         catalog = load_catalog("c")
         hint = "algorithm,stdlib.h,vector,cstdio,unistd.h,sys/socket.h"
+        # `recv` replaced `socket` here (INV-nular removed the socket row as a
+        # false net_recv source). Same module slot, same multi-include hint, so
+        # the reachability property under test is untouched.
         for name, module in (("getenv", "stdlib"),
-                             ("socket", "sys/socket"),
+                             ("recv", "sys/socket"),
                              ("fork", "unistd")):
             hit = catalog.lookup_with_module(name, hint)
             assert hit is not None, f"{name} unreachable from {hint!r}"

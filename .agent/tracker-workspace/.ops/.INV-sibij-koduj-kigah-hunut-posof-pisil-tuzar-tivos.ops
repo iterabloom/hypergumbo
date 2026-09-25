@@ -1,0 +1,39 @@
+- op: create  # 1141
+  at: '2026-08-26T20:12:56Z'  # 1141
+  by: agent  # 1141
+  actor: jgstern_agent  # 1141
+  clock: 1  # 1141
+  nonce: '1141'  # 1141
+  data:  # 1141
+    kind: invariant  # 1141
+    title: "cpp: a scoped path in a TYPE ALIAS (using S = std::string) is reported as an attribute read — INV-pusin's statement, violated in the second scoped_path language"  # 1141
+    status: violated  # 1141
+    priority: 2  # 1141
+    parent:  # 1141
+    tags:  # 1141
+    - io_boundary  # 1141
+    - verify_claims  # 1141
+    - cpp  # 1141
+    isbefore: []  # 1141
+    duplicate_of: []  # 1141
+    not_duplicate_of: []  # 1141
+    pr_ref:  # 1141
+    description: "FOUND 2026-08-26 by running the cross-language analogue check while completing\nINV-pusin's rust half. Filed separately because the blast radius differs.\n\nINV-pusin's ratified statement -- \"a module named solely by an import or a TYPE\nANNOTATION performs no I/O and must not withhold a boundary verdict\" -- is\nviolated in cpp by a form its skip tuple does not cover.\n\nMEASURED by parsing each form with tree-sitter-cpp and calling the production\n`_scoped_context_kind` directly. cpp's tuple is (\"using_declaration\",\n\"function_definition\", \"declaration\", \"parameter_declaration\",\n\"field_declaration\"):\n\n  using std::cout;                       ctx=using_declaration   SKIPPED\n  using namespace std;                   (no qualified_identifier emitted)\n  using S = std::string;                 ctx=type_descriptor     LEAKS\n  std::string g(){ return std::string(); }  ctx=call_expression  LEAKS\n  void f(){ std::cout << 1; }            ctx=binary_expression   LEAKS -- CORRECT\n\nTHE LAST ROW IS THE REASON THIS IS NOT A ONE-TOKEN FIX. `std::cout << 1` is a\nGENUINE attribute read of a stream object and is precisely what module_attr_ref\nexists to emit; suppressing it would be a silent recall loss. So the cpp fix\nmust separate a TYPE MENTION from a VALUE READ, which the rust fix did not have\nto do -- rust's leaking forms are all `use` declarations.\n\nWHY `type_descriptor` NEEDS ITS OWN MEASUREMENT rather than being appended to\nthe tuple alongside rust's: in the cpp grammar `type_descriptor` also covers\ncasts and template arguments (`static_cast<std::string>(x)`,\n`std::vector<std::string>`), so adding it suppresses a wider population than the\nalias declaration this was found through. Whether every member of that\npopulation is genuinely a type annotation -- and therefore genuinely no-I/O\nunder INV-pusin's statement -- is NOT established here. Enumerate the cpp forms\nthe way the rust half was enumerated, and only then decide the tuple.\n\nDIRECTION OF RISK: removing module_attr_ref edges removes WITHHOLDING and\ntherefore produces MORE clean verdicts. Safe for a pure type mention; NOT safe\nif the suppressed population includes value reads.\n\nBLAST-RADIUS NOTE: cpp is 0% method-kind in its io catalogue, so the\nmethod-starvation rung cannot fire for it -- meaning the uncatalogued-module rung\nIS reachable for cpp repos, unlike the rust repos measured. A cpp fix here may\ntherefore move a verdict where the rust one measured a null. Unmeasured claim;\nworth checking first."  # 1141
+    fields:  # 1141
+      statement: "A module named solely by an import or a type annotation performs no I/O and must not withhold a boundary verdict. In cpp this holds for using_declaration and fails for a type alias, whose scoped path reports context type_descriptor and is emitted as a module_attr_ref."  # 1141
+      root_cause: "cpp's skip_context_kinds omits the contexts a TYPE MENTION occupies. Unlike rust, cpp cannot simply add the node kind: type_descriptor also covers casts and template arguments, and a sibling context (binary_expression, e.g. std::cout << 1) is a GENUINE value read that must keep emitting."  # 1141
+- op: discuss  # 552e
+  at: '2026-08-27T15:32:44Z'  # 552e
+  by: agent  # 552e
+  actor: jgstern_agent  # 552e
+  clock: 2  # 552e
+  nonce: 552e  # 552e
+  message: "ENUMERATION BEYOND THE FILED REPRO (INV-sibij), because a closure can satisfy\nthe repro and not the STATEMENT. The statement covers \"a module named solely by\nan import or a TYPE ANNOTATION\". Twelve further cpp forms were parsed and run\nthrough the production `_scoped_context_kind`:\n\n  SKIPPED correctly by the new tuple\n    catch (std::exception& e)          parameter_declaration\n    sizeof(std::string)                type_descriptor\n    template<> struct H<std::string>   type_descriptor\n    std::string* g();                  declaration\n    std::map<std::string,int> m;       declaration + type_descriptor\n\n  EMITS correctly -- these are VALUE reads or CALLS and must keep emitting\n    throw std::runtime_error(\"x\")      call_expression\n    auto p = new std::string()         new_expression      (a construction)\n    constexpr auto k = std::string::npos   init_declarator\n    if (x == std::string::npos)        binary_expression\n\n  STILL LEAKS -- type annotations the new tuple does NOT cover\n    class A : public std::exception    base_class_clause    <- FIXED, added\n    for (std::string x : v)            for_range_loop       <- NOT FIXABLE HERE\n\nWHY `for_range_loop` IS NOT ADDED, and this is the load-bearing part:\nTHAT CONTEXT COVERS BOTH HALVES OF THE LOOP.\n\n    for (std::string x : v)      -> std::string  ctx=for_range_loop   TYPE\n    for (auto& l : std::cin)     -> std::cin     ctx=for_range_loop   VALUE\n\n`std::cin` is a genuine stream read -- the same thing `std::cout << 1` is, which\nthis item already names as the reason the fix cannot be a blanket one. Adding\n`for_range_loop` would suppress it, which is the false-all-clear direction.\nSeparating the loop VARIABLE'S TYPE from the RANGE EXPRESSION needs field-level\ngranularity (the `type` field vs the `right` field of the for_range_loop node),\nwhich `skip_context_kinds` does not have -- it matches ancestor KIND only.\n\nSO THE RESIDUAL IS: a range-for loop variable declared with an explicit\nstd:: type still emits a module_attr_ref. Volume is small relative to\ntype_descriptor (a range-for with an explicit qualified type is much rarer than\na template argument), and the direction is SAFE -- it over-withholds, it does\nnot manufacture a clean verdict. Filed rather than forced, because the\nmechanism that would fix it is a different mechanism.\n\nMERGED as PR #575 (5fc791d479). Re-verified on the MERGED tree: 17 tests\npass and the shipped tuple reads ('using_declaration', 'function_definition',\n'declaration', 'parameter_declaration', 'field_declaration',\n'type_descriptor', 'base_class_clause') -- with for_range_loop ABSENT, which\nis the deliberate part. A/B: 12,556 -> 8,566 module_attr_ref edges (-31.8%),\n0 of 15 verdicts moved, which is the SAFETY result for a change that removes\nwithholding."  # 552e
+- op: update  # e2b7
+  at: '2026-08-27T15:32:44Z'  # e2b7
+  by: agent  # e2b7
+  actor: jgstern_agent  # e2b7
+  clock: 3  # e2b7
+  nonce: e2b7  # e2b7
+  set:  # e2b7
+    status: satisfied  # e2b7

@@ -13,7 +13,6 @@ from hypergumbo_core.partial_install_warnings import (
     PartialInstallWarning,
     check_partial_install_warnings,
     check_partial_linker_requirements,
-    _RUST_ANALYZER_TRUTHY,
     check_rust_analyzer_disclosure,
     check_unanalyzed_files,
 )
@@ -1171,12 +1170,22 @@ class TestRustAnalyzerDisclosureRespectsTheGate:
                 prof, available=True, enabled=enabled,
             ) == []
 
-    def test_enabled_truthiness_matches_the_gates_own_vocabulary(self):
-        """Core cannot import the optional package, so the truthy set is
-        duplicated — which means it can DRIFT. Pin the two together.
+    def test_enabled_truthiness_has_exactly_one_home(self):
+        """Was: pinned two copies of the truthy set together. The duplication
+        it guarded against no longer exists, so the assertion changed shape.
 
-        ``gate._TRUTHY_VALUES`` is the authority; this asserts core's copy
-        agrees, so adding a value on one side and not the other fails here
-        rather than silently in a user's terminal.
+        This module used to parse HYPERGUMBO_RUST_ANALYZER itself, because
+        core cannot import the optional rust-analyzer package and so could
+        not share that package's copy. ADR-0045 moved the vocabulary DOWN
+        into hypergumbo_core.backend_selection, which both core and the
+        optional package import — so there is one definition rather than two
+        kept in step. Pinning copies is the weaker guarantee; assert the
+        strong one, and assert the copies are actually gone.
         """
-        assert _RUST_ANALYZER_TRUTHY == frozenset({"1", "true", "yes", "on"})
+        from hypergumbo_core import backend_selection
+        from hypergumbo_core import partial_install_warnings as piw
+
+        assert backend_selection.TRUTHY_VALUES == frozenset(
+            {"1", "true", "yes", "on"},
+        )
+        assert not hasattr(piw, "_RUST_ANALYZER_TRUTHY")

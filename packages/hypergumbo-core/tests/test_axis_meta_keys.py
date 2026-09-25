@@ -17,6 +17,7 @@ filed as a follow-on).
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 
 import pytest
 
@@ -35,6 +36,8 @@ from hypergumbo_core.axis_meta_keys import (
     meta_keys_on_axis,
 )
 from hypergumbo_core.edge_types import all_edge_type_names
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 # --- Registry invariants ---
@@ -317,3 +320,123 @@ def test_valid_data_directions_vocabulary():
     assert VALID_DATA_DIRECTIONS == frozenset(
         {"src_to_dst", "dst_to_src", "bidirectional"}
     )
+
+
+# --- WI-toruz: the call-family scope is DECLARED, not described ---
+
+def test_call_construct_declares_the_call_family_scope():
+    """WI-toruz: ``call_construct``'s edge scope is a typed field, not prose.
+
+    The prose said "on ``calls`` edges" and the sibling ``ref_construct``
+    entry said the two keys have "distinct edge families, zero overlap".
+    That was written on 2026-06-30 (INV-lajov) from a corpus measurement
+    that contained no Dart or C# object creation, and it was already false
+    by the five ``constructor``-on-``instantiates`` sites that landed
+    2026-05-05 (audit-findings 0012 sec 4, WI-nibis Wave 4).
+
+    A scope that lives only in a sentence cannot be checked, which is why
+    it drifted. Declaring it on ``applicable_edge_types`` — the field
+    ADR-0038 ruling 2 already built for exactly this — makes it
+    machine-readable, and lets the live-tree producer gate assert against
+    the declaration instead of against a hand-maintained literal.
+    """
+    spec = find_meta_key("call_construct")
+    assert spec is not None
+    assert spec.applicable_edge_types == frozenset({"calls", "instantiates"})
+
+
+def test_call_construct_scope_is_canonical_edge_types():
+    """The declared scope may only name registered relationship values."""
+    spec = find_meta_key("call_construct")
+    assert spec is not None
+    assert spec.applicable_edge_types is not None
+    assert spec.applicable_edge_types <= all_edge_type_names()
+
+
+def test_call_construct_scope_covers_instantiates_deliberately():
+    """``instantiates`` is in scope because ``edge_type`` is NOT a function
+    of the construct: ruby emits ``calls`` for the same source construct
+    (``Klass.new`` resolves to ``Klass#initialize``), while dart/csharp emit
+    ``instantiates``. So ``call_construct='constructor'`` is the only
+    cross-language invariant for object creation that survives the
+    relationship-label disagreement, and it is NOT redundant with
+    ``edge_type``. Tracked as INV-kahig; this assertion pins the reason the
+    scope is two-valued so a later reader does not "tidy" it back to one.
+    """
+    spec = find_meta_key("call_construct")
+    assert spec is not None
+    assert spec.applicable_edge_types is not None
+    assert "instantiates" in spec.applicable_edge_types
+
+
+# --- INV-tadup: the folded values must not creep back ---
+
+def _call_construct_emit_sites(values: set[str]) -> list[str]:
+    """AST-walk every shipped module for ``call_construct`` emits in *values*.
+
+    An AST walk, not a grep: a regex over source also matches its own
+    docstrings, and the comments the INV-tadup fold left behind name every
+    one of the folded values.
+    """
+    import ast
+
+    offenders: list[str] = []
+    packages = REPO_ROOT / "packages"
+    for path in sorted(packages.rglob("*.py")):
+        if "/tests/" in str(path) or "__pycache__" in str(path):
+            continue
+        try:
+            tree = ast.parse(path.read_text())
+        except SyntaxError:  # pragma: no cover - source in the tree parses
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Dict):
+                continue
+            # ``strict=True`` is safe: a dict literal's keys/values are always
+            # parallel — ``{**expansion}`` yields a ``None`` key, not a short list.
+            for key, value in zip(node.keys, node.values, strict=True):
+                if (
+                    isinstance(key, ast.Constant)
+                    and key.value == "call_construct"
+                    and isinstance(value, ast.Constant)
+                    and value.value in values
+                ):
+                    offenders.append(
+                        f"{path.relative_to(packages)}:{node.lineno} "
+                        f"call_construct={value.value!r}"
+                    )
+    return offenders
+
+
+_FOLDED_CALL_CONSTRUCTS = {
+    # RESOLUTION STATUS — same AST shape as their unsuffixed siblings; the
+    # suffix only marked whether the resolver found the callee, which is
+    # already recoverable from ``dst`` (synthetic external node id vs in-repo
+    # symbol id).
+    "remote_external",
+    "application_external",
+    # A resolution MECHANISM, now on ``resolution_quality``.
+    "chained_return_type",
+    # An inference PATHWAY the same edge already carried as
+    # ``evidence_type="interface_dispatch"`` — one value stated twice on two
+    # different axes.
+    "interface_dispatch",
+}
+
+
+def test_no_producer_emits_a_folded_call_construct_value() -> None:
+    """INV-tadup: pin the refuted design so a producer cannot silently
+    reintroduce a value that names a different axis than the field does."""
+    offenders = _call_construct_emit_sites(_FOLDED_CALL_CONSTRUCTS)
+    assert offenders == [], "\n".join(offenders)
+
+
+def test_the_folded_value_guard_can_actually_fire() -> None:
+    """POSITIVE CONTROL for the guard above.
+
+    A guard that cannot be shown to fire is indistinguishable from one whose
+    walk matches nothing — a passing assertion over an empty search is not
+    evidence. Pointed at ``method``, a value the tree emits at dozens of
+    sites, the same walk must return a non-empty list.
+    """
+    assert _call_construct_emit_sites({"method"}) != []

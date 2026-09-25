@@ -1,0 +1,30 @@
+- op: create  # 43a9
+  at: '2026-09-03T05:01:41Z'  # 43a9
+  by: agent  # 43a9
+  actor: jgstern_agent  # 43a9
+  clock: 1  # 43a9
+  nonce: 43a9  # 43a9
+  data:  # 43a9
+    kind: work_item  # 43a9
+    title: "boundary_ruling has no value for 'one boundary always, the other environment-conditioned': builtins.help (logging always, pydoc pager launch on a tty) re-opens the unruled register, and its no-argument stdin loop is disclosed rather than rowed"  # 43a9
+    status: todo_hard  # 43a9
+    priority: 3  # 43a9
+    parent:  # 43a9
+    tags:  # 43a9
+    - io_boundary  # 43a9
+    - catalogue  # 43a9
+    isbefore: []  # 43a9
+    duplicate_of: []  # 43a9
+    not_duplicate_of: []  # 43a9
+    pr_ref:  # 43a9
+    description: "WHERE IT CAME FROM. INV-bofab enumerated `builtins` (rows for print /\nbreakpoint / copyright / credits / license / help) so that a bare builtin call\nno longer withholds every Python verdict. `help` is the one primitive whose\nboundary set the ruling vocabulary cannot express, so it re-opened the\nunruled register INV-nular had emptied\n(test_multi_boundary_ruling.py::EXPECTED_UNRULED, one entry).\n\nTHE SHAPE, READ OFF pydoc ON 3.12 (inspect.getsource, not memory). help()\nwrites stdout on EVERY call: pydoc renders the doc and, when stdin or stdout\nis not a tty, hands it to plainpager. On a tty, getpager honours MANPAGER /\nPAGER (pipepager or tempfilepager), then PROBES for a pager by running\nos.system('(pager) 2>/dev/null'), os.system('(less) 2>/dev/null') and\nos.system('more \"<tmpfile>\"') in turn; pipepager is\nsubprocess.Popen(cmd, shell=True, stdin=PIPE) and tempfilepager is\nos.system(cmd + ' \"' + filename + '\"'). So: logging ALWAYS; subprocess\nCONDITIONED ON THE ENVIRONMENT (isatty, TERM, PAGER, MANPAGER, which pagers\nare installed), never on the arguments. Neither settled reason fits:\n  simultaneous          -> claims the launch always happens; false off a tty\n  call_site_undecidable -> claims exactly one is true and the call site\n                           decides; false on both counts (both can be true,\n                           and the call site carries no discriminator -- the\n                           environment does)\n`unruled` on both rows is the truthful state; the register entry states this\nquestion and cites this item.\n\nTHE THIRD SURFACE, DISCLOSED NOT ROWED. help() with NO argument enters\npydoc.Helper.interact(), whose getline() reads stdin through input() when\nself.input is sys.stdin. help returns None: nothing the far side chose reaches\nthe caller, so under ADR-0049 (\"does the call return a value whose content the\nfar side chose? NO => deferred, disclosed, never minted\") an ipc_recv row\nwould mint an untrusted_input source at a call that hands the program nothing\n-- the WI-rigut false-source shape. The catalogue has no deferred-crossing\nboundary for stdin the way net_listen shadows net_recv\n(DEFERRED_CROSSING_SHADOWS), so the read is disclosed in the row note and in\nthe builtins completeness entry and NOT rowed.\n\nWHAT WOULD CLOSE IT. One of:\n  (a) a ruling value for \"A always, B environment-conditioned\": a name, a\n      branch in multi_boundary_reason, a consumer rule (most likely classify\n      A, disclose B the way deferred crossings are disclosed) and a\n      synthetic-catalogue test in TestTheResolver; applied to help and to any\n      sibling a sweep finds -- webbrowser.open is the obvious candidate should\n      webbrowser ever leave the no-I/O list, since it launches a browser the\n      environment chose; or\n  (b) a ruling that an environment-conditioned launch inside a stdlib\n      convenience is NOT the calling program's subprocess crossing, in which\n      case the subprocess row (and its HIGH_RISK_PRIMITIVES entry) is removed\n      and help becomes a plain logging row -- the INV-nular route: answer by\n      deleting, not by ruling the row correct.\nEither way the register entry is struck and EXPECTED_UNRULED is empty again.\n\nPRIORITY AND RE-OPEN TRIGGER. P3: no self-claim constrains logging, and\nhypergumbo's own map has zero help() call sites among 20,325 builtins call\nedges (read back for INV-bofab). Raise it if a corpus repo shows a help() site\ninside a runtime path that a subprocess claim covers, or if a second\nenvironment-conditioned primitive is rowed -- two instances make the\nvocabulary gap a family, not a one-off."  # 43a9
+    fields: {}  # 43a9
+- op: update  # f991
+  at: '2026-09-03T05:03:16Z'  # f991
+  by: agent  # f991
+  actor: jgstern_agent  # f991
+  clock: 2  # f991
+  nonce: f991  # f991
+  set: {}  # f991
+  add:  # f991
+    not_duplicate_of: [WI-sobig-hutih-luziv-bokag-hiruz-zahot-gahog-gizap]  # f991

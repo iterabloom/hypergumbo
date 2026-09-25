@@ -4982,30 +4982,45 @@ public class Wrong {
             "is_resolved": e.is_resolved, "meta": dict(e.meta or {}),
         } for e in result.edges]
         callers: dict = defaultdict(dict)
-        _register_sanitizer_callers(
-            edge_dicts, index, callers,
-            catalog.ambiguous_names_for_language("java"), {},
-        )
+        # INV-fuduz removed the ``ambiguous_names`` parameter: the guard no
+        # longer consults it (it never held a sanitizer short name in any
+        # language), so the registrar takes the barrier index and the output
+        # map, plus optional ``sanitizer_lines``.
+        _register_sanitizer_callers(edge_dicts, index, callers, {})
         assert not callers, (
             f"phantom barrier registered from a non-Cipher receiver: {dict(callers)}"
         )
 
-    def test_untyped_receiver_still_names_the_variable(
+    def test_untyped_receiver_keeps_the_placeholder_module(
         self, tmp_path: Path,
     ) -> None:
-        """No inferred type ⇒ unchanged behaviour, NOT an invented module.
+        """No inferred type ⇒ the ``external`` placeholder, NOT an invented module.
 
         The non-destructiveness half (L12): when the fix cannot do better it
         must do exactly what it did before. A receiver with no entry in
         ``var_types`` has no type evidence, and manufacturing one would be the
         bare-name category error this whole area is trying to stop.
+
+        RE-TITLED at WI-nakut, which changed the other slot. This test was
+        called ``..._still_names_the_variable`` because the name slot then read
+        ``o.hashCode``; the variable is gone from it and the MODULE slot is what
+        this test was always about.
+
+        The receiver is a LAMBDA parameter: it is the one binding form in
+        valid Java that declares no type. (This fixture used ``Object o``,
+        which only looked untyped because ``Object`` was never in
+        ``imports``; INV-vugon reads the JLS 7.3 implicit import, so that
+        receiver now correctly names ``java.lang.Object`` -- see
+        ``test_java_declared_receiver_types``.)
         """
         from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Sites.java").write_text("""
+import java.util.List;
+
 public class Sites {
-    public static void go(Object o) {
-        o.hashCode();
+    public static void go(List<Object> xs) {
+        xs.forEach(o -> o.hashCode());
     }
 }
 """)
@@ -5015,7 +5030,7 @@ public class Sites {
             e for e in result.edges
             if not e.is_resolved and "hashCode" in e.dst
         )
-        assert edge.dst == "java:external:0-0:o.hashCode:unresolved", edge.dst
+        assert edge.dst == "java:external:0-0:hashCode:unresolved", edge.dst
 
     def test_typed_local_whose_type_is_not_imported_is_left_alone(
         self, tmp_path: Path,
@@ -5044,7 +5059,7 @@ public class Sites {
             e for e in result.edges
             if not e.is_resolved and "run" in e.dst
         )
-        assert edge.dst == "java:external:0-0:h.run:unresolved", edge.dst
+        assert edge.dst == "java:external:0-0:run:unresolved", edge.dst
 
     def test_resolved_call_not_unresolved(self, tmp_path: Path) -> None:
         """When callee IS in project, no unresolved edge."""
@@ -5224,7 +5239,9 @@ public class Sub extends Base {
             f"Got {len(helper_unresolved)}: "
             f"{[(e.dst, e.meta) for e in helper_unresolved]}"
         )
-        assert helper_unresolved[0].meta == {"enclosing_class": "Sub"}
+        assert helper_unresolved[0].meta == {
+            "callee_name": "helper", "enclosing_class": "Sub",
+        }
 
     def test_this_else_emits_single_unresolved_edge(
         self, tmp_path: Path,
@@ -5257,7 +5274,20 @@ public class Sub extends Base {
             f"Got {len(fmt_unresolved)}: "
             f"{[(e.dst, e.meta) for e in fmt_unresolved]}"
         )
-        assert fmt_unresolved[0].meta == {"enclosing_class": "Sub"}
+        # ASSERTED KEY BY KEY, not as a whole-dict equality. This test's
+        # subject is the Site-1 hint -- ONE unresolved edge carrying
+        # ``enclosing_class`` so the inherited_calls linker can recover it --
+        # and a dict equality made it also assert the ABSENCE of every key
+        # anyone might add later. INV-pirot added one: ``this.format(null)``
+        # did not resolve, so the declaring type is not established here, and
+        # the two taint gates read ``call_construct`` to know that. The linker
+        # reads ``enclosing_class``, never that key, so the recovery this test
+        # protects is unchanged.
+        meta = fmt_unresolved[0].meta or {}
+        assert {k: meta.get(k) for k in ("callee_name", "enclosing_class")} == {
+            "callee_name": "format", "enclosing_class": "Sub",
+        }
+        assert meta["call_construct"] == "method"
 
     def test_site2_unresolved_carries_receiver_type_hint(
         self, tmp_path: Path,
@@ -5282,7 +5312,9 @@ public class Reader {
 
         read_unresolved = [
             e for e in result.edges
-            if not e.is_resolved and "stream.read" in e.dst
+            # WI-nakut: the name slot is the CALLEE's name, so the
+            # receiver-qualified selector this used no longer matches.
+            if not e.is_resolved and ":read:" in e.dst
         ]
         assert len(read_unresolved) == 1, (
             f"Expected exactly 1 unresolved edge for stream.read(). "
@@ -5369,7 +5401,8 @@ public class MyService extends Parent {
 
         log_unresolved = [
             e for e in result.edges
-            if not e.is_resolved and "log.info" in e.dst
+            # WI-nakut: selector on the callee's own name (was "log.info").
+            if not e.is_resolved and ":info:" in e.dst
         ]
         assert len(log_unresolved) == 1, (
             f"Expected exactly 1 unresolved edge for log.info(). "
@@ -5408,7 +5441,9 @@ public class App {
 
         arr_unresolved = [
             e for e in result.edges
-            if not e.is_resolved and "Arrays.asList" in e.dst
+            # WI-nakut: selector on the callee's own name (was
+            # "Arrays.asList"); the MODULE slot still carries java.util.Arrays.
+            if not e.is_resolved and ":asList:" in e.dst
         ]
         assert len(arr_unresolved) == 1
         meta = arr_unresolved[0].meta or {}

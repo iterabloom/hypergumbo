@@ -1422,6 +1422,9 @@ handle_call({fetch, Id}, _From, State) ->
         assert edge.edge_type == "dispatches_to"
         assert (edge.meta or {})["mechanism"] == "otp_call"
         assert edge.confidence == 0.80
+        # INV-rukor: the target module's Symbol keyed the handler index; an
+        # explicit module atom reads no caller-module record.
+        assert edge.derived_from == [caller_sym.id, handler_sym.id, server_module.id]
 
     def test_erlang_no_matching_module_in_handler_index(
         self, tmp_path: Path,
@@ -1650,3 +1653,48 @@ handle_call(msg, _From, State) ->
         result = otp_linker(ctx)
         # Two call sites to same handler → only 1 edge (deduped)
         assert len(result.edges) == 1
+
+
+class TestErlangModuleEvidence:
+    """INV-rukor: which module Symbols an Erlang dispatch edge names."""
+
+    @staticmethod
+    def _sym(sid: str, path: str, kind: str = "function") -> Symbol:
+        return Symbol(
+            id=sid, name=sid, kind=kind, language="erlang", path=path,
+            span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        )
+
+    def test_explicit_module_names_only_the_handler_module(self) -> None:
+        from hypergumbo_core.linkers.otp import _erlang_module_evidence
+
+        h_mod = self._sym("mod:s", "s.erl", "module")
+        c_mod = self._sym("mod:c", "c.erl", "module")
+        got = _erlang_module_evidence(
+            self._sym("h", "s.erl"), self._sym("c", "c.erl"), True,
+            {"s.erl": h_mod, "c.erl": c_mod},
+        )
+        assert got == ["mod:s"]
+
+    def test_variable_target_also_names_a_distinct_caller_module(self) -> None:
+        from hypergumbo_core.linkers.otp import _erlang_module_evidence
+
+        h_mod = self._sym("mod:s", "s.erl", "module")
+        c_mod = self._sym("mod:c", "c.erl", "module")
+        got = _erlang_module_evidence(
+            self._sym("h", "s.erl"), self._sym("c", "c.erl"), False,
+            {"s.erl": h_mod, "c.erl": c_mod},
+        )
+        assert got == ["mod:s", "mod:c"]
+
+    def test_same_module_is_listed_once_and_missing_ones_are_skipped(self) -> None:
+        from hypergumbo_core.linkers.otp import _erlang_module_evidence
+
+        mod = self._sym("mod:s", "s.erl", "module")
+        same = _erlang_module_evidence(
+            self._sym("h", "s.erl"), self._sym("c", "s.erl"), False, {"s.erl": mod},
+        )
+        assert same == ["mod:s"]
+        assert _erlang_module_evidence(
+            self._sym("h", "x.erl"), self._sym("c", "y.erl"), False, {},
+        ) == []

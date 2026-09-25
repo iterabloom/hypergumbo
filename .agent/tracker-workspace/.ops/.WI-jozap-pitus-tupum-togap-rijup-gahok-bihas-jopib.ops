@@ -1,0 +1,61 @@
+- op: create  # f625
+  at: '2026-09-11T02:53:25Z'  # f625
+  by: agent  # f625
+  actor: jgstern_agent  # f625
+  clock: 1  # f625
+  nonce: f625  # f625
+  data:  # f625
+    kind: work_item  # f625
+    title: "elixir: a bare Kernel auto-import is attributed to an ARBITRARY imported module (next(iter(set))), so analyzer output is NON-DETERMINISTIC across processes -- identical runs on phoenix disagree by 67-166 edges"  # f625
+    status: todo_hard  # f625
+    priority: 1  # f625
+    parent:  # f625
+    tags:  # f625
+    - elixir  # f625
+    - analysis_quality  # f625
+    - reproducibility  # f625
+    - taint  # f625
+    isbefore: []  # f625
+    duplicate_of: []  # f625
+    not_duplicate_of: []  # f625
+    pr_ref:  # f625
+    description: "FOUND 2026-09-10 while measuring WI-kigub. Record and instruments:\n~/hypergumbo_lab_notebook/kigub_09102026/ (PLAN.md Addendum B0, diff_arms.py).\n\nTHE ANALYZER DOES NOT PRODUCE THE SAME ANSWER TWICE.\n\n`elixir.py` (bare-call branch, `source_module = next(iter(imported_modules))`)\nattributes a bare stdlib call to an ARBITRARY element of a `set[str]`. Python\nrandomises string hashing per process, so which import gets the attribution\nchanges between runs of the same code over the same repository.\n\nMEASURED on phoenix-framework, identical tree, two fresh interpreters:\n    run A vs run B   67 edges moved\n    run B vs run C  166 edges moved\nEdge totals are stable (11,100 both times); it is the DESTINATIONS that churn.\nWith `PYTHONHASHSEED=0` the same runs reproduce exactly (0 appeared / 0\nvanished, verified twice on each arm).\n\nTWO SEPARATE DEFECTS, ONE LINE:\n\n(1) NON-DETERMINISM. Any A/B over the elixir analyzer is unreadable below\n~170 edges of self-noise. This nearly sank WI-kigub's measurement: the first\nA/B reported 32 VANISHED edges, which under that item's own pre-registered\nfalsifier meant the fix does not ship. The 32 were noise — smaller than the\ninstrument's variance against itself. Anything that caches, diffs or\nregression-tests an elixir survey inherits this.\n\n(2) WRONG MODULE, which is true even after the ordering is pinned. The names\nbeing attributed are `is_atom`, `is_binary`, `is_list`, `is_struct`,\n`is_function`, `raise`, `inspect`, `elem`, `apply`, `to_string`, `map_size`,\n`function_exported?` — Kernel AUTO-IMPORTS, available without any `import`\ndirective at all. Attributing `is_atom(plug)` at\n`lib/phoenix/router.ex:776` to `Plug.Conn` (one run) or `Phoenix.Router`\n(another) is a false edge under either ordering. The WI-rakul comment directly\nabove the line describes an `import Mod, only: [name: N]` directive\nestablishing module context; a Kernel auto-import has no such directive, so\nthe branch is firing on a population it was not written for.\n\nSWEPT FOR THE CLASS RATHER THAN THE INSTANCE. All 11 `next(iter(...))` sites\nunder `packages/*/src/` were checked: four in `producer_coherence.py` are\nguarded by `len(...) == 1`; `dataflow_scope.py:162` is guarded by an earlier\n`if len(distinct) > 1: continue`; `verify_claims.py:5394` iterates a dict;\n`py.py:7251` is guarded by `len(v) == 1`; the rest iterate generators or\n`dict.values()`. THIS IS THE ONLY UNGUARDED `next(iter(<set>))` IN THE TREE.\nThe class has exactly one member, which is why this is filed as a work item\nand not as an invariant.\n\nDIRECTION, not chosen here: a Kernel auto-import probably deserves no\nmodule-keyed edge at all rather than a deterministic wrong one, since\n`_ELIXIR_STDLIB_FUNCTIONS` membership is precisely what says \"this is not the\nimported module's function\". If some attribution is kept, it must be ordered\n(`sorted(...)` or preserve directive order), not set-arbitrary.\n\nMEASURING ANYTHING ON ELIXIR BEFORE THIS IS FIXED REQUIRES `PYTHONHASHSEED=0`\nON EVERY ARM."  # f625
+    fields: {}  # f625
+- op: discuss  # c28f
+  at: '2026-09-11T06:04:14Z'  # c28f
+  by: agent  # c28f
+  actor: jgstern_agent  # c28f
+  clock: 2  # c28f
+  nonce: c28f  # c28f
+  message: "ON THE ARC as T10, owner directive 2026-09-11 (\"add WI-jozap to the arc\"). Appended after T9 per the standing \"behind the arc = append to the arc\" rule; entry is in ~/hypergumbo_lab_notebook/arc_finishing_order_09062026.md.\n\nRecorded there and not repeated here: the 67/166-edge self-noise measurement, the Kernel-auto-import half that survives pinning the ordering, the whole-tree sweep finding this is the ONLY unguarded next(iter(<set>)) in the tree, and the direction note (a Kernel auto-import probably deserves NO module-keyed edge rather than a deterministic wrong one; fixing that likely fixes the ordering for free, but not the reverse).\n\nSEQUENCING, flagged on the arc rather than acted on: T0c measures over the DRAINED SET, which includes both elixir cells, so T0c's arms run through this defect. The workaround is sufficient -- PYTHONHASHSEED=0 on every arm, with each arm verified to reproduce ITSELF before being diffed, which is what #908 and #910 did -- so T10 does not block T0c; it makes T0c's elixir arms depend on remembering the seed. Moving it earlier is the owner's call."  # c28f
+- op: update  # 3570
+  at: '2026-09-11T10:14:19Z'  # 3570
+  by: agent  # 3570
+  actor: jgstern_agent  # 3570
+  clock: 3  # 3570
+  nonce: '3570'  # 3570
+  set:  # 3570
+    status: done  # 3570
+- op: discuss  # 22d1
+  at: '2026-09-11T10:14:19Z'  # 22d1
+  by: agent  # 22d1
+  actor: jgstern_agent  # 22d1
+  clock: 4  # 22d1
+  nonce: 22d1  # 22d1
+  message: "DONE — arc T10, PR #916. Record: ~/hypergumbo_lab_notebook/jozap_09112026/\n(PLAN.md pre-registered before any arm, two dated addenda, arm.sh,\ndiff_seeds.py, adjudicate_direct.py, RESULT.md).\n\nTHE CONTROL RAN BEFORE THE FIX AND IT FIRED. Pre-fix tree, `elixir.py` blob\n`8fe54c20cb…` asserted identical in both arms, phoenix-framework, fresh\ninterpreters:\n\n    PYTHONHASHSEED=0      survey 17,157,886 bytes\n    PYTHONHASHSEED=12345  survey 17,171,522 bytes\n    elixir edges 8,049 both   APPEARED 101   VANISHED 101\n\nAND THE CHURN'S CONTENT INDICTS THE ATTRIBUTION, NOT ONLY THE ORDERING: the\nmovers are `raise`, `to_string`, `is_list` — Kernel auto-imports, available\nwith no `import` directive at all — flipping between `Plug.Conn` and\n`Phoenix.Controller` by hash seed. `sorted(...)` would have pinned WHICH of two\nwrong answers is given.\n\nTHE ITEM NAMED ONE DEFECT DIMENSION AND THERE WERE TWO. The filing says \"Edge\nTOTALS are stable …; it is the DESTINATIONS that churn\". The pre-fix control\nshows **16/25 NODES differing between seeds as well** — the synthetic stand-in\nsymbols minted for whichever arbitrary module won that run.\n\nTHE FIX. `_ELIXIR_STDLIB_FUNCTIONS` was TWO populations wearing one name:\nKernel auto-imports, and names that genuinely come from an imported module\n(`IO.puts`, `Enum.map`, `String.split`, `Logger.error`), whose ownership was\nwritten down beside them as prose comments and never used as data. Three\nordered rules, no set iteration anywhere: an `only:` list that NAMES the\nfunction wins; a Kernel auto-import gets NO module-keyed edge; an importable\nname whose owning module is imported takes that module; anything else is\ndeclined. The union `_ELIXIR_STDLIB_FUNCTIONS` is membership-IDENTICAL before\nand after (97 = 65 + 32, asserted), so every other branch that gates on it is\nuntouched.\n\nRESULTS.\n\n    P1 determinism (per-run uuid excluded)      edges            nodes\n      BASE seed 0 vs 12345                   101 / 101        16 / 25\n      SUBJ seed 0 vs 12345                     0 / 0            0 / 0\n\n    P2 / P4, read at the ANALYZER            branch edges   lost   REAL losses\n      phoenix-framework                       427 -> 0       427        0\n      livebook                                226 -> 0       226        0\n\n**P1, P2 and P4 all hold. 653 edges removed, 0 real losses**, every one a\nKernel auto-import: `Plug.Conn.inspect` (43), `Plug.Conn.raise` (36),\n`Plug.Conn.is_atom` (21), `Ecto.Changeset.raise` (15), `Record.is_binary` (11),\n`Livebook.Factory.send` (7).\n\nTHE FINDING THIS DID NOT EXPECT, and it is not buried: **on both repositories\nthe branch emitted 653 edges and every single one was false.** It never once\nfired on the population WI-rakul wrote it for, so on this corpus the change is\nPURELY SUBTRACTIVE.\n\nWHAT IS NOT ESTABLISHED: rules 1 and 3 — the two that PRESERVE an attribution —\nhave NO live witness. Neither fired on either repository; they are pinned only\nby the twelve unit tests. A rule that preserves and has no corpus witness could\nbe wrong in a way this measurement cannot see. Two Elixir repositories is also\nnot a population.\n\nTHREE INSTRUMENT FAULTS CAUGHT, each by a number that could not be true. (1) A\nfirst P1 reading `md5sum`-ed a survey file that was STILL BEING WRITTEN and\nreported a difference — a partial file and a different file look alike to\n`md5sum`. (2) A first P2/P3 instrument keyed the dst on `:unresolved`, which is\nre-keyed to `:external_symbol` downstream, and returned a clean **BASE=0**.\n(3) A second keyed on the dst pattern alone and reported **2,111 \"unsupported\"\nsurviving edges** that were `Path.join` and `Enum.map` — qualified calls\nneeding no import. The population is now read at the analyzer, where\n`meta['binding']` survives; the survey drops it.\n\nTHE SHAPE COUNT WAS FIVE AND IT IS SIX. The pre-registration recorded five\n`import` shapes from a grammar probe; writing the coverage tests found\n`import :erlang` (an ATOM argument, no `alias` node) and a second-keyword\nspelling (`only: [...], warn: false`) the reader must walk past. Enumerating\nwhat a grammar CAN produce is not enumerating what it DOES — and the coverage\ngate, not the probe, is what surfaced the difference."  # 22d1
+- op: update  # ef76
+  at: '2026-09-11T10:18:37Z'  # ef76
+  by: agent  # ef76
+  actor: jgstern_agent  # ef76
+  clock: 5  # ef76
+  nonce: ef76  # ef76
+  set: {}  # ef76
+  add:  # ef76
+    tags: [awaits_bakeoff_validation]  # ef76
+- op: discuss  # 5c1a
+  at: '2026-09-11T10:19:20Z'  # 5c1a
+  by: agent  # 5c1a
+  actor: jgstern_agent  # 5c1a
+  clock: 6  # 5c1a
+  nonce: 5c1a  # 5c1a
+  message: "Tagged awaits_bakeoff_validation per the tagging discipline: the PR carries raw count deltas attributed to the change (653 branch edges removed -- phoenix-framework 427 -> 0, livebook 226 -> 0). ASK OF THE NEXT COHORT: elixir edge counts and io-boundary primitives on any elixir repo in the pool, against the pre-fix baseline. THE EXPECTED DIRECTION IS DOWN AND THAT IS THE POINT -- all 653 were adjudicated as false attributions of Kernel auto-imports, so a cohort finding FEWER elixir edges is confirming the fix, not regressing. What WOULD be a regression: a drop in io-boundary primitives or chains, since none of the removed edges reached a catalogue row. Also worth reading: every elixir number in the pool is now reproducible across processes, so a cohort can compare two runs directly for the first time."  # 5c1a

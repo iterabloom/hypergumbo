@@ -810,6 +810,321 @@ runs can find prior work:
   Full write-up:
   `~/hypergumbo_lab_notebook/concept-audit-io-primitives-status_08122026.md`.
 
+- **2026-08-27 — `Edge.meta["call_construct"]` × `Symbol.kind` ×
+  `IoPrimitive.kind`.** Trigger: cadence (80 commits vs. threshold 72); suspect
+  nominated by the agent from the day's INV-vivok reading and chosen by the
+  human. Hypothesis: `call_construct` and `Symbol.kind` both answer "what
+  syntactic form is this?", so one of them is really answering "what did the
+  resolver figure out?". **Outcome: partially confirmed — the predicted leak
+  was REFUTED and a sharper one found underneath.** Test 1 kills the
+  redundancy leg outright: across 261,277 resolved call edges `call_construct`
+  and the callee's `Symbol.kind` disagree **85.8%** of the time, so they are
+  not one fact in two homes (and `external_symbol` was already ruled CANONICAL
+  by audit-findings 0007). **But the disagreement structure names the real
+  leak:** `call_construct` describes the CALL SITE's syntax while `Symbol.kind`
+  and `IoPrimitive.kind` describe the DEFINITION's construct — two questions
+  whose vocabularies overlap lexically in exactly `{function, method}` — and
+  `verify_claims.py:3059` joins them with bare `in` (`construct in
+  module_kinds[...]`). 8 registered `edge_meta` values against
+  `IoPrimitive.kind`'s undeclared `{function, method, attribute}`; 6 of 8 can
+  never be members, and `attribute` can never be matched at all. Measured
+  where the join actually runs (external callees matching a catalogue row) it
+  disagrees **71.8%** (3,355/4,672). **Harm today is ZERO and the zero is
+  defended**: only 3,176 of 261,365 stamped edges reach a method-keyed module,
+  0 with a non-overlapping construct, because erlang and haskell — which
+  contribute all 56,251 unmatchable stamps — have zero method-keyed modules and
+  `continue` before the test. Positive control proves it is nonetheless live:
+  the identical synthetic edge reports `[]` with `method` and
+  `['std::fs::DirBuilder']` with `macro_body`/`remote`/`application`. Five
+  values are off-axis (`application`/`pipe` are synonyms for `function`,
+  `remote`/`local` are `call_locality` at 89.7% endpoint-derivability,
+  `macro_body` is a CONTEXT that destroys a recoverable construct on 533 edges
+  that target a `method` symbol); `constructor` is CANONICAL and explicitly
+  defended by INV-kahig. Adjacent sweep found the **root cause, and it is
+  general**: `MetaKeySpec` has no value-vocabulary field at all — it governs
+  where a key may appear, who writes it and how often, but never what values it
+  may take, so `Symbol.kind`/`Edge.edge_type`/`Edge.evidence_type` each have a
+  value registry plus drift linter while `Edge.meta[*]` has key governance
+  only. Also 34 emitted meta keys are unregistered, two of them written by
+  `make_unresolved_edge` itself on 158,375 edges (a first pass reported 36 —
+  `evidence_type`/`evidence_lang` are typed fields `ir.py:993` folds into the
+  serialised meta, and had to be excluded). Four items filed: INV-pimir (the
+  join), WI-kohig (the five folds), WI-lijaz (unregistered keys), WI-fazad
+  (`IoPrimitive.kind` undeclared, comment omits `attribute`); corpus-wide
+  evidence added to INV-tanom and a shipped/unshipped split reported on
+  WI-vusot rather than re-filing either. **Process finding: this domain was
+  audited on 2026-08-20 and left no findings document and no Examples entry**,
+  so the cadence advanced while the trail did not; that pass folded exactly one
+  off-axis value (`method_group`, WI-diruk) and stopped, and this run found
+  five more — the playbook's own "enumerate past the fixture" lesson recurring
+  inside the audit procedure. `scripts/concept-audit-record` now REFUSES to
+  advance the state unless a findings document for the suspect domain exists
+  AND postdates the previous record (`--force` overrides, loudly): the first
+  cut of that gate matched only on name and would have passed 2026-08-20,
+  since the April-era `docs/audits/0012-evidence-type-cluster-d-call-construct.md`
+  already existed. Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-call_construct_08272026.md`.
+
+- **2026-09-01 — the MODULE KEY (`IoPrimitive.module` × `ExternalRef.module_path`
+  × the id path slot).** Trigger: cadence (73 commits vs. threshold 72); suspect
+  nominated by the agent from the INV-zuvib / INV-hahak / INV-fofoj family and
+  chosen by the human; run on dev `26d2995302`. Hypothesis: the slot a call is
+  matched on smuggles three questions — the qualifier written at the call site,
+  what the import table resolves it to, and what the catalogue row is keyed on —
+  and when they disagree the lookup returns nothing rather than erroring.
+  **Outcome: confirmed — and the leak was already in the tracker as ~15
+  separately-filed analyzer bugs, because no document said what the field was
+  FOR.** Inventory: 3,079 catalogue rows over 15 languages (482 distinct
+  `(lang, module)` slots; `IoPrimitive.module`'s own docstring admits "module
+  **or class path**") and 65,187 external refs over 21 repos / 10 languages, of
+  which 7.8% are not a single module identity at all (a comma-joined cpp
+  `#include` set 6.2%, the `external` sentinel 1.5%, bash `redirect` 0.1%), and
+  the 88.1% that are module-shaped still carry a namespace, a TYPE, a global
+  object VALUE (`process`, `window`), or a receiver VARIABLE name (objc writes
+  `module_path=receiver_name` literally: 1,102 of 4,207 objc+swift refs, 26%).
+  Pair 1 namespace-vs-type: **all four tests fire** — 22 slots carry more than
+  one `IoPrimitive.kind`; `testing` and `testing.T` share the slot and the
+  predicate; the matcher infers type-vs-package from the CASE of the value, Go's
+  convention applied to all 15 catalogues. Pair 2 identity-vs-sentinel: Test 2
+  fires, **KEEP** — guarded by `_UNRESOLVED_MODULE_PLACEHOLDERS`; trigger
+  written (any catalogue row whose module is literally `external`/`redirect`).
+  Pair 3 qualifier-in-MODULE-slot vs NAME-slot: Test 2 fires, **DEPRECATE, fix
+  the producers**. Silent bugs, each verified through the production classifier:
+  **F1** the suffix arm has no capitalisation test, so sops'
+  `context.String("input-type")` — a CLI flag read on a `*cli.Context`
+  parameter — is classified `net_send` via `github.com/gin-gonic/gin.Context`
+  (INV-safig's remedy biting back: appending the type made `Context` a
+  matchable suffix); 1,090 rows exposed, 32 of 1,676 cohort boundaries decided
+  by the heuristic arms, 8 of 9 shapes right and 1 wrong → INV-dijor, fixed the
+  same day. **F2** `receiver_type_hint` is stamped by six analyzers and read by
+  two linkers but by neither `io_boundary.py` nor `taint.py`, the two that
+  guess the type from capitalisation (Step 4.5 five-shape trace: zero hits at
+  that seam) → WI-monul. **F3** INV-fofoj's java half is a NAME-slot defect
+  (`name="System.in"` misses, `name="in"` hits `java.lang.System.in`) — the
+  same defect as INV-januj, which was filed python-only. **F4** that defect is
+  cross-language: 3,515 refs re-state the qualifier, 299 miss a row they would
+  otherwise hit, 58 genuinely new boundaries (a lower bound; `System.out` ×51).
+  **F5** INV-kotob confirmed and sized (26%), its emission site located, and the
+  matcher's Swift carve-out already encodes the defect as a supported case.
+  Audit-level finding: `edge_type`, `Symbol.kind` and `evidence_type` each have
+  an axiom, a registry, a consumer helper and a drift linter; **the module key
+  had none of the four.** Action: ADR-0050 (io-boundary axis) and ADR-0051
+  (module-key axis: the slot names the STATIC OWNER PATH — namespace or type —
+  never a receiver variable, a set, or a sentinel), landed the same day as
+  WI-kurod / WI-kijup / WI-mubup (`module_key_axis.py`,
+  `scripts/check-io-boundary-drift`, the axis lint widened to `io_boundary.py`,
+  the FALSE `free-text` declaration on `ExternalRef.module_path` retired);
+  WI-livar ruled (a) and closed; WI-zozun (arm 2 decides by parent agreement,
+  not case value) landed 09-02; WI-virav holds the annotation of the ~18-item
+  pile against the axiom. Three instrument errors are recorded in the write-up
+  (a vacuous coldness assertion, a sentinel classifier that swept 929
+  `<string.h>` headers into "sentinel", an over-claim about WI-lipis's java arm
+  refuted by probe). **Process finding, the mirror of 2026-08-20's:** this
+  audit left the full trail — write-up, ADRs, items — and never ran
+  `scripts/concept-audit-record`, so the state stayed on `call_construct`/08-27
+  and the cadence hook fired at "104 commits" on 09-03 when the true count was
+  31. The record was written retroactively on 2026-09-03 with the audit's own
+  SHA and the write-up's mtime, not the recording commit's. A trail without
+  bookkeeping over-fires the hook; bookkeeping without a trail silences it —
+  the recorder guards the second, nothing yet guards the first. Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-module-key_09012026.md`.
+
+- **2026-09-06 — the TAINT LABEL (`TaintSource.taint_label` ×
+  `AUTO_SOURCE_LABEL_MAP` × `TaintFlowConstraint.source_taint`).** Trigger:
+  cadence (75 commits vs. threshold 72) plus signal 1 — the WI-dozul DNS ruling
+  made that morning exposed one leak on the label; suspect nominated by the
+  agent, chosen by the owner; run on dev `278d1c5fed`. Hypothesis:
+  `untrusted_input` names two facts — an outside party controls the value's
+  BYTES, and an outside party merely CHOSE it from a constrained set — and every
+  claim, sink and precision number treats them as one. **Outcome: confirmed,
+  narrowly.** Inventory: seven labels, DERIVED not listed (`all_source_labels`,
+  INV-todas); 324 catalogue names mint `untrusted_input` (net_recv 89, ipc_recv
+  148, db_read 87); read one by one, **24 (7.4%) are choice-shaped** — `accept`
+  ×10 (a peer address, seven languages), erlang `inet` DNS ×7, exit status ×7
+  (`os.wait*`, `Child.wait/try_wait`). Producers: six literal/assignment sites,
+  zero helper/f-string/dict (five-shape trace run). Consumers: ONE equality
+  (verify_claims.py:4621), no hardcoded sets. Pair 1 content-vs-choice: **T1, T2,
+  T4 fire** — the property is derivable from nothing the row carries (`net_recv`
+  holds `recv` and `accept`; `ipc_recv` holds `check_output` and `os.wait`), the
+  minting map reads the label as the APEX ("the far side had a say", ADR-0049
+  ruling 1's letter) while every claim reads the PEER ("the command-injection
+  question", generic-taint-claims.yaml:56-59). Verdict **DOCUMENT now, PROPERTY
+  later, no label split (WI-vazal), no boundary split (WI-dozul)**: the spec's
+  label paragraph now states what the label asserts and does not; the per-row
+  `value_shape` attribute is recorded on WI-gohok as the SOURCE-side half of its
+  open "computed-into vs selects" mechanism, judged first on T2's pre-registered
+  DNS delta. Pair 2 exit status: `os.wait*` / `Child.wait` mint on eight bits
+  while `call` / `check_call` / `system` / `Run` / `Command::status` do not —
+  INV-lozat's thread had already called it "a disagreement with two shipped rows
+  rather than an oversight" and nothing was filed → **KEEP, FILE**: WI-lanos,
+  sequenced behind WI-dozul under the same rule and the same measurement.
+  Adjacent: **`TaintSink.trust_level` is a documented knob nothing reads** —
+  cli.py:5985 promises "raising `trust_level` on a sink that is safe in context",
+  65 of 66 literal sites say `untrusted`, the one `trusted` (test_taint.py:3043)
+  tests merge precedence only, zero attribute reads in src → WI-lukoz (P2,
+  implement-with-disclosure or deprecate the promise). `sink_zone` vs the write
+  boundary: T1 fires for the built-in nine (surjective map, `ipc_send` +
+  `process_send` → `ipc`) but the zone axis is the CLAIM-facing vocabulary and
+  holds project-local values with no boundary — **KEEP**, trigger written.
+  Vocabulary validation (labels, zones), sanitizer-label disjointness,
+  `confidence`/`analysis_method`: clean or audited this week elsewhere. Harm is
+  UNMEASURED (no adjudicated finding in 0006/0010/0012 roots at a choice-shaped
+  source); the measurement is T2's. Recorded with `scripts/concept-audit-record
+  taint-label` the same hour. Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-taint-label_09062026.md`.
+
+- **2026-09-10 — `Edge.meta["call_construct"]`, the fold-residue key's own
+  value family. AUDIT A FOLD TARGET: it is where the last audit put everything
+  that did not fit, and nothing audits it.** Suspect nominated because WI-dosuh
+  added a value and *no consumer read it*. **The nomination's own inventory was
+  wrong and that is the first lesson**: a grep for the `call_construct=` kwarg
+  found 4 values and concluded "nobody is looking at this field", while the
+  `meta={"call_construct": …}` dict-literal form holds **126 of 140 emit
+  sites** — Step 4.5's point arrived at the hard way, on the *inventory* rather
+  than on a verdict. True inventory: 12 values, all with live producers (five-
+  shape trace: literal kwarg, dict-literal, assignment-to-Name at
+  `haskell.py:504`, zero f-string, zero dict-subscript), so **no verdict rests
+  on "no producer"**. Consumers: **15 comparison sites, every one `== "method"`**
+  — 10 of 12 values never branched on, and `py.py:7051` says so outright.
+  Verdicts **10 CANONICAL / 2 DEPRECATE-NO-FOLD**: `macro` (erlang.py:562)
+  restates `evidence_type="macro_expansion"` on a second axis — the exact
+  rationale recorded for ejecting `interface_dispatch` — and tree-sitter
+  expanded nothing there, so no source construct exists to name; `macro_body`
+  (rust.py:3123) names *where* the call was found, with no uniform fold target
+  because the extracted callee is variously `Self::`-qualified, `::`-qualified
+  or bare (T4). **SILENT BUG:** `verify_claims.py:3908` membership-tests a
+  `call_construct` value against `module_kinds`, built from `catalog.primitives`
+  and therefore holding `IoPrimitive.kind` values — vocabulary exactly
+  `{function, method}`. Two tokens coincide; the other ten can never satisfy the
+  gate, so the method-starvation route silently dies for elixir, erlang,
+  haskell, ocaml, rust, dart, csharp and javascript. **The self-implicating
+  verdict is the load-bearing one:** `assignment`, added by the auditor hours
+  earlier, is CANONICAL *only under an amended axiom* — the registry's own
+  defence of `constructor` (INV-kahig) already establishes the key describes the
+  construct that produced a call-family edge, not "the syntax of a call", so the
+  axiom is one word too narrow and the amendment ships with the verdict rather
+  than after it. **Enforcement finding: INV-tadup is a DENYLIST** (four ejected
+  values, with a positive control) — right for regression, blind to a value it
+  has never seen, which is how `assignment` shipped through every gate in the
+  repo unreviewed. Adjacent: **`meta["receiver"]` CONFIRMED LEAK** — 9 values
+  splitting into syntactic shape (`qualified`, `field_chain`, `bare`) and
+  resolution outcome (`typed_var`, `stdlib`, `external`, `constant_external`),
+  where `external` is the very thing `remote_external` was ejected from
+  `call_construct` for naming: *the leak was folded out of one sibling key and
+  left live in the other*. `resolution_quality` mixes quality and mechanism with
+  near-synonyms `typed`/`typed_receiver` → DOCUMENT. `visibility` **null result,
+  recorded** so nobody re-derives it. → WI-dapap (axiom, gate, allowlist, two
+  drops), WI-mujug (the sibling keys). **Filed as a SURVEY, not an audit-findings
+  doc, and the reason is a finding**: `validate_against_registry` requires a
+  per-value registry the axis does not have, so the format correctly refuses to
+  check it — conversion trigger written into the document. The cadence recorder
+  could not see `docs/surveys/` either; that was fixed rather than `--force`d,
+  since a recorded audit with no discoverable write-up is the one outcome the
+  gate exists to prevent. Full write-up:
+  `docs/surveys/call-construct-value-family-audit.md`.
+
+- **2026-09-17 — `AnalysisRun.silence_reason` vs
+  `limits.skipped_passes[].skip_reason_code`** (cadence hook, 76 commits).
+  *(The skip-host field was renamed to `silence_reason` in schema 0.20.10 as
+  this audit's own verdict A — both hosts now spell it the same way. The old
+  name is kept throughout this entry because it is what was measured.)*
+  **Partially confirmed.** The two fields share one closed vocabulary and are
+  documented as "one channel, two fields" split by *did the pass run?*. Measured
+  on one ordinary repo: **130 of 162 passes carry `no_candidate_files` — 48 via
+  `silence_reason`, 82 via `skip_reason_code`.** T1 FAILS: the host is chosen by
+  `LANGUAGE_EXTENSIONS` membership (0 in-taxonomy analyzers use the silence
+  field, 75 use the skip field; 26 out-of-taxonomy use the silence field) and by
+  whether the analyzer returns a bare `AnalysisResult()` or a run with
+  `files_analyzed=0` — **producer registration and implementation detail, not a
+  property of the silence**. Verdict DOCUMENT, not Deprecate: the skip host has
+  no `files_analyzed` to derive the value from, while on `AnalysisRun` the value
+  *is* `files_analyzed == 0` by construction (48 of 79 runs carry a derived
+  restatement), which is *why* the hosts look overlapping. **The stated ground
+  for the split is refuted on evidence:** the module says a
+  `dependency_unavailable` pass "HAS NO AnalysisRun … no carrier in existence to
+  stamp", but `base.py:4017` returns `run=run` — the carrier exists, carries the
+  INV-pitab grammar warning and a duration, and `collect_analyzer_result`
+  discards it because the append sits only in the `else` of `if is_skipped:`.
+  **SILENT BUG (live repro):** that warning, added specifically "so consumers
+  reading the AnalysisRun later see the gap", never reaches output for the
+  population it was written for. **SILENT BUG:** spec §1317 says an
+  out-of-taxonomy analyzer finding no files is recorded in `skipped_passes`
+  "either way" — measured, **26 of 35 land in `analysis_runs` instead**. T4
+  CONFIRMED: the State A/B/C classification that is the axis's entire stated
+  reason for existing lives **only in prose comments**, and its one branching
+  consumer re-derives it as `!= NO_CANDIDATE_FILES` — a hardcoded set caught at
+  n=1, on a vocabulary that grew 6→7→8 in two months. **The grep-first producer
+  trace was mis-aimed** and returned zero producers for two values that have
+  live ones (ternary/conditional forms); the AST re-trace is what produced the
+  table — a sixth miss category for Step 4.5: *values emitted only from a
+  conditional expression*. Four falsifiable checks came back CLEAN and are
+  recorded so nobody redoes them (no `depends_on`↔`skipped_passes` key-vocabulary
+  mismatch across 38 literals; no crash double-counting; no phantom values; `""`
+  unreachable in production). Adjacent sweep: the word *skipped* names five
+  things in the IR, three dead or vestigial (`AnalysisRun.skipped_passes` legacy
+  mirror 0/79 populated, `limits.skipped_languages` dead per WI-nihir,
+  `AnalysisResult.skipped` not equivalent to its own host). → **WI-mamiv** (host
+  rule + union helper), **WI-gidid** (filed `needs_human_review` on the
+  claim that it re-frames the owner decision ADR-0056 item 5 reserved — not
+  "should we *emit* an AnalysisRun for a pass that never ran" but "should we
+  *keep* the one we already made" — **an argument this audit then WITHDREW on
+  evidence; see Outcome**),
+  **WI-gisor** (spec), **WI-punod** (state mapping + two latent traps);
+  cross-linked to **WI-luvud**, the mirror image filed hours earlier. **Filed in
+  the lab notebook, not `docs/audits/`**, because the verdicts are
+  Deprecate/Document/Keep rather than the CANONICAL/FOLD/DEPRECATE-NO-FOLD
+  trichotomy the audit-findings format and its property test require —
+  `docs/audits/README.md` §Scope tells such audits to propose a sibling format
+  rather than shoehorn. Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-pass-silence-host-boundary_09172026.md`.
+  **Outcome (2026-09-18).** Owner ruled verdict **A** — one name, two hosts;
+  the skip field was renamed and the ROUTING deliberately left alone, since
+  re-routing needs an `AnalysisRun` for 75 passes that never ran, which is the
+  ADR-0056 item 5 decision reserved to the owner. `WI-mamiv` / `WI-gisor` done,
+  `WI-gidid` **downgraded P2→P3**: its re-framing above was withdrawn after the
+  discarded record was actually dumped and found near-vacuous — every
+  non-default field already in the skip entry, and `toolchain` bare *precisely
+  because* the grammar it would report is the missing thing. **Two lessons the
+  audit itself supplies, both about what an audit cannot see:** (1) it ran one
+  repo at DEFAULT settings, so it could not see a pass landing in NEITHER host —
+  a third outcome only an opt-in flag opens, and no CI run or bakeoff sets one;
+  *name CONFIGURATION coverage beside corpus coverage when saying what a
+  measurement did not reach*. (2) It audited where the silence is REPORTED and
+  never asked whether the dispatcher's input to that decision was sound; it was
+  not — `INV-homur`, six analyzers read extensions the profile does not count,
+  so passes were skipped as `no_candidate_files` having never looked (359→367
+  symbols on one 19-file repo). *An audit of a field should also audit the
+  predicate that decides what that field gets to say.*
+
+- **2026-09-23 — `IoPrimitive.kind` (the catalogue's `functions:` /
+  `methods:` / `attributes:`).** Trigger: cadence (79 commits) plus signal 1 —
+  INV-fugus was the third per-row fix of one contradiction. **Confirmed.** The
+  catalogues state three rules in their own notes: java.yaml and kotlin.yaml
+  key on what their ANALYZER stamps ("java's analyzer stamps
+  call_construct=method"); cpp / scala / python / WI-komun key on whether a
+  VALUE supplies the callee's owner; rust.yaml and INV-pimir's statement key on
+  what the callee IS. Scala holds two of them in one merged catalogue. Every
+  consumer that branches on the value needs the second reading. The starvation
+  gate's premise is false on the main path: with a definite module slot the
+  matcher never reads `kind`. Instrument: a same-edges A/B over 21 fresh
+  surveys that re-kinds only the rows with no value receiver. It cut **both
+  ways**, and that is the lesson worth carrying: JS `process` was
+  classified-yet-starved on 6 of 9 JS-bearing repos (WI-komun exempted it,
+  then WI-kikar made it reachable, and neither checked the coverage gate), yet
+  the same re-kind LOSES 41 Java classifications through a second
+  construct×kind join (the INV-nizom arm, io_boundary.py:1161), and silences
+  76 real static calls in sbt whose qualifier the Scala analyzer drops. So a
+  kind that looks wrong can be compensating for a consumer, and fixing the row
+  first moves the harm. Also found: 16 Swift constructor rows that can never
+  match, whose BOUNDARIES are mostly wrong too (a mis-keyed kind hid
+  mis-keyed boundaries), and Scala `Process(cmd)` never classified (INV-zumin
+  had closed on a synthetic edge). One instrument error, caught before use:
+  the first probe omitted `dst_ref` and showed ObjC matching nothing. →
+  INV-zikab (axis; the axiom is the owner's call, since two shipped rulings
+  collide), INV-dihun (the contradiction, fourth occurrence), WI-narij
+  (Scala); evidence added to INV-pimir, WI-kilap, INV-gujoh, WI-fazad. Full
+  write-up: `~/hypergumbo_lab_notebook/concept-audit-io-primitive-kind_09232026.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks
@@ -881,6 +1196,18 @@ the Examples section above by hand — each entry is a unique
 narrative of what was found, classified, deprecated, kept, etc.,
 and that prose belongs to the human who ran the audit, not to the
 bookkeeping script.
+
+**The recorder refuses to advance the state unless the audit left a
+findings document** — a `*.md` under `docs/audits/` or in the lab
+notebook whose name contains the suspect domain (separators and case
+ignored) *and* whose mtime postdates the previous record. Both halves
+are load-bearing: the 2026-08-20 record advanced the cadence for
+`call_construct` with no write-up at all, and a name-only check would
+still have passed it because an April-era audit-findings file for that
+domain already existed. Pass `--force` when the write-up genuinely
+lives somewhere the script cannot see; it records and says so on
+stderr. This is the "a silent audit is no audit" anti-pattern made
+mechanical.
 
 The cadence mechanism is complementary to the static drift detection
 described in Step 4: the property test catches drift in *known*

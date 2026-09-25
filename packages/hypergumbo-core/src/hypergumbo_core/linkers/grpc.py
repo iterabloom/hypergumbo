@@ -4,6 +4,17 @@
 This linker detects gRPC patterns across multiple languages and creates
 edges linking clients to their corresponding server implementations.
 
+``depends_on`` is EMPTY because this linker's core edges consume no pass
+output (WI-zujan). It parses ``.proto`` files and client/server sources itself
+(``_find_grpc_files``) and mints the services, stubs, servicers and RPC routes
+those edges join. The Go analyzer's output IS read, by two OPTIONAL Go-only
+sub-families -- Go methods implementing a minted RPC route, and resolving an
+unresolved ``Register*Server`` call -- but CNF has no optional form:
+``[["go"]]`` would be falsified on every Python/Java/TS gRPC repo whose
+scan-built edges arrive with no Go pass. The twelve-language clause this
+replaced named seven languages the linker never scans and a ``proto`` pass
+whose output it never reads.
+
 Detected Patterns
 -----------------
 Protocol Buffers (.proto):
@@ -83,8 +94,8 @@ from ..discovery import find_files, find_non_test_files
 from ..analyze.base import make_route_symbol
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._transitive_bases import (
-    build_inheritance_index,
-    collect_transitive_base_names,
+    build_inheritance_edge_index,
+    collect_transitive_base_origins,
 )
 from .registry import (
     LinkerActivation,
@@ -93,7 +104,8 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source, read_source_text
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("grpc-linker")
 
@@ -424,7 +436,9 @@ def _scan_ts_file(file_path: Path, content: str) -> list[GrpcPattern]:
             service_name=service_name,
             line=line_num,
             file_path=str(file_path),
-            language="typescript",
+            # WI-dovog: the file's own language, not a literal -- a .js
+            # client is javascript.
+            language=js_ts_language_from_path(file_path),
         ))
 
     return patterns
@@ -432,7 +446,7 @@ def _scan_ts_file(file_path: Path, content: str) -> list[GrpcPattern]:
 
 def _make_symbol_id(file_path: str, line: int, name: str, kind: str) -> str:
     """Generate unique symbol ID."""
-    return f"grpc:{file_path}:{line}:{name}:{kind}"
+    return f"grpc:{file_path}:{line}-{line}:{name}:{kind}"
 
 
 # Regex to find "type <Name> struct {" declarations.
@@ -532,8 +546,8 @@ def _link_go_methods_to_rpc_routes(
     struct_to_service: dict[tuple[str, str], str] = {}
     for file_path_str in go_server_files:
         try:
-            content = Path(file_path_str).read_text(
-                encoding="utf-8", errors="replace"
+            content = read_source_text(
+                Path(file_path_str), encoding="utf-8", errors="replace"
             )
         except OSError:  # pragma: no cover
             continue
@@ -554,16 +568,21 @@ def _link_go_methods_to_rpc_routes(
     # Go uses struct embedding rather than class inheritance, but the Go
     # analyzer encodes embedded structs / implemented interfaces in the
     # same `meta.base_classes` metadata, so the WI-halat helper applies.
-    inheritance_index = build_inheritance_index(existing_edges or [])
+    #
+    # INV-rukor: a mapping made HERE read graph records -- the struct symbol
+    # and, for an inherited base, the ancestor and inheritance edges -- so it
+    # keeps them for the edge's ``derived_from``. The text-scan mapping above
+    # read none, and has no entry.
+    edge_index = build_inheritance_edge_index(existing_edges or [])
     symbol_by_id = {s.id: s for s in existing_symbols}
+    struct_evidence: dict[tuple[str, str], tuple[str, ...]] = {}
     for sym in existing_symbols:
         if sym.kind != "struct" or sym.language != "go":
             continue
         struct_key = (sym.path, sym.name)
         if struct_key in struct_to_service:
             continue  # already mapped via Unimplemented embedding
-        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
-        for base in chain:
+        for base, via in collect_transitive_base_origins(sym, symbol_by_id, edge_index):
             if base.startswith("Unimplemented"):
                 continue
             # Match ttrpc patterns: XxxService or XxxServiceService
@@ -573,11 +592,13 @@ def _link_go_methods_to_rpc_routes(
                 else:
                     service_name = base[:-len("Service")]
                 struct_to_service[struct_key] = service_name
+                struct_evidence[struct_key] = (sym.id, *via)
             # Match CSI / external library patterns: XxxServer
             # e.g., IdentityServer → Identity, ControllerServer → Controller
             elif base.endswith("Server"):
                 service_name = base[:-len("Server")]
                 struct_to_service[struct_key] = service_name
+                struct_evidence[struct_key] = (sym.id, *via)
 
     if not struct_to_service:
         return edges
@@ -642,7 +663,8 @@ def _link_go_methods_to_rpc_routes(
             origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
             meta={"framework_dispatch": "grpc_go_server", "protocol": "grpc"},
-            derived_from=[sym.id, route_id],
+            # The route is minted here, so it is not a consumed record.
+            derived_from=[sym.id, *struct_evidence.get((sym.path, struct_name), ())],
         ))
 
     return edges
@@ -818,7 +840,8 @@ def link_grpc(
                     "protocol": "grpc",
                     "framework_dispatch": "grpc_service_match",
                 },
-                derived_from=[stub_id, servicer_id],
+                # derived-from consumed-none: stub and servicer are both minted from a file scan
+                derived_from=[],
             ))
 
     # WI-ropoz: fallback — stubs/clients without an in-tree servicer
@@ -870,7 +893,8 @@ def link_grpc(
             evidence_type="ast_call_direct",
             is_resolved=False,
             meta=edge_meta,
-            derived_from=[stub_id, target.id],
+            # derived-from consumed-none: stub and proto service are both minted from a file scan
+            derived_from=[],
         ))
 
     # Create route symbols for proto RPC definitions.
@@ -888,7 +912,8 @@ def link_grpc(
     # Bridge servicer/server symbols to their proto service definition.
     # The client-side 'calls' edges (with meta['protocol']='grpc')
     # terminate at grpc_server/grpc_servicer, but route and
-    # implements_rpc edges originate from grpc_service symbols. Without
+    # ``implements`` (meta['protocol']='grpc') edges originate from
+    # grpc_service symbols. Without
     # this bridge, the call chain is disconnected: the client-side graph
     # (stub → server) and the handler-side graph (route → service → method)
     # are separate components. This dispatches_to edge connects them.
@@ -937,7 +962,8 @@ def link_grpc(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta=bridge_meta,
-                derived_from=[sym.id, target_svc.id],
+                # derived-from consumed-none: server and service are both minted from a file scan
+                derived_from=[],
             ))
 
     for rpc in all_rpc_defs:
@@ -1021,7 +1047,8 @@ def link_grpc(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta=route_meta,
-                derived_from=[route_id, target_svc.id],
+                # derived-from consumed-none: route and service are both minted from the .proto scan
+                derived_from=[],
             ))
 
     # Link Go implementation methods to proto RPC route symbols.
@@ -1035,6 +1062,7 @@ def link_grpc(
             )
         )
 
+    run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return GrpcLinkResult(
@@ -1123,6 +1151,8 @@ def _resolve_unresolved_grpc_edges(
             linker_symbols_by_name[name] = []
         linker_symbols_by_name[name].append(sym)
 
+    minted_ids = {sym.id for sym in symbols}
+
     # Find unresolved Go edges
     for edge in ctx.get_unresolved_edges(lang="go"):
         parsed = ctx.parse_unresolved_dst(edge.dst)
@@ -1152,6 +1182,12 @@ def _resolve_unresolved_grpc_edges(
                 break
 
         if best_candidate:
+            # INV-rukor: the consumed record is the unresolved edge; the
+            # candidate counts only when it came from the graph, not from
+            # this pass's own file scan.
+            consumed_target = (
+                [] if best_candidate.id in minted_ids else [best_candidate.id]
+            )
             resolved_edges.append(Edge.create(
                 src=edge.src,
                 dst=best_candidate.id,
@@ -1162,7 +1198,7 @@ def _resolve_unresolved_grpc_edges(
                 origin_run_id=run.execution_id,
                 evidence_type="grpc_stub_resolution",
                 is_resolved=False,
-                derived_from=[edge.src, best_candidate.id],
+                derived_from=[edge.src, edge.id, *consumed_target],
             ))
 
     return resolved_edges
@@ -1174,10 +1210,8 @@ def _resolve_unresolved_grpc_edges(
     description="gRPC/Protobuf RPC pattern linking across languages",
     requirements=GRPC_REQUIREMENTS,
     activation=LinkerActivation(frameworks=["grpc", "protobuf"]),
-    # CNF: gRPC has first-class clients in Go, Python, Java, JS/TS, C++, Rust,
-    # Ruby, C#, Kotlin, Swift, Dart. Proto schema itself goes through the
-    # proto analyzer.
-    depends_on=[["go", "python", "java", "javascript", "cpp", "rust", "ruby", "csharp", "kotlin", "swift", "dart", "proto"]],
+    # CNF: empty -- see the module docstring (WI-zujan).
+    depends_on=[],
 )
 def grpc_linker(ctx: LinkerContext) -> LinkerResult:
     """gRPC linker for registry-based dispatch.

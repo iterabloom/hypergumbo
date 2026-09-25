@@ -1,0 +1,21 @@
+- op: create  # 336a
+  at: '2026-09-03T18:21:26Z'  # 336a
+  by: agent  # 336a
+  actor: jgstern_agent  # 336a
+  clock: 1  # 336a
+  nonce: 336a  # 336a
+  data:  # 336a
+    kind: work_item  # 336a
+    title: "go: a call through a package-level var alias (var ( NewWebhook = testutils.NewWebhook )) dead-ends at the variable -- WI-gulot's Go twin, made visible by INV-nopoh"  # 336a
+    status: todo_hard  # 336a
+    priority: 3  # 336a
+    parent:  # 336a
+    tags:  # 336a
+    - go  # 336a
+    - call_graph  # 336a
+    isbefore: []  # 336a
+    duplicate_of: []  # 336a
+    not_duplicate_of: []  # 336a
+    pr_ref:  # 336a
+    description: "FOUND 2026-09-03 while reading back INV-nopoh's arm B. WI-gulot fixed this for\nPython (\"module-level function alias (f = g) extracted as kind=variable; calls\nthrough the alias dead-end at a 0-out-degree node\"); this is the Go twin, and\nINV-nopoh made it VISIBLE by (a) emitting grouped-`var` alias symbols and (b)\nbinding dot-imported bare calls to the alias variable.\n\nFixture (one file, dev + INV-nopoh tree):\n\n    var upper = strings.ToUpper\n    func mk() func(string) string { return strings.ToLower }\n    var ( lower = mk() )\n    func g() { upper(\"x\"); lower(\"y\") }\n\n    calls  g -> upper:variable          (the call binds to the alias: right)\n    calls  g -> lower:variable          (right)\n    calls  lower:variable -> mk         (INV-nopoh's package-level anchor: right)\n    module_attr_ref  FILE -> strings.ToUpper   (anchored on the FILE, not on `upper`)\n    -- and nothing from upper:variable to strings.ToUpper --\n\nSo a walk from g reaches `upper` and stops. The alias's own reference to its\ntarget is emitted, but anchored on the file pseudo-symbol: `_innermost_callable_at`\n(INV-fafol) anchors attribute reads by span on function/method symbols only, and\na package-level variable's span is not a callable's. The same applies to\nin-repo targets (`var ( NewWebhook = testutils.NewWebhook )` in alertmanager's\ntest/with_api_v2/mock.go): the variable has no outgoing edge to\ntestutils.NewWebhook, so every dot-imported `NewWebhook()` now resolves to the\nalias and the graph ends there -- one hop short of the function that does the\nwork. Before INV-nopoh those sites resolved to testutils.NewWebhook by luck (one\nglobal candidate); the honest binding is the alias, and the alias must continue.\n\nWHAT WOULD FIX IT (design): at symbol emission, a package-level var whose\ninitializer is a bare selector `pkg.Name` or identifier `Name` (not a call: that\nis `constructed_from`) records `alias_of` and emits `calls`/`references`\nalias-variable -> target (resolved through import_aliases + the resolver for\nin-repo targets; a module_attr_ref-shaped unresolved dst for external ones) so\nthe graph continues; OR `_innermost_callable_at` admits a package-level variable\nwhose span contains the read. Python's WI-gulot chose the edge; prefer parity.\n\nSIZING: alertmanager 4 aliases x 2 packages (test/cli, test/with_api_v2), ~125\ncall sites route through them. Not measured elsewhere."  # 336a
+    fields: {}  # 336a

@@ -395,3 +395,110 @@ def test_dataclass_with_no_str_fields_passes(tmp_path: Path):
         "@dataclass\nclass C:\n    n: int = 0\n    f: float = 0.0\n",
     )
     assert find_field_drift(root, core_files=[rel]) == []
+
+
+# ---------------------------------------------------------------------------
+# WI-mubup: the catalogue dataclass is in scope
+# ---------------------------------------------------------------------------
+
+def test_io_boundary_module_is_in_the_linted_scope():
+    """The omission that let two axes go undeclared, pinned so it cannot return.
+
+    ``IoPrimitive`` lives in io_boundary.py while its edge-side counterpart
+    ``ExternalRef`` lives in ir.py. Only ir.py was scanned, so each of the two
+    axes those dataclasses share — the io-boundary vocabulary (INV-tafig) and
+    the module key (WI-livar) — was split across a linted half and an unlinted
+    one. Neither half's absence could ever fire a gate.
+    """
+    from hypergumbo_core.multi_value_field_axis import DEFAULT_CORE_FILES
+
+    assert (
+        "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py"
+        in DEFAULT_CORE_FILES
+    )
+
+
+def test_the_widened_scan_actually_reaches_ioprimitive_fields():
+    """Non-vacuity: the scan must SEE the fields, not merely list the file.
+
+    A path in DEFAULT_CORE_FILES that the AST walker fails to parse, or a
+    dataclass whose fields the walker does not recognise, produces zero
+    offenders — indistinguishable from a clean file. This asserts the walker
+    actually yields IoPrimitive's fields.
+    """
+    from hypergumbo_core.multi_value_field_axis import (
+        _iter_dataclass_str_fields,
+    )
+
+    path = (
+        REPO_ROOT
+        / "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py"
+    )
+    seen = {
+        (cls, field)
+        for cls, field, _lineno, _line in _iter_dataclass_str_fields(path)
+    }
+    for field_name in ("boundary", "module", "name", "kind", "notes"):
+        assert ("IoPrimitive", field_name) in seen, field_name
+
+
+def test_ioprimitive_names_the_two_axes_this_campaign_declared():
+    """The point of the widening, stated as an assertion.
+
+    ``IoPrimitive.boundary`` and ``IoPrimitive.module`` are the catalogue-side
+    halves of the two axes declared by ADR-0050 and ADR-0051. If either
+    regressed to ``free-text`` the live-tree test above would still pass — a
+    justification is only required to be present — so the specific axis names
+    are asserted here.
+    """
+    path = (
+        REPO_ROOT
+        / "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py"
+    )
+    declarations = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        for field_name in ("boundary: str", "module: str"):
+            if stripped.startswith(field_name):
+                declarations[field_name.split(":")[0]] = stripped
+
+    assert "# axis: io-boundary" in declarations["boundary"]
+    assert "# axis: module-key" in declarations["module"]
+
+
+def test_the_precommit_hook_regex_covers_every_scoped_core_file():
+    """The hook and the constant must not drift apart (WI-mubup residual).
+
+    ``DEFAULT_CORE_FILES`` decides what CI checks; a separate regex in
+    ``.githooks/pre-commit`` decides what a commit triggers the check FOR. A
+    file present in the first and absent from the second is checked by CI and
+    silently skipped locally — the hook prints "skipped" over a file it is
+    supposed to be guarding, which is exactly what happened for one commit
+    when io_boundary.py joined the constant.
+
+    Asserting the two agree is cheap; discovering the disagreement from a
+    "skipped" line you were not reading closely is not.
+    """
+    import re
+
+    hook = REPO_ROOT / ".githooks" / "pre-commit"
+    if not hook.exists():  # pragma: no cover — hook absent in sdist installs
+        pytest.skip("pre-commit hook not present in this checkout")
+
+    text = hook.read_text(encoding="utf-8")
+    match = re.search(
+        r'grep -qE "\^packages/\.\*/src/\.\*/\(([a-z_|]+)\)\\\.py\$"',
+        text,
+    )
+    assert match is not None, (
+        "could not locate the core-dataclass alternation in .githooks/pre-commit"
+    )
+    covered = set(match.group(1).split("|"))
+
+    from hypergumbo_core.multi_value_field_axis import DEFAULT_CORE_FILES
+
+    scoped = {Path(f).stem for f in DEFAULT_CORE_FILES}
+    assert scoped <= covered, (
+        f"in DEFAULT_CORE_FILES but not matched by the pre-commit regex: "
+        f"{sorted(scoped - covered)}"
+    )

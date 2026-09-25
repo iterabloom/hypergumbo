@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -254,6 +255,7 @@ def _extract_edges_from_file(
                     src=file_symbol.id,
                     dst=target_id,
                     edge_type="imports",
+                    evidence_type="include",
                     line=node.start_point[0] + 1,
                     confidence=0.95,
                     origin=PASS_ID,
@@ -280,6 +282,7 @@ def _extract_edges_from_file(
                         src=src_id,
                         dst=target.id,
                         edge_type="calls",
+                        evidence_type="ast_call",
                         line=node.start_point[0] + 1,
                         confidence=0.85,
                         origin=PASS_ID,
@@ -309,6 +312,7 @@ def _extract_edges_from_file(
                             src=main_id,
                             dst=result.symbol.id,
                             edge_type="calls",
+                            evidence_type="ast_call",
                             line=node.start_point[0] + 1,
                             confidence=0.95,
                             origin=PASS_ID,
@@ -333,6 +337,7 @@ def _extract_edges_from_file(
                                 src=src_id,
                                 dst=result.symbol.id,
                                 edge_type="calls",
+                                evidence_type="ast_call",
                                 line=node.start_point[0] + 1,
                                 confidence=0.90,
                                 origin=PASS_ID,
@@ -487,5 +492,6 @@ def analyze_circom(repo_root: Path) -> AnalysisResult:
             run=run,
             skipped=True,
             skip_reason="tree-sitter-circom grammar not available",
+            skip_reason_code=DEPENDENCY_UNAVAILABLE,
         )
     return _analyzer.analyze(repo_root)

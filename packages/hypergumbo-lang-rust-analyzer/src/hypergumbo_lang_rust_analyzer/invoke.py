@@ -39,7 +39,8 @@ Why This Design
 Out of scope for this module — each has SHIPPED and lives in a sibling
 (WI-duzul is closed; this list names owners, not pending work):
 * Analyzer-registry wiring — ``analyzer.py``, registered via
-  ``@register_analyzer("rust_analyzer", priority=45)``, above ``rust.py``.
+  ``@register_analyzer("rust_analyzer", priority=45, languages=["rust"],
+  backend="scip")``, above ``rust.py``.
 * The opt-in flag (``HYPERGUMBO_RUST_ANALYZER`` env var +
   ``--backend rust-analyzer`` CLI flag) that gates whether the shell-out
   fires at all — ``gate.py``.

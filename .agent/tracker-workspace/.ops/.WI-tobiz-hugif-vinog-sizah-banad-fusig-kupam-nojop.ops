@@ -34,3 +34,25 @@
   clock: 3  # 3ae7
   nonce: 3ae7  # 3ae7
   message: "related-but-distinct cross-link (connections-sweep 2026-06-08T1900Z)"  # 3ae7
+- op: discuss  # c3c3
+  at: '2026-09-25T17:47:25Z'  # c3c3
+  by: agent  # c3c3
+  actor: jgstern_agent  # c3c3
+  clock: 4  # c3c3
+  nonce: c3c3  # c3c3
+  message: "P2 REVIEW 2026-09-25 (dev e4a47383ab). THE OBSERVATION REPRODUCES; THE DEFECT CLAIM DOES NOT SURVIVE THE AXIS DEFINITION. Status unchanged; surfaced for a decision.\n\nReproduced: on a 2-file TS fixture, every analyzer-emitted typescript node carries origin=['javascript']. js_ts.py:123 is `PASS_ID = make_pass_id(\"javascript\")`.\n\nWhy that is not a defect under the declared contract:\n- `Symbol.origin` / `Edge.origin` is declared `# axis: pass-id` (ir.py:636, 900), and ADR-0044 §1 defines it: \"each element names a pass that contributed to the record\".\n- The JS/TS analyzer IS one pass, named \"javascript\". The js-module linker's `depends_on` comment makes the same point: \"JS/TS share the 'javascript' analyzer pass id\".\n- So origin=['javascript'] on a TS node is the TRUE value on the declared axis.\n- The consumer question in the row, \"what did the TS analyzer produce\", is a LANGUAGE question, and node.language answers it correctly (typescript).\n- The prescribed fix, a `typescript` pass-id on a pass that does not exist separately, would make origin carry a language fact: the axis conflation ADR-0023/0024 forbid.\n\nWhat could legitimately remain is a NAMING question: is \"javascript\" the right name for a pass that handles both languages (e.g. js_ts)? That is a rename, not a data defect. I recommend the owner decide between wont_do (by design per ADR-0044) and re-titling to the rename question. I did not close it: the call is the owner's."  # c3c3
+- op: update  # eeb3
+  at: '2026-09-25T18:11:38Z'  # eeb3
+  by: agent  # eeb3
+  actor: jgstern_agent  # eeb3
+  clock: 5  # eeb3
+  nonce: eeb3  # eeb3
+  set:  # eeb3
+    status: wont_do  # eeb3
+- op: discuss  # d9e8
+  at: '2026-09-25T18:11:38Z'  # d9e8
+  by: agent  # d9e8
+  actor: jgstern_agent  # d9e8
+  clock: 6  # d9e8
+  nonce: d9e8  # d9e8
+  message: "WONT_DO 2026-09-25 (agent's call, delegated by the owner in the P2 review follow-up). BY DESIGN per ADR-0044 §1.\n\nThe observation reproduces, but it is not a defect on the declared axis:\n- Symbol.origin / Edge.origin is `# axis: pass-id` (ir.py:636, :900). ADR-0044 §1 says \"each element names a pass that contributed to the record\".\n- The JS/TS analyzer IS one pass (js_ts.py:123, PASS_ID = make_pass_id(\"javascript\")), so origin=['javascript'] on a TypeScript node is the true value.\n- The row's consumer question, \"what did the TS analyzer produce\", is a LANGUAGE question, and node.language answers it correctly (typescript).\n- The prescribed fix, a `typescript` pass-id for a pass that does not exist separately, would make origin carry a language fact. That is the axis conflation ADR-0023/0024 forbid.\n\nThe rename alternative (javascript -> js_ts) was considered and not filed. It changes a pass-id every consumer and AnalysisRun keys on, and it adds no information: the language axis already separates the two languages. The general claim \"origin names the right pass everywhere\" is NOT asserted here."  # d9e8

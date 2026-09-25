@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""CI / on-demand lint: a cross-backend test runs on RECORDED producer input,
+never on the incumbent arm's output fed back (ADR-0057 §12, WI-romuh).
+
+The parity test that fed ``rust.py``'s own spans into the SCIP helper passed
+for months over a feature measuring 0 of 52 in production (INV-dolud). This
+walks every test under ``packages/*/tests``, taints names bound from a call
+to an incumbent producer (derived from the registry's merge declarations),
+and reports a cross-backend consumer fed from that taint unless the test is
+marked ``@pytest.mark.incumbent_fed("<reason>")``. The mechanism and its
+boundary live in ``hypergumbo_core.check_recorded_producer_input``; the CI
+gate is ``test_check_recorded_producer_input.py::TestLiveTree``.
+
+Exit codes:
+    0 — clean.
+    1 — offences printed to stdout, fix instructions to stderr.
+    2 — could not import the linter (packaging / editable-install problem;
+        do not block on this).
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+for pkg in (
+    "hypergumbo-core",
+    "hypergumbo-lang-common",
+    "hypergumbo-lang-mainstream",
+    "hypergumbo-lang-extended1",
+    "hypergumbo-lang-rust-analyzer",
+):
+    sys.path.insert(0, str(REPO_ROOT / "packages" / pkg / "src"))
+
+try:
+    from hypergumbo_core.check_recorded_producer_input import find_incumbent_fed_tests
+except ImportError as exc:  # pragma: no cover — defensive
+    print(f"check-recorded-producer-input: cannot import linter: {exc}", file=sys.stderr)
+    sys.exit(2)
+
+
+def main() -> int:
+    offenders = find_incumbent_fed_tests(REPO_ROOT)
+    if not offenders:
+        return 0
+    print("Recorded-producer-input check failed:")
+    for line in offenders:
+        print(f"  {line}")
+    print(
+        "\nFix: feed the consumer from the recorded fixture module "
+        "(packages/hypergumbo-lang-rust-analyzer/recorded/), or — only for an "
+        "extraction contract that proves a helper agrees with the incumbent — "
+        'mark the test @pytest.mark.incumbent_fed("<what it proves>").',
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

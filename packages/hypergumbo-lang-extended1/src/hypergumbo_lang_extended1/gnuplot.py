@@ -10,8 +10,8 @@ Regex-based extraction (no tree-sitter grammar available on PyPI):
 1. Find all Gnuplot files
 2. Extract function definitions (f(x) = ...)
 3. Extract variable assignments (var = expr)
-4. Extract plot/splot commands as symbols
-5. Extract load/call directives as edges
+4. Extract plot/splot commands as symbols (no edges are emitted; load/call
+   directives are skipped)
 
 Symbols Extracted
 -----------------
@@ -47,7 +47,7 @@ _PLOT_RE = re.compile(r"^((?:re)?[sp]?plot)\b", re.MULTILINE)
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"gnuplot:{path}:{line}:{name}:{kind}"
+    return f"gnuplot:{path}:{line}-{line}:{name}:{kind}"
 
 
 def find_gnuplot_files(

@@ -156,6 +156,15 @@ class LinkerContext:
     linker_pass_id: str = ""
     linker_pass_version: str = ""
 
+    # WI-dabup / ADR-0056 W3: {pass_id: skip_reason_code} for every ANALYZER
+    # pass that did not run, lifted from limits.skipped_passes by
+    # run_all_linkers. It is what lets a silent linker distinguish "the repo
+    # has no Rust" (State A, a correct no-op) from "the Rust grammar is not
+    # installed and I was blocked" (State C) — a distinction the run counters
+    # alone cannot make, and the reason prerequisite_absent had no producer
+    # until skipped_passes carried a structured code.
+    skipped_pass_codes: dict[str, str] = field(default_factory=dict)
+
     # Cross-linker tree-sitter parse cache. Populated lazily by the linker
     # docstring/comment masker (linkers/_text_filters) so the second linker
     # to scan a given file reuses the first linker's parse. Forward-compat
@@ -171,6 +180,9 @@ class LinkerContext:
         default=None, init=False, repr=False
     )
     _symbols_by_path: dict[str, list["Symbol"]] | None = field(
+        default=None, init=False, repr=False
+    )
+    _inheritance_edge_index: dict[str, list[tuple[str, str]]] | None = field(
         default=None, init=False, repr=False
     )
 
@@ -205,6 +217,30 @@ class LinkerContext:
                 if s.path not in self._symbols_by_path:
                     self._symbols_by_path[s.path] = []
                 self._symbols_by_path[s.path].append(s)
+
+    def base_name_origins(
+        self, sym: "Symbol", meta_keys: tuple[str, ...] = ("base_classes",),
+    ) -> list[tuple[str, tuple[str, ...]]]:
+        """``sym``'s transitive base names, each with the records behind it.
+
+        :func:`~._transitive_bases.collect_transitive_base_origins` over this
+        context's symbols and inheritance edges, with the edge index built
+        once per context. A linker that must name what it consumed
+        (``Edge.derived_from``, INV-rukor) reads the ancestor and edge ids
+        from here instead of rebuilding an index per class.
+        """
+        from ._transitive_bases import (
+            build_inheritance_edge_index,
+            collect_transitive_base_origins,
+        )
+
+        self._ensure_indexes()
+        assert self._symbol_by_id is not None  # for type checker
+        if self._inheritance_edge_index is None:
+            self._inheritance_edge_index = build_inheritance_edge_index(self.edges)
+        return collect_transitive_base_origins(
+            sym, self._symbol_by_id, self._inheritance_edge_index, meta_keys,
+        )
 
     def get_symbol_by_id(self, symbol_id: str) -> "Symbol | None":
         """Look up a symbol by its ID.
@@ -444,6 +480,37 @@ class LinkerActivation:
         return False
 
 
+def always_on_unreviewed() -> LinkerActivation:
+    """Always-on, and NOBODY HAS ASSESSED whether it should be gated (INV-nanon).
+
+    Behaviourally identical to ``LinkerActivation(always=True)``. It exists to
+    say a different thing about the AUTHOR, because the two claims were
+    previously indistinguishable: ``register_linker`` defaulted a missing
+    ``activation=`` to ``always=True``, so "I considered gating and chose
+    always-on" and "I never thought about it" were the same bytes. Twenty-five
+    linkers were in the second state and twelve in the first, and nothing could
+    tell them apart.
+
+    Writing ``LinkerActivation(always=True)`` on all twenty-five instead would
+    have manufactured twenty-five rationales nobody verified -- the
+    fabricated-disclosure failure :mod:`..pass_silence` already names, where a
+    reason invented on the producer's behalf is worse than no reason. This
+    factory claims only what is true: the linker runs unconditionally today,
+    and that is a default nobody defended.
+
+    It is a FACTORY and not a module-level constant because
+    :class:`LinkerActivation` carries mutable ``frameworks`` /
+    ``language_pairs`` lists; a shared instance would let one caller's
+    ``.append`` reach twenty-five linkers.
+
+    Narrowing any of these is the RECALL-LOSS direction -- a missed framework
+    detection silently drops real edges and leaves no hole where a hole would
+    be visible -- so each is a separate, evidence-backed, per-linker decision.
+    ``grep -rl always_on_unreviewed`` is that worklist.
+    """
+    return LinkerActivation(always=True)
+
+
 @dataclass
 class LinkerRequirement:
     """A requirement for a linker to produce useful edges.
@@ -487,6 +554,12 @@ class RegisteredLinker:
     availability: str = "core"
     requires: str | None = None
     pass_version: str = ""
+    # ADR-0057 §14.1 (WI-togad): may this pass's resolution DEMOTE the stub it
+    # names in ``Edge.derived_from``? Granted on measured precision only — see
+    # ``docs/audits/0020-recovery-linker-supersession-precision.md``. Default
+    # False: a pass that has not been measured does not get to rank a
+    # producer's answer below its own.
+    supersedes_consumed_stub: bool = False
     # WI-hupaz / WI-dilab / INV-hujog: pass-id dependencies surfaced into
     # ``Pass.depends_on``, expressed in CNF (outer-AND of inner-OR clauses).
     # Distinct from ``activation`` (which gates "should this linker run at all
@@ -525,6 +598,7 @@ def register_linker(  # nosec B107 — pass_label/backend defaults are tag strin
     availability: str = "core",
     requires: str | None = None,
     depends_on: list[list[str]] | None = None,
+    supersedes_consumed_stub: bool = False,
 ) -> Callable[[LinkerFunc], LinkerFunc]:
     """Decorator to register a linker function.
 
@@ -568,6 +642,7 @@ def register_linker(  # nosec B107 — pass_label/backend defaults are tag strin
             requires=requires,
             pass_version=compute_pass_version(func),
             depends_on=[list(clause) for clause in depends_on] if depends_on else [],
+            supersedes_consumed_stub=supersedes_consumed_stub,
         )
         return func
 
@@ -627,13 +702,22 @@ def _run_linker_with_cache(
     ``linkers/_text_filters`` can read/write ``ctx.parsed_trees`` without
     every linker passing the cache explicitly.
     """
-    from ._text_filters import reset_active_parse_cache, set_active_parse_cache
+    from ..pass_silence import PREREQUISITE_ABSENT, derive_silence_reason
+    from ._text_filters import (
+        reset_active_parse_cache,
+        reset_active_read_log,
+        set_active_parse_cache,
+        set_active_read_log,
+    )
 
+    read_log: set[str] = set()
     token = set_active_parse_cache(ctx.parsed_trees)
+    read_token = set_active_read_log(read_log)
     _t0 = time.perf_counter()
     try:
         result = func(ctx)
     finally:
+        reset_active_read_log(read_token)
         reset_active_parse_cache(token)
     # INV-gizik / INV-pitab: every linker invocation flows through this wrapper
     # (serial dispatch, parallel-pool submit, and run_linker by-name), so it is
@@ -647,9 +731,89 @@ def _run_linker_with_cache(
     if result.run is not None:
         if not result.run.duration_ms:
             result.run.duration_ms = _elapsed_ms
+        # WI-finij: fill files_analyzed from what the body ACTUALLY read, so
+        # the zero that derive_silence_reason reads as "received no input
+        # files" is a measurement rather than an unset default. Guarded like
+        # duration_ms: a body that assigned the field keeps its value —
+        # route-handler-linker deliberately stores a route count here, and the
+        # stamp fills a silent field rather than overruling a producer that
+        # spoke. It must precede the silence derivation below, which consumes
+        # it.
+        if not result.run.files_analyzed:
+            result.run.files_analyzed = len(read_log)
         result.run.nodes_emitted = len(result.symbols)
         result.run.edges_emitted = len(result.edges)
+        # INV-bikaj (arc T6): every linker invocation flows through this
+        # wrapper, so it is also the one locus that can stamp WHY a linker
+        # emitted nothing. The 22 truly-silent pass-runs the sizing found are
+        # linkers that opened files and produced nothing; they land in
+        # `unreported` rather than being labelled with a reason the
+        # orchestrator cannot know.
+        _derived = derive_silence_reason(
+            files_analyzed=result.run.files_analyzed,
+            nodes_emitted=result.run.nodes_emitted,
+            edges_emitted=result.run.edges_emitted,
+        )
+        # WI-finij question A: only a pass BODY can know it looked for its
+        # construct and found none, which is why derive_silence_reason refuses
+        # to infer NO_CANDIDATE_CONSTRUCT -- a reason invented on the producer's
+        # behalf is a fabricated disclosure. But this stamp ASSIGNED
+        # UNCONDITIONALLY, so it overwrote the only producer able to say it, and
+        # the declared value had no reachable producer anywhere in the tree.
+        # Guarded now: a body that spoke keeps its word. The one exception is
+        # "" -- a pass that EMITTED has no silence to explain, and NOT
+        # APPLICABLE is not the body's to override.
+        if _derived == "":
+            # A pass that EMITTED has no silence to explain, and NOT APPLICABLE
+            # is not the body's to override.
+            result.run.silence_reason = ""
+        elif not result.run.silence_reason:
+            # WI-dabup / ADR-0056 W3: the orchestrator may speak only into a
+            # field the body left empty. Before falling through to the derived
+            # answer, ask whether this linker was BLOCKED -- a declared
+            # prerequisite that went missing for a toolchain reason rather than
+            # because the repo lacks its files.
+            #
+            # WHY THIS ORDER MATTERS, and it is not a detail. The derived answer
+            # here is NO_CANDIDATE_FILES, declared to mean "nothing to find, and
+            # no ordering or declaration mechanism would change it". On a JS+Rust
+            # repo with the Rust grammar missing, that is FALSE for
+            # tauri-ipc-linker: installing the grammar changes it. The axis was
+            # asserting something untrue, which is worse than abstaining.
+            #
+            # WHY IT DOES NOT OVERRIDE A BODY CLAIM. Measured on that same repo,
+            # pyffi-linker is silent with the SAME blocked conjunct and its body
+            # claims NO_CANDIDATE_CONSTRUCT -- truthfully: it scanned the Python
+            # side and there are genuinely no FFI call sites, so the missing
+            # Rust grammar is irrelevant to ITS silence. Overruling that would
+            # reverse the guard above and replace a true claim with a plausible
+            # one.
+            result.run.silence_reason = (
+                PREREQUISITE_ABSENT
+                if _blocked_prerequisite_clauses(ctx)
+                else _derived
+            )
     return result
+
+
+def _blocked_prerequisite_clauses(ctx: LinkerContext) -> list[list[str]]:
+    """Conjuncts of the running linker's ``depends_on`` blocked by a toolchain.
+
+    Resolves the declaration from the registry by the pass id the dispatcher
+    stamped on the context, so the chokepoint needs no extra parameter and the
+    by-name ``run_linker`` path (which sets no pass id) degrades to "no
+    declaration, no stamp" rather than guessing.
+    """
+    from ..pass_silence import prerequisite_absent_clauses
+
+    if not ctx.linker_pass_id or not ctx.skipped_pass_codes:
+        return []
+    registered = _LINKER_REGISTRY.get(ctx.linker_pass_id)
+    if registered is None:  # pragma: no cover - dispatcher sets a known id
+        return []
+    return prerequisite_absent_clauses(
+        registered.depends_on, ctx.skipped_pass_codes,
+    )
 
 
 def run_linker(
@@ -772,6 +936,20 @@ def run_all_linkers(
         )
     ]
 
+    # WI-dabup / ADR-0056 W3: lift the analyzer skip codes once, so a silent
+    # linker can tell a prerequisite that was ABSENT FROM THE REPO from one
+    # that was BLOCKED BY THE TOOLCHAIN. run_all_analyzers has fully populated
+    # `limits` by the time linkers dispatch (cli.py runs them in that order),
+    # so this map is complete rather than racing the passes it describes.
+    # Falls back to the caller's own map when no Limits sink was supplied, so
+    # a direct caller can still exercise the path.
+    skipped_pass_codes = dict(ctx.skipped_pass_codes)
+    if limits is not None:
+        for entry in limits.skipped_passes:
+            pass_id = entry.get("pass", "")
+            if pass_id:
+                skipped_pass_codes[pass_id] = entry.get("silence_reason", "")
+
     # Group by priority — linkers at the same priority are independent
     # and can run in parallel.  E.g., inheritance linker (priority 15)
     # creates implements edges that type_hierarchy (priority 60) needs,
@@ -790,6 +968,7 @@ def run_all_linkers(
             detected_frameworks=ctx.detected_frameworks,
             detected_languages=ctx.detected_languages,
             parsed_trees=ctx.parsed_trees,
+            skipped_pass_codes=skipped_pass_codes,
         )
 
         if len(group) == 1:
@@ -832,6 +1011,7 @@ def run_all_linkers(
                         parsed_trees=ctx.parsed_trees,
                         linker_pass_id=linker.name,
                         linker_pass_version=linker.pass_version,
+                        skipped_pass_codes=skipped_pass_codes,
                     )
                     future_to_linker[
                         pool.submit(_run_linker_with_cache, linker.func, lctx)
@@ -1040,6 +1220,7 @@ def _connect_synthetic_to_enclosing(
             origin=pass_id,
             origin_run_id=run_id,
             evidence_type="enclosing_scope",
+            # derived-from endpoints: span containment of a synthetic node by its enclosing callable
             derived_from=[enclosing.id, sym.id],
         ))
 

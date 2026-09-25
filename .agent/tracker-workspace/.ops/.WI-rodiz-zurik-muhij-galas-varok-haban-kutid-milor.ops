@@ -1,0 +1,19 @@
+- op: create  # 5b63
+  at: '2026-09-23T06:39:17Z'  # 5b63
+  by: agent  # 5b63
+  actor: jgstern_agent  # 5b63
+  clock: 1  # 5b63
+  nonce: 5b63  # 5b63
+  data:  # 5b63
+    kind: work_item  # 5b63
+    title: "Elixir: a local call fans out a calls edge to every same-named clause, whatever the arity (get_timeout() inside get_timeout/2 is a self-loop)"  # 5b63
+    status: todo_hard  # 5b63
+    priority: 3  # 5b63
+    parent:  # 5b63
+    tags: []  # 5b63
+    isbefore: []  # 5b63
+    duplicate_of: []  # 5b63
+    not_duplicate_of: []  # 5b63
+    pr_ref:  # 5b63
+    description: "An Elixir local call fans out a `calls` edge to EVERY same-named clause in the file, whatever the arity: `get_timeout()` inside `get_timeout(a, b)` emits edges to both the /0 clause and the /2 clause (a self-loop). The Elixir symbol name carries no arity, so `local_symbols_multi[name]` returns all clauses; there is no arity filter. Erlang had the same wrong-callee shape and INV-mozas fixed it there (local call keyed on name/arity).\n\nComplication: default arguments (`def f(a, b \\\\ 1)`) make one clause callable at several arities, so the filter needs [required, total] per clause, read from the head. Multi-clause functions of ONE arity legitimately fan out to every clause of that arity, and should keep doing so.\n\nNot sized. Found while fixing INV-mozas (seen in livebook samples: Livebook.Text.Delta.Transformation.do_transform recursion fans out to every do_transform clause)."  # 5b63
+    fields: {}  # 5b63

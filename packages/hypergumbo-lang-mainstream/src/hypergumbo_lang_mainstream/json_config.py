@@ -43,6 +43,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -342,6 +343,7 @@ def _process_bin(
                         src=symbol_id,
                         dst=target,
                         edge_type="defines_target",
+                        evidence_type="build_target_main",
                         line=start_line,
                         confidence=1.0,
                         origin=PASS_ID,
@@ -397,6 +399,7 @@ def _process_bin(
                             src=symbol_id,
                             dst=target,
                             edge_type="defines_target",
+                            evidence_type="build_target_main",
                             line=start_line,
                             confidence=1.0,
                             origin=PASS_ID,
@@ -462,6 +465,7 @@ def _process_main_entry(
             src=symbol_id,
             dst=target,
             edge_type="defines_target",
+            evidence_type="build_target_main",
             line=start_line,
             confidence=1.0,
             origin=PASS_ID,
@@ -579,6 +583,7 @@ def _process_exports(
                     src=symbol_id,
                     dst=target,
                     edge_type="defines_target",
+                    evidence_type="build_target_main",
                     line=start_line,
                     confidence=1.0,
                     origin=PASS_ID,
@@ -639,6 +644,7 @@ def _process_exports(
                 src=symbol_id,
                 dst=target,
                 edge_type="defines_target",
+                evidence_type="build_target_main",
                 line=start_line,
                 confidence=1.0,
                 origin=PASS_ID,
@@ -918,7 +924,7 @@ def _analyze_json_impl(repo_root: Path) -> AnalysisResult:
     if not _json_analyzer._check_grammar_available():  # pragma: no cover
         return AnalysisResult(  # pragma: no cover
             skipped=True,  # pragma: no cover
-            skip_reason="json tree-sitter grammar not available",  # pragma: no cover
+            skip_reason="json tree-sitter grammar not available", skip_reason_code=DEPENDENCY_UNAVAILABLE,  # pragma: no cover
         )  # pragma: no cover
 
     import tree_sitter
@@ -948,6 +954,7 @@ def _analyze_json_impl(repo_root: Path) -> AnalysisResult:
         return AnalysisResult(
             skipped=True,
             skip_reason=f"Failed to initialize parser: {e}",
+            skip_reason_code=PASS_CRASHED,
         )
 
     # Create run before processing so Edge construction can stamp

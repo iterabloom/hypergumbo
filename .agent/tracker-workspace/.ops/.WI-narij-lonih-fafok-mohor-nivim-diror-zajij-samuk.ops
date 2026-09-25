@@ -1,0 +1,46 @@
+- op: create  # d424
+  at: '2026-09-23T18:09:12Z'  # d424
+  by: agent  # d424
+  actor: jgstern_agent  # d424
+  clock: 1  # d424
+  nonce: d424  # d424
+  data:  # d424
+    kind: work_item  # d424
+    title: "scala: Process(cmd) -- companion-apply sugar reaches the name slot as 'Process', not 'apply', so the most common process launch is never classified (sbt: 6 of 6); INV-zumin closed on a synthetic edge"  # d424
+    status: todo_hard  # d424
+    priority: 2  # d424
+    parent:  # d424
+    tags:  # d424
+    - scala  # d424
+    - io_boundary  # d424
+    - catalogue  # d424
+    - taint  # d424
+    isbefore: []  # d424
+    duplicate_of: []  # d424
+    not_duplicate_of: []  # d424
+    pr_ref:  # d424
+    description: "FOUND 2026-09-23 by the IoPrimitive.kind concept audit (INV-zikab; write-up\n~/hypergumbo_lab_notebook/concept-audit-io-primitive-kind_09232026.md §6 S6).\nThe most common spelling of a Scala process launch is invisible to io-boundaries and\ntaint, and no gate says so.\n\nFIXTURE, production path (survey + classify_call with dst_ref):\n  import scala.sys.process.Process\n  Process(c).!            -> scala:scala.sys.process.Process:0-0:Process  cc=None -> NONE\n  Process.apply(c).run()  -> scala:external:0-0:apply                     cc=method -> NONE\n  Process(Seq(\"ls\", c)).!! -> scala:scala.sys.process.Process:0-0:Process  cc=None -> NONE\nThe rows are `module: scala.sys.process.Process, methods: [apply, run]` under both\nfs_write and subprocess. Companion-apply sugar reaches the analyzer's name slot as\n`Process`, not `apply`, and the explicit `Process.apply` loses its qualifier.\n\nON sbt (surveyed at d917e02282): 6 `Process(...)` edges into\nscala.sys.process.Process, 0 classified. The module is NOT starved there, but only\nbecause uncatalogued Process-instance calls (exitValue x4, destroy x3, isAlive x1)\nland in the module stamped `method`, so the gate counts it as examined. A\n`{boundary: subprocess, must_not_exist: true}` claim therefore finds no chain on a\nprogram that launches processes: the false-all-clear direction.\n\nNOT A KIND DEFECT. Re-kinding `apply` to function changes nothing (arm B of the\naudit's A/B, fixture), because the NAME never matches.\n\nWHY IT SURVIVED: INV-zumin (satisfied) fixed the multi-boundary tagging of these exact\nrows, and its evidence is a SYNTHETIC edge `calls -> scala.sys.process.Process.apply`,\nnever the analyzer's emission for `Process(c)`. The row was closed and never reached.\nINV-linub's class statement (\"a catalogued I/O call site must reach its catalogue\nentry regardless of receiver syntax\") covers this. That item is satisfied on its filed\ninstances; this is the residual.\n\nFIX SHAPES, not chosen: (a) the scala analyzer maps companion apply-sugar\n`X(args)` onto `X.apply` when X resolves to an imported object; or (b) the catalogue\nrows the name the analyzer emits (`functions: [Process]` under\nscala.sys.process.Process), the constructor-named-row convention swift uses. Either\nway, measure both directions on the scala cohort: Process is also a common\nfirst-party class name."  # d424
+    fields: {}  # d424
+- op: discuss  # 382c
+  at: '2026-09-24T02:06:21Z'  # 382c
+  by: agent  # 382c
+  actor: jgstern_agent  # 382c
+  clock: 2  # 382c
+  nonce: 382c  # 382c
+  message: "PREMISE RE-CHECKED 2026-09-24 at dev 2c63301739, through the production path: analyze_scala, then classify_call WITH dst_ref. The premise holds, except for ONE stale line.\n\nSTALE: `Process.apply(c)` now classifies as scala.sys.process.Process.apply. WI-kilap (#1160, after this row was filed) writes the owner into the module slot, so the slot is no longer `external`.\n\nSTILL TRUE:\n- Companion sugar `Process(c)` still arrives as `scala:scala.sys.process.Process:0-0:Process`, with no call_construct, and is unclassified.\n- Fresh sbt survey: 6 `Process(...)` edges, 0 classified. All 6 are genuine launches from files that import scala.sys.process.Process: Resolvers.scala:135 and :313, Fork.scala:203, Pkg.scala:56 (`Process(\"git show ...\").!!`), ShellScriptUtil.scala:174, RemoteSbtCreator.scala:49.\n- method_starved_modules on that survey does NOT report scala.sys.process.Process, so the false-all-clear still holds.\n- gatling and http4s have no scala.sys.process edges.\n\nNEW DETAIL: `!` and `!!` have no catalogue rows, and the analyzer emits no edge for them. So the launch can only be caught at `Process(...)` / `apply`, which is what fix shapes (a) and (b) target.\n\nInstrument: ~/hypergumbo_lab_notebook/premise_check_09242026/narij_count.py. Its first version passed dst_ref=None, because Edge has no from_dict. The corrected version rebuilds it with ExternalRef.from_dict, and the counts did not change."  # 382c
+- op: update  # da2f
+  at: '2026-09-24T04:35:47Z'  # da2f
+  by: agent  # da2f
+  actor: jgstern_agent  # da2f
+  clock: 3  # da2f
+  nonce: da2f  # da2f
+  set:  # da2f
+    status: done  # da2f
+    pr_ref: '1171'  # da2f
+- op: discuss  # 400d
+  at: '2026-09-24T04:35:47Z'  # 400d
+  by: agent  # 400d
+  actor: jgstern_agent  # 400d
+  clock: 4  # 400d
+  nonce: 400d  # 400d
+  message: "DONE in PR #1171. Fix shape (b): the catalogue rows the name the analyzer emits.\n\n- `module: scala.sys.process.Process` gains `functions: [apply, Process]` under both simultaneous boundaries (fs_write, subprocess). This is the constructor-named-row convention swift.yaml uses.\n- `apply` is re-kinded to function, because it is called on the companion object (ADR-0059). Its ledger entry is gone: 30 -> 29.\n- `scala.sys.process.Process.Process` joined HIGH_RISK_PRIMITIVES (the drift guard caught it).\n\nFILED REPRO RE-RUN ON MERGED DEV 9af3f3ca2e (analyze_scala + classify_call with dst_ref):\n  Process(c).!             -> scala.sys.process.Process.Process  (was NONE)\n  Process.apply(c).run()   -> scala.sys.process.Process.apply    (already fixed by WI-kilap)\n  Process(Seq(\"ls\", c)).!! -> scala.sys.process.Process.Process  (was NONE)\n  control File.delete      -> java.io.File.delete\nBoth boundaries are tagged: simultaneous_boundaries_for = {fs_write, subprocess}. sbt now has 177 classified calls (was 164), and none of scala.sys.process is starved.\n\nCOHORT: 11 scala repos, edge SETS diffed across three catalogues (~/hypergumbo_lab_notebook/narij_09242026/AB.txt).\n- Shipped arm: +22 classifications, 0 lost, 0 changed.\n- Controls (gatling, http4s, cats, zio) and lila: no change.\n- tapir, playframework and pekko stop reporting scala.sys.process.Process as starved.\n- `Process` is deliberately NOT in ambiguous_names. The rule was set before measuring. All 8 bare `external:Process` matches (the wildcard-import spelling) were read in source and are genuine launches.\n\nThe title condition (\"never classified\", sbt 6 of 6) no longer holds.\n\nRESIDUALS, filed:\n- WI-tipoh P2: scala resolves by simple name and ignores the explicit import. An imported Process(...) links to an unrelated project Process (spark 12, scala3 10). Those launches stay unclassified, and the edges are false.\n- WI-gunaj P3: a fully qualified scala.sys.process.Process(c) loses its qualifier (2 edges).\nNOT ASSERTED: that INV-linub's class statement (\"reaches its entry regardless of receiver syntax\") holds for scala. The two residuals are counterexamples."  # 400d

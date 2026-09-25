@@ -6,12 +6,37 @@
 # (via _CATALOG_PARENTS) so Erlang stdlib (`file`, `gen_tcp`, `ets`,
 # `logger`, etc.) is covered for the atom-access path.
 #
+# THAT LAST SENTENCE WAS TRUE OF THE ROWS AND FALSE OF THE PATH UNTIL
+# 2026-09-10 (WI-kigub). The parent rows were here and reachable by nothing:
+# `elixir.py::_handle_dot_call` required the dot node to carry an `alias`
+# child, an atom module parses as `atom`, and so `:ets.insert(...)` emitted
+# no call edge of any kind — the catalogue was never handed anything it could
+# match. On phoenix-framework the atom path now reaches 25 OTP modules and
+# `db_read` / `db_write` appear as boundary kinds that repository had never
+# reached. The module slot is emitted WITHOUT the leading colon, which is what
+# makes these rows matchable: `_module_matches` is component-aware and does no
+# colon stripping, so `ets` matches and `:ets` matches nothing. The one row
+# below still spelled `:httpc` is a mis-homed duplicate of erlang.yaml's
+# `httpc` (same `net_send` boundary, so it changes no verdict) and belongs to
+# WI-fovub, not here.
+#
 # Elixir idiom uses its own wrappers over Erlang: `File` for filesystem,
-# `IO` for console/streams, `System` for process/env, `Logger` for logs,
-# `Ecto` for databases, Phoenix for web server, and a galaxy of HTTP
-# clients (HTTPoison, Tesla, Req, Finch, Mint). UAT-2026-04-13 BUG-09b
-# reported 0 boundaries on plausible (Phoenix/Ecto) — this catalog fixes
-# that scope gap.
+# `IO` for console/streams, `System` for process/env, `Logger` for logs.
+#
+# SCOPE (ADR-0016 §27, ADR-0047 ruling 8): the Elixir distribution plus OTP
+# through the parent catalogue. This header used to continue "`Ecto` for
+# databases, Phoenix for web server, and a galaxy of HTTP clients (HTTPoison,
+# Tesla, Req, Finch, Mint)", justified by UAT-2026-04-13 BUG-09b, which
+# reported 0 boundaries on plausible (a Phoenix/Ecto repository). That was
+# 144 rows — the largest third-party holding in the tree, and the most
+# openly declared.
+#
+# THE UAT FINDING STILL HOLDS AND IS STILL ANSWERED. Those rows moved to
+# io_primitives_overlays/elixir-web-and-db.yaml, which LOADS BY DEFAULT, so
+# a Phoenix/Ecto repository still gets its boundaries. What changed is that
+# they no longer claim to BE the Elixir standard library — ADR-0047's point
+# being that an openly-declared divergence is still a divergence, and that
+# recall is better bought with a disclosed overlay than with a false claim.
 #
 # Naming convention: Elixir calls render as `Module.function` — the
 # dotted form matches the `module.name` lookup the io_boundary engine
@@ -162,27 +187,20 @@ fs_write:
 # Net send — HTTP clients and TCP
 # ---------------------------------------------------------------------------
 net_send:
-  - module: HTTPoison
-    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!]
-    notes: "HTTPoison (hackney-based client, very common in Elixir)"
-  - module: HTTPoison.Base
-    functions: [request, request!]
-  - module: Tesla
-    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, options, request, request!]
-    notes: "Tesla (middleware-based HTTP client)"
-  - module: Req
-    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!, new]
-    notes: "Req (modern Elixir HTTP client, Phoenix team's preferred)"
-  - module: Finch
-    functions: [build, request, stream]
-    notes: "Finch (low-level, pooled HTTP client)"
-  - module: Mint.HTTP
-    functions: [connect, request, stream]
-    notes: "Mint (connection-level HTTP/1+2 client)"
-  - module: Mint.HTTP1
-    functions: [connect, request, stream]
-  - module: Mint.HTTP2
-    functions: [connect, request, stream]
+  # PHOENIX / PLUG RESPONSE EGRESS (INV-nular, WI-budiv). Every one of these was
+  # declared net_recv, and the rows' own notes admitted both directions in one
+  # slot — "read request / write response", "receive and publish events". Two
+  # things went wrong at once. net_recv is an auto-derived taint SOURCE, so each
+  # MINTED untrusted_input at a call that emits; and because nothing here was a
+  # SINK, a Phoenix application had NO egress rows for its own response path at
+  # all, so a secret written into a response body or header could not be
+  # reported as leaving the process. That second half is the false-all-clear
+  # direction, which makes this the more serious of the two.
+  #
+  # The header/status builders are included deliberately: `put_resp_header(conn,
+  # "x", secret)` is the point at which the secret enters the response that will
+  # be transmitted, and a sink at the point the value enters is what catches it
+  # (nothing carries taint from the conn struct to the eventual send).
   - module: :httpc
     functions: [request]
     notes: "Erlang stdlib HTTP client (called via atom from Elixir)"
@@ -190,42 +208,28 @@ net_send:
 # ---------------------------------------------------------------------------
 # Net recv — Phoenix and Plug (web server request handling)
 # ---------------------------------------------------------------------------
-net_recv:
-  - module: Phoenix.Router
-    functions: [get, post, put, patch, delete, head, options, match, resources, scope]
-    notes: "Phoenix.Router DSL — declares receiving HTTP routes"
-  - module: Phoenix.Controller
-    functions: [render, json, text, html, put_status, redirect, send_resp, send_download]
-    notes: "Phoenix controller response helpers (read request + write response)"
-  - module: Plug.Conn
-    functions:
-      - send_resp
-      - send_file
-      - send_chunked
-      - chunk
-      - put_resp_header
-      - put_resp_content_type
-      - put_resp_cookie
-      - read_body
-      - fetch_query_params
-      - fetch_cookies
-      - resp
-      - halt
-    notes: "Plug: read request / write response"
-  - module: Phoenix.Channel
-    functions: [push, broadcast, broadcast!, broadcast_from, broadcast_from!, reply]
-    notes: "Phoenix WebSocket channels — receive and publish events"
-  - module: Phoenix.Endpoint
-    functions: [broadcast, broadcast!, broadcast_from, broadcast_from!]
-    notes: "Phoenix endpoint-level PubSub broadcast"
+# NO ELIXIR-OWN net_recv ROWS. Every one belonged to Phoenix or Plug and
+# moved to io_primitives_overlays/elixir-web-and-db.yaml (ADR-0047 ruling 1).
+# Elixir still HAS a net_recv surface: gen_tcp / gen_udp / ssl / inet arrive
+# through the OTP parent catalogue (_CATALOG_PARENTS: elixir -> erlang), which
+# is where a language whose networking IS OTP should get them.
 
 # ---------------------------------------------------------------------------
 # Subprocess — System.cmd, System.shell, Port.open
 # ---------------------------------------------------------------------------
 subprocess:
   - module: System
-    functions: [cmd, shell, halt]
-    notes: "Elixir System.cmd launches external processes"
+    functions: [halt]
+    notes: "Elixir System.halt ends the VM; it launches nothing and returns nothing."
+  - module: System
+    functions: [cmd, shell]
+    simultaneous: true
+    notes: >-
+      Elixir System.cmd/System.shell launch external processes AND return
+      `{output, exit_status}` -- the output half is the child's bytes, so
+      they carry an ipc_recv row too (INV-lozat / ADR-0049 ruling 1).
+      `halt` moved to its own row because `simultaneous` is a property of
+      the primitive and these three did not share it.
   - module: Port
     functions: [open, command]
     notes: "Erlang-style external ports (used for subprocess IPC)"
@@ -235,10 +239,47 @@ subprocess:
 # ---------------------------------------------------------------------------
 env_read:
   - module: System
-    functions: [get_env, fetch_env, fetch_env!, get_pid, argv, tmp_dir, tmp_dir!, user_home, user_home!, cwd, cwd!]
+    functions: [get_env, fetch_env, "fetch_env!", argv]
     notes: "Elixir System env + process info reads"
   - module: Application
-    functions: [get_env, fetch_env, fetch_env!, get_all_env, get_application]
+    functions: [get_env, fetch_env, "fetch_env!", get_all_env]
+    notes: >-
+      Application config reads (compile-time + runtime). RULED AND KEPT
+      (INV-nular, 2026-09-06, on measurement 0006's own adjudication):
+      env_read means "may carry a credential", not "reads the process
+      environment" -- the same definition that split runtime.GOOS out into
+      host_info_read and kept argv in. Application config is filled from
+      config/runtime.exs, typically by System.get_env, and plausible's
+      `Application.get_env(:plausible, :paddle)` is a payments provider's
+      credentials on its face. Re-deducting the row would report LESS on
+      catalogue membership alone, the false-all-clear direction. Parity:
+      erlang `application:get_env` and java `System.getProperty` sit under
+      the same boundary for the same reason.
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: System
+    functions: [monotonic_time, system_time, time_offset, os_time]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused.
+      elixir-lang/elixir lib/elixir/lib/system.ex. The :os and :erlang rows
+      are INHERITED from erlang.yaml and are not duplicated here.
+  - module: DateTime
+    functions: [utc_now]
+  - module: NaiveDateTime
+    functions: [utc_now]
+  - module: System
+    functions: [get_pid, tmp_dir, "tmp_dir!", user_home, "user_home!", cwd, "cwd!"]
+    notes: "Elixir System env + process info reads"
+  - module: Application
+    functions: [get_application]
     notes: "Application config reads (compile-time + runtime)"
 
 # ---------------------------------------------------------------------------
@@ -255,51 +296,32 @@ logging:
 # ---------------------------------------------------------------------------
 # Database — Ecto + direct driver modules
 # ---------------------------------------------------------------------------
-db_read:
-  - module: Ecto.Repo
-    functions: [all, one, one!, get, get!, get_by, get_by!, "exists?", aggregate, stream, preload]
-    notes: "Ecto.Repo read operations"
-  - module: Ecto.Query
-    functions: [from, where, select, join, group_by, order_by, limit, offset, distinct]
-    notes: "Ecto query construction — part of the read path"
-  - module: Postgrex
-    functions: [query, query!, prepare, prepare_execute]
-    notes: "Postgrex (PostgreSQL driver for Ecto)"
-  - module: MyXQL
-    functions: [query, query!, prepare]
-    notes: "MyXQL (MySQL driver for Ecto)"
-  - module: Redix
-    functions: [command, command!, pipeline, pipeline!]
-    notes: "Redix (Redis client)"
-
-db_write:
-  - module: Ecto.Repo
-    functions:
-      - insert
-      - insert!
-      - insert_or_update
-      - insert_or_update!
-      - insert_all
-      - update
-      - update!
-      - update_all
-      - delete
-      - delete!
-      - delete_all
-      - transaction
-      - rollback
-    notes: "Ecto.Repo write operations"
-  - module: Ecto.Multi
-    functions: [insert, update, delete, insert_all, update_all, delete_all, run]
-    notes: "Ecto.Multi — composed transactional writes"
-  - module: Postgrex
-    functions: [transaction]
-  - module: MyXQL
-    functions: [transaction]
+# NO ELIXIR-OWN db_read / db_write ROWS. Ecto, Postgrex, MyXQL and Redix are
+# all Hex packages and moved to the overlay. The database surface Elixir
+# inherits -- dets, ets and mnesia -- comes from OTP through the erlang
+# parent, and those ARE the standard library.
 
 # ---------------------------------------------------------------------------
 # IPC — GenServer, Process, GenStage, Oban (job queues)
 # ---------------------------------------------------------------------------
+ipc_recv:
+  - module: System
+    functions: [cmd, shell]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: `System.cmd/3` and `System.shell/2` return
+      `{output, exit_status}`, and the output half is bytes the CHILD chose --
+      a transfer, not only a launch. Declared `simultaneous` with the
+      subprocess rows above because both facts hold at the same call; without
+      the marker `io_boundaries` is unwritten and, since `ipc_recv` parses
+      before `subprocess`, the LAUNCH is what would disappear from the boundary
+      map. `Port.open` stays launch-only: a port hands back a handle and the
+      data arrives as messages later, which ADR-0049 discloses rather than
+      mints.
+
+      Elixir inherits erlang's rows (`_CATALOG_PARENTS`), so `os:cmd` arrives
+      from there; these two are Elixir's own.
+
 ipc_send:
   - module: GenServer
     functions: [call, cast, abcast, multi_call]
@@ -307,9 +329,6 @@ ipc_send:
   - module: Process
     functions: [send, send_after]
     notes: "Raw process messaging"
-  - module: Oban
-    functions: [insert, insert!, insert_all]
-    notes: "Oban job queue — enqueue background jobs"
   - module: Task
     functions: [async, async_stream, start, start_link, Supervisor.start_child]
     notes: "Task spawns — async execution boundary"

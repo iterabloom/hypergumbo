@@ -1,0 +1,23 @@
+- op: create  # 1cd3
+  at: '2026-09-07T02:32:20Z'  # 1cd3
+  by: agent  # 1cd3
+  actor: jgstern_agent  # 1cd3
+  clock: 1  # 1cd3
+  nonce: 1cd3  # 1cd3
+  data:  # 1cd3
+    kind: work_item  # 1cd3
+    title: "ADR-0049 Lazy-row parity sweep: JPA getResultStream/getReference, sqlite3.Connection.iterdump, NSURLSession task rows -- each moves to db_compose/net_listen only on its own ruling-3 proof (the Django licence does not transfer; SQLAlchemy and Ecto have no rows to move)"  # 1cd3
+    status: todo_hard  # 1cd3
+    priority: 3  # 1cd3
+    parent:  # 1cd3
+    tags:  # 1cd3
+    - taint  # 1cd3
+    - catalogue  # 1cd3
+    - io_boundary  # 1cd3
+    - adr_0049  # 1cd3
+    isbefore: []  # 1cd3
+    duplicate_of: []  # 1cd3
+    not_duplicate_of: []  # 1cd3
+    pr_ref:  # 1cd3
+    description: "FILED by WI-fasap (2026-09-07), the residual of ADR-0049 ruling 4's \"Lazy /\nunexecuted\" row after the Django QuerySet combinators moved to db_compose.\n\nWI-fasap's own text asked for \"parity across the ORM catalogues that share the\nshape (python-web-and-orm overlay's SQLAlchemy Query combinators; elixir\nEcto.Repo lazy combinators)\". Both premises were checked and are wrong on the\ntree: there is NO SQLAlchemy row anywhere (the overlay carries ujson, flask,\nuvicorn, aiohttp and django.db.models only), and there is NO Ecto row anywhere\n(elixir.yaml: \"NO ELIXIR-OWN db_read / db_write ROWS\"; the INV-nular F3 sweep\nalready removed the nine Ecto.Query combinators, and the executing\nEcto.Repo.all/one rows were never rowed in the shipped tree). So the parity\npopulation is what measurement 0009's per-row table lists under LAZY and\nstill declares a MINTING boundary today:\n\n  java / kotlin / scala   javax|jakarta.persistence.TypedQuery.getResultStream   (db_read)\n                          javax|jakarta.persistence.EntityManager.getReference   (db_read)\n  python                  sqlite3.Connection.iterdump                            (db_read)\n  objc / swift            NSURLSession.dataTask*/downloadTask* rows              (net_recv)\n  rust                    TcpListener.incoming                                   (check: may already be net_listen)\n  elixir                  Ecto.Repo.stream                                       (named by ADR-0049; verify a row exists at all)\n\nRULE THAT DECIDES EACH ROW (ADR-0049 ruling 3, applied as 0010 applied it to\nHANDLE and WI-fasap applied it to Django): a row moves to the disclosure\nboundary (db_compose / net_listen) ONLY with a represented-crossing proof --\neither the executing read is already rowed on the same receiver\n(TypedQuery.getResultList IS rowed; that licence may transfer for\ngetResultStream, which returns a Stream consumed in scope -- measure, do not\nreason) or the evaluation site is emitted by the analyzer as WI-fasap did for\npython. The Django licence (measurement 0013's 28 vacuous situations) does\nNOT transfer to any of these rows. Each move ships its own 0003-method delta\non a repository that reaches the row, with every removed situation read back,\nand carries awaits_bakeoff_validation.\n\nNOT a recall item; a precision sweep. Sequenced after the arc (owner ruling\n2026-09-06: \"behind the arc\" = append to the arc)."  # 1cd3
+    fields: {}  # 1cd3

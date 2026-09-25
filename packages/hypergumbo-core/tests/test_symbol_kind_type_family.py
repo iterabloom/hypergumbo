@@ -175,3 +175,70 @@ def test_linter_accepts_a_complete_enumeration(tmp_path: Path) -> None:
         "KINDS = {'interface', 'trait', 'protocol', 'class'}\n",
     )
     assert find_partial_abstract_family_literals(tmp_path) == []
+
+
+def test_linter_exempts_a_row_of_a_translation_table(tmp_path: Path) -> None:
+    """A 1:1 mapping row is not an enumeration (WI-fopuh).
+
+    ``scip/index.py`` maps SCIP's own kind names onto hypergumbo's, one pair
+    per row. Read a row at a time every pair "omits" the other two kinds, so
+    the per-literal rule flagged all three — backwards, because together they
+    are the most complete mapping the family admits. That false positive was
+    what kept the cron full-suite red, and the fix restores the rule this
+    linter's own docstring always stated: the question is whether the
+    ENUMERATION covers the family, and a row is not an enumeration.
+    """
+    pkg = tmp_path / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core"
+    pkg.mkdir(parents=True)
+    (pkg / "table.py").write_text(
+        "MAP = (\n"
+        "    ('Trait', 'trait'),\n"
+        "    ('Interface', 'interface'),\n"
+        "    ('Protocol', 'protocol'),\n"
+        ")\n",
+    )
+    assert find_partial_abstract_family_literals(tmp_path) == []
+
+
+def test_a_translation_table_that_drops_a_kind_is_still_an_offender(
+    tmp_path: Path,
+) -> None:
+    """The control, and the reason the exemption is coverage-based.
+
+    Drop the ``protocol`` row and the table stops covering the family, so the
+    remaining rows are once again a partial enumeration — which is exactly the
+    Swift-loses-dispatch shape. Without this test the exemption above could be
+    satisfied by an implementation that simply never flags a nested literal.
+    """
+    pkg = tmp_path / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core"
+    pkg.mkdir(parents=True)
+    (pkg / "table.py").write_text(
+        "MAP = (\n"
+        "    ('Trait', 'trait'),\n"
+        "    ('Interface', 'interface'),\n"
+        ")\n",
+    )
+    offenders = find_partial_abstract_family_literals(tmp_path)
+    assert offenders, "a table that drops protocol must still be flagged"
+    assert all("protocol" in o for o in offenders)
+
+
+def test_the_planted_partial_is_not_rescued_by_a_distant_mention(
+    tmp_path: Path,
+) -> None:
+    """The exemption is scoped to ENCLOSING collections, not the whole file.
+
+    A partial literal must not be excused because some unrelated collection
+    elsewhere in the module happens to name the missing kind — that would turn
+    a precise rule into a file-wide grep and silently retire the linter.
+    """
+    pkg = tmp_path / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core"
+    pkg.mkdir(parents=True)
+    (pkg / "offender.py").write_text(
+        "KINDS = {'class', 'interface', 'struct', 'trait'}\n"
+        "UNRELATED = ('protocol', 'interface', 'trait')\n",
+    )
+    offenders = find_partial_abstract_family_literals(tmp_path)
+    assert any("KINDS" in o or ":1:" in o for o in offenders), (
+        f"the partial literal on line 1 must still be flagged: {offenders}"
+    )

@@ -360,13 +360,15 @@ class TestFindBeanTargetClasses:
     def test_class_level_annotation_marks_target(self) -> None:
         c = _class_sym("User", decorators=[{"name": "JsonSerialize"}])
         idx = _build_class_method_index([])
-        assert _find_bean_target_classes([c], idx) == [(c, False)]
+        assert _find_bean_target_classes([c], idx) == [(c, False, ())]
 
     def test_method_annotation_marks_class(self) -> None:
         c = _class_sym("User")
         m = _method_sym("User.getId", decorators=[{"name": "JsonProperty"}])
         idx = _build_class_method_index([m])
-        assert _find_bean_target_classes([c, m], idx) == [(c, False)]
+        # INV-rukor: the annotated sibling is the record that qualified the
+        # class, so it is the evidence every emitted edge names.
+        assert _find_bean_target_classes([c, m], idx) == [(c, False, (m.id,))]
 
     def test_unmarked_class_skipped(self) -> None:
         c = _class_sym("User")
@@ -611,6 +613,9 @@ class TestTransitiveBeanMarkerBase:
         edges = [Edge.create(src=leaf.id, dst=base.id, edge_type="extends", line=1, origin="test", origin_run_id="test")]
         result_edges = self._link([leaf, base, get_url], edges=edges)
         assert get_url.id in {e.dst for e in result_edges}
+        # INV-rukor: the marker base was read off the ancestor via the edge.
+        (dispatch,) = [e for e in result_edges if e.src == leaf.id]
+        assert dispatch.derived_from == [leaf.id, get_url.id, edges[0].id, base.id]
 
     def test_two_intermediate_chain(self) -> None:
         """Leaf -> Mid -> Base -> ConfigurationProperties."""
@@ -815,3 +820,20 @@ class TestInvZuhubJacksonFallback:
         assert edge.meta is not None
         assert edge.meta.get("disambiguation_fallback") is True
         assert edge.meta.get("framework_dispatch") == "jackson_bean"
+
+
+class TestJacksonDerivedFromMethodPath:
+    """INV-rukor: a class qualified by an annotated method names that method on
+    edges to its OTHER accessors, and does not repeat an edge's own endpoint."""
+
+    def test_sibling_annotation_is_named_on_the_other_accessors(self) -> None:
+        c = _class_sym("User")
+        annotated = _method_sym(
+            "User.getId", span=(5, 6), signature="()",
+            decorators=[{"name": "JsonProperty"}],
+        )
+        plain = _method_sym("User.getName", span=(8, 9), signature="()")
+        edges = link_jackson_dispatch(_ctx([c, annotated, plain])).edges
+        by_dst = {e.dst: e.derived_from for e in edges}
+        assert by_dst[plain.id] == [c.id, plain.id, annotated.id]
+        assert by_dst[annotated.id] == [c.id, annotated.id]

@@ -1,0 +1,30 @@
+- op: create  # 2297
+  at: '2026-09-13T03:12:01Z'  # 2297
+  by: agent  # 2297
+  actor: jgstern_agent  # 2297
+  clock: 1  # 2297
+  nonce: '2297'  # 2297
+  data:  # 2297
+    kind: invariant  # 2297
+    title: "the ops journal mirrors only on write, so .ops files not touched since it shipped have no durable copy -- all 19 stealth ops, which are gitignored and therefore have no git copy either"  # 2297
+    status: violated  # 2297
+    priority: 3  # 2297
+    parent:  # 2297
+    tags:  # 2297
+    - tracker  # 2297
+    - durability  # 2297
+    isbefore: []  # 2297
+    duplicate_of: []  # 2297
+    not_duplicate_of: []  # 2297
+    pr_ref:  # 2297
+    description: ""  # 2297
+    fields:  # 2297
+      statement: "Every tracker op should have a copy outside the working tree. journal.mirror_op is called unconditionally on both Store write paths (store.py:1388 create, store.py:2309 append) with no tier condition and no stealth handling anywhere in journal.py, so a stealth op WOULD be journaled when written. But the journal is populated on write only -- there is no backfill and nothing in the codebase deletes from it -- so any .ops file not appended to since the journal shipped is simply absent. Measured on this deployment: 1,109 journaled op files (2 canonical, 1,107 workspace, 0 stealth) against 19 stealth ops in the working tree, 19 of 19 absent. Because the stealth tier is gitignored by design (it never leaves the machine), those 19 have no git copy either, so they exist in exactly one place and git clean -xdf destroys them -- confirmed by git clean -xdn."  # 2297
+      root_cause: "The journal was designed as a write-ahead log for PENDING ops -- the window between a write and its commit -- which is the right shape for canonical and workspace, where git is the eventual durable copy. The stealth tier has no eventual durable copy at all: gitignored is the point of it. So for stealth the journal is not a write-ahead log but the ONLY possible backup, and a mechanism that only mirrors on write cannot serve that role for anything already written. Forward risk is nil (new stealth writes are mirrored); the exposure is the existing backlog."  # 2297
+- op: discuss  # 52f8
+  at: '2026-09-13T03:12:18Z'  # 52f8
+  by: agent  # 52f8
+  actor: jgstern_agent  # 52f8
+  clock: 2  # 52f8
+  nonce: 52f8  # 52f8
+  message: "STAKES, stated so this is not read as more urgent than it is: all 19 stealth items are status done. The loss would be historical record, not live work, which is why this is P3 and not P2 alongside INV-rugid. Forward risk is zero -- mirror_op is unconditional, so stealth ops written from here on ARE journaled. What is exposed is purely the pre-journal backlog.\n\nLIKELY FIX, not started: a backfill that seeds the journal from existing worktree .ops rather than waiting for the next append. recover() already does the reverse direction (journal -> worktree) with an op-block union under Store per-file flock, so the union primitive and the locking discipline both exist; a seed would be the same walk in the opposite direction and idempotent for the same reason. Natural home is tracker reconcile, which already runs the flush / fast-forward / restore steps and skips each when unneeded.\n\nWHY I ALMOST MISREPORTED THIS, worth recording because the next person will hit it: the journal mirrors the RELATIVE PATH, so entries live at <journal>/<repo-id>/.agent/tracker-workspace/stealth/<file>.ops, not as bare filenames at the top level. My first check looked for bare names, found nothing, and also read a single directory entry as a single file -- which made it look both like stealth was excluded by design and like the journal was nearly empty. Neither was true. Checking the CODE for a tier condition, rather than inferring from the directory listing, is what settled it.\n\nRELATIONSHIP TO INV-bufid: that invariant is about PENDING ops and holds as worded. Stealth ops are never pending in the sync sense -- they can never sync -- so they were always outside it. Not reopening it; this is the adjacent gap it never covered."  # 52f8

@@ -5732,8 +5732,10 @@ fn main() { helper(); }
 # ``scoped_identifier`` nodes; walking left finds the ``std`` alias
 # (injected as an implicit import because Rust stdlib is in scope
 # without a ``use``), and the middle-level match ``std::env::consts``
-# emits a ``module_attr_ref`` edge that io_boundary tags as ``env_read``
-# against rust.yaml's ``module: std::env, attributes: [consts]``.
+# emits a ``module_attr_ref`` edge that io_boundary tags as
+# ``host_info_read`` against rust.yaml's ``module: std::env,
+# attributes: [consts]`` (``env_read`` until INV-tutar split the boundary --
+# ``consts::OS`` is the platform's NAME, not configuration).
 #
 # Note: the ``rust-analyzer`` optional backend
 # (``hypergumbo-lang-rust-analyzer``) has its own semantic resolver
@@ -5748,9 +5750,10 @@ class TestRustModuleAttrRefsScoped:
         self, tmp_path: Path,
     ) -> None:
         """``std::env::consts::OS`` emits a ``module_attr_ref`` edge
-        for the ``std::env::consts`` middle level, tagged as env_read
-        by io_boundary against ``rust.yaml``'s
-        ``module: std::env, attributes: [consts]`` entry."""
+        for the ``std::env::consts`` middle level, tagged as
+        ``host_info_read`` by io_boundary against ``rust.yaml``'s
+        ``module: std::env, attributes: [consts]`` entry. The subject here is
+        the EDGE and its tagging, not which boundary value the row carries."""
         from hypergumbo_core.io_boundary import load_catalog, tag_io_boundaries
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
@@ -5765,10 +5768,10 @@ class TestRustModuleAttrRefsScoped:
             e for e in result.edges if e.edge_type == "module_attr_ref"
         ]
         # The middle-level scoped_identifier ``std::env::consts`` emits
-        # an edge with dst ``rust:std.env:0-0:std.env.consts:attribute``.
+        # an edge with dst ``rust:std::env:0-0:std::env::consts:attribute``.
         # Outer / inner levels also emit but their dsts carry different
         # qnames ("std.env.consts.OS" and "std.env" respectively).
-        MIDDLE_DST = "rust:std.env:0-0:std.env.consts:attribute"
+        MIDDLE_DST = "rust:std::env:0-0:std::env::consts:attribute"
         middles = [e for e in attr_edges if e.dst == MIDDLE_DST]
         assert middles, (
             f"expected a module_attr_ref edge with dst {MIDDLE_DST!r}; "
@@ -5779,12 +5782,12 @@ class TestRustModuleAttrRefsScoped:
         assert middle.evidence_type == "module_attribute_reference"
 
         # Now tag and confirm io_boundary recognises the middle edge
-        # as env_read against rust.yaml's std::env.consts entry.
+        # as host_info_read against rust.yaml's std::env.consts entry.
         catalogs = {"rust": load_catalog("rust")}
         tagged = tag_io_boundaries(result.edges, catalogs)
         assert tagged > 0
         assert middle.meta is not None
-        assert middle.meta.get("io_boundary") == "env_read"
+        assert middle.meta.get("io_boundary") == "host_info_read"
         assert middle.meta.get("io_primitive") == "std::env.consts"
 
     def test_use_aliased_scoped_path_emits(
@@ -5793,7 +5796,7 @@ class TestRustModuleAttrRefsScoped:
         """``use std::env;`` then ``env::consts::OS`` — the alias
         ``env`` maps to ``std::env`` and the helper rewrites the
         leftmost segment so the emitted edge still carries
-        ``std.env.consts`` for io_boundary matching."""
+        ``std::env::consts`` for io_boundary matching."""
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         (tmp_path / "lib.rs").write_text("""use std::env;
@@ -5808,8 +5811,8 @@ pub fn os_name() -> &'static str {
             e for e in result.edges if e.edge_type == "module_attr_ref"
         ]
         dsts = [e.dst for e in attr_edges]
-        assert any("std.env.consts" in d for d in dsts), (
-            f"expected alias-rewritten dst containing 'std.env.consts'; "
+        assert any("std::env::consts" in d for d in dsts), (
+            f"expected alias-rewritten dst containing 'std::env::consts'; "
             f"got: {dsts}"
         )
 
@@ -6107,4 +6110,208 @@ class TestRustBareMethodMagnetGate:
         ]
         assert len(resolved) == 1, (
             f"bare compute() to a free function should still bind; got {calls}"
+        )
+
+
+class TestRustUseAndTypePositionsAreNotAttributeReads:
+    """INV-pusin: the scoped-path walk emitted ``use`` paths and return-type
+    paths as attribute reads.
+
+    The ``use`` case is a DUPLICATE HOME. The analyzer already emits each
+    ``use`` statement as an ``imports`` edge; the uncatalogued-module gate in
+    ``verify_claims`` deliberately excludes imports because an import performs
+    no I/O — and the same fact re-entered through ``module_attr_ref``, putting
+    ``std`` / ``std.net`` / ``std.io`` on the "could not classify" list for a
+    crate with no dependencies at all.
+    """
+
+    def test_use_statements_produce_imports_edges_and_no_attribute_reads(
+        self, tmp_path: Path,
+    ) -> None:
+        """Each ``use`` keeps exactly ONE home — the ``imports`` edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""use std::fs;
+use std::net::UdpSocket;
+use std::io::Write;
+
+pub fn load(p: &str) -> std::io::Result<String> {
+    fs::read_to_string(p)
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        attr_dsts = [
+            e.dst for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert attr_dsts == [], attr_dsts
+
+        import_dsts = {
+            e.dst for e in result.edges if e.edge_type == "imports"
+        }
+        # Raw analyzer ids; the boundary-node synthesis in ir.py rewrites
+        # the terminal slot to ``external_symbol`` later in the pipeline.
+        for expected in (
+            "rust:std::fs:0-0:module:module",
+            "rust:std::net::UdpSocket:0-0:module:module",
+            "rust:std::io::Write:0-0:module:module",
+        ):
+            assert expected in import_dsts, (expected, sorted(import_dsts))
+
+    def test_a_genuine_read_beside_the_use_statements_still_emits(
+        self, tmp_path: Path,
+    ) -> None:
+        """POSITIVE CONTROL, in a file that also carries the suppressed
+        shapes — otherwise the test above is satisfied by an analyzer that
+        stopped emitting attribute reads altogether."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""use std::env;
+
+pub fn os_name() -> &'static str {
+    std::env::consts::OS
+}
+""")
+        result = analyze_rust(tmp_path)
+        attr_dsts = [
+            e.dst for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert "rust:std::env:0-0:std::env::consts:attribute" in attr_dsts, (
+            attr_dsts
+        )
+
+
+# INV-pusin, SECOND CLOSURE. The first closure's repro used exactly one
+# spelling — ``use a::b::c;`` — and the item was marked satisfied on it. Five
+# other ``use`` spellings still leaked, because the tree-sitter-rust grammar
+# does not put every ``use`` path directly under ``use_declaration``: it wraps
+# the braced, wildcard and aliased forms in ``scoped_use_list`` /
+# ``use_wildcard`` / ``use_as_clause``, and ``_scoped_context_kind`` reports
+# the WRAPPER, which the skip tuple did not name. So a closure satisfied the
+# repro and not the statement.
+#
+# This table is the remedy the item's ruling asked for: a FORM ENUMERATION, so
+# that a ``use`` spelling nobody has thought of fails CI instead of silently
+# re-opening the defect a third time. It is paired with
+# ``test_every_use_node_kind_in_the_grammar_is_exercised`` below, which fails
+# if the grammar grows a ``use_*`` shape this table does not cover.
+_USE_FORMS: tuple[tuple[str, str], ...] = (
+    ("plain", "use std::fs;"),
+    ("plain_deep", "use std::net::UdpSocket;"),
+    ("pub_use", "pub use std::fs;"),
+    ("braced_single", "use std::{fs};"),
+    ("braced_multi", "use std::{fs, net};"),
+    ("braced_scoped_prefix", "use std::io::{Read, Write};"),
+    ("braced_self", "use std::io::{self, Write};"),
+    ("braced_nested", "use std::{io::{Read, Write}, fs};"),
+    ("wildcard", "use std::io::*;"),
+    ("wildcard_braced", "use std::{io::*, fs};"),
+    ("as_alias", "use std::fs as f;"),
+    ("as_alias_deep", "use std::net::UdpSocket as Sock;"),
+    ("braced_as", "use std::{fs as f, net};"),
+    ("as_self", "use std::io::{self as io2, Write};"),
+    # NOT an import: `use<..>` is the Rust 1.82 precise-capture bound, which
+    # merely shares the keyword. It is carried in this table anyway so the
+    # grammar guard below needs no hand-maintained exclusion list -- and the
+    # assertion is correct on its own terms, since a capture list names type
+    # and lifetime parameters and can never be an I/O read.
+    ("precise_capture_bound",
+     "pub fn f<T>(t: T) -> impl Sized + use<T> { t }"),
+)
+
+# NEGATIVE CONTROLS. Every one of these is a GENUINE value read or call and
+# MUST keep emitting: the direction of this fix is to REMOVE withholding, so
+# an over-broad suppression would buy clean verdicts by going blind, which is
+# the false-all-clear direction. Without these the enumeration above is
+# satisfied by an analyzer that stopped emitting attribute reads at all.
+_VALUE_READS: tuple[tuple[str, str, str], ...] = (
+    (
+        "const_read",
+        "pub fn f() -> &'static str { std::env::consts::OS }",
+        "rust:std::env:0-0:std::env::consts:attribute",
+    ),
+    (
+        "const_read_after_use",
+        "use std::env::*;\npub fn f() -> &'static str { std::env::consts::OS }",
+        "rust:std::env:0-0:std::env::consts:attribute",
+    ),
+)
+
+
+class TestRustEveryUseFormIsAnImportNotAnAttributeRead:
+    """INV-pusin: NO ``use`` spelling may reach the coverage gate as a read."""
+
+    @pytest.mark.parametrize(
+        "form_id,src", _USE_FORMS, ids=[f[0] for f in _USE_FORMS]
+    )
+    def test_use_form_emits_no_attribute_read(
+        self, tmp_path: Path, form_id: str, src: str,
+    ) -> None:
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(src + "\n")
+        result = analyze_rust(tmp_path)
+        attr_dsts = [
+            e.dst for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert attr_dsts == [], (
+            f"{form_id}: {src!r} emitted module_attr_ref {attr_dsts}. A "
+            f"``use`` path is an import, already emitted as an imports edge; "
+            f"re-entering the uncatalogued-module gate as a read withholds "
+            f"the boundary verdict for a crate that called nothing."
+        )
+
+    @pytest.mark.parametrize(
+        "form_id,src,expected_dst",
+        _VALUE_READS,
+        ids=[f[0] for f in _VALUE_READS],
+    )
+    def test_genuine_value_read_still_emits(
+        self, tmp_path: Path, form_id: str, src: str, expected_dst: str,
+    ) -> None:
+        """NEGATIVE CONTROL — suppression must not reach a real read."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(src + "\n")
+        result = analyze_rust(tmp_path)
+        attr_dsts = [
+            e.dst for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert expected_dst in attr_dsts, (
+            f"{form_id}: suppression reached a GENUINE read; {attr_dsts}"
+        )
+
+    def test_every_use_node_kind_in_the_grammar_is_exercised(self) -> None:
+        """A ``use_*`` shape the grammar declares but this table never parses
+        is exactly how the first closure missed five forms. Fail on it here,
+        at the enumeration, rather than in a withheld verdict months later.
+        """
+        import tree_sitter
+        import tree_sitter_rust
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        declared = {
+            lang.node_kind_for_id(i)
+            for i in range(lang.node_kind_count)
+            if lang.node_kind_for_id(i)
+            and lang.node_kind_for_id(i).startswith("use_")
+            and lang.node_kind_is_named(i)
+        }
+
+        parser = tree_sitter.Parser(lang)
+        exercised: set[str] = set()
+
+        def walk(node: "tree_sitter.Node") -> None:
+            if node.type.startswith("use_"):
+                exercised.add(node.type)
+            for child in node.children:
+                walk(child)
+
+        for _form_id, src in _USE_FORMS:
+            walk(parser.parse(src.encode()).root_node)
+
+        missing = declared - exercised
+        assert not missing, (
+            f"the grammar declares {sorted(missing)} but no row of _USE_FORMS "
+            f"produces it; add a row before this shape leaks as a read"
         )

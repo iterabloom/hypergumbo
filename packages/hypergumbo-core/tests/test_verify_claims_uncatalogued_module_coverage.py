@@ -50,9 +50,17 @@ are counted. An edge carrying the bare ``external`` placeholder -- an untyped re
 than an oversight: those carry no module to adjudicate, they are the single largest edge
 population in a Python repo, and counting them would downgrade essentially every repo to
 ``inconclusive`` while adding no information about which library went unexamined. That
-population is the receiver-typing gap (INV-linub L3), tracked separately.  The honest
-consequence is pinned by ``test_untyped_receiver_population_is_the_disclosed_residual``:
-a repo whose I/O is reached ONLY through untyped receivers still confirms today.
+population is the receiver-typing gap (INV-linub L3), tracked separately.
+``test_untyped_receiver_population_is_the_disclosed_residual`` pins that this gate stays
+``complete`` over it.
+
+WHAT THAT SCOPE NOTE USED TO CONCLUDE IS NO LONGER TRUE. It read "a repo whose I/O is
+reached ONLY through untyped receivers still confirms today" -- reproduced live, then
+closed at the VERDICT layer rather than here (INV-fibis): ``untyped_receiver_sites`` asks
+the narrower question this gate cannot -- is the CALLEE a method catalogued for the
+boundary under claim -- and QUALIFIES the clean verdict with ``CAVEAT_UNTYPED_RECEIVER``.
+See ``test_verify_claims_untyped_receiver_caveat.py``. The scoping decision here is
+unchanged and still correct; only its consequence moved.
 """
 
 from hypergumbo_core.io_boundary import IoBoundaryCatalog, IoPrimitive
@@ -417,8 +425,15 @@ class TestDisclosedResiduals:
 
     def test_untyped_receiver_population_is_the_disclosed_residual(self) -> None:
         """The bare ``external`` placeholder names no module, so it cannot be
-        adjudicated and is NOT counted. A repo reaching its I/O only this way
-        still confirms -- the honest limit of this fix, not a claim about safety."""
+        counted as an uncatalogued one and COVERAGE STAYS COMPLETE.
+
+        THE SENTENCE THAT USED TO END THIS DOCSTRING IS GONE, not reworded: "a
+        repo reaching its I/O only this way still confirms". It did, it was
+        reproduced, and INV-fibis closed it -- at the verdict layer, where such
+        a repo now returns ``confirmed_with_caveats`` naming the call sites.
+        This assertion is unchanged and still load-bearing: reversing it here is
+        the blanket-``inconclusive`` outcome PR #251 rejected, which is exactly
+        what a later reader tempted by INV-fibis might reach for."""
         coverage = compute_boundary_coverage(
             [_call("python:external:0-0:get:unresolved")],
             {"python"},
@@ -535,3 +550,137 @@ class TestDisclosedResiduals:
         coverage = compute_boundary_coverage([], {"python"}, {"python": _py_catalog()})
         assert coverage.complete is False
         assert "no call edges at all" in coverage.reason
+
+
+class TestShorteningIsBoundedByItsOwnPurpose:
+    """INV-lakom. ``_is_analyzed_module`` shortens the callee module because the
+    slot may carry a trailing TYPE name (``app.config.Loader`` for a callee
+    defined in ``app/config.py``). The shortening was UNBOUNDED, so it also
+    licensed ``os.path`` → ``os`` and ``crypto.tls`` → ``crypto`` — and a repo
+    that happens to own a directory named ``os`` then vouches for the standard
+    library's ``os.path``, silently, in the direction that produces a clean
+    verdict over an unexamined module.
+
+    MEASURED 2026-08-24 while A/B-ing INV-juvul's fix on caddy; the defect is
+    pre-existing and independent of that change. Same shape as INV-juvul's own
+    finding one layer up — there, folding ``os/exec`` to ``os.exec`` and then
+    shortening suppressed the SUBPROCESS module because the repo owned
+    ``internal/filesystems/os.go``. That was fixed by testing the folded
+    spelling WHOLE. This is the dotted loop, which was left unbounded.
+
+    THE BOUND IS THE STATED PURPOSE, not a new heuristic: strip at most the ONE
+    trailing component a type name occupies, and never shorten to a single
+    component — a bare ``os`` / ``crypto`` / ``json`` / ``time`` is exactly the
+    spelling that collides with an ordinary directory name, and the whole
+    reason the analyzed set is matched as a component-bounded INFIX is that it
+    must tolerate packaging prefixes, which makes a one-component needle match
+    almost anywhere.
+    """
+
+    def test_a_stdlib_submodule_is_not_vouched_for_by_a_colliding_directory(
+        self,
+    ) -> None:
+        """THE FILED REPRO. A repo owning ``myapp/os/helpers.py`` and calling
+        ``os.path.join`` reported coverage COMPLETE over the standard library
+        ``os`` — nothing about ``os.path`` was examined."""
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:os.path:0-0:join:external_symbol",
+                      src="python:myapp/os/helpers.py:1-5:f:function"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is False, (
+            "os.path was vouched for by a directory named os; nothing about "
+            "os.path was examined"
+        )
+        assert "os.path" in coverage.reason
+
+    def test_the_control_the_repro_is_read_against(self) -> None:
+        """The same call from a repo that owns NO colliding directory. Without
+        this the repro above cannot be read: it would pass just as well if the
+        gate reported everything."""
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:os.path:0-0:join:external_symbol",
+                      src="python:myapp/helpers.py:1-5:f:function"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is False
+        assert "os.path" in coverage.reason
+
+    def test_the_licensed_shortening_still_works(self) -> None:
+        """The behaviour the bound must not break: one trailing TYPE name
+        stripped off a first-party callee slot. Duplicated deliberately from
+        ``test_a_class_qualified_first_party_module_is_also_recognised`` so this
+        class can be read on its own as the bound's contract."""
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:pathlib.Path:0-0:read_text:external_symbol",
+                      src="python:app/config.py:3-9:load:function"),
+                _call("python:app.config.Loader:0-0:load:unresolved"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is True, coverage.reason
+
+    def test_shortening_across_a_packaging_prefix_still_works(self) -> None:
+        """The other licensed case, and the reason the bound is on LENGTH
+        rather than on switching the shortened form to a suffix match: the
+        src-layout callee ``hypergumbo_core.scip._generated`` shortens to
+        ``hypergumbo_core.scip``, which sits INSIDE
+        ``packages.hypergumbo-core.src.hypergumbo_core.scip.loader`` and is not
+        a suffix of it. A suffix rule would have broken INV-liloh's fix."""
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:pathlib.Path:0-0:read_text:external_symbol",
+                      src="python:packages/hypergumbo-core/src/hypergumbo_core/scip/loader.py:3-9:load:function"),
+                _call("python:hypergumbo_core.scip._generated:0-0:parse:unresolved"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is True, coverage.reason
+
+
+class TestBuiltinsDoNotWithholdTheVerdict:
+    """INV-bofab, pinned against the SHIPPED catalogue rather than a stand-in.
+
+    After INV-foluz every bare builtin call names ``builtins`` in its module
+    slot. A stand-in catalogue cannot catch the regression this guards
+    against -- it was python.yaml's own completeness list that lacked the
+    entry -- so these load ``python.yaml`` and ask the gate the question the
+    CLI asks on every Python repo.
+    """
+
+    def test_a_repo_calling_only_builtins_earns_a_complete_coverage(self) -> None:
+        from hypergumbo_core.io_boundary import load_catalog
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:builtins:0-0:len:external_symbol"),
+                _call("python:builtins:0-0:isinstance:external_symbol"),
+                _call("python:builtins:0-0:str:external_symbol"),
+            ],
+            {"python"},
+            {"python": load_catalog("python")},
+        )
+        assert coverage.complete is True, coverage.reason
+
+    def test_an_unenumerated_module_beside_builtins_still_withholds(self) -> None:
+        """Control: the gate is not loosened, only ``builtins`` is examined."""
+        from hypergumbo_core.io_boundary import load_catalog
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:builtins:0-0:len:external_symbol"),
+                _call("python:telnetlib:0-0:Telnet:external_symbol"),
+            ],
+            {"python"},
+            {"python": load_catalog("python")},
+        )
+        assert coverage.complete is False
+        assert "telnetlib" in coverage.reason
+        assert "builtins" not in coverage.reason

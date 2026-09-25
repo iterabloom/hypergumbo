@@ -1,0 +1,22 @@
+- op: create  # 9966
+  at: '2026-08-28T02:02:00Z'  # 9966
+  by: agent  # 9966
+  actor: jgstern_agent  # 9966
+  clock: 1  # 9966
+  nonce: '9966'  # 9966
+  data:  # 9966
+    kind: work_item  # 9966
+    title: "ADRs keep retracted text beside the ruling that replaced it, so a reader who stops early leaves with the wrong claim: 18 candidate sites across 14 of 49 ADRs"  # 9966
+    status: todo_hard  # 9966
+    priority: 2  # 9966
+    parent:  # 9966
+    tags:  # 9966
+    - docs  # 9966
+    - adr  # 9966
+    - governance_docs  # 9966
+    isbefore: []  # 9966
+    duplicate_of: []  # 9966
+    not_duplicate_of: []  # 9966
+    pr_ref:  # 9966
+    description: "FROM THE OWNER, 2026-08-27, on finding ADR-0016 carrying a retracted argument\nbeside the surviving conclusion:\n\n  \"even if adr-16 ultimately conveys the correct message on careful reading,\n   readers do not always read carefully! we have already established that ADRs\n   are git-tracked and as such it is perfectly fine to remove obsolete\n   information from them. this is a case in point of containing both the\n   information and the disinformation side-by-side. the solution is NOT to\n   explain the disinfo at length, the solution is to ELIMINATE THOSE WORDS.\"\n\nTHE DEFECT SHAPE. An ADR is amended, and instead of the wrong text being\nDELETED it is kept and then refuted underneath. The document then contains the\nclaim and its refutation at equal typographic weight, and a reader who stops\nearly leaves with the wrong one. AGENTS.md already states the rule this\nviolates -- \"excise-the-superseded-BODY (don't leave stale text behind a\nmissable banner)\" -- so this is drift from a written rule, not a new policy.\n\nTHE THREE FIXED ALREADY (PR pending, this session):\n  ADR-0016 \"Why static analysis can answer this\" -- an entire paragraph\n    asserting that all I/O transitively reaches stdlib primitives\n    (\"requests.get() eventually calls socket.send()\"), followed by an\n    \"#### Amendment (INV-fotav)\" heading refuting it. The wrong paragraph was\n    the FIRST thing under the heading. Excised; the section now states the\n    correct scope argument once.\n  ADR-0016 module_completeness -- \"*This paragraph originally recorded the\n    opposite* ... That reasoning was sound about the POWER of the grant and\n    wrong about WHO MAY EXERCISE IT\". Excised; the ruling and its bounds stand\n    alone.\n  ADR-0046 Consequences -- MY OWN, added earlier the same day: a prediction\n    kept, with \"the reason is not the one predicted here\" underneath it.\n    Excised; the consequence now states the measured result.\n\nMECHANICAL CANDIDATE POOL, not a verdict list. A regex over docs/adr/*.md for\nretraction-in-place language finds 18 sites across 14 of 49 ADRs:\n  0005 L8, 0010 L460, 0014 L9, 0015 L9, 0016 L331, 0017 L9 + L586,\n  0018 L121, 0024 L12, 0028 L10, 0033 L13 + L15 + L110, 0034 L10,\n  0035 L87 + L110, 0045 L29, 3bbb L15\nMOST OF THESE WILL BE FINE. An \"**Amendment\" marker that ADDS a ruling is\ncorrect and must stay; the defect is only where the SUPERSEDED TEXT ITSELF was\nkept. Each site needs reading, and the grep is a finder, not a judgement. The\nfive carrying the clearest shape are 0010 L460 (\"originally specified\"),\n0016 L331 (\"this section originally\"), 0017 L586 (\"The paragraph above\"),\n0045 L29 (\"That reasoning was\"), 3bbb L15 (\"originally specified\").\n\nA SECOND, DISTINCT SHAPE SEEN IN PASSING, DO NOT FOLD: ADR-0016 L105 corrects a\nMISREADING of the ADR by others (\"This ADR's prohibition was read twice as\nforbidding any bash io_primitives catalogue, and that reading is wrong\") rather\nthan retracting the ADR's own text. Deleting that would lose a real\nclarification; the right fix there is to make the prohibition unambiguous where\nit is STATED, so the note is not needed. Different remedy, same audit.\n\nWHAT DONE LOOKS LIKE: every site read and either excised or justified in the\nitem, and -- worth considering, not assumed -- a check that keeps it from\nrecurring, since the rule already existed in AGENTS.md and drifted anyway."  # 9966
+    fields: {}  # 9966

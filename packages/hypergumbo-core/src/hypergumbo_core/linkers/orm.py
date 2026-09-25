@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework linker: ORM query for detecting ORM model references in application code.
 
-Detects ORM query patterns in Python source files and creates model_reference
-edges from the enclosing function to the Model symbol. This increases the
+Detects ORM query patterns in Python source files and creates ``references``
+edges (tagged ``meta.framework_dispatch="orm_accessor"``) from the enclosing
+symbol to the Model symbol. This increases the
 in-degree centrality of Model classes, improving their ranking in behavior maps.
 
 How It Works
@@ -11,8 +12,21 @@ How It Works
 2. Build a regex from model class names matching ORM accessor patterns
 3. Scan Python source files for matches: ModelName.objects.<method> (Django)
    or ModelName.query.<method> (Flask-SQLAlchemy)
-4. For each match, find the enclosing function symbol via LinkerContext
-5. Create model_reference edges from the enclosing function to the Model
+4. For each match, find the innermost enclosing symbol via LinkerContext,
+   accepting kinds function/method/class/module/file (a module-level query
+   attaches to the file node)
+5. Create ``references`` edges (``meta.framework_dispatch="orm_accessor"``)
+   from that enclosing symbol to the Model
+
+Name Collisions (INV-zuhub)
+---------------------------
+Models are indexed by short name, so two files can define the same model
+name. ``_resolve_model_with_fallback`` resolves a reference as follows: a
+single candidate, or exactly one candidate in the referring file, wins
+outright (confidence 0.85). Otherwise it picks the lowest-id candidate (from
+the same-file candidates when there are several, else from all of them),
+and the edge gets confidence 0.5 and ``meta.disambiguation_fallback=True``
+so consumers can filter guessed edges.
 
 Why This Design
 ---------------
@@ -45,7 +59,7 @@ from typing import Iterator
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from ._concept_utils import has_concept
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("orm-linker")
@@ -200,7 +214,8 @@ def link_orm_queries(
     """Link ORM query patterns to model symbols.
 
     Scans Python source files for ORM accessor patterns (e.g., User.objects.filter)
-    and creates model_reference edges from the enclosing function to the Model
+    and creates ``references`` edges (``meta.framework_dispatch="orm_accessor"``)
+    from the enclosing function/method/class/module/file symbol to the Model
     symbol.
 
     Args:
@@ -291,6 +306,8 @@ def link_orm_queries(
             origin_run_id=run.execution_id,
             evidence_type="ast_call_direct",
             meta=edge_meta,
+            # derived-from endpoints: a source-text accessor regex joined on the model name; both
+            #   are in meta
             derived_from=[enclosing.id, model_sym.id],
         )
         edges.append(edge)
@@ -311,11 +328,13 @@ def link_orm_queries(
     "orm-linker",
     priority=75,  # Run after framework patterns have enriched symbols
     description="ORM query linking (model accessor patterns to Model symbols)",
-    # CNF: ORM frameworks span Java (Hibernate/JPA/MyBatis), Python
-    # (SQLAlchemy/Django ORM/Peewee), Ruby (ActiveRecord), Go (GORM/sqlc),
-    # JS/TS (TypeORM/Prisma/Sequelize), C# (EF Core), Kotlin (Exposed),
-    # Elixir (Ecto).
-    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "kotlin", "elixir"]],
+    # CNF (WI-zujan): the accessor regexes run over ``**/*.py`` only, the src
+    # is the enclosing symbol of a .py line, and the dst is a
+    # ``concept=model`` symbol matched on ``base_classes`` -- which only the
+    # python analyzer writes (scip_python alone cannot produce an edge). The
+    # eight-language clause this replaced listed ORM frameworks of the world.
+    depends_on=[["python"]],
+    activation=always_on_unreviewed(),
 )
 def orm_linker(ctx: LinkerContext) -> LinkerResult:
     """ORM linker for registry-based dispatch.

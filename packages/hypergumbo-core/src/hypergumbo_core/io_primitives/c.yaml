@@ -36,9 +36,29 @@ ambiguous_names:
 
 fs_read:
   - module: stdio
-    functions: [fopen, fread, fgets, fgetc, fscanf, getc, getchar, scanf, fseek, rewind, ungetc, ftell]
+    functions: [fopen, fseek, rewind, ungetc, ftell]
+  - module: stdio
+    functions: [fread, fgets, fgetc, fscanf, getc, getline]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: the stream-taking readers, split out of the row above because
+      their boundary is a property of the FILE * argument and the row above
+      is unconditional. THIS ROW STAYS FIRST: an unstamped call abstains to the
+      first-declared row, so the fs_read answer is what a call whose stream
+      origin cannot be recovered keeps. See the ipc_recv twin for the
+      selection rule. `boundary_ruling` is declared on BOTH rows because it is
+      a property of the PRIMITIVE, not of one declaration.
   - module: unistd
     functions: [read, readlink, access, stat, lstat, fstat]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      INV-vaduk: EXACTLY ONE of this primitive's boundaries is true per call
+      and the call site cannot know which -- an fd's nature is established
+      where it was opened, not where it is read or written. Declared rather
+      than left blank because absence used to mean both "ruled undecidable"
+      and "nobody looked". The fs_* row is never wrong; the ipc_*/net_* rows
+      are the speculative ones, so today's behaviour over-reports rather than
+      under-reports.
   - module: dirent
     functions: [opendir, readdir, scandir]
   - module: sys/stat
@@ -48,27 +68,127 @@ fs_write:
   - module: stdio
     functions: [fopen, fwrite, fputs, fputc, fprintf, putc, putchar, printf, remove, rename, tmpfile, tmpnam, fclose, fflush]
     notes: "tmpfile/tmpnam create temp files on the filesystem; fclose releases file handle; fflush forces write"
+    # WI-bulag / arc T9. KEYED PER FUNCTION because this one row spans all four
+    # classes: fflush takes no content argument, fopen/fclose/remove/rename are
+    # path sinks where naming IS the danger, fprintf mixes a stream with
+    # content, and printf has no resource argument at all. Only an entry whose
+    # `content` is EXPLICITLY [] and whose `danger` is false can suppress; an
+    # absent entry means nobody classified the primitive and never suppresses.
+    resource_naming:
+      # class R -- the only suppressible shape here. int fflush(FILE *stream):
+      # the stream names the resource and there is no content argument at all.
+      fflush: {names: [0], content: [], danger: false}
+      # class D -- naming the resource IS the finding. A tainted path reaching
+      # any of these is the path-traversal case the owner's second bit exists
+      # for; marking them "merely selects" would suppress TRUE findings.
+      fopen:  {names: [0], content: [], danger: true}
+      fclose: {names: [0], content: [], danger: true}
+      remove: {names: [0], content: [], danger: true}
+      rename: {names: [0, 1], content: [], danger: true}
+      # class M -- MIXED, and NOT suppressible today. int fprintf(FILE *stream,
+      # const char *format, ...): position 0 names the stream, 1+ carry the
+      # content. The walk has no argument identity, so a finding here cannot be
+      # attributed to an argument and suppressing it would kill a real one.
+      # Recorded rather than omitted so the classification is on the record and
+      # the row is ready if argument identity ever arrives.
+      fprintf: {names: [0], content: [1], danger: false}
+      fputs:   {names: [1], content: [0], danger: false}
+      fputc:   {names: [1], content: [0], danger: false}
+      fwrite:  {names: [3], content: [0], danger: false}
+      putc:    {names: [1], content: [0], danger: false}
   - module: stdlib
     functions: [mkstemp, mkdtemp, mkostemp, mkstemps]
     notes: "POSIX temp file/dir creation"
   - module: unistd
     functions: [write, unlink, rmdir, truncate, ftruncate, link, symlink, chown, chmod]
+    # WI-bulag / arc T9. Almost all class D: the PATH is the vulnerability, so
+    # naming the resource IS the finding and these must never be suppressed.
+    # `write(fd, buf, count)` is the exception -- class M, position 0 names the
+    # descriptor and position 1 is the content -- and it is recorded rather
+    # than omitted so the classification is on the record.
+    resource_naming:
+      unlink:    {names: [0], content: [], danger: true}
+      rmdir:     {names: [0], content: [], danger: true}
+      truncate:  {names: [0], content: [], danger: true}
+      link:      {names: [0, 1], content: [], danger: true}
+      symlink:   {names: [0, 1], content: [], danger: true}
+      chown:     {names: [0], content: [], danger: true}
+      chmod:     {names: [0], content: [], danger: true}
+      write:     {names: [0], content: [1], danger: false}
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      INV-vaduk: EXACTLY ONE of this primitive's boundaries is true per call
+      and the call site cannot know which -- an fd's nature is established
+      where it was opened, not where it is read or written. Declared rather
+      than left blank because absence used to mean both "ruled undecidable"
+      and "nobody looked". The fs_* row is never wrong; the ipc_*/net_* rows
+      are the speculative ones, so today's behaviour over-reports rather than
+      under-reports.
   - module: sys/stat
     functions: [mkdir, chmod]
 
 net_send:
   - module: sys/socket
-    functions: [connect, send, sendto, sendmsg]
+    functions: [connect]
+    notes: >-
+      connect() transmits nothing but the connection itself -- ADR-0049's
+      deferred shape -- and stays single-rowed; WI-baran left it out of the
+      family-decided pair below on purpose.
+  - module: sys/socket
+    functions: [send, sendto, sendmsg]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_send
+    notes: >-
+      WI-baran (INV-nular, measurement 0012): a send over an AF_UNIX or
+      socketpair descriptor is process-local IPC, not a network send -- tmux
+      opens no AF_INET socket anywhere and was reported as one. The socket
+      FAMILY decides, fixed where the descriptor was created (INV-vaduk's
+      rule for unistd.read/write, one hop back through the descriptor
+      variable): c.py stamps io_target_kind `pipe` (AF_UNIX / AF_LOCAL /
+      socketpair, and accept() over such a listener) or `net_stream`
+      (AF_INET / AF_INET6), and the ipc_send twin is selected on `pipe`. An
+      unstamped call -- a parameter, a struct field, a kernel-family socket
+      -- keeps THIS row (abstains_to), so nothing that classified before the
+      stamp existed moves without one. REACH: bare `send` is in
+      ambiguous_names and never classifies without a module hint; sendto and
+      sendmsg do.
   - module: unistd
     functions: [write]
-    notes: "write() on a socket fd"
+    boundary_ruling: call_site_undecidable
+    notes: "write() on a socket fd. INV-vaduk: exactly one of fs_write/ipc_send/net_send is true per call; the fd's nature is established where it was opened, not here. This net_* row is the speculative one -- the fs_* row is never wrong. (INV-nular: these were TWO `notes:` keys on one row, so PyYAML kept the second and discarded this rationale at load; the catalogue loader now refuses duplicate keys.)"
 
 net_recv:
+  # 2026-09-06 owner ruling (WI-dozul): A DNS LOOKUP IS A NETWORK RECEIVE.
+  # netdb's resolver surface. unistd.gethostname stays under host_info_read --
+  # it reads the LOCAL host's name from the kernel and queries no name server,
+  # and that split is the precedent the erlang sort in the same change follows.
+  - module: netdb
+    functions: [getaddrinfo, getnameinfo, gethostbyname, gethostbyaddr, gethostbyname_r, gethostbyaddr_r, getipnodebyname, getipnodebyaddr]
+    notes: "DNS resolution -- queries a name server and returns the answer it chose (ADR-0049: content the far side chose). Parity with erlang's inet rows, which have carried net_recv since 2026-05-24. The _r variants write the answer through an out-parameter rather than returning it, which ADR-0049 covers explicitly (a value written into a caller-visible location). getservbyname/getservbyport are NOT here: they read /etc/services."
   - module: sys/socket
-    functions: [socket, bind, listen, accept, recv, recvfrom, recvmsg]
+    functions: [recv, recvfrom, recvmsg]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: >-
+      WI-baran: the receive twin of the send/sendto/sendmsg rule under
+      net_send -- a recv over an AF_UNIX or socketpair descriptor is
+      ipc_recv, selected on a `pipe` stamp; unstamped keeps this row. Both
+      rows mint a taint SOURCE, so the stamp moves a source between zones
+      rather than adding or removing one. REACH: bare `recv` is in
+      ambiguous_names; recvfrom and recvmsg classify.
+  - module: sys/socket
+    functions: [accept]
+    notes: >-
+      socket/bind/listen REMOVED (INV-nular, WI-dosov): socket() creates an
+      endpoint, bind() names it, listen() marks it passive. None receives
+      anything, and net_recv is an auto-derived taint SOURCE, so each was
+      minting untrusted_input at a call that observes nothing. accept is
+      KEPT: it returns the peer address, which is chosen by whoever
+      connected, so it is a real source.
   - module: unistd
     functions: [read]
-    notes: "read() on a socket fd"
+    boundary_ruling: call_site_undecidable
+    notes: "read() on a socket fd. INV-vaduk: exactly one of fs_read/ipc_recv/net_recv is true per call; the fd's nature is established where it was opened, not here. This net_* row is the speculative one -- the fs_* row is never wrong. (INV-nular: these were TWO `notes:` keys on one row, so PyYAML kept the second and discarded this rationale at load; the catalogue loader now refuses duplicate keys.)"
 
 subprocess:
   - module: unistd
@@ -83,20 +203,89 @@ subprocess:
 env_read:
   - module: stdlib
     functions: [getenv]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: time
+    functions: [time, clock, clock_gettime, clock_getres, timespec_get]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Verified against
+      the installed glibc headers. clock_settime is a host WRITE and gets no
+      row here.
+  - module: sys/time
+    functions: [gettimeofday]
+  - module: sys/times
+    functions: [times]
+    notes: >-
+      times() reports process CPU times — host information about this
+      process, the same category as python's process_time.
   - module: unistd
     functions: [getcwd, gethostname, getuid, getgid, getpid]
 
 ipc_send:
+  - module: sys/socket
+    functions: [send, sendto, sendmsg]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_send
+    notes: "WI-baran: the process-local twin of the net_send row, selected when the descriptor's family is AF_UNIX / AF_LOCAL or it came from socketpair(). The rule is written on the net_send row."
   - module: unistd
     functions: [write]
-    notes: "write(STDOUT_FILENO, ...) or write(STDERR_FILENO, ...)"
+    boundary_ruling: call_site_undecidable
+    notes: "write() over a pipe or an AF_UNIX socket descriptor (a `pipe` stamp). NOT the standard streams: write(STDOUT_FILENO, ...) is terminal output, `logging` under WI-dutah, and the earlier text of this note that called it an ipc_send was the stale sibling INV-nular's 2026-09-03 entry disclosed. INV-vaduk: exactly one of fs_write/ipc_send/net_send is true per call and the fd's nature is established where it was opened."
 
 ipc_recv:
+  - module: sys/socket
+    functions: [recv, recvfrom, recvmsg]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: "WI-baran: the process-local twin of the net_recv row, selected on a `pipe` stamp. The rule is written on the net_send row."
   - module: stdio
     attributes: [stdin]
+  - module: stdio
+    functions: [getchar, scanf, gets]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known
+      at the call site with no argument to inspect. getchar() is getc(stdin)
+      and scanf() is fscanf(stdin, ...) with the stream fixed; gets() reads
+      stdin by definition.
+  - module: stdio
+    functions: [fgets, fgetc, getc, fscanf, fread, getline]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: the SAME functions the fs_read row declares, and BOTH
+      declarations are needed because the boundary is a property of the STREAM
+      ARGUMENT (INV-bagok / INV-zumin class (b)) -- fgets(buf, n, stdin) and
+      fgets(buf, n, f) are one row and two different crossings. The analyzer
+      stamps io_target_kind from the argument's origin and
+      _narrow_by_target_kind keeps the matching row; a call whose origin cannot be
+      recovered abstains to the FIRST-DECLARED row, which is why fs_read stays
+      above this one and why that order is pinned by a test rather than left to
+      a reviewer. An earlier version of this file said these five "stay
+      fs_read" because moving them "would assert an IPC crossing for every read
+      over a file". That objection was correct about MOVING and is answered by
+      SELECTING: the file read still gets fs_read, and only a read whose stream
+      is demonstrably a standard stream gets ipc_recv. Measured before the
+      change, with a live control in one cold run: scanf(...) reaching a file
+      write returned violated while fgets(buf, n, stdin) with the identical
+      flow shape returned nothing.
+
+      WI-bapuk added `getline` -- POSIX getline(&buf, &n, stream), which takes
+      its stream THIRD exactly as fgets does. A ROW-ONLY addition: c.py's
+      stream-argument mechanism already existed and needed one table entry, not
+      new code. It is spelled here rather than in cpp.yaml because it is the C
+      function; C++'s std::getline is a different primitive with a different
+      argument order and has its own rows.
   - module: unistd
     functions: [read]
-    notes: "read(STDIN_FILENO, ...)"
+    boundary_ruling: call_site_undecidable
+    notes: "read(STDIN_FILENO, ...). INV-vaduk: exactly one of fs_read/ipc_recv/net_recv is true per call and the fd's nature is established where it was opened."
 
 logging:
   # WI-dutah: stdio.{stdout,stderr} are terminal output, not IPC. Same

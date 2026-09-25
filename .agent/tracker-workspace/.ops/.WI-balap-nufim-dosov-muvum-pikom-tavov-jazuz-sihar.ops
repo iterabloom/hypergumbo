@@ -1,0 +1,21 @@
+- op: create  # 8ebe
+  at: '2026-08-21T00:22:09Z'  # 8ebe
+  by: agent  # 8ebe
+  actor: jgstern_agent  # 8ebe
+  clock: 1  # 8ebe
+  nonce: 8ebe  # 8ebe
+  data:  # 8ebe
+    kind: work_item  # 8ebe
+    title: "tracker test_empty_submit_returns_none is order-dependent: fails under pytest-randomly in check-package-coverage, passes in isolation and with -p no:randomly"  # 8ebe
+    status: todo_hard  # 8ebe
+    priority: 3  # 8ebe
+    parent:  # 8ebe
+    tags:  # 8ebe
+    - ci_infrastructure  # 8ebe
+    - tracker  # 8ebe
+    isbefore: []  # 8ebe
+    duplicate_of: []  # 8ebe
+    not_duplicate_of: []  # 8ebe
+    pr_ref:  # 8ebe
+    description: "OBSERVED 2026-08-20 during a `scripts/check-package-coverage` run taken before\npushing the INV-lalad fix. Five of six packages passed; tracker reported:\n\n    FAILED packages/hypergumbo-tracker/tests/test_tui.py::\n           TestBeforeScreenUnit::test_empty_submit_returns_none\n\nWHAT IS ESTABLISHED\n- It PASSES in isolation: pytest <that node id> -> 1 passed.\n- It PASSES with ordering disabled: the whole tracker package with\n  `-p no:randomly` -> 2816 passed, 4 skipped, 0 failed.\n- So it is ORDER-DEPENDENT, surfaced by pytest-randomly's shuffle.\n\nWHAT IS NOT ESTABLISHED, stated rather than guessed\n- The seed. `check-package-coverage` runs the six packages as background jobs\n  and the summary log captures only the failure line, not the per-package\n  pytest header where pytest-randomly prints `Using --randomly-seed=N`. The\n  seed that produced this is therefore LOST, not withheld.\n- The interacting test. Five seeds (1-5) over `test_tui.py` ALONE did not\n  reproduce, so the state-leak partner is very likely in a DIFFERENT tracker\n  test file rather than a neighbour inside test_tui.py. Not proven -- five\n  seeds is a small sample and absence over them licenses nothing.\n\nNOT CAUSED BY THE CHANGE IT WAS OBSERVED UNDER. The tracker package is\nindependent of hypergumbo-core (ADR-0010 / the package hierarchy); the INV-lalad\nchange touched core, lang-mainstream and lang-rust-analyzer, all three of which\nPASSED in the same isolated run including coverage. Recorded because the\nobserver owns what they observe, not because it is suspected to be related.\n\nSUGGESTED FIRST STEP for whoever picks this up: make the seed recoverable\nbefore hunting the leak -- have `check-package-coverage` echo each package's\npytest-randomly seed line into its summary, or persist the per-package logs.\nChasing an order-dependent failure whose order is not recorded is the\nexpensive way round, and the instrument fix is smaller than the hunt."  # 8ebe
+    fields: {}  # 8ebe

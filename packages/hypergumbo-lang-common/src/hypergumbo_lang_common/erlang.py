@@ -52,8 +52,10 @@ Erlang-Specific Considerations
 """
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -270,12 +272,7 @@ def _extract_symbols_from_file(
                 atom = find_child_by_type(clause, "atom")
                 if atom:
                     func_name = node_text(atom, source)
-                    args = find_child_by_type(clause, "expr_args")
-                    arity = 0
-                    if args:
-                        for child in args.children:
-                            if child.type not in ("(", ")", ","):
-                                arity += 1
+                    arity = _arity_of(clause)
 
                     clause_start = node.start_point[0] + 1
                     clause_end = node.end_point[0] + 1
@@ -400,12 +397,79 @@ def _extract_symbols_from_file(
     return symbols, module_name
 
 
+#: OTP's eight logger levels, as declared in ``kernel/include/logger.hrl``,
+#: mapped to the ``logger:`` function each expands to (INV-zihor).
+#:
+#: EIGHT NAMES, NOT A ``?LOG_`` PREFIX. rabbitmq also defines ``?LOG_DIR`` (a
+#: directory string), ``?LOG_PREFIX`` (a prefix string) and ``?LOG_EXCH_NAME``
+#: (a binary); a prefix match would mint logging sinks out of string literals.
+#:
+#: Widening this set is the unsafe direction, so a ninth entry needs the same
+#: evidence these eight have: measured across rabbitmq, emqx, ejabberd,
+#: vernemq, rebar3 and cowboy, none of these names is EVER redefined, while
+#: general function-like macro names collide in more than one file at 5-21%
+#: per repository. That asymmetry is the whole argument for handling these by
+#: name and refusing to generalise into a preprocessor on the cheap.
+OTP_LOGGER_LEVEL_MACROS: Final[dict[str, str]] = {
+    "LOG_EMERGENCY": "emergency",
+    "LOG_ALERT": "alert",
+    "LOG_CRITICAL": "critical",
+    "LOG_ERROR": "error",
+    "LOG_WARNING": "warning",
+    "LOG_NOTICE": "notice",
+    "LOG_INFO": "info",
+    "LOG_DEBUG": "debug",
+}
+
+#: A file only receives OTP's macros by including a header named
+#: ``logger.hrl``. Gating on the INCLUDE rather than on the name is what makes
+#: this sound instead of merely probable, and it is measured: across rabbitmq,
+#: emqx, ejabberd and vernemq this covers 2267 of 2267 OTP macro sites, where
+#: the stricter ``include_lib("kernel/include/logger.hrl")`` covers 2266 --
+#: ejabberd reaches kernel's header through its OWN same-named one, which is
+#: one level of indirection and exactly the case a literal match misses.
+_LOGGER_HRL_INCLUDE = re.compile(
+    r'-include(?:_lib)?\(\s*"[^"]*logger\.hrl"\s*\)'
+)
+
+
+def _arity_of(node: "tree_sitter.Node") -> int:
+    """Count the arguments of a function clause or a call.
+
+    Both a ``function_clause`` and a local ``call`` carry their arguments in
+    an ``expr_args`` child, so one counter serves the declaration and the
+    call site -- which is what lets a call be matched to a declaration by
+    name AND arity, the way Erlang itself does.
+    """
+    args = find_child_by_type(node, "expr_args")
+    if args is None:  # pragma: no cover - defensive for malformed AST
+        # The grammar gives every function_clause and local call an
+        # expr_args, even ``f()``; none was found across ejabberd and rebar3
+        # or in truncated input. Same guard as _extract_erlang_signature.
+        return 0
+    return sum(1 for c in args.children if c.type not in ("(", ")", ","))
+
+
 def _get_enclosing_function_erlang(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    functions: dict[str, list[Symbol]],
 ) -> Symbol | None:
-    """Walk up parent chain to find enclosing function."""
+    """Find the function whose declaration encloses ``node``.
+
+    The lookup key is ``name/arity``, the symbol's own name, read off the
+    enclosing ``fun_decl``. INV-mozas: it used to be the bare atom, which
+    every arity registers under (``base_name``), so a call inside
+    ``get_timeout/0`` was anchored to whichever arity registered last --
+    a source attributed to a function that does not contain it. Erlang
+    rejects two same-name/arity functions in one module, and consecutive
+    clauses coalesce into one symbol under that name, so a call in any clause
+    finds the coalesced function. The key is NOT unique per file, though:
+    ``-ifdef``/``-else`` defines the same name/arity once per branch, and
+    tree-sitter parses unpreprocessed source, so both are symbols. Of the
+    candidates, the one whose span contains the declaration is the answer
+    (ejabberd_app.erl: 21 calls anchored to the ``-else`` stub otherwise).
+    """
     current = node.parent
     while current is not None:
         if current.type == "fun_decl":
@@ -413,10 +477,14 @@ def _get_enclosing_function_erlang(
             if clause:
                 atom = find_child_by_type(clause, "atom")
                 if atom:
-                    func_name = node_text(atom, source)
-                    sym = local_symbols.get(func_name)
-                    if sym:
-                        return sym
+                    full_name = f"{node_text(atom, source)}/{_arity_of(clause)}"
+                    line = current.start_point[0] + 1
+                    return next(
+                        (s for s in functions.get(full_name, ())
+                         if s.span is not None
+                         and s.span.start_line <= line <= s.span.end_line),
+                        None,
+                    )
         current = current.parent
     return None
 
@@ -440,6 +508,18 @@ def _extract_edges_from_file(
     """
     edges: list[Edge] = []
     file_id = make_file_id("erlang", file_path)
+
+    # INV-zihor: whether THIS file can see OTP's ?LOG_* macros. Computed once
+    # per file rather than per node -- the answer cannot vary within a file.
+    logger_macros_visible = bool(_LOGGER_HRL_INCLUDE.search(source.decode(
+        "utf-8", errors="replace")))
+
+    # Every function of this file under its name/arity. A list, because
+    # -ifdef/-else can define one name/arity twice (see the enclosing lookup).
+    functions: dict[str, list[Symbol]] = {}
+    for s in file_symbols:
+        if s.kind == "function":
+            functions.setdefault(s.name, []).append(s)
 
     # Build local symbol map (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -487,9 +567,41 @@ def _extract_edges_from_file(
                 )
                 edges.append(edge)
 
+        elif node.type == "macro_call_expr" and logger_macros_visible:
+            # INV-zihor: ?LOG_DEBUG("...", [Secret]) IS a logging call, but
+            # tree-sitter parses source rather than preprocessed source, so it
+            # produced no edge at all and no catalogue row could match it. On
+            # rabbitmq that hid 1,910 of 2,093 logging call sites.
+            #
+            # EXPANDED HERE, NOT IN THE CATALOGUE, because the catalogue can
+            # only match a call the analyzer emitted -- and there was none. The
+            # item's own scope note says as much: no row can fix this.
+            macro_var = find_child_by_type(node, "var")
+            level = OTP_LOGGER_LEVEL_MACROS.get(
+                node_text(macro_var, source) if macro_var else "",
+            )
+            caller = _get_enclosing_function_erlang(
+                node, source, functions,
+            )
+            if level and caller:
+                edges.append(Edge.create(
+                    src=caller.id,
+                    dst=f"erlang:logger:0-0:{level}:function",
+                    edge_type="calls",
+                    line=node.start_point[0] + 1,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    # NOT ``ast_call``. tree-sitter expanded nothing; this edge
+                    # is an inference from a macro name plus an include, and a
+                    # consumer telling a seen call from an inferred one reads
+                    # exactly this field.
+                    evidence_type="macro_expansion",
+                    meta={"call_construct": "macro"},
+                ))
+
         elif node.type == "call":
             # Function call
-            caller = _get_enclosing_function_erlang(node, source, local_symbols)
+            caller = _get_enclosing_function_erlang(node, source, functions)
             if caller:
                 remote = find_child_by_type(node, "remote")
                 if remote:
@@ -537,7 +649,12 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="ast_call",
-                                    meta={"call_construct": "remote_external"},
+                                    # INV-tadup: NOT "remote_external". The suffix encoded
+                                    # whether the resolver found the callee, which is
+                                    # already recoverable from ``dst`` (a synthetic
+                                    # external node id vs an in-repo symbol id). The
+                                    # construct is the same either way: ``mod:func(args)``.
+                                    meta={"call_construct": "remote"},
                                 )
                                 edges.append(edge)
                 else:
@@ -545,8 +662,13 @@ def _extract_edges_from_file(
                     atom = find_child_by_type(node, "atom")
                     if atom:
                         func_name = node_text(atom, source)
-                        # Prefer local symbols (same-file functions by base_name)
-                        callee = local_symbols.get(func_name)
+                        # A local function is its name AND arity. The bare
+                        # name is whichever arity registered last, so keying
+                        # on it made get_timeout() inside get_timeout/2 a
+                        # self-loop (INV-mozas's wrong-callee symptom).
+                        callee = local_symbols.get(
+                            f"{func_name}/{_arity_of(node)}",
+                        )
                         if callee is not None:
                             confidence = 0.90
                         else:
@@ -750,7 +872,9 @@ class ErlangAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract call and import edges from an Erlang file."""
         # Rebuild local symbols with base_name mapping needed by edge extractor
-        file_symbols = list(local_symbols.values())
+        # The full list, not the name-keyed dict: -ifdef/-else defines one
+        # name/arity twice and the dict keeps only the last (INV-mozas).
+        file_symbols = self.file_symbols(local_symbols)
         return _extract_edges_from_file(
             tree, source, rel_path, file_symbols,
             resolver, self._module_registry, run.execution_id,

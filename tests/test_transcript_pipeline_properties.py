@@ -11,6 +11,8 @@ Property tests use tempfile.mkdtemp() for isolation (hypothesis reuses
 function-scoped fixtures across examples). Non-property tests use tmp_path.
 """
 
+# covers: .agent/hooks/_shared/*transcript*
+
 from __future__ import annotations
 
 import gzip

@@ -3,14 +3,220 @@
 
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- Released **tool** is at: v8.0.0
-- Released **schema** is at: v0.20.1
+- Released **tool** is at: v8.1.0
+- Released **schema** is at: vdid not say why
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
-> **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-6.X.md](docs/RELEASE-NOTES-6.X.md)** for the audience-organized release notes (CLI users, JSON consumers, per language/framework). This file is the **implementer log**: structured, mechanism-level entries per release.
+> **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-8.X.md](docs/RELEASE-NOTES-8.X.md)** for the audience-organized release notes of the current line — each opens with a TL;DR naming the breaking changes. Earlier lines: [7.x](docs/RELEASE-NOTES-7.X.md), [6.x](docs/RELEASE-NOTES-6.X.md), [5.x](docs/RELEASE-NOTES-5.X.md). This file is the **implementer log**: structured, mechanism-level entries per release.
 
 ## [Unreleased]
+
+## [8.1.0] - 2026-09-25
+
+### Summary
+
+Five threads run through this cycle.
+
+- **Receiver typing.** A method call on a receiver the repository describes now reaches the I/O catalogue instead of stopping at ADR-0051's `external` sentinel, in ten languages.
+- **Calls credited to the right function.** Analyzers find a call's enclosing function by position, not by name, so a call no longer lands on a same-named function elsewhere.
+- **Taint precision, measured and acted on.** ADR-0046 splits precision into correctness and usefulness, and ADR-0049 stops treating a call that only opens or registers a network crossing as the crossing. Useful precision moves **24.1% → 30.9%**.
+- **Two producers for one language (ADR-0057).** When two backends analyse the same code, their records merge into one node or edge that says which producer said what.
+- **Records that say what they don't know.** A silent pass says why, a linker declares what it reads, and `is_exported` can say "not measured", which takes `dead-code-maybe` on this codebase from 41.4% dead to 7.5%.
+
+`SCHEMA_VERSION` advances 0.20.1 → 0.20.13, the `verify-claims --json` envelope 2.0 → 2.4, and `DEAD_CODE_MAYBE_SCHEMA_VERSION` 0.2.0 → 0.3.0.
+
+### Added
+
+#### Receiver typing across the fleet
+
+- **Ten analyzers type the receivers they have evidence for**: instance fields, parameters, declared types, chained receivers, `?` / `.unwrap()`, loop and optional bindings and `self.<property>`. Declared return types are followed, and `library_signatures/` supplies a library call's return type. Kotlin now emits method calls on JDK receivers at all.
+- **The Django ORM is typed end to end**: QuerySet chains, reverse relations, custom managers, instance writes and `setUp` fixtures (**+2,943 edges on pretix, 0 lost**). The lazy QuerySet combinators move to a new `db_compose` value, since they read nothing.
+- **A receiver typed only from a name says so**, with `resolution_quality="accessor_name"` and a caveat, so a recall gain does not buy a quieter all-clear.
+- **Parser upgrades**: tree-sitter-swift 0.0.1 → 0.7.3 parses `#if` inside a type body, and Objective-C files that fail to parse go **74 → 38**.
+
+#### Two producers per language (ADR-0057)
+
+- **scip-python (pyright) is an opt-in second producer for Python.** Install `hypergumbo[scip-python]` and `@sourcegraph/scip-python@0.6.6`, then pass `--backend scip-python` (or set `HYPERGUMBO_SCIP_PYTHON=1` or `[backends] scip_python = true`). It never runs the analysed code, and on hypergumbo-core it types 96.1% of the receivers the syntax analyzer left untyped. `--backend tree-sitter` turns every opt-in backend off.
+- **`hypergumbo backend-agreement ARTIFACT` reports where two producers agree**, per attribute and per edge, as a `docs/audits/` document.
+- **A `[merge]` config table chooses which producer's value wins**, overall or per attribute. Unknown keys are refused before analysis runs.
+
+#### I/O boundaries: the deferred crossing (ADR-0049)
+
+- **A call that only opens, registers or defers a network crossing is disclosed, not treated as the crossing.** The test is whether the call returns content the far side chose. The new **`net_listen`** boundary creates no taint source, is counted outside `total_io_edges`, and qualifies a clean verdict.
+- **A primitive with several boundaries says why** (`boundary_ruling`) and names its fallback (`abstains_to`). **`io_target_kind` gains `in_memory`, `pipe` and `net_stream`.**
+- **A DNS lookup is a network receive in five languages.**
+
+#### Catalogue extensibility and user configuration (ADR-0047, ADR-0045)
+
+- **Community overlays ship in the wheel and load by default**, announced on stderr; they had sat under `docs/`, which is not packaged. Their rows cannot vouch for a verdict.
+- **User catalogue directories work.** `hypergumbo init-catalogs` creates one `<family>.d/` per extensible family, and `io_primitives.d/` is now actually read.
+- **User and project configuration (ADR-0045).** `config.toml` and `<repo>/.hypergumbo.toml` carry `io_primitives` (precedence user < project < claims file < `--io-primitives`). A repository may not grant itself the Rust backend, which runs the crate's `build.rs`; **`hypergumbo trust-backend`** grants it per repository.
+
+#### verify-claims: what a verdict says about itself
+
+- **The data-flow walk reports whether it ran (ADR-0052)**, so `flows_removed_by_walk: 0` can be read. A verdict also reports the fidelity it was reached at (envelope 2.2), telling a backend that is installed but disabled from one that is missing.
+- **A clean verdict names what it could not see**: untyped receivers, receivers of unknown scope (ADR-0016 §4), and languages that emit no external instance-method calls.
+- **A verdict says how much of the catalogue behind it is unverified.**
+- **Declared blindnesses.** `untrusted_input` does not tell far-side-*authored* values from far-side-*chosen* ones (the distinguishing field fired on 2 of 568 findings). Go's `call_construct` ambiguity is declared rather than fixed; across 14 repositories it never changed a verdict.
+- **A catalogue row can declare that an argument only names the resource** (`VERIFY_CLAIMS_SCHEMA_VERSION` 2.3 → 2.4). Tainted data choosing *which* file `os.Chmod` acts on still counts as correct but not useful.
+- **`analysis_runs[].silence_reason` says why a pass produced nothing** (`SCHEMA_VERSION` 0.20.6 → 0.20.7). An absent reason means *not applicable*; `unreported` means *cannot determine*.
+
+#### Measurement
+
+- **ADR-0046: taint precision is two numbers**, correctness (unchanged, so earlier measurements stay comparable) and usefulness, which deducts true positives that tell the user nothing. **ADR-0048** makes a benchmark declare its frame (unit, sampling, cohort, rubric, analyzer SHA) in a machine-readable block, checked in CI.
+- **Measurements 0003–0012 and 0029** price precision, find ADR-0017 §7a's addressable domain to be zero on this corpus, and measure receiver typing. The adjudication packet builder ships with tests.
+
+#### Developer tooling and CI
+
+- **`auto-pr --detach` hands the CI poll to a background watcher, and `auto-pr wait` reports on it** (0 finished, 2 running, 1 no watcher or died). A run with no terminal must choose `--detach` or `--foreground`.
+- **A red scheduled-CI step is reported at session start**, naming the step and the commit where it first went red. **`ci-debug cron-status`** shows the latest scheduled verdict per step, **`ci-debug pr-body <n>`** prints a PR description safely, and **`scripts/audit-autopr-convergence`** reads the `auto-pr` run ledger.
+- **New gates**: a production function reachable only from its own tests fails CI; a node or edge id must be minted, never hand-spelled (ADR-0034); a stdlib import newer than `requires-python` fails; and `tag-release` checks push credentials before signing.
+
+### Changed
+
+#### Two producers' records become one (ADR-0057)
+
+- **One declaration seen by two backends is one node and one edge.** Under ADR-0012 a two-backend Rust run had doubled every function and the in-crate call graph. A merge pass pairs records by span, keeps one value per attribute by a declared policy, and records the rest in two new fields, `attribution` and `alternatives`. A one-producer artifact is byte-identical to before.
+- **Every backend declares how it pairs** with others (`merge=`, `executes_analysed_code=`), and cross-backend tests must run on recorded producer output.
+- **Agreement raises confidence.** Two producers reaching one edge independently make it `confidence_source="corroborated"` at 0.95 (`CONFIDENCE_MODEL` v2.1).
+- **A resolved call demotes, but never deletes, an external stub at the same call site.** The stub's `rank_score` is halved and `meta.superseded_by` names its successor.
+- **The results cache is keyed on the backends that actually run.**
+
+#### Vocabulary and axes (ADR-0050, ADR-0051, ADR-0058, ADR-0059)
+
+- **A catalogue row's section (`functions:` / `methods:` / `attributes:`) has one meaning (ADR-0059)**: how the primitive is reached from its own module. `method` if called on an instance, `function` if called on the module, a type or a named global, `attribute` if read. Non-conforming rows sit in a shrink-only ledger.
+- **The I/O-boundary vocabulary (ADR-0050) and the module key (ADR-0051) are declared axes.**
+- **`Symbol.signature` is display-only (ADR-0058).** A gate limits which consumers may parse it, and Python's return type moves to `Symbol.meta["return_type"]`.
+- **`env_read` splits off `host_info_read`**, so host and identity reads no longer count as secrets. **The shipped catalogues are stdlib-only** (ADR-0047), and four off-axis `call_construct` values are removed (ADR-0038).
+
+#### What a linker declares
+
+- **Activation is declared.** 25 of 61 linkers ran everywhere only because none was declared; they now say `always_on_unreviewed()`, and ADR-0055 refuses to tighten them without measurement.
+- **`depends_on` names the passes a linker actually reads**, not the languages where its concept exists. Fourteen linkers are repaired.
+- **`derived_from` names what an edge was derived from, or says why it cannot**; `[]` means "consumed no graph record" (`SCHEMA_VERSION` 0.20.13). Linker edges with a real derivation chain go 399 → 840.
+
+#### Pass-silence reporting (ADR-0054, ADR-0056)
+
+- **Every silent pass says why, in one field on one closed axis.** `limits.skipped_passes[].skip_reason_code` is renamed `silence_reason` (breaking, for a key one unreleased version old), and an unclassified skip reads `unreported` rather than "no files".
+- **A zero is measured, not assumed.** A pass is no longer skipped as "no files" when its own enumeration would find work; eight linkers had read 14–834 files each and reported none.
+- **Every survey prints silence summaries on stderr**, including any registered pass that produced no record.
+
+#### Taint adjudication and reporting
+
+- **Taint refutation is confirm-only in practice (ADR-0052).** The walk can still remove a flow, and `False` now does, but growing the set of removable flows is not worth pursuing.
+- **An unadjudicated flow is reported once per situation** (envelope 2.0 → 2.1); six repositories had reported 359 flows for 78 situations.
+- **Findings say which analysis produced them** (`analysis_method`) and what the data-flow walk concluded (`walk_verdict`, `walk_blocked_by`). **What `untrusted_input` asserts is written down**: a far-side party had a say in the value, not that it authored the bytes.
+
+#### `dead-code-maybe`
+
+- **The default view drops from 41.4% dead to 7.5% on this repository**, because public Python methods now get an exportedness verdict from their class. Re-baseline anything that relied on the old numbers.
+- **A name mentioned in JSON, YAML, TOML, XML or HTML no longer counts as cross-language dispatch.** Candidates still withheld are listed in a new `cross_language_demoted` field (`DEAD_CODE_MAYBE_SCHEMA_VERSION` 0.2.0 → 0.3.0, additive).
+
+#### Schema
+
+- **`SCHEMA_VERSION` 0.20.1 → 0.20.13, and every step but one is additive.**
+  - 0.20.2–0.20.5: `Edge.meta` gains `call_arg_shape`, `callee_name` (ADR-0036 Ruling 1), the bash per-call-site keys, and `io_target_kind`.
+  - 0.20.6: `TaintFlowFinding` gains `walk_verdict` and `walk_blocked_by`.
+  - 0.20.7–0.20.8: `AnalysisRun` gains `silence_reason`, and its axis gains `candidates_unresolved`.
+  - 0.20.9–0.20.10: skipped passes gain `skip_reason_code`, then rename it to `silence_reason`. This rename is the one breaking step.
+  - 0.20.11: `Symbol` and `Edge` gain `attribution` / `alternatives`, and `confidence_source` gains `corroborated`.
+  - 0.20.12: `is_exported` becomes `true` / `false` / `null`.
+  - 0.20.13: `derived_from` may be empty.
+- **`is_exported` is `Optional[bool]`.** About ninety analyzers have no exportedness rule and had asserted "not exported"; the field now holds a value only when measured. **`VERIFY_CLAIMS_SCHEMA_VERSION` advances 2.0 → 2.4.**
+- **`MetaKeySpec` gains `per_call_site`**, so a collapsed edge no longer reports one call site's fact for the whole relationship (a read-then-write had reported only the read, confirming a no-write claim: the ADR-0033 false-confirm class).
+- **Solidity contract-member ids change** (members are `method`); regenerate rather than diff across the boundary.
+
+### Fixed
+
+#### verify-claims verdicts
+
+- **One catalogue mistake had withheld every self-claim verdict.** Four `datetime` clock reads were catalogued as instance methods, so all 18 self-claims fell to `inconclusive`. A test now checks every Python method row against the real class.
+- **A classified call no longer marks its module invisible** (Node's `process.on` / `send` / `cwd`, Python's `ctypes.cdll.LoadLibrary`).
+- **`ssl.SSLObject` is no longer network I/O**, since the caller feeds it memory buffers. **`ddg_mixed` is documented for what it is**: usually no walk had been attempted, so read `walk_verdict`.
+- **The coverage gate no longer counts a repository's own code as an unexamined dependency** (Rust `crate::`, JavaScript relative imports), and counts references once rather than once per nesting depth.
+- **A synthetic call site carries its host file's language**, where one linker stamped `typescript` on `.js` calls and withheld every claim on them (ADR-0031). **A withheld verdict names the blocker that actually withheld it.**
+
+#### Taint propagation
+
+- **An unresolved bare-name call no longer installs a sanitizer that is not there.** A bare Java `doFinal(p)` had bound `javax.crypto.Cipher.doFinal` and deleted findings. Every language now requires positive evidence of the receiver: an exact qualified name, a module slot, or a callee name carrying its owner.
+- **Four wrong walk answers.** `subprocess.Popen(tainted)` verified clean while `subprocess.run(tainted)` verified violated; a dispatch edge out of a type node is no longer data flow; an I/O primitive's return no longer inherits its argument's taint; and a module-less sink is no longer matched by bare name.
+- **Taint reaches a JavaScript callback** registered with `addEventListener`, `http.createServer` or `process.on`. On eight repositories findings go 78 → 80 and one verdict moves `inconclusive` → `violated`; a callback handed to a sanitizer now installs a barrier.
+- **The Python data-flow walk's answer is no longer thrown away.** It was stored under a key nothing read, so no method had walk-backed evidence; now 85% can. **JavaScript and TypeScript class methods reach the data-flow graph** (dash.js 0 → 766 of 766); arrow functions and function expressions still do not.
+- **The coverage gate sees more of what the walk missed.** A statement whose def/use misses a name is reported (`unaccounted_names`), a call-free omission no longer licenses a refutation, and a recorded function no longer vouches for an unrecorded one. No verdict changes today.
+- **The walk's accounted-for exits are pinned** as a census of five, and `fmt.Fprintf` / `fmt.Fprintln` are no longer treated as dead ends.
+- **`verify-claims` no longer crashes with `RecursionError`** on deeply nested code, where it had exited 1, the violated-claim code. **A bash redirect to `/dev/null` is no longer a filesystem write.**
+
+#### Call graph accuracy
+
+- **A call is credited to the function that contains it, in 25 analyzers.** They had found the enclosing function by name, so overloads, redefinitions and same-named methods in different classes took each other's calls. They now use the declaration's position. Calls outside their caller's span go to 0 (for example D 15,126, Elixir 7,166, Kotlin 2,014), and a test fails on any analyzer that still anchors calls by name.
+- **Related anchoring fixes**: a Haskell function's span covers all its equations (its id and `line_span` change); a `.vue` or `.svelte` callback is credited with its own calls; a Nix file's top-level function owns its calls; an Erlang `-ifdef` branch keeps its calls.
+- **Seven constructs that emitted no call edge at all now do**: Python bare builtins, Go calls under a package-level `var` (every cobra `Run:` handler), Python calls on an external-typed instance field, Haskell zero-argument IO actions, Erlang `?LOG_*` macros, Rust grouped `use` lists, and calls inside a Nim exported proc (nitter 648 → 2,460 call edges).
+- **An explicit import outranks a same-named project symbol** in Scala and Kotlin: `Process(cmd)` after `import scala.sys.process.Process` had bound to spark's own `Process`. Kotlin re-targets to the imported path; Scala leaves the call unresolved with the import path as its module, so it reaches its catalogue row.
+- **A Nim call resolves only to a declaration its module can see**: its own file, the files `include` joins to it, and the exported declarations of modules it imports. 1,555 edges into private procs of modules the caller never imported are gone. Where several visible modules declare the name, confidence falls to 1/√N instead of a silent pick.
+- **Elixir gives the same answer every run**: surveys had differed by 101 edges across hash seeds. Atom-module calls (`:ets.insert`) now emit, and qualified calls are no longer bound by bare name (202 false edges gone).
+- **Swift and C# properties are back in the default map**, having been dropped as CSS noise (Kingfisher +680 call edges). C# accessors still carry no calls.
+- **The GraphQL linkers emit edges** (apollo-server 0 → 128). A new `graphql-sdl-linker` reads schema types out of `gql` literals, and `graphql-linker` joins an operation to the field it selects.
+- **Method-call recovery stops binding by name coincidence**: it no longer overrides a producer that named the module (precision 51% → 73%).
+- **Receiver-typing fixes**: Python resolves a declared return type in the module that declares it; a Scala receiver's type survives a qualified or generic type (sbt hinted share 9.0% → 23.4%); Node's `fs.promises.*`, `process` and `performance` resolve (+1,195 edges off `external`); a JavaScript handler assignment (`ws.onmessage = h`) emits a registration edge.
+- **C stamps the file's `#include` set on ambiguous bare calls**, so `send` / `recv` / `read` / `write` reach the catalogue; 15 of 21 verdicts move to `inconclusive`, none toward `confirmed`. **A Java wildcard import is a candidate package**, no longer a prefix that turned `System` into `java.io.System`.
+- **An import edge's dst is a canonical id** in Objective-C, CSS and Solidity, and **a generated file's edges keep the file's path**.
+
+#### The rust-analyzer and SCIP backends
+
+- **The rust-analyzer backend's output is accounted for**: its records had named an analysis run never written out (1,308 validation violations, now 2).
+- **Function-local `let` bindings are no longer nodes** (SCIP nodes 669 → 169), and **a reference is attributed to the function that makes it**.
+- **Symbol kinds come from the producer's declaration.** Every free function had been a `method` and every enum variant a `class`; the two Rust backends now agree on kind for 133 of 148 paired records.
+- **A missing binary, a crash and an unreadable index are told apart** (`dependency_unavailable`, `pass_crashed`, `unreported`) instead of all returning `None`.
+- **Three shipped claims are retracted**, among them that the two Rust backends shared a `stable_id` (they shared 0 of 52).
+
+#### Catalogue rows: direction, kind and reach
+
+- **A constructor that builds a request is not the crossing.** Erlang's `ets.new`, Python's `urllib.request.Request`, Go's `http.NewRequest` and the `Req` / `Finch` builders had been credited one call early; the finding now sits at the call that sends. `urllib.request` is audited and declared complete.
+- **Rows that invented taint from operations that read nothing are removed**: Haskell `IORef` / `MVar` / `STM` under `db_read`, `socket` / `bind` / `listen` in ten languages, JPA/JDBC builders and `io_lib:format`.
+- **Server launch and connection setup stop creating taint sources (ADR-0049)**: 28 launch rows in Go, Python, Haskell and Erlang, and Go's eleven setup rows.
+- **Standard input is `ipc_recv` in every catalogue**, with the call that transfers the bytes rowed (Java's `readLine` had been `fs_read`). **A launch that returns the child's output is a source** in eight languages.
+- **A wrapper's boundary follows what it wraps**: Go's `bufio.NewScanner`, `io.WriteString` and `fmt.Fprint*` no longer carry one fixed boundary each.
+- **Direction and family corrections across all fifteen catalogues.** A C socket call is classified by its address family, so an `AF_UNIX` channel is not network egress; Erlang's `io:read` is not `logging`; **a clock read is `host_info_read` everywhere.**
+- **Go calls on stdlib package variables reach their boundary**: a new `package_variables` section types `http.DefaultClient`, `http.DefaultTransport` and `net.DefaultResolver` (79 false edges on keda, loki and grafana now reach `net/http`).
+- **JDK statics are function-kind (ADR-0059), and Kotlin and Scala static calls reach their rows** (sbt 123 → 237 classified calls). **Scala's `Process(cmd).!` is classified** as `subprocess` and `fs_write`.
+- **Swift's sixteen constructor rows are decided one by one**: eight that cross nothing are removed, three listeners become `net_listen`, and `NSFetchRequest` becomes `db_compose`.
+- **Python and JavaScript complete their catalogues**: Python gains 41 module rows and an enumerated `builtins`, and JavaScript is audited and promoted to `provenance_declared`. Thirteen class-qualified receivers that had sent all 18 self-claims to `inconclusive` are adjudicated.
+
+#### Symbol kinds, ids and pass accounting
+
+- **The dead-code walk reaches a constructor's helpers through the class it constructs**, so a helper called only from `__init__` no longer reads as dead (21 revived on self-analysis, 103 on pretix, 74 on kserve; 0 newly dead). Dart is a declared gap.
+- **Twenty-six sites emitted malformed ids**, and **`Edge.id` gets a validator** for its grammar (`edge:sha256:<16hex>`).
+- **Ruby object creation emits `instantiates`**, and **Solidity contract members are `method`**.
+- **Every edge producer names how it inferred the edge**; 51 sites had defaulted to `ast_call_direct`, and a lint now fails on omission.
+- **`makefile` is no longer reported unanalysed** after the `make` pass ran.
+
+#### Security and runtime safety
+
+- **`--backend tree-sitter` actually disables the rust-analyzer backend** (ADR-0045). With the environment variable exported, opting out for one untrusted repository had still run its `build.rs`.
+- **The brand scrub covers everything the scripts publish to the forge**, PR bodies included, and `scripts/check-forge-text-egress` makes every publishing site declare how its text is scrubbed.
+- **A transcript watcher cannot outlive its session**, **`backend-agreement --out` writes through its safety-zone wrapper**, and **a survey that raises no longer leaves its file index behind**.
+
+#### Performance
+
+- **pretix's Python analysis goes 1700 s → 95 s (17.9×, byte-identical output)**: the symbol suffix index is built once per registry instead of once per resolver.
+
+#### CI, release and developer workflow
+
+- **`auto-pr` reports what actually happened.** A merge that landed decides the outcome (41 of 481 runs had merged and exited 1), every exit path records a terminal state, and its stderr is no longer silenced after the lock line.
+- **`smart-test` selects the right tests.** A catalogue YAML, `conftest.py` or docs-only change now selects tests (each had selected none), `--full` includes the repo-root `tests/`, and it no longer writes another repository's manifest or empties the committed one.
+- **The release scripts ship `hypergumbo-lang-scip-python`.** Added this cycle, it was in none of the release scripts' hard-coded package lists: 8.1.0 would have left it at 8.0.0, never built or uploaded it, and shipped a `hypergumbo[scip-python]` extra pinned to a version that was never published. `bump-version`, `release-check`, its coverage set, `release.yml` and `prepare-release` now list it, and a test compares each list against `packages/*/pyproject.toml`, running `bump-version` on a copy of the real manifests.
+- **The self-claims drift gate runs on every scheduled CI run**, after a regression rode green `dev` for 63 commits.
+- **Git notes are pushed** again; none had been since 2026-01-22.
+- **hypergumbo works on Python 3.10 again** (an unguarded `import tomllib`). A killed `auto-pr` can no longer switch tracker self-healing off (see the tracker changelog), and test results no longer depend on test order.
+
+### Documentation
+
+- **[`docs/VERIFY-CLAIMS-SCOPE.md`](docs/VERIFY-CLAIMS-SCOPE.md) publishes what `verify-claims` cannot see**: all eight caveat kinds, the exit-code contract (`1` violated, `2` inconclusive, `3` caveated, `0` clean; `2` is not a pass), and the limits of a clean verdict.
+- **The release notes are current**: `docs/RELEASE-NOTES-7.X.md` and `docs/RELEASE-NOTES-8.X.md` are written, and `prepare-release` now requires their `## Unreleased`.
+- **New ADRs**: ADR-0046 to ADR-0051 and ADR-0053, with the surveys and audits behind them. **ADR-0055** declines to tighten linker activation, since the whole prize is 0.166% of pass time. **ADR-0056** rules on the pass-silence values that had no producer.
+- **Module docstrings are audited again**: 39 of 44 flagged files had drifted (wrong edge and evidence type names, claimed constructs never extracted), and 24 gain functionality they had stopped describing.
+- **Corrections**: the tracker `--json` flag placement in AGENTS.md and ADR-0013 (the documented form exited 2); the spec's module-matching rule; five ADR-0017 status markers, now telling "not implemented" from "implemented but unwired"; ADR-0006's type-inference table, which gains measured Objective-C and Swift rows; and the backend-agreement audit's phantom `stable_id` gap.
 
 ## [8.0.0] - 2026-08-20
 
@@ -166,7 +372,7 @@ The GitHub + self-hosted-Woodpecker backend landed as dormant dual-mode code alo
 - **Metrics accounting corrected.** `metrics.languages.<lang>.files` is populated node-derived, `total_files` excludes the `<external>` sentinel, `io-boundaries` `total_io_edges` counts only the verified surface (view schema → 2.0), and the AnalysisRun `repo_fingerprint` field carries the `sha256:` scheme prefix (`repo_fingerprint_scheme` v1 → v2). `compact` defaults to centrality-ranked selection (design ruling D12) and `is_exported` reads from `visibility`.
 - **`reproducibility_context.captured.grammars` reflects grammars actually used, not all installed.** It was seeded at map-init with every installed `tree-sitter-*` dist (51 on a typical dev box), ~38 of them for languages that produced zero nodes; a finalize sub-step now prunes it to the grammars whose analyzer pass emitted ≥1 node, and expands the single masked `tree-sitter-language-pack` entry into distinct `tree-sitter-language-pack:<lang>` entries for the pack languages actually used. An ast-only repo (e.g. python) carries no `grammars` key. The `analyzer_identity` cache key stays install-scoped (unchanged — it must invalidate on any grammar upgrade, even unexercised ones).
 - **Inline `kind=file` nodes span the whole file, not just line 1.** The `create_file_symbols` path (used by ~13 tree-sitter analyzers — haskell, elm, dart, ocaml, …) minted the file node with a degenerate `Span(1,0,1,0)`, so its structural fingerprint hashed only the first physical line — often a shebang/comment that filters to empty, yielding a needless `null`. It now spans the parsed extent (`end_point`), matching the bash / js-ts inline minters and the synthesis paths; file-node identity is unaffected (`id`/`stable_id` are span-independent). The bash/ts/go/rust/swift file-node nulls the item originally named are spec-permitted honest-nulls from whole-file parse errors (unchanged), and spec §372's stale "bash has no grammar in the pack" note is corrected — bash now resolves via the language pack.
-- **rust-analyzer SCIP symbols keep `stable_id` parity with `rust.py` regardless of the working directory.** The SCIP source reader read `doc.relative_path` (a repo-relative path like `src/lib.rs`) against the process CWD, so any survey run from outside the repo root (absolute-path invocations, monorepo sub-roots, CI runners) failed the read, silently skipped the stable_id parity reassignment, and left the SCIP symbol with a raw-moniker id diverging from the tree-sitter anchor — double-counting Rust functions across the two backends. The reader is now anchored at `repo_root` (upholds the byte-parity contract, ADR-0035 v7).
+- **rust-analyzer SCIP symbols keep `stable_id` parity with `rust.py` regardless of the working directory.** The SCIP source reader read `doc.relative_path` (a repo-relative path like `src/lib.rs`) against the process CWD, so any survey run from outside the repo root (absolute-path invocations, monorepo sub-roots, CI runners) failed the read, silently skipped the stable_id parity reassignment, and left the SCIP symbol with a raw-moniker id diverging from the tree-sitter anchor — double-counting Rust functions across the two backends. The reader is now anchored at `repo_root` (upholds the byte-parity contract, ADR-0035 v7). **Correction (INV-dolud, 2026-09-18):** the anchoring fix was real, but the parity it preserved has never held on production input — the helper requires the item span and rust-analyzer supplies the identifier-token range, so 0 of 52 functions emitted by both arms share a `stable_id` on aardvark-dns. The two arms carry independent identities pending WI-gojum.
 - **`kind="template"` view-template nodes get a `stable_id`.** The view-template linker minted template stand-ins with a `language` but no `stable_id`, and — being neither a producer-stamped kind nor one of the fourteen backstop kinds — they fell through `populate_kind_stable_ids` to `None` (the last real residual of the synthetic-identity umbrella, which has no single stamping chokepoint by design). `template` now backstops through the shared kind-scoped formula, with `kind` folded into the hash so a template stays distinct from a `file` node at the same path.
 - **Eight Python-implemented analyzers stamp `toolchain.name = "python"`, not the analyzed language.** `matlab`, `robot`, `racket`, `purescript`, `puppet`, `rst`, `meson`, and `circom` hand-set `AnalysisRun.toolchain = {"name": "<language>", "version": "unknown"}`, mislabeling the *analyzed* language as the *analyzing* toolchain (these are regex/AST Python analyzers with no tree-sitter grammar). They now use `_get_python_toolchain()` (real interpreter version). Cosmetic — `toolchain.name` feeds only the external `run_signature` (no internal consumer; recomputed at finalize), so no schema bump and no functional change.
 

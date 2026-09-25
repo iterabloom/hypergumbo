@@ -21,9 +21,11 @@ in a 15-repo non-Django corpus.
 Gating
 ------
 ``LinkerActivation(frameworks=["django"])`` — the linker only runs when
-Django is detected on the analyzed repo. The framework detector folds
-DRF / django-filter / Wagtail signals under the single "django" name,
-so a single gate covers all four families. Combined with the empirical
+Django is detected on the analyzed repo. The detector's "django"
+pattern matches a ``django`` dependency and, by hyphen prefix,
+``django-filter``; it does not match ``djangorestframework`` or
+``wagtail``, so DRF / Wagtail repos pass the gate only because they
+also declare Django itself. Combined with the empirical
 FP rate of 0/15 across a non-Django corpus, this hard-cutoff gate
 delivers AC-3: a non-Django repo emits zero edges from this linker.
 
@@ -39,7 +41,7 @@ existing framework-base linker discipline is cheap.
 
 Why not extend DJANGO_BASE_METHODS
 -----------------------------------
-1. Activation: the existing linker is ``always=True``; folding third-
+1. Activation: the existing linker is ``always_on_unreviewed()``; folding third-
    party entries there would fire on non-Django repos where the FP
    risk has not been measured.
 2. Provenance: a distinct ``framework_dispatch`` meta label keeps the
@@ -59,10 +61,8 @@ from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ._transitive_bases import (
-    build_inheritance_index,
     build_short_name_collisions,
-    collect_transitive_base_names,
-    short_name_fallback,
+    match_framework_bases,
 )
 from .registry import (
     LinkerActivation,
@@ -174,7 +174,7 @@ def _find_third_party_subclasses(
     symbols: list["Symbol"],
     edges: list[Edge] | None = None,
     in_tree_collisions: frozenset[str] = frozenset(),
-) -> list[tuple["Symbol", frozenset[str], bool]]:
+) -> list[tuple["Symbol", dict[str, tuple[str, ...]], bool]]:
     """Return (class_symbol, framework_method_names, is_fallback) for every match.
 
     A class qualifies when **any** name in its transitive ``base_classes``
@@ -188,35 +188,13 @@ def _find_third_party_subclasses(
     ``_THIRD_PARTY_FQN_PREFIXES``) and its short name collides with an
     in-tree Python class.
     """
-    edges = edges or []
-    inheritance_index = build_inheritance_index(edges)
-    symbol_by_id = {sym.id: sym for sym in symbols}
-
-    results: list[tuple[Symbol, frozenset[str], bool]] = []
-    for sym in symbols:
-        if sym.kind not in ("class", "struct"):
-            continue
-        if sym.language != "python":
-            continue
-        if not sym.meta or not sym.meta.get("base_classes"):
-            continue
-        chain = collect_transitive_base_names(
-            sym, symbol_by_id, inheritance_index,
-        )
-        methods: set[str] = set()
-        is_fallback = False
-        for raw in chain:
-            short = _short_base_name(raw)
-            if short in THIRD_PARTY_BASE_METHODS:
-                methods.update(THIRD_PARTY_BASE_METHODS[short])
-                if short_name_fallback(
-                    raw, short, in_tree_collisions,
-                    _THIRD_PARTY_FQN_PREFIXES,
-                ):
-                    is_fallback = True
-        if methods:
-            results.append((sym, frozenset(methods), is_fallback))
-    return results
+    return match_framework_bases(
+        symbols, edges or [], THIRD_PARTY_BASE_METHODS,
+        short_name=_short_base_name,
+        fqn_prefixes=_THIRD_PARTY_FQN_PREFIXES,
+        in_tree_collisions=in_tree_collisions,
+        language="python",
+    )
 
 
 def _build_method_index(
@@ -315,7 +293,7 @@ def link_django_third_party_dispatch(ctx: LinkerContext) -> LinkerResult:
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
-                    derived_from=[class_sym.id, target.id],
+                    derived_from=[class_sym.id, target.id, *framework_methods[method_name]],
                 ),
             )
 

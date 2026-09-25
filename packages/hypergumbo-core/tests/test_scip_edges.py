@@ -258,3 +258,23 @@ def test_edge_meta_includes_scip_endpoints() -> None:
     assert e.meta is not None
     assert e.meta.get("scip_src_symbol") == src
     assert e.meta.get("scip_dst_symbol") == dst
+
+
+# ---------------------------------------------------------------------------
+# Locals are not endpoints (WI-jikok / INV-kukiz)
+# ---------------------------------------------------------------------------
+
+
+def test_relationship_touching_a_local_binding_emits_no_edge() -> None:
+    """Same rule as the Symbol and Occurrence shims: a ``local <id>`` is
+    document-scoped and never minted, so no Relationship edge may name one
+    at either end. rust-analyzer leaves ``relationships`` empty, so this is
+    a contract for the other SCIP emitters."""
+    to_local = _idx_with_relationship(
+        src_symbol=_sym("f"), rel_symbol="local 3", is_reference=True,
+    )
+    assert scip_index_to_edges(to_local, run_id="test") == []
+    from_local = _idx_with_relationship(
+        src_symbol="local 3", rel_symbol=_sym("f"), is_reference=True,
+    )
+    assert scip_index_to_edges(from_local, run_id="test") == []

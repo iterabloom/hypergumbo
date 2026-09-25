@@ -94,6 +94,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Shared pool-walking helpers (WI-favav / WI-havit). scripts/lib/ is not a Python
+# package; inject it onto sys.path and import the module.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import pool_utils  # noqa: E402
+
 DEFAULT_BAKEOFF_DIR = os.path.expanduser("~/hypergumbo_lab_notebook/bakeoff_artifacts")
 
 # Structured prompt template for the LLM agent
@@ -287,6 +292,27 @@ When assigning your trajectory field, compare against these prior findings:
 - REGRESSING: Output quality has gotten worse
 - FIRST_ASSESSMENT: Use this if no prior assessment context is provided
 """
+
+
+def _pool_repo_path(pool_path: str, repo_name: str) -> str:
+    """Resolve a cohort repo name to its on-disk path.
+
+    WI-favav parity, extended by WI-havit: cohort SELECTION resolves nested pool
+    repos via ``pool_utils.resolve_repo_path`` (which descends one level into
+    collection subdirs, e.g. ``ALL_REPOS/whole_bunch_of_repos/<repo>``), so every
+    downstream consumer must use the SAME resolver. A bare
+    ``os.path.join(pool_path, repo_name)`` misses a repo living one level down.
+    In the run loop that surfaced as ``get_dir_size`` raising FileNotFoundError;
+    in the reflect scripts it is quieter and worse -- the agent is handed a source
+    path that does not exist.
+
+    Falls back to the naive join so a genuinely-missing repo still errors where it
+    errored before, rather than passing ``None`` downstream.
+    """
+    return (
+        pool_utils.resolve_repo_path(pool_path, repo_name)
+        or os.path.join(pool_path, repo_name)
+    )
 
 
 def get_artifact_list(repo_out_dir: str) -> str:
@@ -890,7 +916,7 @@ def _reflect_one_cohort(
 
     count = 0
     for repo_name in repos:
-        repo_path = os.path.join(pool_path, repo_name)
+        repo_path = _pool_repo_path(pool_path, repo_name)
         repo_out = os.path.join(out_dir, repo_name)
 
         if not os.path.isdir(repo_out):
@@ -1001,7 +1027,8 @@ def cmd_reflect(args):
         print(f"   Prompts are in: {last_prompts_dir}/")
     print()
     print("2. The agent should have access to:")
-    print(f"   - The repo source code at: {pool_path}/<repo_name>/")
+    print(f"   - The repo source code under: {pool_path}/  "
+          f"(a repo may be nested one level: {pool_path}/<collection>/<repo_name>/)")
     print(f"   - The hypergumbo artifacts at: <workdir>/out/<cohort>/<iter>/<repo_name>/")
     print()
     print("3. Save the YAML assessment output to:")

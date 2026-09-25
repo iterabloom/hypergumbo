@@ -44,13 +44,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 from .registry import (
     LinkerActivation,
     LinkerContext,
     LinkerResult,
     register_linker,
 )
+from ..pass_silence import silence_reason_for_candidates
 
 if TYPE_CHECKING:
     pass
@@ -220,7 +221,8 @@ def link_crypto_flow(
         symbols: All symbols from all analyzers.
 
     Returns:
-        LinkerResult with crypto_flow edges and synthetic symbols.
+        LinkerResult with ``data_flows_to`` edges
+        (``meta.ref_construct="crypto"``) and synthetic symbols.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -258,6 +260,13 @@ def link_crypto_flow(
 
     if not all_writes or not all_reads:
         run.duration_ms = int((time.time() - start_time) * 1000)
+        # This branch fires for TWO unrelated reasons: nothing found at
+        # all, or one side found and the other absent. Only the first is
+        # an absent construct -- in the second the construct IS present
+        # and merely unpaired, and claiming otherwise would put a fresh
+        # false claim in the axis declared to cure false claims.
+        run.silence_reason = silence_reason_for_candidates(
+            all_writes + all_reads)
         return LinkerResult(edges=[], symbols=[], run=run)
 
     # Match writers to readers by API surface
@@ -279,9 +288,20 @@ def link_crypto_flow(
                 continue
             seen_edges.add(dedup)
 
-            lang = "typescript" if write.api == "webcrypto" else "rust"
-            pub_id = f"{lang}:{write.file_path}:{write.line}:0:{write.channel}:crypto_producer"
-            sub_id = f"{lang}:{read.file_path}:{read.line}:0:{read.channel}:crypto_consumer"
+            # WI-dovog: each site carries ITS OWN file's language (ADR-0031
+            # Class B via js_ts_language_from_path). The single `lang` taken
+            # from the WRITE site's api kind minted `typescript:` ids for every
+            # .js site and gave a .ts read the write's language.
+            pub_lang = js_ts_language_from_path(Path(write.file_path)) if write.api == "webcrypto" else "rust"
+            sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "webcrypto" else "rust"
+            pub_id = (
+                f"{pub_lang}:{write.file_path}:{write.line}-{write.line}"
+                f":{write.channel}:crypto_producer"
+            )
+            sub_id = (
+                f"{sub_lang}:{read.file_path}:{read.line}-{read.line}"
+                f":{read.channel}:crypto_consumer"
+            )
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
@@ -302,7 +322,7 @@ def link_crypto_flow(
                     name=write.channel,
                     path=write.file_path,
                     language=None,
-                    discovery_language=lang,
+                    discovery_language=pub_lang,
                     protocol_origin="crypto_flow",
                     span=Span(
                         start_line=write.line, end_line=write.line,
@@ -335,7 +355,7 @@ def link_crypto_flow(
                     name=read.channel,
                     path=read.file_path,
                     language=None,
-                    discovery_language=lang,
+                    discovery_language=sub_lang,
                     protocol_origin="crypto_flow",
                     span=Span(
                         start_line=read.line, end_line=read.line,
@@ -367,10 +387,15 @@ def link_crypto_flow(
                 data_direction="src_to_dst",
                 channel=write.channel,
                 meta={"detection_pattern": "crypto_api", "ref_construct": "crypto"},
-                derived_from=[pub_id, sub_id],
+                # derived-from consumed-none: both site nodes are minted from a file scan and joined
+                #   on the API string
+                derived_from=[],
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
+    # Reached only PAST the bail, so both sides were non-empty: candidates
+    # found, no pair matched.
+    run.silence_reason = silence_reason_for_candidates(all_writes + all_reads)
 
     return LinkerResult(
         edges=result_edges, symbols=result_symbols, run=run,
@@ -382,9 +407,12 @@ def link_crypto_flow(
     priority=86,  # After framework linkers, near Yjs linker
     activation=LinkerActivation(always=True),
     requirements=[],
-    # CNF: crypto APIs (hash/cipher/sign/HMAC) appear in every general-purpose
-    # backend language.
-    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "rust", "kotlin", "swift", "php"]],
+    # CNF (WI-zujan): the linker has no glob of its own -- every file it scans
+    # is the path of a ``ctx.symbols`` entry in ``_CRYPTO_LANGUAGES``, so the
+    # passes emitting those languages are a structural requirement: without
+    # them the file list is empty. javascript covers typescript; rust has two
+    # producers. The ten-language clause this replaced described the world.
+    depends_on=[["javascript", "rust", "rust_analyzer"]],
 )
 def crypto_flow_linker(ctx: LinkerContext) -> LinkerResult:
     """Run the crypto-flow linker."""

@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``.
+
+The committed backend-agreement table (ADR-0057 §5) is produced by
+``hypergumbo backend-agreement`` from a two-arm artifact of the recorded
+aardvark-dns fixture: the live tree-sitter arm plus the recorded
+``rust-analyzer 1.94.0`` index, through the merge pass, edge dedup, the
+resolution verdict and same-site supersession — exactly the
+``_two_arm_artifact()`` helper the rust-analyzer package's fixture tests
+pin their numbers against. Building the artifact from committed inputs
+(ADR-0057 §12) means anyone can regenerate the table without
+rust-analyzer installed and without executing the crate's ``build.rs``,
+and the fixture test guards that the committed table is what the
+instrument says.
+
+The instrument's output replaces everything above the hand-written
+``## Reading`` section, which is preserved verbatim: the numbers are the
+tool's, the reading is the owner's.
+"""
+from __future__ import annotations
+
+import contextlib
+import importlib.util
+import io
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+TARGET = REPO_ROOT / "docs" / "audits" / "0019-backend-agreement-rust-aardvark-dns.md"
+FIXTURES = REPO_ROOT / "packages" / "hypergumbo-lang-rust-analyzer" / "tests" / "test_recorded_fixtures.py"
+RECORDED = REPO_ROOT / "packages" / "hypergumbo-lang-rust-analyzer" / "recorded"
+ARTIFACT_NAME = "aardvark-dns-4444d90fee-two-arm-recorded.json"
+READING_HEADING = "\n## Reading\n"
+
+
+def main() -> int:
+    sys.path.insert(0, str(RECORDED))
+    spec = importlib.util.spec_from_file_location("recorded_fixture_tests", FIXTURES)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    artifact = module._two_arm_artifact()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact_path = Path(tmp) / ARTIFACT_NAME
+        artifact_path.write_text(json.dumps(artifact))
+        from hypergumbo_core.cli import main as hypergumbo_main
+
+        captured = io.StringIO()
+        with contextlib.redirect_stdout(captured):
+            status = hypergumbo_main(["backend-agreement", str(artifact_path)])
+        if status != 0:
+            return status
+        table = captured.getvalue()
+
+    reading = ""
+    if TARGET.exists() and READING_HEADING in TARGET.read_text():
+        reading = READING_HEADING + TARGET.read_text().split(READING_HEADING, 1)[1]
+    TARGET.write_text(table.rstrip("\n") + "\n" + reading)
+    print(f"wrote {TARGET.relative_to(REPO_ROOT)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

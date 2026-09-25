@@ -13,7 +13,10 @@ Version Distinction
   to `docs/schema.json`, which is a **unified schema** containing both behavior map
   output definitions AND framework pattern types for YAML validation. Breaking
   changes to output format bump minor; additions like new type definitions for
-  YAML patterns bump patch. Consumers can use this to check compatibility.
+  YAML patterns bump patch. One recorded exception: 0.20.10 renamed
+  `skip_reason_code` to `silence_reason` (breaking) as a patch bump, the old key
+  having shipped only one version earlier in 0.20.9. Consumers can use this to
+  check compatibility.
 
 - **__version__** (in __init__.py): The tool/package version. This increments
   with every release (new analyzers, bug fixes, performance improvements,
@@ -25,10 +28,11 @@ Version Distinction
 - **Per-view / per-sub-schema versions** (the third axis — WI-bobog / WI-romup):
   several JSON surfaces carry their OWN version, independent of both of the
   above. The CLI read-view envelopes (`routes` / `test-coverage` / `config` /
-  `catalog` / `cache-status` / `dead-code-maybe`) share
+  `catalog` / `cache-status` / `repeat_finder`) share
   `READ_VIEW_SCHEMA_VERSION` — one placeholder until a view needs to evolve its
   wire shape independently, at which point it promotes to its own named
-  constant, as `io-boundaries` (`io_boundary.IO_BOUNDARIES_SCHEMA_VERSION`),
+  constant, as `dead-code-maybe` (`DEAD_CODE_MAYBE_SCHEMA_VERSION`),
+  `io-boundaries` (`io_boundary.IO_BOUNDARIES_SCHEMA_VERSION`),
   `verify-claims` (`verify_claims.VERIFY_CLAIMS_SCHEMA_VERSION`), and the
   embedded `validation_report` block
   (`spec_validator.VALIDATION_REPORT_SCHEMA_VERSION`) already have. A change to
@@ -47,7 +51,8 @@ How It Works
 The behavior map is the primary output format for hypergumbo analysis.
 This module defines several versioned schemes:
 
-- **schema_version**: Overall format version (breaking changes increment minor)
+- **schema_version**: Overall format version (breaking changes increment minor,
+  save the 0.20.10 patch-bump exception noted above)
 - **confidence_model**: How confidence scores are computed
 - **stable_id_scheme**: How stable_id hashes are generated
 - **shape_id_scheme**: How shape_id (structure) hashes are generated
@@ -59,6 +64,10 @@ This module defines several versioned schemes:
 new_behavior_map() returns an empty structure with all top-level fields
 initialized, ensuring consistent output even for empty analyses. It also
 embeds a reproducibility_context block built by build_reproducibility_context().
+
+VIEW_NAMES enumerates the `view` values a behavior map may carry (the base
+`behavior_map` plus the `compact` / `tiered` budget projections), so the schema
+generator pins `view` to one single-sourced enum.
 
 Why This Design
 ---------------
@@ -98,7 +107,21 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.20.1"  # 0.20.1: Symbol.span nullable in the schema (WI-hafap
+SCHEMA_VERSION = "0.20.13"  # 0.20.13: ``Edge.derived_from`` drops ``minItems: 1``. A linker that builds both ends of an edge from a file scan consumed no graph record, and now says so with ``[]`` -- a positive statement, distinct from ``null`` (no statement, analyzer edges). Ids a producer minted in the same run are no longer listed as consumed (INV-rukor, WI-latup). Widening only: every artifact valid under 0.20.12 stays valid. 0.20.12: ``supply_chain.is_exported`` widens from ``boolean`` to ``boolean|null``. It was ``bool = False`` with no absent value, so the ninety-odd analyzer modules that compute no exportedness emitted "not part of the public API" for every record they produced -- 36,659 of 52,728 on this repository's own survey, 29,505 of them with no visibility signal at all -- and no consumer could tell a measured negative from a missing rule (INV-kubup). ``null`` now means nobody looked; only a positive input fills the field (an analyzer's own rule, an export modifier, or a language signal that the symbol is not public). Readers that test truthiness are unaffected; a reader distinguishing False from absent must now do so explicitly. 0.20.11: Symbol and Edge gain the ADR-0057 §6 provenance slot -- ``attribution`` ({field: [pass_id, ...]}, who holds the arbitrated value) and ``alternatives`` ({field: [{value, origin}]}, the other producers' values), both OMITTED unless the merge pass folded two producers' records for one declaration (WI-binis), so single-producer artifacts are byte-identical; ``Edge.confidence_source`` gains ``corroborated`` (§13: two distinct inference pathways reached one edge, confidence set to the declared 0.95). 0.20.10: ``limits.skipped_passes[].skip_reason_code`` is RENAMED to ``silence_reason`` -- the name AnalysisRun already uses for the same question on the same closed axis. One fact had two names, and which name a consumer saw was decided by taxonomy membership and the analyzer's return style rather than by anything about the silence (WI-mamiv). Breaking for readers of the old key, which shipped one version ago in 0.20.9. The ROUTING is unchanged and still not a function of the fact: use ``pass_silence.census_silence()`` to union the two hosts. 0.20.9: limits.skipped_passes entries gain ``skip_reason_code`` -- the same pass-silence-reason axis, re-hosted for the three values a pass that DID NOT RUN could never carry on AnalysisRun (dependency_unavailable / backend_disabled / pass_crashed); the prose ``reason`` stays as detail, one channel two fields (WI-dukoh, docs/adr/0056). 0.20.8: pass-silence-reason axis gains ``candidates_unresolved`` -- the pass found its construct and carried none through resolution, split out of ``unreported`` which is declared to mean "did not say why" (WI-bivim, docs/adr/0054). 0.20.7: AnalysisRun gains ``silence_reason`` -- why a pass emitted nothing, on the closed pass-silence-reason axis; omitted when the pass emitted something (INV-bikaj, arc T6). 0.20.6: TaintFlowFinding gains ``walk_verdict`` + ``walk_blocked_by`` (INV-zidur). 0.20.5: Edge.meta gains ``io_target_kind`` (INV-nular). 0.20.4: Edge.meta gains the bash per-call-site keys (``redirect_target``, ``redirect_target_resolved``, ``env_var``) and the ``<key>_values`` collapse companions (INV-vukiv). 0.20.3: Edge.meta gains ``callee_name``
+# (INV-divuf) — an ADDITION, hence a patch bump, same shape as 0.20.2 below.
+# The full-fidelity callee name, stamped unconditionally by
+# ``make_unresolved_edge``. Every artifact written before this version stays
+# valid: consumers fall back to the id's (lossy) name slot when the key is
+# absent, which is exactly what they did before it existed. NOT sparse and NOT
+# opt-in, unlike ``call_arg_shape`` — ADR-0036 Ruling 1 tells consumers never to
+# re-derive the exact name from the id, so a key present only sometimes would
+# leave them re-deriving it the rest of the time.
+# 0.20.2: Edge.meta gains ``call_arg_shape``
+# (INV-fubag) — an ADDITION, hence a patch bump. Sparse and opt-in: a producer
+# stamps it only where it can prove the call passes no tainted value, so its
+# ABSENCE is the conservative reading and every artifact written before this
+# version is valid and unchanged under it.
+# 0.20.1: Symbol.span nullable in the schema (WI-hafap
 # Optional[Span] flip). Relaxation only — no producer emits a span-less symbol
 # today, so emitted artifacts are unchanged; consumers that assumed presence
 # should treat span as optional going forward.
@@ -112,10 +135,11 @@ SCHEMA_VERSION = "0.20.1"  # 0.20.1: Symbol.span nullable in the schema (WI-hafa
 VIEW_NAMES = ("behavior_map", "compact", "tiered")
 # Wire-format version carried by the CLI *read-view* JSON envelopes that project
 # or summarize a behavior map without BEING the behavior map (routes /
-# test-coverage / config / catalog / cache-status / dead-code-maybe). These
+# test-coverage / config / catalog / cache-status / repeat_finder). These
 # share one placeholder version until a view needs to evolve its wire shape
 # independently — at which point it promotes to its own named constant, as
-# io-boundaries (IO_BOUNDARIES_SCHEMA_VERSION) and verify-claims
+# dead-code-maybe (DEAD_CODE_MAYBE_SCHEMA_VERSION, below), io-boundaries
+# (IO_BOUNDARIES_SCHEMA_VERSION) and verify-claims
 # (VERIFY_CLAIMS_SCHEMA_VERSION) already have. Single-sourced here (WI-bobog) so
 # the six view sites cannot drift; DISTINCT from the top-level bm.json
 # SCHEMA_VERSION (a read view is not the behavior map) and from __version__ (the
@@ -137,7 +161,13 @@ READ_VIEW_SCHEMA_VERSION = "0.1.0"
 # ``test_cli_test_coverage``), so every bump of the shared constant is a
 # four-file edit in views that have nothing to do with the change. That cost is
 # the signal that the placeholder had stopped fitting.
-DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.2.0"
+# 0.3.0 (INV-hugit): ADDITIVE. A new top-level ``cross_language_demoted``
+# listing -- the candidates the cross-language demoter removed, disclosed
+# rather than published as a bare count -- and a new ``config_name_hits``
+# field on every ``dead_candidates`` row, carrying the manifest-substring
+# tally that no longer demotes on its own. Nothing is removed or renamed, so
+# a 0.2.0 reader keeps working; the MINOR bump announces the two additions.
+DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.3.0"
 # WI-huhin: spec Appendix C mandates `hypergumbo-evidence-vMAJOR.MINOR`. This
 # emitted a bare `v2`, which did not match that grammar and left MINOR
 # unexpressible — so ADR-0039's refinement (new evidence types, precisely what
@@ -147,7 +177,7 @@ DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.2.0"
 # no scoring behaviour differs. Bump MINOR for a refinement, MAJOR for an
 # incompatible change. `test_confidence_model_matches_documented_grammar` pins
 # the format.
-CONFIDENCE_MODEL = "hypergumbo-evidence-v2.0"
+CONFIDENCE_MODEL = "hypergumbo-evidence-v2.1"  # v2.1 (ADR-0057 §13): a new confidence_source, ``corroborated``, and its declared 0.95 level for an edge two distinct pathways reached -- a MINOR refinement (new evidence handling), no change to any single-producer score
 STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
 # v3 (WI-linon): the Python shape_id hash now folds the symbol kind
 # (class/method/function) and the concrete AST node type into its prefix, so

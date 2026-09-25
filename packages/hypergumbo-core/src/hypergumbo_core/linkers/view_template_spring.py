@@ -4,10 +4,10 @@
 Spring MVC's view resolver maps a controller method's string return value to
 a template path. ``return "users/show"`` resolves to
 ``src/main/resources/templates/users/show.html`` (Thymeleaf default),
-``src/main/resources/templates/users/show.ftl`` (FreeMarker),
+``src/main/resources/templates/users/show.ftlh`` or ``.ftl`` (FreeMarker),
 ``src/main/resources/templates/users/show.vm`` (Velocity), or
-``src/main/webapp/WEB-INF/views/users/show.jsp`` (JSP). The ``ModelAndView``
-constructor's first argument is also a view name.
+``src/main/webapp/WEB-INF/views/users/show.jsp`` (JSP) or ``.html``. The
+``ModelAndView`` constructor's first argument is also a view name.
 
 The Java analyzer captures class and method ``@Annotation`` metadata in
 ``sym.meta["decorators"]`` as a list of ``{name, args, kwargs}`` dicts but
@@ -32,8 +32,9 @@ Why ExplicitStringStrategy (not MethodNameStrategy)
 ---------------------------------------------------
 Spring view names are literal strings the developer types, not naming
 conventions derived from class + method names. Pairs with Laravel
-(WI-hokaj), which is the other ExplicitStringStrategy consumer; the
-``string_to_candidates`` hook is what differs between the two.
+(WI-hokaj) and Django's ``DjangoExplicitStringStrategy``, the other
+ExplicitStringStrategy consumers; the ``string_to_candidates`` hook is what
+differs between them.
 """
 
 from __future__ import annotations
@@ -48,10 +49,12 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 from ..ir import Symbol
 from ._view_template_core import (
     ExplicitStringStrategy,
+    StringSite,
     TemplateCandidate,
     link_via_strategies,
 )
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_source_bytes
 
 # Method-level mapping annotations that mark a Spring controller action.
 _MAPPING_ANNOTATIONS = frozenset(
@@ -138,7 +141,7 @@ def _parse_java_source(
     if parser is None:  # pragma: no cover - dep import failure
         return None
     try:
-        source_bytes = view_path.read_bytes()
+        source_bytes = read_source_bytes(view_path)
     except OSError:
         return None
     try:
@@ -255,7 +258,7 @@ class SpringStrategy(ExplicitStringStrategy):
 
     def find_string_sites(
         self, ctx: LinkerContext
-    ) -> Iterator[Tuple[Symbol, str, int, str]]:
+    ) -> Iterator[StringSite]:
         controller_classes: dict[str, Symbol] = {}
         for sym in ctx.symbols:
             if sym.kind != "class" or sym.language != "java":
@@ -304,7 +307,11 @@ class SpringStrategy(ExplicitStringStrategy):
                         for prefix in _NON_TEMPLATE_PREFIXES
                     ):
                         continue
-                    yield method, view_name, lineno, pattern
+                    # INV-rukor: the @Controller class qualified the method.
+                    yield StringSite(
+                        method, view_name, lineno, pattern,
+                        (controller_classes[_enclosing_class_name(method) or ""].id,),
+                    )
 
     def string_to_candidates(
         self, string_value: str, action_symbol: Symbol, ctx: LinkerContext

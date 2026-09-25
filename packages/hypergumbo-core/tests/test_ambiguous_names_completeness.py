@@ -33,6 +33,7 @@ import builtins
 
 import pytest
 
+from hypergumbo_core.io_boundary import load_catalog
 from hypergumbo_core.taint import (
     _build_callee_index,
     _match_propagation_entry,
@@ -141,3 +142,63 @@ class TestTheFiledReproIsClosed:
         )
         assert matched is not None, "a module-qualified shutil.copy stopped matching"
         assert matched.qualified_name == "shutil.copy"
+
+
+class TestBuiltinsRowsKeepTheirHint:
+    """INV-bofab: the builtins rows are suppressed bare and matched hinted.
+
+    The six rows added when ``builtins`` was enumerated (``print``,
+    ``breakpoint``, ``copyright``, ``credits``, ``license``, ``help``) are
+    builtins BY CONSTRUCTION, so the completeness rule above puts each short
+    name in ``ambiguous_names`` -- the test at the top of this file flagged
+    all six on the day they landed. That must cost nothing on the production
+    path: every edge INV-foluz emits for a bare builtin call carries
+    ``builtins`` in the module slot, and suppression is consulted only when
+    there is no usable hint. Both directions are asserted, on the taint index
+    and on the io-boundary lookup -- they share ``gate_named_entry`` for the
+    hint-less case but each has its own hinted path.
+    """
+
+    NAMES = ("print", "breakpoint", "copyright", "credits", "license", "help")
+
+    def test_a_builtins_hinted_call_still_matches(self, catalog) -> None:
+        idx = _build_callee_index(catalog.sinks_for_language("python"))
+        amb = catalog.ambiguous_names_for_language("python")
+        for name in self.NAMES:
+            matched = _match_propagation_entry(
+                idx, f"python:builtins:0-0:{name}:external_symbol", amb,
+                is_resolved=False,
+            )
+            assert matched is not None, (
+                f"builtins.{name} stopped matching with its module hint"
+            )
+            assert matched.qualified_name == f"builtins.{name}"
+
+    def test_a_hintless_bare_call_is_refused(self, catalog) -> None:
+        idx = _build_callee_index(catalog.sinks_for_language("python"))
+        amb = catalog.ambiguous_names_for_language("python")
+        for name in self.NAMES:
+            for call_construct in (None, "function", "method"):
+                matched = _match_propagation_entry(
+                    idx, f"python:external:0-0:{name}:external_symbol", amb,
+                    call_construct=call_construct, is_resolved=False,
+                )
+                assert matched is None, (
+                    f"hint-less bare {name}() (call_construct="
+                    f"{call_construct!r}) matches "
+                    f"{matched.qualified_name if matched else None}"
+                )
+
+    def test_the_io_boundary_lookup_agrees(self) -> None:
+        cat = load_catalog("python")
+        assert cat is not None
+        for name in self.NAMES:
+            hit = cat.lookup_with_module(name, "builtins")
+            assert hit is not None and hit.module == "builtins", (
+                f"builtins.{name} unreachable through the io-boundary lookup"
+            )
+            for hint in (None, "external"):
+                assert cat.lookup_with_module(name, hint) is None, (
+                    f"hint-less {name}() classified as {hit.boundary}"
+                )
+

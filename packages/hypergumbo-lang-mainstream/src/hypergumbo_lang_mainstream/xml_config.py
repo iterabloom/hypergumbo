@@ -47,6 +47,7 @@ from hypergumbo_core.analyze.base import (
     sanitize_id_name_segment,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -339,6 +340,7 @@ def _process_maven_pom(
                     src=src_id,
                     dst=target_path,
                     edge_type="defines_target",
+                    evidence_type="build_target_main",
                     line=line,
                     confidence=1.0,
                     origin=PASS_ID,
@@ -564,6 +566,7 @@ class XmlAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()

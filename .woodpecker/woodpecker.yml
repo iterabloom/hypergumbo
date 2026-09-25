@@ -117,7 +117,7 @@ steps:
     commands:
       - pip install --upgrade pip
       - pip install "ruff~=0.15.0" "bandit~=1.9.3"
-      - ruff check packages/*/src/ packages/*/tests/
+      - ruff check packages/*/src/ packages/*/tests/ tests/
       - bandit -r packages/*/src/ -c pyproject.toml
 
   # ── whole-tree strict mypy ratchet (BLOCKING — WI-rokup/INV-zogud) ─────────
@@ -146,7 +146,7 @@ steps:
       - path: *code_paths
     commands:
       - pip install --upgrade pip
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev,tui]"
       - pip install "mypy~=2.1.0" "types-PyYAML~=6.0.12"
       - scripts/check-mypy-ratchet --mode=strict
 
@@ -186,7 +186,7 @@ steps:
     commands:
       - pip install --upgrade pip
       - pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev]"
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev]"
       - ./scripts/generate-schema --check
       - ./scripts/generate-architecture --check
       - ./scripts/generate-security-md --check
@@ -332,46 +332,42 @@ steps:
       - python3 -m pip install --upgrade pip setuptools wheel
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
 
-  # ── self-claim drift gate, per-PR arm (WI-ninoz / INV-zuhig) ───────────────
-  # Runs `hypergumbo verify-claims` on this tree and fails on any drift from
-  # docs/hypergumbo.claims.expected.json — which pins, per claim, the verdict
-  # PLUS the caveat kinds PLUS whether sanitizer-credited flows are zero or
-  # nonzero (a verdict staying green while its credited evidence collapses is
-  # the INV-zuhig vacuousness shape this gate exists to catch).
+  # ── self-claim drift gate: REMOVED FROM THIS PIPELINE (owner decision,
+  #    2026-08-30). It now runs ONLY on the twice-daily full-suite cron.
   #
-  # Path-scoped to the claim surface: catalogue/claims/dependency changes can
-  # move a verdict, so they pay the ~10-minute self-analysis per-PR; analyzer
-  # .py changes stay on the cron full-suite cadence (a deliberate scoping
-  # decision — gating every core PR on a self-analysis was judged too heavy).
+  # The history matters because this reverses a reversal. The gate was moved
+  # INTO this pipeline under INV-bobor, after a self-claim regression
+  # (runtime-cli-no-host-fs: confirmed_with_caveats -> violated) sat on green
+  # dev for 63 commits: the cron arm DETECTED it on 2026-08-19 and delivery
+  # failed, because a cron verdict is one bit of an aggregate that a sibling
+  # flake keeps red, on a commit that is not HEAD.
   #
-  # THIS pipeline is the one that gates merges (auto-pr polls only
-  # ci/woodpecker/pr/woodpecker — see the mypy step's history for what
-  # happens to gates that live anywhere else). The .github/workflows/ci.yml
-  # twin of this job is the dormant GHA port, not the enforcement point.
-  # Same install + grammar build as full-suite's gate arm so both arms
-  # analyze the same language set and cannot disagree on identical trees.
-  - name: self-claims-gate
-    image: python:3.11-bookworm
-    depends_on: [build-grammars]
-    when:
-      - path:
-          include:
-            - "docs/hypergumbo.claims.yaml"
-            - "docs/hypergumbo.claims.expected.json"
-            - "docs/hypergumbo-self-catalog/**"
-            - "docs/io-primitives-overlays/**"
-            - "**/io_primitives/**"
-            - "**/taint_sources/**"
-            - "**/taint_sinks/**"
-            - "**/taint_sanitizers/**"
-            - "**/pyproject.toml"
-            - "scripts/check-self-claims"
-            - "scripts/check-self-claims-drift"
-    commands:
-      - pip install --upgrade pip && pip install jsonschema
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
-      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
-      - PYTHON=python scripts/check-self-claims
+  # WHAT CHANGED, measured rather than re-argued:
+  #   * PRICE. That move was justified on the gate costing 3m49s and running
+  #     concurrently with a longer pytest step. It is now ~14 minutes and
+  #     finishes LAST, so it is the critical path of every code PR -- the
+  #     number the decision rested on has gone stale by ~3.7x.
+  #   * DELIVERY, one leg of three. `ci-debug cron-status` (INV-bozid
+  #     remedy (b)) now reads the latest cron verdict off whatever commit
+  #     carries it, so the ADDRESSING failure above is fixed.
+  #
+  # WHAT IS STILL TRUE: full-suite publishes ONE aggregate commit status for
+  # all six of its steps, so on GitHub a self-claim regression reads as
+  # "full-suite is red". WHAT IS NO LONGER TRUE (2026-09-03, INV-bozid, the
+  # MASKING half): attributing it needs no log fetch. `ci-debug cron-status`
+  # and `ci-debug status` render every step's own verdict beneath the
+  # aggregate (OK / FAIL / ERR / SKIP -- a pipeline that died inside the gate
+  # no longer reads as the gate passing), read off the Woodpecker pipeline
+  # API with the credentials in .env. A sibling sitting red therefore no
+  # longer hides this gate from the instrument. The per-gate workflow-file
+  # split (INV-bozid remedy (a), verified viable; it must reuse the EXISTING
+  # `full-suite` cron name because crons are configured in repo settings
+  # rather than here) remains the route if this gate ever needs its OWN
+  # GitHub check context, e.g. as a required check. It is not needed for
+  # readability.
+  #
+  # Detection is now bounded by the cron cadence (up to ~12h), not by one
+  # commit. tests/test_ci_self_claims_gate_scope.py pins what remains.
 
   # ── pytest + 100%-coverage-of-changed-files (smart-test manifest) ──────────
   # Faithful port of ci.yml's pytest job. No venv (the container IS the isolation)
@@ -395,7 +391,13 @@ steps:
       - apt-get update && apt-get install -y jq
       - pip install --upgrade pip
       - pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
+      # `-e packages/hypergumbo` is the UMBRELLA package that provides the
+      # top-level `hypergumbo` module, i.e. the thing `python -m hypergumbo`
+      # imports. full-suite.yml:94 and nightly.yml:68/95 all install it; this
+      # step was the only one that did not, so any PR whose manifest happened
+      # to select a test that shells out to `python -m hypergumbo` failed with
+      # "No module named hypergumbo" — and stayed invisible until one did.
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev,tui]" -e packages/hypergumbo
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - |
         set -e
@@ -460,6 +462,44 @@ steps:
           exit 1
         fi
 
+        # WI-fopuh: THE FILE ON DISK IS NOT NECESSARILY THE FILE THE PR COMMITTED.
+        # These steps share ONE workspace, and `smart-test` resolves its manifest
+        # path from its OWN location (`cd "$REPO_ROOT"`, then the literal ".ci"),
+        # never the caller's cwd. So any step that reaches it rewrites the
+        # checked-out manifest: `forge-arms` runs tests/test_autopr_*.py, those
+        # shell out to the real scripts/auto-pr, and auto-pr regenerates the
+        # manifest before pushing. That container installs pytest and nothing
+        # else, so the regen took smart-test's "no stable hypergumbo found"
+        # branch and wrote a FULL-SUITE manifest over the checked-out one. This
+        # step then announced "964 selected files" -- exactly the full-suite
+        # `find` count -- for PR #1107, whose committed manifest listed 75, and
+        # measured a five-line change against the whole tree. It cost five CI
+        # rounds, and the only evidence was a count with no traceable source.
+        #
+        # The writer is fixed (smart-test now refuses a foreign cwd). This is the
+        # reader: take the blob the PR COMMITTED, and disclose any disagreement.
+        # It DISCLOSES rather than fails -- measuring the committed artifact is
+        # the safety property, and turning an unexplained rewrite into a red PR
+        # is the recall-loss direction.
+        MANIFEST_SRC="$MANIFEST"
+        if COMMITTED_MANIFEST=$(git show "HEAD:$MANIFEST" 2>/dev/null) && [ -n "$COMMITTED_MANIFEST" ]; then
+          if [ "$COMMITTED_MANIFEST" != "$(cat "$MANIFEST")" ]; then
+            echo "⚠️  the workspace manifest is NOT the blob committed at HEAD — a step"
+            echo "    in this pipeline rewrote it (WI-fopuh). Measuring the PR against"
+            echo "    the COMMITTED one. What was on disk instead:"
+            sed -n '1,8p' "$MANIFEST" | sed 's/^/      /'
+          fi
+          MANIFEST_SRC="$(mktemp)"
+          printf '%s\n' "$COMMITTED_MANIFEST" > "$MANIFEST_SRC"
+        else
+          echo "ℹ️  cannot read HEAD:$MANIFEST — using the working-tree copy. That is"
+          echo "    a fallback, NOT a statement that the two agree."
+        fi
+        # The step used to report selection as a COUNT and nothing else, which is
+        # untraceable to a file. Say which manifest was read.
+        echo "=== manifest read by this step ==="
+        sed -n '1,8p' "$MANIFEST_SRC" | sed 's/^/  /'
+
         # WI-modur: the ONLY question that decides whether tests run is "did the
         # manifest select any?". This used to key on CHANGED **SOURCE** files
         # instead, which silently skipped the suite for every PR that touched no
@@ -468,7 +508,7 @@ steps:
         # Caught on the WI-fodad PR: its manifest carried 0 changed source files
         # and 1 selected test, and CI ran nothing. The two concerns were
         # conflated in one condition; they are separated below.
-        SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+        SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST_SRC" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
         if [ -z "$SELECTED_TESTS" ]; then
           echo "✅ manifest selects no tests — skipping pytest"; exit 0
         fi
@@ -480,7 +520,7 @@ steps:
         # failed, re-running it just fails again silently and this would size the
         # coverage gate off an empty set (WI-vilor).
         ACTUAL_SOURCE_FILES=$(echo "$CHANGED_IN_RANGE" | grep -E '^packages/.*/src/.*\.py$' | sort || true)
-        CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || true)
+        CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST_SRC" | grep -v '^#' | grep -v '^$' || true)
         # Trust the actual diff when the manifest is missing files (staged-before-run drift).
         for f in $ACTUAL_SOURCE_FILES; do
           echo "$CHANGED_SOURCE_FILES" | grep -qF "$f" || CHANGED_SOURCE_FILES="$ACTUAL_SOURCE_FILES"

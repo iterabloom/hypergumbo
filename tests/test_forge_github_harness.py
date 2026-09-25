@@ -28,6 +28,8 @@ These tests pin the guarantee itself rather than any single caller, because
 the failure mode is silent: an un-faked tool *works*, so nothing looks wrong.
 """
 
+# covers: tests/_forge_github_harness.py
+
 from __future__ import annotations
 
 import subprocess

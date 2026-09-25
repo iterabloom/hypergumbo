@@ -558,7 +558,7 @@ def is_hack_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("hack")
+@register_analyzer("hack", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_hack(repo_root: Path) -> AnalysisResult:
     """Analyze Hack files in the repository.
 

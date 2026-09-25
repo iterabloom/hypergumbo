@@ -28,6 +28,26 @@ url="$2"
 # guard against any more — origin is always it.
 
 while read -r local_ref local_sha remote_ref remote_sha; do
+    # ── Notes refs are exempt from everything below (INV-nihaz) ─────────────
+    # A commit on refs/notes/* is written by git itself, with the fixed subject
+    # "Notes added by 'git notes add'" and no author content. It CANNOT carry a
+    # Signed-off-by trailer — there is no way to add one — so the DCO check
+    # below can never pass on a notes ref, and `git push origin refs/notes/*`
+    # was unsatisfiable by construction for as long as this hook was installed.
+    # That is not a hypothetical: it blocked every notes push from 2026-01-22
+    # onward, 726 of them, and origin ended up with no refs/notes/* at all
+    # while AGENTS.md told readers to fetch it.
+    #
+    # The DCO certifies who authored a CONTRIBUTION. A notes commit is git's
+    # bookkeeping wrapper around a body that was already signed off on the
+    # original commit, so checking it is checking a signature on the envelope
+    # instead of the letter. Nothing else in this loop applies either: the
+    # protected-branch check strips refs/heads/ and is inert here, and the
+    # upstream workspace-file warning diffs paths a notes ref does not contain.
+    if [[ "$remote_ref" == refs/notes/* ]]; then
+        continue
+    fi
+
     # Extract the branch name from the remote ref (e.g., refs/heads/dev -> dev)
     branch="${remote_ref#refs/heads/}"
 

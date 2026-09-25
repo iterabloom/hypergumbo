@@ -1,0 +1,42 @@
+- op: create  # 99ff
+  at: '2026-09-24T09:45:48Z'  # 99ff
+  by: agent  # 99ff
+  actor: jgstern_agent  # 99ff
+  clock: 1  # 99ff
+  nonce: 99ff  # 99ff
+  data:  # 99ff
+    kind: work_item  # 99ff
+    title: "INV-midag residual: 29 analyzers define an enclosing-function lookup with no containment fixture and no corpus repo -- unverified, not clean (go looked clean on the corpus and had the defect)"  # 99ff
+    status: todo_hard  # 99ff
+    priority: 3  # 99ff
+    parent:  # 99ff
+    tags:  # 99ff
+    - analysis_quality  # 99ff
+    isbefore: []  # 99ff
+    duplicate_of: []  # 99ff
+    not_duplicate_of: []  # 99ff
+    pr_ref:  # 99ff
+    description: "RESIDUAL OF INV-midag, whose statement is general: every analyzer-origin calls edge with a line lies inside its src's span.\n\nINV-midag fixed and verified the analyzers its 26-repo measurement could see: kotlin, scala, swift, c, rust, ruby, csharp, haskell, javascript/typescript, and go. Go was clean on gin and logrus, but a fixture of `func init()` declared twice in one file showed the defect, so it was fixed too. java was verified clean with an overload fixture, and erlang/elixir by INV-mozas.\n\nThese analyzers also define an enclosing-function lookup, have NO repository in the measurement corpus, and have NO containment fixture. Their status is UNKNOWN, not clean:\n  lang-mainstream : groovy objc perl php powershell\n  lang-common     : dart elm fsharp glsl hlsl julia matlab nix r_lang scheme starlark wgsl\n  lang-extended1  : d_lang fennel fish gdscript gleam hack janet llvm_ir odin pascal solidity v_lang\n\nThe INV-midag gate (test_call_anchor_gate.py in each language package) lists every one of them as UNVERIFIED against this row. A new analyzer that defines an enclosing lookup and is not classified fails the gate.\n\nASKED, per language:\n1. Write a fixture with two same-named callables in one file, in the language's own natural shape: overloads, a redefinition, two classes, preprocessor alternatives, or multiple equations or clauses.\n2. Assert reach first, then containment.\n3. If it fails, key the lookup on position (core symbols_at / symbol_declared_by), after checking that the symbol span starts at the declaration node the walk reaches.\n4. Move the gate entry to VERIFIED."  # 99ff
+    fields: {}  # 99ff
+- op: discuss  # 9971
+  at: '2026-09-24T09:51:48Z'  # 9971
+  by: agent  # 9971
+  actor: jgstern_agent  # 9971
+  clock: 2  # 9971
+  nonce: '9971'  # 9971
+  message: "Correction: the gate files are test_call_anchor_gate.py (lang-mainstream), test_call_anchor_gate_common.py (lang-common) and test_call_anchor_gate_extended1.py (lang-extended1). Test basenames must be unique across packages. Of the 29 listed, go was fixed in the same change (see INV-midag), so 28 remain unverified... correction to that: go was never in this list. The list is 29 and all 29 remain unverified."  # 9971
+- op: update  # 731c
+  at: '2026-09-24T19:17:18Z'  # 731c
+  by: agent  # 731c
+  actor: jgstern_agent  # 731c
+  clock: 3  # 731c
+  nonce: 731c  # 731c
+  set:  # 731c
+    status: done  # 731c
+- op: discuss  # 72ef
+  at: '2026-09-24T19:17:18Z'  # 72ef
+  by: agent  # 72ef
+  actor: jgstern_agent  # 72ef
+  clock: 4  # 72ef
+  nonce: 72ef  # 72ef
+  message: "DONE, PR #1184 (merged 2026-09-24; commits 5b728475da + bcca947e76).\n\nAll 29 analyzers now have a same-named-callables fixture that asserts reach first, then containment. All 29 are VERIFIED in the three gate files (test_call_anchor_gate.py, _common, _extended1). No WI-mapor entry remains.\n\n13 OF THE 29 HAD THE DEFECT: groovy, objc, perl, powershell, fsharp, glsl, hlsl, julia, nix, r, d, fish, gdscript. Each keyed the lookup on the declaration's NAME. Each now keys on its POSITION (core symbols_at / symbol_declared_by over file_symbols()). The other 16 passed unchanged: php, dart, elm, matlab, scheme, starlark, wgsl, fennel, gleam, hack, janet, llvm_ir, odin, pascal, solidity, v.\n\nBEHAVIORAL EVIDENCE:\n- MUTATION: the new tests, run against a pinned dev worktree, fail for exactly those 13 (plus the nix file-function test below) and pass on the fix.\n- CORRECTION TO THIS ROW'S PREMISE, \"no corpus repo\": whole_bunch_of_repos has them; they were only outside INV-midag's 26. Each analyzer was run alone on 18 repos, pinned dev vs fix, calls edges diffed as sets. Out of span, dev -> fix:\n    d dmd 15126/104963 -> 0\n    objc ResearchKit 1807 -> 0, ReactiveObjC 42 -> 0\n    glsl whisper.cpp 589 -> 0, gpac 3 -> 0\n    groovy clover 449 -> 0\n    perl postgresql 22 -> 0, git 17 -> 0\n    r spark 53 -> 0\n    0 -> 0 on jenkins, emscripten, podman, vscode, mlflow, crun, conmon, loki, postgrest\n  Every move is out->in. There is no in->in relabel and no in->out move.\n- No corpus repo for julia, fish, gdscript or f# (qemu's .fs is Forth). Those rest on their fixtures.\n\nONE BEHAVIOUR CHANGE BEYOND THE ANCHOR (nix): a call inside a file's own top-level function, but outside any function-valued binding, had a src only when a binding inside shared the file's name. The walk now recognises the file function. postgrest 13 -> 159 call edges, loki 2 -> 5, and every old edge is unchanged.\n\nALSO REMOVED: perl's _file_package_names, which had no reader once the lookup went positional.\n\nSIDE FINDINGS, filed separately: julia self-call from each definition's signature; scheme/fennel/janet drop calls inside nested definitions; pascal emits no symbol for a `procedure TA.Run` method; nix emits one edge per curried application level.\nInstruments: ~/hypergumbo_lab_notebook/mapor_09242026/."  # 72ef

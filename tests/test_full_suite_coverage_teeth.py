@@ -18,6 +18,8 @@ distinguish coverage.py's "No data to report" (the affected slice didn't exercis
 a changed file — not a regression) from a real <100% failure, matching
 smart-test's gate.
 """
+
+# covers: .woodpecker/full-suite.yml, .github/workflows/ci.yml
 from __future__ import annotations
 
 import re

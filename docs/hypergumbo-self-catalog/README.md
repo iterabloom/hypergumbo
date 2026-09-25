@@ -20,20 +20,33 @@ the stdlib-only scope.
 
 ## Catalog layering, refresher
 
-There are three layers (per AGENTS.md "Catalog layering" section):
+There are FOUR layers. Layer 1b was added by ADR-0047 and is the one
+that makes "shipped" and "vouched for" different questions:
 
 1. **Built-in stdlib catalogs** at `packages/hypergumbo-core/src/hypergumbo_core/io_primitives/<lang>.yaml`.
-   Stdlib only. Hypergumbo-the-tool's responsibility, shipped to PyPI users.
+   Stdlib only, enforced for every language by the scope gate in
+   `test_catalogue_scope_gates.py`. Hypergumbo-the-tool's responsibility,
+   shipped to PyPI users, and rows it STANDS BEHIND.
+1b. **Shipped community overlays** at `io_primitives_overlays/*.yaml`.
+   Third-party rows hypergumbo distributes and discloses but does NOT
+   vouch for (ADR-0047 rulings 1/5/6). They load by DEFAULT, carry
+   `provenance: community` and a dated `retrieved:`, are stamped
+   `unvouched` at load — so they can add findings but never license an
+   all-clear — and every run that loads one says so on stderr.
+   `--no-default-overlays` turns them off.
 2. **Project-local catalogs supplied by users.** The `--taint-sources` /
    `--taint-sinks` / `--taint-sanitizers` CLI flags + `extra_catalogs:`
    key in claims YAML. Each user can declare per-project rules for the
-   libraries THEY use.
+   libraries THEY use. Rows the USER stands behind.
 3. **Hypergumbo's OWN project-local catalog (this directory).** A specific
    *use* of layer 2's customization point, targeting this repo's audit.
 
 The firewall: built-in (layer 1) is hypergumbo-the-tool's ongoing
 commitment. This directory (layer 3) is one project (hypergumbo itself)
-using the layer-2 mechanism. Do NOT promote entries here into layer 1.
+using the layer-2 mechanism. Do NOT promote entries here into layer 1 —
+and note that layer 1b is NOT the escape hatch for that rule either: it
+is for widely-used third-party libraries, not for one project's own
+dependencies.
 
 ## Contents
 

@@ -94,7 +94,7 @@ from typing import Iterator
 from ..analyze.base import make_file_id, make_file_stable_id, make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("websocket-linker")
@@ -800,7 +800,9 @@ def link_websocket(
         files_with_patterns[ep.file_path] = ep.pattern_type
 
     # Create file symbols for all files with WebSocket patterns
-    # These enable slice traversal of websocket_message edges.
+    # These enable slice traversal of the file-sourced edges this linker
+    # emits: event_publishes (meta.channel_kind="websocket"), references
+    # (meta.ref_construct="websocket_endpoint") and calls (meta.protocol="ws").
     #
     # INV-ronuf: skip synthesis when the canonical id is already present in
     # ``existing_ids`` (i.e., an analyzer or the orchestrator's dangling-
@@ -896,7 +898,9 @@ def link_websocket(
                                 send_pat.pattern_type, declared_python_deps
                             ),
                         },
-                        derived_from=[_make_file_id(_language_for_file(send_pat.file_path, send_pat.pattern_type), send_pat.file_path), _make_file_id(_language_for_file(recv_pat.file_path, recv_pat.pattern_type), recv_pat.file_path)],
+                        # derived-from consumed-none: a file scan; both file ids are computed from
+                        #   paths, not read
+                        derived_from=[],
                     )
                     edges.append(edge)
 
@@ -934,7 +938,9 @@ def link_websocket(
                 "ref_construct": "websocket_endpoint",
                 "framework_dispatch": _resolve_ws_framework(ep.pattern_type, declared_python_deps),
             },
-            derived_from=[_make_file_id(ep_language, ep.file_path), ep_id],
+            # derived-from consumed-none: a file scan; the endpoint node is minted and the file id
+            #   computed
+            derived_from=[],
         ))
 
     # WI-zolot: cross-language client↔server bridge.
@@ -996,7 +1002,9 @@ def link_websocket(
                             server_ep.pattern_type, declared_python_deps
                         ),
                     },
-                    derived_from=[_make_file_id(client_lang, client_ep.file_path), server_ep_id],
+                    # derived-from consumed-none: a file scan; the server endpoint is minted and the
+                    #   file id computed
+                    derived_from=[],
                 ))
 
     run.files_analyzed = files_analyzed
@@ -1022,6 +1030,7 @@ def link_websocket(
     # Socket.io (JS/TS), Django Channels (python), Phoenix (elixir),
     # Spring WebFlux (java), Action Cable (ruby), Gorilla (go), SignalR (csharp).
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir"]],
+    activation=always_on_unreviewed(),
 )
 def websocket_linker(ctx: LinkerContext) -> LinkerResult:
     """WebSocket linker for registry-based dispatch.

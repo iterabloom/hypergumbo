@@ -1,0 +1,22 @@
+- op: create  # a201
+  at: '2026-09-02T12:07:20Z'  # a201
+  by: agent  # a201
+  actor: jgstern_agent  # a201
+  clock: 1  # a201
+  nonce: a201  # a201
+  data:  # a201
+    kind: work_item  # a201
+    title: "python: a LAMBDA parameter escapes the LEGB shadow, so a lambda param shadowing a builtin could mint a fabricated builtin"  # a201
+    status: todo_hard  # a201
+    priority: 3  # a201
+    parent:  # a201
+    tags:  # a201
+    - taint  # a201
+    - python  # a201
+    - analyzer  # a201
+    isbefore: []  # a201
+    duplicate_of: []  # a201
+    not_duplicate_of: []  # a201
+    pr_ref:  # a201
+    description: "FOUND 2026-09-02 by reading INV-foluz's emitted rows back against source (PR #711).\n\nTHE FACT. py.py's bare-name emission arms refuse a callee bound anywhere in the\nLEGB chain, using the union of Scope.local_names over ScopeStack.frames. Scope's\nown docstring says \"One enclosing FUNCTION frame\", and the chain is built from\nast.FunctionDef nodes -- ast.Lambda is a different node type and contributes no\nframe. So a LAMBDA PARAMETER is invisible to the guard.\n\nTHE MEASURED SITE, and it is the only one. After the LEGB fix, hypergumbo-core's\n88,642 edges contain exactly ONE `external` bare-name row, and it is this shape:\n\n    packages/hypergumbo-core/tests/test_finalize.py:606\n    (lambda ctx, _o=orig, _n=name: (calls.append(_n), _o(ctx))[1])\n\n`_o` is a lambda parameter with a default; the call `_o(ctx)` emits\npython:external:0-0:_o:unresolved, asserting an external symbol for a value the\nlambda was handed. pretix's 102,927 edges contain zero instances.\n\nSEVERITY IS LOW BUT THE DIRECTION IS THE DANGEROUS ONE. Emitting a spurious\n`external` row is mild. The same hole in the BUILTINS arm is not: a lambda\nparameter shadowing a builtin --\n\n    sorted(xs, key=lambda x, len=my_len: len(x))\n\n-- would mint python:builtins:0-0:len, a FABRICATED BUILTIN, which is precisely\nthe StreamWriter defect the guard exists to prevent. Unmeasured whether that\nshape occurs in the corpus; it was not searched for.\n\nFIX SHAPE. Either give ast.Lambda a Scope frame in _pyscope (the honest fix, and\nit would also serve any other consumer of the LEGB chain), or union the lambda's\nown arg names at the call site. Prefer the first -- the second is a second home\nfor the same fact, which is the drift this file keeps rediscovering."  # a201
+    fields: {}  # a201

@@ -25,10 +25,11 @@ Action gating
 Why ExplicitStringStrategy
 --------------------------
 Laravel view names are literal strings the developer types, not naming
-conventions. Pairs with Spring (WI-hogik), the other ExplicitStringStrategy
-consumer; the ``string_to_candidates`` hook is what differs between the
-two — Laravel maps dots to slashes and probes one root with two extensions,
-Spring probes multiple roots with multiple extensions per root.
+conventions. Pairs with Spring (WI-hogik) and Django's
+``DjangoExplicitStringStrategy``, the other ExplicitStringStrategy consumers;
+the ``string_to_candidates`` hook is what differs between them — Laravel maps
+dots to slashes and probes one root with two extensions, Spring probes
+multiple roots with multiple extensions per root.
 """
 
 from __future__ import annotations
@@ -41,16 +42,14 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     import tree_sitter
 
 from ..ir import Symbol
-from ._transitive_bases import (
-    build_inheritance_index,
-    collect_transitive_base_names,
-)
 from ._view_template_core import (
     ExplicitStringStrategy,
+    StringSite,
     TemplateCandidate,
     link_via_strategies,
 )
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_source_bytes
 
 # Bases that mark a class as a Laravel controller (transitive walk).
 _CONTROLLER_BASES = frozenset(
@@ -101,7 +100,7 @@ def _parse_php_source(view_path: Path) -> Optional["tree_sitter.Tree"]:
     if parser is None:  # pragma: no cover - dep import failure
         return None
     try:
-        source_bytes = view_path.read_bytes()
+        source_bytes = read_source_bytes(view_path)
     except OSError:  # pragma: no cover — missing-file path tested at the caller
         return None
     return parser.parse(source_bytes)
@@ -215,21 +214,25 @@ class LaravelStrategy(ExplicitStringStrategy):
 
     def find_string_sites(
         self, ctx: LinkerContext
-    ) -> Iterator[Tuple[Symbol, str, int, str]]:
-        inheritance_index = build_inheritance_index(ctx.edges)
-        symbol_by_id = {sym.id: sym for sym in ctx.symbols}
-
+    ) -> Iterator[StringSite]:
         controller_classes: dict[str, Symbol] = {}
+        # INV-rukor: the controller and the ancestors/edges its base came from.
+        controller_evidence: dict[str, Tuple[str, ...]] = {}
         for sym in ctx.symbols:
             if sym.kind != "class" or sym.language != "php":
                 continue
             if not _is_controller_path(sym.path):
                 continue
-            chain = collect_transitive_base_names(
-                sym, symbol_by_id, inheritance_index
-            )
-            if any(base in _CONTROLLER_BASES for base in chain):
+            via_ids = [
+                via for base, via in ctx.base_name_origins(sym)
+                if base in _CONTROLLER_BASES
+            ]
+            if via_ids:
                 controller_classes[sym.name] = sym
+                ids: list[str] = [sym.id]
+                for via in via_ids:
+                    ids.extend(x for x in via if x not in ids)
+                controller_evidence[sym.name] = tuple(ids)
 
         if not controller_classes:
             return
@@ -251,7 +254,7 @@ class LaravelStrategy(ExplicitStringStrategy):
             if tree is None:
                 continue
             try:
-                source_bytes = view_path.read_bytes()
+                source_bytes = read_source_bytes(view_path)
             except OSError:  # pragma: no cover — parse just succeeded so file exists
                 continue
             for method in methods:
@@ -267,7 +270,10 @@ class LaravelStrategy(ExplicitStringStrategy):
                 for pattern, view_name, lineno in _walk_view_calls_in_method(
                     method_node, source_bytes
                 ):
-                    yield method, view_name, lineno, pattern
+                    yield StringSite(
+                        method, view_name, lineno, pattern,
+                        controller_evidence[method.name.rsplit(".", 1)[0]],
+                    )
 
     def string_to_candidates(
         self, string_value: str, action_symbol: Symbol, ctx: LinkerContext

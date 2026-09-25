@@ -1,0 +1,23 @@
+- op: create  # 9b84
+  at: '2026-09-07T02:32:24Z'  # 9b84
+  by: agent  # 9b84
+  actor: jgstern_agent  # 9b84
+  clock: 1  # 9b84
+  nonce: 9b84  # 9b84
+  data:  # 9b84
+    kind: work_item  # 9b84
+    title: "QuerySet evaluation shapes py.py does not represent (__len__/__bool__, yield from, non-first builtin args, a QuerySet handed to another scope): disclosed by db_compose's shadow, not minted -- re-price against measurement 0014's D class"  # 9b84
+    status: todo_hard  # 9b84
+    priority: 3  # 9b84
+    parent:  # 9b84
+    tags:  # 9b84
+    - taint  # 9b84
+    - python  # 9b84
+    - analyzer  # 9b84
+    - receiver_typing  # 9b84
+    isbefore: []  # 9b84
+    duplicate_of: []  # 9b84
+    not_duplicate_of: []  # 9b84
+    pr_ref:  # 9b84
+    description: "FILED by WI-fasap (2026-09-07): the QuerySet evaluation shapes py.py does NOT\nrepresent, so their reads are DISCLOSED by db_compose's shadow over db_read\nrather than minted as untrusted_input sources.\n\nWI-fasap gave the implicit evaluation of a lazy Django QuerySet a call site --\ndjango.db.models.__iter__ at `for` / `async for` / a comprehension / the\nmaterialising builtins (list, tuple, set, frozenset, sorted, dict, enumerate;\nfirst positional argument; name not rebound), __getitem__ at an index\nsubscript, and type propagation through a slice. Deliberately outside that\nset, each with its reason, and to be re-priced against measurement 0014's\nread-back (the X and D classes):\n\n  __len__ / __bool__   `len(qs)`, `if qs:`, `bool(qs)` -- a scalar the 0001\n                       tie-break calls a branch condition; count()/exists()\n                       carry it where a program spells it as a call.\n  yield from qs, *qs   rare on the corpus; unmeasured.\n  zip/map/iter/any/all/min/max/sum(qs), and a QuerySet in a NON-first argument\n                       of the covered builtins -- unmeasured.\n  A QuerySet handed to ANOTHER SCOPE: `return qs`, `self.fields[...].queryset\n                       = qs`, `Paginator(qs)`, `serializer(qs, many=True)`,\n                       template context. This is the genuinely DEFERRED class\n                       -- the read happens where the analyzer has no typed\n                       receiver -- and it is the case the shadow exists for.\n                       Representing it needs function-return / attribute\n                       typing (INV-linub L3 class; candidate 2's related_name\n                       index is the sibling need).\n\nRE-OPEN TRIGGER: measurement 0014's read-back counts the vanished situations\nwhose evaluation is one of these shapes (class X = an in-scope shape outside\nthe declared set; class D = handed to another scope). If X-class TP+useful\nsituations are non-zero, the cheap shapes above are added to\nDJANGO_ORM_EVALUATING_BUILTINS / the walker with a test per shape; if D-class\ndominates, this item folds into the receiver-typing arc rather than growing\nthe builtin list."  # 9b84
+    fields: {}  # 9b84

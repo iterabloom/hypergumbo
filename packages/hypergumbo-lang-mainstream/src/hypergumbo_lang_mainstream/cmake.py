@@ -43,6 +43,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -388,10 +389,10 @@ class CMakeAnalyzer(TreeSitterAnalyzer):
 
     Uses tree-sitter-cmake to parse CMakeLists.txt and *.cmake files.
     Extracts projects, library/executable targets, functions, macros,
-    packages, subdirectories, and target_link_libraries edges.
+    packages, subdirectories, and ``links`` edges from target_link_libraries.
 
     Overrides ``analyze`` because CMake uses a single-pass approach: both
-    symbols and edges (target_link_libraries) are extracted together since
+    symbols and ``links`` edges (target_link_libraries) are extracted together since
     target link references need the target registry built during the same pass.
     """
 
@@ -428,6 +429,7 @@ class CMakeAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()

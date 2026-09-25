@@ -2,6 +2,8 @@
 """Tests for the shared transitive-base-name helper (WI-halat)."""
 from __future__ import annotations
 
+from typing import ClassVar
+
 from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers._transitive_bases import (
     build_inheritance_index,
@@ -359,3 +361,124 @@ class TestBuildInheritanceIndexEdgeTypesKwarg:
         edges = [_edge(a, b, "extends"), _edge(a, b, "implements")]
         index = build_inheritance_index(edges, edge_types=())
         assert a.id not in index
+
+
+class TestTransitiveBaseProvenance:
+    """INV-rukor: the walk keeps WHICH records it read, not just the names.
+
+    A framework-dispatch edge on ``MyOp`` whose framework base is declared on an
+    in-tree ancestor exists BECAUSE of that ancestor and the inheritance edges
+    that reach it; ``derived_from`` must be able to name them.
+    """
+
+    def test_edge_index_keeps_edge_ids(self) -> None:
+        from hypergumbo_core.linkers._transitive_bases import (
+            build_inheritance_edge_index,
+        )
+
+        a, b = _cls("A"), _cls("B", span=(10, 15))
+        e = _edge(a, b)
+        assert build_inheritance_edge_index([e, _edge(a, b, "calls")]) == {
+            a.id: [(b.id, e.id)],
+        }
+
+    def test_own_entries_carry_no_provenance(self) -> None:
+        from hypergumbo_core.linkers._transitive_bases import (
+            collect_transitive_base_origins,
+        )
+
+        a = _cls("A", base_classes=["BaseOperator"])
+        assert collect_transitive_base_origins(a, {a.id: a}, {}) == [
+            ("BaseOperator", ()),
+        ]
+
+    def test_ancestor_entries_name_the_path_and_the_owner(self) -> None:
+        from hypergumbo_core.linkers._transitive_bases import (
+            build_inheritance_edge_index,
+            collect_transitive_base_origins,
+        )
+
+        top = _cls("Top", span=(40, 45), base_classes=["models.Model"])
+        mid = _cls("Mid", span=(20, 25), base_classes=["Top"])
+        leaf = _cls("Leaf", base_classes=["Mid"])
+        e1, e2 = _edge(leaf, mid), _edge(mid, top)
+        index = build_inheritance_edge_index([e1, e2])
+        by_id = {s.id: s for s in (top, mid, leaf)}
+        assert collect_transitive_base_origins(leaf, by_id, index) == [
+            ("Mid", ()),
+            ("Top", (e1.id, mid.id)),
+            ("models.Model", (e1.id, e2.id, top.id)),
+        ]
+
+    def test_names_only_walk_is_unchanged(self) -> None:
+        """The provenance walk and the names walk visit the same records."""
+        from hypergumbo_core.linkers._transitive_bases import (
+            build_inheritance_edge_index,
+            collect_transitive_base_origins,
+        )
+
+        top = _cls("Top", span=(40, 45), base_classes=["models.Model"])
+        leaf = _cls("Leaf", base_classes=["Top"])
+        edges = [_edge(leaf, top), _edge(top, leaf)]  # a cycle
+        by_id = {s.id: s for s in (top, leaf)}
+        names = collect_transitive_base_names(
+            leaf, by_id, build_inheritance_index(edges),
+        )
+        origins = collect_transitive_base_origins(
+            leaf, by_id, build_inheritance_edge_index(edges),
+        )
+        assert [raw for raw, _ in origins] == names
+
+
+class TestMatchFrameworkBases:
+    """INV-rukor: one matcher for the table-driven framework-dispatch linkers,
+    returning per-METHOD provenance so each emitted edge names what it used."""
+
+    _TABLE: ClassVar[dict[str, tuple[str, ...]]] = {"Model": ("save", "delete"), "View": ("get",)}
+
+    def _match(self, symbols, edges, **kw):
+        from hypergumbo_core.linkers._transitive_bases import match_framework_bases
+
+        return match_framework_bases(
+            symbols, edges, self._TABLE,
+            short_name=lambda raw: raw.rsplit(".", 1)[-1],
+            fqn_prefixes=("django.",), **kw,
+        )
+
+    def test_direct_base_has_empty_provenance(self) -> None:
+        c = _cls("User", base_classes=["Model"])
+        ((sym, methods, fallback),) = self._match([c], [])
+        assert sym is c and fallback is False
+        assert methods == {"save": (), "delete": ()}
+
+    def test_inherited_base_names_the_ancestor_and_edge(self) -> None:
+        base = _cls("LoggedModel", span=(20, 30), base_classes=["models.Model"])
+        c = _cls("Order", base_classes=["LoggedModel"])
+        e = _edge(c, base)
+        by_sym = {s.name: m for s, m, _ in self._match([base, c], [e])}
+        assert by_sym["Order"]["save"] == (e.id, base.id)
+        assert by_sym["LoggedModel"]["save"] == ()
+
+    def test_provenance_is_per_method_and_deduplicated(self) -> None:
+        base = _cls("B", span=(20, 30), base_classes=["Model", "django.Model"])
+        c = _cls("C", base_classes=["B", "View"])
+        e = _edge(c, base)
+        by_sym = {s.name: m for s, m, _ in self._match([base, c], [e])}
+        assert by_sym["C"]["get"] == ()
+        assert by_sym["C"]["save"] == (e.id, base.id)
+
+    def test_language_filter_and_fallback(self) -> None:
+        c = _cls("User", base_classes=["Model"])
+        assert self._match([c], [], language="java") == []
+        ((_, _, fallback),) = self._match(
+            [c], [], in_tree_collisions=frozenset({"Model"}),
+        )
+        assert fallback is True
+
+    def test_non_class_and_baseless_symbols_are_skipped(self) -> None:
+        fn = Symbol(
+            id="python:app.py:1-2:f:function", name="f", kind="function",
+            language="python", path="app.py", span=Span(1, 2, 0, 0),
+            meta={"base_classes": ["Model"]},
+        )
+        assert self._match([fn, _cls("Bare")], []) == []

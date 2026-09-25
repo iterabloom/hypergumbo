@@ -1,0 +1,45 @@
+- op: create  # 165c
+  at: '2026-09-10T22:10:19Z'  # 165c
+  by: agent  # 165c
+  actor: jgstern_agent  # 165c
+  clock: 1  # 165c
+  nonce: 165c  # 165c
+  data:  # 165c
+    kind: work_item  # 165c
+    title: "javascript callback registrations emit  where python emits , so EVERY callback-parameter taint source is inert — addEventListener classifies as net_recv and yields zero findings while both controls fire"  # 165c
+    status: todo_hard  # 165c
+    priority: 2  # 165c
+    parent:  # 165c
+    tags:  # 165c
+    - taint  # 165c
+    - javascript  # 165c
+    - analyzer  # 165c
+    isbefore: []  # 165c
+    duplicate_of: []  # 165c
+    not_duplicate_of: []  # 165c
+    pr_ref:  # 165c
+    description: "Every callback-registration taint source in javascript is INERT, including the\nspellings that already classify correctly. The classification is fine; the WALK\ncannot enter the handler.\n\nMEASURED 2026-09-10 (record: ~/hypergumbo_lab_notebook/dosuh_js_09102026/), found\nwhile answering WI-dosuh's gating question.\n\n  io-boundaries:  net_recv, 2 chains on WebSocket.addEventListener  -- correct\n  verify-claims:  untrusted-input-no-subprocess violated,\n                  evidence_count 2, flow_origins {\"ipc_recv\": 2}\n                  -- ZERO from net_recv, while BOTH controls fire, including the\n                  control placed INSIDE the same arrow function\n\nTHE MECHANISM. The analyzer emits a `references` edge from the enclosing function\nto the callback symbol:\n\n    references  viaAddEventListener:function -> _cb_addEventListener@33:function\n    calls       _cb_addEventListener@33:function -> child_process:0-0:exec\n\n`TAINT_CALL_EDGE_TYPES` is {calls, dispatches_to, instantiates, module_attr_ref}.\n`references` is absent, so by L5 -- the walk advances only along VALUE-CARRYING\nedges -- the walk never enters the handler. The source is attributed to the\nENCLOSING function, the sink lives in the CALLBACK, and nothing value-carrying\njoins them.\n\nTHE SIBLING LANGUAGE ALREADY SOLVED THIS. python's `argparse_dispatch` emits\n`dispatches_to` from the ENCLOSING FUNCTION of a `set_defaults(func=cmd_x)`\nregistration to `cmd_x`. INV-zuhig put `dispatches_to` in TAINT_CALL_EDGE_TYPES\nfor exactly this reason -- taint.py's own words: \"a framework dispatcher really\ndoes hand data to the handler it invokes ... without it every framework-dispatched\nhandler was unmintable and 18 self-proof confirms were vacuous\". javascript emits\n`references` where python emits `dispatches_to`.\n\nSCOPE -- ENUMERATE ROUTES, NOT MEMBERS. This is not a WebSocket question. The same\nshape covers every js registration that hands a peer-controlled value to a\ncallback: addEventListener on any catalogued receiver, `process.on('message', h)`\n(ipc_recv, newly reachable since WI-kikar), server request handlers, stream\n`.on('data', h)`. Before fixing, enumerate which registrations exist and which\nargument position is the handler; do NOT special-case addEventListener.\n\nTHE DIRECTION QUESTION THAT MUST BE ANSWERED FIRST, because this fix is\nEXPANSIVE. INV-putug narrowed `dispatches_to` after finding that an edge out of a\nTYPE node is reachability rather than dataflow, and that reading it as dataflow\nproduced 20 of 47 spurious situations on pretix. A registration edge out of a\nFUNCTION node is the argparse shape, which INV-zuhig ruled DOES carry a value --\nbut that must be measured on the js corpus both ways (findings added AND\nprecision on them), not assumed from the python precedent.\n\nRELATED: WI-dosuh (emit the edge so `ws.onmessage = h` classifies) is the\nCLASSIFICATION half and is correct-but-inert on its own; this item is the half\nthat would make either spelling produce a finding."  # 165c
+    fields: {}  # 165c
+- op: update  # a23b
+  at: '2026-09-10T22:10:37Z'  # a23b
+  by: agent  # a23b
+  actor: jgstern_agent  # a23b
+  clock: 2  # a23b
+  nonce: a23b  # a23b
+  set:  # a23b
+    title: "javascript callback registrations emit a references edge where python emits dispatches_to, so EVERY callback-parameter taint source is inert — addEventListener classifies as net_recv and yields zero findings while both controls fire"  # a23b
+- op: update  # af72
+  at: '2026-09-15T04:41:03Z'  # af72
+  by: agent  # af72
+  actor: jgstern_agent  # af72
+  clock: 3  # af72
+  nonce: af72  # af72
+  set:  # af72
+    status: done  # af72
+- op: discuss  # 0f6e
+  at: '2026-09-15T04:41:04Z'  # 0f6e
+  by: agent  # 0f6e
+  actor: jgstern_agent  # 0f6e
+  clock: 4  # 0f6e
+  nonce: 0f6e  # 0f6e
+  message: "DONE in PR #967 (1c37488151). Behavioural evidence, not a proxy: the filed\nrepro was re-run at tip on a seven-arm fixture, A/B on identical survey\nartifacts, and verify-claims moved evidence_count 2 -> 7 on\nuntrusted-input-no-subprocess with flow_origins gaining net_recv 4. The four\ncall-shaped registration routes now produce findings (addEventListener anon\narrow, addEventListener named handler, http.createServer, process.on).\n\nONE OF THIS ITEM'S OWN PREMISES IS FALSE, and the counterexample already had a\ntest in the tree (test_js_ts_handler_assignment.py). The item says EVERY\njavascript callback-parameter source is inert. An assignment RHS written INLINE\nis minted no symbol, so the handler body is attributed to the ENCLOSING\nfunction, source and sink land on one node, and\nws.onmessage = function (ev) { exec('ls ' + ev.data); } verified violated /\nnet_recv BEFORE this change. Confirmed by re-running that arm with the new\npredicate disabled rather than by reading the test: evidence_count 1,\nflow_origins net_recv 1, on a single-node path crossing no registration edge.\n\nSO THE INVARIANT IS NOT \"REGISTRATION\" BUT \"THE HANDLER OWNS A SYMBOL\". Three\nregimes, not one: handler owns a symbol and a references edge reaches it (was\ninert, this fixes it); inline assignment RHS collapses into the enclosing\nfunction (always worked); named identifier assigned to a property has NO edge of\nany type to the handler (still inert -- WI-vubal, which composes with this).\n\nTHE DIRECTION QUESTION THIS ITEM SAID MUST BE ANSWERED FIRST, answered. The edge\ntype is the ONLY blocker, and that needed measuring because \"the walk cannot\nenter the handler\" reads identically if the engine simply does not credit a\ncallback PARAMETER. Two difference arms: a javascript arm reached by a plain\ncalls edge and passed NOTHING tainted still fires, so structural propagation is\nfunction-level and coarse; and the python argparse dispatches_to parity arm\nfires on the identical shape.\n\nTHE FIX IS NOT EXPANSIVE, contrary to this item's framing. Measured on eight\njavascript repositories (hls.js, apollo-server, Tone.js, nest, dash.js, nuclear,\nkoel, plausible), A/B on identical survey artifacts: 78 -> 80 findings, one\nverdict inconclusive -> violated, NONE removed. Of the two added, one is a true\npositive (hls.js scripts/foldersize.js: process.argv[2] reaching console.log\nthrough an fs.readdir callback and a forEach callback) and one is a false\npositive from pre-existing function-level granularity, where a 674-line jest\ndescribe callback counts as one function. The small number is because the\ncatalogue's javascript receive surface is stdlib-only -- express/fastify/koa\nwere removed under the strict-stdlib rule -- so the corpus barely exercises the\ncapability the fixture proves.\n\nSHIPPED AS A PREDICATE, NOT A SET MEMBER. references is overloaded: registration,\nast_type_ref (TypeScript types), object_field_reference, middleware chain.\nAdmitting the type wholesale would make a TYPE reference carry dataflow, the\nINV-putug class. NOT monotone-additive: _register_sanitizer_callers asks the same\npredicate, so arr.map(escapeHtml) now installs a barrier, and a barrier can\ndelete a flow.\n\nRecord: scratchpad nisud fixtures js/js2/js3 + corpus A/B."  # 0f6e

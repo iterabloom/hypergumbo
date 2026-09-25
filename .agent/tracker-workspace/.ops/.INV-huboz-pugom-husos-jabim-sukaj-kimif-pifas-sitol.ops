@@ -1,0 +1,56 @@
+- op: create  # 4579
+  at: '2026-09-19T07:24:41Z'  # 4579
+  by: agent  # 4579
+  actor: jgstern_agent  # 4579
+  clock: 1  # 4579
+  nonce: '4579'  # 4579
+  data:  # 4579
+    kind: invariant  # 4579
+    title: "Merge pass: an incumbent's None wins arbitration over a partner's concrete value (is_exported, 41 of 148 on aardvark-dns)"  # 4579
+    status: violated  # 4579
+    priority: 2  # 4579
+    parent:  # 4579
+    tags:  # 4579
+    - adr_0057  # 4579
+    - merge_pass  # 4579
+    isbefore: []  # 4579
+    duplicate_of: []  # 4579
+    not_duplicate_of: []  # 4579
+    pr_ref:  # 4579
+    description: "The merge pass (ADR-0057 §4, `analyze/merge_producers.arbitrate`) treats an incumbent's `None` as a candidate value: on the recorded aardvark-dns two-arm fixture, `is_exported` is `None` on the tree-sitter record and `False` on the rust-analyzer record for 41 of 148 paired declarations (16 methods, 12 fields, 5 structs, 3 functions, 3 variables, 1 enum, 1 trait), and incumbent-first precedence carries the `None` — `attribution.is_exported = [rust]`, `alternatives.is_exported = [{value: false, origin: [rust_analyzer]}]`. Measured by `hypergumbo backend-agreement` (docs/audits/0019, row `is_exported`: 107 agree / 41 disagree, shape `null ← false x41`).\n\nInvariant: an absent value is not a candidate. Precedence chooses among values a producer actually supplied; a producer that supplied nothing for an attribute abstains, and the other's concrete value is carried with attribution naming it alone (the way `_FILL_WHEN_INCUMBENT_EMPTY` already treats display_label / cyclomatic_complexity / line_span). Fix belongs in `arbitrate` for every TRACKED_ATTRIBUTE, not a per-attribute exception in the §5 table — the ADR's own absent-versus-empty rule. After the fix the 0019 row should read 148 agree-or-one-sided / 0 disagree and the table regenerates via scripts/regenerate-backend-agreement-table; the fixture constant AARDVARK_DNS_ATTRIBUTE_AGREEMENT[\"is_exported\"] moves with it."  # 4579
+    fields:  # 4579
+      statement: "An absent value is not a candidate: the merge pass's arbitration chooses among values producers actually supplied, and a producer that supplied None for an attribute abstains, so the partner's concrete value is carried with attribution naming it alone."  # 4579
+      root_cause: "merge_producers.arbitrate admits None as a candidate for every TRACKED_ATTRIBUTE, so incumbent-first precedence carries the incumbent's None over the partner's concrete value; only _FILL_WHEN_INCUMBENT_EMPTY attributes get the fill-when-empty treatment."  # 4579
+- op: update  # e33e
+  at: '2026-09-19T17:58:53Z'  # e33e
+  by: agent  # e33e
+  actor: jgstern_agent  # e33e
+  clock: 2  # e33e
+  nonce: e33e  # e33e
+  set:  # e33e
+    title: "Symbol.is_exported's bool default makes 'not observed' indistinguishable from 'observed false', so a non-computing producer contributes a phantom arbitration candidate"  # e33e
+    fields:  # e33e
+      statement: "A producer contributes a candidate for an attribute only when it OBSERVED that attribute. A field whose dataclass default is a concrete value (Symbol.is_exported: bool = False) cannot express abstention, so a producer that never computes it is indistinguishable from one that measured the default."  # e33e
+      root_cause: "_empty() recognises only None/''/[] as absent, and is_exported defaults to False rather than None, so the SCIP arm — which assigns is_exported nowhere — contributes False as an observed candidate on all 169 records; the fix is a positive observed-or-not claim, not a change to arbitrate (which correctly skips empties)."  # e33e
+- op: discuss  # 43de
+  at: '2026-09-19T17:59:35Z'  # 43de
+  by: agent  # 43de
+  actor: jgstern_agent  # 43de
+  clock: 3  # 43de
+  nonce: 43de  # 43de
+  message: "CORRECTION 2026-09-19, same day: THIS ROW AS FILED IS REFUTED, and the refutation is positive evidence read in the code and on the fixture, not a non-reproduction.\n\nWHAT I FILED: \"the incumbent's None wins arbitration over a partner's concrete value; arbitrate admits None as a candidate for every TRACKED_ATTRIBUTE.\"\n\nWHAT THE CODE DOES: `merge_producers._candidates` already skips empties before arbitration — `if _empty(value): continue  # not observed by this producer: no entry (§1)`, where `_empty(v) = v is None or v == \"\" or v == []`. An absent value is ALREADY not a candidate. §1 was implemented correctly in WI-binis.\n\nWHAT THE 41 RECORDS ACTUALLY ARE, measured on the committed aardvark-dns fixture through the merge pass: the tree-sitter arm holds is_exported=True on 41 of 148 paired records and False on the other 107; the SCIP arm holds False on all 169. So the 41 are TWO CONCRETE BOOLEANS in conflict (True vs False), and incumbent-first carried True — exactly what §4/§5 prescribe. In-memory after the merge: carried True x41, alternative False x41, attribution ('rust',) x41. There is no None anywhere in this attribute.\n\nWHY I READ IT WRONG, and it is my instrument, not the pass (LIVE.md rules 2, 4, 5): `backend_agreement` renders a disagreement's carried value with `_shape(node.get(attribute))`. `Symbol.to_dict()` serialises is_exported NESTED, under `supply_chain`, and it is the ONLY one of the ten TRACKED_ATTRIBUTES that is not a top-level key. So `node.get(\"is_exported\")` is None for every node and the table printed `null` where the real carried value is `true`. Filed as its own row against the instrument; `docs/audits/0019`'s is_exported shape column is wrong and regenerates once it is fixed (the COUNTS — 107 agree / 41 disagree — come from `attribution`/`alternatives` and are correct).\n\nRE-SCOPED RATHER THAN CLOSED, because a real defect of this family is present at a different level. `Symbol.is_exported` is declared `bool = False`, a dataclass DEFAULT, so a producer that never computes the field emits an indistinguishable observed False — the SCIP arm sets is_exported nowhere (grep: no assignment in scip/index.py or the rust-analyzer translate) yet contributes False as a CANDIDATE on all 169 records. `_empty` cannot catch it: False is not None, \"\" or []. That is this project's recurring absent-versus-empty defect at the field's type, and it makes every is_exported \"disagreement\" between a computing and a non-computing producer a phantom contest. The statement and root_cause below are rewritten to that claim. Not fixed here: the cure is a positive \"did this producer observe it\" claim (a tri-state, or per-producer observed-attribute declaration), which touches the IR and wants an owner ruling on shape."  # 43de
+- op: update  # 334d
+  at: '2026-09-19T20:36:23Z'  # 334d
+  by: agent  # 334d
+  actor: jgstern_agent  # 334d
+  clock: 4  # 334d
+  nonce: 334d  # 334d
+  set:  # 334d
+    status: satisfied  # 334d
+- op: discuss  # ae24
+  at: '2026-09-19T20:37:05Z'  # ae24
+  by: agent  # ae24
+  actor: jgstern_agent  # ae24
+  clock: 5  # ae24
+  nonce: ae24  # ae24
+  message: "Satisfied, on the re-scoped statement, with positive evidence measured on both recorded producer fixtures.\n\nTHE CURE'S SHAPE was the owner's call on 2026-09-19 (the row asked for it): the producer declares what it observes, rather than the IR gaining a tri-state. Both would produce the same table; the declaration is contained to the merge/registry layer, where ADR-0057 lives, and does not move a schema promise.\n\nWHAT SHIPPED.\n1. `merge_producers.ABSTENTION_BLIND_ATTRIBUTES` is DERIVED from `Symbol`'s own field defaults over TRACKED_ATTRIBUTES — the tracked attributes whose default is not `None`/`\"\"`/`[]`. It is exactly `(\"is_exported\",)` today. Derived, not listed, so a tracked attribute that gains a concrete default appears there the day it is added.\n2. `MergeAnchor` gains `observes`: of those attributes, the ones this backend computes. `None` means the backend has NOT ruled — the merge pass then takes no candidate from it, and the live-registry contract test refuses any anchored producer of a shared language that left it so. Declaring an attribute that DOES express absence by value is refused at construction, because the record already says that per record and a declaration could only lose it.\n3. `_candidates` consults the declaration for those attributes and only those. For the other nine the value still decides, per record, which is strictly better information.\n4. Declared: `rust` and `python` compute exportedness (`\"pub\" in modifiers`; `__all__` plus the underscore convention) — `observes=(\"is_exported\",)`. `rust_analyzer` and `scip_python` compute none — `observes=()`, verified by grep: neither translation assigns the field anywhere.\n\nBEHAVIOURAL EVIDENCE — the phantom is gone and nothing else moved.\n- Recorded aardvark-dns (ADR-0057 §12), `is_exported`: was (107 agree, 41 disagree, 0, 0); now (0, 0, 148 one-sided to `rust`, 0). Every other attribute row is byte-identical: docstring (0,0,63,0), kind (133,15,0,0), modifiers (0,0,35,0), name (83,65,0,0), qualified_name (0,0,148,0), signature (0,0,125,0), span (2,146,0,0), stable_id (0,134,0,14). Pairing, edge overlap, corroborated and superseded counts unchanged.\n- Recorded scip-python sample, `is_exported`: was (4, 6, 0, 0); now (0, 0, 10 one-sided to `python`, 0). Every other row unchanged.\n- No CARRIED value changed anywhere — only the provenance the artifact claims for it. That is the point: the merged record always held the right boolean; the artifact was claiming a second producer had seen it.\n- `docs/audits/0019` regenerated: the `is_exported` row is the only line that moved.\n\nUNIT EVIDENCE, mutation-checked (four mutants, each killed with a real `passed|failed` line):\n- remove the declaration filter from `_candidates` (the defect as filed) -> 2 failed;\n- widen the construction-time validator to accept any tracked attribute -> 1 failed;\n- leave `rust_analyzer`'s `observes` unset -> 2 failed (the contract test, by name);\n- make `rust` wrongly declare it observes nothing -> 2 failed (the fixture tallies).\nThe two behavioural tests pin both halves: an undeclared producer's default does not CONTEST a measured value, and it does not manufacture an AGREEMENT either — the subtler half, where 107 of the 148 records read as two producers concurring.\n\nRESIDUALS FILED rather than swept in (the owner's standing rule):\n- INV-kubup — the same defect one level out, in the ARTIFACT: `Symbol.is_exported: bool = False` means every analyzer with no exportedness rule emits `is_exported: false` as a positive claim, which finalize's fold entrenches and the WI-zimum dead-code seed set reads. Cure is the tri-state the owner weighed and deferred; it is schema-visible.\n- INV-nudoj — `Edge.confidence` (0.85) and `Edge.evidence_type` are concrete defaults arbitrated by the same code path, unaudited. No demonstrated instance (an edge folds only when both producers emitted it), but \"every emitter sets it\" is a claim about emitters, not a property of the type.\n\nCoverage: the two changed core modules are 100% from `hypergumbo-core`'s own tests in isolation; the full 611-file affected slice passes."  # ae24

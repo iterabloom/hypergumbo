@@ -2,8 +2,9 @@
 """Base classes and utilities for language analyzers.
 
 This module provides shared infrastructure for all language analyzers,
-eliminating duplication across the ~128 analyzer files spread across
-the four ``hypergumbo-lang-*`` packages.
+eliminating duplication across the analyzer files (119 call
+``register_analyzer``) spread across the five ``hypergumbo-lang-*``
+packages.
 
 Shared Components
 -----------------
@@ -14,13 +15,26 @@ Shared Components
   file discovery, graceful degradation when a grammar is unavailable, and
   result assembly. Subclasses override the language-specific extraction
   hooks and inherit the orchestration. ~105 analyzer modules subclass it.
+  Between the passes ``analyze()`` merges per-file Pass 1 registries into
+  repo-wide ones Pass 2 reads for receiver typing: ``class_field_types``
+  (class -> field -> type) and ``method_return_types`` (qualified method ->
+  return type), with the language's library signatures
+  (``load_library_signatures``) appended after the analysed rows so a
+  declaration in the repository always wins. During Pass 2,
+  ``file_symbols`` hands an analyzer every symbol of the current file,
+  where the name-keyed ``symbol_by_name`` keeps only one per name.
 - **AnalysisResult**: Universal result type returned by all analyzers
 - **FileAnalysis**: Intermediate per-file analysis result
-- **Tree-sitter helpers**: node_text, find_child_by_type, find_child_by_field
+- **Tree-sitter helpers**: node_text (slices the source bytes),
+  node_own_text (decodes ``node.text``, None-safe), find_child_by_type,
+  find_child_by_field, and the non-recursive walkers ``iter_tree`` and
+  ``iter_tree_with_context`` (which also yields each node's nearest
+  enclosing context node), safe on nesting deeper than Python's recursion
+  limit
 - **ID generation and stable identity**: ``make_symbol_id`` / ``make_file_id``
   build node ids; a separate layer builds the content-addressed
   ``stable_id`` that survives re-analysis. ``assemble_stable_id`` is the
-  construction chokepoint (ADR-0034), with typed and route-shaped variants
+  construction chokepoint (ADR-0035 §1), with typed and route-shaped variants
   (``make_typed_stable_id``, ``make_route_stable_id``) and post-pass
   populators that fill or widen identity once the whole symbol set is known
   (``populate_kind_stable_ids``, ``populate_synthetic_class_b_identity``,
@@ -31,6 +45,50 @@ Shared Components
 - **Memory-pressure guard**: ``_check_memory_pressure`` raises
   ``MemoryPressureError`` rather than letting a large repo take the process
   down mid-analysis.
+
+Shared helpers
+--------------
+- **Enclosing-symbol lookup.** A call is credited to its enclosing
+  declaration by POSITION, never by name, because names repeat within a
+  file (two ``parse`` methods, ``#ifdef`` alternatives, per-arity
+  clauses). ``symbols_at`` indexes symbols by declaration start position and
+  ``symbol_declared_by`` maps a declaration node back to its symbol; every
+  analyzer should credit calls this way, reading the file's symbols from
+  ``TreeSitterAnalyzer.file_symbols``. The one line-span variant is
+  ``_innermost_callable_at``: ``emit_module_attribute_refs`` uses it to
+  anchor a module-attribute read (a taint source) to the narrowest
+  callable containing its line, over the ``enclosing_symbols`` its callers
+  fetch with ``symbols_by_path_index`` / ``symbols_for_path`` (which tries
+  each path spelling the caller passes, e.g. absolute and repo-relative).
+- **File anchors.** ``synthesize_file_symbols_for_dangling_edges``,
+  ``synthesize_file_anchors_for_node_bearing_paths`` and
+  ``synthesize_file_anchors_for_paths`` mint real ``kind="file"`` Symbols
+  for, respectively, dangling ``make_file_id`` edge endpoints, paths that
+  have content nodes but no file anchor, and caller-selected additional
+  files, so first-party files never become boundary nodes or rootless
+  ``contains`` trees.
+- **Edge and symbol minting.** ``make_unresolved_edge`` builds the standard
+  unresolved call edge (dst ``{lang}:{module_hint}:0-0:{name}:unresolved``);
+  ``defer_bare_method_call`` decides when a bare / implicit-``this`` call
+  must not bind to another class's method on short-name evidence, and is
+  instead deferred to the ``inherited_calls`` walker; ``make_route_symbol``
+  mints route-marker Symbols with canonical id, ``origin`` and
+  ``origin_run_id``.
+- **Call-site annotation.** ``emit_module_attribute_refs`` emits
+  ``module_attr_ref`` edges for attribute reads on imported modules
+  (``process.env.PATH``) that are not themselves callees;
+  ``stamp_io_mode_from_call`` records a literal mode argument
+  (``fopen(p, "w")``) as ``meta["io_mode"]`` on the edges a call produced,
+  and stamps nothing for a non-literal mode; ``constructed_from_callee``
+  renders an initializer's callee for ``Symbol.meta["constructed_from"]``.
+- **Stable-id constructors.** Beyond the layer above:
+  ``make_site_stable_id`` (SITE-axis identity for ``call_site`` stand-ins,
+  folding in the declaring file), ``make_doc_symbol_ids`` (the ``id`` and
+  ``stable_id`` pair for doc/markup/template symbols, minted together),
+  ``make_declaration_stable_id`` (class / struct / enum / trait / protocol
+  / contract), and the post-pass ``split_within_file_stable_id_collisions``,
+  which re-mints the second and later same-file holders of one
+  ``stable_id`` with an occurrence suffix.
 
 Why This Design
 ---------------
@@ -56,6 +114,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, Iterator, Optional
 
+from ..library_signatures import load_library_signatures
 from ..dataflow import annotate_dataflow, get_dataflow_config
 from ..discovery import find_files
 from ..paths import normalize_path
@@ -63,8 +122,16 @@ from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
     compute_config_fingerprint, compute_pass_version, make_pass_id,
 )
+
+# EXPLICIT re-export (the ``X as X`` form), not a plain import: ``--strict``
+# forbids implicit re-export, and six linkers import this name from here. The
+# sanitizer's home moved to ``ir`` (INV-divuf) because ``ir`` mints boundary ids
+# too (``_canonical_external_id``) and importing the other way round would be a
+# cycle; ``analyze.base`` stays the producer-facing surface it has always been.
+from ..ir import sanitize_id_name_segment as sanitize_id_name_segment
 from ..axis_meta_keys import write_meta_key
 from ..symbol_resolution import NameResolver
+from ..pass_silence import DEPENDENCY_UNAVAILABLE
 
 # ---------------------------------------------------------------------------
 # Memory safety: abort analysis before OOM crashes the machine
@@ -130,6 +197,14 @@ class AnalysisResult:
         run: Provenance tracking for the analysis pass
         skipped: Whether the analysis was skipped (e.g., missing dependency)
         skip_reason: Human-readable reason for skipping
+        skip_reason_code: The same fact on the closed pass-silence-reason axis
+            (WI-dukoh / ADR-0056 W2). One channel, two fields: ``skip_reason``
+            keeps the payload a code cannot express (the pip command, the
+            exception text) and this carries the classification a consumer can
+            branch on without matching twenty-eight spellings. Empty means the
+            producer did not classify itself, which reads as ``unreported`` —
+            never as ``no_candidate_files``, the 98.94%-common value that a
+            permissive default would manufacture on its behalf.
     """
 
     symbols: list[Symbol] = field(default_factory=list)
@@ -138,6 +213,7 @@ class AnalysisResult:
     run: AnalysisRun | None = None
     skipped: bool = False
     skip_reason: str = ""
+    skip_reason_code: str = ""  # axis: pass-silence-reason
     dependency_manifest: object | None = None
     """Optional DependencyManifest from supply_chain.py.
 
@@ -332,6 +408,11 @@ def stamp_io_mode_from_call(
         return
     content = find_child_by_type(args[spec.position], "string_content")
     if content is None:
+        # tree-sitter-javascript spells a string literal's text
+        # ``string_fragment`` where C and python spell it ``string_content``
+        # (WI-nolut). Read here, in the one producer, rather than in a copy.
+        content = find_child_by_type(args[spec.position], "string_fragment")
+    if content is None:
         # Not a string literal at all — a variable, a macro, a concatenation.
         return
     mode = node_text(content, source)
@@ -498,25 +579,6 @@ def make_symbol_id(
         f"{lang}:{path}:{start_line}-{end_line}"
         f":{sanitize_id_name_segment(name)}:{kind}"
     )
-
-
-def sanitize_id_name_segment(name: str) -> str:
-    """Colon-free ``{name}`` slot for a canonical symbol id (ADR-0036 Ruling 1).
-
-    A literal ``':'`` in the name slot would push the id past its five anchored
-    segments and defeat the from-both-ends round-trip parser, so colons are
-    sanitized ``':' -> '.'`` (the round-trip is documented-lossy — full fidelity
-    lives in ``Symbol.name``), e.g. the synthetic linker stand-ins whose name
-    folds a protocol address — message-queue ``kafka:publish:topic`` →
-    ``kafka.publish.topic`` (WI-vuzaf Pattern A) — and the Maven manifest
-    producers whose name folds an ecosystem coordinate,
-    ``org.springframework.boot:spring-boot-starter-web`` (INV-dulah).
-
-    :func:`make_symbol_id` applies this to every name slot (WI-sikar), so
-    calling it explicitly is no longer required for correctness. Producers keep
-    doing so where it documents intent, and the substitution is idempotent.
-    """
-    return name.replace(":", ".")
 
 
 def make_file_id(lang: str, path: str) -> str:
@@ -887,7 +949,21 @@ def make_unresolved_edge(
     # false precision. The finalize edge-resolution sub-step backstops bypassing producers.
     if dst_ref is None and module_hint != "external":
         dst_ref = ExternalRef(lang=lang, module_path=module_hint, name=callee_name)
-    hint_meta: Dict[str, Any] = {}
+    # ADR-0036 Ruling 1: THE LOSSLESS HOME FOR THE NAME, and it is not the id.
+    # The id's name slot is deliberately lossy ("names containing ``:`` are
+    # sanitized ``:`` -> ``.`` ... the ID is a location-addressed key, not a
+    # fidelity surface"), and the same ruling instructs consumers needing the
+    # exact name to read it from elsewhere and NEVER re-derive it from the id.
+    # There was no elsewhere: an Objective-C selector ENDS in a colon, so the
+    # id's second-to-last token is the EMPTY STRING, the boundary node
+    # synthesised from that id got ``name=''``, and ``writeToFile:atomically:``
+    # appeared NOWHERE in the output (INV-divuf / WI-nakut, measured on a
+    # 14-line repro). Stamped UNCONDITIONALLY -- including the WI-huzuv cell
+    # above where ``dst_ref`` is correctly withheld because the module is
+    # unknown, which is precisely the objc cell. Carrying the name in
+    # ``dst_ref`` sometimes and here otherwise would give one fact two homes
+    # and leave every consumer asking which cell it is in first.
+    hint_meta: Dict[str, Any] = {"callee_name": callee_name}
     if enclosing_class is not None:
         hint_meta["enclosing_class"] = enclosing_class
     if receiver_type_hint is not None:
@@ -1195,6 +1271,41 @@ def assemble_stable_id(
         f":{containing_stable_id}:{name}:{qualified_name}:{occurrence_index}"
     )
     return _short_sha256(sig)
+
+
+#: A declaration's symbol, keyed by where its declaration node starts.
+SymbolsAt = Dict[tuple[int, int], Symbol]
+
+
+def symbols_at(symbols: "Sequence[Symbol]", file_path: Optional[str] = None) -> SymbolsAt:
+    """Index symbols by the ``(start_line, start_col)`` of the node declaring them.
+
+    THE RULE (INV-mozas, INV-midag): an enclosing symbol is found by the
+    declaration's POSITION, never its name. A walk up from a call reaches the
+    declaration node that contains it, and that node IS the symbol's node, so
+    its start position identifies the symbol exactly. A name does not: two
+    methods ``parse`` in two classes of one file, an Erlang ``-ifdef``/``-else``
+    pair, an Elixir clause per arity or a C ``#ifdef`` alternative all share one,
+    and every name-keyed lookup returned whichever registered last. On a pinned
+    26-repo run that anchored 2,014 kotlin and 964 scala call edges to a function
+    that does not contain them.
+
+    It works only where the symbol's span starts at the declaration node the walk
+    reaches. Each analyzer adopting it verifies that for its own grammar, since
+    a symbol spanning from its annotations would start earlier than the node.
+    ``file_path`` filters a repo-wide list down to one file.
+    """
+    return {
+        (s.span.start_line, s.span.start_col): s
+        for s in symbols
+        if s.span is not None and (file_path is None or s.path == file_path)
+    }
+
+
+def symbol_declared_by(node: Any, index: SymbolsAt) -> Optional[Symbol]:
+    """The symbol whose declaration node is ``node``, or None when it has none
+    (a local function the analyzer does not emit, a ``quote``-d def)."""
+    return index.get((node.start_point[0] + 1, node.start_point[1]))
 
 
 def make_file_stable_id(language: str, path: str) -> str:
@@ -2632,6 +2743,62 @@ def _innermost_callable_at(
     return best
 
 
+def _scoped_context_kind(
+    node: "tree_sitter.Node",
+    node_kinds: tuple[str, ...],
+) -> str:
+    """The syntactic position a scoped-name node occupies, as a node type.
+
+    Walks past any ancestor that is ITSELF a scoped node, because those are
+    the outer levels of the same path rather than its context:
+    ``std::net`` inside ``use std::net::UdpSocket;`` has a
+    ``scoped_identifier`` parent and a ``use_declaration`` grandparent, and
+    only the latter answers "what is this path doing here".
+
+    Returns ``""`` at the root, which no caller's ``skip_context_kinds``
+    contains — a path with no context outside itself is not a declaration.
+    """
+    parent = node.parent
+    while parent is not None and parent.type in node_kinds:
+        parent = parent.parent
+    return parent.type if parent is not None else ""
+
+
+def _has_ancestor_of_kind(
+    node: "tree_sitter.Node",
+    kinds: tuple[str, ...],
+) -> bool:
+    """Whether ANY ancestor of ``node`` is one of ``kinds``.
+
+    ``skip_context_kinds`` (via :func:`_scoped_context_kind`) names the
+    PROXIMATE context — the nearest ancestor that is not itself another level
+    of the same scoped path. That is the right question for a TYPE position,
+    where the annotation node sits directly above the path. It is the wrong
+    question for an IMPORT, because a grammar is free to wrap the path in
+    intermediate nodes, and tree-sitter-rust does exactly that: the braced,
+    wildcard and aliased ``use`` forms sit under ``scoped_use_list`` /
+    ``use_wildcard`` / ``use_as_clause``, so the proximate context of
+    ``std::io`` in ``use std::io::{self, Write};`` is the WRAPPER rather than
+    the ``use_declaration`` a caller would naturally name.
+
+    INV-pusin was closed once against the proximate test, on a repro using the
+    single spelling that test happens to handle (``use a::b::c;``), while
+    every braced / wildcard / aliased spelling kept leaking into the
+    uncatalogued-module gate as a fake attribute read. Asking about ANCESTRY
+    states the invariant the item actually ratified — *a path anywhere inside
+    an import declaration is an import* — and is closed over grammar shapes
+    nobody has enumerated. That is what stops the defect recurring a third
+    time through a fourth node kind, instead of growing the skip tuple until
+    the emitter is dead.
+    """
+    parent = node.parent
+    while parent is not None:
+        if parent.type in kinds:
+            return True
+        parent = parent.parent
+    return False
+
+
 def emit_module_attribute_refs(
     root: "tree_sitter.Node",
     source: bytes,
@@ -2648,6 +2815,8 @@ def emit_module_attribute_refs(
     call_node_kinds: tuple[str, ...] = ("call_expression", "call",),
     call_function_field_names: tuple[str, ...] = ("function", "callee",),
     scoped_path: bool = False,
+    skip_context_kinds: tuple[str, ...] = (),
+    skip_ancestor_kinds: tuple[str, ...] = (),
     enclosing_symbols: "Sequence[Symbol] | None" = None,
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
@@ -2699,6 +2868,54 @@ def emit_module_attribute_refs(
             duplicated.
         call_function_field_names: Child-field names to try for the
             callee of a call node.
+        skip_context_kinds: Ancestor node types that mean "this scoped
+            name is a DECLARATION or a TYPE, not a value being read" —
+            ``use_declaration`` / ``using_declaration`` for imports,
+            ``scoped_type_identifier`` / ``generic_type`` /
+            ``function_definition`` / ``declaration`` for type
+            positions.  Empty by default, so the languages that pass
+            nothing (javascript, java, go) are unaffected.
+
+            INV-pusin: the walk below treats every scoped node outside
+            callee position as an attribute read, and in a ``scoped_path``
+            language a ``use`` path and a return-type path are both
+            scoped nodes.  The ``use`` case is a DUPLICATE HOME — the
+            analyzer already emits that statement as an ``imports``
+            edge — so the fact ``verify_claims`` deliberately excludes as
+            an import re-entered as a ``module_attr_ref`` and withheld
+            the boundary verdict on a crate with no dependencies at all
+            (measured: ``use std::fs;`` alone put ``std`` and ``std.fs``
+            on the uncatalogued-module list).  A return type has no
+            second home and is simply not a read.
+
+            THE ANCESTOR IS RESOLVED PAST THE NESTED-PREFIX LEVELS, not
+            from the immediate parent: ``std::net`` inside
+            ``use std::net::UdpSocket;`` has a ``scoped_identifier``
+            parent, and only the first ancestor OUTSIDE ``node_kinds``
+            says what syntactic position the whole path occupies.
+
+            USE THIS FOR TYPE POSITIONS, NOT FOR IMPORTS.  It matches one
+            PROXIMATE context, so it sees only the shapes whose grammar
+            puts the path directly under the named node.  Imports want
+            ``skip_ancestor_kinds`` below.
+        skip_ancestor_kinds: Node types that mean "this scoped name is
+            inside an IMPORT declaration", matched against EVERY ancestor
+            rather than only the proximate one.  Empty by default.
+
+            INV-pusin, SECOND CLOSURE.  ``skip_context_kinds`` alone was
+            not enough: tree-sitter-rust wraps the braced, wildcard and
+            aliased ``use`` forms in ``scoped_use_list`` / ``use_wildcard``
+            / ``use_as_clause``, so the proximate context of ``std::io``
+            in ``use std::io::{self, Write};`` is the wrapper and the path
+            leaked as a read.  The item was marked satisfied against a
+            repro spelled ``use a::b::c;`` — the one form the proximate
+            test handles — so a closure satisfied the repro and not the
+            statement.  Enumerating the wrappers would fix those three and
+            leave the next grammar shape to leak; asking about ancestry
+            states the ratified invariant directly (*a path anywhere
+            inside an import declaration is an import*) and is closed over
+            shapes nobody has enumerated.  See
+            :func:`_has_ancestor_of_kind`.
         scoped_path: When True, switches the helper to a left-recursive
             path-walk model used by languages whose scoped access is
             not a binary ``object`` / ``property`` pair.  Rust's
@@ -2736,6 +2953,12 @@ def emit_module_attribute_refs(
             continue
         if node.id in callee_attr_ids:
             continue
+        if skip_context_kinds and _scoped_context_kind(
+                node, node_kinds) in skip_context_kinds:
+            continue
+        if skip_ancestor_kinds and _has_ancestor_of_kind(
+                node, skip_ancestor_kinds):
+            continue
         base = None
         for fname in object_field_names:
             base = node.child_by_field_name(fname)
@@ -2772,17 +2995,35 @@ def emit_module_attribute_refs(
             leftmost_text = node_text(leftmost, source)
             if leftmost_text not in imports:
                 continue
-            # Replace the leftmost alias with its real module, then
-            # dot-normalize ``::`` to ``.`` so the resulting edge ID
-            # survives ``:``-split parsing in io_boundary.
+            # Replace the leftmost alias with its real module, KEEPING the
+            # language's own separator (INV-rilit).
+            #
+            # THIS USED TO DOT-NORMALISE ``::`` TO ``.`` "so the resulting edge
+            # ID survives ``:``-split parsing in io_boundary" — a workaround
+            # that outlived its defect. ADR-0036 (D1a) made the path slot the
+            # one colon-TOLERANT slot in the grammar, and ``symbol_path_slot``
+            # carries ``rust:std::fs:0-0:write:external_symbol`` as a worked
+            # example; ``symbol_name_slot`` is span-anchored for the same
+            # reason. Meanwhile the normalisation split one module into TWO
+            # NODES — ``imports`` and ``calls`` emitted ``std::io`` while this
+            # emitted ``std.io`` — so every per-dependency question was
+            # answered over half a population. Measured on bellman: TEN
+            # entities under two spellings in a single run.
+            #
+            # It was also only HALF applied, which is the tell: only the path
+            # taken from the imports map was rewritten, so C++ emitted
+            # ``cpp:std:0-0:std.numbers::pi:attribute`` — one id carrying BOTH
+            # separators.
             real_leftmost = imports[leftmost_text]
-            real_module_raw = real_leftmost + base_text[len(leftmost_text):]
-            real_module = real_module_raw.replace("::", ".")
+            real_module = real_leftmost + base_text[len(leftmost_text):]
         else:
             if base_text not in imports:
                 continue
             real_module = imports[base_text]
-        qname = f"{real_module}.{attr_name}"
+        # The qualified name joins with the SAME separator the module uses, or
+        # the id mixes conventions the way the C++ case above did.
+        sep = "::" if scoped_path else "."
+        qname = f"{real_module}{sep}{attr_name}"
         line_no = node.start_point[0] + 1
         owner = _innermost_callable_at(line_no, enclosing_symbols)
         edges_out.append(Edge.create(
@@ -3095,6 +3336,30 @@ class TreeSitterAnalyzer:
 
     # -- Template methods: symbol extraction (Pass 1) ----------------------
 
+    def parse_source(
+        self, parser: "tree_sitter.Parser", source: bytes,
+    ) -> "tuple[bytes, tree_sitter.Tree]":
+        """Parse one file's bytes, with the option to rewrite them first.
+
+        Template method. The default is one parse of the bytes as read, which is
+        what every analyzer wants; an analyzer whose grammar LAGS the language it
+        parses may override this to rewrite spellings the grammar cannot handle
+        (INV-bisok: tree-sitter-swift 0.7.3 against Swift 6.1). Two rules bind
+        such an override, and the base class states them here because they are
+        what make the hook safe rather than a licence to edit source:
+
+        1. **The rewrite must preserve byte length**, so every span the analyzer
+           reports still points at the real file. Substituting one character for
+           another is fine; deleting or inserting is not.
+        2. **The returned tree must be the tree of the returned bytes.** Pass 1
+           stores the source it was given and Pass 2 re-parses THAT, so returning
+           rewritten bytes with the original tree would desynchronise the passes.
+
+        Returns:
+            The bytes to record for this file, and their parse tree.
+        """
+        return source, parser.parse(source)
+
     def extract_symbols_from_file(
         self,
         tree: "tree_sitter.Tree",
@@ -3140,6 +3405,29 @@ class TreeSitterAnalyzer:
         return {}
 
     # -- Template methods: edge extraction (Pass 2) ------------------------
+
+    #: The complete symbol list of the file Pass 2 is on; set by ``analyze()``
+    #: around each ``extract_edges_from_file`` call. See ``file_symbols``.
+    _current_file_symbols: Optional[list[Symbol]] = None
+
+    def file_symbols(self, local_symbols: dict[str, Symbol]) -> list[Symbol]:
+        """Every symbol of the file Pass 2 is on, not the name-keyed view.
+
+        ``extract_edges_from_file`` receives ``symbol_by_name``, which keeps
+        ONE symbol per name. Where a language lets two declarations in one
+        file share a name -- an Erlang ``-ifdef``/``-else`` pair, a C
+        ``#ifdef`` alternative, an overload -- all but the last are gone
+        before any edge is extracted, and a lookup for the enclosing symbol
+        of a call inside a lost one returns a symbol that does not contain
+        it (INV-mozas). An analyzer that needs the declarations themselves
+        reads this list instead.
+
+        Outside ``analyze()`` (a test calling Pass 2 directly) there is no
+        list to hand over, so this returns the dict's distinct values.
+        """
+        if self._current_file_symbols is not None:
+            return self._current_file_symbols
+        return list({s.id: s for s in local_symbols.values()}.values())
 
     def extract_edges_from_file(
         self,
@@ -3258,6 +3546,82 @@ class TreeSitterAnalyzer:
 
         # Walk the chain: start from enclosing_type, resolve each field step.
         current_type = enclosing_type
+        for field_name in segments:
+            fields = registry.get(current_type)
+            if fields is None:
+                return None
+            next_type = fields.get(field_name)
+            if next_type is None:
+                return None
+            current_type = next_type
+
+        return current_type
+
+    def resolve_var_field_chain(
+        self,
+        value_node: "tree_sitter.Node",
+        source: bytes,
+        var_types: dict[str, str],
+    ) -> str | None:
+        """Resolve a VARIABLE-rooted field chain to its type name.
+
+        The sibling of :meth:`resolve_receiver_type` for the case its own
+        docstring excludes: ``h.f`` where ``h`` is a parameter or local rather
+        than ``self``. The field-registry walk is identical — only the root's
+        type differs. ``resolve_receiver_type`` starts from ``enclosing_type``
+        because a ``self`` chain is rooted in the impl/class; this starts from
+        ``var_types[root]`` because a variable carries its own declared type.
+
+        This is what Go's ``_resolve_field_chain`` does (root in ``var_types``,
+        walk the field registry), ported so Rust's WI-dizag shape B —
+        ``h.f.write_all(..)`` — can recover ``File`` from ``Holder.f`` instead
+        of discarding it. Additive: nothing else calls it, so no analyzer that
+        relies on the self-only resolver changes behaviour.
+
+        Args:
+            value_node: The receiver node of a method call (e.g. the ``h.f``
+                part of ``h.f.write_all()``).
+            source: Source bytes for extracting node text.
+            var_types: Variable name → type name, for the enclosing scope.
+
+        Returns:
+            The resolved type name, or None if the root is not a tracked
+            variable or any field step misses.
+        """
+        registry = getattr(self, "_field_type_registry", {})
+        if not registry:
+            return None
+
+        # Decompose the chain leaf-to-root, exactly as resolve_receiver_type
+        # does — the two must agree on what a chain IS, so the traversal is the
+        # same and only the root handling below differs. The cursor is Optional
+        # because ``child_by_field_name`` is, and the ``while`` guards it.
+        segments: list[str] = []
+        cursor: "tree_sitter.Node | None" = value_node
+        while (
+            cursor is not None
+            and cursor.type in ("field_expression", "member_expression")
+        ):
+            field_node = cursor.child_by_field_name("field")
+            if field_node is None:  # pragma: no cover — always has a field
+                return None
+            segments.append(node_text(field_node, source))
+            cursor = (
+                cursor.child_by_field_name("value")
+                or cursor.child_by_field_name("argument")
+            )
+
+        # The root must be a tracked variable, not self (that is the sibling's
+        # job) and not another expression. A bare ``h`` with no field chain has
+        # empty ``segments`` and is left to the plain var_types lookup rather
+        # than answered here.
+        if cursor is None or cursor.type != "identifier" or not segments:
+            return None
+        current_type = var_types.get(node_text(cursor, source))
+        if current_type is None:
+            return None
+
+        segments.reverse()
         for field_name in segments:
             fields = registry.get(current_type)
             if fields is None:
@@ -3770,6 +4134,7 @@ class TreeSitterAnalyzer:
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         # 2. Initialize parser
@@ -3799,7 +4164,7 @@ class TreeSitterAnalyzer:
                 )
                 continue
 
-            tree = parser.parse(source)
+            source, tree = self.parse_source(parser, source)
             rel_path = str(source_file.relative_to(repo_root))
 
             analysis = self.extract_symbols_from_file(
@@ -3877,6 +4242,14 @@ class TreeSitterAnalyzer:
         for analysis, _, _source in file_analyses.values():
             for key, ret_type in analysis.method_return_types.items():
                 method_return_type_registry.setdefault(key, ret_type)
+        # WI-lalot: LIBRARY rows join the same dict, AFTER the analysed ones, so
+        # a declaration in the repository always beats a catalogue guess. Without
+        # them a receiver bound to a library call cannot be typed at all -- there
+        # is no declaration in the tree to register -- and the method-kind
+        # io_primitives rows that need a typed receiver are unreachable however
+        # correct they are.
+        for key, ret_type in load_library_signatures(self.lang).items():
+            method_return_type_registry.setdefault(key, ret_type)
         self._method_return_type_registry = method_return_type_registry
 
         # 5. Pass 2: Extract edges and usage contexts
@@ -3893,6 +4266,7 @@ class TreeSitterAnalyzer:
             tree = parser.parse(source)
             rel_path = str(source_file.relative_to(repo_root))
 
+            self._current_file_symbols = analysis.symbols
             edges = self.extract_edges_from_file(
                 tree, source, source_file, rel_path,
                 analysis.symbol_by_name, global_symbols, run,
@@ -3914,6 +4288,7 @@ class TreeSitterAnalyzer:
         # data across runs (mirrors the WI-kuroj cleanup pattern).
         self._field_type_registry = {}
         self._method_return_type_registry = {}
+        self._current_file_symbols = None
 
         # 7. Post-process
         all_symbols, all_edges, all_contexts = self.post_process(

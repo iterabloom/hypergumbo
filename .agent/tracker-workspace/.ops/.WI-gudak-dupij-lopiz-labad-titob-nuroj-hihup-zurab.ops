@@ -19,3 +19,43 @@
     pr_ref:  # c7d2
     description: "FOUND 2026-08-04 while measuring WI-lonad's dst_ref re-key against the string\nparse on a 9-repo cohort.\n\nExternalRef.module_path is documented in ir.py as \"Canonical module path in the\nlanguage's import vocabulary (e.g. urllib.request, std::fs, node:fs/promises).\nUse the value that would appear in a clean `from X import Y` statement\". The\nSwift analyzer is instead stamping the RECEIVER EXPRESSION.\n\nEVIDENCE. Three shapes, all from SwiftyJSON:\n\n    swift:array:0-0:map:external_symbol\n        dst_ref = {lang: swift, module_path: 'dict', name: 'map'}\n\n    swift:JSONSerialization:0-0:data:external_symbol\n        dst_ref = {lang: swift, module_path: 'invalidJson', name: 'data'}\n    swift:JSONSerialization:0-0:data:external_symbol        <-- SAME id\n        dst_ref = {lang: swift, module_path: 'jsonString',  name: 'data'}\n\n    swift:JSON:0-0:replacingOccurrences:external_symbol\n        dst_ref = {lang: swift, module_path: 'description', name: 'replacingOccurrences'}\n\nThe second pair is the decisive one: one identical symbol id carries TWO\nDIFFERENT module_path values on two different edges. A module path is a\nproperty of the target; a receiver variable is a property of the call site. A\nfield that varies per call site for a fixed target is not holding what its\ndocstring says it holds.\n\n'dict', 'invalidJson', 'jsonString' and 'description' are local variables in\nthe SwiftyJSON test sources, not modules.\n\nSCOPE, MEASURED. 6 edges of 37,972 dst_ref-bearing taint call edges on the\ncohort -- swift only; no other language diverges this way. That is small, and\nthe reason to file it anyway is that it is a CONTRACT violation in a field two\nsubsystems are being migrated onto (ADR-0037 wants consumers to prefer dst_ref\nover the dst string), so a field that silently means something else in one\nlanguage poisons the migration rather than merely being noisy. It is also the\none place measured where dst_ref is WORSE than the string parse it is meant to\nreplace.\n\nWHY NOT FOLDED INTO WI-lonad. That item is about the taint consumer; this is\nthe swift analyzer's emission. Folding a producer defect into a consumer\nmigration is the scope-axis error (L1) that WI-lonad's own re-scope exists to\ncorrect.\n\nBEFORE FIXING, CHECK THE OBVIOUS ALTERNATIVE: that the swift analyzer has no\nmodule information at these sites at all and is filling the field with the only\nstring it has. If so the correct fix is to emit no dst_ref (the documented\n\"unidentified reference\" cell, which _derive_dst_ref_from_id already uses for\nthe `external` sentinel per WI-huzuv) rather than to invent a module. Do not\nassume the receiver can be resolved to a module."  # c7d2
     fields: {}  # c7d2
+- op: update  # 4d77
+  at: '2026-09-03T08:57:55Z'  # 4d77
+  by: agent  # 4d77
+  actor: jgstern_agent  # 4d77
+  clock: 2  # 4d77
+  nonce: 4d77  # 4d77
+  set: {}  # 4d77
+  add:  # 4d77
+    tags: [axis, module_key]  # 4d77
+- op: discuss  # fc41
+  at: '2026-09-03T08:57:56Z'  # fc41
+  by: agent  # fc41
+  actor: jgstern_agent  # fc41
+  clock: 3  # fc41
+  nonce: fc41  # fc41
+  message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED: \"not a property of the call site: not the receiver's variable name\". NOTION THE SLOT CARRIES: receiver_variable (`dict`, `invalidJson`, `jsonString`) -- swift's instance of INV-kotob seen at the dst_ref level, where ONE symbol id carries DIFFERENT module_paths on different edges. That is the axiom's \"static owner path\" failing in the other direction: a key that varies per call site is a call-site property by construction."  # fc41
+- op: update  # a0fd
+  at: '2026-09-06T10:20:32Z'  # a0fd
+  by: agent  # a0fd
+  actor: jgstern_agent  # a0fd
+  clock: 4  # a0fd
+  nonce: a0fd  # a0fd
+  set: {}  # a0fd
+  add:  # a0fd
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # a0fd
+- op: update  # e5b1
+  at: '2026-09-06T15:43:16Z'  # e5b1
+  by: agent  # e5b1
+  actor: jgstern_agent  # e5b1
+  clock: 5  # e5b1
+  nonce: e5b1  # e5b1
+  set:  # e5b1
+    status: done  # e5b1
+- op: discuss  # c940
+  at: '2026-09-06T15:43:16Z'  # c940
+  by: agent  # c940
+  actor: jgstern_agent  # c940
+  clock: 6  # c940
+  nonce: c940  # c940
+  message: "DONE 2026-09-06 -- RESOLVED BY INV-kotob's swift receiver fix (swift.py \"INV-kotob\" block at the unresolved-call emission site), re-verified behaviourally on this item's OWN repro, not inferred from the sibling.\n\nREPRO RE-RUN. `hypergumbo survey` of whole_bunch_of_repos/SwiftyJSON at dev tip b980bcc412 (cold cache; instrument and read-back in hypergumbo_lab_notebook/gudak_swift_09062026/). Of 421 unresolved swift call edges:\n  ids carrying more than one dst_ref.module_path       0   (was: swift:JSONSerialization:0-0:data:external_symbol carrying 'invalidJson' AND 'jsonString')\n  module_path values equal to 'dict' / 'invalidJson' / 'jsonString' / 'description'   0 / 0 / 0 / 0\n  module_path values that are lowercase-initial identifiers (the variable-name shape)   0\n  module_path values present                           31, every one a TYPE (JSONSerialization 8, NSNumber 5, Bundle 4, String 4, JSONEncoder 3, JSONDecoder 3, ...)\n\nWHAT THE FIX DID, which is the item's own \"obvious alternative\": the receiver's TYPE when it is external, an import alias for a module-qualified call, else NO dst_ref (the documented unidentified-reference cell) -- the receiver VARIABLE is never written to the field any more. The cost is visible and correct: swift's dst_ref coverage on this repo is 7.4% (31/421), below the 16.2% this family's parent WI-jokij recorded on 2026-08-04, because the present-but-wrong 42% is now absent rather than wrong. That residual (390 edges whose module slot is the `external` sentinel) is WI-jokij's per-analyzer recoverability question, not this item's contract violation, and stays there.\n\nCONTRACT NOW HOLDS on the measured population: module_path is a property of the target (a type or module), constant per symbol id."  # c940

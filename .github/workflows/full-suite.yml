@@ -296,6 +296,27 @@ jobs:
           python -m hypergumbo_core run . --out /tmp/self-tree.json
           python scripts/check-self-tree-validation \
             /tmp/self-tree.json .ci/self-tree-validation-baselines.json
+      - name: Test-only-reachability ratchet (WI-ratuv)
+        run: |
+          # Reuses /tmp/self-tree.json from the step above rather than building
+          # its own: a self-map costs ~13 minutes and 236MB, which is why this
+          # gate lives here and not per-PR. Given a map it runs in seconds.
+          #
+          # Shrink-only. A production FUNCTION whose only callers are its own
+          # tests must not be ADDED. Exit 2 (no map / no baseline) is an
+          # infrastructure condition and does not fail the job, following the
+          # mypy ratchet's contract.
+          # `|| rc=$?` is load-bearing: Actions runs `bash -e`, so a bare
+          # invocation returning 1 or 2 aborts the step before $? can be read
+          # and the exit-2 branch below would never fire.
+          rc=0
+          python scripts/check-test-only-reachability \
+            --map /tmp/self-tree.json || rc=$?
+          if [ "$rc" = "2" ]; then
+            echo "::warning::test-only-reachability skipped (infrastructure)"
+            exit 0
+          fi
+          exit "$rc"
       - name: Self-claim drift gate (WI-vanun)
         run: |
           # SECURITY.md asserted that claim regressions "fail the gate". No

@@ -6,15 +6,24 @@ languages and frameworks in a repository, without requiring full parsing.
 
 How It Works
 ------------
-Language detection scans file extensions using the discovery module:
-- Counts files matching each language's extension patterns
-- Tallies lines of code (LOC) for each detected language
+Language detection enumerates files per language: an analyzer's own
+``find_files`` when it registers one (e.g. extensionless shebang scripts),
+otherwise the language's extension patterns via the discovery module:
+- Counts files per language
+- Tallies lines of code (LOC) only when ``count_loc=True`` (default off)
 - Returns a RepoProfile with language statistics
 
 Framework detection examines dependency manifests:
 - Python: pyproject.toml, requirements.txt, setup.py, Pipfile
 - JavaScript: package.json dependencies and devDependencies
 - And more: Rust (Cargo.toml), Go (go.mod), Java (pom.xml, build.gradle), etc.
+- Each manifest format has a structured parser that extracts the declared
+  dependency names, instead of substring-matching raw text (which matched
+  comments and collisions like ``transformers`` in ``sentence-transformers``).
+  pip ``-r`` / ``-c`` includes are followed transitively, within the repo.
+- Some frameworks come from file presence instead: ``.proto`` files
+  (protobuf), Solidity config files (Foundry, Hardhat) and
+  ``AndroidManifest.xml`` (android).
 
 Recursive Manifest Scanning
 ---------------------------
@@ -24,19 +33,35 @@ in subdirectories. This enables detection in:
 - Non-standard layouts where manifests aren't at root
 - Multi-project repositories
 
-Common non-project directories (node_modules, vendor, venv, etc.) are skipped.
+Manifests found by name (``_find_manifest_files``) skip dot-directories,
+common non-project directories (node_modules, vendor, venv, etc.) and
+test-fixture directories; glob-based detectors (e.g. ``*.cabal``) do not.
 
-Detection is intentionally shallow - we look for package names in
+Profiling is intentionally shallow - we look for package names in
 dependency files rather than analyzing imports. This keeps profiling
-fast (milliseconds) even for large repos.
+fast (milliseconds) even for large repos. Import edges are consulted
+only later, by ``refine_frameworks``, which promotes/demotes frameworks:
+- Promote: a framework the manifests missed is added when prod (non-test)
+  code imports one of its modules. Specific patterns (scoped npm names, Go
+  paths, Maven coords) promote on any such import; bare names such as
+  ``react`` need a submodule import (``react/jsx-runtime``), since a bare
+  import is too weak a signal, except for the dedicated web frameworks in
+  ``_BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS``.
+- Demote: a framework with no prod import moves to
+  ``RepoProfile.dev_frameworks``. ``_AUTOLOAD_BY_CONVENTION_FRAMEWORKS``
+  (Rails) are exempt: they load at boot without an explicit import.
+- The prod importer node ids of each confirmed framework are kept in
+  ``RepoProfile.framework_evidence`` as provenance.
+``IMPORT_OVERRIDES`` translates manifest names that differ from their
+import module (``scikit-learn`` imports as ``sklearn``).
 
 Framework Specification (ADR-3aaa)
 ----------------------------------
 The --frameworks flag controls which frameworks to check for:
 - none: Skip framework detection (base analysis only)
 - all: Check all known framework patterns for detected languages
-- explicit: Only check specified frameworks (e.g., "fastapi,celery")
-- auto (default): Auto-detect based on detected languages
+- explicit: Use the specified frameworks as-is, unchecked (e.g., "fastapi,celery")
+- auto (default): Auto-detect by scanning every ecosystem's manifests
 
 This enables users to:
 - Reduce noise by disabling framework detection (--frameworks=none)
@@ -872,13 +897,21 @@ def _detect_languages(
     # ``find_files`` callable, use it so this count agrees with the
     # analyzer's file enumeration (e.g., bash includes extensionless
     # shebang scripts that the extension-only glob would miss).
-    from .analyze.registry import ensure_discovered, get_analyzer
+    # WI-juzig: the analyzer is found by the LANGUAGE it declares, not by
+    # a pass NAME that happens to equal it — ``get_analyzer("makefile")``
+    # found nothing because the pass is named ``make``, so the cure was
+    # wired to the six analyzers whose name equals their language and
+    # silently absent for the rest. First declaring producer wins.
+    from .analyze.registry import analyzers_for_language, ensure_discovered
     ensure_discovered()
 
     for lang, patterns in LANGUAGE_EXTENSIONS.items():
-        analyzer = get_analyzer(lang)
-        if analyzer is not None and analyzer.find_files is not None:
-            files: set[Path] = set(analyzer.find_files(repo_root))
+        enumerator = next(
+            (a.find_files for a in analyzers_for_language(lang) if a.find_files is not None),
+            None,
+        )
+        if enumerator is not None:
+            files: set[Path] = set(enumerator(repo_root))
         else:
             # Use a set to deduplicate files (e.g., *.ts and *.d.ts both match foo.d.ts)
             files = set(find_files(repo_root, patterns, excludes=excludes))

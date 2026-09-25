@@ -338,7 +338,7 @@ def test_verify_claims_typescript_alias_catalog_bridging(tmp_path: Path, capsys)
         }],
         edges=[{
             "src": "typescript:src/cleanup.ts:1-5:cleanup:function",
-            "dst": "javascript:external:0-0:fs.unlinkSync:unresolved",
+            "dst": "javascript:external:0-0:fs.unlinkSync:unresolved", "is_resolved": False,
             "type": "calls",
             "confidence": 0.5,
         }],
@@ -381,7 +381,7 @@ def test_verify_claims_taint_flow_violated(tmp_path: Path, capsys) -> None:
         edges=[
             # handler calls Fernet.decrypt (taint source)
             {"src": "python:app.py:1-10:handler:function",
-             "dst": "python:external:0-0:Fernet.decrypt:unresolved",
+             "dst": "python:external:0-0:Fernet.decrypt:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
             # handler calls Path.write_text (taint sink - host_fs).
             # io-boundary:F3 — write_text is method-kind, so the edge carries
@@ -440,7 +440,7 @@ def test_verify_claims_taint_flow_confirmed(tmp_path: Path, capsys) -> None:
         edges=[
             # handler calls Fernet.decrypt (taint source)
             {"src": "python:app.py:1-10:handler:function",
-             "dst": "python:external:0-0:Fernet.decrypt:unresolved",
+             "dst": "python:external:0-0:Fernet.decrypt:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
             # handler calls store
             {"src": "python:app.py:1-10:handler:function",
@@ -448,7 +448,7 @@ def test_verify_claims_taint_flow_confirmed(tmp_path: Path, capsys) -> None:
              "type": "calls", "confidence": 0.9},
             # store calls Fernet.encrypt (sanitizer)
             {"src": "python:app.py:20-30:store:function",
-             "dst": "python:external:0-0:Fernet.encrypt:unresolved",
+             "dst": "python:external:0-0:Fernet.encrypt:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
             # store calls Path.write_text (taint sink). io-boundary:F3 — the
             # method-kind sink carries its receiver module so the (sanitized)
@@ -500,7 +500,7 @@ def test_verify_claims_taint_no_sources(tmp_path: Path, capsys) -> None:
         ],
         edges=[
             {"src": "haskell:Main.hs:1-10:main:function",
-             "dst": "haskell:external:0-0:putStrLn:unresolved",
+             "dst": "haskell:external:0-0:putStrLn:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
         ],
     )
@@ -812,10 +812,10 @@ def test_verify_claims_cli_taint_sources_flag_wires_user_source(
             # source) and writes to pathlib.Path.write_text (auto-derived
             # sink in zone=host_fs).
             {"src": "python:app.py:1-10:handler:function",
-             "dst": "python:external:0-0:myapp.config.get_secret:unresolved",
+             "dst": "python:external:0-0:myapp.config.get_secret:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
             {"src": "python:app.py:1-10:handler:function",
-             "dst": "python:external:0-0:pathlib.Path.write_text:unresolved",
+             "dst": "python:external:0-0:pathlib.Path.write_text:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
         ],
     )
@@ -884,10 +884,10 @@ def test_verify_claims_extra_catalogs_claims_file_key(
         ],
         edges=[
             {"src": "python:app.py:1-10:handler:function",
-             "dst": "python:external:0-0:myapp.config.get_secret:unresolved",
+             "dst": "python:external:0-0:myapp.config.get_secret:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
             {"src": "python:app.py:1-10:handler:function",
-             "dst": "python:external:0-0:pathlib.Path.write_text:unresolved",
+             "dst": "python:external:0-0:pathlib.Path.write_text:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
         ],
     )
@@ -951,7 +951,7 @@ def test_verify_claims_bad_taint_source_path_errors(
         ],
         edges=[
             {"src": "python:app.py:1-10:handler:function",
-             "dst": "python:external:0-0:Fernet.decrypt:unresolved",
+             "dst": "python:external:0-0:Fernet.decrypt:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
         ],
     )
@@ -1154,7 +1154,7 @@ def test_verify_claims_python_ddg_path_fires(tmp_path: Path) -> None:
         ],
         edges=[
             {"src": "python:mod.py:1-3:f:function",
-             "dst": "python:external:0-0:plaintext_decrypt:unresolved",
+             "dst": "python:external:0-0:plaintext_decrypt:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
         ],
     )
@@ -1224,7 +1224,7 @@ def test_verify_claims_invokes_refine_external_edges(tmp_path: Path) -> None:
         ],
         edges=[
             {"src": "python:mod.py:2-4:f:function",
-             "dst": "python:external:0-0:get:unresolved",
+             "dst": "python:external:0-0:get:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.4, "line": 4},
         ],
     )
@@ -1629,18 +1629,34 @@ def test_verify_claims_blind_supported_language_inconclusive(
 
 def test_verify_claims_covered_languages_confirm(tmp_path: Path, capsys) -> None:
     """Control: when every supported language produced call edges, a clean
-    net_send claim still CONFIRMS (rc=0) — the coverage gate is not blanket."""
+    net_send claim still CONFIRMS (rc=0) — the coverage gate is not blanket.
+
+    THE FIXTURE'S SECOND LANGUAGE WAS ``javascript`` AND IS NOW ``go``, and the
+    swap is the point rather than a workaround. javascript is declared
+    method-call blind (``analyzer_disclosure``: it emits no call edge for an
+    external instance-method call, WI-nasuf), so a clean verdict on a
+    repository containing it is deliberately no longer BARE — it carries
+    ``analyzer_method_call_blind`` and exits 3. Leaving javascript here and
+    relaxing the assertion to accept rc 3 would have destroyed this test's
+    contract, which is that a clean verdict over SIGHTED languages stays bare.
+    go is declared sighted and measured so.
+
+    The behaviour this test used to cover for javascript is not lost: it is
+    pinned from the other side in
+    ``test_declared_analyzer_blindness.py::TestTheVerdict``, where a blind
+    language must NOT produce a bare confirmed and a sighted one must.
+    """
     bmap = _make_behavior_map(
         nodes=[
             _node("python:a.py:1:f:function", "python", "a.py"),
-            _node("javascript:b.js:1:g:function", "javascript", "b.js"),
+            _node("go:b.go:1:g:function", "go", "b.go"),
         ],
         edges=[
             {"src": "python:a.py:1:f:function",
              "dst": "python:helpers.py:1:helper:function",
              "type": "calls", "confidence": 0.9},
-            {"src": "javascript:b.js:1:g:function",
-             "dst": "javascript:util.js:1:util:function",
+            {"src": "go:b.go:1:g:function",
+             "dst": "go:util.go:1:util:function",
              "type": "calls", "confidence": 0.9},
         ],
     )
@@ -1686,7 +1702,7 @@ def test_verify_claims_cli_source_overrides_claims_file_source(
              "dst": "python:api.py:1:entry:function", "type": "calls",
              "confidence": 0.9},
             {"src": "python:api.py:1:entry:function",
-             "dst": "python:external:0-0:writeit:unresolved", "type": "calls",
+             "dst": "python:external:0-0:writeit:unresolved", "is_resolved": False, "type": "calls",
              "confidence": 0.9},
         ],
     )
@@ -2155,16 +2171,16 @@ def _caveat_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
         ],
         edges=[
             {"src": "python:app.py:1-10:handler:function",
-             "dst": "python:external:0-0:myapp.config.get_secret:unresolved",
+             "dst": "python:external:0-0:myapp.config.get_secret:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
             {"src": "python:app.py:1-10:handler:function",
              "dst": "python:app.py:11-20:mid:function",
              "type": "calls", "confidence": 0.9},
             {"src": "python:app.py:11-20:mid:function",
-             "dst": "python:external:0-0:myapp.util.launder:unresolved",
+             "dst": "python:external:0-0:myapp.util.launder:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
             {"src": "python:app.py:11-20:mid:function",
-             "dst": "python:external:0-0:pathlib.Path.write_text:unresolved",
+             "dst": "python:external:0-0:pathlib.Path.write_text:unresolved", "is_resolved": False,
              "type": "calls", "confidence": 0.9},
         ],
     )

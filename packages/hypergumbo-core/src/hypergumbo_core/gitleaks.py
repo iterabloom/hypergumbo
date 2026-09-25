@@ -25,19 +25,30 @@ Public surface
   for secrets. The cached path (WI-julir, UAT 2026-04-13 BUG-20) keys
   on a content hash and short-circuits repeated scans of identical
   output; useful when ``hypergumbo`` is invoked in tight CI loops.
-- ``is_gitleaks_available``: existence check + smoke test.
+- ``is_gitleaks_available``: existence check only (our install location,
+  then ``PATH``). Nothing is executed.
 - ``get_install_nag``: the message printed when the scan would run but
   the binary is missing.
+- ``get_gitleaks_path``: resolve the binary, ours first then ``PATH``.
+- ``format_secret_warning``: render findings for the user.
+- ``SecretFinding``: the per-finding record the above two exchange.
 
 Filesystem discipline
 ---------------------
 All fs-write operations route through ``hypergumbo_core.safety_zones``
 wrappers (``install_artifact_write_bytes`` / ``install_artifact_chmod``
 / ``install_artifact_unlink`` / ``install_artifact_copy`` /
-``cache_write``). The wrappers tag each write with its trust zone
-(``install_artifact`` / ``user_cache``) so the per-entry-point taint
-catalog can verify zone reachability claims without short-name sink
-overapproximation (Unreleased CHANGELOG / safety-claims work).
+``install_artifact_mkdir`` / ``cache_write`` / ``cache_mkdir`` /
+``tmp_artifact_dir``). The wrappers tag each write with its trust zone
+(``install_artifact`` / ``user_cache`` / ``tmp_artifact``) so the
+per-entry-point taint catalog can verify zone reachability claims without
+short-name sink overapproximation (Unreleased CHANGELOG / safety-claims work).
+
+Not a write, and the widest-reading thing this module does: the scan itself
+runs through ``repo_inspect_scan`` (WI-fasuv), the ``repo_inspection``
+SUBPROCESS zone rather than a filesystem one. It reads the whole analysed
+repository, so it is binned separately from the writes above and is the
+sink that matters most when reasoning about what this module can reach.
 
 The goal is safety by default without requiring a PhD to configure.
 """
@@ -51,10 +62,12 @@ import stat
 import subprocess  # nosec B404 - subprocess needed to run gitleaks
 import sys
 import tarfile
-import tempfile
 import zipfile
 
 from .safety_zones import (
+    SafetyZoneViolation,
+    tmp_artifact_dir,
+    tmp_artifact_extract,
     cache_mkdir,
     cache_write,
     install_artifact_chmod,
@@ -207,20 +220,20 @@ def install_gitleaks(quiet: bool = False) -> bool:
 
     # Extract binary - all of this is network-dependent
     try:  # pragma: no cover
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tmp_artifact_dir() as tmpdir:
             tmppath = Path(tmpdir)
             archive_path = tmppath / filename
 
             # Write archive
             install_artifact_write_bytes(archive_path, data)
 
-            # Extract (from trusted GitHub release - nosec B202)
-            if filename.endswith(".zip"):
-                with zipfile.ZipFile(archive_path) as zf:
-                    zf.extractall(tmppath)  # noqa: S202  # nosec B202
-            else:
-                with tarfile.open(archive_path, "r:gz") as tf:
-                    tf.extractall(tmppath)  # noqa: S202  # nosec B202
+            # Extract through the zone wrapper, which validates EVERY member
+            # path against the tmp_artifact root. The suppressions this
+            # replaced justified the hazard by PROVENANCE ("from trusted
+            # GitHub release"); the claim this code is under asserts a
+            # WRAPPER discipline, and provenance is not that. See
+            # safety_zones.tmp_artifact_extract.
+            tmp_artifact_extract(archive_path, tmppath)
 
             # Find the binary
             binary_name = "gitleaks.exe" if sys.platform == "win32" else "gitleaks"
@@ -249,7 +262,17 @@ def install_gitleaks(quiet: bool = False) -> bool:
                     GITLEAKS_PATH.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
                 )
 
-    except (OSError, tarfile.TarError, zipfile.BadZipFile) as e:  # pragma: no cover
+    except (
+        OSError,
+        SafetyZoneViolation,
+        tarfile.TarError,
+        zipfile.BadZipFile,
+    ) as e:  # pragma: no cover
+        # SafetyZoneViolation is caught here rather than allowed to escape: a
+        # refused member means a release archive tried to write outside the
+        # tmp zone, which is a REFUSAL TO INSTALL, not a crash. It returns
+        # False like every other extraction failure, and the message names
+        # the member.
         print(f"Error extracting gitleaks: {e}", file=sys.stderr)  # pragma: no cover
         return False  # pragma: no cover
 

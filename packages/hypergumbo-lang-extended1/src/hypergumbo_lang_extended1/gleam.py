@@ -19,10 +19,18 @@ logic.
 
 Key constructs extracted:
 - function: Public and private function declarations
-- type_definition: Custom types with constructors (similar to enums/ADTs)
-- type_alias: Type aliases
+- type_definition: Custom types with constructors (similar to enums/ADTs),
+  emitted as kind ``class``
+- type_alias: Type aliases, emitted as kind ``type``
 - import: Module imports
 - function_call: Direct and qualified function calls
+
+Every symbol carries meta ``is_public`` (``pub`` present); custom types add
+``constructor_count`` and type aliases add ``is_alias=True``. A bare call
+``fn(x)`` is looked up by name among the cross-file symbols and becomes an
+unresolved edge when not found. A qualified call ``mod.fn(x)`` is always
+emitted unresolved (via ``make_unresolved_edge``, target ``mod.fn``): the
+module qualifier is not resolved against imports.
 """
 from __future__ import annotations
 
@@ -348,7 +356,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
 _analyzer = GleamAnalyzer()
 
 
-@register_analyzer("gleam")
+@register_analyzer("gleam", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_gleam(repo_root: Path) -> AnalysisResult:
     """Analyze Gleam source files in a repository."""
     return _analyzer.analyze(repo_root)

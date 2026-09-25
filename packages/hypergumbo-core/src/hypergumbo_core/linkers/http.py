@@ -117,7 +117,7 @@ from ..url_folding import (
     fold_string_interpolation,
     load_url_folding_registry,
 )
-from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("http-linker")
@@ -1525,7 +1525,9 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
-                derived_from=[client_symbol.id, matched_route.id],
+                # derived-from endpoints: the client node is minted here; the route is joined by URL
+                #   path (meta url_path)
+                derived_from=[matched_route.id],
             )
             edge.meta = {
                 "protocol": "http",
@@ -1593,9 +1595,21 @@ HTTP_REQUIREMENTS = [
     priority=60,  # Run after analyzers have produced route symbols
     description="HTTP client-server linking (fetch, axios, requests to routes)",
     requirements=HTTP_REQUIREMENTS,
-    # CNF: HTTP routes/clients exist in every general-purpose language with a
-    # web stack. Single OR-clause across the major HTTP-server languages.
-    depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "php", "rust", "kotlin", "swift", "scala", "elm"]],
+    # CNF (WI-zujan): the linker reads ONE thing from the graph -- path-bearing
+    # route records, its edge destination (``_get_route_symbols`` ->
+    # ``route_of``); the client side is its own disk scan. Both ``route_of``
+    # arms trace to a HOST analyzer: markers minted via ``make_route_symbol``,
+    # and framework-YAML concepts enriched onto a host record's
+    # decorators/annotations or UsageContext (the enrichment is not a pass).
+    # Derived, not restated: test_depends_on_producer_sets.py. ``elm`` was
+    # here because .elm files are scanned for CLIENT calls; no elm pass emits
+    # a route.
+    depends_on=[[
+        "clojure", "csharp", "elixir", "go", "groovy", "java", "javascript",
+        "kotlin", "php", "play-routes", "python", "ruby", "rust", "scala",
+        "swift",
+    ]],
+    activation=always_on_unreviewed(),
 )
 def http_linker(ctx: LinkerContext) -> LinkerResult:
     """HTTP linker for registry-based dispatch.

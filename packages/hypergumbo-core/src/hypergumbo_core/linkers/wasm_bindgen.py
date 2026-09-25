@@ -61,7 +61,8 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("wasm-bindgen-linker")
 
@@ -202,7 +203,9 @@ def link_wasm_bindgen(
         rust_symbols: Rust symbols from analyzers.
 
     Returns:
-        WasmBindgenLinkResult with wasm_bridge edges.
+        WasmBindgenLinkResult with ``calls`` edges (``meta.bridge_kind="wasm"``).
+        The ``imports`` edges for dynamic WASM loading are added separately
+        by ``wasm_bindgen_linker`` via ``_create_wasm_load_edges``.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -215,6 +218,10 @@ def link_wasm_bindgen(
     export_map = _find_wasm_bindgen_exports(rust_symbols)
     if not export_map:
         run.duration_ms = int((time.time() - start_time) * 1000)
+        # Claimed before the wrapper's SECOND scan (_create_wasm_load_edges)
+        # has run, which is safe: that scan emits a symbol per load it finds,
+        # so if it finds any the chokepoint derives "" and clears this.
+        run.silence_reason = silence_reason_for_candidates(export_map)
         return WasmBindgenLinkResult(edges=[], run=run)
 
     # Phase 2: Collect unique JS/TS file paths
@@ -234,12 +241,16 @@ def link_wasm_bindgen(
 
     # Phase 3: Match imports to Rust exports
     seen_edges: set[tuple[str, str]] = set()  # (file_path, import_name)
+    # Every wasm import this scan FINDS, matched or not: an import whose
+    # export is missing is an unpaired construct, not an absent one.
+    all_imports: list[str] = []
 
     for file_path in ts_js_files:
         if not file_path.exists():
             continue
 
         import_names = _scan_js_ts_for_wasm_imports(file_path)
+        all_imports.extend(import_names)
 
         for import_name in import_names:
             target_sym = export_map.get(import_name)
@@ -258,7 +269,9 @@ def link_wasm_bindgen(
             except ValueError:
                 pass
 
-            src_id = f"typescript:{rel_path}:0-0:{import_name}:wasm_import"
+            # WI-dovog: the importing file's language, not a literal.
+            host_language = js_ts_language_from_path(Path(rel_path))
+            src_id = f"{host_language}:{rel_path}:0-0:{import_name}:wasm_import"
 
             # Create synthetic Symbol node for the wasm import so the
             # slicer's BFS can traverse through it. Without this node,
@@ -278,7 +291,7 @@ def link_wasm_bindgen(
                     name=import_name,
                     path=rel_path,
                     language=None,
-                    discovery_language="typescript",
+                    discovery_language=host_language,
                     protocol_origin="wasm",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
@@ -309,9 +322,12 @@ def link_wasm_bindgen(
                 evidence_type="ast_import",
                 data_direction="src_to_dst",
                 meta={"bridge_kind": "wasm", "framework_dispatch": "wasm_bindgen_import"},
-                derived_from=[src_id, target_sym.id],
+                # derived-from endpoints: the import node is minted here; the export is joined by
+                #   name
+                derived_from=[target_sym.id],
             ))
 
+    run.silence_reason = silence_reason_for_candidates(all_imports)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return WasmBindgenLinkResult(
@@ -432,7 +448,8 @@ def _create_wasm_load_edges(
                     supply_chain_reason="WASM module loaded dynamically",
                 ))
 
-            # Create wasm_load edge from JS file to WASM module
+            # Create an ``imports`` edge (meta.framework_dispatch=
+            # "wasm_instantiate") from the JS file to the WASM module
             rel_path = sym.path
             try:
                 rel_path = str(Path(sym.path).relative_to(repo_root))
@@ -455,7 +472,9 @@ def _create_wasm_load_edges(
                 origin_run_id=run.execution_id,
                 evidence_type="ast_call_direct",
                 meta={"framework_dispatch": "wasm_instantiate"},
-                derived_from=[src_id, wasm_module_id],
+                # derived-from consumed-none: a text scan; the module is minted and the file id is
+                #   computed, not read
+                derived_from=[],
             ))
 
     return edges, symbols
@@ -519,7 +538,8 @@ WASM_BINDGEN_REQUIREMENTS = [
     ),
     # CNF: javascript (JS/TS share the analyzer pass id) AND rust — both
     # required for wasm-bindgen's import ↔ #[wasm_bindgen] bridge.
-    depends_on=[["javascript"], ["rust"]],
+    # WI-juzig: rust has two producers (tree-sitter ``rust``, SCIP ``rust_analyzer``).
+    depends_on=[["javascript"], ["rust", "rust_analyzer"]],
 )
 def wasm_bindgen_linker(ctx: LinkerContext) -> LinkerResult:
     """wasm_bindgen linker for registry-based dispatch.

@@ -4896,3 +4896,16 @@ def test_refine_frameworks_promotes_laravel_from_php_use_edge() -> None:
     )
     result = refine_frameworks(profile, [edge], [file_sym])
     assert "laravel" in (result.frameworks if hasattr(result, "frameworks") else profile.frameworks)
+
+
+def test_profile_finds_an_analyzer_enumerator_by_language_not_by_pass_name(tmp_path: Path) -> None:
+    """WI-juzig / INV-hokig: the profile used to call ``get_analyzer(<language>)``,
+    a lookup by pass NAME, so the ``find_files`` cure fired only for the six
+    analyzers whose name equals their language and never for ``make`` (language
+    ``makefile``). A repo whose only makefile is ``GNUmakefile`` — which the
+    taxonomy's ``Makefile``/``*.mk`` globs cannot see — must still count 1."""
+    (tmp_path / "GNUmakefile").write_text("all:\n\techo hi\n")
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    languages = json.loads(out_path.read_text())["profile"]["languages"]
+    assert languages.get("makefile", {}).get("files") == 1, languages

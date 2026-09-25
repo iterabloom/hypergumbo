@@ -38,20 +38,51 @@ self-documents that ``if err := do(); err != nil`` initializers are invisible to
 def/use — 700 of caddy's 6,596 ``if`` statements carry a call there — so Go reads
 ``dataflow_capable`` while containing functions the walk cannot see into, and a
 reader who took the bit for coverage would be making exactly the assumption
-clause (a3) forbids. ``coverage_granularity`` says so in the emitted record
-rather than here, where no consumer would find it. The finer signal is WI-joluk's
-(forfeit refutation for any function whose CFG statement extents miss a call node
-in its body); when it lands, this constant becomes ``function``.
+clause (a3) forbids. The finer signal is WI-joluk's per-function coverage gate
+(a function whose CFG statement extents miss a call node in its body forfeits
+refutation), which landed on 2026-08-26. So ``coverage_granularity`` reads
+``function`` in the emitted record, which counts the forfeiting functions, rather
+than leaving it here, where no consumer would find it.
 
 WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — II. ``inclusion_decided_by`` is a
-constant, not a measurement, and it says ``call_graph_reachability``. ADR-0017
-§3a is confirm-only: the walk raises confidence on a flow and never removes
-one, so every reported flow — including every ``ddg`` one — was *included* by
-call-graph reachability. Reading ``analysis_method == "ddg"`` as "this flow's
-inclusion was decided by data flow" is the misreading INV-sadah exists for, and
-it has been made twice in this repository's own history. Emitting the fact as
-data gives that prose claim the executable re-evaluation trigger R16 requires:
-when §3a gains refutation the constant must change or its test fails.
+constant, not a measurement. **It changed on 2026-09-02, which is the R16
+trigger firing exactly as designed** — the previous text said that when §3a
+gained refutation this constant must change or its test fails, and WI-kabif
+granted §3a removal authority. It now reads
+``call_graph_reachability_minus_ddg_refutation``, and the compound name is the
+honest one because BOTH halves are still true: a flow is still *included* by
+call-graph reachability, and the walk can now *remove* one it refutes.
+
+The asymmetry matters more than the rename. The walk only ever SUBTRACTS: it
+adds no flow that reachability did not already report, and it removes only on
+``unconfirmed`` — the walk exhausted every route with nothing unexplained.
+``escaped`` is ignorance and removes nothing. So reading ``analysis_method ==
+"ddg"`` as "this flow's inclusion was decided by data flow" is STILL the
+misreading INV-sadah exists for, and it has been made twice in this
+repository's own history: a surviving ``ddg`` flow was included by
+reachability and merely corroborated by the walk.
+
+WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — III, and it is the argument at
+the top of this docstring applied to this module's OWN removal count.
+``flows_removed_by_walk`` is published beside a ``findings_by_analysis_method``
+rollup in which ``ddg_mixed`` collapses THREE walk verdicts and ``structural``
+covers a fourth (``unavailable`` — the walk ran but the DDG held no reaching-def
+data for that flow's source function). Only ``unconfirmed`` can remove a flow.
+So a bare ``0`` could mean "the walk adjudicated every flow and refuted none" or
+"the walk never got to look at any of them", which is the same pair of opposite
+meanings on identical evidence that this module exists to prevent for "0 precise
+findings". :func:`count_walk_verdicts` publishes the finer axis so the zero is
+readable; MEASURED on hypergumbo's own repository the first time it ran, the
+answer was ``unavailable 224`` out of 224 — the DDG built 177,518 edges and
+covered none of the flows' source functions, a fact the previous output had no
+way to state.
+
+That gap is now a DECLARED limitation rather than a work item: the owner retired
+the goal of closing §3a's escape sites on 2026-09-09 (INV-busis option (c)),
+because most of them are not calls at all and no function summary can ever reach
+them. The capability is untouched — §3a still removes a flow it refutes — but
+the coverage it would need to fire at scale is not being pursued, and a reader
+is told so in the emitted record rather than discovering it from a zero.
 """
 from __future__ import annotations
 
@@ -60,19 +91,88 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .cfg import get_def_use_extractor, load_cfg_mapping
 from .ddg_build import registered_ddg_languages
+from .taint import WALK_VERDICTS
 
 #: What decided that a reported flow is a flow, as opposed to what raised its
 #: confidence afterwards. See the module docstring — this is a declared
-#: property of ADR-0017 §3a's confirm-only design, not a per-run measurement.
-INCLUSION_DECIDED_BY = "call_graph_reachability"
+#: property of ADR-0017 §3a's adjudicating design, not a per-run measurement.
+INCLUSION_DECIDED_BY = "call_graph_reachability_minus_ddg_refutation"
 
-#: The granularity at which capability is reported. ``language`` is a statement
-#: of what is NOT claimed: a capable language still holds functions the def/use
-#: extractor does not model (see the module docstring). Becomes ``function``
-#: when WI-joluk's per-function coverage gate lands. Like
-#: ``INCLUSION_DECIDED_BY``, this is a declared property with a test on it, so
-#: the claim cannot quietly outlive its truth (R16).
-COVERAGE_GRANULARITY = "language"
+#: The granularity at which capability is reported. Was ``language`` — a
+#: statement of what was NOT claimed, since a capable language still holds
+#: functions the def/use extractor does not model. WI-joluk's per-function
+#: coverage gate landed (2026-08-26, wired to both walk arms), which is the
+#: condition this constant's own comment named, so it is now ``function``:
+#: coverage is decided per function, and the functions that forfeit are
+#: counted in the emitted record rather than left to inference.
+#:
+#: THE R16 TRIGGER FIRED AND WAS NOT HONOURED FOR NINETEEN DAYS. The mechanism
+#: works — a declared constant with a test on it cannot change silently — but
+#: it catches a change to the CONSTANT, not the arrival of the condition that
+#: makes the constant false. A trigger phrased "becomes X when Y lands" needs
+#: something that notices Y.
+COVERAGE_GRANULARITY = "function"
+
+#: Buckets in :func:`count_walk_verdicts` that are not one of taint's five
+#: verdicts. ``mixed`` is a COLLAPSED row whose members disagreed: the scalar
+#: ``walk_verdict`` is ``grp[0]``'s, and measured on beads 63.9% of groups
+#: holding a ``sink_before_source`` member are not unanimous, so attributing
+#: such a row to its first member would publish a clean, plausible, entirely
+#: wrong breakdown — and in the flattering direction, since a row standing for
+#: one confirmed and three escaped members would read as fully adjudicated.
+#: ``unrecorded`` catches a finding whose verdict is ``""`` (deserialized from
+#: a map written before the field existed) or a value this module does not
+#: know; it is counted rather than dropped so the breakdown sums to the
+#: finding count, which is the one arithmetic a reader can check.
+WALK_VERDICT_MIXED = "mixed"
+WALK_VERDICT_UNRECORDED = "unrecorded"
+
+
+def count_walk_verdicts(findings: Iterable[Any]) -> dict[str, int]:
+    """Break taint findings down by WHAT THE §3a WALK RETURNED.
+
+    WHY THIS EXISTS, and it is this module's own founding argument turned on
+    its own field. ``flows_removed_by_walk: 0`` is published beside a
+    ``findings_by_analysis_method`` rollup in which ``ddg_mixed`` collapses
+    THREE verdicts — ``taint`` records a production split of 0 ``unconfirmed``
+    / 14 ``escaped`` / 139 ``not_attempted``. Only ``unconfirmed`` can remove a
+    flow. So a reader looking at a zero could not tell "the walk adjudicated
+    and refuted nothing" from "the walk never got to look", which is exactly
+    the pair of opposite meanings on identical evidence that this module was
+    written to prevent for ``0 precise findings``.
+
+    IT IS ALSO A DECLARED BLINDNESS, not a gap awaiting work. INV-busis
+    measured that most points where the walk loses a tainted value are not
+    calls at all (66.7-90.6%), so no function summary can ever close them, and
+    the owner RETIRED the goal of closing them on 2026-09-09 (option (c):
+    accept confirm-only permanently). Retiring a goal without publishing its
+    consequence is how a limitation becomes a silent one — hence this.
+
+    Counts ROWS, on the same denominator as ``findings_by_analysis_method``:
+    both describe findings the propagators produced, post-collapse.
+    """
+    counts: dict[str, int] = dict.fromkeys(sorted(WALK_VERDICTS), 0)
+    counts[WALK_VERDICT_MIXED] = 0
+    counts[WALK_VERDICT_UNRECORDED] = 0
+    for finding in findings:
+        values = tuple(getattr(finding, "walk_verdict_values", ()) or ())
+        distinct = set(values)
+        if len(distinct) > 1:
+            counts[WALK_VERDICT_MIXED] += 1
+            continue
+        # ``next(..., "")`` rather than a fallback to the scalar: a real
+        # finding's ``__post_init__`` derives the singleton, so an empty tuple
+        # reaches here only from a duck-typed input that carries no verdict at
+        # all -- and ``""`` is exactly the ``unrecorded`` cell below. Reading
+        # the scalar as a second source would give one fact two homes for a
+        # case that cannot occur, and CI's whole-file coverage gate is what
+        # surfaced it as unreachable.
+        verdict = next(iter(distinct), "")
+        if verdict in counts and verdict != WALK_VERDICT_MIXED:
+            counts[verdict] += 1
+        else:
+            counts[WALK_VERDICT_UNRECORDED] += 1
+    return counts
 
 #: Which analysis methods honour a sanitizer called in the SAME function as the
 #: taint source. Deciding that needs statement ordering inside the seed
@@ -262,14 +362,23 @@ def ensure_def_use_extractors_registered() -> bool:
     # test reports health while the JavaScript extractor is gone. That is exactly
     # how a full-suite run produced two JavaScript data-flow failures that every
     # smaller scope passed.
-    current = registered_def_use_languages()
-    if not current:
+    # THE BASELINE IS PRODUCED, NOT FOUND. Learning the expected set from
+    # whatever happened to be registered when this ran first has the same
+    # shape as the subset defect above, one level up: if an earlier test had
+    # imported the modules and then cleared the registry, the first call
+    # found a PARTIAL registry (the import is a no-op once the module is in
+    # ``sys.modules``), recorded that as healthy, and every later subset
+    # check passed against the clipped baseline — so ``go`` could stay
+    # missing for the rest of the process with nothing reporting it. The
+    # first call therefore reloads unconditionally and learns from the state
+    # it produced itself.
+    if not _EXPECTED_DEF_USE_LANGUAGES:
         for module in modules:
             importlib.reload(module)
-        current = registered_def_use_languages()
-    if not _EXPECTED_DEF_USE_LANGUAGES:
-        _EXPECTED_DEF_USE_LANGUAGES = current
-    elif not _EXPECTED_DEF_USE_LANGUAGES <= current:
+        _EXPECTED_DEF_USE_LANGUAGES = registered_def_use_languages()
+        return True
+    current = registered_def_use_languages()
+    if not _EXPECTED_DEF_USE_LANGUAGES <= current:
         for module in modules:
             importlib.reload(module)
     return True
@@ -312,6 +421,10 @@ def dataflow_scope_dict(
     rows: Sequence[LanguageDataflowScope],
     findings_by_analysis_method: Mapping[str, int],
     sanitizer_scope: SanitizerScope | None = None,
+    flows_removed_by_walk: int = 0,
+    walk_verdicts: Mapping[str, int] | None = None,
+    functions_walkable: int = 0,
+    functions_forfeited: int = 0,
 ) -> dict[str, Any]:
     """The machine-readable scope block.
 
@@ -326,9 +439,34 @@ def dataflow_scope_dict(
     return {
         "inclusion_decided_by": INCLUSION_DECIDED_BY,
         "coverage_granularity": COVERAGE_GRANULARITY,
+        # WI-mugop. What the per-function granularity above actually COSTS.
+        # A function lands in the forfeited count when the CFG's recorded
+        # statement extents miss code in its body — the extractor demonstrably
+        # did not see part of it — so its walk may not refute. On the measured
+        # cohort that is 18.8-51.6% of walkable functions, and a rate that high
+        # decides how much a clean verdict is worth. Emitted as a PAIR because
+        # a bare count is unreadable: 400 forfeits out of 800 and out of 40,000
+        # are different facts. Zero-filled like every other key here.
+        "functions_walkable": functions_walkable,
+        "functions_forfeited": functions_forfeited,
         "languages": [row.to_dict() for row in rows],
         "findings_by_analysis_method": counts,
         "findings_total": sum(counts.values()),
+        # WI-kabif. How many flows the §3a walk REFUTED and removed this run.
+        # Emitted always, and zero is a real answer: the alternative is a
+        # security tool whose findings can silently be fewer than the analysis
+        # produced, with no number a reader could check. ``findings_total``
+        # counts what SURVIVED, so the two together say what the walk did.
+        "flows_removed_by_walk": flows_removed_by_walk,
+        # INV-busis. What makes the number ABOVE readable: only ``unconfirmed``
+        # can remove a flow, so a zero beside a large ``escaped`` /
+        # ``not_attempted`` count means the walk never got to look. Always
+        # present and fully zero-filled, for the same reason as every other key
+        # here. See :func:`count_walk_verdicts`.
+        "walk_verdicts": dict(
+            walk_verdicts if walk_verdicts is not None
+            else count_walk_verdicts(())
+        ),
         # Always present, like every other key here: a disclosure that appears
         # only when it has something to say teaches a consumer to treat its
         # absence as "not applicable" rather than "zero".
@@ -342,6 +480,10 @@ def render_dataflow_scope_text(
     rows: Sequence[LanguageDataflowScope],
     findings_by_analysis_method: Mapping[str, int],
     sanitizer_scope: SanitizerScope | None = None,
+    flows_removed_by_walk: int = 0,
+    walk_verdicts: Mapping[str, int] | None = None,
+    functions_walkable: int = 0,
+    functions_forfeited: int = 0,
 ) -> list[str]:
     """The same scope, for the text view. Empty when nothing was analyzed.
 
@@ -377,15 +519,49 @@ def render_dataflow_scope_text(
     lines.append(f"  Taint findings by analysis method ({total} total): {breakdown}.")
     lines.append(
         "  Flow INCLUSION rests on call-graph reachability for every finding "
-        "above; the data-flow walk raises confidence and never removes a flow "
-        "(§3a is confirm-only), so a 'ddg' label corroborates a flow rather "
-        "than deciding it."
+        "above, so a 'ddg' label corroborates a flow rather than deciding it. "
+        "The walk can now SUBTRACT (ADR-0017 §3a removal authority): a flow is "
+        "dropped only where the walk exhausted every route inside one function "
+        "and found no dependence. A walk that LOST the value removes nothing, "
+        "and no flow is ever added by the walk."
+    )
+    lines.append(
+        f"  Flows REMOVED by the walk this run: {flows_removed_by_walk}. "
+        "Counted separately from the total above, which counts survivors — a "
+        "removal a reader cannot see is the failure mode this number exists "
+        "to prevent."
+    )
+    verdicts = dict(
+        walk_verdicts if walk_verdicts is not None else count_walk_verdicts(())
+    )
+    lines.append(
+        "  §3a walk verdicts for those findings: "
+        + ", ".join(f"{name} {count}" for name, count in sorted(verdicts.items()))
+        + "."
+    )
+    lines.append(
+        "  Only an 'unconfirmed' verdict can REMOVE a flow: 'escaped' and "
+        "'not_attempted' are ignorance, not absence of dependence. So a "
+        "removal count of 0 beside a large 'escaped' or 'not_attempted' count "
+        "means the walk did not get to look — NOT that it looked and found "
+        "nothing. Closing those escapes is a RETIRED goal (INV-busis, "
+        "2026-09-09): most of them are not calls at all, so no function "
+        "summary can close them. This is a declared limitation, not work in "
+        "progress."
     )
     lines.append(
         f"  Coverage is reported per {COVERAGE_GRANULARITY}: 'wired' means the "
         "machinery runs for that language, NOT that every function in it is "
         "modelled (Go if-statement initializers, for one, are not)."
     )
+    if functions_walkable:
+        _pct = 100.0 * functions_forfeited / functions_walkable
+        lines.append(
+            f"  {functions_forfeited} of {functions_walkable} analysed "
+            f"functions ({_pct:.1f}%) may not refute a flow: the CFG did not "
+            "record every construct in their bodies, so an exhausted walk over "
+            "them is not evidence a flow is absent."
+        )
 
     scope = sanitizer_scope or _EMPTY_SANITIZER_SCOPE
     categories = ", ".join(scope.taint_categories) or "none"

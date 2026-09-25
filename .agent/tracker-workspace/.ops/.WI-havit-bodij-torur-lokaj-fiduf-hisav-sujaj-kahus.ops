@@ -1,0 +1,44 @@
+- op: create  # d762
+  at: '2026-09-10T19:01:07Z'  # d762
+  by: agent  # d762
+  actor: jgstern_agent  # d762
+  clock: 1  # d762
+  nonce: d762  # d762
+  data:  # d762
+    kind: work_item  # d762
+    title: "bakeoff-deep run and both reflect scripts re-derive pool repo paths with a naive join, so --pool ~/ALL_REPOS (the documented usage) dies with FileNotFoundError: WI-favav's resolver was applied to 2 call sites and missed 3+"  # d762
+    status: todo_hard  # d762
+    priority: 1  # d762
+    parent:  # d762
+    tags:  # d762
+    - bakeoff  # d762
+    - tooling  # d762
+    - parity  # d762
+    isbefore: []  # d762
+    duplicate_of: []  # d762
+    not_duplicate_of: []  # d762
+    pr_ref:  # d762
+    description: "WI-favav's nested-pool resolver was applied to TWO of its call sites and missed at\nleast THREE more. The result: `bakeoff-deep run --pool ~/ALL_REPOS` — the documented\nusage, and the pool every session on this machine uses — dies with FileNotFoundError\nfor any repo living one level down in a collection subdir.\n\nREPRODUCED 2026-09-10, on the way into a directed DEEP cycle:\n\n  $ ./scripts/bakeoff-deep cohort --repos django\n    django   56.3MB  6915 files  [python, javascript]   <- SELECTION resolves it\n  $ ./scripts/bakeoff-deep run\n    FileNotFoundError: [Errno 2] No such file or directory:\n      '/home/jgstern_agent/ALL_REPOS/django'            <- RUN does not\n\nCohort selection WRITES the correct absolute path into the cohort metadata:\n  \"path\": \"/home/jgstern_agent/ALL_REPOS/whole_bunch_of_repos/django\"\nand `_run_cohort_repos` then DISCARDS it and re-derives a weaker one.\n\nTHE VIOLATED INVARIANT: a path already resolved by the shared resolver must not be\nre-derived downstream by a naive join. Selection and run must agree by CONSTRUCTION\n— i.e. by calling the same resolver — not by coincidence of pool layout.\n\nENUMERATED ROUTES (grep for `os.path.join(pool_path`, both scripts and both reflect\nscripts), rather than fixing the one that happened to bite:\n\n  scripts/bakeoff-deep:1980           `_run_cohort_repos`      <- BLOCKS run\n  scripts/bakeoff-deep-reflect:893                             <- inside `cycle`\n  scripts/bakeoff-broad-reflect:688                            <- sibling, same shape\n  scripts/bakeoff-deep-reflect:1004   f-string telling the agent `<pool>/<repo_name>/`\n  scripts/bakeoff-broad-reflect:722   same f-string\n\nThe last two are lower severity but the SAME defect: they print a path that does not\nexist, aimed at an agent that will then look in the wrong place.\n\nALREADY CORRECT, and the model to copy: `scripts/bakeoff-broad::_pool_repo_path`\n(line 221) wraps `pool_utils.resolve_repo_path` with a fallback to the naive join so\na genuinely-missing repo still errors as before. `scripts/bakeoff-deep` line 1689\nalready calls the resolver in SELECTION and cites WI-favav in the comment — so the\nfix and its rationale were both present in this very file and the run path still\nmissed them.\n\nWHY THIS MATTERS BEYOND THE CRASH: the reflect site is inside `bakeoff-deep cycle`,\nso a cycle can select repos correctly, analyse them correctly, and then hand the\nreflect agent a wrong source path. A crash is the GOOD failure. A reflect pass\nreading nothing because the path is wrong is the silent one.\n\nFIX: mirror `_pool_repo_path` into `bakeoff-deep` and both reflect scripts, with a\nparity test per script modelled on tests/test_bakeoff_broad_pool_path.py."  # d762
+    fields: {}  # d762
+- op: discuss  # 23b3
+  at: '2026-09-10T19:11:54Z'  # 23b3
+  by: agent  # 23b3
+  actor: jgstern_agent  # 23b3
+  clock: 2  # 23b3
+  nonce: 23b3  # 23b3
+  message: "Merged as PR #896, dev SHA 2303bef74259."  # 23b3
+- op: update  # 7728
+  at: '2026-09-10T22:12:28Z'  # 7728
+  by: agent  # 7728
+  actor: jgstern_agent  # 7728
+  clock: 3  # 7728
+  nonce: '7728'  # 7728
+  set:  # 7728
+    status: done  # 7728
+- op: discuss  # a500
+  at: '2026-09-10T22:12:29Z'  # a500
+  by: agent  # a500
+  actor: jgstern_agent  # a500
+  clock: 4  # a500
+  nonce: a500  # a500
+  message: "DONE — merged as PR #896, dev 2303bef742. Closed on the filed row.\n\nWHAT SHIPPED. `_pool_repo_path` in `bakeoff-deep` and BOTH reflect scripts,\nmirroring `bakeoff-broad`'s existing helper: resolve through\n`pool_utils.resolve_repo_path`, fall back to the naive join so a genuinely\nmissing repo still errors where it errored before rather than passing None\ndownstream. The two agent-facing guidance strings that printed\n`<pool>/<repo_name>/` now say a repo may be nested one level.\n\nVERIFIED BEHAVIOURALLY, not by proxy. The filed repro was\n`bakeoff-deep cohort --repos django` succeeding while `bakeoff-deep run` died\nwith `FileNotFoundError: /home/jgstern_agent/ALL_REPOS/django`. After the fix the\nsame pool ran the full battery end to end: `deep-20260910-151249`, django\nresolved at `.../whole_bunch_of_repos/django`, 74 artifacts, 306s, rc=0. The\ndirected A/B that followed ran two more sessions over pretix + django on the same\npool with no path failure.\n\nTHE ENUMERATION WAS THE POINT. Fixing only the line that crashed would have left\n`bakeoff-deep-reflect:893` — INSIDE `bakeoff-deep cycle` — handing the reflect\nagent a source path that does not exist. That one does not crash; it reads\nnothing and reports quietly, so a cycle could select and analyse repos correctly\nand then verdict them on absence. WI-favav had already fixed this exact shape in\n`bakeoff-broad` and `bakeoff-deep` already cited WI-favav in its SELECTION path;\nonly the run path missed it. Two call sites fixed, three-plus missed, and the\nsilent one was the dangerous one.\n\nTESTS ARE SPLIT PER SCRIPT DELIBERATELY. A single family-wide file passed locally\nand would have passed CI on that PR, then never run again: the top-level test map\nselects root tests by name prefix and no name maps to four scripts. Its own guard\n`test_top_level_test_map.py::test_no_new_unreachable_top_level_tests` caught it.\nNaming each file after the script it covers was the honest fix rather than taking\nthe KNOWN_UNREACHABLE exemption, which exists for tests the mapper structurally\ncannot claim. Each copy carries the family-wide enumeration check, so touching\nany one of the four re-runs it across all of them — that is what a third partial\nfix would trip over.\n\nRESIDUAL, filed not folded: WI-zilar — `run`'s code-hash skip guard does not\ncheck that the previous run produced output, so the crash THIS item describes\npoisoned its session and later runs exited 0 citing an empty directory. The\ncorrect predicate already exists in the same function (the `--all` batch path\nchecks `os.listdir(out_dir)`).\n\nNOT TAGGED `awaits_bakeoff_validation`: this carries no quantitative\nbakeoff-improvement claim. It is a tooling fix whose evidence is a repro that\nstopped reproducing."  # a500

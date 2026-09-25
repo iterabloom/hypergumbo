@@ -69,7 +69,7 @@ from ..analyze.base import (
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
-from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("database-query-linker")
@@ -479,7 +479,9 @@ def link_database_queries(root: Path, table_symbols: list[Symbol]) -> DatabaseQu
                 origin_run_id=run.execution_id,
                 evidence_type="naming_convention",
                 meta=edge_meta,
-                derived_from=[query_symbol.id, table_sym.id],
+                # derived-from endpoints: the src query node is minted here; the table is joined by
+                #   name (meta table_name)
+                derived_from=[table_sym.id],
             )
             edges.append(edge)
 
@@ -518,9 +520,28 @@ DATABASE_QUERY_REQUIREMENTS = [
     priority=70,  # Run after SQL analyzer has produced table symbols
     description="Database query linking (SQL queries in code to schema tables)",
     requirements=DATABASE_QUERY_REQUIREMENTS,
-    # CNF: SQL is required (target side); any backend language consuming
-    # SQL is the query side. Two AND-conjuncts.
-    depends_on=[["sql"], ["python", "javascript", "ruby", "java", "go", "csharp", "rust", "kotlin", "scala", "elixir", "php"]],
+    # CNF: the pass that can supply the edge DESTINATION — ``sql``, whose
+    # ``kind="table"`` symbols are the only pass output this linker consumes.
+    #
+    # WI-ditir. The second conjunct named ELEVEN host languages while
+    # ``_find_source_files`` scans four globs (``**/*.py``, ``**/*.js``,
+    # ``**/*.ts``, ``**/*.java``) and dispatches to three scanners, so eight of
+    # the eleven named neither a pass whose output this linker reads nor a file
+    # it opens. It never read a host analyzer's output at all: it takes
+    # ``ctx.repo_root`` and re-reads the query side from disk.
+    #
+    # Too wide is the FALSE-ALL-CLEAR direction on this axis. A clause is an
+    # inner-OR, so any single member satisfies it, and eight never-scanned
+    # languages kept the clause satisfiable on repositories where this linker
+    # could not possibly have read anything. ``find_falsified_dependencies`` is
+    # backward-looking and can only catch a clause that is too NARROW, so this
+    # was invisible to falsification by construction — found by reading the
+    # body, not by the detector.
+    #
+    # Repaired to the shape WI-dinum shipped for ``graphql-linker``: name what
+    # supplies the destination, not where the source pattern was found.
+    depends_on=[["sql"]],
+    activation=always_on_unreviewed(),
 )
 def database_query_linker(ctx: LinkerContext) -> LinkerResult:
     """Database query linker for registry-based dispatch.

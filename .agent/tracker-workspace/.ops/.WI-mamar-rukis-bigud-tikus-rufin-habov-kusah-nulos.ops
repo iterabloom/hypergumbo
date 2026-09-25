@@ -1,0 +1,21 @@
+- op: create  # 1ea4
+  at: '2026-09-05T23:34:34Z'  # 1ea4
+  by: agent  # 1ea4
+  actor: jgstern_agent  # 1ea4
+  clock: 1  # 1ea4
+  nonce: 1ea4  # 1ea4
+  data:  # 1ea4
+    kind: work_item  # 1ea4
+    title: "Session-start guard: warn when inotify instance headroom is low or gh has no stored credential"  # 1ea4
+    status: needs_human_review  # 1ea4
+    priority: 3  # 1ea4
+    parent:  # 1ea4
+    tags:  # 1ea4
+    - agent_infrastructure  # 1ea4
+    - hooks  # 1ea4
+    isbefore: []  # 1ea4
+    duplicate_of: []  # 1ea4
+    not_duplicate_of: []  # 1ea4
+    pr_ref:  # 1ea4
+    description: "PROPOSAL (governance: .agent/hooks — needs human approval before implementation).\n\nThe 2026-09-05 crash class was detectable at session start and nothing said so: fs.inotify instances were 128/128 (inotify_init -> EMFILE) and `gh auth status` exited 1 on a headless box, which is precisely the condition under which every `gh auth token` the harness runs leaks a dbus-daemon + gnome-keyring-daemon pair holding one inotify instance. Both facts were one shell call away.\n\nProposed guard, in .agent/hooks/_shared/session_start_logic.sh (vendor-neutral), emitting at most two one-line warnings into the session context and never blocking:\n1. inotify headroom: attempt `inotify_init` via python3 ctypes (or `inotifywait -t 0 /tmp`); if it fails with EMFILE, or if instances held by this user's processes (count of anon_inode:inotify fds under /proc/*/fd) exceed 90% of /proc/sys/fs/inotify/max_user_instances, warn with the count and the top holder comm — \"128/128 inotify instances, 126 held by dbus-daemon\" would have named the leak on day one.\n2. gh credential: if `command -v gh` and `gh auth status` fails, warn that the harness's gh calls will autolaunch keyring daemons on this box and point at `gh auth login --with-token --insecure-storage`.\n\nCost: two subprocess calls at session start, well under a second. Tests: the guard's two branches each get a test in tests/ (fake gh on PATH; instance count driven by a fake /proc root or an env override for the max). Not proposed: killing the orphans automatically (destroying processes the hook does not own) or writing a gh credential (secret handling) — both stay owner actions.\n\nFiled at P3 as a proposal; priority is the owner's call. Sibling of the record item filed the same day (search: \"exhausted the per-user inotify limit\")."  # 1ea4
+    fields: {}  # 1ea4

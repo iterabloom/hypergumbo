@@ -1,0 +1,21 @@
+- op: create  # dcc7
+  at: '2026-09-15T07:30:31Z'  # dcc7
+  by: agent  # dcc7
+  actor: jgstern_agent  # dcc7
+  clock: 1  # dcc7
+  nonce: dcc7  # dcc7
+  data:  # dcc7
+    kind: work_item  # dcc7
+    title: "method_call_recovery keys its class hint on dst-is-a-class, so csharp/java construction edges (constructor dst since WI-fagit) contribute no hints"  # dcc7
+    status: todo_hard  # dcc7
+    priority: 3  # dcc7
+    parent:  # dcc7
+    tags:  # dcc7
+    - linker  # dcc7
+    - analyzer  # dcc7
+    isbefore: []  # dcc7
+    duplicate_of: []  # dcc7
+    not_duplicate_of: []  # dcc7
+    pr_ref:  # dcc7
+    description: "Found while pricing INV-rolok's option A (re-point the instantiates dst at the\ninitializer, the shape WI-fagit gave csharp).\n\nlinkers/method_call_recovery builds its class hints with:\n\n    if e.edge_type in _CLASS_HINT_EDGE_TYPES and e.dst in class_ids:\n\n_CLASS_HINT_EDGE_TYPES is {\"calls\", \"instantiates\"} and class_ids is\n{s.id for s in ctx.symbols if s.kind == \"class\"}. The dst must therefore BE a\nclass node.\n\nWI-fagit (PR #689) moved csharp's instantiates dst onto the constructor symbol\n(Type.Type, kind=\"constructor\"), and java emits kind=\"constructor\" too. For\nthose languages e.dst is no longer in class_ids, so their construction edges\nhave silently contributed NO class hints since #689. The linker's own comment\nacknowledges the shape -- \"dart/csharp/java/py/js_ts/php/cpp/verilog emit\ninstantiates with the class (or constructor) as dst\" -- but the code has no\nbranch for the constructor half it names.\n\nThe fix shape is small: when the dst is an initializer, resolve it to its\nowning class (member_owner / the contains edge) before looking it up in\nclass_ids. That also unblocks INV-rolok's option A for python, which is\ncurrently priced out because re-pointing python's dst would drop python from\nthis linker too. The linker produced 89 edges on hypergumbo self-analysis;\nthat is the volume at risk, and the java/csharp loss is unmeasured because no\njava/csharp repo was probed for it.\n\nNOT URGENT AND NOT COSMETIC: this is lost recall in a recovery linker, so its\nfailure mode is quiet -- unresolved calls that stay unresolved."  # dcc7
+    fields: {}  # dcc7

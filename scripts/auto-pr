@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
-set -euo pipefail
+# `-E` (errtrace) is load-bearing, not tidiness: without it an ERR trap set at
+# the top level is NOT inherited by shell functions, and every line of this
+# script's action logic lives in one. `_autopr_record_abort` below would then
+# never fire, every abort_site would be null, and "no site recorded" would be
+# indistinguishable from "no abort happened" (WI-nazoj).
+set -Eeuo pipefail
 
 # ------------------------------------------------------------------
 # auto-pr: Push branch, poll CI, merge PR (with vPR queue for offline resilience)
@@ -304,12 +309,299 @@ _autopr_state_final="unknown"
 _autopr_state_pr_num=""
 _autopr_state_pr_url=""
 _autopr_state_merged_sha=""
+# WI-nazoj: where an undeclared run died. Filled by the ERR trap below, and
+# null on a run that declared a terminal state -- which is a different fact
+# from "aborted, site unknown", so the two are reported separately.
+_autopr_state_abort_site=""
+_autopr_state_abort_cmd=""
+# WI-katap: which signal killed this run, if one did. Recorded INDEPENDENTLY of
+# _autopr_state_final, because "the run was killed" and "what the run decided"
+# are two facts and a kill can arrive after a decision. Empty on a run nobody
+# signalled -- which a reader must not confuse with the ABSENT key on a row
+# written before this instrumentation existed.
+_autopr_state_signal=""
 # Governance mode wants PR_PENDING to persist across the auto-pr exit
 # until the human acts.  Setting this true makes _autopr_finalize skip
 # the rm.  Default false matches the historical 'remove on exit' behavior.
 _autopr_state_keep_pending=false
 # Idempotency guard so multiple sentinel-write call sites don't fight.
 _autopr_sentinel_written=false
+
+# ------------------------------------------------------------------
+# WI-nazoj: attribute an undeclared abort to its source line.
+#
+# INV-rahib's residual class is the run that ends with _autopr_state_final
+# still holding its "unknown" initializer -- 14 of 485 recorded invocations.
+# Ten of those came from deliberate exits that forgot to declare (now fixed at
+# each site); the rest come from `set -e` aborting at an unguarded command,
+# which is not statically enumerable in a 700-line function. So the run
+# attributes itself instead.
+#
+# What this CANNOT catch, verified empirically rather than assumed: a `set -u`
+# unbound variable does not fire ERR (bash raises it as an expansion error, not
+# a command failure), and neither does a bare `exit`. _autopr_finalize
+# therefore distinguishes "no site recorded" from "no abort", because
+# collapsing them is this project's recurring defect.
+#
+# BASH_COMMAND is the command's SOURCE text, not its expansion, so a line
+# carrying $HG_GITHUB_TOKEN records the NAME. That is what makes it safe to
+# persist; it is a property of bash, so it is pinned by a test
+# (test_a_recorded_command_never_expands_a_secret) rather than trusted here.
+# ------------------------------------------------------------------
+_autopr_record_abort() {
+	_autopr_state_abort_site="${BASH_SOURCE[1]:-auto-pr}"
+	_autopr_state_abort_site="${_autopr_state_abort_site##*/}:${BASH_LINENO[0]:-0}"
+	_autopr_state_abort_cmd="$BASH_COMMAND"
+}
+
+# ------------------------------------------------------------------
+# WI-katap: a run that is KILLED says so, instead of reporting INV-rahib's
+# violation signal.
+#
+# Measured on the ledger 2026-09-20: the undeclared-terminal-state class was
+# 22 of 84 post-instrumentation runs (26%), up from 14 of 485 (2.9%). Not one
+# carried an abort_site, because the ERR trap cannot see a signal -- and a
+# surviving run log named the signal: the caller wraps auto-pr in
+# `timeout 590` (its harness caps one foreground call at 600s) while auto-pr's
+# own poll budget is 2400s plus a soft-retry of 300s that is not optional. The
+# kill is structural, not bad luck. 14 of the 15 PRs behind those rows MERGED.
+#
+# So `unknown` was carrying two facts: "reached the end without deciding" (the
+# convergence bug INV-rahib is about) and "was killed before it could decide"
+# (not a convergence property at all -- the run never got to converge). That is
+# this repository's recurring absent-versus-empty defect, and it made the
+# refined criterion "zero unknown rows over a window" UNSATISFIABLE.
+#
+# Two rules here, both load-bearing:
+#
+#  1. The state is only claimed when nothing else has decided. A signal landing
+#     during post-merge housekeeping must NOT rewrite a landed merge -- that is
+#     INV-rahib's Class 1 defect with the sign flipped.
+#  2. The signal is recorded EITHER WAY, in its own field. On the merged case
+#     that second fact is exactly what Class 1's investigation had to
+#     reconstruct from a terminal log because nothing had written it down.
+#
+# The state names are spelled as literals rather than built from "$1", because
+# the vocabulary test extracts them with a regex over this file -- a computed
+# assignment would declare three states it could never see emitted.
+# ------------------------------------------------------------------
+_autopr_on_signal() {
+	local name="$1" num="$2"
+	_autopr_state_signal="SIG${name}"
+	if [[ "$_autopr_state_final" == "unknown" ]]; then
+		case "$name" in
+		TERM) _autopr_state_final="terminated_sigterm" ;;
+		INT) _autopr_state_final="terminated_sigint" ;;
+		HUP) _autopr_state_final="terminated_sighup" ;;
+		esac
+	fi
+	# `exit` from a trap still runs the EXIT trap, which is what writes the
+	# sentinel and the ledger row. 128+n keeps the exit code a conventional
+	# signal death, so `timeout`, a supervisor and the shell all still see
+	# what happened rather than a manufactured 0.
+	exit $((128 + num))
+}
+
+# ------------------------------------------------------------------
+# One boundary for trap installation, not N hand-written sets.
+#
+# This is the shape _autopr_post_merge already paid for: introduced as a
+# boundary rather than three guards, and its structural test immediately found
+# a FOURTH call site that reading the code by hand had missed. An action
+# subcommand that installed the EXIT trap by hand would silently have no signal
+# traps, and the only symptom would be a row in a ledger nobody reads.
+# ------------------------------------------------------------------
+_autopr_install_traps() {
+	# WI-miriz: the sentinel trap goes in first so even the earliest exits
+	# (auth, branch check) capture a final state.
+	trap _autopr_finalize EXIT
+	# WI-nazoj: paired with the EXIT trap so an abort that never reaches a
+	# state assignment still names the line it died on.
+	trap _autopr_record_abort ERR
+	# WI-katap: and the three signals the ERR trap is blind to.
+	trap '_autopr_on_signal TERM 15' TERM
+	trap '_autopr_on_signal INT 2' INT
+	trap '_autopr_on_signal HUP 1' HUP
+}
+
+# ------------------------------------------------------------------
+# WI-hajak: hand the CI poll to a watcher that outlives the caller's turn.
+#
+# WI-katap made an externally-killed run VISIBLE; it did not stop the kill. The
+# arithmetic cannot be tuned away: this script commits to 2400s of polling plus
+# a 300s soft-retry that is not optional, while an agent harness caps one
+# foreground shell call at 600s. 22 of 84 post-instrumentation runs died that
+# way and 14 of the 15 PRs behind them merged anyway -- finished by hand.
+#
+# THE PARENT DETACHES BEFORE DOING ANY WORK and re-execs itself WITHOUT
+# `--detach`. That is what leaves do_pr -- 600 lines carrying the poll, the
+# soft retry, Scenario B and the merge cascade -- completely untouched: the
+# child is an ordinary run, not a resumed half of one. The push is idempotent
+# for exactly this reason (an existing open PR for the branch is reused), which
+# production already exercises.
+#
+# `setsid` rather than a bare `&`: the child must survive its parent's session
+# going away, which is the whole failure mode being fixed. The log is opened
+# BEFORE the fork so `wait` can never be handed a handle naming a file that
+# does not exist yet.
+# ------------------------------------------------------------------
+_autopr_detach_and_exit() {
+	local log="$REPO_ROOT/.git/autopr-detached.log"
+	local handle="$REPO_ROOT/.git/AUTOPR_WATCH.json"
+	: >"$log"
+	# The gate goes up HERE, not in the child: between the parent's exit and
+	# the child's first write there is otherwise a window in which a second
+	# auto-pr would see no gate and start concurrently.
+	echo "detached" >"$REPO_ROOT/.git/PR_PENDING"
+	# The child's stdout is the log file, so it has no tty either. Declare its
+	# mode FOR it or the gate refuses the watcher the instant it starts, and
+	# --detach fails closed with the evidence buried in a log nobody reads.
+	# PREPENDED, because the flag loop breaks at the first non-flag: a trailing
+	# --foreground after a subcommand such as `flush` would never be parsed.
+	_AUTOPR_CHILD_ARGS=(--foreground "${_AUTOPR_CHILD_ARGS[@]}")
+	setsid nohup "$0" "${_AUTOPR_CHILD_ARGS[@]}" >"$log" 2>&1 &
+	local pid=$!
+	AUTOPR_WATCH_PID="$pid" AUTOPR_WATCH_LOG="$log" AUTOPR_WATCH_OUT="$handle" \
+		python3 - <<'PY' 2>/dev/null || true
+import datetime
+import json
+import os
+
+with open(os.environ["AUTOPR_WATCH_OUT"], "w") as f:
+    json.dump(
+        {
+            "watcher_pid": int(os.environ["AUTOPR_WATCH_PID"]),
+            "log": os.environ["AUTOPR_WATCH_LOG"],
+            "started_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+        },
+        f,
+        indent=2,
+    )
+    f.write("\n")
+PY
+	# The watcher owns the gate now; the parent's finalize must not clear it.
+	_autopr_state_keep_pending=true
+	_autopr_state_final="detached_watching"
+	echo "🛰️  Detached: watcher pid $pid is running the CI poll and merge."
+	echo "   Log:  $log"
+	echo "   Wait: ./scripts/auto-pr wait        (blocks in caller-sized chunks)"
+	exit 0
+}
+
+# ------------------------------------------------------------------
+# WI-hajak: block on the detached watcher, in chunks the caller can afford.
+#
+# THREE OUTCOMES, never collapsed. A handle whose watcher is gone is not a
+# handle whose watcher is still polling, and neither is no handle at all.
+# Collapsing them would re-commit one level out the defect WI-katap just closed
+# inside the ledger: a watcher that died mid-poll (machine sleep, session
+# teardown, OOM) leaves a handle byte-identical to a live one unless somebody
+# checks the pid. Reporting that as finished hands the caller a merge that
+# never happened; reporting it as still-running hangs them forever.
+# ------------------------------------------------------------------
+do_wait() {
+	local budget="${1:-300}"
+	local handle="$REPO_ROOT/.git/AUTOPR_WATCH.json"
+	if [[ ! -f "$handle" ]]; then
+		echo "No detached watcher recorded for this clone." >&2
+		echo "   (Nothing to wait for — start one with: auto-pr --detach)" >&2
+		return 1
+	fi
+	local pid log
+	pid="$(json_field watcher_pid <"$handle")"
+	log="$(json_field log <"$handle")"
+	# json_field renders a null, a missing key and an unparseable file
+	# identically as the empty string (its own docstring says so). A handle we
+	# cannot read is not a handle naming a live watcher, and `kill -0 ""` would
+	# fail in a way that reads like a dead pid -- so refuse it explicitly.
+	if [[ -z "$pid" ]]; then
+		echo "❌ Watch handle is unreadable or names no watcher: $handle" >&2
+		echo "   Refusing to guess whether a watcher is running." >&2
+		return 1
+	fi
+
+	local waited=0
+	while kill -0 "$pid" 2>/dev/null; do
+		if [[ "$waited" -ge "$budget" ]]; then
+			echo "⏳ Watcher pid $pid is still working (waited ${waited}s)."
+			echo "   Log: $log"
+			echo "   Come back with: ./scripts/auto-pr wait"
+			return 2
+		fi
+		sleep 5
+		waited=$((waited + 5))
+	done
+
+	# The watcher is gone. Did it leave a result, or did it die mid-poll?
+	local result="$REPO_ROOT/.git/AUTOPR_LAST_RESULT.json"
+	if [[ ! -f "$result" ]]; then
+		echo "❌ Watcher pid $pid vanished without writing a result." >&2
+		echo "   It died mid-poll; the PR may or may not have merged." >&2
+		echo "   Log: $log" >&2
+		return 1
+	fi
+	local state code
+	state="$(json_field final_state <"$result")"
+	code="$(json_field exit_code <"$result")"
+	[[ -n "$code" ]] || code=1
+	if [[ -z "$state" || "$state" == "unknown" ]]; then
+		echo "❌ Watcher pid $pid vanished with no declared terminal state." >&2
+		echo "   Log: $log" >&2
+		return 1
+	fi
+	echo "✅ Watcher finished: $state (exit $code)"
+	echo "   Log: $log"
+	rm -f "$handle" 2>/dev/null || true
+	return "$code"
+}
+
+# ------------------------------------------------------------------
+# WI-hajak: with no terminal, the caller must DECLARE how it wants to run.
+#
+# WI-katap made a killed run visible; --detach means it need not be killed at
+# all. Neither stops the caller FORGETTING, and forgetting is what actually
+# happened: the session that discovered `nohup` reverted to `timeout 590`
+# within the same session, and 22 of 84 recorded runs died that way.
+#
+# Making --detach the DEFAULT for a non-tty caller was considered and refused
+# on evidence. scripts/prepare-release does `if ./scripts/auto-pr; then echo
+# "merged"`, reading exit 0 as the merge, and an agent runs it -- so it is
+# non-tty. Auto-detaching would have it return 0 at once, having merged
+# nothing, and announce a merge that did not happen. Exit 0 would then carry
+# two facts ("merged" / "handed off, outcome unknown"), which is exactly the
+# conflation the last two changes removed, re-made at the exit code.
+#
+# So the mode is declared, not guessed, and an undeclared non-tty run is
+# refused BEFORE it does anything. Gating at the CI poll instead would be more
+# narrowly targeted but would refuse only after pushing a branch and opening a
+# PR; a refusal that costs a re-run beats one that leaves side effects behind.
+#
+# stdout is the test because it is the channel a human reads: if it is a tty
+# somebody is watching and can Ctrl-C, and there is nothing to declare.
+# ------------------------------------------------------------------
+_autopr_require_declared_mode() {
+	if [[ -t 1 ]]; then
+		return 0
+	fi
+	if [[ "${DETACH_MODE:-false}" == "true" || "${FOREGROUND_MODE:-false}" == "true" ]]; then
+		return 0
+	fi
+	echo "❌ auto-pr: no terminal, and no execution mode declared." >&2
+	echo "" >&2
+	echo "   This run would poll CI for up to $((${CI_POLL_TIMEOUT:-2400} + 300))s." >&2
+	echo "   Nothing is watching, so say which you want:" >&2
+	echo "" >&2
+	echo "     --detach      hand the poll to a background watcher and return now" >&2
+	echo "                   (then: auto-pr wait). Use this from an agent." >&2
+	echo "     --foreground  block here until the merge lands. Use this from a" >&2
+	echo "                   script that reads auto-pr's exit code as the result." >&2
+	echo "" >&2
+	echo "   Refusing rather than guessing: the two differ in what exit 0 MEANS." >&2
+	_autopr_state_final="failed_mode_undeclared"
+	exit 1
+}
 
 _autopr_write_sentinel() {
 	local exit_code="$1"
@@ -331,6 +623,9 @@ _autopr_write_sentinel() {
 		AUTOPR_PR_URL="$_autopr_state_pr_url" \
 		AUTOPR_MERGED_SHA="$_autopr_state_merged_sha" \
 		AUTOPR_FINAL_STATE="$_autopr_state_final" \
+		AUTOPR_ABORT_SITE="$_autopr_state_abort_site" \
+		AUTOPR_ABORT_CMD="$_autopr_state_abort_cmd" \
+		AUTOPR_TERMINATED_BY="$_autopr_state_signal" \
 		AUTOPR_OUT="$AUTOPR_RESULT_FILE" \
 		AUTOPR_HISTORY_OUT="$AUTOPR_HISTORY_FILE" \
 		python3 - <<'PY' 2>/dev/null || true
@@ -348,6 +643,16 @@ data = {
         "%Y-%m-%dT%H:%M:%SZ"
     ),
     "final_state": os.environ.get("AUTOPR_FINAL_STATE") or "unknown",
+    # WI-nazoj. Null on a declared run; null ALSO on an abort the ERR trap
+    # could not see (set -u, a bare exit, a signal). A reader must not take
+    # null for "nothing went wrong" -- final_state is what says that.
+    "abort_site": os.environ.get("AUTOPR_ABORT_SITE") or None,
+    "abort_command": os.environ.get("AUTOPR_ABORT_CMD") or None,
+    # WI-katap. Three-valued for a reader, exactly like abort_site: a signal
+    # name, null (this run was not signalled), or the key ABSENT on a row
+    # written before the signal traps existed. Independent of final_state --
+    # a run can merge and THEN be killed during its housekeeping.
+    "terminated_by": os.environ.get("AUTOPR_TERMINATED_BY") or None,
 }
 with open(os.environ["AUTOPR_OUT"], "w") as f:
     json.dump(data, f, indent=2)
@@ -366,18 +671,135 @@ if history_path and os.path.isdir(os.path.dirname(history_path)):
 PY
 }
 
+# ------------------------------------------------------------------
+# WI-gokuv: hold the recovery-suppression LOCK, don't touch a flag.
+#
+# The reference-transaction and post-checkout hooks skip `tracker recover` while
+# this is held, because a concurrent restore puts a journalled-but-uncommitted op
+# back as an untracked file and aborts the very fast-forward that was about to
+# commit it. It is held for THIS WHOLE ACTION -- the comments here used to say
+# "fetch + post-merge fast-forward", which is how WI-pohir came to believe no
+# legitimate hold could exceed fifteen minutes. It spans the CI poll, so it can
+# legitimately last ~45 minutes (2400s default + a 300s soft-retry).
+#
+# A lock rather than a `touch`ed file because the OS releases an flock when the
+# holder dies, even on SIGKILL, so this can no longer outlive the run and leave
+# self-healing silently off (WI-pohir observed ~10 hours of exactly that).
+# _autopr_finalize still rm's the file on a clean exit; that is tidiness now,
+# not the mechanism.
+#
+# CAVEAT, measured rather than assumed: every git and curl this script forks
+# INHERITS the lock fd, and bash offers no close-on-exec escape for it, so a
+# SIGKILLed run keeps the lock until its orphaned children exit. That is
+# normally seconds. `tracker` reports the case where it is not, by comparing the
+# recorded pid below against the live process table.
+# ------------------------------------------------------------------
+_autopr_hold_recover_lock() {
+	local f="$REPO_ROOT/.git/tracker-recover-disabled"
+	# Append-mode open: never truncate a body another holder is using.
+	#
+	# THE BRACES ARE LOAD-BEARING (WI-sidot). `exec {FD}>>"$f" 2>/dev/null`
+	# applies BOTH redirections to the shell PERMANENTLY -- that is what `exec`
+	# with no command means -- so the `2>/dev/null` intended to hide this one
+	# call's error message silently discarded EVERY subsequent stderr write for
+	# the rest of the run. auto-pr had been throwing away its own diagnostics
+	# from this line onward: an `unbound variable` abort in the push path
+	# surfaced as `exit 1` with empty stdout AND empty stderr, which is a very
+	# expensive way to learn what a one-character scope bug costs. Wrapping the
+	# exec in a brace group scopes the stderr redirect to the group while the
+	# allocated descriptor still survives it, which is exactly what we want.
+	{ exec {_AUTOPR_RECOVER_FD}>>"$f"; } 2>/dev/null || return 0
+	if ! flock -x -n "$_AUTOPR_RECOVER_FD" 2>/dev/null; then
+		# Someone else owns it (a nested tracker sync). Nothing to do.
+		return 0
+	fi
+	printf 'pid=%s started=%s holder=auto-pr\n' "$$" "$(date +%s)" >"$f"
+	return 0
+}
+
 # Combined exit handler installed by every action subcommand.  Always
 # writes the sentinel; conditionally rm's PR_PENDING (skipped only when
 # _autopr_state_keep_pending is true, e.g. governance mode).
 _autopr_finalize() {
 	local exit_code="$?"
+	# The run is over: nothing in this handler may overwrite the diagnostic it
+	# is about to report. Disarming is cheaper than auditing every command below
+	# for whether it can fail in an untested context.
+	trap - ERR
+	# WI-nazoj: an undeclared terminal state is INV-rahib's violation signal,
+	# not a state in the vocabulary. The ledger already recorded these -- that
+	# is precisely how fourteen of them accumulated unnoticed over five weeks.
+	# A violation has to be visible in the output of the run that commits it.
+	if [[ "$_autopr_state_final" == "unknown" ]]; then
+		echo "" >&2
+		echo "🚨 CONVERGENCE VIOLATION (INV-rahib / WI-nazoj)" >&2
+		echo "   auto-pr is exiting $exit_code with no declared terminal state." >&2
+		if [[ -n "$_autopr_state_abort_site" ]]; then
+			echo "   Aborted at: $_autopr_state_abort_site" >&2
+			echo "   Command:    $_autopr_state_abort_cmd" >&2
+		else
+			echo "   Abort site: not recorded. The ERR trap did not fire, so this" >&2
+			echo "               was a set -u unbound variable, a bare exit, or a" >&2
+			echo "               signal -- not an absence of failure." >&2
+		fi
+		echo "   Logged to .git/AUTOPR_HISTORY.jsonl." >&2
+		echo "   Review: ./scripts/audit-autopr-convergence --window 25" >&2
+	fi
 	_autopr_write_sentinel "$exit_code"
 	if [[ "$_autopr_state_keep_pending" != "true" ]]; then
 		rm -f "$REPO_ROOT/.git/PR_PENDING" 2>/dev/null || true
 	fi
-	# Always re-enable the tracker recovery hook (the marker is set at each
-	# action's start; unlike PR_PENDING it is never kept across the exit).
+	# Always re-enable the tracker recovery hooks. The LOCK is what suppressed
+	# them and the OS drops it as this process exits; removing the file is
+	# tidiness so a peek does not even have to open it.
 	rm -f "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
+}
+
+# ------------------------------------------------------------------
+# INV-rahib: the post-merge boundary.
+#
+# Once the merge has landed, this run's outcome is DECIDED. Everything after
+# that point — the base checkout and pull, branch deletion, ref pruning, the
+# tracker discussion append, the orphan-sync warning — is housekeeping, and
+# housekeeping must not be able to restate a decided outcome.
+#
+# It could, and it did. `set -euo pipefail` is on (line 3) and two commands
+# in that tail abort routinely:
+#
+#   git checkout "$base"  refuses when a dirty file differs between the
+#                         feature branch and the base. A modified tracker
+#                         `.ops` file is exactly that, and is the ordinary
+#                         state of this working tree.
+#   read -p "Retry? …"    returns 1 at EOF, which is every non-interactive
+#                         run — i.e. every backgrounded agent invocation.
+#
+# Either one killed do_pr *after* `_autopr_state_final="merged"` was set, so
+# the trap wrote a sentinel saying the run merged and exited 1. Measured over
+# the convergence ledger (`.git/AUTOPR_HISTORY.jsonl`): 41 of 481 invocations,
+# every one of their merged_shas an ancestor of origin/dev.
+#
+# A boundary rather than three `|| true`s, because the defect is the ABSENCE
+# of a boundary — a fourth bare command added to that tail later would
+# reintroduce it, and did not have to be anticipated to be caught. Invoking
+# the callee from an `if !` condition is what does the work: bash ignores
+# `set -e` for the whole body of a function called in a tested context,
+# including anything that function itself calls. Callers then `exit 0`
+# explicitly so the guarantee is readable at the merged path itself rather
+# than inferred from what does not follow it.
+# ------------------------------------------------------------------
+_autopr_post_merge() {
+	if ! "$@"; then
+		echo "" >&2
+		echo "⚠️  Post-merge housekeeping failed: $1 (the MERGE IS UNAFFECTED)." >&2
+		# `:-` is not defensive padding: gov_cleanup has no BASE_BRANCH, and
+		# `set -u` kills the shell on an unbound name even here, where the
+		# `if !` context has switched `set -e` off. A guard that aborts the
+		# run it exists to protect would be worse than no guard.
+		local _base="${BASE_BRANCH:-<base>}"
+		echo "   Finish by hand when convenient:" >&2
+		echo "     git checkout $_base && git pull origin $_base" >&2
+	fi
+	return 0
 }
 
 # ------------------------------------------------------------------
@@ -480,7 +902,7 @@ _autopr_handle_already_merged() {
 	if [[ -n "$pr_num" ]]; then
 		echo "📍 Already merged as PR #$pr_num — local cleanup only"
 		_autopr_state_pr_num="$pr_num"
-		_autopr_state_pr_url="$(_autopr_pr_web_url "$pr_num")"
+		_autopr_state_pr_url="$(pr_web_url "$pr_num")"
 	else
 		echo "📍 Already merged (PR # not found via API) — local cleanup only"
 	fi
@@ -488,15 +910,21 @@ _autopr_handle_already_merged() {
 	_autopr_state_final="already_merged"
 	_autopr_state_merged_sha="$local_sha"
 
+	# --- INV-rahib: decided outcome, same boundary as do_pr. The `exit 0`
+	# below does NOT protect this on its own: under `set -e` an abort in the
+	# housekeeping kills the shell before the `exit 0` is ever reached, which
+	# is how a converged `already_merged` run would have exited 1. ---
+
 	# WI-mokak: append a durable discussion entry to the referenced
 	# tracker item, if one was supplied. This catches the WI-miriz
 	# failure mode where a silent backgrounded success is re-run and
 	# the first run never got to record the merge.
-	_autopr_append_tracker_discussion "$TRACKER_ID" "$pr_num" "$local_sha"
+	_autopr_post_merge _autopr_append_tracker_discussion \
+		"$TRACKER_ID" "$pr_num" "$local_sha"
 
 	# Cleanup mirrors the post-merge path in do_pr but does NOT touch
 	# tracker ops or attempt to amend the (already-merged) commit.
-	cleanup_local "$branch" "$base"
+	_autopr_post_merge cleanup_local "$branch" "$base"
 	exit 0
 }
 
@@ -594,21 +1022,6 @@ _autopr_branch_push_fallback() {
 
 	echo "   ❌ API PR-create failed"
 	return 1
-}
-
-# ------------------------------------------------------------------
-# _autopr_pr_web_url PR_NUM
-#   The PR's web URL for the WI-miriz sentinel/output, branched by backend +
-#   failover. Centralizes the three previously-inline constructions (do_pr,
-#   flush, already-merged). GitHub uses /pull/N; Forgejo/failover use /pulls/N.
-# ------------------------------------------------------------------
-_autopr_pr_web_url() {
-	local pr_num="$1"
-	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
-		echo "https://github.com/$REPO_SLUG/pull/$pr_num"
-	else
-		echo "https://codeberg.org/$REPO_SLUG/pulls/$pr_num"
-	fi
 }
 
 # ------------------------------------------------------------------
@@ -1092,15 +1505,11 @@ prune_queue() {
 
 # Flush all vPRs as a single atomic PR
 flush_queue() {
-	# WI-miriz: install sentinel trap as the very first action so even
-	# the earliest exits (auth) capture a final state.
-	trap _autopr_finalize EXIT
+	_autopr_install_traps
 
-	# Suppress the reference-transaction recovery hook during this action's git
-	# operations (fetch + post-merge fast-forward). The hook would restore a
-	# journalled-but-uncommitted op as an untracked file and abort the very ff
-	# that commits it; _autopr_finalize removes the marker on exit.
-	touch "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
+	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
+	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
+	_autopr_hold_recover_lock
 
 	# WI-dofaz: capture the run-start epoch before any Forgejo work.
 	_autopr_run_started_epoch=$(date +%s)
@@ -1186,6 +1595,7 @@ Individual commits are preserved in the history."
 		echo "⚠️  [SIMULATED OUTAGE] AUTO_PR_SIMULATE_OUTAGE=1"
 		echo "❌ Remote still unavailable (simulated)"
 		echo "   vPRs remain queued. Try again later with: ./scripts/auto-pr flush"
+		_autopr_state_final="failed_flush_remote_unavailable"
 		exit 1
 	fi
 
@@ -1210,7 +1620,10 @@ Individual commits are preserved in the history."
 				git rm --cached --quiet "$f" 2>/dev/null || true
 			fi
 		done <<<"$ops_files"
-		_assert_branch_owns_head "$ops_diff_base" || exit 1
+		_assert_branch_owns_head "$ops_diff_base" || {
+			_autopr_state_final="failed_branch_ownership"
+			exit 1
+		}
 		git commit --amend --no-edit -s
 		tip_sha=$(git rev-parse HEAD)
 		echo "🔑 Commit: ${tip_sha:0:7} (tracker ops excluded)"
@@ -1229,6 +1642,16 @@ Individual commits are preserved in the history."
 	pr_title="${pr_title//$'\r'/ }"
 	pr_desc="${pr_desc//$'\r'/}"
 
+	# WI-sidot: scrub HERE, above the push_desc derivation, so the one scrub
+	# covers both copies of this text -- the `-o description=` push option and
+	# the REST PATCH that follows it. Scrubbing after the split would leave
+	# whichever copy was taken first unscrubbed, which is the class of bug that
+	# put a vendor session URL in a merged PR body in the first place.
+	local _desc_before="$pr_desc"
+	pr_title="$(bs_scrub_title "$pr_title" "$pr_title")"
+	pr_desc="$(bs_scrub_body "$pr_desc")"
+	bs_report_scrub "$_desc_before" "the PR body"
+
 	# Git push options can't contain newlines; escape for Forgejo to decode
 	local push_desc="${pr_desc//$'\n'/\\n}"
 
@@ -1241,10 +1664,12 @@ Individual commits are preserved in the history."
 	  if ! git cat-file -e "$sha" 2>/dev/null; then
 	    echo "❌ vPR commit $sha is UNRESOLVABLE (branch deleted?)."
 	    echo "   Run './scripts/auto-pr prune' to reconcile the queue, then re-flush."
+	    _autopr_state_final="failed_queue_unresolvable"
 	    exit 1
 	  fi
 	  if ! git merge-base --is-ancestor "$sha" HEAD; then
 	    echo "❌ Queue is not a linear stack; vPR commit $sha is not included in tip $tip_branch."
+	    _autopr_state_final="failed_queue_not_linear"
 	    exit 1
 	  fi
 	done <"$QUEUE_FILE"
@@ -1282,6 +1707,7 @@ Individual commits are preserved in the history."
 		fi
 	else
 		while [[ $attempt -le $max_attempts ]]; do
+			# forge-egress: scrubbed
 			PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
 				push "$push_remote" "HEAD:refs/for/$base_branch/$tip_branch" \
 				-o title="$pr_title" \
@@ -1354,6 +1780,7 @@ Individual commits are preserved in the history."
 	if [[ -n "$pr_desc" ]]; then
 		local json_body
 		json_body=$(python3 -c "import json,sys; print(json.dumps({'body': sys.stdin.read()}))" <<<"$pr_desc")
+		# forge-egress: scrubbed
 		api_patch "$API_BASE/pulls/$PR_NUM" "$json_body" || true
 	fi
 
@@ -1362,7 +1789,7 @@ Individual commits are preserved in the history."
 
 	# WI-miriz: record PR identity for the sentinel.
 	_autopr_state_pr_num="$PR_NUM"
-	_autopr_state_pr_url="$(_autopr_pr_web_url "$PR_NUM")"
+	_autopr_state_pr_url="$(pr_web_url "$PR_NUM")"
 
 	echo "✅ Created PR #$PR_NUM (contains $count vPRs)"
 	echo "🔗 $_autopr_state_pr_url"
@@ -1432,17 +1859,38 @@ Individual commits are preserved in the history."
 	_autopr_state_final="merged"
 	_autopr_state_merged_sha="$_merged_sha"
 
+	# --- INV-rahib: past this line the outcome is decided (see
+	# _autopr_post_merge). The flush path carries the same exposure as do_pr:
+	# its `git checkout "$base_branch"` below is bare, and it runs after the
+	# merge. ---
+
 	# WI-dofaz: surface any tracker-sync PR that existed before this
 	# flush run and is still open.  Best-effort warning only.
-	_autopr_warn_orphan_tracker_sync_prs
+	_autopr_post_merge _autopr_warn_orphan_tracker_sync_prs
 
 	# WI-mokak: append durable post-merge discussion entry to the
 	# tracker item, if one was referenced by --tracker-id.
-	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$_merged_sha"
+	_autopr_post_merge _autopr_append_tracker_discussion \
+		"$TRACKER_ID" "$PR_NUM" "$_merged_sha"
 
-	# Cleanup
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up..."
+	_autopr_post_merge _autopr_flush_cleanup "$base_branch"
+
+	echo ""
+	echo "✅ Flushed $count vPR(s) successfully!"
+	echo "   Queue cleared, local branches deleted."
+	exit 0
+}
+
+# ------------------------------------------------------------------
+# flush_queue's post-merge housekeeping, extracted so it can be run through
+# _autopr_post_merge as one unit (INV-rahib). Reads $QUEUE_FILE and
+# $REPO_ROOT; clears the queue, returns to the base branch and deletes the
+# vPR branches that just landed.
+# ------------------------------------------------------------------
+_autopr_flush_cleanup() {
+	local base_branch="$1"
 
 	rm -f "$REPO_ROOT/.git/PR_PENDING"
 
@@ -1466,10 +1914,6 @@ Individual commits are preserved in the history."
 	for branch in "${branches_to_delete[@]}"; do
 		git branch -D "$branch" 2>/dev/null || true
 	done
-
-	echo ""
-	echo "✅ Flushed $count vPR(s) successfully!"
-	echo "   Queue cleared, local branches deleted."
 }
 
 ensure_stacked_on_tip() {
@@ -1501,15 +1945,18 @@ ensure_stacked_on_tip() {
 # Main PR workflow (push, poll, merge) - or queue if offline
 # ------------------------------------------------------------------
 do_pr() {
-	# WI-miriz: install sentinel trap as the very first action so even
-	# the earliest exits (auth, branch check) capture a final state.
-	trap _autopr_finalize EXIT
+	_autopr_install_traps
 
-	# Suppress the reference-transaction recovery hook during this action's git
-	# operations (fetch + post-merge fast-forward). The hook would restore a
-	# journalled-but-uncommitted op as an untracked file and abort the very ff
-	# that commits it; _autopr_finalize removes the marker on exit.
-	touch "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
+	# WI-hajak: hand off BEFORE any work, so the child is a plain auto-pr run
+	# rather than a resumed half of one and do_pr below stays untouched.
+	if [[ "${DETACH_MODE:-false}" == "true" ]]; then
+		_autopr_detach_and_exit
+	fi
+	_autopr_require_declared_mode
+
+	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
+	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
+	_autopr_hold_recover_lock
 
 	# WI-dofaz: capture the run-start epoch before any Forgejo work.
 	# The post-success orphan-tracker-sync check uses this as the cutoff
@@ -1598,6 +2045,13 @@ do_pr() {
 
 	# Title must be single line; description keeps newlines
 	TITLE="${TITLE//$'\n'/ }"
+
+	# WI-sidot: scrub before PUSH_DESC is derived further down, for the same
+	# reason as the flush path -- one scrub, both copies.
+	_desc_before="$DESC"
+	TITLE="$(bs_scrub_title "$TITLE" "$TITLE")"
+	DESC="$(bs_scrub_body "$DESC")"
+	bs_report_scrub "$_desc_before" "the PR body"
 	echo "🚀 Target: $REPO_SLUG"
 	echo "🌿 Branch: $BRANCH → $BASE_BRANCH"
 	echo "🔑 Commit: ${LOCAL_SHA:0:7}"
@@ -1606,29 +2060,72 @@ do_pr() {
 	# (AUTO_PR_SKIP_MANIFEST=1 bypasses for tests that don't need a real
 	# hypergumbo install in the fake-repo fixture.)
 	echo "---------------------------------------------------"
+	# WI-furum: KEEP smart-test's OWN ACCOUNT OF THE FAILURE. Both streams used
+	# to go to /dev/null, so "no stable hypergumbo", "the slice crashed" and
+	# "I refuse to write the manifest of a repo you are not in" (WI-fopuh's
+	# guard, which every tests/test_autopr_*.py fixture run now trips) all
+	# arrived as one fixed sentence naming the first of the three. That is this
+	# project's absent-versus-empty defect at the diagnostics layer: not
+	# silence, but a confident wrong answer, and the operator has no way back
+	# to the real cause. The regen is still best-effort and still non-fatal.
+	local _mf_err _mf_rc
+	_mf_err="$(mktemp)"
 	if [[ "${AUTO_PR_SKIP_MANIFEST:-}" == "1" ]]; then
 		echo "📋 Skipping manifest regen (AUTO_PR_SKIP_MANIFEST=1)"
-	elif "$SCRIPT_DIR/smart-test" --manifest >/dev/null 2>&1; then
+	elif "$SCRIPT_DIR/smart-test" --manifest >/dev/null 2>"$_mf_err"; then
 		echo "📋 Regenerating test manifest..."
 		# Guard: don't stage a full-suite manifest (pre-commit hook rejects it,
 		# and the existing committed manifest is likely better anyway)
 		if grep -q "^# Mode: full-suite" .ci/affected-tests.txt 2>/dev/null; then
 			echo "   ⚠️  Manifest regenerated as full-suite (slice failed?) — keeping existing"
 			git checkout -- .ci/affected-tests.txt 2>/dev/null || true
-		elif ! git diff --quiet -- .ci/affected-tests.txt 2>/dev/null; then
-			echo "   Manifest updated — amending commit"
-			git add .ci/affected-tests.txt
-			_assert_branch_owns_head "$BASE_BRANCH" \
-				"origin/$BASE_BRANCH" || exit 1
-			git commit --amend --no-edit -s
-			LOCAL_SHA="$(git rev-parse HEAD)"
-			echo "🔑 Commit: ${LOCAL_SHA:0:7} (manifest refreshed)"
 		else
-			echo "   ✅ Manifest up to date"
+			# THE REGEN MAY ADD, IT MUST NEVER DROP. Overwriting here
+			# silently narrowed hand-extended manifests back to the
+			# slicer's output — see _manifest_union in lib/forgejo-api.sh.
+			_mf_committed="$(mktemp)"
+			_mf_regen="$(mktemp)"
+			git show "HEAD:.ci/affected-tests.txt" > "$_mf_committed" \
+				2>/dev/null || : > "$_mf_committed"
+			cp .ci/affected-tests.txt "$_mf_regen"
+			_mf_sliced=$(_manifest_test_count "$_mf_regen")
+			_manifest_union "$_mf_committed" "$_mf_regen" \
+				.ci/affected-tests.txt
+			_mf_final=$(_manifest_test_count .ci/affected-tests.txt)
+			rm -f "$_mf_committed" "$_mf_regen"
+			if [[ "${_mf_final:-0}" -gt "${_mf_sliced:-0}" ]]; then
+				echo "   🛡  kept $(( _mf_final - _mf_sliced )) committed manifest entry/entries the slicer did not select (INV-bigaz)"
+			fi
+			if ! git diff --quiet -- .ci/affected-tests.txt 2>/dev/null; then
+				echo "   Manifest updated — amending commit"
+				git add .ci/affected-tests.txt
+				_assert_branch_owns_head "$BASE_BRANCH" \
+					"origin/$BASE_BRANCH" || {
+					_autopr_state_final="failed_branch_ownership"
+					exit 1
+				}
+				git commit --amend --no-edit -s
+				LOCAL_SHA="$(git rev-parse HEAD)"
+				echo "🔑 Commit: ${LOCAL_SHA:0:7} (manifest refreshed)"
+			else
+				echo "   ✅ Manifest up to date"
+			fi
 		fi
 	else
-		echo "   ⚠️  Manifest generation skipped (no stable hypergumbo?)"
+		# FIRST statement in the branch: any command here would overwrite $?,
+		# and the status is the only part of the evidence smart-test cannot
+		# restate on stderr.
+		_mf_rc=$?
+		echo "   ⚠️  Manifest generation skipped (smart-test exited $_mf_rc):"
+		if [[ -s "$_mf_err" ]]; then
+			sed 's/^/      /' "$_mf_err"
+		else
+			# An empty stderr is a DIFFERENT fact from a reason, and the old
+			# guess is only defensible when there is nothing else to report.
+			echo "      (it said nothing — is a stable hypergumbo installed?)"
+		fi
 	fi
+	rm -f "$_mf_err"
 
 	# Exclude tracker ops files from PR (they flow through tracker sync)
 	# IMPORTANT: Use index-only operations to avoid overwriting the working
@@ -1653,7 +2150,10 @@ do_pr() {
 				git rm --cached --quiet "$f" 2>/dev/null || true
 			fi
 		done <<<"$ops_files"
-		_assert_branch_owns_head "$ops_diff_base" || exit 1
+		_assert_branch_owns_head "$ops_diff_base" || {
+			_autopr_state_final="failed_branch_ownership"
+			exit 1
+		}
 		git commit --amend --no-edit -s
 		LOCAL_SHA="$(git rev-parse HEAD)"
 		echo "🔑 Commit: ${LOCAL_SHA:0:7} (tracker ops excluded)"
@@ -1787,6 +2287,7 @@ do_pr() {
 		push_success=false
 	else
 		while [[ $attempt -le $max_attempts ]]; do
+			# forge-egress: scrubbed
 			PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
 				push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
 				-o title="$TITLE" \
@@ -1887,6 +2388,7 @@ do_pr() {
 	if [[ -n "$DESC" ]]; then
 		local json_body
 		json_body=$(python3 -c "import json,sys; print(json.dumps({'body': sys.stdin.read()}))" <<<"$DESC")
+		# forge-egress: scrubbed
 		api_patch "$API_BASE/pulls/$PR_NUM" "$json_body" || true
 	fi
 
@@ -1897,7 +2399,7 @@ do_pr() {
 	# this run is responsible for, even if a later step (CI poll, merge)
 	# fails partway through.
 	_autopr_state_pr_num="$PR_NUM"
-	_autopr_state_pr_url="$(_autopr_pr_web_url "$PR_NUM")"
+	_autopr_state_pr_url="$(pr_web_url "$PR_NUM")"
 
 	echo "✅ Found PR #$PR_NUM"
 	echo "🔗 $_autopr_state_pr_url"
@@ -1965,6 +2467,7 @@ do_pr() {
 					git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
 						echo "❌ Re-push failed"
 						print_desync_recovery_hint
+						_autopr_state_final="failed_repush"
 						exit 1
 					}
 				fi
@@ -1974,6 +2477,7 @@ do_pr() {
 					PR_NUM="$FOUND_PR_NUM"
 				else
 					echo "❌ Could not find new PR after re-push"
+					_autopr_state_final="failed_pr_lookup"
 					exit 1
 				fi
 				echo "✅ New PR #$PR_NUM"
@@ -2020,6 +2524,7 @@ do_pr() {
 		elif ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
 			git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
 				echo "❌ Re-push failed"
+				_autopr_state_final="failed_repush"
 				exit 1
 			}
 		fi
@@ -2031,6 +2536,7 @@ do_pr() {
 			PR_NUM="$FOUND_PR_NUM"
 		else
 			echo "❌ Could not find new PR after re-push"
+			_autopr_state_final="failed_pr_lookup"
 			exit 1
 		fi
 		echo "✅ New PR #$PR_NUM"
@@ -2157,20 +2663,27 @@ do_pr() {
 	_autopr_state_final="merged"
 	_autopr_state_merged_sha="$_merged_sha"
 
+	# --- INV-rahib: past this line the outcome is decided. See
+	# _autopr_post_merge; every call below goes through it, and the explicit
+	# `exit 0` is what stops housekeeping from choosing the exit code. The
+	# two callees below already `return 0` on their own, but they are wrapped
+	# anyway: the boundary is the property, not the current contents of each
+	# function, and an unguarded command added inside either one later must
+	# not be able to reopen this. ---
+
 	# WI-dofaz: surface any tracker-sync PR that existed before this
-	# auto-pr run and is still open.  Best-effort warning only — does
-	# not affect exit code.
-	_autopr_warn_orphan_tracker_sync_prs
+	# auto-pr run and is still open.  Best-effort warning only.
+	_autopr_post_merge _autopr_warn_orphan_tracker_sync_prs
 
 	# WI-mokak: append durable post-merge discussion entry to the
 	# tracker item, if one was referenced by --tracker-id.
-	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$_merged_sha"
-
-	# Record merged PR in failover state
+	_autopr_post_merge _autopr_append_tracker_discussion \
+		"$TRACKER_ID" "$PR_NUM" "$_merged_sha"
 
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up local branch..."
-	cleanup_local "$BRANCH" "$BASE_BRANCH"
+	_autopr_post_merge cleanup_local "$BRANCH" "$BASE_BRANCH"
+	exit 0
 }
 
 # ------------------------------------------------------------------
@@ -2221,7 +2734,13 @@ cleanup_local() {
 		echo ""
 		echo "⚠️  Git pull failed (attempt $attempt/$max_attempts)"
 
-		if [[ $attempt -lt $max_attempts ]]; then
+		# Only ask when someone can answer. `read` returns 1 at EOF, and with
+		# stdin closed — every backgrounded agent run — that made this an
+		# abort under `set -e` rather than a question, at attempt 1 of 3. So
+		# the retry loop this prompt gates has never run in production; the
+		# non-interactive path skips straight to the manual-recovery hint,
+		# which is what was effectively happening anyway, now deliberately.
+		if [[ $attempt -lt $max_attempts ]] && [[ -t 0 ]]; then
 			read -p "Retry? [Y/n] " -n 1 -r REPLY
 			echo ""
 			if [[ ! $REPLY =~ ^[Nn]$ ]]; then
@@ -2247,11 +2766,19 @@ if [[ "${AUTOPR_SOURCE_ONLY:-0}" == "1" ]]; then
 	return 0 2>/dev/null || exit 0
 fi
 
+# WI-hajak: the argv a detached child is re-execed with. Every arm below
+# appends its own arguments EXCEPT --detach, so the child inherits the whole
+# invocation minus the flag that would make it detach again.
+DETACH_MODE=false
+FOREGROUND_MODE=false
+_AUTOPR_CHILD_ARGS=()
+
 # Parse global flags
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--squash)
 		FORCE_SQUASH=true
+		_AUTOPR_CHILD_ARGS+=("$1")
 		echo "⚠️  WARNING: --squash is discouraged. Commit bodies will be preserved via git notes,"
 		echo "   but the squash commit itself will only have the subject line."
 		echo ""
@@ -2265,10 +2792,26 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--timeout)
 		CI_POLL_TIMEOUT="$2"
+		_AUTOPR_CHILD_ARGS+=("$1" "$2")
 		shift 2
 		;;
 	--gov)
 		GOVERNANCE_MODE=true
+		_AUTOPR_CHILD_ARGS+=("$1")
+		shift
+		;;
+	--foreground)
+		# Declared blocking. NOT forwarded to the child here — the detach
+		# helper prepends it itself, and forwarding both would be harmless
+		# but would hide which one is load-bearing.
+		FOREGROUND_MODE=true
+		shift
+		;;
+	--detach)
+		# WI-hajak. Deliberately NOT appended to _AUTOPR_CHILD_ARGS: a child
+		# that re-detached would fork-bomb the machine. That is pinned by a
+		# test on the argv this loop builds, not by this comment.
+		DETACH_MODE=true
 		shift
 		;;
 	--tracker-id)
@@ -2280,6 +2823,7 @@ while [[ $# -gt 0 ]]; do
 			exit 1
 		fi
 		TRACKER_ID="$2"
+		_AUTOPR_CHILD_ARGS+=("$1" "$2")
 		shift 2
 		;;
 	--title)
@@ -2293,6 +2837,7 @@ while [[ $# -gt 0 ]]; do
 			exit 1
 		fi
 		TITLE_FLAG="$2"
+		_AUTOPR_CHILD_ARGS+=("$1" "$2")
 		shift 2
 		;;
 	--description)
@@ -2303,6 +2848,7 @@ while [[ $# -gt 0 ]]; do
 			exit 1
 		fi
 		DESC_FLAG="$2"
+		_AUTOPR_CHILD_ARGS+=("$1" "$2")
 		shift 2
 		;;
 	*)
@@ -2310,20 +2856,27 @@ while [[ $# -gt 0 ]]; do
 		;;
 	esac
 done
+# Whatever positionals survive the loop (legacy title/description) go to the
+# child too, or a detached run would silently lose its PR title.
+_AUTOPR_CHILD_ARGS+=("$@")
+
+# Contradictory instructions. Picking a winner would be the guess this whole
+# family of fixes exists to refuse.
+if [[ "$DETACH_MODE" == "true" && "$FOREGROUND_MODE" == "true" ]]; then
+	echo "❌ --detach and --foreground are mutually exclusive." >&2
+	echo "   --detach returns immediately; --foreground blocks until the merge." >&2
+	exit 1
+fi
 
 # ------------------------------------------------------------------
 # gov-cleanup: Verify PR is merged (by human via web UI), then clean up
 # ------------------------------------------------------------------
 gov_cleanup() {
-	# WI-miriz: install sentinel trap as the very first action so even
-	# the earliest exits capture a final state.
-	trap _autopr_finalize EXIT
+	_autopr_install_traps
 
-	# Suppress the reference-transaction recovery hook during this action's git
-	# operations (fetch + post-merge fast-forward). The hook would restore a
-	# journalled-but-uncommitted op as an untracked file and abort the very ff
-	# that commits it; _autopr_finalize removes the marker on exit.
-	touch "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
+	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
+	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
+	_autopr_hold_recover_lock
 
 	local pr_num="${1:?Usage: auto-pr gov-cleanup <PR_NUM>}"
 	load_env
@@ -2354,10 +2907,18 @@ gov_cleanup() {
 	base=$(echo "$API_RESPONSE" | json_field "base.ref")
 
 	echo "✅ PR #$pr_num confirmed merged."
-	cleanup_local "$branch" "$base"
-	echo "✅ Done. Ready for next auto-pr."
-	_autopr_state_final="merged"
+
+	# INV-rahib: record the outcome BEFORE the housekeeping, not after. The
+	# API has just confirmed the merge, so `merged` is already true here; the
+	# old order let a cleanup_local abort discard that fact and self-report as
+	# `unknown` — a worse landing than do_pr's merged/exit-1, because the
+	# ledger then shows no terminal state at all.
 	# merged_sha not known here without an extra query — leave null.
+	_autopr_state_final="merged"
+
+	_autopr_post_merge cleanup_local "$branch" "$base"
+	echo "✅ Done. Ready for next auto-pr."
+	exit 0
 }
 
 case "${1:-}" in
@@ -2377,6 +2938,13 @@ gov-cleanup)
 	shift
 	gov_cleanup "$@"
 	;;
+wait)
+	# Introspection, like `status` and `list`: it installs no traps and
+	# writes no ledger row, because it is not an invocation that could
+	# merge anything. The row belongs to the watcher it is waiting on.
+	shift
+	do_wait "${1:-300}"
+	;;
 help | --help | -h)
 	echo "auto-pr: Push PRs with offline resilience via vPR queue"
 	echo ""
@@ -2387,6 +2955,14 @@ help | --help | -h)
 	echo "                      Commit body is preserved via git notes, subject includes [from <sha>]"
 	echo "  --timeout SECS      CI polling timeout in seconds (default: 2400 = 40 min)"
 	echo "  --gov               Governance mode: push + CI, but do NOT auto-merge (human reviews)"
+	echo "  --foreground        Block here until the merge lands. Declares that this caller"
+	echo "                      can wait; required (with --detach as the alternative) when"
+	echo "                      stdout is not a terminal, since exit 0 means different"
+	echo "                      things in the two modes."
+	echo "  --detach            Hand the CI poll to a background watcher and return at once."
+	echo "                      Use this from an agent: a foreground run cannot fit the CI"
+	echo "                      budget (2400s poll + 300s soft-retry) inside a 600s turn."
+	echo "                      Follow with 'auto-pr wait'. Never wrap auto-pr in timeout."
 	echo "  --tracker-id ID     Full tracker item ID (WI-*, INV-*, etc). On successful merge,"
 	echo "                      appends a discussion entry to that item citing the PR number and"
 	echo "                      merged dev SHA. Missing flag is a no-op."
@@ -2400,6 +2976,9 @@ help | --help | -h)
 	echo "  status          Show queue status and recommended next steps"
 	echo "  prune           Remove stale vPRs (commit already in origin/<base>)"
 	echo "  gov-cleanup N   After human merges PR N via web UI, clean up local state"
+	echo "  wait [SECS]     Block on the --detach watcher for up to SECS (default 300)."
+	echo "                  Exit 0 = watcher finished, 2 = still working (call again),"
+	echo "                  1 = no watcher, or it vanished mid-poll."
 	echo ""
 	echo "Exit codes:"
 	echo "  0  Success (merged or vPR queued)"

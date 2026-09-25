@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Library signatures for Go: what a stdlib producer RETURNS.
+#
+# WI-lalot. The return-type registry is built from ANALYSED declarations, so a
+# receiver bound to a stdlib call has nothing to register and its catalogued
+# method rows are unreachable no matter how correct they are. These rows are the
+# missing input, in the shape the registry already uses.
+#
+# KEY SHAPE, read from go.py's consumers rather than assumed:
+#   * a bare producer is keyed by the call's SELECTOR TEXT      -> `net.Listen`
+#   * a method is keyed by the UNQUALIFIED receiver + method    -> `Listener.Accept`
+#     (go.py::_bare_go_type folds a qualified value back to this form)
+#   * every VALUE is package-QUALIFIED, because the io-boundary module slot needs
+#     the package (WI-doluf).
+# Getting either half wrong makes the lookup miss silently, which is why the
+# asymmetry is stated here and not left to the reader of the rows.
+#
+# STDLIB ONLY (ADR-0047). Third-party framework producers -- gin.Default,
+# fiber.New, echo.New -- are community-overlay rows, not shipped ones.
+language: go
+module_completeness: partial
+signatures:
+  # net: the measured case. `ln, _ := net.Listen(...)` then `ln.Accept()` emitted
+  # go:external:0-0:Accept, so the catalogue's net.Listener.Accept row was inert.
+  net.Listen: net.Listener
+  net.Dial: net.Conn
+  Listener.Accept: net.Conn
+  # os / io
+  os.Open: os.File
+  os.Create: os.File
+  os.OpenFile: os.File
+  # os/exec: INV-muhij's blocker -- `c := exec.Command(...)` then `c.Start()` /
+  # `c.StdoutPipe()` had no effect-call row to anchor an ordering test on.
+  exec.Command: exec.Cmd
+  exec.CommandContext: exec.Cmd
+  Cmd.StdoutPipe: io.ReadCloser
+  Cmd.StderrPipe: io.ReadCloser
+  Cmd.StdinPipe: io.WriteCloser
+  # bufio: WI-lipis's wrapper-constructor census names these by name.
+  bufio.NewScanner: bufio.Scanner
+  bufio.NewReader: bufio.Reader
+  bufio.NewWriter: bufio.Writer
+
+# WI-jikik: stdlib PACKAGE VARIABLES, and the type each holds. A method called on
+# one (`http.DefaultClient.Do(req)`) has no local variable to type, so the call
+# fell to the `external` slot and the catalogued `net/http.Client.Do` send was
+# unreachable -- while the same call on a typed local reached it. The false
+# `net/http.NewRequest` send row was compensating for exactly that (INV-gujoh).
+#
+# KEY SHAPE: the package's own NAME (the import path's last element), not the
+# alias a file imports it under, so `nethttp.DefaultClient` resolves too.
+# VALUE: the package-qualified type, as above.
+#
+# ONLY variables whose type carries catalogued methods are listed. Refused, each
+# for a reason, so the list is a decision rather than a sample:
+#   os.Stdin / os.Stdout / os.Stderr -- os.File carries no method rows; the std
+#     streams are already classified through io_target_kind (WI-dutah), and
+#     typing them would move every such call into the `os` slot, which is an
+#     unmeasured coverage-gate change.
+#   http.DefaultServeMux, flag.CommandLine -- route and flag registration; no
+#     method rows.
+#   crypto/rand.Reader, io.Discard -- an entropy source and a sink that
+#     discards; neither is a boundary in the vocabulary.
+package_variables:
+  http.DefaultClient: http.Client
+  # Declared `RoundTripper`; the value IS an `*http.Transport`, whose RoundTrip
+  # is the rowed send.
+  http.DefaultTransport: http.Transport
+  net.DefaultResolver: net.Resolver

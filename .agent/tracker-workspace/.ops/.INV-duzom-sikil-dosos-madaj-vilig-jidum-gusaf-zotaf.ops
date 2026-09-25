@@ -1,0 +1,41 @@
+- op: create  # c841
+  at: '2026-09-02T00:10:04Z'  # c841
+  by: agent  # c841
+  actor: jgstern_agent  # c841
+  clock: 1  # c841
+  nonce: c841  # c841
+  data:  # c841
+    kind: invariant  # c841
+    title: "A fully-qualified Rust call path is never split into module + name, so std::io::stdin() and std::fs::File::open() reach no catalogue row"  # c841
+    status: violated  # c841
+    priority: 2  # c841
+    parent:  # c841
+    tags:  # c841
+    - catalogue  # c841
+    - rust  # c841
+    - analysis_quality  # c841
+    - io_boundary  # c841
+    isbefore: []  # c841
+    duplicate_of: []  # c841
+    not_duplicate_of: []  # c841
+    pr_ref:  # c841
+    description: "FOUND 2026-09-01 while establishing INV-zuvib's second question -- whether the\nfully-qualified-path miss shared the grouped-use-list cause. IT DOES NOT, and\nthat is the point of this item: INV-zuvib's fix shipped and this shape did not\nmove, so it is a distinct cause with a distinct fix.\n\nTHE REPRO (cold, io-boundaries), all four arms in one run:\n\n    use std::fs::File;      File::open(\"/x\")        1 io edge   fs_read\n    use std::fs::{..File};  File::open(\"/x\")        1 io edge   fs_read   (after INV-zuvib)\n    std::fs::File::open(\"/x\")                       0 io edges  LOST\n    std::io::stdin()                                0 io edges  LOST\n\nEDGE IDENTITY -- the whole path is crammed into the NAME slot and the module\nslot gets the sentinel:\n\n    resolved      rust:std::fs::File:0-0:open:external_symbol\n    fully-qual    rust:external:0-0:std..fs..File..open:external_symbol\n    fully-qual    rust:external:0-0:std..io..stdin:external_symbol\n\nMECHANISM (stated as the next reader's starting point, NOT as an established\nroot cause): the unresolved-call path rebuilds the module slot from\n`use_aliases` alone. A fully-qualified call has NO use statement to consult,\nso there is no alias to find and the whole path stays in the name slot. The\ninformation needed is present in the source text -- it is written out in full\n-- and is simply never split.\n\nWHY IT IS NOT INV-zuvib: that item's fix registers aliases from grouped use\nlists. These call sites have no use statement at all, so more aliases cannot\nhelp them; both arms above were re-measured AFTER INV-zuvib shipped and both\nare still 0. Conversely a splitter alone would not have fixed INV-zuvib:\nsplitting `File::open` on the last `::` yields module `File`, which matches no\ncatalogue row -- only the alias gives `std::fs::File`.\n\nWHY IT IS PROBABLY A SPLIT, NOT A LOOKUP: for the fully-qualified form the\ncorrect answer falls out of the text -- `std::fs::File::open` splits on the\nlast `::` into module `std::fs::File` + name `open`, which is exactly the\nshipped catalogue key. The risk to weigh before building is over-splitting a\npath whose tail is NOT a member (an associated constant, an enum variant, a\ntuple-struct constructor), which would put a wrong path in the module slot --\nand INV-linub L3's note already records that a module slot holding a WRONG\npath is worse than an empty one, because it converts a correct refusal into a\nconfident mismatch.\n\nPOPULATION: ~972 path-qualified stdio-handle call sites corpus-wide was the\nfigure recorded on INV-zuvib for the stdin shape alone; the fs/other shapes\nare not counted. Re-measure before sizing."  # c841
+    fields:  # c841
+      statement: "A Rust call written with its full path and no use statement (std::io::stdin(), std::fs::File::open(..)) emits an edge whose module slot is the 'external' sentinel and whose NAME slot carries the entire path (rust:external:0-0:std..io..stdin), matching no io_primitives row. The same call reached through an import (io::stdin() after 'use std::io;', or stdin() after 'use std::io::stdin;') resolves and produces an io edge. Re-measured on merged dev 7273edb844 AFTER INV-zuvib shipped: both fully-qualified arms are still 0 io edges while both imported arms are 1."  # c841
+      root_cause: "NOT YET ESTABLISHED -- stated as the next reader's starting point, not as a finding. The unresolved-call path rebuilds the module slot from use_aliases alone; a fully-qualified call has no use statement to consult, so no alias exists and the whole path stays in the name slot. The information is present in the source text (it is written out in full) and is simply never split. PROVEN DISTINCT FROM INV-zuvib: that item's fix registers aliases from grouped use lists and did not move these arms at all, because these call sites have no use statement for any quantity of aliases to reach."  # c841
+- op: discuss  # 5426
+  at: '2026-09-16T17:31:53Z'  # 5426
+  by: agent  # 5426
+  actor: jgstern_agent  # 5426
+  clock: 2  # 5426
+  nonce: '5426'  # 5426
+  message: "ROOT CAUSE ESTABLISHED, and one filed detail corrected. 2026-09-16 at dev 1d38136c33.\nStatus unchanged (violated) -- this entry supplies evidence, not a resolution.\n\nThe root_cause field opens \"NOT YET ESTABLISHED -- stated as the next reader's\nstarting point, not as a finding\". It reads: \"The unresolved-call path rebuilds\nthe module slot from use_aliases alone; a fully-qualified call has no use\nstatement to consult, so no alias exists and the whole path stays in the name\nslot.\" A two-arm fixture confirms exactly that, so the next reader can treat it\nas a finding:\n\n  use std::io;\n  fn a() { let _ = std::io::stdin(); }   // fully qualified\n  fn b() { let _ = io::stdin(); }        // through the import\n\n  emitted edges:\n    line 2  dst = rust:external:0-0:std::io::stdin:unresolved\n    line 3  dst = rust:std::io:0-0:stdin:unresolved\n\nArm b resolves its module slot from the use alias; arm a, having no alias to\nconsult, keeps the entire path in the NAME slot and takes the external sentinel\nin the module slot. That is the stated mechanism, demonstrated as a difference\nbetween two lines of the same file.\n\nONE CORRECTION TO THE FILED TEXT. The statement predicts the id\n\"rust:external:0-0:std..io..stdin\". The analyzer emits\n\"rust:external:0-0:std::io::stdin:unresolved\" -- colons, not dots. The\nsubstance of the claim is unaffected (external module slot, whole path in the\nname slot, matches no io_primitives row), but the spelling in the statement\nwill not match a grep. The \"..\" spelling IS real, on materialized\nexternal_symbol NODES after the synthesis pass\n(e.g. rust:external:0-0:Vec..with_capacity:external_symbol on ripgrep); the\n\"::\" spelling is what the ANALYZER puts on the unresolved EDGE dst. Two\nstages, two spellings -- worth knowing before anyone greps for either."  # 5426
+- op: update  # 88fd
+  at: '2026-09-25T18:37:32Z'  # 88fd
+  by: agent  # 88fd
+  actor: jgstern_agent  # 88fd
+  clock: 3  # 88fd
+  nonce: 88fd  # 88fd
+  set: {}  # 88fd
+  add:  # 88fd
+    tags: [post_release_focus]  # 88fd

@@ -55,26 +55,98 @@ example.
 """
 
 
+def _module_string_constants(tree: ast.Module) -> dict[str, str]:
+    """Map module-local names to the string constants they are bound to.
+
+    Shallow on purpose. Only a direct ``NAME = "literal"`` (or the annotated
+    ``NAME: Final[str] = "literal"``) counts — no import following, no
+    concatenation, no conditional rebinding. A vocabulary written as a set of
+    names, ``frozenset({BOUNDARY_RULING_UNRULED, ...})``, is spelled that way
+    in one module beside its constants, which is the case this reaches.
+    """
+    consts: dict[str, str] = {}
+    for node in ast.walk(tree):
+        name: str | None = None
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign):
+            if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                name, value = node.targets[0].id, node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            # ``Final[str]`` is the house style for these constants, so
+            # skipping AnnAssign here would miss most of them.
+            name, value = node.target.id, node.value
+        if (
+            name is not None
+            and isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+        ):
+            consts[name] = value.value
+    return consts
+
+
+def _resolved_strings(
+    elements: Iterable[ast.expr], consts: dict[str, str],
+) -> list[str] | None:
+    """Every element as a string, or ``None`` if any element is not one.
+
+    ALL-OR-NOTHING, and that is the safety property: reporting the resolvable
+    subset of a partially-opaque collection would let a real drift value hide
+    behind an unresolved sibling, turning a linter that says nothing into a
+    linter that says the wrong thing.
+    """
+    out: list[str] = []
+    for elt in elements:
+        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+            out.append(elt.value)
+        elif isinstance(elt, ast.Name) and elt.id in consts:
+            out.append(consts[elt.id])
+        else:
+            return None
+    return out or None
+
+
 def iter_axis_set_assignments(
     path: Path,
     *,
     name_filter: str,
 ) -> Iterator[tuple[int, str, frozenset[str]]]:
-    """Yield ``(lineno, target_name, frozenset_of_string_elements)`` for
-    every module-level ``<NAME> = {...}`` or
-    ``<NAME> = frozenset({...})`` assignment in *path* where ``NAME``
-    contains *name_filter* as a substring and every element is a
-    string literal.
+    """Yield ``(lineno, target_name, frozenset_of_string_elements)`` for every
+    module-level assignment in *path* whose target name contains *name_filter*
+    and whose value enumerates string constants.
 
-    The substring filter prevents false positives from unrelated
-    string sets (programming-language keyword vocabularies, language
-    stdlib method-name catalogs, etc.) that happen to share an
-    element with the target registry by coincidence.
+    COLLECTED SHAPES (WI-jinuj). Originally only a ``{...}`` set literal or a
+    ``frozenset({...})`` wrapper, which meant a hardcoded copy of a vocabulary
+    written any other way was invisible to every axis linter at once:
 
-    Files that fail to read (binary garbage, permission errors) or to
-    parse (syntax errors mid-edit) are silently skipped — this helper
-    is best-effort and treats unreadable files as "no offenders found
-    here."
+    - ``{...}`` and ``frozenset({...} / [...] / (...))`` — as before
+    - a bare ``(...)`` tuple or ``[...]`` list (``CATALOG_BOUNDARY_TYPES``)
+    - a ``{...}`` dict, by its KEYS and by its VALUES (``DEFERRED_CROSSING_SHADOWS``
+      maps one boundary to another; ``DEFAULT_EDGE_TYPE_WEIGHTS`` is keyed by them)
+    - elements that are module-local NAME references to string constants
+      (``VALID_BOUNDARY_RULINGS`` is ``frozenset({NAME, NAME})``)
+
+    A DICT WITH STRINGS ON BOTH SIDES YIELDS ITS SIDES SEPARATELY, as
+    ``<NAME>:keys`` and ``<NAME>:values``. ``io_boundary._READ_TARGET_KIND_BOUNDARY``
+    is keyed by ``io_target_kind`` values and valued by io-boundary names — two
+    axes in one assignment — so folding the sides together would force the
+    io-boundary linter to exclude the whole constant to silence the keys,
+    losing the check on the values. When only one side is string-valued there
+    is no ambiguity and the plain target name is kept, so exclusions written
+    against the old behaviour keep working.
+
+    STILL INVISIBLE, DELIBERATELY: a value computed by a CALL —
+    ``frozenset(A + B)``, ``frozenset(SOMEDICT.values())``,
+    ``all_io_boundary_names()``. A derived constant cannot DRIFT from the
+    registry it is derived from, so there is nothing here for a drift linter
+    to check; the risk such a linter exists to catch is a hardcoded copy.
+
+    The substring filter prevents false positives from unrelated string sets
+    (programming-language keyword vocabularies, stdlib method-name catalogs)
+    that happen to share an element with the target registry by coincidence.
+
+    Files that fail to read (binary garbage, permission errors) or to parse
+    (syntax errors mid-edit) are silently skipped — this helper is best-effort
+    and treats unreadable files as "no offenders found here."
     """
     try:
         source = path.read_text(encoding="utf-8")
@@ -84,6 +156,8 @@ def iter_axis_set_assignments(
         tree = ast.parse(source, filename=str(path))
     except SyntaxError:  # pragma: no cover
         return
+
+    consts = _module_string_constants(tree)
 
     for node in ast.walk(tree):
         target_name: str | None = None
@@ -103,9 +177,26 @@ def iter_axis_set_assignments(
             continue
         if value is None:
             continue
+        # target_name is set only on the two statement branches above, both of
+        # which carry .lineno (the ast.AST base does not).
+        assert isinstance(node, (ast.Assign, ast.AnnAssign))
+
+        if isinstance(value, ast.Dict):
+            keys = _resolved_strings(
+                [k for k in value.keys if k is not None], consts,
+            )
+            vals = _resolved_strings(value.values, consts)
+            if keys and vals:
+                yield node.lineno, f"{target_name}:keys", frozenset(keys)
+                yield node.lineno, f"{target_name}:values", frozenset(vals)
+            elif keys:
+                yield node.lineno, target_name, frozenset(keys)
+            elif vals:
+                yield node.lineno, target_name, frozenset(vals)
+            continue
 
         elements: list[ast.expr] | None = None
-        if isinstance(value, ast.Set):
+        if isinstance(value, (ast.Set, ast.Tuple, ast.List)):
             elements = list(value.elts)
         elif (
             isinstance(value, ast.Call)
@@ -118,19 +209,8 @@ def iter_axis_set_assignments(
         if not elements:
             continue
 
-        values: list[str] = []
-        all_strings = True
-        for elt in elements:
-            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                values.append(elt.value)
-            else:
-                all_strings = False
-                break
-        if all_strings and values:
-            # node reaches here only via the ast.Assign / ast.AnnAssign
-            # branches above (target_name is set only there), so it is a
-            # statement carrying .lineno (the ast.AST base does not).
-            assert isinstance(node, (ast.Assign, ast.AnnAssign))
+        values = _resolved_strings(elements, consts)
+        if values:
             yield node.lineno, target_name, frozenset(values)
 
 
@@ -204,7 +284,14 @@ def find_drift(
             for lineno, target_name, values in iter_axis_set_assignments(
                 py_file, name_filter=name_filter,
             ):
-                if target_name in excluded_targets:
+                # A dict yields ``<NAME>:keys`` / ``<NAME>:values``; an
+                # exclusion written against the bare NAME silences both
+                # sides, so pre-existing exclusions keep their meaning and a
+                # caller can still name one side to keep the other checked.
+                base_name = target_name.split(":", 1)[0]
+                if target_name in excluded_targets or (
+                    base_name in excluded_targets
+                ):
                     continue
                 try:
                     rel = py_file.relative_to(repo_root)

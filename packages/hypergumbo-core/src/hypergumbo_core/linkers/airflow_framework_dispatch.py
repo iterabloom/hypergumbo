@@ -10,22 +10,32 @@ at runtime. The static call graph never sees those invocations — they happen
 through the Airflow framework's own dynamic dispatch — so every override
 method looks like a dead function to dead-code analysis.
 
-This linker scans symbols for classes that declare any Airflow base class in
-``meta.base_classes``, finds the framework-called methods defined on those
-classes (Python analyzer emits method names as ``ClassName.method_name``), and
-emits ``dispatches_to`` edges from each Airflow subclass to each of its
-override methods. With the class reachable from its enclosing module, the
-override methods are pulled out of the dead-code set.
+This linker scans symbols for classes whose transitive base chain (the
+class's own ``meta.base_classes`` plus those of in-tree ancestors reached via
+``extends``/``implements`` edges) names any Airflow base class, finds the
+framework-called methods defined on those classes (Python analyzer emits
+method names as ``ClassName.method_name``), and emits ``dispatches_to`` edges
+from each Airflow subclass to each of its override methods. With the class
+reachable from its enclosing module, the override methods are pulled out of
+the dead-code set.
+
+When a base on the chain is written unqualified (no ``airflow.`` prefix) and
+its short name also belongs to an in-tree Python class, the linker cannot tell
+which one is meant (INV-zuhub): the edges still fire, but at confidence 0.5
+with ``disambiguation_fallback`` set instead of 0.90.
 
 Why a Framework Linker (Not Per-Analyzer Logic)
 ------------------------------------------------
 The inheritance-detection half is language-agnostic and already ships via the
-``inheritance`` linker's ``base_classes`` extraction. The Airflow-specific
-knowledge is limited to two literals — the base class names and the
-framework-called method names — which belong in a single place, not smeared
+analyzers' ``base_classes`` extraction and the ``inheritance`` linker's
+``extends``/``implements`` edges. The Airflow-specific knowledge is limited to
+a few literals — the base class names, the framework-called method names and
+the ``airflow.`` FQN prefix — which belong in a single place, not smeared
 across every analyzer. Extending to other Python frameworks (Celery tasks,
-Django Channels consumers, Scrapy spiders) is a new entry in the
-``AIRFLOW_BASE_METHODS`` map, not new per-analyzer code.
+Django Channels consumers, Scrapy spiders) needs its own base-to-methods map,
+FQN prefixes and ``framework_dispatch`` label (here ``AIRFLOW_BASE_METHODS``,
+``_AIRFLOW_FQN_PREFIXES`` and the literal ``"airflow"``), not new per-analyzer
+code.
 
 Scope (WI-nutav)
 ----------------
@@ -41,12 +51,10 @@ from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ._transitive_bases import (
-    build_inheritance_index,
     build_short_name_collisions,
-    collect_transitive_base_names,
-    short_name_fallback,
+    match_framework_bases,
 )
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -96,7 +104,7 @@ def _find_airflow_subclasses(
     symbols: list[Symbol],
     edges: list[Edge] | None = None,
     in_tree_collisions: frozenset[str] = frozenset(),
-) -> list[tuple[Symbol, frozenset[str], bool]]:
+) -> list[tuple[Symbol, dict[str, tuple[str, ...]], bool]]:
     """Return (class_symbol, framework_method_names, is_fallback) for every Airflow subclass.
 
     A class qualifies when **any** name in its transitive ``base_classes``
@@ -118,30 +126,13 @@ def _find_airflow_subclasses(
     type or the in-tree one. Edges produced for such classes downgrade
     to ``confidence <= 0.5`` with the ``disambiguation_fallback`` flag.
     """
-    edges = edges or []
-    inheritance_index = build_inheritance_index(edges)
-    symbol_by_id = {sym.id: sym for sym in symbols}
-
-    results: list[tuple[Symbol, frozenset[str], bool]] = []
-    for sym in symbols:
-        if sym.kind not in ("class", "struct"):
-            continue
-        if not sym.meta or not sym.meta.get("base_classes"):
-            continue
-        chain = collect_transitive_base_names(sym, symbol_by_id, inheritance_index)
-        methods: set[str] = set()
-        is_fallback = False
-        for raw in chain:
-            short = _short_base_name(raw)
-            if short in AIRFLOW_BASE_METHODS:
-                methods.update(AIRFLOW_BASE_METHODS[short])
-                if short_name_fallback(
-                    raw, short, in_tree_collisions, _AIRFLOW_FQN_PREFIXES,
-                ):
-                    is_fallback = True
-        if methods:
-            results.append((sym, frozenset(methods), is_fallback))
-    return results
+    return match_framework_bases(
+        symbols, edges or [], AIRFLOW_BASE_METHODS,
+        short_name=_short_base_name,
+        fqn_prefixes=_AIRFLOW_FQN_PREFIXES,
+        in_tree_collisions=in_tree_collisions,
+        language=None,
+    )
 
 
 def _build_method_index(
@@ -173,6 +164,7 @@ def _build_method_index(
     description="Emit dispatches_to edges from Airflow subclasses to their framework-called override methods (WI-nutav)",
     # CNF: airflow is Python-only.
     depends_on=[["python"]],
+    activation=always_on_unreviewed(),
 )
 def link_airflow_framework_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Create dispatches_to edges from Airflow subclasses to their framework overrides.
@@ -237,7 +229,7 @@ def link_airflow_framework_dispatch(ctx: LinkerContext) -> LinkerResult:
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
                     meta=edge_meta,
-                    derived_from=[class_sym.id, target.id],
+                    derived_from=[class_sym.id, target.id, *framework_methods[method_name]],
                 ),
             )
 

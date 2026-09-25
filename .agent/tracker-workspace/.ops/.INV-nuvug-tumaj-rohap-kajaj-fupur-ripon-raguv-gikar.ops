@@ -1,0 +1,25 @@
+- op: create  # 23a2
+  at: '2026-09-02T00:09:11Z'  # 23a2
+  by: agent  # 23a2
+  actor: jgstern_agent  # 23a2
+  clock: 1  # 23a2
+  nonce: 23a2  # 23a2
+  data:  # 23a2
+    kind: invariant  # 23a2
+    title: "PHP grouped use-lists register no import aliases, so a call through one lands in the external module slot (INV-zuvib's mechanism, second language)"  # 23a2
+    status: violated  # 23a2
+    priority: 2  # 23a2
+    parent:  # 23a2
+    tags:  # 23a2
+    - catalogue  # 23a2
+    - php  # 23a2
+    - analysis_quality  # 23a2
+    - io_boundary  # 23a2
+    isbefore: []  # 23a2
+    duplicate_of: []  # 23a2
+    not_duplicate_of: []  # 23a2
+    pr_ref:  # 23a2
+    description: "FOUND 2026-09-01 by the cross-language sweep INV-zuvib's fix required (a named\ninstance is the tip of a family). Same mechanism, different grammar, and it is\nLIVE rather than inert -- which was measured, not assumed.\n\nTHE REPRO, at the alias map (unit level):\n\n    use Foo\\Bar;            ->  {'Bar': 'Foo\\\\Bar'}       REGISTERS\n    use Foo\\{Bar, Baz};     ->  {}                        SILENTLY LOST\n    use Foo\\{Bar as B};     ->  {}                        SILENTLY LOST\n\nAND AT THE EDGE (behavioural, via `hypergumbo survey`, cold):\n\n    use function Foo\\helper;            helper()  ->  php:Foo\\helper:0-0:helper\n    use function Foo\\{helper, other};   helper()  ->  php:external:0-0:helper\n\nThe second lands in the `external` sentinel and matches no io_primitives row.\n\nMECHANISM: `php.py::_extract_use_aliases` iterates `node.children` of the\n`namespace_use_declaration` looking for `namespace_use_clause`. For a grouped\nuse, tree-sitter nests the clauses one level down inside a\n`namespace_use_group`, so the direct-children scan matches nothing:\n\n    namespace_use_declaration          namespace_use_declaration\n      namespace_use_clause               namespace_name  'Foo'\n        qualified_name 'Foo\\Bar'         namespace_use_group\n                                           namespace_use_clause  'Bar'\n                                           namespace_use_clause  'Baz'\n\nThere is a SECOND reason the grouped arm registers nothing even if the clause\nwere reached: the loop requires a `qualified_name` child, and a grouped\nclause's child is a bare `name`. Both must be fixed; fixing only the nesting\nwould leave the arm silently empty.\n\nWHY IT IS THE SAME DEFECT AS INV-zuvib: identical failure shape -- a\ndirect-children lookup against a grammar that wraps the grouped form in an\nextra node, degrading toward NO row rather than a wrong one, so it is\ninvisible unless you look for something that should be there.\n\nNOT A UNIVERSAL FAMILY MEMBER -- scala is the counterexample and was checked:\n`scala.py::_extract_import_hints` handles `namespace_selectors` explicitly,\nincluding the `{A => Alias}` rename arm. So this is a per-analyzer omission,\nnot a shared-helper defect, and there is no chokepoint fix.\n\nPOPULATION: NOT YET SIZED. INV-zuvib's rust figure (37.9% of use statements)\ndoes not transfer -- PHP group-use is a PHP 7.0+ feature with different\nidiomatic uptake, and it must be counted on the corpus before this item's\nscale is claimed.\n\nFIRST STEP: count grouped-vs-single `use` in the php corpus, then port the\nrecursive-walk shape INV-zuvib used in rust.py (a prefix accumulated through\nthe group, one binding per leaf, `as` clauses and nested groups handled at\nevery depth)."  # 23a2
+    fields:  # 23a2
+      statement: "A PHP grouped use declaration (use Foo\\{Bar, Baz};) registers no import aliases, so a call through one of those names lands in the 'external' module slot and matches no io_primitives row. The single-import form of the identical call resolves correctly. Measured at the edge: 'use function Foo\\helper;' gives php:Foo\\helper:0-0:helper while 'use function Foo\\{helper, other};' gives php:external:0-0:helper."  # 23a2
+      root_cause: "php.py::_extract_use_aliases iterates the DIRECT children of namespace_use_declaration looking for namespace_use_clause. tree-sitter nests a grouped use's clauses one level down inside a namespace_use_group, so the scan matches nothing. There is a SECOND reason the arm would still register nothing even if the clause were reached: the loop requires a qualified_name child, and a grouped clause's child is a bare 'name'. Both must be fixed; fixing only the nesting leaves the arm silently empty."  # 23a2

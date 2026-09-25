@@ -1,0 +1,46 @@
+- op: create  # 0eb4
+  at: '2026-09-24T06:57:57Z'  # 0eb4
+  by: agent  # 0eb4
+  actor: jgstern_agent  # 0eb4
+  clock: 1  # 0eb4
+  nonce: 0eb4  # 0eb4
+  data:  # 0eb4
+    kind: work_item  # 0eb4
+    title: "python: enumerate urllib.request's I/O surface (module_completeness) -- prerequisite for deleting the false Request net_send row, whose removal otherwise withholds all 18 of hypergumbo's self-claims"  # 0eb4
+    status: todo_hard  # 0eb4
+    priority: 3  # 0eb4
+    parent:  # 0eb4
+    tags:  # 0eb4
+    - python  # 0eb4
+    - catalogue  # 0eb4
+    - io_boundary  # 0eb4
+    isbefore: []  # 0eb4
+    duplicate_of: []  # 0eb4
+    not_duplicate_of: []  # 0eb4
+    pr_ref:  # 0eb4
+    description: "PREREQUISITE for deleting python's false `urllib.request.Request` net_send row (INV-gujoh).\n\nWHY THE ROW CANNOT GO ALONE. `Request` builds a request object and sends nothing, and `urlopen(req)` is the send. A finding-level A/B shows the flow survives the deletion at urlopen: fixture violated -> violated, and 0 verdict moves on beads and mlflow. But the call `Request(...)` then becomes an unclassified call into `urllib.request`, whose I/O surface is not enumerated. _uncatalogued_external_modules (verify_claims.py) withholds a clean verdict for that, by design: the permitting case is ENUMERATED per module, never per name (INV-buzab). Measured with scripts/check-self-claims --minimal and the row deleted: all 18 of hypergumbo's own self-claims moved confirmed_with_caveats -> inconclusive, and 4 credited_flows moved nonzero -> zero, because hypergumbo_tracker/stop_hook.py:401 builds a Request. On dev the gate is clean. `stdlib_other` does NOT lift that gate (probed).\n\nTHE AUDIT. urllib.request defines 46 own public callables (introspected, python 3.12). 3 are rowed. At least these do I/O on call and have NO row:\n- getproxies, getproxies_environment, proxy_bypass, proxy_bypass_environment: env_read\n- ProxyHandler(), build_opener(), URLopener(), FancyURLopener(): read proxies from the environment AT CONSTRUCTION\n- urlcleanup(): deletes urlretrieve's temp files (fs_write)\n- localhost(), thishost(): resolve DNS\n- ftpwrapper(...): opens an FTP connection at construction\nThen OpenerDirector.open, the handler classes, and the deprecated URLopener family's methods.\nAdjudicate each against ADR-0049 and the 2026-08-15 rule (docs/surveys/python-stdlib-module-io-enumeration.md), row what crosses, then declare `urllib.request` complete in module_completeness, dated. Only then delete `Request`, and re-run check-self-claims: it must stay clean."  # 0eb4
+    fields: {}  # 0eb4
+- op: update  # b264
+  at: '2026-09-24T06:58:06Z'  # b264
+  by: agent  # b264
+  actor: jgstern_agent  # b264
+  clock: 2  # b264
+  nonce: b264  # b264
+  set: {}  # b264
+  add:  # b264
+    isbefore: [INV-gujoh-fodug-polig-viviv-dihaz-vulij-danib-ratos]  # b264
+- op: update  # 6e47
+  at: '2026-09-24T20:24:38Z'  # 6e47
+  by: agent  # 6e47
+  actor: jgstern_agent  # 6e47
+  clock: 3  # 6e47
+  nonce: '6e47'  # 6e47
+  set:  # 6e47
+    status: done  # 6e47
+- op: discuss  # 95ad
+  at: '2026-09-24T20:24:38Z'  # 95ad
+  by: agent  # 95ad
+  actor: jgstern_agent  # 95ad
+  clock: 4  # 95ad
+  nonce: 95ad  # 95ad
+  message: "DONE, PR #1187 (merged 2026-09-24).\n\nurllib.request's 46 own public callables were probed and each read by hand. The record is the survey addendum in docs/surveys/python-stdlib-module-io-enumeration.md.\n- ROWED NEW: ftpwrapper (net_send); localhost, thishost (net_recv, per the DNS ruling); getproxies, getproxies_environment, proxy_bypass, proxy_bypass_environment, ProxyHandler, build_opener, URLopener, FancyURLopener (env_read); urlcleanup (fs_write).\n- NO I/O: Request, OpenerDirector, install_opener, the 22 other handler classes, and the string helpers.\n- urllib.request is declared complete (retrieved 2026-09-24), and the false Request net_send row is DELETED.\n\nBEHAVIORAL EVIDENCE (the row's own acceptance: check-self-claims must stay clean):\n- scripts/check-self-claims --minimal with the row deleted: 18 claims unchanged, confirmed_with_caveats. Before the enumeration, the same deletion moved all 18 to inconclusive.\n- verify-claims fixtures, pinned worktrees dev vs fix, claim host_secret !-> network:\n    Request(data=secret) -> urlopen(req)   violated -> violated, evidence now ddg-confirmed at urlopen\n    urlopen(url, data=secret)              violated both arms (control)\n    getproxies() sent via urlopen          inconclusive -> violated (new source)\n- Production-path test: test_inv_gujoh_constructor_sinks.py::TestUrllibRequestIsEnumerated runs analyze_python and the real coverage gate. The gate admits a program that builds a Request; with the completeness entry removed, it withholds and names urllib.request (the control can fail).\n- Cohort, finding-level diff with generic taint claims: beads, django, litellm, superset. 0 verdict moves. Every function that lost evidence at Request gained it at urlopen.\n  Disclosed: in beads' `with urlopen(req)` the evidence weakens to not_attempted (WI-hular). django gains one sink-before-source evidence at mkdtemp (WI-mojaz ruling). litellm's evidence list is capped at 100.\n\nNOT CLAIMED: urllib.request.OpenerDirector.open sends and has no row. It is its own slot, not declared complete.\nInstruments: ~/hypergumbo_lab_notebook/bakik_09242026/."  # 95ad

@@ -1,0 +1,28 @@
+- op: create  # cc65
+  at: '2026-08-30T02:47:19Z'  # cc65
+  by: agent  # cc65
+  actor: jgstern_agent  # cc65
+  clock: 1  # cc65
+  nonce: cc65  # cc65
+  data:  # cc65
+    kind: work_item  # cc65
+    title: "test_namespace_import_disambiguates_same_name_functions fails locally and passes in CI at the same commit; the a_early/z_late fixture suggests the verdict tracks directory iteration order"  # cc65
+    status: todo_hard  # cc65
+    priority: 2  # cc65
+    parent:  # cc65
+    tags:  # cc65
+    - javascript  # cc65
+    - analysis_quality  # cc65
+    isbefore: []  # cc65
+    duplicate_of: []  # cc65
+    not_duplicate_of: []  # cc65
+    pr_ref:  # cc65
+    description: "FOUND 2026-08-29 as collateral while running the io_boundary/taint/catalogue test\nsurface for INV-kanuk. NOT caused by that change: reproduced on a CLEAN tree\n(git stash, run, unstash) at 4c82fe0131.\n\nTHE FAILURE\n    packages/hypergumbo-lang-mainstream/tests/test_js_ts.py::\n      TestNamespaceImports::test_namespace_import_disambiguates_same_name_functions\n\n    Expected call to resolve to a_early/utils.process, but got\n    javascript:.../z_late/utils.js:2-4:process:function\n\nDeterministic on this machine, in isolation and in a wide run alike.\n\nWHY IT IS AN ENVIRONMENT DEPENDENCY AND NOT A RED dev\n  * test_js_ts.py IS in the committed manifest (.ci/affected-tests.txt line\n    303), so CI selects it.\n  * PR #639's CI passed at this same commit, minutes before this failure was\n    observed locally.\n  * Both cannot be true of a deterministic, environment-independent test.\n\nThe fixture names are the tell: `a_early` and `z_late` are chosen so that a\ncorrect resolver picks the first by IMPORT PATH while a resolver that merely\ntakes whatever it enumerated first would pick by NAME ORDER. A test whose\nverdict can flip with directory iteration order is measuring the filesystem as\nmuch as the resolver.\n\nWHAT TO DO (not done here -- filed, not chased)\n  1. Confirm the mechanism: does the assertion track os.listdir / glob order?\n     If so the test needs a deterministic ordering, not a rename.\n  2. Decide which behaviour is actually specified. WI-vurop (done) is the\n     namespace-import work this test guards; if path_hint disambiguation is the\n     contract, the resolver -- not the test -- is what is order-sensitive, and\n     then this is a PRODUCT bug with a test that only sometimes catches it.\n  3. That second reading is the expensive one and is why this is filed rather\n     than silently re-run until green: a test that passes in CI and fails\n     locally is normally blamed on the environment, and here that may be\n     exactly backwards."  # cc65
+    fields: {}  # cc65
+- op: discuss  # 36f8
+  at: '2026-08-30T03:01:27Z'  # 36f8
+  by: agent  # 36f8
+  actor: jgstern_agent  # 36f8
+  clock: 2  # 36f8
+  nonce: 36f8  # 36f8
+  message: "A SECOND INSTANCE OF THE SAME PATTERN, found in the same sweep: packages/hypergumbo-lang-extended1/tests/test_llvm_ir.py::TestAnalyzeLlvmIr::test_cross_file_call_resolution also fails locally at 4c82fe0131, in isolation, while PR #639's CI passed at that commit. Different package, different language, same local-red/CI-green shape. Two independent instances make 'flaky test' a weaker explanation than 'the local environment differs from CI in something both tests depend on' -- and cross-FILE call resolution is, like the namespace-import case, a question about which of several same-named candidates wins, which is exactly where enumeration order decides. Worth checking whether both resolve through the same ordering-sensitive code path before treating them as two bugs. Neither was caused by INV-kanuk's catalogue change: that diff touches only go.yaml, two go overlays and two hypergumbo-core test files, none of which test_llvm_ir.py or test_js_ts.py imports."  # 36f8

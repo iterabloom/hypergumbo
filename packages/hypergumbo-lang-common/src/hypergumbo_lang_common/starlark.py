@@ -48,6 +48,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -234,6 +235,7 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                     src=ctx.file_stable_id,
                     dst=f"starlark:{source_file}:{sym}",
                     edge_type="imports",
+                    evidence_type="ast_import",
                     line=node.start_point[0] + 1,
                     confidence=0.9,
                     origin=PASS_ID,
@@ -248,6 +250,7 @@ def _process_load(ctx: _FileContext, node: "tree_sitter.Node") -> None:
                     src=ctx.file_stable_id,
                     dst=f"starlark:{source_file}:{original_name}",
                     edge_type="imports",
+                    evidence_type="ast_import",
                     line=node.start_point[0] + 1,
                     confidence=0.9,
                     origin=PASS_ID,
@@ -307,6 +310,7 @@ def _process_target(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
                     src=sym.id,
                     dst=f"starlark:{ctx.rel_path}:{dep}",
                     edge_type="depends_on",
+                    evidence_type="build_dependency",
                     line=node.start_point[0] + 1,
                     confidence=0.9,
                     origin=PASS_ID,
@@ -422,6 +426,7 @@ def _extract_starlark_edges(ctx: _FileContext, root_node: "tree_sitter.Node",
                         src=caller.id,
                         dst=dst_id,
                         edge_type="calls",
+                        evidence_type="ast_call",
                         line=node.start_point[0] + 1,
                         confidence=confidence,
                         origin=PASS_ID,
@@ -453,6 +458,7 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()

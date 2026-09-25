@@ -17,9 +17,10 @@ How It Works
 1. Check if tree-sitter-dockerfile is available
 2. If not available, return skipped result (not an error)
 3. Single-pass analysis: parse each file once and, in the same AST
-   traversal, extract stages/ports/env/arg symbols and emit base_image
-   and depends_on (COPY --from) edges using a stage registry built
-   during the traversal.
+   traversal, extract stages/ports/env/arg symbols and emit ``depends_on``
+   edges for FROM-another-stage (evidence_type ``dockerfile_from``) and
+   COPY --from (evidence_type ``dockerfile_copy_from``) using a stage
+   registry built during the traversal.
 
 Why This Design
 ---------------
@@ -38,6 +39,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, find_child_by_type, iter_tree, make_symbol_id, node_text
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -188,7 +190,7 @@ def _process_dockerfile_tree(
             symbols.append(sym)
             stage_registry[stage_name.lower()] = symbol_id
 
-            # Create base_image edge if this FROM references another stage
+            # Create a depends_on edge if this FROM references another stage
             if image_name and image_name.lower() in stage_registry:
                 dst_id = stage_registry[image_name.lower()]
                 edge = Edge.create(
@@ -324,7 +326,7 @@ class DockerfileAnalyzer(TreeSitterAnalyzer):
     multi-stage build dependencies (COPY --from).
 
     Overrides ``analyze`` because Dockerfile uses a single-pass approach: both
-    symbols and edges (base_image, depends_on) are extracted together since
+    symbols and ``depends_on`` edges (FROM-stage and COPY --from) are extracted together since
     stage references need the stage registry built during the same pass.
     """
 
@@ -356,6 +358,7 @@ class DockerfileAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()

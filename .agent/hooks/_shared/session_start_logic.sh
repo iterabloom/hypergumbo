@@ -41,6 +41,64 @@ ALSO REQUIRED (separate item — do not treat as resolved by handling the prompt
     fi
 }
 
+# Helper: append the auto-pr convergence nudge (WI-lapap) when the last N
+# auto-pr invocations contain a non-convergent run.
+#
+# This lives at SESSION START, not only at stop, because the stop hook never
+# reaches its own nudge when autonomous mode is OFF — the vendor adapter
+# approves and exits before sourcing stop_logic.sh. OFF is a normal working
+# mode here, so a stop-only wire-up would be an instrument that does not run in
+# the configuration it was written for: the very defect WI-lapap names, which
+# is that INV-rahib's ledger had a writer and no reader.
+#
+# Soft nudge, same contract as the cadence check above: silent when the ledger
+# is missing, empty or clean, and any failure is swallowed.
+_append_autopr_convergence() {
+    local _nudge_script="$REPO_ROOT/.agent/hooks/_shared/autopr_convergence_nudge.py"
+    if [[ ! -f "$_nudge_script" ]] || ! command -v python3 &>/dev/null; then
+        return 0
+    fi
+    local _msg
+    _msg=$(python3 "$_nudge_script" "$REPO_ROOT" --line 2>/dev/null || true)
+    if [[ -z "$_msg" ]]; then
+        return 0
+    fi
+    if [[ -n "$SESSION_START_MESSAGE" ]]; then
+        SESSION_START_MESSAGE="${SESSION_START_MESSAGE}
+
+ALSO (separate item): ${_msg}"
+    else
+        SESSION_START_MESSAGE="$_msg"
+        SESSION_START_NEEDS_PROMPT=true
+    fi
+}
+
+# Helper: append the red-cron nudge (WI-lapof) when a cron CI step is red and
+# no open tracker row names it. A red cron gate sat unread for four days
+# (INV-fugus) and again on 2026-09-23, because nothing put the verdict in front
+# of the agent. The nudge makes the network call itself (one approved
+# `ci-debug cron-status`, cached for an hour) and is silent on any failure,
+# outage or parse miss. Same contract as the two helpers above.
+_append_cron_status() {
+    local _nudge_script="$REPO_ROOT/.agent/hooks/_shared/cron_status_nudge.py"
+    if [[ ! -f "$_nudge_script" ]] || ! command -v python3 &>/dev/null; then
+        return 0
+    fi
+    local _msg
+    _msg=$(python3 "$_nudge_script" "$REPO_ROOT" 2>/dev/null || true)
+    if [[ -z "$_msg" ]]; then
+        return 0
+    fi
+    if [[ -n "$SESSION_START_MESSAGE" ]]; then
+        SESSION_START_MESSAGE="${SESSION_START_MESSAGE}
+
+ALSO (separate item): ${_msg}"
+    else
+        SESSION_START_MESSAGE="$_msg"
+        SESSION_START_NEEDS_PROMPT=true
+    fi
+}
+
 # Helper: format an epoch-seconds timestamp as a coarse "X ago" string.
 # Buckets: <60s → seconds, <60m → minutes, <24h → hours, else days.
 # Coarseness is intentional — the purpose is "is this stale or fresh?",
@@ -162,6 +220,8 @@ if [[ "${HYPERGUMBO_RESPAWN:-}" == "1" ]]; then
         SESSION_START_NEEDS_PROMPT=true
         SESSION_START_MESSAGE="Please familiarize yourself with this repo. Once you have done so, please set autonomous mode to DEEP."
         _append_concept_audit_cadence
+        _append_autopr_convergence
+        _append_cron_status
         _append_agent_notes_status
         return 0 2>/dev/null || true
     fi
@@ -180,6 +240,8 @@ if [[ -z "$_MODE" || "$_MODE" == "off" || "$_MODE" == "false" ]]; then
     SESSION_START_NEEDS_PROMPT=true
     SESSION_START_MESSAGE="Autonomous mode is OFF. Before starting work, ask the user which mode to use: BROAD, DEEP, or OFF. Then run: ./scripts/loop-toggle <choice>"
     _append_concept_audit_cadence
+    _append_autopr_convergence
+    _append_cron_status
     _append_agent_notes_status
     return 0 2>/dev/null || true
 fi
@@ -189,6 +251,8 @@ if [[ -n "$_STORED_PID" && ! -d "/proc/$_STORED_PID" ]]; then
     SESSION_START_NEEDS_PROMPT=true
     SESSION_START_MESSAGE="Autonomous mode was ${_MODE^^} but the previous session (pid=$_STORED_PID) has ended. Before starting work, ask the user which mode to use: BROAD, DEEP, or OFF. Then run: ./scripts/loop-toggle <choice>"
     _append_concept_audit_cadence
+    _append_autopr_convergence
+    _append_cron_status
     _append_agent_notes_status
     return 0 2>/dev/null || true
 fi
@@ -219,4 +283,6 @@ fi
 SESSION_START_NEEDS_PROMPT=false
 SESSION_START_MESSAGE=""
 _append_concept_audit_cadence
+_append_autopr_convergence
+_append_cron_status
 _append_agent_notes_status

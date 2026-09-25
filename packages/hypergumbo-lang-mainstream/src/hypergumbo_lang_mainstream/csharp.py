@@ -14,7 +14,7 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - Function call relationships (including chained field type resolution)
 - ``decorated_by`` edges from C# attributes
 - ``references`` edges for method-group references (a method named as a
-  value rather than invoked), tagged ``meta.call_construct="method_group"``
+  value rather than invoked), tagged ``meta.ref_construct="method_group"``
 - Using directives (imports)
 - Object instantiation
 - ADR-0015 dataflow annotation on the emitted edges
@@ -67,6 +67,9 @@ from hypergumbo_core.analyze.base import (
     node_text,
     populate_docstrings_from_tree,
     visibility_from_modifiers,
+    SymbolsAt,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
@@ -74,6 +77,7 @@ from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -1163,30 +1167,22 @@ def _extract_symbols_from_file(
 def _get_enclosing_method(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing method or constructor.
+    """The method or constructor whose declaration contains ``node``.
 
-    Args:
-        node: The current node.
-        source: Source bytes for extracting text.
-        local_symbols: Map of method/constructor names to Symbol objects.
-
-    Returns:
-        The Symbol for the enclosing method/constructor, or None if not inside one.
+    Keyed by the declaration's POSITION, not its name (INV-midag). The short
+    name is shared by overloads, and by one method name in two classes of one
+    file: livebook's ElixirKit.cs defines ``Stop`` / ``Subscribe`` in both
+    ``API`` and ``Release`` / ``Client``. The name lookup returned whichever
+    registered last.
     """
     current = node.parent
     while current is not None:
-        if current.type == "method_declaration":
-            method_name = _extract_method_name(current, source)
-            if method_name and method_name in local_symbols:
-                return local_symbols[method_name]
-        elif current.type == "constructor_declaration":  # pragma: no cover
-            name_node = find_child_by_type(current, "identifier")
-            if name_node:
-                ctor_name = node_text(name_node, source)
-                if ctor_name in local_symbols:
-                    return local_symbols[ctor_name]
+        if current.type in ("method_declaration", "constructor_declaration"):
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -1295,6 +1291,7 @@ def _extract_edges_from_file(
     method_resolver: ListNameResolver | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
     global_ctors: dict[str, list[Symbol]] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a file.
 
@@ -1308,6 +1305,11 @@ def _extract_edges_from_file(
         using_aliases: Optional dict mapping type names to namespace paths for disambiguation.
         field_type_registry: Aggregated class→{field→type} map for chained field resolution.
     """
+    # Every declaration of this file, by position (INV-midag): ``local_symbols``
+    # keeps ONE symbol per name.
+    decl_index = symbols_at(
+        file_symbols if file_symbols is not None
+        else list({s.id: s for s in local_symbols.values()}.values()))
     if resolver is None:  # pragma: no cover - defensive
         resolver = NameResolver(global_symbols)
     if using_aliases is None:  # pragma: no cover - defensive default
@@ -1395,7 +1397,7 @@ def _extract_edges_from_file(
 
         # Invocation expression (method call)
         elif node.type == "invocation_expression":
-            current_function = _get_enclosing_method(node, source, local_symbols)
+            current_function = _get_enclosing_method(node, source, decl_index)
             if current_function is not None:
                 # An explicit receiver identifier (``Helper`` in ``Helper.Foo()``)
                 # is captured inside the member_access branch below; initialize it
@@ -1613,7 +1615,7 @@ def _extract_edges_from_file(
 
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":
-            current_function = _get_enclosing_method(node, source, local_symbols)
+            current_function = _get_enclosing_method(node, source, decl_index)
             type_node = find_child_by_type(node, "identifier")
             type_name = node_text(type_node, source) if type_node else None
 
@@ -1726,7 +1728,7 @@ def _extract_edges_from_file(
                         target = lookup.symbol
                 if target is not None and target.kind in ("function", "method"):
                     current_function = _get_enclosing_method(
-                        node, source, local_symbols,
+                        node, source, decl_index,
                     )
                     if current_function is not None and target.id != current_function.id:
                         edges.append(Edge.create(
@@ -1737,7 +1739,7 @@ def _extract_edges_from_file(
                             evidence_type="ast_call",
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            meta={"call_construct": "method_group"},
+                            meta={"ref_construct": "method_group"},
                         ))
 
         # Pattern 2: variable_declarator with RHS identifier — Action handler = Handle
@@ -1757,7 +1759,7 @@ def _extract_edges_from_file(
                             target = lookup.symbol
                     if target is not None and target.kind in ("function", "method"):
                         current_function = _get_enclosing_method(
-                            node, source, local_symbols,
+                            node, source, decl_index,
                         )
                         if (
                             current_function is not None
@@ -1771,7 +1773,7 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                meta={"call_construct": "method_group"},
+                                meta={"ref_construct": "method_group"},
                             ))
 
     return edges
@@ -1960,6 +1962,7 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()
@@ -2027,6 +2030,7 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
                 method_resolver=method_resolver,
                 field_type_registry=field_type_registry,
                 global_ctors=global_ctors,
+                file_symbols=analysis.symbols,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             try:

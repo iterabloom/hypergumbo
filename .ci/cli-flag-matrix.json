@@ -13,6 +13,12 @@
     "--skip",
     "-h"
   ],
+  "backend-agreement": [
+    "--format",
+    "--help",
+    "--out",
+    "-h"
+  ],
   "build-grammars": [
     "--check",
     "--help",
@@ -36,6 +42,11 @@
     "-h"
   ],
   "catalog": [
+    "--format",
+    "--help",
+    "-h"
+  ],
+  "catalog-inventory": [
     "--format",
     "--help",
     "-h"
@@ -87,6 +98,12 @@
     "-t",
     "-x"
   ],
+  "init-catalogs": [
+    "--format",
+    "--help",
+    "--home",
+    "-h"
+  ],
   "install-embeddings": [
     "--check",
     "--help",
@@ -116,6 +133,7 @@
     "--io-primitives",
     "--json",
     "--minimal",
+    "--no-default-overlays",
     "--path",
     "--primitive",
     "--show-external-potential",
@@ -298,6 +316,12 @@
     "--top",
     "-h"
   ],
+  "trust-backend": [
+    "--help",
+    "--revoke",
+    "--show",
+    "-h"
+  ],
   "uninstall-embeddings": [
     "--all",
     "--help",
@@ -323,6 +347,7 @@
     "--io-primitives",
     "--json",
     "--minimal",
+    "--no-default-overlays",
     "--path",
     "--taint-sanitizers",
     "--taint-sinks",

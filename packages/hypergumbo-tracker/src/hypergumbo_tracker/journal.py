@@ -20,7 +20,8 @@ Design properties:
   tree, so the op *data* survives any working-tree git command — empirically
   ``reset --hard``, ``checkout``, ``clean -fdx``, even ``rm -rf .git``. For the
   common vectors (``reset --hard`` / ``checkout`` / ``clean``) ``.git`` survives,
-  so ``tracker recover`` runs directly. After ``rm -rf .git`` the *data* is still
+  so ``tracker reconcile`` runs directly (``tracker recover`` is the
+  deprecated journal-only half of it). After ``rm -rf .git`` the *data* is still
   safe under the journal root, but ``recover`` (which locates the repo via
   ``.git``) can't auto-run until the repo is re-init'd / re-cloned — the journal
   is keyed by the toplevel's absolute path, so recovery is then a one-liner.
@@ -50,8 +51,11 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import os
+import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Final, TextIO
 
 #: Env override for the journal root — used by tests and to relocate the WAL.
 JOURNAL_ROOT_ENV = "HYPERGUMBO_TRACKER_JOURNAL_ROOT"
@@ -273,3 +277,197 @@ def recover(repo_root: Path) -> RecoverResult:
             if _locked_union_restore(repo_root / rel, journal_content):
                 result.restored.append(str(rel))
     return result
+
+
+# ---------------------------------------------------------------------------
+# Recovery suppression — is self-healing switched OFF, and does anyone own it?
+# (WI-pohir, WI-gokuv)
+# ---------------------------------------------------------------------------
+
+#: The path ``do_sync`` and ``auto-pr`` hold while their own git operations run.
+#: While it is HELD, ``.githooks/reference-transaction`` and
+#: ``.githooks/post-checkout`` skip :func:`recover`, so that a concurrent
+#: restore cannot put a journalled-but-uncommitted op back as an untracked file
+#: and abort the very fast-forward that was about to commit it.
+#:
+#: IT IS A LOCK, NOT A FLAG, AND THAT IS THE POINT. As a bare ``touch``ed file it
+#: could not answer "does anyone still own this?", so a hard kill left it behind
+#: with self-healing off and nothing able to tell that from a legitimate
+#: 45-minute ``auto-pr``. WI-nutin had already made exactly this move for the
+#: marker next door — see :class:`sync.SyncGate`, whose docstring records the
+#: reason: the OS releases an flock when the holding process exits, even on
+#: SIGKILL, so the gate cannot leak across process lifetimes. The FILE existing
+#: now means nothing; only a live holder suppresses anything.
+RECOVER_MARKER_NAME = "tracker-recover-disabled"
+
+#: Body written by whoever takes the lock, so a peek can name the owner rather
+#: than just report "busy". Mirrors ``SyncGate``'s ``pid`` / ``started`` body.
+_OWNER_PID_RE: Final = re.compile(r"\bpid=(\d+)\b")
+
+
+def _flock_is_held(path: Path) -> bool:
+    """True iff some LIVE process holds an exclusive flock on ``path``.
+
+    Deliberately NOT :func:`sync.check_sync_gate_held`, which deletes a stale
+    lock file as a side effect — correct for that caller, wrong for a status
+    probe. This one has no side effects at all: it opens, tries ``LOCK_SH``,
+    and closes.
+
+    A fresh ``open`` is what makes this usable from a hook that is itself a
+    DESCENDANT of the holder and has inherited the holder's lock fd: the new
+    open file description conflicts with the holder's exclusive lock, so an
+    inherited fd does not blind the check. Verified, not assumed.
+    """
+    try:
+        fh = open(path)
+    except OSError:  # pragma: no cover - permission/FS error, or gone
+        return False
+    try:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        return False
+    finally:
+        fh.close()
+
+
+def _pid_is_alive(pid: int) -> bool:
+    """True iff ``pid`` names a live process. ``signal 0`` checks without
+    delivering anything; ``EPERM`` means it exists and is not ours."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:  # pragma: no cover - alive, different user
+        return True
+    return True
+
+
+@dataclass(frozen=True)
+class SuppressionStatus:
+    """Whether ops self-healing is currently suppressed, and by whom.
+
+    ``orphaned`` is the only field a caller should branch on, and it is a FACT
+    rather than a wall-clock guess: the lock is held, and the process that
+    recorded itself as its owner is gone. That can only be an inherited lock fd
+    in a child the dead owner forked — see below — and it is the one state in
+    which suppression outlives the thing it was protecting.
+    """
+
+    present: bool
+    held: bool = False
+    owner_pid: int | None = None
+    owner_alive: bool = False
+    orphaned: bool = False
+
+    def warning(self) -> str | None:
+        """Operator-facing text, or None when there is nothing to say.
+
+        Nothing is said about a lock whose owner is alive (an auto-pr or a
+        tracker sync doing its job), nor about a leftover FILE with no holder —
+        the hooks no longer consult the file's existence, so a stray file is
+        inert. Only an orphaned lock is worth a reader's attention.
+        """
+        if not self.orphaned:
+            return None
+        return (
+            f"[tracker] WARNING: ops self-healing is suppressed by an ORPHANED "
+            f"lock.\n"
+            f"  .git/{RECOVER_MARKER_NAME} is locked, but the process that took "
+            f"it (pid {self.owner_pid}) is gone. A child it forked inherited the "
+            f"lock fd and is still holding it — every git and curl subprocess "
+            f"inherits it, and bash has no close-on-exec escape.\n"
+            f"  While it is held, the reference-transaction and post-checkout "
+            f"hooks skip `tracker recover`, so a `git reset --hard` or `git "
+            f"checkout` drops pending .ops with nothing to restore them. The "
+            f"journal still holds the data — degraded safety, not loss.\n"
+            f"  It clears itself when that child exits, which is normally "
+            f"seconds. If this persists, find the orphan holding the lock:\n"
+            f"    lslocks | grep {RECOVER_MARKER_NAME}"
+        )
+
+
+def recover_suppression_status(git_dir: Path) -> SuppressionStatus:
+    """Classify the recovery-suppression lock in ``git_dir``.
+
+    No clock anywhere. The previous version had to time an unowned marker
+    because a bare file cannot say whether anyone owns it; a lock can, so the
+    question "is somebody there" is answered rather than estimated. The measured
+    grace that answer replaced (900s, sized against a live auto-pr's 172s
+    pre-gate window) is deleted along with the guessing.
+    """
+    marker = git_dir / RECOVER_MARKER_NAME
+    if not marker.exists():
+        return SuppressionStatus(present=False)
+    if not _flock_is_held(marker):
+        # A leftover file with no holder. Inert: the hooks test the LOCK now.
+        return SuppressionStatus(present=True)
+
+    owner_pid: int | None = None
+    try:
+        match = _OWNER_PID_RE.search(marker.read_text())
+        if match is not None:
+            owner_pid = int(match.group(1))
+    except OSError:  # pragma: no cover - vanished under us
+        pass
+
+    if owner_pid is None:
+        # Held, but whoever took it recorded nothing. Treat as owned rather than
+        # orphaned: claiming an orphan on missing evidence is the false-alarm
+        # direction, and a holder that writes no body is a holder we do not know
+        # how to indict.
+        return SuppressionStatus(present=True, held=True)
+
+    alive = _pid_is_alive(owner_pid)
+    return SuppressionStatus(
+        present=True, held=True, owner_pid=owner_pid, owner_alive=alive,
+        orphaned=not alive,
+    )
+
+
+class RecoverSuppressionLock:
+    """Hold the recovery-suppression lock for the span of a git operation.
+
+    ``try_acquire`` returns False when someone else already holds it — an
+    ``auto-pr`` that invoked this process, typically — in which case this caller
+    owns nothing and :meth:`release` does nothing. That replaces the old
+    ``recover_marker_created`` bookkeeping, which existed to stop an inner
+    ``do_sync`` deleting an outer ``auto-pr``'s marker; with a lock the nesting
+    is expressed directly and cannot be got wrong.
+    """
+
+    def __init__(self, git_dir: Path) -> None:
+        self.path = git_dir / RECOVER_MARKER_NAME
+        self._fh: TextIO | None = None
+
+    def try_acquire(self) -> bool:
+        try:
+            fh = open(self.path, "a+")
+        except OSError:  # pragma: no cover - unwritable .git
+            return False
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            fh.close()
+            return False
+        fh.seek(0)
+        fh.truncate()
+        fh.write(f"pid={os.getpid()} started={int(time.time())} holder=do_sync\n")
+        fh.flush()
+        self._fh = fh
+        return True
+
+    def release(self) -> None:
+        if self._fh is None:
+            return
+        try:
+            fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            self._fh.close()
+            self._fh = None
+        try:
+            self.path.unlink()
+        except FileNotFoundError:  # pragma: no cover - race with another release
+            pass

@@ -55,6 +55,7 @@ from hypergumbo_core.axis_meta_keys import (
 from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
 from hypergumbo_core.evidence_types import EVIDENCE_TYPES
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol
+from hypergumbo_core.pass_silence import UNREPORTED
 from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
 
 
@@ -307,23 +308,33 @@ def _sample_symbol() -> Symbol:
     # quality is a conditional key (omitted when None per INV-nuzal) — populate
     # it so the schema-drift round-trip sees a fully-populated instance.
     sym.quality = {"score": 0.9, "reason": "sample"}
+    # attribution / alternatives (ADR-0057 §6) are conditional too: present
+    # only on a record the merge pass folded from two producers.
+    sym.attribution = {"kind": ["python"]}
+    sym.alternatives = {"kind": [{"value": "method", "origin": ["pyscip"]}]}
     return sym
 
 
 def _sample_edge() -> Edge:
     # dst_ref / derived_from are conditional keys — populate them so the
     # round-trip check sees the full key set.
-    return Edge.create(
+    edge = Edge.create(
         src="a",
         dst="b",
         edge_type="calls",
         line=1,
         origin="python",
         origin_run_id="uuid:sample",
+        evidence_type="ast_call_direct",
         evidence_lang="python",
         dst_ref=ExternalRef(lang="python", module_path="os", name="getcwd"),
         derived_from=["sym:1"],
     )
+    # attribution / alternatives (ADR-0057 §6) are conditional: present only
+    # on an edge the merge pass folded from two producers.
+    edge.attribution = {"confidence": ["python", "pyscip"]}
+    edge.alternatives = {"confidence": [{"value": 0.5, "origin": ["python"]}]}
+    return edge
 
 
 def _sample_analysis_run() -> AnalysisRun:
@@ -333,6 +344,10 @@ def _sample_analysis_run() -> AnalysisRun:
     run.skipped_passes = [{"pass": "somepass", "reason": "not applicable"}]
     run.failed_files = [{"path": "broken.py", "reason": "SyntaxError"}]
     run.warnings = ["a warning"]
+    # Likewise silence_reason (INV-bikaj): omitted when the pass emitted
+    # something, so the sample must be a SILENT pass for the drift check to
+    # see the key at all.
+    run.silence_reason = UNREPORTED
     return run
 
 
@@ -408,8 +423,14 @@ def _symbol_spec() -> ClassSpec:
                         "description": "True if the file is generated code",
                     },
                     "is_exported": {
-                        "type": "boolean",
-                        "description": "True if the symbol is part of the package's public API",
+                        "type": ["boolean", "null"],
+                        "description": (
+                            "True if the symbol is part of the package's public API, "
+                            "false if a producer measured that it is not, and null when "
+                            "no producer computed exportedness for this record "
+                            "(INV-kubup: seventeen analyzer modules have a rule and "
+                            "ninety-odd do not)"
+                        ),
                     },
                 },
                 "required": ["tier", "tier_name", "reason"],
@@ -535,6 +556,20 @@ def _symbol_spec() -> ClassSpec:
                 "from confidence, so it is omitted when null (INV-virik omit-"
                 "when-empty) and appears only if a future pass populates it."
             )},
+            "attribution": {"description": (
+                "ADR-0057 §6 provenance slot, present only on a record the "
+                "merge pass folded from two producers: field -> the pass ids "
+                "whose value the scalar slot carries (agreement lists both "
+                "producers; a contested field lists the arbitration winner; a "
+                "field only one producer observed lists that producer)."
+            )},
+            "alternatives": {"description": (
+                "ADR-0057 §6: the values the scalar slot does NOT carry, "
+                "present only for contested fields on a merged record: "
+                "field -> [{value, origin: [pass_id, ...]}]. Nothing a "
+                "producer emitted is discarded; the scalar is the one "
+                "stamped default (§4) and this is the candidate set."
+            )},
             "meta": {"description": "Language-specific metadata"},
             "signature": {
                 "description": (
@@ -598,7 +633,7 @@ def _symbol_spec() -> ClassSpec:
             },
         },
         sample_factory=_sample_symbol,
-        conditional={"quality"},
+        conditional={"quality", "attribution", "alternatives"},
     )
 
 
@@ -705,15 +740,19 @@ def _edge_spec() -> ClassSpec:
                     {
                         "type": "array",
                         "items": {"type": "string"},
-                        "minItems": 1,
                     },
                     {"type": "null"},
                 ],
                 "default": None,
                 "description": (
-                    "Symbol (or Edge) IDs the producer consumed "
-                    "to construct this Edge (INV-rukor). Populated "
-                    "by linkers; null for analyzer-originated edges."
+                    "Symbol (or Edge) IDs of the input records the "
+                    "producer consumed to construct this Edge "
+                    "(INV-rukor) -- the records whose presence "
+                    "decided it. Ids the producer minted in the same "
+                    "run are omitted, so [] is a linker's positive "
+                    "'consumed no graph record' (both ends built from "
+                    "a file scan), distinct from null. Populated by "
+                    "linkers; null for analyzer-originated edges."
                 ),
             },
         },
@@ -755,15 +794,29 @@ def _edge_spec() -> ClassSpec:
                 ),
             },
             "confidence_source": {
-                "enum": ["evidence_derived", "emitter_constant", "composite"],
+                "enum": ["evidence_derived", "emitter_constant", "composite", "corroborated"],
                 "description": (
                     "Provenance of the confidence value (ADR-0039 ruling 2): "
                     "evidence_derived (from the evidence_type registry base), "
                     "emitter_constant (a declared hardcoded producer value), "
-                    "or composite (still fuses a ranking adjustment ruling 3 "
-                    "relocates to rank_score)."
+                    "composite (still fuses a ranking adjustment ruling 3 "
+                    "relocates to rank_score), or corroborated (ADR-0057 §13: "
+                    "two producers reached this edge by DISTINCT inference "
+                    "pathways, so the value is the declared corroboration "
+                    "level, not either producer's; both originals are in "
+                    "alternatives.confidence)."
                 ),
             },
+            "attribution": {"description": (
+                "ADR-0057 §6 provenance slot, present only on an edge the "
+                "merge pass folded from two producers: field -> the pass ids "
+                "whose value the scalar carries."
+            )},
+            "alternatives": {"description": (
+                "ADR-0057 §6: the values the scalar slot does NOT carry, "
+                "present only for contested fields on a folded edge: "
+                "field -> [{value, origin: [pass_id, ...]}]."
+            )},
             "rank_score": {
                 "minimum": 0.0,
                 "maximum": 1.0,
@@ -791,7 +844,7 @@ def _edge_spec() -> ClassSpec:
                 ),
             },
         },
-        conditional={"dst_ref", "derived_from"},
+        conditional={"dst_ref", "derived_from", "attribution", "alternatives"},
         # confidence has a producer default (0.85) but is contractually
         # always emitted; keep the pre-existing required guarantee.
         extra_required=["confidence"],
@@ -871,10 +924,28 @@ def _analysis_run_spec() -> ClassSpec:
                     "duration_ms>0"
                 ),
             },
+            "silence_reason": {
+                "description": (
+                    "WHY this pass emitted nothing (INV-bikaj, arc T6), on the "
+                    "pass-silence-reason axis. Present ONLY when the pass was "
+                    "silent: its ABSENCE means the pass emitted output, which "
+                    "is NOT APPLICABLE rather than unknown. 'unreported' is "
+                    "the distinct CANNOT-DETERMINE value -- the pass read "
+                    "files, produced nothing and did not say why. The "
+                    "orchestrator stamps only what it can derive with "
+                    "certainty and never infers 'no_candidate_construct' "
+                    "(looked, construct absent) or 'candidates_unresolved' "
+                    "(found the construct, carried none through resolution) "
+                    "-- only a pass body can report either"
+                ),
+            },
         },
         # INV-virik: the per-run reporting lists are present ONLY when non-empty
-        # (present-when-populated), so they are conditional keys.
-        conditional={"skipped_passes", "failed_files", "warnings"},
+        # (present-when-populated), so they are conditional keys. silence_reason
+        # joins them: a key on every productive run would read as a field nobody
+        # set rather than as a question that does not arise.
+        conditional={"skipped_passes", "failed_files", "warnings",
+                     "silence_reason"},
         sample_factory=_sample_analysis_run,
     )
 
@@ -1000,7 +1071,39 @@ def _limits_spec() -> ClassSpec:
                 "description": "Languages detected but not analyzed",
             },
             "skipped_passes": {
-                "description": "Passes skipped at dispatch time or crashed mid-run, with reasons (a 'crashed: ' prefix marks a contained pass crash)",
+                "description": (
+                    "Passes that DID NOT RUN, with both a prose reason and a "
+                    "structured silence_reason on the closed "
+                    "pass-silence-reason axis (WI-dukoh / ADR-0056 W2). It is "
+                    "the SAME field name AnalysisRun carries, because it is the "
+                    "same question about the same axis: why did this pass say "
+                    "nothing. Which of the two hosts answers it is decided by "
+                    "whether the pass ran, not by any property of the silence "
+                    "(WI-mamiv) -- so a consumer asking 'which passes had no "
+                    "input?' must read both, and pass_silence.census_silence() "
+                    "is the union. Three values can only appear here, because a "
+                    "pass that did not run produces no AnalysisRun to carry a "
+                    "field: dependency_unavailable (grammar/toolchain absent), "
+                    "backend_disabled (opt-in backend off) and pass_crashed (a "
+                    "contained raise, including a parser constructor that "
+                    "failed). no_candidate_files appears on BOTH hosts and is "
+                    "80% of the volume. The two hosts also differ in their "
+                    "ABSENCE rule: on AnalysisRun a missing silence_reason "
+                    "means the pass emitted output, whereas an entry here "
+                    "always carries one. An entry with the code 'unreported' "
+                    "means the producer did not classify itself -- NOT that the "
+                    "repository lacked the files. The prose reason stays as "
+                    "human-readable detail (it carries the pip command and the "
+                    "exception text); one channel, two fields."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "pass": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "silence_reason": {"type": "string"},
+                    },
+                },
             },
             "truncated_files": {
                 "description": "Files truncated or skipped due to size",

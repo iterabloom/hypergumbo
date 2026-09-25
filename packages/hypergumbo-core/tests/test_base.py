@@ -1471,12 +1471,19 @@ class TestEmitModuleAttributeRefsScopedPath:
     by languages whose scoped access is not a binary object+property
     pair.  Exercised with tree-sitter-rust's ``scoped_identifier``."""
 
-    def test_basic_scoped_path_emits_dot_normalized_edge(self) -> None:
+    def test_basic_scoped_path_emits_edge_in_the_language_separator(self) -> None:
         """``std::env::consts::OS`` emits edges for each scoped_identifier
         level.  The middle level is the interesting one: base walks
-        left to ``std`` (in imports), so an edge with dst containing
-        ``std.env.consts`` fires — dot-normalized to survive downstream
-        ``:``-split parsing."""
+        left to ``std`` (in imports), so an edge whose dst names
+        ``std::env::consts`` fires.
+
+        THIS TEST WAS THE CONTRACT FOR THE DOTTED SPELLING and named itself so
+        (``..._emits_dot_normalized_edge``), with the justification "to survive
+        downstream ``:``-split parsing". That justification was stale: ADR-0036
+        (D1a) made the path slot colon-TOLERANT and ``symbol_path_slot`` uses a
+        colon-bearing rust id as its own worked example. The normalisation was
+        splitting one module into two nodes (INV-rilit), so it is gone and this
+        test now pins the language's own separator."""
         source = "pub fn f() -> &'static str { std::env::consts::OS }\n"
         root = _parse_rust(source)
         caller = _fake_caller("rust:lib.rs:0-0:file:file")
@@ -1500,7 +1507,7 @@ class TestEmitModuleAttributeRefsScopedPath:
         )
         dsts = [e.dst for e in edges]
         assert any(
-            d == "rust:std.env.consts:0-0:std.env.consts.OS:attribute"
+            d == "rust:std::env::consts:0-0:std::env::consts::OS:attribute"
             for d in dsts
         ), dsts
 
@@ -1530,7 +1537,7 @@ class TestEmitModuleAttributeRefsScopedPath:
             run_id="test-run",
         )
         dsts = [e.dst for e in edges]
-        assert not any("std.env.var" in d for d in dsts), dsts
+        assert not any("std::env::var" in d for d in dsts), dsts
 
     def test_unknown_leftmost_skipped(self) -> None:
         """A scoped path whose leftmost identifier is not in the
@@ -1559,7 +1566,7 @@ class TestEmitModuleAttributeRefsScopedPath:
     def test_aliased_leftmost_rewrites_to_real_module(self) -> None:
         """Imports map ``env -> std::env`` — the helper rewrites the
         leftmost segment so ``env::consts::OS`` emits edges carrying
-        ``std.env.consts`` in the dst (for catalog matching)."""
+        ``std::env::consts`` in the dst (for catalog matching)."""
         source = "pub fn f() -> &'static str { env::consts::OS }\n"
         root = _parse_rust(source)
         caller = _fake_caller("rust:lib.rs:0-0:file:file")
@@ -1580,7 +1587,7 @@ class TestEmitModuleAttributeRefsScopedPath:
             run_id="test-run",
         )
         dsts = [e.dst for e in edges]
-        assert any("std.env.consts" in d for d in dsts), dsts
+        assert any("std::env::consts" in d for d in dsts), dsts
 
     def test_missing_path_field_skips_node(self) -> None:
         """If ``object_field_names`` resolves to no child (the path
@@ -1983,22 +1990,28 @@ class TestMakeUnresolvedEdge:
         assert edge.dst == "java:external:0-0:baz:unresolved"
         assert edge.line == 12
 
-    def test_no_hints_yields_no_meta(self) -> None:
-        """Backward compat: omitting the new kwargs leaves Edge.meta as None."""
+    def test_no_hints_yields_only_the_unconditional_callee_name(self) -> None:
+        """Was ``assert edge.meta is None``. Meta is no longer ever None here:
+        ADR-0036 Ruling 1 makes the id's name slot LOSSY, so the full-fidelity
+        callee name needs a home that is not the id, and ``callee_name`` is
+        stamped unconditionally (INV-divuf). The point this test actually makes
+        — that omitting the hint kwargs adds no HINT keys — is preserved."""
         edge = self._call()
-        assert edge.meta is None
+        assert edge.meta == {"callee_name": "baz"}
 
     def test_enclosing_class_hint_lands_in_meta(self) -> None:
         edge = self._call(enclosing_class="Foo")
-        assert edge.meta == {"enclosing_class": "Foo"}
+        assert edge.meta == {"callee_name": "baz", "enclosing_class": "Foo"}
 
     def test_receiver_type_hint_lands_in_meta(self) -> None:
         edge = self._call(receiver_type_hint="Bar")
-        assert edge.meta == {"receiver_type_hint": "Bar"}
+        assert edge.meta == {"callee_name": "baz", "receiver_type_hint": "Bar"}
 
     def test_inherited_field_receiver_lands_in_meta(self) -> None:
         edge = self._call(inherited_field_receiver="self.helper")
-        assert edge.meta == {"inherited_field_receiver": "self.helper"}
+        assert edge.meta == {
+            "callee_name": "baz", "inherited_field_receiver": "self.helper",
+        }
 
     def test_call_construct_lands_in_meta(self) -> None:
         """``call_construct`` reaches meta, where BOTH taint gates read it.
@@ -2011,11 +2024,16 @@ class TestMakeUnresolvedEdge:
         improvement from registering a phantom barrier (INV-linub).
         """
         edge = self._call(call_construct="method")
-        assert edge.meta == {"call_construct": "method"}
+        assert edge.meta == {"callee_name": "baz", "call_construct": "method"}
 
     def test_call_construct_omitted_stays_out_of_meta(self) -> None:
-        """A receiverless call must not claim to be a method call."""
-        assert self._call().meta is None
+        """A receiverless call must not claim to be a method call.
+
+        Asserted on the KEY rather than on ``meta is None``, which is what this
+        test always meant: ``callee_name`` now rides every such edge
+        (INV-divuf), and a whole-dict assertion would let a future unconditional
+        key silently re-open the question this test exists to close."""
+        assert "call_construct" not in (self._call().meta or {})
 
     def test_all_four_hints_combined(self) -> None:
         edge = self._call(
@@ -2025,6 +2043,7 @@ class TestMakeUnresolvedEdge:
             call_construct="method",
         )
         assert edge.meta == {
+            "callee_name": "baz",
             "enclosing_class": "Foo",
             "receiver_type_hint": "Bar",
             "inherited_field_receiver": "self.helper",
@@ -2035,7 +2054,7 @@ class TestMakeUnresolvedEdge:
         """module_hint must remain reachable alongside the new kwargs."""
         edge = self._call(module_hint="java.util", enclosing_class="Foo")
         assert edge.dst == "java:java.util:0-0:baz:unresolved"
-        assert edge.meta == {"enclosing_class": "Foo"}
+        assert edge.meta == {"callee_name": "baz", "enclosing_class": "Foo"}
 
     def test_derives_dst_ref_when_omitted(self) -> None:
         """ADR-0037 ruling 2: dst_ref is derived unconditionally from the
@@ -2860,3 +2879,274 @@ class TestSynthesizeFileAnchorsForPaths:
         new = synthesize_file_anchors_for_paths(
             [outside], {"index.html": "html"}, repo_root=tmp_path)
         assert [a.path for a in new] == ["index.html"]
+
+
+def _parse_cpp(source: str):
+    """Parse C++ source with tree-sitter-cpp and return the root node."""
+    import tree_sitter
+    import tree_sitter_cpp
+    lang = tree_sitter.Language(tree_sitter_cpp.language())
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode("utf-8"))
+    return tree.root_node
+
+
+class TestScopedPathSkipsImportAndTypePositions:
+    """INV-pusin: a ``use`` path and a return-type path are scoped_identifiers,
+    and the ``scoped_path`` walk emitted BOTH as attribute reads.
+
+    The ``use`` case is a duplicate home — the analyzer already emits the same
+    statement as an ``imports`` edge — so the fact the uncatalogued-module gate
+    deliberately excludes as an import re-entered as a ``module_attr_ref`` and
+    withheld a boundary verdict on a zero-dependency crate. The return-type
+    case has no second home and is simply not a read.
+
+    ``skip_context_kinds`` names the per-language ancestor kinds that mean
+    "this scoped name is a declaration or a type, not a value being read".
+    Each test carries a POSITIVE CONTROL in the same class: a genuine read
+    under the SAME tuple must still be emitted, or the fix is just a mute
+    button.
+    """
+
+    # MIRRORS OF WHAT THE ANALYZERS SHIP, bound by
+    # test_the_skip_tuples_mirror_what_the_analyzers_actually_ship below.
+    # `use_declaration` is deliberately ABSENT from RUST_SKIP: INV-pusin's
+    # second closure moved it out of the proximate tuple and into
+    # `skip_ancestor_kinds`, because the grammar wraps every `use` form except
+    # the bare one (`scoped_use_list`, `use_wildcard`, `use_as_clause`), so a
+    # proximate match suppressed one spelling of fourteen. This constant went
+    # on carrying it for both, which meant every rust test here passed through
+    # the mechanism production had ABANDONED — the right answer for the wrong
+    # reason, and blind to a regression in the real one.
+    RUST_SKIP = ("scoped_type_identifier", "generic_type")
+    RUST_SKIP_ANCESTORS = ("use_declaration",)
+    CPP_SKIP = (
+        "using_declaration", "function_definition", "declaration",
+        "parameter_declaration", "field_declaration", "type_descriptor",
+        "base_class_clause",
+    )
+
+    def _emit_rust(self, source: str, skip: tuple[str, ...]) -> list[Edge]:
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            _parse_rust(source),
+            source.encode("utf-8"),
+            {"std": "std"},
+            _fake_caller("rust:lib.rs:0-0:file:file"),
+            "rust",
+            edges,
+            node_kinds=("scoped_identifier",),
+            object_field_names=("path",),
+            property_field_names=("name",),
+            call_node_kinds=("call_expression",),
+            call_function_field_names=("function",),
+            scoped_path=True,
+            skip_context_kinds=skip,
+            skip_ancestor_kinds=self.RUST_SKIP_ANCESTORS,
+            pass_id="test-pass",
+            run_id="test-run",
+        )
+        return edges
+
+    def _emit_cpp(self, source: str, skip: tuple[str, ...]) -> list[Edge]:
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            _parse_cpp(source),
+            source.encode("utf-8"),
+            {"std": "std"},
+            _fake_caller("cpp:main.cpp:0-0:file:file"),
+            "cpp",
+            edges,
+            node_kinds=("qualified_identifier",),
+            object_field_names=("scope",),
+            property_field_names=("name",),
+            call_node_kinds=("call_expression",),
+            call_function_field_names=("function",),
+            scoped_path=True,
+            skip_context_kinds=skip,
+            pass_id="test-pass",
+            run_id="test-run",
+        )
+        return edges
+
+    def test_rust_use_declaration_emits_no_attribute_read(self) -> None:
+        """``use std::net::UdpSocket;`` is an import, already carried by an
+        ``imports`` edge. It emitted TWO module_attr_ref edges (the nested
+        walk fires at each depth), which is what put ``std`` and ``std.net``
+        on the uncatalogued-module list for a crate with no dependencies."""
+        edges = self._emit_rust("use std::net::UdpSocket;\n", self.RUST_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_rust_return_type_annotation_emits_no_attribute_read(self) -> None:
+        """``-> std::io::Result<String>`` names a type. Nothing is read."""
+        source = (
+            "pub fn f(p: &str) -> std::io::Result<String> {\n"
+            "    Ok(String::new())\n"
+            "}\n"
+        )
+        edges = self._emit_rust(source, self.RUST_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_rust_genuine_read_survives_the_same_skip_tuple(self) -> None:
+        """POSITIVE CONTROL. ``std::env::consts::OS`` is a real attribute read
+        and must still reach the catalogue's ``attributes:`` matcher — the
+        middle depth is the one io_primitives/rust.yaml declares."""
+        source = "pub fn f() -> &'static str { std::env::consts::OS }\n"
+        edges = self._emit_rust(source, self.RUST_SKIP)
+        assert "rust:std::env:0-0:std::env::consts:attribute" in [
+            e.dst for e in edges
+        ], [e.dst for e in edges]
+
+    def test_rust_read_inside_a_typed_function_is_not_swallowed(self) -> None:
+        """POSITIVE CONTROL against over-skipping: the return type is skipped
+        but a genuine read in the BODY of that same function is not. Without
+        this a tuple containing ``generic_type`` could mute the whole
+        function and every test above would still pass."""
+        source = (
+            "pub fn f() -> std::io::Result<&'static str> {\n"
+            "    Ok(std::env::consts::OS)\n"
+            "}\n"
+        )
+        dsts = [e.dst for e in self._emit_rust(source, self.RUST_SKIP)]
+        assert "rust:std::env:0-0:std::env::consts:attribute" in dsts, dsts
+        assert not any("std.io" in d for d in dsts), dsts
+
+    def test_cpp_using_declaration_emits_no_attribute_read(self) -> None:
+        """The C++ half of the same defect: ``using std::string;``."""
+        edges = self._emit_cpp("using std::string;\n", self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_return_type_emits_no_attribute_read(self) -> None:
+        """``std::string f(int x) { ... }`` — the return type is not a read."""
+        source = "std::string f(int x) { return \"hi\"; }\n"
+        edges = self._emit_cpp(source, self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_the_skip_tuples_mirror_what_the_analyzers_actually_ship(
+        self,
+    ) -> None:
+        """ONE FACT, TWO HOMES — and the second one silently wins.
+
+        ``RUST_SKIP`` / ``CPP_SKIP`` above are hand-copies of tuples that live
+        in the analyzers. Every test in this class is written against the COPY,
+        so a change to the shipped tuple leaves these tests passing against a
+        stale mirror and asserting nothing about the code that runs. This is
+        the only test here that reads the real thing.
+        """
+        import pathlib
+        import re
+
+        from hypergumbo_lang_mainstream import cpp as cpp_mod
+        from hypergumbo_lang_mainstream import rust as rust_mod
+
+        def shipped(module) -> tuple[str, ...]:
+            src = pathlib.Path(module.__file__).read_text()
+            m = re.search(
+                r"skip_context_kinds=\(\s*(.*?)\s*\),", src, re.S
+            )
+            assert m, f"no skip_context_kinds= literal found in {module.__file__}"
+            return tuple(re.findall(r'"([^"]+)"', m.group(1)))
+
+        assert shipped(cpp_mod) == self.CPP_SKIP, (
+            "cpp.py's skip_context_kinds and this file's CPP_SKIP have "
+            "diverged; the tests above are asserting against the copy"
+        )
+        assert shipped(rust_mod) == self.RUST_SKIP, (
+            "rust.py's skip_context_kinds and this file's RUST_SKIP have "
+            "diverged"
+        )
+
+    def test_cpp_type_alias_emits_no_attribute_read(self) -> None:
+        """THE FILED DEFECT (INV-sibij). ``using S = std::string;`` names a
+        type — INV-pusin's statement in its C++ spelling — but its scoped path
+        sits under ``type_descriptor``, which the tuple did not carry, so a
+        type alias re-entered as a module_attr_ref and withheld verdicts."""
+        edges = self._emit_cpp("using S = std::string;\n", self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_cast_emits_no_attribute_read(self) -> None:
+        """COLLATERAL OF THE SAME CONTEXT, enumerated rather than assumed.
+        ``type_descriptor`` also covers a cast, and the item declined to append
+        it to the tuple until every member of that population was shown to be
+        a type mention. A cast NAMES a type and reads no value."""
+        source = "void f(){ auto x = static_cast<std::string>(y); }\n"
+        edges = self._emit_cpp(source, self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_template_argument_emits_no_attribute_read(self) -> None:
+        """The third and by far the LARGEST member of ``type_descriptor``: a
+        template argument. Counted on real repositories, these outnumber type
+        aliases 10-25x (rocksdb 2359 vs 126), so this is where the population
+        actually is — and it too names a type and reads nothing."""
+        edges = self._emit_cpp("std::vector<std::string> v;\n", self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_base_class_clause_emits_no_attribute_read(self) -> None:
+        """SECOND LEAK, found by enumerating past the filed repro.
+        ``class A : public std::exception {}`` names a base TYPE."""
+        edges = self._emit_cpp("class A : public std::exception { };\n",
+                               self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_range_for_range_expression_still_emits(self) -> None:
+        """THE RESIDUAL, pinned as a DELIBERATE non-fix.
+
+        ``for_range_loop`` covers both halves of a range-for: the loop
+        variable's TYPE (``for (std::string x : v)``) and the RANGE
+        EXPRESSION (``for (auto& l : std::cin)``). ``std::cin`` is a genuine
+        stream read, so adding that context to the tuple would suppress it —
+        the false-all-clear direction. This test exists so that anyone who
+        later adds ``for_range_loop`` to make the type half stop leaking sees
+        immediately what it costs.
+        """
+        source = "void f(){ for (auto& l : std::cin) {} }\n"
+        dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
+        assert dsts, "the range expression is a value read and must emit"
+
+    def test_cpp_stream_write_survives_the_same_skip_tuple(self) -> None:
+        """POSITIVE CONTROL, and the reason this fix is one token and not two.
+        ``std::cout << 1`` is a GENUINE attribute read of a stream object —
+        exactly what module_attr_ref exists to emit — and it sits under
+        ``binary_expression``. If a wider tuple ever swallows it, the fix has
+        become a mute button, and removing withholding is the false-all-clear
+        direction."""
+        source = "void f(){ std::cout << 1; }\n"
+        dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
+        assert dsts, "std::cout << 1 is a value read and must keep emitting"
+
+    def test_cpp_static_constant_read_survives(self) -> None:
+        """POSITIVE CONTROL 2. ``std::string::npos`` is a VALUE read under
+        ``init_declarator``, not a type mention, so the same tuple must leave
+        it alone."""
+        source = "void f(){ auto p = std::string::npos; }\n"
+        dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
+        assert dsts, "a static constant read is not a type mention"
+
+    def test_cpp_genuine_read_survives_the_same_skip_tuple(self) -> None:
+        """POSITIVE CONTROL. ``std::cout`` is a catalogued C++ I/O attribute."""
+        source = "void g() { std::cout << \"x\"; }\n"
+        dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
+        assert "cpp:std:0-0:std::cout:attribute" in dsts, dsts
+
+    def test_omitting_the_tuple_changes_nothing_for_other_languages(self) -> None:
+        """NON-DESTRUCTION. Languages that pass no ``skip_context_kinds``
+        (javascript, java, go, python) must emit exactly what they did
+        before — the default is empty and the walk is unchanged."""
+        source = "const p = process.env;\n"
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            _parse_javascript(source),
+            source.encode("utf-8"),
+            {"process": "process"},
+            _fake_caller(),
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+            pass_id="test-pass",
+            run_id="test-run",
+        )
+        assert [e.dst for e in edges] == [
+            "javascript:process:0-0:process.env:attribute",
+        ]

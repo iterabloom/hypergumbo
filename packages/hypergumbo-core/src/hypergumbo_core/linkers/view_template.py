@@ -10,7 +10,8 @@ How It Works
 The Rails behavior is now implemented as a thin :class:`RailsStrategy`
 subclass of :class:`~._view_template_core.MethodNameStrategy`. The shared
 core (see ``_view_template_core.py``) handles the filesystem probe loop,
-``renders`` edge emission, and template-Symbol deduplication. The Rails
+``references`` edge emission (``meta["ref_construct"] = "view_render"``),
+and template-Symbol deduplication. The Rails
 strategy provides:
 
 * a controller-class predicate (transitive base walk for
@@ -19,8 +20,7 @@ strategy provides:
 * an action-method predicate (skip ``initialize`` and ``_``-prefixed helpers,
   skip class methods using ``.`` instead of ``#``),
 * a class-name → view-directory mapping (``Admin::UsersController`` →
-  ``admin/users`` per WI-votut's CSV-export edge cases and the existing
-  CamelCase-to-snake_case rules).
+  ``admin/users`` per the existing CamelCase-to-snake_case rules).
 
 Why This Matters
 ----------------
@@ -33,14 +33,15 @@ traverse when working in Rails.
 Sister Frameworks
 -----------------
 * Django (WI-mifif): ``view_template_django.py``
-* Phoenix (WI-dajom), Spring MVC (WI-hogik), Laravel Blade (WI-hokaj):
-  follow-up PRs against the same shared core.
+* Phoenix (WI-dajom): ``view_template_phoenix.py``
+* Spring MVC (WI-hogik): ``view_template_spring.py``
+* Laravel Blade (WI-hokaj): ``view_template_laravel.py``
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional, Tuple
 
 from ..ir import Edge, Symbol
 from ._transitive_bases import (
@@ -198,17 +199,25 @@ class RailsStrategy(MethodNameStrategy):
     """
 
     def is_action_class(self, sym: Symbol, ctx: LinkerContext) -> bool:
+        return self.action_class_evidence(sym, ctx) is not None
+
+    def action_class_evidence(
+        self, sym: Symbol, ctx: LinkerContext,
+    ) -> Optional[Tuple[str, ...]]:
+        """The ancestors and edges a controller base was read through.
+
+        Uses the context's cached walk: this used to rebuild the inheritance
+        index and the symbol map for EVERY class symbol it was asked about.
+        """
         if sym.kind != "class":
-            return False
-        inheritance_index = build_inheritance_index(ctx.edges)
-        symbol_by_id = {s.id: s for s in ctx.symbols}
-        chain = collect_transitive_base_names(
-            sym, symbol_by_id, inheritance_index
-        )
-        for base in chain:
+            return None
+        found = False
+        ids: list[str] = []
+        for base, via in ctx.base_name_origins(sym):
             if base in _CONTROLLER_BASES:
-                return True
-        return False
+                found = True
+                ids.extend(x for x in via if x not in ids)
+        return tuple(ids) if found else None
 
     def is_action_method(self, method_name: str) -> bool:
         return _is_action_method(method_name)

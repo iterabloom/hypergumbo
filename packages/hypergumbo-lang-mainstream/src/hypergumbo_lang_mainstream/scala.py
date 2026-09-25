@@ -8,27 +8,43 @@ This analyzer uses tree-sitter to parse Scala files and extract:
 - Trait definitions (trait)
 - Method definitions (inside classes/objects/traits)
 - Secondary constructors (def this(...), kind=constructor)
+- Scala 3 enums (kind=enum) with one ``field`` symbol per case, and named
+  ``given`` instances (kind=instance), so their bodies' members have an owner
+- val/var declarations: ``field`` inside a class/object/trait/enum/given
+  body, ``variable`` at top level (local bindings are skipped)
 - Function call relationships
 - Import statements
-- Annotations/decorators (into symbol meta["decorators"], for functions, methods, and classes)
+- Annotations/decorators (into symbol meta["decorators"], for functions, methods, classes, and val/var fields)
 - Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes and traits)
 
-Modifiers (access/abstract/sealed/case) are captured on Symbol.modifiers,
-and parameter/variable types are tracked to disambiguate type-qualified
-method calls.
+Modifiers (access/abstract/final/sealed/override/implicit/lazy/case) are
+captured on Symbol.modifiers, and parameter/variable types are tracked
+to disambiguate type-qualified method calls.
 
-If tree-sitter with Scala support is not installed, the analyzer
-gracefully degrades and returns an empty result.
+If tree-sitter with Scala support is not installed, the analyzer warns and
+returns a skipped result (``skip_reason_code=DEPENDENCY_UNAVAILABLE``).
 
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, classes, objects, traits with signatures
 2. Pass 2: Extract call edges, import edges, and eta-expansion references edges using NameResolver
+   - An explicit import outranks a same-named project symbol in another
+     package: the bind is refused when no reading of the import (absolute
+     or relative to a package or object in scope) can name that symbol.
+     Imports inside a block or body apply only within it.
+   - A method call not resolved in-file becomes an unresolved edge rather
+     than a short-name guess; the ``ExternalRef`` module slot carries the
+     receiver's import-qualified type, or the imported owner of a static
+     call such as ``Files.readAllBytes``. One- and two-letter callee
+     names (usually lambda parameters) take a confidence penalty on
+     short-name binds.
 
 The base class handles grammar checking, parser creation, file discovery,
-and result assembly. This module provides only the Scala-specific extraction
-logic.
+and result assembly. This module provides the Scala-specific extraction
+logic, plus a per-run file-to-package map (reset at the start of each
+``analyze()``, since the analyzer is a module singleton) that the import
+check above reads.
 
 Why This Design
 ---------------
@@ -41,13 +57,14 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, NamedTuple, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
     defer_bare_method_call,
     find_child_by_type,
@@ -59,11 +76,17 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     make_variable_stable_id,
     node_text,
+    symbol_declared_by,
+    symbols_at,
     visibility_from_modifiers,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_lang_mainstream.jvm_implicit_imports import (
+    SCALA_SHADOWED_JAVA_LANG,
+    static_owner_module,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -140,39 +163,77 @@ def _extract_import_hints(
     Returns a dict mapping short names to full qualified paths.
     """
     hints: dict[str, str] = {}
-
     for node in iter_tree(tree.root_node):
-        if node.type != "import_declaration":
-            continue
+        if node.type == "import_declaration":
+            hints.update(_import_declaration_hints(node, source))
+    return hints
 
-        identifiers: list[str] = []
-        has_selectors = False
 
-        for child in node.children:
-            if child.type == "identifier":
-                identifiers.append(node_text(child, source))
-            elif child.type == "namespace_selectors":
-                has_selectors = True
-                base_path = ".".join(identifiers)
-                for selector in child.children:
-                    if selector.type == "arrow_renamed_identifier":
-                        names = [sub for sub in selector.children if sub.type == "identifier"]
-                        if len(names) >= 2:
-                            original = node_text(names[0], source)
-                            alias = node_text(names[-1], source)
-                            full_path = f"{base_path}.{original}"
-                            hints[alias] = full_path
-                    elif selector.type == "identifier":
-                        name = node_text(selector, source)
-                        full_path = f"{base_path}.{name}"
-                        hints[name] = full_path
+def _import_declaration_hints(node: "tree_sitter.Node", source: bytes) -> dict[str, str]:
+    """The short-name -> path hints ONE ``import_declaration`` makes."""
+    hints: dict[str, str] = {}
+    identifiers: list[str] = []
+    has_selectors = False
 
-        if identifiers and not has_selectors:
-            full_path = ".".join(identifiers)
-            short_name = identifiers[-1]
-            hints[short_name] = full_path
+    for child in node.children:
+        if child.type == "identifier":
+            identifiers.append(node_text(child, source))
+        elif child.type == "namespace_selectors":
+            has_selectors = True
+            base_path = ".".join(identifiers)
+            for selector in child.children:
+                if selector.type == "arrow_renamed_identifier":
+                    names = [sub for sub in selector.children if sub.type == "identifier"]
+                    if len(names) >= 2:
+                        original = node_text(names[0], source)
+                        alias = node_text(names[-1], source)
+                        full_path = f"{base_path}.{original}"
+                        hints[alias] = full_path
+                elif selector.type == "identifier":
+                    name = node_text(selector, source)
+                    full_path = f"{base_path}.{name}"
+                    hints[name] = full_path
+
+    if identifiers and not has_selectors:
+        full_path = ".".join(identifiers)
+        short_name = identifiers[-1]
+        hints[short_name] = full_path
 
     return hints
+
+
+#: Where a TOP-LEVEL import sits: the file itself, or a braced package's body.
+_TOP_LEVEL_IMPORT_PARENTS = ("compilation_unit",)
+
+
+def _block_scoped_imports(
+    root: "tree_sitter.Node", source: bytes,
+) -> "dict[str, list[tuple[int, int]]]":
+    """Names imported ONLY inside a block, class or object body, mapped to the
+    byte ranges where each such import applies: from the end of the import to
+    the end of its enclosing body.
+
+    ``_extract_import_hints`` reads every import as file-wide. That is harmless
+    for a module-slot hint, but an import used to REFUSE a binding (WI-tipoh)
+    must apply to the call. On zio, a ``scala.concurrent.Promise`` imported
+    inside one test refused ``zio.Promise`` calls elsewhere in the file. A name
+    also imported at top level is left out: the file-wide reading stands for it.
+    """
+    top: set[str] = set()
+    scoped: dict[str, list[tuple[int, int]]] = {}
+    for node in iter_tree(root):
+        if node.type != "import_declaration" or node.parent is None:
+            continue
+        parent = node.parent
+        is_top = parent.type in _TOP_LEVEL_IMPORT_PARENTS or (
+            parent.type == "template_body" and parent.parent is not None
+            and parent.parent.type == "package_clause")
+        for name in _import_declaration_hints(node, source):
+            if is_top:
+                top.add(name)
+            else:
+                scoped.setdefault(name, []).append((node.end_byte, parent.end_byte))
+    return {name: spans for name, spans in scoped.items() if name not in top}
 
 
 def _extract_annotation_info(
@@ -215,6 +276,276 @@ def _extract_annotation_info(
     return {"name": name, "args": args, "kwargs": kwargs}
 
 
+#: Types Scala imports IMPLICITLY -- ``scala.Predef._``, ``scala._``,
+#: ``java.lang._`` -- which therefore appear in NO import line.
+#:
+#: WHY A GENERIC BASE IS DENIED WHEN IT IS ONE OF THESE, measured rather than
+#: argued. Widening type extraction to ``generic_type`` makes ``val m:
+#: Map[String, X]`` contribute the base ``Map``. That name cannot qualify --
+#: there is no import to look it up in -- so it adds NOTHING to the module slot.
+#: What it does instead is reach the bare short-name bind, which is the funnel
+#: this file's own external branch refuses for untyped receivers ("confidently
+#: bind to an arbitrary same-named internal def"). On sbt that produced 44
+#: bindings of a standard-library ``Map[K,V]`` to the PROJECT's
+#: ``sbt/SessionVar.scala`` ``Map.get`` -- 24% of every edge the change newly
+#: resolved. lila showed 0, because lila happens to define no such collider;
+#: that is luck, not safety.
+#:
+#: SCOPED TO THE GENERIC BASE, DELIBERATELY. An explicitly ANNOTATED bare
+#: ``val x: Map = ...`` is untouched: the programmer wrote that name, it is the
+#: pre-existing INV-fahub / WI-bihit population, and narrowing it is a separate
+#: change with its own measurement. This denies only names this change would
+#: newly INVENT from a type argument.
+_SCALA_IMPLICIT_IMPORT_TYPES = frozenset({
+    "Map", "List", "Set", "Seq", "Vector", "Array", "Option", "Some", "Either",
+    "Left", "Right", "Iterable", "Iterator", "Stream", "Range", "String",
+    "Int", "Long", "Boolean", "Double", "Float", "Char", "Byte", "Short",
+    "Unit", "Any", "AnyRef", "AnyVal", "Nothing", "Null", "Throwable",
+    "Exception", "Error", "Thread", "Class", "Object", "Tuple2", "Function1",
+})
+
+#: The type-node kinds a declared Scala type can take. ``type_identifier`` is
+#: the bare one every extraction site used to look for exclusively; the other
+#: two were invisible, which cost the hint entirely (WI-pokam).
+_SCALA_TYPE_NODES = ("type_identifier", "stable_type_identifier", "generic_type")
+
+
+class _ScalaFile(NamedTuple):
+    """What an import check needs to know about one analysed file (WI-tipoh)."""
+
+    #: Its package: ``""`` for the root package, ``None`` when unknown.
+    package: "str | None"
+    #: The simple names of the classes, objects and traits it declares.
+    types: "frozenset[str]"
+
+
+def _is_project_type(
+    name: str,
+    global_symbols: dict[str, Symbol],
+    import_aliases: "dict[str, str] | None" = None,
+    file_packages: "dict[str, _ScalaFile] | None" = None,
+    project_packages: "frozenset[str]" = frozenset(),
+) -> bool:
+    """Whether ``name`` is a project class, object or trait for this file.
+
+    A same-package type shadows a default import in scala, so a project
+    ``object System`` must not be read as ``java.lang.System`` (WI-kilap). An
+    EXPLICIT import of a path OUTSIDE the project outranks a same-named project
+    type (WI-tipoh): ``import scala.sys.process.Process`` then
+    ``Process.apply(c)`` is the stdlib's, whatever the project names
+    ``Process``. An import of a PROJECT path keeps the name a project type even
+    when the registry holds a different same-named one. On spark, 1217
+    ``Utils.x`` calls on the imported ``org.apache.spark.util.Utils`` would
+    otherwise have lost the placeholder slot the Tier-2 linkers resolve from.
+    """
+    sym = global_symbols.get(name)
+    if sym is None or sym.kind not in ("class", "object", "trait"):
+        return False
+    imported = (import_aliases or {}).get(name)
+    if imported is None or not _import_names_elsewhere(sym, imported, file_packages, import_aliases):
+        return True
+    return _import_names_project_path(imported, project_packages)
+
+
+def _package_readings(file_packages: "dict[str, _ScalaFile]") -> "frozenset[str]":
+    """Every package the project declares, and every trailing run of its segments,
+    which is what a RELATIVE import may start with."""
+    readings: set[str] = set()
+    for package, _types in file_packages.values():
+        if package:
+            segments = package.split(".")
+            readings.update(".".join(segments[i:]) for i in range(len(segments)))
+    return frozenset(readings)
+
+
+def _import_names_project_path(imported: str, project_packages: "frozenset[str]") -> bool:
+    """Whether some reading of the import's package part lies in a package the
+    project declares. ``project_packages`` is :func:`_package_readings`."""
+    parts = imported.removeprefix("_root_.").split(".")[:-1]
+    return any(".".join(parts[:k]) in project_packages for k in range(1, len(parts) + 1))
+
+
+def _scala_file_package(root: "tree_sitter.Node", source: bytes) -> "str | None":
+    """The package a file's top-level definitions live in: ``""`` for the root
+    package, ``None`` when one name cannot say.
+
+    Chained header clauses make one package (``package org.apache.spark`` then
+    ``package sql`` is ``org.apache.spark.sql``). A braced ``package a { ... }``
+    counts only when it is the file's sole definition, since otherwise the
+    file holds definitions in more than one package.
+    """
+    parts: list[str] = []
+    braced = 0
+    others = 0
+    for child in root.children:
+        if child.type == "package_clause":
+            ident = find_child_by_type(child, "package_identifier")
+            if ident is None:  # pragma: no cover - the grammar always names it
+                return None
+            parts.append(node_text(ident, source))
+            if find_child_by_type(child, "template_body") is not None:
+                braced += 1
+        elif child.type not in ("import_declaration", "comment", "block_comment"):
+            others += 1
+    if braced and (braced > 1 or others):
+        return None
+    return ".".join(parts)
+
+
+def _import_names_elsewhere(
+    sym: Symbol,
+    imported: "str | None",
+    file_packages: "dict[str, _ScalaFile] | None",
+    import_aliases: "dict[str, str] | None" = None,
+) -> bool:
+    """Whether the file's explicit import of a name cannot be the project symbol
+    ``sym`` the resolver returned (WI-tipoh).
+
+    An explicit import outranks a same-named project symbol in another package:
+    ``import scala.sys.process.Process`` then ``Process(cmd)`` bound to spark's
+    unrelated test ``case class Process``. That is the edge this refuses.
+
+    WHY NOT AN EXACT QUALIFIED NAME, AS KOTLIN USES. Measured on the scala
+    cohort, an exact ``<package>.<name>`` against the import withheld correct
+    edges from three causes:
+    - a scala import may be RELATIVE, to an enclosing package, to a wildcard
+      import, or to ``scala._`` (``import pekko.util.OptionVal`` inside
+      ``org.apache.pekko``; ``collection.concurrent.TrieMap``);
+    - a nested type's symbol name omits its enclosing object
+      (``DataTypeMismatch`` in ``object TypeCheckResult``);
+    - a package-object member's package omits the object (``truncatedString`` in
+      ``package object util``).
+    So the import CONTRADICTS the symbol only when no reading of it fits. It fits
+    when it is a segment-aligned suffix of ``<package>.<name>``, or when it begins
+    with some trailing run of the symbol's package segments. The first covers a
+    path relative to a type in scope; the second covers the absolute path and
+    every relative spelling of it, with nested types and package objects below.
+    ``_root_.`` makes an import absolute. What this still refuses is a different
+    package tree: ``scala.sys.process`` against ``build``,
+    ``catalyst.expressions`` against ``sql.internal``, ``scaladsl`` against
+    ``javadsl``. What it keeps, without deciding, is anything a relative reading
+    could reach.
+
+    A third reading covers an import relative to an OBJECT in scope, whose nested
+    member's name omits the object; see the comment at the end.
+
+    An import whose first segment is a name the file itself imported is read
+    through that import first: ``import scala.collection.{mutable => cm}`` then
+    ``import cm.{AnyRefMap}`` names ``scala.collection.mutable.AnyRefMap``.
+
+    Nothing to contradict (no import, an import with no dot, a file whose package
+    is unknown) is False, the old behaviour.
+    """
+    if not imported or "." not in imported or file_packages is None:
+        return False
+    head, _, rest = imported.partition(".")
+    through = (import_aliases or {}).get(head)
+    if through and "." in through and not imported.startswith("_root_."):
+        imported = f"{through}.{rest}"
+    info = file_packages.get(sym.path)
+    if info is None or info.package is None:
+        return False
+    package = info.package
+    absolute = imported.startswith("_root_.")
+    if absolute:
+        imported = imported[len("_root_."):]
+    qualified = f"{package}.{sym.name}" if package else sym.name
+    if qualified == imported or (not absolute and ("." + qualified).endswith("." + imported)):
+        return False
+    segments = package.split(".") if package else []
+    tails = [segments] if absolute else [segments[i:] for i in range(len(segments))]
+    if any(tail and imported.startswith(".".join(tail) + ".") for tail in tails):
+        return False
+    # Relative to an object in scope: ``import SymDenotations.SymDenotation``
+    # names a class nested in ``object SymDenotations``, and the nested class's
+    # symbol name omits the object. The import fits when its leaf is the symbol
+    # or a type enclosing it (a call on a value of the imported type returns a
+    # member: ``SymDenotation.is``), and it passes through a type the symbol's
+    # own file declares. Measured: 91 withholds on scala3 and 39 on pekko were
+    # this shape.
+    parts = imported.split(".")
+    return not (parts[-1] in sym.name.split(".")
+                and any(part in info.types for part in parts[:-1]))
+
+
+def _qualify_scala_receiver(
+    receiver_type: str,
+    import_aliases: "dict[str, str]",
+) -> "str | None":
+    """The module-slot path for a receiver type, or ``None`` to keep the sentinel.
+
+    WI-sigog's discipline, unchanged: the slot only ever carries a path THE FILE
+    ITSELF DECLARES. A bare name is looked up in the file's imports and left
+    alone when it misses, because a simple name in the module slot asserts a
+    module that does not exist and can collide with a catalogued entry of the
+    same short name (INV-fazim).
+
+    WI-pokam adds ONE case to "declares": an INLINE QUALIFICATION. ``val b:
+    java.io.File`` states the path at the use site, which is the same fact
+    ``import java.io.File`` states at the top of the file — and it is precisely
+    the case where there is NO import line to consult, so the alternative is not
+    a safer answer but no answer. Nothing is invented and nothing is looked up:
+    the name qualifies to itself.
+
+    THE KNOWN IMPRECISION, named rather than discovered later. Scala also writes
+    a PATH-DEPENDENT type in type position (``val x: someObj.Inner``), which
+    parses to the same ``stable_type_identifier`` node. That would put
+    ``someObj.Inner`` in the slot, which is not a module. It is bounded rather
+    than unbounded: a dotted name is far less collision-prone than the bare name
+    INV-fazim refused, and a path that names nothing simply matches no catalogue
+    row. The corpus share of the shape is measured rather than assumed — see
+    ``~/hypergumbo_lab_notebook/pokam_scala_09102026/``.
+    """
+    imported: "str | None" = import_aliases.get(receiver_type)
+    if imported:
+        return imported
+    return receiver_type if "." in receiver_type else None
+
+
+def _declared_type_name(parent: "tree_sitter.Node", source: bytes) -> "str | None":
+    """The NAME of the type declared as a direct child of ``parent``, or ``None``.
+
+    THE ONE PLACE A DECLARED TYPE IS NAMED. Every site that wanted a type used
+    to call ``find_child_by_type(parent, "type_identifier")`` itself, which named
+    ONLY a bare type; a qualified type (``java.io.File``) parses to
+    ``stable_type_identifier`` and a generic applied type (``Buffer[String]``) to
+    ``generic_type``, so four sites independently returned ``None`` for both.
+    Sharing the PREDICATE is not enough when callers can still walk different
+    populations (INV-motos), so this shares the WALK as well.
+
+    WHAT EACH SHAPE CONTRIBUTES, and the two are deliberately different:
+
+    * ``stable_type_identifier`` contributes the FULL DOTTED NAME. An inline
+      qualification IS the static owner path (ADR-0050/0051), spelled by the file
+      at the use site, and it is the one case where there is no import line to
+      consult — so nothing is invented and nothing needs looking up.
+    * ``generic_type`` contributes its BASE, recursively: the receiver's methods
+      live on ``Buffer``, not on ``Buffer[String]``, and the type argument is not
+      the receiver. ``java.util.List[String]`` therefore yields
+      ``java.util.List`` and qualifies by the clause above.
+
+    A tuple type, a function type and a wildcard yield ``None`` — deliberately,
+    not by omission: none of them names a single owner a catalogue row could be
+    keyed to, and INV-fazim's rule is that an unqualifiable type is left alone
+    rather than written in bare.
+    """
+    for child in parent.children:
+        if child.type == "type_identifier":
+            return node_text(child, source)
+        if child.type == "stable_type_identifier":
+            return node_text(child, source)
+        if child.type == "generic_type":
+            base = _declared_type_name(child, source)
+            # A base this change INVENTED from a type argument is refused when
+            # it is an implicitly-imported name: it cannot qualify, so its only
+            # reachable effect is a short-name mis-bind. See
+            # :data:`_SCALA_IMPLICIT_IMPORT_TYPES` for the measurement.
+            if base is not None and base not in _SCALA_IMPLICIT_IMPORT_TYPES:
+                return base
+            return None
+    return None
+
+
 def _extract_annotations_scala(
     node: "tree_sitter.Node", source: bytes,
 ) -> list[dict[str, object]]:
@@ -247,17 +578,23 @@ def _get_enclosing_type(node: "tree_sitter.Node", source: bytes) -> Optional[str
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
-    local_symbols: dict[str, Symbol],
+    decl_index: SymbolsAt,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function/method."""
+    """The function or method whose declaration contains ``node``.
+
+    Keyed by the declaration's POSITION, not its name (INV-midag). The short
+    name is shared by the ``apply`` of every companion in a file, and by
+    ``OneOf.show`` / ``WebSocketBodyOutput.show`` in tapir's EndpointIO.scala.
+    The lookup returned whichever registered last, so 964 of 16,531 scala call
+    edges on a 26-repo run named a src that does not contain the call. A
+    ``function_definition`` with no symbol (a local ``def``) is walked past.
+    """
     current = node.parent
     while current is not None:
         if current.type == "function_definition":
-            name_node = find_child_by_type(current, "identifier")
-            if name_node:
-                func_name = node_text(name_node, source)
-                if func_name in local_symbols:
-                    return local_symbols[func_name]
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
         current = current.parent
     return None  # pragma: no cover - defensive
 
@@ -896,12 +1233,10 @@ def _extract_param_types_scala(
             for subchild in child.children:
                 if subchild.type == "parameter":
                     param_name = None
-                    param_type = None
                     for pc in subchild.children:
                         if pc.type == "identifier" and param_name is None:
                             param_name = node_text(pc, source)
-                        elif pc.type == "type_identifier" and param_type is None:
-                            param_type = node_text(pc, source)
+                    param_type = _declared_type_name(subchild, source)
                     if param_name and param_type:
                         param_types[param_name] = param_type
     return param_types
@@ -916,16 +1251,39 @@ def _extract_edges_from_file(
     run_id: str,
     resolver: "NameResolver",
     import_aliases: dict[str, str],
+    file_symbols: "list[Symbol] | None" = None,
+    file_packages: "dict[str, _ScalaFile] | None" = None,
+    project_packages: "frozenset[str]" = frozenset(),
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
     Tracks variable types from function parameters and constructor assignments
     (``val x = new Foo()``) to disambiguate method calls like ``x.bar()``.
+
+    ``file_packages`` maps each analysed file to its package and the types it
+    declares (:class:`_ScalaFile`). It lets a symbol
+    the resolver returns be checked against the file's explicit import, which
+    outranks a same-named project symbol in another package (WI-tipoh).
+    ``project_packages`` (:func:`_package_readings`) says whether an import names
+    a project path at all.
     """
     _caller_path = str(file_path)
+    # Every declaration of this file, by position (INV-midag): ``local_symbols``
+    # keeps ONE symbol per name.
+    decl_index = symbols_at(
+        file_symbols if file_symbols is not None
+        else list({s.id: s for s in local_symbols.values()}.values()))
     edges: list[Edge] = []
     file_id = make_file_id("scala", str(file_path))
     var_types: dict[str, str] = {}
+    _scoped_imports = _block_scoped_imports(tree.root_node, source)
+
+    def _applies(name: str, at: "tree_sitter.Node") -> bool:
+        """Whether the file's import of ``name`` is in force at ``at``: always
+        for a top-level import; for a block-scoped one, only inside its block
+        and after it."""
+        spans = _scoped_imports.get(name)
+        return spans is None or any(lo <= at.start_byte < hi for lo, hi in spans)
 
     for node in iter_tree(tree.root_node):
         if node.type == "import_declaration":
@@ -958,16 +1316,16 @@ def _extract_edges_from_file(
             var_node = find_child_by_type(node, "identifier")
             if var_node:
                 inst_node = find_child_by_type(node, "instance_expression")
-                if inst_node is not None:
-                    type_node = find_child_by_type(inst_node, "type_identifier")
-                else:
-                    # Annotated val: the type_identifier is a direct child
-                    # (`val f: Foo = …` → val_definition > type_identifier).
-                    type_node = find_child_by_type(node, "type_identifier")
-                if type_node is not None:
-                    var_types[node_text(var_node, source)] = node_text(
-                        type_node, source,
-                    )
+                # WI-pokam: BOTH paths through ``_declared_type_name``, because a
+                # qualified or generic type was invisible to BOTH. The `new`
+                # branch is listed in WI-pokam among the shapes that work; it
+                # loses ``new java.io.File("p")`` exactly as the annotation
+                # branch loses ``val b: java.io.File``.
+                type_name = _declared_type_name(
+                    inst_node if inst_node is not None else node, source,
+                )
+                if type_name is not None:
+                    var_types[node_text(var_node, source)] = type_name
 
         # Track class-constructor parameter types: `class C(val svc: Service)`.
         # A constructor-param receiver (`svc.process()`) is typed and must
@@ -976,14 +1334,12 @@ def _extract_edges_from_file(
         # (pre-order DFS), so var_types is populated in time.
         elif node.type == "class_parameter":
             pname_node = find_child_by_type(node, "identifier")
-            ptype_node = find_child_by_type(node, "type_identifier")
-            if pname_node is not None and ptype_node is not None:
-                var_types[node_text(pname_node, source)] = node_text(
-                    ptype_node, source,
-                )
+            ptype_name = _declared_type_name(node, source)
+            if pname_node is not None and ptype_name is not None:
+                var_types[node_text(pname_node, source)] = ptype_name
 
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, local_symbols)
+            current_function = _get_enclosing_function(node, source, decl_index)
             if current_function is not None:
                 # INV-fahub Site-1: the enclosing class short name for a bare /
                 # implicit-``this`` call, so a deferred bare→method call can be
@@ -997,14 +1353,32 @@ def _extract_edges_from_file(
                 )
                 callee_node = find_child_by_type(node, "identifier")
                 receiver_name = None
+                # INV-pirot: DOES THIS CALL HAVE A RECEIVER, separately from
+                # whether the receiver can be NAMED. A ``field_expression``
+                # callee is ``<something>.<name>`` -- a method call by
+                # construction -- but only a bare-identifier receiver yields a
+                # ``receiver_name``. ``new File(x).createNewFile()``,
+                # ``get().createNewFile()`` and
+                # ``o.asInstanceOf[File].createNewFile()`` all land in the
+                # one-identifier arm below, where the receiver is real and
+                # nameless. Asking ``receiver_name`` "was there a receiver"
+                # answered "no" for all three (LIVE.md rule 7: one variable,
+                # two questions).
+                has_receiver = False
                 if not callee_node:
                     field_node = find_child_by_type(node, "field_expression")
                     if field_node:
+                        has_receiver = True
                         ids = [c for c in field_node.children if c.type == "identifier"]
                         if len(ids) >= 2:
                             receiver_name = node_text(ids[0], source)
                             callee_node = ids[-1]
-                        elif ids:  # pragma: no cover - defensive
+                        elif ids:
+                            # The receiver is an EXPRESSION, so it contributed
+                            # no identifier of its own and the single id is the
+                            # method. Marked ``defensive`` and no-cover until
+                            # 2026-08-25; it is in fact the production path for
+                            # every complex-receiver call in Scala.
                             callee_node = ids[0]
 
                 if callee_node:
@@ -1022,7 +1396,11 @@ def _extract_edges_from_file(
                                 path_hint=import_aliases.get(type_name),
                                 caller_path=_caller_path,
                             )
-                            if lookup.found and lookup.symbol is not None:
+                            if lookup.found and lookup.symbol is not None and not (
+                                _applies(type_name, node) and _import_names_elsewhere(
+                                    lookup.symbol, import_aliases.get(type_name), file_packages,
+                                    import_aliases)
+                            ):
                                 target = lookup.symbol
                         if target is not None:
                             edges.append(Edge.create(
@@ -1037,7 +1415,7 @@ def _extract_edges_from_file(
                             ))
                             edge_added = True
 
-                    if not edge_added and receiver_name is not None:
+                    if not edge_added and has_receiver:
                         # INV-fahub (WI-bihit): a method call `recv.m()` whose
                         # receiver type could not be resolved in-file MUST NOT
                         # fall through to the bare short-name binds below and
@@ -1053,19 +1431,119 @@ def _extract_edges_from_file(
                         # Step-1); an untyped/duck receiver gets no hint (bias to
                         # unresolved). The linker is the sole minter of the
                         # resolved edge (INV-nilud; taint-safe by construction).
+                        # INV-pirot widened the guard above from "the
+                        # receiver has a NAME" to "there is a receiver", so a
+                        # nameless receiver now reaches this branch too. That is
+                        # the branch's own stated purpose -- an unresolvable
+                        # receiver MUST NOT fall through to the bare short-name
+                        # binds below and bind an arbitrary same-named internal
+                        # def -- and it is MORE true of a nameless receiver, not
+                        # less: ``new Untyped(x).createNewFile()`` cannot be a
+                        # call on the enclosing class under any reading.
                         gate_meta: dict = {"call_construct": "method"}
-                        receiver_type = var_types.get(receiver_name)
+                        receiver_type = (
+                            var_types.get(receiver_name) if receiver_name else None
+                        )
                         if receiver_type:
                             gate_meta["receiver_type_hint"] = receiver_type
+                        # WI-sigog / INV-linub L3: the receiver TYPE this branch
+                        # has just inferred must also reach the MODULE SLOT, not
+                        # only ``meta``. The two slots answer different questions
+                        # and both need an answer: ``receiver_type_hint`` is read
+                        # by the Tier-2 ``inherited_calls`` linker, which resolves
+                        # PROJECT-INTERNAL symbols, while the module segment of
+                        # the dst is what ``_lookup_named_entry`` /
+                        # ``gate_named_entry`` read on the EXTERNAL surface.
+                        # Hardcoding ``external`` here left the second one
+                        # permanently unanswered, and that is fatal rather than
+                        # lossy: the F3 gate opens with
+                        # ``if call_construct == "method": return None``, so with
+                        # no module hint a method call matches NOTHING — not a
+                        # method-kind entry, not even a function-kind one.
+                        # Measured 2026-09-09 on sbt + lila: 0 of 40,970 external
+                        # method-call edges carried a receiver type and 0 of 164
+                        # method-kind catalogue rows were reached through Scala's
+                        # own edges. Scala emitted every one of those calls and
+                        # stamped ``call_construct`` correctly; only the slot was
+                        # a constant.
+                        #
+                        # THIS IS VERBATIM THE JAVA DEFECT PR #227 FIXED, one
+                        # language over (:func:`java._qualify_receiver_type`);
+                        # java measures 65.0% typed on killbill since. The
+                        # discipline that PR established is kept here: the slot
+                        # only ever carries a path THE FILE ITSELF DECLARES. An
+                        # unqualifiable type is left alone rather than written in
+                        # bare, because a simple name in the module slot asserts a
+                        # module that does not exist and can collide with a
+                        # catalogued entry of the same short name (INV-fazim).
+                        # A project class needs no special case: it reaches
+                        # ``import_aliases`` only when the file imports it by
+                        # path, and that path IS its static owner path
+                        # (ADR-0050/0051); a bare one misses and keeps the
+                        # sentinel.
+                        #
+                        # ``call_construct="method"`` above is NOT decoration and
+                        # must not be dropped now that the slot is filled.
+                        # ``_register_sanitizer_callers`` refuses an unresolved
+                        # call unless it carries receiver evidence and reads that
+                        # evidence from THIS slot -- its docstring notes the
+                        # placeholder "still yields no module, and is still
+                        # refused" -- so filling it is precisely what makes
+                        # barrier registration reachable for Scala for the first
+                        # time. A registered barrier earns ``sanitized`` and DROPS
+                        # the flow (#214), so the flag is what stops a first-party
+                        # ``doFinal`` from binding ``javax.crypto.Cipher.doFinal``
+                        # and deleting a real one.
+                        #
+                        # WILDCARDS ARE OUT OF SCOPE HERE, NOT OVERLOOKED.
+                        # ``import java.io._`` parses to ``namespace_wildcard``,
+                        # which ``_extract_import_hints`` does not record as a
+                        # type hint, so such a receiver keeps the sentinel. Java
+                        # writes the comma-joined disjunction of its wildcard
+                        # packages into the slot; that is not free, because an
+                        # UNENUMERATED disjunct withholds every verdict under
+                        # INV-zimud's ALL-gate. Measured on the same corpus, the
+                        # shape is also rare in Scala -- 199/4,314 import lines in
+                        # sbt (4.6%) and 5/6,674 in lila (0.07%) -- so the
+                        # explicit-import path below carries the population.
+                        typed_module = (
+                            _qualify_scala_receiver(receiver_type, import_aliases)
+                            if receiver_type
+                            # WI-kilap: an untyped receiver spelled as a TYPE
+                            # (``Files.readAllBytes(p)``, ``System.getenv(k)``,
+                            # ``Properties.envOrElse(...)``) is a static / object
+                            # call, and its owner is the module. Only the file's
+                            # import or java.lang's closed list names one, so
+                            # WI-sigog's "a path the file declares" still holds.
+                            else static_owner_module(
+                                receiver_name or "", import_aliases,
+                                shadowed=SCALA_SHADOWED_JAVA_LANG,
+                                is_project_type=_is_project_type(
+                                    receiver_name or "", global_symbols,
+                                    import_aliases if _applies(receiver_name or "", node) else None,
+                                    file_packages, project_packages),
+                            )
+                        )
                         edges.append(Edge.create(
                             src=current_function.id,
-                            dst=f"scala:external:0-0:{callee_name}:unresolved",
+                            dst=(
+                                f"scala:{typed_module or 'external'}"
+                                f":0-0:{callee_name}:unresolved"
+                            ),
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
                             is_resolved=False,
                             origin=PASS_ID,
                             origin_run_id=run_id,
+                            dst_ref=(
+                                ExternalRef(
+                                    lang="scala",
+                                    module_path=typed_module,
+                                    name=callee_name,
+                                )
+                                if typed_module else None
+                            ),
                             meta=gate_meta,
                         ))
                     elif not edge_added and callee_name in local_symbols:
@@ -1127,6 +1605,10 @@ def _extract_edges_from_file(
                             and _sym is not None
                             and _sym.kind not in ("field", "variable")
                             and not _defer
+                            # WI-tipoh: the file's explicit import outranks a
+                            # same-named project symbol in another package.
+                            and not (_applies(callee_name, node) and _import_names_elsewhere(
+                                _sym, path_hint, file_packages, import_aliases))
                         ):
                             conf = 0.80 * lookup_result.confidence * _short_name_penalty(callee_name)
                             edges.append(Edge.create(
@@ -1171,7 +1653,7 @@ def _extract_edges_from_file(
             ):
                 ref_name = node_text(children[0], source)
                 current_function = _get_enclosing_function(
-                    node, source, local_symbols,
+                    node, source, decl_index,
                 )
                 if current_function is not None:
                     target = local_symbols.get(ref_name)
@@ -1203,13 +1685,26 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
     lang = "scala"
     file_patterns: ClassVar[list[str]] = ["*.scala"]
     grammar_module = "tree_sitter_scala"
+    #: Each analysed file's package, for this run only (WI-tipoh). Reset by
+    #: :meth:`analyze`; ``None`` outside a run.
+    _file_packages: "Optional[dict[str, _ScalaFile]]" = None
+    #: :func:`_package_readings` of ``_file_packages``, built on the first file of
+    #: Pass 2, when every package is known.
+    _project_packages: "Optional[frozenset[str]]" = None
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
         """Extract functions, classes, objects, traits from a Scala file."""
-        return _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        analysis = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        if self._file_packages is not None:
+            self._file_packages[rel_path] = _ScalaFile(
+                _scala_file_package(tree.root_node, source),
+                frozenset(s.name.split(".")[-1] for s in analysis.symbols
+                          if s.kind in ("class", "object", "trait")),
+            )
+        return analysis
 
     def get_import_aliases(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -1238,7 +1733,25 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
             tree, source, rel_path,
             local_symbols, global_symbols,
             run.execution_id, resolver, import_aliases,
+            file_symbols=self.file_symbols(local_symbols),
+            file_packages=self._file_packages,
+            project_packages=self._project_package_readings(),
         )
+
+    def _project_package_readings(self) -> "frozenset[str]":
+        if self._project_packages is None:
+            self._project_packages = _package_readings(self._file_packages or {})
+        return self._project_packages
+
+    def analyze(self, repo_root: Path, max_files: Optional[int] = None) -> AnalysisResult:
+        """The base two-pass analysis, with the per-run package map reset first.
+
+        ``_analyzer`` is a module singleton, so a map kept from an earlier run
+        would answer for a same-named path in this one.
+        """
+        self._file_packages = {}
+        self._project_packages = None
+        return super().analyze(repo_root, max_files)
 
 
 _analyzer = ScalaAnalyzer()

@@ -9,7 +9,9 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Package-level var aliases (var Name = expr) as variable symbols
 - Struct fields and interface methods as their own symbols
 - Closure-wrapper functions (middleware), tagged ``concepts: [middleware]``
-- Function call relationships
+- Function call relationships, anchored on the enclosing function or method,
+  or on the enclosing package-level variable for a call under a package-level
+  ``var`` initializer (a cobra ``Run:`` literal, ``var logger = log.New(...)``)
 - Function references in struct literal fields (cobra, http dispatch)
 - Import relationships (import statements)
 - ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
@@ -48,8 +50,9 @@ How It Works
      an arbitrary candidate (which would produce a false-positive call edge).
    - EXCEPTION: when at least one candidate is an interface method, the
      interface-method test is itself the disambiguator, so the call IS
-     resolved — to that interface method, as an ``interface_dispatch`` edge
-     at confidence 0.75, or 0.5 with ``meta["disambiguation_fallback"]=True``
+     resolved — to that interface method, as a ``calls`` edge with
+     ``evidence_type="interface_dispatch"`` at confidence 0.75, or 0.5
+     with ``meta["disambiguation_fallback"]=True``
      when several interface methods tie (``min`` by symbol id). The
      ``dispatches_to`` edges then route a slice on to the concrete impls.
 7. Stdlib interface method guard:
@@ -81,20 +84,55 @@ Why This Design
 
 Population of ``is_exported`` follows Go's lexical case rule: identifiers
 starting with an uppercase letter are exported (public).
+
+DECLARED BLINDNESS — ``call_construct`` IS A CONSTANT ON GO (INV-tanom).
+Every emit site above stamps ``meta={"call_construct": "method"}`` on any
+SELECTOR-expression call, and Go writes a package-qualified free function with
+the same syntax as a value-receiver method: ``http.Get(u)`` and ``c.Get(u)``
+are byte-identical in (name, module_hint, call_construct). The field therefore
+records the SYNTAX, not the construct its name promises, and on Go it carries
+no information at all.
+
+DO NOT KEY A PREDICATE ON IT TO SEPARATE A FUNCTION ROW FROM A METHOD ROW.
+It is a constant; such a predicate cannot work, and one was proposed and
+refuted on exactly that ground.
+
+THIS IS DELIBERATE, NOT UNNOTICED, AND IT IS DECLARED RATHER THAN FIXED
+BECAUSE THE FIX WAS MEASURED TO BUY NOTHING. Sized 2026-09-09 over 14 Go
+repositories (10 of them vendored) and 72,396 unresolved ``cc=method`` call
+edges that carry NO module slot — the only population io-boundary ever reads
+this field for, since the F3 gate consults it exclusively on the no-module
+path. The shape that would make the mis-stamp cost something — a
+package-qualified free function reaching that path — occurred ZERO times, and
+the reason is structural rather than lucky: a package qualifier always names an
+import in the file's own import block, so the module slot is always fillable,
+and only value receivers reach the branch. Per-repo table and the four
+instrument defects found while establishing it (each of which INFLATED the
+count before being fixed) are in
+``~/hypergumbo_lab_notebook/tanom_sizing_09092026/RESULT.md``.
+
+INV-tanom stays VIOLATED: the field genuinely does not mean what it is named,
+and a zero cost today is not a satisfied invariant. What changed is that the
+debt is now priced, and priced at zero for the current consumer.
 """
 from __future__ import annotations
 
 import os
 import re
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Mapping, Optional
 
 if TYPE_CHECKING:
     from hypergumbo_core.supply_chain import DependencyManifest
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
+from hypergumbo_core.library_signatures import (
+    load_library_package_variables,
+    load_library_signatures,
+)
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
@@ -120,6 +158,9 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     node_text,
     visibility_from_modifiers,
+    SymbolsAt,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -127,7 +168,7 @@ from hypergumbo_lang_mainstream.symbol_introspection import (
     extract_preceding_doc_comment,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
-from hypergumbo_core.symbol_resolution import ListNameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -619,6 +660,74 @@ def _strip_module_prefix(import_path: str, module_path: str) -> str:
     return import_path
 
 
+def _go_lookup_through_dot_imports(
+    resolver: ListNameResolver,
+    name: str,
+    dot_imports: list[str],
+    module_path: Optional[str],
+) -> LookupResult:
+    """Resolve a BARE identifier the plain lookup could not, via its dot imports.
+
+    ``import . "example.com/m/alias1"`` puts every exported name of ``alias1``
+    in scope, so a bare ``Helper()`` that is not declared in the calling
+    package is ``alias1.Helper`` -- Go rejects the file otherwise. The plain
+    lookup has no package evidence for a bare name and, once several packages
+    declare a ``Helper``, its ambiguity guard returns nothing. That is exactly
+    what INV-nopoh's grouped-``var`` symbols exposed: a test-helper package
+    re-exporting ``testutils`` through ``var ( NewWebhook = testutils.NewWebhook )``
+    went from one global candidate (the function, resolved by luck) to three
+    (the function plus two alias variables) and 114 alertmanager call sites
+    fell to an unresolved placeholder. The dot import IS the evidence: each
+    dot-imported in-module path is offered as the ``path_hint`` the qualified
+    arm already uses, and the first package that narrows the name to ONE
+    symbol wins (the alias variable in the dot-imported package, not the
+    function it aliases -- the graph continues from the variable). Only
+    ``exact`` / ``path_hint`` matches are accepted; an external dot import
+    (``. "strings"``) has no in-repo path and is skipped, leaving the caller's
+    existing dot-import placeholder.
+    """
+    for dot_path in dot_imports:
+        hint = _strip_module_prefix(dot_path, module_path) if module_path else dot_path
+        if not hint or "." in hint.split("/", 1)[0]:
+            continue  # external (host-qualified) package: nothing in-repo to match
+        result = resolver.lookup(name, path_hint=hint)
+        if result.found and result.match_type in ("exact", "path_hint"):
+            return result
+    return LookupResult(symbol=None)
+
+
+def _package_variable_import_path(
+    operand_node: "tree_sitter.Node",
+    source: bytes,
+    import_aliases: dict[str, str],
+) -> Optional[str]:
+    """Import path of the package holding ``pkg.Var``'s TYPE, when ``pkg.Var`` is a
+    catalogued stdlib package variable (WI-jikik); else None.
+
+    ``http.DefaultClient.Do(req)``'s receiver is a package variable, not a local,
+    so no ``var_types`` entry types it and the call fell to the ``external`` slot,
+    out of reach of ``net/http.Client.Do``'s row. library_signatures/go.yaml's
+    ``package_variables`` holds each variable's type. The key is the package's
+    own NAME, the import path's last element, so a renamed import
+    (``nethttp "net/http"``) resolves too. The type's package is the variable's
+    own unless the row names another, which the file must then import.
+    """
+    root = find_child_by_field(operand_node, "operand")
+    field = find_child_by_field(operand_node, "field")
+    if root is None or field is None or root.type != "identifier":
+        return None
+    var_path = import_aliases.get(node_text(root, source))
+    if var_path is None:
+        return None
+    var_pkg = var_path.rsplit("/", 1)[-1]
+    type_name = load_library_package_variables("go").get(
+        f"{var_pkg}.{node_text(field, source)}")
+    if type_name is None:
+        return None
+    type_pkg = type_name.split(".", 1)[0]
+    return var_path if type_pkg == var_pkg else import_aliases.get(type_pkg)
+
+
 def _external_package_for_type(
     type_name: str,
     import_aliases: dict[str, str],
@@ -1042,6 +1151,42 @@ def _extract_receiver_type_from_node(
     return ""  # pragma: no cover - well-formed Go always has a typed receiver
 
 
+def _go_package_level_var_name(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """The declared name when ``node`` is a PACKAGE-LEVEL ``var_spec``, else None.
+
+    INV-nopoh. Go has exactly one place outside a function body where an
+    expression -- and so a call, or a function literal holding calls -- can
+    appear: a package-level ``var`` initializer (``const`` initializers admit
+    only builtins, which the call walk skips). Every cobra ``Run:`` handler,
+    every ``var logger = log.New(...)``, every ``var _ = register()`` is this
+    node. Both walks that name an enclosing scope (``_get_enclosing_function``
+    for the edge anchor, ``_get_enclosing_func_name`` for ``var_types``) must
+    agree on the name they give it, or a typed local inside a package-level
+    literal is recorded under one key and looked up under another -- so the
+    test lives here, once. A grouped ``var ( ... )`` block nests its specs
+    under a ``var_spec_list``; both spellings are one declaration. A
+    ``var_spec`` under a ``statement_list`` is a LOCAL (INV-sidab) and is
+    deliberately not matched: the walk continues to the enclosing function.
+    The blank name ``_`` is returned as written; the caller decides what a
+    nameless anchor falls back to. ``node`` must be a ``var_spec``; both
+    callers test the type before calling.
+    """
+    decl = node.parent
+    if decl is not None and decl.type == "var_spec_list":  # grouped ``var ( ... )``
+        decl = decl.parent
+    if decl is None or decl.type != "var_declaration":  # pragma: no cover - grammar
+        return None
+    if decl.parent is None or decl.parent.type != "source_file":
+        return None
+    name_node = find_child_by_field(node, "name")
+    if name_node is None:  # pragma: no cover - grammar always supplies a name
+        return None
+    return node_text(name_node, source)
+
+
 def _get_enclosing_func_name(
     node: "tree_sitter.Node",
     source: bytes,
@@ -1049,8 +1194,11 @@ def _get_enclosing_func_name(
     """Walk up the tree to find the enclosing function/method name.
 
     For method declarations, returns the qualified name (``Type.Method``).
-    For function declarations, returns the simple function name.
-    For positions outside any function, returns None.
+    For function declarations, returns the simple function name. For a
+    position under a package-level ``var`` (a literal bound at package level,
+    or a plain initializer) returns the variable's name, matching the anchor
+    ``_get_enclosing_function`` gives the same position (INV-nopoh). For
+    positions outside any of those, returns None.
 
     Used to scope variable type bindings to their enclosing function.
     """
@@ -1072,6 +1220,10 @@ def _get_enclosing_func_name(
                     if receiver_type:
                         return f"{receiver_type}.{method_name}"
                 return method_name  # pragma: no cover - methods always have receivers
+        elif current.type == "var_spec":
+            var_name = _go_package_level_var_name(current, source)
+            if var_name is not None:
+                return var_name
         current = current.parent
     return None
 
@@ -1552,7 +1704,21 @@ def _extract_symbols_from_file(
             is_package_level = (
                 node.parent is not None and node.parent.type == "source_file"
             )
-            for child in node.children:
+            # A grouped ``var ( a = ...; b = ... )`` block nests its specs
+            # under a ``var_spec_list``; a single ``var a = ...`` does not.
+            # Until INV-nopoh every grouped spec was skipped here -- no
+            # symbol, no interface assertion -- although grouped blocks are
+            # where most package-level ``errors.New`` / ``regexp.MustCompile``
+            # / ``promauto.New*`` initializers live (cert-manager: 1,508
+            # such call sites in one corpus run).
+            flattened = [
+                spec
+                for child in node.children
+                for spec in (
+                    child.children if child.type == "var_spec_list" else (child,)
+                )
+            ]
+            for child in flattened:
                 if child.type == "var_spec":
                     _detect_interface_assertion(child, source, impl_assertions)
                     if not is_package_level:
@@ -1691,8 +1857,10 @@ def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
     local_symbols: dict[str, Symbol],
+    file_symbol: Optional[Symbol] = None,
+    decl_index: Optional[SymbolsAt] = None,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function/method.
+    """Walk up the tree to find the symbol a call at ``node`` is anchored on.
 
     For calls inside anonymous functions (func_literal), continues walking up
     to find the containing named function. This enables call attribution for
@@ -1702,16 +1870,43 @@ def _get_enclosing_function(
     to avoid incorrect attribution when multiple types define the same method
     name. Falls back to short name if the qualified name isn't in local_symbols.
 
+    INV-nopoh: a call under a PACKAGE-LEVEL ``var`` -- a function literal
+    bound to a variable, a struct-field literal such as cobra's ``Run:
+    func(...) {...}``, or a plain initializer ``var logger = log.New(...)`` --
+    is anchored on that variable's own symbol, which the symbol pass already
+    emits (kind ``variable``). Before this arm every such call returned None
+    and emitted nothing: on beads 578 of 1,331 ``fmt.Fprintf`` sites, 43.4%,
+    all under cobra handlers. When the variable has no symbol (``var _ =
+    register()``, or a name a same-file method's short name has displaced in
+    ``local_symbols``) the anchor is ``file_symbol`` -- the file's
+    pseudo-symbol, the anchor Python gives module-level code -- so the call
+    is still emitted rather than dropped.
+
     Args:
         node: The current node.
         source: Source bytes for extracting text.
-        local_symbols: Map of function names to Symbol objects.
+        local_symbols: Map of symbol names to Symbol objects for this file.
+        file_symbol: The file's pseudo-symbol, the anchor of last resort for a
+            package-level site with no variable symbol. None keeps the
+            historical contract (return None) for callers without one.
 
     Returns:
-        The Symbol for the enclosing function, or None if not inside a function.
+        The Symbol for the enclosing function, method or package-level
+        variable; ``file_symbol`` for a package-level site with no variable
+        symbol; None only when ``file_symbol`` is None.
     """
     current = node.parent
     while current is not None:
+        # INV-midag: a declaration is found by its POSITION first. Go lets a file
+        # declare ``func init()`` more than once, and the name lookup anchored
+        # every earlier init's calls to the last one. Position is exact; the
+        # name paths below remain for callers without an index.
+        if decl_index is not None and current.type in (
+            "function_declaration", "method_declaration",
+        ):
+            positioned = symbol_declared_by(current, decl_index)
+            if positioned is not None:
+                return positioned
         if current.type == "function_declaration":
             name_node = find_child_by_field(current, "name")
             if name_node:
@@ -1735,11 +1930,21 @@ def _get_enclosing_function(
                 # Fall back to short name (when qualified name not in local_symbols)
                 if method_name in local_symbols:  # pragma: no cover - qualified always present
                     return local_symbols[method_name]  # pragma: no cover
+        elif current.type == "var_spec":
+            var_name = _go_package_level_var_name(current, source)
+            if var_name is not None:
+                sym = local_symbols.get(var_name)
+                if sym is not None and sym.kind == "variable":
+                    return sym
+                return file_symbol
         # For func_literal (anonymous functions), continue walking up
         # to find the containing named function rather than returning None
         # This handles: go func() { helper() }(), callbacks, etc.
         current = current.parent
-    return None  # pragma: no cover - defensive
+    # Valid Go admits no call outside a function body or a package-level
+    # var initializer, both handled above; tree-sitter's error recovery can
+    # still hand us one, and it belongs to the file.
+    return file_symbol  # pragma: no cover - unreachable on well-formed Go
 
 
 def _extract_go_var_types(
@@ -1852,10 +2057,47 @@ def _extract_go_var_types(
                         method_name = node_text(field_node, source)
                         recv_type = func_vars.get(recv_name, "")
                         if recv_type:
-                            qualified = f"{recv_type}.{method_name}"
+                            # Fold: registry keys carry a BARE receiver, values
+                            # are qualified (WI-doluf).
+                            qualified = (
+                                f"{_bare_go_type(recv_type)}.{method_name}"
+                            )
                             type_name = method_return_type_registry.get(
                                 qualified
                             )
+                        else:
+                            # WI-lalot: a PACKAGE-qualified producer --
+                            # ``net.Listen(...)``, ``exec.Command(...)``. ``net``
+                            # is a package, not a variable, so the receiver-type
+                            # lookup above finds nothing and this shape never
+                            # reached the registry at all: the merge alone left
+                            # `ln.Accept()` and `c.Start()` on the `external`
+                            # sentinel, which is exactly the inertness WI-lalot
+                            # was filed for.
+                            #
+                            # The registry itself is the gate. An ANALYSED go key
+                            # is either a bare function name or `Receiver.Method`
+                            # with a bare -- conventionally capitalised -- Go type
+                            # as the receiver, so a hit on a lowercase
+                            # `package.Func` key can only come from a library row.
+                            type_name = method_return_type_registry.get(
+                                f"{recv_name}.{method_name}"
+                            )
+                elif call_func is not None and call_func.type == "identifier":
+                    # WI-doluf: a PLAIN function call -- ``conn := makeConn()``.
+                    # This branch did not exist, so the registry was populated
+                    # for standalone functions (``analysis.method_return_types
+                    # [func_name]``) and consulted only for method calls. Every
+                    # factory function in every Go repo fell through to an
+                    # untyped variable, in-repo return types included: the
+                    # control fixture ``res := makeResult(); res.Rows()``
+                    # resolved to ``go:external:0-0:Rows`` before this branch.
+                    fn_name = node_text(call_func, source)
+                    if (
+                        fn_name not in _GO_BUILTIN_TYPES
+                        and fn_name not in _GO_BUILTIN_FUNCS
+                    ):
+                        type_name = method_return_type_registry.get(fn_name)
 
             if type_name and type_name not in _GO_BUILTINS:
                 func_vars[var_name] = type_name
@@ -2087,7 +2329,29 @@ def _type_from_constructor_call(
     """Infer return type from Go constructor naming convention.
 
     Go convention: ``NewFoo()`` returns ``*Foo`` or ``Foo``.  Also handles
-    package-qualified calls: ``pkg.NewFoo()`` → ``Foo``.
+    package-qualified calls: ``pkg.NewFoo()`` → ``pkg.Foo``.
+
+    THE QUALIFIER IS PART OF THE ANSWER, and this branch used to drop it. Its
+    sibling — the ``composite_literal`` branch of :func:`_type_from_rhs` — was
+    fixed to keep it because a bare ``Client`` resolves to no package and lands
+    in the ``external`` module slot, where the catalogue cannot match it and the
+    no-module gate (io-boundary:F3) correctly refuses it.
+    :func:`_type_identifier_from_node` states the contract outright: the full
+    ``http.Client`` is "critical for IO boundary detection". One branch honoured
+    it and its neighbour did not, so two spellings of one declaration disagreed:
+
+        var reader *bufio.Reader        -> "bufio.Reader"   (reaches the catalogue)
+        reader := bufio.NewReader(...)  -> "Reader"         (reached nothing)
+
+    Measured on WI-vutav's fixtures: Go's whole catalogued stdin surface is three
+    rows and the calls that actually transfer bytes could not be catalogued at
+    all, because the dominant idiom emitted ``go:external:0-0:ReadString``.
+
+    ``a.b.NewFoo()`` ABSTAINS rather than inventing ``a.b.Foo``. Go has no
+    three-segment package selector in expression position, so the operand of that
+    selector is a value and the call is a method, not a package constructor —
+    there is no alias for ``a.b`` in ``import_aliases`` and a qualified name that
+    cannot be resolved is worse than none.
 
     Only matches when the suffix after ``New`` starts with an uppercase letter
     (Go exported type convention).
@@ -2105,10 +2369,16 @@ def _type_from_constructor_call(
     # pkg.NewFoo() → selector_expression with field_identifier "NewFoo"
     elif func_node.type == "selector_expression":
         field = find_child_by_field(func_node, "field")
+        operand = find_child_by_field(func_node, "operand")
         if field is not None:
             name = node_text(field, source)
             if name.startswith("New") and len(name) > 3 and name[3].isupper():
-                return name[3:]
+                # Only a BARE identifier operand can be a package name. Anything
+                # else (a nested selector, an index, a call) is a receiver, so
+                # this is a method call and not a package constructor.
+                if operand is not None and operand.type == "identifier":
+                    return f"{node_text(operand, source)}.{name[3:]}"
+                return None
 
     return None
 
@@ -2144,6 +2414,19 @@ def _type_identifier_from_node(
     return None  # pragma: no cover - pointer to non-named type (e.g. *func(), *chan)
 
 
+def _bare_go_type(type_name: str) -> str:
+    """``net.Conn`` -> ``Conn``. The fold, in one place.
+
+    The return-type registry is keyed ``Receiver.Method`` with an UNQUALIFIED
+    receiver, because that is how in-repo symbols are stored. Its VALUES are
+    package-qualified (WI-doluf), because the io-boundary module slot needs the
+    package. So every site that turns a *value* back into a *key*, or into a
+    symbol lookup, folds here -- open-coding ``rsplit`` at each one is how the
+    two forms drift apart.
+    """
+    return type_name.rsplit(".", 1)[-1] if "." in type_name else type_name
+
+
 def _go_return_type_from_signature(signature: str | None) -> str | None:
     """Extract the primary return type from a Go function signature.
 
@@ -2157,9 +2440,23 @@ def _go_return_type_from_signature(signature: str | None) -> str | None:
     - ``"(params)"``  → ``None`` (no return type / void)
 
     Go tuple returns with multiple non-error types (ambiguous) return
-    None.  Pointer-star prefixes are stripped.  Package-qualified types
-    (``pkg.Type``) are stripped to the bare type name because symbol
-    names in the symbol registry are unqualified.
+    None.  Pointer-star prefixes are stripped.
+
+    PACKAGE-QUALIFIED TYPES KEEP THEIR PACKAGE (``net.Conn`` stays
+    ``net.Conn``), and that is WI-doluf. They used to be stripped to the bare
+    name "because symbol names in the symbol registry are unqualified" -- true
+    of the SYMBOL LOOKUP and false of the io-boundary MODULE SLOT, which is the
+    one consumer that needs the package and was therefore served the
+    ``external`` placeholder forever. Measured consequence: a receiver typed
+    from a factory's return value could never match a method row, so on an
+    idiomatic accept loop go's entire reported network-input surface was setup
+    calls that receive nothing.
+
+    The bare form is now DERIVED where it is needed (:func:`_bare_go_type` at
+    the registry-key and symbol-lookup sites), rather than stored in the only
+    form one of two consumers wanted. Callers that build a registry key from a
+    type MUST fold it first -- the keys are ``Receiver.Method`` with a bare
+    receiver.
     """
     if not signature:
         return None
@@ -2187,13 +2484,461 @@ def _go_return_type_from_signature(signature: str | None) -> str | None:
             t for t in types if t not in _GO_BUILTIN_TYPES and t != "any"
         ]
         if len(non_error) == 1:
-            return non_error[0].rsplit(".", 1)[-1]
+            return non_error[0]
         return None  # ambiguous: 0 or 2+ non-builtin return types
     # Single return type: strip pointer and package prefix.
     bare = ret_part.lstrip("*")
     if bare in _GO_BUILTIN_TYPES or bare == "any":
         return None
-    return bare.rsplit(".", 1)[-1]
+    return bare
+
+
+
+#: Go wrapper constructors whose BOUNDARY is a property of their argument.
+#:
+#: ``go.yaml`` files ``bufio.{NewScanner,NewReader}`` as ``ipc_recv`` on the
+#: note "When wrapping os.Stdin" -- a condition no catalogue row can enforce,
+#: because the row sees the callee and the answer is in the ARGUMENT. Measured
+#: on the ADR-0049 cohort's Go repositories, of the 83 bare-local sites whose
+#: origin the shipped reaching-def solver resolves, 63 wrap an ``os.Open``
+#: handle, 3 an HTTP body, 1 a buffer, and ZERO wrap ``os.Stdin`` (WI-lipis).
+#: Calls whose I/O TARGET is one of their arguments, and which one.
+#:
+#: WI-lipis started this as the two ``bufio`` wrappers (a frozenset; the
+#: argument was always the only one). WI-suhug made it a table because the
+#: WRITE side has the same shape one argument in: ``fmt.Fprintf(w, ...)`` and
+#: ``io.WriteString(w, s)`` cross whatever ``w`` is, and ``go.yaml`` had each
+#: at one fixed boundary (measurement 0012's vacuous class). The table serves
+#: THREE readers, which is why it is one table: the call site stamps
+#: ``io_target_kind`` from the named argument; a bare identifier whose last
+#: binding is a call to a member is followed INTO that member's argument
+#: (``tw := tabwriter.NewWriter(os.Stdout, ...)`` then ``fmt.Fprintf(tw,
+#: ...)`` -- the largest resolvable write shape on the six-repo corpus); and
+#: WI-vutav's receiver hop requires the receiver's binding to be a member.
+#: The non-transferring wrappers (``tabwriter.NewWriter``, ``bufio.NewWriter``,
+#: ``io.LimitReader``) are here for the hop; a stamp on their own call edge is
+#: inert because no catalogue rows them, and disclosed here rather than
+#: special-cased away.
+_GO_TARGET_ARGUMENT_INDEX: Final[Mapping[tuple[str, str], int]] = {
+    ("bufio", "NewScanner"): 0, ("bufio", "NewReader"): 0,
+    ("bufio", "NewWriter"): 0,
+    ("tabwriter", "NewWriter"): 0,
+    ("io", "LimitReader"): 0,
+    ("io", "WriteString"): 0,
+    ("fmt", "Fprint"): 0, ("fmt", "Fprintln"): 0, ("fmt", "Fprintf"): 0,
+}
+
+#: How many binding / wrapper hops the classifier follows before abstaining.
+#: Three covers the deepest measured shape (``w = f`` <- ``f, _ :=
+#: os.Create(p)``, or ``bw := bufio.NewWriter(f)`` <- ``os.Create``) with one
+#: to spare; the cap exists so a self-referential rebinding cannot loop.
+_GO_TARGET_HOP_LIMIT: Final[int] = 3
+
+#: Argument prefixes that prove the handle never left this process.
+#: Only the PROVABLE case is listed: anything unrecognised stamps nothing and
+#: classifies exactly as before, because a gate whose default silenced
+#: findings would be a false-negative generator on a security analysis.
+#: ``io.Pipe()`` is here on purpose: its far end is a goroutine, not a
+#: process (``os.Pipe()`` is the OS pipe and is in ``_GO_PIPE_PRODUCERS``).
+#: The hashes are writers whose bytes stay in the digest.
+_GO_IN_MEMORY_PRODUCERS: Final[tuple[str, ...]] = (
+    "strings.NewReader(", "bytes.NewReader(", "bytes.NewBuffer(",
+    "bytes.NewBufferString(", "bytes.Buffer{", "strings.Builder{",
+    "io.Pipe(",
+    "sha256.New(", "sha512.New(", "sha1.New(", "md5.New(", "hmac.New(",
+)
+
+#: The kernel discards what is written here (INV-nular's ``null_device``).
+_GO_NULL_DEVICES: Final[tuple[str, ...]] = ("io.Discard", "ioutil.Discard")
+
+#: The process's standard streams. WI-dutah: a WRITE here is ``logging``.
+_GO_STD_STREAMS: Final[tuple[str, ...]] = ("os.Stdin", "os.Stdout", "os.Stderr")
+
+#: A channel whose far end is ANOTHER PROCESS: the child's three pipes, and
+#: an OS pipe (whose far end may be handed to one). gocryptfs's write of a
+#: plaintext to ``cmd.StdinPipe()`` is measurement 0012's headline row.
+_GO_PIPE_PRODUCERS: Final[tuple[str, ...]] = (
+    ".StdinPipe(", ".StdoutPipe(", ".StderrPipe(", "os.Pipe(",
+)
+
+#: A connection. ``.Accept(`` is INV-bagok's caddy case (``c, _ :=
+#: ln.Accept()``); the dials are the client side.
+_GO_NET_STREAM_PRODUCERS: Final[tuple[str, ...]] = (
+    "net.Dial(", "net.DialTimeout(", "net.DialTCP(", "net.DialUDP(",
+    "tls.Dial(", "tls.DialWithDialer(", ".Accept(",
+)
+
+#: Declared TYPES that decide a target kind when no binding is visible -- a
+#: parameter, a ``var buf bytes.Buffer`` taken by address. Keyed by the
+#: package's import-path tail and the type name; resolved through the file's
+#: imports so a local package called ``bytes`` is not the stdlib's. The
+#: ABSENCES are the design: ``io.Writer`` and ``*os.File`` abstain (a file may
+#: be stdout, a file or a pipe end), ``bufio.Writer`` / ``tabwriter.Writer``
+#: abstain (the wrapper's target is in the caller's scope), and ``net.UnixConn``
+#: is unmapped because a Unix socket is process-local IPC, not a network
+#: stream -- the same family question WI-baran asks of c's ``send``.
+_GO_TYPED_TARGET_KINDS: Final[Mapping[tuple[str, str], str]] = {
+    ("bytes", "Buffer"): "in_memory",
+    ("strings", "Builder"): "in_memory",
+    ("net", "Conn"): "net_stream",
+    ("net", "TCPConn"): "net_stream",
+    ("net", "UDPConn"): "net_stream",
+    ("tls", "Conn"): "net_stream",
+    ("http", "ResponseWriter"): "net_stream",
+}
+
+
+#: Calls that PRODUCE a filesystem handle. A read through one of these is an
+#: ``fs_read`` crossing, which hypergumbo deliberately does not mint a taint
+#: source from -- the sensitivity of a file read depends on what is stored, so
+#: ``fs_read`` is absent from ``AUTO_SOURCE_LABEL_MAP`` by design.
+#:
+#: 63 of the 83 resolved bare-local ``bufio.New*`` sites in the ADR-0049 cohort
+#: wrap one of these (WI-lipis), which makes it the LARGEST false-source
+#: population the wrapper row creates -- larger than the in-memory case the
+#: first deliverable addressed, and omitted from that estimate.
+_GO_FILE_HANDLE_PRODUCERS: Final[tuple[str, ...]] = (
+    "os.Open(", "os.OpenFile(", "os.Create(", "os.CreateTemp(",
+    "ioutil.TempFile(", "ioutil.OpenFile(",
+)
+
+#: Node types that BIND a name in a Go function body. ``var_spec`` covers
+#: ``var f = os.Open(p)``; the other two cover ``:=`` and ``=``.
+_GO_BINDING_NODES: Final[frozenset[str]] = frozenset({
+    "short_var_declaration", "assignment_statement", "var_spec",
+})
+
+
+def _go_enclosing_body(node: "tree_sitter.Node") -> "Optional[tree_sitter.Node]":
+    """The body of the function or literal this node sits inside, or None."""
+    cur = node.parent
+    while cur is not None:
+        if cur.type in (
+            "function_declaration", "method_declaration", "func_literal",
+        ):
+            return find_child_by_field(cur, "body")
+        cur = cur.parent
+    # A call in a package-level ``var`` initializer (INV-nopoh) has no
+    # enclosing body: a binding lookup from there answers nothing, honestly.
+    return None
+
+
+def _go_last_binding(
+    node: "tree_sitter.Node", source: bytes, name: str,
+    *, use_line: Optional[int] = None,
+) -> Optional[tuple[str, int]]:
+    """``(text, line)`` of the LAST binding of ``name`` at or above a line.
+
+    The line defaults to ``node``'s own. ``use_line`` lets a caller resolve a
+    name as of an EARLIER point -- WI-vutav resolves the wrapper's argument at
+    the WRAPPER'S line, not the read's, so a rebinding of the handle between
+    the two is not misread as what the reader wraps.
+
+    A deliberately smaller instrument than a reaching-def solver, and its
+    answers are a SUBSET of one: the enclosing function only, textual line
+    order only, no branch or loop reasoning. The analyzer runs before any DDG
+    exists, so the alternative is not "use the DDG here" but "answer nothing",
+    and 74.1% of the resolvable population is a single ``:=`` five lines up.
+
+    ORDER IS THE WHOLE POINT rather than a detail. A scan that took the last
+    match in the FILE would read a rebinding below the call as if it reached
+    it, and one that took the first would miss a rebinding above it. Both
+    shapes are pinned by tests.
+    """
+    body = _go_enclosing_body(node)
+    if body is None:
+        return None
+    if use_line is None:
+        use_line = node.start_point[0]
+    best_line = -1
+    best_text: Optional[str] = None
+    stack = [body]
+    while stack:
+        cur = stack.pop()
+        stack.extend(cur.children)
+        if cur.type not in _GO_BINDING_NODES:
+            continue
+        if cur.start_point[0] > use_line or cur.start_point[0] < best_line:
+            continue
+        left = find_child_by_field(cur, "left") or find_child_by_field(
+            cur, "name",
+        )
+        right = find_child_by_field(cur, "right") or find_child_by_field(
+            cur, "value",
+        )
+        if left is None or right is None:
+            continue
+        targets = [node_text(c, source) for c in left.named_children] or [
+            node_text(left, source),
+        ]
+        if name not in targets:
+            continue
+        # ``f, err := os.Open(p)`` binds TWO names from ONE call, so the right
+        # side has fewer elements than the left and the whole of it is what
+        # produced ``f``. ``a, b := g(), h()`` has as many, and there the
+        # position decides -- taking the whole text there would report ``h()``
+        # as ``a``'s origin.
+        sources = right.named_children or [right]
+        if len(sources) == len(targets):
+            chosen = sources[targets.index(name)]
+        else:
+            chosen = right
+        best_line = cur.start_point[0]
+        best_text = node_text(chosen, source).strip()
+    return None if best_text is None else (best_text, best_line)
+
+
+def _go_classify_handle_text(text: str) -> Optional[str]:
+    """``io_target_kind`` for an expression that produces a handle, or None.
+
+    One place, so the inline argument and the resolved binding cannot drift
+    into disagreeing about what ``strings.NewReader(s)`` is.
+
+    THE CROSSING KINDS ARE TESTED FIRST AND THE NON-CROSSING ONES LAST, on
+    purpose: a producer list is a substring rule, and when a text somehow
+    names two producers the tie must go to the answer that KEEPS a finding.
+    A wrong ``in_memory`` on a write deletes a sink (the false-all-clear
+    direction); a wrong ``std_stream`` mis-kinds a crossing that is still
+    reported.
+    """
+    if any(s in text for s in _GO_STD_STREAMS):
+        return "std_stream"
+    if any(o in text for o in _GO_FILE_HANDLE_PRODUCERS):
+        return "host_path"
+    if any(p in text for p in _GO_PIPE_PRODUCERS):
+        return "pipe"
+    if any(n in text for n in _GO_NET_STREAM_PRODUCERS):
+        return "net_stream"
+    if any(r in text for r in _GO_IN_MEMORY_PRODUCERS):
+        return "in_memory"
+    if any(d in text for d in _GO_NULL_DEVICES):
+        return "null_device"
+    return None
+
+
+def _go_typed_target_kind(
+    type_name: str, import_aliases: Mapping[str, str],
+) -> Optional[str]:
+    """``io_target_kind`` from a DECLARED type, or None.
+
+    WI-suhug. The last resort of the argument classifier, for a name with no
+    visible binding: a parameter (``w http.ResponseWriter``), or a ``var sb
+    strings.Builder`` taken by address (96 of the 105 ``&ident`` write sites
+    on the six-repo corpus). The type's package alias is resolved through the
+    file's imports to its import-path tail before the table is consulted, so
+    an in-repo type that happens to be spelled ``bytes.Buffer`` under a local
+    ``bytes`` package is not the stdlib's; an unqualified type is in-repo by
+    construction and abstains.
+    """
+    alias, dot, name = type_name.rpartition(".")
+    if not dot:
+        return None
+    import_path = import_aliases.get(alias)
+    if import_path is None:
+        return None
+    return _GO_TYPED_TARGET_KINDS.get((import_path.rsplit("/", 1)[-1], name))
+
+
+def _go_nth_argument_text(arg_list_text: str, index: int) -> Optional[str]:
+    """The ``index``-th top-level argument of a call's argument text, or None.
+
+    Text-level and depth-aware (parentheses, brackets, braces), because the
+    binding hop hands back TEXT (``_go_last_binding``) and the call site's AST
+    is rendered to the same text so the two readers cannot disagree about
+    which argument is which. A string literal containing a comma is not
+    split: quotes are tracked too.
+    """
+    args: list[str] = []
+    depth = 0
+    quote: Optional[str] = None
+    current: list[str] = []
+    for ch in arg_list_text:
+        if quote is not None:
+            current.append(ch)
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "\"'`":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            args.append("".join(current).strip())
+            current = []
+            continue
+        current.append(ch)
+    tail = "".join(current).strip()
+    if tail:
+        args.append(tail)
+    return args[index] if index < len(args) else None
+
+
+def _go_target_argument_of(
+    call_text: str, import_aliases: Mapping[str, str],
+) -> Optional[str]:
+    """The TARGET argument's text when ``call_text`` calls a table member, else None.
+
+    ``tabwriter.NewWriter(os.Stdout, 0, 8, 1, ' ', 0)`` -> ``os.Stdout``. The
+    callee's package alias is resolved through the imports so ``b.NewReader``
+    under ``import b "bufio"`` counts and an unqualified or in-repo
+    ``NewReader`` does not.
+    """
+    head, paren, rest = call_text.partition("(")
+    if not paren or not rest.endswith(")"):
+        return None
+    alias, dot, callee = head.strip().rpartition(".")
+    if not dot:
+        return None
+    import_path = import_aliases.get(alias)
+    if import_path is None:
+        return None
+    index = _GO_TARGET_ARGUMENT_INDEX.get((import_path.rsplit("/", 1)[-1], callee))
+    if index is None:
+        return None
+    return _go_nth_argument_text(rest[:-1], index)
+
+
+def _go_target_kind_from_expression(
+    node: "tree_sitter.Node", source: bytes, expr: str,
+    *,
+    import_aliases: Mapping[str, str],
+    var_types: Optional[Mapping[str, str]] = None,
+    use_line: Optional[int] = None,
+    hops: int = _GO_TARGET_HOP_LIMIT,
+) -> Optional[str]:
+    """``io_target_kind`` for the TEXT of an I/O target argument, or None.
+
+    Shared by every reader of :data:`_GO_TARGET_ARGUMENT_INDEX` -- the wrapper
+    or write call site (WI-lipis, WI-suhug) and the read one binding after the
+    wrapper (WI-vutav) -- so none of them can disagree about what ``f`` is.
+    In order, and each step abstains to the next:
+
+    1. an inline PRODUCER classifies directly (``os.Stdout``, ``os.Open(p)``,
+       ``&bytes.Buffer{}``, ``cmd.StdinPipe()``);
+    2. a call to another table member is followed INTO its target argument
+       (``bufio.NewWriter(f)`` -> ``f``; ``io.LimitReader(&buf, n)`` ->
+       ``&buf``);
+    3. a bare or ``&``-prefixed identifier is followed through its LAST
+       binding in the enclosing function, resolved as of ``use_line`` (the
+       wrapper's line when the caller is a read; WI-vutav's rebinding rule),
+       and the binding's text re-enters at step 1;
+    4. a name with no usable binding is classified by its DECLARED type via
+       the analyzer's ``var_types`` (a parameter, a ``var`` buffer).
+
+    ``hops`` bounds steps 2 and 3 together. Anything still unproven -- an
+    ``io.Writer`` parameter, a struct field, an in-repo constructor -- returns
+    None: INV-zumin's one answer per call site or none, and both directions
+    this stamp serves can remove a finding on a wrong answer.
+    """
+    expr = expr.strip()
+    direct = _go_classify_handle_text(expr)
+    if direct is not None:
+        return direct
+    if hops <= 0:
+        return None
+    inner = _go_target_argument_of(expr, import_aliases)
+    if inner is not None:
+        return _go_target_kind_from_expression(
+            node, source, inner, import_aliases=import_aliases,
+            var_types=var_types, use_line=use_line, hops=hops - 1,
+        )
+    bare = expr[1:] if expr.startswith("&") else expr
+    if not bare.isidentifier():
+        return None
+    found = _go_last_binding(node, source, bare, use_line=use_line)
+    if found is not None:
+        rhs, bound_line = found
+        bound = _go_target_kind_from_expression(
+            node, source, rhs, import_aliases=import_aliases,
+            var_types=var_types, use_line=bound_line, hops=hops - 1,
+        )
+        if bound is not None:
+            return bound
+    declared = (var_types or {}).get(bare)
+    return None if declared is None else _go_typed_target_kind(
+        declared, import_aliases,
+    )
+
+
+def _go_wrapped_handle_kind(
+    node: "tree_sitter.Node", source: bytes, module: str, callee: str,
+    *,
+    import_aliases: Mapping[str, str],
+    var_types: Optional[Mapping[str, str]] = None,
+) -> Optional[str]:
+    """``io_target_kind`` for a call whose target is one of its arguments, or None.
+
+    WI-lipis. Same shape as bash's redirect target (INV-nular): ONE catalogue
+    row whose boundary depends on a per-call-site fact the row cannot see, so
+    the analyzer stamps the discriminator and the consumers read it. WI-suhug
+    pointed it at the WRITE side too: ``fmt.Fprintf(w, ...)`` stamps from
+    ``w`` exactly as ``bufio.NewReader(r)`` stamps from ``r``, and which
+    argument is the target is :data:`_GO_TARGET_ARGUMENT_INDEX`'s to say.
+
+    Returns None for everything not provable: a parameter of an interface
+    type, a struct field, a value from a function this file does not bind.
+    INV-zumin's ruling is that a call site gets ONE answer or NONE, so an
+    unresolved origin stamps nothing and classifies exactly as it did before
+    this existed.
+    """
+    index = _GO_TARGET_ARGUMENT_INDEX.get((module, callee))
+    if index is None:
+        return None
+    args = find_child_by_field(node, "arguments")
+    if args is None:  # pragma: no cover - defensive
+        # A tree-sitter-go ``call_expression`` always carries an ``arguments``
+        # field, so this cannot fire on a well-formed parse. Kept because the
+        # line below would raise on None, and a crash inside an analyzer takes
+        # the whole repo's analysis with it.
+        return None
+    target = _go_nth_argument_text(node_text(args, source).strip()[1:-1], index)
+    if target is None:
+        return None
+    return _go_target_kind_from_expression(
+        node, source, target, import_aliases=import_aliases, var_types=var_types,
+    )
+
+
+def _go_receiver_handle_kind(
+    node: "tree_sitter.Node", source: bytes, receiver: str,
+    import_aliases: Mapping[str, str],
+    *,
+    var_types: Optional[Mapping[str, str]] = None,
+) -> Optional[str]:
+    """``io_target_kind`` for a READ whose receiver was bound to a wrapper call, or None.
+
+    WI-vutav. The wrapper transfers nothing (ADR-0049); the bytes cross at
+    ``reader.ReadString('\\n')``, on a receiver whose type puts the edge in the
+    ``bufio`` slot. Its boundary is still the wrapper's ARGUMENT'S origin, now
+    one binding further away: resolve the receiver's last binding, and when
+    that is a call to a package-qualified member of
+    :data:`_GO_TARGET_ARGUMENT_INDEX` (the alias resolved through the file's
+    imports, so ``b.NewReader`` under ``import b "bufio"`` still counts),
+    classify its target argument exactly as the wrapper site would -- with the
+    identifier hop taken AT THE WRAPPER'S LINE.
+
+    THE RECEIVER'S BINDING MUST BE A TABLE CALL, and this is stricter than the
+    argument classifier on purpose: ``r := NewReader(os.Stdin)`` (an in-repo
+    constructor) may do anything with ``os.Stdin``, so the substring rule that
+    is right for an ARGUMENT'S origin is not applied to a receiver's. Every
+    other shape abstains: a parameter or field receiver (no binding), a
+    binding that is not a call, a package that is not in the table. INV-zumin:
+    one answer per call site or none, and this direction selects a minting
+    boundary.
+    """
+    found = _go_last_binding(node, source, receiver)
+    if found is None:
+        return None
+    rhs, bound_line = found
+    target = _go_target_argument_of(rhs, import_aliases)
+    if target is None:
+        return None
+    return _go_target_kind_from_expression(
+        node, source, target, import_aliases=import_aliases,
+        var_types=var_types, use_line=bound_line,
+    )
 
 
 def _extract_function_reference_edges(
@@ -2295,11 +3040,48 @@ def _extract_function_reference_edges(
                     ))
 
 
+def _registry_type_key(
+    type_name: str,
+    field_type_registry: dict[str, dict[str, str]],
+    import_aliases: dict[str, str],
+    module_path: Optional[str],
+) -> Optional[str]:
+    """The key ``field_type_registry`` holds ``type_name`` under, or ``None``.
+
+    ``field_type_registry`` is built from ANALYSED declarations, so its keys are
+    BARE type names — ``Tester``, never ``caddytest.Tester``. Once receiver typing
+    started preserving the package qualifier (so that external types reach the I/O
+    catalogue at all), every qualified IN-REPO type stopped matching its own entry.
+    Measured on caddy: ``tester := caddytest.NewTester(t)`` then
+    ``tester.Client.Get(proxyURL)`` lost its ``net_send`` tag at two sites, because
+    the chain's first lookup asked for ``caddytest.Tester``.
+
+    THE BARE FALLBACK IS GATED, and the gate is the whole point. Stripping a
+    package prefix off an EXTERNAL type is the collision
+    :func:`_external_package_for_type` exists to prevent: a bare ``Values`` from
+    ``url.Values`` once "absorbed 13 spurious in-edges into one struct, poisoning
+    the centrality ranking". So the bare key is tried only when the qualifier is
+    NOT a definitively out-of-module package — which is exactly the set of cases
+    where the pre-qualifier code looked the bare name up anyway, and leaves the
+    one case where doing so was the known bug.
+    """
+    if type_name in field_type_registry:
+        return type_name
+    if "." not in type_name:
+        return None
+    if _external_package_for_type(type_name, import_aliases, module_path) is not None:
+        return None
+    bare = type_name.split(".")[-1]
+    return bare if bare in field_type_registry else None
+
+
 def _resolve_field_chain(
     operand_node: "tree_sitter.Node",
     source: bytes,
     var_types: dict[str, str],
     field_type_registry: dict[str, dict[str, str]],
+    import_aliases: Optional[dict[str, str]] = None,
+    module_path: Optional[str] = None,
 ) -> str | None:
     """Resolve a chained selector expression to a field type.
 
@@ -2338,10 +3120,12 @@ def _resolve_field_chain(
 
     # Walk through field chain using the registry
     for field_name in segments:
-        fields = field_type_registry.get(current_type)
-        if fields is None:
+        key = _registry_type_key(
+            current_type, field_type_registry, import_aliases or {}, module_path,
+        )
+        if key is None:
             return None
-        current_type = fields.get(field_name)
+        current_type = field_type_registry[key].get(field_name)
         if current_type is None:
             return None
 
@@ -2361,6 +3145,7 @@ def _extract_edges_from_file(
     interface_method_sets: dict[str, set[tuple[str, int, int]]] | None = None,
     method_return_type_registry: dict[str, str] | None = None,
     dot_imports: list[str] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -2384,6 +3169,10 @@ def _extract_edges_from_file(
     the resolver operates on repo-relative paths (e.g., ``pkg/log``)
     instead of full module paths (e.g., ``github.com/example/trivy/pkg/log``).
     """
+    # Every declaration of this file, by position (INV-midag).
+    decl_index = symbols_at(
+        file_symbols if file_symbols is not None
+        else list({s.id: s for s in local_symbols.values()}.values()))
     if import_aliases is None:
         import_aliases = {}
     if resolver is None:
@@ -2403,6 +3192,20 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = make_file_id("go", str(file_path))
+    # The file's pseudo-symbol: src of ``imports`` edges, anchor of
+    # module_attr_refs outside any callable, and (INV-nopoh) anchor of last
+    # resort for a package-level call whose ``var`` has no symbol.
+    file_pseudo_symbol = Symbol(
+        id=file_id,
+        name=file_path.name,
+        kind="module",
+        language="go",
+        path=str(file_path),
+        span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        line_span=1,
+    )
 
     # Extract function-scoped variable-to-type bindings for receiver disambiguation
     scoped_var_types = _extract_go_var_types(
@@ -2446,7 +3249,10 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, local_symbols)
+            current_function = _get_enclosing_function(
+                node, source, local_symbols, file_symbol=file_pseudo_symbol,
+                decl_index=decl_index,
+            )
             if current_function is not None:
                 # Get var_types scoped to the current enclosing function
                 var_types = scoped_var_types.get(current_function.name, {})
@@ -2565,6 +3371,24 @@ def _extract_edges_from_file(
                                             else:
                                                 import_path_hint = full_import_path
                                             receiver_module_hint = import_path_hint
+                        # WI-jikik: a method on a stdlib PACKAGE VARIABLE,
+                        # ``http.DefaultClient.Do(req)``. The root is a
+                        # package, so the field-chain walk below finds no
+                        # type, and the call fell to the ``external`` slot
+                        # where no catalogue row can reach it.
+                        elif (
+                            operand_node is not None
+                            and operand_node.type == "selector_expression"
+                            and callee_name
+                            and (_pv_path := _package_variable_import_path(
+                                operand_node, source, import_aliases,
+                            )) is not None
+                        ):
+                            full_import_path = _pv_path
+                            import_path_hint = (
+                                _strip_module_prefix(_pv_path, module_path)
+                                if module_path else _pv_path
+                            )
                         # Chained field access: r.integration.Notify()
                         # Walk selector chain through field_type_registry
                         # to resolve the receiver type.
@@ -2578,6 +3402,8 @@ def _extract_edges_from_file(
                             resolved_type = _resolve_field_chain(
                                 operand_node, source, var_types,
                                 field_type_registry,
+                                import_aliases=import_aliases,
+                                module_path=module_path,
                             )
                             if resolved_type:
                                 # For cross-package qualified types
@@ -2679,12 +3505,20 @@ def _extract_edges_from_file(
                                     inner_method = node_text(inner_field, source)
                                     recv_type = var_types.get(recv_name, "")
                                     if recv_type:
-                                        qualified = f"{recv_type}.{inner_method}"
+                                        # Both folds: key from a value, then a
+                                        # symbol lookup from a value (WI-doluf).
+                                        qualified = (
+                                            f"{_bare_go_type(recv_type)}"
+                                            f".{inner_method}"
+                                        )
                                         ret_type = method_return_type_registry.get(
                                             qualified
                                         )
                                         if ret_type:
-                                            outer_qualified = f"{ret_type}.{callee_name}"
+                                            outer_qualified = (
+                                                f"{_bare_go_type(ret_type)}"
+                                                f".{callee_name}"
+                                            )
                                             target = local_symbols.get(outer_qualified)
                                             if target is None and outer_qualified in global_symbols:
                                                 candidates = global_symbols[outer_qualified]
@@ -2699,7 +3533,14 @@ def _extract_edges_from_file(
                                                     evidence_type="ast_call",
                                                     origin=PASS_ID,
                                                     origin_run_id=run.execution_id,
-                                                    meta={"call_construct": "chained_return_type"},
+                                                    # INV-tadup: the CONSTRUCT is a method call;
+                                                    # "chained_return_type" names HOW the receiver
+                                                    # type was resolved, which is the
+                                                    # ``resolution_quality`` axis.
+                                                    meta={
+                                                        "call_construct": "method",
+                                                        "resolution_quality": "chained_return_type",
+                                                    },
                                                 ))
                                                 callee_name = None
 
@@ -2780,6 +3621,17 @@ def _extract_edges_from_file(
                             _alias = node_text(operand_node, source)
                             if _alias in var_types:
                                 _slot = receiver_module_hint or "external"
+                                # WI-vutav: what THIS read touches, resolved through the
+                                # receiver's binding; the catalogue row cannot see it.
+                                _meta_b: dict[str, object] = {
+                                    "call_construct": "method", "receiver": "external",
+                                }
+                                _handle_b = _go_receiver_handle_kind(
+                                    node, source, _alias, import_aliases,
+                                    var_types=var_types,
+                                )
+                                if _handle_b:
+                                    _meta_b["io_target_kind"] = _handle_b
                                 dst_id = (
                                     f"go:{_slot}:0-0:{callee_name}:unresolved"
                                 )
@@ -2799,7 +3651,7 @@ def _extract_edges_from_file(
                                     is_resolved=False,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta={"call_construct": "method", "receiver": "external"},
+                                    meta=_meta_b,
                                 ))
                                 callee_name = None  # Already handled
 
@@ -2852,9 +3704,14 @@ def _extract_edges_from_file(
                                 # the slice to concrete implementations.
                                 _iface_confidence = 0.5 if _is_iface_fallback else 0.75
                                 _iface_meta = (
-                                    {"call_construct": "interface_dispatch", "disambiguation_fallback": True}
+                                    # INV-tadup: the construct is a method call. The
+                                    # interface-dispatch PATHWAY is already carried by
+                                    # ``evidence_type="interface_dispatch"`` on this same
+                                    # edge, so naming it again here duplicated one value
+                                    # across two axes.
+                                    {"call_construct": "method", "disambiguation_fallback": True}
                                     if _is_iface_fallback
-                                    else {"call_construct": "interface_dispatch"}
+                                    else {"call_construct": "method"}
                                 )
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -2988,6 +3845,18 @@ def _extract_edges_from_file(
                         # Check global symbols with disambiguation via ListNameResolver
                         else:
                             lookup_result = resolver.lookup(callee_name, path_hint=import_path_hint)
+                            if (
+                                not lookup_result.found
+                                and import_path_hint is None
+                                and func_node.type == "identifier"
+                                and dot_imports
+                            ):
+                                # A bare name the ambiguity guard withheld, in a
+                                # file with dot imports: the dot-imported package
+                                # is the binding (see _go_lookup_through_dot_imports).
+                                lookup_result = _go_lookup_through_dot_imports(
+                                    resolver, callee_name, dot_imports, module_path,
+                                )
                             # INV-fahub: a BARE identifier call (``import_path_hint
                             # is None`` — no package evidence) that resolves only to
                             # a DIFFERENT type's METHOD on weak (ambiguous /
@@ -3052,6 +3921,20 @@ def _extract_edges_from_file(
                                 else:
                                     # Fallback: use "external" as the path
                                     dst_id = f"go:external:0-0:{callee_name}:unresolved"
+                                _meta: dict[str, object] = {
+                                    "call_construct": "method",
+                                }
+                                # WI-lipis: what this call site actually
+                                # touches, where the catalogue row cannot say.
+                                _handle = _go_wrapped_handle_kind(
+                                    node, source,
+                                    (unresolved_path or "").rsplit("/", 1)[-1],
+                                    callee_name,
+                                    import_aliases=import_aliases,
+                                    var_types=var_types,
+                                )
+                                if _handle:
+                                    _meta["io_target_kind"] = _handle
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=dst_id,
@@ -3061,7 +3944,7 @@ def _extract_edges_from_file(
                                     is_resolved=False,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta={"call_construct": "method"},
+                                    meta=_meta,
                                 ))
                             # WI-vovum / WI-mafik: bare-identifier call whose
                             # name was dot-imported (``import . "strings"`` +
@@ -3110,7 +3993,10 @@ def _extract_edges_from_file(
         # AST: keyed_element -> literal_element (key) : literal_element (value)
         # The value's child may be an identifier or selector_expression.
         elif node.type == "keyed_element":
-            current_function = _get_enclosing_function(node, source, local_symbols)
+            current_function = _get_enclosing_function(
+                node, source, local_symbols, file_symbol=file_pseudo_symbol,
+                decl_index=decl_index,
+            )
             if current_function is not None:
                 # Get the value part: the last literal_element child
                 lit_elems = [c for c in node.children if c.type == "literal_element"]
@@ -3186,17 +4072,6 @@ def _extract_edges_from_file(
         if alias not in ("_", ".")
     }
     if attr_imports:
-        file_pseudo_symbol = Symbol(
-            id=file_id,
-            name=file_path.name,
-            kind="module",
-            language="go",
-            path=str(file_path),
-            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run.execution_id,
-            line_span=1,
-        )
         emit_module_attribute_refs(
             tree.root_node,
             source,
@@ -4511,6 +5386,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         return AnalysisResult(
             skipped=True,
             skip_reason="go tree-sitter grammar not available",
+            skip_reason_code=DEPENDENCY_UNAVAILABLE,
         )
 
     start_time = time.time()
@@ -4529,6 +5405,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             run=run,
             skipped=True,
             skip_reason=f"Failed to load Go parser: {e}",
+            skip_reason_code=PASS_CRASHED,
         )
 
     # Read go.mod for module path — used to strip module prefix from
@@ -4595,6 +5472,13 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     for analysis in file_analyses.values():
         for key, ret_type in analysis.method_return_types.items():
             method_return_type_registry.setdefault(key, ret_type)
+    # WI-lalot: the library rows, merged AFTER the analysed ones so an in-repo
+    # declaration always wins. `analyze_go` keeps its own aggregation rather than
+    # using the base class's, so the merge has to happen here too -- go is the
+    # language whose inert rows (net.Listener.Accept, exec.Cmd.Start) this
+    # catalogue exists for.
+    for key, ret_type in load_library_signatures("go").items():
+        method_return_type_registry.setdefault(key, ret_type)
 
     # Aggregate interface_method_sets across all files for the ambiguity
     # guard's interface-dispatch preference (go.py ambiguity guard).
@@ -4620,6 +5504,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             interface_method_sets=all_interface_method_sets,
             method_return_type_registry=method_return_type_registry,
             dot_imports=analysis.dot_imports,
+            file_symbols=analysis.symbols,
         )
 
         # ADR-0015 Tier 1: annotate call edges with dataflow access modes
@@ -4767,8 +5652,9 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
-    # WI-potun: emit build_tag_alternative_of edges for symbols that have
-    # the same qualified name but live in different build-tag-gated files.
+    # WI-potun: emit ``references`` edges (meta ref_construct
+    # ``build_tag_alternative``) between symbols that have the same
+    # qualified name but live in different build-tag-gated files.
     # This links e.g. Labels.Get in labels_stringlabels.go to Labels.Get in
     # labels_dedupelabels.go, unifying centrality and letting slice/explain
     # surface "this symbol has build-tag alternates".
@@ -4796,6 +5682,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                         src=a.id,
                         dst=b.id,
                         edge_type="references",
+                        evidence_type="naming_convention",
                         line=a.span.start_line if a.span else 0,
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,

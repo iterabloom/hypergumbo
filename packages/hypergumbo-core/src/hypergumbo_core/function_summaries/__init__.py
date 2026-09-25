@@ -18,8 +18,12 @@ How It Works
    propagates to the return value, mutates another parameter, or is
    sanitized.
 
-4. Functions without summaries use **default-conservative** behavior:
-   all parameters are assumed to flow to the return value.
+4. Functions without summaries are treated as UNKNOWN, not as propagating.
+   :func:`get_default_summary` expresses the conservative shape (every
+   parameter flows to the return value) but has no production caller —
+   applying it would make an empty catalogue change behaviour, which is the
+   opposite of what an empty catalogue should do. The one production consumer
+   is ``taint._summary_terminates``, a terminate/don't-terminate test.
 
 YAML Format
 -----------
@@ -28,7 +32,7 @@ See ``function_summaries/*.yaml`` files and ADR-0017 §4b for the schema.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional
 
@@ -75,7 +79,20 @@ class FunctionSummary:
         param_to_return: Maps param index → True if param flows to return.
         param_to_self: Maps param index → True if param flows to self/receiver.
         mutates_self: Whether the function mutates its receiver.
-        side_effect: Whether the function has side effects (I/O, logging).
+        side_effect: The POSITIVE marker that this callee is a modelled dead
+            end: the taint stops here and nothing derived from it comes back.
+            Named for the shape that dominates the catalogues — ``fmt.Printf``,
+            ``console.log``, ``os.Remove`` — but the property
+            ``_summary_terminates`` actually reads is "modelled, and it ends
+            here", NOT "performs I/O". ``builtins.hasattr`` carries it while
+            doing no I/O at all, and that is correct.
+
+            It cannot be inferred from ``param_to_return == {}``, which is why
+            it exists: ``builtins.list.pop`` has an empty ``param_to_return``
+            and returns its RECEIVER'S content, a flow no field here can
+            express. Absent the marker, an empty mapping means "unexpressed",
+            not "nothing comes out" — the conservative reading, since a false
+            terminating verdict deletes a real finding.
         sanitizes: List of sanitization effects.
         callback: Optional callback flow description.
     """
@@ -87,6 +104,13 @@ class FunctionSummary:
     side_effect: bool = False
     sanitizes: list[SanitizeEffect] = field(default_factory=list)
     callback: Optional[CallbackFlow] = None
+    #: True when this entry came from the USER'S channel
+    #: (``$XDG_CONFIG_HOME/hypergumbo/function_summaries.d/``), ADR-0047
+    #: ruling 10. Stamped at LOAD, never read from the YAML, so a file cannot
+    #: claim to be shipped. A user-supplied TERMINATING summary closes a branch
+    #: that is really open and DELETES a real finding, so verify_claims has to
+    #: be able to say whose word a clean answer rests on.
+    user_supplied: bool = False
 
 
 # Conservative default: all params flow to return
@@ -134,13 +158,28 @@ def load_function_summaries(
         _SUMMARY_CACHE[cache_key] = result
         return result
 
-    for yaml_path in sorted(search.glob("*.yaml")):
+    # ADR-0047 ruling 10 (WI-sofov). The user's entries load AFTER the shipped
+    # ones so they win on a name collision, and they are stamped
+    # ``user_supplied`` at merge rather than read from the file -- a summary
+    # cannot declare itself vouched-for. Only when the DEFAULT directory is
+    # being loaded, so an explicit ``search_dir`` (tests, and any caller asking
+    # about one particular tree) still means exactly that.
+    paths = sorted(search.glob("*.yaml"))
+    user_paths: "list[Path]" = []
+    if search_dir is None:
+        from ..catalogue_home import user_channel_files
+        user_paths = user_channel_files("function_summaries")
+        paths = [*paths, *user_paths]
+
+    for yaml_path in paths:
         with open(yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         if not data or "summaries" not in data:
             continue
         for entry in data["summaries"]:
             summary = _parse_summary(entry)
+            if yaml_path in user_paths:
+                summary = replace(summary, user_supplied=True)
             result[summary.function] = summary
             # Also index by short name (last component)
             if "." in summary.function:

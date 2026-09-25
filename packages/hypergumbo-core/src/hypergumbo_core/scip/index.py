@@ -78,15 +78,41 @@ Edge cases intentionally handled by skip rather than raise:
   with no trailing descriptor) — skipped. The Phase 1 parser raises on
   this input, so the try/except handles it uniformly with the malformed
   case above.
+* Local symbols (``local <id>``) — skipped, and deliberately (WI-jikok /
+  INV-kukiz, owner ruling 2026-09-18). A SCIP local id is an index into
+  its DOCUMENT, not an identifier: ``local 0`` is a different binding in
+  every file, and rust-analyzer emits one per ``let``, parameter and
+  pattern binding. Minting them did two wrong things at once. The
+  Symbol's name was the bare index (``"1"``, ``"102"``) and its
+  ``stable_id`` was ``sha256("local 1")``, so on a 16-file crate 498 of
+  1255 Symbols shared an id (39.7%); and the Rust backend's edge resolver
+  is one index-wide map keyed on the raw moniker, so a read of ``local 0``
+  in one file resolved to the ``local 0`` of whichever file was mapped
+  last — 329 of 455 local-pointing edges crossed files, 21.2% of every
+  edge in the artifact, each asserting a reference that cannot exist.
+  Those 500 nodes were 75% of the backend's output and, carrying the
+  registry's Terraform ``local`` kind, passed the key-symbol predicate
+  and outranked real functions in the sketch. The ruling follows every
+  other backend: py.py, kotlin.py, go.py and the tree-sitter rust.py all
+  READ function-local bindings (for receiver typing and constant
+  resolution) and mint nothing for them, because a binding no other file
+  can name is not part of a behavior map. The sibling shims
+  :mod:`.calls` and :mod:`.edges` apply the same predicate
+  (:func:`~hypergumbo_core.scip.descriptor.is_local_symbol`) to edge
+  endpoints, so the rule holds for a library caller that supplies no
+  resolver. Its parity-side consequence — the remaining SCIP Symbols
+  carry ``sha256(moniker)``, an identity the tree-sitter arm never
+  shares — is WI-gojum's, not this module's.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, List
 
 from ..analyze.base import _short_sha256, make_symbol_id
 from ..ir import Span, Symbol
 from ._generated import scip_pb2
-from .descriptor import DescriptorKind, parse_scip_symbol
+from .descriptor import DescriptorKind, is_local_symbol, parse_scip_symbol
 
 
 _ROLE_DEFINITION = 0x01
@@ -99,8 +125,126 @@ _KIND_MAP: Dict[DescriptorKind, str] = {
     DescriptorKind.MACRO: "macro",
     DescriptorKind.TYPE_PARAMETER: "type_parameter",
     DescriptorKind.PARAMETER: "parameter",
-    DescriptorKind.META: "meta",
+    # INV-lagot: SCIP's META descriptor (the ``:`` suffix) is an encoding
+    # category, not a source-language construct, so ``"meta"`` could never be
+    # a registered Symbol.kind under ADR-0027's axiom. It maps to the
+    # registry's declared catch-all instead of inventing a value.
+    #
+    # NOT folded into ``attribute``, which the registry defines as "Attribute
+    # declaration (Python class attribute, etc.)" — a data member, not what
+    # SCIP means here. RE-EVALUATION TRIGGER: zero META descriptors were
+    # observed in rust-analyzer output when this was measured (681
+    # SymbolInformation entries on aardvark-dns: 500 local, 80 method, 48
+    # term, 25 type, 18 namespace, 10 type_parameter, 0 parameter, 0 meta).
+    # The first observed META instance should be inspected and given a
+    # specific kind if it has one.
+    DescriptorKind.META: "declaration",
 }
+
+# ---------------------------------------------------------------------------
+# WI-gapup / ADR-0057 §7: kind from the producer's declaration, else the chain
+# ---------------------------------------------------------------------------
+#
+# ``_KIND_MAP`` above reads only the LEAF descriptor's suffix, and SCIP's
+# ``().`` suffix (DescriptorKind.METHOD) covers a free function as well as a
+# method — so every free function the SCIP arm emitted was ``kind="method"``
+# (52 of 52 on aardvark-dns), and every enum variant, a ``#`` TYPE nested in a
+# TYPE, was a ``class``. Two sources of truth were being ignored:
+#
+# 1. ``SymbolInformation.kind``. rust-analyzer sets it on every global
+#    definition (169 of 169 on the recorded aardvark-dns index: Function,
+#    Method / StaticMethod / TraitMethod, Field, EnumMember, Struct, Enum,
+#    Trait, TypeAlias, Constant, StaticVariable, Module). That is the
+#    PRODUCER'S OWN claim about the construct and it wins. ``_SCIP_KIND_MAP``
+#    maps the kinds we have a registered counterpart for; it is deliberately
+#    NOT total over SCIP's 70-odd members — an unmapped kind (Axiom, Lemma,
+#    Quasiquoter, ...) falls through to rule 2 rather than minting a guess.
+#    ``EnumMember`` lands as ``field``, the tree-sitter Rust arm's deliberate
+#    choice for a variant (WI-duguk); whether a registered variant kind should
+#    exist is an ADR-0027 question this module does not decide. ``Module``
+#    stays ``namespace`` for the same reason (module-vs-namespace is not this
+#    map's call). ``Constant`` is the registry's generic ``constant``: SCIP is
+#    language-agnostic and so is this table.
+#
+# 2. The descriptor CHAIN, for an emitter that leaves ``kind`` unset. A METHOD
+#    or TERM leaf is placed by its nearest ancestor that is not a
+#    TYPE_PARAMETER: under a TYPE it is a method / field, otherwise a
+#    function / variable. The type-parameter skip is not a nicety —
+#    rust-analyzer spells an impl target as one (``impl#[Counter]increment().``
+#    parses as TYPE impl, TYPE_PARAMETER Counter, METHOD increment), and
+#    reading the immediate parent would have called 26 of 27 methods free
+#    functions. A nested TYPE stays ``class``: in scip-python ``Outer#Inner#``
+#    is a nested class, and only a DECLARED EnumMember is a variant.
+#
+# Both maps are held on the Symbol.kind axis by test_scip_kind_map_conformance.
+
+
+def symbol_information_kind_values() -> Dict[str, int]:
+    """``SymbolInformation.Kind`` member name -> value, via the enum descriptor.
+
+    The generated module has no type stubs, so a direct attribute access is
+    a strict-typing error; going through the descriptor's ``keys()`` /
+    ``Value()`` is the same enum, typed honestly as ``Any``.
+    """
+    generated: Any = scip_pb2  # no stubs: every member is Any from here on
+    kind_enum = generated.SymbolInformation.Kind
+    return {name: int(kind_enum.Value(name)) for name in kind_enum.keys()}
+
+
+_KIND_VALUE = symbol_information_kind_values()
+_SCIP_KIND_MAP: Dict[int, str] = {
+    _KIND_VALUE[name]: kind
+    for name, kind in (
+        ("Function", "function"),
+        ("Method", "method"),
+        ("StaticMethod", "method"),
+        ("TraitMethod", "method"),
+        ("AbstractMethod", "method"),
+        ("ProtocolMethod", "method"),
+        ("PureVirtualMethod", "method"),
+        ("Constructor", "constructor"),
+        ("Field", "field"),
+        ("Property", "property"),
+        ("EnumMember", "field"),
+        ("Constant", "constant"),
+        ("StaticVariable", "variable"),
+        ("Variable", "variable"),
+        ("Struct", "struct"),
+        ("Enum", "enum"),
+        # The abstract-type family is mapped WHOLE. SCIP declares Protocol
+        # beside Trait and Interface, and omitting it meant a Swift or
+        # Objective-C protocol indexed by SCIP never reached the `protocol`
+        # kind at all -- the partial-family enumeration that
+        # test_no_language_agnostic_module_hand_rolls_a_partial_abstract_family
+        # exists to catch, and the reason it was catching this file.
+        ("Trait", "trait"),
+        ("Interface", "interface"),
+        ("Protocol", "protocol"),
+        ("Class", "class"),
+        ("TypeAlias", "type_alias"),
+        ("Module", "namespace"),
+        ("Namespace", "namespace"),
+        ("Package", "package"),
+        ("Macro", "macro"),
+        ("Parameter", "parameter"),
+        ("TypeParameter", "type_parameter"),
+    )
+}
+
+
+def _kind_from_chain(descriptors: "tuple[Any, ...]") -> str:
+    """Rule 2 above: place a METHOD / TERM leaf by its nearest non-type-parameter ancestor."""
+    leaf = descriptors[-1]
+    ancestor = next(
+        (d for d in reversed(descriptors[:-1]) if d.kind is not DescriptorKind.TYPE_PARAMETER),
+        None,
+    )
+    under_type = ancestor is not None and ancestor.kind is DescriptorKind.TYPE
+    if leaf.kind is DescriptorKind.METHOD:
+        return "method" if under_type else "function"
+    if leaf.kind is DescriptorKind.TERM:
+        return "field" if under_type else "variable"
+    return _KIND_MAP[leaf.kind]
 
 
 def _span_from_range(range_array: "list[int]") -> Span:
@@ -133,37 +277,61 @@ def _span_from_range(range_array: "list[int]") -> Span:
 def _resolve_language(doc: scip_pb2.Document) -> str:
     """Normalize ``Document.language`` to a lowercase hypergumbo language.
 
-    SCIP emitters set ``Document.language`` to strings like ``"Python"``
-    (scip-python), ``"Rust"`` (rust-analyzer), or a lowercase form.
-    Hypergumbo analyzers use lowercase identifiers across the board, so
-    we flatten here. An empty language field becomes ``"unknown"``
-    rather than an empty string so downstream ``id`` construction never
+    SCIP emitters set ``Document.language`` to strings like ``"Rust"``
+    (rust-analyzer) or a lowercase form; hypergumbo analyzers use lowercase
+    identifiers across the board, so we flatten here. A producer may also
+    leave the field EMPTY — scip-python 0.6.6 does, on every document
+    (WI-nanom) — and until this fallback that landed every one of its
+    records in language ``"unknown"``, which the merge pass keys on, so
+    nothing could ever pair with the ``python`` arm. The file extension is
+    the backend-neutral answer (the taxonomy's :func:`get_language`, the
+    same lookup discovery uses); ``"unknown"`` is kept only when neither
+    the producer nor the extension says, so ``id`` construction never
     produces a malformed ``:filename:...`` prefix.
     """
     raw = doc.language or ""
-    return raw.lower() if raw else "unknown"
+    if raw:
+        return raw.lower()
+    from ..taxonomy import get_language  # local: taxonomy is heavy and this module is not
+
+    return get_language(Path(doc.relative_path)) or "unknown"
 
 
-def _name_and_kind(scip_sym: Any) -> "tuple[str, str]":
-    """Pick the (name, kind) pair for a parsed :class:`ScipSymbol`.
+def _name_and_kind(scip_sym: Any, declared_kind: int = 0) -> "tuple[str, str]":
+    """Pick the (name, kind) pair for a parsed, GLOBAL :class:`ScipSymbol`.
 
-    For local symbols (``local <id>``) we return the local id as the
-    name and ``"local"`` as the kind; those survive translation so
-    later link passes that key off SCIP symbol strings can still find
-    them. For fully qualified symbols we use the last descriptor in the
-    chain — SCIP puts the most specific piece last, so for
-    ``module/Class#method().`` the last descriptor is ``method`` with
-    the METHOD suffix.
+    The name is the last descriptor's — SCIP puts the most specific piece
+    last, so for ``module/Class#method().`` it is ``method``. The kind is the
+    producer's declared ``SymbolInformation.kind`` when :data:`_SCIP_KIND_MAP`
+    knows it, else the descriptor chain's placement (WI-gapup; see the
+    comment block above the map for why the leaf suffix alone was wrong on
+    52 of 52 free functions and 9 of 9 enum variants).
+
+    Local symbols never reach here: :func:`scip_index_to_symbols` skips
+    them on the raw string (see the module docstring). Until WI-jikok this
+    function returned ``(local_id, "local")`` for them — a name with no
+    lexical content under the registry's Terraform ``local`` kind. A local
+    handed to it now has no descriptors and takes the defensive branch.
     """
-    if scip_sym.is_local:
-        return scip_sym.local_id, "local"
     if not scip_sym.descriptors:  # pragma: no cover
         # Defensive: parse_scip_symbol already rejects a header with
-        # zero descriptors. Kept as a guard against a future parser
-        # regression that would otherwise hand us an invalid ScipSymbol.
+        # zero descriptors, and the caller filters locals (the other
+        # descriptor-less shape) before parsing. Kept as a guard against
+        # a future parser regression.
         return "", "unknown"
     last = scip_sym.descriptors[-1]
-    return last.name, _KIND_MAP.get(last.kind, "unknown")
+    declared = _SCIP_KIND_MAP.get(declared_kind)
+    if declared is not None:
+        return last.name, declared
+    # INV-lagot: the chain rule bottoms out in ``_KIND_MAP[leaf.kind]``, which
+    # was ``.get(last.kind, "unknown")`` and minted a fourth unregistered
+    # kind. The fallback is unreachable and always was: DescriptorKind is a
+    # closed Enum, every producer in ``descriptor.py`` constructs from it,
+    # and the map is total over it — a totality held by
+    # test_scip_kind_map_conformance. A direct subscript is the honest
+    # expression of that, and a KeyError on a future ninth member is louder
+    # and more truthful than silently minting a kind nothing describes.
+    return last.name, _kind_from_chain(scip_sym.descriptors)
 
 
 def _build_meta(sym_info: scip_pb2.SymbolInformation) -> Dict[str, Any]:
@@ -202,11 +370,15 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
             occ = def_occ.get(sym_info.symbol)
             if occ is None:
                 continue
+            if is_local_symbol(sym_info.symbol):
+                # A function-local binding is not part of the map — see
+                # the module docstring (WI-jikok / INV-kukiz).
+                continue
             try:
                 parsed = parse_scip_symbol(sym_info.symbol)
             except ValueError:
                 continue
-            name, kind = _name_and_kind(parsed)
+            name, kind = _name_and_kind(parsed, sym_info.kind)
             if not name:  # pragma: no cover
                 # Defensive: only reachable if _name_and_kind's empty-
                 # descriptor guard fires, which parse_scip_symbol already
@@ -225,10 +397,13 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
                     path=doc.relative_path,
                     span=span,
                     origin="scip",
-                    # INV-hunup: canonical sha256 stable_id. The SCIP moniker
-                    # (sym_info.symbol) is a globally-stable identity, so hashing
-                    # it yields a stable canonical id; the raw moniker is
-                    # preserved in meta["scip_symbol"] (_build_meta).
+                    # INV-hunup: canonical sha256 stable_id. A GLOBAL SCIP
+                    # moniker (sym_info.symbol) is a stable identity across the
+                    # index, so hashing it yields a stable canonical id; the raw
+                    # moniker is preserved in meta["scip_symbol"] (_build_meta).
+                    # That sentence was false for locals — ``local 0`` recurs in
+                    # every document — which is one of the two reasons they are
+                    # filtered above rather than hashed here.
                     stable_id=_short_sha256(sym_info.symbol),
                     meta=_build_meta(sym_info),
                 )

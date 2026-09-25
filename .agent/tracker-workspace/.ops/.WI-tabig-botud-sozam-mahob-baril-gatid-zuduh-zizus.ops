@@ -1,0 +1,23 @@
+- op: create  # 593d
+  at: '2026-09-07T05:23:36Z'  # 593d
+  by: agent  # 593d
+  actor: jgstern_agent  # 593d
+  clock: 1  # 593d
+  nonce: 593d  # 593d
+  data:  # 593d
+    kind: work_item  # 593d
+    title: "A @property that returns a QuerySet/manager chain carries django.db.models through the property-getter return (pretix OrderPosition.checkins)"  # 593d
+    status: todo_hard  # 593d
+    priority: 4  # 593d
+    parent:  # 593d
+    tags:  # 593d
+    - taint  # 593d
+    - python  # 593d
+    - analyzer  # 593d
+    - receiver_typing  # 593d
+    isbefore: []  # 593d
+    duplicate_of: []  # 593d
+    not_duplicate_of: []  # 593d
+    pr_ref:  # 593d
+    description: "Filed 2026-09-07 from WI-gulaz's refutation population. pretix rows the FK as `Checkin.position = ForeignKey(..., related_name=\"all_checkins\")` and exposes `OrderPosition.checkins` as a `@property` returning `self.all_checkins(manager='objects')` -- a QuerySet reached through a PROPERTY, not an accessor. WI-gulaz correctly refuses to type `op.checkins` (the class does not own that accessor), and the scan counted the shape: it is the 'accessor NOT owned' cell for OrderPosition (`op.checkins.all()` / `.filter()` / `.order_by()` at pdf.py:732/736, services/checkin.py:1110/1119, ...).\n\nMECHANISM GAP. A property whose body returns a manager/QuerySet-typed expression could be typed by the property-getter return path (WI-gubar's `_build_property_getter_index` already indexes getters for `references` edges): if the getter's single `return` expression is a manager root or a QuerySet-returning chain under the oracle, `<instance>.<property>` carries `django.db.models`. Bounded to a getter with exactly one return of that shape; anything else refuses.\n\nSize first (pretix: count `@property` getters on model classes whose return is an ORM chain) and measure with 0003's method before building."  # 593d
+    fields: {}  # 593d

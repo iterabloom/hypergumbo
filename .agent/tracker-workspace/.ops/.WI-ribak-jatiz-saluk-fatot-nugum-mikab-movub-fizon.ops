@@ -1,0 +1,45 @@
+- op: create  # 6d24
+  at: '2026-09-21T06:30:00Z'  # 6d24
+  by: agent  # 6d24
+  actor: jgstern_agent  # 6d24
+  clock: 1  # 6d24
+  nonce: 6d24  # 6d24
+  data:  # 6d24
+    kind: work_item  # 6d24
+    title: "py.py writes the declared type homes instead of parsing Symbol.signature (ADR-0058 step 7, python arm)"  # 6d24
+    status: todo_hard  # 6d24
+    priority: 2  # 6d24
+    parent:  # 6d24
+    tags:  # 6d24
+    - analysis_quality  # 6d24
+    - axis  # 6d24
+    isbefore: []  # 6d24
+    duplicate_of: []  # 6d24
+    not_duplicate_of: []  # 6d24
+    pr_ref:  # 6d24
+    description: "ADR-0024 step 7 for the callable-signature axis (ADR-0058), which declared the axis and CLOSED its consumer set but migrated nothing.\n\nTHE GAP. Four declared homes for the facts a signature string carries, and Python writes exactly one of them:\n\n  FileAnalysis.method_return_types   (analyze/base.py:227)  <- go, rust, swift, objc     ... python: NO\n  Symbol.meta[\"return_type\"]                                <- java, luau, apex          ... python: NO\n  Symbol.meta[\"parameters\"] / [\"params\"]                    <- 15 analyzers              ... python: YES\n  FileAnalysis.class_field_types     (analyze/base.py:189)  <- csharp, cpp               ... python: NO\n\nInstead `py.py:5881` parses `assigned_class.signature` with `_extract_return_type_name` to seed `var_types`. That is how a Python variable gets a type at all, so it feeds `receiver_type_hint` and therefore the method-call-recovery linker. `py.py:641` cites the correct home in a comment 5,240 lines above the parse: \"THE CONCEPT'S HOME IS FileAnalysis.method_return_types (INV-dihos / WI-kuroj), the language-neutral return-type registry Go and Rust already populate from parsed signatures.\"\n\nDELIVERABLE. Populate `FileAnalysis.method_return_types` and `FileAnalysis.class_field_types` from py.py's Pass 1, where the annotation is already in the AST and does not need re-parsing out of a rendered string. Then re-point `py.py:5881` at the aggregated `_method_return_type_registry` and remove its entry from `LEGACY_VALUE_PARSERS`.\n\nWHY IT IS WORTH DOING BEYOND TIDINESS. It is the only route left for WI-fihun's residual 14: all four residual shapes read a DECLARED TYPE, the owner ruling forbids a tenth signature parse, and a property getter's `-> Store` or a `handler_map: dict[str, Any]` annotation has nowhere else to live. Deriving beats enumerating (WI-lalot's argument in py.py).\n\nSIZE, NOT ASSERTED AS SMALL. python is the largest producer on this field: 36,256 callable surfaces and 1,817 value types out of 38,573 populated slots. The base-analyzer aggregation and the library-signature join already exist, so this is a producer-side port of a shipped pattern to a fifth language, NOT a from-zero build -- but the `var_types` walker it feeds is the most consequential machinery in py.py and the port must not regress it.\n\nACCEPTANCE. `find_undeclared_value_parsers` still returns [] with py.py:5881 REMOVED from LEGACY_VALUE_PARSERS (the closed set shrinks 9 -> 8, which is the direction that proves the migration rather than the declaration). A survey diff showing receiver-typing recall did not fall.\n\nNOT ASSERTED: that the other three languages' return-type parsers (kotlin x2, js_ts, dart, csharp) port the same way -- each has its own home question and files on its own evidence. This row is python."  # 6d24
+    fields: {}  # 6d24
+- op: update  # cf5a
+  at: '2026-09-21T06:30:31Z'  # cf5a
+  by: agent  # cf5a
+  actor: jgstern_agent  # cf5a
+  clock: 2  # cf5a
+  nonce: cf5a  # cf5a
+  set: {}  # cf5a
+  add:  # cf5a
+    isbefore: [WI-fihun-pumik-pugit-kapoj-gijop-sonab-taluv-putuk]  # cf5a
+- op: update  # 0930
+  at: '2026-09-21T07:26:32Z'  # 0930
+  by: agent  # 0930
+  actor: jgstern_agent  # 0930
+  clock: 3  # 0930
+  nonce: '0930'  # 0930
+  set:  # 0930
+    status: done  # 0930
+- op: discuss  # a5ad
+  at: '2026-09-21T07:26:33Z'  # a5ad
+  by: agent  # a5ad
+  actor: jgstern_agent  # a5ad
+  clock: 4  # a5ad
+  nonce: a5ad  # a5ad
+  message: "DONE. PR #1117, merged c9652b836e.\n\nTHE ACCEPTANCE TEST THIS ROW SET ITSELF, re-run on the merged tree rather than carried from the PR:\n  len(LEGACY_VALUE_PARSERS)        -> 8   (was 9 at ADR-0058's declaration)\n  py.py still in the closed set?   -> False\n  find_undeclared_value_parsers(.) -> []\n  _extract_return_type_name in py.py -> 0 occurrences (deleted)\n  py.py:395  reads  (symbol.meta or {}).get(\"return_type\")\n  py.py:3157 / :3273 stamp meta[\"return_type\"] = ast.unparse(...) at both emit sites\nThe set shrinking is the point: it distinguishes a migration from a declaration.\n\nTHE ROW'S OWN PRESCRIBED FIX WAS WRONG, and I wrote it. It said \"populate FileAnalysis.method_return_types and FileAnalysis.class_field_types from py.py's Pass 1\". py.py has its OWN `FileAnalysis` (py.py:2181) -- a different dataclass from the tree-sitter base's, carrying NEITHER field -- and, decisively, it never reaches the core linker that needs the same fact. The home that travels is `Symbol.meta[\"return_type\"]`: a registered meta key (axis_meta_keys.py:1082) that java, luau and apex already populate, and whose sibling `inferred_return_type` names Python as an intended producer. ADR-0058's table is amended in place to say so, because it would have sent the next reader the same wrong way. I derived that fix yesterday from the ADR without checking the class -- rule 2, on my own row.\n\nEQUIVALENCE MEASURED BEFORE WRITING CODE: over 33,740 functions in this repository the AST-derived return type and the signature parse I was about to retire agreed on EVERY one, 0 disagreements. It holds because WI-hopiz made display-mode truncation preserve the return type rather than cut it off. So this is a structural move, not a behaviour change.\n\nSPLIT OF RESPONSIBILITY: the producer records the declared type VERBATIM (`Optional[Foo]` included); the narrowness -- simple identifiers only -- stays the consumer's policy. Neither widened nor narrowed, and both halves are pinned by tests, including a DIFFERENCE arm that renders every signature without its return type and shows the inference is unaffected.\n\nSURVEY DIFF (fihun_after -> ribak_after):\n  method-call-recovery edges   62 -> 62, IDENTICAL set (0 lost, 0 gained)\n  receiver_type_hint          809 -> 810 (0 lost)\n  meta[\"return_type\"]           4 -> 31,932\n  resolved calls, span-insensitive: 119,591 -> 119,710, 3 lost -- and all 3 are the\n    deleted function's own edges (its call site, plus rsplit and isidentifier)\n\nA MEASUREMENT TRAP WORTH THE NEXT READER'S TIME: the FIRST diff read 1,075 resolved-call losses, which looks like a serious regression. They were py.py symbols whose line SPANS shifted because this change adds ~30 lines above them, churning their ids. Comparing span-insensitively gives 3. An id that embeds a span is not a stable key across an edit to the same file.\n\nVERIFICATION: full affected slice 22,214 passed / 0 failed -- including four files the REGENERATED manifest newly selected (BRANCHES_test_python_ast_analysis.py among them) that the pre-change chunk split did not cover; a green run on the stale split would have looked complete. mypy strict ratchet 667 = baseline. Ruff clean. All 18 pre-commit gates. Every added line covered.\n\nWHAT THIS DOES NOT CLAIM.\n  - class_field_types is STILL unwritten by python. This row moved the RETURN TYPE only, which is the fact py.py:5881 parsed. The value_type half belongs to method_call_recovery.py:209, a core linker, and there is NO registered meta key for a field's declared type -- declaring one is ADR-0024 creation practice and a separate argument.\n  - The remaining EIGHT parsers are untouched: csharp x2, kotlin x2, js_ts, dart, jackson_dispatch, method_call_recovery. Each is its own language's arm and files on its own evidence.\n  - Recall on OTHER repositories was not measured. One python-heavy corpus."  # a5ad

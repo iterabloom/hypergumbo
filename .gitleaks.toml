@@ -69,10 +69,14 @@ paths = [
 # credential pasted into a discussion thread.
 #   apiv2.NewAPI   -- a Go identifier quoted in an INV's op-log
 #   L2-normalized. -- prose in the embeddings module docstring
+#   prohibited_sink_zone= -- the keyword after `source_taint="host_secret",` in
+#                    verify-claims test fixtures; the rule reads `secret", ` as a
+#                    key and the next token as its value
 [[allowlists]]
 description = "Benign strings misreported as generic API keys"
 regexTarget = "secret"
 regexes = [
     '''^apiv2\.NewAPI$''',
     '''^L2-normalized\.$''',
+    '''^prohibited_sink_zone=$''',
 ]

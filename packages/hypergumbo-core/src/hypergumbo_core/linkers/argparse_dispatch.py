@@ -65,6 +65,7 @@ import time
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_source_bytes
 
 PASS_ID = make_pass_id("argparse-dispatch-linker")
 
@@ -186,7 +187,7 @@ def argparse_dispatch_linker(ctx: LinkerContext) -> LinkerResult:
 
     for file_path in find_non_test_files(ctx.repo_root, patterns=["*.py"]):
         try:
-            source = file_path.read_bytes()
+            source = read_source_bytes(file_path)
         except (OSError, IOError) as e:  # pragma: no cover
             files_skipped += 1
             run.record_failed_file(
@@ -246,6 +247,8 @@ def argparse_dispatch_linker(ctx: LinkerContext) -> LinkerResult:
                         origin_run_id=run.execution_id,
                         evidence_type="ast_call_direct",
                         meta=edge_meta,
+                        # derived-from endpoints: the site's enclosing symbol plus a handler-name
+                        #   match; the name is in meta
                         derived_from=[enclosing.id, handler_sym.id],
                     ),
                 )

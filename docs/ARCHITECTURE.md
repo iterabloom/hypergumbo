@@ -14,20 +14,20 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **309** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 77 core, 4 CLI, 33 tracker)
-- **40772** symbols (functions, classes, methods)
-- **143898** edges by type:
-  - calls: 75210
-  - contains: 37583
-  - imports: 12491
-  - instantiates: 10915
-  - references: 4969
-  - module_attr_ref: 1328
-  - other: 1402
+- **338** Python modules (140 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 96 core, 4 CLI, 36 tracker)
+- **48937** symbols (functions, classes, methods)
+- **193199** edges by type:
+  - calls: 110788
+  - contains: 44875
+  - imports: 15492
+  - instantiates: 11721
+  - references: 7122
+  - module_attr_ref: 1667
+  - other: 1534
 
 ## Package Architecture
 
-The codebase is a Python monorepo with seven packages arranged in a strict
+The codebase is a Python monorepo with eight packages arranged in a strict
 dependency hierarchy. The separation enforces layering: language analyzers
 depend on core but not on each other, and the tracker is fully independent.
 
@@ -35,8 +35,8 @@ depend on core but not on each other, and the tracker is fully independent.
                        hypergumbo (meta-package)
                 /       |       |        \
                v        v       v         v
-  lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer
-  (46 analyzers)  (38 analyzers)  (41 analyzers)   (5 SCIP backend)
+  lang-mainstream  lang-common  lang-extended1  lang-rust-analyzer  lang-scip-python
+  (47 analyzers)  (38 analyzers)  (41 analyzers)   (5 SCIP backend)   (4 SCIP backend)
                    \      |      |       /
                     v     v      v      v
                        hypergumbo-core
@@ -50,11 +50,12 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 61 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
-| **hypergumbo-lang-mainstream** | 46 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 62 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-lang-mainstream** | 47 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
 | **hypergumbo-lang-rust-analyzer** | SCIP-backed Rust analyzer (alternative to the tree-sitter Rust analyzer in `lang-mainstream`; activates with `--backend rust-analyzer`) |
+| **hypergumbo-lang-scip-python** | SCIP-backed Python analyzer (pyright via scip-python, beside the ast Python analyzer in `lang-mainstream`; executes nothing; activates with `--backend scip-python` or `[backends] scip_python = true`) |
 | **hypergumbo** | Meta-package that installs core + all language packages |
 | **hypergumbo-tracker** | Standalone governance tool with TUI, YAML-backed op-log store, Lamport-clock ordering, and optional embedding-based dedup |
 
@@ -85,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 40772 Symbols + 143898 Edges + UsageContexts           │
+│  Output: 48937 Symbols + 193199 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -103,7 +104,7 @@ Source Files
 │  Tier 2 edge recovery (ADR-3bbb — Protocol / Bridge /       │
 │  Framework / Infrastructure). Match via meta.concepts and       │
 │  symbol metadata across files and language boundaries.          │
-│  61 linkers: P11 / B10 / F32 / I8 (HTTP, JNI, gRPC, React, ...) │
+│  62 linkers: P11 / B10 / F32 / I9 (HTTP, JNI, gRPC, React, ...) │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -208,7 +209,8 @@ A code symbol (function, class, etc.) detected by analysis.
 - `is_example_file`: True if the file is example/demo/sample/tutorial code. Set when the path matches an EXAMPLE_PATTERN.
 - `is_config_file`: True if the file is a dependency/build manifest such as ``pyproject.toml`` / ``package.json`` / ``Cargo.toml``. Within tier 2, ``is_test_file`` / ``is_example_file`` / ``is_config_file`` are mutually exclusive — at most one is True per Symbol.
 - `is_generated_file`: True if the file is generated code. Independent of the role flags above.
-- `is_exported`: True if the symbol is part of the package's public API.
+- `is_exported`: True if the symbol is part of the package's public API, False if a producer measured that it is not, and ``None`` when nobody looked (INV-kubup). Seventeen analyzer modules compute exportedness and ninety-odd do not; while this was ``bool = False`` the artifact could not tell a measured negative from a missing rule, and said "not public API" for both. Only a
+- `positive input fills it`: an analyzer's own rule, an export modifier (``pub`` / ``public`` / ``exported``), or a language signal that the symbol is not public at all.
 - `cyclomatic_complexity`: McCabe cyclomatic complexity (decision points + 1). Counts if/elif/else, for, while, except, with, and/or, match/case.
 - `line_span`: Physical line span of the symbol body — ``end_line - start_line + 1``, INCLUDING blank and comment lines. This is NOT source-lines-of-code (SLOC); the spec's "lines of code" / file-level SLOC convention lives in ``profile.languages[*].loc``. Renamed from ``lines_of_code`` (WI-bozid) so one term no longer names two different counting conventions.
 - `signature`: Function/method signature string, e.g., "(x: int, y: str) -> bool". Only populated for callable symbols (functions, methods). None for classes, etc.
@@ -220,6 +222,10 @@ A code symbol (function, class, etc.) detected by analysis.
 - ```None``. ``# axis`: free-text`` — consumers display the value; no consumer mechanically branches on it.
 - `qualified_name`: ADR-0032 typed sibling field. Fully-qualified name including ancestor containers (e.g. ``module.OuterClass.InnerClass.method``). Replaces the prior ``meta["qualified_name"]`` shape. Per-language separator policy lives in :mod:`hypergumbo_core.qualified_name_axis`; the
 - ```# axis`: qualified-name`` classification keys into that catalog. ``None`` for analyzers whose ``name`` already encodes the fully-qualified form, or for languages that haven't declared a separator policy yet.
+- `attribution`: ADR-0057 §6 provenance slot, set only by the merge pass on
+- `a record folded from two producers`: ``{field: [pass_id, ...]}`` — the producers whose value the scalar slot carries (agreement lists both; a contested field lists the arbitration winner; a field only one producer observed lists that producer). ``None`` on every single-producer record, and then omitted from the dict form, so a one-backend artifact is byte-identical.
+- `alternatives`: ADR-0057 §6, the candidate set: ``{field: [{"value",
+- `"origin"`: [pass_id, ...]}]}`` for the values the scalar slot does NOT carry — present only for contested fields on a merged record. Nothing a producer emitted is discarded (§1); the scalar is the one stamped default (§4) and this is what an opt-in policy reads instead.
 
 ### Edge (`ir.py`)
 A relationship between two symbols (e.g., function calls).
@@ -236,9 +242,11 @@ A relationship between two symbols (e.g., function calls).
 - `evidence_lang`: Language for confidence scoring
 - `is_resolved`: Whether `dst` is a real, in-repo (first-party) symbol node present in the graph (ADR-0037 ruling 1 — resolution names in-repo-ness, NOT target-identification). External/stdlib targets are materialized as `external_symbol` placeholder nodes and are always `is_resolved=False` even though the dst node exists (present-but-synthetic, not absent). The producer-time value (Edge.create default True) is ADVISORY; the finalize edge-resolution sub-step's verdict is what serializes.
 - `dst_ref`: Structured identity for the dst endpoint. Populated on every `is_resolved=False` edge after the finalize edge-resolution sub-step (`None` only for an unidentified dangling reference whose id cannot be parsed); `None` for in-repo (`is_resolved=True`) dsts. Canonical source of truth for external-target identity — the legacy `dst` string is built from the same `ExternalRef`. The fourth cell (`is_resolved=True` + populated `dst_ref`) is never produced (ADR-0037 ruling 1 table).
-- `derived_from`: Symbol (or Edge) IDs the producer consumed to construct this Edge (INV-rukor). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
+- `derived_from`: Symbol (or Edge) IDs of the INPUT records the producer consumed to construct this Edge (INV-rukor) — the records whose presence decided it, e.g. the unresolved edge a linker resolved or the inheritance edges a dispatch walked. Ids the producer MINTED in the same run are not consumed and are left out, so a pass that builds both ends from a file scan records ``[]`` — a positive "consumed nothing", distinct from ``None``. A value naming only the endpoints is legal where the endpoints ARE the whole derivation, and every such linker site declares why in its source (``test_edge_derived_from.py``). Populated by linkers; None for analyzer-originated edges. Axis note: this is PROVENANCE (PROV wasDerivedFrom, ADR-0030), not identity-*of-this-edge*; it carries ``# axis: identity`` because it holds identity *references* to other records (the same rationale as ``src``/``dst``), and it does NOT participate in ``edge_key``/dedup.
 - `confidence`: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
-- `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+- `confidence_source`: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite`` / ``corroborated``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
+- `attribution`: ADR-0057 §6 provenance slot, set only by the merge pass when two producers' edges for one ``(src, dst, edge_type)`` are folded: ``{field: [pass_id, ...]}`` for ``confidence`` / ``evidence_type`` — who holds the value the scalar carries. ``None`` (and omitted from the dict form) on every other edge.
+- `alternatives`: ADR-0057 §6 candidate set on a folded edge: ``{field: [{"value", "origin": [pass_id, ...]}]}`` for the values the scalar does not carry; under ``confidence_source="corroborated"`` both producers' original confidences are here.
 - `rank_score`: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
 - `meta`: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3). An edge that survived a collapse of two or more call sites stores the union of their lines in ``call_lines`` (see :func:`deduplicate_edges`); its absence means the one call site is ``line``.
 
@@ -271,21 +279,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9565.8 | ir.py |
-| `Span` | class | 6410.3 | ir.py |
-| `write_text` | external_symbol | 6224.0 | <external> |
-| `LinkerContext` | class | 3328.4 | registry.py |
-| `Edge.create` | method | 2130.5 | ir.py |
+| `Symbol` | class | 9873.4 | ir.py |
+| `len` | external_symbol | 7585.0 | <external> |
+| `write_text` | external_symbol | 6658.0 | <external> |
+| `Span` | class | 6507.5 | ir.py |
+| `LinkerContext` | class | 3544.1 | registry.py |
+| `get` | external_symbol | 3072.0 | <external> |
+| `load_catalog` | function | 2672.7 | io_boundary.py |
+| `Edge.create` | method | 2365.4 | ir.py |
+| `next` | external_symbol | 2145.0 | <external> |
+| `str` | external_symbol | 2125.0 | <external> |
+| `Path` | external_symbol | 2058.0 | <external> |
+| `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `get` | external_symbol | 1914.0 | <external> |
-| `load_framework_patterns` | function | 1889.1 | framework_patterns.py |
-| `Path` | external_symbol | 1745.0 | <external> |
-| `main` | function | 1587.4 | cli.py |
-| `append` | external_symbol | 1391.0 | <external> |
-| `clear_pattern_cache` | function | 1341.0 | framework_patterns.py |
-| `load_catalog` | function | 1335.5 | io_boundary.py |
-| `Edge` | class | 1309.1 | ir.py |
-| `TreeSitterAnalyzer` | class | 1074.7 | base.py |
+| `main` | function | 1723.8 | cli.py |
+| `append` | external_symbol | 1654.0 | <external> |
 
 ## Pattern System
 
@@ -353,18 +361,22 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 156 YAML catalog files across 8 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 169 YAML catalog files across 10 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
-| Directory | Files | ADR | Loader | Purpose |
-|---|---:|---|---|---|
-| `frameworks/` | 107 | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
-| `dataflow_patterns/` | 20 | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
-| `io_primitives/` | 15 | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
-| `cfg_nodes/` | 5 | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
-| `taint_sources/` | 2 | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
-| `taint_sanitizers/` | 1 | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
-| `function_summaries/` | 4 | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
-| `url_folding/` | 2 | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
+| Directory | Files | User channel | ADR | Loader | Purpose |
+|---|---:|---|---|---|---|
+| `frameworks/` | 107 | `frameworks.d` | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
+| `dataflow_patterns/` | 20 | `dataflow_patterns.d` (`library_patterns` only) | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
+| `io_primitives/` | 15 | `io_primitives.d` | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
+| `io_primitives_overlays/` | 8 | internal | ADR-0047 | `hypergumbo_core.io_boundary` | Community I/O primitive overlays that ship in the wheel and load by default, disclosed as unvouched (ADR-0047). |
+| `cfg_nodes/` | 5 | internal | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
+| `taint_sources/` | 2 | `taint_sources.d` | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
+| `taint_sanitizers/` | 1 | `taint_sanitizers.d` | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
+| `function_summaries/` | 4 | `function_summaries.d` (gated) | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
+| `url_folding/` | 2 | internal | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
+| `library_signatures/` | 5 | `library_signatures.d` | ADR-0006 | `hypergumbo_core.library_signatures` | Per-language library signatures: the type a producing function returns, so a receiver bound to a LIBRARY call can be typed at all. |
+
+**User channel** (ADR-0047 ruling 7) names where a user's own rows for that family live, under `$XDG_CONFIG_HOME/hypergumbo/` — or `internal` when the family describes the *language's* world rather than the *user's* and takes no user input. The fields are required on `CatalogSpec`, so a new family cannot land without answering.
 
 Adding a new catalog category: create the directory, write the loader (or extend an existing one), and register a `CatalogSpec` in `hypergumbo_core.yaml_catalogs.YAML_CATALOGS`. The drift check fails until the registry entry lands.
 
@@ -393,7 +405,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 
 | Script | Description |
 |--------|-------------|
-| `auto-pr` | Push branch, poll CI, merge PR (with vPR queue for offline resilience) |
+| `auto-pr` | `-E` (errtrace) is load-bearing, not tidiness: without it an ERR trap set at |
 | `ci-debug` | CI Debug Helper - Fetch and analyze Forgejo/Gitea Actions run logs |
 | `merge-pr` | Focused recovery script for merging (or closing) existing PRs |
 | `prepare-release` | Prepare a release for human approval. |
@@ -455,28 +467,37 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 |--------|-------------|
 | `agent-notes` | Agent-owned notes CLI for the split state-file design (INV-jofaf facet 2). |
 | `agent-supervisor` | scripts/agent-supervisor — hypergumbo tmux session supervisor (WI-razub). |
+| `audit-autopr-convergence` | audit-autopr-convergence — read the auto-pr convergence ledger (WI-lapap). |
 | `audit-closure-evidence` | audit-closure-evidence — advisory detector for proxy-only closures (WI-dafun). |
 | `audit-stale-timestamps` | Audit embedded timestamps in agent state files vs filesystem mtimes. |
 | `backfill-training-data-cohort-tags.py` | Backfill cohort metadata for v0 training corpus entries. |
 | `bakeoff-map` | bakeoff-map - Chronicle and map hypergumbo bakeoff artifacts. |
 | `build-scip-proto` | Regenerate packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/scip_pb2.py |
 | `build_combined_trend.py` | Build the cross-tranche combined trend report covering ALL completed dogfooding tranches. |
+| `catalogue_gate_terms.py` | Grep terms for ``scripts/smart-test``'s catalogue gate, derived per family. |
 | `check-audit-findings` | Pre-commit lint: every audit-findings doc under ``docs/audits/`` parses |
 | `check-docstring-drift` | Module-docstring drift checker — co-change scan over .py source trees. |
 | `check-edge-type-drift` | Pre-commit lint: ``*EDGE_TYPE*`` sets in packages/ must be subsets |
 | `check-edge-type-runtime-coherence` | Runtime coherence check for the ADR-0023 edge-type axis. |
 | `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
+| `check-forge-text-egress` | Pre-commit / CI lint: every forge-egress site must DECLARE how its |
+| `check-id-construction` | Pre-commit / CI lint: a node or edge id is minted, never hand-spelled |
+| `check-io-boundary-drift` | Pre-commit lint: ``*BOUNDAR*`` sets in the tree must be subsets of the |
+| `check-measurement-frame` | Every measurement record must declare the frame it was produced under. |
 | `check-meta-write-discipline` | Pre-commit / CI lint: a multi-writer meta slot must declare its write |
 | `check-multi-value-field-axis-declaration` | Pre-commit / CI lint: every str-typed field on a core dataclass |
 | `check-mypy-ratchet` | Whole-tree mypy strict ratchet (WI-rokup, Decision D13, INV-zogud). |
 | `check-pass-id-agreement` | Pre-commit / CI lint: catalog pass IDs agree with runtime pass IDs. |
 | `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
+| `check-recorded-producer-input` | CI / on-demand lint: a cross-backend test runs on RECORDED producer input, |
 | `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
 | `check-self-claims` | Run hypergumbo against its OWN security claims and fail if the result drifts |
 | `check-self-claims-drift` | Compare a verify-claims JSON run against the checked-in self-claim snapshot. |
 | `check-self-tree-validation` | Full-suite self-tree validation ratchet gate (WI-jigup). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
+| `check-test-only-reachability` | WI-ratuv gate: a production function reachable only from test modules. |
+| `citation_gate_tests.py` | Tests reachable from a changed file by a STRING literal, for smart-test. |
 | `compare-survey-fingerprints.py` | Diff ``Symbol.fingerprint`` across two surveys of the same tree. |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
 | `coverage-select` | CLI for coverage-directed test selection (shadow phase). |
@@ -493,7 +514,9 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-blind-language-signal.py` | Measure candidate signals for "this language's I/O is structurally invisible". |
 | `measure-call-construct-census.py` | Per-language census of ``meta.call_construct`` on the call edges of a behavior map. |
 | `measure-call-escape-cause.py` | Why does a §3a escape site whose CFG node is a CALL still escape? |
+| `measure-catalogue-exposure.py` | How many catalogue rows can only be matched with evidence the analyzer may not have? |
 | `measure-catalogue-reach.py` | Can each catalogued I/O primitive be REACHED from an idiomatic call site? |
+| `measure-cross-function-reach.py` | How much of the ``cross_function`` blocker could §4a composition actually lift?  (WI-famig) |
 | `measure-ctor-root-typing-ab.py` | A/B the constructor-ROOT receiver typing at the call-emission site. |
 | `measure-ctor-table-derivation-ab.py` | A/B the catalogue-derived constructor table on real repositories. |
 | `measure-dotted-ctor-floor.py` | Real-code floor for WI-lifol: dotted-module constructors that actually feed |
@@ -506,9 +529,11 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-go-import-versioning.py` | Paired A/B for INV-javid: what does binding a ``/vN`` package's real name move? |
 | `measure-go-receiver-typing-gap.py` | Size the Go receiver-typing gap: how many catalogued I/O method calls are unreachable |
 | `measure-io-boundary-construct-ab.py` | A/B the io-boundary module-hint branch's method-construct filter. |
+| `measure-module-matches-arm2-ab.py` | A/B arm 2 of ``_module_matches``: case VALUE against PARENT AGREEMENT. |
 | `measure-narrowing-headroom.py` | How much of the run set could Phase 3 drop, and what forbids dropping it. |
 | `measure-parse-redundancy.py` | Count how many times a single run parses the SAME file. |
 | `measure-playbook-overlap.py` | Measure read-then-injected playbook overlap (waste signal). |
+| `measure-row-inflation.py` | What does a composed walk COST in emitted rows?  (WI-famig step 2) |
 | `measure-sanitizer-module-slot-ab.py` | A/B the sanitizer registration gate's module-slot permit branch. |
 | `measure-survey-phase-split.py` | Attribute a cold ``run_survey`` wall-clock to individual pipeline phases. |
 | `measure-symbol-id-colon-conformance.py` | Count symbol ids whose colon layout makes two parsers disagree (INV-fokik / WI-ribuz). |
@@ -516,6 +541,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-taint-precision.py` | Of the taint flows hypergumbo reports as violations, how many are real? |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
+| `regenerate-backend-agreement-table` | Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``. |
 | `scrub-transcript-corpus` | Backfill: redact known secrets across the whole retained transcript corpus. |
 | `tracker-path-linter` | Scan tracker items for stale file-path references. |
 | `verify-tracker-pr` | Check if a tracker sync PR's ops data is already |
@@ -560,15 +586,24 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 ### Core
 
+- **`hypergumbo_core.analyzer_disclosure`**: Dated per-language declarations of whether an analyzer emits the ex...
 - **`hypergumbo_core.analyzer_identity`**: Compute a hash representing the analyzer's identity (WI-panih).
+- **`hypergumbo_core.arbitration`**: The arbitration policy: precedence among a language's producers (AD...
 - **`hypergumbo_core.audit_findings`**: Parser and validator for the audit-findings document format.
 - **`hypergumbo_core.axis_drift`**: Field-agnostic AST drift detector for axis-bearing canonical regist...
 - **`hypergumbo_core.axis_meta_keys`**: Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
+- **`hypergumbo_core.backend_agreement`**: The backend-agreement instrument (ADR-0057 §5, §10; WI-dajif).
+- **`hypergumbo_core.backend_selection`**: Precedence resolution for per-backend opt-in decisions (ADR-0045 ru...
+- **`hypergumbo_core.backend_trust`**: Per-repository backend trust grants (ADR-0045 rulings 5-8).
 - **`hypergumbo_core.behavior_map_io`**: Deprecation shim: ``behavior_map_io`` was renamed to ``survey_io`` ...
 - **`hypergumbo_core.block_hash`**: AST-block hashing: the change unit for coverage-directed test selec...
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes (registry-derived).
+- **`hypergumbo_core.catalogue_home`**: ADR-0047 rulings 3 and 4 — a findable home for the user's catalogue...
+- **`hypergumbo_core.catalogue_inventory`**: WI-vafit — the inventory a USER needs of what this installation knows.
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
+- **`hypergumbo_core.check_id_construction`**: Static enforcement of ADR-0034's id-construction discipline (WI-vod...
+- **`hypergumbo_core.check_recorded_producer_input`**: Static enforcement of ADR-0057 §12: cross-backend tests run on RECO...
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
 - **`hypergumbo_core.coverage_census`**: Per-test coverage census and test-trajectory search.
@@ -587,17 +622,22 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
 - **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalogue, matching, tagging and map (ADR-0...
+- **`hypergumbo_core.io_boundary_types`**: Canonical registry of I/O-boundary values — the io-boundary axis (A...
+- **`hypergumbo_core.io_primitive_kinds`**: Canonical registry of I/O-primitive kinds — the io-primitive-kind a...
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
+- **`hypergumbo_core.library_signatures`**: DRAFT for WI-lalot — the library-signature catalogue: what a librar...
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
 - **`hypergumbo_core.member_names`**: Single home for the owner/member separator vocabulary in ``Symbol.n...
 - **`hypergumbo_core.meta_write_discipline`**: INV-hazov: static enforcement of ``MetaKeySpec.write_discipline``.
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
+- **`hypergumbo_core.module_key_axis`**: The module-key axis: what may occupy a module slot (ADR-0051).
 - **`hypergumbo_core.multi_value_field_axis`**: Multi-value field axis declaration linter (WI-busij).
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
 - **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
 - **`hypergumbo_core.partial_install_warnings`**: Runtime warnings for partial installations (ADR-0010 Item 8).
 - **`hypergumbo_core.pass_metadata`**: Per-pass metadata lookup for the finalize stage (run-lifecycle:F1 /...
+- **`hypergumbo_core.pass_silence`**: Canonical pass-silence-reason axis (INV-bikaj / INV-hujog, arc T6).
 - **`hypergumbo_core.paths`**: Centralized path handling utilities for hypergumbo.
 - **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
@@ -606,6 +646,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.ranking`**: Symbol and file ranking utilities for hypergumbo output.
 - **`hypergumbo_core.receiver_blind_magnets`**: INV-fahub receiver-blind method-magnet detector (language-agnostic).
 - **`hypergumbo_core.repo_fingerprint`**: Repository fingerprint: spec-defined hash of analyzed code state.
+- **`hypergumbo_core.repo_tier_offer`**: ADR-0047 ruling 9 — the developer-audience offer, and the decision ...
 - **`hypergumbo_core.routes`**: Canonical route accessor — one place to answer "is this symbol a ro...
 - **`hypergumbo_core.runtime_coherence`**: Runtime corpus-based coherence check for the ADR-0023 edge-type axis.
 - **`hypergumbo_core.rust_analyzer_install`**: Installer + availability helpers for the ``rust-analyzer`` binary (...
@@ -615,12 +656,14 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.scip.descriptor`**: Parser for Sourcegraph SCIP symbol strings.
 - **`hypergumbo_core.scip.edges`**: SCIP ``Index`` → hypergumbo ``Edge`` translation shim (WI-mafut Pha...
 - **`hypergumbo_core.scip.index`**: SCIP ``Index`` → hypergumbo ``Symbol`` translation shim (WI-mafut P...
+- **`hypergumbo_core.scip_python_install`**: Availability probes for the scip-python backend (WI-nanom).
 - **`hypergumbo_core.selection.filters`**: Path classification and symbol kind filtering for selection.
 - **`hypergumbo_core.selection.language_proportional`**: Language-proportional symbol selection utilities.
 - **`hypergumbo_core.selection.token_budget`**: Token estimation and budget management for LLM-aware output.
 - **`hypergumbo_core.selection_index`**: Incremental ``block -> tests`` index for coverage-directed test sel...
 - **`hypergumbo_core.selection_log`**: Durable evidence log for the coverage-selection shadow phase.
 - **`hypergumbo_core.selection_shadow`**: Shadow-mode comparison: what coverage WOULD have selected, versus w...
+- **`hypergumbo_core.signature_axis`**: The callable-signature axis: what ``Symbol.signature`` is for (ADR-...
 - **`hypergumbo_core.sketch_embeddings`**: Embedding-based utilities for sketch generation.
 - **`hypergumbo_core.slice`**: Graph slicing for LLM context extraction.
 - **`hypergumbo_core.spec_validator`**: Spec-vs-data validator stage (ADR-0033, INV-sugat).
@@ -633,6 +676,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.taint_refine`**: Post-DDG IR refinement pass: resolve unresolved-external method-cal...
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
+- **`hypergumbo_core.test_only_reachability`**: WI-ratuv: a production function whose only callers live in test mod...
+- **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3).
 - **`hypergumbo_core.validation_ratchet`**: Shrink-only ratchet comparison for validation-report violation matr...
 - **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary and taint-flow ana...
 - **`hypergumbo_core.visibility`**: Canonical visibility axis (INV-jusot).
@@ -643,6 +688,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.analyze.all_analyzers`**: Analyzer orchestration + the stable analyzer-dispatch import points.
 - **`hypergumbo_core.analyze.base`**: Base classes and utilities for language analyzers.
 - **`hypergumbo_core.analyze.cyclomatic`**: Grammar-agnostic McCabe cyclomatic-complexity walker + decision-poi...
+- **`hypergumbo_core.analyze.merge_producers`**: The merge pass: two producers' records for one declaration become one
 - **`hypergumbo_core.analyze.registry`**: Analyzer registry for decorator-based dynamic dispatch.
 - **`hypergumbo_lang_mainstream.bash`**: Bash/shell script analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.c`**: C analysis pass using tree-sitter-c.
@@ -658,10 +704,11 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_mainstream.html`**: HTML script tag analysis pass.
 - **`hypergumbo_lang_mainstream.ini`**: INI configuration file analyzer using tree-sitter.
 - **`hypergumbo_lang_mainstream.java`**: Java analysis pass using tree-sitter-java.
-- **`hypergumbo_lang_mainstream.js_ts`**: JavaScript/TypeScript/Svelte analysis pass using tree-sitter.
+- **`hypergumbo_lang_mainstream.js_ts`**: JavaScript/TypeScript/Svelte/Vue analysis pass using tree-sitter.
 - **`hypergumbo_lang_mainstream.json_config`**: JSON configuration analysis pass using tree-sitter-json.
 - **`hypergumbo_lang_mainstream.jupyter`**: Jupyter notebook (.ipynb) analyzer.
 - **`hypergumbo_lang_mainstream.jvm_deps`**: JVM dependency manifest parsing for Gradle and Maven projects.
+- **`hypergumbo_lang_mainstream.jvm_implicit_imports`**: The owner a JVM static call names, when the source wrote only a sim...
 - **`hypergumbo_lang_mainstream.kotlin`**: Kotlin analysis pass using tree-sitter-kotlin.
 - **`hypergumbo_lang_mainstream.lua`**: Lua analysis pass using tree-sitter-lua.
 - **`hypergumbo_lang_mainstream.make`**: Makefile analysis pass using tree-sitter-make.
@@ -727,7 +774,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_common.svelte`**: Svelte component analyzer using tree-sitter.
 - **`hypergumbo_lang_common.thrift`**: Apache Thrift analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.vue`**: Vue.js component analyzer using tree-sitter.
-- **`hypergumbo_lang_common.wgsl`**: WGSL (WebGPU Shading Language) analysis pass using tree-sitter-wgsl.
+- **`hypergumbo_lang_common.wgsl`**: WGSL (WebGPU Shading Language) analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.ada`**: Ada analysis pass using tree-sitter.
 - **`hypergumbo_lang_extended1.agda`**: Agda analysis pass using tree-sitter-agda.
 - **`hypergumbo_lang_extended1.apex`**: Apex language analyzer.
@@ -774,6 +821,10 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_rust_analyzer.graceful_degrade`**: Graceful-degrade orchestrator for the SCIP-backed Rust analyzer (WI...
 - **`hypergumbo_lang_rust_analyzer.invoke`**: Shell-out wrapper for ``rust-analyzer scip`` (WI-duzul Slice B-first).
 - **`hypergumbo_lang_rust_analyzer.translate`**: SCIP bytes → hypergumbo ``(Symbol, Edge)`` translation with rust.py...
+- **`hypergumbo_lang_scip_python.analyzer`**: Registered analyzer entry point for the scip-python backend (WI-nan...
+- **`hypergumbo_lang_scip_python.gate`**: Opt-in gate for the scip-python backend (WI-nanom).
+- **`hypergumbo_lang_scip_python.invoke`**: Shell-out wrapper for ``scip-python index`` (WI-nanom).
+- **`hypergumbo_lang_scip_python.translate`**: SCIP → hypergumbo IR for scip-python output (WI-nanom).
 
 ### Linkers
 
@@ -797,6 +848,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.go_memberlist`**: Framework linker: Go hashicorp/memberlist cluster delegate callback.
 - **`hypergumbo_core.linkers.graphql`**: Framework linker: GraphQL client-schema for detecting cross-file Gr...
 - **`hypergumbo_core.linkers.graphql_resolver`**: Framework linker: GraphQL resolver for detecting resolver implement...
+- **`hypergumbo_core.linkers.graphql_sdl`**: Infrastructure linker: GraphQL SDL embedded in host-language source.
 - **`hypergumbo_core.linkers.grpc`**: Framework linker: gRPC/Protobuf for detecting RPC communication pat...
 - **`hypergumbo_core.linkers.http`**: Protocol linker: HTTP client-server for detecting cross-language AP...
 - **`hypergumbo_core.linkers.inheritance`**: Infrastructure linker: inheritance for creating extends/implements/...
@@ -816,12 +868,12 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.orm`**: Framework linker: ORM query for detecting ORM model references in a...
 - **`hypergumbo_core.linkers.otp`**: Framework linker: OTP GenServer dispatch for Elixir and Erlang.
 - **`hypergumbo_core.linkers.phoenix_ipc`**: Framework linker: Phoenix Channels IPC for detecting Elixir IPC pat...
-- **`hypergumbo_core.linkers.pyffi`**: Bridge linker: Python FFI for connecting Python ctypes/cffi calls t...
+- **`hypergumbo_core.linkers.pyffi`**: Bridge linker: Python FFI, joining ctypes/cffi calls to C/C++ and P...
 - **`hypergumbo_core.linkers.react_component`**: Framework linker: React component for detecting JSX composition edges.
 - **`hypergumbo_core.linkers.receiver_type_dispatch`**: Infrastructure linker: resolve non-hierarchy ``x.foo()`` calls via a
 - **`hypergumbo_core.linkers.route_handler`**: Framework linker: route-handler for connecting routes to their hand...
 - **`hypergumbo_core.linkers.router_routes`**: Framework linker: router → route registrations containment.
-- **`hypergumbo_core.linkers.ruby_ffi`**: Bridge linker: Ruby FFI for connecting Ruby FFI gem calls and C ext...
+- **`hypergumbo_core.linkers.ruby_ffi`**: Bridge linker: Ruby FFI gem calls and C-extension registrations to ...
 - **`hypergumbo_core.linkers.rust_trait_dispatch`**: Framework linker: Rust trait-impl method dispatch (WI-kivut).
 - **`hypergumbo_core.linkers.solidity_abi`**: Bridge linker: Solidity ABI bridge for connecting TS/JS contract ca...
 - **`hypergumbo_core.linkers.subprocess_cli`**: Protocol linker: subprocess-to-CLI for detecting cross-process CLI ...
@@ -851,8 +903,10 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.annotations`**: Annotation data model for TUI screenshot annotations (ADR-0020).
 - **`hypergumbo_tracker.cache`**: SQLite per-tier read cache for the hypergumbo tracker.
 - **`hypergumbo_tracker.cli`**: CLI entry points for hypergumbo-tracker.
+- **`hypergumbo_tracker.clusters`**: Predicted clusters of tracker items: TF-IDF cosine, top-k neighbour...
 - **`hypergumbo_tracker.configure`**: Interactive CLI config editor for hypergumbo tracker.
 - **`hypergumbo_tracker.embeddings`**: Tier 2 embedding-based near-duplicate detection for the hypergumbo ...
+- **`hypergumbo_tracker.field_keys`**: What may be stored under a custom field key, and what may not (INV-...
 - **`hypergumbo_tracker.hotspot_markup`**: Wrap detected item IDs in Textual ``[@click=...]`` action markup.
 - **`hypergumbo_tracker.id_matching`**: Detect tracker item IDs embedded in free-text panes (descriptions, ...
 - **`hypergumbo_tracker.item_nav_render`**: Assemble the display content for the tracker TUI item-nav modal.
@@ -862,6 +916,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.nav_history`**: Browser-style navigation history for the tracker TUI's item-nav modal.
 - **`hypergumbo_tracker.preview`**: Inline SVG preview for TUI discussion threads (ADR-0020 Part 2).
 - **`hypergumbo_tracker.preview_pipeline`**: SVG→PNG→ANSI rendering pipeline with graceful degradation (ADR-0020).
+- **`hypergumbo_tracker.protected_config`**: Host-level protected tracker config: the only location an agent can...
 - **`hypergumbo_tracker.race_log`**: Forensic log for transient I/O races on tracker ``.ops`` files.
 - **`hypergumbo_tracker.screenshot_save`**: Screenshot save and auto-create tracker item (ADR-0020, WI-rujoz).
 - **`hypergumbo_tracker.serve`**: Starlette/uvicorn server for htrac serve (ADR-0019).
@@ -886,8 +941,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: ed2f0340893f
-  commit_count: 6724
-  hypergumbo: 7.0.0
+  commit: d1aac58fa380
+  commit_count: 7605
+  hypergumbo: 8.0.0
   python: 3.12.3
 -->
