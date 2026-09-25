@@ -1,0 +1,55 @@
+Original commit body from e718dd46d75d38d4373fabe5170f1532355e45fd:
+
+Both analyzers resolved a call by the callee's simple name across the whole
+project. The import hint they passed the resolver is a DOTTED path, which it
+compares against FILE paths, so it never matched, and an exact name match
+returns before any hint is read. spark's `import scala.sys.process.Process`
+then `Process(cmd).!` bound to a test `case class Process` in another package;
+scala3's to the sbt build's `object Process`. The edge was false and the launch
+never reached the catalogue.
+
+kotlin (qualified names are reliable there): a symbol the resolver returns
+stands only when its qualified name is the import or lies under it (the default
+`Companion` segment dropped). Otherwise the call binds to the project symbol AT
+the imported path, found in a map of every file's symbols (the resolver keeps
+one per name), or is withheld. A project type keeps the placeholder module slot
+when its import names a project path (WI-kilap).
+
+scala (a symbol's name omits its enclosing object, a package-object member's
+package omits the object, imports may be relative): an import CONTRADICTS the
+returned symbol only when no reading of it fits: a segment-aligned suffix of
+<package>.<name>; a start at some trailing run of the symbol's package; or a
+leaf naming the symbol or its enclosing type, through a type the symbol's own
+file declares. An import whose head the file itself imported is read through
+it; `_root_.` is absolute; a block-scoped import applies only inside its block.
+A contradicted call is left unresolved with the import path in its module slot.
+
+MEASURED, analyzer call edges diffed by call site (src, line, callee), dev
+99281e3c43 vs this commit (~/hypergumbo_lab_notebook/tipoh_09242026/):
+- scala, 11 repos: 5,631 resolved -> unresolved (scala3 2,953, spark 1,268,
+  pekko 634, lila 361, tapir 168, sbt 116, playframework 46, zio 32, gatling
+  19, http4s 17, cats 17), plus 666 slot-only changes. A random sample of 30
+  on this commit: 30 were false edges (JUnit assertEquals bound to a
+  tests/neg fixture, scaladsl bound to javadsl, catalyst Literal bound to
+  sql.internal Literal, pekko-http Http bound to tapir's EndpointIO.Http).
+  An earlier sample of 25 found 3 wrong withholds; two shapes are fixed here
+  (a renamed-package import, a block-scoped import) and one remains: a member
+  inherited through an object (`import Def.ScopedKey`, sbt).
+- kotlin, 5 repos: 5,426 re-targeted to the imported symbol (detekt 2,864:
+  assertThat from the compiler-plugin helper to detekt-test-assertj; okhttp
+  2,555: the deprecated okhttp3.mockwebserver to mockwebserver3), 2,404
+  withheld (2,346 are AssertJ's own assertThat on detekt).
+- The filed instances. spark: dev binds 14 calls to the test `case class
+  Process`, 13 of them false; 10 now carry scala.sys.process.Process and
+  classify as a launch. The other 3 (IntegratedUDFTestUtils) import through a
+  WILDCARD, `import scala.sys.process._`, which names no symbol and is not
+  addressed here. scala3: does not reproduce on the current checkout. dev
+  binds TestScripts' `Process(script)` to the stdlib source scala3 vendors
+  (library/src/scala/sys/process/Process.scala), which is the imported
+  symbol, and this commit keeps it.
+
+NOT DONE: scala cannot re-target (no reliable qualified name), so an import of
+a project path whose symbol the name-keyed registry dropped leaves the call
+unresolved rather than bound to the right project symbol.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
