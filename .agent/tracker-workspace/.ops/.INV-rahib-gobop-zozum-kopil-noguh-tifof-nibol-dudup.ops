@@ -374,3 +374,10 @@
   clock: 49  # 3b14
   nonce: 3b14  # 3b14
   message: "P2 REVIEW 2026-09-25 (dev e4a47383ab). Status unchanged (violated). New measurement against the closure criterion stated in the 2026-09-20 entry.\n\n(a) MET ON THE WINDOW. .git/AUTOPR_HISTORY.jsonl has 145 rows carrying the post-#1105 `terminated_by` key (row 569 of 714, first at 2026-09-20T21:14:29Z, through 2026-09-25). final_state: detached_watching 71, merged 57, ci_failed 14, governance_pending 2, push_rejected_diverged 1. ZERO `unknown`, ZERO terminated_* (terminated_by null on all 145). `scripts/audit-autopr-convergence --window 145` -> CONVERGED.\n\n(b) NOT MECHANICALLY EVALUABLE AS WRITTEN. The criterion is \"every failure-bucket row agrees with ci-debug status for its SHA\", but a ci_failed row records no head SHA (keys: abort_command, abort_site, exit_code, final_state, merged_sha, pr_number, pr_url, terminated_by, timestamp; merged_sha is null on all 14). The 14 rows name PRs 1107 x4, 1136, 1146 x3, 1147, 1160, 1180, 1184, 1186, 1192. `ci-debug pr-status` on 1192/1186/1136 shows each final HEAD green -- expected, since each was fixed by a follow-up commit, and it says nothing about the failing SHA. One hand reconstruction: #1192's rebased commit 9f2e8f06d7 reads `Overall: failure` in ci-debug status, consistent with its ci_failed row. The other 13 were NOT reconstructed.\n\nSo closing needs either a per-row reconstruction of the other 13 or a `head_sha` field on the ledger row (auto-pr is a governance file -- owner approval). Surfaced; not proposing the edit unilaterally."  # 3b14
+- op: discuss  # 68ee
+  at: '2026-09-25T18:11:38Z'  # 68ee
+  by: agent  # 68ee
+  actor: jgstern_agent  # 68ee
+  clock: 50  # 68ee
+  nonce: 68ee  # 68ee
+  message: "OWNER 2026-09-25 (P2 review follow-up): the decision surfaced in the review entry above is DEFERRED. No action until the owner revisits it."  # 68ee

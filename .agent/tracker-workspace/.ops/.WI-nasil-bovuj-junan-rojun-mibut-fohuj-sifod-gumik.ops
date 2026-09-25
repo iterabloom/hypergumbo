@@ -39,3 +39,18 @@
   clock: 3  # 2775
   nonce: '2775'  # 2775
   message: "P2 REVIEW 2026-09-25 (dev e4a47383ab). HALF THE PREMISE NO LONGER HOLDS; status unchanged.\n\nFixture: a.sh with `export CI_TIMEOUT=1`, `foo(){ :; }`, `export CI_TIMEOUT=2`, `export CI_TIMEOUT`. Full survey via cli main.\n\n- STILL TRUE (the title's first half): two export nodes, bash:a.sh:2-2:CI_TIMEOUT:export and bash:a.sh:4-4:CI_TIMEOUT:export, share (path, name, kind). The bare `export CI_TIMEOUT` on line 5 emits no node.\n- NO LONGER TRUE (the title's second half, \"drives ... INV-bazij breach\"): the two nodes carry DIFFERENT stable_ids, sha256:00e9cbe08614e456 vs sha256:b85aedac5c16f4a6. So they no longer collide on stable_id, which is INV-bazij's metric.\n  - INV-bazij has been satisfied since 06-09 and its META, INV-tazaj, since 06-16.\n  - The direct analyzer result has stable_id=None on export symbols; the pipeline fills it in afterwards.\n\nWhat remains is an analyzer MODELLING choice: is each `export` statement a declaration, or is the variable one symbol with several assignments? That is not an identity-collision defect. I have NOT re-measured the self-analysis dup rate. I recommend re-titling to the modelling question; the owner may prefer a priority review, since the P2 rationale was the INV-bazij breach."  # 2775
+- op: update  # ba9c
+  at: '2026-09-25T18:11:38Z'  # ba9c
+  by: agent  # ba9c
+  actor: jgstern_agent  # ba9c
+  clock: 4  # ba9c
+  nonce: ba9c  # ba9c
+  set:  # ba9c
+    title: "bash analyzer: each `export VAR` statement emits its own Symbol, so a re-exported variable has several same-(path,name,kind) nodes -- decide: one symbol per declaration statement, or one per variable with several assignments"  # ba9c
+- op: discuss  # e714
+  at: '2026-09-25T18:11:38Z'  # e714
+  by: agent  # e714
+  actor: jgstern_agent  # e714
+  clock: 5  # e714
+  nonce: e714  # e714
+  message: "OWNER RULING 2026-09-25 (P2 review follow-up): re-titled to the modelling question, per the review entry above. The INV-bazij-breach half of the old title no longer holds: the duplicate nodes carry distinct stable_ids, and INV-bazij has been satisfied since 06-09. Priority is unchanged at P2 because the owner did not rule on it; the original P2 rationale was that breach."  # e714

@@ -58,3 +58,10 @@
   clock: 6  # 4246
   nonce: '4246'  # 4246
   message: "P2 REVIEW 2026-09-25 (dev e4a47383ab). PROGRESS MAP against the owner's 4-step sequence (Ruling of 2026-08-01). The row has not been updated since 08-10, so recording where each step stands. Status unchanged.\n\n(1) Delete ci-failover + the failover-awareness layer: DONE. e7e43d678d (2026-08-02) \"refactor(ci): retire the self-hosted-Forgejo CI failover (WI-hajif)\". scripts/ci-failover is gone, and tests/test_ci_failover_retired.py pins the absence of CI_FAILOVER_ACTIVE / FAILOVER_ACTIVE / apply_failover_overrides / docs/sops/CI_FAILOVER.md. The follow-on test cleanup landed as bead3b5bde (WI-kasin, 08-04).\n\n(2) Rename scripts/lib/forgejo-api.sh -> forge-api.sh, folding github-api.sh's overrides in: NOT DONE. forgejo-api.sh still exists (2,213 lines, 16 FORGE_BACKEND lines), github-api.sh still exists, and 28 files under scripts/ / tests/ / packages/*/tests still reference forgejo-api.sh.\n\n(3) Strip Forgejo arms + AGit refs/for paths from auto-pr/merge-pr/ci-debug/contribute: NOT DONE. forgejo/FORGEJO lines by file: auto-pr 26, contribute 12, ci-debug 7, merge-pr 4. auto-pr still carries the refs/for (AGit) rejection handling (auto-pr:848-952). AGENTS.md's \"Manual\" PR path still documents `git push origin \"HEAD:refs/for/dev/<branch>\"`, an AGit path that github.com does not accept. That line is a governance-file edit.\n\n(4) ~40-file doc sweep: NOT STARTED as a step. 19 files under docs/, AGENTS.md, scripts/ and the playbooks still mention codeberg (not triaged; some are legitimate history).\n\nThe AGENTS.md token-sentence inversion the 08-02 entry raised separately is FIXED: AGENTS.md now names HG_GITHUB_TOKEN as the live backend and FORGEJO_TOKEN as dormant."  # 4246
+- op: discuss  # ea13
+  at: '2026-09-25T18:11:39Z'  # ea13
+  by: agent  # ea13
+  actor: jgstern_agent  # ea13
+  clock: 7  # ea13
+  nonce: ea13  # ea13
+  message: "OWNER 2026-09-25 (P2 review follow-up): the decision surfaced in the review entry above is DEFERRED. No action until the owner revisits it."  # ea13
