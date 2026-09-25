@@ -1,0 +1,20 @@
+- op: create  # 525a
+  at: '2026-09-25T06:33:16Z'  # 525a
+  by: agent  # 525a
+  actor: jgstern_agent  # 525a
+  clock: 1  # 525a
+  nonce: 525a  # 525a
+  data:  # 525a
+    kind: work_item  # 525a
+    title: "php: class constants are always is_exported=True; the const visibility modifier (private/protected) is never read"  # 525a
+    status: todo_hard  # 525a
+    priority: 3  # 525a
+    parent:  # 525a
+    tags:  # 525a
+    - analysis_quality  # 525a
+    isbefore: []  # 525a
+    duplicate_of: []  # 525a
+    not_duplicate_of: []  # 525a
+    pr_ref:  # 525a
+    description: "EVIDENCE (production entry point, 2026-09-25):\n  class A { private const SECRET = 1; public const OPEN = 2; }\n  -> A.SECRET field is_exported=True; A.OPEN field is_exported=True.\n\nMECHANISM: php.py ~L1135 passes `[], True` for every class constant, so the constant's visibility modifier is never read. Properties do read it. PHP 7.1+ class constants accept public/protected/private.\n\nPRIOR ART:\n- WI-fosuh (done) introduced PHP field/constant symbols. The constant branch was written without modifiers there.\n- INV-jusot (visibility axis, satisfied) and INV-kubus (is_exported null-when-unmeasured) are general and do not cover this case.\nPR #1197 made the module docstring state the current behaviour (\"class constants are always exported, because their visibility modifier is not read\"). Update that sentence when this is fixed.\n\nASKED: read the const declaration's visibility_modifier the same way properties do. Add a fixture covering private, protected, public and no modifier (PHP's default is public). Check the dead-code-maybe effect on one PHP corpus repo, since private constants become non-exported."  # 525a
+    fields: {}  # 525a
