@@ -1,0 +1,42 @@
+Original commit body from 66d9fb1006f3a981fd1994c557929c6981734abb:
+
+Addresses WI-bujar. A call inside an exported Nim proc (`proc a*`) emitted
+no call edge. `_find_enclosing_proc_nim` named the enclosing proc from a
+bare `identifier` child, which an exported declaration does not have (the
+name sits inside `exported_symbol`), so the walk found no caller and dropped
+the call. INV-bisom fixed that name shape in the declaration handlers but not
+in this lookup.
+
+The lookup now keys on the declaration's position (`symbols_at` /
+`symbol_declared_by` over `file_symbols()`), the rule INV-midag applied to
+the other analyzers. That also fixes the second defect a name lookup has in
+Nim: overloads share a name, and every overload's calls went to the last one
+registered. `_make_symbol` spans each symbol from its declaration node, so
+the node the walk reaches is the one the index is keyed on.
+
+The `return None` at the end of the walk was marked `pragma: no cover -
+defensive`, but a top-level call (module-init code) reaches it; the pragma is
+gone and a test pins that no edge is emitted.
+
+nim moves from WI-tosum's unverified list to verified in the extended1
+call-anchor gate, with a fixture holding an overload pair, an exported
+proc / func / method and a proc nested in an exported proc. Against the old
+code the gate failed on both defects: reach (lines 8, 9, 11, 14 missing) and
+containment (line 4 credited to the overload at lines 5-6).
+
+Measured on nitter (analyze_nim, edge set diffed by call site):
+- calls edges 648 -> 2,460: +1,803 sites, 0 lost.
+- resolved 257 -> 902.
+- 4 edges re-anchored (two `addMedia` overloads in src/parser.nim);
+  calls outside their src span 4 -> 0.
+
+NOT a precision claim for the resolved count. Target resolution is
+unchanged: bare-name lookup against a one-symbol-per-name registry with no
+import scope and no visibility check. It now runs at 3.8x as many sites, so
+its existing errors grow with them: edges into the private
+`proc get` of src/redis_cache.nim (callable only from that module) go
+9 -> 104 (96 from other files, mostly jester's `get "/route":` DSL and
+`cfg.get(...)` next to config.nim's own `get*`), and `seq.add` calls bound to
+types.nim's `add*` go 28 -> 73. Filed as a separate row after merge.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
