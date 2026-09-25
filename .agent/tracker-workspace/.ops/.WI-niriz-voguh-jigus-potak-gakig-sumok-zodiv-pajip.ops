@@ -1,0 +1,21 @@
+- op: create  # 2be8
+  at: '2026-09-25T00:11:02Z'  # 2be8
+  by: agent  # 2be8
+  actor: jgstern_agent  # 2be8
+  clock: 1  # 2be8
+  nonce: 2be8  # 2be8
+  data:  # 2be8
+    kind: work_item  # 2be8
+    title: "scala symbols carry no qualified name, so an import of a PROJECT path cannot reach the imported symbol when the name-keyed registry kept a same-named other (spark catalyst Literal, pekko scaladsl, lila Granter)"  # 2be8
+    status: todo_hard  # 2be8
+    priority: 3  # 2be8
+    parent:  # 2be8
+    tags:  # 2be8
+    - scala  # 2be8
+    - analysis_quality  # 2be8
+    isbefore: []  # 2be8
+    duplicate_of: []  # 2be8
+    not_duplicate_of: []  # 2be8
+    pr_ref:  # 2be8
+    description: "FOUND 2026-09-24 while fixing WI-tipoh (~/hypergumbo_lab_notebook/tipoh_09242026/).\n\nTHE DEFECT: scala symbols carry no qualified name. A nested type's name omits its enclosing object (`DataTypeMismatch` in `object TypeCheckResult`), and a package-object member's package omits the object. So when a file's explicit import names a PROJECT path, and the name-keyed registry (one symbol per simple name) kept a DIFFERENT same-named project symbol, the analyzer cannot find the imported one. WI-tipoh now leaves such a call unresolved. Before, it was bound to the wrong symbol.\n\nKotlin does not have this problem: its symbols record `qualified_name`, and WI-tipoh re-targets through a map of every file's symbols. That moved 2,864 detekt and 2,555 okhttp calls to the imported symbol.\n\nINSTANCES, from the WI-tipoh A/B:\n- lila: `import lila.core.perm.Granter` against `lila.security.Granter`.\n- spark: `org.apache.spark.sql.catalyst.expressions.Literal` / `Cast` / `Alias` against the `sql.internal` columnNodes case classes (~450 sites). `org.apache.spark.sql.Row` against columnNodes' `object Row` (255).\n- pekko: `scaladsl.Source` / `ActorContext` / `TestProbe` against their `javadsl` twins.\nAll are now unresolved, with the import path in the module slot. The right project symbol exists and is not reached.\n\nALSO WRONG, the other way: a member INHERITED through an object is withheld. sbt `import Def.{ScopedKey}` names `Init.ScopedKey`, which `object Def` inherits. In a random sample of 25 withholds this was 1 wrong withhold, and it is not fixed.\n\nASKED: give scala symbols a qualified name (package + enclosing types, including objects and package objects). Then use it to re-target as kotlin does. Measure the resolved-edge set on the scala cohort. Detekt's WI-kilap regression and the WI-tipoh tests must hold."  # 2be8
+    fields: {}  # 2be8

@@ -1,0 +1,22 @@
+- op: create  # bb9c
+  at: '2026-09-25T00:11:07Z'  # bb9c
+  by: agent  # bb9c
+  actor: jgstern_agent  # bb9c
+  clock: 1  # bb9c
+  nonce: bb9c  # bb9c
+  data:  # bb9c
+    kind: work_item  # bb9c
+    title: "a scala wildcard import does not outrank a same-named project symbol: spark import scala.sys.process._ then Process(...) still binds a test case class (3 sites)"  # bb9c
+    status: todo_hard  # bb9c
+    priority: 3  # bb9c
+    parent:  # bb9c
+    tags:  # bb9c
+    - scala  # bb9c
+    - analysis_quality  # bb9c
+    - io_boundary  # bb9c
+    isbefore: []  # bb9c
+    duplicate_of: []  # bb9c
+    not_duplicate_of: []  # bb9c
+    pr_ref:  # bb9c
+    description: "FOUND 2026-09-24 while fixing WI-tipoh.\n\nA WILDCARD import does not outrank a same-named project symbol in another package. WI-tipoh fixed EXPLICIT imports only; a wildcard names no symbol, so there is nothing to compare.\n\nINSTANCE: spark `IntegratedUDFTestUtils.scala` does `import scala.sys.process._` (block-scoped, line 104), then calls `Process(...)` at lines 208, 234 and 378. Those calls still bind to the test `case class Process` in `ForeachWriterSuite.scala`. That is a false call edge, and the launch never reaches the catalogue. These are 3 of the 13 false `Process` edges on spark; WI-tipoh fixed the other 10.\n\nWHAT A FIX NEEDS: whether the wildcard's package declares the name. For an external package that means the catalogue's rows or a stdlib enumeration (`scala.sys.process` declares `Process`). Java writes a comma-joined disjunction of wildcard packages into the module slot; scala does not, because an unenumerated disjunct withholds verdicts under INV-zimud's ALL-gate. Kotlin: not checked."  # bb9c
+    fields: {}  # bb9c
