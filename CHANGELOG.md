@@ -16,110 +16,100 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 Five threads run through this cycle.
 
-**Receiver typing across the analyzer fleet.** A method call whose receiver the repository already describes now reaches the I/O catalogue instead of stopping at ADR-0051's `external` sentinel. Ten languages learn receiver shapes they had the evidence for, and Python follows a declared return type across modules and through two-hop chains.
+- **Receiver typing.** A method call on a receiver the repository describes now reaches the I/O catalogue instead of stopping at ADR-0051's `external` sentinel, in ten languages.
+- **Calls credited to the right function.** Analyzers find a call's enclosing function by position, not by name, so a call no longer lands on a same-named function elsewhere.
+- **Taint precision, measured and acted on.** ADR-0046 splits precision into correctness and usefulness, and ADR-0049 stops treating a call that only opens or registers a network crossing as the crossing. Useful precision moves **24.1% → 30.9%**.
+- **Two producers for one language (ADR-0057).** When two backends analyse the same code, their records merge into one node or edge that says which producer said what.
+- **Records that say what they don't know.** A silent pass says why, a linker declares what it reads, and `is_exported` can say "not measured", which takes `dead-code-maybe` on this codebase from 41.4% dead to 7.5%.
 
-**Calls credited to the right function.** Most analyzers found a call's enclosing function by name, so a call could land on a same-named function elsewhere. They now find it by position, and Scala and Kotlin let an explicit import outrank a same-named project symbol.
-
-**Taint precision, measured and then acted on.** ADR-0046 splits precision into correctness and usefulness, ADR-0048 makes the benchmark frame a CI gate, and ADR-0049 discloses, rather than mints, a call that merely opens, registers or defers a network crossing. Useful precision moves **24.1% → 30.9%** across measurements 0003–0012.
-
-**Two producers for one language (ADR-0057).** When two backends analyse the same code (tree-sitter and rust-analyzer for Rust, or the Python analyzer and the new opt-in scip-python backend), their records merge into one node or edge that records which producer said what.
-
-**Records that say what they know, and what they don't.** Every silent pass says why; every linker declares its activation, dependencies and derivations; `is_exported` can say "not measured", which takes `dead-code-maybe` on this codebase from 41.4% dead to 7.5%. ADR-0047 makes the shipped catalogues stdlib-only and ADR-0045 adds user and project configuration. `SCHEMA_VERSION` advances 0.20.1 → 0.20.13, the `verify-claims --json` envelope 2.0 → 2.4, and `DEAD_CODE_MAYBE_SCHEMA_VERSION` 0.2.0 → 0.3.0.
+`SCHEMA_VERSION` advances 0.20.1 → 0.20.13, the `verify-claims --json` envelope 2.0 → 2.4, and `DEAD_CODE_MAYBE_SCHEMA_VERSION` 0.2.0 → 0.3.0.
 
 ### Added
 
 #### Receiver typing across the fleet
 
-- **The Django ORM surface is typed end to end.** QuerySet chains keep their module past the first hop, reverse relations and custom managers carry `django.db.models`, instance writes are recognised through the model lineage (2 → 75 sites), and `setUp` fixtures carry the model instance (+1,447 sites); a relation accessor declared by the project's own models types an untyped root (**+2,943 edges, 0 lost**, against a shuffled-index ablation mean of +37.3). The nineteen lazy QuerySet combinators move to a new `db_compose` value, since they read nothing.
-- **Ten analyzers learn the receiver shapes they had evidence for**: instance fields, parameters, declared types, chained and expression receivers, `?` / `.unwrap()`, loop and optional bindings, `self.<property>`, and `obj.field.method()` chains. Kotlin now emits an instance-method call edge on an external receiver at all; every gate had required an in-repo lookup a JDK method can never satisfy.
-- **Return-type registries are consumed, and `library_signatures/` supplies the return type of a library call.** Swift binds a member only when an overload's argument labels admit it, and Rust emits a method call on a signature-declared receiver even when the name is on the generic-trait denylist.
-- **Two grammar fixes.** tree-sitter-swift 0.0.1 → 0.7.3 parses a `#if` inside a type body (Alamofire's `Session` had never been a symbol). Three Apple-SDK macro families no longer break the Objective-C parse: error-parsing files go **74 → 38**.
-- **A receiver typed from a name stays qualified.** Such edges carry `resolution_quality="accessor_name"` and the `CAVEAT_ACCESSOR_NAME_RECEIVER` caveat, so a recall gain does not buy a quieter all-clear. `call_construct` is stamped for every receiver shape.
+- **Ten analyzers type the receivers they have evidence for**: instance fields, parameters, declared types, chained receivers, `?` / `.unwrap()`, loop and optional bindings and `self.<property>`. Declared return types are followed, and `library_signatures/` supplies a library call's return type. Kotlin now emits method calls on JDK receivers at all.
+- **The Django ORM is typed end to end**: QuerySet chains, reverse relations, custom managers, instance writes and `setUp` fixtures (**+2,943 edges on pretix, 0 lost**). The lazy QuerySet combinators move to a new `db_compose` value, since they read nothing.
+- **A receiver typed only from a name says so**, with `resolution_quality="accessor_name"` and a caveat, so a recall gain does not buy a quieter all-clear.
+- **Parser upgrades**: tree-sitter-swift 0.0.1 → 0.7.3 parses `#if` inside a type body, and Objective-C files that fail to parse go **74 → 38**.
 
 #### Two producers per language (ADR-0057)
 
-- **scip-python (pyright) is an opt-in second producer for Python.** Install `hypergumbo[scip-python]` and `@sourcegraph/scip-python@0.6.6`, then pass `--backend scip-python`, set `HYPERGUMBO_SCIP_PYTHON=1`, or set `[backends] scip_python = true`. Pyright never runs the analysed code, so no trust grant is needed. On hypergumbo-core it types 96.1% of the method-call receivers the syntax analyzer left module-less. `--backend tree-sitter` turns every opt-in backend off.
-- **`hypergumbo backend-agreement ARTIFACT` reports where two producers agree**, per attribute and per edge, from the artifact's own provenance. Its markdown output is a `docs/audits/` document; the first is `docs/audits/0019`, regenerated from a recorded rust-analyzer run.
-- **A `[merge]` table in either config file chooses which producer's value wins**, overall (`prefer = ["scip", "tree-sitter"]`) or per attribute (`[merge.prefer_by_attribute]`). Unknown keys, backends and attributes are refused before analysis runs, and the built-in keeps the syntax analyzer first.
+- **scip-python (pyright) is an opt-in second producer for Python.** Install `hypergumbo[scip-python]` and `@sourcegraph/scip-python@0.6.6`, then pass `--backend scip-python` (or set `HYPERGUMBO_SCIP_PYTHON=1` or `[backends] scip_python = true`). It never runs the analysed code, and on hypergumbo-core it types 96.1% of the receivers the syntax analyzer left untyped. `--backend tree-sitter` turns every opt-in backend off.
+- **`hypergumbo backend-agreement ARTIFACT` reports where two producers agree**, per attribute and per edge, as a `docs/audits/` document.
+- **A `[merge]` config table chooses which producer's value wins**, overall or per attribute. Unknown keys are refused before analysis runs.
 
 #### I/O boundaries: the deferred crossing (ADR-0049)
 
-- **A call that merely opens, registers or defers a network crossing is disclosed, not minted.** One question decides it: does the call return a value whose content the far side chose? The new **`net_listen`** boundary mints no taint, is counted outside `total_io_edges`, and qualifies a clean verdict over a listener.
-- **A primitive with several boundaries says why**, via `boundary_ruling` (`simultaneous` / `call_site_undecidable` / `unruled`), and `abstains_to` names its fallback; 12 of 29 had declared nothing. **`io_target_kind` gains `in_memory`, `pipe` and `net_stream`.**
-- **A DNS lookup is a network receive in five languages.** The rows add 6 situations and move 0 verdicts, and 0 of the 6 are correct, a number that measures the walk rather than the rows. `socket` is declared complete after its 35 module-level callables were enumerated.
+- **A call that only opens, registers or defers a network crossing is disclosed, not treated as the crossing.** The test is whether the call returns content the far side chose. The new **`net_listen`** boundary creates no taint source, is counted outside `total_io_edges`, and qualifies a clean verdict.
+- **A primitive with several boundaries says why** (`boundary_ruling`) and names its fallback (`abstains_to`). **`io_target_kind` gains `in_memory`, `pipe` and `net_stream`.**
+- **A DNS lookup is a network receive in five languages.**
 
 #### Catalogue extensibility and user configuration (ADR-0047, ADR-0045)
 
-- **Community overlays ship in the wheel and load by default**, announced on stderr; they had sat under `docs/`, which is not packaged, so they had shipped to nobody. Their rows are `unvouched`, so they cannot vouch for a verdict.
-- **User catalogue directories work.** `hypergumbo init-catalogs` creates one `<family>.d/` per extensible family, and `io_primitives.d/` is now actually read; every overlay-loading run had told users to edit a directory nothing read.
-- **User and project configuration (ADR-0045).** `config.toml` and `<repo>/.hypergumbo.toml` carry `io_primitives` (precedence user < project < claims file < `--io-primitives`), but a repository may not grant itself the Rust backend. **`hypergumbo trust-backend`** grants it durably per repository. That backend executes the analysed crate's `build.rs`, and the only persistence had been a global environment variable.
+- **Community overlays ship in the wheel and load by default**, announced on stderr; they had sat under `docs/`, which is not packaged. Their rows cannot vouch for a verdict.
+- **User catalogue directories work.** `hypergumbo init-catalogs` creates one `<family>.d/` per extensible family, and `io_primitives.d/` is now actually read.
+- **User and project configuration (ADR-0045).** `config.toml` and `<repo>/.hypergumbo.toml` carry `io_primitives` (precedence user < project < claims file < `--io-primitives`). A repository may not grant itself the Rust backend, which runs the crate's `build.rs`; **`hypergumbo trust-backend`** grants it per repository.
 
-#### verify-claims — what a verdict says about itself
+#### verify-claims: what a verdict says about itself
 
-- **The §3a walk reports whether it ran (ADR-0052)**, so `flows_removed_by_walk: 0` is readable; on the measured corpus it was `unavailable` 224 of 224. A verdict also reports the fidelity it was reached at (envelope 2.2), telling a backend installed but not enabled from one that does not exist.
-- **A clean verdict names what it could not see**: the `untyped_receiver` and `unknown_receiver_scope` caveats (ADR-0016 §4), a dated declaration for languages that emit no external instance-method calls (Kotlin and JavaScript, 232 sinks), and per-module completeness grants.
-- **A verdict says how much of the catalogue behind it is unverified**, since no check confirms a named primitive performs its boundary (`newIORef` had been filed under `db_read`).
+- **The data-flow walk reports whether it ran (ADR-0052)**, so `flows_removed_by_walk: 0` can be read. A verdict also reports the fidelity it was reached at (envelope 2.2), telling a backend that is installed but disabled from one that is missing.
+- **A clean verdict names what it could not see**: untyped receivers, receivers of unknown scope (ADR-0016 §4), and languages that emit no external instance-method calls.
+- **A verdict says how much of the catalogue behind it is unverified.**
+- **Declared blindnesses.** `untrusted_input` does not tell far-side-*authored* values from far-side-*chosen* ones (the distinguishing field fired on 2 of 568 findings). Go's `call_construct` ambiguity is declared rather than fixed; across 14 repositories it never changed a verdict.
+- **A catalogue row can declare that an argument only names the resource** (`VERIFY_CLAIMS_SCHEMA_VERSION` 2.3 → 2.4). Tainted data choosing *which* file `os.Chmod` acts on still counts as correct but not useful.
+- **`analysis_runs[].silence_reason` says why a pass produced nothing** (`SCHEMA_VERSION` 0.20.6 → 0.20.7). An absent reason means *not applicable*; `unreported` means *cannot determine*.
 
-#### Declared blindnesses
+#### Measurement
 
-- **`untrusted_input` does not tell far-side-authored values from far-side-chosen ones**, now a dated declared blindness: the distinguishing field produced **2 of 568 findings** on a cohort sampled to favour it, against a 5% bar fixed in advance.
-- **A catalogue row can declare that an argument only names the resource** (`VERIFY_CLAIMS_SCHEMA_VERSION` 2.3 → 2.4), keyed per function rather than per row, since `c.yaml`'s stdio row alone lists fourteen functions across all four classes. Tainted data selecting *which* file `os.Chmod` acts on stays a true positive on correctness and is excluded on usefulness.
-- **`analysis_runs[].silence_reason` says why a pass produced nothing, on a closed axis** (`SCHEMA_VERSION` 0.20.6 → 0.20.7). Of 322 zero-edge pass-runs, 274 had analysed zero files and only 22 were truly silent. An absent reason means *not applicable*; `unreported` means *cannot determine*.
-- **Go's `call_construct` ambiguity is declared, not fixed**: across 14 repositories and 72,396 unresolved edges it cost a verdict zero times.
-
-#### Measurement — the frame, the series and the instruments
-
-- **ADR-0046: taint precision is two numbers**, correctness (unchanged, so 0001–0006 stay comparable) and usefulness, which deducts vacuous true positives. **ADR-0048 makes rule F8 a gate**: a benchmark needs a machine-readable `## Frame` block naming unit, allocation, seed, cohort, claim set, rubric, analyzer SHA and language scope.
-- **The series prices the arc.** 0003–0006 and 0012 price precision; 0007, 0008 and 0011 find ADR-0017 §7a's addressable domain to be zero on this corpus (90.8% of `ddg_mixed` rows rest on a walk that never ran); 0009 and 0010 grow the deferred-crossing shape table from four shapes to seven; 0029 measures the receiver-typing drain.
-- **The adjudication packet builder ships with 42 tests**, after 0006's packets had an empty sink listing for 66 of 112 situations.
+- **ADR-0046: taint precision is two numbers**, correctness (unchanged, so earlier measurements stay comparable) and usefulness, which deducts true positives that tell the user nothing. **ADR-0048** makes a benchmark declare its frame (unit, sampling, cohort, rubric, analyzer SHA) in a machine-readable block, checked in CI.
+- **Measurements 0003–0012 and 0029** price precision, find ADR-0017 §7a's addressable domain to be zero on this corpus, and measure receiver typing. The adjudication packet builder ships with tests.
 
 #### Developer tooling and CI
 
-- **A red cron CI step reaches the agent at session start**, naming the step, the commit and where it first went red; a red gate had sat unread for four days. It is silent when green, offline, or already tracked by an open row, and the network half is cached for an hour (17 s cold, 1 s warm).
-- **`auto-pr --detach` hands the CI poll to a background watcher, and `auto-pr wait` reports on it** (0 finished, 2 running, 1 no watcher or died). An agent's shell call is capped well below the CI poll, and killed runs had become the most common unexplained outcome, so a run with no terminal must pass `--detach` or `--foreground`.
-- **`scripts/audit-autopr-convergence` reads the `auto-pr` run ledger** (483 rows, 55 violations, previously unread) and reports at session start.
-- **`ci-debug cron-status`** reports the latest scheduled verdict per workflow and step, and **`ci-debug pr-body <n>`** prints a PR description safely fenced.
-- **New gates**: a production function reachable only from its own tests fails CI (`scripts/check-test-only-reachability`), a question `dead-code-maybe` cannot ask of exported API; a node or edge id must be minted, never hand-spelled (ADR-0034); a stdlib import newer than `requires-python` fails; and `tag-release` checks push credentials before signing.
+- **`auto-pr --detach` hands the CI poll to a background watcher, and `auto-pr wait` reports on it** (0 finished, 2 running, 1 no watcher or died). A run with no terminal must choose `--detach` or `--foreground`.
+- **A red scheduled-CI step is reported at session start**, naming the step and the commit where it first went red. **`ci-debug cron-status`** shows the latest scheduled verdict per step, **`ci-debug pr-body <n>`** prints a PR description safely, and **`scripts/audit-autopr-convergence`** reads the `auto-pr` run ledger.
+- **New gates**: a production function reachable only from its own tests fails CI; a node or edge id must be minted, never hand-spelled (ADR-0034); a stdlib import newer than `requires-python` fails; and `tag-release` checks push credentials before signing.
 
 ### Changed
 
 #### Two producers' records become one (ADR-0057)
 
-- **One declaration seen by two backends is one node and one edge.** Under ADR-0012 a two-backend Rust run doubled every function and the in-crate call graph. A merge pass at the start of Phase C pairs records by span containment, keeps one value per attribute by a declared policy, and records the rest in two new fields, `attribution` and `alternatives`. A one-producer artifact is byte-identical to before.
-- **Every backend declares how it pairs** (`merge=MergeAnchor | MergeDisjoint`, `executes_analysed_code=`), and the merge pass refuses a language whose second producer has not declared. Cross-backend tests must run on recorded producer output, which `scripts/check-recorded-producer-input` enforces.
-- **Agreement raises confidence; it is not a tie-break.** Two producers reaching one edge by different pathways make it `confidence_source="corroborated"` at 0.95 (`CONFIDENCE_MODEL` v2.1).
-- **A resolved call demotes an external stub at the same call site, but never deletes it (§14, §14.1, §15).** The stub's `rank_score` is halved and `meta.superseded_by` names its successor. Only an anchored producer, or a recovery linker granted the permission on measurement (so far `inherited-calls-linker`), may supersede, and only a stub that did not state its module; a first version had demoted 45 correct stubs. A module-less stub folds into its typed twin by `dst_ref`.
-- **The results cache is keyed on the backends that actually run**, so a one-backend and a two-backend run no longer share a cached artifact.
+- **One declaration seen by two backends is one node and one edge.** Under ADR-0012 a two-backend Rust run had doubled every function and the in-crate call graph. A merge pass pairs records by span, keeps one value per attribute by a declared policy, and records the rest in two new fields, `attribution` and `alternatives`. A one-producer artifact is byte-identical to before.
+- **Every backend declares how it pairs** with others (`merge=`, `executes_analysed_code=`), and cross-backend tests must run on recorded producer output.
+- **Agreement raises confidence.** Two producers reaching one edge independently make it `confidence_source="corroborated"` at 0.95 (`CONFIDENCE_MODEL` v2.1).
+- **A resolved call demotes, but never deletes, an external stub at the same call site.** The stub's `rank_score` is halved and `meta.superseded_by` names its successor.
+- **The results cache is keyed on the backends that actually run.**
 
 #### Vocabulary and axes (ADR-0050, ADR-0051, ADR-0058, ADR-0059)
 
-- **A catalogue row's `functions:` / `methods:` / `attributes:` section has one meaning (ADR-0059)**: how the primitive is reached from the row's own module. `method` if called on an instance; `function` if called on the module, type, companion or named global, or with no owner; `attribute` if read. The catalogues' own notes had given three different rules, one of them "what the analyzer emits". Consumers test kind through three named predicates, a check fails on a new literal or unregistered section key, and the 91 non-conforming rows sit in a shrink-only ledger, each naming its blocker.
-- **The I/O-boundary vocabulary (ADR-0050) and the module key (ADR-0051) are declared axes.** The module key had been declared free-text while the matcher branched on it; the widened lint surfaced 20 undeclared fields.
-- **`Symbol.signature` is no longer parsed freely (ADR-0058).** Nine consumers parsed a field declared display-only for return types, arity and field types; a gate now limits parsers to a closed list, and Python's return type moves to `Symbol.meta["return_type"]` (the list shrinks 9 → 8, with identical results over 33,740 functions).
-- **`env_read` splits off `host_info_read`**, so `host_secret` stops counting host and identity reads (134 of 195 rows) as secrets. **The shipped catalogues are stdlib-only and gated** (ADR-0047), and **four `call_construct` values from another axis are drained** (ADR-0038).
+- **A catalogue row's section (`functions:` / `methods:` / `attributes:`) has one meaning (ADR-0059)**: how the primitive is reached from its own module. `method` if called on an instance, `function` if called on the module, a type or a named global, `attribute` if read. Non-conforming rows sit in a shrink-only ledger.
+- **The I/O-boundary vocabulary (ADR-0050) and the module key (ADR-0051) are declared axes.**
+- **`Symbol.signature` is display-only (ADR-0058).** A gate limits which consumers may parse it, and Python's return type moves to `Symbol.meta["return_type"]`.
+- **`env_read` splits off `host_info_read`**, so host and identity reads no longer count as secrets. **The shipped catalogues are stdlib-only** (ADR-0047), and four off-axis `call_construct` values are removed (ADR-0038).
 
-#### What a linker declares: activation, dependencies, derivations
+#### What a linker declares
 
-- **Activation is declared.** 25 of 61 linkers ran everywhere only because nobody had passed `activation=`. They now say `always_on_unreviewed()`, which behaves the same and admits nobody decided. A test fails on any new undeclared registration, and ADR-0055 refuses to tighten them without measurement.
-- **`depends_on` names the passes a linker actually reads.** Many clauses had listed "languages where this concept exists". Fourteen linkers are repaired (for example `database-query-linker` → `[["sql"]]`), a linker that scans files itself declares `[]` with a reason, and `find_falsified_dependencies` reports a pass that emitted edges despite an unsatisfied clause: 27.1% of 975 surveys before, 0 after.
-- **`derived_from` names what an edge was derived from, or says why it cannot.** 86 of 93 linker sites had restated the endpoints, and each was read. 17 now name their inputs, the rest declare `endpoints` or `consumed-none`, and `[]` means "consumed no graph record" (`SCHEMA_VERSION` 0.20.13). Linker edges with a real chain go 399 → 840, and `explain --provenance` shows the three cases apart.
+- **Activation is declared.** 25 of 61 linkers ran everywhere only because none was declared; they now say `always_on_unreviewed()`, and ADR-0055 refuses to tighten them without measurement.
+- **`depends_on` names the passes a linker actually reads**, not the languages where its concept exists. Fourteen linkers are repaired.
+- **`derived_from` names what an edge was derived from, or says why it cannot**; `[]` means "consumed no graph record" (`SCHEMA_VERSION` 0.20.13). Linker edges with a real derivation chain go 399 → 840.
 
 #### Pass-silence reporting (ADR-0054, ADR-0056)
 
-- **Every silent pass says why, in one field on one closed axis.** `limits.skipped_passes[].skip_reason_code` is renamed `silence_reason` (breaking for a key one unreleased version old). `dependency_unavailable`, `backend_disabled` and `pass_crashed` move onto skipped passes, `prerequisite_absent` and `no_candidate_construct` gain producers, and `candidates_unresolved` is new. An unclassified skip reads `unreported`, never the common "no files" answer.
-- **A zero is measured, not defaulted.** Eight linkers had read 14–834 files each and reported none. A pass is no longer skipped as "no files" when its own enumeration would find work.
-- **Every survey prints three silence summaries on stderr**, including any registered pass that reached no record, which would have caught the rust-analyzer backend's output going missing for a month. The other two report skipped passes by reason and silence across both places it is recorded.
+- **Every silent pass says why, in one field on one closed axis.** `limits.skipped_passes[].skip_reason_code` is renamed `silence_reason` (breaking, for a key one unreleased version old), and an unclassified skip reads `unreported` rather than "no files".
+- **A zero is measured, not assumed.** A pass is no longer skipped as "no files" when its own enumeration would find work; eight linkers had read 14–834 files each and reported none.
+- **Every survey prints silence summaries on stderr**, including any registered pass that produced no record.
 
 #### Taint adjudication and reporting
 
-- **Taint refutation is confirm-only in practice (ADR-0052).** The §3a removal capability stays, but closing escapes is not worth it: 66.7–90.6% of blocked-walk sites have no callee recorded at the line. **`False` now removes the flow**; the arm had read only `walk_result is True`, treating "the walk exhausted every route" and "the walk lost the value" as one event that removed nothing.
-- **An unadjudicated flow is reported once per situation** (envelope 2.0 → 2.1): six repositories had reported 359 flows for 78 situations, caddy's `cmdRun` alone emitting 76.
-- **`analysis_method` says which analysis produced a finding**; `walk_verdict` and `walk_blocked_by` say what the DDG walk concluded and what stopped it. **What `untrusted_input` asserts is written down**: a far-side party had a say in the value, not that it authored the bytes.
+- **Taint refutation is confirm-only in practice (ADR-0052).** The walk can still remove a flow, and `False` now does, but growing the set of removable flows is not worth pursuing.
+- **An unadjudicated flow is reported once per situation** (envelope 2.0 → 2.1); six repositories had reported 359 flows for 78 situations.
+- **Findings say which analysis produced them** (`analysis_method`) and what the data-flow walk concluded (`walk_verdict`, `walk_blocked_by`). **What `untrusted_input` asserts is written down**: a far-side party had a say in the value, not that it authored the bytes.
 
 #### `dead-code-maybe`
 
-- **The default view drops from 41.4% dead to 7.5% on this repository (2,468 → 448 candidates)**, because public Python methods now get an exportedness verdict: a public method of an exported class is exported, and one of a private class is not. Re-baseline anything that relied on the old numbers.
-- **A name mentioned in JSON, YAML, TOML, XML or HTML no longer counts as cross-language dispatch** (+120 candidates here). Those still withheld are listed in a new `cross_language_demoted` field (`DEAD_CODE_MAYBE_SCHEMA_VERSION` 0.2.0 → 0.3.0, additive).
+- **The default view drops from 41.4% dead to 7.5% on this repository**, because public Python methods now get an exportedness verdict from their class. Re-baseline anything that relied on the old numbers.
+- **A name mentioned in JSON, YAML, TOML, XML or HTML no longer counts as cross-language dispatch.** Candidates still withheld are listed in a new `cross_language_demoted` field (`DEAD_CODE_MAYBE_SCHEMA_VERSION` 0.2.0 → 0.3.0, additive).
 
 #### Schema
 
@@ -131,119 +121,99 @@ Five threads run through this cycle.
   - 0.20.11: `Symbol` and `Edge` gain `attribution` / `alternatives`, and `confidence_source` gains `corroborated`.
   - 0.20.12: `is_exported` becomes `true` / `false` / `null`.
   - 0.20.13: `derived_from` may be empty.
-- **`is_exported` is `Optional[bool]`.** About ninety analyzers have no exportedness rule and had asserted "not exported"; the field now holds a value only when measured, and readers that test truthiness are unaffected. **`VERIFY_CLAIMS_SCHEMA_VERSION` advances 2.0 → 2.4.**
-- **`MetaKeySpec` gains `per_call_site`**, so a collapsed edge no longer reports one call site's fact for the whole relationship; a read-then-write had reported only `fs_read`, confirming a `must_not_exist: fs_write` claim, the ADR-0033 false-confirm class.
-- **Solidity contract-member ids change**: members are `method`, and `kind` is a slot in `Symbol.id` and `stable_id`. Regenerate rather than diff across the boundary.
+- **`is_exported` is `Optional[bool]`.** About ninety analyzers have no exportedness rule and had asserted "not exported"; the field now holds a value only when measured. **`VERIFY_CLAIMS_SCHEMA_VERSION` advances 2.0 → 2.4.**
+- **`MetaKeySpec` gains `per_call_site`**, so a collapsed edge no longer reports one call site's fact for the whole relationship (a read-then-write had reported only the read, confirming a no-write claim: the ADR-0033 false-confirm class).
+- **Solidity contract-member ids change** (members are `method`); regenerate rather than diff across the boundary.
 
 ### Fixed
 
 #### verify-claims verdicts
 
-- **One new line of code withheld every self-claim verdict.** `datetime.date.today` and three `datetime.datetime` clock reads were catalogued as instance methods, so `_dt.date.today()` made `datetime.date` look invisible and all 18 self-claims fell to `inconclusive`. They are now function-kind, and a test checks every Python method row against the real class.
-- **A classified call no longer marks its module invisible**, for Node's `process.on` / `send` / `cwd` and Python's `ctypes.cdll.LoadLibrary`, which are called on a named owner and are now function-kind; classification is unchanged. 6 of 9 surveyed JavaScript repositories had printed the false reason.
-- **`ssl.SSLObject` is no longer network I/O**; the caller feeds it memory buffers, so its rows minted false sources. **`ddg_mixed` is documented for what it is**: in 86–88% of rows no walk had been attempted, so the definition names its three cases and points to `walk_verdict`.
-- **The coverage gate counts what it should.** A repository's own code (Rust `crate::`, JavaScript relative specifiers, a folded `lib.utils`) is no longer an unexamined dependency, and references are counted rather than parse candidates, where a scoped Rust path had counted once per nesting depth for modules nothing called into.
-- **A synthetic call site carries its host file's language**, where the solidity-abi linker stamped a literal `typescript` (the synthetic node's own `language` is `None`, ADR-0031 Class B) and withheld every claim on a `.js` contract call. **A withheld verdict names the blocker that actually withheld it**, where two were evaluated and the function returned on the first.
+- **One catalogue mistake had withheld every self-claim verdict.** Four `datetime` clock reads were catalogued as instance methods, so all 18 self-claims fell to `inconclusive`. A test now checks every Python method row against the real class.
+- **A classified call no longer marks its module invisible** (Node's `process.on` / `send` / `cwd`, Python's `ctypes.cdll.LoadLibrary`).
+- **`ssl.SSLObject` is no longer network I/O**, since the caller feeds it memory buffers. **`ddg_mixed` is documented for what it is**: usually no walk had been attempted, so read `walk_verdict`.
+- **The coverage gate no longer counts a repository's own code as an unexamined dependency** (Rust `crate::`, JavaScript relative imports), and counts references once rather than once per nesting depth.
+- **A synthetic call site carries its host file's language**, where one linker stamped `typescript` on `.js` calls and withheld every claim on them (ADR-0031). **A withheld verdict names the blocker that actually withheld it.**
 
 #### Taint propagation
 
-- **A recorded statement whose def/use misses a name no longer passes the coverage gate unseen.** `unaccounted_names` compares each statement's defines and uses with the names inside it. A per-statement "understood" flag was the proposed fix and was refuted: in six of seven shapes a four-language sweep found, the handler is registered but incomplete. Effect on verdicts today: **zero, reported as zero**.
-- **The walk's accounted-for exits are pinned as a census** of exactly five, counted against the shipped function's AST, with controls that add a sixth. Two rest on the summary catalogue, where `fmt.Fprintf` and `fmt.Fprintln` had been marked dead ends while writing into their first argument.
-- **Three coverage-gate gaps close.** The §3a gate asked only about call nodes, so an omission with no call in it licensed a refutation; a recorded heir vouched for an unrecorded one (1,978 sites); and `coverage_granularity` never moved off `"language"` when the per-function gate landed.
-- **Four wrong walk answers.** `subprocess.Popen(tainted)` verified clean while `subprocess.run(tainted)` verified violated, because PascalCase types the call as `instantiates`, which was not a taint edge type. A dispatch edge out of a type node is no longer dataflow (22 removals, 0 correct). An I/O primitive's return no longer inherits its argument's taint, and a module-less sink is no longer matched by bare name.
-- **An unresolved bare-name call no longer installs a sanitizer that is not there.** A barrier deletes findings, and the guard listed the ways receiver evidence could be *absent*, permitting whatever it had not thought of, so a bare Java `doFinal(p)` bound `javax.crypto.Cipher.doFinal`. Every language now requires evidence to be *present*: an exact qualified name, a module slot that completes it, or a callee name carrying its own owner. This reverses an earlier ruling that a bare free-function call could bind a receiver-shaped sanitizer.
-- **Taint reaches a JavaScript callback.** `addEventListener`, `http.createServer` and `process.on` classified correctly and produced no findings: the source sits on the enclosing function, the sink inside the callback, and JavaScript links them with `references`, which taint did not follow. A registration edge is now call-shaped for taint; `references` as a whole is not, since it also carries TypeScript type references. Measured on eight repositories: 78 → 80 findings, one verdict `inconclusive` → `violated`. The change is not purely additive: a callback handed to a sanitizer now installs a barrier.
-- **`verify-claims` no longer crashes with `RecursionError`** on deeply nested code, where it had exited 1, the violated-claim code; the walk is now an explicit stack. **A bash redirect to `/dev/null` is no longer a filesystem write.**
-- **The Python data-flow walk's answer is no longer thrown away.** Results were stored under a key nothing looked up, so 0 of 24,915 methods had walk-backed evidence; now 85% can, and walks on this repository's claims go 84 → 122. On two repositories with violated claims, findings moved from `structural` to walk-backed labels, and one fused finding split into two.
-- **JavaScript and TypeScript class methods reach the data-flow graph** (dash.js 0 → 766 of 766; apollo-server 0 → 314 of 355). Arrow functions and function expressions are still not walked.
+- **An unresolved bare-name call no longer installs a sanitizer that is not there.** A bare Java `doFinal(p)` had bound `javax.crypto.Cipher.doFinal` and deleted findings. Every language now requires positive evidence of the receiver: an exact qualified name, a module slot, or a callee name carrying its owner.
+- **Four wrong walk answers.** `subprocess.Popen(tainted)` verified clean while `subprocess.run(tainted)` verified violated; a dispatch edge out of a type node is no longer data flow; an I/O primitive's return no longer inherits its argument's taint; and a module-less sink is no longer matched by bare name.
+- **Taint reaches a JavaScript callback** registered with `addEventListener`, `http.createServer` or `process.on`. On eight repositories findings go 78 → 80 and one verdict moves `inconclusive` → `violated`; a callback handed to a sanitizer now installs a barrier.
+- **The Python data-flow walk's answer is no longer thrown away.** It was stored under a key nothing read, so no method had walk-backed evidence; now 85% can. **JavaScript and TypeScript class methods reach the data-flow graph** (dash.js 0 → 766 of 766); arrow functions and function expressions still do not.
+- **The coverage gate sees more of what the walk missed.** A statement whose def/use misses a name is reported (`unaccounted_names`), a call-free omission no longer licenses a refutation, and a recorded function no longer vouches for an unrecorded one. No verdict changes today.
+- **The walk's accounted-for exits are pinned** as a census of five, and `fmt.Fprintf` / `fmt.Fprintln` are no longer treated as dead ends.
+- **`verify-claims` no longer crashes with `RecursionError`** on deeply nested code, where it had exited 1, the violated-claim code. **A bash redirect to `/dev/null` is no longer a filesystem write.**
 
 #### Call graph accuracy
 
-- **A call is credited to the function that contains it, in 25 analyzers.** Each found a call's enclosing function by a name that overloads, companion `apply`s, redefinitions, `#ifdef` branches and one method name in two classes all share, and credited whichever registered last. They now find it by the declaration's position, the rule Elixir and Erlang adopted first. Calls outside their caller's span go to 0: D 15,126, Elixir 7,166, Kotlin 2,014, Objective-C 1,849, Erlang 1,306, Scala 964, GLSL 592, Groovy 449, Swift 273, JavaScript 135, R 53, Perl 39, C 35, TypeScript 33, Rust 5, Nim 4, Ruby 3, C# 3. Calls between overloads now resolve, and a few edges that existed only because of the wrong anchor are gone. A Nix file's top-level function owns its calls (postgrest 13 → 159), an Elixir `def` head is no longer a call, and an Erlang `-ifdef` branch keeps its calls. A test fails on any analyzer that emits calls and still anchors them by name.
-- **A Haskell function's span covers all of its equations**, not only the first (119 misplaced calls on xmonad and hadolint); a multi-equation function's id and `line_span` change.
-- **A `.vue` or `.svelte` callback is credited with its own calls**: the lookup ignored the `<script>` block's line offset. On five repositories 571 calls move from a neighbouring callback, the enclosing function or the file into the callback that contains them; no edge is added or lost.
-- **A Scala or Kotlin call follows the file's explicit import** rather than a same-named project symbol in another package: `Process(cmd)` after `import scala.sys.process.Process` had bound to spark's own `case class Process`, and an imported JUnit `assertEquals` to a test fixture of the same name. Kotlin re-targets to the imported path (2,864 detekt and 2,555 okhttp calls). Scala records no qualified names, so it leaves the call unresolved with the import path in its module slot, where a launch reaches its catalogue row: 5,631 calls on 11 repositories, all 30 of a random sample false edges.
-- **Swift and C# properties are back in the default map.** The noise filter dropped `property` as CSS noise, but no CSS analyzer emits it. Its producers are Swift and C# properties, which have bodies and calls, and `.properties` keys, QML and Objective-C `@property`, which have neither; only the last three are dropped now. Alamofire gains 278 call edges and Kingfisher 680, and Kingfisher loses 2 false dead-code candidates. C# properties still carry no edges, since calls inside accessors are not credited.
-- **Python resolves a declared return type in the module that declares it**, through quoted forward references, `Cls.factory()` and `obj.build()` assignments, and two-hop chains; `ts.workspace.add(...)` had bound to the wrong class by line proximity.
-- **Method-call recovery stops binding by name coincidence**: it no longer overrides a producer that named the module (92 → 64 edges here, all 28 removed wrong; precision 51% → 73%) or binds to a plain-value member.
-- **The GraphQL linkers emit edges.** Both had minted nodes and emitted nothing across the corpus: no producer supplied the schema fields they link to, and the client side matched operation names schemas never declare. A new `graphql-sdl-linker` lifts schema types out of `gql` literals, and `graphql-linker` joins an operation to the field it selects: apollo-server 0 → 128.
-- **Seven constructs emitted no call edge at all**: Python's bare builtins (the permitting set had been the I/O catalogue itself), Go calls under a package-level `var` (every cobra `Run:` handler), Python calls on an external-typed instance field, Haskell zero-argument IO actions (505 sites), Erlang's `?LOG_*` macros (91% of rabbitmq's logging), Rust grouped `use` lists (37.9% of the corpus's `use` statements), and every call inside a Nim exported proc (`proc a*`), a module's public API (nitter 648 → 2,460 call edges).
-- **A JavaScript handler assignment (`ws.onmessage = h`) emits a registration edge** and reaches the catalogue. The member-call cascade missed it because it is an assignment, not a call; it was predicted to buy zero findings, and on the production path it does buy some.
-- **Elixir gives the same answer twice, reaches OTP, and stops resolving qualified calls by bare name.** Attribution through `next(iter(imported_modules))` made surveys differ by 101 edges across hash seeds, all 653 of that branch's edges false; every Elixir number published before the fix went through it. Atom-module calls (`:ets.insert`) now emit (+122 edges), and a substring ownership test that bound qualified calls by bare name is gone (202 false edges; 208 redirected, 0 real losses).
-- **A Nim call resolves only to a declaration its module can see.** The analyzer kept one declaration per name, the last registered, so a call could bind a private proc of a module it never imported: 1,555 such edges on nitter, chronos, pixie and nimble, 96 of them into nitter's private `redis_cache.get`. A call now looks in its own file, then the files `include` joins to it, then the exported declarations of modules it imports, narrowed by `from` and `except` and extended through `export`. Call edges are unchanged and resolved calls go 15,354 → 13,423; a random sample of 20 removals were all library calls (`add`, `len`, `inc`, `Option.get`) bound to a same-named project proc. Where several visible modules declare the name, the edge's confidence falls to 1/√N instead of a silent pick.
-- **A Scala receiver's type survives a qualified or generic type node** (hinted share 9.03% → 23.43% on sbt); a generic base Scala imports implicitly is deliberately refused, since 44 of 185 newly resolved edges bound a stdlib `Map.get` to the project's own.
-- **Node's globals and promise APIs resolve**: `fs.promises.<fn>` had a member-expression receiver no rule typed (**+303 edges**), and `process` and `performance` were missing from the known globals (**892 edges off `external`**).
-- **C stamps the file's `#include` set on ambiguous bare calls**, so `send` / `recv` / `read` / `write` reach the catalogue; 15 of 21 verdicts move from `confirmed_with_caveats` to `inconclusive`, none toward `confirmed`. **A Java wildcard import is a candidate package**, not a prefix that made `System` into `java.io.System`.
+- **A call is credited to the function that contains it, in 25 analyzers.** They had found the enclosing function by name, so overloads, redefinitions and same-named methods in different classes took each other's calls. They now use the declaration's position. Calls outside their caller's span go to 0 (for example D 15,126, Elixir 7,166, Kotlin 2,014), and a test fails on any analyzer that still anchors calls by name.
+- **Related anchoring fixes**: a Haskell function's span covers all its equations (its id and `line_span` change); a `.vue` or `.svelte` callback is credited with its own calls; a Nix file's top-level function owns its calls; an Erlang `-ifdef` branch keeps its calls.
+- **Seven constructs that emitted no call edge at all now do**: Python bare builtins, Go calls under a package-level `var` (every cobra `Run:` handler), Python calls on an external-typed instance field, Haskell zero-argument IO actions, Erlang `?LOG_*` macros, Rust grouped `use` lists, and calls inside a Nim exported proc (nitter 648 → 2,460 call edges).
+- **An explicit import outranks a same-named project symbol** in Scala and Kotlin: `Process(cmd)` after `import scala.sys.process.Process` had bound to spark's own `Process`. Kotlin re-targets to the imported path; Scala leaves the call unresolved with the import path as its module, so it reaches its catalogue row.
+- **A Nim call resolves only to a declaration its module can see**: its own file, the files `include` joins to it, and the exported declarations of modules it imports. 1,555 edges into private procs of modules the caller never imported are gone. Where several visible modules declare the name, confidence falls to 1/√N instead of a silent pick.
+- **Elixir gives the same answer every run**: surveys had differed by 101 edges across hash seeds. Atom-module calls (`:ets.insert`) now emit, and qualified calls are no longer bound by bare name (202 false edges gone).
+- **Swift and C# properties are back in the default map**, having been dropped as CSS noise (Kingfisher +680 call edges). C# accessors still carry no calls.
+- **The GraphQL linkers emit edges** (apollo-server 0 → 128). A new `graphql-sdl-linker` reads schema types out of `gql` literals, and `graphql-linker` joins an operation to the field it selects.
+- **Method-call recovery stops binding by name coincidence**: it no longer overrides a producer that named the module (precision 51% → 73%).
+- **Receiver-typing fixes**: Python resolves a declared return type in the module that declares it; a Scala receiver's type survives a qualified or generic type (sbt hinted share 9.0% → 23.4%); Node's `fs.promises.*`, `process` and `performance` resolve (+1,195 edges off `external`); a JavaScript handler assignment (`ws.onmessage = h`) emits a registration edge.
+- **C stamps the file's `#include` set on ambiguous bare calls**, so `send` / `recv` / `read` / `write` reach the catalogue; 15 of 21 verdicts move to `inconclusive`, none toward `confirmed`. **A Java wildcard import is a candidate package**, no longer a prefix that turned `System` into `java.io.System`.
 - **An import edge's dst is a canonical id** in Objective-C, CSS and Solidity, and **a generated file's edges keep the file's path**.
 
 #### The rust-analyzer and SCIP backends
 
-- **The rust-analyzer backend's output is accounted for.** Its records named an analysis run never written out (1,308 validation violations; now 2), and a producer returning output without a run is now recorded with a warning.
-- **Function-local `let` bindings are no longer nodes**: they were three quarters of the nodes, and 21% of edges falsely crossed files (SCIP nodes 669 → 169).
-- **A reference is attributed to the function that makes it** (method-sourced SCIP edges 0 → 287 on aardvark-dns).
-- **Symbol kinds come from the producer's declaration.** Every free function had been a `method` and every enum variant a `class`; the two Rust backends now agree on kind for 133 of 148 paired records, and a reference to a callable is `calls`. `parameter` and `type_parameter` are registered kinds, a SCIP `Protocol` reaches `protocol`, and scip-python's empty language or kind falls back to the extension or descriptor.
-- **A missing binary, a crash, an exit with no index and an undecodable index are no longer one `None`**: they report `dependency_unavailable`, `pass_crashed` or `unreported`, and a run that indexed nothing is recorded as a run.
-- **Three shipped claims are retracted**: the two Rust backends never shared a `stable_id` (0 of 52), the test saying they did could not fail, and the spec cited a nonexistent ruling.
+- **The rust-analyzer backend's output is accounted for**: its records had named an analysis run never written out (1,308 validation violations, now 2).
+- **Function-local `let` bindings are no longer nodes** (SCIP nodes 669 → 169), and **a reference is attributed to the function that makes it**.
+- **Symbol kinds come from the producer's declaration.** Every free function had been a `method` and every enum variant a `class`; the two Rust backends now agree on kind for 133 of 148 paired records.
+- **A missing binary, a crash and an unreadable index are told apart** (`dependency_unavailable`, `pass_crashed`, `unreported`) instead of all returning `None`.
+- **Three shipped claims are retracted**, among them that the two Rust backends shared a `stable_id` (they shared 0 of 52).
 
-#### Catalogue rows — direction, kind and reach
+#### Catalogue rows: direction, kind and reach
 
-- **A constructor that builds a value is not the crossing.** Erlang's `ets.new`, the `Req.new` / `Finch.build` overlay rows, Python's `urllib.request.Request` and Go's `http.NewRequest` were rowed under the boundary their later executor crosses, so a flow was credited one call early (and `ets.new` counted one write twice). The finding now sits at the executor: `ets.insert`, `Req.request!`, `Finch.request`, the newly rowed `Req.Request.run_request`, `urlopen` and `Client.Do`. `http.NewRequest` had survived only because a request sent through `http.DefaultClient` never reached `Client.Do`. No verdict moved on the Erlang/Elixir or Python repositories measured. `urllib.request`'s 46 public callables were audited and it is declared complete, so an unclassified `Request(...)` cannot withhold verdicts: proxy discovery is rowed as an environment read, `localhost()` / `thishost()` as DNS receives, `ftpwrapper` as a send and `urlcleanup` as a file write.
-- **A Go call on a stdlib package variable reaches its boundary.** A new `package_variables` section types `http.DefaultClient`, `http.DefaultTransport` and `net.DefaultResolver`, `http.DefaultClient.Do(req)` had either fallen to `external` or bound by bare name to an unrelated project `Do`; all 79 such false edges on keda, loki and grafana now reach `net/http`.
-- **Scala's `Process(cmd).!` is classified as `subprocess` and `fs_write`**, under the explicit import and the `scala.sys.process._` wildcard alike. No row carried the name the analyzer emits, so on sbt 6 of 6 explicit-import launches classified as nothing; on 11 repositories 22 classifications are gained, none lost.
-- **Python and JavaScript complete their catalogue legs**: 41 Python module strings rowed with 44 dated grants, `builtins` enumerated (once bare builtins emitted edges, the gate had read an unenumerated module and sent all 18 self-claims to `inconclusive`), and JavaScript audited with 76 rows and promoted to `provenance_declared`, where zero grants had meant no node module could be an examined negative.
-- **Rows that manufactured taint from operations reading nothing are removed**: 31 Haskell `IORef`/`MVar`/`STM` rows under `db_read`, `socket`/`bind`/`listen` in ten languages, the JPA/JDBC builders and `io_lib:format`. Adjacency is not a crossing, and a gate fails on any note rationalising a crossing that happens elsewhere.
-- **Direction, kind and family corrections across all fifteen catalogues.** A C socket call is classified by the descriptor's family, so tmux, which opens no `AF_INET` socket anywhere, no longer reports network egress over its `AF_UNIX` channel; Erlang's `io:read` and `io:get_line` are no longer `logging`, an outbound sink; **a clock read is `host_info_read` everywhere.**
-- **JDK statics are function-kind (ADR-0059)**, and **a Kotlin or Scala static call reaches its row**: the owner now comes from the import or from `java.lang`, and a type the project defines keeps resolving to the project. Since a bare Java call with no module is a project method, the statics' names also require module context. Classified calls: sbt 123 → 237, gatling 31 → 57, detekt 17 → 30, http4s 3 → 6, and sbt gains one `System.getProperty` → `Files.deleteIfExists` finding. The untyped-receiver disclosure stops naming a JDK static as an instance-call callee (on jedis, 6 of 6 `env_read` and 90 of 168 `fs_read` sites).
-- **Swift's sixteen constructor rows are decided one by one.** Keyed as methods, they had never matched a call, hiding boundaries nothing exercised. Eight cross nothing and are removed (request builders, bootstraps, a thread pool, `Logger(label:)` and three `NIOSSL*` constructors). Three listeners become `net_listen` and `NSFetchRequest` becomes `db_compose`; `NWConnection`, `NIOAsyncChannel` and `ModelContext` keep their boundary; `CommandLine` becomes the read of `CommandLine.arguments`. Vapor gains 3 classified calls and hummingbird 2; no verdict changes.
+- **A constructor that builds a request is not the crossing.** Erlang's `ets.new`, Python's `urllib.request.Request`, Go's `http.NewRequest` and the `Req` / `Finch` builders had been credited one call early; the finding now sits at the call that sends. `urllib.request` is audited and declared complete.
+- **Rows that invented taint from operations that read nothing are removed**: Haskell `IORef` / `MVar` / `STM` under `db_read`, `socket` / `bind` / `listen` in ten languages, JPA/JDBC builders and `io_lib:format`.
+- **Server launch and connection setup stop creating taint sources (ADR-0049)**: 28 launch rows in Go, Python, Haskell and Erlang, and Go's eleven setup rows.
+- **Standard input is `ipc_recv` in every catalogue**, with the call that transfers the bytes rowed (Java's `readLine` had been `fs_read`). **A launch that returns the child's output is a source** in eight languages.
+- **A wrapper's boundary follows what it wraps**: Go's `bufio.NewScanner`, `io.WriteString` and `fmt.Fprint*` no longer carry one fixed boundary each.
+- **Direction and family corrections across all fifteen catalogues.** A C socket call is classified by its address family, so an `AF_UNIX` channel is not network egress; Erlang's `io:read` is not `logging`; **a clock read is `host_info_read` everywhere.**
+- **Go calls on stdlib package variables reach their boundary**: a new `package_variables` section types `http.DefaultClient`, `http.DefaultTransport` and `net.DefaultResolver` (79 false edges on keda, loki and grafana now reach `net/http`).
+- **JDK statics are function-kind (ADR-0059), and Kotlin and Scala static calls reach their rows** (sbt 123 → 237 classified calls). **Scala's `Process(cmd).!` is classified** as `subprocess` and `fs_write`.
+- **Swift's sixteen constructor rows are decided one by one**: eight that cross nothing are removed, three listeners become `net_listen`, and `NSFetchRequest` becomes `db_compose`.
+- **Python and JavaScript complete their catalogues**: Python gains 41 module rows and an enumerated `builtins`, and JavaScript is audited and promoted to `provenance_declared`. Thirteen class-qualified receivers that had sent all 18 self-claims to `inconclusive` are adjudicated.
 
 #### Symbol kinds, ids and pass accounting
 
-- **Twenty-six id-emitting sites produced ids the validator calls malformed**, mostly a line number where the grammar wants a span, and **`Edge.id` gets a validator for its own grammar** (`edge:sha256:<16hex>`), checked first against apollo-server's 18,283 live edge ids.
-- **The dead-code walk reaches an initializer through its constructed class.** Python, JS/TS and Dart land construction on the class, and no edge leaving a class is traversable, so a helper called only from a constructor read as dead (`Cache._ensure_db`, which opens the tracker's database, was one). The walk hops from a *constructed* class to its initializer, never through `contains` alone, and no emitted edge changes. Revived at `--cross-lang-threshold 0`, with 0 newly dead: **21 on self-analysis, 103 on pretix, 74 on kserve**. `symbol_kinds.is_initializer` is the shared predicate; Dart is a declared gap.
-- **Ruby object creation emits `instantiates`**, so a `survey` filter no longer omits all of it, and **Solidity contract members are `method`** (2,025 per repository).
-- **Every edge producer names how it inferred the edge**: 51 sites, including linkers that do no call analysis, had defaulted to `ast_call_direct`, and a lint now fails on omission.
-- **The analyzer registry uses the taxonomy's language names**, so `makefile` is no longer reported unanalysed after the `make` pass ran.
-
-#### The standard-input surface and deferred crossings (ADR-0049)
-
-- **Server launch and connection setup stop minting taint sources**: 28 launch rows in Go, Python, Haskell and Erlang, and Go's eleven setup rows, all of which register or open a crossing and transfer nothing.
-- **A handle wrapper's boundary follows its argument.** Go's `bufio.NewScanner` was `ipc_recv` "when wrapping os.Stdin", true at zero of 83 sites; `io.WriteString` and `fmt.Fprint*` take any `io.Writer` and had one fixed boundary each, which was measurement 0012's entire vacuous class.
-- **Standard input is `ipc_recv` in every catalogue, and the call that transfers the bytes is rowed** (Java's `readLine` and `Scanner.next*` had shipped as `fs_read`, and C++'s `std::getline` had no row). **A launch that returns the child's output mints a source in eight languages.**
-- **Thirteen unclassifiable class-qualified receivers are adjudicated.** Between them they had sent all 18 self-claims to `inconclusive`, and adjudicating them exposed a real filesystem-escape hazard.
+- **The dead-code walk reaches a constructor's helpers through the class it constructs**, so a helper called only from `__init__` no longer reads as dead (21 revived on self-analysis, 103 on pretix, 74 on kserve; 0 newly dead). Dart is a declared gap.
+- **Twenty-six sites emitted malformed ids**, and **`Edge.id` gets a validator** for its grammar (`edge:sha256:<16hex>`).
+- **Ruby object creation emits `instantiates`**, and **Solidity contract members are `method`**.
+- **Every edge producer names how it inferred the edge**; 51 sites had defaulted to `ast_call_direct`, and a lint now fails on omission.
+- **`makefile` is no longer reported unanalysed** after the `make` pass ran.
 
 #### Security and runtime safety
 
-- **`--backend tree-sitter` actually disables the rust-analyzer backend** (ADR-0045 ruling 4). The CLI implemented only the positive arm of `--backend`, so with the environment variable exported, opting out for one untrusted repository had still executed its `build.rs`.
-- **The brand scrub covers everything the scripts publish to the forge**, not only commit messages (a merged PR body had carried a vendor session URL, and a PR body is not a commit message), through one shared `.githooks/brand-scrub.sh`; `scripts/check-forge-text-egress` makes every publishing site declare `# forge-egress: scrubbed` or `# forge-egress: no-agent-text -- <reason>`, since `auto-pr` alone emits a PR body at three points and there is no single choke point. The scrub also rewrites a vendor-named trailer key.
-- **A transcript watcher cannot outlive its session**, nor a killed watcher its `inotifywait`; two orphans had been found, one 50 hours old. **A `backend-agreement --out` write goes through its safety-zone wrapper**, and **a survey that raises no longer leaves its file index behind**.
+- **`--backend tree-sitter` actually disables the rust-analyzer backend** (ADR-0045). With the environment variable exported, opting out for one untrusted repository had still run its `build.rs`.
+- **The brand scrub covers everything the scripts publish to the forge**, PR bodies included, and `scripts/check-forge-text-egress` makes every publishing site declare how its text is scrubbed.
+- **A transcript watcher cannot outlive its session**, **`backend-agreement --out` writes through its safety-zone wrapper**, and **a survey that raises no longer leaves its file index behind**.
 
 #### Performance
 
-- **pretix's Python analysis goes 1700 s → 95 s (17.9×, byte-identical output)**: the symbol suffix index moves from the resolver, which rebuilt it per instance, to the registry. Per-file cost is now flat, where it had grown 5.70× over a 4× file-count range.
+- **pretix's Python analysis goes 1700 s → 95 s (17.9×, byte-identical output)**: the symbol suffix index is built once per registry instead of once per resolver.
 
 #### CI, release and developer workflow
 
-- **`auto-pr` reports what actually happened.** A merge that landed decides the outcome (41 of 481 runs had merged and exited 1), ten exit paths that recorded no terminal state now record one, an abort records its line and a kill its signal, and its stderr is no longer discarded after the lock line, where an `exec 2>/dev/null` meant for one call had silenced the rest of the run.
-- **`smart-test` selects the right tests.**
-  - A YAML catalogue change selects the tests that read it and the whole repo-root suite; 146 of 169 catalogue files, and 13 root tests reading catalogue data, had selected nothing. One of those root tests first ran, and failed, on the cron.
-  - A `conftest.py` change, a docs-only change and a source path cited in a test's string now select tests; the first two had selected **0**.
-  - `--full` includes the repo-root `tests/` and never silently runs nothing.
-  - It refuses to write another repository's manifest (which had turned CI runs into full-suite runs), and running one file no longer empties the committed manifest.
-  - A root test can declare `# covers:`, emptying the unreachable-test exemption list (25 → 0).
-- **The self-claims drift gate runs unconditionally on the twice-daily cron**, after a regression rode green `dev` for 63 commits; its per-PR arm had grown to about 14 minutes.
-- **A killed `auto-pr` can no longer switch tracker self-healing off** (see the tracker changelog), and **the def/use extractor registry is set up per process**, ending order-dependent test results.
-- **Git notes are pushed**; none of 727 had been since 2026-01-22, because the DCO gate rejected the notes ref and the push error was swallowed.
-- **hypergumbo works on Python 3.10 again** (one unguarded `import tomllib` failed 2905 nightly tests, hidden behind the matrix's aggregate status). `merge-pr` no longer prints a `codeberg.org` link on a GitHub remote, and the bakeoff scripts find pool repos in collection subdirectories.
+- **`auto-pr` reports what actually happened.** A merge that landed decides the outcome (41 of 481 runs had merged and exited 1), every exit path records a terminal state, and its stderr is no longer silenced after the lock line.
+- **`smart-test` selects the right tests.** A catalogue YAML, `conftest.py` or docs-only change now selects tests (each had selected none), `--full` includes the repo-root `tests/`, and it no longer writes another repository's manifest or empties the committed one.
+- **The self-claims drift gate runs on every scheduled CI run**, after a regression rode green `dev` for 63 commits.
+- **Git notes are pushed** again; none had been since 2026-01-22.
+- **hypergumbo works on Python 3.10 again** (an unguarded `import tomllib`). A killed `auto-pr` can no longer switch tracker self-healing off (see the tracker changelog), and test results no longer depend on test order.
 
 ### Documentation
 
-- **The backend-agreement table (audit 0019) no longer reports a `stable_id` gap a survey does not have**: the recorded harnesses skipped the pre-merge step that fills it by kind, and now run it. The row reads 148 contested, matching a live survey.
-- **ADR-0055 refuses linker activation tightening on measurement.** The whole gateable prize is **0.166% of pass time**, not the circulated ~4.5%, which had counted a pass silent on edges alone while ignoring its nodes, and a bakeoff cannot catch the failure it risks: detection failing on a repository outside the cohort. A four-part criterion (0 of 25 qualify) and three triggers are recorded instead.
-- **ADR-0056 rules on the four producerless pass-silence values.** Three belong on `limits.skipped_passes`, since a pass that never ran has no `AnalysisRun`; a producer for the fourth, `prerequisite_absent`, is refused because 98.94% of 229,541 skip records mean the language is simply absent.
-- **[`docs/VERIFY-CLAIMS-SCOPE.md`](docs/VERIFY-CLAIMS-SCOPE.md) publishes what `verify-claims` cannot see**, linked from README and SECURITY.md: all eight caveat kinds, the exit-code contract (`1` violated → `2` inconclusive → `3` caveated → `0` clean, where `2` is not a pass), and the four limits on a clean verdict.
-- **The release notes are current**, after falling three major versions behind because nothing promoted them. `docs/RELEASE-NOTES-7.X.md` and `docs/RELEASE-NOTES-8.X.md` are written, and `prepare-release` now promotes and requires their `## Unreleased`.
-- **Corrections**: AGENTS.md and ADR-0013 had documented a tracker `--json` placement that exits 2, which a JSON pipeline reads as a missing item, and a test now locks the correct form; the spec's "method-shaped module" rule is restated (a call whose module is named matches by name, whatever the row's kind); five of ADR-0017's status markers are re-measured, telling "not implemented" from "implemented but unwired"; ADR-0006's type-inference table gains measured Objective-C and Swift rows; ADR-0049's claim that no row uses `net_listen` is removed.
-- **ADR-0046 through ADR-0051 and ADR-0053 are new this cycle, with the surveys and audits behind them**, including the stdlib `module_completeness` survey (2 of 42 repositories flippable by stdlib work alone) and a kind-conformance sweep that verifies Rust and Python over 947 entries and reports 726 as unexamined for want of a toolchain.
+- **[`docs/VERIFY-CLAIMS-SCOPE.md`](docs/VERIFY-CLAIMS-SCOPE.md) publishes what `verify-claims` cannot see**: all eight caveat kinds, the exit-code contract (`1` violated, `2` inconclusive, `3` caveated, `0` clean; `2` is not a pass), and the limits of a clean verdict.
+- **The release notes are current**: `docs/RELEASE-NOTES-7.X.md` and `docs/RELEASE-NOTES-8.X.md` are written, and `prepare-release` now requires their `## Unreleased`.
+- **New ADRs**: ADR-0046 to ADR-0051 and ADR-0053, with the surveys and audits behind them. **ADR-0055** declines to tighten linker activation, since the whole prize is 0.166% of pass time. **ADR-0056** rules on the pass-silence values that had no producer.
+- **Module docstrings are audited again**: 39 of 44 flagged files had drifted (wrong edge and evidence type names, claimed constructs never extracted), and 24 gain functionality they had stopped describing.
+- **Corrections**: the tracker `--json` flag placement in AGENTS.md and ADR-0013 (the documented form exited 2); the spec's module-matching rule; five ADR-0017 status markers, now telling "not implemented" from "implemented but unwired"; ADR-0006's type-inference table, which gains measured Objective-C and Swift rows; and the backend-agreement audit's phantom `stable_id` gap.
 
 ## [8.0.0] - 2026-08-20
 
