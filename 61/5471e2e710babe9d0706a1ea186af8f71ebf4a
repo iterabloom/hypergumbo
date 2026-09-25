@@ -1,0 +1,38 @@
+Original commit body from de5ca7e820ad2ff9ee8a555af7e21957564f722e:
+
+The C half of the 2026-09-25 docstring-staleness audit: 24 module
+docstrings silently omitted substantial behaviour their code has. Each
+omission was verified against the code before it was written up; none
+failed verification. Additions go into the docstrings' existing
+sections, one short item per omission.
+
+Largest additions:
+- py.py: the repo-wide steps between the two passes (re-export
+  aliasing, call-site parameter typing, class field maps, the Django
+  relation index); @property read edges; builtin / external call edges;
+  io_mode and call_arg_shape tags; __all__-based is_exported.
+- java.py: field and enum-constant symbols; references / instantiates
+  (::new) / decorated_by / module_attr_ref edges; the between-passes
+  registries; the hand-off to the inherited_calls linker.
+- rust.py, scala.py, php.py: variable-type inference and the ExternalRef
+  module rebuild; scala's import-outranks-project-symbol rule and enum /
+  given / val symbols; php's interface/trait/enum containers and use
+  imports.
+- profile.py: refine_frameworks' promote / demote phases,
+  dev_frameworks and framework_evidence, structured manifest parsers.
+- catalog.py, producer_coherence.py, symbol_resolution.py,
+  validation.py, audit_findings.py, _text_filters.py: the halves of each
+  module the docstring never described (depends_on CNF checks and axis
+  resolvers; the ratchet API; the LRU index cache and disambiguation;
+  serialization-format checks; the regression guards; the read-
+  accounting layer).
+- linkers (type_hierarchy, pyffi, graphql, airflow, django_orm,
+  jackson): transitive base walks, INV-zuhub fallbacks, rank_score
+  dampening, derived_from provenance, the root-field join.
+
+Also: make.py's "Skip special targets" comment said the opposite of
+the code (they are emitted with kind special_target); signature_axis
+re-pins jackson_dispatch.py 299 -> 305; ARCHITECTURE.md regenerated.
+No code changes.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
