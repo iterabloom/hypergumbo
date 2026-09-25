@@ -25,7 +25,24 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Lean-specific extraction
-logic.
+logic. ``LeanAnalyzer`` sets ``create_file_symbols = True`` so every
+analyzed file gets a file node for import edges to land on.
+
+Details of each pass:
+
+- Symbols: an unnamed ``instance : Add Nat where ...`` is named after its
+  typeclass (``Add``). Only the first symbol with a given name in a file is
+  kept; later same-named declarations in that file are dropped.
+- Imports: ``_module_name_to_file_path`` maps ``A.B.C`` to ``A/B/C.lean``;
+  when that path is in ``known_file_paths`` (paths of ``.lean`` files seen
+  among the global symbols) the edge targets the file node id, otherwise it
+  falls back to ``lean:<Module>:0-0:module:module``.
+- References: all eight declaration kinds (def, theorem, lemma, instance,
+  structure, class, inductive, abbrev) have their signature and body scanned
+  for identifiers. A ``references`` edge is kept only when the target's
+  file is the current file or one it imports (in-repo imports resolved as
+  above), which drops same-named symbols in unrelated files. Each
+  (declaration, target) pair is emitted once.
 
 Why This Design
 ---------------

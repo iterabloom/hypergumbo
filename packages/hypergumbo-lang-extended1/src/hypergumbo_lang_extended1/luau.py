@@ -27,6 +27,18 @@ Symbol Types
 Edge Types
 ----------
 - calls: Function calls from one symbol to another
+
+Call resolution
+---------------
+- A call is dropped when either its first or its last ``.`` / ``:``
+  segment is in ``LUAU_BUILTINS`` (Lua builtins, ``string``/``table``/
+  ``math`` members, Roblox globals and services).
+- The callee is looked up by its full text (``Module.fn``) among the
+  cross-file symbol names; failing that, by its short name (the last
+  ``.`` / ``:`` segment) in the same table (confidence 1.0 either way).
+- An unmatched call is still emitted, to
+  ``luau:unresolved:0-0:<name>:unresolved`` with confidence 0.6. All call
+  edges carry evidence_type ``tree_sitter``.
 """
 
 from __future__ import annotations

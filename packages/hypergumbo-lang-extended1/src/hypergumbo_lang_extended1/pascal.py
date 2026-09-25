@@ -17,6 +17,14 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    (WI-sigit)
 2. Pass 2: Extract call edges from exprCall and identifier-statement patterns
 
+Name resolution is case-insensitive, matching Pascal itself:
+``PascalAnalyzer.register_symbol`` stores every symbol under its lowercased
+name and call names are lowercased before lookup. Calls to names in
+``_PASCAL_BUILTINS`` (``writeln``, ``inc``, ``length``, ``inttostr``, ...)
+emit no edge; calls with no enclosing procedure/function (e.g. in a
+program's main block) are dropped; unmatched calls become unresolved edges
+via ``make_unresolved_edge``.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Pascal-specific extraction
 logic.

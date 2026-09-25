@@ -15,9 +15,22 @@ Shared Components
   file discovery, graceful degradation when a grammar is unavailable, and
   result assembly. Subclasses override the language-specific extraction
   hooks and inherit the orchestration. ~105 analyzer modules subclass it.
+  Between the passes ``analyze()`` merges per-file Pass 1 registries into
+  repo-wide ones Pass 2 reads for receiver typing: ``class_field_types``
+  (class -> field -> type) and ``method_return_types`` (qualified method ->
+  return type), with the language's library signatures
+  (``load_library_signatures``) appended after the analysed rows so a
+  declaration in the repository always wins. During Pass 2,
+  ``file_symbols`` hands an analyzer every symbol of the current file,
+  where the name-keyed ``symbol_by_name`` keeps only one per name.
 - **AnalysisResult**: Universal result type returned by all analyzers
 - **FileAnalysis**: Intermediate per-file analysis result
-- **Tree-sitter helpers**: node_text, find_child_by_type, find_child_by_field
+- **Tree-sitter helpers**: node_text (slices the source bytes),
+  node_own_text (decodes ``node.text``, None-safe), find_child_by_type,
+  find_child_by_field, and the non-recursive walkers ``iter_tree`` and
+  ``iter_tree_with_context`` (which also yields each node's nearest
+  enclosing context node), safe on nesting deeper than Python's recursion
+  limit
 - **ID generation and stable identity**: ``make_symbol_id`` / ``make_file_id``
   build node ids; a separate layer builds the content-addressed
   ``stable_id`` that survives re-analysis. ``assemble_stable_id`` is the
@@ -32,6 +45,50 @@ Shared Components
 - **Memory-pressure guard**: ``_check_memory_pressure`` raises
   ``MemoryPressureError`` rather than letting a large repo take the process
   down mid-analysis.
+
+Shared helpers
+--------------
+- **Enclosing-symbol lookup.** A call is credited to its enclosing
+  declaration by POSITION, never by name, because names repeat within a
+  file (two ``parse`` methods, ``#ifdef`` alternatives, per-arity
+  clauses). ``symbols_at`` indexes symbols by declaration start position and
+  ``symbol_declared_by`` maps a declaration node back to its symbol; every
+  analyzer should credit calls this way, reading the file's symbols from
+  ``TreeSitterAnalyzer.file_symbols``. The one line-span variant is
+  ``_innermost_callable_at``: ``emit_module_attribute_refs`` uses it to
+  anchor a module-attribute read (a taint source) to the narrowest
+  callable containing its line, over the ``enclosing_symbols`` its callers
+  fetch with ``symbols_by_path_index`` / ``symbols_for_path`` (which tries
+  each path spelling the caller passes, e.g. absolute and repo-relative).
+- **File anchors.** ``synthesize_file_symbols_for_dangling_edges``,
+  ``synthesize_file_anchors_for_node_bearing_paths`` and
+  ``synthesize_file_anchors_for_paths`` mint real ``kind="file"`` Symbols
+  for, respectively, dangling ``make_file_id`` edge endpoints, paths that
+  have content nodes but no file anchor, and caller-selected additional
+  files, so first-party files never become boundary nodes or rootless
+  ``contains`` trees.
+- **Edge and symbol minting.** ``make_unresolved_edge`` builds the standard
+  unresolved call edge (dst ``{lang}:{module_hint}:0-0:{name}:unresolved``);
+  ``defer_bare_method_call`` decides when a bare / implicit-``this`` call
+  must not bind to another class's method on short-name evidence, and is
+  instead deferred to the ``inherited_calls`` walker; ``make_route_symbol``
+  mints route-marker Symbols with canonical id, ``origin`` and
+  ``origin_run_id``.
+- **Call-site annotation.** ``emit_module_attribute_refs`` emits
+  ``module_attr_ref`` edges for attribute reads on imported modules
+  (``process.env.PATH``) that are not themselves callees;
+  ``stamp_io_mode_from_call`` records a literal mode argument
+  (``fopen(p, "w")``) as ``meta["io_mode"]`` on the edges a call produced,
+  and stamps nothing for a non-literal mode; ``constructed_from_callee``
+  renders an initializer's callee for ``Symbol.meta["constructed_from"]``.
+- **Stable-id constructors.** Beyond the layer above:
+  ``make_site_stable_id`` (SITE-axis identity for ``call_site`` stand-ins,
+  folding in the declaring file), ``make_doc_symbol_ids`` (the ``id`` and
+  ``stable_id`` pair for doc/markup/template symbols, minted together),
+  ``make_declaration_stable_id`` (class / struct / enum / trait / protocol
+  / contract), and the post-pass ``split_within_file_stable_id_collisions``,
+  which re-mints the second and later same-file holders of one
+  ``stable_id`` with an occurrence suffix.
 
 Why This Design
 ---------------

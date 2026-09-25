@@ -12,6 +12,13 @@ Uses TreeSitterAnalyzer base class for grammar checking and parser creation.
 2. Extracts variables, mixins, functions, and rule sets
 3. Links mixin includes (@include) to mixin definitions
 
+``ScssAnalyzer.analyze()`` is overridden to do a single pass per file
+(symbols and edges together) with one mixin table shared across all files.
+An ``@include`` is resolved against the mixins seen so far, so an include
+processed before its mixin's definition (later in the same file, or in a
+file walked later) gets the dangling target even though the mixin exists.
+File processing order therefore affects which includes resolve.
+
 Symbols Extracted
 -----------------
 - **Variables**: top-level SCSS variable declarations ($variable-name)
@@ -22,7 +29,8 @@ Symbols Extracted
 Edges Extracted
 ---------------
 - **includes**: stylesheet file -> mixin for each @include (confidence 0.95
-  when the mixin is defined in the same file, else 0.6 to a dangling mixin id)
+  when the mixin was already seen in any file processed so far, else 0.6 to
+  a dangling mixin id)
 
 Why This Design
 ---------------

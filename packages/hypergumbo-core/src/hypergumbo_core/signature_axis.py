@@ -247,7 +247,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
 FACT_HOMES: Final[dict[str, FactHome]] = {
     "return_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=228,
+        line=285,
         anchor="method_return_types: dict[str, str]",
         home="FileAnalysis.method_return_types",
         populated_by=("go", "rust", "swift", "objc"),
@@ -282,7 +282,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "value_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=190,
+        line=247,
         anchor="class_field_types: dict[str, dict[str, str]]",
         home="FileAnalysis.class_field_types",
         populated_by=("csharp", "cpp"),
@@ -352,7 +352,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/js_ts.py"
         ),
-        line=5374,
+        line=5427,
         anchor="callee.signature",
         fact="return_type",
         note="Chained-call receiver typing.",

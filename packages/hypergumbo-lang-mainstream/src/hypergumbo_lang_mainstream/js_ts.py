@@ -5,6 +5,10 @@ This analyzer uses tree-sitter to parse JS/TS/Svelte/Vue files and
 extract:
 - Function and class declarations (symbols), plus anonymous callbacks and
   IIFEs so a handler passed inline is still a node
+- Class members as kind ``method``, ``getter`` or ``setter``
+  (``jsts_method_kind`` reads the ``get`` / ``set`` keyword)
+- Route markers (Express-style registrations, React Router ``<Route>``) as
+  kind ``function`` carrying ``meta.framework_role``
 - TypeScript-only declarations as their own kinds: ``interface``, ``type``,
   ``enum``, and the members of interfaces and enums
 - ``field`` symbols for class properties and ``variable`` for module-level
@@ -16,6 +20,20 @@ extract:
 - Object instantiation relationships (edges)
 - Inheritance: ``extends`` / ``implements`` (edges)
 - Decorator application: ``decorated_by`` (edges)
+- ``references`` edges for functions passed rather than called:
+  ``callback_argument_reference`` (a named function, or an inline anonymous
+  callback, given as a call argument), ``object_field_reference``
+  (``{onClick: handleClick}`` and the shorthand ``{handleClick}``), and a
+  chain between consecutive route-handler arguments
+  (``app.post(p, auth, handler)``) tagged
+  ``meta.framework_dispatch="middleware_chain"``
+- Handler registration by assignment (``ws.onmessage = h``): an unresolved
+  ``calls`` edge with ``call_construct="assignment"``, emitted only when the
+  receiver has a catalogue module and the property is one of its rows in
+  ``JS_ASSIGNABLE_ROWS``
+- ``module_attr_ref`` edges (``emit_module_attribute_refs``) for member reads
+  on imported modules and on ``process`` / ``window`` / ``document`` /
+  ``navigator``, anchored to the enclosing callable rather than the file
 - TypeScript type references — type alias / interface signatures —
   emitted as ``references`` edges carrying
   ``evidence_type="ast_type_ref"`` (refactoring blast radius). The
@@ -35,6 +53,32 @@ that hint is the ``external`` placeholder, in which case ``dst_ref`` is
 a symbol in the graph carries no ``dst_ref`` — ``dst`` already names the
 target.
 
+Call-Site Resolution
+--------------------
+- **Member-call cascade** (``obj.m()``): a typed ``this.prop`` receiver; a
+  namespace-import alias; a variable typed by ``var_types``; a bare
+  ``JS_KNOWN_GLOBALS`` receiver (``console``, ``process``, ...); a receiver
+  whose catalogue module is in ``var_ctor_modules`` (filled from
+  ``new X()`` or a TypeScript-declared type when ``X`` is in
+  ``JS_CONSTRUCTOR_TYPES``, which is derived from the io-boundary
+  catalogue); a ``<mod>.promises`` chain; an inline ``new X().m()``; then a
+  low-confidence method-name match. A receiver none of these type still gets
+  an unresolved edge to the ``external`` placeholder with
+  ``call_construct="method"``.
+- **INV-fahub deferral** (``defer_bare_method_call``): a bare ``foo()`` or
+  untyped ``obj.m()`` whose only match is a weak short-name hit on a
+  DIFFERENT class's method is not bound; an unresolved edge stamped with the
+  enclosing class is emitted instead for inherited-call recovery.
+- **Enclosing function**: ``_get_enclosing_function`` finds the caller by
+  ``symbol_by_position`` (path, line, column), so duplicate names across
+  files do not collide. The function-declaration and method branches still
+  fall back to a name-keyed ``global_symbols`` lookup (same file only) when
+  the position lookup misses.
+- **Edge annotation**: ``stamp_io_mode_from_call`` records the literal mode
+  argument (the flags of ``fs.open``) as ``io_mode`` on the edges a call
+  produced, and ``annotate_dataflow`` (ADR-0015) annotates each file's edges
+  from AST context.
+
 Rich Metadata (ADR-3aaa)
 ------------------------
 Class and method symbols include rich metadata in their `meta` field:
@@ -50,6 +94,11 @@ Class and method symbols include rich metadata in their `meta` field:
   (a NestJS route path is read off the decorators for ``stable_id``
   construction, but is NOT copied into method ``meta``)
 
+**Other metadata:** class ``field`` symbols carry `decorators` too (lit
+``@property``), module variables carry `constructed_from` (the callee of
+their initializer: ``new Koa()`` gives ``"Koa"``, ``express.Router()`` gives
+``"express.Router"``), and inline callbacks / IIFEs carry `anonymous: True`.
+
 If tree-sitter is not installed, the analyzer gracefully degrades and
 reports the pass as skipped with reason.
 
@@ -63,7 +112,11 @@ How It Works
    - Pass 3: Build framework UsageContexts straight from each file's AST
      (Express/Hapi routes, Next.js file routes, index-file library
      exports, SPA/Electron bootstrap calls and HTTP-server handler calls)
-4. For Svelte / Vue files, extract <script> blocks and parse as TS/JS
+4. Post-passes over all files' symbols: ``extends`` / ``implements`` from
+   ``meta.base_classes``, ``decorated_by`` from ``meta.decorators``, and
+   ``references`` edges with evidence_type ``ast_type_ref`` from TypeScript
+   type-alias and interface declarations (read from the parse trees)
+5. For Svelte / Vue files, extract <script> blocks and parse as TS/JS
 
 Svelte / Vue Support
 --------------------

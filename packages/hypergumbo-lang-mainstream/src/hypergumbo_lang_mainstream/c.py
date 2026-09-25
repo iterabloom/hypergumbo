@@ -9,11 +9,31 @@ This analyzer uses tree-sitter-c to parse C files and extract:
 - Function call relationships (edges)
 - Function-pointer references and callback-argument calls (edges)
 - Dispatch tables from static-array and designated-struct initializers
-  (dispatches_to edges)
+  (dispatches_to edges), plus a ``references`` edge with
+  ``meta.ref_construct="dispatch_table"`` from each function whose body
+  names a dispatch table to that table
 - stdio global references (stdout/stderr/stdin) as module_attr_ref edges
 
 The analyzer also extracts function signatures (``_extract_c_signature``)
 and applies ADR-0015 Tier 1 dataflow annotation to the resulting edges.
+
+Call-edge details:
+
+- **Include-set module hint**: an unresolved call (no in-repo definition)
+  whose name is in the C catalogue's ``ambiguous_names`` (send, recv, read,
+  write, open, close, ...) gets ``module_hint`` set to the file's
+  comma-joined system ``#include`` headers, so the catalogue can match it.
+  Other unresolved calls keep the ``external`` hint; stamping them too was
+  measured to lose matches, because a hint disables the short-name fallback.
+- **I/O stamps**: ``stamp_io_mode_from_call`` records a literal mode
+  argument (``fopen(p, "w")``) as ``io_mode`` on the edges a call produced,
+  and ``_c_stream_target_kind`` / ``_c_socket_target_kind`` set
+  ``io_target_kind`` from where the stream or socket descriptor argument
+  came from; when that origin cannot be proven, nothing is stamped.
+- **Enclosing function**: found by position (``symbols_at`` /
+  ``symbol_declared_by`` on the ``function_definition`` node), not by name,
+  so ``#ifdef`` / ``#else`` definitions of one name in one file anchor to the
+  right alternative.
 
 If tree-sitter-c is not installed, the analyzer gracefully degrades
 and returns an empty result.
@@ -29,6 +49,11 @@ How It Works
    - Pass 2: Detect calls and resolve against global symbol registry
 5. Detect function calls, function-pointer references, and dispatch-table /
    designated-initializer function-pointer edges
+6. Declaration dedup: a function prototype (``declaration`` modifier) whose
+   name also has a definition is removed, and edges that pointed at the
+   prototype are remapped to the definition. Registration already prefers
+   definitions (.c definition, then .c declaration, then .h declaration),
+   so the remap target is deterministic
 
 Why This Design
 ---------------

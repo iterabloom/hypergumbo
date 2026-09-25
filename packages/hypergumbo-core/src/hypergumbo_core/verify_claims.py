@@ -74,7 +74,10 @@ rather than tracebacking or silently producing a degraded verdict stream.
 ``validate_taint_flow_vocabulary`` extends the same discipline to the taint
 half (INV-todas): an unresolvable ``source_taint`` or ``prohibited_sink_zone``
 raises rather than producing a claim that can never match anything and would
-therefore report clean.
+therefore report clean. ``_validate_extra_catalogs`` does the same for the
+``extra_catalogs`` block (INV-sisod): an unknown sub-key, a scalar where a
+path list belongs, or a non-string list entry raises instead of being
+silently discarded (a bare ``None`` sub-key still means "none").
 
 Caveats
 -------
@@ -119,9 +122,46 @@ A verdict may carry more than one kind at once.
 How It Works
 ------------
 1. ``load_claims(path)`` validates and parses the YAML into ``Claim`` objects
-2. ``verify_claim(claim, boundary_map)`` checks one claim → ``ClaimVerdict``
-3. ``verify_taint_claim(claim, findings)`` checks taint-flow → ``ClaimVerdict``
-4. ``verify_claims(claims, boundary_map, findings)`` checks all
+2. ``compute_boundary_coverage(raw_edges, ...)`` decides whether a clean
+   verdict could be trusted, returning a ``BoundaryCoverage``. Its gates
+   (``_call_production_coverage``) set ``complete=False`` with a ``reason``,
+   first match wins: no call edges at all; a language that made calls but
+   has no I/O catalogue (uncatalogued languages); a supported language that
+   produced zero call edges (blind languages); an external module whose
+   method rows no emitted call could have matched
+   (``method_starved_modules``); a launch of an external program
+   (``_opaque_launch_sites``, marked ``qualifying_only`` when it is the sole
+   blocker); and calls into modules no catalogue row classifies
+   (``_uncatalogued_external_modules``). Every result, complete or not, also
+   carries the qualifying disclosures the caveats above are built from
+   (untyped / accessor-name receivers, deferred crossings, analyzer
+   blindness declarations, load-bearing grants, unused higher-fidelity
+   backends) plus ``analysis_fidelity``: language -> the pass IDs behind its
+   call edges, ``unattributed`` for an edge with no origin.
+3. ``verify_claim(claim, boundary_map, coverage)`` checks one boundary claim
+   and ``verify_taint_claim(claim, findings, ...)`` one taint-flow claim, each
+   returning a ``ClaimVerdict``; both thin wrappers stamp
+   ``coverage.analysis_fidelity`` onto the verdict. The taint arm counts only
+   production-sourced flows by default: flows sourced in test, mock,
+   fixture, benchmark, test-support or migration code are left out of
+   ``evidence_count`` and counted per rule in ``excluded_flows`` (restored by
+   ``include_non_production``). Two further exclusions are disclosed the
+   same way: ``sanitized_flows`` (a sanitizer lies on every route) and
+   ``resource_naming_flows`` (the tainted value only names the resource of a
+   sink whose catalogue row takes no content argument).
+4. ``verify_claims(claims, boundary_map, findings, ...)`` checks all, then
+   passes every verdict through ``_require_coverage_to_confirm``, the
+   backstop that applies to every constraint kind: given a ``blind_reason``,
+   a confirming verdict becomes ``inconclusive`` (caveats kept), or
+   ``confirmed_with_caveats`` with an opaque-boundary caveat when named
+   opaque launch sites are the only blocker. ``violated`` is never touched.
+5. ``catalog_provenance`` records which catalogues the verdicts were computed
+   against, keeping command-line catalogues apart from the claims file's
+   ``extra_catalogs`` (the analysed repository supplying its own grading
+   criteria); the CLI puts it in the ``--json`` envelope, and
+   ``render_catalog_provenance_text`` renders the same disclosure for text
+   output (nothing when only the shipped catalogue was used). It changes no
+   verdict.
 """
 from __future__ import annotations
 
