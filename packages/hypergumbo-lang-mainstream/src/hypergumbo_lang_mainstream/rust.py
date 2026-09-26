@@ -88,6 +88,7 @@ and an enum variant inherits the *enum's* export status (its
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -1998,6 +1999,22 @@ def _use_tree_bindings(
     # ``pub use`` puts beside the use-tree -- binds no name.
 
 
+#: Path roots that make a path ABSOLUTE by construction: the standard library
+#: crates (plus a leading ``::``). Only these are split without a ``use`` alias
+#: (INV-duzom). A bare ``Type::method`` is NOT: an unimported ``Command::new``
+#: is a project type as often as not, and splitting it would put ``Command`` in
+#: the module slot, which the component-suffix matcher pairs with
+#: ``std::process::Command`` (INV-kipor's shape). A path through a third-party
+#: crate (``serde_json::from_str``) would be absolute too, but telling a crate
+#: from a local module needs the manifest, which this arm does not have.
+_RUST_ABSOLUTE_PATH_ROOTS: frozenset[str] = frozenset({"std", "core", "alloc"})
+
+#: ``a::b::c`` with plain identifier segments, optionally ``::``-rooted. A
+#: turbofish (``Vec::<u8>::new``) or a qualified-self path
+#: (``<T as Trait>::m``) does not match and keeps its previous treatment.
+_PLAIN_RUST_PATH = re.compile(r"(?:::)?[A-Za-z_]\w*(?:::[A-Za-z_]\w*)+")
+
+
 def _extract_use_aliases(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -2816,14 +2833,37 @@ def _extract_edges_from_file(
                                     has_explicit_binding = False
                                     if full_scoped_name and "::" in full_scoped_name:
                                         head, _, tail = full_scoped_name.partition("::")
+                                        # INV-duzom: the ABSOLUTE path, then one
+                                        # split on its last ``::``. In call
+                                        # position the last segment is the callee
+                                        # and the rest is the item that owns it (a
+                                        # module, a type, an enum), which is the
+                                        # (module, name) pair the slots carry. The
+                                        # aliased arm used to stop at the alias,
+                                        # so ``fs::File::open`` after ``use
+                                        # std::fs;`` became module ``std::fs`` +
+                                        # name ``File::open``; a path written in
+                                        # full had no alias and kept its whole
+                                        # text in the NAME slot.
+                                        absolute: str | None = None
                                         if head in use_aliases:
-                                            full_head = use_aliases[head]
-                                            module_hint = full_head
-                                            unresolved_name = tail
+                                            absolute = f"{use_aliases[head]}::{tail}"
+                                        elif (
+                                            (head in _RUST_ABSOLUTE_PATH_ROOTS
+                                             or full_scoped_name.startswith("::"))
+                                            and _PLAIN_RUST_PATH.fullmatch(
+                                                full_scoped_name,
+                                            )
+                                        ):
+                                            absolute = full_scoped_name.lstrip(":")
+                                        if absolute is not None:
+                                            mod, _, name = absolute.rpartition("::")
+                                            module_hint = mod
+                                            unresolved_name = name
                                             ext_ref = ExternalRef(
                                                 lang="rust",
-                                                module_path=full_head,
-                                                name=tail,
+                                                module_path=mod,
+                                                name=name,
                                             )
                                             has_explicit_binding = True
                                     elif callee_name in use_aliases:

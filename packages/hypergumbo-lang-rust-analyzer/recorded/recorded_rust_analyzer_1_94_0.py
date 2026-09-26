@@ -277,7 +277,10 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     # resolved edge from a producer they lack (superseded — every one is a
     # `wrap` SCIP resolves to `Result::wrap`), and how many share the site and
     # type but name a DIFFERENT callee (two calls on one line: never demoted).
-    "stub_calls": 244,
+    # 245 since INV-duzom (was 244): `std::io::Error::new(..)` at
+    # src/server/serve.rs:384 is written with its full path, which now names
+    # its owner, so the generic-method guard no longer suppresses it.
+    "stub_calls": 245,
     "superseded_stubs": 3,
     "co_located_same_type_not_superseded": 24,
 }
@@ -324,7 +327,7 @@ AARDVARK_DNS_ATTRIBUTE_AGREEMENT = {
 # `references` edge and the SCIP arm no edge to an external stub.
 AARDVARK_DNS_EDGE_OVERLAP = {
     ("calls", True): (93, 19, 7),
-    ("calls", False): (0, 244, 0),
+    ("calls", False): (0, 245, 0),  # 244 before INV-duzom; see stub_calls
     ("decorated_by", False): (0, 1, 0),
     ("implements", False): (0, 2, 0),
     ("module_attr_ref", False): (0, 26, 0),

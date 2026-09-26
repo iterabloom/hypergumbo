@@ -8,6 +8,7 @@ the exact directory shape a crash leaves: ``out/cohort-001/iter-001/<repo>/``,
 present and empty.
 """
 
+# covers: scripts/bakeoff-broad scripts/bakeoff-deep
 from __future__ import annotations
 
 import importlib.machinery
