@@ -260,7 +260,7 @@ def _find_enclosing_lua_function(
             if name in local_symbols:
                 return local_symbols[name]
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return None
 
 
 def _extract_var_types(
@@ -491,6 +491,12 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     _caller_path = str(file_path)
     file_id = make_file_id("lua", file_path)
+    # The file symbol pass 1 emits under this same id: the anchor of last resort.
+    file_anchor = Symbol(
+        id=file_id, name="file", kind="file", language="lua", path=str(file_path),
+        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        origin=PASS_ID, origin_run_id=run_id,
+    )
 
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -578,8 +584,16 @@ def _extract_edges_from_file(
             elif callee_name:
                 # Regular function call
                 # Find the caller (enclosing function)
-                caller = _find_enclosing_lua_function(node, source, local_symbols)
-                if caller:
+                # INV-bamij: a call outside every function -- module-level
+                # code, a function literal bound to a module-level local or
+                # table field -- is anchored on the FILE, as python and php
+                # anchor module-level code. It used to be dropped, and module
+                # level is where a require-d Lua module does its setup.
+                caller = (
+                    _find_enclosing_lua_function(node, source, local_symbols)
+                    or file_anchor
+                )
+                if caller is not None:
                     # INV-fahub: the enclosing table/type for this call site.
                     # Lua method/function symbols are named ``Table.member``, so
                     # split the caller's own name on ``"."`` to recover the owning

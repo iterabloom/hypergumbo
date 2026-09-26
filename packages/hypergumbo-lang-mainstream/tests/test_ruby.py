@@ -2704,8 +2704,13 @@ end
         # 0.75 * suffix_match(0.85) = 0.6375
         assert 0.60 <= resolver_edges[0].confidence <= 0.75
 
-    def test_receiver_call_outside_method_ignored(self, tmp_path: Path) -> None:
-        """Receiver calls at module level (no enclosing method) produce no receiver_call edges."""
+    def test_receiver_call_outside_method_is_anchored_on_the_file(self, tmp_path: Path) -> None:
+        """A receiver call at module level emits a call anchored on the FILE.
+
+        This test used to pin the opposite ("produce no receiver_call edges"),
+        which is the defect INV-bamij names: a parsed call site that emits no
+        edge (INV-foluz). The file pseudo-symbol is the anchor python and php
+        already use for module-level code."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "top.rb").write_text("""
@@ -2721,11 +2726,13 @@ Service.work
 
         result = analyze_ruby(tmp_path)
 
-        receiver_edges = [
+        top_level = [
             e for e in result.edges
-            if e.edge_type == "calls" and (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "generic")
+            if e.edge_type == "calls" and e.line == 9
         ]
-        assert len(receiver_edges) == 0
+        assert len(top_level) == 1, [(e.src, e.dst) for e in top_level]
+        assert top_level[0].src.endswith(":file:file"), top_level[0].src
+        assert top_level[0].dst.split(":")[-2] in ("Service#work", "Service.work", "work"), top_level[0].dst
 
 class TestRailsCallbackEdges:
     """Tests for Rails before_action/after_action/around_action callback detection.

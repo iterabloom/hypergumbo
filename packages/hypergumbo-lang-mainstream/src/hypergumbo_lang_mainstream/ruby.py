@@ -330,6 +330,27 @@ def _get_enclosing_method(
     return None  # pragma: no cover - defensive
 
 
+def _get_enclosing_scope_symbol(
+    node: "tree_sitter.Node",
+    decl_index: SymbolsAt,
+) -> Optional[Symbol]:
+    """The class or module whose BODY holds ``node``, when no method does.
+
+    INV-bamij. Class-body code -- ``include``, ``attr_accessor``, a Rails
+    ``has_many`` or ``validates`` -- runs when the class is defined, inside no
+    method, and used to emit no call edge at all. Keyed by position, as
+    :func:`_get_enclosing_method` is.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in ("class", "module", "singleton_class"):
+            sym = symbol_declared_by(current, decl_index)
+            if sym is not None:
+                return sym
+        current = current.parent
+    return None
+
+
 def _is_nested_in_method(node: "tree_sitter.Node") -> bool:
     """Return True if ``node`` is lexically inside another method definition.
 
@@ -2598,6 +2619,12 @@ def _extract_edges_from_file(
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("ruby", str(file_path))
+    # The anchor of last resort for a call in no method, class or module.
+    file_anchor = Symbol(
+        id=file_id, name="file", kind="file", language="ruby", path=str(file_path),
+        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        origin=PASS_ID, origin_run_id=run_id,
+    )
     var_types = _extract_ruby_var_types(tree, source)
     _mc = method_candidates or {}
 
@@ -2687,7 +2714,16 @@ def _extract_edges_from_file(
 
                 # Handle regular method calls
                 else:
-                    current_method = _get_enclosing_method(node, source, decl_index)
+                    # INV-bamij: a call in no method is anchored on the class
+                    # or module whose body holds it, else on the FILE, as
+                    # python and php anchor module-level code. It used to be
+                    # dropped, and top-level code is the norm in Ruby scripts,
+                    # Rakefiles and config/*.rb.
+                    current_method = (
+                        _get_enclosing_method(node, source, decl_index)
+                        or _get_enclosing_scope_symbol(node, decl_index)
+                        or file_anchor
+                    )
                     if current_method is not None:
                         # Try receiver-qualified resolution first
                         receiver_node = node.child_by_field_name("receiver")
