@@ -1,0 +1,34 @@
+Original commit body from 29e1eefab0d59f7ece4bafc1e6e1ea3b4476db54:
+
+Addresses INV-bamij for ruby and lua (the first two of its nine
+languages). A call at module level, in a function literal bound to a
+module-level name or table field, or in a ruby class body emitted no calls
+edge: the enclosing-scope walk found no function and the call arm dropped
+the call (INV-foluz). INV-bamij's own sweep fixtures, re-run on dev
+e350277d0c, still showed NONE at every package-level line in both
+languages.
+
+- lua: the caller falls back to the file symbol pass 1 already emits
+  (make_file_id, kind "file").
+- ruby: the caller falls back to the class or module whose body holds the
+  call (keyed by position, as the method lookup is), else to the file.
+  The bare-identifier arm stays method-only, since a top-level bare
+  identifier is far more often a local variable than a call.
+
+test_ruby.py's test_receiver_call_outside_method_ignored pinned the old
+drop ("produce no receiver_call edges"). It is rewritten to pin the file
+anchor.
+
+A/B on dev e350277d0c (pinned worktree) vs this branch:
+  postal (ruby)  calls 1,311 -> 1,416 (+105: 26 on a class, 69 on a module,
+                 10 on the file; 0 lost). Sampled sites are real calls.
+  kong (lua)     calls 12,871 -> 24,884 (+12,013, all on the file; 0 lost).
+                 Its busted specs are written entirely at module level.
+
+Not addressed here, seen in the read-back and filed separately: a ruby
+receiverless call that resolves nowhere (puts, include, has_many) emits no
+edge even inside a method; and a call on an external constant
+(Rails.root.join) binds an in-repo method by short name (HealthServer#root).
+Both reproduce inside a method, independently of this change.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
