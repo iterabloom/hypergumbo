@@ -1,0 +1,37 @@
+Original commit body from 1c16999e9f62dbf5356a93fd41fc0842c87fd3f0:
+
+Addresses WI-sulas. _extract_call_target named the chain's first
+identifier as the receiver, so the emit site typed `v` for a call on
+`v.p`. This put the head's external type in the module slot
+(ch.pipeline.addHandler -> swift:Channel), and let the head's in-repo type
+drive resolution (app.server.start() -> Application.start).
+
+A value chain of 2+ hops on a lowercase, non-self head now contributes no
+hint. The receiver expression is typed by WI-higob's walker or left
+untyped. Unchanged: single hops, self heads (WI-sizas) and type heads
+(URLSession.shared...).
+
+Removing the wrong hint exposed those sites to method-call recovery,
+whose premise ("a class the caller instantiates is the receiver") the
+wrong hint had been refuting by accident. On hummingbird it guessed
+router.middlewares.add(..) into Router.add 46 times, and every sampled one
+was wrong. Swift now stamps meta.receiver = "field_chain" on such calls, a
+value already in the receiver vocabulary for this shape (go uses it). The
+recovery linker gains step 3y, refusing a field_chain receiver.
+
+A/B on dev 0f3c933c2c (pinned worktree) vs this branch:
+  vapor        in-repo call edges 1942 -> 1881 (-61, +0): Application.start
+               x33, .shutdown x13, .execute x10, .add x4, Request.storage;
+               sampled removals all wrong (app.server.start(),
+               app.http.client.shared.execute(..), req.headers.add(..)).
+  hummingbird  2125 -> 2080 (-45, all Router.add from
+               router.middlewares.add); io 48 -> 44, losing the 4 net_send
+               chains through the community row Channel.addHandler, which
+               matched only through this error.
+  Kingfisher   1760 -> 1753 (cache.memoryStorage.store -> ImageCache.store)
+  Alamofire    unchanged; alertmanager and beads (go) unchanged.
+
+Line pins moved by the edits: module_key_axis swift.py 1822->1862,
+1893->1933; signature_axis method_call_recovery.py 198->201, 209->212.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
