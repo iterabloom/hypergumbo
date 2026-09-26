@@ -1,0 +1,22 @@
+- op: create  # 5b9d
+  at: '2026-09-26T16:26:09Z'  # 5b9d
+  by: agent  # 5b9d
+  actor: jgstern_agent  # 5b9d
+  clock: 1  # 5b9d
+  nonce: 5b9d  # 5b9d
+  data:  # 5b9d
+    kind: work_item  # 5b9d
+    title: "ruby emits a constant receiver's module slot lowercased and without its namespace (Net::HTTP.get -> ruby:http:0-0:get), so an I/O overlay row spelled as ruby writes it cannot match"  # 5b9d
+    status: todo_hard  # 5b9d
+    priority: 2  # 5b9d
+    parent:  # 5b9d
+    tags:  # 5b9d
+    - ruby  # 5b9d
+    - io_boundary  # 5b9d
+    - module_key  # 5b9d
+    isbefore: []  # 5b9d
+    duplicate_of: []  # 5b9d
+    not_duplicate_of: []  # 5b9d
+    pr_ref:  # 5b9d
+    description: "FOUND 2026-09-25 while fixing WI-guhuv. Record: ~/hypergumbo_lab_notebook/guhuv_09252026/ (rb_noreq survey).\n\nThe ruby analyzer emits a constant receiver's module slot LOWERCASED and WITHOUT ITS NAMESPACE, with or without a require:\n\n    Net::HTTP.get(URI(u))   -> calls ruby:http:0-0:get:external_symbol   (call_construct method)\n    File.write(p, s)        -> calls ruby:file:0-0:write:external_symbol\n\nWHY IT MATTERS NOW. Since WI-guhuv a user can give ruby I/O rows through an overlay. The row a ruby author writes, `module: Net::HTTP`, cannot match: _module_matches('Net::HTTP', 'http') is False, because a component-suffix match must agree in case (INV-dijor, deliberate). What matches today is `http`, `HTTP` or `net/http`. Measured with the shipped matcher:\n    Net::HTTP -> False   net::http -> True   net/http -> True   HTTP -> True   http -> True\nSo the overlay works only when the author guesses the analyzer's spelling, and `HTTP` would also match any other constant whose last component is Http/HTTP (`Faraday::HTTP`, a project `Api::HTTP`), because the namespace that tells them apart was dropped.\n\nWHICH SIDE IS WRONG: the analyzer. ADR-0051 says the slot names an OWNER PATH; `Net::HTTP` is the owner path ruby writes, and `http` is neither that nor the require path. NOT CHECKED: the other ruby receiver shapes (instance receivers, `::`-rooted constants, nested modules in the project), and whether any shipped consumer relies on the lowercase spelling (the verify_claims docstring cites `ruby:http:0-0:new` as analyzer output)."  # 5b9d
+    fields: {}  # 5b9d

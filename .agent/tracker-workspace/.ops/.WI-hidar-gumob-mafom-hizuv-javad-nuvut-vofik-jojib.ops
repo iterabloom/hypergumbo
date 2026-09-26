@@ -36,3 +36,18 @@
   clock: 3  # badd
   nonce: badd  # badd
   message: "PRODUCTION-PATH OBSERVATION 2026-09-25 (dev 56f069874e), recorded while re-verifying WI-gotun, and it contradicts part of this item's premise. Evidence: ~/hypergumbo_lab_notebook/gotun_recheck_09252026/ (j_pt, j_ctl).\n\nThe matcher-level claim still reproduces: match_source(\"java\", \"doFinal\", \"javax.crypto.Cipher\") -> None, and match_source(\"java\", \"Cipher.doFinal\", \"javax.crypto\") -> the plaintext source. The analyzer emits java:javax.crypto.Cipher:0-0:doFinal:unresolved for c.doFinal(ct) on a typed Cipher parameter.\n\nBUT \"no java plaintext flow exists\" does NOT hold on the production path for that shape. verify-claims with a plaintext -> host_fs claim on `byte[] pt = c.doFinal(ct); new FileOutputStream(\"out.bin\").write(pt);` reports violated with 1 finding (structural). CONTROL: the same fixture without the doFinal call reports confirmed with 0 findings, so doFinal is what mints the source. The production propagation matches by some route other than the direct match_source(name, module) call this item measured. Which route, and whether it covers every receiver shape (untyped, field, chained), was NOT checked. No status change; this narrows the item: its recall claim needs re-measuring on the production path, per shape, before it is worked."  # badd
+- op: update  # 7e0c
+  at: '2026-09-26T01:14:23Z'  # 7e0c
+  by: agent  # 7e0c
+  actor: jgstern_agent  # 7e0c
+  clock: 4  # 7e0c
+  nonce: 7e0c  # 7e0c
+  set:  # 7e0c
+    status: wont_do  # 7e0c
+- op: discuss  # d8cf
+  at: '2026-09-26T01:14:23Z'  # d8cf
+  by: agent  # d8cf
+  actor: jgstern_agent  # d8cf
+  clock: 5  # d8cf
+  nonce: d8cf  # d8cf
+  message: "CLOSED wont_do: THE FILED DEFECT DOES NOT EXIST ON THE PRODUCTION PATH. Re-measured 2026-09-25 per receiver shape, as the 09-26T00:30 note asked. Record: ~/hypergumbo_lab_notebook/hidar_09252026/RESULT.md.\n\nplaintext -> host_fs claim, sink held constant (declared-local FileOutputStream, whose write is typed):\n  typed parameter, typed local (Cipher.getInstance), field, this.field, wildcard import: violated, 1 finding each, source_primitive Cipher.doFinal\n  control without the doFinal call: confirmed, 0 findings\nSo the shipped row DOES mint java plaintext whenever the analyzer types the receiver. Production matching looks up the qualified name javax.crypto.Cipher.doFinal, which the source index holds; the item's probe match_source(\"java\", \"doFinal\", \"javax.crypto.Cipher\") misses only because the bare \"doFinal\" is not an index key for this row, and production does not ask that question. The title's \"never matches and no java plaintext flow exists\" is false; the row's slotting is NOT what needs changing, and I changed nothing.\n\nThe sibling rows the description listed as unchecked:\n  go crypto/cipher AEAD.Open: mints for a typed cipher.AEAD parameter and for gcm from cipher.NewGCM (violated; control confirmed). Not affected.\n  typescript subtle.decrypt: inert in both idiomatic spellings -> filed WI-vogip.\n\nRESIDUALS FILED (close on the filed row, file the residual):\n  WI-halin: four java receiver shapes emit dst java:external, so no method row can match them (static-factory chain, var from a static factory, fully-qualified parameter type, new X(..).m()). Where the first three hit doFinal, verdicts are inconclusive / confirmed_with_caveats, not bare confirmed.\n  WI-vogip: the typescript plaintext source never mints.\nNot asserted: that java plaintext mints on EVERY shape; WI-halin is exactly the shapes where it does not."  # d8cf

@@ -1,0 +1,22 @@
+- op: create  # 0c93
+  at: '2026-09-26T01:14:07Z'  # 0c93
+  by: agent  # 0c93
+  actor: jgstern_agent  # 0c93
+  clock: 1  # 0c93
+  nonce: 0c93  # 0c93
+  data:  # 0c93
+    kind: work_item  # 0c93
+    title: "the typescript plaintext source (crypto subtle.decrypt) never mints: crypto.subtle.decrypt and webcrypto.subtle.decrypt both emit dst typescript:external:decrypt"  # 0c93
+    status: todo_hard  # 0c93
+    priority: 2  # 0c93
+    parent:  # 0c93
+    tags:  # 0c93
+    - taint  # 0c93
+    - typescript  # 0c93
+    - catalogue  # 0c93
+    isbefore: []  # 0c93
+    duplicate_of: []  # 0c93
+    not_duplicate_of: []  # 0c93
+    pr_ref:  # 0c93
+    description: "FOUND 2026-09-25 re-measuring WI-hidar's sibling rows (its description lists \"the typescript subtle.decrypt row\" as unchecked). Record: ~/hypergumbo_lab_notebook/hidar_09252026/RESULT.md, fixtures t_subtle, t_webcrypto, t_ctl.\n\ntaint_sources/crypto.yaml slots the typescript plaintext source as module=crypto, functions=[subtle.decrypt]. On the production path neither idiomatic spelling reaches it:\n\n  t_subtle     const pt = await crypto.subtle.decrypt({name:\"AES-GCM\", iv}, key, ct); fs.writeFileSync(\"out.bin\", new Uint8Array(pt));\n               dst typescript:external:0-0:decrypt -> plaintext->host_fs confirmed_with_caveats [unknown_receiver_scope, analyzer_method_call_blind], 0 findings\n  t_webcrypto  import { webcrypto } from \"crypto\"; webcrypto.subtle.decrypt(...)  -> same dst, same verdict\n  t_ctl        no decrypt call -> confirmed_with_caveats [analyzer_method_call_blind]\n\nThe sink (fs.writeFileSync) is typed in all three, so the missing flow is the SOURCE. Consequence: no typescript plaintext flow can exist, and plaintext is one of only two labels the sanitizer catalogue removes. The verdict is caveated, not bare, so this is not a false all-clear.\n\nThe matcher-level probe agrees: match_source(\"typescript\", \"subtle.decrypt\", \"crypto\") matches; match_source(\"typescript\", \"decrypt\", <anything seen>) does not. NOT CHECKED: whether the fix belongs in the row (the global crypto object is Web Crypto, not node's crypto module) or in the analyzer (crypto.subtle is a member chain on a global), and the \"@noble/ciphers\" decrypt row. Decide which side is wrong before editing either, as WI-hidar's description warned.\n\nGo is NOT affected: crypto/cipher AEAD.Open mints for a typed cipher.AEAD parameter and for gcm from cipher.NewGCM (both violated, control confirmed)."  # 0c93
+    fields: {}  # 0c93

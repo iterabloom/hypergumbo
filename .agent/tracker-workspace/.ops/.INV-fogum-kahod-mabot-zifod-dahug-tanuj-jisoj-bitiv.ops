@@ -41,3 +41,19 @@
   set: {}  # 89b1
   add:  # 89b1
     tags: [post_release_focus]  # 89b1
+- op: update  # 3614
+  at: '2026-09-26T01:13:40Z'  # 3614
+  by: agent  # 3614
+  actor: jgstern_agent  # 3614
+  clock: 4  # 3614
+  nonce: '3614'  # 3614
+  set:  # 3614
+    status: satisfied  # 3614
+    pr_ref: '1221'  # 3614
+- op: discuss  # c117
+  at: '2026-09-26T01:13:41Z'  # c117
+  by: agent  # c117
+  actor: jgstern_agent  # c117
+  clock: 5  # c117
+  nonce: c117  # c117
+  message: "SATISFIED by PR #1221 (merged f587b0a806). The taint arm now reads coverage.deferred_crossing_sites: a clean taint verdict carries a deferred_crossing caveat (arm \"taint\") for each shadowed boundary B whose AUTO_SOURCE_LABEL_MAP[B] equals the claim's source label, one caveat per boundary (_merge_caveat no longer folds two boundaries into one sentence and re-renders on a same-boundary fold). Violated verdicts never acquire it.\n\nBEHAVIORAL EVIDENCE, the item's own repro re-run on the production CLI (fixture ~/hypergumbo_lab_notebook/vogos_09252026/fx/go_clean2, claims both_arms_claims.yaml):\n  before (dev ba9277f1cf): untrusted-input-no-host-fs confirmed []           | no-net-recv confirmed_with_caveats [deferred_crossing]  rc 3\n  after  (branch = #1221): untrusted-input-no-host-fs confirmed_with_caveats [deferred_crossing boundary=net_recv arm=taint entries=[net/http.ListenAndServe]] | no-net-recv unchanged\nScope control, same program, generic-taint-claims.yaml: all 3 untrusted-input-* claims qualified; host-secret-no-network/logging/host-fs and host-description-no-network stay bare confirmed.\nProduction-path test: packages/hypergumbo-lang-mainstream/tests/test_go_deferred_crossing_taint_verdict.py (red with the fix removed, green with it). Rule + controls: packages/hypergumbo-core/tests/test_deferred_crossing_taint_arm.py (shadow-emptied control, pre-retag control, db_compose->db_read twin, two-boundary case, violated-path and label-scope negatives).\n\nTHE CITED CLAIM THIS ITEM CONTRADICTED, now measured rather than inferred: gocryptfs 501d5a5 re-run on dev (pinned worktree) and on the fix. On dev, untrusted-input-no-host-fs is inconclusive with NO deferred_crossing caveat; the withholding is the coverage gate (54 launch sites, 61 unclassified modules). After the fix no verdict value moves; untrusted-input-no-host-fs and -no-database gain the caveat. ADR-0049 and measurement 0010 corrected in the same PR. Evidence: ~/hypergumbo_lab_notebook/fogum_09252026/{A,B}.json.\n\nNOT MEASURED: the JavaScript arm (~/hg_arms/vogos_B + fx/node_http_clean). That case depends on WI-vogos's retag, which remains held per the owner's 09-25 ruling until WI-ritog's handler seed also lands; this item is one of its two prerequisites and is now met."  # c117

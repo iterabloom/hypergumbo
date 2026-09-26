@@ -1,0 +1,22 @@
+- op: create  # 98e1
+  at: '2026-09-26T01:14:02Z'  # 98e1
+  by: agent  # 98e1
+  actor: jgstern_agent  # 98e1
+  clock: 1  # 98e1
+  nonce: '98e1'  # 98e1
+  data:  # 98e1
+    kind: work_item  # 98e1
+    title: "java receiver typing misses four ordinary shapes (static-factory chain, var from a static factory, fully-qualified parameter type, new X(..).m()), so catalogued method rows reached that way cannot match"  # 98e1
+    status: todo_hard  # 98e1
+    priority: 2  # 98e1
+    parent:  # 98e1
+    tags:  # 98e1
+    - taint  # 98e1
+    - java  # 98e1
+    - receiver_typing  # 98e1
+    isbefore: []  # 98e1
+    duplicate_of: []  # 98e1
+    not_duplicate_of: []  # 98e1
+    pr_ref:  # 98e1
+    description: "FOUND 2026-09-25 re-measuring WI-hidar on the production path. Record: ~/hypergumbo_lab_notebook/hidar_09252026/RESULT.md (fixtures j_*, one repo + XDG cache each).\n\nThe java analyzer types a method-call receiver from a declared parameter, a declared local (INV-vugo), a field, this.field and a wildcard import: in each, c.doFinal(ct) emits dst java:javax.crypto.Cipher:0-0:doFinal and the plaintext -> host_fs claim is violated with 1 finding. FOUR ORDINARY SHAPES emit dst java:external instead, so no catalogued method row can match them:\n\n  1. chained static-factory return      Cipher.getInstance(\"AES\").doFinal(ct)       -> external; verdict inconclusive, 0 findings\n  2. var bound from a static factory     var c = Cipher.getInstance(\"AES\"); c.doFinal(ct)  -> external; inconclusive, 0 findings\n  3. fully-qualified parameter type, no import   void dec(javax.crypto.Cipher c, ..) { c.doFinal(ct) }  -> external; confirmed_with_caveats [unknown_receiver_scope], 0 findings\n  4. constructor-expression receiver     new FileOutputStream(\"out.bin\").write(pt)  -> the write is untyped (untyped_receiver caveat), so the SINK does not match; the declared-local spelling of the same sink does\n\nControl: the same file without the doFinal call is confirmed, 0 findings.\n\nSCOPE: measured on one source row (Cipher.doFinal) and one sink row (FileOutputStream.write). Each shape is a receiver-typing gap, so it applies to every method-kind java catalogue row reached that way; the corpus frequency of each shape has NOT been counted. Shapes 1 and 2 need the return type of an EXTERNAL (JDK) static factory, which WI-kuroj's return-type registry (project methods) does not hold; shape 3 needs the declared type read as a qualified name rather than a simple name; shape 4 needs an object_creation_expression receiver typed as its class (INV-misup did this for javascript).\n\nDIRECTION: none of the four produces a bare confirmed in these fixtures (inconclusive x2, confirmed_with_caveats x1, untyped_receiver caveat x1). It is a recall gap that the verdicts disclose, not a false all-clear."  # 98e1
+    fields: {}  # 98e1
