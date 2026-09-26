@@ -85,35 +85,33 @@ Why This Design
 Population of ``is_exported`` follows Go's lexical case rule: identifiers
 starting with an uppercase letter are exported (public).
 
-DECLARED BLINDNESS — ``call_construct`` IS A CONSTANT ON GO (INV-tanom).
-Every emit site above stamps ``meta={"call_construct": "method"}`` on any
-SELECTOR-expression call, and Go writes a package-qualified free function with
-the same syntax as a value-receiver method: ``http.Get(u)`` and ``c.Get(u)``
-are byte-identical in (name, module_hint, call_construct). The field therefore
-records the SYNTAX, not the construct its name promises, and on Go it carries
-no information at all.
+A PACKAGE-QUALIFIED CALL IS STAMPED ``function`` (INV-tanom, 2026-09-26).
+Go writes a package-qualified free function with the same syntax as a
+value-receiver method, and until this date every selector call was stamped
+``call_construct="method"``: ``http.Get(u)`` and ``c.Get(u)`` were
+byte-identical in (name, module_hint, call_construct). The unresolved-selector
+emit now stamps ``function`` when the operand is an import alias, which is the
+same test that already fills the module slot with the package. ``base.py``
+defines ``method`` as a call on a receiver, and ADR-0059 files a call on the
+module itself as a function.
 
-DO NOT KEY A PREDICATE ON IT TO SEPARATE A FUNCTION ROW FROM A METHOD ROW.
-It is a constant; such a predicate cannot work, and one was proposed and
-refuted on exactly that ground.
+WHY IT WAS FIXED AFTER BEING PRICED AT ZERO. Sized 2026-09-09 over 14 Go
+repositories, the mis-stamp cost nothing at its only consumer then, io-boundary's
+no-module gate, which a package-qualified call never reaches (its slot is always
+fillable from the import block; ``tanom_sizing_09092026/RESULT.md``). 8.1.0's
+``unknown_receiver_scope`` caveat then used ``call_construct == "method"`` as
+its denominator, and every ``fmt.Println`` became a method call site whose
+receiver could have been typed (WI-fuvaj: alertmanager printed 18.5% untyped
+where the share over receiver calls is about 31%). A debt priced at zero
+expires when a new consumer arrives.
 
-THIS IS DELIBERATE, NOT UNNOTICED, AND IT IS DECLARED RATHER THAN FIXED
-BECAUSE THE FIX WAS MEASURED TO BUY NOTHING. Sized 2026-09-09 over 14 Go
-repositories (10 of them vendored) and 72,396 unresolved ``cc=method`` call
-edges that carry NO module slot — the only population io-boundary ever reads
-this field for, since the F3 gate consults it exclusively on the no-module
-path. The shape that would make the mis-stamp cost something — a
-package-qualified free function reaching that path — occurred ZERO times, and
-the reason is structural rather than lucky: a package qualifier always names an
-import in the file's own import block, so the module slot is always fillable,
-and only value receivers reach the branch. Per-repo table and the four
-instrument defects found while establishing it (each of which INFLATED the
-count before being fixed) are in
-``~/hypergumbo_lab_notebook/tanom_sizing_09092026/RESULT.md``.
-
-INV-tanom stays VIOLATED: the field genuinely does not mean what it is named,
-and a zero cost today is not a satisfied invariant. What changed is that the
-debt is now priced, and priced at zero for the current consumer.
+STILL NOT TOLD APART, and pinned by an xfail in
+``test_go_package_qualified_construct.py``: a local that SHADOWS its import
+(``url, _ := url.Parse(raw); url.String()``) is treated as the package, for
+the construct as for the module slot, because ``var_types`` is per function and
+consulting it would also mark the ``url.Parse`` that defines the local as a
+method call. The resolved-lookup emit sites stamp ``function`` without asking
+about a receiver; they were not examined for this change.
 """
 from __future__ import annotations
 
@@ -3270,6 +3268,10 @@ def _extract_edges_from_file(
                     # the ``external`` placeholder when we know it.
                     receiver_module_hint: Optional[str] = None
                     full_import_path = None
+                    # INV-tanom: the operand is an imported PACKAGE, not a value.
+                    # Such a call is a function call (ADR-0059: called on the
+                    # module itself), and the construct stamp says so below.
+                    package_qualified = False
 
                     if func_node.type == "identifier":
                         # Simple call: helper()
@@ -3289,6 +3291,15 @@ def _extract_edges_from_file(
                             alias = node_text(operand_node, source)
                             if alias in import_aliases:
                                 full_import_path = import_aliases[alias]
+                                # SAME TEST AS THE MODULE SLOT, deliberately:
+                                # an alias that names an import is the package
+                                # here, as it already is for the slot. A local
+                                # that shadows the import is not told apart,
+                                # because ``var_types`` is per function, not
+                                # per position, so consulting it would also
+                                # mark the ``url.Parse`` that DEFINES a local
+                                # ``url`` as a method call.
+                                package_qualified = True
                                 if module_path:
                                     import_path_hint = _strip_module_prefix(
                                         full_import_path, module_path,
@@ -3922,7 +3933,10 @@ def _extract_edges_from_file(
                                     # Fallback: use "external" as the path
                                     dst_id = f"go:external:0-0:{callee_name}:unresolved"
                                 _meta: dict[str, object] = {
-                                    "call_construct": "method",
+                                    "call_construct": (
+                                        "function" if package_qualified
+                                        else "method"
+                                    ),
                                 }
                                 # WI-lipis: what this call site actually
                                 # touches, where the catalogue row cannot say.

@@ -3803,6 +3803,16 @@ def unknown_receiver_scope(
     polyglot repo cannot dilute the ratio with calls nothing could have
     adjudicated anyway. A resolved in-repo callee counts in the denominator and
     not the numerator, which is correct — resolving it IS typing its receiver.
+
+    ONLY AS COMMENSURABLE AS THE PRODUCERS' STAMP (WI-fuvaj). A call with no
+    receiver that a producer stamps ``method`` fills the denominator and can
+    never reach the numerator, which UNDERSTATES the untyped share. Go stamped
+    every package-qualified call (``fmt.Println``) that way until INV-tanom; on
+    alertmanager that printed 18.5% where the share over receiver calls is
+    about 31%. Java still stamps a qualified static (``Files.readAllBytes``)
+    ``method``, and restamping it waits on java.yaml's statics being declared
+    function-kind (ADR-0059's WI-ziviv ledger), because a function-construct
+    call into a method-only module reads as starvation.
     """
     from .taint import _module_from_symbol_path
 
