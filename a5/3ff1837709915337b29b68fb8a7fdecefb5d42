@@ -1,0 +1,35 @@
+Original commit body from e1923132a7b166a419a6a1efcd3613682536cede:
+
+Addresses WI-simiv. WI-fasub's same-function sanitizer arm was tested only
+with hand-built DDG edges. On the production path three ordinary Python
+decrypt -> encrypt -> write programs reported sanitized_flows 0. I
+instrumented _ddg_taint_reaches on the real run: the guarded walk never
+returned False, for two data-flow extractor reasons rather than by design.
+
+1. populate_def_use_for_cfg matches AST nodes to CFG statements by
+   (line, col, type) in pre-order. In open("o","wb").write(e) the inner
+   open(...) call shares the outer call's key and overwrote uses=[e] with
+   []. The outermost node now wins.
+2. A with clause is recorded as the synthetic context_manager_enter, which
+   no AST node carries. The extractor never ran on it (f undefined), and
+   uncovered_semantic_lines counted the clause as uncovered code, which
+   forfeits the function's refutation. CfgStatement gains ast_node_type,
+   and one statement_match_key is used by both passes. The python
+   extractor gains a with_clause handler (defines the as-targets, uses the
+   values), so a covered clause is also a correctly modelled one.
+
+Third defect found on the way: _require_coverage_to_confirm rebuilt the
+verdict field by field. The withheld branch dropped sanitized_flows and 5
+more fields, and the qualified branch dropped analysis_fidelity. So details
+said "1 flow(s) ... pass through a sanitizer" beside "sanitized_flows": 0.
+Both branches now use dataclasses.replace.
+
+After: all three WI-simiv fixtures report sanitized_flows 1 with
+evidence_count 0; a control that writes the plaintext beside the encrypted
+value stays violated. A/B on flask-restful, full-stack-fastapi-template,
+httpx, poetry and mitmproxy: no verdict, evidence count, sanitized count,
+caveat kind or flows_removed_by_walk changes, and walk 'unconfirmed' stays
+0. functions_forfeited drops 115->10, 12->5, 238->84, 566->360 and
+1968->1487. check-self-claims: 18 claims unchanged.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
