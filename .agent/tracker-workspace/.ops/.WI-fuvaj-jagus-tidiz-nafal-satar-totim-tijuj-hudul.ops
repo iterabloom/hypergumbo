@@ -1,0 +1,24 @@
+- op: create  # 7aae
+  at: '2026-09-26T00:29:54Z'  # 7aae
+  by: agent  # 7aae
+  actor: jgstern_agent  # 7aae
+  clock: 1  # 7aae
+  nonce: 7aae  # 7aae
+  data:  # 7aae
+    kind: work_item  # 7aae
+    title: "The unknown-receiver-scope caveat's denominator counts receiverless calls as method call sites (Go package functions, Java statics), understating the untyped share (alertmanager: printed 18.5%, ~31% over real method sites)"  # 7aae
+    status: todo_hard  # 7aae
+    priority: 2  # 7aae
+    parent:  # 7aae
+    tags:  # 7aae
+    - verify_claims  # 7aae
+    - axis  # 7aae
+    - analysis_quality  # 7aae
+    - go  # 7aae
+    - java  # 7aae
+    isbefore: []  # 7aae
+    duplicate_of: []  # 7aae
+    not_duplicate_of: []  # 7aae
+    pr_ref:  # 7aae
+    description: "FOUND 2026-09-25 while re-verifying INV-tanom at dev 56f069874e. Evidence: ~/hypergumbo_lab_notebook/tanom_recheck_09252026/ (RESULT.md, denom_split.py, fx/, fxj/).\n\nTHE CONSUMER. verify_claims.unknown_receiver_scope() -- and accessor_name_receiver_scope(), which shares its denominator by design -- counts every call edge with meta.call_construct == \"method\" in a catalogued language as a \"method call site\". That count is the DENOMINATOR of the 8.1.0 caveat CAVEAT_UNKNOWN_RECEIVER_SCOPE: \"At {sites} of {method_calls} method call site(s) the receiver's type could not be determined\". Its docstring says \"THE DENOMINATOR IS COMMENSURABLE WITH THE NUMERATOR BY CONSTRUCTION: both count method-construct call sites\".\n\nWHY THAT IS FALSE. call_construct == \"method\" is not evidence of a receiver. Go stamps it on every selector call, so package-qualified FREE FUNCTIONS (http.Get, os.ReadFile, fmt.Println, errors.New) count (INV-tanom, declared in go.py's module docstring: \"DO NOT KEY A PREDICATE ON IT TO SEPARATE A FUNCTION ROW FROM A METHOD ROW\"). Java stamps it on qualified statics (Files.readAllBytes, System.getenv), reproduced on a 3-line fixture. Those calls can never be in the numerator (their module slot always names the owner) but they fill the denominator.\n\nMEASURED on alertmanager, with the PRODUCTION functions on a production survey:\n  printed:  1,141 untyped of 6,183 method call sites  (18.5%)\n  go share of the denominator, 6,172 edges, classified by the token before `.name(` on its own line against the file's own imports:\n    package-qualified (no receiver) 2,533 (41%) | value receiver 3,339 | unclassifiable 300\n  control: fmt/errors/strings receivers classified package-qualified 506 times (matcher works)\n  numerator: 0 package-qualified (6 apparent hits read at source are all line collisions)\nOver real method sites the untyped share is ~1,141 / ~3,650 = ~31%, not 18.5%. The disclosure UNDERSTATES how much of the analysis rests on untyped receivers -- the flattering direction.\n\nNOT MEASURED: other Go repos, any Java repo, other languages that may stamp method on receiverless calls (the 08-27 concept audit measured function<->method disagreement in 19 languages). Direction not chosen: the denominator could exclude edges whose slot names the owner of a function-kind row (ADR-0059's \"called on a named owner\"), or the producers could stop stamping method on receiverless calls (INV-tanom's emitter fix, which its 09-09 entry declined at \"zero benefit\" -- this item is the benefit). When fixed, go.py's declared-blindness docstring (\"priced at zero for the current consumer\") must be updated; it is no longer true."  # 7aae
+    fields: {}  # 7aae
