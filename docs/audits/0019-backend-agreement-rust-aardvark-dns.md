@@ -59,7 +59,7 @@ languages:
 | edge type | target | both | `rust` only | `rust_analyzer` only |
 |---|---|---|---|---|
 | `calls` | in-repo | 93 | 19 | 7 |
-| `calls` | external | 0 | 244 | 0 |
+| `calls` | external | 0 | 245 | 0 |
 | `decorated_by` | external | 0 | 1 | 0 |
 | `implements` | external | 0 | 2 | 0 |
 | `module_attr_ref` | external | 0 | 26 | 0 |
@@ -86,4 +86,4 @@ Written by the agent on 2026-09-19 from the tables above; the numbers are the in
   - Their cause was the harness, not a producer. It skipped `populate_kind_stable_ids`, which a survey runs before the merge pass.
   - A live survey of this crate at the recorded rust-analyzer version reads 0 / 148 / 0 / 0 (WI-paluk).
 - **One-sided attributes.** `qualified_name` (148), `signature` (125), `docstring` (63) and `modifiers` (35) come from the syntax arm only: the SCIP translation fills none of them although `SymbolInformation` carries signature documentation. No agreement can be measured on them until it does.
-- **Edges.** The 93 in-repo `calls` both arms emit are exactly the corroborated edges (§13); 18 in-repo calls only tree-sitter sees, 7 only SCIP. The 269 `references` edges are SCIP-only (the syntax arm emits none), and every edge to an external stub — 244 `calls`, 26 `module_attr_ref`, 2 `implements`, 1 `decorated_by` — is tree-sitter-only, since the recorded index resolves nothing outside the crate. Three of the 244 stubs are superseded (§14).
+- **Edges.** The 93 in-repo `calls` both arms emit are exactly the corroborated edges (§13); 18 in-repo calls only tree-sitter sees, 7 only SCIP. The 269 `references` edges are SCIP-only (the syntax arm emits none), and every edge to an external stub — 245 `calls`, 26 `module_attr_ref`, 2 `implements`, 1 `decorated_by` — is tree-sitter-only, since the recorded index resolves nothing outside the crate. Three of the 245 stubs are superseded (§14). (244 before INV-duzom, 2026-09-26: `std::io::Error::new(..)` at `src/server/serve.rs:384`, written with its full path, is no longer suppressed by the generic-method guard.)
