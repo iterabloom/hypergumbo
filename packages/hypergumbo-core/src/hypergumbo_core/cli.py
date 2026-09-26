@@ -1593,6 +1593,33 @@ def _warn_in_progress_catalogs(languages: Iterable[str]) -> List[str]:
     return warned
 
 
+def _warn_overlay_only_catalogs(catalogs: Mapping[str, Any]) -> List[str]:
+    """WI-guhuv: say when a language's ONLY I/O rows are the user's overlay.
+
+    A language with no shipped catalogue now takes its project-local overlay
+    rows, which classify its calls. What they cannot do is stand for the
+    language's stdlib: they cite no provenance and date no module the user did
+    not date, so a call they do not name stays unclassified and withholds a
+    clean verdict. Said on stderr beside the in-progress notice so that an
+    overlay-only language never reads as a catalogued one.
+
+    Returns the warned languages (for testability), once each even when an
+    alias keys the same catalogue twice.
+    """
+    warned = sorted({
+        cat.language for cat in catalogs.values()
+        if getattr(cat, "overlay_only", False)
+    })
+    for lang in warned:
+        print(
+            f"⚠  {lang!r} ships no I/O primitive catalogue: its I/O is "
+            f"classified only by the project-local overlay rows loaded above, "
+            f"and a call they do not name is unclassified.",
+            file=sys.stderr,
+        )
+    return warned
+
+
 def _warn_default_overlays(languages: Iterable[str]) -> List[str]:
     """ADR-0047 ruling 6: say LOUDLY that unvouched rows were loaded.
 
@@ -5436,6 +5463,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             # groovy→java in io_boundary._CATALOG_ALIASES).
             if catalog.language != lang:
                 catalogs[catalog.language] = catalog
+    _warn_overlay_only_catalogs(catalogs)
 
     # Extract entrypoint IDs for reverse-trace
     entrypoint_ids = {
@@ -6309,6 +6337,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             catalogs[lang] = catalog
             if catalog.language != lang:
                 catalogs[catalog.language] = catalog
+    _warn_overlay_only_catalogs(catalogs)
 
     # Extract entrypoint IDs for reverse-trace
     vc_entrypoint_ids = {

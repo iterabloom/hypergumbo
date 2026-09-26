@@ -218,9 +218,11 @@ class TestOverlayLoading:
         """THE DISCRIMINATOR, and why the fix above is a skip rather than a
         softening. ``language: pyton`` is a typo, and silently ignoring it
         leaves the author believing their rows applied — the fail-quiet
-        direction this gate exists to avoid. A language that names no shipped
-        catalogue at all cannot be "somebody else's overlay", because there is
-        no run in which it would ever apply.
+        direction this gate exists to avoid. A language no analyzer produces
+        cannot be "somebody else's overlay", because there is no run in which
+        it would ever apply. (A language an analyzer produces but no catalogue
+        ships, such as ruby, is a real overlay target since WI-guhuv; see
+        ``test_io_overlay_uncatalogued_language.py``.)
         """
         overlay = _write(tmp_path, "typo.yaml", """\
             language: pyton
