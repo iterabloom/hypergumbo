@@ -36,3 +36,19 @@
   set: {}  # 9618
   add:  # 9618
     tags: [post_release_focus]  # 9618
+- op: update  # 1e9d
+  at: '2026-09-26T20:18:59Z'  # 1e9d
+  by: agent  # 1e9d
+  actor: jgstern_agent  # 1e9d
+  clock: 4  # 1e9d
+  nonce: 1e9d  # 1e9d
+  set:  # 1e9d
+    status: done  # 1e9d
+    pr_ref: '1231'  # 1e9d
+- op: discuss  # 7e48
+  at: '2026-09-26T20:18:59Z'  # 7e48
+  by: agent  # 7e48
+  actor: jgstern_agent  # 7e48
+  clock: 5  # 7e48
+  nonce: '7e48'  # 7e48
+  message: "DONE in PR #1231 (merged 0f3c933c2c). Both halves, by the fix shape the item named: the linker anchors the source path on the repo root (repo_root.resolve() / src_path, as vue_component does) for the relative-import base and for the tsconfig ancestor walk, and computes rel_path against the resolved root.\n\nBEHAVIORAL EVIDENCE, production surveys (~/hypergumbo_lab_notebook/fukaf_09262026/), dev 300780b5bf pinned worktree vs the fix, both surveyed from OUTSIDE the repo:\n  koel (the item's own repro): js-module-linker imports 3,680 -> 4,078, module_exports 1,471 -> 2,085 -- exactly the item's inside-cwd numbers; the fix surveyed from INSIDE gives the identical edge set (0 differences).\n  half (b), tsconfig paths:\n    full-stack-fastapi-template: imports 301 -> 411, module_exports 0 -> 288; alias-shaped phantom npm nodes 5 (@/components, @/lib, @/hooks, @/client, @/utils) -> 0.\n    nest: imports 2,587 -> 4,033, module_exports 0 -> 1,981; npm nodes for @nestjs/common, core, platform-fastify, platform-socket.io, platform-ws, testing, websockets (mapped by the root tsconfig to ./packages/*) no longer minted from the root-scoped files. Three typescript:npm @nestjs/* nodes now appear; files under a nearer tsconfig with no paths are the likely source (sample apps really importing npm), NOT read back file by file.\nTests: packages/hypergumbo-core/tests/test_js_module_repo_relative_paths.py (repo-relative paths, foreign cwd, relative + alias + no phantom) and packages/hypergumbo-lang-mainstream/tests/test_ts_module_linker_foreign_cwd.py (production survey inside vs outside must agree; red on the old code, reproducing typescript:npm:0-0:@/lib:package).\nCONSEQUENCE, stated so it is not lost: every bakeoff JS/TS imports / module_exports number measured before this merge was taken in the degraded mode."  # 7e48

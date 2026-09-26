@@ -1,0 +1,22 @@
+- op: create  # bca0
+  at: '2026-09-26T21:28:26Z'  # bca0
+  by: agent  # bca0
+  actor: jgstern_agent  # bca0
+  clock: 1  # bca0
+  nonce: bca0  # bca0
+  data:  # bca0
+    kind: work_item  # bca0
+    title: "swift-nio overlay row Channel.addHandler (net_send) names a type that has no addHandler and describes pipeline setup, not a transfer; it matched only through WI-sulas's head-typing error"  # bca0
+    status: todo_hard  # bca0
+    priority: 3  # bca0
+    parent:  # bca0
+    tags:  # bca0
+    - swift  # bca0
+    - catalogue  # bca0
+    - io_boundary  # bca0
+    isbefore: []  # bca0
+    duplicate_of: []  # bca0
+    not_duplicate_of: []  # bca0
+    pr_ref:  # bca0
+    description: "FOUND 2026-09-26 as WI-sulas's measured loss (PR #1232). The default-loaded community overlay io_primitives_overlays/swift-nio-and-log.yaml rows `Channel.addHandler` under net_send. In SwiftNIO, addHandler is a member of ChannelPipeline and of ChannelPipeline.SynchronousOperations, not of Channel, and the row's own note calls it \"pipeline setup\". Its only matches on the corpus were the 4 hummingbird net_send chains (6 call sites, `channel.pipeline.syncOperations.addHandler(...)`) produced by the head-typing error WI-sulas removed, so after that fix it matches nothing.\n\nTWO QUESTIONS, not decided here:\n1. MODULE (ADR-0059): the row should name the owner the method is reached through, ChannelPipeline / its SynchronousOperations. A re-key would still not recover the hummingbird sites, since the analyzer cannot type an external member chain; it would match a receiver declared or typed as ChannelPipeline.\n2. BOUNDARY (ADR-0049): adding a handler to a pipeline transfers no bytes to the far side; by ruling 1 it is setup, closer to net_listen than to net_send. Whether it belongs in the catalogue at all is the prior question."  # bca0
+    fields: {}  # bca0

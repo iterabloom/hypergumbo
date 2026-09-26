@@ -1,0 +1,22 @@
+- op: create  # 15c9
+  at: '2026-09-26T19:47:09Z'  # 15c9
+  by: agent  # 15c9
+  actor: jgstern_agent  # 15c9
+  clock: 1  # 15c9
+  nonce: 15c9  # 15c9
+  data:  # 15c9
+    kind: work_item  # 15c9
+    title: "java: System.out/err method calls carry an external module slot although the field fixes the receiver type (java.io.PrintStream), so every one counts as an untyped-receiver site"  # 15c9
+    status: todo_hard  # 15c9
+    priority: 3  # 15c9
+    parent:  # 15c9
+    tags:  # 15c9
+    - java  # 15c9
+    - receiver_typing  # 15c9
+    - verify_claims  # 15c9
+    isbefore: []  # 15c9
+    duplicate_of: []  # 15c9
+    not_duplicate_of: []  # 15c9
+    pr_ref:  # 15c9
+    description: "FOUND 2026-09-26 while re-measuring WI-bojud (closed; its premise was false). The java analyzer emits `System.out.println(x)` / `System.err.printf(..)` as call edges with module slot `external` (java:external:0-0:println, call_construct=method), although the receiver's type is fixed by the field: java.lang.System.out and .err are java.io.PrintStream.\n\nThe I/O row IS reached, through the separate module_attr_ref edge (java:System:0-0:System.out -> ipc_send, measured in ~/hypergumbo_lab_notebook/bojud_09262026/). What is wrong is the call edge: every System.out/err call counts as an UNTYPED-RECEIVER site in the 8.1.0 unknown_receiver_scope caveat (numerator and denominator), inflating the untyped share, and a catalogued java.io.PrintStream method row (if one is added) could never match. WI-bojud's census had cassandra 383, jenkins 125, sherpa-onnx 186 such call sites.\n\nFIX SHAPE (not built): when a field_access receiver's outer token qualifies through _qualify_receiver_type to java.lang.System and the field is out/err (in), type the receiver as java.io.PrintStream (java.io.InputStream). A small fixed table of stdlib static fields; do NOT generalise to arbitrary field types without their declarations."  # 15c9
+    fields: {}  # 15c9
