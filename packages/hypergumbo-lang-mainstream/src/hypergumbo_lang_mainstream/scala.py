@@ -69,6 +69,8 @@ from hypergumbo_core.analyze.base import (
     defer_bare_method_call,
     find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
+    enclosing_declared_symbol,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
@@ -94,6 +96,12 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("scala")
+
+#: INV-bamij: templates whose BODY anchors a call that sits in no function
+#: (every ``val`` in an ``object`` is an initialiser).
+_TYPE_BODY_NODES: frozenset[str] = frozenset({
+    "object_definition", "class_definition", "trait_definition", "enum_definition",
+})
 
 
 def _short_name_penalty(name: str) -> float:
@@ -596,7 +604,7 @@ def _get_enclosing_function(
             if sym is not None:
                 return sym
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return None
 
 
 # WI-jusus (emission-parity F5): scope discrimination for a val/var, so only a
@@ -1275,6 +1283,7 @@ def _extract_edges_from_file(
         else list({s.id: s for s in local_symbols.values()}.values()))
     edges: list[Edge] = []
     file_id = make_file_id("scala", str(file_path))
+    file_anchor = file_anchor_symbol("scala", str(file_path), PASS_ID, run_id)
     var_types: dict[str, str] = {}
     _scoped_imports = _block_scoped_imports(tree.root_node, source)
 
@@ -1339,7 +1348,13 @@ def _extract_edges_from_file(
                 var_types[node_text(pname_node, source)] = ptype_name
 
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, decl_index)
+            # INV-bamij: a call in no function is anchored on the template that
+            # holds it (an ``object``'s ``val`` initialiser), else the file.
+            current_function: Optional[Symbol] = (
+                _get_enclosing_function(node, source, decl_index)
+                or enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
+                or file_anchor
+            )
             if current_function is not None:
                 # INV-fahub Site-1: the enclosing class short name for a bare /
                 # implicit-``this`` call, so a deferred bare→method call can be

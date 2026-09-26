@@ -77,6 +77,8 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
+    enclosing_declared_symbol,
     make_file_id,
     make_route_symbol,
     make_symbol_id,
@@ -98,6 +100,10 @@ if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("ruby")
+
+#: INV-bamij: scopes whose BODY anchors a call in no method (class-body
+#: ``include``, a Rails ``has_many``).
+_SCOPE_BODY_NODES: frozenset[str] = frozenset({"class", "module", "singleton_class"})
 
 # HTTP methods for Rails/Sinatra route detection (used by UsageContext extraction)
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "match"}
@@ -328,27 +334,6 @@ def _get_enclosing_method(
                 return sym
         current = current.parent
     return None  # pragma: no cover - defensive
-
-
-def _get_enclosing_scope_symbol(
-    node: "tree_sitter.Node",
-    decl_index: SymbolsAt,
-) -> Optional[Symbol]:
-    """The class or module whose BODY holds ``node``, when no method does.
-
-    INV-bamij. Class-body code -- ``include``, ``attr_accessor``, a Rails
-    ``has_many`` or ``validates`` -- runs when the class is defined, inside no
-    method, and used to emit no call edge at all. Keyed by position, as
-    :func:`_get_enclosing_method` is.
-    """
-    current = node.parent
-    while current is not None:
-        if current.type in ("class", "module", "singleton_class"):
-            sym = symbol_declared_by(current, decl_index)
-            if sym is not None:
-                return sym
-        current = current.parent
-    return None
 
 
 def _is_nested_in_method(node: "tree_sitter.Node") -> bool:
@@ -2620,11 +2605,7 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     file_id = make_file_id("ruby", str(file_path))
     # The anchor of last resort for a call in no method, class or module.
-    file_anchor = Symbol(
-        id=file_id, name="file", kind="file", language="ruby", path=str(file_path),
-        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-        origin=PASS_ID, origin_run_id=run_id,
-    )
+    file_anchor = file_anchor_symbol("ruby", str(file_path), PASS_ID, run_id)
     var_types = _extract_ruby_var_types(tree, source)
     _mc = method_candidates or {}
 
@@ -2721,7 +2702,7 @@ def _extract_edges_from_file(
                     # Rakefiles and config/*.rb.
                     current_method = (
                         _get_enclosing_method(node, source, decl_index)
-                        or _get_enclosing_scope_symbol(node, decl_index)
+                        or enclosing_declared_symbol(node, decl_index, _SCOPE_BODY_NODES)
                         or file_anchor
                     )
                     if current_method is not None:

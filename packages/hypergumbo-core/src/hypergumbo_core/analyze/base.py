@@ -112,7 +112,7 @@ import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, Iterator, Optional
+from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional
 
 from ..library_signatures import load_library_signatures
 from ..dataflow import annotate_dataflow, get_dataflow_config
@@ -595,6 +595,30 @@ def make_file_id(lang: str, path: str) -> str:
 
 
 _FILE_ID_SUFFIX = ":1-1:file:file"
+
+
+def file_anchor_symbol(lang: str, path: str, pass_id: str, run_id: str) -> Symbol:
+    """The symbol a call outside every function is anchored on (INV-bamij).
+
+    Every call site an analyzer parses must emit a calls edge anchored on SOME
+    symbol (INV-foluz). A call at module level, in a function literal bound to a
+    module-level name, or in a static initialiser has no enclosing function, and
+    nine analyzers dropped it. This is the anchor of last resort: the file node
+    the ``make_file_id`` id already names (the ``imports`` edges' source), which
+    is how python and php anchor module-level code. One definition, so the
+    analyzers that use it cannot disagree about the id, the kind or the span.
+    Built for use as an edge ``src``; it is not emitted as a new symbol.
+    """
+    return Symbol(
+        id=make_file_id(lang, path),
+        name="file",
+        kind="file",
+        language=lang,
+        path=path,
+        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+        origin=pass_id,
+        origin_run_id=run_id,
+    )
 
 
 def _read_file_end_line(repo_root: "Path", rel_path: str) -> int:
@@ -1306,6 +1330,28 @@ def symbol_declared_by(node: Any, index: SymbolsAt) -> Optional[Symbol]:
     """The symbol whose declaration node is ``node``, or None when it has none
     (a local function the analyzer does not emit, a ``quote``-d def)."""
     return index.get((node.start_point[0] + 1, node.start_point[1]))
+
+
+def enclosing_declared_symbol(
+    node: Any, index: SymbolsAt, node_types: AbstractSet[str],
+) -> Optional[Symbol]:
+    """The nearest ancestor of ``node`` of one of ``node_types`` that HAS a symbol.
+
+    INV-bamij. A call in a type's body but in no function (a Ruby class-body
+    ``include``, a Scala ``object``'s ``val``, a Swift or Kotlin property
+    initialiser, a Swift ``init`` the analyzer emits no symbol for) is anchored
+    on that type rather than dropped or pushed out to the file. Keyed by the
+    declaration's POSITION (:func:`symbol_declared_by`), never its name; an
+    ancestor with no symbol is walked past.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type in node_types:
+            sym = symbol_declared_by(current, index)
+            if sym is not None:
+                return sym
+        current = current.parent
+    return None
 
 
 def make_file_stable_id(language: str, path: str) -> str:

@@ -280,7 +280,13 @@ AARDVARK_DNS_CALL_SITE_TALLY: Final[dict[str, int]] = {
     # 245 since INV-duzom (was 244): `std::io::Error::new(..)` at
     # src/server/serve.rs:384 is written with its full path, which now names
     # its owner, so the generic-method guard no longer suppresses it.
-    "stub_calls": 245,
+    # 256 since INV-bamij's rust batch: the calls in `const` initialisers
+    # (`Duration::from_secs(5)` in src/dns/coredns.rs, the `SocketAddr` /
+    # `Ipv4Addr` / `Ipv6Addr` constants in src/server/serve.rs and
+    # src/test/test.rs) are anchored on the file instead of dropped. They are
+    # file-sourced, so the edge-overlap table above, which pairs records by
+    # symbol, does not see them.
+    "stub_calls": 256,
     "superseded_stubs": 3,
     "co_located_same_type_not_superseded": 24,
 }

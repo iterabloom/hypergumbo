@@ -1745,11 +1745,16 @@ fun outer() {
         )
         assert call_edge is not None, "Call inside nested lambdas should be attributed to outermost function"
 
-    def test_call_at_top_level_outside_function_no_edge(self, tmp_path: Path) -> None:
-        """Calls at top level (outside any function) should not create edges.
+    def test_call_at_top_level_outside_function_is_anchored_on_the_file(self, tmp_path: Path) -> None:
+        """A call at top level (outside any function) is anchored on the FILE.
 
-        Top-level property initializers run at object creation time, not inside
-        any specific function. These calls should not be attributed.
+        This test used to pin "should not create edges", on the reasoning that a
+        top-level initialiser runs in no particular function. That is true of the
+        FUNCTION and does not make the call disappear: INV-foluz requires every
+        parsed call to emit an edge on some symbol, and INV-bamij names kotlin's
+        top-level ``val`` as a shape that broke it. The file pseudo-symbol is the
+        anchor python and php use for module-level code, which answers the old
+        concern: the call is not attributed to any function.
         """
         from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
 
@@ -1770,12 +1775,12 @@ val result = helper()
         helper_func = next((s for s in result.symbols if s.name == "helper"), None)
         assert helper_func is not None
 
-        # There should be no call edge to helper (call is at top level)
         call_edges = [
             e for e in result.edges
             if e.dst == helper_func.id and e.edge_type == "calls"
         ]
-        assert len(call_edges) == 0, "Top-level call should not create an edge"
+        assert len(call_edges) == 1, [e.src for e in call_edges]
+        assert call_edges[0].src.endswith(":1-1:file:file"), call_edges[0].src
 
 
 class TestKotlinAmbiguousMethodGuard:

@@ -72,6 +72,8 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     defer_bare_method_call,
+    file_anchor_symbol,
+    enclosing_declared_symbol,
     make_file_id,
     make_file_stable_id,
     make_route_symbol,
@@ -97,6 +99,9 @@ if TYPE_CHECKING:
     from hypergumbo_core.symbol_resolution import NameResolver
 
 PASS_ID = make_pass_id("swift")
+
+#: INV-bamij: declarations whose BODY anchors a call that sits in no function.
+_TYPE_BODY_NODES: frozenset[str] = frozenset({"class_declaration", "protocol_declaration"})
 
 
 def find_swift_files(repo_root: Path) -> Iterator[Path]:
@@ -1541,6 +1546,7 @@ def _extract_edges_from_file(
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("swift", str(file_path))
+    file_anchor = file_anchor_symbol("swift", str(file_path), PASS_ID, run_id)
 
     # Build variable → type mapping for receiver type tracking (ADR-0017 §1c)
     var_types: dict[str, str] = {}
@@ -1704,7 +1710,13 @@ def _extract_edges_from_file(
                 ))
 
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, decl_index)
+            # INV-bamij: a call in no function (a top-level statement, a
+            # closure bound to a global ``let``) is anchored on the file.
+            current_function: Optional[Symbol] = (
+                _get_enclosing_function(node, source, decl_index)
+                or enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
+                or file_anchor
+            )
             if current_function is not None:
                 # INV-fahub Site-1: enclosing type short name for a bare /
                 # implicit-``self`` call, so a deferred bare→method call can be
