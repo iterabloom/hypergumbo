@@ -29,3 +29,10 @@
   set: {}  # 2f4d
   add:  # 2f4d
     tags: [post_release_focus]  # 2f4d
+- op: discuss  # badd
+  at: '2026-09-26T00:30:32Z'  # badd
+  by: agent  # badd
+  actor: jgstern_agent  # badd
+  clock: 3  # badd
+  nonce: badd  # badd
+  message: "PRODUCTION-PATH OBSERVATION 2026-09-25 (dev 56f069874e), recorded while re-verifying WI-gotun, and it contradicts part of this item's premise. Evidence: ~/hypergumbo_lab_notebook/gotun_recheck_09252026/ (j_pt, j_ctl).\n\nThe matcher-level claim still reproduces: match_source(\"java\", \"doFinal\", \"javax.crypto.Cipher\") -> None, and match_source(\"java\", \"Cipher.doFinal\", \"javax.crypto\") -> the plaintext source. The analyzer emits java:javax.crypto.Cipher:0-0:doFinal:unresolved for c.doFinal(ct) on a typed Cipher parameter.\n\nBUT \"no java plaintext flow exists\" does NOT hold on the production path for that shape. verify-claims with a plaintext -> host_fs claim on `byte[] pt = c.doFinal(ct); new FileOutputStream(\"out.bin\").write(pt);` reports violated with 1 finding (structural). CONTROL: the same fixture without the doFinal call reports confirmed with 0 findings, so doFinal is what mints the source. The production propagation matches by some route other than the direct match_source(name, module) call this item measured. Which route, and whether it covers every receiver shape (untyped, field, chained), was NOT checked. No status change; this narrows the item: its recall claim needs re-measuring on the production path, per shape, before it is worked."  # badd
