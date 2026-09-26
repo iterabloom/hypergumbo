@@ -1,0 +1,29 @@
+Original commit body from 3433f1783153483dcf64e142c7b80e336d43a8f9:
+
+Addresses WI-fukaf. The linker treated Symbol.path as absolute, but the
+pipeline hands it repo-relative paths ('src/a.ts'). Two effects:
+
+(a) Relative imports resolved against the process CWD, so a survey run from
+    outside the repository lost links. Every bakeoff runs that way.
+(b) tsconfig `paths` aliases never resolved from any directory: the ancestor
+    walk compared 'src' with the index's absolute keys. Each import minted a
+    phantom npm package instead (typescript:npm:0-0:@/lib:package).
+
+The source path is now `repo_root.resolve() / src_path` for both lookups (an
+absolute path is unchanged), and relative_to uses the resolved root. This is
+how vue_component.py already did it.
+
+Measured, dev 300780b5bf (pinned worktree) vs this branch, surveyed from
+outside the repo:
+  koel      imports 3,680 -> 4,078, module_exports 1,471 -> 2,085; the fix
+            gives the identical edge set from inside the repo.
+  full-stack-fastapi-template  imports 301 -> 411, module_exports 0 -> 288;
+            the five @/... phantom npm packages are gone.
+  nest      imports 2,587 -> 4,033, module_exports 0 -> 1,981; the in-repo
+            @nestjs/* packages the root tsconfig maps to ./packages/* are no
+            longer npm nodes.
+Tests use repo-relative paths from a foreign cwd: a direct linker test, and
+a production survey from inside vs outside that must agree. The survey test
+reproduces the phantom on the old code.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
