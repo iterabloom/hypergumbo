@@ -1,0 +1,24 @@
+Original commit body from 1600674bfb371974e104cb35d80c6738854e8766:
+
+Addresses INV-guzuj. go.py's bare-identifier call arm tried a local symbol,
+the resolver, the INV-fahub deferral and the dot-import placeholder. A name
+that fell through all of them emitted no calls edge: an unknown name, or a
+same-package helper the resolver withholds as ambiguous. It now emits the
+`external` placeholder via make_unresolved_edge, as every other analyzer
+does and Python has since INV-foluz.
+
+A name bound anywhere in the enclosing top-level declaration (a closure, a
+function-typed parameter, a range variable, a select receive, a type-switch
+alias) stays unemitted, per INV-foluz's rule. The dot-import arm, which
+attributed any bare name to the first dot-imported package, applies the
+same refusal. The bound set is computed once per declaration.
+
+Read back against source on dev 62a70cd1b3 (pinned worktree) vs this
+branch: alertmanager +124 call edges, beads +379, every one an external
+placeholder. All 16 sampled sites are real calls: same-package test helpers
+(New(...), newTestStore(...), runGit(...)) withheld by the ambiguity
+guard. One edge is removed, correctly: alertmanager send_test.go:65 calls a
+local closure `timerange` that the dot-import arm had attributed to the
+dot-imported with_api_v2 package.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
