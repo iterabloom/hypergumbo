@@ -37,6 +37,9 @@ A single post-analysis pass, language-agnostic. For each caller N:
      identity key (``dst_ref`` with a module path). The producer said where
      the callee lives; a short-name match is less evidence, not more
      (WI-rulik).
+  3y. Refuse when the producer stamped ``meta.receiver == "field_chain"``: the
+     receiver is a member chain (``v.p.m()``), so a class the caller
+     instantiates is not it (WI-sulas).
   3a. Drop any hint that CONTRADICTS a ``receiver_type_hint`` the producer
      stamped on the unresolved edge. The premise of step 1 is that the class
      hint IS the receiver; a producer that named a different type for the
@@ -349,6 +352,17 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
                 # from, not from the call site: ``a.b(c.d())`` puts two calls
                 # on one line and one sibling's claim says nothing about the
                 # other.
+                continue
+            if (ucall.meta or {}).get("receiver") == "field_chain":
+                # THE PRODUCER SAID THE RECEIVER IS A MEMBER CHAIN (WI-sulas).
+                # ``v.p.m()`` is a call on ``v.p``; a class the caller
+                # instantiates is at best ``v``'s type, which is not the
+                # receiver, so this linker's premise is refuted the same way a
+                # contradicting receiver_type_hint refutes it below. Measured on
+                # hummingbird once swift stopped naming the chain head: 46 new
+                # recoveries, ``router.middlewares.add(..)`` into ``Router.add``
+                # among them, and every one sampled wrong. go stamps the same
+                # value for ``resp.Body.Close()``.
                 continue
             declared = _declared_receiver_type(ucall)
             # Find candidate (class_hint_edge, method_symbol) pairs.
