@@ -1172,6 +1172,27 @@ def _static_member_on_instance(
     return receiver_hint in declared_names or receiver_hint[:1].islower()
 
 
+def _swift_call_is_value_chain(call_node: "tree_sitter.Node", source: bytes) -> bool:
+    """Is this call ``v.p.m()`` -- a member chain of 2+ hops on a VALUE head?
+
+    WI-sulas. The receiver of such a call is ``v.p``, not ``v``, so the head
+    must not name it. A ``self`` head (WI-sizas types ``self.a`` itself) and a
+    TYPE head (``URLSession.shared.dataTask``, capitalised) are not value chains
+    here. Depth counts the nested ``navigation_expression`` nodes down the
+    operand side: ``v.m`` is 1, ``v.p.m`` is 2.
+    """
+    nav = find_child_by_type(call_node, "navigation_expression")
+    depth = 0
+    node: "tree_sitter.Node | None" = nav
+    while node is not None and node.type == "navigation_expression":
+        depth += 1
+        node = node.children[0] if node.children else None
+    if depth < 2 or node is None or node.type != "simple_identifier":
+        return False
+    head = node_text(node, source)
+    return head != "self" and head[:1].islower()
+
+
 def _extract_call_target(
     call_node: "tree_sitter.Node",
     source: bytes,
@@ -1232,6 +1253,19 @@ def _extract_call_target(
         # receiver_hint is the first identifier in the chain
         # (e.g. "URLSession" from URLSession.shared.dataTask)
         receiver_hint = receiver_parts[0] if receiver_parts else None
+        # WI-sulas: A VALUE CHAIN IS NOT TYPED BY ITS HEAD. For ``v.p.m()`` the
+        # receiver is ``v.p``, and naming ``v`` made the emit site stamp
+        # typeof(v): ``ch.pipeline.addHandler`` landed in the module slot as
+        # ``Channel`` (the receiver is a ChannelPipeline), and ``s.db.save()``
+        # with ``s: Store`` resolved to ``Store.save``. 1,020 such sites on four
+        # repositories, 20 of 20 sampled wrong. With no hint the receiver
+        # EXPRESSION is typed by the walker that already types expression
+        # receivers, which answers or stays silent. Left as they were: a
+        # single hop (``v.m()``), a ``self`` head (WI-sizas types ``self.a``
+        # itself) and a TYPE head (``URLSession.shared.dataTask``), which was
+        # not read back.
+        if receiver_hint is not None and _swift_call_is_value_chain(call_node, source):
+            receiver_hint = None
         # ``nav_node`` exists, so there IS a receiver expression -- whether or
         # not it contributed an identifier we can name.
         return (method_name, receiver_hint, True)
@@ -1759,6 +1793,12 @@ def _extract_edges_from_file(
                         # nameless receiver rather than less: ``make().m()``
                         # cannot be a call on the enclosing type.
                         gate_meta: dict = {"call_construct": "method"}
+                        # WI-sulas: say the receiver is a member chain, so the
+                        # method-call-recovery linker does not read a class the
+                        # caller instantiates as this call's receiver (it guessed
+                        # ``router.middlewares.add`` into ``Router.add``).
+                        if receiver_hint is None and _swift_call_is_value_chain(node, source):
+                            gate_meta["receiver"] = "field_chain"
                         receiver_type = (
                             _type_of(receiver_hint, node) if receiver_hint else None
                         )
