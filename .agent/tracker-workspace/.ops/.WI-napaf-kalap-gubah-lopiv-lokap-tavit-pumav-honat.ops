@@ -1,0 +1,22 @@
+- op: create  # 030a
+  at: '2026-09-26T22:02:52Z'  # 030a
+  by: agent  # 030a
+  actor: jgstern_agent  # 030a
+  clock: 1  # 030a
+  nonce: 030a  # 030a
+  data:  # 030a
+    kind: work_item  # 030a
+    title: "ruby: a receiverless call that resolves nowhere (puts, include, has_many, validates, before_action) emits no calls edge, inside methods too (INV-foluz's shape in ruby)"  # 030a
+    status: todo_hard  # 030a
+    priority: 2  # 030a
+    parent:  # 030a
+    tags:  # 030a
+    - ruby  # 030a
+    - call_graph  # 030a
+    - analysis_quality  # 030a
+    isbefore: []  # 030a
+    duplicate_of: []  # 030a
+    not_duplicate_of: []  # 030a
+    pr_ref:  # 030a
+    description: "FOUND 2026-09-26 during INV-bamij's ruby batch. Fixture (inside a method, so it is NOT the package-level anchor defect):\n\n    class App\n      def boot\n        puts \"x\"        # line 9  -> no calls edge\n        has_many :y     # line 10 -> no calls edge\n      end\n    end\n\nThe ruby call arm's receiverless branch (`elif receiver_node is None:`) emits an edge only when resolver.lookup finds the name, and otherwise emits NOTHING. So every receiverless call to a name the repository does not define -- Kernel methods (puts, require_dependency, raise), Module methods (include, attr_accessor), every Rails class-level DSL (has_many, belongs_to, validates, before_action, scope) -- vanishes from the graph. INV-foluz's statement (\"every call site the analyzer parses emits a calls edge\"), in the ruby receiverless arm; python fixed its own shape with make_unresolved_edge, go's was INV-guzuj.\n\nFIX SHAPE (not built): make_unresolved_edge(\"ruby\", ...) with module external, EXCEPT for a name bound locally (a block parameter or local variable called as a method is not a call in ruby syntax unless it has arguments or parens, so check the parser's call-vs-identifier distinction first) -- read a sample back on postal / chatwoot before closing. Frequency NOT measured; on a Rails app the class-body DSL alone is likely hundreds of sites per repo."  # 030a
+    fields: {}  # 030a

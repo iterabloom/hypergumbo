@@ -1,0 +1,22 @@
+- op: create  # ff3f
+  at: '2026-09-26T23:42:15Z'  # ff3f
+  by: agent  # ff3f
+  actor: jgstern_agent  # ff3f
+  clock: 1  # ff3f
+  nonce: ff3f  # ff3f
+  data:  # ff3f
+    kind: work_item  # ff3f
+    title: "swift emits no symbol for an initializer (init / convenience init), so init bodies' calls anchor on the type and a constructor call cannot land on the init"  # ff3f
+    status: todo_hard  # ff3f
+    priority: 3  # ff3f
+    parent:  # ff3f
+    tags:  # ff3f
+    - swift  # ff3f
+    - analysis_quality  # ff3f
+    - call_graph  # ff3f
+    isbefore: []  # ff3f
+    duplicate_of: []  # ff3f
+    not_duplicate_of: []  # ff3f
+    pr_ref:  # ff3f
+    description: "FOUND 2026-09-26 in INV-bamij's swift read-back (hummingbird). The swift analyzer emits NO symbol for an initializer (`init(...)` / `convenience init` / `required init`): TrieRouter.swift's RouterPathTrieBuilder has symbols for the struct and its methods (addEntry, build, ...) but none for its `init()`. Before INV-bamij's second batch a call inside an init therefore emitted no edge at all; since then it is anchored on the enclosing type (hummingbird: 162 new edges on structs, many of them init bodies such as `self.root = Node(key: .null, output: nil)` and `self.idleTimer = idleTimeout.map { ... }`).\n\nWHAT IS LOST: the init as a node. A slice or a dead-code query cannot name `RouterPathTrieBuilder.init`, a call INTO an init (a constructor call `RouterPathTrieBuilder()`) cannot land on it, and the init's calls are attributed to the type rather than to the initializer that makes them.\n\nNOT CHECKED: deinit, subscript declarations and computed-property accessors, which are the same family of \"callable member with no symbol\" in swift; nor how many inits a typical repository has."  # ff3f
+    fields: {}  # ff3f

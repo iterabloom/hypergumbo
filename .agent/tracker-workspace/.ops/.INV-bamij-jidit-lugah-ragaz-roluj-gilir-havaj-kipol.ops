@@ -39,3 +39,10 @@
   set: {}  # 2df8
   add:  # 2df8
     tags: [post_release_focus]  # 2df8
+- op: discuss  # 8fa7
+  at: '2026-09-26T22:03:16Z'  # 8fa7
+  by: agent  # 8fa7
+  actor: jgstern_agent  # 8fa7
+  clock: 3  # 8fa7
+  nonce: 8fa7  # 8fa7
+  message: "PROGRESS 2026-09-26: RUBY AND LUA DONE in PR #1234 (merged a886ae67f7). Status stays violated: rust, java, kotlin, swift, c, cpp, scala and the csharp defect remain.\n\nRe-verified FIRST with this item's own sweep (~/hypergumbo_lab_notebook/nopoh_pkglit_09032026/sweep/run_sweep.py) on dev e350277d0c: every package-level line in all nine languages still NONE, every IN_NAMED control emitting, csharp 0 calls.\n\nlua: the caller falls back to the file symbol pass 1 already emits (make_file_id, kind file). ruby: to the class/module whose body holds the call (by position), else the file; the bare-identifier arm stays method-only (a top-level bare identifier is usually a variable). Production-path tests: packages/hypergumbo-lang-mainstream/tests/test_package_level_call_anchor.py (the sweep fixtures, red before; IN_NAMED controls keep their function; a class-body call anchors on its class). test_ruby.py's test_receiver_call_outside_method_ignored pinned the old drop and was rewritten.\nA/B read-back: postal +105 call edges (class 26, module 69, file 10; 0 lost), kong +12,013 (12,871 -> 24,884, all on the file: busted specs are module-level; 0 lost); sampled sites are real calls.\nSeen in the read-back and filed, not folded in: WI-napaf (ruby receiverless calls that resolve nowhere emit nothing, even in methods) and WI-johib (ruby external-constant receiver binds by short name).\nStep 6 of the fix shape (DDG for literal bodies) was not addressed."  # 8fa7
