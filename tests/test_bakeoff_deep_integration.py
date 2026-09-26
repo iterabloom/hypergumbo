@@ -355,3 +355,80 @@ class TestRunWithoutPrerequisites:
         # complain about no cohort output dirs.
         rc = bf.cmd_diagnose(_ns(workdir=str(sess), all=False, some=None))
         assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# WI-zilar: an iteration that produced no files is not a completed one
+# ---------------------------------------------------------------------------
+
+
+class TestAnEmptyIterationIsNotAResult:
+    """A crashed ``run`` leaves ``out/cohort-NNN/iter-NNN/<repo>/`` created and
+    empty, with the code hash already recorded. Both skip guards then read the
+    crash as a finished run and exit 0 pointing at "Previous results" that hold
+    zero files (reproduced 2026-09-10, downstream of WI-havit). The single-cohort
+    guard checked only the hash; the batch guard checked that the cohort
+    directory was non-empty, which an empty ``iter-001/`` satisfies.
+    """
+
+    def _session_after_a_crash(self, workdir: Path, pool: Path) -> Path:
+        assert bf.cmd_init(_ns(
+            pool=str(pool), workdir=str(workdir), resume=False, force=False,
+        )) == 0
+        sess = _find_session(workdir)
+        assert bf.cmd_cohort(_ns(
+            workdir=str(sess), repos="repo-a,repo-b",
+            count=None, min_size=None, max_size=None, dry_run=False,
+        )) == 0
+
+        def _crash(repos, pool_path, out_dir, workdir=""):
+            os.makedirs(os.path.join(out_dir, repos[0]), exist_ok=True)
+            raise FileNotFoundError("simulated WI-havit crash")
+
+        with mock.patch.object(bf, "_run_cohort_repos", _crash):
+            with pytest.raises(FileNotFoundError):
+                bf.cmd_run(_ns(workdir=str(sess), all=False, some=None))
+        crashed = sess / "out" / "cohort-001" / "iter-001"
+        assert crashed.is_dir() and not any(p.is_file() for p in crashed.rglob("*"))
+        return sess
+
+    def test_the_single_cohort_run_runs_again(
+        self, workdir: Path, pool: Path, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        sess = self._session_after_a_crash(workdir, pool)
+        with mock.patch.object(bf, "_run_cohort_repos", _stub_run_cohort_repos):
+            assert bf.cmd_run(_ns(workdir=str(sess), all=False, some=None)) == 0
+        out = capsys.readouterr().out
+        assert "Skipping: hypergumbo code unchanged" not in out
+        assert "holds no output files" in out
+        cohort = sess / "out" / "cohort-001"
+        assert (cohort / "iter-002" / "repo-a" / "hg.json").is_file()
+        assert (cohort / "iter-001").is_dir(), "the crashed iteration is data; never delete it"
+
+    def test_the_batch_run_runs_it_again(self, workdir: Path, pool: Path) -> None:
+        sess = self._session_after_a_crash(workdir, pool)
+        with mock.patch.object(bf, "_run_cohort_repos", _stub_run_cohort_repos):
+            assert bf.cmd_run(_ns(workdir=str(sess), all=True, some=None)) == 0
+        assert (sess / "out" / "cohort-001" / "iter-001" / "repo-a" / "hg.json").is_file()
+
+    def test_a_real_result_is_still_skipped(self, workdir: Path, pool: Path) -> None:
+        """The control: output that exists is never re-run over."""
+        assert bf.cmd_init(_ns(
+            pool=str(pool), workdir=str(workdir), resume=False, force=False,
+        )) == 0
+        sess = _find_session(workdir)
+        assert bf.cmd_cohort(_ns(
+            workdir=str(sess), repos="repo-a,repo-b",
+            count=None, min_size=None, max_size=None, dry_run=False,
+        )) == 0
+        calls: list[str] = []
+
+        def _count(repos, pool_path, out_dir, workdir=""):
+            calls.append(out_dir)
+            return _stub_run_cohort_repos(repos, pool_path, out_dir, workdir)
+
+        with mock.patch.object(bf, "_run_cohort_repos", _count):
+            assert bf.cmd_run(_ns(workdir=str(sess), all=False, some=None)) == 0
+            assert bf.cmd_run(_ns(workdir=str(sess), all=False, some=None)) == 0
+            assert bf.cmd_run(_ns(workdir=str(sess), all=True, some=None)) == 0
+        assert len(calls) == 1
