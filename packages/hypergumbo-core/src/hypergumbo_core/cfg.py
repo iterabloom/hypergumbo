@@ -190,6 +190,21 @@ class CfgStatement:
     defines: list[str] = field(default_factory=list)
     uses: list[str] = field(default_factory=list)
     call_target: Optional[str] = None
+    #: The AST node type this statement stands for, when ``node_type`` is a
+    #: SYNTHETIC name no AST node carries (``context_manager_enter`` is recorded
+    #: at its ``with_clause``). ``None`` means ``node_type`` is the AST type, or
+    #: that no source node exists (``context_manager_exit``, the implicit
+    #: ``__exit__``). Read by :func:`statement_match_key`, which both the
+    #: def/use pass and the coverage gate use (WI-simiv).
+    ast_node_type: Optional[str] = None
+
+
+def statement_match_key(stmt: "CfgStatement") -> tuple[int, int, str]:
+    """``(line, col, AST node type)`` under which a statement is matched to its
+    source node. ONE definition for the two passes that match, so the def/use
+    pass and :func:`uncovered_semantic_lines` cannot disagree about which code
+    a statement covers."""
+    return (stmt.line, stmt.col, stmt.ast_node_type or stmt.node_type)
 
 
 @dataclass
@@ -1259,6 +1274,7 @@ class CfgBuilder:
                 col=value_node.start_point[1],
                 node_type="context_manager_enter",
                 code_snippet=self._node_text(value_node, source),
+                ast_node_type=value_node.type,
             ))
 
         # Body
@@ -1465,7 +1481,15 @@ def populate_def_use_for_cfg(
     cfg_stmts: dict[tuple[int, int, str], CfgStatement] = {}
     for block in cfg.blocks.values():
         for stmt in block.statements:
-            cfg_stmts[(stmt.line, stmt.col, stmt.node_type)] = stmt
+            cfg_stmts[statement_match_key(stmt)] = stmt
+
+    # THE OUTERMOST NODE WINS (WI-simiv). Nested nodes can share a start
+    # position AND a type: in ``open("o", "wb").write(e)`` the outer call and
+    # the inner ``open(...)`` are both ``call`` at the same column. The walk is
+    # pre-order, so the statement's own (outer) node is met first; populating
+    # again from the inner one replaced ``uses=["e"]`` with ``[]``, and a
+    # tainted value with no recorded use escapes the walk.
+    populated: set[tuple[int, int, str]] = set()
 
     def visit(node: Any) -> None:
         key = (
@@ -1474,7 +1498,8 @@ def populate_def_use_for_cfg(
             node.type,
         )
         cfg_stmt = cfg_stmts.get(key)
-        if cfg_stmt is not None:
+        if cfg_stmt is not None and key not in populated:
+            populated.add(key)
             result = extractor.extract(node, source)
             cfg_stmt.defines = list(result.defines)
             cfg_stmt.uses = list(result.uses)
@@ -1563,7 +1588,7 @@ def uncovered_semantic_lines(
     recorded: set[tuple[int, int, str]] = set()
     for block in cfg.blocks.values():
         for stmt in block.statements:
-            recorded.add((stmt.line, stmt.col, stmt.node_type))
+            recorded.add(statement_match_key(stmt))
 
     call_types = frozenset(mapping.call_node_types)
     extents: list[tuple[int, int]] = []
