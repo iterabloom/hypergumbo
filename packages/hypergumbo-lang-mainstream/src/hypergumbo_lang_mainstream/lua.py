@@ -78,6 +78,7 @@ from hypergumbo_core.analyze.base import (
     defer_bare_method_call,
     find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
     make_file_id,
     make_symbol_id,
     make_unresolved_edge,
@@ -492,11 +493,7 @@ def _extract_edges_from_file(
     _caller_path = str(file_path)
     file_id = make_file_id("lua", file_path)
     # The file symbol pass 1 emits under this same id: the anchor of last resort.
-    file_anchor = Symbol(
-        id=file_id, name="file", kind="file", language="lua", path=str(file_path),
-        span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
-        origin=PASS_ID, origin_run_id=run_id,
-    )
+    file_anchor = file_anchor_symbol("lua", str(file_path), PASS_ID, run_id)
 
     # Build local symbol map for this file (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}

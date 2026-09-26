@@ -110,6 +110,7 @@ from hypergumbo_core.analyze.base import (
     emit_module_attribute_refs,
     find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
@@ -2169,6 +2170,7 @@ def _extract_edges_from_file(
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
+    file_anchor = file_anchor_symbol("rust", str(file_path), PASS_ID, run_id)
     _var_types: dict[str, str] = var_types or {}
     _var_type_paths: dict[str, str] = var_type_paths or {}
     # WI-milak / BUG-04: hoisted out of the iter_tree loop so the
@@ -2295,7 +2297,12 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, local_symbols, span_index)
+            # INV-bamij: a call in no function (a static / const initialiser, a
+            # LazyLock closure, a top-level macro) is anchored on the file.
+            current_function = (
+                _get_enclosing_function(node, source, local_symbols, span_index)
+                or file_anchor
+            )
             if current_function is not None:
                 func_node = _find_child_by_field(node, "function")
                 if func_node:
@@ -3162,7 +3169,12 @@ def _extract_edges_from_file(
         # AST, so call_expression nodes are never created.  We pattern-match
         # token sequences to extract likely calls.
         elif node.type == "macro_invocation":
-            current_function = _get_enclosing_function(node, source, local_symbols, span_index)
+            # INV-bamij: a call in no function (a static / const initialiser, a
+            # LazyLock closure, a top-level macro) is anchored on the file.
+            current_function = (
+                _get_enclosing_function(node, source, local_symbols, span_index)
+                or file_anchor
+            )
             if current_function is not None:
                 tt = None
                 for child in node.children:

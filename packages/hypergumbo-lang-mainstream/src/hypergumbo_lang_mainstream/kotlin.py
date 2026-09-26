@@ -79,6 +79,8 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
+    enclosing_declared_symbol,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
@@ -107,6 +109,9 @@ if TYPE_CHECKING:
     import tree_sitter
 
 PASS_ID = make_pass_id("kotlin")
+
+#: INV-bamij: declarations whose BODY anchors a call that sits in no function.
+_TYPE_BODY_NODES: frozenset[str] = frozenset({"class_declaration", "object_declaration", "companion_object"})
 
 
 def find_kotlin_files(repo_root: Path) -> Iterator[Path]:
@@ -1339,6 +1344,10 @@ def _extract_edges_from_file(
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("kotlin", str(file_path))
+    file_anchor = file_anchor_symbol("kotlin", str(file_path), PASS_ID, run.execution_id)
+    # Declared once: the call arm assigns a Symbol (narrowed), the reference
+    # arms an Optional.
+    current_function: Optional[Symbol]
 
     # Track variable types from constructor calls: val x = ClassName()
     var_types: dict[str, str] = {}
@@ -1437,9 +1446,15 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, decl_index)
-            if current_function is None:  # pragma: no cover
-                continue
+            # INV-bamij: a call in no function (a top-level ``val``'s lambda or
+            # initialiser, a ``by lazy`` block) is anchored on the file. The
+            # ``continue`` this replaced was marked unreachable and was not:
+            # INV-bamij's sweep fixture reached it on every top-level line.
+            current_function = (
+                _get_enclosing_function(node, source, decl_index)
+                or enclosing_declared_symbol(node, decl_index, _TYPE_BODY_NODES)
+                or file_anchor
+            )
 
             # Check for navigation_expression (Object.method() or instance.method())
             nav_node = find_child_by_type(node, "navigation_expression")

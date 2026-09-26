@@ -93,3 +93,83 @@ def test_a_ruby_class_body_call_is_anchored_on_its_class(tmp_path: Path) -> None
     (INV-foluz's shape in ruby), filed rather than folded in."""
     anchors = _anchors(tmp_path, "m.rb", _RUBY, analyze_ruby)
     assert anchors.get(9) == {"class"}, anchors
+
+
+# --- rust / swift / kotlin / scala (INV-bamij's second batch) ---------------
+
+_RUST = (
+    "use std::sync::LazyLock;\n"
+    "static CONFIG: LazyLock<String> = LazyLock::new(|| {\n"
+    '    std::fs::read_to_string("/etc/app.toml").unwrap()   // PKG_LITERAL\n'
+    "});\n"
+    "fn named() {\n"
+    '    let inner = || { std::fs::read_to_string("x").unwrap() };   // IN_NAMED\n'
+    "    inner();\n"
+    "}\n"
+)
+_SWIFT = (
+    "import Foundation\n"
+    'let handler = { FileManager.default.contents(atPath: "/etc/x") }   // PKG_LITERAL\n'
+    'func named() { let inner = { FileManager.default.contents(atPath: "z") }; inner() }   // IN_NAMED\n'
+)
+_KOTLIN = (
+    "import java.io.File\n"
+    'val handler = { File("/etc/x").readText() }   // PKG_LITERAL\n'
+    'val cmd = mapOf("run" to { File("/etc/y").readText() })   // PKG_FIELD_LITERAL\n'
+    'fun named() { val inner = { File("z").readText() }; inner() }   // IN_NAMED\n'
+)
+_SCALA = (
+    "import scala.io.Source\n"
+    "object M {\n"
+    '  val handler = () => Source.fromFile("/etc/x").mkString   // PKG_LITERAL\n'
+    '  def named(): Unit = { val inner = () => Source.fromFile("z").mkString; inner() }   // IN_NAMED\n'
+    "}\n"
+)
+
+
+def _batch2():
+    from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+    from hypergumbo_lang_mainstream.rust import analyze_rust
+    from hypergumbo_lang_mainstream.scala import analyze_scala
+    from hypergumbo_lang_mainstream.swift import analyze_swift
+
+    # (file name, source, analyzer, module-level lines, expected anchor kind, named line)
+    return [
+        ("src.rs", _RUST, analyze_rust, (3,), "file", 6),
+        ("m.swift", _SWIFT, analyze_swift, (2,), "file", 3),
+        ("m.kt", _KOTLIN, analyze_kotlin, (2, 3), "file", 4),
+        ("M.scala", _SCALA, analyze_scala, (3,), "object", 4),
+    ]
+
+
+@pytest.mark.parametrize("case", range(4), ids=["rust", "swift", "kotlin", "scala"])
+def test_batch2_module_level_calls_are_anchored(tmp_path: Path, case: int) -> None:
+    name, text, analyze, lines, kind, _named = _batch2()[case]
+    anchors = _anchors(tmp_path, name, text, analyze)
+    for line in lines:
+        assert kind in anchors.get(line, set()), (line, anchors)
+
+
+@pytest.mark.parametrize("case", range(4), ids=["rust", "swift", "kotlin", "scala"])
+def test_batch2_a_named_function_keeps_its_calls(tmp_path: Path, case: int) -> None:
+    name, text, analyze, _lines, _kind, named = _batch2()[case]
+    anchors = _anchors(tmp_path, name, text, analyze)
+    assert anchors.get(named) and not anchors[named] & {"file", "object"}, anchors
+
+
+def test_swift_and_kotlin_type_bodies_anchor_on_the_type(tmp_path: Path) -> None:
+    """A Swift ``init`` (which the analyzer emits no symbol for) and a Kotlin
+    class property initialiser are in a type, not at file level."""
+    from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+    from hypergumbo_lang_mainstream.swift import analyze_swift
+
+    swift = (tmp_path / "s")
+    swift.mkdir()
+    sw = _anchors(swift, "a.swift",
+                  "struct Builder {\n    var n = 0\n    init() {\n        n = compute()\n    }\n}\n",
+                  analyze_swift)
+    assert sw.get(4) and "file" not in sw[4], sw
+    kt_dir = (tmp_path / "k")
+    kt_dir.mkdir()
+    kt = _anchors(kt_dir, "a.kt", "class Conf {\n    val feat = FeatureConfig()\n}\n", analyze_kotlin)
+    assert kt.get(2) == {"class"}, kt
