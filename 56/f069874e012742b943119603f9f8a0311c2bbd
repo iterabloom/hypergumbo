@@ -1,0 +1,37 @@
+Original commit body from 3468ba3e182eb5002c0cde81715d220ea665a45c:
+
+8.1.0's CHANGELOG said "Released **schema** is at: vdid not say why".
+prepare-release read SCHEMA_VERSION with sed 's/.*"\(.*\)".*/\1/', which
+keeps the LAST quoted string on the line; schema.py's SCHEMA_VERSION line
+carries a long comment whose last quoted phrase is "did not say why".
+
+- All 16 version reads in bump-version, release, prepare-release,
+  tag-release and release-check now take the FIRST quoted string. The
+  pyproject reads happened to be safe (one quoted string per line); they
+  change so the next trailing comment cannot break them.
+- prepare-release stops if the schema value is not MAJOR.MINOR.PATCH.
+
+The Version History table at the bottom of CHANGELOG.md stopped at 2.1.0
+(eighteen releases missing) and its link definitions pointed at
+Codeberg. Nothing maintained either.
+
+- Rows added for 2.2.0 through 8.1.0, taken from each section's summary
+  and the release-notes TL;DRs; 2.5.1's empty section is described from
+  its one commit (security pins).
+- Link definitions regenerated from the real tags against GitHub, each
+  comparing the previous TAG (so 1.2.1 compares v1.2.0, which has no
+  heading). Versions with no tag (2.0.1, 1.3.x, 1.0.0, 0.5.0) get no
+  link; the old block linked a v0.5.0 tag that does not exist.
+- prepare-release promotes a "| Unreleased | ... |" row to the version
+  and stops if the table has no row for it, the same gate the release
+  notes have. It writes the [VERSION] compare link and moves
+  [Unreleased] itself, since those are derived.
+
+tests/test_prepare_release_version_history.py executes the shipped blocks:
+the schema read against the real schema.py (equal to the imported
+constant) and against the 8.1.0 shape, the guard, promotion, refusal and
+idempotence, plus the live CHANGELOG's two version lines and full table
+coverage. 8 of 9 fail against the pre-fix script and CHANGELOG; all pass
+now. The manifest's 2,287 tests pass.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
