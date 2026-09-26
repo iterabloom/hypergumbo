@@ -72,3 +72,12 @@
   clock: 8  # 3aba
   nonce: 3aba  # 3aba
   message: "RE-VERIFIED 2026-09-25 at dev 56f069874e (post-8.1.0). Evidence: ~/hypergumbo_lab_notebook/tanom_recheck_09252026/.\n\nPREMISE HOLDS, UNCHANGED. The filed repro, production analyze_go, one file: http.Get(u), os.ReadFile(p), os.Getwd(), slog.Info(m) -> cc=method receiver=None; c.Get(u), f.Close(), l.Info(m) -> cc=method receiver=external; helper(x) -> cc=function. http.Get(u) and c.Get(u) are still identical in (name, module_hint, call_construct). Title, statement and root_cause are accurate. Status stays violated.\n\nWHAT IS NOW STALE: \"costs nothing at today's consumer\" (09-07/09-09 entries, and go.py's declared-blindness docstring: \"priced at zero for the current consumer\"). 8.1.0 added a consumer that keys on exactly this field: verify_claims.unknown_receiver_scope counts call_construct == \"method\" as a \"method call site\", the denominator of the unknown_receiver_scope caveat. On alertmanager 2,533 of the 6,172 Go edges in that denominator (41%) are package-qualified free functions; the caveat prints 18.5% untyped where the share over real method sites is ~31%. Java statics inflate it the same way. Filed separately as WI-fuvaj (P2) because the defect sits in the consumer and spans two languages.\n\nWHAT STILL HOLDS FROM 09-09: the numerator never contains a package-qualified call (0 on alertmanager; the 6 apparent hits are all line collisions, re-read at source), and the io-boundary F3 path still reads the field only on the no-module path, where package-qualified calls never arrive. io_boundary.py's INV-nizom arm (call_construct == \"method\" and len(candidates) > 1) is guarded by arity, so Go's single-module slots never reach it.\n\nCONSEQUENCE FOR THIS ITEM'S DIRECTION: the 09-09 decision \"DO NOT FIX THE EMITTER -- zero measured benefit\" rested on there being no consumer that separates function from method by this field. There now is one. Fixing the Go emitter would correct Go's share of WI-fuvaj's denominator (not Java's). Not re-decided here; recorded so the next reader does not rely on the zero.\n\nRelated-row statuses rechecked: INV-pimir violated P3 (a different consumer, method_starved_modules); WI-kohig todo_hard P3; WI-divin wont_do; WI-nunab todo_hard P2; INV-guzuj violated P2; INV-linub satisfied."  # 3aba
+- op: update  # c357
+  at: '2026-09-26T00:36:01Z'  # c357
+  by: agent  # c357
+  actor: jgstern_agent  # c357
+  clock: 9  # c357
+  nonce: c357  # c357
+  set: {}  # c357
+  add:  # c357
+    tags: [post_release_focus]  # c357
