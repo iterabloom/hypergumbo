@@ -1,0 +1,30 @@
+Original commit body from 2b41c0676b45ce205a673ad81d93a49601f4c92f:
+
+Addresses WI-guhuv. load_catalog returned before its overlay loop for a
+language with no shipped catalogue, so a project-local overlay for ruby,
+php, lua and the rest was a no-op under a "Loaded 1 overlay(s)" banner.
+Reproduced on dev f587b0a806: a ruby-only repo came back inconclusive rc 2
+("ruby made calls but have no I/O catalog"). In a repo that also held
+python, the whole run exited 2 with no JSON, because the python load met
+the ruby overlay and refused it as a misspelling.
+
+- The empty catalogue now falls through the overlay loop. An overlay that
+  declares the language becomes its whole catalogue, marked overlay_only
+  (status in_progress, no stdlib, no provenance).
+- The typo guard asks whether any analyzer produces the language, not
+  whether a catalogue file exists. It runs on every overlay, before the
+  "not mine" skip.
+- The taint derivation also loads the overlays' own languages, so both
+  arms see one declaration.
+- io-boundaries and verify-claims say on stderr when a language is
+  overlay-only.
+
+Fail-closed, and tested end to end: an overlay-only catalogue dates no
+module the user did not date. A ruby File.write call therefore still
+withholds a clean fs_write verdict, while the overlay's net/http get row
+makes no-net-recv violated.
+
+Not fixed here: the ruby analyzer emits Net::HTTP as module `http`, so an
+overlay must spell the row net/http or http to match. Filed separately.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
