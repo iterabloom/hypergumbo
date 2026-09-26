@@ -1,0 +1,32 @@
+Original commit body from 17d48a8774c149dce3bd5cb44c074d40144d7bdf:
+
+Addresses INV-tanom and WI-fuvaj (Go half). go.py stamped
+call_construct="method" on every selector call, so http.Get(u) and c.Get(u)
+were byte-identical in (name, module slot, construct). base.py defines
+"method" as a call on a receiver, and ADR-0059 files a call on the module
+itself as a function.
+
+On 2026-09-09 this was priced at zero: its only consumer, io-boundary's
+no-module gate, never sees a package-qualified call. 8.1.0's
+unknown_receiver_scope caveat then used call_construct == "method" as its
+denominator, so every fmt.Println counted as a method call site.
+
+The unresolved-selector emit now stamps "function" when the operand is an
+import alias, the same test that already fills the module slot. Module slots
+are unchanged. A local that shadows its import is still treated as the
+package; that is pinned by a strict xfail, because var_types is per function
+and consulting it would also mark the url.Parse that defines the local as a
+method call.
+
+A/B on alertmanager and gocryptfs (dev pinned worktree vs this branch,
+generic taint claims plus six boundary claims): no verdict, caveat kind or
+evidence count moves. The caveat's denominator goes 6,183 -> 3,557
+(alertmanager, 18.5% -> 32.1% untyped) and 3,345 -> 1,779 (gocryptfs,
+8.5% -> 16.0%). go.yaml has no method-kind row on a package-path module, so
+method_starved_modules cannot newly fire.
+
+Not fixed: Java qualified statics are still stamped "method". Restamping
+them waits on java.yaml declaring its statics function-kind; the
+unknown_receiver_scope docstring now says so.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
