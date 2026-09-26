@@ -1,0 +1,22 @@
+- op: create  # 2727
+  at: '2026-09-26T16:53:42Z'  # 2727
+  by: agent  # 2727
+  actor: jgstern_agent  # 2727
+  clock: 1  # 2727
+  nonce: '2727'  # 2727
+  data:  # 2727
+    kind: work_item  # 2727
+    title: "go call_construct residuals after INV-tanom: a local that shadows its import is stamped function, and the resolved-lookup emit sites stamp function without asking about a receiver (unexamined)"  # 2727
+    status: todo_hard  # 2727
+    priority: 3  # 2727
+    parent:  # 2727
+    tags:  # 2727
+    - go  # 2727
+    - axis  # 2727
+    - analysis_quality  # 2727
+    isbefore: []  # 2727
+    duplicate_of: []  # 2727
+    not_duplicate_of: []  # 2727
+    pr_ref:  # 2727
+    description: "FOUND 2026-09-26 while fixing INV-tanom (PR #1224). Two go.py call_construct shapes that fix left alone, recorded so they are not rediscovered.\n\n1. A LOCAL THAT SHADOWS ITS IMPORT. `url, _ := url.Parse(raw); url.String()` -- the second call is a method on the local, and is stamped \"function\" because the operand names an import alias. The module slot makes the same choice (it has always taken the package), so the two stay consistent, and the case is pinned by a strict xfail in packages/hypergumbo-lang-mainstream/tests/test_go_package_qualified_construct.py. The obvious fix, consulting var_types, is WRONG: var_types is per function, not per position, so it would also mark the url.Parse that DEFINES the local as a method call (measured on that fixture). A position-aware binding check is what it needs. Frequency on the corpus: NOT counted.\n\n2. THE RESOLVED-LOOKUP EMIT SITES stamp \"function\" for any call the resolver found (go.py, the lookup_result.found branch and the local_symbols branch), without asking whether the callee was written with a receiver. Whether a receiver-qualified call reaches them, and so carries the converse mislabel (method written, function stamped), was NOT examined. The 2026-08-27 concept audit's 19,611-edge function->method cell is cross-language and may or may not include it."  # 2727
+    fields: {}  # 2727
