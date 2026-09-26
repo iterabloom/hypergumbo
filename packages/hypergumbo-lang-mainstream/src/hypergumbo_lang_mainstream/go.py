@@ -1851,6 +1851,57 @@ def _extract_symbols_from_file(
     return analysis
 
 
+#: Node types that BIND names inside a Go declaration, with the fields that
+#: hold the bound identifiers (read from tree-sitter-go, 2026-09-26).
+_GO_BINDING_FIELDS: dict[str, tuple[str, ...]] = {
+    "parameter_declaration": ("name",),
+    "variadic_parameter_declaration": ("name",),
+    "short_var_declaration": ("left",),
+    "var_spec": ("name",),
+    "const_spec": ("name",),
+    "range_clause": ("left",),
+    "receive_statement": ("left",),
+    "type_switch_statement": ("alias",),
+}
+
+
+def _go_names_bound_in(decl: "tree_sitter.Node", source: bytes) -> frozenset[str]:
+    """Every name bound anywhere inside ``decl`` (INV-guzuj).
+
+    A bare call on one of these is a call on a VALUE the function produced (a
+    closure, a function-typed parameter, a range variable), so no module slot
+    describes its callee; INV-foluz's Python arm refuses the same case.
+
+    THE WHOLE DECLARATION, NOT THE CALL'S OWN SCOPE. A Go closure captures its
+    enclosing function's locals, and a name bound in a sibling block is counted
+    too. That over-approximates the bound set, which can only withhold an edge,
+    never invent one: the direction that keeps a local value out of the
+    ``external`` slot.
+    """
+    names: set[str] = set()
+    stack = [decl]
+    while stack:
+        n = stack.pop()
+        for field_name in _GO_BINDING_FIELDS.get(n.type, ()):
+            for child in n.children_by_field_name(field_name):
+                if child.type == "identifier":
+                    names.add(node_text(child, source))
+                else:
+                    names.update(
+                        node_text(c, source) for c in child.children
+                        if c.type == "identifier"
+                    )
+        stack.extend(n.children)
+    return frozenset(names)
+
+
+def _outermost_declaration(node: "tree_sitter.Node") -> "tree_sitter.Node":
+    """The top-level declaration (child of ``source_file``) holding ``node``."""
+    while node.parent is not None and node.parent.type != "source_file":
+        node = node.parent
+    return node
+
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
@@ -3211,6 +3262,17 @@ def _extract_edges_from_file(
         method_return_type_registry=method_return_type_registry,
     )
 
+    # INV-guzuj: names bound per top-level declaration, computed once per
+    # declaration rather than once per bare call.
+    _bound_by_decl: dict[tuple[int, int], frozenset[str]] = {}
+
+    def _bound_names(call_node: "tree_sitter.Node") -> frozenset[str]:
+        decl = _outermost_declaration(call_node)
+        key = (decl.start_byte, decl.end_byte)
+        if key not in _bound_by_decl:
+            _bound_by_decl[key] = _go_names_bound_in(decl, source)
+        return _bound_by_decl[key]
+
     for node in iter_tree(tree.root_node):
         # Detect import statements
         if node.type == "import_declaration":
@@ -3970,6 +4032,7 @@ def _extract_edges_from_file(
                             elif (
                                 func_node.type == "identifier"
                                 and dot_imports
+                                and callee_name not in _bound_names(node)
                             ):
                                 source_pkg = dot_imports[0]
                                 ref = ExternalRef(
@@ -3989,6 +4052,24 @@ def _extract_edges_from_file(
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "function", "binding": "dot_import"},
                                     dst_ref=ref,
+                                ))
+                            # INV-guzuj: a bare name that is no local symbol, that
+                            # the resolver placed nowhere (absent, or withheld by
+                            # its ambiguity guard) and that no dot import can
+                            # claim still names a CALL. It used to emit nothing,
+                            # so the call site vanished; every other analyzer
+                            # mints the ``external`` placeholder here, as Python
+                            # has since INV-foluz. A name bound in the enclosing
+                            # declaration stays silent, for INV-foluz's reason.
+                            elif (
+                                func_node.type == "identifier"
+                                and callee_name not in _bound_names(node)
+                            ):
+                                edges.append(make_unresolved_edge(
+                                    "go", current_function.id, callee_name,
+                                    node.start_point[0] + 1, PASS_ID,
+                                    run.execution_id,
+                                    call_construct="function",
                                 ))
 
                 # Detect function references passed as arguments
