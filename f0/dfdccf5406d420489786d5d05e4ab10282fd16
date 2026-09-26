@@ -1,0 +1,39 @@
+Original commit body from ffbfc7eab6bbee5f3d738dc7f673b7f9bd2ed4a2:
+
+Addresses INV-bamij, second batch (after ruby and lua in #1234). A call in
+a static/const initialiser or a LazyLock closure (rust), a top-level
+closure or an initializer with no symbol (swift), a top-level val or class
+property initialiser (kotlin), or an object's val (scala) emitted no calls
+edge. The sweep fixtures showed NONE at every such line on dev.
+
+Two shared helpers in analyze/base.py:
+- file_anchor_symbol(): the make_file_id node, the anchor of last resort
+  (python and php already anchor module-level code on it).
+- enclosing_declared_symbol(): the nearest ancestor of given node types
+  that has a symbol, by position.
+Each analyzer's call arm now takes: its function, else the enclosing type
+(swift class/protocol, kotlin class/object/companion, scala
+object/class/trait/enum, ruby class/module), else the file. Ruby and lua
+move onto the helpers.
+
+test_kotlin.py's test_call_at_top_level_outside_function_no_edge pinned the
+drop as a design choice ("should not be attributed"). It is rewritten: the
+call is still attributed to no function, it is anchored on the file.
+
+A/B on dev a886ae67f7 (pinned worktree) vs this branch, calls in each
+language, 0 lost everywhere:
+  netavark (rust)       1,680 -> 1,682  (+2: const/static initialisers)
+  hummingbird (swift)   5,632 -> 5,913  (+281: struct 162, class 23, enum 1,
+                                         file 95; swift emits no symbol for
+                                         init, so init bodies land on the type)
+  sherpa-onnx (kotlin)  1,936 -> 2,394  (+458: class 406, object 9, file 43)
+  lila (scala)          54,690 -> 62,015 (+7,325: class 4,052, object 2,176,
+                                         file 988, trait 87, enum 22)
+The recorded aardvark-dns tree-sitter arm gains its const-initialiser calls
+(stub_calls 245 -> 256). Every one is a real call (Duration::from_secs,
+Ipv4Addr::new, SocketAddr::V4 in const items), and none is lost.
+
+Line pins moved by the edits, relocated by anchor: module_key_axis swift.py
+1862->1874, 1933->1945; signature_axis kotlin.py 1661->1676, 1837->1852.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
