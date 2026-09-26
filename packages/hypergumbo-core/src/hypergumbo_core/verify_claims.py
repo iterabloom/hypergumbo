@@ -168,7 +168,7 @@ from __future__ import annotations
 from collections.abc import (
     Iterable, Iterator, Mapping, Sequence, Set as AbstractSet,
 )
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -5786,29 +5786,27 @@ def _require_coverage_to_confirm(
     # exactly that case — it declares a zone-barrier sanitizer AND shells out
     # to git. Overwriting would be the one-slot last-writer-wins class
     # (INV-virat) reappearing inside the caveat list itself.
+    #
+    # ``replace``, NEVER A FIELD-BY-FIELD REBUILD (WI-simiv). Both branches used
+    # to construct a new verdict and name the fields to carry, and each rebuild
+    # forgot some: the withheld branch dropped sanitized_flows, excluded_flows,
+    # resource_naming_flows, flow_origins, analysis_methods and
+    # analysis_fidelity, and the qualified one analysis_fidelity. So a
+    # downgraded verdict said "1 flow(s) ... pass through a sanitizer" in
+    # ``details`` and ``"sanitized_flows": 0`` beside it. The gate changes the
+    # verdict, the details and the caveats; everything else is carried by
+    # construction, including a field added later.
     if opaque_sites:
-        return ClaimVerdict(
-            claim_id=verdict.claim_id,
-            claim_text=verdict.claim_text,
+        return replace(
+            verdict,
             verdict="confirmed_with_caveats",
-            evidence=verdict.evidence,
-            evidence_count=verdict.evidence_count,
-            details=verdict.details,
-            excluded_flows=verdict.excluded_flows,
-            flow_origins=verdict.flow_origins,
-            analysis_methods=verdict.analysis_methods,
-            sanitized_flows=verdict.sanitized_flows,
-            resource_naming_flows=verdict.resource_naming_flows,
             caveats=_merge_caveat(
                 verdict.caveats, _opaque_boundary_caveat(opaque_sites),
             ),
         )
-    return ClaimVerdict(
-        claim_id=verdict.claim_id,
-        claim_text=verdict.claim_text,
+    return replace(
+        verdict,
         verdict="inconclusive",
-        evidence=verdict.evidence,
-        evidence_count=verdict.evidence_count,
         # CARRY THE CAVEATS. This construction dropped them, so every caveat the
         # confirmed path had raised vanished the moment coverage downgraded the
         # verdict — the structured disclosure disappeared for exactly the verdicts
