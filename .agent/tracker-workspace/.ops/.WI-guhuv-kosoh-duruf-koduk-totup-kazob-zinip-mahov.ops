@@ -35,3 +35,19 @@
   set: {}  # 7e02
   add:  # 7e02
     tags: [post_release_focus]  # 7e02
+- op: update  # 3328
+  at: '2026-09-26T16:27:08Z'  # 3328
+  by: agent  # 3328
+  actor: jgstern_agent  # 3328
+  clock: 4  # 3328
+  nonce: '3328'  # 3328
+  set:  # 3328
+    status: done  # 3328
+    pr_ref: '1222'  # 3328
+- op: discuss  # b5d4
+  at: '2026-09-26T16:27:08Z'  # b5d4
+  by: agent  # b5d4
+  actor: jgstern_agent  # b5d4
+  clock: 5  # b5d4
+  nonce: b5d4  # b5d4
+  message: "DONE in PR #1222 (merged c45284d75d). Disposition 1 AND 2, both facets.\n\n- load_catalog no longer returns before the overlay loop for a language with no shipped catalogue. An overlay declaring the language becomes its whole catalogue (overlay_only=True, status in_progress, no stdlib, no provenance). One that does not declare it leaves the language unsupported, exactly as before.\n- The typo guard now asks \"does any analyzer produce this language\" (catalog.all_known_languages), not \"does a catalogue file exist\". It runs on every overlay before the not-mine skip.\n- The taint auto-derivation also loads the overlays' own languages, so a ruby overlay row derives a ruby taint source (one declaration, both arms).\n- io-boundaries and verify-claims print \"'ruby' ships no I/O primitive catalogue: its I/O is classified only by the project-local overlay rows loaded above\".\n\nBEHAVIORAL EVIDENCE, the item's repro shape re-run on the merged CLI (~/hypergumbo_lab_notebook/guhuv_09252026/, post_*.json/err):\n  before (dev f587b0a806): ruby-only repo -> inconclusive rc 2 \"language(s) ruby made calls but have no I/O catalog\" under a \"Loaded 1 overlay\" banner; ruby+python repo -> rc 2, NO JSON, \"declares language 'ruby', which has no I/O primitive catalogue ... check the spelling\".\n  after, overlay row module net/http: ruby-only -> no-net-recv violated rc 1 (\"1 net_recv chain(s) found\"); ruby+python -> violated rc 1, no abort; both print the overlay-only line.\nFail-closed control (production-path test packages/hypergumbo-lang-mainstream/tests/test_ruby_io_overlay_uncatalogued.py, red with the fix removed): File.write in the same program keeps no-fs-write inconclusive, because the overlay dates no module and every module it does not name stays unadjudicated. The item's hard prerequisite (INV-larol, launch opacity survives a classifying row) was already satisfied.\n\nRESIDUAL FILED: WI-surar. With the overlay spelled as ruby source writes it (module Net::HTTP), the same repro still gives inconclusive rc 2, because the ruby analyzer emits the receiver as module \"http\" and a component-suffix match must agree in case (INV-dijor). The overlay door is open; the analyzer's slot decides which spelling fits through it."  # b5d4

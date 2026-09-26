@@ -81,3 +81,19 @@
   set: {}  # c357
   add:  # c357
     tags: [post_release_focus]  # c357
+- op: update  # 8737
+  at: '2026-09-26T16:53:57Z'  # 8737
+  by: agent  # 8737
+  actor: jgstern_agent  # 8737
+  clock: 10  # 8737
+  nonce: '8737'  # 8737
+  set:  # 8737
+    status: satisfied  # 8737
+    pr_ref: '1224'  # 8737
+- op: discuss  # ff43
+  at: '2026-09-26T16:53:57Z'  # ff43
+  by: agent  # ff43
+  actor: jgstern_agent  # ff43
+  clock: 11  # ff43
+  nonce: ff43  # ff43
+  message: "SATISFIED for the filed instance by PR #1224 (merged b39173ecbe). go.py's unresolved-selector emit now stamps call_construct=\"function\" when the operand is an import alias (the same test that fills the module slot) and \"method\" otherwise; module slots are unchanged.\n\nBEHAVIORAL EVIDENCE, the item's own filed pairs through production analyze_go (packages/hypergumbo-lang-mainstream/tests/test_go_package_qualified_construct.py, red on the pre-fix go.py):\n  http.Get(u)    -> go:net/http:0-0:Get       cc=function   (was method)\n  os.ReadFile(p) -> go:os:0-0:ReadFile        cc=function   (was method)\n  fmt.Println    -> go:fmt:0-0:Println        cc=function   (was method)\n  c.Get(u)  *http.Client -> go:net/http:0-0:Get  cc=method  receiver=external  (control, unchanged)\n  f.Close() *os.File     -> go:os:0-0:Close      cc=method  (control, unchanged)\nSo http.Get and c.Get are no longer byte-identical in (name, module slot, construct).\n\nWHAT IT BOUGHT (WI-fuvaj's Go half). A/B, dev worktree vs the fix, generic taint claims + 6 boundary claims: alertmanager and gocryptfs move NO verdict, caveat kind or evidence count; the unknown_receiver_scope denominator goes 6,183 -> 3,557 (18.5% -> 32.1% untyped) and 3,345 -> 1,779 (8.5% -> 16.0%). Evidence: ~/hypergumbo_lab_notebook/tanom_fix_09262026/. go.yaml carries no method-kind row on a package-path module, so method_starved_modules cannot newly fire; the A/B agrees.\n\nThe go.py module docstring's declared blindness is rewritten: it no longer says the field is a constant, and it records why a debt priced at zero was paid (a new consumer arrived).\n\nNOT ASSERTED: the statement's general form across languages. Java qualified statics are still stamped method (WI-fuvaj stays open for that half). Two Go shapes are left, filed as WI-kugap: a local shadowing its import, and the resolved-lookup sites (unexamined)."  # ff43
