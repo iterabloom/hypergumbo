@@ -1,0 +1,26 @@
+Original commit body from 7bb3a45e2a823f2d81bc5d5538e2ed2ebc602991:
+
+Addresses INV-fogum. ADR-0049 ruling 2 clause 3's shadow reached only the
+boundary arm. One verify-claims run over a Go handler writing to a
+request-chosen path printed `no-net-recv` as confirmed_with_caveats
+[deferred_crossing] and `untrusted-input-no-host-fs` as a bare `confirmed`.
+
+A clean taint verdict now carries a `deferred_crossing` caveat (arm "taint")
+for each shadowed boundary B with AUTO_SOURCE_LABEL_MAP[B] equal to the
+claim's source label. net_recv and db_read both derive untrusted_input, so
+_merge_caveat now keeps deferred-crossing caveats per boundary and re-renders
+the sentence when a fold widens the site list. host_secret and
+host_description claims are untouched; a violated verdict never acquires it.
+
+Measured on the item's repro (production CLI): untrusted-input-* claims go
+confirmed -> confirmed_with_caveats; host-secret-* stay confirmed. On
+gocryptfs 501d5a5 no verdict value moves; the two untrusted_input verdicts
+gain the caveat.
+
+ADR-0049 and measurement 0010 credited gocryptfs's `inconclusive` to this
+shadow. Re-run on dev, that verdict carries no deferred_crossing caveat; it
+is the coverage gate (54 launch sites, 61 unclassified modules). Both
+documents are corrected, and the net_recv registry description no longer
+says the shadow "blocks" a verdict "and nothing else".
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
