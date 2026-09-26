@@ -1,0 +1,22 @@
+- op: create  # 9eb4
+  at: '2026-09-26T19:46:23Z'  # 9eb4
+  by: agent  # 9eb4
+  actor: jgstern_agent  # 9eb4
+  clock: 1  # 9eb4
+  nonce: 9eb4  # 9eb4
+  data:  # 9eb4
+    kind: work_item  # 9eb4
+    title: "rust: a fully-qualified call through a third-party crate with no use statement (serde_json::from_str, tokio::fs::read) keeps its whole path in the name slot; splitting needs the manifest's dependency names"  # 9eb4
+    status: todo_hard  # 9eb4
+    priority: 3  # 9eb4
+    parent:  # 9eb4
+    tags:  # 9eb4
+    - rust  # 9eb4
+    - io_boundary  # 9eb4
+    - analysis_quality  # 9eb4
+    isbefore: []  # 9eb4
+    duplicate_of: []  # 9eb4
+    not_duplicate_of: []  # 9eb4
+    pr_ref:  # 9eb4
+    description: "FOUND 2026-09-26, INV-duzom's residual (PR #1229). A fully-qualified call through a THIRD-PARTY crate with no `use` statement, e.g. `serde_json::from_str(s)` or `tokio::fs::read(p)` (edition-2018 extern crates are in scope by name), still keeps the whole path in the NAME slot with the external sentinel module: rust:external:0-0:serde_json::from_str. INV-duzom splits only paths rooted at std/core/alloc (or a leading ::), because at the analyzer's external-call arm a crate name cannot be told from a local module name without the manifest, and a local `utils::helper` split into module `utils` would be a relative path posing as an owner.\n\nWHAT IT NEEDS: the crate's declared dependency names (Cargo.toml [dependencies], plus renames `package = ...`, plus workspace inheritance) available to the rust analyzer, so a head that names a dependency is absolute. Frequency NOT measured; the tokio::fs / serde_json shapes are the likely I/O-relevant ones."  # 9eb4
+    fields: {}  # 9eb4

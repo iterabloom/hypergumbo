@@ -89,3 +89,10 @@
   set: {}  # 44b3
   add:  # 44b3
     tags: [post_release_focus]  # 44b3
+- op: discuss  # 3d8f
+  at: '2026-09-26T17:36:12Z'  # 3d8f
+  by: agent  # 3d8f
+  actor: jgstern_agent  # 3d8f
+  clock: 11  # 3d8f
+  nonce: 3d8f  # 3d8f
+  message: "VALUE CASE RE-OPENED BY WI-simiv (PR #1225, 2026-09-26). My 09-25 re-check said this item's payoff was labelling-only because ADR-0052 retired refutation and the same-function sanitizer credit had never been observed firing. The second half is no longer true: the credit now fires on the production path for python (three decrypt -> encrypt -> write shapes earn sanitized_flows 1), and the reasons it did not were extractor defects, not a design limit. So a java def/use extractor would buy java the same credit: javax.crypto.Cipher.doFinal is java's only sanitizer AND its only plaintext source (INV-lozat's dual shape; WI-buvob adds rows), and the plaintext source DOES mint on the production path for five receiver shapes (WI-hidar, closed). No java measurement was made for this note; it is a statement about what the extractor would unlock, not a measured gain."  # 3d8f
