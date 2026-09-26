@@ -98,7 +98,7 @@ if [[ ! -f "$CORE_PYPROJECT" ]]; then
     CORE_PYPROJECT="pyproject.toml"
 fi
 
-CURRENT=$(grep -E '^version\s*=' "$CORE_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+CURRENT=$(grep -E '^version\s*=' "$CORE_PYPROJECT" | head -1 | sed 's/^[^"]*"\([^"]*\)".*/\1/')
 
 if [[ -z "$CURRENT" ]]; then
     echo "Error: Could not extract current version from $CORE_PYPROJECT"
@@ -186,7 +186,7 @@ if [[ -n "$TRACKER_VERSION" ]]; then
     echo "Updating hypergumbo-tracker to $TRACKER_VERSION..."
 
     if [[ -f "$TRACKER_PYPROJECT" ]]; then
-        TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/^[^"]*"\([^"]*\)".*/\1/')
         sed -i "s/^version = \"[0-9]*\.[0-9]*\.[0-9]*[^\"]*\"/version = \"$TRACKER_VERSION\"/" "$TRACKER_PYPROJECT"
         echo "  Updated: $TRACKER_PYPROJECT ($TRACKER_CURRENT -> $TRACKER_VERSION)"
     fi
@@ -201,7 +201,7 @@ else
     if [[ -n "$LAST_TAG" && -f "$TRACKER_PYPROJECT" ]]; then
         TRACKER_CHANGES=$(git diff --name-only "$LAST_TAG"..HEAD -- packages/hypergumbo-tracker/src/ 2>/dev/null || echo "")
         if [[ -n "$TRACKER_CHANGES" ]]; then
-            TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+            TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/^[^"]*"\([^"]*\)".*/\1/')
             echo ""
             echo "Warning: hypergumbo-tracker source changed since $LAST_TAG but --tracker not specified."
             echo "  Current tracker version: $TRACKER_CURRENT"
@@ -243,7 +243,7 @@ if [[ -n "$TRACKER_VERSION" ]]; then
     echo "  - packages/hypergumbo-tracker"
 else
     if [[ -f "$TRACKER_PYPROJECT" ]]; then
-        TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        TRACKER_CURRENT=$(grep -E '^version\s*=' "$TRACKER_PYPROJECT" | head -1 | sed 's/^[^"]*"\([^"]*\)".*/\1/')
         echo ""
         echo "Tracker: $TRACKER_CURRENT (unchanged)"
     fi

@@ -4,13 +4,17 @@
 All notable changes to hypergumbo are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Released **tool** is at: v8.1.0
-- Released **schema** is at: vdid not say why
+- Released **schema** is at: v0.20.13
 
 This changelog tracks the **tool version** (package releases). The **schema version** is tracked separately in `schema.py` as `SCHEMA_VERSION`. The schema version changes when `docs/schema.json` has significant updates: breaking changes to the behavior map output format (minor bump) or additions like new type definitions for YAML validation (patch bump).
 
 > **Looking for the reader-friendly summary?** See **[docs/RELEASE-NOTES-8.X.md](docs/RELEASE-NOTES-8.X.md)** for the audience-organized release notes of the current line — each opens with a TL;DR naming the breaking changes. Earlier lines: [7.x](docs/RELEASE-NOTES-7.X.md), [6.x](docs/RELEASE-NOTES-6.X.md), [5.x](docs/RELEASE-NOTES-5.X.md). This file is the **implementer log**: structured, mechanism-level entries per release.
 
 ## [Unreleased]
+
+### Fixed
+
+- **The changelog's release bookkeeping is true again.** 8.1.0 shipped "Released **schema** is at: vdid not say why": the release scripts read a quoted value with a pattern that kept the *last* quoted string on the line, and `SCHEMA_VERSION`'s line carries a comment full of quoted phrases. All 16 version reads in the release scripts now take the first quoted string, and `prepare-release` stops if the schema value is not a version. The Version History table had also stopped at 2.1.0, with its compare links on Codeberg; it gains the eighteen missing rows, the links are regenerated from the tags against GitHub, and `prepare-release` now promotes a `| Unreleased |` row (stopping if there is none) and writes the new version's link.
 
 ## [8.1.0] - 2026-09-25
 
@@ -2398,6 +2402,24 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
+| 8.1.0   | 2026-09-25 | Calls credited to their enclosing function by position (25 analyzers); receiver typing in 10 languages; opt-in scip-python backend merged per record (ADR-0057); `is_exported` can be `null`; taint useful precision 24.1% → 30.9% |
+| 8.0.0   | 2026-08-20 | **Breaking:** `verify-claims` exit code 3 (`confirmed_with_caveats`), envelope 2.0, `Edge.quality` removed. Analysing a repo no longer runs its code; bounded results cache; cold survey 517.7s → 220.0s |
+| 7.0.0   | 2026-07-27 | **Breaking:** edge types 50 → 25 (stored maps no longer validate), `verify-claims --json` is a versioned object, declared deps move tier 2 → 3. `survey` is the primary verb; Python MRO and DI resolution |
+| 6.1.0   | 2026-06-18 | Correctness campaign: `stable_id` v5 → v8, crashing passes contained instead of aborting the run, cache invalidates on grammar upgrade, Python `qualified_name` populated |
+| 6.0.0   | 2026-06-10 | **Breaking:** `Symbol.language` and `canonical_name` split into typed fields (ADR-0031/0032), `origin` becomes a list. View templates for Django, Phoenix, Spring, Blade; spec-vs-data validator (ADR-0033) |
+| 5.0.1   | 2026-05-09 | `--backend rust-analyzer` refuses a broken rustup proxy instead of silently falling back to tree-sitter |
+| 5.0.0   | 2026-05-09 | Rust SCIP backend usable end to end (`hypergumbo[rust-analyzer]` published); `add-extras` / `remove-extras` replace the install-extras commands |
+| 4.1.0   | 2026-05-08 | `Symbol.kind` and `Edge.evidence_type` registries (ADR-0027/0028) with drift linters; dispatch and inheritance fixes across nine linkers |
+| 4.0.0   | 2026-05-03 | **Breaking:** 33 deprecated `edge_type` values removed (schema 0.4.0). Canonical edge-type registry; `is_example_file` / `is_config_file`; Starlette routes |
+| 3.0.0   | 2026-04-29 | **Breaking:** `io-boundaries` catalogs hold only stdlib primitives; wrappers surface as `external_potential`. Attribute-style I/O primitives; project-local taint catalogs |
+| 2.7.0   | 2026-04-21 | Rust SCIP backend via rust-analyzer (ADR-0014, opt-in); controller and router route linkers; Django ORM, Jackson, Airflow, Kafka Streams and Rust trait dispatch linkers |
+| 2.6.0   | 2026-04-12 | `io-boundaries` excludes test chains by default; slice uses a file cap and hub pruning instead of adaptive hop limits |
+| 2.5.1   | 2026-04-05 | Security pins: pygments ≥ 2.20.0, requests ≥ 2.33.0 |
+| 2.5.0   | 2026-04-04 | Taint-flow analysis (ADR-0017): structural, intraprocedural and interprocedural; I/O catalogs for Objective-C, Scala, Haskell, Swift |
+| 2.4.0   | 2026-03-21 | `io-boundaries` and `verify-claims` (ADR-0016); Electron, crypto-flow and message-dispatch linkers |
+| 2.3.0   | 2026-03-16 | Dataflow access modes (ADR-0015); Yjs and Tauri event linkers; shared file index removes ~75% of uncached runtime |
+| 2.2.1   | 2026-03-15 | Jupyter plus six regex analyzers (Blade, Gnuplot, Handlebars, Just, Mermaid, QML); `slice --files` crash fixed |
+| 2.2.0   | 2026-03-12 | Solidity ABI, Tauri IPC, wasm_bindgen, React component and middleware-chain linkers; gRPC proto routes linked to Go implementations |
 | 2.1.0   | 2026-03-01 | 9 new linkers (DI, HTTP, FFI, Vue, ORM, etc.), 150+ framework patterns, smart test selection |
 | 2.0.2   | 2026-02-01 | Default token budget increased to 8000                       |
 | 2.0.1   | 2026-01-31 | `--files` flag for slice (smart test selection support)       |
@@ -2413,14 +2435,31 @@ Initial public release with comprehensive static analysis capabilities.
 | 0.6.0   | 2025-12-29 | Lean, Wolfram, Agda analyzers; release automation            |
 | 0.5.0   | 2025-12-26 | Initial release: 32 analyzers, 12 linkers                    |
 
-[Unreleased]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.1.0...HEAD
-[2.1.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.0.2...v2.1.0
-[2.0.2]: https://codeberg.org/iterabloom/hypergumbo/compare/v2.0.0...v2.0.2
-[2.0.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v1.2.1...v2.0.0
-[1.2.1]: https://codeberg.org/iterabloom/hypergumbo/compare/v1.2.0...v1.2.1
-[1.1.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.9.1...v1.1.0
-[0.9.1]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.9.0...v0.9.1
-[0.9.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.9...v0.9.0
-[0.6.9]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.6.0...v0.6.9
-[0.6.0]: https://codeberg.org/iterabloom/hypergumbo/compare/v0.5.0...v0.6.0
-[0.5.0]: https://codeberg.org/iterabloom/hypergumbo/releases/tag/v0.5.0
+[Unreleased]: https://github.com/iterabloom/hypergumbo/compare/v8.1.0...HEAD
+[8.1.0]: https://github.com/iterabloom/hypergumbo/compare/v8.0.0...v8.1.0
+[8.0.0]: https://github.com/iterabloom/hypergumbo/compare/v7.0.0...v8.0.0
+[7.0.0]: https://github.com/iterabloom/hypergumbo/compare/v6.1.0...v7.0.0
+[6.1.0]: https://github.com/iterabloom/hypergumbo/compare/v6.0.0...v6.1.0
+[6.0.0]: https://github.com/iterabloom/hypergumbo/compare/v5.0.1...v6.0.0
+[5.0.1]: https://github.com/iterabloom/hypergumbo/compare/v5.0.0...v5.0.1
+[5.0.0]: https://github.com/iterabloom/hypergumbo/compare/v4.1.0...v5.0.0
+[4.1.0]: https://github.com/iterabloom/hypergumbo/compare/v4.0.0...v4.1.0
+[4.0.0]: https://github.com/iterabloom/hypergumbo/compare/v3.0.0...v4.0.0
+[3.0.0]: https://github.com/iterabloom/hypergumbo/compare/v2.7.0...v3.0.0
+[2.7.0]: https://github.com/iterabloom/hypergumbo/compare/v2.6.0...v2.7.0
+[2.6.0]: https://github.com/iterabloom/hypergumbo/compare/v2.5.1...v2.6.0
+[2.5.1]: https://github.com/iterabloom/hypergumbo/compare/v2.5.0...v2.5.1
+[2.5.0]: https://github.com/iterabloom/hypergumbo/compare/v2.4.0...v2.5.0
+[2.4.0]: https://github.com/iterabloom/hypergumbo/compare/v2.3.0...v2.4.0
+[2.3.0]: https://github.com/iterabloom/hypergumbo/compare/v2.2.1...v2.3.0
+[2.2.1]: https://github.com/iterabloom/hypergumbo/compare/v2.2.0...v2.2.1
+[2.2.0]: https://github.com/iterabloom/hypergumbo/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/iterabloom/hypergumbo/compare/v2.0.2...v2.1.0
+[2.0.2]: https://github.com/iterabloom/hypergumbo/compare/v2.0.0...v2.0.2
+[2.0.0]: https://github.com/iterabloom/hypergumbo/compare/v1.2.1...v2.0.0
+[1.2.1]: https://github.com/iterabloom/hypergumbo/compare/v1.2.0...v1.2.1
+[1.1.0]: https://github.com/iterabloom/hypergumbo/compare/v0.9.1...v1.1.0
+[0.9.1]: https://github.com/iterabloom/hypergumbo/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/iterabloom/hypergumbo/compare/v0.6.9...v0.9.0
+[0.6.9]: https://github.com/iterabloom/hypergumbo/compare/v0.6.0...v0.6.9
+[0.6.0]: https://github.com/iterabloom/hypergumbo/releases/tag/v0.6.0
