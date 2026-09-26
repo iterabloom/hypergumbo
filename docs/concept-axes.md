@@ -489,7 +489,7 @@ Values that name what data crosses the process boundary at this call site, and i
 - **`ipc_recv`** — Receive data from another process -- stdin, a pipe read, shared memory read.
 - **`ipc_send`** — Send data to another process -- stdout write, pipe write, shared memory write. See the module docstring's gap 2: the stdout half overlaps `logging`, unsettled.
 - **`logging`** — Emit data to a log sink -- java.util.logging.Logger, go fmt/io print, Prelude.putStrLn, Swift print. THE ONE CANONICAL VALUE NAMING A PURPOSE RATHER THAN A MEDIUM, and it overlaps ipc_send on stdout. First candidate for a per-value audit; see the module docstring, gap 2. No row moves on that note.
-- **`net_recv`** — Receive data from the network. Shadowed by net_listen: a deferred-crossing site blocks a clean net_recv verdict and nothing else (ADR-0049 ruling 2).
+- **`net_recv`** — Receive data from the network. Shadowed by net_listen: a deferred-crossing site qualifies a clean net_recv verdict and a clean taint verdict over untrusted_input, the label net_recv derives, and nothing else (ADR-0049 ruling 2, INV-fogum).
 - **`net_send`** — Send data to the network. Egress risk is additionally graded by the supply-chain dst_tier rather than by this value alone.
 - **`process_send`** — Send a message to another runtime-managed process or actor -- erlang send, Control.Concurrent. Distinct from ipc_send: the far side is a peer inside the same runtime, not an OS pipe.
 

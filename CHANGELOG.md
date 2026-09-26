@@ -14,6 +14,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Fixed
 
+- **A clean `untrusted_input` taint verdict no longer ignores a server launch.** ADR-0049's shadow (a deferred crossing such as `http.ListenAndServe` or a Django QuerySet combinator qualifies clean verdicts over the data it hands elsewhere) reached only the boundary arm, so one `verify-claims` run could print `no-net-recv` as `confirmed_with_caveats [deferred_crossing]` and `untrusted-input-no-host-fs` as a bare `confirmed` over a Go handler writing to a request-chosen path (INV-fogum). A clean taint verdict now carries the `deferred_crossing` caveat for each shadowed boundary whose derived source label is the claim's (`net_recv` and `db_read` both derive `untrusted_input`), one caveat per boundary; `host_secret` and `host_description` claims are untouched, and a `violated` verdict never acquires it. ADR-0049 and measurement 0010 had credited gocryptfs's `inconclusive` to this shadow; re-run, it is the coverage gate, and both documents are corrected.
 - **The changelog's release bookkeeping is true again.** 8.1.0 shipped "Released **schema** is at: vdid not say why": the release scripts read a quoted value with a pattern that kept the *last* quoted string on the line, and `SCHEMA_VERSION`'s line carries a comment full of quoted phrases. All 16 version reads in the release scripts now take the first quoted string, and `prepare-release` stops if the schema value is not a version. The Version History table had also stopped at 2.1.0, with its compare links on Codeberg; it gains the eighteen missing rows, the links are regenerated from the tags against GitHub, and `prepare-release` now promotes a `| Unreleased |` row (stopping if there is none) and writes the new version's link.
 
 ## [8.1.0] - 2026-09-25
@@ -2402,6 +2403,7 @@ Initial public release with comprehensive static analysis capabilities.
 
 | Version | Date       | Highlights                                                   |
 | ------- | ---------- | ------------------------------------------------------------ |
+| Unreleased | —          | A server launch or composed query now qualifies a clean `untrusted_input` taint verdict, not only the boundary verdict |
 | 8.1.0   | 2026-09-25 | Calls credited to their enclosing function by position (25 analyzers); receiver typing in 10 languages; opt-in scip-python backend merged per record (ADR-0057); `is_exported` can be `null`; taint useful precision 24.1% → 30.9% |
 | 8.0.0   | 2026-08-20 | **Breaking:** `verify-claims` exit code 3 (`confirmed_with_caveats`), envelope 2.0, `Edge.quality` removed. Analysing a repo no longer runs its code; bounded results cache; cold survey 517.7s → 220.0s |
 | 7.0.0   | 2026-07-27 | **Breaking:** edge types 50 → 25 (stored maps no longer validate), `verify-claims --json` is a versioned object, declared deps move tier 2 → 3. `survey` is the primary verb; Python MRO and DI resolution |

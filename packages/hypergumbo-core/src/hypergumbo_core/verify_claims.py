@@ -758,6 +758,13 @@ def _merge_caveat(
     for i, cav in enumerate(existing):
         if cav.get("kind") != new.get("kind"):
             continue
+        # A deferred-crossing caveat is PER BOUNDARY (INV-fogum): one taint
+        # label can be derived from two shadowed boundaries (``net_recv`` and
+        # ``db_read`` both give ``untrusted_input``), and folding them would
+        # keep the first boundary's name over the second's sites.
+        if (new.get("kind") == "deferred_crossing"
+                and cav.get("boundary") != new.get("boundary")):
+            continue
         merged_entries = sorted(
             set(cav.get("entries") or []) | set(new.get("entries") or [])
         )
@@ -776,6 +783,11 @@ def _merge_caveat(
             rebuilt = _opaque_boundary_caveat(merged_entries)
         elif new.get("kind") == CAVEAT_UNTYPED_RECEIVER:
             rebuilt = _untyped_receiver_caveat(
+                cav.get("boundary", ""), merged_entries,
+                arm=cav.get("arm", _ARM_BOUNDARY),
+            )
+        elif new.get("kind") == "deferred_crossing":
+            rebuilt = _deferred_crossing_caveat(
                 cav.get("boundary", ""), merged_entries,
                 arm=cav.get("arm", _ARM_BOUNDARY),
             )
@@ -848,6 +860,18 @@ _UNTYPED_CONSEQUENCE = {
 }
 
 
+#: How the deferred-crossing sentence ends, per verdict arm. Under a taint
+#: claim no ``net_recv`` RESULT was asked for, so the boundary arm's ending would
+#: describe a verdict the reader does not have (INV-fogum).
+_DEFERRED_CONSEQUENCE = {
+    _ARM_BOUNDARY: "a clean {boundary} result does not cover it.",
+    _ARM_TAINT: (
+        "no taint flow can start from data arriving there, so a clean taint "
+        "verdict over what {boundary} would supply does not cover it."
+    ),
+}
+
+
 def _deferred_crossing_caveat(
     boundary: str, sites: list[str], *, arm: str = _ARM_BOUNDARY,
 ) -> dict[str, Any]:
@@ -884,8 +908,8 @@ def _deferred_crossing_caveat(
             f"launch, registration or subscription, or a query composed here "
             f"and evaluated elsewhere. The data reaches a handler or a later "
             f"evaluation, not this call's return value, so this analysis "
-            f"cannot examine what arrives; a clean {boundary} result does not "
-            f"cover it."
+            f"cannot examine what arrives; "
+            f"{_DEFERRED_CONSEQUENCE[arm].format(boundary=boundary)}"
         ),
     }
 
@@ -5155,7 +5179,9 @@ def _verify_taint_claim_uncredited(
             ``excluded_flows`` bucket instead. Set True to restore the previous
             behavior of treating every source as in scope.
         coverage: Boundary-analysis coverage, read ONLY on the clean path and
-            ONLY for its untyped-receiver disclosures (INV-nuhun). This
+            ONLY for disclosures: the untyped-receiver sites (INV-nuhun), the
+            deferred crossings whose shadowed boundary derives this claim's
+            source label (INV-fogum), and the run-wide blindness signals. This
             parameter is why the docstring on :func:`verify_claims` no longer
             says taint claims are unaffected by coverage: they were, and the
             consequence was that one invocation disclosed ``sendall`` on a
@@ -5420,6 +5446,21 @@ def _verify_taint_claim_uncredited(
         # unrelated dict ``.get``, catalogued as a ``database`` sink, cannot
         # touch a ``network`` verdict.
         if coverage is not None:
+            # INV-fogum. ADR-0049 clause 3 for this arm: a deferred crossing
+            # that shadows boundary B qualifies every clean verdict B would have
+            # fed, and B feeds this claim when it DERIVES the claim's source
+            # label. FIRST among the coverage caveats, as in the boundary arm,
+            # because it is the categorical one. Scoped by the label, the taint
+            # arm's own key, so a listener never reaches a host_secret claim.
+            from .taint import AUTO_SOURCE_LABEL_MAP
+
+            for shadowed, sites in sorted(
+                coverage.deferred_crossing_sites.items(),
+            ):
+                if AUTO_SOURCE_LABEL_MAP.get(shadowed) == tf.source_taint:
+                    caveats = _merge_caveat(caveats, _deferred_crossing_caveat(
+                        shadowed, sites, arm=_ARM_TAINT,
+                    ))
             zone_sites = coverage.untyped_receiver_zones.get(
                 tf.prohibited_sink_zone,
             ) or []
