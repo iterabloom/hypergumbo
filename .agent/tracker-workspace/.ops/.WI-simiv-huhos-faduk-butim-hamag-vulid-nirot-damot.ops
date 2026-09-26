@@ -1,0 +1,23 @@
+- op: create  # 15f0
+  at: '2026-09-26T00:35:50Z'  # 15f0
+  by: agent  # 15f0
+  actor: jgstern_agent  # 15f0
+  clock: 1  # 15f0
+  nonce: 15f0  # 15f0
+  data:  # 15f0
+    kind: work_item  # 15f0
+    title: "Same-function sanitizer credit (WI-fasub) is never observed on the production path: 3 ordinary Python decrypt->encrypt->write shapes report sanitized_flows 0"  # 15f0
+    status: todo_hard  # 15f0
+    priority: 2  # 15f0
+    parent:  # 15f0
+    tags:  # 15f0
+    - taint  # 15f0
+    - analysis_quality  # 15f0
+    - adr_0017  # 15f0
+    - post_release_focus  # 15f0
+    isbefore: []  # 15f0
+    duplicate_of: []  # 15f0
+    not_duplicate_of: []  # 15f0
+    pr_ref:  # 15f0
+    description: "FOUND 2026-09-25 while re-verifying WI-gotun at dev 56f069874e. Evidence: ~/hypergumbo_lab_notebook/gotun_recheck_09252026/ (p_pt_enc, p_nowith, p_min).\n\nQUESTION. Does the same-function sanitizer arm (WI-fasub, done; taint.py `if adjudicated and barrier_sites:`) ever credit a sanitizer on the PRODUCTION path? WI-fasub's title condition is \"a sanitizer called in the same function as the source does not neutralize the flow\". On three ordinary Python shapes, with python holding the full def/use extractor, verify-claims with a plaintext -> host_fs claim never credits:\n  - decrypt -> encrypt -> `with open(...) as f: f.write(e)`: violated, ddg / walk confirmed, sanitized_flows 0. The barrier walk was not a definite False.\n  - decrypt -> encrypt -> `open(...).write(e)`: violated, ddg_mixed / walk escaped, sanitized_flows 0.\n  - the same with a typed `f: Fernet` parameter: inconclusive, 0 findings.\nThe run's own output says the mechanism is live: sanitizer_scope.same_function_honoured_by = [\"ddg\"]. But the only tests of the arm (test_phase6_same_function_sanitizer.py) build their DdgEdges by hand, so no production-path evidence exists that it fires.\n\nTWO READINGS, NOT YET TOLD APART. (a) Conservative by design: the credit needs a definite False from the barrier walk, and ADR-0052 measured definite answers as rare, so the arm is \"real in design, empty in practice\" like refutation. That would call for a declared limitation. (b) A defect: the first shape CONFIRMED the flow and still did not credit. Find out why its barrier walk was not False (an escape? the `with` binding? the Fernet(key) chain?).\n\nWHY IT MATTERS. WI-gotun's remaining value case and WI-buvob's premise both assume this credit is collectable. If it never fires, java sanitizer rows and a java extractor buy no suppression, and a user reading sanitizer_scope is told of a capability their code will not receive.\n\nDONE WHEN: a production-path repro earns sanitized_flows >= 1 (reading (a) with a published scope), or the shape that should credit is identified and fixed (reading (b)). Per closure-evidence discipline, re-run all three fixtures above. Related: WI-fasub (done), INV-karud clause (2) (pending_validation, designated live check of the barrier arm), WI-gotun, WI-buvob."  # 15f0
+    fields: {}  # 15f0
