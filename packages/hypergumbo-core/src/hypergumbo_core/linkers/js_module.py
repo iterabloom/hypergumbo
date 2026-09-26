@@ -701,6 +701,8 @@ def link_js_modules(
         run.duration_ms = int((time.time() - start_time) * 1000)
         return LinkerResult(symbols=[], edges=[], run=run)
 
+    repo_root_abs = repo_root.resolve()
+
     # Build alias indices (once per run)
     # tsconfig index: maps directory → aliases from nearest tsconfig.json
     # Supports monorepos where packages/frontend/ and packages/backend/
@@ -738,17 +740,24 @@ def link_js_modules(
         evidence_type = "import_resolution"
         import_confidence = 0.90
 
+        # WI-fukaf: ANCHOR ON THE REPO ROOT. Production symbol paths are
+        # repo-relative ('src/a.ts'); read as-is they resolved relative imports
+        # against the process CWD, so the same repository surveyed from outside
+        # its own directory lost imports (koel: module_exports 2,085 -> 1,471),
+        # and the tsconfig ancestor walk never met the index's absolute keys.
+        # ``root / path`` leaves an already-absolute path unchanged.
+        abs_src = repo_root_abs / src_path
+
         if _is_relative_import(import_path):
             # Relative import: resolve from source file's directory
-            source_dir = Path(src_path).parent
-            base_path = (source_dir / import_path).resolve()
+            base_path = (abs_src.parent / import_path).resolve()
             resolved = _probe_file(base_path)
         else:
             # Non-relative: get per-file aliases (nearest tsconfig + Vite)
-            src_dir = str(Path(src_path).parent)
+            src_dir = str(abs_src.parent)
             if src_dir not in aliases_cache:
                 file_aliases = _get_aliases_for_file(
-                    src_path, tsconfig_index, repo_root
+                    str(abs_src), tsconfig_index, repo_root
                 )
                 combined = file_aliases + vite_aliases
                 combined.sort(key=lambda a: len(a[0]), reverse=True)
@@ -764,7 +773,7 @@ def link_js_modules(
         if resolved is not None:
             # Compute path relative to repo_root for the symbol
             try:
-                rel_path = str(resolved.relative_to(repo_root))
+                rel_path = str(resolved.relative_to(repo_root_abs))
             except ValueError:
                 # Resolved path outside repo — use absolute
                 rel_path = str(resolved)
