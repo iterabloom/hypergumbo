@@ -1568,7 +1568,7 @@ def cmd_init(args):
                 if os.path.isdir(out_dir):
                     completed = len([d for d in os.listdir(out_dir)
                                      if os.path.isdir(os.path.join(out_dir, d))
-                                     and os.listdir(os.path.join(out_dir, d))])
+                                     and _holds_output_files(os.path.join(out_dir, d))])
                 print(f"Resuming existing session: {state.session_id}")
                 print(f"  Workdir: {existing}")
                 print(f"  Pool: {state.pool_path}")
@@ -1874,6 +1874,22 @@ def _load_cohort_metadata(workdir: str, cohort_num: int) -> list | None:
         return None
 
 
+def _holds_output_files(path: str) -> bool:
+    """True when ``path`` has at least one FILE anywhere below it (WI-zilar).
+
+    A directory is not a result. A run that crashes after ``os.makedirs`` leaves
+    ``iter-NNN/<repo>/`` present and empty, and both skip guards used to read
+    that as "already analysed": the single-cohort guard checked only the code
+    hash, and the batch guard checked ``os.listdir`` of the cohort directory,
+    which an empty ``iter-001/`` satisfies. Each then exited 0 pointing at
+    "previous results" holding zero files.
+    """
+    for _root, _dirs, files in os.walk(path):
+        if files:
+            return True
+    return False
+
+
 def cmd_run(args):
     """Run feature battery on current cohort, or all cohorts with --all."""
     workdir = resolve_workdir(args.workdir)
@@ -1926,7 +1942,7 @@ def cmd_run(args):
                 continue
             # Check if already analysed at current code hash
             out_dir = os.path.join(workdir, "out", f"cohort-{cohort_num:03d}")
-            if os.path.isdir(out_dir) and os.listdir(out_dir):
+            if os.path.isdir(out_dir) and _holds_output_files(out_dir):
                 print(f"\n[cohort-{cohort_num:03d}] Already has output — skipping.")
                 print(f"  To re-run with code changes, create a NEW session:")
                 print(f"    ./scripts/bakeoff-deep init --pool {pool_path}")
@@ -1965,11 +1981,15 @@ def cmd_run(args):
             f"cohort-{state.cohort_number:03d}",
             f"iter-{state.iteration:03d}",
         )
-        if os.path.isdir(prev_dir):
+        if os.path.isdir(prev_dir) and _holds_output_files(prev_dir):
             print(f"⏭️  Skipping: hypergumbo code unchanged (hash {current_hash})")
             print(f"   Previous results: {prev_dir}")
             print("   To force re-run, delete the previous iteration directory.")
             return 0
+        if os.path.isdir(prev_dir):
+            # Kept, not deleted: an empty iteration is the record of a crash.
+            print(f"⚠️  {prev_dir} holds no output files (a crashed or "
+                  f"interrupted run); running again as a new iteration.")
 
     # Increment iteration
     state.iteration += 1
