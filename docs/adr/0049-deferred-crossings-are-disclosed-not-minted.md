@@ -229,10 +229,14 @@ still classified and therefore still counts as examined (INV-buzab).
 Go's connection-SETUP family — `net.Listen{,TCP,UDP,Unix,Packet}` and
 `{syscall,unix}.{Socket,Bind,Listen}` — against a run-level represented-crossing
 proof: eight `net_recv` chains on an idiomatic accept loop became seven
-`net_listen` plus one, with nothing dropped. Measurement 0010 observes the
-consequence on a real repository: gocryptfs's `untrusted-input-no-host-fs`
-verdict moved from `violated` (measurement 0006, rooted at `net.Listen`) to
-`inconclusive`, which is clause 3's shadow doing what it was built to do.
+`net_listen` plus one, with nothing dropped. On gocryptfs,
+`untrusted-input-no-host-fs` moved from `violated` (measurement 0006, rooted at
+`net.Listen`) to `inconclusive`. That `inconclusive` is the coverage gate, not
+clause 3's shadow (measurement 0010's correction): until INV-fogum the taint
+arm never read the shadow. Clause 3 now reaches taint verdicts too: a deferred
+crossing that shadows boundary B qualifies every clean taint verdict whose
+source label B derives through `AUTO_SOURCE_LABEL_MAP`, one caveat per
+shadowed boundary.
 
 **The LAUNCH rows have now moved too, in four languages of six.**
 `TestServerLaunchStaysAReceive` is `TestServerLaunchIsADeferredCrossing`; it

@@ -196,8 +196,9 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         counts_in_headline=True,
         description=(
             "Receive data from the network. Shadowed by net_listen: a "
-            "deferred-crossing site blocks a clean net_recv verdict and "
-            "nothing else (ADR-0049 ruling 2)."
+            "deferred-crossing site qualifies a clean net_recv verdict and a "
+            "clean taint verdict over untrusted_input, the label net_recv "
+            "derives, and nothing else (ADR-0049 ruling 2, INV-fogum)."
         ),
     ),
     IoBoundarySpec(
