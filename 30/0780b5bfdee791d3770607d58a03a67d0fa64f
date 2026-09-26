@@ -1,0 +1,37 @@
+Original commit body from 6162d49c648dca5e181ff77a0840b02b87901740:
+
+Addresses INV-duzom. With no `use` alias to consult, the unresolved-call arm
+kept the whole path in the NAME slot and put the external sentinel in the
+module slot. So std::io::stdin() produced no I/O chain while io::stdin()
+after `use std::io;` did. Re-measured through io-boundaries before the fix:
+only the aliased arm reached ipc_recv.
+
+In call position the last segment is the callee and the rest is the item
+that owns it (module, type or enum). A plain path rooted at std, core or
+alloc (or a leading ::) is now split on its last `::`. The aliased arm
+expands the alias and splits the same way: `fs::File::open` after
+`use std::fs;` had become module std::fs, name File::open.
+
+Not split: a bare Type::method (the type may be the project's own, and
+`Command` alone in the module slot would be paired with
+std::process::Command, INV-kipor's shape); turbofish and qualified-self
+paths; and third-party crate paths, since telling a crate from a local
+module needs the manifest.
+
+A/B on dev 91d63993a9 (pinned worktree): I/O chains netavark 50->55,
+ripgrep 30->49, diamond-types 86->105, zellij 150->274; none lost. Changed
+call sites were read back. The net-new ones are calls the generic-method
+guard had suppressed (std::path::PathBuf::from, std::fs::write,
+std::io::Error::new). The three "lost" sites merged into same-dst edges
+whose call_lines still carry them.
+
+The recorded aardvark-dns fixture gains exactly one tree-sitter stub call,
+std::io::Error::new at src/server/serve.rs:384, so the pinned 244 becomes
+245 in the recorded constants, audit 0019 and the spec, each with the
+reason.
+
+Also restores a gate PR #1227 broke on dev: tests/test_bakeoff_empty_iteration.py
+declares no source, so test_top_level_test_map failed. It now carries
+`# covers: scripts/bakeoff-broad scripts/bakeoff-deep`.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
