@@ -1,0 +1,22 @@
+- op: create  # 63df
+  at: '2026-09-26T18:30:38Z'  # 63df
+  by: agent  # 63df
+  actor: jgstern_agent  # 63df
+  clock: 1  # 63df
+  nonce: 63df  # 63df
+  data:  # 63df
+    kind: work_item  # 63df
+    title: "go: a bare call to a same-package function is withheld as ambiguous and emitted as the external placeholder, although Go scoping makes the caller's own package the only candidate (alertmanager 124, beads 379 sites)"  # 63df
+    status: todo_hard  # 63df
+    priority: 2  # 63df
+    parent:  # 63df
+    tags:  # 63df
+    - go  # 63df
+    - call_graph  # 63df
+    - analysis_quality  # 63df
+    isbefore: []  # 63df
+    duplicate_of: []  # 63df
+    not_duplicate_of: []  # 63df
+    pr_ref:  # 63df
+    description: "FOUND 2026-09-26 reading back INV-guzuj's fix (PR #1228). Record: ~/hypergumbo_lab_notebook/guzuj_09262026/ (A/B surveys, diff.py, samples).\n\nA bare Go call to a function of the CALLER'S OWN PACKAGE is withheld by the resolver's ambiguity guard whenever the name has several candidates repo-wide, and since INV-guzuj it is emitted as the `external` placeholder (go:external:0-0:<name>:unresolved). Before INV-guzuj it emitted nothing. Measured: alertmanager +124 such placeholders, beads +379. All 16 sampled sites are same-package calls: New(...) in notify/<provider>/*_test.go calling that provider's New, newTestStore(...) and runGit(...) in beads test helpers, NewAlerts(...) in provider/mem.\n\nWHY IT IS RESOLVABLE. Go scoping answers a bare identifier call exactly: a name in the caller's own package, a builtin, or a dot import. No other package can be meant. So the caller's package directory is a path hint the resolver is not being given, and `external` is a sentinel standing in for a fact the analyzer holds (ADR-0051's objection to sentinels).\n\nNOT DONE: how the resolver scopes candidates by package directory, whether test files (package x_test) need the external-test-package rule, and the corpus frequency beyond these two repos."  # 63df
+    fields: {}  # 63df

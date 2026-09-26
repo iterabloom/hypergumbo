@@ -30,3 +30,26 @@
   set: {}  # 9c64
   add:  # 9c64
     tags: [post_release_focus]  # 9c64
+- op: update  # 02da
+  at: '2026-09-26T18:30:43Z'  # 02da
+  by: agent  # 02da
+  actor: jgstern_agent  # 02da
+  clock: 3  # 02da
+  nonce: 02da  # 02da
+  set:  # 02da
+    status: satisfied  # 02da
+    pr_ref: '1228'  # 02da
+- op: discuss  # 4eae
+  at: '2026-09-26T18:30:43Z'  # 4eae
+  by: agent  # 4eae
+  actor: jgstern_agent  # 4eae
+  clock: 4  # 4eae
+  nonce: 4eae  # 4eae
+  message: "SATISFIED by PR #1228 (merged 91d63993a9). After the dot-import arm, a bare identifier call that is no local symbol, that the resolver places nowhere and that no dot import claims now emits make_unresolved_edge(\"go\", ...) -> go:external:0-0:<name>:unresolved, call_construct=function. As the item required, a name bound in the enclosing top-level declaration (closure, function-typed parameter, range variable, select receive, type-switch alias) stays unemitted. The dot-import arm applies the same refusal.\n\nBEHAVIORAL EVIDENCE, the item's own fixture through production analyze_go (packages/hypergumbo-lang-mainstream/tests/test_go_bare_unresolved_call.py, red before the fix):\n  func g() { unknownThing() }            -> go:external:0-0:unknownThing:unresolved  (was: no edge)\n  f := func(){}; f() / cb() / range fn() -> no edge  (local bindings, refused)\n  len(xs), int64(x)                      -> no edge  (builtins, unchanged)\nREAD BACK ON TWO REPOS, as the item asked (dev 62a70cd1b3 pinned worktree vs the fix): alertmanager +124 edges, beads +379, all external placeholders; 16 sampled and read at source, all real call sites. One edge was removed, correctly: alertmanager test/with_api_v2/acceptance/send_test.go:65 calls a local closure  (bound at :32) that the dot-import arm had attributed to the dot-imported with_api_v2 package.\n\nRESIDUAL FILED: WI-bivin. The sampled sites are same-package calls the ambiguity guard withholds; Go scoping makes the caller's own package the only candidate, so  is a sentinel for a fact the analyzer holds."  # 4eae
+- op: discuss  # fb49
+  at: '2026-09-26T18:30:53Z'  # fb49
+  by: agent  # fb49
+  actor: jgstern_agent  # fb49
+  clock: 5  # fb49
+  nonce: fb49  # fb49
+  message: "CORRECTION to the entry above: two words were lost to shell substitution when it was written. Read \"calls a local closure timerange (bound at :32)\" and \"so the external placeholder is a sentinel for a fact the analyzer holds\". The residual is WI-bivin."  # fb49
