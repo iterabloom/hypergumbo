@@ -838,6 +838,12 @@ class IoBoundaryCatalog:
     # the class of bug the invariant guards against: output identical
     # to a clean codebase, plus false security confidence in taint-flow.
     is_supported: bool = True
+    # WI-guhuv: True when this language ships NO catalogue and every row came
+    # from a project-local overlay. Such a catalogue classifies (is_supported)
+    # but declares no stdlib, cites no provenance and dates no module the user
+    # did not date, so it must never read as a curated catalogue; the CLI says
+    # so on stderr (``cli._warn_overlay_only_catalogs``).
+    overlay_only: bool = False
     # Plan C, PR B / INV-titih: catalog status, named for what is CHECKED.
     # ``"provenance_declared"`` means the catalog cites its stdlib source
     # (``stdlib_provenance.source_url``: https, allowlisted documentation
@@ -2176,7 +2182,10 @@ def load_catalog(
     When a language has a parent catalog (e.g. scala → java), the child
     catalog is loaded first and then merged with the parent so that
     child entries take precedence while parent entries fill in gaps.
-    Returns an empty catalog if no catalog is found.
+    Returns an empty, ``is_supported=False`` catalog if no catalog is found
+    and no overlay declares the language; if a project-local overlay does,
+    its rows are the whole catalogue and it is marked ``overlay_only``
+    (WI-guhuv).
 
     ``include_defaults`` layers the SHIPPED COMMUNITY overlays for this
     language underneath any project-local ones (ADR-0047 rulings 1 and 5).
@@ -2209,20 +2218,29 @@ def load_catalog(
         #
         # WI-gofah: and the STATUS says so too. A catalogue that does not exist
         # has no provenance to declare, and the dataclass default said it had.
-        return IoBoundaryCatalog(
+        #
+        # WI-guhuv: this used to RETURN here, before the overlay loop, so a
+        # project-local overlay for such a language was a silent no-op under a
+        # "loaded 1 overlay" banner. ADR-0016 sends everything outside the
+        # stdlib to overlays, and for a language with no shipped catalogue that
+        # was the only remedy there is. The empty catalogue now falls through;
+        # an overlay that declares this language becomes its whole row set
+        # (``overlay_only``), and one that does not leaves it unsupported.
+        catalog = IoBoundaryCatalog(
             language=language,
             is_supported=False,
             status=CATALOG_STATUS_UNSUPPORTED,
         )
-    catalog = IoBoundaryCatalog.from_yaml(path)
+    else:
+        catalog = IoBoundaryCatalog.from_yaml(path)
 
-    # Merge parent catalog if defined (e.g. scala inherits java entries)
-    parent_lang = _CATALOG_PARENTS.get(language)
-    if parent_lang:
-        parent_path = _CATALOG_DIR / f"{parent_lang}.yaml"
-        if parent_path.exists():
-            parent_catalog = IoBoundaryCatalog.from_yaml(parent_path)
-            catalog = catalog.merge(parent_catalog)
+        # Merge parent catalog if defined (e.g. scala inherits java entries)
+        parent_lang = _CATALOG_PARENTS.get(language)
+        if parent_lang:
+            parent_path = _CATALOG_DIR / f"{parent_lang}.yaml"
+            if parent_path.exists():
+                parent_catalog = IoBoundaryCatalog.from_yaml(parent_path)
+                catalog = catalog.merge(parent_catalog)
 
     _default_paths: list[Path] = []
     if include_defaults:
@@ -2247,7 +2265,7 @@ def load_catalog(
 
     for overlay_path in _paths:
         overlay = load_overlay_catalog(Path(overlay_path))
-        if overlay.language and overlay.language != catalog.language:
+        if overlay.language and not _is_known_overlay_language(overlay.language):
             # NOT MINE vs NOT REAL — and the distinction is the whole fix
             # (INV-lufib). A claims file declares ONE overlay list and
             # ``cmd_verify_claims`` fans it out over EVERY language in the
@@ -2258,21 +2276,28 @@ def load_catalog(
             # io_primitives_overlays/ (python + go) could never be
             # declared together.
             #
-            # An overlay for ANOTHER SHIPPED language is simply not applicable
-            # to this one — being asked is a question, not an error, and the
-            # answer is "not mine". An overlay for a language no catalogue
-            # knows is a TYPO (``language: pyton``), and skipping that would
-            # leave the author believing their rows applied, which is the
-            # fail-quiet direction this whole loader is built against. So the
-            # refusal is kept exactly where it still discriminates.
-            if not _catalog_path_for(overlay.language):
-                raise IoPrimitiveOverlayError(
-                    f"I/O primitive overlay {overlay_path} declares language "
-                    f"{overlay.language!r}, which has no I/O primitive "
-                    f"catalogue. Applying it would attribute I/O to the wrong "
-                    f"tree, and no run would ever apply it — check the "
-                    f"spelling.",
-                )
+            # An overlay for ANOTHER language is simply not applicable to this
+            # one — being asked is a question, not an error, and the answer is
+            # "not mine". An overlay for a language no ANALYZER knows is a TYPO
+            # (``language: pyton``), and skipping that would leave the author
+            # believing their rows applied, which is the fail-quiet direction
+            # this whole loader is built against. So the refusal is kept
+            # exactly where it still discriminates.
+            #
+            # WI-guhuv: the test used to be "no shipped catalogue", which
+            # called a correct ruby overlay a typo and aborted every run over
+            # a repo holding ruby beside a catalogued language.
+            #
+            # CHECKED BEFORE "NOT MINE", on every overlay, because a load of the
+            # typo'd language itself (the taint arm loads each overlay's own
+            # language) would otherwise match its own name and apply.
+            raise IoPrimitiveOverlayError(
+                f"I/O primitive overlay {overlay_path} declares language "
+                f"{overlay.language!r}, which no hypergumbo analyzer "
+                f"produces. No run would ever apply it — check the "
+                f"spelling.",
+            )
+        if overlay.language and overlay.language != catalog.language:
             continue
         # ``merge`` is self-over-argument, so the overlay is the receiver: a
         # later overlay outranks an earlier one and both outrank the built-in.
@@ -2291,8 +2316,28 @@ def load_catalog(
                 status=_base_status,
                 stdlib_provenance=_base_provenance,
             )
+        if path is None:
+            # ``merge`` builds a fresh catalogue whose ``is_supported`` defaults
+            # to True, which is right: these rows classify. What it cannot
+            # carry is that they are ALL there is (WI-guhuv).
+            catalog = replace(catalog, overlay_only=True)
 
     return catalog
+
+
+def _is_known_overlay_language(language: str) -> bool:
+    """May an overlay name ``language``? A shipped catalogue or any analyzer.
+
+    The analyzer set is the lightweight ``language`` axis
+    (``catalog.all_known_languages``), so a language hypergumbo can analyse but
+    ships no I/O rows for is a legitimate overlay target (WI-guhuv), while one
+    it cannot produce at all is a typo.
+    """
+    if _catalog_path_for(language):
+        return True
+    from .catalog import all_known_languages
+
+    return language in set(all_known_languages())
 
 
 def in_progress_languages(languages: Iterable[str]) -> list[str]:

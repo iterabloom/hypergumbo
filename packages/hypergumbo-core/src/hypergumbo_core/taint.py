@@ -1796,8 +1796,14 @@ def _derive_auto_imports_from_io_primitives(
     #
     # ``load_catalog`` already resolves the alias (and the ``_CATALOG_PARENTS``
     # chain); nothing here needed to learn about aliasing beyond ASKING.
+    #
+    # AND THE LANGUAGES THE OVERLAYS NAME (WI-guhuv). A language with no shipped
+    # catalogue has no file here either, so its project-local overlay reached
+    # the boundary arm and never this one: one declaration, one arm.
     for language in sorted(
-        {p.stem for p in io_catalog_dir.glob("*.yaml")} | set(_CATALOG_ALIASES)
+        {p.stem for p in io_catalog_dir.glob("*.yaml")}
+        | set(_CATALOG_ALIASES)
+        | {lang for lang in overlays_by_lang if lang}
     ):
         catalog = load_catalog(
             language,
