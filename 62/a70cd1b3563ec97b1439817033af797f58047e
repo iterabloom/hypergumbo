@@ -1,0 +1,22 @@
+Original commit body from 7e61f9d35de7641808cd694cca09f1af894d4a61:
+
+Addresses WI-zilar. A run that crashed after os.makedirs left
+out/cohort-NNN/iter-NNN/<repo>/ present and empty, with the code hash
+already recorded. Every later `bakeoff-deep run` then exited 0 printing
+"Skipping: hypergumbo code unchanged ... Previous results: <dir>" over a
+directory with zero files.
+
+The item's premise that the batch path already had the right check was
+wrong. Its guard, `os.listdir(cohort dir)`, is satisfied by the empty
+iter-001/, so `run --all` skipped a crashed cohort forever.
+bakeoff-broad's batch guard and both scripts' resume "completed" counters
+had the same spelling.
+
+All four checks now use _holds_output_files (a file anywhere below). The
+single-cohort path says the previous iteration holds no files and runs a
+new iteration; the empty directory is kept, since it records the crash.
+Tests: a crash is simulated through cmd_run, then single and batch re-runs,
+with a control that a real result is still skipped; the predicate is tested
+in both scripts, plus a check that no bare listdir truth test remains.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
