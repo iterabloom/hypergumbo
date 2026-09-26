@@ -1,0 +1,22 @@
+- op: create  # 2df1
+  at: '2026-09-26T22:03:04Z'  # 2df1
+  by: agent  # 2df1
+  actor: jgstern_agent  # 2df1
+  clock: 1  # 2df1
+  nonce: 2df1  # 2df1
+  data:  # 2df1
+    kind: work_item  # 2df1
+    title: "ruby: a call on an external constant receiver binds an in-repo method by short name (Rails.root.join -> HealthServer#root, Postal::Config.dns -> DNSResolver#dns)"  # 2df1
+    status: todo_hard  # 2df1
+    priority: 2  # 2df1
+    parent:  # 2df1
+    tags:  # 2df1
+    - ruby  # 2df1
+    - call_graph  # 2df1
+    - analysis_quality  # 2df1
+    isbefore: []  # 2df1
+    duplicate_of: []  # 2df1
+    not_duplicate_of: []  # 2df1
+    pr_ref:  # 2df1
+    description: "FOUND 2026-09-26 during INV-bamij's ruby batch, and reproduced INSIDE a method, so it predates and is independent of that change:\n\n    class HealthServer; def root; 1; end; end\n    class App\n      def boot\n        Rails.root.join(\"lib\")   # -> calls ruby:m.rb:2-4:HealthServer#root:method  (ast_call, receiver=generic)\n      end\n    end\n\nA call on an EXTERNAL constant receiver (`Rails`, `Postal::Config` when the method is not defined on it) binds to any in-repo method of the same short name. On postal (INV-bamij read-back) `Rails.root.join(...)` bound HealthServer#root and `Postal::Config.dns` bound DNSResolver#dns. The receiver named a type the repository does not declare; a short-name match on a DIFFERENT class is the receiver-blind binding INV-maluk / INV-fahub forbid in other analyzers.\n\nFIX SHAPE (not built): when the receiver is a constant that names no repository class/module (or names one that does not declare the method), emit the unresolved edge with the constant as module slot instead of resolving by short name. Frequency NOT measured."  # 2df1
+    fields: {}  # 2df1

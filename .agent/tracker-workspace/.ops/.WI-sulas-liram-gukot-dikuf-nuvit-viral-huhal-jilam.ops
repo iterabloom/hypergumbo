@@ -30,3 +30,19 @@
   set: {}  # 27c3
   add:  # 27c3
     tags: [post_release_focus]  # 27c3
+- op: update  # 060b
+  at: '2026-09-26T21:29:12Z'  # 060b
+  by: agent  # 060b
+  actor: jgstern_agent  # 060b
+  clock: 3  # 060b
+  nonce: 060b  # 060b
+  set:  # 060b
+    status: done  # 060b
+    pr_ref: '1232'  # 060b
+- op: discuss  # 7da4
+  at: '2026-09-26T21:29:12Z'  # 7da4
+  by: agent  # 7da4
+  actor: jgstern_agent  # 7da4
+  clock: 4  # 7da4
+  nonce: 7da4  # 7da4
+  message: "DONE in PR #1232 (merged). A value chain of 2+ hops on a lowercase, non-self head contributes no receiver hint; the receiver expression is typed by WI-higob's walker or left untyped, and the edge is stamped meta.receiver = \"field_chain\". method_call_recovery gained step 3y and refuses a field_chain receiver, because removing the wrong hint exposed those sites to its name-guessing (hummingbird: router.middlewares.add(..) -> Router.add x46, all sampled wrong).\n\nBEHAVIORAL EVIDENCE, production analyze_swift on the item's own repro (packages/hypergumbo-lang-mainstream/tests/test_swift_value_chain_receiver.py, red before):\n  ch.pipeline.addHandler(h)  -> module slot no longer Channel, receiver_type_hint no longer Channel, receiver=field_chain\n  ch.close()                 -> swift:Channel:0-0:close (single-hop control, unchanged)\n  s.db.save() with s: Store  -> no longer resolves to Store.save (was a false resolved edge)\nA/B, dev pinned worktree vs the fix (~/hypergumbo_lab_notebook/sulas_09262026/): in-repo call edges vapor 1942->1881 (-61, +0), hummingbird 2125->2080 (-45), Kingfisher 1760->1753 (-7), Alamofire unchanged; recovery edges never increased; go (alertmanager, beads) unchanged. Removals read back: app.server.start(), app.http.client.shared.execute(..), req.headers.add(..), cache.memoryStorage.store(..), router.middlewares.add(..) -- every sampled one a binding to the HEAD's type, wrong.\n\nTHE LOSS THE ITEM PREDICTED, measured at L4 in both directions as it asked: hummingbird io 48 -> 44, the 4 net_send chains through the community row Channel.addHandler; nothing lost on the other three repos, nothing gained anywhere. Filed as WI-gidob (the row names a type that has no addHandler, and pipeline setup is not a transfer).\n\nNOT DONE: type-headed chains (URLSession.shared.dataTask, 270 sites) were left as they were and not read back; other analyzers' head typing (objc, kotlin, java chains) not checked."  # 7da4
