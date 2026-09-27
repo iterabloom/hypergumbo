@@ -1,0 +1,24 @@
+Original commit body from 0f9257c07ccfb2ccfc59c4e3c6771db828b48316:
+
+Every tree-sitter parse that needed error recovery was analysed as if
+complete: tree.root_node.has_error was on the tree and nothing read it, so a
+file whose parse died looked the same as a file that declares nothing.
+
+record_partial_parse(run, path, tree) in analyze/base.py lists such a file in
+limits.failed_files with a "partial_parse:" reason and a count of damaged
+nodes (ERROR, MISSING, or flagged with no flagged child; tree-sitter-markdown
+flags pipe-table cells with no ERROR node at all). It is a disclosure, never a
+gate: the file is still analysed and nothing is dropped, so the fortran trap
+(a lagging grammar flags valid code) cannot remove declarations.
+
+Wired into the shared TreeSitterAnalyzer loop (and every analyzer delegating
+to it) and the go, java, js_ts, kotlin, c, objc, csharp, php, ruby and lua
+loops. objc records after WI-lafom's rewrite retry, so only unrepaired damage
+is reported. On crun 74 files, AFNetworking 34, phoenix 114, hummingbird 7,
+alertmanager 0; before, none on any.
+
+Residuals filed: WI-tikul (26 custom loops not wired), WI-somod (every .h is
+parsed by both C and ObjC, half the .h rows are cross-dialect), WI-vufur (a
+verify-claims caveat only where it discriminates).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
