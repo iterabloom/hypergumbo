@@ -1,0 +1,36 @@
+Original commit body from 9aa592caee6e2cd5eb23e34b14bbeb241923cc69:
+
+Addresses INV-bamij, third batch (after #1234 ruby/lua and #1235
+rust/swift/kotlin/scala). Java field initialisers, static {} blocks and
+field-bound lambdas, and C/C++ global initialisers and file-scope macro
+invocations, emitted no calls edge.
+
+- java: method, else the enclosing class/interface/enum/record (via the
+  analyzer's own (path, line, col) position index), else the file.
+- c: function, else the file, but only when the call is inside NO
+  function_definition.
+- cpp: the walk starts from the file anchor, and entering a
+  function_definition resets the context, so an unnamed function does not
+  inherit the file. The stack-object-construction arm stays function-only.
+
+THE FIRST CUT OVER-REACHED, and the read-back caught it. On sherpa-onnx cpp,
+81 of 166 new edges were calls inside functions the analyzer could not name
+(C: 12 of 18 on crun). Attributing those to the file would hide a
+symbol-lookup gap behind a plausible edge, so they stay unemitted. At file
+scope the construction arm read `extern Widget w;` and member prototypes as
+constructions. And GNU `__attribute__ ((format (...)))` / `#if
+__has_attribute(x)` parse as calls; c_family_is_not_a_call() excludes them.
+Each narrowing is pinned by a test that goes red without it.
+
+A/B, dev f0dfdccf54 (pinned worktree) vs this branch, 0 lost:
+  sherpa-onnx java  2,898 -> 2,982 (+84, all class-anchored field initialisers)
+  sherpa-onnx cpp   16,538 -> 16,582 (+44: MFC message-map macros and
+                    ON_BN_CLICKED references at file scope)
+  crun c            5,418 -> 5,421 (+3 macro-generated accessor calls)
+
+Two C origin-lookup tests asserted `edges == []` for a file-scope call as a
+side effect of the drop. Their purpose (the lookup survives a node with no
+body) is kept; they now pin the anchored edge and the absent stamp.
+Pin moved: module_key_axis cpp.py 1599 -> 1612.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
