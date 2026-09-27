@@ -1,0 +1,23 @@
+- op: create  # 4aae
+  at: '2026-09-27T00:39:28Z'  # 4aae
+  by: agent  # 4aae
+  actor: jgstern_agent  # 4aae
+  clock: 1  # 4aae
+  nonce: 4aae  # 4aae
+  data:  # 4aae
+    kind: work_item  # 4aae
+    title: "c/cpp: a call inside a function definition the analyzer has no symbol for (or, in cpp, cannot match by short name) emits no edge -- crun 12, sherpa-onnx 81 sites"  # 4aae
+    status: todo_hard  # 4aae
+    priority: 2  # 4aae
+    parent:  # 4aae
+    tags:  # 4aae
+    - c  # 4aae
+    - cpp  # 4aae
+    - call_graph  # 4aae
+    - analysis_quality  # 4aae
+    isbefore: []  # 4aae
+    duplicate_of: []  # 4aae
+    not_duplicate_of: []  # 4aae
+    pr_ref:  # 4aae
+    description: "FOUND 2026-09-26 in INV-bamij's third-batch read-back (PR #1237). Record: ~/hypergumbo_lab_notebook/bamij_09262026/ (sherpa-onnx.b3*, crun.b3*).\n\nA call INSIDE a function_definition whose symbol the analyzer did not find emits no calls edge, in c and cpp. Measured by seeding the file anchor everywhere (the first cut of #1237) and classifying every new edge against the parse tree:\n  crun (c):           12 of 18 new edges sat inside a function_definition (e.g. utils.c:2654 xrealloc, exec.c:119 malloc)\n  sherpa-onnx (cpp):  81 of 166 (59 calls, 22 instantiates)\n#1237 deliberately does NOT anchor these on the file (that would hide the gap behind a plausible edge); they stay unemitted, as before.\n\nCAUSE, NOT ESTABLISHED: c looks the function up by position (symbol_declared_by on the function_definition), so a miss means the symbol pass emitted no symbol for that definition; cpp matches by SHORT NAME against local_symbols (`short_name in local_symbols`), so an out-of-class `Foo::bar` definition, an operator, a template specialisation or a same-named overload can miss. Which declarator shapes each language fails on was not read back.\n\nFIX SHAPE: find why each definition has no symbol (or no match) and fix the symbol pass / move cpp to position lookup (INV-midag's rule); then these calls land on their real function."  # 4aae
+    fields: {}  # 4aae
