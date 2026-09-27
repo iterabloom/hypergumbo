@@ -59,6 +59,8 @@ from hypergumbo_core.analyze.base import (
     defer_bare_method_call,
     find_child_by_type,
     iter_tree,
+    enclosing_declared_symbol,
+    file_anchor_symbol,
     make_file_id,
     make_file_stable_id,
     make_symbol_id,
@@ -1184,7 +1186,39 @@ def _get_enclosing_method(
             if sym is not None:
                 return sym
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return None
+
+
+#: INV-bamij: type declarations whose BODY anchors a call in no method (a
+#: static field's lambda or initialiser).
+_CSHARP_TYPE_BODY_NODES: frozenset[str] = frozenset({
+    "class_declaration", "struct_declaration", "interface_declaration",
+    "record_declaration", "enum_declaration",
+})
+
+
+def _csharp_unresolved_module(
+    receiver_name: Optional[str],
+    var_types: dict[str, str],
+    local_symbols: dict[str, Symbol],
+    enclosing_class: Optional[str],
+) -> str:
+    """The module slot for a call nothing resolved (INV-bamij's csharp half).
+
+    The receiver's own spelling only when it names a TYPE: capitalised, not a
+    tracked local, and not a member of the enclosing class (C# spells
+    properties in PascalCase too, so ``Config.Load()`` may be a call on a
+    property, and a member name in the slot is INV-kotob's defect). Anything
+    else is ``external``.
+    """
+    if (
+        receiver_name
+        and receiver_name[:1].isupper()
+        and receiver_name not in var_types
+        and f"{enclosing_class}.{receiver_name}" not in local_symbols
+    ):
+        return receiver_name
+    return "external"
 
 
 def _resolve_member_chain(
@@ -1325,6 +1359,8 @@ def _extract_edges_from_file(
     _caller_path = str(file_path)
     edges: list[Edge] = []
     file_id = make_file_id("csharp", str(file_path))
+    file_anchor = file_anchor_symbol("csharp", str(file_path), PASS_ID, run.execution_id)
+    current_function: Optional[Symbol]
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
 
@@ -1397,7 +1433,12 @@ def _extract_edges_from_file(
 
         # Invocation expression (method call)
         elif node.type == "invocation_expression":
-            current_function = _get_enclosing_method(node, source, decl_index)
+            # INV-bamij: a call in no method is anchored on its type, else file.
+            current_function = (
+                _get_enclosing_method(node, source, decl_index)
+                or enclosing_declared_symbol(node, decl_index, _CSHARP_TYPE_BODY_NODES)
+                or file_anchor
+            )
             if current_function is not None:
                 # An explicit receiver identifier (``Helper`` in ``Helper.Foo()``)
                 # is captured inside the member_access branch below; initialize it
@@ -1533,10 +1574,26 @@ def _extract_edges_from_file(
                 if callee_name:
                     # AMB-METHOD guard: when 3+ classes define the same
                     # method name, suppress the edge to avoid false positives.
+                    _unresolved_module = _csharp_unresolved_module(
+                        receiver_name, var_types, local_symbols,
+                        _get_enclosing_class(node, source),
+                    )
                     if method_resolver is not None:
                         amb_check = method_resolver.lookup(callee_name)
                         if not amb_check.found and amb_check.candidates:
-                            continue  # 3+ method candidates, suppress
+                            # 3+ method candidates: no BINDING (the guard is
+                            # right), but the call still happened (INV-bamij:
+                            # this used to be a bare ``continue``).
+                            edges.append(make_unresolved_edge(
+                                "csharp", current_function.id, callee_name,
+                                node.start_point[0] + 1, PASS_ID,
+                                run.execution_id,
+                                module_hint=_unresolved_module,
+                                call_construct=(
+                                    "method" if receiver_name else None
+                                ),
+                            ))
+                            continue
                     # Check local symbols first
                     if callee_name in local_symbols:
                         callee = local_symbols[callee_name]
@@ -1612,6 +1669,20 @@ def _extract_edges_from_file(
                                     _sym, node, source,
                                     var_types, local_symbols,
                                 )
+                        else:
+                            # INV-bamij (csharp): the resolver placed the
+                            # name nowhere -- a framework call such as
+                            # ``File.ReadAllText`` -- and this used to emit
+                            # NOTHING, so every external call vanished.
+                            edges.append(make_unresolved_edge(
+                                "csharp", current_function.id, callee_name,
+                                node.start_point[0] + 1, PASS_ID,
+                                run.execution_id,
+                                module_hint=_unresolved_module,
+                                call_construct=(
+                                    "method" if receiver_name else None
+                                ),
+                            ))
 
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":
