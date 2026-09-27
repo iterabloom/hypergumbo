@@ -162,6 +162,11 @@ CONTAINER_KINDS = frozenset({
     # column (span nesting, one analyzer in isolation) can read green while
     # the pipeline outcome stays broken.
     "protocol",
+    # WI-pidos: `record` (Java 16, and the erlang / fsharp / clojure / agda
+    # record kinds) is a type with members like `class`. Java records were not
+    # emitted at all before WI-pidos, so this set never met one; once they were,
+    # a record's methods (`Launcher.RemoteLaunchCallable.call`) found no owner.
+    "record",
     # INV-hojus: file-kind Symbols are the canonical file representation
     # (orchestrator synthesis + py.py for Python with module-level code,
     # js_module linker for TS, etc.). Including them here lets Phase 2's

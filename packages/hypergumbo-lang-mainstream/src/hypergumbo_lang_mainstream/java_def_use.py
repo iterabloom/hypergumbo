@@ -212,13 +212,18 @@ def _java_callable_name(node: Any, source: bytes) -> Optional[str]:
 
 
 def _java_callable_kind(node: Any) -> str:
-    return "constructor" if node.type == "constructor_declaration" else "method"
+    return "method" if node.type == "method_declaration" else "constructor"
 
 
 register_ddg_language(LanguageDdgSpec(
     language="java",
     file_glob="*.java",
-    function_node_types=frozenset({"method_declaration", "constructor_declaration"}),
+    # A record's compact constructor (`public R { ... }`) is a constructor
+    # with a body like any other (WI-pidos).
+    function_node_types=frozenset({
+        "method_declaration", "constructor_declaration",
+        "compact_constructor_declaration",
+    }),
     name_for=_java_callable_name,
     kind_for=_java_callable_kind,
 ))
