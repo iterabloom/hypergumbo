@@ -2050,6 +2050,51 @@ def _resolve_base_class_java(
     return candidates_sorted[0]
 
 
+def _java_call_construct(
+    object_node: Optional["tree_sitter.Node"],
+    receiver_name: Optional[str],
+    explicit_fq_module: Optional[str],
+    var_types: dict[str, str],
+    imports: dict[str, str],
+    type_params: set[str],
+) -> Optional[str]:
+    """``call_construct`` for a java call: ``function`` for a call on a TYPE.
+
+    WI-fuvaj (java half). Every call with a receiver token used to be stamped
+    ``method``, so ``Files.readAllBytes(p)`` and ``System.getenv(k)`` -- static
+    calls on a named class -- read as receiver calls. ``base.py`` defines
+    ``method`` as "a call on a receiver", ADR-0059 files a call on a named owner
+    as a function, and the ``unknown_receiver_scope`` caveat counts ``method``
+    edges as its DENOMINATOR ("N of M method call site(s)"), so every static
+    call inflated M and understated the untyped share. Go's twin was INV-tanom.
+
+    A receiver names a type when the source says so and nothing in scope
+    shadows it: a fully-qualified type path (``java.nio.file.Files.x()``), or
+    a bare identifier that is a single-type import or a ``java.lang`` class and
+    is not a bound variable or a type parameter. ``var_types`` is scoped per
+    method (INV-vugon), so a local named like a class is still a receiver. A
+    capitalised name that is neither imported nor java.lang (a constant field
+    inherited from a superclass, a class from a wildcard import) stays
+    ``method``: the stamp claims "a call on a type" only where it can show it.
+
+    ``None`` for a bare call ``m(x)``, which is not syntactically a call on
+    anything (see the phantom-barrier note at the call site).
+    """
+    if object_node is None:
+        return None
+    if explicit_fq_module is not None:
+        return "function"
+    if (
+        object_node.type == "identifier"
+        and receiver_name is not None
+        and receiver_name not in var_types
+        and receiver_name not in type_params
+        and (receiver_name in imports or receiver_name in _JAVA_LANG_TYPES)
+    ):
+        return "function"
+    return "method"
+
+
 def _extract_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -2769,7 +2814,12 @@ def _extract_edges(
                         # already argues at length rather than a new claim.
                         # ``receiver_name`` is assigned only inside
                         # ``if object_node is not None``, so every edge this
-                        # shortens carries ``call_construct="method"``;
+                        # shortens carries ``call_construct="method"`` -- or,
+                        # since WI-fuvaj, ``"function"`` for a call on a TYPE,
+                        # and every such edge has a NAMED module slot (the
+                        # import, the java.lang slot or the written FQ path),
+                        # so it is matched through the module filter and never
+                        # reaches the no-context gate below;
                         # ``gate_named_entry`` opens with
                         # ``if call_construct == "method": return None`` for
                         # EVERY kind, and ``_register_sanitizer_callers``
@@ -2881,9 +2931,12 @@ def _extract_edges(
                         # assumed. ``gate_named_entry`` returns ``None``
                         # immediately for ``call_construct == "method"``, so the
                         # stamp can only refuse a FUNCTION-kind catalogue hit --
-                        # and ``io_primitives/java.yaml`` declares 139
-                        # method-kind primitives, 3 attribute-kind and no
-                        # function-kind entry at all.
+                        # and when this was measured ``io_primitives/java.yaml``
+                        # declared no function-kind entry at all. (Since
+                        # INV-zikab step 6 its statics are function-kind, and
+                        # since WI-fuvaj a call on a type is stamped
+                        # ``function``; a ``this.`` receiver is not a type, so
+                        # it still stamps ``method``.)
                         #
                         # AN IMPLICIT ``this`` -- a bare ``m(p)`` with no
                         # receiver token -- STAYS UNSTAMPED, and that is not the
@@ -2895,8 +2948,9 @@ def _extract_edges(
                         # no free functions, so that shape IS a live
                         # phantom-barrier surface; it needs a signal of its own,
                         # not this one, and is filed on its own terms.
-                        pr4_call_construct: str | None = (
-                            "method" if object_node is not None else None
+                        pr4_call_construct = _java_call_construct(
+                            object_node, receiver_name, explicit_fq_module,
+                            var_types, imports, type_params,
                         )
                         if (
                             (receiver_name is None or receiver_name == "this")
