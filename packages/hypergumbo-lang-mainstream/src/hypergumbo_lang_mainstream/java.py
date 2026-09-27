@@ -141,6 +141,7 @@ from hypergumbo_core.analyze.base import (
     symbols_for_path,
     populate_docstrings_from_tree,
     iter_tree,
+    file_anchor_symbol,
     make_file_id,
     make_file_stable_id,
     make_symbol_id as _base_make_symbol_id,
@@ -1868,6 +1869,41 @@ def _get_enclosing_method(
     return None
 
 
+#: INV-bamij: type declarations whose BODY anchors a call that sits in no method
+#: or constructor (a static or instance field initialiser, a ``static {}`` or
+#: instance initialiser block, a lambda bound to a field).
+_JAVA_TYPE_BODY_NODES: frozenset[str] = frozenset({
+    "class_declaration", "interface_declaration", "enum_declaration",
+    "record_declaration",
+})
+
+
+def _get_enclosing_type_symbol(
+    node: "tree_sitter.Node",
+    file_path: Path | None,
+    symbol_by_position: dict[tuple[str, int, int], Symbol] | None,
+) -> Optional[Symbol]:
+    """The class / interface / enum / record whose body holds ``node``.
+
+    INV-bamij. By position, keyed the way :func:`_get_enclosing_method` keys its
+    position index (file path, line, column); a type with no symbol is walked
+    past.
+    """
+    if not symbol_by_position or file_path is None:
+        return None
+    path = str(file_path)
+    current = node.parent
+    while current is not None:
+        if current.type in _JAVA_TYPE_BODY_NODES:
+            sym = symbol_by_position.get(
+                (path, current.start_point[0] + 1, current.start_point[1]),
+            )
+            if sym is not None:
+                return sym
+        current = current.parent
+    return None
+
+
 def _is_import_class_mismatch(
     type_name: str,
     resolved_sym: "Symbol",
@@ -2055,6 +2091,9 @@ def _extract_edges(
     if project_class_names is None:
         project_class_names = frozenset(k.rsplit(".", 1)[-1] for k in class_symbols)
     edges: list[Edge] = []
+    # INV-bamij: a call in no method is anchored on its type, else the file.
+    file_anchor = file_anchor_symbol("java", str(file_path), PASS_ID, run.execution_id)
+    current_method: Optional[Symbol]
     _caller_path = str(file_path)
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -2349,8 +2388,12 @@ def _extract_edges(
 
         # Method invocations — use tree-sitter field names for reliable extraction
         elif node.type == "method_invocation":
-            current_method = _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
-            if current_method:
+            current_method = (
+                _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
+                or _get_enclosing_type_symbol(node, file_path, symbol_by_position)
+                or file_anchor
+            )
+            if current_method is not None:
                 # Use tree-sitter named fields: "name" is the method, "object"
                 # is the receiver.  This correctly handles field_access receivers
                 # like `this.svc.process()` where the object child is a
@@ -3091,14 +3134,18 @@ def _extract_edges(
 
         # Object creation: new ClassName()
         elif node.type == "object_creation_expression":
-            current_method = _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
+            current_method = (
+                _get_enclosing_method(node, source, global_symbols, file_path, symbol_by_position)
+                or _get_enclosing_type_symbol(node, file_path, symbol_by_position)
+                or file_anchor
+            )
             type_name = None
 
             # Find the type being instantiated
             for child in node.children:
                 if child.type == "type_identifier":
                     type_name = _node_text(child, source)
-                    if current_method:
+                    if current_method is not None:
                         lookup_result = class_resolver.lookup(type_name, caller_path=_caller_path)
                         if lookup_result.found and lookup_result.symbol is not None:
                             # INV-finak: skip edge if file imports an external

@@ -186,22 +186,23 @@ class TestOriginLookupEdgesThatReturnNothing:
     def test_a_call_outside_any_function_has_no_body_to_search(
         self, tmp_path,
     ) -> None:
-        """A file-scope initializer has no enclosing ``function_definition``.
+        """A file-scope initializer has no enclosing ``function_definition``,
+        so there is no body for the origin lookup to search. The lookup runs per
+        CALL and must survive that rather than raise, and it stamps nothing.
 
-        There is no caller symbol either, so the analyzer emits NO edge at all
-        and there is nothing to stamp -- which is why this asserts the edge set
-        rather than a stamp. The origin lookup still runs (the stamp is
-        computed per CALL, before the edges it would decorate are known), and
-        it has to survive a node with no enclosing body rather than raise.
+        Since INV-bamij the call itself IS emitted, anchored on the file (it
+        used to be dropped, and this test asserted the empty edge set); what is
+        pinned now is that the edge carries no origin stamp.
         """
         (tmp_path / "main.c").write_text(
             "#include <stdio.h>\n"
             "char buf[8];\n"
             "int x = fgets(buf, 8, f);\n"
         )
-        edges = [e for e in analyze_c(tmp_path).edges
-                 if e.edge_type == "calls" and ":fgets:" in e.dst]
-        assert edges == []
+        [edge] = [e for e in analyze_c(tmp_path).edges
+                  if e.edge_type == "calls" and ":fgets:" in e.dst]
+        assert edge.src.endswith(":1-1:file:file"), edge.src
+        assert "io_target_kind" not in (edge.meta or {}), edge.meta
 
     def test_a_non_identifier_assignment_target_is_skipped(
         self, tmp_path,

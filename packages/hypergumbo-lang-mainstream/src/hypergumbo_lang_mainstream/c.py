@@ -80,6 +80,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     iter_tree,
     iter_tree_with_context,
+    file_anchor_symbol,
     make_file_id,
     make_symbol_id,
     make_unresolved_edge,
@@ -483,7 +484,40 @@ def _get_enclosing_function(
             if sym is not None:
                 return sym
         current = current.parent
-    return None  # pragma: no cover - defensive
+    return None
+
+
+def c_family_is_not_a_call(node: "tree_sitter.Node") -> bool:
+    """Is this ``call_expression`` syntax that does not call anything?
+
+    INV-bamij. Two shapes tree-sitter parses as calls and that reach the file
+    anchor once file-scope calls are emitted: a GNU attribute argument
+    (``__attribute__ ((format (printf, 2, 3)))``, under an
+    ``attribute_specifier``) and a preprocessor predicate
+    (``#if __has_attribute(x)``, in a ``preproc_if`` / ``preproc_elif``
+    condition). Measured on crun, where they were two of the six new file-scope
+    edges. Shared by the cpp analyzer, whose grammar gives the same shapes.
+    """
+    current = node
+    while current.parent is not None:
+        parent = current.parent
+        if parent.type == "attribute_specifier":
+            return True
+        if parent.type in ("preproc_if", "preproc_elif"):
+            if parent.child_by_field_name("condition") == current:
+                return True
+        current = parent
+    return False
+
+
+def _inside_function_definition(node: "tree_sitter.Node") -> bool:
+    """Is ``node`` inside any ``function_definition``, named or not?"""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            return True
+        current = current.parent
+    return False
 
 
 _C_AMBIGUOUS_CACHE: frozenset[str] | None = None
@@ -543,6 +577,11 @@ def _extract_edges(
 
     edges: list[Edge] = []
     _caller_path = str(file_path)
+    # INV-bamij: the anchor of last resort for a call in no function (a C++ or
+    # GNU-extension global initialiser, a macro expansion at file scope).
+    file_anchor = file_anchor_symbol("c", str(file_path), PASS_ID, run.execution_id)
+    # Declared once: the call arm assigns a Symbol, the reference arm an Optional.
+    current_function: Optional[Symbol]
 
     # WI-lajus: pre-collect system ``#include`` headers so the unresolved-call
     # emit path can attribute a bare call to the file's include set. C has no
@@ -586,12 +625,19 @@ def _extract_edges(
     for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
         if node.type == "call_expression":
-            current_function = _get_enclosing_function(node, decl_index)
+            # INV-bamij: the file anchor is for a call in no function at all.
+            # A call inside a function the analyzer could not name stays
+            # unemitted rather than attributed to the file.
+            current_function = _get_enclosing_function(node, decl_index) or (
+                None
+                if _inside_function_definition(node) or c_family_is_not_a_call(node)
+                else file_anchor
+            )
             # INV-kaduh. Recorded before the branch and applied after it, so
             # every edge this ONE call produces carries the mode — rather than
             # at each Edge.create inside, which is the shape that drifts.
             _edges_before_call = len(edges)
-            if current_function:
+            if current_function is not None:
                 # Get the function being called
                 func_node = node.child_by_field_name("function")
                 callee_name = None

@@ -222,14 +222,19 @@ class TestOriginLookupEdgesThatReturnNothing:
     def test_a_socketpair_element_outside_any_function_has_no_body(
         self, tmp_path,
     ) -> None:
-        """A file-scope initializer has no enclosing ``function_definition``
-        and no caller symbol, so the analyzer emits no edge at all; the
-        socketpair lookup still runs per CALL and must survive a node with
-        no enclosing body rather than raise."""
+        """A file-scope initializer has no enclosing ``function_definition``,
+        so there is no body for the origin lookup to search. The lookup runs per
+        CALL and must survive that rather than raise, and it stamps nothing.
+
+        Since INV-bamij the call itself IS emitted, anchored on the file (it
+        used to be dropped, and this test asserted the empty edge set); what is
+        pinned now is that the edge carries no origin stamp.
+        """
         (tmp_path / "main.c").write_text(
             HDR + "int sv[2];\nchar b[1];\n"
             "int x = send(sv[0], b, 1, 0);\n"
         )
-        edges = [e for e in analyze_c(tmp_path).edges
-                 if e.edge_type == "calls" and ":send:" in e.dst]
-        assert edges == []
+        [edge] = [e for e in analyze_c(tmp_path).edges
+                  if e.edge_type == "calls" and ":send:" in e.dst]
+        assert edge.src.endswith(":1-1:file:file"), edge.src
+        assert "io_target_kind" not in (edge.meta or {}), edge.meta
