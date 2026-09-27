@@ -1,0 +1,29 @@
+Original commit body from adc897a2fa203b43cd2a76ce49587ee674d38cfd:
+
+The 24-id ML-stack carve-out in the pip-audit ignore lists no longer
+matched anything. Re-measured 2026-09-27:
+
+- local dev box (torch 2.14.0, transformers 5.17.0, joblib 1.5.3), audit
+  with NO ignores: only diskcache PYSEC-2026-2447 and nltk PYSEC-2026-3740
+  fire, both no-fix, both already carved out locally;
+- rebuilt ci.yml/woodpecker audit env and rebuilt release.yml env
+  (core[dev] + lang packages + tracker + the pins): neither installs
+  torch, transformers or joblib, and each audits clean with only the two
+  CI ignores.
+
+A dead ignore is not free: it hides the next advisory under its id.
+Removed from ci.yml, release.yml, woodpecker.yml and release-check, with
+the rationale blocks.
+
+Structural: the files claimed the four lists were "identical" / "in
+sync" and nothing checked it. tests/test_audit_ignore_lists.py pins the
+three CI lists equal and release-check as that set plus its two named
+local-only carve-outs. Mutation-checked: adding PYSEC-2026-139 back to
+woodpecker.yml alone turns it red.
+
+Also corrects release-check's claim that diskcache arrives via
+CairoSVG/safety; pip show says llama_cpp_python.
+
+Addresses WI-totak (stays open: diskcache and nltk still have no fix).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
