@@ -1418,6 +1418,37 @@ class TaintCatalog:
 # ---------------------------------------------------------------------------
 
 
+def source_origin_languages(
+    catalog: TaintCatalog,
+    builtin_labels: AbstractSet[str],
+    label: str,
+) -> Optional[frozenset[str]]:
+    """The languages a flow carrying ``label`` can START in, or ``None`` for any.
+
+    WI-rusil. A BUILT-IN label (``untrusted_input``, ``host_secret``, the
+    crypto labels) names a kind of data any language can produce, including a
+    language hypergumbo has no catalogue for: a php file reads
+    ``$_GET['payload']`` whether or not a row says so. So it answers ``None``,
+    and a no-catalogue language still blocks every claim over it.
+
+    A label only a PROJECT catalogue declares is different: its origins are
+    enumerated by the user, per language, and a flow carrying it can start
+    only where a declared source is. The answer is the set of languages with
+    such a source.
+
+    Deliberately NOT reachability (see WI-rusil): a launch into another
+    language is a subprocess boundary and produces no call edge, so "the
+    language is unreachable from the source" would be true by construction.
+    """
+    if label in builtin_labels:
+        return None
+    return frozenset(
+        language
+        for language, sources in catalog._sources.items()
+        if any(src.taint_label == label for src in sources)
+    )
+
+
 class TaintCatalogError(Exception):
     """A project-local taint catalog file could not be parsed or has an
     invalid shape.
