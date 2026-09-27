@@ -102,27 +102,44 @@ class TestComputeFromProduction:
             catalog, ["go", "java", "javascript", "python", "rust", "typescript"],
         )
         by_lang = {r.language: r for r in rows}
-        for lang in ("go", "python", "rust", "typescript"):
+        for lang in ("go", "java", "python", "rust", "typescript"):
             assert by_lang[lang].def_use_extractor, lang
             assert by_lang[lang].ddg_spec, lang
             assert by_lang[lang].dataflow_capable, lang
 
-    def test_java_has_a_cfg_mapping_but_no_dataflow(self) -> None:
-        """java is the one language that is half-wired, and the table says so.
+    def test_java_is_covered_since_wi_gotun(self) -> None:
+        """WI-gotun wired java; this used to assert the opposite.
 
-        It ships ``cfg_nodes/java.yaml`` — so a reader who checked only for a
-        CFG mapping would call it covered — while declaring no
-        ``atomic_statement`` and registering no def/use extractor. Its 69
-        sinks are the largest ineligible block behind a language that looks
-        supported.
+        java was the one half-wired language: ``cfg_nodes/java.yaml`` shipped
+        with no ``atomic_statement`` and no extractor behind it, 69 sinks
+        behind a language that looked supported. The inversion is recorded,
+        as javascript's was, and the half-wired case it exercised moves to the
+        test below, since no shipped language is in that state any more.
         """
         catalog = load_builtin_taint_catalog()
         (java,) = compute_dataflow_scope(catalog, ["java"])
-        assert java.cfg_mapping
-        assert not java.atomic_statement
-        assert not java.def_use_extractor
-        assert not java.dataflow_capable
+        assert java.dataflow_capable
+        assert java.blockers == ()
         assert java.catalog_sinks > 0
+
+    def test_a_half_wired_language_names_only_what_is_missing(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A mapping, atomic statements and a spec, but no extractor: not
+        capable, and ``blockers`` names the one missing piece without
+        slandering the three present ones. Forced by hiding java's extractor
+        from the lookup the scope reads, because the registry itself is
+        re-populated by ``ensure_def_use_extractors_registered``."""
+        import hypergumbo_core.dataflow_scope as scope_mod
+
+        real = scope_mod.get_def_use_extractor
+        monkeypatch.setattr(
+            scope_mod, "get_def_use_extractor",
+            lambda lang: None if lang == "java" else real(lang),
+        )
+        (java,) = compute_dataflow_scope(load_builtin_taint_catalog(), ["java"])
+        assert not java.dataflow_capable
+        assert java.blockers == ("def_use_extractor",)
 
     def test_javascript_is_covered_via_the_shared_typescript_grammar(
         self,

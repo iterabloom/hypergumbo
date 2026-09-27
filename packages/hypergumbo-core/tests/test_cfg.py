@@ -2600,19 +2600,34 @@ class TestUncoveredCallLines:
         assert body.is_named and body.child_count > 0
         assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
-    def test_undeclared_language_returns_None_not_empty(self) -> None:
+    def test_undeclared_language_returns_None_not_empty(
+        self, tmp_path: Path,
+    ) -> None:
         """``None`` and ``frozenset()`` are DIFFERENT facts and must not fold.
 
         Empty means "checked, nothing uncovered" and permits refutation.
-        ``None`` means "cannot check at all". Java declares no
-        ``call_node_types`` (it has no def/use extractor either), and folding
-        the two would make every unconfigured language look fully covered —
-        failing open, in the direction that deletes findings.
+        ``None`` means "cannot check at all". Folding the two would make every
+        unconfigured language look fully covered — failing open, in the
+        direction that deletes findings.
+
+        Java was the live example (it declared no ``call_node_types``) until
+        WI-gotun wired it, and every shipped mapping now declares the key. So
+        the undeclared mapping is java.yaml with the key removed.
         """
+        import yaml
+
         tree, src = _parse_java(
             "class C { void f() { g(); } }"
         )
-        mapping = load_cfg_mapping("java")
+        from hypergumbo_core import cfg as cfg_module
+
+        shipped = Path(cfg_module.__file__).parent / "cfg_nodes" / "java.yaml"
+        data = yaml.safe_load(shipped.read_text())
+        del data["call_node_types"]
+        (tmp_path / "java.yaml").write_text(yaml.safe_dump(data))
+        clear_cfg_mapping_cache()
+        mapping = load_cfg_mapping("java", search_dir=tmp_path)
+        clear_cfg_mapping_cache()
         assert mapping.call_node_types == []
         body = tree.root_node
         cfg = build_function_cfg(body, src, mapping, "java:C.java:1-1:f:method")

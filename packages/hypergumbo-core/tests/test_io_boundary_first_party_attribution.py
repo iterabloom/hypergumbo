@@ -80,6 +80,9 @@ SHADOWED_NAME = {
     "javascript": "mkdirSync",
     "typescript": "mkdirSync",
     "rust": "create_dir_all",
+    # java.nio.file.Files.createDirectory: function-kind, and outside java's
+    # ambiguous_names (createDirectories is on it). Added with WI-gotun.
+    "java": "createDirectory",
 }
 
 
