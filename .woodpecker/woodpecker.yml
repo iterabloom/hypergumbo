@@ -151,8 +151,8 @@ steps:
       - scripts/check-mypy-ratchet --mode=strict
 
   # ── pip-audit (dependency CVEs) ────────────────────────────────────────────
-  # The long --ignore-vuln list is a verbatim carry-over; the rationale comments
-  # live in ci.yml and pyproject. Kept as-is so the audit surface is identical.
+  # The --ignore-vuln list is identical to ci.yml's and release.yml's (pinned
+  # by tests/test_audit_ignore_lists.py); the per-CVE rationale lives in ci.yml.
   - name: audit
     image: python:3.11-bookworm
     depends_on: []
@@ -164,18 +164,6 @@ steps:
       - >
         pip-audit --skip-editable
         --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219
-        --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212
-        --ignore-vuln PYSEC-2025-213 --ignore-vuln PYSEC-2025-214
-        --ignore-vuln PYSEC-2025-215 --ignore-vuln PYSEC-2025-216
-        --ignore-vuln PYSEC-2025-217 --ignore-vuln PYSEC-2025-218
-        --ignore-vuln PYSEC-2025-189 --ignore-vuln PYSEC-2025-190
-        --ignore-vuln PYSEC-2025-191 --ignore-vuln PYSEC-2025-192
-        --ignore-vuln PYSEC-2025-193 --ignore-vuln PYSEC-2025-194
-        --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-196
-        --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-210
-        --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277
-        --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372
-        --ignore-vuln PYSEC-2026-2289 --ignore-vuln PYSEC-2026-2290
 
   # ── generated-artifact drift gates ─────────────────────────────────────────
   - name: verify-generated

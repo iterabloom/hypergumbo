@@ -81,24 +81,11 @@ jobs:
           # IDENTICAL to the live Woodpecker CI audit (.woodpecker/woodpecker.yml)
           # so this release gate accepts exactly the CVEs that per-PR CI already
           # passes with — no more, no less. The per-CVE rationale (pytest TOCTOU,
-          # pip ZIP-confusion, the torch/transformers ML-stack carve-out, and the
-          # PYSEC-2025-* transitive batch) lives in ci.yml / pyproject; fixable
+          # pip ZIP-confusion) lives in ci.yml; fixable
           # transitive CVEs (click, msgpack, setuptools, …) are pinned away in the
           # install step above rather than ignored here. Re-check cadence: WI-totak.
           pip-audit --skip-editable \
-            --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
-            --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212 \
-            --ignore-vuln PYSEC-2025-213 --ignore-vuln PYSEC-2025-214 \
-            --ignore-vuln PYSEC-2025-215 --ignore-vuln PYSEC-2025-216 \
-            --ignore-vuln PYSEC-2025-217 --ignore-vuln PYSEC-2025-218 \
-            --ignore-vuln PYSEC-2025-189 --ignore-vuln PYSEC-2025-190 \
-            --ignore-vuln PYSEC-2025-191 --ignore-vuln PYSEC-2025-192 \
-            --ignore-vuln PYSEC-2025-193 --ignore-vuln PYSEC-2025-194 \
-            --ignore-vuln PYSEC-2025-195 --ignore-vuln PYSEC-2025-196 \
-            --ignore-vuln PYSEC-2025-197 --ignore-vuln PYSEC-2025-210 \
-            --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277 \
-            --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372 \
-            --ignore-vuln PYSEC-2026-2289 --ignore-vuln PYSEC-2026-2290
+            --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219
 
       - name: Security linting (Bandit)
         run: |
