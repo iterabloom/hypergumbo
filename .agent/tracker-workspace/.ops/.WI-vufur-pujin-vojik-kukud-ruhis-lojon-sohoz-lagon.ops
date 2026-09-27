@@ -1,0 +1,32 @@
+- op: create  # fecb
+  at: '2026-09-27T03:07:51Z'  # fecb
+  by: agent  # fecb
+  actor: jgstern_agent  # fecb
+  clock: 1  # fecb
+  nonce: fecb  # fecb
+  data:  # fecb
+    kind: work_item  # fecb
+    title: "verify-claims: raise a caveat for partially parsed files only where it discriminates -- in C-family and Elixir a partial parse is the norm (crun C 65/127, phoenix 112/291), so a blanket caveat would carry no information"  # fecb
+    status: todo_hard  # fecb
+    priority: 3  # fecb
+    parent:  # fecb
+    tags:  # fecb
+    - analysis_quality  # fecb
+    - io_boundary  # fecb
+    - taint  # fecb
+    isbefore:  # fecb
+    - WI-somod-sazat-fokop-pofus-roror-zotuk-bokum-visuh  # fecb
+    duplicate_of: []  # fecb
+    not_duplicate_of: []  # fecb
+    pr_ref:  # fecb
+    description: "FILED 2026-09-26 as WI-bulaz's step 3 (\"Disclose it. Most likely a caveat kind,\nraised ONLY WHERE IT DISCRIMINATES\"). WI-bulaz did steps 1 and 2: a partially\nparsed file is counted and carried in `limits.failed_files` with a\n`partial_parse:` reason. No verdict reads it yet.\n\nWHY A CAVEAT ON \"ANY PARTIAL PARSE\" WOULD NOT DISCRIMINATE. Surveys with the\ndisclosure wired (~/hypergumbo_lab_notebook/bulaz_09262026/*.wired.json and the\nearlier *.json):\n\n    repo           partial files   mostly\n    phoenix        114             elixir (112)\n    crun            74             .c 57, .h 16\n    AFNetworking    34             .h 31 (29 of them the C grammar on ObjC,\n                                   see WI-somod)\n    koel            12             javascript 11\n    hummingbird      7             swift 5\n    alertmanager     0\n\nRaw tree-sitter census (has_error per file): crun C 65 of 127; sherpa-onnx .h\n427 of 504; phoenix .ex/.exs 112 of 291. In C-family and Elixir a partial\nparse is the norm, so a caveat raised on any of them would be on nearly every\nverdict there and would carry no information.\n\nWHAT WOULD DISCRIMINATE, candidates to measure, not decided:\n  (a) Scope: raise only when a partially parsed file is in the claim's reach,\n      i.e. it holds a function on a reported path or would hold the sink/source\n      the refutation depends on. A clean verdict's refutation over a function\n      whose file parsed cleanly does not depend on the damaged file.\n  (b) Magnitude: damaged-node count per KLOC, calibrated per grammar (the\n      fortran trap: a lagging grammar flags valid code).\n  (c) Precondition: WI-somod first, so C/ObjC cross-dialect rows do not count.\n\nEnvelope change: a new caveat kind is a machine-surface change (schema version),\nper the row's step 2 note."  # fecb
+    fields: {}  # fecb
+- op: update  # 51ae
+  at: '2026-09-27T03:08:06Z'  # 51ae
+  by: agent  # 51ae
+  actor: jgstern_agent  # 51ae
+  clock: 2  # 51ae
+  nonce: 51ae  # 51ae
+  set: {}  # 51ae
+  remove:  # 51ae
+    isbefore: [WI-somod-sazat-fokop-pofus-roror-zotuk-bokum-visuh]  # 51ae

@@ -1,0 +1,20 @@
+- op: create  # 4b1d
+  at: '2026-09-27T03:06:59Z'  # 4b1d
+  by: agent  # 4b1d
+  actor: jgstern_agent  # 4b1d
+  clock: 1  # 4b1d
+  nonce: 4b1d  # 4b1d
+  data:  # 4b1d
+    kind: work_item  # 4b1d
+    title: "partial-parse disclosure (WI-bulaz) is not wired into 26 analyzers with their own analyze() loop: matlab, purescript, racket, scheme, r_lang, starlark, svelte, vue and the config/markup analyzers"  # 4b1d
+    status: todo_hard  # 4b1d
+    priority: 3  # 4b1d
+    parent:  # 4b1d
+    tags:  # 4b1d
+    - analysis_quality  # 4b1d
+    isbefore: []  # 4b1d
+    duplicate_of: []  # 4b1d
+    not_duplicate_of: []  # 4b1d
+    pr_ref:  # 4b1d
+    description: "FILED 2026-09-26 as WI-bulaz's residual. WI-bulaz added\n`record_partial_parse(run, path, tree)` (analyze/base.py) and wired it into the\nshared TreeSitterAnalyzer loop (so every analyzer that delegates to it,\nincluding elixir, erlang, scala, nim, markdown, swift, rust, cpp) and into the\ncustom `analyze()` loops of go, java, js_ts, kotlin, c, objc, csharp, php, ruby\nand lua. A partially parsed file is then listed in `limits.failed_files` with a\n`partial_parse:` reason.\n\nSTILL SILENT: these analyzers override `analyze()` with their own parse loop and\nwere not wired, so a file whose parse needed error recovery is still reported as\nnothing at all:\n\n  programming: matlab, purescript, racket, scheme, r_lang, starlark, svelte, vue\n  config/markup: cmake, css, dockerfile, json_config, latex, make, meson, proto,\n                 puppet, robot, rst, scss, thrift, toml_config, xml_config,\n                 yaml_ansible\n\n(`requirements.py` delegates to super().analyze.) The list comes from\n`grep -l \"^    def analyze(\" packages/hypergumbo-lang-*/src/*/*.py` minus the\nwired ones.\n\nTHE WORK: one `record_partial_parse(run, rel_path, tree)` line after each\npass-1 parse, plus one broken/clean case per language in a production-path\nsurvey test (pattern: packages/hypergumbo-lang-mainstream/tests/test_partial_parse_disclosure.py;\nlang-common analyzers need their own test file in that package).\n\nCAUTIONS:\n  - r_lang.py and json_config.py ASSIGN `run.failed_files = failed_files_list`,\n    which would overwrite anything recorded before the assignment. Append to\n    the local list or record after the assignment.\n  - Before wiring a config grammar, check that it does not flag has_error on\n    ordinary valid input (the fortran trap, see WI-bulaz). The record is a\n    disclosure and drops nothing, but a grammar that flags every file would make\n    the channel noise.\n\nA STRUCTURAL ALTERNATIVE worth weighing first: 40 analyzers override\n`analyze()`, and every per-file behaviour added to the base loop (docstrings,\nshape_id, now this) has had to be re-wired by hand in each. A shared\n`parse_file(run, path, parser, source)` helper that every loop calls would make\nthe next per-file behaviour a one-place change."  # 4b1d
+    fields: {}  # 4b1d

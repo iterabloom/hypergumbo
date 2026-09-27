@@ -39,3 +39,10 @@
   set:  # 3b13
     status: done  # 3b13
     pr_ref: '1239'  # 3b13
+- op: discuss  # f4d9
+  at: '2026-09-27T02:33:04Z'  # f4d9
+  by: agent  # f4d9
+  actor: jgstern_agent  # f4d9
+  clock: 4  # f4d9
+  nonce: f4d9  # f4d9
+  message: "DONE in PR #1239 (merged bcb701b655). A call in no def is anchored on the enclosing defmodule's symbol (by position), else the file; the bare-call, pipe and dot-call (atom and alias) paths all use it. As the item required, a typespec stays silent: _inside_typespec refuses call-shaped nodes under @spec/@type/@typep/@opaque/@callback/@macrocallback, and the fixture's typespec test goes red with that guard removed.\n\nBEHAVIORAL EVIDENCE, the item's parity fixture through production analyze_elixir (packages/hypergumbo-lang-common/tests/test_elixir_calls_outside_def.py, red before):\n  module body   :ets.new(...), Logger.info(...)     -> edges on the module (were none)\n  test block    :ets.insert(...), Logger.error(...)  -> edges on the module (were none)\n  inside a def  :ets.insert(...)                      -> keeps its function (control)\n  @callback ... :: :supervisor.child_spec(), @spec ... :: :inet.ip_address() -> no edge (unchanged, now guarded explicitly)\nPHOENIX A/B, dev dbec60fb68 pinned worktree vs the fix (~/hypergumbo_lab_notebook/dokib_09262026/): elixir calls 4,159 -> 5,238 (+1,079: module 849, file 230; 0 lost). Atom-module edges, the item's population: :code 6 -> 17, :ssl 0 -> 6 (phx.gen.cert_test.exs's test block), :ets 19 -> 21, :inets 2 -> 3.\ntest_elixir.py's test_dot_call_outside_function_ignored pinned the drop and was rewritten to pin the module anchor.\nNOT ASSERTED: the item's \"101 of 225\" was counted by a separate census instrument; I did not rerun that exact instrument, so the before/after above is edge counts on the same repository, not that ratio."  # f4d9

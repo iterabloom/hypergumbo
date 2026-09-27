@@ -1,0 +1,21 @@
+- op: create  # edbc
+  at: '2026-09-27T03:07:31Z'  # edbc
+  by: agent  # edbc
+  actor: jgstern_agent  # edbc
+  clock: 1  # edbc
+  nonce: edbc  # edbc
+  data:  # edbc
+    kind: work_item  # edbc
+    title: "every .h is parsed by BOTH the C and the ObjC analyzer: half of the .h partial-parse rows are one dialect's grammar failing on the other's header (AFNetworking: C 29 vs objc 2; crun: objc 8 on C headers)"  # edbc
+    status: todo_hard  # edbc
+    priority: 3  # edbc
+    parent:  # edbc
+    tags:  # edbc
+    - objc  # edbc
+    - analysis_quality  # edbc
+    isbefore: []  # edbc
+    duplicate_of: []  # edbc
+    not_duplicate_of: []  # edbc
+    pr_ref:  # edbc
+    description: "FILED 2026-09-26 from WI-bulaz's measurement. Record:\n~/hypergumbo_lab_notebook/bulaz_09262026/{AFNetworking,crun}.wired.json.\n\n`find_objc_files` takes EVERY `*.h` in the repository (\"unambiguous for\nObjective-C analysis\", objc.py), and the C analyzer takes every `*.h` too. So\neach header is parsed by both grammars whatever its dialect. WI-rizas settled the\nsame collision between C and C++; C and ObjC were not part of it.\n\nWHAT WI-bulaz's DISCLOSURE SHOWS. Partial-parse rows on `.h` files, by analyzer:\n\n    repo           c   objc    notes\n    AFNetworking   29    2     ObjC headers. The 29 C rows are the C grammar\n                               failing on ObjC syntax (AFHTTPSessionManager.h:\n                               155 damaged nodes). The 2 objc rows are the real\n                               signal.\n    crun            8    8     C headers. The objc analyzer parses all 19 and\n                               emits 0 nodes from them, but reports 8 partial\n                               parses.\n\nSymbols: on AFNetworking the C analyzer still emits 3 non-file nodes from 3 ObjC\nheaders that the objc analyzer also covers (objc emits 181 from 26 headers).\n\nTHE COST NOW: about half the `.h` partial-parse rows are one dialect's grammar\nfailing on the other dialect's file. A consumer reading `limits.failed_files`\ncannot tell those from real damage, and any future caveat keyed on the rows\n(WI-bulaz's step 3) would inherit the noise. The 3 duplicate C symbols are the\nolder cost.\n\nSHAPE OF A FIX, undecided: classify a `.h` by content once (as\n`classify_dot_m_file` already does for `.m`), for example by `@interface`,\n`@protocol`, `@property` or `#import <Foundation/...>`, and give it to exactly\none of the two analyzers. Check `.h` files in mixed repos (sherpa-onnx has both)\nbefore deciding the tie-break."  # edbc
+    fields: {}  # edbc
