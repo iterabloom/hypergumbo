@@ -12,6 +12,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Added
+
+- **Java taint findings now say whether the value itself reaches the sink.** Java had a control-flow mapping and 69 catalogued sinks but no def/use extractor, so `dataflow_coverage` reported it not data-flow capable and every Java finding read `analysis_method: structural`, walk `unavailable`: a value that reaches the sink and a source that merely shares a method with it looked the same (WI-gotun). Java now has one. A real flow reads `ddg` / `confirmed` and a co-located non-flow reads `ddg_mixed`. On jenkins, of the 26 Java findings (all `structural` before), 1 is now `confirmed` (`System.getProperty` logged in `SystemProperties.getString`), 22 are `ddg_mixed` and 3 stay `structural` (two field initialisers and a one-line `return`). No verdict changed on jenkins, cassandra or sherpa-onnx. Not reached yet: the enhanced-for variable and a classic `for`'s init/update (WI-losod), and a declaration whose initializer holds a `switch` or a branching lambda (WI-faful). The same-function sanitizer credit still cannot fire for Java plaintext, because `Cipher.doFinal` is both the source and the sanitizer (WI-buvob).
+
 ### Fixed
 
 - **A file tree-sitter could only partly parse is now reported.** Every tree-sitter parse that needed error recovery was analysed as if complete. Declarations in or after the damaged region could be missing, and a file whose parse died looked the same as a file that declares nothing (WI-bulaz). Such a file is now listed in `limits.failed_files` with a `partial_parse:` reason and a count of damaged nodes. Nothing else changes: the file is still analysed and nothing is dropped. On crun that lists 74 files (57 `.c`, 16 `.h`, 1 `.md`), on AFNetworking 34, on phoenix 114, on hummingbird 7 and on alertmanager none. Wired for the shared analyzer loop and the Go, Java, JavaScript/TypeScript, Kotlin, C, Objective-C, C#, PHP, Ruby and Lua loops; MATLAB, PureScript, Racket, Scheme, R, Starlark, Svelte, Vue and the config and markup analyzers are not yet wired. No `verify-claims` caveat is raised from it yet.

@@ -42,3 +42,35 @@ switch:
     scrutinee_child: "field:condition"
     arms_child: "field:body"
     arm_type: switch_block_statement_group
+
+# Node types that ARE a call in this grammar (WI-joluk). Consumed by
+# cfg.uncovered_semantic_lines, which asks whether the CFG's recorded
+# statement extents cover every semantic leaf of a function body. A language
+# that declares none is treated as unknowable and forfeits refutation (and the
+# same-function sanitizer credit) everywhere.
+call_node_types:
+  - method_invocation
+  - object_creation_expression
+  - explicit_constructor_invocation
+
+# Atomic statement node types (WI-gotun): the CFG builder records each as ONE
+# CfgStatement instead of descending to its leaves, so java_def_use's walker is
+# handed the whole statement. Without this key the extractor would be correct
+# and inert, the state rust.yaml and typescript.yaml were in for months.
+#
+# `resource` and `catch_formal_parameter` are listed because they bind a
+# variable (`try (T r = e)`, `catch (E ex)`) and sit inside constructs the
+# builder descends through. Deliberately EXCLUDED because classify() owns them:
+# return_statement, if/while/do/for/enhanced_for, try_statement and
+# switch_expression. Their headers' bindings (the enhanced-for variable, a
+# classic for's init and update) are therefore never recorded; see
+# java_def_use's module docstring.
+atomic_statement:
+  - local_variable_declaration
+  - expression_statement
+  - resource
+  - catch_formal_parameter
+  - explicit_constructor_invocation
+  - throw_statement
+  - assert_statement
+  - yield_statement

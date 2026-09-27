@@ -342,6 +342,7 @@ def ensure_def_use_extractors_registered() -> bool:
             importlib.import_module(name)
             for name in (
                 "hypergumbo_lang_mainstream.go_def_use",
+                "hypergumbo_lang_mainstream.java_def_use",
                 "hypergumbo_lang_mainstream.py_def_use",
                 "hypergumbo_lang_mainstream.rust_def_use",
                 "hypergumbo_lang_mainstream.ts_def_use",

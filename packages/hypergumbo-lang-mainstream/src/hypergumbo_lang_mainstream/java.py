@@ -256,6 +256,21 @@ def _get_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     return _find_identifier_in_children(node, source)
 
 
+def java_callable_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The symbol name of a method or constructor: ``Outer.Inner.m``.
+
+    None for a callable with no enclosing class, interface or enum (a method of
+    an anonymous class, for example), which the analyzer emits no symbol for.
+    Shared with ``java_def_use``'s DDG spec (WI-gotun) so the ids the DDG mints
+    are the ids this analyzer emitted; two copies of the rule could drift.
+    """
+    name = _get_method_name(node, source)
+    ancestors = _get_class_ancestors(node, source)
+    if name and ancestors:
+        return f"{'.'.join(ancestors)}.{name}"
+    return None
+
+
 def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract type text from a type node, handling generics and arrays."""
     return _node_text(node, source)
@@ -1629,9 +1644,9 @@ def _extract_symbols(
         elif node.type == "method_declaration":
             name = _get_method_name(node, source)
             ancestors = _get_class_ancestors(node, source)
-            if name and ancestors:
-                # Name methods with class prefix
-                full_name = f"{'.'.join(ancestors)}.{name}"
+            callable_name = java_callable_name(node, source)
+            if name and callable_name:
+                full_name = callable_name
                 span = Span(
                     start_line=node.start_point[0] + 1,
                     end_line=node.end_point[0] + 1,
@@ -1720,8 +1735,9 @@ def _extract_symbols(
         elif node.type == "constructor_declaration":
             name = _get_method_name(node, source)
             ancestors = _get_class_ancestors(node, source)
-            if name and ancestors:
-                full_name = f"{'.'.join(ancestors)}.{name}"
+            callable_name = java_callable_name(node, source)
+            if name and callable_name:
+                full_name = callable_name
                 span = Span(
                     start_line=node.start_point[0] + 1,
                     end_line=node.end_point[0] + 1,
