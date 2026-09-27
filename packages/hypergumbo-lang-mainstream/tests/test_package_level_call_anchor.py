@@ -173,3 +173,101 @@ def test_swift_and_kotlin_type_bodies_anchor_on_the_type(tmp_path: Path) -> None
     kt_dir.mkdir()
     kt = _anchors(kt_dir, "a.kt", "class Conf {\n    val feat = FeatureConfig()\n}\n", analyze_kotlin)
     assert kt.get(2) == {"class"}, kt
+
+
+# --- java / c / cpp (INV-bamij's third batch) --------------------------------
+
+_JAVA = (
+    "import java.nio.file.*;\n"
+    "public class M {\n"
+    '    static final Runnable HANDLER = () -> { Files.readString(Path.of("/etc/x")); };   // PKG_LITERAL\n'
+    '    static { Files.readString(Path.of("/etc/s")); }   // STATIC_INIT\n'
+    '    void named() { Runnable inner = () -> { Files.readString(Path.of("z")); }; inner.run(); }   // IN_NAMED\n'
+    "}\n"
+)
+_C = (
+    "#include <stdio.h>\n"
+    'static FILE *log_fp = fopen("/etc/x", "r");   /* PKG_INIT_CALL */\n'
+    'void named(void) { fopen("z", "r"); }   /* IN_NAMED */\n'
+)
+_CPP = (
+    "#include <fstream>\n"
+    "#include <cstdio>\n"
+    'static FILE *log_fp = std::fopen("/etc/x", "r");   // PKG_INIT_CALL\n'
+    'static auto handler = []() { std::fopen("/etc/y", "r"); };   // PKG_LITERAL\n'
+    'void named() { auto inner = []() { std::fopen("z", "r"); }; inner(); }   // IN_NAMED\n'
+)
+
+
+def _batch3():
+    from hypergumbo_lang_mainstream.c import analyze_c
+    from hypergumbo_lang_mainstream.cpp import analyze_cpp
+    from hypergumbo_lang_mainstream.java import analyze_java
+
+    # (file name, source, analyzer, module-level lines, expected anchor kind, named line)
+    return [
+        ("M.java", _JAVA, analyze_java, (3, 4), "class", 5),
+        ("m.c", _C, analyze_c, (2,), "file", 3),
+        ("m.cpp", _CPP, analyze_cpp, (3, 4), "file", 5),
+    ]
+
+
+@pytest.mark.parametrize("case", range(3), ids=["java", "c", "cpp"])
+def test_batch3_module_level_calls_are_anchored(tmp_path: Path, case: int) -> None:
+    name, text, analyze, lines, kind, _named = _batch3()[case]
+    anchors = _anchors(tmp_path, name, text, analyze)
+    for line in lines:
+        assert kind in anchors.get(line, set()), (line, anchors)
+
+
+@pytest.mark.parametrize("case", range(3), ids=["java", "c", "cpp"])
+def test_batch3_a_named_function_keeps_its_calls(tmp_path: Path, case: int) -> None:
+    name, text, analyze, _lines, _kind, named = _batch3()[case]
+    anchors = _anchors(tmp_path, name, text, analyze)
+    assert anchors.get(named) and not anchors[named] & {"file", "class"}, anchors
+
+
+def test_cpp_an_extern_declaration_at_file_scope_is_not_a_construction(tmp_path: Path) -> None:
+    """Seeding the walk with the file anchor must not let the stack-construction
+    arm read ``extern Widget w;`` or a member prototype as a construction."""
+    from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+    (tmp_path / "w.hpp").write_text(
+        "class Widget { public: static Widget Create(); };\nextern Widget theWidget;\n"
+    )
+    analysis = analyze_cpp(tmp_path)
+    assert not [e for e in analysis.edges if e.edge_type == "instantiates"], [
+        (e.src, e.dst, e.line) for e in analysis.edges if e.edge_type == "instantiates"
+    ]
+
+
+def test_c_a_call_in_a_function_with_no_symbol_is_not_moved_to_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The file anchor is for code in NO function. A call inside a function the
+    analyzer failed to name stays unemitted rather than being attributed to the
+    file, which would hide that defect behind a plausible edge."""
+    import hypergumbo_lang_mainstream.c as c_mod
+
+    monkeypatch.setattr(c_mod, "symbol_declared_by", lambda node, index: None)
+    (tmp_path / "m.c").write_text('#include <stdio.h>\nvoid f(void) { fopen("z", "r"); }\n')
+    calls = [e for e in c_mod.analyze_c(tmp_path).edges if e.edge_type == "calls"]
+    assert calls == [], [(e.src, e.dst) for e in calls]
+
+
+@pytest.mark.parametrize("name", ["m.c", "m.cpp"])
+def test_attribute_and_preprocessor_syntax_is_not_a_file_scope_call(
+    tmp_path: Path, name: str,
+) -> None:
+    """``__attribute__ ((format (...)))`` and ``#if __has_attribute(x)`` parse as
+    calls; at file scope they must not become call edges on the file."""
+    from hypergumbo_lang_mainstream.c import analyze_c
+    from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+    (tmp_path / name).write_text(
+        "#if __has_attribute(__nonstring__)\nint a;\n#endif\n"
+        "int xp (const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));\n"
+    )
+    analyze = analyze_c if name.endswith(".c") else analyze_cpp
+    calls = [e.dst for e in analyze(tmp_path).edges if e.edge_type == "calls"]
+    assert calls == [], calls

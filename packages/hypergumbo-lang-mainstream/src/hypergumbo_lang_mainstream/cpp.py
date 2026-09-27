@@ -59,6 +59,7 @@ from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -67,6 +68,7 @@ from hypergumbo_core.analyze.base import (
     emit_module_attribute_refs,
     find_child_by_type as _find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
     make_file_id as _base_make_file_id,
     make_symbol_id as _base_make_symbol_id,
     make_unresolved_edge,
@@ -1268,6 +1270,10 @@ def _extract_edges_from_tree(
     edges: list[Edge] = []
     _caller_path = str(file_path)
     file_id = _make_file_id(str(file_path))
+    # INV-bamij: the walk's context at the root, so a call in no function (a
+    # global initialiser, a lambda bound to a global) is anchored on the file
+    # instead of being dropped.
+    file_anchor = file_anchor_symbol("cpp", str(file_path), PASS_ID, run.execution_id)
 
     # WI-rupik / WI-mafik: pre-collect system #include headers so the
     # unresolved-call emit path can attribute calls to the file's
@@ -1347,7 +1353,7 @@ def _extract_edges_from_tree(
 
     # Stack entries: (node, current_function_context)
     stack: list[tuple["tree_sitter.Node", Optional[Symbol]]] = [
-        (tree.root_node, None)
+        (tree.root_node, file_anchor)
     ]
 
     while stack:
@@ -1357,6 +1363,11 @@ def _extract_edges_from_tree(
 
         # Track current function for call edges
         if node.type == "function_definition":
+            # INV-bamij: entering a function the analyzer cannot name must NOT
+            # inherit the file anchor from the walk's root. A call inside it is
+            # left unemitted, as before, rather than attributed to the file:
+            # the file anchor is for code that is in no function at all.
+            new_function = None
             result = _extract_function_name(node, source)
             if result:
                 name, _ = result
@@ -1404,7 +1415,9 @@ def _extract_edges_from_tree(
             # the missing producer; ``mode_argument_for`` walks the same parent
             # link rather than growing a second ``cpp`` table to drift.
             _edges_before_call = len(edges)
-            if current_function is not None:
+            if current_function is not None and not (
+                current_function is file_anchor and c_family_is_not_a_call(node)
+            ):
                 callee_name = get_callee_name(node)
                 if callee_name:
                     # Try field chain resolution (this->field->method())
@@ -1689,7 +1702,10 @@ def _extract_edges_from_tree(
 
         # Stack object construction: Widget w; / Widget w(args); / Widget w{};
         elif node.type == "declaration":
-            if current_function is not None:
+            # Function scope only (INV-bamij left this arm where it was): at file
+            # scope a declaration is as often ``extern Widget w;`` or a member
+            # prototype ``static Widget Create();`` as a construction.
+            if current_function is not None and current_function is not file_anchor:
                 type_name = None
                 type_node = _find_child_by_type(node, "type_identifier")
                 if type_node:
