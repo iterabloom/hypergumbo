@@ -1,0 +1,21 @@
+- op: create  # faf0
+  at: '2026-09-27T04:13:05Z'  # faf0
+  by: agent  # faf0
+  actor: jgstern_agent  # faf0
+  clock: 1  # faf0
+  nonce: faf0  # faf0
+  data:  # faf0
+    kind: work_item  # faf0
+    title: "CfgBuilder decomposes a declaration whose initializer holds control flow (switch/match expression, lambda with a branch): the variable is recorded as a use and never defined, and a lambda's body is inlined into the enclosing function (java, ts, rust)"  # faf0
+    status: todo_soft  # faf0
+    priority: 3  # faf0
+    parent:  # faf0
+    tags:  # faf0
+    - adr_0017  # faf0
+    - taint  # faf0
+    isbefore: []  # faf0
+    duplicate_of: []  # faf0
+    not_duplicate_of: []  # faf0
+    pr_ref:  # faf0
+    description: "FOUND 2026-09-27 while building java_def_use (WI-gotun). It is a property of the shared CfgBuilder, not of any one extractor.\n\nTHE MECHANISM (cfg.py `_process_sequential` plus `_contains_classified_descendant`). An `atomic_statement` node is honoured as ONE statement only when no descendant is classified as control flow. That rule exists for Rust (`expression_statement > if_expression`), where the wrapper IS the branch. It also fires when the control flow sits inside an INITIALIZER. The builder then descends, and the declaration never becomes a statement:\n\n    int r = switch (x) { case 1 -> 2; default -> 3; };\n    Runnable q = () -> { if (x > 0) { go(); } };\n\nProbed on the java CFG (dev plus the WI-gotun branch). The recorded statements for those two lines are `integral_type`, `identifier [uses: r]`, `parenthesized_expression [uses: x]`, `type_identifier`, `identifier [uses: q]`, `formal_parameters`, `parenthesized_expression`, `expression_statement`. So:\n  1. `r` and `q` are recorded as USES and are never DEFINED, so no reaching-def chain can start from them.\n  2. The switch arms' values (2, 3) are not recorded at all.\n  3. The lambda's body (`if (x > 0) go();`) is inlined into the ENCLOSING method's CFG as if it ran there, in sequence.\n\nThe same shape applies to TypeScript (`const f = () => { if (c) ... }`, `const v = cond ? ... :` is fine, but a function or arrow body with a branch is not) and to Rust (`let x = if c { a } else { b };`, `let v = match ...`). Not measured per language.\n\nWHY IT MATTERS. (1) loses a definition, so a flow through `r` reads as ddg_mixed or escaped rather than confirmed; it does not invent one. (3) is the riskier half: a lambda body's statements take part in the enclosing function's reaching-defs as though they executed in line.\n\nSHAPE OF A FIX, undecided: a declaration whose control flow sits only inside its VALUE could be recorded as one statement for def/use (its name defined, its value's identifiers used), with the value's control flow processed separately, or not at all when it lies inside a nested function (lambda / arrow / closure bodies are other functions). INV-lupav's rule that an unrecorded use yields None, not False, must still hold."  # faf0
+    fields: {}  # faf0
