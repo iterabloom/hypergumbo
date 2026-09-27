@@ -5823,6 +5823,41 @@ def _require_coverage_to_confirm(
     )
 
 
+@dataclass(frozen=True)
+class ScopedBlindness:
+    """The taint blindness verdict for one source label, scoped (WI-rusil).
+
+    Built by ``cmd_verify_claims`` only for a label a PROJECT catalogue
+    declares in specific languages (a built-in label can start in any language,
+    so it keeps the repo-wide answer). ``not_counted`` lists the no-catalogue
+    languages the scoping set aside, so the verdict can say so: this narrows a
+    safety gate, and a narrowing nobody can see is how a gate goes vacuous.
+    """
+
+    reason: Optional[str]
+    opaque_sites: list[str]
+    not_counted: list[str]
+    origin_languages: list[str]
+
+
+def _disclose_scoped_blindness(
+    verdict: ClaimVerdict, label: str, scoped: ScopedBlindness,
+) -> ClaimVerdict:
+    """Append which no-catalogue languages were not counted, and why."""
+    if not scoped.not_counted:
+        return verdict
+    return replace(verdict, details=(
+        f"{verdict.details} Language(s) with no taint catalogue "
+        f"({', '.join(scoped.not_counted)}) were not counted against this "
+        f"claim: its source label '{label}' is declared only in "
+        f"{', '.join(scoped.origin_languages) or 'no language'}, so a flow it "
+        f"forbids cannot START there, and no call edge enters them from code a "
+        f"flow can be in (WI-rusil). A flow that crosses into them "
+        f"does so through a subprocess launch or a network or IPC call, which "
+        f"the sink zones of those names judge."
+    ))
+
+
 def verify_claims(
     claims: list[Claim],
     boundary_map: BoundaryMap,
@@ -5834,6 +5869,7 @@ def verify_claims(
     displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
+    blind_by_source_taint: Mapping[str, ScopedBlindness] | None = None,
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -5856,12 +5892,21 @@ def verify_claims(
             flows against taint claims (WI-bifob). Default False; excluded
             flows are disclosed per-verdict in ``excluded_flows``. Boundary
             claims are unaffected.
+        blind_by_source_taint: Per source label, a claim-scoped replacement
+            for ``blind_reason`` / ``blind_opaque_sites`` (WI-rusil). A taint
+            claim whose label is absent uses the repo-wide pair.
 
     Returns:
         List of ClaimVerdict objects, one per claim.
     """
     verdicts: list[ClaimVerdict] = []
     for claim in claims:
+        reason, opaque = blind_reason, blind_opaque_sites
+        scoped: ScopedBlindness | None = None
+        if claim.constraint_taint_flow is not None and blind_by_source_taint:
+            scoped = blind_by_source_taint.get(claim.constraint_taint_flow.source_taint)
+            if scoped is not None:
+                reason, opaque = scoped.reason, scoped.opaque_sites
         if claim.constraint_taint_flow is not None:
             verdict = verify_taint_claim(
                 claim, taint_findings or [],
@@ -5877,9 +5922,10 @@ def verify_claims(
         # _require_coverage_to_confirm. Applied here rather than at each
         # branch so a constraint kind added later cannot ship unable to
         # distinguish "looked and found nothing" from "did not look".
-        verdicts.append(
-            _require_coverage_to_confirm(
-                verdict, blind_reason, blind_opaque_sites,
-            ),
-        )
+        verdict = _require_coverage_to_confirm(verdict, reason, opaque)
+        if scoped is not None and claim.constraint_taint_flow is not None:
+            verdict = _disclose_scoped_blindness(
+                verdict, claim.constraint_taint_flow.source_taint, scoped,
+            )
+        verdicts.append(verdict)
     return verdicts

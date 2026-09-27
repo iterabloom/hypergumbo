@@ -96,6 +96,7 @@ import resource
 import shutil
 import subprocess  # nosec B404 - subprocess needed for pip commands
 import sys
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -5996,6 +5997,73 @@ def _census_languages(
     return languages
 
 
+def _taint_census_edges(
+    raw_edges: list[dict[str, Any]], include_non_production: bool,
+) -> list[dict[str, Any]]:
+    """The edges the taint blindness checks count: production-sourced ones
+    unless ``include_non_production`` (INV-dabuf; see the comment in
+    :func:`_taint_blind_reason`)."""
+    from .verify_claims import SOURCE_SCOPE_PRODUCTION, symbol_source_scope
+
+    return [
+        edge for edge in raw_edges
+        if include_non_production
+        or symbol_source_scope(edge.get("src", "")) == SOURCE_SCOPE_PRODUCTION
+    ]
+
+
+def _uncatalogued_code_languages(
+    unsupported_taint_languages: list[str],
+    census_edges: list[dict[str, Any]],
+) -> list[str]:
+    """Languages with no taint catalogue that make calls in ``census_edges``,
+    sorted. The build-target linker's synthetic calls do not count (WI-mital)."""
+    from .verify_claims import is_synthetic_build_target_call
+
+    languages_with_calls = {
+        edge.get("src", "").split(":", 1)[0]
+        for edge in census_edges
+        if edge.get("type") == "calls" and ":" in edge.get("src", "")
+        and not is_synthetic_build_target_call(edge)
+    }
+    return sorted(set(unsupported_taint_languages) & languages_with_calls)
+
+
+def _languages_a_flow_can_be_in(
+    origins: AbstractSet[str], census_edges: list[dict[str, Any]],
+) -> frozenset[str]:
+    """The languages a flow starting in ``origins`` can continue in, in-process.
+
+    WI-rusil's rule is about where a flow STARTS, and a flow that leaves its
+    language through a subprocess launch or a network call is judged by those
+    sink zones. But some languages call each other DIRECTLY (java and kotlin on
+    one JVM, a C extension under python), and a flow continues through such a
+    call with no crossing to judge. So every language a present call edge
+    enters from a language already in the set is added, to a fixed point.
+
+    Edges are used only to ADD a language, never to remove one: the absence of
+    a cross-language edge is not trusted as evidence (that is the fail-open
+    reachability form WI-rusil rejects), and its only effect here is that a
+    language is left out which a recall gap hid.
+    """
+    languages = set(origins)
+    cross: dict[str, set[str]] = {}
+    for edge in census_edges:
+        if edge.get("type") != "calls":
+            continue
+        src_lang = edge.get("src", "").split(":", 1)[0]
+        dst_lang = edge.get("dst", "").split(":", 1)[0]
+        if src_lang and dst_lang and src_lang != dst_lang:
+            cross.setdefault(src_lang, set()).add(dst_lang)
+    frontier = list(languages)
+    while frontier:
+        for reached in cross.get(frontier.pop(), ()):
+            if reached not in languages:
+                languages.add(reached)
+                frontier.append(reached)
+    return frozenset(languages)
+
+
 def _taint_blind_reason(
     has_taint_claims: bool,
     unsupported_taint_languages: list[str],
@@ -6004,8 +6072,14 @@ def _taint_blind_reason(
     catalogs: dict[str, Any],
     include_non_production: bool = False,
     first_party_packages: Optional[set[str]] = None,
+    source_languages: Optional[AbstractSet[str]] = None,
 ) -> tuple[str | None, list[str]]:
     """Why a taint claim cannot be confirmed, and any opaque launch sites.
+
+    ``source_languages`` (WI-rusil) scopes BOTH checks to the languages a
+    flow of the claim can be in (see :func:`_languages_a_flow_can_be_in`);
+    ``None`` counts every language, which is the answer for every built-in
+    label.
 
     Returns ``(reason, opaque_sites)``. ``reason`` is ``None`` when the
     analysis could look. ``opaque_sites`` is non-empty ONLY when named launch
@@ -6054,12 +6128,7 @@ def _taint_blind_reason(
     ``test_language_with_a_token_call_edge_still_falsely_confirms`` so the
     gap is visible in the suite instead of living in a comment.
     """
-    from .verify_claims import (
-        SOURCE_SCOPE_PRODUCTION,
-        compute_boundary_coverage,
-        is_synthetic_build_target_call,
-        symbol_source_scope,
-    )
+    from .verify_claims import compute_boundary_coverage
 
     if not has_taint_claims:
         return None, []
@@ -6105,11 +6174,16 @@ def _taint_blind_reason(
     # went on blocking anyway, because the second check still saw the fixture's
     # edges. That is INV-motos exactly — sharing a predicate is not enough when
     # the callers run it over different populations.
-    scoped_edges = [
-        edge for edge in raw_edges
-        if include_non_production
-        or symbol_source_scope(edge.get("src", "")) == SOURCE_SCOPE_PRODUCTION
-    ]
+    scoped_edges = _taint_census_edges(raw_edges, include_non_production)
+    # WI-rusil: SCOPED ON THE EDGE LIST, for the reason given below for the
+    # production filter -- both checks must walk one population. A language
+    # the claim's flows cannot be in drops out of the census AND of the
+    # coverage check together.
+    if source_languages is not None:
+        scoped_edges = [
+            edge for edge in scoped_edges
+            if edge.get("src", "").split(":", 1)[0] in source_languages
+        ]
     # WI-mital: the build-target linker mints a ``calls`` edge from a Cargo
     # ``[[bin]]`` symbol (language slot ``toml``) to the ``main()`` it names, so
     # a manifest appears to make calls and blocks every claim over a Rust binary
@@ -6119,13 +6193,7 @@ def _taint_blind_reason(
     # only the I/O gate left mini-redis still reporting ``toml`` THROUGH THIS
     # CENSUS. A rule applied in one place and not the other is how this function
     # comes to give two different answers.
-    languages_with_calls = {
-        edge.get("src", "").split(":", 1)[0]
-        for edge in scoped_edges
-        if edge.get("type") == "calls" and ":" in edge.get("src", "")
-        and not is_synthetic_build_target_call(edge)
-    }
-    blind = sorted(set(unsupported_taint_languages) & languages_with_calls)
+    blind = _uncatalogued_code_languages(unsupported_taint_languages, scoped_edges)
     if blind:
         langs = ", ".join(blind)
         return (
@@ -6202,6 +6270,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     from .verify_claims import (
         VERIFY_CLAIMS_SCHEMA_VERSION,
         ClaimsFileError,
+        ScopedBlindness,
         compute_boundary_coverage,
         load_claims,
         untyped_receiver_sink_zones,
@@ -6723,6 +6792,41 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         ),
         first_party_packages=first_party_packages,
     )
+    # WI-rusil: scope the no-catalogue check by each claim's DECLARED sources.
+    # Only a label a project catalogue declares in specific languages narrows;
+    # a built-in label can start in any language and keeps the answer above.
+    blind_by_source_taint: dict[str, ScopedBlindness] = {}
+    if has_taint_claims and taint_catalog is not None:
+        from .taint import load_builtin_taint_catalog, source_origin_languages
+
+        _include_np = getattr(args, "include_non_production_sources", False)
+        _builtin_labels = load_builtin_taint_catalog().all_source_labels()
+        _census_edges = _taint_census_edges(raw_edges, _include_np)
+        _census = _uncatalogued_code_languages(
+            unsupported_taint_languages, _census_edges,
+        )
+        for _claim in claims:
+            _tf = _claim.constraint_taint_flow
+            if _tf is None or _tf.source_taint in blind_by_source_taint:
+                continue
+            _origins = source_origin_languages(
+                taint_catalog, _builtin_labels, _tf.source_taint,
+            )
+            if _origins is None:
+                continue
+            _flow_langs = _languages_a_flow_can_be_in(_origins, _census_edges)
+            _reason, _opaque = _taint_blind_reason(
+                has_taint_claims, unsupported_taint_languages,
+                raw_edges, set(per_lang_sinks), catalogs,
+                include_non_production=_include_np,
+                first_party_packages=first_party_packages,
+                source_languages=_flow_langs,
+            )
+            blind_by_source_taint[_tf.source_taint] = ScopedBlindness(
+                reason=_reason, opaque_sites=_opaque,
+                not_counted=[lang for lang in _census if lang not in _flow_langs],
+                origin_languages=sorted(_origins),
+            )
     # INV-nuhun: the taint arm's half of INV-fibis's disclosure. Stamped HERE
     # rather than inside ``compute_boundary_coverage`` because this is the first
     # point that holds BOTH the call edges and the taint SINK catalogue — the
@@ -6748,6 +6852,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # reader to mentally downgrade 'confirmed' — which no CI gate does.
         blind_reason=_blind_reason,
         blind_opaque_sites=_blind_opaque,
+        blind_by_source_taint=blind_by_source_taint,
         # INV-faput: the SHIPPED catalogue rows a repo-supplied row replaced.
         # Read off the catalogue here because this is the last point that
         # still knows — the displaced rows are gone from every structure the

@@ -89,6 +89,15 @@ Every run prints the languages it has no taint-flow catalogue for:
 Read it. A repository that is 90% one of those languages produces a clean
 verdict that means almost nothing.
 
+Such a language also **withholds** a clean verdict from every taint claim over
+built-in labels (`untrusted_input`, `host_secret`, …), since any language can
+produce that data. A label **your own source catalogue declares** is scoped
+instead (WI-rusil): a no-catalogue language counts against it only if the
+label is declared there, or code the flow can be in calls into it directly. A
+verdict that set a language aside names it in its details. The scoping trusts
+your catalogue's list of languages: a label declared only in python says the
+flow cannot start anywhere else.
+
 ### A `module_completeness` grant in your overlay turns a gate OFF
 
 An overlay entry marked `completeness: complete` is a **closed-world claim**:
