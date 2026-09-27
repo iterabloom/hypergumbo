@@ -78,6 +78,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     find_child_by_type,
     iter_tree,
+    file_anchor_symbol,
     make_file_id,
     make_route_symbol,
     make_symbol_id,
@@ -485,6 +486,57 @@ def _get_enclosing_function(
                     return sym
         current = current.parent
     return None
+
+
+#: Module attributes whose body is a TYPE, not code: a call-shaped node inside
+#: one (``:inet.ip_address()``, ``:supervisor.child_spec()``) is a type
+#: reference and must emit no call edge (WI-dokib).
+_TYPESPEC_ATTRIBUTES: frozenset[str] = frozenset({
+    "spec", "type", "typep", "opaque", "callback", "macrocallback",
+})
+
+
+def _inside_typespec(node: "tree_sitter.Node", source: bytes) -> bool:
+    """Is ``node`` inside ``@spec`` / ``@type`` / ``@callback`` (and kin)?"""
+    current = node.parent
+    while current is not None:
+        if current.type == "unary_operator" and current.children:
+            if node_text(current.children[0], source) == "@":
+                operand = current.children[-1]
+                if operand.type == "call":
+                    target = find_child_by_type(operand, "identifier")
+                    if target and node_text(target, source) in _TYPESPEC_ATTRIBUTES:
+                        return True
+        current = current.parent
+    return False
+
+
+def _caller_outside_def(
+    node: "tree_sitter.Node",
+    source: bytes,
+    symbols_at: SymbolsAt,
+    file_anchor: Optional[Symbol],
+) -> Optional[Symbol]:
+    """The anchor for a call in no ``def``: its ``defmodule``, else the file.
+
+    WI-dokib. Module-body code (``for path <- :code.get_path()`` in mix.exs, a
+    module attribute's value) and ``test`` / ``setup`` MACRO blocks are inside
+    no ``def``, and every call there used to emit nothing: 101 of 225 atom call
+    sites on phoenix, and the alias path lost the same sites. A typespec is the
+    exception and stays silent: its call-shaped nodes are types.
+    """
+    if file_anchor is None or _inside_typespec(node, source):
+        return None
+    current = node.parent
+    while current is not None:
+        if current.type == "call":
+            target = find_child_by_type(current, "identifier")
+            if target and node_text(target, source) == "defmodule":
+                sym = symbol_declared_by(current, symbols_at)
+                if sym is not None:
+                    return sym
+        current = current.parent
+    return file_anchor
 
 
 def _is_def_head(node: "tree_sitter.Node", source: bytes) -> bool:
@@ -1273,6 +1325,7 @@ def _extract_edges_from_tree(
 
     edges: list[Edge] = []
     file_id = make_file_id("elixir", file_path)
+    file_anchor = file_anchor_symbol("elixir", file_path, PASS_ID, run_id)
     # Every clause of this file, by position. ``file_symbols`` is the whole
     # list (TreeSitterAnalyzer.file_symbols); without it -- a direct call --
     # the name-keyed dict plus the clause index is the best available.
@@ -1325,7 +1378,9 @@ def _extract_edges_from_tree(
                 # Detect function calls within a function body
                 elif (target_name not in (*_DEF_KEYWORDS, "defmodule")
                       and not _is_def_head(node, source)):
-                    current_function = _get_enclosing_function(node, source, symbols_at)
+                    current_function = _get_enclosing_function(
+                        node, source, symbols_at,
+                    ) or _caller_outside_def(node, source, symbols_at, file_anchor)
                     if current_function is not None:
                         # Multi-clause: check local file for all clauses with this name
                         local_multi = local_symbols_multi.get(target_name) if local_symbols_multi else None
@@ -1451,6 +1506,7 @@ def _extract_edges_from_tree(
                     _handle_dot_call(
                         node, dot_node, source, symbols_at,
                         global_symbols, resolver, alias_hints, edges, run_id,
+                        file_anchor=file_anchor,
                     )
 
         # Pipe operator: ``data |> func`` (no parens) is a binary_operator
@@ -1464,7 +1520,9 @@ def _extract_edges_from_tree(
                 rhs = children[2]
                 if rhs.type == "identifier":
                     func_name = node_text(rhs, source)
-                    current_function = _get_enclosing_function(node, source, symbols_at)
+                    current_function = _get_enclosing_function(
+                        node, source, symbols_at,
+                    ) or _caller_outside_def(node, source, symbols_at, file_anchor)
                     if current_function is not None:
                         local_multi = local_symbols_multi.get(func_name) if local_symbols_multi else None
                         if local_multi:
@@ -1541,6 +1599,7 @@ def _handle_dot_call(
     edges: list[Edge],
     run_id: str,
     evidence_type: str = "ast_call",
+    file_anchor: Optional[Symbol] = None,
 ) -> None:
     """Handle module-qualified calls like Helper.greet() or App.Module.func().
 
@@ -1570,7 +1629,9 @@ def _handle_dot_call(
     func_name = node_text(func_id_node, source)
 
     # Find the enclosing function (caller)
-    current_function = _get_enclosing_function(call_node, source, symbols_at)
+    current_function = _get_enclosing_function(
+        call_node, source, symbols_at,
+    ) or _caller_outside_def(call_node, source, symbols_at, file_anchor)
     if current_function is None:
         return
 
