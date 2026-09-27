@@ -1,0 +1,32 @@
+Original commit body from 42aea517ef0080299c81adcb988a2f46d2d1dd07:
+
+Addresses INV-bamij's C# half, the last of its languages. The sweep
+recorded C# as a different defect, zero calls edges even inside a named
+method, and that still held on dev ecab74be2e. When neither the local table
+nor the resolver bound the name, the call arm emitted nothing (there was
+no else branch), and a name with 3+ repository candidates hit a bare
+`continue`. So every framework call vanished: File.ReadAllText,
+Console.WriteLine, Marshal.PtrToStructure.
+
+Both paths now emit make_unresolved_edge. The module slot is the
+receiver's spelling only when it names a type: capitalised, not a tracked
+local, and not a member of the enclosing class. PascalCase also spells
+properties, and a member name in the slot is INV-kotob's defect. Otherwise
+the slot is `external`, with call_construct=method when a receiver exists.
+The ambiguity guard still withholds the binding, just no longer the edge.
+
+A call in no method (a static field's lambda) is anchored on the enclosing
+class/struct/interface/record/enum, else the file.
+
+A/B on sherpa-onnx (the only C# repository on disk), dev ecab74be2e pinned
+worktree vs this branch: csharp calls 213 -> 608 (+395, 0 lost; anchors:
+method 335, class 39, constructor 21). Module slots: external 223, Console
+45, Marshal 40, Array 19, PortAudio 14, HelpText 10, Environment 7, ...
+Sampled sites read back correct (Array.Copy -> Array, Marshal.PtrToStructure
+-> Marshal, callbackHandle.Free() -> external).
+
+Not changed: object creation and method references in a field initialiser
+still need an enclosing method. Pins moved: signature_axis csharp.py
+445->447, 1651->1722.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
