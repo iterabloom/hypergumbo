@@ -597,8 +597,13 @@ end
         # The alias branch's own confidence, not the retired bare-name path's.
         assert resolver_edges[0].confidence == 0.85
 
-    def test_dot_call_outside_function_ignored(self, tmp_path: Path) -> None:
-        """Module-qualified call at module level (not inside def) is ignored."""
+    def test_dot_call_outside_function_is_anchored_on_the_module(self, tmp_path: Path) -> None:
+        """A module-qualified call at module level is anchored on its module.
+
+        This test used to pin "ignored" (no call edges from module-level
+        code), which is the defect WI-dokib names: 101 of 225 atom call sites
+        on phoenix emitted nothing because they sat in a module body or a
+        ``test`` block rather than in a ``def``."""
         from hypergumbo_lang_common.elixir import analyze_elixir
 
         (tmp_path / "top_level.ex").write_text("""
@@ -610,9 +615,11 @@ end
 
         result = analyze_elixir(tmp_path)
 
-        # Should not crash, and no call edges from module-level code
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        assert len(call_edges) == 0
+        assert len(call_edges) == 1, [(e.src, e.dst) for e in call_edges]
+        module = next(s for s in result.symbols if s.name == "TopLevel")
+        assert call_edges[0].src == module.id
+        assert call_edges[0].dst.split(":")[-2] == "info"
 
     def test_dot_call_aliased_module_resolver_uses_expanded_name(
         self, tmp_path: Path,
