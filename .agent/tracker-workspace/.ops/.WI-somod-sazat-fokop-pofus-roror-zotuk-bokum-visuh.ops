@@ -19,3 +19,12 @@
     pr_ref:  # edbc
     description: "FILED 2026-09-26 from WI-bulaz's measurement. Record:\n~/hypergumbo_lab_notebook/bulaz_09262026/{AFNetworking,crun}.wired.json.\n\n`find_objc_files` takes EVERY `*.h` in the repository (\"unambiguous for\nObjective-C analysis\", objc.py), and the C analyzer takes every `*.h` too. So\neach header is parsed by both grammars whatever its dialect. WI-rizas settled the\nsame collision between C and C++; C and ObjC were not part of it.\n\nWHAT WI-bulaz's DISCLOSURE SHOWS. Partial-parse rows on `.h` files, by analyzer:\n\n    repo           c   objc    notes\n    AFNetworking   29    2     ObjC headers. The 29 C rows are the C grammar\n                               failing on ObjC syntax (AFHTTPSessionManager.h:\n                               155 damaged nodes). The 2 objc rows are the real\n                               signal.\n    crun            8    8     C headers. The objc analyzer parses all 19 and\n                               emits 0 nodes from them, but reports 8 partial\n                               parses.\n\nSymbols: on AFNetworking the C analyzer still emits 3 non-file nodes from 3 ObjC\nheaders that the objc analyzer also covers (objc emits 181 from 26 headers).\n\nTHE COST NOW: about half the `.h` partial-parse rows are one dialect's grammar\nfailing on the other dialect's file. A consumer reading `limits.failed_files`\ncannot tell those from real damage, and any future caveat keyed on the rows\n(WI-bulaz's step 3) would inherit the noise. The 3 duplicate C symbols are the\nolder cost.\n\nSHAPE OF A FIX, undecided: classify a `.h` by content once (as\n`classify_dot_m_file` already does for `.m`), for example by `@interface`,\n`@protocol`, `@property` or `#import <Foundation/...>`, and give it to exactly\none of the two analyzers. Check `.h` files in mixed repos (sherpa-onnx has both)\nbefore deciding the tie-break."  # edbc
     fields: {}  # edbc
+- op: update  # fc23
+  at: '2026-09-27T03:08:50Z'  # fc23
+  by: agent  # fc23
+  actor: jgstern_agent  # fc23
+  clock: 2  # fc23
+  nonce: fc23  # fc23
+  set: {}  # fc23
+  add:  # fc23
+    isbefore: [WI-vufur-pujin-vojik-kukud-ruhis-lojon-sohoz-lagon]  # fc23
