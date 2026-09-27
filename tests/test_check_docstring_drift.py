@@ -202,3 +202,17 @@ def test_the_same_huge_delta_DOES_flag_when_the_floor_is_particular():
                              min_body_commits=12, now_ts=400 * DAY)
     assert [r["path"] for r in out["flagged"]] == ["real.py"]
     assert out["flagged"][0]["flag_reason"] == "days"
+
+
+# --- default scope: read from the tree, never listed (WI-bavak) -------------
+
+
+def test_default_scope_is_every_package_src():
+    """The default scope was a hand-kept tuple that left
+    hypergumbo-lang-scip-python unscanned. It is now read from the checkout,
+    so it must equal the package trees on disk, scip-python included."""
+    root = SCRIPTS.parent
+    on_disk = {str(p) for p in (root / "packages").glob("*/src")}
+    scope = cdd.default_scope(str(root))
+    assert set(scope) == on_disk
+    assert str(root / "packages" / "hypergumbo-lang-scip-python" / "src") in scope

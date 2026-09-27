@@ -32,14 +32,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-for pkg in (
-    "hypergumbo-core",
-    "hypergumbo-lang-common",
-    "hypergumbo-lang-mainstream",
-    "hypergumbo-lang-extended1",
-    "hypergumbo-lang-rust-analyzer",
-):
-    sys.path.insert(0, str(REPO_ROOT / "packages" / pkg / "src"))
+# Every package's src, read from the tree rather than listed: the hand-kept
+# list this replaced had silently omitted hypergumbo-lang-scip-python (WI-bavak).
+for _src in sorted((REPO_ROOT / "packages").glob("*/src"), reverse=True):
+    sys.path.insert(0, str(_src))
 
 try:
     from hypergumbo_core.check_id_construction import find_id_construction_drift
