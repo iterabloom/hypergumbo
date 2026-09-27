@@ -3809,10 +3809,10 @@ def unknown_receiver_scope(
     never reach the numerator, which UNDERSTATES the untyped share. Go stamped
     every package-qualified call (``fmt.Println``) that way until INV-tanom; on
     alertmanager that printed 18.5% where the share over receiver calls is
-    about 31%. Java still stamps a qualified static (``Files.readAllBytes``)
-    ``method``, and restamping it waits on java.yaml's statics being declared
-    function-kind (ADR-0059's WI-ziviv ledger), because a function-construct
-    call into a method-only module reads as starvation.
+    about 31%. Java stamped every static (``Files.readAllBytes``,
+    ``System.getenv``) the same way until WI-fuvaj; on cassandra that counted
+    187,625 method call sites where 162,199 have a receiver (42.0% untyped
+    printed, 48.6% over receiver calls). Other producers are not audited here.
     """
     from .taint import _module_from_symbol_path
 
