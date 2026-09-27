@@ -333,6 +333,33 @@ class TestContainmentLinker:
         assert result.edges[0].src == proto.id
         assert result.edges[0].dst == requirement.id
 
+    def test_record_contains_its_members(self) -> None:
+        """WI-pidos: a java ``record`` is a container exactly like ``class``.
+
+        Records were not emitted before WI-pidos, so the set never met one;
+        once they were, a record's methods and component fields found no owner
+        and the file's ``contains`` tree skipped them."""
+        rec = _sym(
+            "java:R.java:1-5:R:record", "R", "record",
+            language="java", path="R.java",
+        )
+        field = _sym(
+            "java:R.java:1-1:R.a:field", "R.a", "field",
+            language="java", path="R.java", start=1, end=1,
+        )
+        method = _sym(
+            "java:R.java:2-2:R.twice:method", "R.twice", "method",
+            language="java", path="R.java", start=2, end=2,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"), symbols=[rec, field, method], edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert {(e.src, e.dst) for e in result.edges} == {
+            (rec.id, field.id), (rec.id, method.id),
+        }
+
     def test_nested_class_method(self) -> None:
         """Handles nested class: OuterClass.InnerClass.method -> InnerClass contains method."""
         outer = _sym("py:app.py:1-30:Outer:class", "Outer", "class")

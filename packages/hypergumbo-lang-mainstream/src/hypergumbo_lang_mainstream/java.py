@@ -251,6 +251,40 @@ def _make_java_qualified_name(
     return sep.join(parts)
 
 
+#: The declarations that name a type a member can be qualified by. WI-pidos:
+#: ``record_declaration`` (Java 16) was missing, so a method, constructor or
+#: field whose only enclosing type was a record had no ancestors and emitted no
+#: symbol at all -- a file holding one record produced nothing.
+_JAVA_NAMED_TYPE_NODES: frozenset[str] = frozenset({
+    "class_declaration", "interface_declaration", "enum_declaration",
+    "record_declaration",
+})
+
+#: The type declarations emitted by one arm, with the symbol kind each takes.
+#: Enums have their own arm (they also emit their constants).
+_JAVA_ANNOTATED_TYPE_DECLARATIONS: dict[str, str] = {
+    "class_declaration": "class",
+    "interface_declaration": "interface",
+    "record_declaration": "record",
+}
+
+#: Symbol kinds that name a type: what ``class_symbols`` is built from and
+#: what a type lookup may resolve to. Derived, so a type arm added above is a
+#: type everywhere (records were missing from all three filters).
+_JAVA_TYPE_SYMBOL_KINDS: frozenset[str] = (
+    frozenset(_JAVA_ANNOTATED_TYPE_DECLARATIONS.values()) | {"enum"}
+)
+
+#: Constructors. A record's COMPACT constructor (``public R { ... }``) has no
+#: parameter list of its own; its parameters are the record's components.
+_JAVA_CONSTRUCTOR_NODES: frozenset[str] = frozenset({
+    "constructor_declaration", "compact_constructor_declaration",
+})
+
+#: Every declaration that owns a callable body.
+_JAVA_CALLABLE_NODES: frozenset[str] = _JAVA_CONSTRUCTOR_NODES | {"method_declaration"}
+
+
 def _get_method_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract method name from method_declaration or constructor_declaration."""
     return _find_identifier_in_children(node, source)
@@ -891,7 +925,7 @@ def _java_enclosing_body(node: "tree_sitter.Node") -> Optional["tree_sitter.Node
     """The method or constructor body containing *node*, or ``None``."""
     current = node.parent
     while current is not None:
-        if current.type in ("method_declaration", "constructor_declaration"):
+        if current.type in _JAVA_CALLABLE_NODES:
             return current.child_by_field_name("body")
         current = current.parent
     return None
@@ -1235,7 +1269,7 @@ def _get_class_ancestors(
     ancestors: list[str] = []
     current = node.parent
     while current is not None:
-        if current.type in ("class_declaration", "interface_declaration", "enum_declaration"):
+        if current.type in _JAVA_NAMED_TYPE_NODES:
             name = _get_class_name(current, source)
             if name:
                 ancestors.append(name)
@@ -1265,7 +1299,7 @@ def _get_parent_class_base_classes(
     """
     current = node.parent
     while current is not None:
-        if current.type in ("class_declaration", "interface_declaration"):
+        if current.type in ("class_declaration", "interface_declaration", "record_declaration"):
             return _extract_base_classes(current, source)
         current = current.parent
     return []  # pragma: no cover - defensive: methods always inside a class in valid Java
@@ -1423,6 +1457,59 @@ def _extract_base_classes(
     return base_classes
 
 
+def _java_field_symbol(
+    field_name: str,
+    span_node: "tree_sitter.Node",
+    ancestors: list[str],
+    field_type: Optional[str],
+    modifiers: list[str],
+    decorators: list[dict[str, object]],
+    is_exported: bool,
+    package_name: Optional[str],
+    file_stable_id: str,
+    file_path: Path,
+    run: AnalysisRun,
+) -> Symbol:
+    """One ``kind="field"`` Symbol, for a declared field or a record component.
+
+    Class-scoped canonical identity (name + qualified_name + file fold):
+    same-named fields in different classes/files stay distinct even when the
+    type slot is empty. ``decorators`` is copied, because ``@Foo int a, b;``
+    must not alias one list across both fields.
+    """
+    full_name = f"{'.'.join(ancestors)}.{field_name}"
+    span = Span(
+        start_line=span_node.start_point[0] + 1,
+        end_line=span_node.end_point[0] + 1,
+        start_col=span_node.start_point[1],
+        end_col=span_node.end_point[1],
+    )
+    qualified_name = _make_java_qualified_name(package_name, ancestors, field_name)
+    return Symbol(
+        id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "field"),
+        name=full_name,
+        kind="field",
+        language="java",
+        path=str(file_path),
+        span=span,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        meta={"decorators": list(decorators)} if decorators else None,
+        stable_id=make_typed_stable_id(
+            "field", field_type or "",
+            visibility_from_modifiers(modifiers),
+            name=field_name,
+            qualified_name=qualified_name,
+            file_stable_id=file_stable_id,
+        ),
+        signature=field_type,
+        modifiers=modifiers,
+        is_exported=is_exported,
+        qualified_name=qualified_name,
+        line_span=span.end_line - span.start_line + 1,
+    )
+
+
 def _extract_symbols(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -1462,10 +1549,13 @@ def _extract_symbols(
             pass
 
     for node in iter_tree(tree.root_node):
-        # Class declarations
-        if node.type == "class_declaration":
+        # Class, interface and record declarations: one shape, three kinds.
+        # WI-pidos: records (Java 16) had no arm, so the type itself was never
+        # a symbol.
+        if node.type in _JAVA_ANNOTATED_TYPE_DECLARATIONS:
             name = _get_class_name(node, source)
             if name:
+                type_kind = _JAVA_ANNOTATED_TYPE_DECLARATIONS[node.type]
                 ancestors = _get_class_ancestors(node, source)
                 full_name = ".".join(ancestors + [name]) if ancestors else name
                 span = Span(
@@ -1488,9 +1578,9 @@ def _extract_symbols(
 
                 modifiers = _extract_modifiers(node, source)
                 symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "class"),
+                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, type_kind),
                     name=full_name,
-                    kind="class",
+                    kind=type_kind,
                     language="java",
                     path=str(file_path),
                     span=span,
@@ -1505,48 +1595,26 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-        # Interface declarations
-        elif node.type == "interface_declaration":
-            name = _get_class_name(node, source)
-            if name:
-                ancestors = _get_class_ancestors(node, source)
-                full_name = ".".join(ancestors + [name]) if ancestors else name
-                span = Span(
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    start_col=node.start_point[1],
-                    end_col=node.end_point[1],
+                # WI-pidos: a record's components ARE its fields (each is a
+                # private final field; JLS 8.10.3), so they are emitted as the
+                # field declarations a class spells out would be.
+                components = (
+                    node.child_by_field_name("parameters")
+                    if node.type == "record_declaration" else None
                 )
-
-                # Extract annotations and base class metadata
-                meta: dict[str, object] | None = None
-                decorators = _extract_annotations(node, source)
-                base_classes = _extract_base_classes(node, source)
-                if decorators or base_classes:
-                    meta = {}
-                    if decorators:
-                        meta["decorators"] = decorators
-                    if base_classes:
-                        meta["base_classes"] = base_classes
-
-                modifiers = _extract_modifiers(node, source)
-                symbol = Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "interface"),
-                    name=full_name,
-                    kind="interface",
-                    language="java",
-                    path=str(file_path),
-                    span=span,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    meta=meta,
-                    modifiers=modifiers,
-                    shape_id=_java_analyzer.compute_shape_id(node),
-                    line_span=span.end_line - span.start_line + 1,
-                    is_exported="public" in modifiers,
-                    qualified_name=_make_java_qualified_name(package_name, ancestors, name),
-                )
-                symbols.append(symbol)
+                for component in components.named_children if components else ():
+                    if component.type != "formal_parameter":
+                        continue  # pragma: no cover - a varargs component
+                    comp_name = component.child_by_field_name("name")
+                    comp_type = component.child_by_field_name("type")
+                    if comp_name is None:
+                        continue  # pragma: no cover - grammar always names one
+                    symbols.append(_java_field_symbol(
+                        _node_text(comp_name, source), component, ancestors + [name],
+                        _node_text(comp_type, source) if comp_type is not None else None,
+                        ["private", "final"], _extract_annotations(component, source),
+                        False, package_name, file_stable_id, file_path, run,
+                    ))
 
         # Enum declarations
         elif node.type == "enum_declaration":
@@ -1732,7 +1800,7 @@ def _extract_symbols(
                 symbols.append(symbol)
 
         # Constructor declarations
-        elif node.type == "constructor_declaration":
+        elif node.type in _JAVA_CONSTRUCTOR_NODES:
             name = _get_method_name(node, source)
             ancestors = _get_class_ancestors(node, source)
             callable_name = java_callable_name(node, source)
@@ -1744,8 +1812,16 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                # Extract signature (constructors have no return type)
-                signature = _extract_java_signature(node, source, is_constructor=True)
+                # Extract signature (constructors have no return type). A
+                # compact constructor's parameters are the record's components,
+                # so its signature is read off the record declaration.
+                signature = _extract_java_signature(
+                    node.parent.parent
+                    if node.type == "compact_constructor_declaration"
+                    and node.parent is not None and node.parent.parent is not None
+                    else node,
+                    source, is_constructor=True,
+                )
 
                 # Extract modifiers for constructors too
                 modifiers = _extract_modifiers(node, source)
@@ -1801,47 +1877,13 @@ def _extract_symbols(
                     name_node = declarator.child_by_field_name("name")
                     if name_node is None:
                         continue  # pragma: no cover - a declarator always names a field
-                    fname = _node_text(name_node, source)
-                    full_name = f"{'.'.join(ancestors)}.{fname}"
-                    span = Span(
-                        start_line=declarator.start_point[0] + 1,
-                        end_line=declarator.end_point[0] + 1,
-                        start_col=declarator.start_point[1],
-                        end_col=declarator.end_point[1],
-                    )
-                    qualified_name = _make_java_qualified_name(
-                        package_name, ancestors, fname
-                    )
-                    # Class-scoped canonical identity (name + qualified_name +
-                    # file fold): same-named fields in different classes/files
-                    # stay distinct even when the type slot is empty.
-                    stable_id = make_typed_stable_id(
-                        "field", field_type or "",
-                        visibility_from_modifiers(modifiers),
-                        name=fname,
-                        qualified_name=qualified_name,
-                        file_stable_id=file_stable_id,
-                    )
-                    symbols.append(Symbol(
-                        id=_make_symbol_id(str(file_path), span.start_line, span.end_line, full_name, "field"),
-                        name=full_name,
-                        kind="field",
-                        language="java",
-                        path=str(file_path),
-                        span=span,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        # fresh dict + list copy per declarator: `@Foo int a, b;`
-                        # must not alias one decorators list across both fields.
-                        meta={"decorators": list(decorators)} if decorators else None,
-                        stable_id=stable_id,
-                        signature=field_type,
-                        modifiers=modifiers,
+                    symbols.append(_java_field_symbol(
+                        _node_text(name_node, source), declarator, ancestors,
+                        field_type, modifiers, decorators,
                         # interface constants are implicitly public static final;
                         # class/enum fields export only with an explicit `public`.
-                        is_exported=("public" in modifiers) or node.type == "constant_declaration",
-                        qualified_name=qualified_name,
-                        line_span=span.end_line - span.start_line + 1,
+                        ("public" in modifiers) or node.type == "constant_declaration",
+                        package_name, file_stable_id, file_path, run,
                     ))
 
     return symbols
@@ -1865,7 +1907,7 @@ def _get_enclosing_method(
     file_path_str = str(file_path) if file_path else None
     current = node.parent
     while current is not None:
-        if current.type in ("method_declaration", "constructor_declaration"):
+        if current.type in _JAVA_CALLABLE_NODES:
             # Position-based lookup handles duplicate names across files
             if symbol_by_position and file_path_str:
                 pos_key = (file_path_str, current.start_point[0] + 1, current.start_point[1])
@@ -1889,10 +1931,7 @@ def _get_enclosing_method(
 #: INV-bamij: type declarations whose BODY anchors a call that sits in no method
 #: or constructor (a static or instance field initialiser, a ``static {}`` or
 #: instance initialiser block, a lambda bound to a field).
-_JAVA_TYPE_BODY_NODES: frozenset[str] = frozenset({
-    "class_declaration", "interface_declaration", "enum_declaration",
-    "record_declaration",
-})
+_JAVA_TYPE_BODY_NODES: frozenset[str] = _JAVA_NAMED_TYPE_NODES
 
 
 def _get_enclosing_type_symbol(
@@ -1951,7 +1990,7 @@ def _is_import_class_mismatch(
     if (
         "." in resolved_name
         and "." not in type_name
-        and resolved_sym.kind in ("class", "interface", "enum")
+        and resolved_sym.kind in _JAVA_TYPE_SYMBOL_KINDS
     ):
         resolved_path = resolved_sym.path or ""
         if caller_file != resolved_path:
@@ -2343,7 +2382,7 @@ def _extract_edges(
                                                 edges.append(edge)
 
         # Method/constructor declarations - extract parameter types for type inference
-        elif node.type in ("method_declaration", "constructor_declaration"):
+        elif node.type in _JAVA_CALLABLE_NODES:
             # INV-vugon: open this method's local scope. Before scoping,
             # ``File f = new File(p)`` in one method left ``f`` bound to
             # ``File`` for every later method in the file, so a sibling's use
@@ -3454,7 +3493,7 @@ def _analyze_java_file(
 
     for sym in symbols:
         global_symbols[sym.name] = sym
-        if sym.kind in ("class", "interface", "enum"):
+        if sym.kind in _JAVA_TYPE_SYMBOL_KINDS:
             class_symbols[sym.name] = sym
 
     edges = _extract_edges(tree, source, file_path, run, global_symbols, class_symbols)
@@ -3560,7 +3599,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
         # back to name-based lookup in global_symbols.
         if sym.span is not None:
             symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
-        if sym.kind in ("class", "interface", "enum"):
+        if sym.kind in _JAVA_TYPE_SYMBOL_KINDS:
             class_symbols[sym.name] = sym
             if sym.name not in class_by_name:
                 class_by_name[sym.name] = []

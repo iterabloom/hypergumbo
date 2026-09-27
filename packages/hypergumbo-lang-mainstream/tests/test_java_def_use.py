@@ -198,10 +198,10 @@ def test_the_ddg_names_functions_as_the_analyzer_does(tmp_path: Path) -> None:
     """Nested classes, a constructor, an overload pair and an enum method: every
     function the DDG covers must be a symbol the java analyzer emitted, or the
     taint BFS never looks it up. An anonymous class's method is named on its
-    enclosing class by both. A record's method gets no symbol from the
-    analyzer (``record_declaration`` is not an enclosing type to
-    ``_get_class_ancestors``), so the DDG must skip it (6, not 7) rather than
-    mint an id nobody emitted."""
+    enclosing class by both, and a record's on the record (WI-pidos). A
+    top-level method in a JEP 512 compact source file gets no symbol from the
+    analyzer (it has no enclosing type), so the DDG must skip it (7, not 8)
+    rather than mint an id nobody emitted."""
     from hypergumbo_core.ddg_build import build_repo_ddg
     from hypergumbo_lang_mainstream.java import analyze_java
 
@@ -224,9 +224,13 @@ def test_the_ddg_names_functions_as_the_analyzer_does(tmp_path: Path) -> None:
         "  int twice() { int y = a; int z = y; return z; }\n"
         "}\n"
     )
+    # A JEP 512 compact source file: a method with no enclosing type.
+    (tmp_path / "Main.java").write_text(
+        "void main() { int y = 1; int z = y; }\n"
+    )
     ddg = build_repo_ddg(tmp_path, ("java",))
     # Called directly, the analyzer emits absolute paths; the orchestrator
     # relativises them (INV-buhur), so do the same here.
     emitted = {s.id.replace(f"{tmp_path}/", "") for s in analyze_java(tmp_path).symbols}
-    assert len(ddg.ddg_symbols) == 6
+    assert len(ddg.ddg_symbols) == 7
     assert ddg.ddg_symbols <= emitted, ddg.ddg_symbols - emitted
