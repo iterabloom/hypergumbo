@@ -46,3 +46,33 @@
   clock: 3  # 8fa7
   nonce: 8fa7  # 8fa7
   message: "PROGRESS 2026-09-26: RUBY AND LUA DONE in PR #1234 (merged a886ae67f7). Status stays violated: rust, java, kotlin, swift, c, cpp, scala and the csharp defect remain.\n\nRe-verified FIRST with this item's own sweep (~/hypergumbo_lab_notebook/nopoh_pkglit_09032026/sweep/run_sweep.py) on dev e350277d0c: every package-level line in all nine languages still NONE, every IN_NAMED control emitting, csharp 0 calls.\n\nlua: the caller falls back to the file symbol pass 1 already emits (make_file_id, kind file). ruby: to the class/module whose body holds the call (by position), else the file; the bare-identifier arm stays method-only (a top-level bare identifier is usually a variable). Production-path tests: packages/hypergumbo-lang-mainstream/tests/test_package_level_call_anchor.py (the sweep fixtures, red before; IN_NAMED controls keep their function; a class-body call anchors on its class). test_ruby.py's test_receiver_call_outside_method_ignored pinned the old drop and was rewritten.\nA/B read-back: postal +105 call edges (class 26, module 69, file 10; 0 lost), kong +12,013 (12,871 -> 24,884, all on the file: busted specs are module-level; 0 lost); sampled sites are real calls.\nSeen in the read-back and filed, not folded in: WI-napaf (ruby receiverless calls that resolve nowhere emit nothing, even in methods) and WI-johib (ruby external-constant receiver binds by short name).\nStep 6 of the fix shape (DDG for literal bodies) was not addressed."  # 8fa7
+- op: discuss  # 6a0c
+  at: '2026-09-26T23:43:02Z'  # 6a0c
+  by: agent  # 6a0c
+  actor: jgstern_agent  # 6a0c
+  clock: 4  # 6a0c
+  nonce: 6a0c  # 6a0c
+  message: "PROGRESS 2026-09-26: RUST, SWIFT, KOTLIN, SCALA DONE in PR #1235 (merged). Remaining: java, c, cpp, csharp (+ WI-dokib, elixir's twin). Status stays violated.\n\nTwo shared helpers in analyze/base.py now carry the rule for every analyzer that adopts it: file_anchor_symbol() (the make_file_id node) and enclosing_declared_symbol() (nearest declared ancestor of given node types, by position). Anchor order: function, else enclosing type, else file. Ruby and lua moved onto them.\nProduction-path tests: packages/hypergumbo-lang-mainstream/tests/test_package_level_call_anchor.py (sweep fixtures per language, red before; IN_NAMED controls; swift init and kotlin class property anchor on the type). test_kotlin.py's test_call_at_top_level_outside_function_no_edge pinned the drop as a design choice and was rewritten.\nA/B, 0 lost everywhere: netavark +2, hummingbird +281 (struct 162, class 23, enum 1, file 95), sherpa-onnx +458 (class 406, object 9, file 43), lila +7,325 (class 4,052, object 2,176, file 988, trait 87, enum 22). Recorded aardvark-dns: +11 stub calls from const initialisers, each read back as a real call.\nResidual filed: WI-sogof (swift emits no symbol for init)."  # 6a0c
+- op: discuss  # 9402
+  at: '2026-09-27T00:39:33Z'  # 9402
+  by: agent  # 9402
+  actor: jgstern_agent  # 9402
+  clock: 5  # 9402
+  nonce: '9402'  # 9402
+  message: "PROGRESS 2026-09-26: JAVA, C, CPP DONE in PR #1237 (merged). Remaining: csharp (next PR) and WI-dokib (elixir's twin, own item). Status stays violated until csharp lands.\n\njava: method, else the enclosing class/interface/enum/record (by its own position index), else the file. c: function, else file only when inside NO function_definition. cpp: the walk starts at the file anchor and entering a function_definition resets it; the stack-construction arm stays function-only.\nTHE FIRST CUT OVER-REACHED and the read-back caught it: seeding the file anchor everywhere attributed calls inside UNNAMED functions to the file (cpp 81/166, c 12/18) and let the construction arm read extern declarations and member prototypes as constructions; GNU __attribute__ arguments and #if predicates parse as calls. All three are excluded, each pinned by a test that goes red without its guard. The unnamed-function gap is filed as WI-saduj.\nA/B, 0 lost: sherpa-onnx java +84 (class-anchored field initialisers), cpp +44 (file-scope MFC macros / ON_BN_CLICKED refs), crun c +3."  # 9402
+- op: update  # 0cbc
+  at: '2026-09-27T01:16:47Z'  # 0cbc
+  by: agent  # 0cbc
+  actor: jgstern_agent  # 0cbc
+  clock: 6  # 0cbc
+  nonce: 0cbc  # 0cbc
+  set:  # 0cbc
+    status: satisfied  # 0cbc
+    pr_ref: '1238'  # 0cbc
+- op: discuss  # 2755
+  at: '2026-09-27T01:16:47Z'  # 2755
+  by: agent  # 2755
+  actor: jgstern_agent  # 2755
+  clock: 7  # 2755
+  nonce: '2755'  # 2755
+  message: "SATISFIED for the filed instance across all nine languages plus the csharp defect: PRs #1234 (ruby, lua), #1235 (rust, swift, kotlin, scala), #1237 (java, c, cpp), #1238 (csharp).\n\nBEHAVIORAL EVIDENCE, this item's own sweep re-run on merged dev dbec60fb68 (~/hypergumbo_lab_notebook/bamij_09262026/sweep_after.txt; before: every package-level line NONE, csharp calls=0):\n  rust     PKG_LITERAL -> file            | IN_NAMED -> named:function\n  java     PKG_LITERAL -> M:class, STATIC_INIT -> M:class | IN_NAMED -> M.named:method\n  kotlin   PKG_LITERAL, PKG_FIELD_LITERAL -> file | IN_NAMED -> named:function\n  swift    PKG_LITERAL -> file            | IN_NAMED -> named:function\n  ruby     PKG_LITERAL, PKG_FIELD_LITERAL -> file | IN_NAMED -> named:method\n  c        PKG_INIT_CALL -> file          | IN_NAMED -> named:function\n  cpp      PKG_INIT_CALL, PKG_LITERAL -> file | IN_NAMED -> named:function\n  csharp   PKG_LITERAL -> M:class         | IN_NAMED -> M.Named:method  (calls 0 -> 3)\n  scala    PKG_LITERAL -> M:object        | IN_NAMED -> M.named:method\n  lua      PKG_LITERAL, PKG_FIELD_LITERAL -> file | IN_NAMED -> named:function\nEvery IN_NAMED control keeps its named function (the item's \"NOT THIS ITEM\" line). Anchor rule, shared helpers in analyze/base.py: function, else enclosing type, else the file pseudo-symbol (make_file_id), the convention python/php already used.\n\nCorpus read-backs (0 edges lost anywhere): postal +105, kong +12,013, netavark +2, hummingbird +281, sherpa-onnx kotlin +458 / java +84 / cpp +44 / csharp +395, lila +7,325, crun +3.\n\nRESIDUALS, all filed: step 6 (DDG for these bodies) -> WI-nilir; c/cpp calls inside functions with no symbol -> WI-saduj; swift init has no symbol -> WI-sogof; ruby receiverless unresolved calls -> WI-napaf; ruby external-constant short-name binding -> WI-johib. WI-dokib (elixir, same shape) is its own item and is next."  # 2755

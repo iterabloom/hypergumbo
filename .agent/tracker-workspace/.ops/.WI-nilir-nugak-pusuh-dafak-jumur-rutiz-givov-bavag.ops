@@ -1,0 +1,22 @@
+- op: create  # 6c73
+  at: '2026-09-27T01:16:42Z'  # 6c73
+  by: agent  # 6c73
+  actor: jgstern_agent  # 6c73
+  clock: 1  # 6c73
+  nonce: 6c73  # 6c73
+  data:  # 6c73
+    kind: work_item  # 6c73
+    title: "calls at module/class/file scope are now emitted (INV-bamij) but no DDG covers those bodies, so taint through them is structural-only in every language"  # 6c73
+    status: todo_hard  # 6c73
+    priority: 3  # 6c73
+    parent:  # 6c73
+    tags:  # 6c73
+    - taint  # 6c73
+    - dataflow  # 6c73
+    - analysis_quality  # 6c73
+    isbefore: []  # 6c73
+    duplicate_of: []  # 6c73
+    not_duplicate_of: []  # 6c73
+    pr_ref:  # 6c73
+    description: "FILED 2026-09-26 as INV-bamij's step 6, which its fix shape named and none of the five PRs addressed (#1234 ruby/lua, #1235 rust/swift/kotlin/scala, #1237 java/c/cpp, #1238 csharp).\n\nCalls at module / class / file scope are now emitted and anchored on the enclosing type or the file pseudo-symbol. But LanguageDdgSpec.function_node_types drives which bodies get a CFG and a DDG, and a module-level initialiser, a static block, a class-body statement or a top-level script body is not a function node in any of these specs. So any taint flow through code at that scope can be built only structurally (call-graph reachability), never adjudicated by the walk: its findings carry analysis_method structural / walk_verdict unavailable.\n\nNOT MEASURED: how many findings this affects, per language. Python already anchors module code on the file and has the same limit, so it is a baseline to compare against rather than a new asymmetry. The Go twin was filed with INV-nopoh."  # 6c73
+    fields: {}  # 6c73
