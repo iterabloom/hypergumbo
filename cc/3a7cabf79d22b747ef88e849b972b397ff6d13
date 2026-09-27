@@ -1,0 +1,21 @@
+Original commit body from 89616bc5ee70c459303d9b796754b10b23580cd7:
+
+java stamped call_construct="method" on every call with a receiver token,
+so Files.readAllBytes(p) and System.getenv(k) read as receiver calls. The
+unknown_receiver_scope caveat counts method edges as its denominator ("N of
+M method call site(s)"), so every static call inflated M and the untyped
+share read low. Go's twin was INV-tanom.
+
+_java_call_construct stamps "function" when the receiver is a written FQ
+type path, or a bare identifier that is a single-type import or a java.lang
+class and is not a scoped variable or type parameter; otherwise "method".
+Every such edge has a named module slot, so it is matched through the
+module filter, never the no-context gate.
+
+The precondition WI-fuvaj named (java.yaml statics function-kind) was met by
+INV-zikab step 6. The feared starvation withholding did not occur: A/B on
+jenkins, killbill, cassandra and sherpa-onnx, the whole verify-claims
+envelope is identical except the denominator. Untyped share: jenkins 42.5%
+-> 47.5%, killbill 42.3% -> 47.1%, cassandra 42.0% -> 48.6%.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
