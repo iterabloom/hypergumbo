@@ -1,0 +1,25 @@
+Original commit body from 18fff11b429bb99c181306d315d0f3910f5d0b7f:
+
+_taint_blind_reason withheld a clean verdict from EVERY taint claim when any
+language in the repo had no taint catalogue and made production calls. For a
+label a project's own source catalogue declares in specific languages, a
+language it is not declared in cannot be where such a flow starts.
+
+- taint.source_origin_languages: None for a built-in label (any language can
+  produce untrusted_input / host_secret / the crypto labels, so the gate is
+  unchanged for them), else the languages the catalogue declares the label in.
+- cli._languages_a_flow_can_be_in: adds every language a present
+  cross-language call edge enters (java -> kotlin on one JVM). Edges only
+  ADD a language; their absence is never trusted, which is the fail-open
+  reachability form WI-rusil rejects.
+- _taint_blind_reason(source_languages=...) scopes the EDGE LIST, so the
+  no-catalogue census and the coverage check walk one population (INV-motos).
+- A verdict that set a language aside names it in its details.
+
+Controls (WI-rusil's three): a label declared in the uncatalogued language
+is still withheld (fixture, and on postal with a ruby-declared label); the
+self-proof is byte-identical (18 confirmed_with_caveats, no flip); built-in
+labels are unchanged (sherpa-onnx byte-identical, and all 353 withheld
+corpus verdicts carry built-in labels).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
