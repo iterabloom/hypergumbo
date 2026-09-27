@@ -1,0 +1,25 @@
+Original commit body from 8a360c7fed08544974bacd365018cac61c5f38c0:
+
+record_declaration (Java 16) was not an enclosing type to
+_get_class_ancestors and had no symbol arm, so a file holding one record
+emitted nothing. A record nested in a class had its methods named on the
+OUTER class (Launcher.call for Launcher.RemoteLaunchCallable.call), so they
+collected the outer class's callers and overrides.
+
+- A record is a `record` symbol (registered kind, "Java 14+"), via one
+  table-driven arm now shared with class and interface.
+- Its components are emitted as private final fields, through one
+  _java_field_symbol helper the field arm also uses.
+- compact_constructor_declaration is a constructor; its signature is the
+  record's components. The DDG walks it.
+- The three class/interface/enum type-kind filters derive from one set, so
+  records reach class_symbols (instantiation resolves: `new R(..)`).
+- The containment linker treats `record` as a container.
+
+A/B surveys against dev: records trino 836, kafka 258, spring-boot 137,
+jenkins 10; instantiates +4,480 on trino. calls fall on trino (-2,942):
+every lost edge was classified -- 3,624 went into misnamed record members,
+164 were calls bound to an unrelated same-named class, the rest re-anchor
+onto the record or resolve to a better target (2 unclassified).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
