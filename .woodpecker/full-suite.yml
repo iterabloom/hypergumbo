@@ -9,7 +9,7 @@
 # Woodpecker has no in-file concurrency guard — if you ever add a push trigger,
 # ALSO cap agent parallelism / add a repo concurrency setting to replace it.
 #
-# Whole-codebase --cov-fail-under=100 across all six packages in one step is
+# Whole-codebase --cov-fail-under=100 across every package in one step is
 # equivalent to the GHA per-package 100% jobs (a 100% union ⟺ every package at
 # 100%) and far more compact. Plus the WI-jigup self-tree-validation ratchet and
 # the top-level `pytest tests/` suite (forge/governance + agent-infra).
@@ -91,7 +91,7 @@ steps:
       # container/interpreter interaction and INV-libib's per-leg logs are
       # the next prerequisite. Independent of the experiment, the two
       # whole-suite pipelines should not silently differ in install set.
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]" -e packages/hypergumbo
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev,tui]" -e packages/hypergumbo
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - |
         if [ -f /sys/fs/cgroup/cpu.max ]; then
@@ -106,6 +106,7 @@ steps:
           --cov=packages/hypergumbo-lang-common/src \
           --cov=packages/hypergumbo-lang-extended1/src \
           --cov=packages/hypergumbo-lang-rust-analyzer/src \
+          --cov=packages/hypergumbo-lang-scip-python/src \
           --cov=packages/hypergumbo-tracker/src \
           --cov-report=term-missing --cov-fail-under=100 \
           --cov-config=.coveragerc.no-embeddings \

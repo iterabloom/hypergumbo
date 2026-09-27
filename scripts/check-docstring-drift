@@ -88,6 +88,7 @@ from __future__ import annotations
 import argparse
 import ast
 import datetime as dt
+import glob
 import json
 import os
 import pathlib
@@ -129,12 +130,11 @@ STAMP_MAX_SHARE = 0.10
 # became 87 with nothing drifting). A file qualifies on EITHER metric.
 DEFAULT_MIN_BODY_COMMITS = 15
 
-DEFAULT_SCOPE = ("packages/hypergumbo-core/src",
-                 "packages/hypergumbo-lang-mainstream/src",
-                 "packages/hypergumbo-lang-common/src",
-                 "packages/hypergumbo-lang-extended1/src",
-                 "packages/hypergumbo-lang-rust-analyzer/src",
-                 "packages/hypergumbo-tracker/src")
+def default_scope(repo_root: str) -> tuple[str, ...]:
+    """Every package's ``src`` tree, read from the checkout. A hand-kept tuple
+    stood here and silently left hypergumbo-lang-scip-python unscanned
+    (WI-bavak)."""
+    return tuple(sorted(glob.glob(os.path.join(repo_root, "packages", "*", "src"))))
 
 TRACKER_ID_RE = re.compile(r"\b(WI|INV|BUG)-[a-z0-9]+(?:-[a-z]+){0,7}")
 
@@ -754,7 +754,7 @@ def main() -> int:
     if args.paths:
         scope = tuple(args.paths)
     else:
-        scope = tuple(os.path.join(repo_root, p) for p in DEFAULT_SCOPE)
+        scope = default_scope(repo_root)
 
     report: dict = {}
     exit_code = 0
