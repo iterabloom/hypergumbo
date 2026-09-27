@@ -271,3 +271,18 @@ def test_attribute_and_preprocessor_syntax_is_not_a_file_scope_call(
     analyze = analyze_c if name.endswith(".c") else analyze_cpp
     calls = [e.dst for e in analyze(tmp_path).edges if e.edge_type == "calls"]
     assert calls == [], calls
+
+
+def test_java_type_lookup_needs_its_position_index_and_a_type(tmp_path: Path) -> None:
+    """``_get_enclosing_type_symbol`` answers only from the position index it is
+    handed, and None for a node inside no type (the file anchor then applies)."""
+    import tree_sitter
+    from tree_sitter_language_pack import get_language
+
+    from hypergumbo_lang_mainstream.java import _get_enclosing_type_symbol
+
+    tree = tree_sitter.Parser(get_language("java")).parse(b"import a.B;\n")
+    node = tree.root_node.children[0]
+    assert _get_enclosing_type_symbol(node, tmp_path / "M.java", None) is None
+    assert _get_enclosing_type_symbol(node, None, {("x", 1, 0): None}) is None  # type: ignore[dict-item]
+    assert _get_enclosing_type_symbol(node, tmp_path / "M.java", {("x", 9, 9): None}) is None  # type: ignore[dict-item]
