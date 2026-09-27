@@ -49,6 +49,7 @@ from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
     defer_bare_method_call,
@@ -432,6 +433,9 @@ def _extract_symbols_from_file(
         return analysis
 
     source, tree = _objc_parse_source(parser, source)
+    # WI-bulaz: recorded AFTER WI-lafom's rewrite retry, so only the damage
+    # the retry could not repair is reported.
+    record_partial_parse(run, repo_rel_path, tree)
 
     for node in iter_tree(tree.root_node):
         if node.type in ("class_interface", "class_implementation"):

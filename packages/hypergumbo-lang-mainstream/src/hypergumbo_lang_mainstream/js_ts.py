@@ -164,6 +164,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_field,
     iter_tree,
     make_file_id,
+    record_partial_parse,
     make_file_stable_id,
     make_route_stable_id,
     make_route_symbol,
@@ -6452,6 +6453,7 @@ def _analyze_javascript_impl(
                 files_skipped += 1
                 continue
             tree = parser.parse(source)
+            record_partial_parse(run, str(file_path.relative_to(repo_root)), tree)  # WI-bulaz
             lang = _get_language_for_file(file_path)
             ns_imports = _extract_namespace_imports(tree, source)
             nm_imports, nm_originals = _extract_named_imports(tree, source)

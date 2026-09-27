@@ -53,6 +53,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Spa
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     FileAnalysis as _BaseFileAnalysis,
     TreeSitterAnalyzer,
@@ -685,6 +686,7 @@ def _extract_symbols_from_file(
     except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
         run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
         return FileAnalysis()
+    record_partial_parse(run, rel_path, tree)  # WI-bulaz
 
     # WI-bokab (v7): file-identity anchor for this file's symbols. Built from the
     # repo-relative ``rel_path`` (NOT the absolute ``file_path``) so it byte-matches

@@ -83,6 +83,7 @@ class StubAnalyzer(TreeSitterAnalyzer):
         mock_root = MagicMock()
         mock_root.children = []
         mock_root.end_point = (0, 0)  # a real (row, col) so file-node spans compute (WI-sijug)
+        mock_root.has_error = False  # a clean parse; a MagicMock attribute is truthy (WI-bulaz)
         mock_tree.root_node = mock_root
         parser.parse.return_value = mock_tree
         return parser

@@ -75,6 +75,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -1541,6 +1542,7 @@ class CAnalyzer(TreeSitterAnalyzer):
 
             tree = parser.parse(source)
             rel_path = str(source_file.relative_to(repo_root))
+            record_partial_parse(run, rel_path, tree)  # WI-bulaz
             analysis = self.extract_symbols_from_file(
                 tree, source, source_file, rel_path, run,
             )

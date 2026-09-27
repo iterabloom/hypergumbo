@@ -72,6 +72,7 @@ from hypergumbo_core.ir import (
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -3130,6 +3131,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 continue
             tree = parser.parse(source)
             rel_path = str(rb_file.relative_to(repo_root))
+            record_partial_parse(run, rel_path, tree)  # WI-bulaz
             analysis = _extract_symbols_from_file(
                 tree, source, rel_path, run.execution_id,
             )

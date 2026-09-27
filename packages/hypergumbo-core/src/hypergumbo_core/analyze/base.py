@@ -597,6 +597,54 @@ def make_file_id(lang: str, path: str) -> str:
 _FILE_ID_SUFFIX = ":1-1:file:file"
 
 
+#: The ``limits.failed_files`` reason prefix for a file tree-sitter parsed only
+#: through error recovery (WI-bulaz). A stable token, so a consumer can select
+#: these without parsing prose.
+PARTIAL_PARSE_REASON = "partial_parse"
+
+
+def record_partial_parse(run: AnalysisRun, path: str, tree: Any) -> int:
+    """Record ``path`` as partially parsed when its tree carries parse errors.
+
+    WI-bulaz. ``tree.root_node.has_error`` is set on every tree whose parse
+    needed error recovery, and nothing read it: the grammar's recovery yields
+    an ABSENCE (declarations inside or after the damaged region go missing), so
+    a file whose parse died looked exactly like a file that declares nothing,
+    and the run exited 0. Measured before this: objc 38 of 387 files after
+    WI-lafom's rewrite, swift 5 each on VernissageServer and Alamofire.
+
+    Recorded through the existing per-file channel (``limits.failed_files``),
+    with a count of damaged nodes, because the file WAS analysed, just not all
+    of it. Returns the count (0 for a clean tree, which records nothing; a
+    recorded tree counts at least 1). Only subtrees that report an error are
+    descended.
+
+    A damaged node is an ERROR node, a MISSING node, or a node that reports
+    ``has_error`` although none of its children does. The last is not a
+    theoretical case: tree-sitter-markdown flags pipe-table cells that way and
+    builds no ERROR node at all, so counting only ERROR/MISSING printed
+    "0 ... node(s)" for a file it had just called broken (crun's crun.1.md).
+    """
+    root = tree.root_node
+    if not root.has_error:
+        return 0
+    count = 0
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        damaged = [c for c in node.children if c.has_error or c.is_missing]
+        if node.type == "ERROR" or node.is_missing or not damaged:
+            count += 1
+        stack.extend(damaged)
+    run.record_failed_file(
+        path,
+        f"{PARTIAL_PARSE_REASON}: {count} damaged node(s); analysed from "
+        f"tree-sitter's error recovery, so declarations in or after the damaged "
+        f"region may be missing",
+    )
+    return count
+
+
 def file_anchor_symbol(lang: str, path: str, pass_id: str, run_id: str) -> Symbol:
     """The symbol a call outside every function is anchored on (INV-bamij).
 
@@ -4212,6 +4260,7 @@ class TreeSitterAnalyzer:
 
             source, tree = self.parse_source(parser, source)
             rel_path = str(source_file.relative_to(repo_root))
+            record_partial_parse(run, rel_path, tree)
 
             analysis = self.extract_symbols_from_file(
                 tree, source, source_file, rel_path, run
