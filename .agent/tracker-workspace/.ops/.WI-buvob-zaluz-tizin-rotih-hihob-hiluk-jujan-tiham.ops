@@ -29,3 +29,10 @@
   set: {}  # c50c
   add:  # c50c
     isbefore: [WI-gotun-pugak-zatop-muruv-fahog-zohup-mihob-vadiz]  # c50c
+- op: discuss  # 9c81
+  at: '2026-09-27T06:38:49Z'  # 9c81
+  by: agent  # 9c81
+  actor: jgstern_agent  # 9c81
+  clock: 3  # 9c81
+  nonce: 9c81  # 9c81
+  message: "FROM WI-gotun (PR #1245, 2026-09-27). Java now has a DDG, so the same-function sanitizer arm can run for java, and it still earns nothing. Cipher.doFinal is both java's plaintext SOURCE and its only plaintext->ciphertext SANITIZER, so on decrypt -> encrypt -> write the encrypting call's output is re-sourced as plaintext, and the write is a confirmed flow from it (sanitized_flows 0; fixture in ~/hypergumbo_lab_notebook/gotun_09272026/). So adding rows is not the whole of this item: for the credit to ever fire on java, a sanitizer row must exist that is NOT also a plaintext source (the candidates here: CipherOutputStream, SealedObject), or the source row must be disambiguated from the sanitizer row (cipher mode is set by init(), which is not visible at the doFinal call)."  # 9c81

@@ -1,0 +1,21 @@
+- op: create  # bd9f
+  at: '2026-09-27T05:24:22Z'  # bd9f
+  by: agent  # bd9f
+  actor: jgstern_agent  # bd9f
+  clock: 1  # bd9f
+  nonce: bd9f  # bd9f
+  data:  # bd9f
+    kind: work_item  # bd9f
+    title: "java: a record emits no symbols at all -- record_declaration is not an enclosing type to _get_class_ancestors, so its methods, constructors and the record type vanish from the call graph (Java 16+)"  # bd9f
+    status: todo_hard  # bd9f
+    priority: 2  # bd9f
+    parent:  # bd9f
+    tags:  # bd9f
+    - java  # bd9f
+    - analysis_quality  # bd9f
+    isbefore: []  # bd9f
+    duplicate_of: []  # bd9f
+    not_duplicate_of: []  # bd9f
+    pr_ref:  # bd9f
+    description: "FOUND 2026-09-27 while building WI-gotun's DDG spec (java_callable_name had an unreachable-looking None branch; a record reaches it).\n\nREPRO, dev plus the WI-gotun branch:\n\n    record R(int a) {\n      int twice() { return a * 2; }\n      static R of(int a) { return new R(a); }\n    }\n\n`analyze_java` on a repo holding only that file returns [] -- no symbols at all: no `R` type, no `twice`, no `of`.\n\nMECHANISM (java.py). `_get_class_ancestors` walks up for `class_declaration`, `interface_declaration` and `enum_declaration`; `record_declaration` is not in the set. The method and constructor arms require `name and ancestors`, so a method whose only enclosing type is a record is dropped. The record type itself is not emitted by any arm (not verified which arm would own it). A record nested in a class gets its methods named on the OUTER class, skipping R (not verified).\n\nWHY IT MATTERS. Records are Java 16+ (2021) and are the idiomatic data carrier in modern Java: DTOs, config and value types. Every call inside a record method is lost from the call graph, taint and dead-code. The DDG (WI-gotun) mirrors the analyzer through the shared `java_callable_name`, so it skips record methods too; that is consistent, and both change together when this is fixed.\n\nNOT MEASURED: how many records the corpus holds (jenkins / cassandra / sherpa-onnx are likely pre-16, so the count there is probably low; a modern Spring Boot repo is the test). Check `compact_constructor_declaration` too, the record-only constructor form."  # bd9f
+    fields: {}  # bd9f
