@@ -82,6 +82,7 @@ from hypergumbo_core.analyze.base import (
     file_anchor_symbol,
     enclosing_declared_symbol,
     make_file_id,
+    record_partial_parse,
     make_file_stable_id,
     make_symbol_id,
     make_typed_stable_id,
@@ -912,6 +913,8 @@ def _extract_symbols_from_file(
     except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
         run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
         return FileAnalysis()
+    # WI-bulaz: a parse that needed error recovery is recorded, not silent.
+    record_partial_parse(run, str(file_path), tree)
 
     analysis = FileAnalysis()
     analysis.imports = _extract_imports(tree, source)

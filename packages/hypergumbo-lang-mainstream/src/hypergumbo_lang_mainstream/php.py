@@ -58,6 +58,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Spa
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.symbol_resolution import ListNameResolver, NameResolver
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
     defer_bare_method_call,
@@ -1497,6 +1498,7 @@ class PHPAnalyzer(TreeSitterAnalyzer):
             try:
                 source = file_path.read_bytes()
                 tree = parser.parse(source)
+                record_partial_parse(run, str(file_path.relative_to(repo_root)), tree)  # WI-bulaz
                 use_aliases = _extract_use_aliases(tree, source)
                 parsed_files.append(_ParsedFile(
                     path=file_path, tree=tree, source=source, use_aliases=use_aliases

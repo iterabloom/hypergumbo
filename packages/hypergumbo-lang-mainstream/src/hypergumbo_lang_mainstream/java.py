@@ -143,6 +143,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     file_anchor_symbol,
     make_file_id,
+    record_partial_parse,
     make_file_stable_id,
     make_symbol_id as _base_make_symbol_id,
     make_typed_stable_id,
@@ -3452,6 +3453,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
         try:
             source = file_path.read_bytes()
             tree = parser.parse(source)
+            record_partial_parse(run, str(file_path.relative_to(repo_root)), tree)  # WI-bulaz
             file_imports = _extract_imports(tree, source)
             file_static_imports = _extract_static_imports(tree, source)
             file_wildcard_imports = _extract_wildcard_imports(tree, source)

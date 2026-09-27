@@ -312,7 +312,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=447,
+        line=448,
         anchor="_extract_csharp_return_type_name(resolved_sym.signature)",
         fact="return_type",
         note="Resolves a class from the parsed return type.",
@@ -322,7 +322,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/csharp.py"
         ),
-        line=1722,
+        line=1724,
         anchor="_count_signature_params(c.signature) == arg_count",
         fact="parameter_arity",
         note="Overload selection by counting rendered parameters.",
@@ -332,7 +332,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=1676,
+        line=1679,
         anchor="resolved_nav_sym.signature",
         fact="return_type",
         note="Navigation-target return type.",
@@ -342,7 +342,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/kotlin.py"
         ),
-        line=1852,
+        line=1855,
         anchor="resolved_simple_sym.signature",
         fact="return_type",
         note="Simple-name receiver return type.",
@@ -352,7 +352,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/js_ts.py"
         ),
-        line=5427,
+        line=5428,
         anchor="callee.signature",
         fact="return_type",
         note="Chained-call receiver typing.",

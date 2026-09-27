@@ -73,6 +73,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
+    record_partial_parse,
     AnalysisResult,
     TreeSitterAnalyzer,
     defer_bare_method_call,
@@ -862,6 +863,7 @@ class LuaAnalyzer(TreeSitterAnalyzer):
                 continue
 
             rel_path = str(lua_file.relative_to(repo_root))
+            record_partial_parse(run, rel_path, tree)  # WI-bulaz
 
             # Create file symbol
             file_symbol = Symbol(
