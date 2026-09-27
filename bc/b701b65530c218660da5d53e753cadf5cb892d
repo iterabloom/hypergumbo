@@ -1,0 +1,26 @@
+Original commit body from 7b55dfcd4e7749cce0c82aadb9eb6be07264a8ab:
+
+Addresses WI-dokib (INV-bamij's elixir twin). _handle_dot_call and the
+bare-call and pipe branches resolved the enclosing def and returned when
+there was none, so a call in a module body (`for path <-
+:code.get_path()` in mix.exs, a module attribute's value) or in a
+test/setup macro block (`:ssl.listen` inside `test "..." do`) emitted
+nothing. That was 101 of 225 atom call sites on phoenix; the alias path
+lost the same sites.
+
+Such calls are now anchored on the enclosing defmodule's symbol (by
+position), else the file. The item's own warning is honoured: a typespec
+(@spec, @type, @typep, @opaque, @callback, @macrocallback) is module-level
+too, and its call-shaped nodes (:inet.ip_address(),
+:supervisor.child_spec()) are types. _inside_typespec keeps them silent,
+and the fixture's typespec test goes red without that guard.
+
+test_elixir.py's test_dot_call_outside_function_ignored pinned the drop and
+is rewritten to pin the module anchor.
+
+A/B on phoenix, dev dbec60fb68 (pinned worktree) vs this branch: elixir
+calls 4,159 -> 5,238 (+1,079; 849 on modules, 230 on files, from top-level
+.exs code; 0 lost). Atom-module edges: :code 6 -> 17, :ssl 0 -> 6 (the
+phx.gen.cert test block), :ets 19 -> 21, :inets 2 -> 3.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
