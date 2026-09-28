@@ -37,3 +37,18 @@
   clock: 3  # c77a
   nonce: c77a  # c77a
   message: "RE-VERIFIED 2026-09-27 at dev f474411e11. The ROW is still wrong; the CONSEQUENCE in the title does not happen as measured, so the title is corrected.\n\n1. ROW unchanged: haskell.yaml:274-275 System.Info [os, arch, compilerName, compilerVersion] under host_info_read; taint.py:1742 still maps host_info_read -> host_description.\n2. REACH, which the item did not measure: all four are VALUES (String / Version), never applied, and the analyzer emits call edges only for applications. Fixture with `putStrLn os`, `length SI.arch`, `putStrLn SI.compilerName`, `describe = os ++ arch`, both unqualified and qualified imports: survey emits ONLY an imports edge to haskell:System.Info:0-0:module, no edge to any of the four; io-boundaries reports 0 chains for System.Info.\n3. So the \"mints a taint source\" consequence cannot happen through the call-edge path, which is the only path io-boundaries and taint consult for these rows. The row is present, wrong and INERT: no false source today. The defect that remains is the row itself (it declares a crossing that does not occur); it would start to matter only if a value-reference edge for Haskell ever reached the catalogue. Status stays violated, because the statement (a row must name the boundary its call crosses) still fails."  # c77a
+- op: update  # 695b
+  at: '2026-09-28T02:33:22Z'  # 695b
+  by: agent  # 695b
+  actor: jgstern_agent  # 695b
+  clock: 4  # 695b
+  nonce: 695b  # 695b
+  set:  # 695b
+    status: satisfied  # 695b
+- op: discuss  # ea7e
+  at: '2026-09-28T02:33:22Z'  # ea7e
+  by: agent  # ea7e
+  actor: jgstern_agent  # ea7e
+  clock: 5  # ea7e
+  nonce: ea7e  # ea7e
+  message: "Fixed in PR #1258 (9fe0315c85). System.Info [os, arch, compilerName, compilerVersion] removed from host_info_read, and a System.Info module_completeness grant declares all its exports (incl. fullCompilerVersion) not I/O, as build-time constants. Evidence on merged dev: the catalogue no longer rows any System.Info name (test_a_build_time_constant_is_not_rowed x4) and module_io_is_enumerated('System.Info') is True; the 09-27 fixture still yields 0 System.Info chains (it did before as well: the row was inert, see the 09-27 re-verification). host_info_read controls getProgName / getCurrentTime still classify."  # ea7e
