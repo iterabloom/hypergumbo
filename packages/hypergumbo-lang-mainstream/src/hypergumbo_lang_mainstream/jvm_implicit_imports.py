@@ -28,6 +28,13 @@ disjunction for them, but for scala that is not free: an unenumerated disjunct
 withholds every verdict under INV-zimud's ALL-gate. That is a separate change
 with its own measurement.
 
+A DOTTED PATH WRITTEN AT THE CALL SITE IS A THIRD SOURCE.
+``java.nio.file.Files.readAllBytes(p)`` states its owner inline, the same fact
+an import states at the top of the file. :func:`inline_qualified_owner` takes it
+only when the path's root is one of the language's standard roots and not a
+name the file binds, and only while the path still spells a package-then-type
+(a lowercase segment after a capitalised one is a value, not a module).
+
 EACH LANGUAGE SHADOWS SOME java.lang NAMES WITH ITS OWN. kotlin's default
 imports include ``kotlin.*``, whose ``String``, ``Long``, ``Iterable``, ...
 win over java.lang's; scala imports ``scala._`` after ``java.lang._``, so

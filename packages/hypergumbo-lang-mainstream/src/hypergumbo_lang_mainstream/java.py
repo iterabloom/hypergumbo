@@ -5,10 +5,15 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
 - Class declarations (symbols)
 - Interface declarations (symbols)
 - Enum declarations (symbols)
+- Record declarations (Java 16; ``kind="record"``), a type like any other
+  (``_JAVA_ANNOTATED_TYPE_DECLARATIONS``, ``_JAVA_TYPE_SYMBOL_KINDS``)
 - Method declarations (symbols)
-- Constructor declarations (symbols)
+- Constructor declarations (symbols), including a record's compact
+  constructor (``public R { ... }``), whose signature is read off the
+  record's component list (``_JAVA_CONSTRUCTOR_NODES``)
 - Field symbols (``kind="field"``): one per declarator of a class field or
-  interface constant, plus one per enum constant
+  interface constant, one per enum constant, and one per record component
+  (a ``private final`` field, JLS 8.10.3; ``_java_field_symbol``)
 - Method call relationships (edges)
 - Inheritance relationships: extends, implements (edges)
 - Instantiation: new ClassName() and ``ClassName::new`` (``instantiates`` edges)

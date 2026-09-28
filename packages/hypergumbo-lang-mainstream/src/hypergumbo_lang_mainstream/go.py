@@ -13,7 +13,10 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Function call relationships, anchored on the enclosing function or method,
   or on the enclosing package-level variable for a call under a package-level
   ``var`` initializer (a cobra ``Run:`` literal, ``var logger = log.New(...)``)
-- Function references in struct literal fields (cobra, http dispatch)
+- Function references in struct literal fields (cobra, http dispatch), and
+  known functions passed as call arguments (``calls`` edges with
+  ``evidence_type="function_reference_arg"``, confidence 0.70;
+  ``_extract_function_reference_edges``)
 - Import relationships (import statements)
 - ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
   package-attribute reads, and ``references`` edges for build-tag alternatives
@@ -46,6 +49,12 @@ How It Works
      slot when the type is external) rather than a short-name fallback,
      preventing incorrect disambiguation when multiple types define the
      same method name
+   - The return-type registry (``Type.Method`` or function name -> return
+     type, first writer wins) is aggregated from Pass 1, then merged with
+     ``load_library_signatures("go")`` so an in-repo declaration wins over
+     a library row. A receiver that is a catalogued stdlib package variable
+     (``http.DefaultClient.Do``) is typed from the library's
+     ``package_variables`` (``_package_variable_import_path``).
 6. Ambiguous method call guard:
    - When a method call ``x.Method()`` has no inferred receiver type and the
      method name has 2+ candidates in global symbols, creates an unresolved
@@ -79,6 +88,21 @@ How It Works
      Handles nested groups via AST ancestor walk. Variable-based groups
      (``api := r.Group("/api")``) are composed too.
    - Mount points: r.Mount("/api/v1", handler) → route_mount symbol
+9. Implicit interface satisfaction:
+   - A struct whose method set (method name plus parameter and return
+     arity, including methods promoted through embedding) covers an
+     interface's gets that interface appended to ``meta["base_classes"]``,
+     beside explicit ``var _ I = &S{}`` assertions. Matched per file in
+     ``_extract_symbols_from_file``, then across files per package
+     directory in ``_analyze_go_impl``.
+10. I/O target kind:
+   - An unresolved I/O call is stamped ``meta["io_target_kind"]``
+     (``std_stream``, ``host_path``, ``pipe``, ``net_stream``,
+     ``in_memory``, ``null_device``) when the handle's origin is provable.
+     The target argument comes from ``_GO_TARGET_ARGUMENT_INDEX``
+     (``bufio.NewReader(r)``, ``fmt.Fprintf(w, ...)``) and is followed
+     through its last binding in the function (``_go_wrapped_handle_kind``,
+     ``_go_receiver_handle_kind``). Anything unproven stamps nothing.
 
 Why This Design
 ---------------

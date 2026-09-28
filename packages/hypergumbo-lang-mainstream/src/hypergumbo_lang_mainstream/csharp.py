@@ -30,6 +30,16 @@ How It Works
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls, instantiations, and resolve against global symbol registry
+     - A call the registry cannot place (a framework call such as
+       ``File.ReadAllText``), or one withheld by the 3+-candidate ambiguity
+       guard, is still emitted as an unresolved edge; its module slot is the
+       receiver only when that names a type (``_csharp_unresolved_module``),
+       else ``external``.
+     - A bare call that resolves only to a DIFFERENT class's method on
+       short-name evidence is deferred with ``enclosing_class`` for the
+       ``inherited_calls`` linker (INV-fahub).
+     - A call in no method is anchored on its enclosing type
+       (``_CSHARP_TYPE_BODY_NODES``), else on the file (INV-bamij).
 4. Detect using directives and object creations
 
 Why This Design

@@ -5,6 +5,12 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
 - Module declarations (defmodule)
 - Function declarations (def/defp)
 - Macro declarations (defmacro/defmacrop)
+- ``defstruct`` fields as ``field`` symbols owned by the enclosing module
+  (``_extract_defstruct_field_names``); they are data anchors and never
+  enter call resolution
+- Phoenix route-marker symbols (``_extract_phoenix_routes``), stashed per
+  file and appended in ``post_process``; ``resources`` expands to its seven
+  RESTful routes
 - Function call relationships, in BOTH module-qualified receiver syntaxes:
   an ``alias`` receiver for an Elixir module (``Logger.error``) and an
   ``atom`` receiver for an Erlang/OTP one (``:ets.insert``). The atom form
@@ -49,7 +55,12 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract all symbols into global registry
 2. Pass 2: Detect calls, resolve against global registry, extract Phoenix
-   routes and OTP behaviour callback edges
+   routes and OTP behaviour callback edges. A call in no ``def`` (module
+   body, ``test`` / ``setup`` blocks) is anchored on its ``defmodule``, else
+   the file (``_caller_outside_def``); call-shaped nodes inside ``@spec`` /
+   ``@type`` / ``@callback`` are types and emit nothing (``_inside_typespec``).
+   A ``def`` / ``defmacro`` / ``defstruct`` inside ``quote`` is a template
+   for the module that runs ``use`` and emits no symbol (INV-sinah).
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Elixir-specific

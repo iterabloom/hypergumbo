@@ -46,7 +46,13 @@ A single post-analysis pass, language-agnostic. For each caller N:
      receiver has already refuted that, and ``audio.getSampleRate()`` in a
      method that separately instantiates ``OfflineTts`` is the measured case
      (WI-nakut). No stamp means no second opinion and nothing changes.
-  4. Disambiguate by line proximity when multiple classes match.
+  3b. Drop any candidate member the repository declares as a builtin
+     non-callable value (``int``, ``str``, ``list`` ...; see
+     ``_declares_non_callable_value`` / ``_NON_CALLABLE_VALUE_TYPES``),
+     since calling one cannot be what the site dispatched to (WI-fihun).
+  4. Disambiguate by line proximity when multiple classes match. Such a
+     tie-broken edge is capped at confidence 0.5 and marked
+     ``meta["disambiguation_fallback"]`` (INV-zuhub).
   5. Skip if the caller already has a direct ``calls`` edge to the
      resolved method (no duplicates).
 

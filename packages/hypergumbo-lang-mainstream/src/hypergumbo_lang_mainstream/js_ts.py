@@ -81,7 +81,12 @@ Call-Site Resolution
 - **Edge annotation**: ``stamp_io_mode_from_call`` records the literal mode
   argument (the flags of ``fs.open``) as ``io_mode`` on the edges a call
   produced, and ``annotate_dataflow`` (ADR-0015) annotates each file's edges
-  from AST context.
+  from AST context. ``_stamp_listener_event_crossing`` writes
+  ``io_target_kind`` on ``process.on`` / ``WebSocket.addEventListener`` /
+  ``EventSource.addEventListener`` edges from the literal event argument:
+  the crossing kind for an event that carries outside data, ``in_memory``
+  for one that does not, ``unresolved`` for a non-literal event (rules in
+  ``_LISTENER_EVENTS``).
 
 Rich Metadata (ADR-3aaa)
 ------------------------

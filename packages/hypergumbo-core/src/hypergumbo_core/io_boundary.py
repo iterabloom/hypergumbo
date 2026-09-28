@@ -20,7 +20,13 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
 - **Overlays.** ``load_overlay_catalog`` loads a project-local overlay file
   (which must declare ``status: overlay``) and ``load_catalog`` merges its
   rows, so a repository can declare the I/O of its own third-party
-  dependencies; the shipped catalogue stays stdlib-scoped.
+  dependencies; the shipped catalogue stays stdlib-scoped. Separately,
+  community overlays SHIPPED in ``io_primitives_overlays/`` load BY DEFAULT
+  (ADR-0047; ``default_overlays``, ``load_catalog(include_defaults=True)``,
+  off via ``--no-default-overlays``) beneath any project-local ones. Their rows
+  are stamped ``IoPrimitive.unvouched``: they can add a detection but never
+  count as examined for a clean verdict, and a shipped default may not declare
+  ``module_completeness`` (``validate_default_overlays``).
 - **Mode discrimination.** A primitive can be rowed at more than one mode, so
   a write stops classifying as a read, and a single primitive can name more
   than one boundary at once.
@@ -36,10 +42,11 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
 
 How It Works
 ------------
-1. ``load_catalog(language, overlay_paths=None)`` reads the YAML for the
-   given language, merges any parent catalog and any project-local overlay,
-   and returns an ``IoBoundaryCatalog`` with a flat list of ``IoPrimitive``
-   entries plus O(1) lookup by qualified name.
+1. ``load_catalog(language, overlay_paths=None, *, include_defaults=True)``
+   reads the YAML for the given language, merges any parent catalog, the
+   shipped default overlays and any project-local overlay, and returns an
+   ``IoBoundaryCatalog`` with a flat list of ``IoPrimitive`` entries plus
+   O(1) lookup by qualified name.
 2. ``classify_call_in_catalog(...)`` is the production matcher: it resolves a
    call edge against the catalog via ``lookup_with_module``, applying
    module-hint filtering, FFI redirection, ``io_mode`` discrimination

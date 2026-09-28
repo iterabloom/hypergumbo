@@ -35,6 +35,14 @@ handed to the optional ``refuted_flows`` out-param instead. So do NOT
 assume every finding carries ``analysis_method="structural"`` — see the
 field's own docs below for what each value licenses.
 
+Both propagators return through :func:`collapse_unadjudicated_flows`
+(INV-karud): every ``structural`` / ``ddg_mixed`` finding is grouped one per
+situation — ``(taint_label, source_symbol, sink_zone, sanitized,
+source_boundary, analysis_method)`` — and the group's primitive names, sink
+symbols and sink call sites are carried as sorted tuples beside
+``collapsed_flow_count``. ``ddg`` findings pass through unchanged, since the
+walk earned their per-pair claim.
+
 Catalog Format
 --------------
 Sources, sinks, and sanitizers use YAML files following patterns established
@@ -45,6 +53,19 @@ automatically from ``io_primitives/*.yaml`` — every write-side IO primitive
 becomes an ``untrusted`` sink in a zone determined by its boundary category
 (see :data:`AUTO_SINK_ZONE_MAP` below). Project-local sink overrides flow
 through the ``--taint-sinks`` CLI flag.
+
+Built-in sources are auto-derived the same way: every primitive whose
+boundary is a key of :data:`AUTO_SOURCE_LABEL_MAP` (``env_read``,
+``host_info_read``, ``net_recv``, ``ipc_recv``, ``db_read``) becomes a source
+carrying that label and its ``source_boundary``; ``taint_sources/`` adds only
+the labels no boundary implies (``plaintext``, ``key_material``). The entry
+point end-users hit is :func:`load_full_taint_catalog`, which stacks four
+layers — io_primitives-derived, shipped YAML, the claims file's
+``extra_catalogs``, then CLI flags — each replacing lower layers'
+sources/sinks on ``(module, name, kind)`` (sanitizers concatenate).
+Displaced rows are kept on the catalog as ``_displaced_sources`` /
+``_displaced_sinks`` (INV-faput) so a verdict can disclose a shipped row a
+user row replaced.
 """
 from __future__ import annotations
 

@@ -13,8 +13,9 @@ Analysis proceeds in two passes for cross-file resolution:
 - Extract every function and class as a symbol, at any nesting depth
   (INV-mofav — nested and closure-local defs are emitted too)
 - Extract methods nested inside classes
-- Emit the non-callable symbol kinds too: ``variable`` (module-level and
-  class-level assignments), ``field`` (dataclass / annotated attributes),
+- Emit the non-callable symbol kinds too: ``variable`` (module-level
+  assignments), ``field`` (class-body assignments, dataclass / annotated
+  attributes included),
   ``file`` (the anchor top-level calls attribute to; emitted only for a module
   with executable module-level code or a docstring, otherwise the orchestrator
   synthesizes it), and
@@ -64,6 +65,14 @@ Detected Patterns
   unresolved ``calls`` edges whose dst module is ``builtins``, and bare names
   that are not imported or locally bound emit ``external`` unresolved edges;
   names bound in an enclosing scope are skipped
+- External receiver typing: a receiver built by a catalogued or imported
+  constructor (``f = open(p)``, ``s = socket.socket()``, ``Path(raw)``), an
+  annotated parameter, or an allowlisted derivation of one (``d / "f"``) makes
+  ``recv.method()`` emit an unresolved edge naming the receiver's module, so
+  io-boundaries and taint can match it. See ``_receiver_type`` (the single
+  receiver predicate), ``_external_constructor_type`` (binding-checked against
+  imports), ``EXTERNAL_CONSTRUCTOR_TYPES`` (derived from the I/O catalogue) and
+  ``TYPE_PRESERVING_MEMBERS`` (members whose result keeps the receiver's type)
 - Call-edge tags: ``io_mode`` records a literal mode argument (``open(p, "w")``),
   and ``call_arg_shape="literal_only"`` marks calls passing only constants whose
   receiver cannot carry taint (no receiver, or an imported module)

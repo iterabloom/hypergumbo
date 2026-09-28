@@ -35,32 +35,50 @@ The `survey` command (``run_survey``) builds the unified behavior map in
 this order:
 
 1. **Analyzers** run independently across 100+ languages
-   (``run_all_analyzers``).
+   (``run_all_analyzers``). Cross-file usage-context references are then
+   resolved (``resolve_deferred_symbol_refs``) and every id and path is made
+   repo-relative (``_relativize_ir_paths``).
 2. **Producer merge** (ADR-0057 §3, ``merge_producer_records``): when two
    producers analyzed the same declarations (tree-sitter ``rust`` and the
    SCIP ``rust_analyzer`` arm), their records fold into one symbol per
    declaration. A producer with no merge declaration is refused, not passed
    through.
-3. **Linkers** run after all analyzers complete, to recover edges the
+3. **Framework enrichment** (ADR-3aaa): ``refine_frameworks`` checks
+   manifest-detected frameworks against import edges, ``enrich_symbols``
+   attaches YAML-pattern concepts (route, model, ...), and
+   ``materialize_route_symbols`` / ``expand_class_based_view_routes`` mint
+   route-marker symbols for the route linkers to connect.
+4. **Linkers** run after all analyzers complete, to recover edges the
    per-file analyzers could not see (``run_all_linkers``). Per ADR-3bbb they
    span four subcategories — Protocol, Bridge, Framework and Infrastructure —
    and only Bridge is language-pair; plenty of registered linkers
    (``argparse_dispatch``, ``django_orm_dispatch``, ...) recover edges
-   *within* one language.
-4. **Tier filtering** drops supply-chain tier 4 (derived) symbols unless
+   *within* one language. Afterwards synthetic identities are reconciled
+   (``dedup_logical_synthetic_identities`` and siblings), duplicate edges and
+   self-loops are dropped (``deduplicate_edges``), and structural
+   fingerprints are stamped (``stamp_symbol_fingerprints``).
+5. **Supply-chain classification** (``_classify_symbols``) sets each
+   symbol's tier; route-bearing tier-4 symbols are then promoted to tier 1.
+6. **Tier filtering** drops supply-chain tier 4 (derived) symbols unless
    ``--max-tier`` says otherwise, then **noise filtering** drops non-code
    node kinds (docs, config, CSS structure; ``is_noise_symbol``) and their
    edges unless ``--include-docs``.
-5. **Boundary synthesis** (``create_boundary_nodes``) runs after both
+7. **Boundary synthesis** (``create_boundary_nodes``) runs after both
    filters, collapsing dangling external references into boundary symbols
-   and remapping the edges that pointed at them.
-6. ``finalize()`` is the single pre-serialization reconcile point
-   (ADR-0043 §6): it runs once the node and edge set is final.
-7. **Side outputs**: budget-tier files (``--budgets``), per-handler forward
+   and remapping the edges that pointed at them. Symbols are then ranked
+   (``rank_symbols``), which fixes the output node order.
+8. ``finalize()`` is the single pre-serialization reconcile point
+   (ADR-0043 §6): it runs once the node and edge set is final. Metrics,
+   entrypoints and ``supply_chain_summary`` are added to the map after it.
+9. **Side outputs**: budget-tier files (``--budgets``), per-handler forward
    slices in ``<stem>.slices/`` next to the map (``_emit_handler_slices``,
    which also indexes each slice in the map's ``features`` array),
    and a ``sketch_precomputed`` block embedded in the map so a later
-   ``sketch`` can skip recomputing its inputs.
+   ``sketch`` can skip recomputing its inputs. ``--compact`` then replaces
+   the main output with its compact projection.
+10. **Stderr summaries**: validator violations, silent / skipped /
+    unaccounted passes, and falsified pass dependencies (``emit_*`` calls
+    just before the write).
 
 After a survey, ``cmd_run`` evicts stale cache entries
 (``_maybe_evict_cache``, never the entry just written) before reporting the
