@@ -9,7 +9,8 @@ This analyzer uses tree-sitter to parse Scala files and extract:
 - Method definitions (inside classes/objects/traits)
 - Secondary constructors (def this(...), kind=constructor)
 - Scala 3 enums (kind=enum) with one ``field`` symbol per case, and named
-  ``given`` instances (kind=instance), so their bodies' members have an owner
+  ``given`` instances (kind=instance), so their bodies' val/var members have
+  an owner (a ``def`` in an enum or given body is not owned by it)
 - val/var declarations: ``field`` inside a class/object/trait/enum/given
   body, ``variable`` at top level (local bindings are skipped)
 - Function call relationships
@@ -27,7 +28,8 @@ returns a skipped result (``skip_reason_code=DEPENDENCY_UNAVAILABLE``).
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract functions, classes, objects, traits with signatures
+1. Pass 1: Extract functions, classes, objects, traits, enums, givens and
+   val/var members, with signatures
 2. Pass 2: Extract call edges, import edges, and eta-expansion references edges using NameResolver
    - An explicit import outranks a same-named project symbol in another
      package: the bind is refused when no reading of the import (absolute

@@ -57,7 +57,8 @@ this order:
 6. ``finalize()`` is the single pre-serialization reconcile point
    (ADR-0043 §6): it runs once the node and edge set is final.
 7. **Side outputs**: budget-tier files (``--budgets``), per-handler forward
-   slices in ``<stem>.slices/`` next to the map (``_emit_handler_slices``),
+   slices in ``<stem>.slices/`` next to the map (``_emit_handler_slices``,
+   which also indexes each slice in the map's ``features`` array),
    and a ``sketch_precomputed`` block embedded in the map so a later
    ``sketch`` can skip recomputing its inputs.
 
@@ -78,13 +79,16 @@ Why This Design
 - Subcommand dispatch keeps each operation isolated and testable
 - Default sketch mode optimizes for the common "quick overview" use case
 - run_survey() is separate from cmd_run() for testability
-- Read commands (slice, sketch, search, ...) work from a persisted survey:
-  they reload it via ``survey_io.load_substrate`` and rehydrate it with
-  ``Symbol.from_dict`` / ``Edge.from_dict`` (``_edge_from_dict`` is a thin
-  wrapper), and ``_get_or_run_analysis`` runs a survey first on a cache miss.
-  The ``--minimal`` flag (``_add_minimal_argument``) on those commands skips
-  that auto-survey's side outputs (budget tiers, handler slices,
-  ``sketch_precomputed``); it has no effect when a cached survey is reused
+- Read commands (slice, search, explain, ...) work from a persisted survey:
+  they reload it via ``survey_io.load_substrate`` and, where they need IR
+  objects, rehydrate it with ``Symbol.from_dict`` / ``Edge.from_dict``
+  (``_edge_from_dict`` is a thin wrapper), and ``_get_or_run_analysis`` runs
+  a survey first on a cache miss. ``sketch`` is the exception: it reads a
+  survey only with ``--input`` and otherwise surveys from inside
+  ``sketch.py``. The ``--minimal`` flag (``_add_minimal_argument``) on the
+  ``_get_or_run_analysis`` commands skips that auto-survey's side outputs
+  (budget tiers, handler slices, ``sketch_precomputed``); it has no effect
+  when a cached survey is reused.
 """
 import argparse
 import gc
@@ -5895,8 +5899,8 @@ def _build_ddg_for_verify_claims(
     line inherited a tainted one, and when a line defines two the walk needs
     to know. The CFG already carries it.
 
-    Returns ``([], set(), {}, {})`` if tree-sitter isn't available — the
-    caller falls back to the structural pass in that case.
+    Returns ``([], set(), {}, {}, set(), {})`` if tree-sitter isn't
+    available — the caller falls back to the structural pass in that case.
     """
     from .dataflow_scope import ensure_def_use_extractors_registered
     from .ddg_build import build_repo_ddg, registered_ddg_languages

@@ -2,32 +2,36 @@
 """XML configuration analysis pass using tree-sitter-xml.
 
 This analyzer parses XML configuration files and extracts:
-- Maven pom.xml: project identity, dependencies, ``<mainClass>``
+- Maven POM files (``pom.xml``, ``settings.xml``, or any XML mentioning
+  ``maven.apache.org``): project identity, dependencies, ``<mainClass>``
   entry points (emitted as ``defines_target`` edges)
-- Android Manifest: activities, services, receivers, providers,
-  permissions, intent-filters (all emitted as ``kind="component"``
-  symbols with ``meta["component_type"]``)
+- Android Manifest: activities, services, receivers, providers (all
+  emitted as ``kind="component"`` symbols with ``meta["component_type"]``;
+  intent-filter actions/categories are recorded on the component's meta),
+  plus ``uses-permission`` entries as ``kind="permission"`` symbols
 
 Other XML shapes (Android layouts, generic XML configuration) are
 intentionally not extracted — too noisy relative to the signal.
 
-If tree-sitter-xml is not installed, the analyzer
-gracefully degrades and returns an empty result.
+If the XML grammar (from tree-sitter-language-pack) is not installed,
+the analyzer gracefully degrades and returns a skipped result.
 
 How It Works
 ------------
-1. Check if tree-sitter-xml is available (via language pack or standalone)
+1. Check if the XML grammar is available (via tree-sitter-language-pack)
 2. If not available, return skipped result (not an error)
 3. Detect XML file type (Maven, Android, generic)
 4. Parse and extract type-specific information
-5. Create symbols for dependencies, components, resources
-6. Create edges for dependency and reference relationships
+5. Create symbols for projects, dependencies, components, permissions
+6. Create edges for Maven dependencies (``depends_on``) and
+   ``<mainClass>`` entry points (``defines_target``); the Android
+   manifest yields symbols only
 
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - Maven pom.xml: Extract dependency graph for supply chain analysis
-- Android: Extract component graph and resource references
+- Android: Extract declared components and permissions
 - Intent-filters reveal app entry points and capabilities
 - Useful for mobile app analysis and Java/Kotlin build systems
 """

@@ -25,7 +25,7 @@ names a local binding at one call site; ``resp`` is not where ``read`` is
 defined. That is the same cut ADR-0023 made for ``Edge.edge_type`` -- properties
 of an endpoint are queried from the endpoint, not smuggled into the label -- and
 the receiver's type already has a home in ``Edge.meta["receiver_type_hint"]``
-(stamped by eight analyzers, read by neither ``io_boundary`` nor ``taint``;
+(stamped by nine analyzers, read by neither ``io_boundary`` nor ``taint``;
 WI-monul).
 
 WHY THIS IS A STRUCTURAL-POLICY AXIS RATHER THAN A REGISTRY OF VALUES. Module
@@ -195,7 +195,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/objc.py"
                 ),
-                line=1040,
+                line=1042,
                 anchor="_module: str | None = receiver_name",
                 note=(
                     "Reads as a receiver-variable site and is not: it is "
@@ -277,7 +277,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=1599,
+                line=1600,
                 anchor='module_hint = ",".join(_slots)',
                 note=(
                     "The file's entire #include set joined into one slot, "
@@ -307,7 +307,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/bash.py"
                 ),
-                line=1487,
+                line=1491,
                 anchor='module_path="redirect"',
                 note=(
                     "A shell redirection is not a call; the name slot holds "
@@ -342,7 +342,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=6685,
+                line=6691,
                 anchor='"process": "process",',
                 note=(
                     "The identity mapping that puts a global's own name into "
@@ -354,7 +354,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=935,
+                line=941,
                 anchor="JS_KNOWN_GLOBALS",
                 note=(
                     "The globals treated as addressable owners — 11 as of "

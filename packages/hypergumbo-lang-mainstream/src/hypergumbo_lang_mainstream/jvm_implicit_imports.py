@@ -13,7 +13,7 @@ same run as controls. On sbt, 76 of the untyped-receiver disclosure sites were
 real ``Files.x`` / ``System.x`` / ``Instant.now`` calls, and that disclosure
 was their only signal.
 
-TWO SOURCES OF AN OWNER, and nothing else:
+TWO SOURCES OF AN OWNER FOR A SIMPLE NAME, and nothing else:
 
 * the file's own IMPORT of that simple name (``import java.nio.file.Files``),
   which each analyzer already parses; and
@@ -37,7 +37,7 @@ language passes the names it shadows. None of them is a catalogued I/O owner
 today; the exclusion keeps the slot true, not a match count.
 
 A PROJECT TYPE IS NEVER AN OWNER HERE, imported or not, as in java
-(``_receiver_type_module``: "a project class is left alone: it is not a
+(``java._qualify_receiver_type``: "a project class is left alone: it is not a
 module"). The Tier-2 linkers resolve a call on a project type from the
 placeholder. Measured the first time this shipped without the rule: detekt's
 ``Issue.Entity(...)`` on an imported project class took the import path as its
@@ -58,8 +58,8 @@ FILE paths, so it never matched. An exact name match also returns before any
 hint is read. So ``import scala.sys.process.Process`` followed by
 ``Process(cmd)`` bound to spark's unrelated test ``case class Process``, and to
 scala3's sbt-build ``object Process``. It was a false call edge, and the launch
-never reached the catalogue. :func:`imported_elsewhere` is the check both
-check kotlin applies to a symbol the resolver hands back. The symbol stays only
+never reached the catalogue. :func:`imported_elsewhere` is the check
+kotlin applies to a symbol the resolver hands back. The symbol stays only
 when its qualified name IS the import, or lies under it (``Issue.Entity`` under
 ``dev.acme.api.Issue``). A symbol with no qualified name is kept. That is the
 old behaviour, and nothing can be decided without the name. scala applies a

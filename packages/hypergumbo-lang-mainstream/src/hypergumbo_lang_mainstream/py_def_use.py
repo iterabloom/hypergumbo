@@ -2,7 +2,7 @@
 """Python def/use extractor for intraprocedural dataflow analysis (ADR-0017 §1c).
 
 Extracts variable definitions (assignments) and uses (reads) from Python
-tree-sitter AST nodes. This is the first def/use extractor, validating
+tree-sitter AST nodes. It was the first def/use extractor, validating
 the shared CFG infrastructure against hypergumbo's own Python codebase.
 
 How It Works
@@ -10,8 +10,8 @@ How It Works
 For each AST node in a function body, the extractor identifies:
 
 - **Defines**: Variables assigned by the node (left side of ``=``, loop
-  variables, ``with ... as`` aliases, comprehension variables, function
-  parameters, ``del`` targets).
+  variables, ``with ... as`` aliases, comprehension variables, ``del``
+  targets). Function parameters are not defined by this extractor.
 - **Uses**: Variables read by the node (right side of ``=``, function
   call arguments, condition expressions, return values).
 

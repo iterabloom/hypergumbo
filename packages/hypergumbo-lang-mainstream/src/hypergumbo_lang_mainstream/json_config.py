@@ -16,7 +16,7 @@ gracefully degrades and returns an empty result.
 
 How It Works
 ------------
-1. Check if tree-sitter-json is available (via language pack or standalone)
+1. Check if the JSON grammar is available (via tree-sitter-language-pack)
 2. If not available, return skipped result (not an error)
 3. Detect JSON file type (package.json, tsconfig, composer, etc.)
 4. Parse and extract type-specific information
@@ -421,7 +421,8 @@ def _process_main_entry(
 
     The "main" field specifies the primary entry point for Node.js modules
     and Electron apps (e.g., ``"main": "./src/main.js"``). This creates a
-    ``main_entry`` symbol and a ``defines_target`` edge to the target file,
+    ``kind="file"`` symbol (``meta["entry_role"] = "main"``) and a
+    ``defines_target`` edge to the target file,
     enabling the build-target linker to connect it to the module's main()
     function or module symbol.
     """
@@ -540,7 +541,7 @@ def _process_exports(
     - Object with subpath keys: {".": "./src/index.js", "./sync": "./src/sync.js"}
     - Object with conditional values: {".": {"import": "./dist/esm.js", "require": "./dist/cjs.js"}}
 
-    Each resolved export path creates an ``export_entry`` symbol and a
+    Each resolved export path creates a ``kind="export"`` symbol and a
     ``defines_target`` edge to the target file.
     """
     if exports_node.type == "string":

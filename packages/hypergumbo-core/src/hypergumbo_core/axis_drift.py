@@ -6,8 +6,9 @@ things: (1) the substring ``EDGE_TYPE`` for matching consumer-side
 set names, and (2) the search scope ``packages/`` only. This module
 parameterizes both so the same machinery serves every axis-bearing
 field that ADR-0024's template introduces. ``Symbol.kind`` (per
-ADR-0027) and ``Edge.evidence_type`` (per ADR-0028) already plug
-into this machinery via their own canonical registries; additional
+ADR-0027), ``Edge.evidence_type`` (per ADR-0028) and the io-boundary
+axis (``io_boundary_types``) already plug into this machinery via
+their own canonical registries; additional
 axis-bearing fields follow the same template.
 
 The Edge.edge_type case keeps a thin wrapper at

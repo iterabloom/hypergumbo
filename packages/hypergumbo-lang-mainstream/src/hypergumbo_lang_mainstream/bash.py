@@ -27,20 +27,24 @@ Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 2. register_symbol: registers function and file symbols for cross-file resolution (the file pseudo-node, per INV-kokaj, so top-level calls outside any function can be attributed to it)
 3. extract_edges_from_file: resolves source/dot imports and function calls
 4. _find_source_files: overridden for shebang-based file discovery
+5. parse_source: overridden to blank an appended binary payload
+   (``shell_text``, WI-fisoh) while preserving byte length
 
 The edge pass also emits I/O and environment edges:
 
 - **Environment reads**: each ``$VAR`` / ``${VAR}`` expansion of a name that
   is not assigned in the file (or in a file joined to it by ``source``) and
   is not bash-maintained shell state becomes a ``module_attr_ref`` edge with
-  ``meta.env_var``, from the enclosing function or the file node. Host
-  description names (``OSTYPE``) target a host-info node instead of the
-  environment node.
+  ``meta.env_var``, from the enclosing function or the file node. A name
+  the file assigns but also reads with a default operator (``${VAR:-x}``)
+  still counts as unassigned (INV-sihom). Host description names
+  (``OSTYPE``) target a host-info node instead of the environment node.
 - **Redirects**: each ``file_redirect`` with a modelled operator (``>``,
   ``>>``, ...) becomes an unresolved ``calls`` edge carrying
   ``io_primitive`` (``redirect.<op>``), ``io_mode``, ``io_target_kind``
   (``host_path``, ``std_stream``, ``null_device`` or ``unresolved``) and,
-  when the file parsed cleanly, ``redirect_origin_names``: the
+  for a write operator in a file that parsed cleanly,
+  ``redirect_origin_names``: the
   environment-derived names that can reach what the shell writes there.
 - **External programs**: a command that is not a defined function, not
   resolved by the resolver, and not in ``SHELL_BUILTINS`` becomes one

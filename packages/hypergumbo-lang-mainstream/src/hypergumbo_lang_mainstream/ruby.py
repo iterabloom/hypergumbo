@@ -12,7 +12,8 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
   ``_filter`` spellings, the model lifecycle callbacks, the transaction
   callbacks (``after_commit``, ``after_create_commit``, ...) and
   ``validate``. Block-style callbacks are picked up too.
-- ActiveRecord association edges (has_many, belongs_to, has_one)
+- ActiveRecord association ``references`` edges (has_many, belongs_to,
+  has_one, has_and_belongs_to_many; ``meta["ref_construct"] = "association"``)
 - Ruby delegate macro edges (delegate :method, to: :association)
 - Rails / Sinatra route symbols, including namespaces, resources and
   member/collection blocks (``_extract_rails_routes``)
@@ -48,7 +49,7 @@ Why This Design
 ---------------
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-ruby package for grammar
-- Two-pass allows cross-file call resolution
+- Multi-pass allows cross-file call resolution
 - Same pattern as Go/Rust/Elixir/Java/PHP/C analyzers for consistency
 
 Population of ``is_exported`` follows Ruby's default-public rule: top-level
@@ -1337,9 +1338,11 @@ def _extract_rails_callbacks(
         before_save { normalize_name }
 
     Named-method callbacks create edges from the class to the named method
-    (confidence 0.90, evidence ``rails_callback``). Block-style callbacks
+    (``meta["framework_dispatch"] = "rails_callback"``). Block-style callbacks
     extract method calls from the block body and create edges for each
-    (confidence 0.85, evidence ``rails_block_callback``).
+    (``meta["framework_dispatch"] = "rails_block_callback"``). Both forms emit
+    ``dispatches_to`` with evidence ``ast_call_direct`` and
+    ``meta["mechanism"] = "callback"``.
 
     Also handles legacy Rails 3 API: before_filter, after_filter, around_filter.
     """
@@ -1509,12 +1512,13 @@ def _extract_activerecord_associations(
         has_one :profile
         has_many :messages, class_name: "ChatMessage"
 
-    These create ``association`` edges from the declaring model class to the
-    target model class. The target class is inferred from the association name
+    These create ``references`` edges (``meta["ref_construct"] =
+    "association"``) from the declaring model class to the target model class. The target class is inferred from the association name
     by singularizing and converting to PascalCase, or from an explicit
     ``class_name:`` option.
 
-    Returns edges with type ``association`` from class symbol to target class.
+    Returns ``references`` edges from class symbol to target class
+    (unresolved when the target model is not in the analyzed files).
     """
     edges: list[Edge] = []
 

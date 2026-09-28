@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Elixir analysis pass using tree-sitter-elixir.
+"""Elixir analysis pass using the tree-sitter-language-pack Elixir grammar.
 
 This analyzer uses tree-sitter to parse Elixir files and extract:
 - Module declarations (defmodule)

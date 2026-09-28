@@ -27,9 +27,10 @@ Key IR Classes
 - **Edge**: Relationships between symbols with confidence, evidence tracking,
   and edge_key for deduplication across passes. ``confidence_source`` names
   what produced the number and ``rank_score`` carries the ranking weight
-  (ADR-0039 rulings 2 and 3); ``corroborated`` marks an edge the ADR-0057
-  merge pass folded from two producers' distinct inference pathways, whose
-  confidence is the declared corroboration level. Edges carry a structured
+  (ADR-0039 rulings 2 and 3); the ``confidence_source`` value
+  ``corroborated`` marks an edge the ADR-0057 merge pass folded from two
+  producers' distinct inference pathways, whose confidence is the declared
+  corroboration level. Edges carry a structured
   ``dst_ref: Optional[ExternalRef]`` sibling alongside the legacy ``dst``
   colon-encoded id; consumers read the callee name through
   ``callee_name_of`` (``meta["callee_name"]``, then ``dst_ref.name``, then
@@ -1667,14 +1668,12 @@ def _span_token_index(parts: list[str]) -> Optional[int]:
 
     THE ONE SPAN ANCHOR (INV-divuf). The span is the only slot that can be
     located without assuming any OTHER slot is colon-free, which is why every
-    correct parse in this module is anchored on it. It had THREE homes: the
-    loop below was copy-pasted into :func:`symbol_path_slot` and
-    :func:`symbol_name_slot`, and :func:`validate_symbol_id_format` carried a
-    third, WRONG version that took ``parts[-3]`` — so the validator located the
-    span correctly only for ids whose name and path happened to be colon-free,
-    and silently returned "clean" for every Objective-C selector and every Rust
-    qualified callee. A validator that cannot parse the ids it validates is the
-    failure mode this extraction exists to end.
+    correct parse in this module is anchored on it. The loop below was
+    copy-pasted into :func:`symbol_path_slot` and :func:`symbol_name_slot`,
+    and this extraction gives it one home. :func:`validate_symbol_id_format`
+    does NOT use it: it keeps ``parts[-3]`` deliberately (INV-divuf — moving it
+    to span-anchoring was tried and reverted), because on a malformed id the
+    shifted right-anchored slot is the ``colon_in_name_slot`` signal.
 
     Returns ``None`` when no span token is present, which is a real shape
     (``just:examples/screenshot.just:6:build:recipe`` carries a bare line

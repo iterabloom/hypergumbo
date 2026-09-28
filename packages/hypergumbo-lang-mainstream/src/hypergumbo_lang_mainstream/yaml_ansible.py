@@ -10,7 +10,8 @@ Constructs detected:
 - Tasks (- name: X, module: params)
 - Handlers (handlers: section)
 - Variables (vars: section)
-- Include/import references (include_tasks, import_tasks, include_role)
+- Include/import references (include_tasks, import_tasks, include_role,
+  import_role)
 
 Single-pass per file: symbols and reference edges (includes,
 imports) are extracted together (see ``AnsibleAnalyzer`` class

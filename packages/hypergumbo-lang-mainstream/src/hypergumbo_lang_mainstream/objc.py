@@ -23,9 +23,10 @@ syntax is a syntax error to it, and its error recovery falls back to C: a
 Measured over four real ObjC repositories, that cost 74 of 387 files. There is no
 newer grammar to bump to -- 3.0.2 is the newest published and upstream is dormant
 -- so :func:`_objc_parse_source` retries a failing file through a
-byte-length-preserving rewrite of the two macro families that actually break the
-parse (``NS_ASSUME_NONNULL_BEGIN``/``_END`` in the wrapping position, and
-``NS_ENUM``/``NS_OPTIONS``/``NS_CLOSED_ENUM``), keeping the result only when it
+byte-length-preserving rewrite of the three macro families that actually break
+the parse (``NS_ASSUME_NONNULL_BEGIN``/``_END`` in the wrapping position,
+``NS_ENUM``/``NS_OPTIONS``/``NS_CLOSED_ENUM``, and availability/deprecation
+macros such as ``API_AVAILABLE(...)``), keeping the result only when it
 strictly reduces ERROR nodes. **Both passes below go through it and both use the
 bytes it returns**: Pass 2 re-reads and re-parses the file, so rewriting in Pass 1
 alone would desynchronise the two passes' spans.
@@ -86,7 +87,8 @@ def find_objc_files(root: Path) -> list[Path]:
     - .m: Shared with MATLAB and Wolfram — classified by content
     - .mm: Objective-C++ (unambiguous)
     - .h: Shared with C and C++ — only the headers ``header_owner`` gives to
-      ObjC (an ObjC marker, or any header of a pure-ObjC project). Every
+      ObjC (those carrying an ObjC marker; an unmarked header goes to C or
+      C++ even in a pure-ObjC project). Every
       ``.h`` had been taken here, so each was parsed by two grammars
       (WI-somod).
     """

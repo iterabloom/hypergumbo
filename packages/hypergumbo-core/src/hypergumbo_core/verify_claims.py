@@ -56,13 +56,13 @@ Verdict Types
 For taint-flow claims the adjudication travels with the verdict rather than
 being asserted by this module. Structural analysis produces ``approximate``
 confidence; the ADR-0017 §3a data-dependence walk produces ``precise`` where it
-confirms a dependence and ``approximate`` where it ran without confirming one
-(the ``analysis_method`` field records the separate ``ddg`` / ``ddg_mixed`` /
-``structural`` axis). A verdict's ``analysis_methods`` breakdown and each evidence
-row's ``confidence`` / ``analysis_method`` report what actually happened. This
-module previously hardcoded the literal ``approximate`` into every violated
-verdict, which made a ``precise`` finding indistinguishable from a structural
-one at the only surface a user reads.
+confirms a dependence and ``approximate`` everywhere else, including where it
+never ran (the ``analysis_method`` field records the separate ``ddg`` /
+``ddg_mixed`` / ``structural`` axis). A verdict's ``analysis_methods``
+breakdown and each evidence row's ``confidence`` / ``analysis_method``
+report what actually happened. This module previously hardcoded the literal
+``approximate`` into every violated verdict, which made a ``precise`` finding
+indistinguishable from a structural one at the only surface a user reads.
 
 Load-time validation
 ---------------------
@@ -145,14 +145,14 @@ How It Works
    production-sourced flows by default: flows sourced in test, mock,
    fixture, benchmark, test-support or migration code are left out of
    ``evidence_count`` and counted per rule in ``excluded_flows`` (restored by
-   ``include_non_production``). Two further exclusions are disclosed the
-   same way: ``sanitized_flows`` (a sanitizer lies on every route) and
+   ``include_non_production``). Three further exclusions are disclosed the
+   same way: ``sanitized_flows`` (a sanitizer lies on every route),
    ``resource_naming_flows`` (the tainted value only names the resource of a
    sink whose catalogue row takes no content argument), and
    ``trusted_sink_flows`` (the project declared the sink ``trust_level:
    trusted``).
-4. ``verify_claims(claims, boundary_map, findings, ...)`` checks all, then
-   passes every verdict through ``_require_coverage_to_confirm``, the
+4. ``verify_claims(claims, boundary_map, taint_findings, ...)`` checks all,
+   then passes every verdict through ``_require_coverage_to_confirm``, the
    backstop that applies to every constraint kind: given a ``blind_reason``,
    a confirming verdict becomes ``inconclusive`` (caveats kept), or
    ``confirmed_with_caveats`` with an opaque-boundary caveat when named
@@ -162,8 +162,10 @@ How It Works
    ``extra_catalogs`` (the analysed repository supplying its own grading
    criteria); the CLI puts it in the ``--json`` envelope, and
    ``render_catalog_provenance_text`` renders the same disclosure for text
-   output (nothing when only the shipped catalogue was used). It changes no
-   verdict.
+   output. With only the shipped catalogue it still renders the run-level
+   notes (the ``kind_adjudication`` census, shipped community overlays,
+   load-bearing completeness grants); the user-supplied block appears only
+   when a user catalogue was used. It changes no verdict.
 """
 from __future__ import annotations
 

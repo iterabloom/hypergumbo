@@ -17,16 +17,18 @@ files in the ``io_primitives/`` directory alongside this module.
 
 Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
 
-- **Overlays.** ``load_overlay_catalog`` merges project-local rows so a
-  repository can declare the I/O of its own third-party dependencies. Overlay
-  rows carry ``status: overlay``; the shipped catalogue stays stdlib-scoped.
+- **Overlays.** ``load_overlay_catalog`` loads a project-local overlay file
+  (which must declare ``status: overlay``) and ``load_catalog`` merges its
+  rows, so a repository can declare the I/O of its own third-party
+  dependencies; the shipped catalogue stays stdlib-scoped.
 - **Mode discrimination.** A primitive can be rowed at more than one mode, so
   a write stops classifying as a read, and a single primitive can name more
   than one boundary at once.
 - **Opacity.** ``OPAQUE_BOUNDARIES`` / ``PRODUCER_OPAQUE_BOUNDARIES`` name the
   boundaries whose downstream effect the analysis cannot see (a launched
   program's own I/O), which is what ``command_launch`` discloses rather than
-  resolves. ``HIGH_RISK_PRIMITIVES`` flags the rows worth surfacing first.
+  resolves. ``HIGH_RISK_PRIMITIVES`` is a display-only marker scoped to
+  ``subprocess`` launches.
 - **The boundary map.** ``compute_boundary_map`` assembles the wire artifact
   versioned by ``IO_BOUNDARIES_SCHEMA_VERSION``, with ``compute_leaf_rollups``
   aggregating chains per leaf and ``_compute_external_potential`` synthesizing
@@ -53,7 +55,9 @@ How It Works
 3. The boundary-tagging pass (ADR-0016 Phase 1b) lives **in this module** —
    ``tag_io_boundaries`` — and uses those matches to stamp ``io_boundary``
    and ``io_primitive`` onto edges in the graph, plus ``io_boundaries``
-   (plural) when one primitive crosses several boundaries at once.
+   (plural) when more than one boundary is true of the edge: a primitive
+   that crosses several at once, collapsed call sites that span read and
+   write, or a producer opacity stamp kept beside the catalogue row.
 4. ``compute_boundary_map`` walks the tagged graph back to each reachable
    caller, producing the chains the ``io-boundaries`` command prints and
    ``verify-claims`` adjudicates.
@@ -113,6 +117,8 @@ if TYPE_CHECKING:
 # Top-level envelope keys (post-PR-B):
 #   - schema_version: str (this constant)
 #   - total_io_edges: int
+#   - external_potential_edges / command_launch_edges / net_listen_edges /
+#     db_compose_edges: int  (disclosed-only bucket counts)
 #   - boundaries: dict[str, BoundaryMapEntry.to_dict()]
 #   - unsupported_languages: list[str]  (added by ``cmd_io_boundaries``)
 #
@@ -129,7 +135,7 @@ IO_BOUNDARIES_SCHEMA_VERSION: str = "2.3"  # WI-fasap/ADR-0049: db_compose_edges
 # Canonical I/O boundary vocabulary
 # ---------------------------------------------------------------------------
 # ``CATALOG_BOUNDARY_TYPES`` is the closed set of boundary tags that an
-# io-primitives catalog YAML may declare: ``_parse_catalog`` iterates
+# io-primitives catalog YAML may declare: ``IoBoundaryCatalog._from_dict`` iterates
 # exactly these keys, so any other key in a catalog is silently ignored.
 # ``compute_boundary_map`` additionally synthesizes one boundary that no
 # catalog declares — ``external_potential`` — for unmatched first-party
@@ -162,7 +168,7 @@ CATALOG_STATUS_UNSUPPORTED: str = "unsupported"
 
 # DERIVED FROM THE REGISTRY (ADR-0050), not written out here. Each spec
 # declares whether a catalogue may declare it; ``catalog_declarable_names``
-# returns those IN DECLARATION ORDER, because ``_parse_catalog`` iterates this
+# returns those IN DECLARATION ORDER, because ``IoBoundaryCatalog._from_dict`` iterates this
 # tuple and several sites resolve a primitive declared under two boundaries by
 # first-declared-wins. A property test pins the order, not just the membership.
 CATALOG_BOUNDARY_TYPES: tuple[str, ...] = catalog_declarable_names()
@@ -234,7 +240,7 @@ DEFERRED_CROSSING_SHADOWS: dict[str, str] = {
 # classifications; only one of them licenses "I looked and found nothing".
 #
 # WHY ``subprocess`` IS THE ONLY MEMBER, and this is a closed question rather
-# than an oversight. ``_parse_catalog`` iterates exactly
+# than an oversight. ``IoBoundaryCatalog._from_dict`` iterates exactly
 # ``CATALOG_BOUNDARY_TYPES``, so a catalog can never declare anything outside
 # it; ``external_potential`` and ``command_launch`` are synthesised, never
 # declared, and already excluded from the verified surface by
@@ -264,7 +270,7 @@ OPAQUE_BOUNDARIES: frozenset[str] = opacity_names(catalog_declarable=True)
 # DISJOINT FROM ``OPAQUE_BOUNDARIES`` BY CONSTRUCTION, and the split is the
 # point rather than an accident of naming. A catalog-declarable boundary is
 # inert unless it is in ``CATALOG_BOUNDARY_TYPES``; a producer-stamped one is
-# inert if it IS, because ``_parse_catalog`` iterates exactly that tuple and
+# inert if it IS, because ``IoBoundaryCatalog._from_dict`` iterates exactly that tuple and
 # the catalogue channel would then be the one carrying it. Each set is
 # reachable through exactly one channel, and a test asserts each direction —
 # collapsing them into a single set makes one half unreachable whichever way it
@@ -2361,9 +2367,9 @@ def in_progress_languages(languages: Iterable[str]) -> list[str]:
     catalog's zero-match outcome is otherwise indistinguishable from a genuine
     "no I/O in this code". Unsupported languages (no catalog file, even via
     alias) are excluded — :func:`load_catalog` returns a fallback object whose
-    ``status`` defaults to ``"provenance_declared"`` (they carry the separate
-    ``is_supported=False`` signal, INV-javam), so the ``status == "in_progress"``
-    test cleanly drops them. Aliases and parents resolve through
+    ``status`` is :data:`CATALOG_STATUS_UNSUPPORTED` (WI-gofah; they also carry
+    the separate ``is_supported=False`` signal, INV-javam), so the
+    ``status == "in_progress"`` test cleanly drops them. Aliases and parents resolve through
     :func:`load_catalog` (e.g. ``typescript`` reports the ``javascript``
     catalog's status). The result is sorted and de-duplicated.
     """
@@ -2979,7 +2985,7 @@ def _narrow_by_target_kind(
     mode seam — ``select_by_mode(_narrow_by_target_kind(...))`` still lets a
     mode settle whatever the stream argument did not, whereas two selectors in
     a row would have the first one decide what the second exists to decide. A
-    ``_narrow_by_target_kind`` twin was written first and deleted: nothing could
+    selecting twin (the ``select_`` form) was written first and deleted: nothing could
     call it without breaking that composition, which is WI-famig's defect (a
     mechanism with no live consumer) caught by its own uncovered line.
 
@@ -2994,8 +3000,8 @@ def _narrow_by_target_kind(
     pinned by a test against the shipped catalogues.
 
     THIS ARM IS NOT OPTIONAL. C's ``fgets`` carries no module slot, so it
-    reaches ``lookup_with_module``'s short-name fallback and never touches
-    :func:`_narrow_by_target_kind`. The mode seam learned this the expensive
+    reaches ``lookup_with_module``'s short-name fallback and never touches the
+    two arms that call :func:`select_by_mode`. The mode seam learned this the expensive
     way -- stamping ``io_mode`` for C moved nothing until this same arm was
     narrowed too, because a predicate is inert until every call site passes it.
     """
@@ -3586,7 +3592,8 @@ class BoundaryMapEntry:
 
         Includes per-primitive counts, per-chain detail, and a
         high-risk flag indicating whether any chain uses a high-risk
-        primitive (destructive fs, subprocess, outbound network).
+        primitive (a display-only marker scoped to subprocess launches;
+        see ``HIGH_RISK_PRIMITIVES``).
 
         Also emits the WI-darad leaf-caller roll-ups (leaf_callers +
         entry_points_per_leaf) so taint-style reasoning can keep the

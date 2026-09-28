@@ -9,7 +9,8 @@ How It Works
 ------------
 1. ``load_cfg_mapping()`` reads a per-language YAML file that maps tree-sitter
    node types to control-flow categories: conditional, loop, break, continue,
-   return, try/catch, switch/match, and semantic hooks.
+   return, try/catch, switch/match, and semantic hooks. Two further keys are
+   not control-flow categories: ``call_node_types`` and ``atomic_statement``.
 
 2. ``build_function_cfg()`` walks the tree-sitter AST for a function body and
    produces a ``FunctionCfg`` using the fringe-based recursive algorithm (same
@@ -23,7 +24,9 @@ How It Works
    - Loops (while/for): back-edge from body's fringe to condition entry.
    - break/continue: collect with nesting level; resolve at enclosing loop.
    - return/throw: wire to function exit block; produce empty fringe.
-   - try/catch/finally: try body's fringe connects to all catch entries.
+   - try/catch/finally: exception edges run from a synthetic try-entry
+     block to every catch entry; the try and catch fringes connect to the
+     finally entry, or merge when there is no finally.
    - switch/match: edges from scrutinee to each case entry.
 
 3. **Semantic hooks** handle non-standard control flow that cannot be reduced
@@ -48,7 +51,9 @@ How It Works
 Architecture
 ------------
 The CFG builder is language-parameterized, not language-specific. All language
-differences are handled by YAML node mappings in ``cfg_nodes/``. The builder
+differences are handled by YAML node mappings in ``cfg_nodes/`` (plus one
+loader alias, ``_CFG_MAPPING_ALIASES``: ``javascript`` reads
+``typescript.yaml``). The builder
 itself contains no hardcoded language names — it implements a finite set of
 generic control-flow patterns that the YAML mappings select.
 
@@ -1625,7 +1630,7 @@ def uncovered_semantic_lines(
 # ---------------------------------------------------------------------------
 
 #: Node types that carry no semantics for coverage purposes. Extracted from
-#: :meth:`CfgBuilder._classify_node`, which skipped exactly these, so the
+#: :meth:`CfgBuilder._process_sequential`, which skips exactly these, so the
 #: "is this node worth accounting for" question has ONE spelling and the
 #: coverage gate cannot drift from the builder that produces its input.
 _NON_SEMANTIC_NODE_TYPES = frozenset({

@@ -7,8 +7,11 @@ extract:
   IIFEs so a handler passed inline is still a node
 - Class members as kind ``method``, ``getter`` or ``setter``
   (``jsts_method_kind`` reads the ``get`` / ``set`` keyword)
-- Route markers (Express-style registrations, React Router ``<Route>``) as
-  kind ``function`` carrying ``meta.framework_role``
+- Route markers (Express-style registrations with an external handler,
+  React Router ``<Route>`` and ``createBrowserRouter``-family route configs)
+  as kind ``function`` carrying ``meta.framework_role``; an inline Express
+  handler is instead a plain ``function`` symbol with ``meta.route_path`` /
+  ``meta.http_method`` and no ``framework_role``
 - TypeScript-only declarations as their own kinds: ``interface``, ``type``,
   ``enum``, and the members of interfaces and enums
 - ``field`` symbols for class properties and ``variable`` for module-level
@@ -55,15 +58,16 @@ target.
 
 Call-Site Resolution
 --------------------
-- **Member-call cascade** (``obj.m()``): a typed ``this.prop`` receiver; a
+- **Member-call cascade** (``obj.m()``): ``this.m()`` against the enclosing
+  class; a typed ``this.prop`` receiver; a
   namespace-import alias; a variable typed by ``var_types``; a bare
   ``JS_KNOWN_GLOBALS`` receiver (``console``, ``process``, ...); a receiver
   whose catalogue module is in ``var_ctor_modules`` (filled from
   ``new X()`` or a TypeScript-declared type when ``X`` is in
   ``JS_CONSTRUCTOR_TYPES``, which is derived from the io-boundary
   catalogue); a ``<mod>.promises`` chain; an inline ``new X().m()``; then a
-  low-confidence method-name match. A receiver none of these type still gets
-  an unresolved edge to the ``external`` placeholder with
+  low-confidence method-name match. A non-``this`` receiver none of these
+  type still gets an unresolved edge to the ``external`` placeholder with
   ``call_construct="method"``.
 - **INV-fahub deferral** (``defer_bare_method_call``): a bare ``foo()`` or
   untyped ``obj.m()`` whose only match is a weak short-name hit on a
@@ -131,7 +135,9 @@ Why This Design
 - Tree-sitter provides accurate parsing even for complex syntax
 - Three-pass allows cross-file call resolution and usage-context capture
 - Svelte / Vue support reuses existing TS/JS parsing infrastructure
-- Uses iterative traversal to avoid RecursionError on deeply nested code
+- Uses iterative traversal (``iter_tree``) for the main walks to avoid
+  RecursionError on deeply nested code; a few narrow helpers
+  (``_collect_type_identifiers``, ``_extract_route_objects``) still recurse
 """
 from __future__ import annotations
 

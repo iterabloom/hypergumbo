@@ -22,15 +22,15 @@ textual call site reaches them.
 Matching strategy
 -----------------
 1. Scan ``.go`` files that import ``github.com/hashicorp/memberlist``.
-2. Find the anchor call site — any function that calls
-   ``memberlist.Create(`` on its own. That function is taken as the
+2. Find the anchor call site — any function, in a file that defines a
+   delegate method (step 3), that calls ``memberlist.Create(`` on its own. That function is taken as the
    dispatch source because it is the concrete construction point
    that causes the runtime to start invoking the delegate methods.
 3. Find any method symbol whose bare name matches one of the
    canonical delegate names AND whose defining file imports
    memberlist. Treat those as dispatch targets.
 4. Emit ``dispatches_to`` edges from each anchor function to each
-   matched delegate method. Dedup by ``(src, dst)``.
+   matched delegate method in the same file. Dedup by ``(src, dst)``.
 
 Why name-based detection
 ------------------------
@@ -193,8 +193,8 @@ def go_memberlist_linker(ctx: LinkerContext) -> LinkerResult:
             if enc is not None and enc not in anchor_syms:
                 anchor_syms.append(enc)
         if not anchor_syms:
-            # No explicit Create anchor — fall back to init() or the
-            # first non-delegate function symbol in the file.
+            # No explicit Create anchor — fall back to the first
+            # non-delegate function/method symbol in the file.
             delegate_ids = {d.id for d in delegates}
             fallback_candidates = [
                 s

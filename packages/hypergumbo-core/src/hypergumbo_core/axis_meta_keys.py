@@ -2,7 +2,7 @@
 """Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
 
 Per WI-runod Wave 9 and the four-part axis-declaration template in
-[ADR-0024](../../docs/adr/0024-axis-declaration-template.md), every
+[ADR-0024](../../../../docs/adr/0024-axis-declaration-template.md), every
 *meta key* used by producers / consumers across the codebase is
 declared once here with its axis (``symbol_meta``, ``edge_meta``, or
 ``entrypoint_meta``) and a short description of what the key encodes.
@@ -57,7 +57,7 @@ Three structural problems the registry solves, mirroring the
    no canonical place to look — the answer is scattered across
    ~25 linker files.
 3. **Promotion gating per
-   [ADR-0024 §"Fold-residue discipline"](../../docs/adr/0024-axis-declaration-template.md#fold-residue-discipline).**
+   [ADR-0024 §"Fold-residue discipline"](../../../../docs/adr/0024-axis-declaration-template.md#fold-residue-discipline).**
    When a meta key recurs (≥3 distinct values OR ≥2 producer
    modules), the rule is to consider promoting it to a sibling typed
    field on the parent dataclass. The registry is what lets us
@@ -70,13 +70,14 @@ The set-literal AST walker in
 :mod:`hypergumbo_core.axis_drift` is the wrong shape for meta keys —
 meta keys are accessed via ``meta["..."]`` *subscripts* and
 ``meta.get("...")`` *method calls*, not declared as set literals
-named ``*KEY*``. The subscript-access linter that was a follow-on work
-item at registry-establishment time has since shipped as
-:mod:`hypergumbo_core.meta_write_discipline` (driven by
-``scripts/check-meta-write-discipline``), and :func:`write_meta_key`
-enforces the same rule at runtime: an unregistered key raises. The
-registry remains the canonical vocabulary for documentation, ADR
-cross-references, and the audit / fold trail.
+named ``*KEY*``. :mod:`hypergumbo_core.meta_write_discipline` (driven by
+``scripts/check-meta-write-discipline``) is a subscript-WRITE linter for
+``write_discipline`` arity; it flags an unregistered key only when two
+writers can reach it, and it does not inspect ``meta.get("...")`` reads, so
+the typo shape in problem 1 above is not caught statically.
+:func:`write_meta_key` raises on an unregistered key at runtime, for writes
+routed through it. The registry remains the canonical vocabulary for
+documentation, ADR cross-references, and the audit / fold trail.
 
 Coverage scope
 --------------
@@ -84,8 +85,9 @@ Coverage scope
 Registry seeded with every meta key empirically observed in producer
 code across packages/hypergumbo-core/src and the language-analyzer
 packages. New keys added by future producer migrations should be
-registered here in the same PR — the property test in
-``tests/test_axis_meta_keys.py`` is the structural enforcement.
+registered here in the same PR. ``tests/test_axis_meta_keys.py`` checks the
+registry's own consistency and a fixed list of linker keys; no test scans
+producers for unregistered keys.
 """
 
 from __future__ import annotations
@@ -1339,8 +1341,8 @@ def access_mode_applicable_edge_types() -> frozenset[str]:
     """ADR-0038 ruling 2: edge types where ``access_mode`` APPLIES.
 
     A ``None`` value on one of these edges means missing data (fix the
-    emitter), not "not applicable". The applicable half of INV-tibob's
-    17-type census.
+    emitter), not "not applicable". The applicable half of the access_mode
+    census (INV-tibob's 17 types, completed to all 25 by WI-pusuv).
     """
     return _ACCESS_MODE_APPLICABLE_EDGE_TYPES
 
@@ -1377,11 +1379,10 @@ def is_access_mode_not_applicable(edge_type: str) -> bool:
     """ADR-0038 ruling 2: is ``access_mode`` Declared-N/A for *edge_type*?
 
     The dataflow annotate passes call this to skip stamping ``access_mode`` on
-    N/A edge types. Edge types OUTSIDE the 17-type census (the uncensused
-    canonical types, incl. the ``data_flows_to`` dataflow-direction relationship
-    — crypto write→read flows fold here after the ADR-0023 ``crypto_flow`` prune)
-    are UNCLASSIFIED and return ``False`` — their stamping behavior is untouched
-    by this pass, pending the polyglot-census follow-up (WI-pusuv).
+    N/A edge types. The census is complete (WI-pusuv): every canonical edge
+    type is applicable XOR N/A, so ``data_flows_to`` and the other residual
+    relationship types now return ``True``. A name outside the registry
+    returns ``False``.
     """
     return edge_type in _ACCESS_MODE_NA_EDGE_TYPES
 
