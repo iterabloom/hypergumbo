@@ -1,0 +1,33 @@
+Original commit body from 95c7025d202ba693b845f9e43ea7169c230812de:
+
+tag_io_boundaries has counted imports edges as call sites since it was
+written. A Python import's dst is the imported name, so `import glob`
+(python:glob:0-0:glob) carries the (module, name) of the FUNCTION row
+glob.glob and matched it. A file containing only `import glob` was an
+fs_read chain and failed a {boundary: fs_read, must_not_exist: true}
+claim (violated, rc 1) for a program that performs no I/O. On the
+self-survey 158 import edges were tagged, 133 of them `import time` as
+host_info_read.
+
+imports is NOT removed from call_types. Measured first: after
+`from os import environ` / `from sys import argv`, the use
+(environ["K"], argv[1]) emits no edge at all, so the import is the only
+thing that makes those reads visible. They are attribute rows. A function
+or method row has a call site of its own (`from subprocess import run`
+then run(cmd) emits a calls edge), so the import was a second, file-level
+chain for the same call. An imports edge now keeps a match only when the
+row is attribute-kind.
+
+Self-survey replay: 13,274 -> 13,116 tagged edges, the 158 import edges,
+none remaining. JS and Rust imports produced no chains before or after.
+Taint does not read imports edges (TAINT_CALL_EDGE_TYPES), so no taint
+source was involved. Residual: a function imported and used without a
+call (passed as a callback) now produces no chain.
+
+The parity test's docstring said a tagged-but-ungated edge "can only
+downgrade confirmed to inconclusive"; a tagged edge is a chain and can
+make a claim violated. Corrected.
+
+Addresses INV-lagir.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
