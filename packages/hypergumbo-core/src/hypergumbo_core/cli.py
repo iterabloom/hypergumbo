@@ -6255,7 +6255,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     ``(module, name, kind)`` triple matches an auto-derived or built-in
     source/sink replace it; user sanitizers concatenate.  This is the
     supported extension point for declaring project-specific trust zones,
-    raising ``trust_level`` on a sink that is safe in context, or adding
+    declaring a sink ``trust_level: trusted`` when it is safe in context (its
+    flows are excluded and disclosed per verdict in ``trusted_sink_flows``,
+    WI-lukoz), or adding
     a domain-specific taint source label.
     """
     repo_root = Path(args.path).resolve()

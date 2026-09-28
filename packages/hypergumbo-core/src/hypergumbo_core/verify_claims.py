@@ -148,7 +148,9 @@ How It Works
    ``include_non_production``). Two further exclusions are disclosed the
    same way: ``sanitized_flows`` (a sanitizer lies on every route) and
    ``resource_naming_flows`` (the tainted value only names the resource of a
-   sink whose catalogue row takes no content argument).
+   sink whose catalogue row takes no content argument), and
+   ``trusted_sink_flows`` (the project declared the sink ``trust_level:
+   trusted``).
 4. ``verify_claims(claims, boundary_map, findings, ...)`` checks all, then
    passes every verdict through ``_require_coverage_to_confirm``, the
    backstop that applies to every constraint kind: given a ``blind_reason``,
@@ -341,7 +343,11 @@ from .paths import classify_test_file, is_migration_file
 # sink can only have been told WHICH resource to act on is now disclosed here
 # instead of counted as evidence; it remains a TRUE POSITIVE on the correctness
 # axis and is excluded on USEFULNESS, structurally and per sink.
-VERIFY_CLAIMS_SCHEMA_VERSION = "2.4"
+# 2.5 adds the per-verdict ``trusted_sink_flows`` count (WI-lukoz), on 2.4's
+# reasoning: an added key, and the flows it counts are no longer in
+# ``evidence_count``. ``trust_level: trusted`` on a project sink used to be
+# documented and inert; it now excludes that sink's flows and discloses them.
+VERIFY_CLAIMS_SCHEMA_VERSION = "2.5"
 
 #: Verdict values that ASSERT THE CLAIM HOLDS. The one predicate for "did this
 #: claim pass", consumed by the coverage gate, the CLI's exit code and the CLI's
@@ -1339,6 +1345,14 @@ class ClaimVerdict:
     excluded, because the walk carries no argument identity and the flow might
     have reached the content.
     """
+    trusted_sink_flows: int = 0
+    """Flows excluded because their sink was DECLARED trusted (WI-lukoz).
+
+    A project sink catalogue's ``trust_level: trusted`` says the sink is safe
+    in context. Like :attr:`resource_naming_flows`, these flows leave
+    ``evidence_count`` and are counted here and named in ``details``, so a
+    clean verdict says what it set aside and on whose word.
+    """
     sanitized_flows: int = 0
     caveats: list[dict[str, Any]] = field(default_factory=list)
     #: Language -> the pass IDs that produced the call edges this verdict rests
@@ -1360,6 +1374,7 @@ class ClaimVerdict:
             "analysis_methods": self.analysis_methods,
             "sanitized_flows": self.sanitized_flows,
             "resource_naming_flows": self.resource_naming_flows,
+            "trusted_sink_flows": self.trusted_sink_flows,
             "caveats": self.caveats,
             "analysis_fidelity": self.analysis_fidelity,
         }
@@ -5254,6 +5269,14 @@ def _verify_taint_claim_uncredited(
     resource_naming_flows = sum(1 for f in matching if f.resource_naming_only)
     matching = [f for f in matching if not f.resource_naming_only]
 
+    # WI-lukoz: a sink the PROJECT declared ``trust_level: trusted``. The same
+    # exclude-and-disclose shape, on the project's word rather than the
+    # catalogue's: the flow is real, and the count and the sentence say it was
+    # set aside and why. Asked of the finding, never of the zone, so one
+    # trusted sink does not clear its whole zone.
+    trusted_sink_flows = sum(1 for f in matching if f.trusted_sink)
+    matching = [f for f in matching if not f.trusted_sink]
+
     # WI-bifob: production is the default scope, and what the default leaves
     # out is DISCLOSED rather than dropped. A test that opens a listener is not
     # a network-exposure finding about the product, and a migration that writes
@@ -5346,6 +5369,13 @@ def _verify_taint_claim_uncredited(
         # that flows reached the sink and were set aside. The wording says what
         # was excluded AND why it is not a clean bill of health -- naming a
         # resource is still a real flow, it is simply not the useful finding.
+        trusted_sink_clause = ""
+        if trusted_sink_flows:
+            trusted_sink_clause = (
+                f" {trusted_sink_flows} flow(s) reach that zone through a sink "
+                f"the project's catalogue declares trusted (trust_level: "
+                f"trusted); they are excluded on that declaration, not absent."
+            )
         resource_naming_clause = ""
         if resource_naming_flows:
             resource_naming_clause = (
@@ -5563,11 +5593,13 @@ def _verify_taint_claim_uncredited(
             details=(
                 f"No unsanitized {tf.source_taint} data reaches "
                 f"{tf.prohibited_sink_zone} zone."
-                f"{sanitized_clause}{resource_naming_clause}{excluded_clause}{deferred_clause}"
+                f"{sanitized_clause}{resource_naming_clause}{trusted_sink_clause}"
+                f"{excluded_clause}{deferred_clause}"
             ),
             excluded_flows=excluded_flows,
             sanitized_flows=sanitized_flows,
             resource_naming_flows=resource_naming_flows,
+            trusted_sink_flows=trusted_sink_flows,
             caveats=caveats,
         )
 
@@ -5735,6 +5767,7 @@ def _verify_taint_claim_uncredited(
         analysis_methods=analysis_methods,
         sanitized_flows=sanitized_flows,
         resource_naming_flows=resource_naming_flows,
+        trusted_sink_flows=trusted_sink_flows,
         caveats=violated_caveats,
     )
 
