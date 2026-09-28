@@ -451,6 +451,9 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     # A launch is a launch; the invariant above admits no "but it is only
     # less" carve-out.
     "builtins.help",
+    # INV-bosus: platform.architecture() runs `file -b <executable>`, and
+    # platform.processor() / platform.platform() run `uname -p`. Same rule.
+    "platform.architecture", "platform.processor", "platform.platform",
     # Go
     "os/exec.Command", "os/exec.CommandContext",
     "os/exec.Cmd.CombinedOutput", "os/exec.Cmd.Output",

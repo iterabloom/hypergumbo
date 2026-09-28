@@ -870,6 +870,15 @@ ipc_recv:
     methods: [recv, recv_bytes]
 
 subprocess:
+  - module: platform
+    functions: [architecture, processor, platform]
+    simultaneous: true
+    notes: >-
+      INV-bosus. architecture() runs `file -b <executable>` (executable
+      defaults to sys.executable and is the caller's argument otherwise);
+      processor() and platform() run `uname -p` on every platform except win32
+      and OpenVMS. Simultaneous with the host_info_read row: the launch is how
+      the description is read.
   - module: subprocess.Popen
     methods: [communicate, wait, poll, terminate, kill, send_signal]
     notes: >-
@@ -1040,7 +1049,7 @@ host_info_read:
   - module: grp
     functions: [getgrgid, getgrnam, getgrall]
   - module: platform
-    functions: [platform, architecture, libc_ver, mac_ver, freedesktop_os_release]
+    functions: [libc_ver, mac_ver, freedesktop_os_release]
   - module: shutil
     functions: [get_terminal_size]
   - module: tempfile
@@ -1048,7 +1057,19 @@ host_info_read:
   - module: sys
     attributes: [executable, path, platform, version]
   - module: platform
-    functions: [system, node, release, version, machine, processor, python_version]
+    functions: [system, node, release, version, machine, python_version]
+  # INV-bosus: split out of the two rows above and declared `simultaneous` here
+  # AND under subprocess. Each reads the host description and also launches a
+  # program to do it (measured on CPython 3.12 / Linux by wrapping
+  # subprocess.check_output): architecture() runs `file -b <sys.executable>`
+  # (_syscmd_file); processor() runs `uname -p` (_Processor.from_subprocess, the
+  # fallback for every platform but win32 and OpenVMS); platform() runs it
+  # through uname().processor. One call, both boundaries, no argument that
+  # decides between them. The other platform functions spawn nothing.
+  - module: platform
+    functions: [architecture, processor, platform]
+    simultaneous: true
+    notes: "Reads the host description and launches file(1) / uname(1) to do it; see the subprocess row."
   - module: locale
     functions: [getlocale, getdefaultlocale, getpreferredencoding]
   # 2026-09-08 WI-dozul. The LOCAL half of socket's lookup surface, rowed
@@ -1937,7 +1958,10 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-15"
     notes: >-
-      Host-identification surface rowed under env_read.
+      Host-identification surface rowed under host_info_read (it was env_read
+      until the INV-tutar split). INV-bosus, 2026-09-28: architecture,
+      processor and platform are ALSO rowed subprocess, simultaneously,
+      because each launches file(1) or uname(1).
   - module: secrets
     completeness: complete
     retrieved: "2026-08-15"
