@@ -24,3 +24,10 @@
   clock: 2  # a1c1
   nonce: a1c1  # a1c1
   message: "Same shape seen 2026-09-23 on an OBJECT owner: 'from ctypes import cdll; cdll.LoadLibrary(p)' -> python:ctypes:0-0:cdll.LoadLibrary, not classified, while 'ctypes.cdll.LoadLibrary(p)' classifies fs_read (INV-dihun). The from-import form puts the owner in the name slot instead of the module slot."  # a1c1
+- op: discuss  # 5479
+  at: '2026-09-28T08:48:52Z'  # 5479
+  by: agent  # 5479
+  actor: jgstern_agent  # 5479
+  clock: 3  # 5479
+  nonce: '5479'  # 5479
+  message: "RE-READ 2026-09-28 (from WI-sugom's re-verification). Same emission as WI-sugom: py.py:8336 puts a from-imported owner in the NAME slot. Traced the datetime.now difference this row left UNVERIFIED: INV-januj's strip_redundant_module_qualifier retry drops a qualifier that repeats the module (datetime + datetime.now -> now); date and Path do not repeat it. Shipped command today: 'from pathlib import Path; Path.cwd()' and 'from datetime import date; date.today()' each CONFIRM a must_not_exist host_info_read claim with 0 caveats. Source census (~/all_repos_first_party_py.txt): Path.cwd 160, Path.home 48, date.today 119 sites. Numbers and the fold question are on WI-sugom."  # 5479
