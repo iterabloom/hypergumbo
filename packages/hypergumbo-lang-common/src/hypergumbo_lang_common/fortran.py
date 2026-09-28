@@ -7,6 +7,10 @@ This analyzer uses tree-sitter to parse Fortran files and extract:
 - Function definitions
 - Subroutine definitions
 - Derived type definitions
+- Derived-type components (``kind="field"``, named ``type.component``) and
+  module/program/submodule/block_data variables (``kind="variable"``; see
+  ``_FORTRAN_VARIABLE_SCOPES``). These are data anchors only:
+  ``FortranAnalyzer.register_symbol`` keeps them out of call resolution.
 - Use statements (imports)
 - Subroutine calls (the explicit `call foo(...)` statement form; function calls in expression context are not emitted as call edges)
 
@@ -16,8 +20,11 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract modules, programs, functions, subroutines, types with signatures
-2. Pass 2: Extract call edges and import edges using NameResolver
+1. Pass 1: Extract modules, programs, functions, subroutines, types with signatures,
+   plus field/variable data symbols
+2. Pass 2: Extract call edges and import edges using NameResolver. Renames in
+   ``use m, only: local => orig`` (``_extract_use_aliases``) map
+   ``local`` to ``m.orig`` as the resolver's path_hint (ADR-0007)
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Fortran-specific extraction

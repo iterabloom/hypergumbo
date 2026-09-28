@@ -20,6 +20,11 @@ structurally-certain span_overlap 0.90):
 Extracts the parent name from the symbol's ``name`` field using
 language-specific separators (``.``, ``#``, ``::``).  For example,
 ``User.save`` → parent ``User``.
+When several containers share that name, ``_find_parent`` prefers the one
+in the child's file (disambiguating same-file duplicates by the enclosing
+span, and refusing when none encloses the child), then one in the same
+language; when the child's language is known it never crosses a language
+boundary.
 
 **Phase 1.5 — qualified_name fallback** (confidence=0.95):
 When ``sym.name`` has no separator (e.g., proto RPCs where
@@ -37,7 +42,9 @@ has a separator belongs to Phase 1 and Phase 1.5 skips it.
 **Phase 2 — Span-based fallback** (confidence=0.9):
 For every symbol whose ``name`` has no separator, checks if any
 container symbol in the same file has a span that fully encloses it,
-and prefers the tightest (smallest span) enclosing container. It does
+and prefers the tightest (smallest span) enclosing container. Because
+``file`` is a container kind, this is also what roots a file's top-level
+functions, variables and classes at its ``kind="file"`` anchor. It does
 not consult the earlier phases' outcomes: a dotted name that Phase 1
 could not place gets no span fallback, and only an identical
 parent→child pair already emitted is deduplicated.

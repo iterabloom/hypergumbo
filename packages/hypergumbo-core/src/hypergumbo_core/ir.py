@@ -55,7 +55,13 @@ Helpers
   ``(src, dst, edge_type, line)``. ``deduplicate_edges`` collapses edges
   sharing an ``edge_key`` (line-insensitive) to one per relationship; the
   survivor's ``meta["call_lines"]`` records the union of the collapsed call
-  sites, and a single-site edge carries no such key.
+  sites, and a single-site edge carries no such key. Keys the registry
+  declares per-call-site (``axis_meta_keys.per_call_site_keys``: ``io_mode``,
+  ``io_target_kind``, ``redirect_target``, ...) are folded by
+  ``_absorb_call_site``: the singular key survives only if every site agreed;
+  otherwise it is removed and ``meta["<key>_values"]`` lists the distinct
+  values, with ``None`` standing for a site that carried no value (INV-vukiv,
+  INV-rajak).
 - **Symbol-id parsing**: ``symbol_path_slot`` / ``symbol_name_slot`` are the
   shared parses of ``{lang}:{path}:{span}:{name}:{kind}`` ids, anchored on
   the span so a colon-bearing path slot (``std::fs``, ``dart:io``) parses
@@ -66,7 +72,13 @@ Helpers
   Symbols (with ``stable_id`` / ``display_label``) for dangling edge
   endpoints and returns an id remap; ``apply_external_id_remap`` rewrites
   edges onto the canonical boundary ids, collapsing edges that now coincide
-  while unioning their ``referring_paths`` and ``call_lines``.
+  while unioning their ``referring_paths`` and ``call_lines`` and applying
+  the same per-call-site fold.
+- **Other helpers**: ``callee_name_of``, ``stated_module_of``,
+  ``is_external_boundary``, ``sanitize_id_name_segment``,
+  ``format_legacy_dst``, ``make_pass_id`` / ``compute_pass_version`` /
+  ``compute_config_fingerprint``, and the ``VALID_ACCESS_MODES`` /
+  ``VALID_DATA_DIRECTIONS`` / ``VALID_CONFIDENCE_SOURCES`` vocabularies.
 
 Provenance Fields
 -----------------

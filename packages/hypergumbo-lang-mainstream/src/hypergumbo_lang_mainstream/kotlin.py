@@ -56,6 +56,31 @@ must name the static owner path and never the variable. Function-scoped
 across scopes — for declared and constructor bindings; a binding from a
 resolved call's return type is written file-wide, outside that scoping.
 
+Other receiver shapes. An untyped receiver spelled as a TYPE
+(``System.getenv(k)``, ``Files.readAllBytes(p)``) is a static call whose
+module slot is the owner that ``jvm_implicit_imports.static_owner_module``
+names (the file's import, or java.lang minus ``KOTLIN_SHADOWED_JAVA_LANG``;
+a project type keeps the placeholder). A navigation-chain receiver goes
+through ``_emit_navigation_receiver_call``: ``this.field.m()`` uses the
+field's type, an inline fully-qualified path under
+``_KOTLIN_INLINE_QUALIFIED_ROOTS`` names its owner via
+``inline_qualified_owner``, and a chain ending in a project type resolves on
+that type. ``super.m()`` resolves through the enclosing class's
+``base_classes`` (``_emit_super_call``); an external base leaves an
+unresolved edge whose ``receiver_type_hint`` names it.
+
+Explicit imports outrank the resolver (WI-tipoh). When the file's import of
+a name contradicts the symbol the name-keyed resolver returns,
+``_kt_import_target`` rebinds the call to the project symbol at the imported
+path; when the project has none, the call falls through to an unresolved
+edge.
+
+Extension functions (WI-fuhav / WI-lodij). ``fun Receiver.name()`` records
+``meta.extension_receiver``. A call ``recv.name()`` on a receiver of that
+type is emitted UNRESOLVED with ``receiver_type_hint``; the shared
+``receiver_type_dispatch`` linker emits the resolved ``ast_call_extension``
+edge.
+
 Population of ``is_exported`` follows Kotlin's default-public rule: a
 declaration is exported unless its modifier list contains ``private``,
 ``internal``, or ``protected``. Extension functions are unconditionally

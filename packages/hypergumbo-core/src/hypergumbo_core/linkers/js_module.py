@@ -30,7 +30,13 @@ Non-relative imports that aren't npm packages may be project aliases:
 - **tsconfig.json paths**: `@/*` -> `./src/*` (Next.js, Vite, Angular)
 - **Vite resolve.alias**: `dashboard` -> `./app/javascript/dashboard`
 The linker reads these config files at startup and expands aliases before
-resolving to files. This handles 68% of GrowthBook's TS imports and 33%
+resolving to files. ``_build_tsconfig_alias_index`` indexes every
+tsconfig.json / jsconfig.json outside node_modules by directory, following
+each one's ``extends`` chain (up to ``_MAX_EXTENDS_DEPTH``) for inherited
+``paths`` / ``baseUrl``; an importing file uses the nearest ancestor
+directory's aliases (``_get_aliases_for_file``), so monorepo packages keep
+their own. Vite aliases come only from the repo root and are merged in,
+longest prefix first. This handles 68% of GrowthBook's TS imports and 33%
 of Chatwoot's JS imports.
 
 File Extension Probing

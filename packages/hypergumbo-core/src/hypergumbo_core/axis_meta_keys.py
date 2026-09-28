@@ -63,6 +63,33 @@ Three structural problems the registry solves, mirroring the
    field on the parent dataclass. The registry is what lets us
    notice when the threshold is met.
 
+Per-key declarations beyond the axis
+------------------------------------
+
+Each ``MetaKeySpec`` also carries three optional contracts:
+
+- **Write discipline (INV-hazov).** ``write_discipline`` declares how many
+  writers may reach the key: ``single_writer``, ``merge_union``,
+  ``producer_primary``, ``refines``, or the default ``unaudited``
+  (``WRITE_DISCIPLINES``). :func:`write_meta_key` applies it — it raises on a
+  conflicting second ``single_writer`` value, unions ``merge_union`` values,
+  and keeps the first ``producer_primary`` value — and
+  :func:`filter_meta_key` is the one sanctioned way to narrow a
+  ``merge_union`` key. Asserting disciplines owe a ``discipline_note``.
+- **Per-call-site keys (INV-vukiv).** ``per_call_site=True`` marks a key whose
+  value varies by call site. When ``ir.deduplicate_edges`` or
+  ``ir.apply_external_id_remap`` collapses sites that disagree, the singular key is dropped and a derived ``<key>_values``
+  companion holds the distinct values; those companions are generated into
+  ``META_KEYS`` by ``_per_call_site_values_specs`` rather than hand-listed
+  (see :func:`per_call_site_keys`).
+- **Edge-type applicability (ADR-0038 ruling 2).** ``applicable_edge_types``
+  / ``na_edge_types`` say where a ``None`` value means missing data versus
+  "does not arise". ``access_mode`` carries the complete matrix
+  (:func:`access_mode_applicable_edge_types`,
+  :func:`access_mode_na_edge_types`); ``call_construct``, ``callee_name``
+  and ``call_arg_shape`` are scoped to :func:`call_family_edge_types`
+  (``calls`` / ``instantiates``).
+
 Drift detection
 ---------------
 

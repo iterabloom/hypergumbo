@@ -15,6 +15,16 @@ Shared Components
   file discovery, graceful degradation when a grammar is unavailable, and
   result assembly. Subclasses override the language-specific extraction
   hooks and inherit the orchestration. ~105 analyzer modules subclass it.
+  Per file, Pass 1 parses through the ``parse_source`` hook (an override may
+  rewrite the bytes, length-preserving, for a grammar that lags its
+  language), records a tree that needed error recovery in
+  ``limits.failed_files`` (``record_partial_parse``), and fills any unset
+  ``shape_id`` (``compute_shape_id``) and ``docstring``
+  (``extract_doc_comment``) for symbols the analyzer mapped in
+  ``node_for_symbol``, with ``populate_docstrings_from_tree`` finding the
+  declaration node by position for the rest. Pass 2 runs ADR-0015 dataflow
+  annotation (``annotate_dataflow``) over each file's edges whenever the
+  language has a dataflow config.
   Between the passes ``analyze()`` merges per-file Pass 1 registries into
   repo-wide ones Pass 2 reads for receiver typing: ``class_field_types``
   (class -> field -> type) and ``method_return_types`` (qualified method ->
@@ -88,7 +98,12 @@ Shared helpers
   ``make_declaration_stable_id`` (class / struct / enum / trait / protocol
   / contract), and the post-pass ``split_within_file_stable_id_collisions``,
   which re-mints the second and later same-file holders of one
-  ``stable_id`` with an occurrence suffix.
+  ``stable_id`` with an occurrence suffix. Also here: the per-kind
+  ``make_{file,module,dependency,variable,export,project,interface,type}_stable_id``
+  factories behind ``populate_kind_stable_ids``, ``make_doc_stable_id``,
+  ``make_entry_stable_id`` (shader entry points), ``make_protocol_stable_id``
+  (linker stand-ins) and ``make_synthetic_symbol_identity`` (Class-B
+  stand-ins).
 
 Why This Design
 ---------------

@@ -23,8 +23,29 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract functions, classes, structs, protocols, enums with signatures
-2. Pass 2: Extract call, import and ``references`` edges using NameResolver
+1. Pass 1: Extract functions, classes, structs, protocols, enums with signatures.
+   Each function's declared return type feeds the base return-type registry
+   (``_swift_return_type_name``), each class-level property's type the
+   field-type registry (``_register_swift_field_type``), and each
+   declaration's argument labels ``meta["arg_labels"]``.
+2. Pass 2: Extract call, import and ``references`` edges using NameResolver.
+   A receiver is typed before resolution: locals and parameters from a
+   per-function scope map (file-level declarations shared), call results and
+   chained or cast receivers through the return-type registry
+   (``_swift_receiver_expr_type``), and implicit-``self`` properties through
+   the field-type registry, walking base classes.
+   - A ``Type.method`` bind is refused when the call supplies a label no
+     overload declares (``_swift_labels_admit_call``, INV-fatap), or when a
+     ``static`` / ``class`` member is called on an instance
+     (``_static_member_on_instance``).
+   - A receiver call that does not resolve becomes an unresolved edge rather
+     than a short-name guess: an EXTERNAL receiver type (``FileManager``)
+     fills the ``ExternalRef`` module slot, a project type rides only in
+     ``meta["receiver_type_hint"]``.
+   - A bare call to a different type's method on short-name evidence is
+     deferred with ``enclosing_class`` for the ``inherited_calls`` linker;
+     a call in no function is anchored on its enclosing class or protocol
+     body, else the file (INV-bamij).
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Swift-specific extraction

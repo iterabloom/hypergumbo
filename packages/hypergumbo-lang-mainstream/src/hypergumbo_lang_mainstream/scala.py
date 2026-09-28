@@ -41,6 +41,12 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      call such as ``Files.readAllBytes``. One- and two-letter callee
      names (usually lambda parameters) take a confidence penalty on
      short-name binds.
+   - A bare call that matches a DIFFERENT class's method only by short name
+     is not bound: it becomes an unresolved edge stamped with the enclosing
+     class (``defer_bare_method_call``), which the ``inherited_calls`` linker
+     resolves when the method is inherited (INV-fahub).
+   - A call in no function is anchored on the class/object/trait/enum whose
+     body holds it (``_TYPE_BODY_NODES``), else on the file (INV-bamij).
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides the Scala-specific extraction

@@ -25,6 +25,32 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Function-pointer references (address-of expressions like `&func` or `&Class::method`)
 - Module attribute references for iostream IO (`std::cout`/`std::cerr`/`std::cin` and namespace-alias attribute reads; feeds io-boundaries)
 
+Call-edge details:
+
+- **Anchor**: a call in no function (a global initialiser) is anchored on
+  the file's anchor symbol (``file_anchor_symbol``), except for
+  ``c_family_is_not_a_call`` shapes; a call inside a function the analyzer
+  cannot name is not emitted.
+- **Member calls**: ``this->a->b()`` is resolved through class field types
+  (``_resolve_cpp_field_chain``). A member call whose method name is in
+  ``_CPP_STL_METHODS`` (``v.clear()``) is never resolved against project
+  symbols and emits no call edge. A bare call whose only match is a
+  DIFFERENT class's method on weak evidence is withheld
+  (``defer_bare_method_call``, INV-fahub) and emitted unresolved with
+  ``enclosing_class``.
+- **Unresolved module hint**: when the file has system ``#include``
+  headers, the hint is the comma-joined include set, prefixed with ``std``
+  when the call names ``std::`` or the file has ``using namespace std``
+  (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
+  Member calls carry ``call_construct="method"``.
+- **Callbacks**: a bare identifier argument that resolves to a function
+  becomes a ``calls`` edge with ``evidence_type="function_pointer_arg"``.
+- **I/O stamps**: ``stamp_io_mode_from_call`` records a literal mode
+  argument as ``io_mode``, and ``_cpp_stream_target_kind`` stamps
+  ``io_target_kind`` on ``std::getline`` from ``std::cin`` or the stream's
+  declared type (``ifstream`` -> ``host_path``, ``stringstream`` ->
+  ``in_memory``); anything unproven stamps nothing.
+
 If tree-sitter with C++ support is not installed, the analyzer
 warns and returns a skipped result.
 

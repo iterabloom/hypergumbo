@@ -150,13 +150,22 @@ How It Works
    ``resource_naming_flows`` (the tainted value only names the resource of a
    sink whose catalogue row takes no content argument), and
    ``trusted_sink_flows`` (the project declared the sink ``trust_level:
-   trusted``).
+   trusted``). A flow whose ``walk_blocked_by_values`` is exactly
+   ``("sink_before_source",)`` cannot carry a ``violated`` verdict alone:
+   when every surviving flow is of that shape they are reported as
+   ``evidence`` and the verdict is ``confirmed_with_caveats`` with
+   ``CAVEAT_SINK_BEFORE_SOURCE_ONLY`` (INV-muhij).
 4. ``verify_claims(claims, boundary_map, taint_findings, ...)`` checks all,
    then passes every verdict through ``_require_coverage_to_confirm``, the
    backstop that applies to every constraint kind: given a ``blind_reason``,
    a confirming verdict becomes ``inconclusive`` (caveats kept), or
    ``confirmed_with_caveats`` with an opaque-boundary caveat when named
    opaque launch sites are the only blocker. ``violated`` is never touched.
+   For a taint claim whose source label only a project catalogue declares,
+   ``blind_by_source_taint`` substitutes a per-label ``ScopedBlindness``
+   that ignores no-catalogue languages the label cannot start in, and
+   ``_disclose_scoped_blindness`` names those set-aside languages in
+   ``details`` (WI-rusil).
 5. ``catalog_provenance`` records which catalogues the verdicts were computed
    against, keeping command-line catalogues apart from the claims file's
    ``extra_catalogs`` (the analysed repository supplying its own grading

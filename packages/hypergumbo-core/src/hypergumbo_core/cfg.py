@@ -60,6 +60,25 @@ generic control-flow patterns that the YAML mappings select.
 The ``CfgStatement.defines`` and ``CfgStatement.uses`` lists are populated by
 pluggable def/use extractors (ADR-0017 §1c) in a separate pass. The CFG builder
 leaves them empty; it focuses solely on control-flow structure.
+
+Beyond the builder
+------------------
+The rest of the dataflow pipeline over a built CFG also lives here:
+
+- **Def/use registry**: extractors register per language with
+  ``@register_def_use_extractor`` and are looked up with
+  ``get_def_use_extractor``; ``populate_def_use_for_cfg`` is the separate
+  pass above, matching AST nodes to statements by ``statement_match_key``.
+- **Coverage gates**: ``uncovered_semantic_lines`` reports code outside
+  every recorded statement (``None`` when the language declares no
+  ``call_node_types``), and ``unaccounted_names`` reports variables a
+  recorded statement mentions but the extractor did not account for. The
+  taint walk withholds a refutation when either fires.
+- **Reaching definitions** (ADR-0017 §1b): ``solve_reaching_defs`` runs the
+  worklist fixpoint and emits ``DdgEdge`` def-to-use edges, bailing out above
+  ``MAX_DEFINITIONS`` per function.
+- ``select_ddg_targets`` holds the §1c target-selection policy; it has no
+  production caller (see its docstring).
 """
 from __future__ import annotations
 

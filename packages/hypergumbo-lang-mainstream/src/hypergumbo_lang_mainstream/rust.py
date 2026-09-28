@@ -37,6 +37,8 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    reference passed to a spawn function, calls appearing only
    inside macro bodies, ``module_attr_ref`` edges, use edges, and Axum
    usage contexts
+   - A call (or macro-body call) in no function -- a ``static`` / ``const``
+     initialiser, a top-level macro -- is anchored on the file (INV-bamij).
    - Local types (strategies 1.8/1.9) come from a file-scoped var-type
      map: parameters, ``let`` annotations, constructor / struct-literal
      initializers, enum-variant destructuring patterns, and

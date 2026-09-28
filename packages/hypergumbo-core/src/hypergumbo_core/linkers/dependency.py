@@ -13,7 +13,14 @@ How It Works
 4. Match imports to dependencies, handling naming conventions:
    - Rust: hyphens in Cargo.toml become underscores in code (my-crate -> my_crate)
    - Python: match root package name for submodule imports (requests.adapters -> requests)
-5. Create depends_on_manifest edges linking importing file to dependency declaration
+5. When several manifests declare the same name (monorepos), pick the one
+   whose directory most tightly encloses the importing file
+   (``_select_nearest_manifest_dep``, WI-timon). If the importer's path is
+   unknown or under no candidate's directory, take the first candidate by
+   id and mark the edge ambiguous.
+6. Create depends_on_manifest edges linking importing file to dependency
+   declaration — confidence 0.9, or 0.5 with
+   ``meta["disambiguation_fallback"] = True`` when step 5 was ambiguous
 
 Why This Design
 ---------------

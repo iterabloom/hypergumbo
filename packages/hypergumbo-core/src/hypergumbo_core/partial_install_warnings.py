@@ -4,6 +4,10 @@
 This module provides diagnostic warnings when hypergumbo detects that:
 1. Files exist for a language but no analyzer is installed for it
 2. A linker has partial requirements met (e.g., Java native methods but no C JNI functions)
+3. The repo contains Rust, so the opt-in rust-analyzer (SCIP) backend is
+   relevant — a disclosure that indexing runs the project's build scripts
+   and proc macros (``check_rust_analyzer_disclosure``, category
+   ``rust_analyzer_optin``)
 
 These warnings help developers diagnose missing functionality and understand
 which packages to install for complete analysis.
@@ -17,6 +21,19 @@ no analyzer trigger "unanalyzed files" warnings.
 After linkers run, we check their requirements using the LinkerRequirement
 system. Linkers with partial requirements (some met, some not) trigger
 "partial linker" warnings, suggesting which packages might be missing.
+``check_partial_linker_requirements`` suppresses three unactionable cases:
+a linker whose activation would not fire on this tree (WI-zamoz), one whose
+only met requirements are ``*_files`` presence counts (WI-vasir), and one
+whose unmet requirements map (via ``LINKER_LANGUAGE_REQUIREMENTS``) only to
+languages absent from the tree (WI-ruman). That third gate, and the package
+suggestions, are currently inert: ``LINKER_LANGUAGE_REQUIREMENTS`` is keyed
+``jni`` / ``swift_objc`` / ``dependency`` while diagnostics carry the
+registered names (``jni-linker``, ...), so the lookup never hits.
+
+The Rust disclosure is emitted whether or not the binary is installed. It
+is skipped when the backend is off and the user has already recorded a
+decision for this repository (``backend_trust.read_decision``); when the
+backend is on, it states that build scripts are running now.
 
 Why This Design
 ---------------

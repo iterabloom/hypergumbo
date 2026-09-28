@@ -27,6 +27,19 @@ Uses the TreeSitterAnalyzer base class for two-pass orchestration:
 3. register_symbol: registers each symbol by its qualified name (the NameResolver suffix index handles short-name lookups for cross-file resolution)
 4. extract_edges_from_file: resolves import statements and function/method calls
 
+Call resolution in ``extract_edges_from_file`` adds three guards:
+- Receiver-type inference: typed parameters and ``def x = new T()``
+  assignments populate ``var_types``, so ``x.m()`` is tried as ``T.m``
+  first.
+- AMB-METHOD suppression: when 3+ classes define the called method
+  name (``ListNameResolver`` with ``ambiguity_threshold=3``), no edge
+  is emitted.
+- INV-fahub deferral: a bare (receiver-less) call that resolves only to
+  another class's method on weak suffix evidence is withheld
+  (``defer_bare_method_call``) and emitted as an unresolved edge
+  stamped with the enclosing class, for the inherited-calls linker to
+  recover.
+
 Why This Design
 ---------------
 - Optional dependency keeps base install lightweight

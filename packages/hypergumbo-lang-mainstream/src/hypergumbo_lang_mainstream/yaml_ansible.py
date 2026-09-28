@@ -13,9 +13,21 @@ Constructs detected:
 - Include/import references (include_tasks, import_tasks, include_role,
   import_role)
 
+Each discovered Ansible file also gets a ``kind="file"`` symbol, which
+is the ``src`` of its include/import edges.
+
 Single-pass per file: symbols and reference edges (includes,
 imports) are extracted together (see ``AnsibleAnalyzer`` class
 docstring for rationale).
+
+After all files are extracted, ``AnsibleAnalyzer.analyze`` rewrites
+each ``imports`` edge's raw target to a file symbol id.
+``_resolve_ansible_path`` handles literal paths (basename match,
+preferring the source's directory; ``name=role`` ->
+``roles/<role>/tasks/main.yml``). A Jinja-templated path fans out via
+``_jinja_fanout_candidates`` to one edge per matching file at
+``_JINJA_FANOUT_CONFIDENCE`` (0.30); an unresolvable target keeps its
+raw string and drops to confidence 0.50.
 """
 
 from __future__ import annotations

@@ -36,7 +36,17 @@ How It Works
 3. Multi-pass analysis — Ruby overrides ``analyze()`` because it needs
    more than the standard two passes:
    - Pass 1: Parse all files, extract all symbols into global registry
-   - Pass 2: Detect calls and resolve against global symbol registry
+   - Pass 2: Detect calls and resolve against global symbol registry.
+     A call in no method is anchored on the class or module whose body
+     holds it (``_SCOPE_BODY_NODES``), else on the file (INV-bamij).
+     In ``_try_receiver_call``, a constant receiver the project declares
+     but whose class lacks the method yields an unresolved edge carrying
+     ``receiver_type_hint`` (``enclosing_class`` for ``.new`` ->
+     ``#initialize``) so the ``inherited_calls`` linker can walk its
+     ancestors. A constant the project does not declare (``JSON.parse``)
+     yields an unresolved ``calls`` edge with
+     ``meta["receiver"] = "constant_external"`` and an ``ExternalRef`` whose
+     module comes from the require hints, else the lowercased constant.
    - Passes 2b / 2c / 2d and 3, plus a post-pass inheritance sweep
 4. Detect method calls and require statements
 5. Track variable types from constructor/factory calls (``var = Class.new``)

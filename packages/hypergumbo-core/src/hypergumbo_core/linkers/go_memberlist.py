@@ -23,9 +23,13 @@ Matching strategy
 -----------------
 1. Scan ``.go`` files that import ``github.com/hashicorp/memberlist``.
 2. Find the anchor call site — any function, in a file that defines a
-   delegate method (step 3), that calls ``memberlist.Create(`` on its own. That function is taken as the
-   dispatch source because it is the concrete construction point
-   that causes the runtime to start invoking the delegate methods.
+   delegate method (step 3), that calls ``memberlist.Create(`` on its
+   own. That function is taken as the dispatch source because it is
+   the concrete construction point that causes the runtime to start
+   invoking the delegate methods. When the file has no such call, the
+   first non-delegate function or method symbol in the file is used as
+   the anchor instead (``fallback_candidates`` in
+   ``go_memberlist_linker``), so the delegates stay reachable.
 3. Find any method symbol whose bare name matches one of the
    canonical delegate names AND whose defining file imports
    memberlist. Treat those as dispatch targets.

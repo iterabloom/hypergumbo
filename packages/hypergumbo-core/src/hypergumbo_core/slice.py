@@ -18,6 +18,18 @@ collect related nodes. Traversal respects configurable limits:
 - **exclude_tests**: Skips test files to focus on production code.
 - **reverse**: Direction of traversal. False = forward (what does X call?),
   True = reverse (what calls X?).
+- **hub_threshold** (default 50): a node at depth 2 or more whose out-degree (forward) or in-degree (reverse) exceeds this is kept in
+  the slice but not traversed through (``limits_hit`` records
+  ``hub_pruned``). ``dispatches_to`` edges are exempt from the count and are
+  still followed from a pruned hub.
+- **pass_through_kinds** (default ``event_publisher`` / ``event_subscriber``):
+  synthetic routing nodes the BFS walks through but drops from the output,
+  together with every edge touching them.
+
+A forward slice adds a file's ``imports`` edges only when it reaches a
+container-kind node in that file (class, module, file, ...;
+``_CONTAINER_KINDS`` in ``slice_graph``): a function entry does not pull in
+its file's imports (INV-tarol).
 
 Forward vs Reverse Slicing
 --------------------------
@@ -47,6 +59,8 @@ entry would not reach its own methods.
 The result is a "feature" - a subgraph with a stable ID derived from
 the query parameters (sha256 of JSON-serialized query). Same query
 always produces same feature ID, enabling caching and reproducibility.
+``rank_slice_nodes`` then orders the slice's nodes by centrality computed on
+the slice subgraph, with tier weighting and an optional test down-weight.
 
 Why BFS (not DFS)
 -----------------

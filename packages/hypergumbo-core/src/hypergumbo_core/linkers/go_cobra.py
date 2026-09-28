@@ -36,6 +36,11 @@ Matching strategy
    When the cobra.Command literal is at package level (inside a
    ``var … = &cobra.Command{…}`` declaration), the linker falls back
    to the enclosing variable symbol as the edge source.
+4. A resolved handler gets confidence 0.85. When the name resolves to
+   more than one symbol (a cross-package short-name collision, INV-zuhub),
+   every candidate gets an edge at confidence 0.5 with
+   ``meta["disambiguation_fallback"] = True`` (see ``is_fallback`` in
+   ``go_cobra_linker``).
 
 Why regex and not tree-sitter
 -----------------------------

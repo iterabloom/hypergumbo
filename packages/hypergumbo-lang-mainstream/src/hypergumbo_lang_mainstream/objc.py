@@ -35,6 +35,17 @@ Three-pass analysis:
 - Pass 1: Extract all symbols from all files and collect methods into a global registry
 - Pass 1.5: Propagate each class's base_classes into its methods' meta['parent_base_classes'] (so .m @implementation methods inherit the .h @interface bases for framework pattern matching)
 - Pass 2: Extract edges using the global symbol registry — resolve method-call edges (local, then cross-file via NameResolver), emit #import edges, and emit unresolved calls with a module hint for PascalCase (class) receivers.
+
+Receiver typing (WI-higob, WI-garar): an unresolved send whose receiver is
+lowercase still gets a class. It comes from the receiver's declaration in
+the enclosing body -- a typed parameter, local or fast-enumeration variable
+(``_objc_declared_receiver_types``) -- from the return class of a nested
+send ``[[obj make] frob]`` (``_objc_send_result_class``), or from the
+declared type of a ``self.<property>`` receiver (``_self_property_type``).
+Return classes come from a registry aggregated in Pass 1 and merged with
+``load_library_signatures("objc")``, in-repo declarations first. The class
+is carried in ``receiver_type_hint``, and becomes the module hint only when
+it is not a class the repo declares.
 """
 
 from __future__ import annotations
