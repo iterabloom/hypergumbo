@@ -1,0 +1,20 @@
+Original commit body from b0959ccadcb6cbfb763600ce1eb842dc2d86665c:
+
+erlang.yaml rowed application [set_env, unset_env, load, start, stop,
+ensure_started, ensure_all_started] under env_write. set_env/unset_env are
+right under the INV-nular credential ruling; the other five were swept in
+with them (the WI-jupaf module sweep, two lines below the row where it was
+fixed), so starting an application read as writing the environment.
+
+Read in OTP's kernel source, each of the five is a gen_server call into the
+application controller process (load_application / start_application /
+stop_application -> call(...)), so they move to process_send, the class
+gen_server:call already has. The .app file is read inside the controller,
+not at the call site, so no fs_read row.
+
+Tested on the shipped io-boundaries command: the five report as
+process_send and env_write carries only set_env.
+
+Addresses INV-butiv.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
