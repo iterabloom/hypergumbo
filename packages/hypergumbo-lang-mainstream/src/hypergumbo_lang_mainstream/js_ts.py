@@ -142,6 +142,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
+from hypergumbo_core.axis_meta_keys import write_meta_key
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
@@ -4904,6 +4905,61 @@ def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) ->
     return False
 
 
+#: WI-punar. Event listeners whose catalogue row matches the method NAME while
+#: only some EVENTS carry data from outside the process. Keyed by the dst's
+#: (module, name); each value is ``(events, carries)``: when ``carries`` the set
+#: lists the events that DO receive outside data (every other literal crosses
+#: nothing), otherwise it lists the ones that do NOT (custom events still do).
+#:
+#: ``process.on``: only ``message`` is the IPC channel from a parent. Across
+#: 1,230 literal-event ``process.on`` / ``once`` sites in ~/ALL_REPOS, 90 were
+#: ``message`` / ``disconnect``; ``exit``, ``uncaughtException``, the signals
+#: and the rest hand the handler an in-process value. ``WebSocket``: the
+#: catalogue note already rules that ``open`` and ``error`` carry nothing and
+#: ``message`` / ``close`` do; ``EventSource`` likewise for ``open`` / ``error``,
+#: with custom named events still carrying data.
+_LISTENER_EVENTS: dict[tuple[str, str], tuple[frozenset[str], bool]] = {
+    ("process", "on"): (frozenset({"message"}), True),
+    ("WebSocket", "addEventListener"): (frozenset({"message", "close"}), True),
+    ("EventSource", "addEventListener"): (frozenset({"open", "error"}), False),
+}
+
+
+def _stamp_listener_event_crossing(
+    edges: list[Edge], first_new: int, call_node: "tree_sitter.Node", source: bytes,
+) -> None:
+    """Stamp ``io_target_kind: in_memory`` on a listener whose event crosses nothing.
+
+    WI-punar. ``process.on("uncaughtException", h)`` matched the ``ipc_recv``
+    row written for ``process.on("message", h)``, and every ``ipc_recv`` mints
+    ``untrusted_input``. The row sees the callee; the event is the FIRST
+    ARGUMENT, so only the call site can say. ``in_memory`` is the existing
+    vocabulary for "this site crosses nothing" (WI-lipis): the tagger skips
+    the chain while the call still counts as examined, and taint mints no
+    source there, so no consumer needs a new field. A non-literal event stamps
+    nothing and keeps today's answer.
+    """
+    args = call_node.child_by_field_name("arguments")
+    named = [c for c in args.children if c.is_named] if args is not None else []
+    if not named or named[0].type != "string":
+        return
+    fragment = next((c for c in named[0].children if c.type == "string_fragment"), None)
+    if fragment is None:
+        return  # pragma: no cover - an empty string literal names no event
+    event = _node_text(fragment, source)
+    for edge in edges[first_new:]:
+        parts = edge.dst.split(":")
+        rule = _LISTENER_EVENTS.get((parts[1], parts[-2])) if len(parts) >= 5 else None
+        if rule is None:
+            continue
+        events, carries = rule
+        if (event in events) is carries:
+            continue
+        if edge.meta is None:
+            edge.meta = {}
+        write_meta_key(edge.meta, "io_target_kind", "in_memory")
+
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
@@ -5945,6 +6001,7 @@ def _extract_edges(
             stamp_io_mode_from_call(
                 edges, _edges_before_call, node, source, lang,
             )
+            _stamp_listener_event_crossing(edges, _edges_before_call, node, source)
 
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":

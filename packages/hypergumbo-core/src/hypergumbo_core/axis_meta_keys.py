@@ -595,7 +595,12 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "`bufio.NewScanner` edge is never a bash redirect, so no "
                     "edge can receive both. The note previously read 'sole "
                     "writer: bash.py' and anticipated exactly this second "
-                    "writer; it went stale when one arrived."
+                    "writer; it went stale when one arrived. A THIRD, WI-punar: "
+                    "js_ts.py's _stamp_listener_event_crossing stamps "
+                    "'in_memory' on event-listener call edges "
+                    "(`process.on('uncaughtException', h)`) whose event "
+                    "carries nothing from outside the process -- javascript "
+                    "edges, so disjoint from both."
                 )),
     MetaKeySpec("redirect_target", AXIS_EDGE_META,
                 "The path (or `<unresolved>`) a shell redirection writes to "
