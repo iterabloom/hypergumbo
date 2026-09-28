@@ -1,0 +1,26 @@
+Original commit body from a8f7fa938e6a135bc9e6bfd02abf0f6719d93d58:
+
+WI-vufur asked for a partial-parse caveat raised only where it
+discriminates. Measured, none of the candidate rules does:
+
+- common in C/C++: crun 65 of 127 C files; sherpa-onnx 132 rows
+  after WI-somod.
+- scoped to the taint walk's reach: crun's host_secret reach spans 30 of
+  66 partially parsed files; every built-in label on crun and
+  sherpa-onnx reaches at least one.
+- damage size (damaged-line share, skipped-token share) does not track
+  loss: signals.c, mount_flags.c, AFURLSessionManager.m sit wholly in an
+  ERROR region and keep every function/method; AFHTTPSessionManager.h
+  loses all 4 @property declarations with NO ERROR ancestor (the
+  @interface block was misread, properties recovered as top-level
+  expression statements).
+- the row's Elixir premise does not hold: all 112 phoenix partial
+  parses are EEx generator templates (.ex files with <%= %>).
+
+So no caveat ships (it would be the blanket one the row rules out).
+VERIFY-CLAIMS-SCOPE.md now states the gap: the list exists, no verdict
+reads it, what it is and is not reliable for.
+
+Addresses WI-vufur (stays open, re-scoped on the row).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
