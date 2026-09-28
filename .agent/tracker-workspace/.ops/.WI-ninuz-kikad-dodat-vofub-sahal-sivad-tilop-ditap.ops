@@ -1,0 +1,22 @@
+- op: create  # bfcc
+  at: '2026-09-28T09:05:27Z'  # bfcc
+  by: agent  # bfcc
+  actor: jgstern_agent  # bfcc
+  clock: 1  # bfcc
+  nonce: bfcc  # bfcc
+  data:  # bfcc
+    kind: work_item  # bfcc
+    title: "go: os.OpenFile has no catalogue row, so Go's flag-based open (O_WRONLY/O_APPEND/O_CREATE) is unclassified at the open itself"  # bfcc
+    status: todo_hard  # bfcc
+    priority: 2  # bfcc
+    parent:  # bfcc
+    tags:  # bfcc
+    - go  # bfcc
+    - catalogue  # bfcc
+    - io_boundary  # bfcc
+    isbefore: []  # bfcc
+    duplicate_of: []  # bfcc
+    not_duplicate_of: []  # bfcc
+    pr_ref:  # bfcc
+    description: "FOUND 2026-09-28 while re-verifying WI-nunab. Record: scratchpad nunab/run.py (Go one-file repos with a go.mod; shipped io-boundaries and verify-claims at dev 5f80a79081).\n\ngo.yaml has NO row for os.OpenFile, Go's flag-based open (os.O_WRONLY / O_RDWR / O_APPEND / O_CREATE / O_RDONLY). os.Create is fs_write, os.Open is fs_read and os.WriteFile is fs_write; OpenFile is in none of them. Measured:\n    fh, _ := os.OpenFile(p, os.O_WRONLY|os.O_CREATE, 0o644); fh.Write(b)\n  -> no fs_write chain. external_potential lists os.OpenFile and os.File.Write, and a must_not_exist fs_write claim is INCONCLUSIVE (go.yaml has no module_completeness, so the gate withholds; not a false clean).\nSo the open itself is unclassified, not only the write through the handle (which is WI-nunab).\n\nALREADY KNOWN ELSEWHERE: go.py:2661 lists \"os.OpenFile(\" among handle constructors for the handle-kind reader, so the analyzer treats it as producing a host_path handle while the catalogue has no row for the call.\n\nDESIGN QUESTION, not decided here: the boundary depends on the FLAG argument. go.yaml carries no mode-discriminated rows. python.yaml's builtins.open uses io_mode (mode_argument_for / mode_discriminated_primitives), but Go's mode is a bitwise OR of package constants, not a string literal, so stamp_io_mode_from_call would need a Go reading of the flag expression. The alternative is a dual fs_read/fs_write row with an abstention answer. Size OpenFile call sites on the Go cohort first, and split them by flag.\n\nRelated: WI-nunab (handle-method writes); INV-kaduh (C fopen mode discrimination, the precedent)."  # bfcc
+    fields: {}  # bfcc

@@ -31,3 +31,18 @@
   clock: 3  # 5479
   nonce: '5479'  # 5479
   message: "RE-READ 2026-09-28 (from WI-sugom's re-verification). Same emission as WI-sugom: py.py:8336 puts a from-imported owner in the NAME slot. Traced the datetime.now difference this row left UNVERIFIED: INV-januj's strip_redundant_module_qualifier retry drops a qualifier that repeats the module (datetime + datetime.now -> now); date and Path do not repeat it. Shipped command today: 'from pathlib import Path; Path.cwd()' and 'from datetime import date; date.today()' each CONFIRM a must_not_exist host_info_read claim with 0 caveats. Source census (~/all_repos_first_party_py.txt): Path.cwd 160, Path.home 48, date.today 119 sites. Numbers and the fold question are on WI-sugom."  # 5479
+- op: update  # 4423
+  at: '2026-09-28T11:05:47Z'  # 4423
+  by: agent  # 4423
+  actor: jgstern_agent  # 4423
+  clock: 4  # 4423
+  nonce: '4423'  # 4423
+  set:  # 4423
+    status: done  # 4423
+- op: discuss  # 11bb
+  at: '2026-09-28T11:05:47Z'  # 11bb
+  by: agent  # 11bb
+  actor: jgstern_agent  # 11bb
+  clock: 5  # 11bb
+  nonce: 11bb  # 11bb
+  message: "DONE in PR #1272 with WI-sugom (the same emission at py.py, the CLASS half). Re-run on merged dev, shipped verify-claims, must_not_exist host_info_read: 'from pathlib import Path; Path.cwd()' confirmed -> VIOLATED (dst pathlib.Path:0-0:cwd); Path.home() -> VIOLATED; 'from datetime import date; date.today()' confirmed -> VIOLATED (dst datetime.date:0-0:today). datetime.now() still violated, now through its own slot (datetime.datetime:0-0:now) rather than INV-januj's coincidence. The ctypes.cdll case in this row's discussion takes the same arm. A/B: +Path.cwd x8, +Path.home x2, +date.today x4 across feast/litellm/superset (record ~/hypergumbo_lab_notebook/sugom_09282026/RESULT.md)."  # 11bb
