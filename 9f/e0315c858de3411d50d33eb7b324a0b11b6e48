@@ -1,0 +1,26 @@
+Original commit body from 37986ca3866085c67a254a293569350e05044ed0:
+
+A catalogue row must name the boundary its call actually crosses.
+
+- System.Exit exitWith / exitFailure / exitSuccess were env_write, which
+  derives a host_env taint sink, so exiting read as writing the environment.
+  They are declared not I/O (javascript.yaml's ruling for process.exit).
+  die writes its message to stderr before exiting, so it moves to logging.
+- Prelude.readIO was fs_read but parses a String the caller already holds;
+  a must_not_exist fs_read claim was violated by a parse. Removed.
+- System.Info os / arch / compilerName / compilerVersion were
+  host_info_read but are fixed when GHC is built. Removed. As values they
+  were never applied, so the row was also unreachable.
+
+System.Exit and System.Info gain module_completeness grants recording the
+ruling, so a qualified call into either is an examined negative rather than
+an unexamined module.
+
+Tested at the finding level (ADR-0049 ruling 3): verify-claims over a
+program that only parses and exits no longer returns violated for the
+env_write and fs_read claims, and each removal is paired with a control in
+the same block (setEnv, readFile, readLn, getProgName) that still classifies.
+
+Addresses INV-dozuj, INV-savuk, INV-banid.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
