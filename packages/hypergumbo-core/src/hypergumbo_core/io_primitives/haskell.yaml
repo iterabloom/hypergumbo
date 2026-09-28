@@ -120,14 +120,14 @@ ipc_recv:
 
 fs_read:
   - module: Prelude
-    functions: [readFile, readIO]
+    functions: [readFile]
     notes: >-
       getContents/readLn/interact MOVED to ipc_recv (INV-muvis): they read
       stdin, and fs_read is absent from AUTO_SOURCE_LABEL_MAP, so they minted no
-      taint source at all. readIO is left here under protest -- its type is
-      String -> IO a, so it parses a value already in hand and crosses NO
-      boundary; that is INV-zumin class (d) (a row that is simply wrong rather
-      than multi-valued) and it is filed separately rather than fixed here.
+      taint source at all. readIO is REMOVED (INV-savuk): its type is
+      String -> IO a, so it parses a value the caller already holds and crosses
+      no boundary -- the IO is the failure effect. readLn (= getLine >>= readIO)
+      stays rowed above because the getLine half reads stdin.
   - module: System.IO
     functions: [hReady, hIsEOF, hSeek, hTell, hFileSize, openFile, openBinaryFile, withFile, withBinaryFile]
   - module: System.IO
@@ -271,14 +271,13 @@ host_info_read:
       base's monotonic clock.
   - module: System.Environment
     functions: [getProgName, getExecutablePath]
-  - module: System.Info
-    functions: [os, arch, compilerName, compilerVersion]
+  # System.Info is NOT rowed (INV-banid): see its module_completeness entry.
 
 env_write:
   - module: System.Environment
     functions: [setEnv, unsetEnv, withArgs, withProgName]
-  - module: System.Exit
-    functions: [exitWith, exitFailure, exitSuccess, die]
+  # System.Exit is NOT an environment write (INV-dozuj): see its
+  # module_completeness entry. `die` is rowed under logging.
 
 logging:
   - module: Prelude
@@ -295,6 +294,13 @@ logging:
       logging"); this is that sentence made machine-readable.
   - module: Debug.Trace
     functions: [trace, traceShow, traceShowId, traceIO, traceM, traceShowM, traceStack]
+  - module: System.Exit
+    functions: [die]
+    notes: >-
+      INV-dozuj: die err = hPutStrLn stderr err >> exitFailure, so it WRITES its
+      argument to stderr before exiting -- a fixed-handle stderr write, the same
+      class as Debug.Trace. It was rowed env_write with the three exits, which
+      made every `die msg` a value reaching the host environment.
 
 # db_read / db_write: DELETED (INV-nular, WI-rigut).
 #
@@ -330,3 +336,31 @@ process_send:
   - module: Control.Exception
     functions: [throwIO, throw, throwTo]
     notes: "Exception throwing as a form of inter-thread communication"
+
+# ADR-0016 / INV-buzab: a dated, per-module audit that the module's I/O surface
+# is enumerated, so a call into it that matches no row is an EXAMINED negative
+# rather than an unexamined one. Matching is exact (module_io_is_enumerated).
+module_completeness:
+  - module: System.Exit
+    completeness: complete
+    retrieved: "2026-09-27"
+    notes: >-
+      INV-dozuj. Exports ExitCode(ExitSuccess, ExitFailure), exitWith,
+      exitFailure, exitSuccess and die. die is rowed logging (a stderr write).
+      Declared NOT I/O: exitWith, exitFailure and exitSuccess throw an ExitCode
+      exception that the RTS unwinds to terminate the process -- process
+      control, no boundary in this vocabulary, the ruling javascript.yaml's
+      process grant records for process.exit/reallyExit/abort. They were rowed
+      env_write, which derives a host_env taint SINK (26 chains over eight
+      repos once INV-fofoj made the bare do-line form reachable) and wrote
+      nothing an env_read could observe.
+  - module: System.Info
+    completeness: complete
+    retrieved: "2026-09-27"
+    notes: >-
+      INV-banid. Exports os, arch, compilerName, compilerVersion and
+      fullCompilerVersion. Declared NOT I/O: every one is fixed when GHC is
+      built (os and arch are the HOST_OS / HOST_ARCH CPP macros, compilerName is
+      the literal "ghc", the versions derive from compilerVersionRaw), so none
+      performs a runtime read. They were rowed host_info_read; as values they
+      were also never applied, so no call edge reached the row.
