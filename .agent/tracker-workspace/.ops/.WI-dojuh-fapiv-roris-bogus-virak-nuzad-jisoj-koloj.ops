@@ -19,3 +19,18 @@
     pr_ref:  # 8594
     description: "FOUND 2026-09-28 while preparing WI-nunab's PR. scripts/check-package-coverage core, run on a pinned worktree of dev at 02c27cad97 (PYTHONPATH to the worktree's packages/*/src), reports ONE line uncovered in core isolation:\n\n    packages/hypergumbo-core/src/hypergumbo_core/cli.py  6834   the 'continue' in the WI-rusil scoped no-taint-catalogue loop\n        if _tf is None or _tf.source_taint in blind_by_source_taint:\n            continue\n\nIt was introduced by b297d1ce81 (WI-rusil, 2026-09-27). PR CI checks coverage only for a PR's CHANGED files, in a combined run, so it passed there. The same line is uncovered on the WI-nunab branch, which does not touch cli.py. The next PR that edits cli.py will fail its coverage gate on a line it did not write.\n\nFIX: a core test whose claims file mixes a boundary claim (_tf is None) with a taint claim, over a fixture containing a language with no taint catalogue, so the census loop runs and skips the boundary claim. Read test_taint_blind_claim_scope.py first; its fixtures use php + python with taint claims only."  # 8594
     fields: {}  # 8594
+- op: update  # 030c
+  at: '2026-09-28T15:51:36Z'  # 030c
+  by: agent  # 030c
+  actor: jgstern_agent  # 030c
+  clock: 2  # 030c
+  nonce: 030c  # 030c
+  set:  # 030c
+    status: done  # 030c
+- op: discuss  # 08f5
+  at: '2026-09-28T15:51:36Z'  # 08f5
+  by: agent  # 08f5
+  actor: jgstern_agent  # 08f5
+  clock: 3  # 08f5
+  nonce: 08f5  # 08f5
+  message: "DONE in PR #1280 (WI-lukoz's PR, which had to touch cli.py). New core test packages/hypergumbo-core/tests/test_scoped_blindness_skips_repeats.py: a boundary claim beside two taint claims on one label, over a repo holding a language with no taint catalogue (php), reaches the 'continue'. Two claims on one label get one answer (both violated, evidence 1 each). EVIDENCE: scripts/check-package-coverage core on the branch passed ('[core] PASSED'), where on dev at 02c27cad97 it reported cli.py:6834 uncovered."  # 08f5

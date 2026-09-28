@@ -1,0 +1,22 @@
+- op: create  # 60c0
+  at: '2026-09-28T14:56:43Z'  # 60c0
+  by: agent  # 60c0
+  actor: jgstern_agent  # 60c0
+  clock: 1  # 60c0
+  nonce: 60c0  # 60c0
+  data:  # 60c0
+    kind: work_item  # 60c0
+    title: "ruby: a namespaced external constant whose last segment names a project class (Prometheus::Client) is treated as that class"  # 60c0
+    status: todo_hard  # 60c0
+    priority: 3  # 60c0
+    parent:  # 60c0
+    tags:  # 60c0
+    - ruby  # 60c0
+    - call_graph  # 60c0
+    - analysis_quality  # 60c0
+    isbefore: []  # 60c0
+    duplicate_of: []  # 60c0
+    not_duplicate_of: []  # 60c0
+    pr_ref:  # 60c0
+    description: "FOUND 2026-09-28 closing WI-johib (PR #1279). ruby's _try_receiver_call tries a scope_resolution receiver's SHORT NAME as a candidate (Prometheus::Client -> 'Client'), and ruby symbol names carry no namespace (a class Client in any module is named 'Client'). So an EXTERNAL namespaced constant whose last segment matches a project class is treated as that class. Measured on postal after #1279: Prometheus::Client.registry -> project Client -> the inherited-calls linker -> HasPrometheusMetrics.registry, a wrong binding (1 site on postal; 0 on chatwoot).\n\nFIX SHAPE (not built): take the short-name candidate only when the full name cannot be external. For example, require that the leading namespace segment ('Prometheus') is itself a project module, or record the namespace on class symbols (meta) and compare it. Measure on postal and chatwoot. WI-surar (the lowercased module slot) is adjacent: it is about the external spelling, not the binding."  # 60c0
+    fields: {}  # 60c0

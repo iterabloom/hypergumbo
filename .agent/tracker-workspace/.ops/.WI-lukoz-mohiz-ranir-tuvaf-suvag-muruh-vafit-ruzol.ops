@@ -27,3 +27,18 @@
   clock: 2  # 886e
   nonce: 886e  # 886e
   message: "RE-VERIFIED 2026-09-28 at dev 5f80a79081. PREMISE HOLDS; THE PROMISE'S LOCATION IS CORRECTED; THE ROW'S OWN BEHAVIOURAL TEST HAS BEEN RUN. Record: scratchpad lukoz/.\n\nSTILL NO READER: grep of packages/*/src finds trust_level only as the dataclass field (taint.py:222), the YAML parse (taint.py:1563, default 'unknown'), the constructor keyword args, and the AUTO_SINK_ZONE_MAP literals. No read in the propagators or in verify_claims.\n\nWHERE THE PROMISE IS, corrected: it is NOT in 'verify-claims --help' (the rendered help does not mention trust_level). It is in:\n  - cmd_verify_claims's DOCSTRING, cli.py:6254 (was cited as :5985): developer-facing.\n  - docs/hypergumbo-spec.md:1511: 'raise trust_level for a sink that is safe in context'. USER-FACING.\n  - docs/hypergumbo-spec.md:1542: 'the supported way for a repo to raise trust_level on a sink that is safe in context'. USER-FACING.\n  So option (b), deprecate, has three sentences to remove, not one.\n\nBEHAVIOURAL TEST, shipped verify-claims (claim host_secret -> subprocess; fixture: os.environ['CMD'] -> subprocess.run in one function):\n  no sink override                                                  violated, 1 flow\n  --taint-sinks: subprocess.run, zone subprocess, trust_level trusted     violated, 1 flow   (identical)\n  --taint-sinks: the same with trust_level untrusted                      violated, 1 flow\n  CONTROL that the override is applied: the same entry with zone vetted_tools -> confirmed_with_caveats, 0 flows. Replacement by (module, name, kind) works. trust_level alone moves nothing."  # 886e
+- op: update  # 78bb
+  at: '2026-09-28T15:51:36Z'  # 78bb
+  by: agent  # 78bb
+  actor: jgstern_agent  # 78bb
+  clock: 3  # 78bb
+  nonce: 78bb  # 78bb
+  set:  # 78bb
+    status: done  # 78bb
+- op: discuss  # 7929
+  at: '2026-09-28T15:51:36Z'  # 7929
+  by: agent  # 7929
+  actor: jgstern_agent  # 7929
+  clock: 4  # 7929
+  nonce: '7929'  # 7929
+  message: "DONE in PR #1280 (merged), discharge (a) IMPLEMENT, as this row recommended. TaintFlowFinding gains trusted_sink, carried from its sink's trust_level == \"trusted\" (taint.TRUST_LEVEL_TRUSTED) at the three construction sites. verify-claims excludes those flows from evidence_count and counts them in a new per-verdict trusted_sink_flows (the resource_naming_flows shape), and a clean verdict names them in details. Asked of the FINDING, never the zone, so one trusted sink does not clear its zone. Only \"trusted\" has an effect; \"semi-trusted\" and every other value are carried and inert, and the TaintSink docstring now says so. Schema 2.4 -> 2.5 (the 2.4 carve-out: an added key whose flows leave evidence_count). The spec's two promises and the cmd_verify_claims docstring now describe the behaviour and name the field.\n\nBEHAVIOURAL EVIDENCE, this row's own before/after test re-run on merged dev (claim host_secret -> subprocess; os.environ['CMD'] -> subprocess.run):\n  no override                        violated, evidence 1, trusted_sink_flows 0\n  --taint-sinks ... trust_level trusted     CONFIRMED_WITH_CAVEATS, evidence 0, trusted_sink_flows 1; details: '1 flow(s) reach that zone through a sink the project's catalogue declares trusted (trust_level: trusted); they are excluded on that declaration, not absent.'\n  --taint-sinks ... trust_level untrusted   violated, evidence 1, trusted_sink_flows 0\nTests: packages/hypergumbo-core/tests/test_trusted_sink_is_disclosed.py (4, including semi-trusted as a control).\n\nALSO IN #1280: WI-dojuh's coverage gap. The docstring edit made cli.py a changed file, so the PR added the missing core test (test_scoped_blindness_skips_repeats.py); check-package-coverage core passed after it."  # 7929
