@@ -64,7 +64,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Optional
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
@@ -97,6 +97,7 @@ from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     KOTLIN_SHADOWED_JAVA_LANG,
     imported_elsewhere,
+    inline_qualified_owner,
     kotlin_import_path,
     static_owner_module,
 )
@@ -747,6 +748,30 @@ def _kt_project_type_key(type_name: str) -> str:
     return type_name
 
 
+#: The roots a fully-qualified inline call is taken at its word for
+#: (INV-dupol): the JDK and the Kotlin standard library, the packages
+#: kotlin.yaml's rows describe. scala's twin is ``scala._INLINE_QUALIFIED_ROOTS``.
+_KOTLIN_INLINE_QUALIFIED_ROOTS: Final = frozenset({"java", "javax", "kotlin"})
+
+
+def _kt_inline_path(node: "tree_sitter.Node", source: bytes) -> str | None:
+    """The dotted text of a receiver built only of identifiers, else ``None``.
+
+    ``java.nio.file.Files`` parses as nested ``navigation_expression`` nodes
+    with an identifier at every level. A call, an index, ``this`` or a literal
+    anywhere in the chain means the receiver is a value, not a path.
+    """
+    if node.type == "identifier":
+        return node_text(node, source)
+    if node.type != "navigation_expression":
+        return None
+    named = [c for c in node.children if c.is_named]
+    if len(named) != 2 or named[1].type != "identifier":
+        return None
+    head = _kt_inline_path(named[0], source)
+    return None if head is None else f"{head}.{node_text(named[1], source)}"
+
+
 def _kt_receiver_module(type_name: str, imports: dict[str, str]) -> str | None:
     """The module slot a receiver TYPE names, or ``None`` when the file gives no path.
 
@@ -1386,6 +1411,99 @@ def _extract_edges_from_file(
         if s.kind in ("class", "object", "interface")
     }
 
+    def _emit_navigation_receiver_call(
+        receiver: "tree_sitter.Node", method_name: str, line: int,
+        *, this_property: str | None,
+    ) -> None:
+        """INV-dupol: one edge for a call whose receiver is a navigation chain.
+
+        In java's spelling of the same shapes: ``this.field.m()`` names the
+        field's declared type, a fully-qualified inline path names its owner,
+        a chain ending in a project type resolves on that type, and anything
+        else keeps the ``external`` placeholder so the untyped-receiver
+        disclosure names the call. A chain through ANOTHER object's field
+        (``h.file.m()``) stays a placeholder: ``var_types`` is file-wide and
+        keyed by bare name, so typing it from there could put the wrong type
+        in the slot (INV-kotob).
+        """
+        assert current_function is not None  # narrowed by the call arm
+        recv_type = var_types.get(this_property) if this_property else None
+        if recv_type is not None:
+            module = _kt_receiver_module(recv_type, imports)
+            edges.append(make_unresolved_edge(
+                "kotlin", current_function.id, method_name, line, PASS_ID,
+                run.execution_id, module_hint=module or "external",
+                receiver_type_hint=_kt_project_type_key(recv_type),
+                call_construct="method",
+            ))
+            return
+        path = _kt_inline_path(receiver, source)
+        if path is not None:
+            owner = inline_qualified_owner(
+                path, method_name, set(var_types) | set(imports),
+                roots=_KOTLIN_INLINE_QUALIFIED_ROOTS,
+            )
+            if owner is not None:
+                edges.append(make_unresolved_edge(
+                    "kotlin", current_function.id, method_name, line, PASS_ID,
+                    run.execution_id, module_hint=owner, call_construct="method",
+                ))
+                return
+            leaf = path.rsplit(".", 1)[-1]
+            if leaf in class_symbols:
+                found = resolver.lookup(f"{leaf}.{method_name}", caller_path=_caller_path)
+                if found.found and found.symbol is not None:
+                    edges.append(Edge.create(
+                        src=current_function.id, dst=found.symbol.id,
+                        edge_type="calls", line=line,
+                        confidence=0.95 * found.confidence,
+                        origin=PASS_ID, origin_run_id=run.execution_id,
+                        evidence_type="ast_call_static",
+                    ))
+                    return
+        edges.append(make_unresolved_edge(
+            "kotlin", current_function.id, method_name, line, PASS_ID,
+            run.execution_id, call_construct="method",
+        ))
+
+    def _emit_super_call(call: "tree_sitter.Node", method_name: str) -> None:
+        """INV-dupol: ``super.m()`` calls the BASE's ``m``.
+
+        Resolved through the enclosing class's ``base_classes`` (the
+        delegation specifiers the symbol pass already records). A base the
+        project does not define keeps an unresolved edge whose receiver type
+        names it, with the module its import (or java.lang) gives.
+        """
+        assert current_function is not None  # narrowed by the call arm
+        line = call.start_point[0] + 1
+        owner = _get_enclosing_class(call, source)
+        owner_sym = class_symbols.get(owner) if owner else None
+        bases = list((owner_sym.meta or {}).get("base_classes", [])) if owner_sym else []
+        for base in bases:
+            found = resolver.lookup(f"{base}.{method_name}", caller_path=_caller_path)
+            if found.found and found.symbol is not None:
+                edges.append(Edge.create(
+                    src=current_function.id, dst=found.symbol.id,
+                    edge_type="calls", line=line,
+                    confidence=0.90 * found.confidence,
+                    origin=PASS_ID, origin_run_id=run.execution_id,
+                    evidence_type="ast_call_this",
+                ))
+                return
+        base = bases[0] if bases else None
+        module = (
+            static_owner_module(
+                base, imports, shadowed=KOTLIN_SHADOWED_JAVA_LANG,
+                is_project_type=base in class_symbols,
+            )
+            if base else None
+        )
+        edges.append(make_unresolved_edge(
+            "kotlin", current_function.id, method_name, line, PASS_ID,
+            run.execution_id, module_hint=module or "external",
+            receiver_type_hint=base, call_construct="method",
+        ))
+
     for node in iter_tree(tree.root_node):
         _close_scopes_before(node)
         # Detect import statements
@@ -1466,26 +1584,27 @@ def _extract_edges_from_file(
                 # - Object.method(): identifier . identifier
                 # - this.method(): this_expression . identifier
                 # - instance.method(): identifier . identifier
-                receiver_node = None
-                method_node = None
-
-                for child in nav_node.children:
-                    if child.type == "this_expression":
-                        receiver_node = child
-                    elif child.type == "navigation_expression":
-                        # Nested: this.property.method() — inner nav is
-                        # this.property, outer identifier is method
-                        receiver_node = child
-                    elif child.type == "call_expression":
-                        # WI-nasuf: a CHAINED receiver -- ``File(p).writeText(s)``.
-                        # The receiver IS a construction (or a call); the
-                        # emit below types it from the constructor callee.
-                        receiver_node = child
-                    elif child.type == "identifier":
-                        if receiver_node is None:
-                            receiver_node = child
-                        else:
-                            method_node = child
+                #
+                # INV-dupol: the receiver is the FIRST named child, WHATEVER its
+                # node type, and the method is the last. The loop this replaced
+                # kept a receiver only when it was ``this``, a navigation
+                # expression, a call or an identifier, so for ``"x".trim()``,
+                # ``(f).readText()``, ``fs[0].readText()`` and ``super.go()``
+                # it took the METHOD identifier as the receiver, found no method
+                # and emitted nothing. A call with no edge is invisible to
+                # io-boundaries and to the coverage gate. The chained receiver
+                # (``File(p).writeText(s)``, WI-nasuf) and a nested
+                # ``this.property`` are first children like any other.
+                named_children = [c for c in nav_node.children if c.is_named]
+                receiver_node = (
+                    named_children[0] if len(named_children) >= 2 else None
+                )
+                method_node = (
+                    named_children[-1]
+                    if len(named_children) >= 2
+                    and named_children[-1].type == "identifier"
+                    else None
+                )
 
                 if receiver_node and method_node:
                     method_name = node_text(method_node, source)
@@ -1549,6 +1668,30 @@ def _extract_edges_from_file(
                                         ),
                                     ))
                                     edge_added = True
+                        # INV-dupol: every other navigation receiver emitted
+                        # NOTHING, because the unresolved-edge fallback below
+                        # lives in the branch a navigation receiver never
+                        # enters. That included ``java.nio.file.Files
+                        # .readAllBytes(p)`` written inline, whose must_not_exist
+                        # fs_read claim was confirmed.
+                        if not edge_added:
+                            _emit_navigation_receiver_call(
+                                receiver_node, method_name,
+                                node.start_point[0] + 1,
+                                this_property=(
+                                    node_text(prop_node, source)
+                                    if this_node and prop_node else None
+                                ),
+                            )
+                            edge_added = True
+
+                    # INV-dupol: ``super.m()`` is the base's ``m``, never the
+                    # override that makes the call. Resolved through the
+                    # enclosing class's declared bases; an external base keeps
+                    # an unresolved edge naming it.
+                    elif receiver_node.type == "super_expression":
+                        _emit_super_call(node, method_name)
+                        edge_added = True
 
                     # For non-this cases, get receiver name from identifier node
                     else:

@@ -88,6 +88,7 @@ from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     SCALA_SHADOWED_JAVA_LANG,
+    inline_qualified_owner,
     static_owner_module,
 )
 
@@ -510,40 +511,11 @@ def _inline_qualified_owner(
 ) -> "str | None":
     """The module slot a fully-qualified inline call states, or ``None`` (INV-vokut).
 
-    ``scala.io.StdIn.readLine()`` with no import states its owner at the use
-    site, the same fact ``import scala.io.StdIn`` states at the top of the file.
-    WI-pokam already reads a type written inline that way; this is the call
-    form. Without it the receiver branch found no receiver identifier and the
-    call fell to the ``external`` sentinel, where the no-module gate withholds
-    an ambiguous name like ``readLine``.
-
-    Taken only when the path's ROOT is a standard root the file does not bind
-    (:data:`_INLINE_QUALIFIED_ROOTS`): ``cfg.inner.Target.go()`` is a chain on a
-    local value, and naming it as a module would hand the coverage gate a
-    module that does not exist. A third-party path keeps the sentinel too; no
-    shipped Scala row could match it.
-
-    A path whose segments go lowercase again after a capitalised one names a
-    value (``scala.Console.err``), not a module, and keeps the sentinel.
-
-    A capitalised callee on an all-lowercase path is a companion apply,
-    ``scala.sys.process.Process(cmd)``, and gets the slot the imported form
-    gets: the path including the callee.
+    scala's roots applied to the shared JVM rule
+    (:func:`jvm_implicit_imports.inline_qualified_owner`), which kotlin uses
+    with its own roots (INV-dupol).
     """
-    segments = path.split(".")
-    if segments[0] not in _INLINE_QUALIFIED_ROOTS or segments[0] in bound:
-        return None
-    # Packages are lowercase and objects / types capitalised, so a lowercase
-    # segment AFTER a capitalised one is a member of an object, a value:
-    # ``scala.Console.err.println(x)`` calls a method on the ``err`` stream,
-    # and ``scala.Console.err`` is not a module. Nested types stay
-    # (``java.util.Map.Entry``).
-    first_type = next((i for i, s in enumerate(segments) if s[:1].isupper()), len(segments))
-    if not all(s[:1].isupper() for s in segments[first_type:]):
-        return None
-    if callee_name[:1].isupper() and all(s[:1].islower() for s in segments):
-        return f"{path}.{callee_name}"
-    return path
+    return inline_qualified_owner(path, callee_name, bound, roots=_INLINE_QUALIFIED_ROOTS)
 
 
 def _qualify_scala_receiver(
