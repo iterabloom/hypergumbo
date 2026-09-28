@@ -38,3 +38,18 @@
   clock: 3  # 1856
   nonce: '1856'  # 1856
   message: "GO HALF FIXED by PR #1224 (INV-tanom's emitter fix, the direction this item named second). Measured with the production functions: alertmanager's caveat now reads 1,141 of 3,557 method call site(s) (32.1%), was 1,141 of 6,183 (18.5%); gocryptfs 284 of 1,779 (16.0%), was 284 of 3,345 (8.5%). No verdict, caveat kind or evidence count moved on either (~/hypergumbo_lab_notebook/tanom_fix_09262026/). The unknown_receiver_scope docstring no longer claims commensurability \"by construction\"; it says the denominator is only as good as the producers' stamp.\n\nSTAYS OPEN FOR THE JAVA HALF, and the reason it was not done in the same change: java.yaml declares its qualified statics METHOD-kind (the ADR-0059 shrink-only ledger, WI-ziviv). Restamping Files.readAllBytes as call_construct=function before those rows are function-kind would make method_starved_modules see a function-construct call into a method-only module and report starvation, i.e. WITHHOLD verdicts. So the order is: java.yaml statics to function-kind (WI-ziviv), then the java emitter stamp, then re-measure a Java repo's denominator. No Java repo has been measured for this item yet."  # 1856
+- op: update  # 142d
+  at: '2026-09-27T07:39:01Z'  # 142d
+  by: agent  # 142d
+  actor: jgstern_agent  # 142d
+  clock: 4  # 142d
+  nonce: 142d  # 142d
+  set:  # 142d
+    status: done  # 142d
+- op: discuss  # 764a
+  at: '2026-09-27T07:39:01Z'  # 764a
+  by: agent  # 764a
+  actor: jgstern_agent  # 764a
+  clock: 5  # 764a
+  nonce: 764a  # 764a
+  message: "JAVA HALF FIXED, PR #1247 (dev cc3a7cabf7). Item closed: both halves are done.\n\nThe precondition this item named (java.yaml statics function-kind, 'WI-ziviv') was already met. INV-zikab step 6 moved the 34 java statics out of the ADR-0059 ledger. WI-ziviv's own remainder is objc/swift/kotlin only.\n\nTHE CHANGE. java._java_call_construct stamps 'function' when the receiver is a written FQ type path, or a bare identifier that is a single-type import or a java.lang class and is not a scoped variable (var_types, per method since INV-vugon) or a type parameter. Everything else stays 'method'. A bare call stays None. Every function-stamped edge has a named module slot, so it matches through the module filter and never reaches the no-context gate.\n\nBEHAVIOURAL EVIDENCE.\n- Production path: test_java_static_call_construct.py runs analyze_java over paired shapes.\n  - function: imported Files, java.lang System, a written FQ path.\n  - method: typed local, param, this, an inherited capitalised field LOG, a local named List shadowing the import.\n  - The unknown_receiver_scope denominator over the real edges is 5 of 8 (it was 8).\n  - Mutation-checked: restoring the old stamp fails 2 of the 5 tests.\n- A/B with generic-taint-claims (~/hypergumbo_lab_notebook/fuvaj_09272026/RESULT.md). The untyped share:\n  - jenkins: 20,365 of 47,939 (42.5%) -> 20,365 of 42,850 (47.5%)\n  - killbill: 26,595 of 62,826 (42.3%) -> 56,432 (47.1%)\n  - cassandra: 78,751 of 187,625 (42.0%) -> 162,199 (48.6%)\n  - sherpa-onnx: 16,371 -> 16,300\n- A deep diff of the whole envelope, masking only method_calls and the 'At N of M' text, is identical on all four repos. So the starvation withholding this item feared did not occur, and no verdict, caveat kind, evidence row or walk verdict moved."  # 764a
