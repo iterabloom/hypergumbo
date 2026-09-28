@@ -195,6 +195,10 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # after `bufio.NewReader`/`NewScanner` has a row to reach. Both
             # are stdlib (package bufio); the constructors were already in.
             "bufio.Reader", "bufio.Scanner",
+            # WI-nunab: the WRITE-side handle types, so a write through the
+            # handle's own method (`f.Write(b)`, `w.WriteString(s)`) has a
+            # row. Both stdlib: package os's File, package bufio's Writer.
+            "bufio.Writer", "os.File",
         }),
     ),
     "haskell": Scope(
