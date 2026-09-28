@@ -22,3 +22,10 @@
     fields:  # 0c70
       statement: "A catalogue row's boundary must name a crossing the call actually performs. VIOLATED: Prelude.readIO :: Read a => String -> IO a opens nothing and reads no handle, yet is declared fs_read, so it answers a {boundary: fs_read, must_not_exist: true} claim with a false violation and inflates total_io_edges. Its sibling readLn (= getLine >>= readIO) IS a read and moved to ipc_recv under INV-muvis; the composite crosses and the parser does not."  # 0c70
       root_cause: "The row was populated by module company rather than by signature: readIO sat in an fs_read list beside readFile/getContents/readLn/interact, four functions that do read. Nothing in the catalogue checks whether a declared reader takes a HANDLE or takes its input as an ARGUMENT, which is the discriminator; go's uncatalogued fmt.Sscan family shows the distinction is understood elsewhere in the tree but is not enforced anywhere."  # 0c70
+- op: discuss  # 1e83
+  at: '2026-09-28T02:02:20Z'  # 1e83
+  by: agent  # 1e83
+  actor: jgstern_agent  # 1e83
+  clock: 2  # 1e83
+  nonce: '1e83'  # 1e83
+  message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED, unchanged. haskell.yaml:121-130 still rows Prelude [readFile, readIO] under fs_read, with the \"left here under protest\" note. Shipped CLI: parseIt s = readIO s -> fs_read Prelude.readIO chain. The family peers the description lists (python ast.literal_eval / json.loads, go fmt.Sscan*) were not re-adjudicated."  # 1e83

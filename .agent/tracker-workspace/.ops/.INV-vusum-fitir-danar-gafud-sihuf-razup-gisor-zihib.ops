@@ -23,3 +23,18 @@
     fields:  # f313
       statement: "When a short name is catalogued as both a package-level function and a type method, selection must not fall through to declaration order."  # f313
       root_cause: "The module filter keeps both rows because the package-granular hint matches both by the component rule, and selection then returns candidates[0] on go.yaml declaration order, where the function row is always declared first."  # f313
+- op: update  # 03ec
+  at: '2026-09-28T02:02:18Z'  # 03ec
+  by: agent  # 03ec
+  actor: jgstern_agent  # 03ec
+  clock: 2  # 03ec
+  nonce: 03ec  # 03ec
+  set:  # 03ec
+    title: "Kind-blind candidate selection credits a Go method call to a same-package function row: 18 entries mis-credited, and tr.Do on an http.Transport is reported as a net_send boundary that does not exist"  # 03ec
+- op: discuss  # 1c63
+  at: '2026-09-28T02:02:18Z'  # 1c63
+  by: agent  # 1c63
+  actor: jgstern_agent  # 1c63
+  clock: 3  # 1c63
+  nonce: 1c63  # 1c63
+  message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED. Premise holds; the POPULATION has doubled, so the title's count is corrected (9 -> 18).\n\n1. END-TO-END, shipped CLI (hypergumbo io-boundaries --format json, cold cache), fixture with the item's three shapes plus two controls:\n   b.TempDir() on *testing.B      -> primitive testing.T.TempDir   (mislabel, same fs_write)\n   tr.Do(nil) on *http.Transport  -> primitive net/http.Client.Do  (FALSE POSITIVE: Transport has no Do)\n   c.Get(u) on *http.Client       -> primitive net/http.Get        (mislabel, same net_send)\n   l.Info(\"x\") on *slog.Logger    -> primitive log/slog.Info       (mislabel, same logging)\n   http.Get(u)                    -> net/http.Get                  (correct control)\n\n2. CATALOGUE LEVEL, every method row in go.yaml (defaults only) looked up as lookup_with_module(name, <its package>, call_construct=\"method\"): 18 of 65 method rows come back as a different row (was 9 of 45 when filed).\n   the filed 9: net/http.Client.{Get,Post,Head}, log/slog.Logger.{Debug,Info,Warn,Error,Log}, testing.B.TempDir\n   NEW 9: net.Resolver.{LookupAddr,LookupCNAME,LookupHost,LookupIP,LookupMX,LookupNS,LookupPort,LookupSRV,LookupTXT} -> the package-level net.Lookup* function rows. They arrived with 4f463b6722 (a DNS lookup is net_recv in five languages) and inherit the same declaration-order selection.\n   All 18 pairs carry the SAME boundary on both rows, so the item's pricing still stands: a LABEL defect for all 18; the Transport.Do false positive is a separate shape (a method name catalogued on one type matching a different receiver type in the same package).\n\n3. NOT re-measured: the negative-control figure (51 catalogue rows matched by a bare leaf-type hint via _module_matches's suffix arm). It remains a precondition for any type-granular fix, as the description says."  # 1c63
