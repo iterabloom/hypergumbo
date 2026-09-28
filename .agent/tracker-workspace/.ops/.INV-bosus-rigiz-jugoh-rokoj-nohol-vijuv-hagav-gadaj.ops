@@ -36,3 +36,19 @@
   clock: 3  # f968
   nonce: f968  # f968
   message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED, and the family is WIDER than filed: two more host_info_read rows in the same block spawn a subprocess on Linux.\n\n1. ROW unchanged: python.yaml host_info_read block (starts :993), platform [platform, architecture, libc_ver, mac_ver, freedesktop_os_release] at :1042 and platform [system, node, release, version, machine, processor, python_version] at :1050.\n2. BEHAVIOUR, CPython 3.12.3 on Linux, subprocess.check_output wrapped and each function called:\n   platform.architecture() -> spawns ['file', '-b', '/usr/bin/python3.12']   (this item)\n   platform.processor()    -> spawns ['uname', '-p']   NEW: _Processor.get falls back to from_subprocess when no get_<sys.platform> exists, and there is no get_linux\n   platform.platform()     -> spawns ['uname', '-p']   NEW: via uname().processor\n   platform.libc_ver()     -> no spawn (opens and reads sys.executable: a file read, not this item's class)\n3. PRODUCT, hypergumbo io-boundaries: architecture(), processor() and platform() each report host_info_read only; no subprocess chain for any of them.\n   Platform-dependent, which the fix has to respect: processor() spawns only where CPython has no get_<platform> (Windows and OpenVMS do not spawn).\n4. ASIDE, a stale note: python.yaml's module_completeness entry for platform (:1936-1940) says \"Host-identification surface rowed under env_read\"; the rows are under host_info_read since the INV-tutar split.\n5. SEPARATE DEFECT FOUND ON THE SAME FIXTURE, filed on its own: a bare `import platform` produces a host_info_read chain for platform.platform, because the tagger counts an imports edge as a call site (see the item filed today on imports edges)."  # f968
+- op: update  # 1c12
+  at: '2026-09-28T02:04:12Z'  # 1c12
+  by: agent  # 1c12
+  actor: jgstern_agent  # 1c12
+  clock: 4  # 1c12
+  nonce: 1c12  # 1c12
+  set: {}  # 1c12
+  add:  # 1c12
+    not_duplicate_of: [INV-lagir-pasim-lalar-jovij-gihop-zavop-huhoz-zogot]  # 1c12
+- op: discuss  # 01f6
+  at: '2026-09-28T02:04:12Z'  # 01f6
+  by: agent  # 01f6
+  actor: jgstern_agent  # 01f6
+  clock: 5  # 01f6
+  nonce: 01f6  # 01f6
+  message: "The separately filed imports-edge item named in point 5 above is INV-lagir."  # 01f6

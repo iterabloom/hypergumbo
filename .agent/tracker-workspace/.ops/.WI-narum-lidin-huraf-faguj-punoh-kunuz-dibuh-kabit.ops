@@ -1,0 +1,22 @@
+- op: create  # a338
+  at: '2026-09-28T02:27:52Z'  # a338
+  by: agent  # a338
+  actor: jgstern_agent  # a338
+  clock: 1  # a338
+  nonce: a338  # a338
+  data:  # a338
+    kind: work_item  # a338
+    title: "test_a_hangup_is_named_too timed out (30s, SIGHUP'd action never exited) in a loaded smart-test run; passes alone in 1.7s"  # a338
+    status: todo_hard  # a338
+    priority: 3  # a338
+    parent:  # a338
+    tags:  # a338
+    - test_infra  # a338
+    - flaky_test  # a338
+    - ci_infrastructure  # a338
+    isbefore: []  # a338
+    duplicate_of: []  # a338
+    not_duplicate_of: []  # a338
+    pr_ref:  # a338
+    description: "FOUND 2026-09-27 during a 287-file targeted smart-test run (8,779 passed, 1 failed) on branch jgstern-agent/fix/haskell-rows-that-cross-nothing, which changes only haskell.yaml and adds one test; nothing auto-pr related was touched.\n\n  tests/test_autopr_signal_termination.py::test_a_hangup_is_named_too\n  subprocess.TimeoutExpired: Command ['bash', .../act.sh] timed out after 30 seconds   (the proc.wait(timeout=30) at test line 149)\n\nRe-run alone immediately after: the file's 8 tests pass in 1.70s. So under a loaded xdist run the SIGHUP'd action script did not exit within 30s, while its normal exit takes well under a second.\n\nNOT DIAGNOSED. The harness waits for READY and for the .git/armed marker before signalling, so \"signalled before the trap was installed\" is ruled out by construction as far as the test's own comment claims; that was not re-verified. 30s is far above any plausible scheduling delay, so a lost or deferred trap (bash defers a trap while waiting on a foreground child) is more likely than slowness, and would be a real defect in the fixture or in _autopr_install_traps' SIGHUP path rather than noise. First step: loop the single test under load (e.g. beside a full smart-test) and capture the script's stderr on timeout."  # a338
+    fields: {}  # a338

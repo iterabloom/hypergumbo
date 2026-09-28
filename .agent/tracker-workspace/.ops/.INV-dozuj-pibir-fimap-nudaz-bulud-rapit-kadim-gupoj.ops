@@ -37,3 +37,18 @@
   clock: 3  # 8752
   nonce: '8752'  # 8752
   message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED, unchanged. haskell.yaml:280-281 still rows System.Exit [exitWith, exitFailure, exitSuccess, die] under env_write, and taint.py:1712 still derives env_write -> (\"host_env\", \"untrusted\").\n\nShipped CLI (hypergumbo io-boundaries --format json, cold cache):\n  exitFailure as a bare do-line statement  -> env_write System.Exit.exitFailure\n  exitWith (ExitFailure 2)                 -> env_write System.Exit.exitWith\n  die (head args)                          -> env_write System.Exit.die\nCross-language state from the 09-13 entry re-checked: rust (INV-mulul), python multiprocessing.Process kill/terminate under ipc_send (python.yaml:693-695), objc/swift under subprocess (INV-babiz, also re-verified today) are all as described there.\n\nASIDE, NOT this item, and not investigated: exitSuccess as the whole right-hand side of a top-level binding (third = exitSuccess), and exitFailure/exitSuccess as the branches of an if-then-else inside a do block, produce NO chain. Probably INV-fofoj's mechanism (a bare name is not an application) in two positions its fix did not cover. Recorded so it is not mistaken for a partial fix of this row."  # 8752
+- op: update  # 9c29
+  at: '2026-09-28T02:33:21Z'  # 9c29
+  by: agent  # 9c29
+  actor: jgstern_agent  # 9c29
+  clock: 4  # 9c29
+  nonce: 9c29  # 9c29
+  set:  # 9c29
+    status: satisfied  # 9c29
+- op: discuss  # a698
+  at: '2026-09-28T02:33:21Z'  # a698
+  by: agent  # a698
+  actor: jgstern_agent  # a698
+  clock: 5  # a698
+  nonce: a698  # a698
+  message: "Fixed in PR #1258 (9fe0315c85). exitWith/exitFailure/exitSuccess are declared NOT I/O in a System.Exit module_completeness grant (javascript.yaml's process.exit ruling, option (a) with the grant so silence is an examined negative); die moves to logging because die = hPutStrLn stderr msg >> exitFailure writes its argument to stderr. Behavioural evidence on merged dev, the item's own repro plus the 09-27 fixtures (hypergumbo io-boundaries --format json, cold cache): bare do-line exitFailure and exitWith (ExitFailure 2) produce NO chain (were env_write); die (head args) produces logging System.Exit.die (was env_write); the env_write control setEnv still classifies (test_haskell_rows_that_cross_nothing.py). verify-claims {boundary: env_write, must_not_exist: true} over a program that only parses and exits no longer returns violated (production-path test in the same file). The cross-language siblings named on 09-13 (rust INV-mulul, objc/swift INV-babiz) are NOT covered by this closure."  # a698

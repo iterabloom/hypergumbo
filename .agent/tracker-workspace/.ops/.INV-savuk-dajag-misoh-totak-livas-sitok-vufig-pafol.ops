@@ -29,3 +29,18 @@
   clock: 2  # 1e83
   nonce: '1e83'  # 1e83
   message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED, unchanged. haskell.yaml:121-130 still rows Prelude [readFile, readIO] under fs_read, with the \"left here under protest\" note. Shipped CLI: parseIt s = readIO s -> fs_read Prelude.readIO chain. The family peers the description lists (python ast.literal_eval / json.loads, go fmt.Sscan*) were not re-adjudicated."  # 1e83
+- op: update  # cda7
+  at: '2026-09-28T02:33:21Z'  # cda7
+  by: agent  # cda7
+  actor: jgstern_agent  # cda7
+  clock: 3  # cda7
+  nonce: cda7  # cda7
+  set:  # cda7
+    status: satisfied  # cda7
+- op: discuss  # 1d01
+  at: '2026-09-28T02:33:21Z'  # 1d01
+  by: agent  # 1d01
+  actor: jgstern_agent  # 1d01
+  clock: 4  # 1d01
+  nonce: 1d01  # 1d01
+  message: "Fixed in PR #1258 (9fe0315c85). Prelude.readIO removed from the fs_read row (readFile stays; readLn stays ipc_recv because its getLine half reads stdin). Behavioural evidence on merged dev: parseIt s = readIO s produces no chain (was fs_read Prelude.readIO); readFile control still fs_read; verify-claims {boundary: fs_read, must_not_exist: true} over a program whose only 'read' is readIO no longer returns violated (production-path test test_haskell_rows_that_cross_nothing.py). NOT asserted: the family peers named in the description (python ast.literal_eval / json.loads, go fmt.Sscan*) were not adjudicated here."  # 1d01
