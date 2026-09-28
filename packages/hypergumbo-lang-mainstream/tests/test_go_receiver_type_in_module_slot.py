@@ -147,3 +147,36 @@ def test_a_method_the_type_does_not_have_is_no_boundary(results: tuple[dict, set
     _, chains = results
     at_transport = {(b, p) for b, p, fn in chains if fn == "transportDo"}
     assert at_transport == {("external_potential", "net/http.Transport.Do")}
+
+
+@pytest.mark.parametrize(("imports", "expected"), [
+    # The type's package is imported: the owner is that package plus the type.
+    ('\t"net/http"\n\t"io"', ("io", "io.Reader")),
+    # It is not: the file names no path for it, so there is no owner.
+    ('\t"net/http"', None),
+])
+def test_a_package_variable_typed_in_another_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, imports: str, expected,
+) -> None:
+    """A catalogued variable whose type lives in a DIFFERENT package (the row
+    shape library_signatures/go.yaml allows, though none ships today): the
+    owner comes from the file's import of that package, or not at all."""
+    import tree_sitter
+    import tree_sitter_go
+
+    from hypergumbo_lang_mainstream import go
+
+    monkeypatch.setattr(go, "load_library_package_variables",
+                        lambda _lang: {"http.Body": "io.Reader"})
+    source = f"package main\n\nimport (\n{imports}\n)\n\nfunc f() {{ http.Body.Read(nil) }}\n".encode()
+    tree = tree_sitter.Parser(tree_sitter.Language(tree_sitter_go.language())).parse(source)
+    stack = [tree.root_node]
+    operand = None
+    while stack:
+        node = stack.pop()
+        if node.type == "call_expression":
+            operand = node.child_by_field_name("function").child_by_field_name("operand")
+            break
+        stack.extend(node.children)
+    aliases = {"http": "net/http", "io": "io"} if '"io"' in imports else {"http": "net/http"}
+    assert go._package_variable_import_path(operand, source, aliases) == expected
