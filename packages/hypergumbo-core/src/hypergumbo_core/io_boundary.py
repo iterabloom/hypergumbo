@@ -169,7 +169,9 @@ KNOWN_IO_BOUNDARIES: frozenset[str] = all_io_boundary_names()
 
 # Boundaries that are DISCLOSED but EXCLUDED from the ``total_io_edges``
 # headline (the verified/curated I/O surface). ``external_potential`` is
-# receiver-unresolved speculative noise (WI-huhit/WI-foduh); ``command_launch``
+# unclassified calls into NAMED external modules, potential and unverified I/O
+# (WI-huhit/WI-foduh; receiver-unresolved placeholders are skipped, INV-toguh);
+# ``command_launch``
 # is the high-volume, definite-but-uncurated command-mediated launch cohort
 # (WI-javoh). Both are surfaced in their own ``BoundaryMap`` count fields so a
 # consumer sees them without them inflating the headline.
@@ -3585,15 +3587,17 @@ class BoundaryMap:
             bucket. INV-pubom canonical definition (amended 2026-06-30 per the
             wave-3 ruling, WI-huhit/WI-foduh): ``sum(len(e.chains) for k, e in
             entries.items() if k != "external_potential")``. The prior
-            definition INCLUDED external_potential, which on self-analysis is
-            ~96% receiver-unresolved builtin method calls (append/get/split…) —
-            not real I/O — so a consumer reading the headline as "I/O surface"
-            over-counted ~28x. external_potential is now disclosed separately in
+            definition INCLUDED external_potential, which on self-analysis was
+            then ~96% receiver-unresolved builtin method calls (append/get/split…)
+            — not real I/O — so a consumer reading the headline as "I/O surface"
+            over-counted ~28x. (Those placeholders no longer enter the bucket at
+            all: F3 Filter 1, INV-toguh.) external_potential is now disclosed separately in
             ``external_potential_edges``. The unfiltered serializer
             (``BoundaryMap.to_dict``), the filtered ``cmd_io_boundaries`` JSON
             path, AND the text headline all agree on this real-categories count.
         external_potential_edges: Chain count of the ``external_potential``
-            bucket (receiver-unresolved calls — potential, unverified I/O),
+            bucket (unclassified calls into named external modules — potential,
+            unverified I/O),
             disclosed separately so it does not inflate ``total_io_edges``.
         command_launch_edges: Chain count of the ``command_launch`` bucket
             (WI-javoh) — command-mediated external-program launches (a shell
@@ -3739,6 +3743,8 @@ def _compute_external_potential(
     Filters:
     - Only edge types in :data:`_TRACEABLE_EDGE_TYPES` (same set the
       reverse-graph uses).
+    - The dst's module slot must NAME a module: a receiver-unresolved
+      placeholder (``external``) is skipped (F3 Filter 1, INV-toguh).
     - The dst MUST be in ``nodes_by_id`` AND be marked
       ``meta.external_boundary``.
     - The source language MUST have a loaded catalog
@@ -3769,18 +3775,6 @@ def _compute_external_potential(
         if not dst_meta.get("external_boundary"):
             continue
 
-        # F3 Filter 1: unresolved-receiver skip.
-        # Per ADR-0028, ``Edge.is_resolved`` is False for edges whose dst
-        # symbol could not be resolved at analysis time — i.e., a
-        # speculative external target. These dominate the
-        # external_potential bucket on self-analysis (~4,521 chains on
-        # hypergumbo) and report low-signal "we don't know what this is"
-        # rather than "first-party code reaches an audited boundary."
-        # ``getattr`` with a True default keeps legacy edge objects
-        # (and pre-ADR-0028 mock edges) behaving as before.
-        if not getattr(edge, "is_resolved", True):
-            continue
-
         src_parts = edge.src.split(":")
         src_lang = src_parts[0] if src_parts else ""
         catalog = catalogs.get(src_lang)
@@ -3802,21 +3796,35 @@ def _compute_external_potential(
         else:
             module_hint = _extract_module_hint(edge.dst) or ""
             dst_name = dst_node.get("name") or _extract_callee_name(edge.dst)
+
+        # F3 Filter 1: skip a RECEIVER-UNRESOLVED target -- the placeholder
+        # whose module slot names nothing (``python:external:0-0:frob``). Such
+        # a call reports "we don't know what this is", not "first-party code
+        # reaches a named library the catalogue cannot classify", and it is the
+        # largest population (22,503 edges on the self-survey).
+        #
+        # KEYED ON THE MODULE SLOT, NOT ON ``is_resolved`` (INV-toguh). This
+        # filter used to skip ``is_resolved=False``, reading ADR-0028's "the dst
+        # could not be resolved" as "a receiver guess". ADR-0037 ruling 1 made
+        # ``is_resolved`` mean in-repo-ness, so EVERY edge into an external
+        # placeholder is ``is_resolved=False`` by definition and the external
+        # boundary test above admitted only edges this one then dropped: the
+        # bucket was empty on every repository measured (1,851 of 1,851 edges on
+        # full-stack-fastapi-template, 76,015 of 76,015 on the self-survey).
+        if not module_hint or module_hint == "external":
+            continue
         # F3 Filter 3: composition fix. When the dst node's ``name``
         # field already carries the module-qualified form (e.g.
         # ``re.MULTILINE``) and the extracted module_hint is the same
         # module (``re``), the naive prepend produces ``re.re.MULTILINE``.
         # ``ast.ast.Name``, ``os.os.path``, ``datetime.datetime.now`` are
         # the most reader-visible cases. Skip the prepend when the
-        # qualified form is already present.
-        if module_hint and module_hint != "external":
-            prefix = f"{module_hint}."
-            if dst_name.startswith(prefix):
-                primitive = dst_name
-            else:
-                primitive = f"{module_hint}.{dst_name}"
-        else:
+        # qualified form is already present. (Filter 1 has already
+        # guaranteed a named module.)
+        if dst_name.startswith(f"{module_hint}."):
             primitive = dst_name
+        else:
+            primitive = f"{module_hint}.{dst_name}"
 
         # Filter out stdlib non-IO symbols — those aren't catalog gaps.
         if primitive in catalog.stdlib_other:
@@ -3832,7 +3840,7 @@ def _compute_external_potential(
         # still see catalog gaps. ``module_hint`` is the structured
         # source (``edge.dst_ref.module_path`` when available, else the
         # colon-split fallback) computed earlier in this function.
-        if module_hint and catalog.module_io_is_enumerated(module_hint):
+        if catalog.module_io_is_enumerated(module_hint):
             continue
 
         sc = dst_node.get("supply_chain") or {}
@@ -3970,8 +3978,8 @@ def compute_boundary_map(
     # INV-pubom canonical definition (amended 2026-06-30 per the wave-3 ruling,
     # WI-huhit/WI-foduh): ``total_io_edges`` is the REAL/verified I/O surface —
     # the chain count across confirmed boundary categories, EXCLUDING the
-    # ``external_potential`` bucket (receiver-unresolved calls; ~96% builtin
-    # method noise on self-analysis, not real I/O). ``external_potential_edges``
+    # ``external_potential`` bucket (unclassified calls into named external
+    # modules: potential, unverified I/O). ``external_potential_edges``
     # discloses that bucket separately so it no longer inflates the headline.
     # Both the unfiltered (``BoundaryMap.to_dict``) and the filtered
     # (``cmd_io_boundaries``) JSON paths — and the text headline — agree on this

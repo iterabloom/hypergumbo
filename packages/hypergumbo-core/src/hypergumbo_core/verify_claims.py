@@ -4509,7 +4509,7 @@ def _default_coverage(boundary_map: BoundaryMap) -> BoundaryCoverage:
     # confirmed I/O (total_io_edges, real categories) AND the external_potential
     # bucket. The WI-huhit/WI-foduh headline redefine excludes external_potential
     # from total_io_edges, but external_potential>0 still means the analysis ran
-    # and found (receiver-unresolved) calls, so it is NOT an unanalyzed input;
+    # and found (unclassified external) calls, so it is NOT an unanalyzed input;
     # this gate keeps the original "any boundary signal" semantics.
     if (
         boundary_map.total_io_edges == 0
