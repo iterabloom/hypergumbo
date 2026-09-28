@@ -47,6 +47,16 @@ ambiguous_names:
 fs_read:
   - module: os
     functions: [Open, ReadFile, ReadDir, Stat, Lstat, Readlink]
+  - module: os
+    functions: [OpenFile]
+    notes: >-
+      WI-ninuz: Go's flag-based open, declared under fs_read AND fs_write so
+      the mode seam owns it (python's builtins.open shape). The flag argument
+      is a bitwise OR of package constants, not a string, so the mode seam
+      reads the flag NAMES (io_boundary._MODE_ARGUMENT_POSITIONS["go"]):
+      O_WRONLY / O_RDWR / O_APPEND / O_CREATE / O_TRUNC write, O_RDONLY alone
+      reads. An unreadable flag (a variable) keeps THIS first-declared row, as
+      an unstamped open() does in python.
   - module: io
     functions: [ReadAll, ReadFull, Copy]
   - module: io/ioutil
@@ -142,6 +152,33 @@ fs_read:
 
 fs_write:
   - module: os
+    functions: [OpenFile]
+    notes: "WI-ninuz: the fs_write twin of the fs_read row (see it); selected by a write flag."
+  - module: os.File
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: >-
+      WI-nunab: a write through the handle's OWN method, the idiomatic Go file
+      write, had no row, so a program that opened a file and wrote through it
+      had no sink. The same shape as io.WriteString (WI-suhug): declared under
+      fs_write, logging and ipc_send, and go.py stamps io_target_kind from the
+      RECEIVER's binding (an os.Create / os.OpenFile handle -> host_path; the
+      os.Stdout / os.Stderr package variables -> std_stream; an os.Pipe() end
+      -> pipe). A parameter or a field stamps nothing and abstains to
+      fs_write. Write is in ambiguous_names, so only a TYPED receiver reaches
+      these rows.
+  - module: bufio.Writer
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: >-
+      WI-nunab: the write goes wherever bufio.NewWriter's argument pointed;
+      go.py stamps it through the receiver's bufio.NewWriter binding
+      (WI-vutav's hop, write side). Declared under fs_write, logging, ipc_send
+      and net_send. Flush is not rowed: it moves bytes WriteString already
+      accepted, so a sink there would count one write twice.
+  - module: os
     functions: [Create, CreateTemp, Mkdir, MkdirAll, MkdirTemp, Remove, RemoveAll, Rename, WriteFile, Chmod, Chown, Chtimes, Link, Symlink, Truncate]
   - module: io/ioutil
     functions: [WriteFile, TempFile, TempDir]
@@ -201,6 +238,11 @@ fs_write:
     functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Rename, Chmod, Fchmod, Chown, Fchown, Truncate, Ftruncate]
 
 net_send:
+  - module: bufio.Writer
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-nunab: the net_send twin of the fs_write row (see it); selected by a `net_stream` stamp."
   - module: net
     functions: [Dial, DialTCP, DialUDP, DialUnix, DialTimeout]
     # WI-bulag / arc T9. class R -- the dial functions take an address that
@@ -398,6 +440,16 @@ host_info_read:
 ipc_send:
   - module: os
     attributes: [Stdout, Stderr]
+  - module: os.File
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-nunab: the ipc_send twin of the fs_write row (see it); selected by a `pipe` stamp."
+  - module: bufio.Writer
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-nunab: the ipc_send twin of the fs_write row (see it); selected by a `pipe` stamp."
   - module: io
     functions: [WriteString]
     boundary_ruling: call_site_undecidable
@@ -410,6 +462,16 @@ ipc_send:
     notes: "WI-suhug: the ipc_send twin of the logging row (see it)."
 
 logging:
+  - module: os.File
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-nunab: the logging twin of the fs_write row (see it); selected by a `std_stream` stamp."
+  - module: bufio.Writer
+    methods: [Write, WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-nunab: the logging twin of the fs_write row (see it); selected by a `std_stream` stamp."
   - module: fmt
     functions: [Print, Println, Printf]
     notes: "Console output — logging, not IPC. Unconditional: these write os.Stdout whatever their arguments say."
