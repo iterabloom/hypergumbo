@@ -158,6 +158,7 @@ from hypergumbo_core.analyze.base import (
     node_text,
     visibility_from_modifiers,
     SymbolsAt,
+    stamp_io_mode_from_call,
     symbol_declared_by,
     symbols_at,
 )
@@ -2662,6 +2663,11 @@ _GO_FILE_HANDLE_PRODUCERS: Final[tuple[str, ...]] = (
     "ioutil.TempFile(", "ioutil.OpenFile(",
 )
 
+#: Receiver types that ARE a handle, so a write through one is classified by
+#: the receiver's own binding (``f, _ := os.Create(p)``) rather than through a
+#: wrapper's argument (WI-nunab). The module-slot spelling, as INV-vusum emits it.
+_GO_HANDLE_TYPES: Final[frozenset[str]] = frozenset({"os.File"})
+
 #: Node types that BIND a name in a Go function body. ``var_spec`` covers
 #: ``var f = os.Open(p)``; the other two cover ``:=`` and ``=``.
 _GO_BINDING_NODES: Final[frozenset[str]] = frozenset({
@@ -3348,6 +3354,9 @@ def _extract_edges_from_file(
                     # only; ``full_import_path`` stays the package because the
                     # handle-kind reader takes the package name from it.
                     receiver_owner: Optional[str] = None
+                    # WI-nunab: the target kind a PACKAGE-VARIABLE receiver
+                    # names by itself (``os.Stdout.Write`` -> ``std_stream``).
+                    receiver_handle_kind: Optional[str] = None
                     full_import_path = None
                     # INV-tanom: the operand is an imported PACKAGE, not a value.
                     # Such a call is a function call (ADR-0059: called on the
@@ -3489,6 +3498,9 @@ def _extract_edges_from_file(
                             )) is not None
                         ):
                             _pv_path, receiver_owner = _pv
+                            receiver_handle_kind = _go_classify_handle_text(
+                                node_text(operand_node, source),
+                            )
                             full_import_path = _pv_path
                             import_path_hint = (
                                 _strip_module_prefix(_pv_path, module_path)
@@ -3743,6 +3755,15 @@ def _extract_edges_from_file(
                                     node, source, _alias, import_aliases,
                                     var_types=var_types,
                                 )
+                                # WI-nunab: an ``*os.File`` receiver IS the
+                                # handle, so its own binding says what it is
+                                # (``os.Create`` -> host_path, ``os.Pipe()`` ->
+                                # pipe). A parameter has no binding and stamps
+                                # nothing: the rows abstain to fs_write.
+                                if _handle_b is None and _slot in _GO_HANDLE_TYPES:
+                                    _bound = _go_last_binding(node, source, _alias)
+                                    if _bound is not None:
+                                        _handle_b = _go_classify_handle_text(_bound[0])
                                 if _handle_b:
                                     _meta_b["io_target_kind"] = _handle_b
                                 dst_id = (
@@ -4051,9 +4072,10 @@ def _extract_edges_from_file(
                                     callee_name,
                                     import_aliases=import_aliases,
                                     var_types=var_types,
-                                )
+                                ) or receiver_handle_kind
                                 if _handle:
                                     _meta["io_target_kind"] = _handle
+                                _first_new = len(edges)
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=dst_id,
@@ -4065,6 +4087,11 @@ def _extract_edges_from_file(
                                     origin_run_id=run.execution_id,
                                     meta=_meta,
                                 ))
+                                # WI-ninuz: ``os.OpenFile``'s flags decide
+                                # read vs write, as ``open``'s mode string does.
+                                stamp_io_mode_from_call(
+                                    edges, _first_new, node, source, "go",
+                                )
                             # WI-vovum / WI-mafik: bare-identifier call whose
                             # name was dot-imported (``import . "strings"`` +
                             # ``Contains(...)``). Attribute it to the first

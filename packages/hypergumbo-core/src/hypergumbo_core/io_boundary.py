@@ -3352,6 +3352,11 @@ class ModeArgument:
 
     position: int
     keyword: Optional[str] = None  # axis: free-text — the target language's own keyword spelling for this argument, compared for equality against a call site's keyword; not enumerable across languages.
+    #: WI-ninuz. For a language whose mode is a bitwise OR of named FLAGS
+    #: rather than a string (Go's ``os.O_WRONLY|os.O_CREATE``): each flag name
+    #: and the mode it implies. The producer reads the names off the argument
+    #: when it is not a string literal; any write flag makes the call ``"w"``.
+    flag_modes: Optional[Mapping[str, str]] = None
 
 
 # Where each language puts the mode argument of each mode-discriminated
@@ -3392,6 +3397,14 @@ _MODE_ARGUMENT_POSITIONS: dict[str, dict[str, ModeArgument]] = {
     "javascript": {
         "open": ModeArgument(position=1),
         "openSync": ModeArgument(position=1),
+    },
+    # WI-ninuz: ``os.OpenFile(name, flag, perm)``. The flag is package
+    # constants OR-ed together, so the mode is read from their NAMES.
+    "go": {
+        "OpenFile": ModeArgument(position=1, flag_modes={
+            "O_RDONLY": "r", "O_WRONLY": "w", "O_RDWR": "w",
+            "O_APPEND": "w", "O_CREATE": "w", "O_TRUNC": "w",
+        }),
     },
 }
 

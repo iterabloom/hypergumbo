@@ -412,10 +412,26 @@ def stamp_io_mode_from_call(
         # ``string_fragment`` where C and python spell it ``string_content``
         # (WI-nolut). Read here, in the one producer, rather than in a copy.
         content = find_child_by_type(args[spec.position], "string_fragment")
-    if content is None:
+    if content is None and spec.flag_modes:
+        # WI-ninuz: a flag expression (Go's ``os.O_WRONLY|os.O_CREATE``). Any
+        # flag that writes makes the call a write; a variable names no flag and
+        # stamps nothing, exactly as a non-literal mode string does.
+        stack, implied = [args[spec.position]], set()
+        while stack:
+            cur = stack.pop()
+            stack.extend(cur.children)
+            if cur.type.endswith("identifier"):
+                flag_mode = spec.flag_modes.get(node_text(cur, source))
+                if flag_mode is not None:
+                    implied.add(flag_mode)
+        if not implied:
+            return
+        mode = "w" if implied - {"r"} else "r"
+    elif content is None:
         # Not a string literal at all — a variable, a macro, a concatenation.
         return
-    mode = node_text(content, source)
+    else:
+        mode = node_text(content, source)
     for edge in edges[first_new:]:
         if edge.meta is None:
             edge.meta = {}

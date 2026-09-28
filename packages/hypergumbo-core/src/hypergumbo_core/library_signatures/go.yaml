@@ -53,10 +53,10 @@ signatures:
 #
 # ONLY variables whose type carries catalogued methods are listed. Refused, each
 # for a reason, so the list is a decision rather than a sample:
-#   os.Stdin / os.Stdout / os.Stderr -- os.File carries no method rows; the std
-#     streams are already classified through io_target_kind (WI-dutah), and
-#     typing them would move every such call into the `os` slot, which is an
-#     unmeasured coverage-gate change.
+#   (os.Stdin / os.Stdout / os.Stderr were refused here while os.File carried
+#   no method rows. WI-nunab rowed os.File.{Write,WriteString}, so they are
+#   listed below; the coverage-gate move this note warned of was measured with
+#   that change -- see WI-nunab.)
 #   http.DefaultServeMux, flag.CommandLine -- route and flag registration; no
 #     method rows.
 #   crypto/rand.Reader, io.Discard -- an entropy source and a sink that
@@ -67,3 +67,9 @@ package_variables:
   # is the rowed send.
   http.DefaultTransport: http.Transport
   net.DefaultResolver: net.Resolver
+  # WI-nunab: the standard streams are *os.File values, so a write through one
+  # (`os.Stdout.Write(b)`) takes the os.File slot and its rows, stamped
+  # std_stream (logging) by the variable's own name.
+  os.Stdin: os.File
+  os.Stdout: os.File
+  os.Stderr: os.File
