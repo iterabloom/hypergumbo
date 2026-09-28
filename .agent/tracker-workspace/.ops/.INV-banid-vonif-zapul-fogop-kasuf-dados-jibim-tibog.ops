@@ -22,3 +22,18 @@
     fields:  # 6872
       statement: "A catalogue row must name the boundary its call actually crosses. VIOLATED: haskell.yaml rows System.Info [os, arch, compilerName, compilerVersion] under host_info_read, and all four are fixed at GHC BUILD time, verified in source at ghc/libraries/base/src/System/Info.hs -- os = HOST_OS (line 74) and arch = HOST_ARCH (line 107) are CPP macros substituted at configure time, compilerName = \"ghc\" (line 113) is a bare string literal, and compilerVersion (line 40) is derived from the CPP constant compilerVersionRaw. Not one performs a runtime read."  # 6872
       root_cause: "Module-granularity attribution plus a value that looks right. The four members DESCRIBE the host, which is what host_info_read is for after the INV-tutar split, so the label matches the DATA even though no crossing occurs. The consequence is specific and is why this is worth fixing rather than tidying: AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, so host_info_read makes each row a taint SOURCE. A value substituted at compile time cannot carry runtime host data at all, so these rows mint a source structurally incapable of carrying what the boundary claims for it. HOST_OS and HOST_ARCH usually describe the runtime host correctly -- the defect is not that the value is wrong, it is that no crossing happens."  # 6872
+- op: update  # 297f
+  at: '2026-09-28T02:02:20Z'  # 297f
+  by: agent  # 297f
+  actor: jgstern_agent  # 297f
+  clock: 2  # 297f
+  nonce: 297f  # 297f
+  set:  # 297f
+    title: "haskell System.Info rows os/arch/compilerName/compilerVersion as host_info_read, but all four are CPP constants fixed at GHC build time -- the row names a crossing that never occurs (inert as measured: values are never call edges)"  # 297f
+- op: discuss  # c77a
+  at: '2026-09-28T02:02:20Z'  # c77a
+  by: agent  # c77a
+  actor: jgstern_agent  # c77a
+  clock: 3  # c77a
+  nonce: c77a  # c77a
+  message: "RE-VERIFIED 2026-09-27 at dev f474411e11. The ROW is still wrong; the CONSEQUENCE in the title does not happen as measured, so the title is corrected.\n\n1. ROW unchanged: haskell.yaml:274-275 System.Info [os, arch, compilerName, compilerVersion] under host_info_read; taint.py:1742 still maps host_info_read -> host_description.\n2. REACH, which the item did not measure: all four are VALUES (String / Version), never applied, and the analyzer emits call edges only for applications. Fixture with `putStrLn os`, `length SI.arch`, `putStrLn SI.compilerName`, `describe = os ++ arch`, both unqualified and qualified imports: survey emits ONLY an imports edge to haskell:System.Info:0-0:module, no edge to any of the four; io-boundaries reports 0 chains for System.Info.\n3. So the \"mints a taint source\" consequence cannot happen through the call-edge path, which is the only path io-boundaries and taint consult for these rows. The row is present, wrong and INERT: no false source today. The defect that remains is the row itself (it declares a crossing that does not occur); it would start to matter only if a value-reference edge for Haskell ever reached the catalogue. Status stays violated, because the statement (a row must name the boundary its call crosses) still fails."  # c77a
