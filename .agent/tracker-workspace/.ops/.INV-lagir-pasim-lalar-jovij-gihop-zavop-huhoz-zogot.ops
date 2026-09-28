@@ -1,0 +1,25 @@
+- op: create  # b8f8
+  at: '2026-09-28T02:03:19Z'  # b8f8
+  by: agent  # b8f8
+  actor: jgstern_agent  # b8f8
+  clock: 1  # b8f8
+  nonce: b8f8  # b8f8
+  data:  # b8f8
+    kind: invariant  # b8f8
+    title: "tag_io_boundaries counts IMPORTS edges as call sites: 'import glob' alone is an fs_read chain and fails a must_not_exist claim (158 import-edge chains on self, 136 of them 'import time' as host_info_read)"  # b8f8
+    status: violated  # b8f8
+    priority: 2  # b8f8
+    parent:  # b8f8
+    tags:  # b8f8
+    - io_boundary  # b8f8
+    - analysis_quality  # b8f8
+    - false_positive  # b8f8
+    - verify_claims  # b8f8
+    isbefore: []  # b8f8
+    duplicate_of: []  # b8f8
+    not_duplicate_of: []  # b8f8
+    pr_ref:  # b8f8
+    description: "FOUND 2026-09-27 while re-verifying INV-bosus. Direction: FALSE violations and, for host_info_read rows, FALSE taint SOURCES.\n\nTHE MECHANISM. io_boundary.tag_io_boundaries' default call_types is {\"calls\", \"imports\", \"instantiates\", \"module_attr_ref\", ...} (io_boundary.py ~4956). An IMPORT is not a call site, but it is tagged like one: a Python `import glob` produces an imports edge to python:glob:0-0:glob, which has the same (module, name) as the catalogued FUNCTION glob.glob, so it matches the row. Every module that has a catalogued function of its own name is affected. \"imports\" has been in the set since the tagger was introduced (7dace67d66, 2026-03-18, ADR-0016 Phase 1b); no comment justifies it, unlike every other member.\n\nMEASURED, shipped CLI at dev f474411e11. A file containing ONLY\n    import glob / import getpass / import socket / import select / import pprint / import time / import platform\nyields 4 chains, each sourced at the FILE node:\n    fs_read glob.glob · host_info_read time.time · host_info_read platform.platform · logging pprint.pprint\nand verify-claims with {boundary: fs_read, must_not_exist: true} over it returns VIOLATED (rc 1): \"1 fs_read chain(s) found, but claim requires none\". The program performs no I/O at all.\n\nPOPULATION. Replaying compute_boundary_map on hypergumbo's own 09-25 survey: 158 of 13,274 tagged edges are imports edges: host_info_read 136 (time.time 133, platform.platform 3), fs_read 8 and fs_write 8 together (fcntl.fcntl 8, glob.glob 5, importlib.metadata.distributions 2, importlib.metadata.version 1), ipc_recv 4 (shlex.shlex 4), net_send 2 (urllib.request.urlopen 2). The last is `from urllib.request import urlopen`: importing an I/O function is not calling it, and the call edge (if any) is tagged separately, so this double-counts. On full-stack-fastapi-template: 0 of 55. host_info_read derives the host_description taint label (taint.py:1742), so each `import time` is also a taint-source candidate. Whether a taint walk from a FILE node reaches a sink was not measured.\n\nWHAT A FIX MUST CHECK. Removing \"imports\" is the obvious change and the risky one: something may rely on it. Measure what else changes (the coverage gate's _CALL_SITE_EDGE_TYPES parity test, test_the_gate_never_counts_an_edge_type_the_tagger_cannot_tag, and any language whose I/O arrives ONLY as an import, e.g. a JS side-effect import). Prior art checked: INV-pusin (satisfied) settled the coverage GATE's handling of import-only modules, not the tagger's; no open item names this."  # b8f8
+    fields:  # b8f8
+      statement: "An I/O boundary chain must start at a site that performs the operation. VIOLATED: tag_io_boundaries counts imports edges as call sites, so an import of a module that has a catalogued function of its own name (glob.glob, time.time, platform.platform, pprint.pprint, fcntl.fcntl, shlex.shlex) becomes an I/O chain sourced at the file node, and a file containing only `import glob` fails a {boundary: fs_read, must_not_exist: true} claim."  # b8f8
+      root_cause: "\"imports\" has been in tag_io_boundaries' default call_types since the tagger was introduced (7dace67d66, 2026-03-18), with no stated reason. An import edge's dst is the module placeholder <lang>:<module>:0-0:<module>, which is indistinguishable by (module, name) from a catalogued function whose name equals its module's."  # b8f8

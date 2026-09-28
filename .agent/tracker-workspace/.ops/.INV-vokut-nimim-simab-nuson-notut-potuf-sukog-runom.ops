@@ -23,3 +23,21 @@
     fields:  # 846c
       statement: "A scala.io.StdIn stdin reader must reach its ipc_recv catalogue entry. VIOLATED: the analyzer emits scala:external:0-0:readLine with no module hint, and readLine is in scala's ambiguous_names, so the no-module gate withholds it -- the row is correct (INV-muvis) but present-and-dead."  # 846c
       root_cause: "The scala analyzer does not stamp a module/receiver hint for module-qualified calls, so scala.io.StdIn.readLine is indistinguishable from a bare ambiguous readLine and is correctly withheld for lack of evidence. INV-linub's receiver-typing class, in scala."  # 846c
+- op: update  # 6f7a
+  at: '2026-09-28T02:03:04Z'  # 6f7a
+  by: agent  # 6f7a
+  actor: jgstern_agent  # 6f7a
+  clock: 2  # 6f7a
+  nonce: 6f7a  # 6f7a
+  set:  # 6f7a
+    title: "scala.io.StdIn.readLine is catalogued ipc_recv but unreachable in its FULLY-QUALIFIED inline form: emitted as a hint-less ambiguous short name (imported forms reach)"  # 6f7a
+    fields:  # 6f7a
+      statement: "A scala.io.StdIn stdin reader must reach its ipc_recv catalogue entry in every call form. VIOLATED for the FULLY-QUALIFIED inline form only: scala.io.StdIn.readLine() is emitted as scala:external:0-0:readLine with no module slot, and readLine is in scala's ambiguous_names, so the no-module gate withholds it. The imported forms (import scala.io.StdIn; StdIn.readLine() and import scala.io.StdIn.readLine; readLine()) reach the row (re-verified 2026-09-27)."  # 6f7a
+      root_cause: "The scala analyzer does not put the package path of a fully-qualified call expression (a.b.C.f(...) with no import) into the module slot, so it is indistinguishable from a bare ambiguous readLine and is correctly withheld for lack of evidence. Not specific to StdIn: scala.sys.process.Process(s).run() loses its slot the same way. Imported and import-qualified receivers are resolved (re-verified 2026-09-27)."  # 6f7a
+- op: discuss  # 72e0
+  at: '2026-09-28T02:03:04Z'  # 72e0
+  by: agent  # 72e0
+  actor: jgstern_agent  # 72e0
+  clock: 3  # 72e0
+  nonce: '72e0'  # 72e0
+  message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED, but NARROWER than filed: statement, root_cause and title re-scoped to the one form that is still withheld.\n\nShipped CLI (survey + io-boundaries, cold cache):\n  val s = scala.io.StdIn.readLine()            -> scala:external:0-0:readLine, call_construct=method, no module slot; WITHHELD, no chain   (the filed repro; still fails)\n  import scala.io.StdIn; StdIn.readLine()      -> scala:scala.io.StdIn:0-0:readLine -> ipc_recv chain                                        (REACHES)\n  import scala.io.StdIn.readLine; readLine()   -> scala:scala.io.StdIn.readLine:0-0:readLine -> ipc_recv chain                               (REACHES)\n\nThe item's measurement (vutav_reads_08302026/reach/scala/M.scala) used ONLY the fully-qualified inline form, so it never showed whether the imported forms reached; I cannot say whether they were fixed after 09-03 (candidates: WI-tipoh 9e8ed17fca, WI-kilap d5f8060a45) or always worked. What is established is that today only the fully-qualified call expression is lost.\n\nSAME MECHANISM, SECOND SYMPTOM on the same fixture line: scala.sys.process.Process(s).run() emits scala:external:0-0:Process and scala:external:0-0:run, and no subprocess chain. A fully-qualified inline call loses its module slot whatever the callee.\n\nPOPULATION, local corpus (36,524 .scala files): 13 fully-qualified scala.io.StdIn.<x>( calls, 12 StdIn.<x>( calls, 14 imports of scala.io.StdIn; 1 fully-qualified scala.sys.process.Process(. So the still-lost form is about half of the real StdIn uses."  # 72e0
