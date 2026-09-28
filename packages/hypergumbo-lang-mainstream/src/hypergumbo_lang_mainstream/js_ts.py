@@ -4918,10 +4918,17 @@ def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) ->
 #: catalogue note already rules that ``open`` and ``error`` carry nothing and
 #: ``message`` / ``close`` do; ``EventSource`` likewise for ``open`` / ``error``,
 #: with custom named events still carrying data.
-_LISTENER_EVENTS: dict[tuple[str, str], tuple[frozenset[str], bool]] = {
-    ("process", "on"): (frozenset({"message"}), True),
-    ("WebSocket", "addEventListener"): (frozenset({"message", "close"}), True),
-    ("EventSource", "addEventListener"): (frozenset({"open", "error"}), False),
+#:
+#: The third element is the target kind a CROSSING site is stamped with.
+#: Every site of a listed listener is stamped, crossing or not: the per-site
+#: collapse (INV-vukiv) keeps only the values sites HAVE, so an unstamped
+#: ``message`` site folded into a stamped ``open`` site would read as
+#: "every site crosses nothing" and lose the real receive. A non-literal event
+#: is stamped ``unresolved``, the vocabulary's "no opinion".
+_LISTENER_EVENTS: dict[tuple[str, str], tuple[frozenset[str], bool, str]] = {
+    ("process", "on"): (frozenset({"message"}), True, "pipe"),
+    ("WebSocket", "addEventListener"): (frozenset({"message", "close"}), True, "net_stream"),
+    ("EventSource", "addEventListener"): (frozenset({"open", "error"}), False, "net_stream"),
 }
 
 
@@ -4936,28 +4943,31 @@ def _stamp_listener_event_crossing(
     ARGUMENT, so only the call site can say. ``in_memory`` is the existing
     vocabulary for "this site crosses nothing" (WI-lipis): the tagger skips
     the chain while the call still counts as examined, and taint mints no
-    source there, so no consumer needs a new field. A non-literal event stamps
-    nothing and keeps today's answer.
+    source there, so no consumer needs a new field. A non-literal event is
+    stamped ``unresolved``, which every consumer reads as "no opinion".
     """
     args = call_node.child_by_field_name("arguments")
     named = [c for c in args.children if c.is_named] if args is not None else []
-    if not named or named[0].type != "string":
-        return
-    fragment = next((c for c in named[0].children if c.type == "string_fragment"), None)
-    if fragment is None:
-        return  # pragma: no cover - an empty string literal names no event
-    event = _node_text(fragment, source)
+    fragment = (
+        next((c for c in named[0].children if c.type == "string_fragment"), None)
+        if named and named[0].type == "string" else None
+    )
+    event = _node_text(fragment, source) if fragment is not None else None
     for edge in edges[first_new:]:
         parts = edge.dst.split(":")
         rule = _LISTENER_EVENTS.get((parts[1], parts[-2])) if len(parts) >= 5 else None
         if rule is None:
             continue
-        events, carries = rule
-        if (event in events) is carries:
-            continue
+        events, carries, crossing_kind = rule
+        if event is None:
+            kind = "unresolved"
+        elif (event in events) is carries:
+            kind = crossing_kind
+        else:
+            kind = "in_memory"
         if edge.meta is None:
             edge.meta = {}
-        write_meta_key(edge.meta, "io_target_kind", "in_memory")
+        write_meta_key(edge.meta, "io_target_kind", kind)
 
 
 def _get_enclosing_function(
