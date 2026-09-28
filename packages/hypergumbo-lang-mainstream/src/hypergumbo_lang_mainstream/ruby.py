@@ -2380,28 +2380,40 @@ def _try_receiver_call(
                     ))
                     return True
 
-    # Try method resolver (with ambiguity guard) or fall back to name resolver.
-    # Don't pass receiver_class as path_hint to method_resolver — it's a class
-    # name, not a file path. The ambiguity_threshold guards against 3+ candidates.
-    if method_resolver is not None:
-        lookup_result = method_resolver.lookup(method_name)
-    else:  # pragma: no cover
-        lookup_result = resolver.lookup(method_name, path_hint=receiver_class)
-    if lookup_result.found and lookup_result.symbol is not None:
-        callee = lookup_result.symbol
-        if callee.id != current_method.id:
-            edges.append(Edge.create(
-                src=current_method.id,
-                dst=callee.id,
-                edge_type="calls",
-                line=line,
-                evidence_type="ast_call",
-                confidence=0.75 * lookup_result.confidence,
-                origin=PASS_ID,
-                origin_run_id=run_id,
-                meta={"call_construct": "method", "receiver": "generic"},
-            ))
-            return True
+    # WI-johib: the receiver NAMES its owner, so the method is that owner's or
+    # an ancestor's, never whichever class happens to declare a method of the
+    # same short name. The resolver lookup this replaced was receiver-blind:
+    # ``Rails.root`` bound ``HealthServer#root``, ``File.read(p)`` bound a
+    # project's own ``#read`` (defeating a user's overlay row for it), and on
+    # postal 54 of 160 constant-receiver calls into in-repo methods landed on a
+    # DIFFERENT class. A project constant that does not declare the method
+    # keeps an unresolved edge whose receiver type names it, and the
+    # inherited-calls linker walks its ancestors (``Kid.make`` -> ``Base.make``).
+    # A constant the project does not declare falls through to the
+    # constant-external fallback below.
+    project_owners = [
+        candidate.lstrip(":") for candidate in candidates
+        if candidate.lstrip(":") in global_symbols
+        or any(
+            key.startswith(f"{candidate.lstrip(':')}#")
+            or key.startswith(f"{candidate.lstrip(':')}.")
+            for key in global_symbols
+        )
+    ]
+    if project_owners:
+        owner = project_owners[0]
+        edges.append(make_unresolved_edge(
+            lang="ruby",
+            src_id=current_method.id,
+            callee_name=method_name,
+            line=line,
+            pass_id=PASS_ID,
+            run_id=run_id,
+            module_hint=owner,
+            receiver_type_hint=owner,
+            call_construct="method",
+        ))
+        return True
 
     # WI-rijij / WI-mafik: constant-receiver call (``JSON.parse``,
     # ``Set.new``) that didn't resolve to a project symbol. Attribute
