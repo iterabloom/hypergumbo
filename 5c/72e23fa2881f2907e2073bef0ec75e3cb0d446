@@ -1,0 +1,25 @@
+Original commit body from a6cabea91d28c6182c9971ff7b2ea00ea6b00833:
+
+`use Foo\{Bar, Baz};` registered no import aliases, so a call through
+Bar landed in the external module slot and matched no io_primitives
+row, while `use Foo\Bar;` resolved the identical call. Two reasons, both
+fixed: _extract_use_aliases scanned the declaration's DIRECT children
+for clauses, and tree-sitter nests a grouped use's clauses one level down
+in a namespace_use_group with the shared prefix on the declaration as a
+namespace_name; and it required a qualified_name child, where a grouped
+clause holds a bare name (or a qualified tail) relative to that prefix.
+INV-zuvib's shape in rust.py.
+
+Grouped clauses, `as` aliases inside a group, qualified tails
+(Foo\{Sub\Bar}) and use function / use const groups now register under
+the prefix. Ungrouped forms are unchanged, including `use Foo;`, which
+still registers nothing. Pinned at the alias map and on the shipped
+survey (the filed repro: both spellings now give php:Foo\helper).
+
+No corpus effect: 0 grouped uses among 5,323 namespace imports in the
+local PHP corpus (koel 5,021, grpc 288, rabbitmq 14). Not claimed as
+recall.
+
+Addresses INV-nuvug.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
