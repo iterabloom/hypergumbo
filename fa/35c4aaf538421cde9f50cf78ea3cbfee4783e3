@@ -1,0 +1,24 @@
+Original commit body from 25295db3ef3668b76fd31c7bbf77b415de0ca293:
+
+python.yaml rowed platform's host-description functions under
+host_info_read only. Measured on CPython 3.12 / Linux by wrapping
+subprocess.check_output, three of them also start a child:
+architecture() runs `file -b <sys.executable>` (_syscmd_file),
+processor() runs `uname -p` (_Processor.from_subprocess, the fallback on
+every platform but win32 and OpenVMS), and platform() runs it through
+uname().processor. The other rowed functions spawn nothing.
+
+The three are split into their own row, declared simultaneous under
+host_info_read AND subprocess (one call, both crossings, no argument that
+decides between them), and added to HIGH_RISK_PRIMITIVES under that set's
+own rule (a launch is a launch; builtins.help). The platform
+module_completeness note said "rowed under env_read", stale since the
+INV-tutar split; corrected.
+
+No measured corpus effect on the self-survey, which calls none of the
+three (platform.system / machine / python_version only). This is a
+correctness fix, not claimed as recall.
+
+Addresses INV-bosus.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
