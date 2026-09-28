@@ -1,0 +1,33 @@
+Original commit body from 5c0006a7ef1aaeb3087f2450f50ddc4c4fa9bef6:
+
+The external_potential bucket was empty on every repository measured,
+while the code hid it by default for "tending to dominate". F3 Filter 1
+(4e26cf63f0, 2026-05-13) skipped every edge with is_resolved=False,
+reading ADR-0028's "the dst could not be resolved" as a receiver guess.
+ADR-0037 ruling 1 (2026-06-10) made is_resolved mean in-repo-ness, so
+every edge into an external placeholder is is_resolved=False by
+definition, and the bucket's own entry test (an external-boundary dst)
+admitted only edges Filter 1 then dropped: 1,851 of 1,851 on
+full-stack-fastapi-template, 76,015 of 76,015 on the self-survey. The
+unit test that pinned Filter 1 built an is_resolved=True edge into an
+external dst, a cell ADR-0037 says is never produced.
+
+Filter 1 now skips what it was written to skip: a receiver-unresolved
+placeholder whose module slot names nothing (22,503 edges on the
+self-survey). A call into a named module the catalogue does not classify
+reaches the bucket, its stated purpose. Filter 2 (the closed-world skip)
+and the stdlib_other filter are live again for the same reason.
+
+Measured, pinned dev vs branch, io-boundaries on
+full-stack-fastapi-template (production files): external_potential
+0 -> 376 chains; total_io_edges 29 -> 29 and every classified bucket
+identical. The bucket stays disclosed-only and hidden from text output.
+
+The three unit tests that encoded the old filter are rewritten, and the
+descriptions that called the bucket "receiver-unresolved noise"
+(io_boundary_types, the CLI text, the spec, concept-axes) now say what
+it holds.
+
+Addresses INV-toguh.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
