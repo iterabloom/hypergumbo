@@ -1,0 +1,49 @@
+Original commit body from 089e51915608787ef02fc20532b63a30543b06e9:
+
+A short name catalogued both as a package function and as a method of a
+type in that package (net/http.Get / net/http.Client.Get,
+requests.get / requests.Session.get) survived the module filter twice,
+because _module_matches admits a type under its package by the
+component rule, and selection returned the FIRST-DECLARED row: the
+function, in every one of the 64 shipped pairs (go 17, javascript 14,
+python 27, rust 6). Two changes, and both are needed:
+
+1. prefer_exact_owner (io_boundary): among the rows the module filter
+   kept, the ones whose module IS a spelling of the slot win; if none is,
+   every row stays, so no match that fired before is lost. Used by
+   lookup_with_module and taint's _lookup_named_entry, so the two cannot
+   disagree. Python / JavaScript / Rust already put the receiver's type in
+   the slot (requests.Session, dns.Resolver, std::fs::File), so this alone
+   fixes their labels.
+
+2. go.py: a typed external receiver's slot was the PACKAGE (net/http)
+   although var_types held the type; it is now the full import path plus
+   the type (net/http.Client), conformant under the module-key axis and
+   the shape the other three languages use. Also for a stdlib package
+   variable (http.DefaultClient) and a struct field of external type
+   (e.logger), the latter measured as the bulk on prometheus. Never a bare
+   leaf: `Client` alone matches 8 rows through the suffix arm (56 for the
+   common leaves), and a third-party type sharing a stdlib leaf name
+   matches nothing (pinned). tr.Do() on an http.Transport, the one false
+   positive, now matches no row and is disclosed in external_potential.
+
+go.yaml gains net/http.RoundTripper [RoundTrip] under net_send (net.Conn's
+precedent): an interface-typed RoundTrip reached Transport.RoundTrip only
+because the slot was the bare package, and the first cut lost that send
+on prometheus.
+
+Measured, pinned dev vs branch, io-boundaries on four Go repos:
+alertmanager 103 and prometheus 261 slog calls move to log/slog.Logger.*,
+8 RoundTrip sends (alertmanager 1, prometheus 5, trivy 2) move to the
+interface row, opa unchanged; per-boundary counts identical on
+alertmanager / opa / trivy, prometheus logging +1 where two calls that
+shared a dst are now told apart. full-stack-fastapi-template unchanged.
+
+Seven tests pinned the package-granular Go slot; updated to the type
+slot, each keeping its reach / classification guard. Residual filed:
+a method on a package function's result (slog.New(h).Error) keeps the
+package slot (WI-vinuh).
+
+Addresses INV-vusum.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
