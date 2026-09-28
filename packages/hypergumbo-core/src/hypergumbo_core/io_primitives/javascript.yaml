@@ -384,7 +384,12 @@ ipc_recv:
       is a named global, so `process.on(...)` is a valid call as written
       (INV-zikab's rule, owner-ratified 2026-09-23). Keyed `methods:` it
       starved the module on 6 of 9 surveyed JS repos once WI-kikar gave
-      process member calls their slot (INV-dihun).
+      process member calls their slot (INV-dihun). The row matches the NAME;
+      the EVENT is the first argument, so js_ts.py stamps io_target_kind
+      in_memory on any other literal event (`exit`, `uncaughtException`,
+      signals), which crosses nothing: no chain, no untrusted_input source
+      (WI-punar; 90 of 1,230 literal-event sites in ~/ALL_REPOS were the IPC
+      channel). A non-literal event is not stamped and keeps this row.
 
 logging:
   # Browser + Node share console.* (WI-banaf)
