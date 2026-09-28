@@ -140,6 +140,20 @@ def _extract_use_aliases(
     In PHP:
         use Namespace\ClassName; -> ClassName maps to Namespace\ClassName
         use Namespace\ClassName as Alias; -> Alias maps to Namespace\ClassName
+        use Namespace\{A, B as C, Sub\D}; -> A, C and D, each under the prefix
+
+    THE GROUPED FORM (PHP 7.0+) IS ITS OWN SHAPE, and it registered nothing
+    until INV-nuvug. tree-sitter puts the shared prefix on the declaration as a
+    ``namespace_name`` and the clauses one level down, in a
+    ``namespace_use_group``; each clause holds a bare ``name`` (``A``) or a
+    qualified tail (``Sub\D``) RELATIVE to that prefix. A scan of the
+    declaration's direct children for a clause with a ``qualified_name`` found
+    neither, so a call through a grouped import fell to the ``external`` slot
+    while the single-import spelling of the same call resolved. INV-zuvib's
+    shape in rust.py.
+
+    An ungrouped clause still needs a ``qualified_name``: ``use Foo;`` names a
+    global class by itself and registers nothing, as before.
 
     Returns a dict mapping short names to full qualified names.
     """
@@ -149,34 +163,50 @@ def _extract_use_aliases(
         if node.type != "namespace_use_declaration":
             continue
 
-        # Each use declaration can have multiple clauses
+        prefix = ""
+        group = None
         for child in node.children:
-            if child.type == "namespace_use_clause":
-                # Find qualified_name and check for alias
-                path_node = None
-                alias_name = None
-                has_as = False
+            if child.type == "namespace_name":
+                prefix = node_text(child, source)
+            elif child.type == "namespace_use_group":
+                group = child
 
-                for sub in child.children:
-                    if sub.type == "qualified_name":
-                        path_node = sub
-                    elif sub.type == "as":
-                        has_as = True
-                    elif sub.type == "name" and has_as:
-                        # This is the alias after 'as'
-                        alias_name = node_text(sub, source)
-
-                if path_node:
-                    full_path = node_text(path_node, source)
-                    if alias_name:
-                        aliases[alias_name] = full_path
-                    else:
-                        # Use last component of namespace path
-                        short_name = full_path.rsplit("\\", 1)[-1]
-                        if short_name:
-                            aliases[short_name] = full_path
+        clauses = group.children if group is not None else node.children
+        for clause in clauses:
+            if clause.type != "namespace_use_clause":
+                continue
+            path, alias_name = _use_clause_path(clause, source, grouped=group is not None)
+            if path is None:
+                continue
+            full_path = f"{prefix}\\{path}" if prefix else path
+            short_name = alias_name or full_path.rsplit("\\", 1)[-1]
+            aliases[short_name] = full_path
 
     return aliases
+
+
+def _use_clause_path(
+    clause: "tree_sitter.Node", source: bytes, *, grouped: bool,
+) -> tuple[Optional[str], Optional[str]]:
+    """``(path, alias)`` of one ``namespace_use_clause``.
+
+    The path is the ``qualified_name`` child, or, inside a group only, the bare
+    ``name`` before any ``as``. The alias is the ``name`` after ``as``.
+    """
+    path: Optional[str] = None
+    alias_name: Optional[str] = None
+    has_as = False
+    for sub in clause.children:
+        if sub.type == "qualified_name":
+            path = node_text(sub, source)
+        elif sub.type == "as":
+            has_as = True
+        elif sub.type == "name":
+            if has_as:
+                alias_name = node_text(sub, source)
+            elif grouped and path is None:
+                path = node_text(sub, source)
+    return path, alias_name
 
 
 def _find_name_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
