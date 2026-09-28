@@ -104,6 +104,7 @@ from .edge_types import (
     INHERITANCE_EDGE_TYPES,
     is_grpc_rpc_implementation,
 )
+from .construction import initializer_hops
 from .ir import Symbol, Edge
 from .paths import normalize_path, path_ends_with, is_test_node, is_utility_file
 from .ranking import compute_centrality, apply_tier_weights, apply_test_weights
@@ -468,6 +469,7 @@ def slice_graph(
     """
     # Build lookup structures
     node_by_id: Dict[str, Symbol] = {n.id: n for n in nodes}
+    ctor_hops = set(initializer_hops(nodes, edges))
 
     # Build edge maps for both directions
     edges_from: Dict[str, List[Edge]] = {}  # src -> edges (for forward traversal)
@@ -712,13 +714,20 @@ def slice_graph(
             # traversable — it is a cross-service reachability conduit
             # (client → stub → server → impl), not a plain structural
             # 'implements' — so it is NOT forward-skipped here.
+            # WI-satal: the one ``contains`` edge that IS a call -- a
+            # constructed class to its initializer (``construction.py``).
+            # py / js_ts / dart land a construction on the CLASS, so without
+            # this a forward slice stopped at the class and a reverse slice
+            # from ``__init__`` found no caller.
+            is_ctor_hop = (edge.src, edge.dst) in ctor_hops
             if (
                 not query.reverse
                 and edge.edge_type in _STRUCTURAL_EDGE_TYPES
                 and not is_grpc_rpc_implementation(edge.edge_type, edge.meta)
+                and not is_ctor_hop
             ):
                 continue
-            if query.reverse and edge.edge_type == "contains":
+            if query.reverse and edge.edge_type == "contains" and not is_ctor_hop:
                 continue
 
             # Skip import edges when exclude_imports is set.
