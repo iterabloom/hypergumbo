@@ -14,10 +14,11 @@ The fix is a stamp, not a new catalogue field. ``io_target_kind: in_memory``
 already means "this call site crosses nothing": the tagger skips the chain
 while the call still counts as examined (no withheld verdict), and taint
 refuses to mint a source there. The analyzer stamps it when the listener's
-event is a string literal that carries nothing. An event it cannot read (a
-variable) stamps nothing and keeps today's answer. The same holds for the
-browser rows the catalogue notes already reason about: a WebSocket's ``open``
-and ``error`` events carry no data.
+event is a string literal that carries nothing, and stamps every OTHER site
+of the same listener too (the crossing kind, or ``unresolved`` for an event it
+cannot read), because the per-site collapse keeps only the values sites have.
+The same holds for the browser rows the catalogue notes already reason about:
+a WebSocket's ``open`` and ``error`` events carry no data.
 """
 
 from __future__ import annotations
@@ -133,3 +134,26 @@ def test_a_websocket_open_event_receives_nothing(
             f"  ws.addEventListener({event}, (e) => e);\n}}\n")
     chains = _chains(tmp_path, monkeypatch, body)
     assert ("WebSocket.addEventListener" in chains.get("net_recv", set())) is receives, chains
+
+
+def test_a_real_receive_survives_a_silent_sibling_in_the_same_function(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Measured on workadventure: ``open``, ``close``, ``error`` and ``message``
+    listeners on one socket collapse into ONE edge. With only the silent sites
+    stamped, the collapse read as "every site crosses nothing" and the real
+    ``message`` receive vanished. Every site is stamped now."""
+    body = ("function main(u) {\n  const ws = new WebSocket(u);\n"
+            '  ws.addEventListener("open", (e) => e);\n'
+            '  ws.addEventListener("message", (e) => e);\n'
+            '  ws.addEventListener("error", (e) => e);\n}\n')
+    chains = _chains(tmp_path, monkeypatch, body)
+    assert "WebSocket.addEventListener" in chains.get("net_recv", set()), chains
+
+
+def test_an_unreadable_event_beside_a_silent_one_still_receives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = ('function main(evt) {\n  process.on("exit", () => 0);\n'
+            "  process.on(evt, (m) => m);\n}\n")
+    assert "process.on" in _chains(tmp_path, monkeypatch, body).get("ipc_recv", set())
