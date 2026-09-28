@@ -77,6 +77,7 @@ from typing import TYPE_CHECKING, Any, Final, Iterable, Mapping, Optional, Seque
 import yaml
 
 from .axis_meta_keys import write_meta_key
+from .construction import construction_calls
 from .edge_types import is_grpc_rpc_implementation
 from .io_primitive_kinds import (
     KIND_ATTRIBUTE,
@@ -3904,6 +3905,13 @@ def compute_boundary_map(
 
     # Reverse call graph — shared by EP tracing and leaf-caller expansion
     reverse_graph = _build_reverse_graph(edges)
+    # WI-satal: a construction reaches the initializer. py / js_ts / dart land
+    # ``instantiates`` on the CLASS, so an I/O call inside ``__init__`` traced
+    # back to no caller at all and listed no entry point. Needs the nodes to
+    # tell a class and its initializer apart; without them nothing is added.
+    if nodes_by_id:
+        for caller, initializer, _line in construction_calls(nodes_by_id.values(), edges):
+            reverse_graph.setdefault(initializer, set()).add(caller)
 
     # Reverse-trace from IO edges to entrypoints (Phase 1c)
     ep_map: dict[str, set[str]] = {}
