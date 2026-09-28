@@ -1,0 +1,21 @@
+- op: create  # 4617
+  at: '2026-09-28T01:12:33Z'  # 4617
+  by: agent  # 4617
+  actor: jgstern_agent  # 4617
+  clock: 1  # 4617
+  nonce: '4617'  # 4617
+  data:  # 4617
+    kind: work_item  # 4617
+    title: "objc: headers whose @interface block tree-sitter-objc misreads lose every @property (AFNetworking AFHTTPSessionManager.h 0/4, AFURLSessionManager.h 0/11)"  # 4617
+    status: todo_hard  # 4617
+    priority: 3  # 4617
+    parent:  # 4617
+    tags:  # 4617
+    - objc  # 4617
+    - analysis_quality  # 4617
+    isbefore: []  # 4617
+    duplicate_of: []  # 4617
+    not_duplicate_of: []  # 4617
+    pr_ref:  # 4617
+    description: "Found by WI-vufur's measurement. AFNetworking's AFHTTPSessionManager.h and AFURLSessionManager.h emit 0 of their 4 and 0 of their 11 @property declarations (methods are all emitted: 11/11, 26/26). tree-sitter-objc does not recognise the @interface block in those headers (likely the API macros: NS_ASSUME_NONNULL_BEGIN, AF_API_UNAVAILABLE / API_AVAILABLE attributes, nullable qualifiers -- NOT CHECKED which), and recovers each @property line as a top-level expression_statement, so the objc analyzer's property_declaration arm never sees one. No ERROR node surrounds the recovered lines, so WI-bulaz's partial-parse row for the file does not locate the loss.\n\nRepro: parse AFNetworking/AFHTTPSessionManager.h with get_language(\"objc\"); the @property lines sit under translation_unit > expression_statement. A minimal \"@interface A : NSObject @property (nonatomic, strong) NSString *s; @end\" parses to class_interface > property_declaration.\n\nTo do: bisect which construct breaks the @interface parse; measure how many ObjC headers in the corpus (AFNetworking, SDWebImage, CocoaLumberjack, ResearchKit, GPUImage) lose properties this way; then decide between pre-processing the known macros and recovering properties from expression_statement shapes."  # 4617
+    fields: {}  # 4617
