@@ -1,0 +1,3 @@
+Original commit body from 8b1fd611dedd3e583c3faddb5a472e0dd2c9a2cf:
+
+Docstring-staleness audit, A+B+D bundle. 58-file pool (37 changed since the 2026-09-25 audit + 21 scan-flagged unreviewed); ten read-only reviewers read each file in full; every fix re-verified against the code. Docstrings and comments only: an AST comparison with docstrings stripped shows no executable change in any of the 50 files. Registry pass found retired evidence types (receiver_call, typed_receiver_call, rails_callback) and retired symbol kinds (route, main_entry, export_entry, script) still named in prose. 11 line-pinned citations relocated by anchor. The C-rewrite bundle (omitted functionality) follows separately.
