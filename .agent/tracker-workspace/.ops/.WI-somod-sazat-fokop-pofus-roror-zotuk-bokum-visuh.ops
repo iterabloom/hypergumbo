@@ -28,3 +28,25 @@
   set: {}  # fc23
   add:  # fc23
     isbefore: [WI-vufur-pujin-vojik-kukud-ruhis-lojon-sohoz-lagon]  # fc23
+- op: update  # f5a4
+  at: '2026-09-28T00:58:11Z'  # f5a4
+  by: agent  # f5a4
+  actor: jgstern_agent  # f5a4
+  clock: 3  # f5a4
+  nonce: f5a4  # f5a4
+  set:  # f5a4
+    status: done  # f5a4
+- op: discuss  # 9865
+  at: '2026-09-28T00:58:11Z'  # 9865
+  by: agent  # 9865
+  actor: jgstern_agent  # 9865
+  clock: 4  # 9865
+  nonce: '9865'  # 9865
+  message: "DONE in PR #1252. One rule (header_owner.py) applied by the C, C++ and ObjC finders: a .h with ObjC-only syntax at a line start (@interface/@protocol/@class/@property/@end/@implementation/@import, #import) is ObjC's; any other is C++'s when the repo holds any C++ file (source or .hpp/.hxx), else C's.\n\nBehavioural evidence, production path (hypergumbo run), pinned worktree A (433c90f9f1) vs B, records ~/hypergumbo_lab_notebook/somod_09272026/:\n- this row's filed instances: AFNetworking .h partial-parse rows c 29 / objc 2 -> c 1 / objc 1 (the 1 C row is the unmarked AFCompatibilityMacros.h, which BOTH grammars fail on; total rows 34 -> 5). crun: objc's 8 rows on C headers -> 0; C's 8 unchanged; nodes/edges identical. AFNetworking's 3 duplicate C symbols from ObjC headers -> 0.\n- wider: partial-parse rows removed sherpa-onnx 426, SDWebImage 156, whisper.cpp 106, CocoaLumberjack 91, fmdb 11, linuxkit 1. Calls removed, every one from a wrong-dialect .h (none from .c/.cpp/.m): SDWebImage 165, CocoaLumberjack 56, whisper.cpp 23, fmdb 10, AFNetworking 7. crun, linuxkit, sherpa-onnx otherwise identical.\n- tie-break the row asked to check in mixed repos: content, not repo shape. The marker set was checked on 27 local repos with headers + an ObjC signal: every ObjC-repo header it misses is macros or C-syntax decls; every C-repo header it hits is a real ObjC or mixed header.\n- a first cut ALSO gave unmarked headers of pure-ObjC projects to ObjC; refuted by measurement (fmdb fts3_tokenizer.h lost its sqlite3_tokenizer_module struct: the ObjC analyzer emits no C constructs), so unmarked headers go to C/C++.\n- also fixed: the C and C++ rules disagreed on what makes a repo C++ (a repo with .hpp and no C++ source left its .h to neither; no corpus instance found, latent). C now registers its finder, so profile file counts match.\n\nCosts, stated in the CHANGELOG: C declarations inside ObjC headers are no longer extracted (nothing outside a header referenced any, in the repos measured); objc records only #import, so #include in an ObjC header yields no import edge (whisper.cpp -4, residual filed); a header whose only ObjC is past its first 64 KB stays C++ (whisper.cpp miniaudio.h: -7 ObjC methods)."  # 9865
+- op: discuss  # 2f3e
+  at: '2026-09-28T00:58:20Z'  # 2f3e
+  by: agent  # 2f3e
+  actor: jgstern_agent  # 2f3e
+  clock: 5  # 2f3e
+  nonce: 2f3e  # 2f3e
+  message: "Correction: the PR is #1253 (merged as 2dc35d7d3b), not #1252 as the closing note says."  # 2f3e
