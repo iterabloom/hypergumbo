@@ -1,0 +1,33 @@
+Original commit body from 139e4d0752531af619b218e467b66652a49ac9bd:
+
+scala.io.StdIn.readLine() written inline, with no import, emitted
+scala:external:0-0:readLine. readLine is in scala.yaml's
+ambiguous_names, so the no-module gate withheld it and the stdin
+reader's ipc_recv row was present and unreachable, while the imported
+forms reached it. The receiver branch took the receiver from a sibling
+identifier of the method; an inline path parses as nested
+field_expression nodes, so there was none and the path was dropped. The
+same shape lost scala.sys.process.Process(cmd) and
+java.nio.file.Files.readAllBytes(p).
+
+A receiver that is a chain of identifiers is now read as a path and, as
+WI-pokam already rules for a type written inline, taken as the module
+when its root is scala / java / javax and the file does not bind that
+name. A lowercase segment after a capitalised one names a member value,
+not a module (scala.Console.err, measured on sbt), and keeps the
+sentinel; so do a chain on a local value and a third-party root. A
+capitalised callee on an all-lowercase path is a companion apply and
+gets the imported form's slot, scala.sys.process.Process.
+
+Measured, pinned dev vs branch, io-boundaries: sbt gains three fs_read
+chains (Files.exists, Files.readAllBytes, Source.fromInputStream), lila
+one (Source.fromFile); nothing lost on either; the remaining gains are
+named JDK/Scala calls in external_potential (including scala.xml.XML.save,
+an uncatalogued file write).
+
+Residual filed: kotlin emits no edge at all for the same inline shape
+(INV-dupol). Java already handles it.
+
+Addresses INV-vokut.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
