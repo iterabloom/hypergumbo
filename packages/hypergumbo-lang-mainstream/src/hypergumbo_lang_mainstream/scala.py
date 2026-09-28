@@ -56,8 +56,9 @@ Why This Design
 """
 from __future__ import annotations
 
+from collections.abc import Container
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, NamedTuple, Optional
+from typing import TYPE_CHECKING, ClassVar, Final, Iterator, NamedTuple, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, make_pass_id
@@ -474,6 +475,75 @@ def _import_names_elsewhere(
     parts = imported.split(".")
     return not (parts[-1] in sym.name.split(".")
                 and any(part in info.types for part in parts[:-1]))
+
+
+#: The roots a fully-qualified inline call is taken at its word for (INV-vokut):
+#: the Scala standard library and the JDK, the packages scala.yaml and the JVM
+#: rows it reaches describe. A root outside this set is left alone.
+_INLINE_QUALIFIED_ROOTS: Final = frozenset({"scala", "java", "javax"})
+
+
+def _inline_path(value: "tree_sitter.Node", source: bytes) -> "str | None":
+    """The dotted text of a receiver built only of identifiers, else ``None``.
+
+    ``scala.io.StdIn`` parses as nested ``field_expression`` nodes with an
+    identifier at every level. A call, an index or a literal anywhere in the
+    chain means the receiver is a value, not a path, and returns ``None``.
+    """
+    parts: list[str] = []
+    node = value
+    while node.type == "field_expression":
+        field = node.child_by_field_name("field")
+        inner = node.child_by_field_name("value")
+        if field is None or inner is None or field.type != "identifier":
+            return None
+        parts.append(node_text(field, source))
+        node = inner
+    if node.type != "identifier":
+        return None
+    parts.append(node_text(node, source))
+    return ".".join(reversed(parts))
+
+
+def _inline_qualified_owner(
+    path: str, callee_name: str, bound: Container[str],
+) -> "str | None":
+    """The module slot a fully-qualified inline call states, or ``None`` (INV-vokut).
+
+    ``scala.io.StdIn.readLine()`` with no import states its owner at the use
+    site, the same fact ``import scala.io.StdIn`` states at the top of the file.
+    WI-pokam already reads a type written inline that way; this is the call
+    form. Without it the receiver branch found no receiver identifier and the
+    call fell to the ``external`` sentinel, where the no-module gate withholds
+    an ambiguous name like ``readLine``.
+
+    Taken only when the path's ROOT is a standard root the file does not bind
+    (:data:`_INLINE_QUALIFIED_ROOTS`): ``cfg.inner.Target.go()`` is a chain on a
+    local value, and naming it as a module would hand the coverage gate a
+    module that does not exist. A third-party path keeps the sentinel too; no
+    shipped Scala row could match it.
+
+    A path whose segments go lowercase again after a capitalised one names a
+    value (``scala.Console.err``), not a module, and keeps the sentinel.
+
+    A capitalised callee on an all-lowercase path is a companion apply,
+    ``scala.sys.process.Process(cmd)``, and gets the slot the imported form
+    gets: the path including the callee.
+    """
+    segments = path.split(".")
+    if segments[0] not in _INLINE_QUALIFIED_ROOTS or segments[0] in bound:
+        return None
+    # Packages are lowercase and objects / types capitalised, so a lowercase
+    # segment AFTER a capitalised one is a member of an object, a value:
+    # ``scala.Console.err.println(x)`` calls a method on the ``err`` stream,
+    # and ``scala.Console.err`` is not a module. Nested types stay
+    # (``java.util.Map.Entry``).
+    first_type = next((i for i, s in enumerate(segments) if s[:1].isupper()), len(segments))
+    if not all(s[:1].isupper() for s in segments[first_type:]):
+        return None
+    if callee_name[:1].isupper() and all(s[:1].islower() for s in segments):
+        return f"{path}.{callee_name}"
+    return path
 
 
 def _qualify_scala_receiver(
@@ -1380,6 +1450,7 @@ def _extract_edges_from_file(
                 # answered "no" for all three (LIVE.md rule 7: one variable,
                 # two questions).
                 has_receiver = False
+                inline_path: "str | None" = None
                 if not callee_node:
                     field_node = find_child_by_type(node, "field_expression")
                     if field_node:
@@ -1395,6 +1466,9 @@ def _extract_edges_from_file(
                             # 2026-08-25; it is in fact the production path for
                             # every complex-receiver call in Scala.
                             callee_node = ids[0]
+                            _value = field_node.child_by_field_name("value")
+                            if _value is not None:
+                                inline_path = _inline_path(_value, source)
 
                 if callee_node:
                     callee_name = node_text(callee_node, source)
@@ -1539,6 +1613,11 @@ def _extract_edges_from_file(
                                     file_packages, project_packages),
                             )
                         )
+                        if typed_module is None and inline_path is not None:
+                            typed_module = _inline_qualified_owner(
+                                inline_path, callee_name,
+                                bound=set(var_types) | set(import_aliases),
+                            )
                         edges.append(Edge.create(
                             src=current_function.id,
                             dst=(
