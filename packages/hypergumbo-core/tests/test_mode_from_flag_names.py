@@ -49,3 +49,12 @@ def _mode(call_text: str) -> str | None:
 ])
 def test_the_flags_decide_the_mode(call: str, expected: str | None) -> None:
     assert _mode(call) == expected
+
+
+def test_a_language_with_no_mode_table_and_no_parent_has_no_mode_argument() -> None:
+    """Go used to be the core suite's only caller of this branch; it now has a
+    table, so rust (no table, no parent) is the witness."""
+    from hypergumbo_core.io_boundary import mode_argument_for
+
+    assert mode_argument_for("rust", "open") is None
+    assert mode_argument_for("go", "OpenFile") is not None
