@@ -138,6 +138,41 @@ rare in Go.
 `dataflow_coverage` publishes capability per **language**. This limit is
 per-**flow** and applies to every language equally.
 
+### A partially parsed file is read from the parser's error recovery, and no verdict consults it
+
+When tree-sitter cannot parse part of a file, the analysis carries on from its
+error recovery and lists the file in `limits.failed_files` with a reason
+starting `partial_parse:`. **No verdict reads that list.** A clean verdict does
+not change, gain a caveat or lose its exit code because a file it depends on
+parsed only partly. If your claim rests on particular files, check the list
+yourself.
+
+A caveat was considered (WI-vufur) and has not been added, because no rule we
+measured tells a verdict that could be affected from one that could not:
+
+- **In C and C++ a partial parse is common.** crun: 65 of 127 C files. sherpa-onnx:
+  132 partially parsed files of all languages, even after WI-somod removed the
+  rows that came from the wrong grammar reading a header. A caveat on "any partially parsed file" would sit on almost
+  every verdict there.
+- **Restricting it to the files a taint walk passes through does not narrow it
+  enough.** On crun, the functions reachable from `host_secret` sources span 30
+  of the 66 partially parsed files, and every built-in label on crun and on
+  sherpa-onnx reaches at least one.
+- **The size of the damage does not predict what was lost.** crun's
+  `signals.c` and `mount_flags.c` and AFNetworking's `AFURLSessionManager.m`
+  are wholly inside an error region, and every function and method in them is
+  still extracted. Meanwhile AFNetworking's `AFHTTPSessionManager.h` loses all
+  four of its `@property` declarations, and no error node surrounds them: the
+  parser misread the `@interface` block and recovered the properties as
+  top-level expressions.
+
+What the list is reliable for: which files parsed only partly, and how many
+damaged nodes each has. It is not a measure of what the analysis missed in
+them.
+
+The phoenix partial parses (112) are all generator templates: `.ex` files full
+of `<%= %>` EEx markup, which are not Elixir.
+
 ### `analysis_method` is not a confidence score
 
 The label records **how the flow was included**, not how likely it is to be
