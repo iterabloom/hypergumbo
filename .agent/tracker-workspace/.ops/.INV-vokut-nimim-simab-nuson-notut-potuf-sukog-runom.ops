@@ -41,3 +41,18 @@
   clock: 3  # 72e0
   nonce: '72e0'  # 72e0
   message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED, but NARROWER than filed: statement, root_cause and title re-scoped to the one form that is still withheld.\n\nShipped CLI (survey + io-boundaries, cold cache):\n  val s = scala.io.StdIn.readLine()            -> scala:external:0-0:readLine, call_construct=method, no module slot; WITHHELD, no chain   (the filed repro; still fails)\n  import scala.io.StdIn; StdIn.readLine()      -> scala:scala.io.StdIn:0-0:readLine -> ipc_recv chain                                        (REACHES)\n  import scala.io.StdIn.readLine; readLine()   -> scala:scala.io.StdIn.readLine:0-0:readLine -> ipc_recv chain                               (REACHES)\n\nThe item's measurement (vutav_reads_08302026/reach/scala/M.scala) used ONLY the fully-qualified inline form, so it never showed whether the imported forms reached; I cannot say whether they were fixed after 09-03 (candidates: WI-tipoh 9e8ed17fca, WI-kilap d5f8060a45) or always worked. What is established is that today only the fully-qualified call expression is lost.\n\nSAME MECHANISM, SECOND SYMPTOM on the same fixture line: scala.sys.process.Process(s).run() emits scala:external:0-0:Process and scala:external:0-0:run, and no subprocess chain. A fully-qualified inline call loses its module slot whatever the callee.\n\nPOPULATION, local corpus (36,524 .scala files): 13 fully-qualified scala.io.StdIn.<x>( calls, 12 StdIn.<x>( calls, 14 imports of scala.io.StdIn; 1 fully-qualified scala.sys.process.Process(. So the still-lost form is about half of the real StdIn uses."  # 72e0
+- op: update  # 4008
+  at: '2026-09-28T06:54:40Z'  # 4008
+  by: agent  # 4008
+  actor: jgstern_agent  # 4008
+  clock: 4  # 4008
+  nonce: '4008'  # 4008
+  set:  # 4008
+    status: satisfied  # 4008
+- op: discuss  # 9861
+  at: '2026-09-28T06:54:40Z'  # 9861
+  by: agent  # 9861
+  actor: jgstern_agent  # 9861
+  clock: 5  # 9861
+  nonce: '9861'  # 9861
+  message: "Fixed in PR #1267 (fdd99a9eae). The receiver branch now reads a receiver made only of identifiers as a dotted path and, when its root is scala / java / javax and not bound in the file, takes it as the module (WI-pokam's inline-qualification rule, call form). Behavioural evidence on merged dev, the item's own repro 'val s = scala.io.StdIn.readLine(); scala.sys.process.Process(s).run()' through hypergumbo io-boundaries --format json (cold cache): ipc_recv scala.io.StdIn.readLine in Main.full (was withheld: scala:external:0-0:readLine), and subprocess + fs_write scala.sys.process.Process.Process in Main.full (was external, no chain); the two imported forms unchanged. A/B on real repos (~/hypergumbo_lab_notebook/vokut_09282026/): sbt +3 fs_read (Files.exists, Files.readAllBytes, Source.fromInputStream), lila +1 (Source.fromFile), nothing lost. Guards pinned in test_scala_fully_qualified_call.py: a chain on a local value, a third-party root, a member value (scala.Console.err, which the first cut wrongly qualified on sbt) and a file-bound root all keep the sentinel. Residuals, stated: a third-party fully-qualified path (org.x.Y.f()) keeps the sentinel by design; kotlin has the same inline shape and emits NO edge at all, filed as INV-dupol (P2); java already handles it."  # 9861

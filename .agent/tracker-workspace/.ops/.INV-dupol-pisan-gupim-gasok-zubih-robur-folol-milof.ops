@@ -1,0 +1,24 @@
+- op: create  # 69c9
+  at: '2026-09-28T06:35:58Z'  # 69c9
+  by: agent  # 69c9
+  actor: jgstern_agent  # 69c9
+  clock: 1  # 69c9
+  nonce: 69c9  # 69c9
+  data:  # 69c9
+    kind: invariant  # 69c9
+    title: "kotlin: a fully-qualified inline call (java.nio.file.Files.readAllBytes(p)) emits NO calls edge at all, while the imported form reaches the catalogue"  # 69c9
+    status: violated  # 69c9
+    priority: 2  # 69c9
+    parent:  # 69c9
+    tags:  # 69c9
+    - kotlin  # 69c9
+    - io_boundary  # 69c9
+    - analysis_quality  # 69c9
+    isbefore: []  # 69c9
+    duplicate_of: []  # 69c9
+    not_duplicate_of: []  # 69c9
+    pr_ref:  # 69c9
+    description: "FOUND 2026-09-28 while fixing INV-vokut (the Scala shape) and checking its siblings. Java handles it; Kotlin does not.\n\nMEASURED, shipped CLI at dev (hypergumbo survey, cold cache), one file:\n    import java.nio.file.Files\n    import java.nio.file.Paths\n    fun readImported(p: String): ByteArray = Files.readAllBytes(Paths.get(p))\n    fun readInline(p: String): ByteArray = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(p))\n  readImported -> kotlin:java.nio.file.Files:0-0:readAllBytes, kotlin:java.nio.file.Paths:0-0:get\n  readInline   -> NO calls edge at all (not even the external placeholder)\nThe same inline call in a .java file gives an fs_read chain (java.nio.file.Files.readAllBytes) and an env_read chain for java.lang.System.getenv(\"K\").\n\nWHY IT IS WORSE THAN THE SCALA CASE. Scala emitted the call into the external slot, where the coverage machinery at least saw a call site. Kotlin emits nothing, so a program whose only file reads are written inline has no edge for io-boundaries to tag and none for verify-claims' coverage gate to count. Whether that yields a false 'confirmed' for a must_not_exist fs_read claim was NOT run.\n\nRELATED, NOT DUPLICATES: WI-nasuf (done: kotlin emitted no call edge for an external INSTANCE-method call); INV-vokut (the Scala inline-path shape, fixed by reading the receiver's dotted path when its root is scala/java/javax and the file does not bind it). Kotlin's roots would be java/javax/kotlin.\n\nFIRST STEP: find where kotlin.py drops a call_expression whose callee is a navigation_expression chain of identifiers, then apply INV-vokut's rule (root in a standard set, not bound; a lowercase segment after a capitalised one is a value, not a module)."  # 69c9
+    fields:  # 69c9
+      statement: "A call written with its fully-qualified owner inline must be emitted and reach its catalogue row as the imported spelling does. VIOLATED in kotlin: java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(p)) emits no calls edge; the imported Files.readAllBytes(...) does."  # 69c9
+      root_cause: "Not determined. kotlin.py emits nothing for a call whose callee is a navigation chain of identifiers with no import binding; the analyzer's receiver handling appears to require an identifier or typed receiver (WI-nasuf fixed the instance-method arm)."  # 69c9

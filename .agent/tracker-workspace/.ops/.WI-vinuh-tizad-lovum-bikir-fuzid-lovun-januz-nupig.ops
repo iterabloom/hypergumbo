@@ -1,0 +1,22 @@
+- op: create  # 32f7
+  at: '2026-09-28T07:07:36Z'  # 32f7
+  by: agent  # 32f7
+  actor: jgstern_agent  # 32f7
+  clock: 1  # 32f7
+  nonce: 32f7  # 32f7
+  data:  # 32f7
+    kind: work_item  # 32f7
+    title: "go: a method on a package function's result (slog.New(h).Error, json.NewEncoder(w).Encode) keeps the package slot and is credited to the same-named package function (INV-vusum residual)"  # 32f7
+    status: todo_hard  # 32f7
+    priority: 3  # 32f7
+    parent:  # 32f7
+    tags:  # 32f7
+    - go  # 32f7
+    - io_boundary  # 32f7
+    - analysis_quality  # 32f7
+    isbefore: []  # 32f7
+    duplicate_of: []  # 32f7
+    not_duplicate_of: []  # 32f7
+    pr_ref:  # 32f7
+    description: "FOUND 2026-09-28 while fixing INV-vusum (the typed-receiver half, which puts the receiver's TYPE in Go's module slot and prefers the exactly-named row).\n\nTHE SHAPE LEFT OVER. A method called directly on a package function's result, `pkg.Func(args).Method()`, goes through go.py's chained-call branch, which knows only the inner call's PACKAGE and sets the slot to it. So the method is still credited to a same-named package FUNCTION row by declaration order:\n    slog.New(h).Error(msg)          -> log/slog.Error          (should be log/slog.Logger.Error)\n    json.NewEncoder(w).Encode(v)    -> slot encoding/json      (the type is json.Encoder)\nMeasured on prometheus (scrape/scrape.go scrapeLoop.scrapeAndReport: `slog.New(sl.scrapeFailureLogger).Error(...)`). Every boundary is unchanged by the mislabel today (both rows of each function/method pair carry one boundary), so it is a LABEL defect, as the 17 of 18 INV-vusum pairs were.\n\nWHAT IS NOT KNOWN HERE: the return type of an external package function. _type_from_constructor_call infers `pkg.NewFoo()` -> `pkg.Foo` by the NewXxx convention, which covers json.NewEncoder but not slog.New. library_signatures/go.yaml already holds package_variables types; a return-type table for the stdlib constructors (slog.New, http.NewRequest, bufio.NewReader ...) would be the matching home.\n\nFIRST STEP: route _type_from_constructor_call's `pkg.Foo` into the chained-call branch through _external_package_for_type (the same owner the typed-local branch now builds), then measure what a small return-type table adds on alertmanager / prometheus."  # 32f7
+    fields: {}  # 32f7

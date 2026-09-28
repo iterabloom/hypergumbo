@@ -52,3 +52,18 @@
   clock: 5  # 01f6
   nonce: 01f6  # 01f6
   message: "The separately filed imports-edge item named in point 5 above is INV-lagir."  # 01f6
+- op: update  # 6c5b
+  at: '2026-09-28T05:15:56Z'  # 6c5b
+  by: agent  # 6c5b
+  actor: jgstern_agent  # 6c5b
+  clock: 6  # 6c5b
+  nonce: 6c5b  # 6c5b
+  set:  # 6c5b
+    status: satisfied  # 6c5b
+- op: discuss  # 1970
+  at: '2026-09-28T05:15:56Z'  # 1970
+  by: agent  # 1970
+  actor: jgstern_agent  # 1970
+  clock: 7  # 1970
+  nonce: '1970'  # 1970
+  message: "Fixed in PR #1265 (fa35c4aaf5). platform.architecture, platform.processor and platform.platform are split into their own row, declared simultaneous under host_info_read AND subprocess, and added to HIGH_RISK_PRIMITIVES. The family was wider than filed (09-27 re-verification): processor() and platform() run 'uname -p' on every platform but win32 / OpenVMS; the other nine rowed platform functions spawn nothing and stay host_info_read only (pinned per function). Behavioural evidence on merged dev, the 09-27 fixture through hypergumbo io-boundaries --format json (cold cache): arch/cpu/plat each produce a subprocess chain (platform.architecture / .processor / .platform, high_risk) beside the host_info_read chain (was host_info_read only); the file-level 'import platform' chain from the same fixture is also gone (INV-lagir, PR #1262). The stale 'rowed under env_read' completeness note is corrected. No measured corpus effect on the self-survey, which calls none of the three; not claimed as recall."  # 1970

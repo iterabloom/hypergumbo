@@ -30,3 +30,18 @@
   clock: 2  # a1cd
   nonce: a1cd  # a1cd
   message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED, unchanged. php.py::_extract_use_aliases (php.py:134-179) is the same direct-children scan requiring a qualified_name child.\n\n1. UNIT, alias map:  use Foo\\Bar; -> {'Bar': 'Foo\\\\Bar'};  use Foo\\{Bar, Baz}; -> {};  use Foo\\{Bar as B}; -> {};  use function Foo\\{helper, other}; -> {}.\n2. EDGE, hypergumbo survey (cold):  single-import helper() -> php:Foo\\helper:0-0:helper;  grouped-import helper() -> php:external:0-0:helper.\n\n3. POPULATION, the item's own FIRST STEP, now measured: 0 grouped use declarations of 5,323 namespace imports in the local PHP corpus (vendor/ and node_modules/ excluded): koel 5,021 single / 0 grouped, grpc 288 / 0, rabbitmq 14 / 0; 13 other repos carry PHP files with no namespace imports. The regex was checked against single-line, aliased and multi-line grouped forms before counting.\n   So the defect is real and live (reproduced above), and its measured corpus incidence is ZERO. No priority change proposed -- that goes through the owner; recording it so the owner can price it."  # a1cd
+- op: update  # 896a
+  at: '2026-09-28T06:27:14Z'  # 896a
+  by: agent  # 896a
+  actor: jgstern_agent  # 896a
+  clock: 3  # 896a
+  nonce: 896a  # 896a
+  set:  # 896a
+    status: satisfied  # 896a
+- op: discuss  # a5db
+  at: '2026-09-28T06:27:14Z'  # a5db
+  by: agent  # a5db
+  actor: jgstern_agent  # a5db
+  clock: 4  # a5db
+  nonce: a5db  # a5db
+  message: "Fixed in PR #1266 (5c72e23fa2). _extract_use_aliases now reads the declaration's namespace_name prefix and the clauses inside namespace_use_group, and accepts a bare name (or qualified tail) as the clause path inside a group -- both halves of the root_cause. Behavioural evidence on merged dev, the item's own repro: alias map 'use Foo\\{Bar, Baz};' -> {Bar: Foo\\Bar, Baz: Foo\\Baz} (was {}), 'use Foo\\{Bar as B};' -> {B: Foo\\Bar} (was {}), single-import control unchanged; hypergumbo survey (cold cache): the grouped-import call helper() -> php:Foo\\helper:0-0:helper (was php:external:0-0:helper), identical to the single-import form. Also covered: use function / use const groups, mixed-kind groups, multi-segment prefixes (test_php_grouped_use.py). 'use Foo;' still registers nothing, as before. Corpus effect: none measurable locally (0 grouped of 5,323 namespace imports, 09-27 count), so not claimed as recall."  # a5db
