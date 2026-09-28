@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **340** Python modules (142 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 96 core, 4 CLI, 36 tracker)
-- **49378** symbols (functions, classes, methods)
-- **195146** edges by type:
-  - calls: 111746
-  - contains: 45268
-  - imports: 15826
-  - instantiates: 11784
-  - references: 7270
-  - module_attr_ref: 1669
-  - other: 1583
+- **341** Python modules (142 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 97 core, 4 CLI, 36 tracker)
+- **49526** symbols (functions, classes, methods)
+- **195819** edges by type:
+  - calls: 112126
+  - contains: 45396
+  - imports: 15933
+  - instantiates: 11798
+  - references: 7309
+  - module_attr_ref: 1670
+  - other: 1587
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 49378 Symbols + 195146 Edges + UsageContexts           │
+│  Output: 49526 Symbols + 195819 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -280,20 +280,20 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 9896.6 | ir.py |
-| `len` | external_symbol | 7585.0 | <external> |
-| `write_text` | external_symbol | 6698.0 | <external> |
+| `len` | external_symbol | 7587.0 | <external> |
+| `write_text` | external_symbol | 6714.0 | <external> |
 | `Span` | class | 6522.2 | ir.py |
 | `LinkerContext` | class | 3548.3 | registry.py |
-| `get` | external_symbol | 3109.0 | <external> |
-| `load_catalog` | function | 2859.7 | io_boundary.py |
-| `Edge.create` | method | 2372.7 | ir.py |
-| `str` | external_symbol | 2152.0 | <external> |
-| `next` | external_symbol | 2150.0 | <external> |
-| `Path` | external_symbol | 2089.0 | <external> |
+| `get` | external_symbol | 3125.0 | <external> |
+| `load_catalog` | function | 2867.6 | io_boundary.py |
+| `Edge.create` | method | 2387.2 | ir.py |
+| `str` | external_symbol | 2175.0 | <external> |
+| `next` | external_symbol | 2151.0 | <external> |
+| `Path` | external_symbol | 2098.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1667.0 | <external> |
+| `append` | external_symbol | 1671.0 | <external> |
 
 ## Pattern System
 
@@ -606,6 +606,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.check_recorded_producer_input`**: Static enforcement of ADR-0057 §12: cross-backend tests run on RECO...
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
+- **`hypergumbo_core.construction`**: A construction reaches the code that runs on construction (INV-rolo...
 - **`hypergumbo_core.coverage_census`**: Per-test coverage census and test-trajectory search.
 - **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
 - **`hypergumbo_core.dataflow_scope`**: Published data-flow coverage scope for taint output — INV-karud cla...
@@ -744,7 +745,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_lang_common.commonlisp`**: Common Lisp analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.cuda`**: CUDA analysis pass using tree-sitter-cuda.
 - **`hypergumbo_lang_common.dart`**: Dart/Flutter analysis pass using tree-sitter.
-- **`hypergumbo_lang_common.elixir`**: Elixir analysis pass using tree-sitter-elixir.
+- **`hypergumbo_lang_common.elixir`**: Elixir analysis pass using the tree-sitter-language-pack Elixir gra...
 - **`hypergumbo_lang_common.elm`**: Elm analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.erlang`**: Erlang analysis pass using tree-sitter.
 - **`hypergumbo_lang_common.fortran`**: Fortran analysis pass using tree-sitter-fortran.
@@ -943,8 +944,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 6dbb051d142a
-  commit_count: 7677
+  commit: e60bb7bb3318
+  commit_count: 7706
   hypergumbo: 8.1.0
   python: 3.12.3
 -->

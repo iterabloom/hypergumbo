@@ -60,8 +60,8 @@ Ranking uses multiple signals combined:
    than ``name_threshold`` (default 10) distinct symbols get a
    ``max(floor, name_threshold / count)`` multiplier
    (``apply_common_method_name_weights``).  This suppresses false in-degree
-   from ``receiver_call`` name collisions (e.g., every unresolved
-   ``.execute()`` call attributed to one ``execute``).
+   from method-name collisions (e.g., every unresolved ``.execute()``
+   call attributed to one ``execute``).
 
 8. **Generated Code Dampening**: Symbols with ``is_generated_file=True``
    (OpenAPI models, protobuf stubs, Kubernetes code-gen) get a 0.05x
@@ -879,7 +879,7 @@ def apply_common_method_name_weights(
     """Dampen centrality for methods whose name appears on many distinct symbols.
 
     When a method name (e.g., 'execute', 'call', 'perform') is defined on
-    many distinct classes/modules, receiver_call edges with confidence 0.75
+    many distinct classes/modules, name-matched method-call edges
     create massive false positive in-degree because callers of ANY method
     with that name get attributed to the same target.  This function applies
     a dampening factor proportional to the number of symbols sharing the name.

@@ -22,9 +22,11 @@ Matching strategy
    pointer form ``&cobra.Command{``) — this is the idiom used by every
    cobra-based CLI. Only files that also import
    ``github.com/spf13/cobra`` are considered.
-2. Inside the struct body, capture lines of the form
-   ``FieldName: identifier`` where ``FieldName`` is one of the handler
-   fields above and ``identifier`` is a Go identifier (optionally
+2. In each such file, capture occurrences of the form
+   ``FieldName: identifier`` anywhere in the file (the match does not
+   check that it sits inside the ``cobra.Command{...}`` braces), where
+   ``FieldName`` is one of the handler fields above and ``identifier``
+   is a Go identifier (optionally
    package-qualified like ``pkg.runCmd``). Lines whose value starts
    with ``func`` are ignored — those are inline function literals,
    already reachable via containment.
@@ -44,7 +46,7 @@ composite-literal syntax, which is overkill for a five-line regex with
 existing sibling linkers (``otp.py``, ``http.py``,
 ``database_query.py``) establishing the convention. The regex is
 intentionally conservative: it skips function literals and does not
-attempt to track brace nesting beyond the line-local match.
+track brace nesting at all.
 
 Why ``dispatches_to`` edges
 ---------------------------

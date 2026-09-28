@@ -17,7 +17,8 @@ Why This Matters
 ----------------
 Without these edges, forward slices from ``__main__`` stop at the dispatch
 site and cannot reach the actual handler functions in other packages. For
-monorepos like hypergumbo (100+ lang analyzer packages), this means slices
+monorepos like hypergumbo (100+ language analyzers across the
+``hypergumbo-lang-*`` packages), this means slices
 from the CLI entry point miss all language-specific code.
 
 The ``dispatches_to`` edge type models runtime polymorphism: the dispatch
@@ -115,10 +116,12 @@ def _find_dispatch_sites(
     "decorator-dispatch-linker",
     priority=15,
     description="Resolve decorator-based registry dispatch patterns",
-    # CNF: decorator-based registry dispatch is canonical in Python (Flask,
-    # FastAPI, Django), present in JS/TS via NestJS/Angular, and increasingly
-    # in Java/Kotlin/Scala via annotations. The linker consumes symbols
-    # carrying decorator metadata from any of these analyzers.
+    # CNF: the linker reads ``meta["decorators"]`` from any analyzer listed
+    # below, but matches only the decorator names in
+    # ``DISPATCH_DECORATOR_PATTERNS`` — currently hypergumbo's own
+    # ``register_analyzer`` / ``register_linker``. Framework decorators
+    # (Flask, FastAPI, Django, NestJS, Angular, JVM annotations) are not
+    # matched until a pattern is added for them.
     depends_on=[["python", "javascript", "java", "kotlin", "scala"]],
     activation=always_on_unreviewed(),
 )

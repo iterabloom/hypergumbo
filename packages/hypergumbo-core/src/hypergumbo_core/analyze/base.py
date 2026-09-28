@@ -77,9 +77,9 @@ Shared helpers
 - **Call-site annotation.** ``emit_module_attribute_refs`` emits
   ``module_attr_ref`` edges for attribute reads on imported modules
   (``process.env.PATH``) that are not themselves callees;
-  ``stamp_io_mode_from_call`` records a literal mode argument
-  (``fopen(p, "w")``) as ``meta["io_mode"]`` on the edges a call produced,
-  and stamps nothing for a non-literal mode; ``constructed_from_callee``
+  ``stamp_io_mode_from_call`` records a literal mode (``fopen(p, "w")``) or
+  a flag expression (``os.O_WRONLY|os.O_CREATE``) as ``meta["io_mode"]`` on
+  a call's edges, and stamps nothing otherwise; ``constructed_from_callee``
   renders an initializer's callee for ``Symbol.meta["constructed_from"]``.
 - **Stable-id constructors.** Beyond the layer above:
   ``make_site_stable_id`` (SITE-axis identity for ``call_site`` stand-ins,
@@ -3033,10 +3033,10 @@ def emit_module_attribute_refs(
             parse ``std::env::consts::OS`` as a nested chain of
             ``path`` + ``name`` children — the helper walks left via
             the path field to find the leftmost identifier, checks it
-            against the imports map, and emits edges using
-            dot-normalized module paths (``::`` replaced with ``.``)
-            so the resulting edge ID survives downstream ``:``-split
-            parsing.  Catalog matching still works because
+            against the imports map, and emits edges whose module path
+            and qualified name keep the language's own ``::`` separator
+            (INV-rilit; ADR-0036 makes the id's path slot
+            colon-tolerant).  Catalog matching still works because
             ``IoBoundaryCatalog`` registers both ``::`` and ``.``
             forms in its qualified-name index.
     """

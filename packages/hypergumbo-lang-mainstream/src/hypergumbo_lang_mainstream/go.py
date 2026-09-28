@@ -6,6 +6,7 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Method declarations (func with receiver)
 - Struct declarations (type X struct)
 - Interface declarations (type X interface)
+- Other named type declarations (type X int) as ``type`` symbols
 - Package-level var aliases (var Name = expr) as variable symbols
 - Struct fields and interface methods as their own symbols
 - Closure-wrapper functions (middleware), tagged ``concepts: [middleware]``
@@ -22,7 +23,7 @@ This analyzer uses tree-sitter to parse Go files and extract:
   go-swagger, and Go 1.22+ ``ServeMux`` "POST /path" patterns)
 
 If tree-sitter with Go support is not installed, the analyzer
-gracefully degrades and returns an empty result.
+warns and returns a skipped result.
 
 How It Works
 ------------
@@ -37,11 +38,14 @@ How It Works
    - Pass 2: Extract variable-type bindings, detect calls, imports, and routes
 5. Receiver-type disambiguation:
    - Tracks variable types **per function scope** from ``:=`` composite
-     literals, ``var`` declarations, and function parameters
+     literals, ``NewXxx()`` constructor calls, the return-type registry,
+     ``var`` declarations, function parameters and method receivers
      (e.g., in ``func foo() { s := &Server{} }``, s has type Server only in foo)
-   - When resolving ``s.Method()``, looks up ``Server.Method`` before falling
-     back to short-name resolution, preventing incorrect disambiguation when
-     multiple types define the same method name
+   - When resolving ``s.Method()``, looks up ``Server.Method``; if that
+     misses, a tracked local receiver gets an unresolved edge (the package
+     slot when the type is external) rather than a short-name fallback,
+     preventing incorrect disambiguation when multiple types define the
+     same method name
 6. Ambiguous method call guard:
    - When a method call ``x.Method()`` has no inferred receiver type and the
      method name has 2+ candidates in global symbols, creates an unresolved
@@ -72,7 +76,9 @@ How It Works
    - Creates route symbols with stable_id = sha256("route:{method}:{path}")
    - Group prefix composition: routes inside Group/Route closures get the
      group path prepended (e.g., Group("/api") > GET("/users") → /api/users).
-     Handles nested groups via AST ancestor walk.
+     Handles nested groups via AST ancestor walk. Variable-based groups
+     (``api := r.Group("/api")``) are composed too.
+   - Mount points: r.Mount("/api/v1", handler) → route_mount symbol
 
 Why This Design
 ---------------
@@ -2261,7 +2267,7 @@ def _extract_go_var_types(
         # The receiver variable (e.g. ``s``) has the receiver type (e.g.
         # ``Server``), scoped to the method's qualified name (``Server.Foo``).
         # This enables self-method calls like ``s.Close()`` inside
-        # ``Server.Cleanup()`` to resolve via typed_receiver_call.
+        # ``Server.Cleanup()`` to resolve as a typed receiver call.
         elif node.type == "method_declaration":
             receiver_node = find_child_by_field(node, "receiver")
             name_node = find_child_by_field(node, "name")

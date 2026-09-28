@@ -12,10 +12,10 @@ How It Works
 Uses the TreeSitterAnalyzer base class with the tree-sitter-perl grammar
 from tree-sitter-language-pack. Full two-pass analysis:
 
-1. extract_symbols_from_file: extracts packages and subroutines
+1. extract_symbols_from_file: extracts the file pseudo-node, packages and subroutines
 2. register_symbol: registers by the qualified name only (Package::sub); short-name (unqualified) lookups are handled by the NameResolver suffix index, not by a second registry key
 3. extract_edges_from_file: resolves use/require, function calls, method calls
-4. Per-file package names stored on instance for Pass 2 access
+4. No per-file package state is kept for Pass 2: a call's enclosing sub is found by the declaration's position (INV-midag)
 
 Why This Design
 ---------------
@@ -166,9 +166,9 @@ class PerlAnalyzer(TreeSitterAnalyzer):
     Uses tree-sitter-perl from the language-pack to extract packages,
     subroutines, and cross-file call/import edges.
 
-    Overrides ``register_symbol`` for dual-key registration: both the
-    qualified name (Package::sub) and the unqualified name (sub) are
-    stored in the global registry for cross-file resolution.
+    Overrides ``register_symbol`` to register by the qualified name
+    (Package::sub) only; the ``NameResolver`` suffix index handles
+    unqualified (sub) lookups for cross-file resolution.
 
     Pass 2 finds a call's enclosing sub by the declaration's position
     (INV-midag), so it needs no per-file package state. It kept the file's

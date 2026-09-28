@@ -86,7 +86,7 @@ How It Works
    ``skip_reason_code=DEPENDENCY_UNAVAILABLE`` (no Java analysis)
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry,
-     populate per-file import / static-import scope
+     populate per-file import / static-import / wildcard-import scope
    - Between the passes: build the repo-wide class-parent and class-field maps
      and a method return-type registry (merged with library signatures; in-repo
      declarations win) so chained receivers like ``var w = f.make(); w.write()``
@@ -113,8 +113,9 @@ Why This Design
 Population of ``is_exported`` follows Java's access-modifier rule: a type
 or member is considered exported only when its declaration carries the
 ``public`` keyword (package-private / protected / private items are not).
-Interface constants are the exception: they are implicitly public and are
-exported without the keyword.
+Two exceptions: interface constants are implicitly public and are
+exported without the keyword, and an enum constant (which has no access
+modifier of its own) is exported when its enum is.
 """
 from __future__ import annotations
 
@@ -1166,9 +1167,9 @@ def _extract_wildcard_imports(
     (the package path ``java.util``) and a sibling ``asterisk`` child.
     The package's class set is implicit (any capitalised bare name
     introduced by the file may originate from this package), so we keep
-    insertion order in a list and let the resolver attribute bare class
-    receivers to the first wildcard whose package the receiver could
-    plausibly belong to.
+    insertion order in a list; a bare class receiver resolved through
+    wildcards gets every wildcard package plus ``java.lang`` as a
+    comma-joined disjunction (:func:`_wildcard_candidate_slot`).
 
     Static wildcards (``import static java.util.Arrays.*;``) are
     intentionally excluded — they introduce **methods** into scope, not

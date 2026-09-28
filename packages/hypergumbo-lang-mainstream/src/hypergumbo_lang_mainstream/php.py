@@ -15,8 +15,10 @@ This analyzer uses tree-sitter-php to parse PHP files and extract:
 - Method call relationships (edges)
 - Static method call relationships (edges)
 - Object instantiation relationships (edges)
-- Import relationships (edges): one ``imports`` edge per ``use`` statement,
-  carrying the full namespace so framework detection can match it
+- Import relationships (edges): one ``imports`` edge per ungrouped ``use``
+  clause that names a qualified path (``use A\\B, C\\D;`` gives two),
+  carrying the full namespace so framework detection can match it; grouped
+  ``use A\\{B, C}`` and a bare ``use Foo;`` emit none
 
 If tree-sitter-php is not installed, the analyzer gracefully degrades:
 it emits a warning and returns a skipped result.

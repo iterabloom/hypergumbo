@@ -14,7 +14,8 @@ This analyzer uses tree-sitter to parse Rust files and extract:
 - ``module_attr_ref`` edges for bare path-attribute reads
 - Import relationships (use statements)
 - Axum route handlers (.route("/path", get(handler)))
-- Actix-web route handlers (#[get("/path")], #[post("/path")])
+- Actix-web route attributes (#[get("/path")], #[post("/path")]), recorded in
+  ``meta["annotations"]`` for the framework YAML patterns to match
 
 If tree-sitter with Rust support is not installed, the analyzer
 gracefully degrades and returns an empty result.

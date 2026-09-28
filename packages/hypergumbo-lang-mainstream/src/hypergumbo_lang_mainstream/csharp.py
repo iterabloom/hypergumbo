@@ -16,7 +16,8 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - ``references`` edges for method-group references (a method named as a
   value rather than invoked), tagged ``meta.ref_construct="method_group"``
 - Using directives (imports)
-- Object instantiation
+- Object instantiation (``instantiates`` edges, landing on the constructor
+  when the type declares one)
 - ADR-0015 dataflow annotation on the emitted edges
 
 If tree-sitter with C# support is not installed, the analyzer
@@ -40,7 +41,8 @@ Why This Design
 
 Population of ``is_exported`` follows C#'s access-modifier rule: a type
 or member is considered exported only when its declaration carries the
-``public`` keyword (internal / protected / private items are not).
+``public`` keyword (internal / protected / private items are not). An
+enum member has no modifier of its own and inherits its enum's status.
 """
 from __future__ import annotations
 

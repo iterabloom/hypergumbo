@@ -2040,7 +2040,7 @@ def expand_class_based_view_routes(
     """Expand CBV routes into one route per declared HTTP method.
 
     WI-lojoh: when a Django ``re_path``/``path``/``url`` registers a view via
-    ``Cls.as_view()``, the analyzer emits a single ``kind='route'`` symbol
+    ``Cls.as_view()``, the analyzer emits a single route marker (``meta.framework_role='route'``)
     with ``http_method='ANY'`` and ``meta.view_name`` set to the class name.
     This pass looks up the view class's child methods (named ``get``, ``post``,
     ``put``, ``patch``, ``delete``, ``head``, ``options``, ``trace``) by

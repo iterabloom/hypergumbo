@@ -348,9 +348,9 @@ class GroovyAnalyzer(TreeSitterAnalyzer):
     Extracts classes, interfaces, enums, methods, top-level functions,
     import statements, and call edges.
 
-    Overrides ``register_symbol`` to register both short and fully-qualified
-    names for cross-file resolution (e.g., both "doSomething" and
-    "Utils.doSomething").
+    Overrides ``register_symbol`` to register each symbol under its own
+    name only (e.g., "Utils.doSomething" for a method); the
+    ``NameResolver`` suffix index handles short-name lookups.
 
     Overrides ``get_import_aliases`` for Groovy's 'import X as Y' syntax.
     """

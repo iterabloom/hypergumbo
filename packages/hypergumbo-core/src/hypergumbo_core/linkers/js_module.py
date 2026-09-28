@@ -5,23 +5,24 @@ The JS/TS analyzer creates `imports` edges with synthetic dst IDs like
 'javascript:./utils:0-0:module:module' where the import path is embedded
 in the ID string. These edges are orphaned because no symbol has that ID.
 
-This linker resolves those import paths to actual files on disk, creates
-`module_file` symbols for each resolved target, and creates two types of
-edges:
+This linker resolves those import paths to actual files on disk, reuses the
+canonical `kind="file"` symbol for each resolved target (minting one with the
+`make_file_id` id when none exists), and creates two types of edges:
 
-1. `imports` - from the importing file symbol to the module_file
+1. `imports` - from the importing file symbol to the target file symbol
    (file-level dependency; ADR-0023 §6 Phase 3 folded the former
    `imports_module` type away, and consumers recover that specialization
-   from `dst.kind in {module_file, file}`)
-2. `module_exports` - from the module_file to each function/method/class
-   defined in that file (enabling cross-file reachability)
+   from `dst.kind == 'file'`)
+2. `module_exports` - from the target file symbol to each function, method,
+   class, getter, setter or constructor defined in that file (enabling
+   cross-file reachability)
 
 Together these create a traversable path:
-  file_A --imports--> module_file_B --module_exports--> functionInB
+  file_A --imports--> file_B --module_exports--> functionInB
 
 For npm packages (bare/scoped imports like 'lodash', '@vue/test-utils'),
-the linker creates `npm_package` symbols and `imports` edges to them
-(recovered by `dst.kind == 'npm_package'`).
+the linker creates `kind="package"` symbols carrying
+`meta['package_ecosystem'] == 'npm'` and `imports` edges to them.
 
 Path Alias Resolution
 ---------------------
@@ -647,9 +648,9 @@ def link_js_modules(
     """Resolve JS/TS import edges to file-level and npm package symbols.
 
     For each unresolved import edge:
-    1. Relative imports (./foo, ../bar) → resolve to actual file, create
-       module_file symbol and imports + module_exports edges.
-    2. npm packages (lodash, @vue/x) → create npm_package symbol and
+    1. Relative imports (./foo, ../bar) → resolve to actual file, reuse or
+       create its file symbol and emit imports + module_exports edges.
+    2. npm packages (lodash, @vue/x) → create a package symbol and
        imports edge.
     3. Dynamic imports (<dynamic:var>) → skip.
 
@@ -824,8 +825,8 @@ def link_js_modules(
             mod_sym = module_file_cache[rel_path]
 
             # ADR-0023 §6 Phase 3 (WI-mokam-jalig): emit canonical
-            # 'imports'; consumers query dst.kind in {module_file, file}
-            # to recover the prior 'imports_module' specialization.
+            # 'imports'; consumers query dst.kind == 'file' to recover
+            # the prior 'imports_module' specialization.
             new_edges.append(Edge.create(
                 src=edge.src,
                 dst=mod_sym.id,
@@ -910,8 +911,9 @@ def link_js_modules(
             pkg_sym = npm_package_cache[pkg_name]
 
             # ADR-0023 §6 Phase 3 (WI-mokam-jalig): emit canonical
-            # 'imports'; consumers query dst.kind == 'npm_package' to
-            # recover the prior 'imports_module' specialization.
+            # 'imports'; consumers query dst.kind == 'package' (with
+            # meta.package_ecosystem == 'npm') to recover the prior
+            # 'imports_module' specialization.
             new_edges.append(Edge.create(
                 src=edge.src,
                 dst=pkg_sym.id,

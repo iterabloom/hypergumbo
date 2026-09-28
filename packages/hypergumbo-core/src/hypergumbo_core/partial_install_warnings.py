@@ -30,7 +30,9 @@ Usage
 In cli.py after analysis:
 
     from .partial_install_warnings import check_partial_install_warnings
-    check_partial_install_warnings(profile, linker_ctx, emit_warnings=True)
+    check_partial_install_warnings(
+        profile, linker_ctx, emit_warnings=True, repo_root=repo_root,
+    )
 
 The default ``emit_warnings=True`` emits each finding via
 ``warnings.warn(..., UserWarning, stacklevel=2)`` (which the
@@ -59,8 +61,8 @@ from .rust_analyzer_install import is_rust_analyzer_available
 
 # Maps language names to the package that provides their analyzer.
 # This aligns with the ADR-0010 modular package structure.
-# Note: Currently all analyzers are in hypergumbo (monorepo), but this
-# mapping enables future modularization.
+# Note: analyzers ship in the separate ``hypergumbo-lang-*`` packages; this
+# mapping names the package suggested for each language.
 
 LANGUAGE_PACKAGES: dict[str, str] = {
     # hypergumbo-lang-mainstream (ADR-0010)
@@ -275,13 +277,6 @@ def check_unanalyzed_files(
     return warnings
 
 
-#: Values of ``HYPERGUMBO_RUST_ANALYZER`` that mean "opted in", case-insensitive.
-#: DUPLICATED, deliberately: the authority is
-#: ``hypergumbo_lang_rust_analyzer.gate._TRUTHY_VALUES``, but that package is an
-#: OPTIONAL dependency and core must decide what to print whether or not it is
-#: installed. Because a duplicate can drift, the two are pinned together by
-#: ``test_enabled_truthiness_matches_the_gates_own_vocabulary``.
-#: Mirror of ``gate.ENV_VAR_NAME`` for the same optional-dependency reason.
 def rust_analyzer_backend_enabled(
     environ: Mapping[str, str] | None = None,
     repo_root: "Path | None" = None,

@@ -57,11 +57,11 @@ dangling edge whose dst symbol does not exist in the graph.
 Why a Linker Instead of Per-Analyzer Logic
 ------------------------------------------
 The two input signals (class-hint edge + unresolved-call edge) are
-already emitted by every analyzer that handles chained method calls
-(JS/TS, Java, Kotlin, Python, Go all observed). Doing the recovery once
-in linker space avoids duplicating type-inference logic per language and
-naturally extends to any future analyzer that follows the same
-emit-and-fall-back convention.
+emitted by the analyzers that handle chained method calls (JS/TS, Java,
+Kotlin, Python observed). A hint counts only when it lands on a
+``kind="class"`` symbol, so Go (``struct``) does not participate. Doing
+the recovery once in linker space avoids per-language type inference and
+extends to any analyzer that follows the emit-and-fall-back convention.
 
 Priority
 --------
@@ -203,11 +203,11 @@ def _declares_non_callable_value(member: "Symbol") -> bool:
     ``(self) -> int`` is a signature whose RETURN type is int and whose member is
     perfectly callable. Reading the second as the first would refuse real
     methods, so a parenthesised signature is declined outright rather than
-    parsed. (Reading this field at all is an eighth instance of an existing
-    pattern and is filed as INV-lotoh: its ``free-text`` axis justification
-    claims no consumer branches on the value, which eight shipped sites already
-    contradict. It is also the only place a Python field's declared type is
-    recorded.)
+    parsed. (Reading this field at all is the ninth instance of an existing
+    pattern, filed as INV-lotoh: the field's then-``free-text`` justification
+    claimed no consumer branches on the value, which eight other shipped sites
+    already contradicted; ADR-0058 now grandfathers this site. It is also the
+    only place a Python field's declared type is recorded.)
     """
     signature = (member.signature or "").strip()
     if not signature or "(" in signature:

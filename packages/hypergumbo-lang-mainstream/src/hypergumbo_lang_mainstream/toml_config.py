@@ -592,7 +592,7 @@ def _extract_pyproject_scripts(
     ``[project.gui-scripts]`` (GUI scripts). Each entry like
     ``my-cli = "mypackage.cli:main"`` produces:
 
-    1. A ``script`` symbol for the CLI command
+    1. A ``kind="file"`` symbol for the CLI command
     2. A ``defines_target`` edge pointing to the resolved file path
        (``mypackage/cli.py``), with ``target_function`` in meta so the
        build-target linker can find the specific function

@@ -14,22 +14,26 @@ How It Works
 2. ``propagate_taint_structural()`` performs two-phase BFS on the call graph:
    (a) compute nodes reachable from each taint source without passing through
    sanitizers for the relevant taint label, (b) check if any sink is in that
-   reachable set. Reports violations as ``TaintFlowFinding`` objects.
+   reachable set. Reports ``TaintFlowFinding`` objects — sanitized flows
+   included, labelled ``sanitized=True`` — collapsed one per situation.
 
 The structural approach cannot distinguish between two variables in the same
 function — it operates at the symbol level. Its findings are labeled
 ``confidence="approximate"`` and ``analysis_method="structural"`` per ADR-0017.
 
 DDG-backed analysis has LANDED and is not the only producer any more: for
-languages with def/use extractors, :func:`propagate_taint_ddg` (see
-``ddg_build.py`` / ``taint_refine.py``) walks reaching-definitions and stamps
-``analysis_method="ddg"`` when it confirms a dependence, ``"ddg_mixed"``
-when it does not — which covers the walk running without confirming
-(``unconfirmed``, ``escaped``) *and* the walk never running at all
-(``not_attempted``) — and ``"structural"`` where the walk is unavailable for
-the language. So do NOT assume every finding
-carries ``analysis_method="structural"`` — see the field's own docs below for
-what each value licenses.
+languages with def/use extractors, :func:`propagate_taint_ddg` (defined in
+this module; the DDG itself is built by ``ddg_build.py``) walks
+reaching-definitions and stamps ``analysis_method="ddg"`` when it confirms a
+dependence, ``"ddg_mixed"`` when it does not — which covers the walk
+escaping tracked ground (``escaped``) *and* the walk never running at all
+(``not_attempted``) — and ``"structural"`` where the DDG holds no
+reaching-def data for the flow's SOURCE FUNCTION (decided per function, not
+per language). A walk that exhausts every route without confirming
+(``unconfirmed``) REMOVES the flow (WI-kabif); it is not emitted, and is
+handed to the optional ``refuted_flows`` out-param instead. So do NOT
+assume every finding carries ``analysis_method="structural"`` — see the
+field's own docs below for what each value licenses.
 
 Catalog Format
 --------------

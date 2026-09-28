@@ -23,10 +23,13 @@ Forward vs Reverse Slicing
 --------------------------
 Forward slicing (reverse=False, default) answers "what does this function call?"
 by following edges from caller to callee. Useful for understanding dependencies
-and downstream effects. Structural edges (extends, implements, contains) are
-excluded from forward BFS to prevent explosion through shared ancestors and
-containment hierarchies (e.g., reaching a class via forward BFS would otherwise
-fan out to ALL its member methods via "contains" edges).
+and downstream effects. Structural edges (extends, inherits, implements,
+contains) are excluded from forward BFS to prevent explosion through shared
+ancestors and containment hierarchies (e.g., reaching a class via forward BFS
+would otherwise fan out to ALL its member methods via "contains" edges). Two
+exceptions stay traversable: the folded gRPC RPC-implementation ``implements``
+edge, and the ``contains`` hop from a constructed class to its initializer
+(``construction.initializer_hops``), which reverse slicing also follows.
 
 Reverse slicing (reverse=True) answers "what calls this function?" by following
 edges from callee to caller. Useful for impact analysis - understanding what
@@ -63,8 +66,9 @@ destination enters ``node_ids`` and the edge enters ``edge_ids``, but the
 destination is NOT enqueued for further BFS expansion. This captures "data
 flows OUT: write site → downstream reads of what was written" — the
 semantics ADR-0015 §6 describes — without exploding the slice into
-unbounded reader chains. (See WI-saful for the option 1/2/3 tradeoff and
-the separate tracker item for the longer-term option 2/3 direction.)
+unbounded reader chains. (See WI-saful for the option 1/2/3 tradeoff;
+ADR-0038 removed the ``dest_access_mode`` annotation the option 2/3
+direction relied on.)
 
 Reverse dataflow slicing follows read edges as its primary chain and does
 not apply the one-hop write rule: it is already symmetric in the opposite
@@ -84,6 +88,8 @@ The entrypoint spec is matched flexibly:
 6. Partial name match (contains)
 
 This lets users say `--entry login` and find `user_login`, `login_handler`, etc.
+— as long as the matches share one file: name-based matches spanning more than
+one file raise :class:`AmbiguousEntryError` (see :func:`raise_if_ambiguous`).
 Path suffix matching enables `--entry src/main.go` to match `/home/user/repo/src/main.go`.
 ``module:name`` is the fastest way to disambiguate when a short name like
 `main` exists in many files — e.g. `cli:main` picks the CLI entry point

@@ -162,7 +162,8 @@ def link_dependencies(
     Args:
         toml_symbols: Symbols from TOML analyzer (dependencies, packages, etc.)
         code_edges: Edges from code analyzers (imports, calls, etc.)
-        code_symbols: Symbols from code analyzers (reserved for future use)
+        code_symbols: Symbols from code analyzers (maps an import edge's src
+            to its file path for nearest-manifest selection)
 
     Returns:
         DependencyLinkResult with depends_on_manifest edges.
@@ -275,10 +276,11 @@ DEPENDENCY_REQUIREMENTS = [
     priority=80,  # Run late, after all imports have been collected
     description="Dependency linking (imports to manifest declarations)",
     requirements=DEPENDENCY_REQUIREMENTS,
-    # CNF: dependency linking ties import edges (any language) to manifest
-    # declarations (any package-manager-aware analyzer). Either side alone
-    # provides partial value; together they produce dep edges. Single OR-clause
-    # spanning every language whose imports/manifests this linker consumes.
+    # CNF: the code reads TOML ``kind="dependency"`` symbols (Cargo.toml,
+    # pyproject.toml) and ``imports`` edges whose dst starts with ``rust:`` or
+    # ``python:`` — ``_extract_root_package`` skips every other language. The
+    # OR-clause below is broader than what the code consumes and omits
+    # ``toml``.
     depends_on=[["python", "javascript", "ruby", "java", "go", "rust", "csharp", "kotlin", "scala", "elixir", "php", "swift", "dart"]],
     activation=always_on_unreviewed(),
 )

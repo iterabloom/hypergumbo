@@ -2,9 +2,11 @@
 """Infrastructure linker: containment for creating `contains` edges between containers and members.
 
 This linker connects container symbols (classes, interfaces, protocols, structs,
-traits, enums, modules, messages) to their member symbols (methods, getters,
-setters, RPCs, nested messages, and nested containers) based on naming
-conventions, creating `contains` edges. Without these edges, members are
+traits, enums, modules, messages, records, files and the rest of
+``CONTAINER_KINDS``) to their member symbols (methods, getters, setters,
+fields, subscripts, top-level functions and variables, RPCs, nested messages,
+and nested containers) based on naming conventions and span nesting, creating
+`contains` edges. Without these edges, members are
 orphaned in the graph — disconnected from their parent types — which inflates
 orphan rates and hides hierarchical structure from slice traversal.
 
@@ -25,18 +27,20 @@ When ``sym.name`` has no separator (e.g., proto RPCs where
 ADR-0032 typed sibling field that carries fully-qualified scoped
 identifiers, e.g., ``hello.HelloService.BidiHello``). This handles
 proto service→rpc containment and nested message containment.
-This phase is reachable only for niche-language analyzers (proto,
-capnp, fish, etc.) that emit unqualified ``name`` plus a
-``qualified_name``. Mainstream-analyzer languages (Python, JS/TS,
-Go, Rust, Java, C++, Ruby) leave ``qualified_name=None`` by design
-because ``name`` already encodes the parent, so containment falls
-through to span_overlap when naming convention doesn't match.
+It applies to any symbol with an unqualified ``name`` and a
+separator-bearing ``qualified_name`` — the shape proto, capnp, fish
+and similar analyzers emit. Several mainstream analyzers also populate
+``qualified_name`` (Java and Rust package- or module-qualify it;
+Python sets it to the bare name), but a symbol whose ``name`` already
+has a separator belongs to Phase 1 and Phase 1.5 skips it.
 
 **Phase 2 — Span-based fallback** (confidence=0.9):
-When neither naming convention nor qualified_name produces a parent,
-checks if any container symbol in the same file has a span that fully
-encloses the unqualified symbol.  Prefers the tightest (smallest span)
-enclosing container.
+For every symbol whose ``name`` has no separator, checks if any
+container symbol in the same file has a span that fully encloses it,
+and prefers the tightest (smallest span) enclosing container. It does
+not consult the earlier phases' outcomes: a dotted name that Phase 1
+could not place gets no span fallback, and only an identical
+parent→child pair already emitted is deduplicated.
 
 Naming Conventions by Language
 ------------------------------
@@ -422,8 +426,8 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
     # --- Phase 2: Span-based fallback for unqualified names ---
     # Handles cases where analyzers emit unqualified names (e.g., Ruby
     # analyzer emits "HTTP" instead of "Postal::HTTP").  For each symbol
-    # that wasn't connected by naming convention, check if any container
-    # in the same file has a span that fully encloses it.
+    # whose name carries no separator, check if any container in the
+    # same file has a span that fully encloses it.
     containers_by_file: dict[str, list[Symbol]] = {}
     for sym in ctx.symbols:
         if sym.kind in CONTAINER_KINDS and sym.span is not None:
@@ -435,7 +439,7 @@ def link_containment(ctx: LinkerContext) -> LinkerResult:
         if sym.span is None:
             continue
 
-        # Skip if naming convention already found a parent
+        # Dotted names belong to Phase 1, whether or not it found a parent
         parent_name = _extract_parent_name(sym.name)
         if parent_name is not None:
             continue

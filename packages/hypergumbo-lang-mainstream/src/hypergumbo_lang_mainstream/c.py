@@ -11,7 +11,7 @@ This analyzer uses tree-sitter-c to parse C files and extract:
 - Dispatch tables from static-array and designated-struct initializers
   (dispatches_to edges), plus a ``references`` edge with
   ``meta.ref_construct="dispatch_table"`` from each function whose body
-  names a dispatch table to that table
+  names a static-array dispatch table to that table
 - stdio global references (stdout/stderr/stdin) as module_attr_ref edges
 
 The analyzer also extracts function signatures (``_extract_c_signature``)
@@ -35,13 +35,13 @@ Call-edge details:
   so ``#ifdef`` / ``#else`` definitions of one name in one file anchor to the
   right alternative.
 
-If tree-sitter-c is not installed, the analyzer gracefully degrades
-and returns an empty result.
+If tree-sitter-c is not installed, the analyzer warns and returns a
+skipped result.
 
 How It Works
 ------------
 1. Check if tree-sitter and tree-sitter-c are available
-2. If not available, return empty result (not an error, just no C analysis)
+2. If not available, return a skipped result (not an error, just no C analysis)
 3. Take only the .h files ``header_owner`` gives to C: not an ObjC header,
    and not any header in a repo holding C++ files (WI-rizas, WI-somod)
 4. Two-pass analysis:
@@ -51,9 +51,9 @@ How It Works
    designated-initializer function-pointer edges
 6. Declaration dedup: a function prototype (``declaration`` modifier) whose
    name also has a definition is removed, and edges that pointed at the
-   prototype are remapped to the definition. Registration already prefers
-   definitions (.c definition, then .c declaration, then .h declaration),
-   so the remap target is deterministic
+   prototype are remapped to the definition (the last definition of that
+   name in analysis order: headers first, then ``.c`` files). Registration, which drives call resolution, is a
+   separate rule that prefers definitions and ``.c`` files
 
 Why This Design
 ---------------
@@ -1384,8 +1384,8 @@ class CAnalyzer(TreeSitterAnalyzer):
 
     Uses tree-sitter-c to parse C files and extract functions, structs, enums,
     typedefs, and call edges. Overrides ``analyze`` to use
-    custom file discovery that skips .h files when C++ files exist (avoids
-    duplicates with the C++ analyzer). Overrides ``register_symbol`` to prefer
+    custom file discovery that takes only the .h files ``header_owner``
+    gives to C (avoids duplicates with the C++ and ObjC analyzers). Overrides ``register_symbol`` to prefer
     definitions in .c files over declarations in .h files.
     """
 

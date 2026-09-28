@@ -128,7 +128,7 @@ class IoBoundarySpec:
     ``external_potential`` is an unmatched call that may be no I/O at all.
 
     ``catalog_declarable`` records whether an ``io_primitives/*.yaml`` may
-    declare the value. ``_parse_catalog`` iterates exactly the declarable
+    declare the value. ``IoBoundaryCatalog._from_dict`` iterates exactly the declarable
     names, so a value with ``False`` here can only ever be stamped by a
     producer, and a value with ``True`` can only ever arrive through a
     catalogue. That is the channel split ``OPAQUE_BOUNDARIES`` versus
@@ -150,7 +150,7 @@ class IoBoundarySpec:
 
 # The declaration ORDER of the catalogue-declarable specs is load-bearing and
 # is preserved from the hand-written ``CATALOG_BOUNDARY_TYPES`` tuple this
-# registry replaces: ``_parse_catalog`` iterates it, and several sites resolve
+# registry replaces: ``IoBoundaryCatalog._from_dict`` iterates it, and several sites resolve
 # a primitive declared under two boundaries by first-declared-wins. A property
 # test pins the order, not merely the membership.
 IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
@@ -465,7 +465,7 @@ def find_io_boundary(name: str) -> IoBoundarySpec | None:
 def catalog_declarable_names() -> tuple[str, ...]:
     """Return the catalogue-declarable names IN DECLARATION ORDER.
 
-    Order is preserved rather than sorted because ``_parse_catalog`` iterates
+    Order is preserved rather than sorted because ``IoBoundaryCatalog._from_dict`` iterates
     this tuple and several sites resolve a primitive declared under two
     boundaries by first-declared-wins.
     """
@@ -516,7 +516,7 @@ def find_axis_drift(repo_root: Path) -> list[str]:
     THE SHAPES IT STRUCTURALLY CANNOT SEE are the ones this vocabulary's real
     consumers use: a ``frozenset(A + B)`` built from other names (what
     ``KNOWN_IO_BOUNDARIES`` was), a bare tuple (what ``CATALOG_BOUNDARY_TYPES``
-    was), and dicts keyed or valued by boundary. All three live dict consumers
+    was), and dicts keyed or valued by boundary. All four live dict consumers
     -- ``taint.AUTO_SOURCE_LABEL_MAP``,
     ``io_boundary.DEFERRED_CROSSING_SHADOWS``,
     ``io_boundary._READ_TARGET_KIND_BOUNDARY`` and its write-direction twin

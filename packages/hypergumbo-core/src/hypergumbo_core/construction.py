@@ -33,7 +33,8 @@ after the graph is built, and no emitted edge changes:
 THE LICENCE IS THE CONJUNCTION. ``contains`` alone confers nothing -- making it
 traversable would make every method of every class reachable. A pair is minted
 only where the class is the dst of a construction edge AND the member is its
-initializer (:func:`symbol_kinds.is_initializer`).
+initializer (:func:`symbol_kinds.is_initializer`). That predicate has no rule
+for a dart constructor (named after its class), so dart gets no pairs yet.
 
 Edges and nodes arrive in three shapes across the consumers (behavior-map
 dicts, ``Edge`` objects, ``Symbol`` objects), read through one accessor each so

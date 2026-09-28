@@ -26,7 +26,7 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Module attribute references for iostream IO (`std::cout`/`std::cerr`/`std::cin` and namespace-alias attribute reads; feeds io-boundaries)
 
 If tree-sitter with C++ support is not installed, the analyzer
-gracefully degrades and returns an empty result.
+warns and returns a skipped result.
 
 How It Works
 ------------
@@ -36,9 +36,10 @@ How It Works
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls, instantiations, and resolve against global symbol registry
 4. Detect include directives and new expressions
-5. Header dedup: ``.h`` files are only included when C++ source files
-   (``.cpp``/``.cc``/``.cxx``) exist.  In pure C repos, ``.h`` files
-   belong to the C analyzer.
+5. Header dedup: a ``.h`` file is included only when ``header_owner``
+   gives it to C++: the repo holds a C++ file (``.cpp``/``.cc``/``.cxx``
+   or ``.hpp``/``.hxx``) and the header carries no ObjC marker.  In pure C
+   repos, ``.h`` files belong to the C analyzer.
 
 Why This Design
 ---------------

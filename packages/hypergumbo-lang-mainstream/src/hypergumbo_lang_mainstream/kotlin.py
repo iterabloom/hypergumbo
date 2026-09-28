@@ -7,7 +7,8 @@ This analyzer uses tree-sitter to parse Kotlin files and extract:
 - Object declarations (object)
 - Interface declarations (interface)
 - Method declarations (inside classes/objects)
-- Annotations on classes, methods, and objects (meta.decorators), which
+- Annotations on classes, functions, methods, objects, and properties
+  (meta.decorators), which
   also become ``decorated_by`` edges (``_extract_annotation_edges``)
 - Property declarations: a ``field`` Symbol for a class/object/interface
   or enum-body property, a ``variable`` Symbol for a top-level one
@@ -19,7 +20,8 @@ This analyzer uses tree-sitter to parse Kotlin files and extract:
 - Import statements
 
 If tree-sitter with Kotlin support is not installed, the analyzer
-gracefully degrades and returns an empty result.
+gracefully degrades: it emits a ``UserWarning`` and returns a skipped
+result (``skip_reason_code=DEPENDENCY_UNAVAILABLE``).
 
 How It Works
 ------------
@@ -51,7 +53,8 @@ alongside it. This is what lets a catalogued method-kind I/O primitive be
 reached through a typed receiver — see ADR-0051 for why the module slot
 must name the static owner path and never the variable. Function-scoped
 ``var_types`` shadowing keeps a rebound name from leaking its old type
-across scopes.
+across scopes — for declared and constructor bindings; a binding from a
+resolved call's return type is written file-wide, outside that scoping.
 
 Population of ``is_exported`` follows Kotlin's default-public rule: a
 declaration is exported unless its modifier list contains ``private``,
@@ -640,8 +643,9 @@ class FileAnalysis:
     - Constructor calls: val obj = MyClass() -> obj has type MyClass
     - Function parameters: fun process(client: Client) -> client has type Client
 
-    Type inference does NOT track types from function returns (val obj = getMyClass()).
-    WI-nasuf: it DOES bind a DECLARED type (``val c: Connection = make()``), a bare or
+    - Function returns (val obj = getMyClass()), when the call resolves to a
+      project function whose declared return type is a project class
+    WI-nasuf: it also binds a DECLARED type (``val c: Connection = make()``), a bare or
     dotted constructor (``java.io.File(p)``), and a chained construction
     (``File(p).writeText(s)``); an instance-method call nothing resolves emits an
     unresolved edge whose module slot is the receiver's type qualified through the

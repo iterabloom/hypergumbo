@@ -15,7 +15,9 @@ Analysis proceeds in two passes for cross-file resolution:
 - Extract methods nested inside classes
 - Emit the non-callable symbol kinds too: ``variable`` (module-level and
   class-level assignments), ``field`` (dataclass / annotated attributes),
-  ``file`` (one per module, the anchor top-level calls attribute to), and
+  ``file`` (the anchor top-level calls attribute to; emitted only for a module
+  with executable module-level code or a docstring, otherwise the orchestrator
+  synthesizes it), and
   route markers (``kind="function"`` + ``meta.framework_role="route"``)
 - Build import mappings for cross-file resolution
 - Compute stable_id (signature-based) and shape_id (structure-based)
@@ -54,13 +56,17 @@ Detected Patterns
 - Framework dispatch: ``dispatches_to`` edges for returned closures
   (``dispatch_kind="closure_factory"``) and Django ``@receiver`` signals
 - Bare references: ``references`` edges where a symbol is named but not called
-- Property reads: ``obj.prop`` on a typed instance emits a ``calls`` edge to the
-  ``@property`` getter, since reading it runs code
+- Property reads: ``obj.prop`` on a typed instance whose attribute is a
+  ``@property`` getter emits an unresolved ``calls`` edge carrying
+  ``receiver_type_hint``, since reading it runs code; the ``inherited_calls``
+  linker mints the resolved edge to the getter
 - Builtin and unknown callees: bare calls to builtins (``print``, ``open``) emit
-  ``builtins`` edges, and bare names that are not imported or locally bound
-  emit ``external`` unresolved edges; names bound in an enclosing scope are skipped
+  unresolved ``calls`` edges whose dst module is ``builtins``, and bare names
+  that are not imported or locally bound emit ``external`` unresolved edges;
+  names bound in an enclosing scope are skipped
 - Call-edge tags: ``io_mode`` records a literal mode argument (``open(p, "w")``),
-  and ``call_arg_shape="literal_only"`` marks calls passing only constants
+  and ``call_arg_shape="literal_only"`` marks calls passing only constants whose
+  receiver cannot carry taint (no receiver, or an imported module)
 - Module attribute reads: os.environ, sys.argv, sys.path — bare
   (non-called) ``imported_module.attribute`` accesses. Emits
   ``module_attr_ref`` edges so IO-primitive catalog ``attributes:``

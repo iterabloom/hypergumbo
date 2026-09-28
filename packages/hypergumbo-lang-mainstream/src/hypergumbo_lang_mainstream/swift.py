@@ -11,8 +11,7 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Computed properties and subscripts
 - Enum cases and protocol requirements as ``field`` / member symbols
 - Stored properties (``field``) and top-level bindings (``variable``)
-- Route-marker symbols, appended in ``post_process`` once the whole file
-  set is known
+- Route-marker symbols, extracted per file and appended in ``post_process``
 - Function call relationships, and ``references`` edges where a symbol is
   named without being called
 - Import statements
@@ -52,7 +51,8 @@ declaration is exported only when its modifier list contains ``public`` or
 ``private`` items are not exported. Three emitters are exempt and set
 ``is_exported=True`` unconditionally, because the construct carries no
 modifier list of its own: enum cases, protocol requirements, and the
-route-marker symbols added in ``post_process``.
+route-marker symbols added in ``post_process``. A type recovered from an
+ERROR node carries no modifiers and leaves ``is_exported`` unset (``None``).
 """
 from __future__ import annotations
 
