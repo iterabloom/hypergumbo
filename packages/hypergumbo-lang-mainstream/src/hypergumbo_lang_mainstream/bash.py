@@ -61,7 +61,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files, is_excluded
 from hypergumbo_core.ir import (
@@ -138,6 +138,52 @@ def _is_bash_shebang(first_line: str) -> bool:
     # Match /bin/bash, /usr/bin/bash, /bin/sh, /usr/bin/env bash, etc.
     bash_patterns = ["/bash", "/sh", "env bash", "env sh"]
     return any(p in shebang for p in bash_patterns)
+
+
+#: Every byte to a space except the newline, so a blanked region keeps its
+#: line count and every span below it still points at the real file.
+_BLANK_BUT_NEWLINES: Final[bytes] = bytes(
+    0x0A if b == 0x0A else 0x20 for b in range(256)
+)
+
+
+def shell_text(data: bytes) -> bytes:
+    """The script a shell would run: ``data`` with any BINARY PAYLOAD blanked.
+
+    WI-fisoh. A self-executing archive is a short shell prefix with a binary
+    appended -- coursier's launcher and ``java -jar "$0"`` stubs are a ZIP
+    after one or two lines of ``sh``, and makeself installers append a tarball.
+    The shebang makes the file a bash file, tree-sitter parses the payload as
+    commands, and ``command_launch`` then reported control-character blobs and
+    an EMPTY STRING as launched programs (sbt: 7 of 52 primitives). The
+    prefix is real shell (``exec java -jar "$0"`` is a real launch), so the
+    file is not skipped whole as js_ts skips a NUL-bearing ``.ts``; the payload
+    is.
+
+    THE CUT IS THE START OF THE LINE HOLDING THE FIRST NUL. The ZIP local
+    header ``PK\\x03\\x04`` precedes its first NUL on that line, so cutting at
+    the NUL itself would leave ``PK\\x03\\x04`` to be parsed as a command.
+
+    BYTE LENGTH IS PRESERVED (``TreeSitterAnalyzer.parse_source`` rule 1):
+    the payload becomes spaces with its newlines kept. A file with no NUL is
+    returned unchanged, so no ordinary script moves.
+    """
+    nul = data.find(b"\x00")
+    if nul < 0:
+        return data
+    start = data.rfind(b"\n", 0, nul) + 1
+    return data[:start] + data[start:].translate(_BLANK_BUT_NEWLINES)
+
+
+def _plausible_command_name(name: str) -> bool:
+    """A launched program's name is non-empty and printable (WI-fisoh).
+
+    The second line of defence behind :func:`shell_text`: whatever the parse
+    hands over, a primitive named ``''`` or ``'\\x1e\\x0ez4'`` is not a program
+    anyone can act on, and an empty name matches anything on short-name
+    lookup.
+    """
+    return bool(name) and name.isprintable() and not any(c.isspace() for c in name)
 
 
 def find_bash_files(root: Path) -> list[Path]:
@@ -425,7 +471,7 @@ class _RepoBashIndex:
         trees: dict[str, tuple["tree_sitter.Tree", bytes]] = {}
         for path in files:
             try:
-                data = path.read_bytes()
+                data = shell_text(path.read_bytes())  # WI-fisoh
                 rel = str(path.relative_to(self.root))
             except (OSError, ValueError):  # pragma: no cover - defensive
                 continue
@@ -843,6 +889,18 @@ class BashAnalyzer(TreeSitterAnalyzer):
     def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
         """Yield bash source files, including extensionless shebang scripts."""
         yield from find_bash_files(repo_root)
+
+    def parse_source(
+        self, parser: "tree_sitter.Parser", source: bytes,
+    ) -> "tuple[bytes, tree_sitter.Tree]":
+        """Parse the script a shell would run, not an appended binary (WI-fisoh).
+
+        :func:`shell_text` keeps byte length, so both of the base class's rules
+        for this hook hold: every span still points at the real file, and the
+        returned tree is the tree of the returned bytes.
+        """
+        text = shell_text(source)
+        return text, parser.parse(text)
 
     def extract_symbols_from_file(
         self,
@@ -1288,7 +1346,11 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                             origin_run_id=run.execution_id,
                                             meta={"call_locality": "cross_file"},
                                         ))
-                                    elif cmd_name not in SHELL_BUILTINS:
+                                    elif (
+                                        cmd_name not in SHELL_BUILTINS
+                                        # WI-fisoh: never a blob or ''.
+                                        and _plausible_command_name(cmd_name)
+                                    ):
                                         # WI-javoh: an EXTERNAL PROGRAM launch —
                                         # neither a defined shell function nor a
                                         # resolver-resolved symbol nor a builtin.
