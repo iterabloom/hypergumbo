@@ -1,0 +1,37 @@
+Original commit body from a5557d6be856bb46a0c799cb7f93d06769c3d05f:
+
+The Woodpecker full-suite and nightly pipelines run pytest
+packages/*/tests/ but never installed hypergumbo-lang-scip-python or
+measured its coverage. Its tests passed there by accident:
+test_adjudication_packet.py loads scripts/measure-taint-precision.py at
+collection time, and that script puts every packages/*/src on sys.path.
+Reproduced in a clean env without the package: collecting its tests
+alone gives 5 ImportErrors; collecting core's tests first makes them
+import, and bisection over core's test files isolates that one file.
+So the package ran uninstalled (no entry point), unmeasured, and one
+unrelated edit away from collection errors. Both steps now install it
+and add its --cov path; check-package-coverage scip-python is 100%.
+
+Lint scanners, measured rather than assumed:
+- check-docstring-drift DID skip scip-python (hand-kept DEFAULT_SCOPE);
+  it now globs packages/*/src: default co-change scan 352 -> 359 files.
+- check-id-construction, check-pass-id-agreement,
+  check-multi-value-field-axis-declaration, check-recorded-producer-input
+  kept the same list only as a sys.path import fallback; they scan by
+  glob or discover analyzers via entry points, so they missed nothing.
+  They glob now too, so there is no list to forget. All four exit 0.
+
+tests/test_ci_package_lists.py derives the package set from the tree
+and pins: every Woodpecker step whose pytest runs packages/*/tests/
+installs every package and measures exactly cov-paths.sh's sources, and
+each linter (run in a subprocess, so its sys.path edits cannot leak)
+puts every packages/*/src on its path. Mutation-checked: the old
+full-suite.yml fails 2, the old check-pass-id-agreement fails 1.
+
+Not changed: .github/workflows copies (GitHub Actions is disabled under
+Woodpecker CI per scripts/ci-debug); the self-tree-validation,
+self-claims-gate and integration steps, which run no package tests.
+
+Addresses WI-bavak.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
