@@ -1,0 +1,45 @@
+Original commit body from 35a02c33ad411e3d3cc68ab022e16b0dae93e568:
+
+find_objc_files took every *.h in a repository and C or C++ took them
+too, so each header was parsed by two grammars whatever its dialect.
+Each grammar's failures on the other dialect surfaced as partial-parse
+rows (WI-bulaz), and the C grammar read ObjC headers into wrong symbols
+and edges (@property and API_AVAILABLE(ios(...)) as calls, an NS_ENUM
+member as a typedef). The C and C++ rules (WI-rizas) also disagreed on
+what makes a repo C++, so a repo with .hpp and no C++ source left its
+.h files to neither.
+
+header_owner.py is the one rule all three finders apply: a header with
+ObjC-only syntax at a line start (@interface/@protocol/@class/@property/
+@end/@implementation/@import, #import) is ObjC's; any other is C++'s when
+the repo holds any C++ file, else C's. C now registers its finder, so
+profile's per-language file counts match what each analyzer parses.
+
+Measured, pinned worktree A (433c90f9f1) vs B, 8 repos:
+- partial-parse rows removed: sherpa-onnx 426, SDWebImage 156,
+  whisper.cpp 106, CocoaLumberjack 91, AFNetworking 29, fmdb 11, crun 8,
+  linuxkit 1
+- calls removed, every one read from a wrong-dialect .h (none from a
+  .c/.cpp/.m): SDWebImage 165, CocoaLumberjack 56, whisper.cpp 23,
+  fmdb 10, AFNetworking 7; crun, linuxkit, sherpa-onnx unchanged
+- the classifier, checked on 27 local repos: every ObjC-repo header it
+  misses is macros or C-syntax declarations; every C-repo header it hits
+  is a real ObjC or mixed header
+
+A first cut also gave UNMARKED headers of a pure-ObjC project to ObjC.
+Measurement refuted it: the ObjC analyzer emits no C constructs, so
+fmdb's fts3_tokenizer.h lost its sqlite3_tokenizer_module struct.
+Unmarked headers are C syntax by definition and now go to C/C++.
+
+Costs, stated: C declarations inside ObjC headers are no longer
+extracted (nothing outside a header referenced any, in the repos
+measured); the ObjC analyzer records only #import, so #include in ObjC
+headers yields no import edge (whisper.cpp -4); a header whose only ObjC
+is past its first 64 KB stays C++ (whisper.cpp miniaudio.h: -7 ObjC
+methods).
+
+Relocates two module_key_axis line pins moved by the edits.
+
+Addresses WI-somod.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
