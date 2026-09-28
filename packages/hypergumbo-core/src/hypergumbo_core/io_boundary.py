@@ -84,6 +84,7 @@ from .io_primitive_kinds import (
     KIND_METHOD,
     called_on_a_named_owner,
     reached_through_an_instance,
+    read_not_called,
 )
 from .io_boundary_types import (
     all_io_boundary_names,
@@ -5015,7 +5016,8 @@ def tag_io_boundaries(
         catalogs: Language → IoBoundaryCatalog mapping.
         call_types: Edge types to consider. Default includes calls,
             imports, and FFI edge types (wasm_bridge, ipc_calls, etc.)
-            so boundary tracing crosses language boundaries.
+            so boundary tracing crosses language boundaries. An ``imports``
+            edge is tagged only by an ATTRIBUTE row (INV-lagir).
 
     Returns:
         Number of edges tagged.
@@ -5042,6 +5044,19 @@ def tag_io_boundaries(
             dst_ref=getattr(edge, "dst_ref", None),
         )
         if match is None or matched_catalog is None:
+            continue
+
+        # INV-lagir: AN IMPORT IS NOT A CALL. A Python import's dst is the
+        # imported NAME, so ``import glob`` (``python:glob:0-0:glob``) has the
+        # (module, name) of the FUNCTION row ``glob.glob`` and matched it: a
+        # file whose only content was ``import glob`` failed a
+        # ``must_not_exist`` fs_read claim, and 158 import edges on the
+        # self-survey were tagged (133 of them ``import time``). ``imports``
+        # stays in ``call_types`` for ATTRIBUTE rows only: after ``from os
+        # import environ`` the use ``environ["K"]`` emits no edge, so the
+        # import is the only thing that makes the read visible. A function or
+        # method row has a call site of its own, which carries its chain.
+        if edge.edge_type == "imports" and not read_not_called(match.kind):
             continue
 
         # INV-nular: a call site whose TARGET discards crosses no boundary.
