@@ -5875,10 +5875,11 @@ class TestUnresolvedEdgeEmission:
         # Find call edges
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
 
-        # Should have an unresolved edge to Client.create
+        # Should have an unresolved edge to Client.create, with the imported
+        # class in the MODULE slot (WI-sugom / WI-torin, ADR-0051).
         unresolved = [
             e for e in call_edges
-            if ":external_symbol" in e["dst"] and "Client.create" in e["dst"]
+            if e["dst"] == "python:external_lib.Client:0-0:create:external_symbol"
         ]
         assert len(unresolved) == 1, f"Expected unresolved edge, got: {call_edges}"
 

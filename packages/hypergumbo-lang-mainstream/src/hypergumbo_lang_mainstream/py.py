@@ -8343,7 +8343,20 @@ def _process_call(
                         origin_run_id=run_id,
                     ))
                 else:
-                    dst_id = f"python:{module_name}:0-0:{original_name}.{attr_name}:unresolved"
+                    # WI-sugom / WI-torin: the imported name is the OWNER, so
+                    # it joins the module slot (ADR-0051: the slot names the
+                    # owner path). ``from urllib import request`` then
+                    # ``request.urlopen(u)`` is module ``urllib.request``, name
+                    # ``urlopen``, which is what ``import urllib.request``
+                    # already emits. Whether ``X`` is a submodule, a class
+                    # (``Path.cwd``) or an object does not matter: ``P.X`` is
+                    # where it is reachable either way. Splitting it as
+                    # ``urllib`` + ``request.urlopen`` matched no row, and the
+                    # coverage gate then vouched for the call on ``urllib``'s
+                    # grant, which does not cover ``urllib.request``: a clean
+                    # verdict over a real network send.
+                    owner_module = f"{module_name}.{original_name}"
+                    dst_id = f"python:{owner_module}:0-0:{attr_name}:unresolved"
                     edges.append(Edge.create(
                         src=caller_symbol.id,
                         dst=dst_id,
@@ -8354,8 +8367,8 @@ def _process_call(
                         meta={"call_construct": "method"},
                         dst_ref=ExternalRef(
                             lang="python",
-                            module_path=module_name,
-                            name=f"{original_name}.{attr_name}",
+                            module_path=owner_module,
+                            name=attr_name,
                         ),
                         origin=PASS_ID,
                         origin_run_id=run_id,
