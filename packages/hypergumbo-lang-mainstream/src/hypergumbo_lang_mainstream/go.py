@@ -699,9 +699,14 @@ def _package_variable_import_path(
     operand_node: "tree_sitter.Node",
     source: bytes,
     import_aliases: dict[str, str],
-) -> Optional[str]:
-    """Import path of the package holding ``pkg.Var``'s TYPE, when ``pkg.Var`` is a
-    catalogued stdlib package variable (WI-jikik); else None.
+) -> Optional[tuple[str, str]]:
+    """``(package import path, owner)`` for ``pkg.Var``'s TYPE, when ``pkg.Var`` is
+    a catalogued stdlib package variable (WI-jikik); else None.
+
+    The OWNER is the import path plus the type (``net/http.Client`` for
+    ``http.DefaultClient``), the module slot a typed receiver gets (INV-vusum).
+    The package path alone is returned beside it because the handle-kind
+    readers downstream take the package NAME from it.
 
     ``http.DefaultClient.Do(req)``'s receiver is a package variable, not a local,
     so no ``var_types`` entry types it and the call fell to the ``external`` slot,
@@ -723,8 +728,11 @@ def _package_variable_import_path(
         f"{var_pkg}.{node_text(field, source)}")
     if type_name is None:
         return None
-    type_pkg = type_name.split(".", 1)[0]
-    return var_path if type_pkg == var_pkg else import_aliases.get(type_pkg)
+    type_pkg, _, type_leaf = type_name.partition(".")
+    type_path = var_path if type_pkg == var_pkg else import_aliases.get(type_pkg)
+    if type_path is None:
+        return None
+    return type_path, f"{type_path}.{type_leaf}"
 
 
 def _external_package_for_type(
@@ -3332,6 +3340,14 @@ def _extract_edges_from_file(
                     # slot it terminates with should name the real package instead of
                     # the ``external`` placeholder when we know it.
                     receiver_module_hint: Optional[str] = None
+                    # INV-vusum: the receiver's TYPE when it is external and
+                    # known by a route other than a typed local -- a stdlib
+                    # package variable (``net/http.Client`` for
+                    # ``http.DefaultClient``) or a struct field
+                    # (``e.logger`` of type ``*slog.Logger``). For the dst
+                    # only; ``full_import_path`` stays the package because the
+                    # handle-kind reader takes the package name from it.
+                    receiver_owner: Optional[str] = None
                     full_import_path = None
                     # INV-tanom: the operand is an imported PACKAGE, not a value.
                     # Such a call is a function call (ADR-0059: called on the
@@ -3386,7 +3402,19 @@ def _extract_edges_from_file(
                                 if _external is not None:
                                     full_import_path = _external
                                     import_path_hint = _external
-                                    receiver_module_hint = _external
+                                    # INV-vusum: the slot names the TYPE, not
+                                    # only its package. ``net/http`` let the
+                                    # package function ``net/http.Get`` win
+                                    # over ``net/http.Client.Get`` by
+                                    # declaration order, and matched
+                                    # ``Transport.Do`` to ``Client.Do``. Always
+                                    # the full import path plus the type: a
+                                    # bare leaf (``Client``) matches eight rows
+                                    # through _module_matches' suffix arm.
+                                    receiver_module_hint = (
+                                        f"{_external}."
+                                        f"{receiver_type.rsplit('.', 1)[-1]}"
+                                    )
                                 else:
                                     # Strip package prefix from qualified types
                                     # (e.g. "notify.Stage" → "Stage") since symbol
@@ -3456,10 +3484,11 @@ def _extract_edges_from_file(
                             operand_node is not None
                             and operand_node.type == "selector_expression"
                             and callee_name
-                            and (_pv_path := _package_variable_import_path(
+                            and (_pv := _package_variable_import_path(
                                 operand_node, source, import_aliases,
                             )) is not None
                         ):
+                            _pv_path, receiver_owner = _pv
                             full_import_path = _pv_path
                             import_path_hint = (
                                 _strip_module_prefix(_pv_path, module_path)
@@ -3520,6 +3549,14 @@ def _extract_edges_from_file(
                                         full_import_path = import_aliases[
                                             pkg_prefix
                                         ]
+                                        _field_ext = _external_package_for_type(
+                                            resolved_type, import_aliases, module_path,
+                                        )
+                                        if _field_ext is not None:
+                                            receiver_owner = (
+                                                f"{_field_ext}."
+                                                f"{resolved_type.rsplit('.', 1)[-1]}"
+                                            )
                                         if module_path:
                                             import_path_hint = (
                                                 _strip_module_prefix(
@@ -3993,7 +4030,10 @@ def _extract_edges_from_file(
                                 unresolved_path = full_import_path if full_import_path else import_path_hint
                                 if unresolved_path:
                                     # e.g., go:google.golang.org/grpc:0-0:RegisterService:unresolved
-                                    dst_id = f"go:{unresolved_path}:0-0:{callee_name}:unresolved"
+                                    dst_id = (
+                                        f"go:{receiver_owner or unresolved_path}"
+                                        f":0-0:{callee_name}:unresolved"
+                                    )
                                 else:
                                     # Fallback: use "external" as the path
                                     dst_id = f"go:external:0-0:{callee_name}:unresolved"

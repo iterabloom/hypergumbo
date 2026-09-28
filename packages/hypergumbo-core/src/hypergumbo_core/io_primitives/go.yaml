@@ -243,6 +243,15 @@ net_send:
     methods: [Do, Get, Post, Head]
   - module: net/http.Transport
     methods: [RoundTrip]
+  - module: net/http.RoundTripper
+    methods: [RoundTrip]
+    notes: >-
+      INV-vusum. The interface, whose documented contract is "RoundTrip executes
+      a single HTTP transaction" -- rowed as net.Conn's Read/Write are. A call on
+      an http.RoundTripper parameter used to reach Transport.RoundTrip only
+      because the receiver's slot was the bare package; once the slot names
+      the type, the interface needs its own row or the send is lost (measured:
+      prometheus cmd/promtool/query.go newAPI).
   # gRPC client
   - module: syscall
     functions: [Connect, Sendto, Sendmsg]

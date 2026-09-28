@@ -82,7 +82,9 @@ class TestThroughTheAnalyzers:
             e.dst for e in analyze_go(tmp_path).edges
             if e.edge_type == "calls" and e.dst.endswith(":Accept:unresolved")
         }
-        assert dsts == {"go:net:0-0:Accept:unresolved"}, dsts
+        # INV-vusum: the slot names the receiver's TYPE (net.Listener), the
+        # owner the catalogue's Accept row is keyed on.
+        assert dsts == {"go:net.Listener:0-0:Accept:unresolved"}, dsts
 
     def test_go_types_the_subprocess_producer_INV_muhij_named(
         self, tmp_path: Path,
@@ -104,7 +106,7 @@ class TestThroughTheAnalyzers:
             e.dst for e in analyze_go(tmp_path).edges
             if e.edge_type == "calls" and e.dst.endswith(":Start:unresolved")
         }
-        assert dsts == {"go:os/exec:0-0:Start:unresolved"}, dsts
+        assert dsts == {"go:os/exec.Cmd:0-0:Start:unresolved"}, dsts  # INV-vusum
 
     def test_swift_types_a_chained_library_receiver(self, tmp_path: Path) -> None:
         """The row composes with WI-higob slice 2's chained walker: the row types the

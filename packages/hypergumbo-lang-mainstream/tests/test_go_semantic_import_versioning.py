@@ -186,10 +186,14 @@ class TestFrameworkImportPathsReachTheModuleSlot:
         "func grpcServe(s *grpc.Server, l any) { _ = s.Serve(l) }\n"
     )
 
+    # INV-vusum: the slot is the full import path PLUS the receiver's type,
+    # which is exactly how the overlay keys these rows. Before, it was the
+    # package alone, and the rows matched it only through _module_matches'
+    # component rule.
     EXPECTED: ClassVar[dict[str, str]] = {
-        "JSON": "github.com/gin-gonic/gin",
-        "Listen": "github.com/gofiber/fiber/v2",
-        "Serve": "google.golang.org/grpc",
+        "JSON": "github.com/gin-gonic/gin.Context",
+        "Listen": "github.com/gofiber/fiber/v2.App",
+        "Serve": "google.golang.org/grpc.Server",
     }
 
     def _module_slots(self, tmp_path: Path) -> dict[str, set[str]]:

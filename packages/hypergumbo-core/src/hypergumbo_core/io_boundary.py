@@ -1202,7 +1202,9 @@ class IoBoundaryCatalog:
                 filtered = [p for p in filtered if not called_on_a_named_owner(p.kind)]
             if filtered:
                 return select_by_mode(
-                    _narrow_by_target_kind(filtered, io_target_kinds),
+                    _narrow_by_target_kind(
+                        prefer_exact_owner(filtered, module_hint), io_target_kinds,
+                    ),
                     io_modes,
                 )
             # No match with module filtering — this is likely NOT an IO
@@ -4086,6 +4088,40 @@ def compute_leaf_rollups(
 # leading ``c`` from an arbitrary module slot would maul ``crypto``, ``cmath``
 # and every other module that legitimately starts with one.
 _HEADER_SUFFIXES = (".hpp", ".hxx", ".hh", ".h")
+
+
+def prefer_exact_owner(rows: Sequence[Any], module_hint: str) -> list[Any]:
+    """The rows whose module IS what the slot names, else every row (INV-vusum).
+
+    The module filter admits a row whenever ``_module_matches`` relates its
+    module to the slot, and that relation is deliberately loose: a TYPE sits
+    under its package by the component rule, so a slot naming
+    ``requests.Session`` admits both ``requests.Session.get`` and the package
+    function ``requests.get``. Selection then took the FIRST-DECLARED row,
+    which in every such pair is the function. 64 function/method pairs ship
+    (go 17, javascript 14, python 27, rust 6), and a receiver call on each was
+    credited to the package function.
+
+    A NARROWING, NOT A FILTER. When some row's module equals a spelling of the
+    slot exactly, only those rows remain; when none does, every row the module
+    filter kept is returned, so no match that fired before is lost (java's
+    unqualified ``System`` still reaches ``java.lang.System``). Every one of the
+    64 pairs carries one boundary on both rows, so this changes which primitive
+    is REPORTED and never a boundary, zone or verdict.
+
+    One helper for both consumers, ``lookup_with_module`` and taint's
+    ``_lookup_named_entry``, so they cannot disagree about which row a call
+    reaches (INV-motos's shape). Duck-typed: each row exposes ``.module``.
+    """
+    wanted = {
+        normalize_module_separators(c).casefold()
+        for c in _module_hint_candidates(module_hint)
+    }
+    exact = [
+        r for r in rows
+        if normalize_module_separators(r.module).casefold() in wanted
+    ]
+    return exact or list(rows)
 
 
 def _module_hint_candidates(module_hint: str) -> list[str]:

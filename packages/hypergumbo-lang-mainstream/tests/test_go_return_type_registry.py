@@ -469,8 +469,9 @@ func readIt() {
             "the receiver's package was dropped; dst still names the 'external' "
             f"placeholder: {[e.dst for e in reads]}"
         )
-        assert any(":net:" in e.dst for e in reads), (
-            f"expected the dst to name package 'net'; got {[e.dst for e in reads]}"
+        # INV-vusum: the slot now names the TYPE under its package.
+        assert any(e.dst.startswith("go:net.Conn:") for e in reads), (
+            f"expected the dst to name net.Conn; got {[e.dst for e in reads]}"
         )
 
     def test_in_repo_factory_return_type_still_resolves_to_the_repo_symbol(
