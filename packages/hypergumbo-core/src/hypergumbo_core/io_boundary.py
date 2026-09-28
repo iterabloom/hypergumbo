@@ -507,11 +507,14 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "System.Process.Text.readCreateProcessWithExitCode",
     "System.Process.Text.readProcess",
     "System.Process.Text.readProcessWithExitCode",
-    # Swift (Foundation.Process — launchPath is the canonical launch site
-    # tracked by swift.yaml; there is no separate Process.launch entry).
-    "Process.launchPath",
-    # Objective-C (Foundation NSTask)
+    # Swift (Foundation.Process). The calls that start the child (INV-vamif);
+    # this used to be "Process.launchPath", a property swift.yaml rowed as the
+    # launch site, which no call edge could ever reach.
+    "Process.run", "Process.launch", "Process.launchedProcess",
+    # Objective-C (Foundation NSTask), including the class-method launchers.
     "NSTask.launch", "NSTask.launchAndReturnError:",
+    "NSTask.launchedTaskWithLaunchPath:arguments:",
+    "NSTask.launchedTaskWithExecutableURL:arguments:error:terminationHandler:",
 })
 
 
@@ -533,7 +536,7 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
     # would say `p.wait()` is arbitrary code execution, which it is not.
     # They carry boundary=subprocess so the taint walk still follows them,
     # which is the exact split this set exists to express -- and the same
-    # shape as the Swift/ObjC/Haskell entries below.
+    # shape as the Haskell entries below.
     "subprocess.Popen.communicate", "subprocess.Popen.wait",
     "subprocess.Popen.poll", "subprocess.Popen.terminate",
     "subprocess.Popen.kill", "subprocess.Popen.send_signal",
@@ -545,10 +548,9 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
     "std::process.abort", "std::process.exit",
     # Elixir — halts the BEAM VM (current-process exit).
     "System.halt",
-    # Swift Foundation.Process — operate on existing process.
-    "Process.interrupt", "Process.terminate", "Process.waitUntilExit",
-    # Objective-C NSTask — operate on existing process.
-    "NSTask.interrupt", "NSTask.terminate", "NSTask.waitUntilExit",
+    # Swift Foundation.Process / Objective-C NSTask: none. Their signal
+    # members are ipc_send and waitUntilExit is not rowed (INV-babiz), so
+    # they are no longer boundary=subprocess entries to exempt.
     # Haskell System.Process — signal / wait / cleanup on existing process.
     "System.Process.cleanupProcess",
     "System.Process.interruptProcessGroupOf",

@@ -216,10 +216,14 @@ subprocess:
     methods:
       - launch
       - "launchAndReturnError:"
-      - waitUntilExit
-      - terminate
-      - interrupt
-    notes: "NSTask is macOS-only; equivalent to subprocess.run in Python"
+      - "launchedTaskWithLaunchPath:arguments:"
+      - "launchedTaskWithExecutableURL:arguments:error:terminationHandler:"
+    notes: >-
+      NSTask is macOS-only. The members that START the child: launch /
+      launchAndReturnError: on an instance, and the two class-method launchers
+      (INV-vamif: launchedTaskWithLaunchPath:arguments: was missing).
+      waitUntilExit, terminate and interrupt used to sit here too; see
+      ipc_send and module_completeness (INV-babiz).
 
 env_read:
   - module: NSProcessInfo
@@ -266,6 +270,17 @@ logging:
     notes: "Apple unified logging (macOS 10.12+, iOS 10+)"
 
 ipc_send:
+  - module: NSTask
+    methods:
+      - terminate
+      - interrupt
+      - suspend
+      - resume
+    notes: >-
+      INV-babiz: signals a child that is already running (SIGTERM, SIGINT,
+      SIGSTOP / SIGCONT). python.yaml's multiprocessing.Process kill/terminate
+      and rust.yaml's Child.kill are rowed here under the dated WI-dupok ruling;
+      terminate and interrupt were under subprocess.
   - module: NSNotificationCenter
     methods:
       - "postNotificationName:object:"
@@ -284,3 +299,20 @@ ipc_recv:
       - "addObserver:selector:name:object:"
       - "removeObserver:"
       - "removeObserver:name:object:"
+
+# ADR-0016 / INV-buzab: a dated, per-module audit that the module's I/O surface
+# is enumerated, so an unrowed call into it is an EXAMINED negative.
+module_completeness:
+  - module: NSTask
+    completeness: complete
+    retrieved: "2026-09-27"
+    notes: >-
+      INV-babiz / INV-vamif. launch, launchAndReturnError: and the class
+      launchers launchedTaskWithLaunchPath:arguments: and
+      launchedTaskWithExecutableURL:arguments:error:terminationHandler: rowed
+      subprocess; terminate, interrupt, suspend, resume rowed ipc_send.
+      waitUntilExit is declared NOT I/O: it blocks until the child exits and
+      returns void (python.yaml's multiprocessing.Process.join, disclosed not
+      rowed). The setters and getters (setLaunchPath:, setArguments:,
+      setStandardOutput:, terminationStatus, isRunning ...) configure the task
+      before the launch or read it after, and cross nothing themselves.
