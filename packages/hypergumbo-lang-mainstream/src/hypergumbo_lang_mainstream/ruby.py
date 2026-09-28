@@ -2361,7 +2361,11 @@ def _try_receiver_call(
     # path above does -- ``::Redis::Alfred.delete`` is keyed
     # ``Redis::Alfred.delete``. The receiver-blind short-name fallback this
     # function used to end with had been resolving that shape by accident.
+    # A class DECLARED with the prefix (``class ::Foo::Bar``) keeps it in its
+    # symbol names, so the literal spelling is still tried second.
     candidates = [receiver_class.lstrip(":")]
+    if receiver_class != candidates[0]:
+        candidates.append(receiver_class)
     if receiver_node.type == "scope_resolution" and short_name and short_name != receiver_class:
         candidates.append(short_name)
 

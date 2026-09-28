@@ -153,3 +153,24 @@ def test_a_user_overlay_row_reaches_the_call(
                tmp_path / "cache", monkeypatch)
     (verdict,) = json.loads(out)["verdicts"]
     assert verdict["verdict"] == "violated", verdict["details"]
+
+
+def test_a_root_prefixed_receiver_resolves_both_ways(tmp_path: Path) -> None:
+    """``::Redis::Alfred.delete`` is keyed ``Redis::Alfred.delete`` (chatwoot, 25
+    calls), and a class DECLARED with the prefix keeps it in its names. The
+    receiver-blind fallback had been resolving both by accident."""
+    from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+    (tmp_path / "lib.rb").write_text(
+        "module Redis\n  module Alfred\n    def self.delete(k)\n      k\n    end\n  end\nend\n\n"
+        "class ::Svc::Resolver\n  def self.using(x)\n    x\n  end\nend\n"
+    )
+    (tmp_path / "app.rb").write_text(
+        "class App\n  def a\n    ::Redis::Alfred.delete(1)\n  end\n\n"
+        "  def b\n    ::Svc::Resolver.using(2)\n  end\nend\n"
+    )
+    edges = [e for e in analyze_ruby(tmp_path).edges if e.edge_type == "calls"]
+    a = {e.dst for e in edges if e.src.endswith("App#a:method")}
+    b = {e.dst for e in edges if e.src.endswith("App#b:method")}
+    assert any(d.endswith("Alfred.delete:method") for d in a), a
+    assert any(d.endswith("Resolver.using:method") for d in b), b
