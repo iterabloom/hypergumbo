@@ -886,7 +886,9 @@ def _lookup_named_entry(
 
     * No hits → ``None``.
     * With a usable module hint, filter to entries whose ``module`` matches
-      (via :func:`io_boundary._module_matches`) and return the first match;
+      (via :func:`io_boundary._module_matches`) and return the first match,
+      preferring an entry whose module IS the slot
+      (:func:`io_boundary.prefer_exact_owner`, INV-vusum);
       if none match, return ``None`` — a present-but-mismatched module means
       this is not the catalogued primitive (e.g. ``sys.stdout.write`` is not
       ``asyncio.StreamWriter.write``; F156.A1).
@@ -915,11 +917,11 @@ def _lookup_named_entry(
     # matching nothing and silently dropping the finding. Harvested from the
     # retired `_sink_module_compatible`, which had it right.
     if module_hint and module_hint not in _UNRESOLVED_MODULE_PLACEHOLDERS:
-        from .io_boundary import _module_matches
-        for h in hits:
-            if _module_matches(h.module, module_hint):
-                return h
-        return None
+        from .io_boundary import _module_matches, prefer_exact_owner
+        matches = [h for h in hits if _module_matches(h.module, module_hint)]
+        # INV-vusum: the entry whose module IS the slot outranks one the slot
+        # merely contains, as in lookup_with_module; else the first match.
+        return prefer_exact_owner(matches, module_hint)[0] if matches else None
     # Exact qualified-name match carries its own receiver evidence — allow it
     # before the kind-aware no-module gate (parity with lookup_with_module's
     # qualified-name-first branch).

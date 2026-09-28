@@ -40,7 +40,8 @@ def _call(tmp_path: Path, body: str, imports: str, callee: str):
 ])
 def test_default_client_do_is_the_client_send(tmp_path: Path, imports: str, body: str) -> None:
     edge = _call(tmp_path, body, imports, "Do")
-    assert edge.dst == "go:net/http:0-0:Do:unresolved"
+    # INV-vusum: the slot names the variable's TYPE, not only its package.
+    assert edge.dst == "go:net/http.Client:0-0:Do:unresolved"
     primitive = classify_call(_CATALOGS, edge.dst, edge.meta)
     assert primitive is not None
     assert (primitive.module, primitive.name, primitive.boundary) == ("net/http.Client", "Do", "net_send")
@@ -49,9 +50,12 @@ def test_default_client_do_is_the_client_send(tmp_path: Path, imports: str, body
 def test_default_resolver_lookup_is_a_dns_receive(tmp_path: Path) -> None:
     edge = _call(tmp_path, "\tnet.DefaultResolver.LookupHost(nil, req.Host)",
                  '\t"net"\n\t"net/http"', "LookupHost")
-    assert edge.dst == "go:net:0-0:LookupHost:unresolved"
+    assert edge.dst == "go:net.Resolver:0-0:LookupHost:unresolved"
     primitive = classify_call(_CATALOGS, edge.dst, edge.meta)
     assert primitive is not None and primitive.boundary == "net_recv"
+    # The Resolver METHOD row, not the package function net.LookupHost that
+    # declaration order used to pick (INV-vusum).
+    assert primitive.module == "net.Resolver"
 
 
 def test_control_an_uncatalogued_package_variable_stays_external(tmp_path: Path) -> None:
