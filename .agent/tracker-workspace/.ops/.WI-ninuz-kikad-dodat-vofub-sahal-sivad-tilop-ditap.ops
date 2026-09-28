@@ -20,3 +20,18 @@
     pr_ref:  # bfcc
     description: "FOUND 2026-09-28 while re-verifying WI-nunab. Record: scratchpad nunab/run.py (Go one-file repos with a go.mod; shipped io-boundaries and verify-claims at dev 5f80a79081).\n\ngo.yaml has NO row for os.OpenFile, Go's flag-based open (os.O_WRONLY / O_RDWR / O_APPEND / O_CREATE / O_RDONLY). os.Create is fs_write, os.Open is fs_read and os.WriteFile is fs_write; OpenFile is in none of them. Measured:\n    fh, _ := os.OpenFile(p, os.O_WRONLY|os.O_CREATE, 0o644); fh.Write(b)\n  -> no fs_write chain. external_potential lists os.OpenFile and os.File.Write, and a must_not_exist fs_write claim is INCONCLUSIVE (go.yaml has no module_completeness, so the gate withholds; not a false clean).\nSo the open itself is unclassified, not only the write through the handle (which is WI-nunab).\n\nALREADY KNOWN ELSEWHERE: go.py:2661 lists \"os.OpenFile(\" among handle constructors for the handle-kind reader, so the analyzer treats it as producing a host_path handle while the catalogue has no row for the call.\n\nDESIGN QUESTION, not decided here: the boundary depends on the FLAG argument. go.yaml carries no mode-discriminated rows. python.yaml's builtins.open uses io_mode (mode_argument_for / mode_discriminated_primitives), but Go's mode is a bitwise OR of package constants, not a string literal, so stamp_io_mode_from_call would need a Go reading of the flag expression. The alternative is a dual fs_read/fs_write row with an abstention answer. Size OpenFile call sites on the Go cohort first, and split them by flag.\n\nRelated: WI-nunab (handle-method writes); INV-kaduh (C fopen mode discrimination, the precedent)."  # bfcc
     fields: {}  # bfcc
+- op: update  # 5aed
+  at: '2026-09-28T13:40:22Z'  # 5aed
+  by: agent  # 5aed
+  actor: jgstern_agent  # 5aed
+  clock: 2  # 5aed
+  nonce: 5aed  # 5aed
+  set:  # 5aed
+    status: done  # 5aed
+- op: discuss  # 7b93
+  at: '2026-09-28T13:40:22Z'  # 7b93
+  by: agent  # 7b93
+  actor: jgstern_agent  # 7b93
+  clock: 3  # 7b93
+  nonce: 7b93  # 7b93
+  message: "DONE in PR #1276 with WI-nunab. os.OpenFile is rowed under fs_read AND fs_write, mode-discriminated like python's open. The flag argument is read by NAME: ModeArgument.flag_modes in io_boundary._MODE_ARGUMENT_POSITIONS['go']; O_WRONLY / O_RDWR / O_APPEND / O_CREATE / O_TRUNC write, O_RDONLY alone reads. go.py now calls the shared stamp_io_mode_from_call. A flag held in a variable stamps nothing and keeps the first-declared fs_read row, the same absence rule as a non-literal mode string. BEHAVIOURAL EVIDENCE on merged dev: 'fh, _ := os.OpenFile(p, os.O_WRONLY|os.O_CREATE, 0o644); fh.Write(b)' gives fs_write chains os.OpenFile and os.File.Write, and a must_not_exist fs_write claim moves inconclusive -> VIOLATED; os.O_RDONLY gives fs_read. Tests: test_go_handle_writes.py, core test_mode_from_flag_names.py (5 flag cases). A/B: +17 (beads) and +33 (prometheus) os.OpenFile fs_write chains. A 10-site read-back against source: 9/9 write flags correct, 1 fs_read where the flag was not a literal on the call line."  # 7b93

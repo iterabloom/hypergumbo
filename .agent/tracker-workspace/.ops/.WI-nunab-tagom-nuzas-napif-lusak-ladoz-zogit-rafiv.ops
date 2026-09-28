@@ -34,3 +34,18 @@
   clock: 3  # 3d01
   nonce: 3d01  # 3d01
   message: "Cross-reference: the os.OpenFile gap noted above is filed as WI-ninuz."  # 3d01
+- op: update  # 977d
+  at: '2026-09-28T13:40:22Z'  # 977d
+  by: agent  # 977d
+  actor: jgstern_agent  # 977d
+  clock: 4  # 977d
+  nonce: 977d  # 977d
+  set:  # 977d
+    status: done  # 977d
+- op: discuss  # bd85
+  at: '2026-09-28T13:40:22Z'  # bd85
+  by: agent  # bd85
+  actor: jgstern_agent  # bd85
+  clock: 5  # bd85
+  nonce: bd85  # bd85
+  message: "DONE in PR #1276 (merged; dev f56cb092c0), together with WI-ninuz. go.yaml rows os.File.{Write,WriteString} (fs_write / logging / ipc_send) and bufio.Writer.{Write,WriteString} (fs_write / logging / ipc_send / net_send). Every row is call_site_undecidable and abstains_to fs_write, the io.WriteString shape. go.py stamps io_target_kind from the receiver. An *os.File receiver's own binding is classified (os.Create / os.OpenFile -> host_path; _GO_HANDLE_TYPES). os.Stdin / os.Stdout / os.Stderr are now typed os.File in library_signatures (their earlier refusal note is updated) and stamp std_stream by name. A bufio.Writer follows its NewWriter argument through the existing WI-vutav hop. Flush is deliberately not rowed: it moves bytes WriteString already accepted.\n\nBEHAVIOURAL EVIDENCE, this row's repro re-run on merged dev (scratchpad nunab/run.py, with go.mod):\n  os.Create handle   fh.Write / fh.WriteString   -> fs_write chains (were external_potential only)\n  *os.File param     fh.Write                    -> fs_write (abstention); NO-fs_write inconclusive -> VIOLATED\n  os.Stdout.Write                                 -> logging (dst os.File:0-0:Write; was external:0-0:Write); NO-logging violated\n  bufio.NewWriter(file) .WriteString              -> fs_write; bufio.Writer param -> fs_write (abstention), inconclusive -> VIOLATED\n  controls: strings.Builder.WriteString still unrowed.\nTests: packages/hypergumbo-lang-mainstream/tests/test_go_handle_writes.py (12), core test_mode_from_flag_names.py.\n\nA/B, io-boundaries + verify-claims with 4 boundary claims (record ~/hypergumbo_lab_notebook/nunab_09282026/RESULT.md):\n  beads       total_io_edges 6915 -> 6947: +17 os.OpenFile fs_write, +1 fs_read, +9 os.File.WriteString, +3 os.File.Write, +1 bufio.Writer.Write (all previously external_potential)\n  prometheus  1481 -> 1529: +33 os.OpenFile fs_write, +11 os.File.Write, +2 bufio.Writer.Write, +1 WriteString, +1 OpenFile fs_read\n  verify-claims: no verdict moved on either repo (all four claims already violated), so the os.Std* typing moved no coverage-gate verdict there.\n  New disclosures: os.File.Fd x7, os.File.Read x1 (beads), from the newly typed std streams.\n\nKNOWN LIMIT, not asserted: go.py types only the FIRST name a multi-result ':=' binds, so the write end w of 'r, w, _ := os.Pipe()' has no slot, and the pipe -> ipc_send arm is reachable only through a typed receiver. Not measured on a corpus.\nNOT DONE: the pre-fix census of .Write( on typed *os.File receivers this row asked for. The A/B above counts what the rows reach instead."  # bd85
