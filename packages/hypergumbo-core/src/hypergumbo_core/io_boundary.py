@@ -1108,8 +1108,8 @@ class IoBoundaryCatalog:
         self, name: str, module_hint: str | None = None,
         *, call_construct: str | None = None,
         allow_short_name_fallback: bool = True,
-        io_modes: Sequence[str] | None = None,
-        io_target_kinds: Sequence[str] | None = None,
+        io_modes: Sequence[Optional[str]] | None = None,
+        io_target_kinds: Sequence[Optional[str]] | None = None,
     ) -> Optional[IoPrimitive]:
         """Look up a primitive with optional module context for disambiguation.
 
@@ -2543,7 +2543,7 @@ def resolve_mode_boundary(io_mode: Optional[str]) -> str:
 
 
 def resolve_mode_boundary_across_sites(
-    io_modes: Optional[Sequence[str]],
+    io_modes: Optional[Sequence[Optional[str]]],
 ) -> str:
     """:func:`resolve_mode_boundary`, asked of EVERY collapsed call site.
 
@@ -2578,7 +2578,7 @@ def resolve_mode_boundary_across_sites(
 
 def call_site_modes(
     edge_meta: Optional[Mapping[str, Any]],
-) -> tuple[str, ...]:
+) -> tuple[Optional[str], ...]:
     """Every statically-known open-mode among an edge's collapsed call sites.
 
     ONE READER for a two-shaped fact, so no consumer has to know that
@@ -2588,16 +2588,30 @@ def call_site_modes(
     themselves — a second copy of the plural/singular fallback is exactly the
     shape that leaves one consumer reading the old key forever.
 
+    ``None`` IS A SITE WITH NO MODE (INV-rajak): the collapse records a site
+    that carried no ``io_mode`` as ``None``, and every consumer reads it as
+    :func:`resolve_mode_boundary` reads a single unmoded call. Dropping it let
+    ``open(q, 'w')`` erase the ``fs_read`` of a ``json.load(open(p))`` beside
+    it, and a ``must_not_exist: fs_read`` claim confirmed.
+
     Validated rather than trusted: ``meta`` is an open dict deserialized from
     an artifact that may predate either key or have been hand-edited, so a
     non-list ``_values`` falls back to the singular and a non-string member is
-    dropped rather than carried into ``set()`` arithmetic downstream.
+    read as ``None``, a site whose mode is unknown -- never dropped, because a
+    dropped site is the defect above.
     """
+    return _call_site_values(edge_meta, "io_mode")
+
+
+def _call_site_values(
+    edge_meta: Optional[Mapping[str, Any]], key: str,
+) -> tuple[Optional[str], ...]:
+    """The shared body of :func:`call_site_modes` and :func:`call_site_target_kinds`."""
     meta = edge_meta or {}
-    values = meta.get("io_mode_values")
+    values = meta.get(f"{key}_values")
     if isinstance(values, list):
-        return tuple(v for v in values if isinstance(v, str))
-    single = meta.get("io_mode")
+        return tuple(v if isinstance(v, str) else None for v in values)
+    single = meta.get(key)
     return (single,) if isinstance(single, str) else ()
 
 
@@ -2698,15 +2712,18 @@ _TARGET_MAP_BY_DIRECTION: Final[Mapping[str, Mapping[str, str]]] = {
 
 
 def _boundary_for_target_kind(
-    kind: str, direction: str,
+    kind: Optional[str], direction: str,
 ) -> tuple[bool, Optional[str]]:
     """``(known, boundary)`` for a call in ``direction`` at ``kind``.
 
     ``known=False`` means this vocabulary has no opinion and the caller must
     fall back to the catalogue row -- the only safe default in a direction that
     removes findings. ``known=True, boundary=None`` means the call crosses
-    nothing at all.
+    nothing at all. ``kind=None`` is a collapsed site the analyzer did not
+    stamp (INV-rajak), and the vocabulary has no opinion on it.
     """
+    if kind is None:
+        return False, None
     if kind in _NON_CROSSING_TARGET_KINDS:
         return True, None
     table = _TARGET_MAP_BY_DIRECTION[direction]
@@ -2715,19 +2732,19 @@ def _boundary_for_target_kind(
     return False, None
 
 
-def read_boundary_for_target_kind(kind: str) -> tuple[bool, Optional[str]]:
+def read_boundary_for_target_kind(kind: Optional[str]) -> tuple[bool, Optional[str]]:
     """``(known, boundary)`` for a READ at ``kind``; see :func:`_boundary_for_target_kind`."""
     return _boundary_for_target_kind(kind, "read")
 
 
-def write_boundary_for_target_kind(kind: str) -> tuple[bool, Optional[str]]:
+def write_boundary_for_target_kind(kind: Optional[str]) -> tuple[bool, Optional[str]]:
     """``(known, boundary)`` for a WRITE at ``kind``; see :func:`_boundary_for_target_kind`."""
     return _boundary_for_target_kind(kind, "write")
 
 
 def call_site_target_kinds(
     edge_meta: Optional[Mapping[str, Any]],
-) -> tuple[str, ...]:
+) -> tuple[Optional[str], ...]:
     """Every ``io_target_kind`` among an edge's collapsed call sites.
 
     The ``io_target_kind`` sibling of :func:`call_site_modes`, and it exists for
@@ -2735,16 +2752,16 @@ def call_site_target_kinds(
     ``io_target_kind_values`` the moment two sites disagree, and a consumer that
     only knew the singular spelling would read one site's answer as the
     relationship's. One reader, so no consumer has to know that.
+
+    ``None`` is a site the analyzer did not stamp (INV-rajak), and it is what
+    keeps one ``in_memory`` scanner from reading as the whole edge: no
+    consumer's vocabulary knows ``None``, so each abstains exactly as it does
+    for a single unstamped call.
     """
-    meta = edge_meta or {}
-    values = meta.get("io_target_kind_values")
-    if isinstance(values, list):
-        return tuple(v for v in values if isinstance(v, str))
-    single = meta.get("io_target_kind")
-    return (single,) if isinstance(single, str) else ()
+    return _call_site_values(edge_meta, "io_target_kind")
 
 
-def target_kinds_cross_no_boundary(target_kinds: Sequence[str]) -> bool:
+def target_kinds_cross_no_boundary(target_kinds: Sequence[Optional[str]]) -> bool:
     """True when EVERY collapsed call site discards what it is handed.
 
     INV-nular, and the direction needs defending because refusing to classify
@@ -2799,7 +2816,7 @@ def _mode_discriminated_keys(
 
 
 def _narrow_by_mode(
-    hits: Sequence[IoPrimitive], io_modes: Optional[Sequence[str]],
+    hits: Sequence[IoPrimitive], io_modes: Optional[Sequence[Optional[str]]],
 ) -> list[IoPrimitive]:
     """Drop the losing row of every mode-discriminated primitive in ``hits``.
 
@@ -2839,7 +2856,7 @@ _GATING_VALUES_BY_DIRECTION: Final[Mapping[str, frozenset[str]]] = {
 
 
 def resolve_target_kind_across_sites(
-    target_kinds: Optional[Sequence[str]],
+    target_kinds: Optional[Sequence[Optional[str]]],
     *,
     direction: str = "read",
 ) -> Optional[str]:
@@ -2951,7 +2968,7 @@ def _target_kind_discriminated_keys(
 
 
 def _narrow_by_target_kind(
-    hits: Sequence[IoPrimitive], target_kinds: Optional[Sequence[str]],
+    hits: Sequence[IoPrimitive], target_kinds: Optional[Sequence[Optional[str]]],
 ) -> list[IoPrimitive]:
     """Drop the losing rows of every target-kind-discriminated primitive.
 
@@ -3006,7 +3023,7 @@ def _narrow_by_target_kind(
 def mode_spanned_boundaries(
     catalog: "IoBoundaryCatalog",
     match: IoPrimitive,
-    io_modes: Sequence[str],
+    io_modes: Sequence[Optional[str]],
 ) -> frozenset[str]:
     """Both fs boundaries when ONE edge's collapsed sites span read AND write.
 
@@ -3430,7 +3447,7 @@ def mode_argument_for(language: str, short_name: str) -> Optional[ModeArgument]:
 
 def select_by_mode(
     candidates: Sequence[IoPrimitive],
-    io_modes: Optional[Sequence[str]],
+    io_modes: Optional[Sequence[Optional[str]]],
 ) -> Optional[IoPrimitive]:
     """Pick the row matching ``io_mode`` from a dual-classified candidate set.
 

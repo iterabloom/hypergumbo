@@ -4920,11 +4920,11 @@ def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) ->
 #: with custom named events still carrying data.
 #:
 #: The third element is the target kind a CROSSING site is stamped with.
-#: Every site of a listed listener is stamped, crossing or not: the per-site
-#: collapse (INV-vukiv) keeps only the values sites HAVE, so an unstamped
-#: ``message`` site folded into a stamped ``open`` site would read as
-#: "every site crosses nothing" and lose the real receive. A non-literal event
-#: is stamped ``unresolved``, the vocabulary's "no opinion".
+#: Every site of a listed listener is stamped, crossing or not. That began as a
+#: workaround: until INV-rajak the per-site collapse (INV-vukiv) dropped an
+#: unstamped site, so a silent ``open`` sibling erased a ``message`` receive.
+#: The collapse now records that site as ``None``; the crossing stamp stays
+#: because it names the kind. A non-literal event is stamped ``unresolved``.
 _LISTENER_EVENTS: dict[tuple[str, str], tuple[frozenset[str], bool, str]] = {
     ("process", "on"): (frozenset({"message"}), True, "pipe"),
     ("WebSocket", "addEventListener"): (frozenset({"message", "close"}), True, "net_stream"),

@@ -116,13 +116,16 @@ def test_disagreeing_sites_preserve_every_distinct_value():
 
 
 def test_a_site_that_omits_the_key_is_itself_a_disagreement():
-    """Adopting the one site that HAS a value would state it of all of them."""
+    """Adopting the one site that HAS a value would state it of all of them.
+
+    The omitting site is listed as ``None`` (INV-rajak): without it the list
+    reads as though every site carried the one value it holds."""
     kept, = deduplicate_edges([
         _edge(3, redirect_target="/etc/cron.d/pwned"),
         _edge(4),
     ])
     assert "redirect_target" not in kept.meta
-    assert kept.meta["redirect_target_values"] == ["/etc/cron.d/pwned"]
+    assert kept.meta["redirect_target_values"] == [None, "/etc/cron.d/pwned"]
 
 
 def test_the_absent_first_site_direction_is_covered_too():
@@ -132,7 +135,7 @@ def test_the_absent_first_site_direction_is_covered_too():
         _edge(4, redirect_target="/etc/cron.d/pwned"),
     ])
     assert "redirect_target" not in kept.meta
-    assert kept.meta["redirect_target_values"] == ["/etc/cron.d/pwned"]
+    assert kept.meta["redirect_target_values"] == [None, "/etc/cron.d/pwned"]
 
 
 def test_three_sites_union_rather_than_pairwise_forget():
