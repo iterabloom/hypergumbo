@@ -291,6 +291,9 @@ class TestTheEnvelope:
         ``evidence_count``. An added key alone would not need the bump; an
         added key that changes what an existing one means is precisely the
         carve-out. 2.3 -> 2.4, re-pointed rather than relaxed.
+
+        And for WI-lukoz: ``trusted_sink_flows``, whose flows leave
+        ``evidence_count`` the same way. 2.4 -> 2.5, re-pointed.
         """
         from hypergumbo_core.verify_claims import VERIFY_CLAIMS_SCHEMA_VERSION
-        assert VERIFY_CLAIMS_SCHEMA_VERSION == "2.4"
+        assert VERIFY_CLAIMS_SCHEMA_VERSION == "2.5"

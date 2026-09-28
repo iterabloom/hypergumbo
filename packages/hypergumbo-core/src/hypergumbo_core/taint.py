@@ -181,6 +181,10 @@ class TaintSource:
         return f"{self.module}.{self.name}"
 
 
+#: The one ``TaintSink.trust_level`` value that changes a verdict (WI-lukoz).
+TRUST_LEVEL_TRUSTED: Final[str] = "trusted"
+
+
 @dataclass(frozen=True)
 class TaintSink:
     """A function/method/attribute that should not receive tainted data.
@@ -189,6 +193,11 @@ class TaintSink:
         zone: The trust zone (e.g. "host_fs", "network", "host_env", "ipc",
             "browser_storage", "relay").
         trust_level: The trust level (e.g. "untrusted", "semi-trusted").
+            Exactly one value has an effect: ``"trusted"``
+            (:data:`TRUST_LEVEL_TRUSTED`), which a project declares on a sink
+            that is safe in context. Its flows are excluded from a verdict's
+            evidence and DISCLOSED in ``trusted_sink_flows`` (WI-lukoz). Every
+            other value, ``"semi-trusted"`` included, is carried and inert.
         module: The module or class path.
         name: The function/method/attribute name.
         kind: One of "function", "method", or "attribute".
@@ -542,6 +551,14 @@ class TaintFlowFinding:
     that the config flow stays true); what it is not is USEFUL, and the second
     number is what this field feeds.
     """
+    trusted_sink: bool = False
+    """This finding's sink was declared ``trust_level: trusted`` (WI-lukoz).
+
+    A project catalogue's statement that the sink is safe in context. Carried,
+    like :attr:`resource_naming_only`, so a consumer can EXCLUDE and DISCLOSE
+    the flow rather than lose it: the flow is real, the project has said it
+    is acceptable, and the count of such flows is reported beside the verdict.
+    """
     walk_blocked_by: str = ""
     #: INV-muhij Finding A: what the WHOLE GROUP reported, for a collapsed row.
     #:
@@ -696,6 +713,8 @@ class TaintFlowFinding:
             # WI-bulag / T9: a consumer that cannot see this cannot tell an
             # excluded flow from an absent one.
             "resource_naming_only": self.resource_naming_only,
+            # WI-lukoz: likewise for a sink the project declared trusted.
+            "trusted_sink": self.trusted_sink,
             # INV-muhij Finding A: the scalars are the REPRESENTATIVE's. A
             # consumer deciding what a collapsed row is entitled to claim must
             # read the union, so serializing only the scalars would leave the
@@ -3411,6 +3430,7 @@ def propagate_taint_structural(
                 sink_zone=taint_sink.zone,
                         # WI-bulag / T9: carried, never recomputed at the walk.
                         resource_naming_only=taint_sink.resource_naming_only,
+                        trusted_sink=taint_sink.trust_level == TRUST_LEVEL_TRUSTED,
                 # INV-kakad: the SITE is the (caller, callee) pair. Recording
                 # the caller alone under-counts a function that calls four
                 # different sinks; recording the callee alone under-counts one
@@ -4853,6 +4873,7 @@ def propagate_taint_ddg(
                         sink_zone=taint_sink.zone,
                         # WI-bulag / T9: carried, never recomputed at the walk.
                         resource_naming_only=taint_sink.resource_naming_only,
+                        trusted_sink=taint_sink.trust_level == TRUST_LEVEL_TRUSTED,
                         sink_call_sites=((sink_node, sink_callee_id),),
                         sanitized=is_sanitized,
                         sanitized_by=sanitized_by,
@@ -4876,6 +4897,7 @@ def propagate_taint_ddg(
                 sink_zone=taint_sink.zone,
                         # WI-bulag / T9: carried, never recomputed at the walk.
                         resource_naming_only=taint_sink.resource_naming_only,
+                        trusted_sink=taint_sink.trust_level == TRUST_LEVEL_TRUSTED,
                 sink_call_sites=((sink_node, sink_callee_id),),  # INV-kakad
                 sanitized=is_sanitized,
                 sanitized_by=sanitized_by,

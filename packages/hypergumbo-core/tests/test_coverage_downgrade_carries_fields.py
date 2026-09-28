@@ -29,7 +29,7 @@ def _full() -> ClaimVerdict:
         claim_id="C", claim_text="t", verdict="confirmed", evidence_count=2,
         details="clean.", evidence=[{"x": 1}], excluded_flows={"test_sourced": 3},
         flow_origins={"ddg": 1}, analysis_methods={"ddg": 1},
-        resource_naming_flows=4, sanitized_flows=5,
+        resource_naming_flows=4, trusted_sink_flows=6, sanitized_flows=5,
         caveats=[{"kind": "untyped_receiver", "entries": ["a"]}],
         analysis_fidelity={"python": ["python-ast-v1"]},
     )
