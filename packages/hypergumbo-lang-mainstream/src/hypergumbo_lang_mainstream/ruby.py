@@ -2356,8 +2356,12 @@ def _try_receiver_call(
         # the require source module (``set``, ``json``, ...).
 
     # Build list of candidate class names to try
-    # For scope_resolution: try full name first, then short name as fallback
-    candidates = [receiver_class]
+    # For scope_resolution: try full name first, then short name as fallback.
+    # WI-johib: the root-namespace prefix is stripped here too, as the ``new``
+    # path above does -- ``::Redis::Alfred.delete`` is keyed
+    # ``Redis::Alfred.delete``. The receiver-blind short-name fallback this
+    # function used to end with had been resolving that shape by accident.
+    candidates = [receiver_class.lstrip(":")]
     if receiver_node.type == "scope_resolution" and short_name and short_name != receiver_class:
         candidates.append(short_name)
 
@@ -2392,11 +2396,10 @@ def _try_receiver_call(
     # A constant the project does not declare falls through to the
     # constant-external fallback below.
     project_owners = [
-        candidate.lstrip(":") for candidate in candidates
-        if candidate.lstrip(":") in global_symbols
+        candidate for candidate in candidates
+        if candidate in global_symbols
         or any(
-            key.startswith(f"{candidate.lstrip(':')}#")
-            or key.startswith(f"{candidate.lstrip(':')}.")
+            key.startswith(f"{candidate}#") or key.startswith(f"{candidate}.")
             for key in global_symbols
         )
     ]

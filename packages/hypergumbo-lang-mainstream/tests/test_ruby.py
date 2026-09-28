@@ -2663,15 +2663,18 @@ end
         )
 
     def test_receiver_call_resolver_fallback(self, tmp_path: Path) -> None:
-        """Qualified name not found directly; resolver finds method by short name.
+        """A constant receiver is NOT bound to another class by short name (WI-johib).
 
-        When a class uses a namespace prefix (Admin::UserFinder), its methods
-        are stored as "Admin::UserFinder#locate". A call like Finder.locate()
-        tries "Finder#locate" (not found) and falls to the resolver.
+        This test used to pin the opposite: ``Finder.locate(42)`` bound to
+        ``Admin::UserFinder#locate`` through a receiver-blind short-name
+        lookup, although ``Finder`` is not ``UserFinder``. That fallback bound
+        ``Rails.root`` to ``HealthServer#root`` and 54 of postal's 160
+        constant-receiver calls to a different class. ``Finder`` is not a
+        project constant, so the call takes the constant-external fallback;
+        the namespaced spelling still resolves.
         """
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
-        # Namespaced class: symbol stored as "Admin::UserFinder#locate"
         (tmp_path / "finder.rb").write_text("""
 class Admin::UserFinder
   def locate(id)
@@ -2680,11 +2683,14 @@ class Admin::UserFinder
 end
 """)
 
-        # Caller uses short name Finder (not Admin::UserFinder)
         (tmp_path / "app.rb").write_text("""
 class App
   def run
     Finder.locate(42)
+  end
+
+  def run_qualified
+    Admin::UserFinder.locate(42)
   end
 end
 """)
@@ -2692,17 +2698,12 @@ end
         result = analyze_ruby(tmp_path)
 
         call_edges = [e for e in result.edges if e.edge_type == "calls"]
-        resolver_edges = [
-            e for e in call_edges
-            if "run" in e.src and "locate" in e.dst
-            and (e.evidence_type == "ast_call" and e.meta.get("call_construct") == "method" and e.meta.get("receiver") == "generic")
-        ]
-        assert len(resolver_edges) == 1, (
-            f"Expected 1 resolver fallback edge, got {len(resolver_edges)}. "
-            f"All call edges: {[(e.src, e.dst, e.evidence_type) for e in call_edges]}"
-        )
-        # 0.75 * suffix_match(0.85) = 0.6375
-        assert 0.60 <= resolver_edges[0].confidence <= 0.75
+        by_caller = {
+            caller: {e.dst for e in call_edges if e.src.endswith(f"App#{caller}:method")}
+            for caller in ("run", "run_qualified")
+        }
+        assert by_caller["run"] == {"ruby:finder:0-0:locate:unresolved"}, by_caller
+        assert any(d.endswith(":Admin..UserFinder#locate:method") for d in by_caller["run_qualified"]), by_caller
 
     def test_receiver_call_outside_method_is_anchored_on_the_file(self, tmp_path: Path) -> None:
         """A receiver call at module level emits a call anchored on the FILE.
