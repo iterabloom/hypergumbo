@@ -766,7 +766,9 @@ def _kt_inline_path(node: "tree_sitter.Node", source: bytes) -> str | None:
     if node.type != "navigation_expression":
         return None
     named = [c for c in node.children if c.is_named]
-    if len(named) != 2 or named[1].type != "identifier":
+    # The grammar's navigation_expression is one receiver and one suffix; this
+    # guards a variant that nests anything else there.
+    if len(named) != 2 or named[1].type != "identifier":  # pragma: no cover - grammar guard
         return None
     head = _kt_inline_path(named[0], source)
     return None if head is None else f"{head}.{node_text(named[1], source)}"

@@ -131,3 +131,60 @@ def test_the_filed_claim_is_violated(
         main(["verify-claims", str(repo), "--claims", str(claims), "--format", "json"])
     (verdict,) = json.loads(buf.getvalue())["verdicts"]
     assert verdict["verdict"] == "violated", verdict["details"]
+
+
+_MORE = '''package app
+
+import java.io.File
+import okio.ForwardingSink
+import okio.Sink
+
+class Outer {
+    object Registry {
+        fun lookup(): Int = 1
+    }
+}
+
+class Wrap(d: Sink) : ForwardingSink(d) {
+    override fun flush() = super.flush()
+}
+
+class Plain {
+    override fun toString(): String = super.toString()
+}
+
+fun make(): Holder = Holder()
+class Holder { val file: File = File("x") }
+
+fun nested(): Int = Outer.Registry.lookup()
+fun rooted(): String = make().file.readText()
+'''
+
+
+@pytest.fixture(scope="module")
+def more(tmp_path_factory: pytest.TempPathFactory) -> dict[str, set[str]]:
+    repo = tmp_path_factory.mktemp("dupol_more")
+    (repo / "More.kt").write_text(_MORE)
+    by_caller: dict[str, set[str]] = {}
+    for edge in analyze_kotlin(repo).edges:
+        if edge.edge_type != "calls":
+            continue
+        caller = edge.src.split(":")[-2].rsplit(".", 1)[-1]
+        by_caller.setdefault(caller, set()).add(":".join(edge.dst.split(":")[1:4]))
+    return by_caller
+
+
+def test_a_path_ending_in_a_project_class_resolves_on_it(more: dict[str, set[str]]) -> None:
+    assert any(d.endswith(":Registry.lookup") for d in more["nested"]), more["nested"]
+
+
+def test_super_on_an_external_base_names_the_base(more: dict[str, set[str]]) -> None:
+    assert "okio.ForwardingSink:0-0:flush" in more["flush"]
+
+
+def test_super_with_no_declared_base_keeps_the_placeholder(more: dict[str, set[str]]) -> None:
+    assert "external:0-0:toString" in more["toString"]
+
+
+def test_a_chain_rooted_in_a_call_is_a_value_not_a_path(more: dict[str, set[str]]) -> None:
+    assert "external:0-0:readText" in more["rooted"]
