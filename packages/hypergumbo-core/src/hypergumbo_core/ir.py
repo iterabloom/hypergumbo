@@ -1211,6 +1211,20 @@ def _edge_call_lines(edge: Edge) -> list[int]:
 _MISSING = object()
 
 
+def _per_site_values(meta: dict[str, Any], key: str) -> Optional[list[object]]:
+    """The values *meta*'s call sites carry for *key*, or ``None`` if none does.
+
+    An edge that is itself a collapse answers with its ``_values`` list, so
+    :func:`apply_external_id_remap` merging two collapsed edges keeps both
+    sides' sites rather than only the kept one's.
+    """
+    values = meta.get(f"{key}_values")
+    if isinstance(values, list):
+        return list(values)
+    single = meta.get(key, _MISSING)
+    return None if single is _MISSING else [single]
+
+
 def _absorb_per_call_site_key(
     meta: dict[str, Any], absorbed_meta: dict[str, Any], key: str,
 ) -> None:
@@ -1230,6 +1244,15 @@ def _absorb_per_call_site_key(
     a "every argument here is a literal" proof is worthless if it was proved
     at a different line.
 
+    AND IT IS RECORDED AS ``None`` IN ``_values`` (INV-rajak). Listing only
+    the values sites HAD lost the unstamped site between the two halves of
+    this rule: an in-memory ``bufio.NewScanner`` beside a parameter scanner
+    left ``io_target_kind_values: ['in_memory']``, every reader saw one
+    unanimous non-crossing site, and the real receive and its taint source
+    vanished. ``None`` is that site, and every reader gives it the meaning a
+    single unstamped call already has. Sites that ALL omit the key write
+    nothing, exactly as before.
+
     ``_values`` is ABSORBING. Once written it is never collapsed back to a
     singular, even if a third site happens to repeat an earlier value — the
     relationship has already been shown to be non-uniform, and un-saying that
@@ -1239,36 +1262,28 @@ def _absorb_per_call_site_key(
     silent cap reads as completeness: a function with more than 50 distinct
     redirect targets keeps the first 50 by sort order. The cap cannot make a
     non-uniform relationship look uniform — the singular key is already gone by
-    then — so what a truncation costs is enumeration, never the warning.
+    then, and ``None`` sorts FIRST so a truncation never drops it — so what a
+    truncation costs is enumeration, never the warning.
     """
-    known = meta.get(f"{key}_values")
-    if isinstance(known, list):
-        values: list[object] = list(known)
-        agreed = False
-    else:
-        values = []
-        kept_val = meta.get(key, _MISSING)
-        if kept_val is not _MISSING:
-            values.append(kept_val)
-        agreed = True
-
-    absorbed_val = absorbed_meta.get(key, _MISSING)
-    if absorbed_val is not _MISSING and absorbed_val not in values:
-        values.append(absorbed_val)
-
-    # Uniform iff nothing was ever dropped AND both sites carried the same
-    # single value. ``_MISSING`` on either side breaks uniformity by itself.
+    kept_sites = _per_site_values(meta, key)
+    absorbed_sites = _per_site_values(absorbed_meta, key)
+    if kept_sites is None and absorbed_sites is None:
+        return
     uniform = (
-        agreed
-        and len(values) == 1
-        and meta.get(key, _MISSING) is not _MISSING
-        and absorbed_val is not _MISSING
+        not isinstance(meta.get(f"{key}_values"), list)
+        and not isinstance(absorbed_meta.get(f"{key}_values"), list)
+        and kept_sites == absorbed_sites
     )
     if uniform:
         return
+    values: list[object] = []
+    for value in (kept_sites or [None]) + (absorbed_sites or [None]):
+        if value not in values:
+            values.append(value)
     meta.pop(key, None)
-    if values:
-        meta[f"{key}_values"] = sorted(values, key=repr)[:_CALL_LINES_CAP]
+    meta[f"{key}_values"] = sorted(
+        values, key=lambda v: (v is not None, repr(v)),
+    )[:_CALL_LINES_CAP]
 
 
 def _absorb_call_site(kept: Edge, absorbed: Edge) -> None:

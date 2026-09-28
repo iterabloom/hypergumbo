@@ -1027,8 +1027,8 @@ def _match_propagation_entry(
     *,
     is_resolved: bool = True,
     language: str = "",
-    io_modes: "Sequence[str] | None" = None,
-    io_target_kinds: "Sequence[str] | None" = None,
+    io_modes: "Sequence[Optional[str]] | None" = None,
+    io_target_kinds: "Sequence[Optional[str]] | None" = None,
 ):
     """Match an edge's callee against a propagation source/sink ``index``.
 
@@ -2794,8 +2794,16 @@ def _name_flow_indexes(
     A sink key is ``None`` the moment ANY edge under it lacks the stamp. A
     partial answer must not read as a complete one: the unstamped edge could
     be reached by a name the stamped ones are not.
+
+    THE SAME HOLDS INSIDE ONE COLLAPSED EDGE (INV-rajak). A ``None`` member of
+    ``redirect_origin_names_values`` is a site with no stamp, so the sink key
+    is ``None``; a ``None`` member of ``env_var_values`` is a read whose name
+    was not recovered, so the source carries an unknown name and its set is
+    returned EMPTY, which :func:`_source_names_can_reach_sink` already reads
+    as "keep the pair".
     """
     source_names: dict[tuple[str, str], set[str]] = defaultdict(set)
+    unnamed_sources: set[tuple[str, str]] = set()
     sink_names: dict[tuple[str, str], Optional[set[str]]] = {}
     for edge in edges:
         meta = edge.get("meta") or {}
@@ -2811,8 +2819,13 @@ def _name_flow_indexes(
         for value in meta.get("env_var_values") or ():
             if isinstance(value, str) and value:
                 source_names[key].add(value)
+            elif value is None:
+                unnamed_sources.add(key)
         if str(meta.get("io_primitive", "")).startswith("redirect."):
             stamps = meta.get("redirect_origin_names_values")
+            if isinstance(stamps, list) and None in stamps:
+                sink_names[key] = None
+                continue
             if isinstance(stamps, list):
                 # Sites disagreed. Union them: any of those sites could be the
                 # one this pair flows to, and a bigger set keeps more findings.
@@ -2828,6 +2841,8 @@ def _name_flow_indexes(
             bucket = sink_names.setdefault(key, set())
             assert bucket is not None  # narrowed by the branch above
             bucket.update(merged)
+    for key in unnamed_sources:
+        source_names[key] = set()
     return (
         {k: frozenset(v) for k, v in source_names.items()},
         {k: (None if v is None else frozenset(v)) for k, v in sink_names.items()},

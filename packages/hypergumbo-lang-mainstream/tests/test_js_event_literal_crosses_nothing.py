@@ -16,7 +16,8 @@ while the call still counts as examined (no withheld verdict), and taint
 refuses to mint a source there. The analyzer stamps it when the listener's
 event is a string literal that carries nothing, and stamps every OTHER site
 of the same listener too (the crossing kind, or ``unresolved`` for an event it
-cannot read), because the per-site collapse keeps only the values sites have.
+cannot read). That began as a workaround for INV-rajak, since fixed at the
+collapse, which now records an unstamped site as ``None``.
 The same holds for the browser rows the catalogue notes already reason about:
 a WebSocket's ``open`` and ``error`` events carry no data.
 """

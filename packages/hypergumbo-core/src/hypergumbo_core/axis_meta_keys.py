@@ -1267,7 +1267,10 @@ def _per_call_site_values_specs() -> tuple[MetaKeySpec, ...]:
             f"``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` "
             f"ONLY when the sites disagreed, in which case the singular "
             f"``{spec.name}`` is removed — its presence would state one "
-            f"site's value of the whole relationship (INV-vukiv). Absence of "
+            f"site's value of the whole relationship (INV-vukiv). A site "
+            f"that carried no ``{spec.name}`` is listed as ``null``, sorted "
+            f"first and never capped away, so one site's value cannot read "
+            f"as every site's (INV-rajak). Absence of "
             f"this key therefore means every collapsed site agreed, exactly "
             f"as absence of ``call_lines`` means there was one site.",
             write_discipline=DISCIPLINE_SINGLE_WRITER,
