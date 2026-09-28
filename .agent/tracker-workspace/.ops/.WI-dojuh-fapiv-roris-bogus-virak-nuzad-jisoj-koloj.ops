@@ -1,0 +1,21 @@
+- op: create  # 8594
+  at: '2026-09-28T13:40:33Z'  # 8594
+  by: agent  # 8594
+  actor: jgstern_agent  # 8594
+  clock: 1  # 8594
+  nonce: '8594'  # 8594
+  data:  # 8594
+    kind: work_item  # 8594
+    title: "cli.py:6834 (WI-rusil's census 'continue') is uncovered in core-package isolation on dev; the next PR touching cli.py inherits the coverage failure"  # 8594
+    status: todo_hard  # 8594
+    priority: 3  # 8594
+    parent:  # 8594
+    tags:  # 8594
+    - testing  # 8594
+    - coverage  # 8594
+    isbefore: []  # 8594
+    duplicate_of: []  # 8594
+    not_duplicate_of: []  # 8594
+    pr_ref:  # 8594
+    description: "FOUND 2026-09-28 while preparing WI-nunab's PR. scripts/check-package-coverage core, run on a pinned worktree of dev at 02c27cad97 (PYTHONPATH to the worktree's packages/*/src), reports ONE line uncovered in core isolation:\n\n    packages/hypergumbo-core/src/hypergumbo_core/cli.py  6834   the 'continue' in the WI-rusil scoped no-taint-catalogue loop\n        if _tf is None or _tf.source_taint in blind_by_source_taint:\n            continue\n\nIt was introduced by b297d1ce81 (WI-rusil, 2026-09-27). PR CI checks coverage only for a PR's CHANGED files, in a combined run, so it passed there. The same line is uncovered on the WI-nunab branch, which does not touch cli.py. The next PR that edits cli.py will fail its coverage gate on a line it did not write.\n\nFIX: a core test whose claims file mixes a boundary claim (_tf is None) with a taint claim, over a fixture containing a language with no taint catalogue, so the census loop runs and skips the boundary claim. Read test_taint_blind_claim_scope.py first; its fixtures use php + python with taint claims only."  # 8594
+    fields: {}  # 8594

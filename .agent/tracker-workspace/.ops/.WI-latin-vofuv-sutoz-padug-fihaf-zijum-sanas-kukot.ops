@@ -1,0 +1,22 @@
+- op: create  # ce34
+  at: '2026-09-28T11:28:26Z'  # ce34
+  by: agent  # ce34
+  actor: jgstern_agent  # ce34
+  clock: 1  # ce34
+  nonce: ce34  # ce34
+  data:  # ce34
+    kind: work_item  # ce34
+    title: "java: super.m() emits no calls edge (kotlin's twin fixed in INV-dupol)"  # ce34
+    status: todo_hard  # ce34
+    priority: 3  # ce34
+    parent:  # ce34
+    tags:  # ce34
+    - java  # ce34
+    - call_graph  # ce34
+    - analysis_quality  # ce34
+    isbefore: []  # ce34
+    duplicate_of: []  # ce34
+    not_duplicate_of: []  # ce34
+    pr_ref:  # ce34
+    description: "FOUND 2026-09-28 while fixing INV-dupol (the kotlin twin, now satisfied). Probe at dev 27747d2af7, shipped survey, one file:\n\n    class Base { int go() { return 1; } }\n    class Kid extends Base { int go() { return super.go(); } }\n\nKid.go emits NO calls edge. Kotlin's super.go() now resolves to Base.go (INV-dupol, via the class's declared bases), and java does not emit at all. A call with no edge is invisible to io-boundaries, taint and the coverage gate. A super call into an EXTERNAL base (an overridden stream write, a framework lifecycle hook) is the population that matters for I/O.\n\nThe same probe showed java handles the other INV-dupol shapes: a fully-qualified inline call names its owner, System.out.println and \"x\".trim() keep the external placeholder, and this.file.length() names java.io.File.\n\nFIX SHAPE (not built): mirror kotlin._emit_super_call. Resolve through the enclosing class's extends base via the resolver; for an external base, emit an unresolved edge whose module is the base's import and whose receiver_type_hint is the base. Measure on a java corpus repo before closing."  # ce34
+    fields: {}  # ce34
