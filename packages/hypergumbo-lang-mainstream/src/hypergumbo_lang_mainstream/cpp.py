@@ -60,6 +60,7 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
+from hypergumbo_lang_mainstream.header_owner import headers_owned_by
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -119,32 +120,18 @@ _CPP_STL_METHODS: frozenset[str] = frozenset({
 CppAnalysisResult: TypeAlias = AnalysisResult
 
 
-def _has_cpp_source_files(repo_root: Path) -> bool:
-    """Check if the repository contains C++ source files.
-
-    Checks for unambiguous C++ source extensions (.cpp, .cc, .cxx).
-    When none exist, .h files are presumed to be C headers and should
-    be processed only by the C analyzer to avoid phantom C++ symbols.
-    """
-    return any(find_files(repo_root, ["*.cpp", "*.cc", "*.cxx"]))
-
-
 def find_cpp_files(repo_root: Path) -> Iterator[Path]:
     """Yield all C++ files in the repository.
 
-    Headers (.hpp, .hxx) are always included (unambiguously C++).
-    Plain .h headers are only included when C++ source files (.cpp, .cc, .cxx)
-    exist — otherwise they belong to the C analyzer.
+    ``.hpp`` / ``.hxx`` are always C++. A plain ``.h`` is C++'s when
+    ``header_owner`` gives it to C++: the repo holds a C++ file and the header
+    is not an ObjC one (WI-rizas, WI-somod).
 
     Headers are yielded before source files so that definitions can replace
     declarations when building the symbol registry.
     """
-    if _has_cpp_source_files(repo_root):
-        # Full C++ repo: include .h headers
-        yield from find_files(repo_root, ["*.h", "*.hpp", "*.hxx", "*.cpp", "*.cc", "*.cxx"])
-    else:
-        # No C++ source files: only unambiguously C++ files
-        yield from find_files(repo_root, ["*.hpp", "*.hxx"])
+    yield from headers_owned_by(repo_root, "cpp")
+    yield from find_files(repo_root, ["*.hpp", "*.hxx", "*.cpp", "*.cc", "*.cxx"])
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str) -> str:
