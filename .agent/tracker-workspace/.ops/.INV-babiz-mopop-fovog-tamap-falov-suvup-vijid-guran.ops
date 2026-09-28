@@ -45,3 +45,18 @@
   clock: 4  # 2b52
   nonce: 2b52  # 2b52
   message: "The separately filed swift/objc missing-launch item named in the entry above is INV-vamif."  # 2b52
+- op: update  # b74b
+  at: '2026-09-28T03:23:12Z'  # b74b
+  by: agent  # b74b
+  actor: jgstern_agent  # b74b
+  clock: 5  # b74b
+  nonce: b74b  # b74b
+  set:  # b74b
+    status: satisfied  # b74b
+- op: discuss  # 1613
+  at: '2026-09-28T03:23:12Z'  # 1613
+  by: agent  # 1613
+  actor: jgstern_agent  # 1613
+  clock: 6  # 1613
+  nonce: '1613'  # 1613
+  message: "Fixed in PR #1261 (ff7defd603). terminate / interrupt (and suspend / resume, SIGSTOP/SIGCONT, the same operation) moved from subprocess to ipc_send in both swift.yaml (Process) and objc.yaml (NSTask), the dated WI-dupok ruling python.yaml and rust.yaml apply. waitUntilExit, the third case the root_cause named, is declared NOT I/O in new Process / NSTask module_completeness grants: it blocks and returns nothing, python.yaml's multiprocessing.Process.join (disclosed, not rowed); rust's Child.wait is rowed ipc_recv because it RETURNS the status, which Swift/ObjC read separately from terminationStatus. The objc note arguing 'equivalent to subprocess.run' is replaced. Behavioural evidence on merged dev (io-boundaries, cold cache): p.terminate() / p.interrupt() -> ipc_send Process.terminate / Process.interrupt; [task terminate] / [task interrupt] -> ipc_send NSTask.*; p.waitUntilExit() / [task waitUntilExit] -> no chain. Pinned by test_swift_objc_process_rows.py (catalogue level, shipped command, and module_io_is_enumerated for both classes)."  # 1613
