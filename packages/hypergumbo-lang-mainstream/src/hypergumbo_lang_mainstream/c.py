@@ -42,8 +42,8 @@ How It Works
 ------------
 1. Check if tree-sitter and tree-sitter-c are available
 2. If not available, return empty result (not an error, just no C analysis)
-3. Check for C++ files in the repo; if present, skip .h files (the C++
-   analyzer handles them with tree-sitter-cpp to avoid duplicate symbols)
+3. Take only the .h files ``header_owner`` gives to C: not an ObjC header,
+   and not any header in a repo holding C++ files (WI-rizas, WI-somod)
 4. Two-pass analysis:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
@@ -61,9 +61,10 @@ Why This Design
 - C support is separate from other languages to keep modules focused
 - Two-pass allows cross-file call resolution
 - Same two-pass registry pattern as the PHP analyzer
-- .h dedup: Both C and C++ analyzers process .h files, creating 2x symbols.
-  On Falco (C/C++ repo), 44/50 .h files were duplicated and C orphan rate
-  was 92.1%. Fix: skip .h in C analyzer when C++ files exist.
+- .h dedup: C, C++ and ObjC all claim .h, and each header must be parsed by
+  exactly one grammar. On Falco (C/C++ repo), 44/50 .h files were duplicated
+  and the C orphan rate was 92.1% (WI-rizas); on AFNetworking the C grammar
+  failed on 29 ObjC headers (WI-somod). ``header_owner`` holds the one rule.
 """
 from __future__ import annotations
 
@@ -94,6 +95,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
+from hypergumbo_lang_mainstream.header_owner import headers_owned_by
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
 )
@@ -125,35 +127,12 @@ def _remap_edge_ids(
     return result
 
 
-def _has_cpp_files(repo_root: Path) -> bool:
-    """Check if the repository contains C++ files.
-
-    Checks for C++ source extensions (.cpp, .cc, .cxx) and C++-specific
-    header extensions (.hpp, .hxx). When any of these exist, .h files
-    are presumed to be C++ headers and should be processed by the C++
-    analyzer, not the C analyzer.
-    """
-    return any(find_files(repo_root, ["*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hxx"]))
-
-
-def find_c_files(
-    repo_root: Path, *, include_headers: bool = True
-) -> Iterator[Path]:
-    """Yield all C files in the repository.
-
-    When include_headers is True (default), headers (.h) are yielded before
-    source files (.c) so that definitions can replace declarations when
-    building the symbol registry.
-
-    When include_headers is False, only .c files are yielded. This is used
-    when C++ files exist in the repo, since the C++ analyzer already
-    processes .h files with the C++ grammar.
-    """
-    if include_headers:
-        yield from find_files(repo_root, ["*.h", "*.c"])
-    else:
-        yield from find_files(repo_root, ["*.c"])
-
+def find_c_files(repo_root: Path) -> Iterator[Path]:
+    """Yield the C files of the repository: the headers ``header_owner``
+    gives to C, then the ``.c`` sources, so that definitions can replace
+    declarations when building the symbol registry."""
+    yield from headers_owned_by(repo_root, "c")
+    yield from find_files(repo_root, ["*.c"])
 
 
 def _find_identifier_in_children(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -1492,8 +1471,8 @@ class CAnalyzer(TreeSitterAnalyzer):
     ) -> AnalysisResult:
         """Run analysis with custom file discovery for .h dedup.
 
-        Overrides the base ``analyze`` to use ``find_c_files`` which skips .h
-        files when C++ files exist in the repo.
+        Overrides the base ``analyze`` to use ``find_c_files``, which takes
+        only the headers ``header_owner`` gives to C.
         """
         import time as _time
         import warnings as _warnings
@@ -1518,9 +1497,7 @@ class CAnalyzer(TreeSitterAnalyzer):
 
         parser = self._create_parser()
 
-        # Custom file discovery: skip .h when C++ files exist
-        include_headers = not _has_cpp_files(repo_root)
-        source_files = find_c_files(repo_root, include_headers=include_headers)
+        source_files = find_c_files(repo_root)
 
         file_analyses: dict[Path, tuple[FileAnalysis, dict[str, str]]] = {}
         files_analyzed = 0
@@ -1637,7 +1614,7 @@ def is_c_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("c", capture_symbols_as="c")
+@register_analyzer("c", capture_symbols_as="c", find_files=find_c_files)
 def analyze_c(repo_root: Path) -> AnalysisResult:
     """Analyze all C files in a repository.
 

@@ -195,7 +195,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/objc.py"
                 ),
-                line=1036,
+                line=1040,
                 anchor="_module: str | None = receiver_name",
                 note=(
                     "Reads as a receiver-variable site and is not: it is "
@@ -277,7 +277,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=1612,
+                line=1599,
                 anchor='module_hint = ",".join(_slots)',
                 note=(
                     "The file's entire #include set joined into one slot, "

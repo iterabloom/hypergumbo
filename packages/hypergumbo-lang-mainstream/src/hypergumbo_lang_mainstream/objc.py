@@ -48,6 +48,7 @@ from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
+from hypergumbo_lang_mainstream.header_owner import headers_owned_by
 from hypergumbo_core.analyze.base import (
     record_partial_parse,
     AnalysisResult,
@@ -79,15 +80,18 @@ def _is_objc_tree_sitter_available_legacy() -> bool:  # pragma: no cover - repla
 
 
 def find_objc_files(root: Path) -> list[Path]:
-    """Find Objective-C files, disambiguating .m files via content heuristics.
+    """Find Objective-C files, disambiguating .m and .h files via content.
 
     Extensions:
     - .m: Shared with MATLAB and Wolfram — classified by content
     - .mm: Objective-C++ (unambiguous)
-    - .h: Header files (unambiguous for Objective-C analysis)
+    - .h: Shared with C and C++ — only the headers ``header_owner`` gives to
+      ObjC (an ObjC marker, or any header of a pure-ObjC project). Every
+      ``.h`` had been taken here, so each was parsed by two grammars
+      (WI-somod).
     """
-    # Unambiguous extensions
-    result = list(find_files(root, ["*.mm", "*.h"]))
+    result = list(find_files(root, ["*.mm"]))
+    result.extend(headers_owned_by(root, "objc"))
     # Ambiguous .m files — only include if classified as Objective-C
     result.extend(p for p in find_files(root, ["*.m"]) if classify_dot_m_file(p) == "objc")
     return result

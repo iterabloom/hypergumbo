@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 import hypergumbo_lang_mainstream.c as c_module
 
 
@@ -848,21 +850,6 @@ void main_func() { helper(); }
         assert len(helpers) == 1
         assert helpers[0].path.endswith(".c")
 
-    def test_find_c_files_skips_headers(self, tmp_path: Path) -> None:
-        """find_c_files with include_headers=False yields only .c files."""
-        from hypergumbo_lang_mainstream.c import find_c_files
-
-        (tmp_path / "main.c").write_text("int main() { return 0; }")
-        (tmp_path / "utils.h").write_text("void helper();")
-        (tmp_path / "lib.c").write_text("void helper() {}")
-
-        files = list(find_c_files(tmp_path, include_headers=False))
-
-        suffixes = {f.suffix for f in files}
-        assert ".c" in suffixes
-        assert ".h" not in suffixes
-        assert len(files) == 2
-
     def test_find_c_files_includes_headers_by_default(self, tmp_path: Path) -> None:
         """find_c_files includes .h files by default (backward compatible)."""
         from hypergumbo_lang_mainstream.c import find_c_files
@@ -876,34 +863,17 @@ void main_func() { helper(); }
         assert ".c" in suffixes
         assert ".h" in suffixes
 
-    def test_has_cpp_files_detects_cpp(self, tmp_path: Path) -> None:
-        """_has_cpp_files detects .cpp, .cc, .cxx, .hpp, .hxx files."""
-        from hypergumbo_lang_mainstream.c import _has_cpp_files
+    @pytest.mark.parametrize("cpp_file", ["app.cpp", "lib.cc", "lib.cxx", "lib.hpp", "lib.hxx"])
+    def test_any_cpp_file_gives_the_headers_away(self, tmp_path: Path, cpp_file: str) -> None:
+        """Any C++ file, source or header, makes a plain .h C++'s (WI-rizas),
+        so find_c_files yields only the .c sources."""
+        from hypergumbo_lang_mainstream.c import find_c_files
 
-        # No C++ files
-        (tmp_path / "main.c").write_text("int main() {}")
-        (tmp_path / "utils.h").write_text("void f();")
-        assert _has_cpp_files(tmp_path) is False
+        (tmp_path / "main.c").write_text("int main() { return 0; }")
+        (tmp_path / "utils.h").write_text("void helper();")
+        (tmp_path / cpp_file).write_text("int f();")
 
-        # Add a .cpp file
-        (tmp_path / "app.cpp").write_text("int main() {}")
-        assert _has_cpp_files(tmp_path) is True
-
-    def test_has_cpp_files_detects_cxx(self, tmp_path: Path) -> None:
-        """_has_cpp_files detects .cxx files."""
-        from hypergumbo_lang_mainstream.c import _has_cpp_files
-
-        (tmp_path / "main.c").write_text("int main() {}")
-        (tmp_path / "lib.cxx").write_text("void f() {}")
-        assert _has_cpp_files(tmp_path) is True
-
-    def test_has_cpp_files_detects_hxx(self, tmp_path: Path) -> None:
-        """_has_cpp_files detects .hxx files."""
-        from hypergumbo_lang_mainstream.c import _has_cpp_files
-
-        (tmp_path / "main.c").write_text("int main() {}")
-        (tmp_path / "lib.hxx").write_text("// header")
-        assert _has_cpp_files(tmp_path) is True
+        assert [f.name for f in find_c_files(tmp_path)] == ["main.c"]
 
     def test_files_analyzed_count_excludes_headers(self, tmp_path: Path) -> None:
         """files_analyzed count reflects skipped .h files."""
