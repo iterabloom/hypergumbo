@@ -1,0 +1,28 @@
+Original commit body from 9522355b6bfe60fbb0edd9db14833a297c86959e:
+
+Swift's Process row listed launchPath (a property, never a call site),
+waitUntilExit, terminate and interrupt, and none of the calls that start
+the child. try p.run(), launch(), Process.run(_:arguments:) and
+Process.launchedProcess(...) produced no subprocess chain, and the one
+chain a launching program got was its wait (INV-vamif). They are now
+rowed, and ObjC gains the class-method launchers
+launchedTaskWithLaunchPath:arguments: and
+launchedTaskWithExecutableURL:arguments:error:terminationHandler:.
+
+terminate / interrupt / suspend / resume signal a child that is already
+running, so they move from subprocess to ipc_send in both languages, the
+dated WI-dupok ruling python.yaml and rust.yaml already apply (INV-babiz).
+waitUntilExit returns nothing (python's multiprocessing.Process.join, not
+rowed) and is declared not I/O in new Process / NSTask completeness grants.
+HIGH_RISK_PRIMITIVES follows: Process.launchPath out, the launchers in;
+the moved members leave the subprocess exemption set.
+
+Measured on three Swift repos with a pinned-dev A/B: swift-argument-parser
+4 chains and SwiftLint 2 move from Process.waitUntilExit to the Process.run
+in the same function, SwiftLint gains 2 launches in Docs.swift that had no
+chain at all, vapor is unchanged. No new chain lands on anything but
+Foundation.Process.
+
+Addresses INV-vamif, INV-babiz.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
