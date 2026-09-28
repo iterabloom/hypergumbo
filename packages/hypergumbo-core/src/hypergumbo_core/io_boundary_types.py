@@ -402,9 +402,10 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         counts_in_headline=False,
         description=(
             "Synthesised by _compute_external_potential for an unmatched "
-            "first-party call edge: receiver-unresolved speculative noise that "
-            "MIGHT be I/O. Not a classification, an admission of uncertainty -- "
-            "hence no direction."
+            "first-party call into a NAMED external module the catalogue does "
+            "not classify: it MIGHT be I/O. A receiver-unresolved call names no "
+            "module and is not included. Not a classification, an admission of "
+            "uncertainty -- hence no direction."
         ),
     ),
     IoBoundarySpec(

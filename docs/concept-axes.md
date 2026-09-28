@@ -511,7 +511,7 @@ The call ARRANGES a crossing it does not itself perform — exactly what the axi
 
 Not a classification but an admission that the call could not be matched. Declarable by no catalogue, and excluded from the `total_io_edges` headline.
 
-- **`external_potential`** — Synthesised by _compute_external_potential for an unmatched first-party call edge: receiver-unresolved speculative noise that MIGHT be I/O. Not a classification, an admission of uncertainty -- hence no direction.
+- **`external_potential`** — Synthesised by _compute_external_potential for an unmatched first-party call into a NAMED external module the catalogue does not classify: it MIGHT be I/O. A receiver-unresolved call names no module and is not included. Not a classification, an admission of uncertainty -- hence no direction.
 
 
 ---

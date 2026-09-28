@@ -1667,9 +1667,9 @@ def _rehydrate_io_boundary_edges(raw_edges: list) -> list:
     """Rebuild lightweight edge objects for the consumer-time io-boundary
     classification, preserving ``is_resolved`` + ``dst_ref`` (WI-kumol).
 
-    ``compute_boundary_map`` reads ``edge.is_resolved`` (io_boundary.py:1174 —
-    the ADR-0028 F3-Filter-1 unresolved-receiver skip in
-    ``_compute_external_potential``) and ``edge.dst_ref`` (the WI-tihup
+    ``compute_boundary_map`` reads ``edge.is_resolved`` (the ADR-0028 receiver
+    gate in classification; ``_compute_external_potential``'s F3 Filter 1 no
+    longer reads it, INV-toguh) and ``edge.dst_ref`` (the WI-tihup
     structured external-target lookup). Both CLI commands that load a *persisted*
     behavior_map — ``io-boundaries`` and ``verify-claims`` — must reconstruct
     these from the serialized edge dict. The earlier 4-field facade dropped
@@ -5630,8 +5630,8 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     if ep_suppressed_count:
         print(
             f"  external_potential: {ep_suppressed_count} chain(s) "
-            f"suppressed and excluded from the headline total (unverified "
-            f"receiver-unresolved calls; pass --show-external-potential to "
+            f"suppressed and excluded from the headline total (unclassified "
+            f"calls into named external modules; pass --show-external-potential to "
             f"include them, or use --boundary external_potential).",
         )
     _print_unsupported_languages_notice(unsupported_languages)

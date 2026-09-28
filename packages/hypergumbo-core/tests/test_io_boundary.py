@@ -3748,19 +3748,21 @@ class TestExternalPotentialBucket:
         )
         assert "external_potential" not in bmap.entries
 
-    def test_external_potential_falls_back_to_bare_name_when_no_module_hint(
+    def test_external_potential_skips_a_receiver_unresolved_placeholder(
         self,
     ) -> None:
+        """F3 Filter 1 (INV-toguh): a dst whose module slot is ``external``
+        names no library, so it is receiver-unresolved noise, not a catalogue
+        gap. This test used to assert a bare-name chain; it passed only
+        because the mock edge defaulted to ``is_resolved=True``, a cell no
+        production edge into an external placeholder occupies (ADR-0037)."""
         from hypergumbo_core.io_boundary import compute_boundary_map
 
-        # When _extract_module_hint returns "external" (or the hint is
-        # missing), the composed primitive is just the dst name. The
-        # chain is still emitted; the user gets less context but the
-        # signal isn't lost.
         dst = "python:external:0-0:MysteryThing:unresolved"
         edge = self._mock_edge(
             src="python:/app/x.py:5-10:f:function",
             dst=dst,
+            is_resolved=False,
         )
         nodes_by_id = {dst: self._boundary_node(dst, "MysteryThing")}
         bmap = compute_boundary_map(
@@ -3768,10 +3770,7 @@ class TestExternalPotentialBucket:
             {"python": load_catalog("python")},
             nodes_by_id=nodes_by_id,
         )
-        ext = bmap.entries.get("external_potential")
-        assert ext is not None and len(ext.chains) == 1
-        # No module prefix — bare dst name.
-        assert ext.chains[0].primitive == "MysteryThing"
+        assert "external_potential" not in bmap.entries
 
     def test_external_potential_aggregates_multiple_chains_per_primitive(
         self,
@@ -3801,14 +3800,11 @@ class TestExternalPotentialBucket:
             "huggingface_hub.snapshot_download": 3,
         }
 
-    def test_external_potential_skips_unresolved_edge(self) -> None:
-        """F3 Filter 1: edges with is_resolved=False skip external_potential.
-
-        Per ADR-0028, ``Edge.is_resolved`` is False when the dst symbol
-        was not resolved at analysis time — these edges point at a
-        speculative external target and contribute heavily to
-        external_potential noise on self-analysis. Filter 1 skips them.
-        """
+    def test_external_potential_is_not_keyed_on_is_resolved(self) -> None:
+        """INV-toguh: every production edge into an external placeholder is
+        ``is_resolved=False`` (ADR-0037 ruling 1: the flag means in-repo-ness),
+        so Filter 1 must not read it. It did, and the bucket was empty on every
+        repository measured. A named module is the bucket's own subject."""
         from hypergumbo_core.io_boundary import compute_boundary_map
 
         dst = "python:huggingface_hub:0-0:snapshot_download:unresolved"
@@ -3823,27 +3819,9 @@ class TestExternalPotentialBucket:
             {"python": load_catalog("python")},
             nodes_by_id=nodes_by_id,
         )
-        # Filter 1 short-circuits before chain emission.
-        assert "external_potential" not in bmap.entries
-
-    def test_external_potential_resolved_edge_still_emits_chain(self) -> None:
-        """F3 Filter 1 sanity: is_resolved=True (default) still emits."""
-        from hypergumbo_core.io_boundary import compute_boundary_map
-
-        dst = "python:huggingface_hub:0-0:snapshot_download:unresolved"
-        edge = self._mock_edge(
-            src="python:/app/load.py:5-10:load_model:function",
-            dst=dst,
-            is_resolved=True,
-        )
-        nodes_by_id = {dst: self._boundary_node(dst, "snapshot_download")}
-        bmap = compute_boundary_map(
-            [edge],
-            {"python": load_catalog("python")},
-            nodes_by_id=nodes_by_id,
-        )
         ext = bmap.entries.get("external_potential")
-        assert ext is not None and len(ext.chains) == 1
+        assert ext is not None
+        assert ext.primitives_used == ["huggingface_hub.snapshot_download"]
 
     def test_external_potential_does_not_double_prepend_module_in_dst_name(
         self,
@@ -4900,15 +4878,15 @@ class TestStdlibModulesAndFilter2:
         assert not cat.module_io_is_enumerated("ssl")
         assert not cat.module_io_is_enumerated("requests")
 
-    def test_filter_2_skips_only_when_module_hint_is_present(self) -> None:
+    def test_a_dst_with_no_module_never_reaches_filter_2(self) -> None:
         """No module_hint (``module_hint == "external"``) → Filter 2 cannot fire.
 
-        This is the safety property: Filter 2 only acts when it has a
-        confident module identification. The dst_ref branch supplies
-        ``module_path``, which we set to ``"external"`` here; the rest
-        of the function then treats ``module_hint == "external"`` as
-        no-info (see the composition guard). Filter 2 must not skip
-        the chain when we have no module to check.
+        Filter 2 only acts on a confident module identification, and a
+        ``module_path`` of ``"external"`` is none. Such a dst is the
+        receiver-unresolved placeholder, which F3 Filter 1 now skips BEFORE
+        Filter 2 is consulted (INV-toguh). It used to emit a chain here: the
+        filter meant to drop it read ``is_resolved``, which a dst_ref-carrying
+        test edge left True.
         """
         catalog = load_catalog("python")
         catalog = IoBoundaryCatalog(
@@ -4935,9 +4913,8 @@ class TestStdlibModulesAndFilter2:
             {"python": catalog},
             nodes_by_id=nodes_by_id,
         )
-        # Chain still emitted — we lacked the module to apply Filter 2.
-        ext = bmap.entries.get("external_potential")
-        assert ext is not None and len(ext.chains) == 1
+        # Skipped by Filter 1: there is no module to report, let alone check.
+        assert "external_potential" not in bmap.entries
 
 
 class TestSwiftCatalog:
@@ -5335,9 +5312,9 @@ class TestDstRefPreferredOverDstString:
         # Use a callable name that is NOT in the python catalog so
         # tag_io_boundaries leaves meta.io_boundary unset, falling
         # through to the _compute_external_potential branch.
-        # is_resolved=True so the F3 Filter 1 (skip unresolved) doesn't
-        # short-circuit the dst_ref branch we want to exercise. This
-        # test is about composition source-of-truth, not resolvability.
+        # is_resolved plays no part in external_potential (INV-toguh); the
+        # dst_ref's named module is what lets F3 Filter 1 pass it. This test
+        # is about composition source-of-truth.
         edge = Edge.create(
             src="python:/app/main.py:1-1:caller:function",
             dst="python:WRONG_MODULE:0-0:wrong_name:unresolved",
