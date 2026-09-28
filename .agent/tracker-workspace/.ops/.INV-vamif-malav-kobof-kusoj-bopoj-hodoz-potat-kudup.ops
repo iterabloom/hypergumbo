@@ -1,0 +1,25 @@
+- op: create  # 25d8
+  at: '2026-09-28T02:03:09Z'  # 25d8
+  by: agent  # 25d8
+  actor: jgstern_agent  # 25d8
+  clock: 1  # 25d8
+  nonce: 25d8  # 25d8
+  data:  # 25d8
+    kind: invariant  # 25d8
+    title: "swift Process row catalogues no LAUNCH (run/launch/Process.run/launchedProcess produce no chain) while wait/terminate/interrupt report as subprocess; objc lacks NSTask.launchedTaskWithLaunchPath:arguments:"  # 25d8
+    status: violated  # 25d8
+    priority: 2  # 25d8
+    parent:  # 25d8
+    tags:  # 25d8
+    - catalogue  # 25d8
+    - io_boundary  # 25d8
+    - analysis_quality  # 25d8
+    - swift  # 25d8
+    isbefore: []  # 25d8
+    duplicate_of: []  # 25d8
+    not_duplicate_of: []  # 25d8
+    pr_ref:  # 25d8
+    description: "FOUND 2026-09-27 while re-verifying INV-babiz. Direction: MISSED boundaries, the false-all-clear direction (a {boundary: subprocess, must_not_exist: true} claim over a Swift program that launches a process finds no chain).\n\nTHE ROW. swift.yaml:152-159, under subprocess:\n    - module: Process\n      methods: [launchPath, waitUntilExit, terminate, interrupt]\n      notes: \"Foundation.Process (macOS-only subprocess execution)\"\nNone of the four starts a process. launchPath is a PROPERTY (assigned, never called, so it can never match a call edge); waitUntilExit waits; terminate and interrupt signal a running child (INV-babiz). The calls that actually launch, run() and launch() plus the class-method launchers, are not rowed.\n\nMEASURED, shipped CLI at dev f474411e11 (survey + io-boundaries, cold cache):\n  let p = Process(); p.executableURL = u; try p.run()     -> call edge to swift:Process:0-0:run,   NO chain\n  let t = Process(); t.launchPath = p; t.launch()          -> NO chain\n  try Process.run(u, arguments: [\"-x\"])                    -> call edge to swift:Process:0-0:run,   NO chain\n  Process.launchedProcess(launchPath: p, arguments: [])    -> call edge to swift:Process:0-0:launchedProcess, NO chain\n  p.waitUntilExit() / p.terminate() / p.interrupt()        -> subprocess chains\nSo the edges are present with the right module slot (Process); only the catalogue rows are missing. On a file that launches and then waits, the one subprocess chain reported is the WAIT.\n\nOBJC, the same gap in one place: objc.yaml:214-222 rows NSTask [launch, launchAndReturnError:, ...] and both of those are reported, but the class-method launcher [NSTask launchedTaskWithLaunchPath:path arguments:@[]] (call edge to objc:NSTask:0-0:launchedTaskWithLaunchPath.arguments.) produces no chain. Not checked: launchedTaskWithExecutableURL:arguments:error:terminationHandler:.\n\nRELATION. Distinct from INV-babiz (which members are WRONGLY rowed); this is which launch members are ABSENT. Fixing INV-babiz alone (moving terminate/interrupt out of subprocess) would leave Swift with no subprocess detection at all. Not a duplicate of WI-narij (scala Process(cmd) sugar) or WI-votar (swift receiver gating).\n\nFIRST STEP: row Process.run (instance and class forms), Process.launch and Process.launchedProcess under subprocess; decide whether a launch that also wires pipes is simultaneously a transfer (see the haskell note at haskell.yaml:60); add NSTask.launchedTaskWithLaunchPath:arguments: and check the executableURL variant; drop launchPath or move it to an attribute row if a property assignment is ever a call site."  # 25d8
+    fields:  # 25d8
+      statement: "A catalogue that declares a type's process-control members under subprocess must also declare the members that START the process. VIOLATED: swift.yaml's Process row carries launchPath (a property), waitUntilExit, terminate and interrupt, and no launch member; run(), launch(), Process.run(_:arguments:) and Process.launchedProcess(launchPath:arguments:) produce no chain. objc's NSTask row lacks the class-method launcher launchedTaskWithLaunchPath:arguments:."  # 25d8
+      root_cause: "The swift row was written from the class's surface rather than from the calls that cross: launchPath names the launch in prose but is a property, so the row looks complete to a reader and matches no launching call. Module-granularity attribution, the family INV-babiz and INV-mulul name, in the opposite direction: members swept in that do not cross, and the members that do cross left out."  # 25d8

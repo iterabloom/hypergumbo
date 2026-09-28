@@ -29,3 +29,19 @@
   clock: 2  # a3ca
   nonce: a3ca  # a3ca
   message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED, unchanged: objc.yaml:214-222 NSTask [launch, launchAndReturnError:, waitUntilExit, terminate, interrupt] and swift.yaml:152-159 Process [launchPath, waitUntilExit, terminate, interrupt], both under subprocess, both notes unchanged. python.yaml:693-695 (kill/terminate ipc_send, WI-dupok) and rust.yaml:431-436 (Child.kill ipc_send) unchanged.\n\nShipped CLI (io-boundaries):\n  objc [task terminate] / [task interrupt] / [task waitUntilExit] -> subprocess NSTask.{terminate,interrupt,waitUntilExit}\n  swift p.terminate() / p.interrupt() / p.waitUntilExit()         -> subprocess Process.{terminate,interrupt,waitUntilExit}\n\nA WORSE DEFECT IN THE SAME SWIFT ROW, found while reproducing this one and filed separately (missed boundaries, the false-all-clear direction): the swift row catalogues NO launch. p.run(), t.launch(), Process.run(url, arguments:) and Process.launchedProcess(launchPath:arguments:) all produce 0 chains, while every non-launch member above is reported as subprocess. The row's one launch-sounding entry, launchPath, is a property, never a call. objc lacks the class-method launcher launchedTaskWithLaunchPath:arguments: the same way. See the item filed today."  # a3ca
+- op: update  # 5bf1
+  at: '2026-09-28T02:03:29Z'  # 5bf1
+  by: agent  # 5bf1
+  actor: jgstern_agent  # 5bf1
+  clock: 3  # 5bf1
+  nonce: 5bf1  # 5bf1
+  set: {}  # 5bf1
+  add:  # 5bf1
+    not_duplicate_of: [INV-vamif-malav-kobof-kusoj-bopoj-hodoz-potat-kudup]  # 5bf1
+- op: discuss  # 2b52
+  at: '2026-09-28T02:03:29Z'  # 2b52
+  by: agent  # 2b52
+  actor: jgstern_agent  # 2b52
+  clock: 4  # 2b52
+  nonce: 2b52  # 2b52
+  message: "The separately filed swift/objc missing-launch item named in the entry above is INV-vamif."  # 2b52
