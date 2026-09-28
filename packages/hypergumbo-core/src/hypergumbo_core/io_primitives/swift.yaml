@@ -152,11 +152,16 @@ db_write:
 subprocess:
   - module: Process
     methods:
-      - launchPath
-      - waitUntilExit
-      - terminate
-      - interrupt
-    notes: "Foundation.Process (macOS-only subprocess execution)"
+      - run
+      - launch
+      - launchedProcess
+    notes: >-
+      Foundation.Process. The members that START the child (INV-vamif): run()
+      and its class form Process.run(_:arguments:terminationHandler:) share
+      the name, launch() is the pre-macOS-10.13 spelling, and
+      launchedProcess(launchPath:arguments:) is the class-method launcher. This
+      row used to list launchPath (a property, so never a call site),
+      waitUntilExit, terminate and interrupt, and no launch at all.
 
 env_read:
   - module: ProcessInfo
@@ -207,6 +212,18 @@ logging:
     notes: "Foundation logging function"
 
 ipc_send:
+  - module: Process
+    methods:
+      - terminate
+      - interrupt
+      - suspend
+      - resume
+    notes: >-
+      INV-babiz: signals a child that is already running (swift-corelibs-foundation
+      terminate is kill(processIdentifier, SIGTERM); interrupt SIGINT; suspend and
+      resume SIGSTOP / SIGCONT). python.yaml's multiprocessing.Process kill/terminate
+      and rust.yaml's Child.kill are rowed here under the dated WI-dupok ruling;
+      these were under subprocess.
   - module: NotificationCenter
     methods:
       - post
@@ -262,3 +279,22 @@ ambiguous_names:
   - warning
   - error
   - critical
+
+# ADR-0016 / INV-buzab: a dated, per-module audit that the module's I/O surface
+# is enumerated, so an unrowed call into it is an EXAMINED negative.
+module_completeness:
+  - module: Process
+    completeness: complete
+    retrieved: "2026-09-27"
+    notes: >-
+      INV-babiz / INV-vamif. Methods: run (instance and class), launch,
+      launchedProcess rowed subprocess; terminate, interrupt, suspend, resume
+      rowed ipc_send. waitUntilExit is declared NOT I/O: it blocks until the
+      child exits and returns nothing -- python.yaml's
+      multiprocessing.Process.join, which is disclosed and not rowed (rust's
+      Child.wait is rowed ipc_recv because it RETURNS the status; here the
+      status is read separately, from the terminationStatus property).
+      Everything else on the class is a property (executableURL, launchPath,
+      arguments, environment, standardInput/Output/Error, terminationStatus,
+      isRunning ...), configured before the launch or read after it, and is
+      not a call site.

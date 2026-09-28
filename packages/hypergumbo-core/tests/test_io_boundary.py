@@ -4982,11 +4982,11 @@ class TestSwiftCatalog:
         assert "downloadTask" in names
 
     def test_swift_has_subprocess(self) -> None:
-        """Swift catalog covers Process operations."""
+        """Swift catalog covers the Process launch (INV-vamif: not waitUntilExit)."""
         catalog = load_catalog("swift")
         subprocs = [p for p in catalog.primitives if p.boundary == "subprocess"]
         names = {p.name for p in subprocs}
-        assert "waitUntilExit" in names
+        assert "run" in names
 
     def test_swift_has_logging(self) -> None:
         """Swift catalog covers print and NSLog."""
