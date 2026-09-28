@@ -29,3 +29,18 @@
   clock: 2  # 7c98
   nonce: 7c98  # 7c98
   message: "RE-VERIFIED 2026-09-27 at dev f474411e11. STILL VIOLATED, unchanged. erlang.yaml:344-345 still rows application [set_env, unset_env, load, start, stop, ensure_started, ensure_all_started] under env_write; the WI-jupaf note on the os rows (:293, :334, :343) is unchanged. Shipped CLI (io-boundaries), one fixture: application:load, ensure_all_started, ensure_started, start and stop each produce an env_write chain beside the correct set_env chain (6 env_write chains, 5 of them the lifecycle functions this item names)."  # 7c98
+- op: update  # 5ab9
+  at: '2026-09-28T02:44:53Z'  # 5ab9
+  by: agent  # 5ab9
+  actor: jgstern_agent  # 5ab9
+  clock: 3  # 5ab9
+  nonce: 5ab9  # 5ab9
+  set:  # 5ab9
+    status: satisfied  # 5ab9
+- op: discuss  # 64e2
+  at: '2026-09-28T02:44:53Z'  # 64e2
+  by: agent  # 64e2
+  actor: jgstern_agent  # 64e2
+  clock: 4  # 64e2
+  nonce: '64e2'  # 64e2
+  message: "Fixed in PR #1260 (cb7aa60f83). load/start/stop/ensure_started/ensure_all_started moved from env_write to process_send: read in OTP's kernel source (application.erl / application_controller.erl), each is a gen_server call into the application controller process (load_application / start_application / stop_application -> call(...)), the class gen_server:call already has. The .app resource file is read inside the controller, not at the call site, so no fs_read row. set_env/unset_env stay env_write under the INV-nular ruling. Behavioural evidence on merged dev, the 09-27 fixture through hypergumbo io-boundaries --format json (cold cache): env_write = {application.set_env} only (was 6 chains incl. the five lifecycle functions); process_send = load, ensure_all_started, ensure_started, start, stop. Pinned by test_erlang_application_lifecycle.py. NOT changed: application's host_info_read row (get_application / loaded_applications / which_applications / info), which are also controller calls; outside this item."  # 64e2

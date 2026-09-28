@@ -23,3 +23,18 @@
     fields:  # 25d8
       statement: "A catalogue that declares a type's process-control members under subprocess must also declare the members that START the process. VIOLATED: swift.yaml's Process row carries launchPath (a property), waitUntilExit, terminate and interrupt, and no launch member; run(), launch(), Process.run(_:arguments:) and Process.launchedProcess(launchPath:arguments:) produce no chain. objc's NSTask row lacks the class-method launcher launchedTaskWithLaunchPath:arguments:."  # 25d8
       root_cause: "The swift row was written from the class's surface rather than from the calls that cross: launchPath names the launch in prose but is a property, so the row looks complete to a reader and matches no launching call. Module-granularity attribution, the family INV-babiz and INV-mulul name, in the opposite direction: members swept in that do not cross, and the members that do cross left out."  # 25d8
+- op: update  # e5c4
+  at: '2026-09-28T03:23:12Z'  # e5c4
+  by: agent  # e5c4
+  actor: jgstern_agent  # e5c4
+  clock: 2  # e5c4
+  nonce: e5c4  # e5c4
+  set:  # e5c4
+    status: satisfied  # e5c4
+- op: discuss  # a943
+  at: '2026-09-28T03:23:12Z'  # a943
+  by: agent  # a943
+  actor: jgstern_agent  # a943
+  clock: 3  # a943
+  nonce: a943  # a943
+  message: "Fixed in PR #1261 (ff7defd603). swift.yaml's Process subprocess row now carries run (instance and class forms share the name), launch and launchedProcess; launchPath (a property) is gone. objc.yaml's NSTask row gains launchedTaskWithLaunchPath:arguments: and launchedTaskWithExecutableURL:arguments:error:terminationHandler:. HIGH_RISK_PRIMITIVES follows. Behavioural evidence on merged dev, the item's own fixtures through hypergumbo io-boundaries --format json (cold cache): try p.run() -> subprocess Process.run; t.launch() -> Process.launch; try Process.run(u, arguments:) -> Process.run; Process.launchedProcess(...) -> Process.launchedProcess (all four were NO chain); [NSTask launchedTaskWithLaunchPath:arguments:] -> subprocess (was none). verify-claims {boundary: subprocess, must_not_exist: true} over a Swift program whose only launch is Process.run(u, arguments:) now returns violated (test_swift_objc_process_rows.py). CORRECTION to the filing's direction claim: before the fix that verdict was INCONCLUSIVE, not a false confirm -- the coverage gate caught the unclassified Process call ('calls into 1 module(s) ... (Process)'). io-boundaries itself reported nothing. A/B on real repos (pinned dev vs branch, ~/hypergumbo_lab_notebook/proc_rows_09272026/): swift-argument-parser 4 and SwiftLint 2 chains move from Process.waitUntilExit to the Process.run in the same function; SwiftLint gains 2 launches in Source/swiftlint/Commands/Docs.swift (process.run() / process.launch()) that had no chain; vapor unchanged; no new chain lands on anything but Foundation.Process. NOT checked: whether an untyped receiver's .run() reaches the row (it should not: run is in swift ambiguous_names and the no-module gate withholds it)."  # a943
