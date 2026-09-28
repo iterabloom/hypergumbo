@@ -285,7 +285,7 @@ class TestARowFileThatIsWrongIsREFUSED:
 
 #: the stdlib import path behind each package name the shipped go
 #: ``package_variables`` rows use.
-_GO_PATHS = {"http": "net/http", "net": "net"}
+_GO_PATHS = {"http": "net/http", "net": "net", "os": "os"}
 
 
 class TestPackageVariables:
