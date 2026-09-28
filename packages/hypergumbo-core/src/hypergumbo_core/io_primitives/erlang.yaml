@@ -239,6 +239,19 @@ process_send:
     functions: [notify, sync_notify, call, start, start_link, start_monitor, stop, add_handler, add_sup_handler, delete_handler]
   - module: supervisor
     functions: [start_link, start_child, restart_child, delete_child, terminate_child, which_children, count_children]
+  - module: application
+    functions: [load, start, stop, ensure_started, ensure_all_started]
+    notes: >-
+      INV-butiv. Each is a request to the application controller process, read
+      in OTP's kernel source: load -> application_controller:load_application ->
+      call({load_application, App}); start is ensure_loaded (that load) then
+      start_application -> call(...); ensure_started is start;
+      ensure_all_started starts each dependency the same way; stop ->
+      stop_application -> call(...). The class gen_server:call has above. The
+      .app resource file is read inside the controller, not at the call site,
+      so no fs_read row. They were rowed env_write beside set_env/unset_env --
+      the WI-jupaf module sweep -- which made starting an application a write to
+      the environment.
   - module: proc_lib
     functions: [spawn, spawn_link, spawn_opt, start, start_link, init_ack, hibernate]
   - module: rpc
@@ -342,7 +355,8 @@ env_write:
     functions: [putenv, unsetenv]
     notes: "WI-jupaf: `cmd` removed here too — see the env_read note above."
   - module: application
-    functions: [set_env, unset_env, load, start, stop, ensure_started, ensure_all_started]
+    functions: [set_env, unset_env]
+    notes: "INV-butiv: load/start/stop/ensure_started/ensure_all_started were swept in here with the two config writers and MOVED to process_send; see the note there."
 
 ipc_recv:
   - module: os
