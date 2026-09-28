@@ -67,6 +67,7 @@ looser rule of its own (see ``scala._import_names_elsewhere``).
 """
 from __future__ import annotations
 
+from collections.abc import Container
 from typing import Final
 
 #: The package JLS 7.3 imports into every compilation unit.
@@ -187,3 +188,41 @@ def kotlin_import_path(imported: str) -> str:
     """A kotlin import path as the imported member's qualified name spells it:
     the default companion's ``Companion`` segment dropped."""
     return ".".join(part for part in imported.split(".") if part != "Companion")
+
+
+def inline_qualified_owner(
+    path: str, callee_name: str, bound: Container[str], *, roots: Container[str],
+) -> str | None:
+    """The module slot a fully-qualified inline call states, or ``None``.
+
+    ``java.nio.file.Files.readAllBytes(p)`` with no import states its owner at
+    the use site, the same fact ``import java.nio.file.Files`` states at the top
+    of the file. First written for scala (INV-vokut) and shared with kotlin
+    (INV-dupol), where the same inline form emitted no edge at all.
+
+    Taken only when the path's ROOT is one of the language's standard ``roots``
+    and the file does not bind that name itself: ``cfg.inner.Target.go()`` is a
+    chain on a local value, and naming it as a module would hand the coverage
+    gate a module that does not exist. A third-party path keeps the placeholder
+    too; no shipped row could match it.
+
+    A path whose segments go lowercase again after a capitalised one names a
+    value (``scala.Console.err``, ``java.lang.System.out``), not a module, and
+    keeps the placeholder.
+
+    A capitalised callee on an all-lowercase path is a companion apply or a
+    constructor, ``scala.sys.process.Process(cmd)``, and gets the slot the
+    imported form gets: the path including the callee.
+    """
+    segments = path.split(".")
+    if segments[0] not in roots or segments[0] in bound:
+        return None
+    # Packages are lowercase and objects / types capitalised, so a lowercase
+    # segment AFTER a capitalised one is a member of an object, a value.
+    # Nested types stay (``java.util.Map.Entry``).
+    first_type = next((i for i, s in enumerate(segments) if s[:1].isupper()), len(segments))
+    if not all(s[:1].isupper() for s in segments[first_type:]):
+        return None
+    if callee_name[:1].isupper() and all(s[:1].islower() for s in segments):
+        return f"{path}.{callee_name}"
+    return path
