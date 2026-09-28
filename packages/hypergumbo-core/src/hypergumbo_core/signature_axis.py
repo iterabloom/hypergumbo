@@ -264,7 +264,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "parameter_arity": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/axis_meta_keys.py",
-        line=1073,
+        line=1078,
         anchor='MetaKeySpec("parameters"',
         home='Symbol.meta["parameters"] / Symbol.meta["params"]',
         populated_by=("15 analyzers, including py.py",),
@@ -352,7 +352,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
             "packages/hypergumbo-lang-mainstream/src/"
             "hypergumbo_lang_mainstream/js_ts.py"
         ),
-        line=5428,
+        line=5484,
         anchor="callee.signature",
         fact="return_type",
         note="Chained-call receiver typing.",
