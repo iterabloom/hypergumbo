@@ -1,0 +1,37 @@
+- op: create  # d0f2
+  at: '2026-09-29T17:34:40Z'  # d0f2
+  by: agent  # d0f2
+  actor: jgstern_agent  # d0f2
+  clock: 1  # d0f2
+  nonce: d0f2  # d0f2
+  data:  # d0f2
+    kind: invariant  # d0f2
+    title: "WI-rusil scoping narrows the edge list but not the supported-language set, so any other supported language withholds a project-label claim as 'produced no call edges'"  # d0f2
+    status: violated  # d0f2
+    priority: 3  # d0f2
+    parent:  # d0f2
+    tags:  # d0f2
+    - taint  # d0f2
+    isbefore: []  # d0f2
+    duplicate_of: []  # d0f2
+    not_duplicate_of: []  # d0f2
+    pr_ref:  # d0f2
+    description: "FOUND 2026-09-29 while writing INV-pivam's tests.\nWI-rusil scopes the taint blindness check by a claim's DECLARED source languages: _taint_blind_reason filters the EDGE list to the languages a flow can be in (source_languages), but passes the UNSCOPED taint_supported_languages (set(per_lang_sinks)) to compute_boundary_coverage. Every other supported language then has no edges in the scoped list and reads as \"analyzed but produced no call edges\" -- INV-motos' shape (two checks over different populations).\nREPRO (dev, main agent): repo = a.py (`return eval(\"1 + 1\")`) + b.go (os.Getenv, fmt.Println); --taint-sources declaring label build_input for python only; claim build_input must not reach host_fs.\n- python + go: inconclusive rc 2, \"supported language(s) go were analyzed but produced no call edges\".\n- python only: confirmed rc 0.\nDirection: a false INCONCLUSIVE (withholding), not a false clean -- but it makes WI-rusil's scoping inert on any repo with a second supported language.\nFix: scope the supported-language set to source_languages in the same place the edges are scoped."  # d0f2
+    fields:  # d0f2
+      statement: "When a taint claim's blindness is scoped to the languages its flows can be in, both the edge census and the supported-language set are scoped to that set."  # d0f2
+      root_cause: "_taint_blind_reason filters edges by source_languages but passes the unscoped taint_supported_languages to compute_boundary_coverage."  # d0f2
+- op: update  # 9f48
+  at: '2026-09-29T18:56:07Z'  # 9f48
+  by: agent  # 9f48
+  actor: jgstern_agent  # 9f48
+  clock: 2  # 9f48
+  nonce: 9f48  # 9f48
+  set:  # 9f48
+    status: satisfied  # 9f48
+- op: discuss  # ba75
+  at: '2026-09-29T18:56:07Z'  # ba75
+  by: agent  # ba75
+  actor: jgstern_agent  # ba75
+  clock: 3  # ba75
+  nonce: ba75  # ba75
+  message: "FIXED in PR #1313 (merged, dev 79ac9444c4): _taint_blind_reason scopes the supported-language set with the edges. Re-ran the filed repro on merged dev: python + go repo, --taint-sources declaring build_input for python only, claim build_input must not reach host_fs -> confirmed rc 0 (was inconclusive rc 2, 'supported language(s) go ... produced no call edges'). Pinned by core test_taint_blind_claim_scope.py::test_a_supported_language_outside_the_scope_does_not_block and lang test test_a_label_declared_only_in_python_does_not_count_go; mutation-checked. Corpus A/B: hypergumbo's own 18 project-label self-claims unchanged (inconclusive on opaque subprocess launches before this gate)."  # ba75

@@ -21,3 +21,25 @@
     fields:  # b913
       statement: "A taint claim whose sink zone has no sink for a language present in the repo, or whose zone has known-unreached shapes, never reads a plain confirmed for that language."  # b913
       root_cause: "The unsupported-language gate is per language, not per zone, and ADR-0060's not-covered list lives only in YAML comments, so verify-claims cannot see that a zone is uncovered."  # b913
+- op: discuss  # 89da
+  at: '2026-09-29T17:31:00Z'  # 89da
+  by: agent  # 89da
+  actor: jgstern_agent  # 89da
+  clock: 2  # 89da
+  nonce: 89da  # 89da
+  message: "OWNER-APPROVED PLAN 2026-09-29: (1) per-zone coverage gate -- a claim on code_execution or dom_injection is inconclusive for any language present in the repo that has no sink in that zone (INV-potu's rule per zone); (2) while WI-bonah's shapes are unreached, a clean JS/TS verdict on these zones is confirmed_with_caveats naming the unseen shapes, never plain confirmed; (3) deserialization (pickle.loads, yaml.load, ObjectInputStream, Marshal) is NOT folded into code_execution -- a separate zone only if the owner asks. Then WI-bonah."  # 89da
+- op: update  # 9414
+  at: '2026-09-29T18:56:07Z'  # 9414
+  by: agent  # 9414
+  actor: jgstern_agent  # 9414
+  clock: 3  # 9414
+  nonce: '9414'  # 9414
+  set:  # 9414
+    status: satisfied  # 9414
+- op: discuss  # 0ba9
+  at: '2026-09-29T18:56:07Z'  # 0ba9
+  by: agent  # 0ba9
+  actor: jgstern_agent  # 0ba9
+  clock: 4  # 0ba9
+  nonce: 0ba9  # 0ba9
+  message: "FIXED in PR #1313 (merged, dev 79ac9444c4). Re-ran the filed repros on merged dev, claim host_secret must not reach code_execution / dom_injection: JS new Function(s) -> confirmed_with_caveats rc 3, caveat unreached_sink_shapes (was confirmed rc 0, caveats []); JS string setTimeout -> the same; Go repo (os.Getenv + fmt.Println) -> inconclusive rc 2, 'language(s) go has no sink in the code_execution zone' (was confirmed rc 0), while the same repo's host_fs claim stays confirmed (the gate judges only ADR-0060's zones). Production-path tests: lang-mainstream test_injection_zone_coverage.py, core test_sink_zone_gaps.py; mutation-checked. Corpus A/B (dash.js, apollo-server, fastapi, django, self-claims): 0 of 74 verdicts changed, ~/hypergumbo_lab_notebook/pivam_09292026/RESULT.md. NOT closed here: the reach itself (new Function, string setTimeout, innerHTML=, insertAdjacentHTML) is WI-bonah; those shapes are now disclosed, not found."  # 0ba9

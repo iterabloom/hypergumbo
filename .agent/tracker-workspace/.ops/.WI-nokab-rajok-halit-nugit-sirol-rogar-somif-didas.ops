@@ -51,3 +51,17 @@
   clock: 5  # 7f97
   nonce: 7f97  # 7f97
   message: "FIXED in PR #1301 (merged, dev bfdead0700), decided in ADR-0060 (Accepted by the agent under the standing autonomy ruling -- OWNER REVIEW REQUESTED; revert = delete taint_sinks/ and the loader's two lines). THE DECISION: taint_sinks/ ships again for NON-boundary sinks only (the retirement in 51e1d232f3 was about hand-kept I/O rows drifting from io_primitives, which cannot apply to eval), beside the shipped non-boundary taint_sources/ (crypto, key_material). test_shipped_taint_sinks refuses a shipped row in a boundary-derived zone or naming a catalogued I/O primitive. Zones: code_execution (python builtins.eval/exec/compile; JS/TS window.eval and bare eval, which now emits its call edge via JS_KNOWN_GLOBAL_CALLS) and dom_injection (document.write/writeln). eval/exec/compile (python) and eval/writeln (JS) joined ambiguous_names so torch's model.eval(), re's pattern.compile() and untyped .eval() are not read as sinks.\nBEHAVIOURAL EVIDENCE on merged dev: one JS function reading document.referrer then eval(r) / window.eval(r) / document.write(r): host_secret -> code_execution VIOLATED (eval.eval, window.eval); host_secret -> dom_injection VIOLATED (document.write). Before: prohibited_sink_zone: code_execution was rejected as unknown (exit 2).\nMEASURED (~/hypergumbo_lab_notebook/nokab_09292026/RESULT.md): existing claims unchanged on dash.js, apollo-server, fastapi, django. New zones on django: 3 real, by-design flows (shell's $PYTHONSTARTUP and stdin -> exec; manage_translations eval(cmd)); dash.js/apollo-server/fastapi INCONCLUSIVE by the uncovered-module gate.\nRESIDUAL filed as WI-bonah: innerHTML/outerHTML assignment, insertAdjacentHTML on an untyped receiver, new Function(s), string setTimeout/setInterval reach no sink. The title's \"ships no sink\" no longer holds; its reach clause does, for those four shapes, and lives on WI-bonah."  # 7f97
+- op: discuss  # a6f5
+  at: '2026-09-29T17:06:28Z'  # a6f5
+  by: agent  # a6f5
+  actor: jgstern_agent  # a6f5
+  clock: 6  # a6f5
+  nonce: a6f5  # a6f5
+  message: "Follow-up 2026-09-29: the ADR-0060 review found a false-confirm gap on the new zones (new Function / string setTimeout / languages with no sink in the zone read plain confirmed; before, the claim was refused). Filed as INV-pivam; ADR-0060 now states the gap in its Consequences (#1308). The owner's keep/fix/revert decision on ADR-0060 is still open."  # a6f5
+- op: discuss  # f9d4
+  at: '2026-09-29T17:31:00Z'  # f9d4
+  by: agent  # f9d4
+  actor: jgstern_agent  # f9d4
+  clock: 7  # f9d4
+  nonce: f9d4  # f9d4
+  message: "OWNER DECISION 2026-09-29: ADR-0060 is KEPT (agreed to the agent's recommendation: keep, and fix INV-pivam next, before anything else builds on it). ADR-0060's status becomes Accepted with the INV-pivam fix."  # f9d4
