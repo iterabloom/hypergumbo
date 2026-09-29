@@ -3357,6 +3357,11 @@ def propagate_taint_structural(
             is_resolved=edge.get("is_resolved", True),
             language=language,
             io_modes=call_site_modes(edge.get("meta")),
+            # INV-totar: the WRITE-side stamp. Without it a target-kind-gated
+            # sink (go io.WriteString / fmt.Fprint*, c write, haskell hPut*)
+            # always matched its abstention fallback, while io-boundaries
+            # selected the row by the stamp: one call site, two zones.
+            io_target_kinds=call_site_target_kinds(edge.get("meta")),
         )
         if matched and _sink_call_can_carry_taint(edge):
             site = (edge["dst"], matched)
@@ -4504,6 +4509,11 @@ def propagate_taint_ddg(
             is_resolved=edge.get("is_resolved", True),
             language=language,
             io_modes=call_site_modes(edge.get("meta")),
+            # INV-totar: the WRITE-side stamp. Without it a target-kind-gated
+            # sink (go io.WriteString / fmt.Fprint*, c write, haskell hPut*)
+            # always matched its abstention fallback, while io-boundaries
+            # selected the row by the stamp: one call site, two zones.
+            io_target_kinds=call_site_target_kinds(edge.get("meta")),
         )
         if matched:
             # ``sink_site``, not ``site``: the call-line loop above binds
