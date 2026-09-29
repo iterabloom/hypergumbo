@@ -969,10 +969,10 @@ def detect_package_roots(repo_root: Path) -> set[Path]:
             content = cargo_toml.read_text()
             # Simple TOML parsing for workspace members
             if "[workspace]" in content:
-                for match in re.finditer(
+                for members_match in re.finditer(
                     r"members\s*=\s*\[(.*?)\]", content, re.DOTALL
                 ):
-                    for member in re.findall(r'"([^"]+)"', match.group(1)):
+                    for member in re.findall(r'"([^"]+)"', members_match.group(1)):
                         if not member or member == ".":
                             continue
                         for path in repo_root.glob(member):

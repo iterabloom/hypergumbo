@@ -71,6 +71,7 @@ The `verify-claims --json` envelope advances 2.4 → 2.5.
 
 #### Tooling and release
 
+- **The mypy strict surface shrinks 666 → 621.** The tracker TUI gets its real types (35 errors), and five variables that held two different types under one name are renamed apart (10, WI-hokag). No behaviour changes.
 - **The scheduled test suites install and measure hypergumbo-lang-scip-python**, and the `scripts/check-*` linters read the package tree instead of a hand-written list.
 - **The dependency audit drops 24 torch / transformers / joblib ignores that no longer fire**, and a test keeps the four audit lists in sync.
 - **`bakeoff-deep run` / `bakeoff-broad run` no longer treat a crashed run's empty output as a finished result.**

@@ -657,18 +657,18 @@ def build_catalog_from_registries() -> Catalog:
         ))
         seen.add(reg.name)
 
-    for reg in sorted(_LINKER_REGISTRY.values(), key=lambda r: (r.priority, r.name)):
-        if reg.name in seen:  # pragma: no cover - cross-registry name collision (shouldn't happen)
+    for linker_reg in sorted(_LINKER_REGISTRY.values(), key=lambda r: (r.priority, r.name)):
+        if linker_reg.name in seen:  # pragma: no cover - cross-registry name collision (shouldn't happen)
             continue
         passes.append(_from_registered(
-            name=reg.name,
-            reg_description=reg.description,
-            reg_languages=reg.languages,
-            reg_availability=reg.availability,
-            reg_requires=reg.requires,
-            reg_backend=reg.backend,
-            reg_pass_label=reg.pass_label,
-            reg_depends_on=reg.depends_on,
+            name=linker_reg.name,
+            reg_description=linker_reg.description,
+            reg_languages=linker_reg.languages,
+            reg_availability=linker_reg.availability,
+            reg_requires=linker_reg.requires,
+            reg_backend=linker_reg.backend,
+            reg_pass_label=linker_reg.pass_label,
+            reg_depends_on=linker_reg.depends_on,
         ))
         seen.add(reg.name)
 
