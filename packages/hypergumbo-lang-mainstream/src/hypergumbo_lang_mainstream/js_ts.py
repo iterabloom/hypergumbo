@@ -1083,6 +1083,10 @@ def _named_receiver_module(
 # ``fetch()`` reaches this set (WI-zavad / emission-parity F2).
 JS_KNOWN_GLOBAL_CALLS: frozenset[str] = frozenset({
     "fetch",          # net_send (catalog: module fetch, functions [fetch])
+    # WI-nokab / ADR-0060: code_execution sink (taint_sinks/code_execution.yaml,
+    # module eval, functions [eval]). Not an I/O primitive; io-boundaries has no
+    # row for it, so this edge changes taint and call-graph coverage only.
+    "eval",
 })
 
 # HTTP methods recognized as route handlers (Express, Fastify, Koa, etc.)

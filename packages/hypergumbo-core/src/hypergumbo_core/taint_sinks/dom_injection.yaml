@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0060: Built-in taint sinks that are NOT I/O boundaries -- writing data
+# into the page as markup. (WI-nokab)
+#
+# See code_execution.yaml for why this directory exists beside io_primitives/.
+# Rows are the call edges js_ts EMITS today (document.write / writeln carry the
+# `document` module slot). NOT YET REACHABLE, and so not rowed:
+#   - `el.innerHTML = s` / `outerHTML`: an ASSIGNMENT, and the analyzer emits no
+#     edge for a property write (the WI-zumoz class);
+#   - `el.insertAdjacentHTML(pos, s)`: emitted, but on an untyped receiver, so a
+#     row would match any project method of that name by its short name alone.
+description: "Writing data into the document as HTML"
+zone: dom_injection
+trust_level: untrusted
+
+sinks:
+  javascript:
+    - module: document
+      functions: [write, writeln]
+  typescript:
+    - module: document
+      functions: [write, writeln]
