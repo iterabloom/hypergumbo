@@ -21,3 +21,28 @@
     fields:  # f4ce
       statement: "A taint source label must name what the value IS. document.location and document.referrer carry ATTACKER-INFLUENCEABLE data, so they are untrusted_input sources; only document.cookie is credential material."  # f4ce
       root_cause: "io_primitives/javascript.yaml files document.cookie, document.location and document.referrer under one env_read row with the note \"Browser document globals (cookie/referrer leak fingerprintable data)\". AUTO_SOURCE_LABEL_MAP derives host_secret from env_read, so all three become SECRET sources. Two of the three are the opposite end of the trust axis: an attacker controls the referrer and can control the URL, so a flow FROM them is untrusted INPUT reaching a sink, not a secret escaping."  # f4ce
+- op: update  # 6769
+  at: '2026-09-29T05:12:00Z'  # 6769
+  by: agent  # 6769
+  actor: jgstern_agent  # 6769
+  clock: 2  # 6769
+  nonce: '6769'  # 6769
+  set:  # 6769
+    title: "document.location / document.referrer are attacker-influenceable but derive no untrusted_input source (they stay host_secret: a URL may carry a credential) -- blocked on a code/DOM-injection sink (WI-nokab)"  # 6769
+    fields:  # 6769
+      statement: "A browser value an attacker can set is an untrusted_input source. document.location and document.referrer are attacker-influenceable AND may carry a credential (a token in the URL or leaked referrer), so they are host_secret (env_read, per the INV-nular ruling that env_read means may-carry-a-credential) AND must also be untrusted_input."  # 6769
+      root_cause: "javascript.yaml rows them under env_read only; the only way to derive a second label is a second boundary (INV-tutar), and no boundary means 'attacker-chosen content that crossed earlier' (net_recv means a receive at the call site). Payoff is blocked: taint ships no code/DOM-injection sink (WI-nokab)."  # 6769
+- op: discuss  # 9f2e
+  at: '2026-09-29T05:12:00Z'  # 9f2e
+  by: agent  # 9f2e
+  actor: jgstern_agent  # 9f2e
+  clock: 3  # 9f2e
+  nonce: 9f2e  # 9f2e
+  message: "RE-SCOPED 2026-09-29 (owner decision: re-scope, not the prescribed move). The item's premise was half wrong and its prescribed fix would have been a regression.\n\nWHAT WAS WRONG. The statement said \"only document.cookie is credential material\". But the owner ruling on env_read (INV-nular, 2026-09-06, recorded on elixir.yaml's Application.get_env row) is that env_read means MAY CARRY A CREDENTIAL, not \"reads the environment\" -- the definition that kept argv in env_read in every catalogue although an attacker can set argv too. A page URL can carry an OAuth token (the implicit-flow #access_token fragment) or a password-reset token, and document.referrer leaks the previous page's URL with whatever it carried (why Referrer-Policy exists). The env-read census that found this item itself filed all three as \"credential-bearing browser state\" (docs/surveys/env-read-boundary-census.md, family E). Moving location / referrer to net_recv would have DROPPED host_secret sources -- the false-all-clear direction -- and made io-boundaries report a network receive on every page that reads its own URL, although nothing is received at that call site (net_recv's registry meaning).\n\nWHAT STAYS TRUE. Both values are ALSO attacker-influenceable, and today they derive no untrusted_input source. That is this item now. It is BLOCKED: the payoff of an untrusted_input label here is DOM-XSS / code injection, and taint ships no such sink (WI-nokab, which blocks this item). Measured on dev: document.location -> fetch IS found as host_secret -> network (the token-leak case works); bare eval(r) emits no edge; innerHTML assignment emits none; code_execution is not a valid zone.\n\nPARITY FIX, done separately under this item: window.location was host_info_read (host_description) while document.location is env_read -- the same URL under two boundaries. Moved to env_read (PR to follow; the A/B is on its commit).\n\nWHEN UNBLOCKED: the owner-sanctioned mechanism for a second label is a BOUNDARY, not a per-row label (INV-tutar: \"the split is of the boundary, not the label\"), and net_recv fails the mechanism test -- so this wants a new inbound boundary deriving untrusted_input, declared alongside env_read on these rows."  # 9f2e
+- op: discuss  # c08e
+  at: '2026-09-29T06:33:27Z'  # c08e
+  by: agent  # c08e
+  actor: jgstern_agent  # c08e
+  clock: 4  # c08e
+  nonce: c08e  # c08e
+  message: "PARITY PART DONE in PR #1292 (dev 97ff6e24ef + f12ca53d8e + 24735aac13): window.location moved host_info_read -> env_read beside document.location; document's row note now records why it stays env_read. Re-verified on merged dev: const u = window.location.href; fetch(url + u) -> host_secret -> network VIOLATED 1 flow (was CONFIRMED 0, host_info_read). A/B on 8 JS/TS repos (~/hypergumbo_lab_notebook/dadu_09292026/RESULT.md): 8 verdicts inconclusive -> violated, flows +47 / -15 where all 15 '-' are the same window.location flows relabelled host_description -> host_secret. Read back: growthbook oauth/callback.tsx POSTs window.location.search/hash (the OAuth code) with fetch -- the credential-in-URL case, previously invisible to host_secret claims. This item stays VIOLATED for its re-scoped statement (no untrusted_input source), blocked on WI-nokab."  # c08e

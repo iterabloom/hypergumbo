@@ -1,0 +1,31 @@
+- op: create  # c296
+  at: '2026-09-29T05:11:39Z'  # c296
+  by: agent  # c296
+  actor: jgstern_agent  # c296
+  clock: 1  # c296
+  nonce: c296  # c296
+  data:  # c296
+    kind: work_item  # c296
+    title: "taint ships no code- or DOM-injection sink: every shipped zone derives from an I/O boundary and in-process eval crosses none; JS also emits no edge for bare eval, new Function or an innerHTML assignment"  # c296
+    status: todo_hard  # c296
+    priority: 3  # c296
+    parent:  # c296
+    tags:  # c296
+    - taint  # c296
+    - javascript  # c296
+    - analysis_quality  # c296
+    isbefore: []  # c296
+    duplicate_of: []  # c296
+    not_duplicate_of: []  # c296
+    pr_ref:  # c296
+    description: "FOUND 2026-09-29 while re-scoping INV-dadu (owner chose re-scope over moving document.location / referrer out of env_read). The untrusted_input half of INV-dadu has almost nothing to reach, because taint ships no code-injection or DOM-injection sink.\n\nWHY NONE EXISTS. Every shipped taint sink zone is derived from an I/O boundary (AUTO_SINK_ZONE_MAP: browser_storage, database, host_env, host_fs, ipc, logging, network, subprocess). In-process evaluation crosses no I/O boundary, and the catalogue says so on the record: python.yaml's builtins completeness note -- \"exec/eval/compile evaluate in-process and cross no boundary of their own\". So the boundary-derived model cannot express \"attacker data reaches eval / innerHTML\", which is the DOM-XSS and code-injection shape that makes document.location / document.referrer / location.hash dangerous as SOURCES. A project taint catalogue can already declare a sink with its own zone (claims validate zones against user catalogues + the auto map), so this is about what SHIPS, not about expressiveness.\n\nREACH, measured on dev 2632c3bfbc, one JS function reading document.referrer:\n- emits a calls edge: window.eval(r), el.insertAdjacentHTML(..., r), document.getElementById(...)\n- emits NOTHING: bare eval(r), new Function(r)(), setTimeout(r, 1) with a string, el.innerHTML = r (an assignment; the analyzer emits no edge for assignments, the WI-zumoz class).\n- verify-claims rejects prohibited_sink_zone: code_execution (\"unknown prohibited_sink_zone\").\n\nTHE DECISION THIS NEEDS (not an implementation yet): whether shipped taint gets a non-boundary sink class (code_execution / dom_injection) and where it lives -- a boundary it is not, so AUTO_SINK_ZONE_MAP is the wrong home and a boundary-registry addition would re-open the \"evaluation crosses no boundary\" record. Then the reach work: bare eval / new Function / string setTimeout call edges, and an assignment edge (or a construct row) for innerHTML / outerHTML / document.write-equivalents. Python (eval, exec) and other languages have the same gap.\n\nBLOCKS INV-dadu: until a sink of this kind exists, an untrusted_input label on the browser URL / referrer reaches only network / storage / logging sinks."  # c296
+    fields: {}  # c296
+- op: update  # 51be
+  at: '2026-09-29T05:12:00Z'  # 51be
+  by: agent  # 51be
+  actor: jgstern_agent  # 51be
+  clock: 2  # 51be
+  nonce: 51be  # 51be
+  set: {}  # 51be
+  add:  # 51be
+    isbefore: [INV-dadum-jojon-hotil-supof-zunaj-sonof-lirut-vufoj]  # 51be
