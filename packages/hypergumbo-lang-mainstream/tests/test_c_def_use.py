@@ -47,6 +47,9 @@ def _extract(stmt: str) -> tuple[list[str], list[str]]:
     ("ops->send(fd, k);", [], ["ops", "fd", "k"]),   # a callee EXPRESSION reads its root
     ("x = (int)sizeof(buf);", ["x"], ["buf"]),       # type positions are not reads
     ("while ((n = read(fd, b, 8)) > 0) n--;", ["n", "n"], ["fd", "b", "n"]),
+    ("(*p) = k;", ["p"], ["p", "k"]),                # a parenthesized target
+    ("f()->x = k;", [], ["k"]),                      # rooted in a call: no variable written
+    ("int (*fp)(int) = g;", ["fp"], ["g"]),          # a parenthesized declarator
 ])
 def test_defines_and_uses(stmt: str, defines: list[str], uses: list[str]) -> None:
     assert _extract(stmt) == (defines, uses)

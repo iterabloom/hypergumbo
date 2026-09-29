@@ -69,8 +69,12 @@ def _declared_name(node: Any, source: bytes) -> Optional[str]:
     while node is not None:
         if node.type == "identifier":
             return _node_text(node, source)
-        node = node.child_by_field_name("declarator")
-    return None
+        if node.type == "parenthesized_declarator":
+            # ``int (*fp)(int) = g;`` -- the grammar gives the parenthesis no field.
+            node = node.named_children[0] if node.named_children else None
+        else:
+            node = node.child_by_field_name("declarator")
+    return None  # pragma: no cover - a C declarator always ends in its name
 
 
 def _root_name(node: Any, source: bytes) -> Optional[str]:
