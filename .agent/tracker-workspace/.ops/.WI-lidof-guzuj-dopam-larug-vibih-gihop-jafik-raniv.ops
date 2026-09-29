@@ -1,0 +1,22 @@
+- op: create  # 6e13
+  at: '2026-09-29T17:04:30Z'  # 6e13
+  by: agent  # 6e13
+  actor: jgstern_agent  # 6e13
+  clock: 1  # 6e13
+  nonce: '6e13'  # 6e13
+  data:  # 6e13
+    kind: work_item  # 6e13
+    title: "docs/CATALOGUES.md (generated from the registry), a README configuration section, and the built-in/community/yours/in-repo vocabulary sweep (ADR-0061 ruling 6)"  # 6e13
+    status: todo_hard  # 6e13
+    priority: 3  # 6e13
+    parent:  # 6e13
+    tags:  # 6e13
+    - adr_0061  # 6e13
+    - catalogue  # 6e13
+    - documentation  # 6e13
+    isbefore: []  # 6e13
+    duplicate_of: []  # 6e13
+    not_duplicate_of: []  # 6e13
+    pr_ref:  # 6e13
+    description: "ADR-0061 ruling 6. One user-facing page, docs/CATALOGUES.md: the four tiers (built-in / community / yours / in-repo), where each family's files live, how to add a row to each family, what each tier can do to a verdict. Registry facts (families, which accept your rows, which are read) GENERATED from yaml_catalogs.YAML_CATALOGS with a freshness gate, like the other generated docs. README gets a Configuration section pointing at it (it has none today).\nThen the vocabulary sweep: user-facing text says built-in / community / yours / in-repo and nothing else; \"project-local\" is retired from help text, stderr and docs.\nThe contradictions still open after #1308, with file:line, are in ~/hypergumbo_lab_notebook/adr0061_09292026/OPEN_DOC_CONTRADICTIONS.md (README zone count, VERIFY-CLAIMS-SCOPE overlay count, catalogue YAML headers claiming transitive third-party detection, help strings pointing into site-packages, the operator-vs-repository sanitizer wording, the slice stderr notice, ...). The spec and ADRs 16/17/45/47/60/61 were made consistent in #1308; keep them so."  # 6e13
+    fields: {}  # 6e13
