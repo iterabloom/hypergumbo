@@ -601,6 +601,8 @@ def _extract_edges(
                 if _hdr and _hdr not in system_includes:
                     system_includes.append(_hdr)
     _include_hint = ",".join(system_includes) if system_includes else None
+    # Imported here, as ``_c_ambiguous_names`` imports the catalogue loader.
+    from hypergumbo_core.io_boundary import declared_by_an_included_header
 
     for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
@@ -624,7 +626,20 @@ def _extract_edges(
                 if func_node and func_node.type == "identifier":
                     callee_name = node_text(func_node, source)
                     lookup_result = resolver.lookup(callee_name, caller_path=_caller_path)
-                    if lookup_result.found and lookup_result.symbol is not None:
+                    if (
+                        lookup_result.found
+                        and lookup_result.symbol is not None
+                        # WI-rimon: a definition in ANOTHER file does not
+                        # capture a call whose declaring header this file
+                        # includes -- it is an interposer or a platform shim
+                        # of that same contract, and the call is the libc one.
+                        and not (
+                            lookup_result.symbol.path != _caller_path
+                            and declared_by_an_included_header(
+                                "c", callee_name, system_includes,
+                            )
+                        )
+                    ):
                         edge = Edge.create(
                             src=current_function.id,
                             dst=lookup_result.symbol.id,

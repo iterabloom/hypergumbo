@@ -1294,6 +1294,7 @@ def _extract_edges_from_tree(
     # include set. Without this, ``std::printf(...)`` after
     # ``#include <cstdio>`` produces a dst with no header context.
     system_includes: list[str] = []
+    from hypergumbo_core.io_boundary import declared_by_an_included_header
     # WI-bapuk: `using namespace std;` makes an UNQUALIFIED `getline(cin, s)`
     # resolvable in std, which is the spelling teaching code and competitive
     # C++ actually use. Collected file-wide, exactly as the includes are.
@@ -1559,7 +1560,23 @@ def _extract_edges_from_tree(
                             lookup_result.match_type, _enclosing_type,
                             separator="::",
                         )
-                        if lookup_result.found and _sym is not None and not _defer:
+                        # WI-rimon, C's twin (io_boundary's
+                        # declared_by_an_included_header): a FREE call whose
+                        # declaring header this file includes is the declared
+                        # primitive, not a same-named definition elsewhere.
+                        _shimmed = (
+                            _sym is not None
+                            and not is_member_call
+                            and "::" not in callee_name
+                            and _sym.path != _caller_path
+                            and declared_by_an_included_header(
+                                "cpp", short_name, system_includes,
+                            )
+                        )
+                        if (
+                            lookup_result.found and _sym is not None
+                            and not _defer and not _shimmed
+                        ):
                             edges.append(Edge.create(
                                 src=current_function.id,
                                 dst=_sym.id,
