@@ -1374,7 +1374,7 @@ class ClaimVerdict:
             io_primitives boundary their source came from (WI-vazal). Empty
             when there are no flows. The taint label alone cannot express
             this: ``AUTO_SOURCE_LABEL_MAP`` collapses ``net_recv``,
-            ``ipc_recv`` and ``db_read`` into the single label
+            ``ipc_recv``, ``db_read`` and ``navigation_read`` into the single label
             ``untrusted_input``, so "a request body reached the database" and
             "a row read from the database reached the database" were
             indistinguishable — and on an ORM-backed application the second

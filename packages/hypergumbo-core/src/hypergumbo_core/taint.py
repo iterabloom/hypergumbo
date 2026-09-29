@@ -56,7 +56,8 @@ through the ``--taint-sinks`` CLI flag.
 
 Built-in sources are auto-derived the same way: every primitive whose
 boundary is a key of :data:`AUTO_SOURCE_LABEL_MAP` (``env_read``,
-``host_info_read``, ``net_recv``, ``ipc_recv``, ``db_read``) becomes a source
+``host_info_read``, ``net_recv``, ``ipc_recv``, ``db_read``,
+``navigation_read``) becomes a source
 carrying that label and its ``source_boundary``; ``taint_sources/`` adds only
 the labels no boundary implies (``plaintext``, ``key_material``). The entry
 point end-users hit is :func:`load_full_taint_catalog`, which stacks four
@@ -158,8 +159,8 @@ class TaintSource:
     # which has no boundary because it did not come from an io_primitives
     # entry.
     #
-    # WHY IT IS CARRIED. AUTO_SOURCE_LABEL_MAP collapses THREE boundaries —
-    # net_recv, ipc_recv and db_read — into the single label
+    # WHY IT IS CARRIED. AUTO_SOURCE_LABEL_MAP collapses FOUR boundaries —
+    # net_recv, ipc_recv, db_read and navigation_read — into the single label
     # `untrusted_input`, and until now discarded which one it was. So "a
     # request body reached the database" and "a row read from the database
     # reached the database" were the same fact downstream, and on an
@@ -1785,6 +1786,11 @@ AUTO_SOURCE_LABEL_MAP: dict[str, str] = {
     "net_recv": "untrusted_input",
     "ipc_recv": "untrusted_input",
     "db_read": "untrusted_input",
+    # INV-dadu: a value the party that NAVIGATED to the page chose -- the page
+    # URL, the referrer, window.name. A second boundary rather than a second
+    # label on the row, for the reason above; the URL rows are declared
+    # `simultaneous` with env_read because they may also carry a credential.
+    "navigation_read": "untrusted_input",
 }
 
 
@@ -3210,6 +3216,80 @@ def _register_sanitizer_callers(
                 ).extend(_edge_call_sites(edge))
 
 
+def find_source_callers(
+    edges: Sequence[dict[str, Any]],
+    sources: Sequence[TaintSource],
+    ambiguous_names: frozenset[str],
+    language: str,
+) -> list[tuple[str, str, TaintSource]]:
+    """Every ``(caller, callee, source)`` a call edge mints, ONE PER LABEL.
+
+    Both propagation arms ask this, so it lives once (they had two copies).
+
+    ONE PRIMITIVE CAN CARRY TWO LABELS (INV-dadu). ``document.location`` is
+    declared under ``env_read`` and ``navigation_read`` with ``simultaneous``,
+    so it derives a ``host_secret`` source AND an ``untrusted_input`` one.
+    :func:`_match_propagation_entry` returns one entry per edge, because its job
+    is to pick the right PRIMITIVE among same-named candidates; asked alone it
+    kept whichever label was indexed first and dropped the other, so the page
+    URL reaching ``eval`` was a secret flow and never an attacker-input one.
+
+    So the primitive is chosen exactly as before, and its SIBLINGS -- entries
+    for the same ``(module, name, kind)`` under another label -- are then
+    matched through the same gates on their own. Nothing is added for a
+    primitive with one label, which is every shipped source but the page URL.
+    Siblings sharing the matched label (``unistd.read`` derives
+    ``untrusted_input`` from both ``net_recv`` and ``ipc_recv``) stay one
+    source, as before.
+    """
+    by_callee = _build_callee_index(sources)
+    by_primitive: dict[tuple[str, str, str], list[TaintSource]] = defaultdict(list)
+    for src in sources:
+        by_primitive[(src.module, src.name, src.kind)].append(src)
+    sibling_indexes: dict[tuple[str, str, str], list[dict[str, list[TaintEntry]]]] = {}
+    for key, group in by_primitive.items():
+        labels_seen: set[str] = set()
+        indexes: list[dict[str, list[TaintEntry]]] = []
+        for src in group:
+            if src.taint_label not in labels_seen:
+                labels_seen.add(src.taint_label)
+                indexes.append(_build_callee_index([src]))
+        if len(indexes) > 1:
+            sibling_indexes[key] = indexes
+
+    callers: list[tuple[str, str, TaintSource]] = []
+    for edge in edges:
+        if not _is_taint_call_edge(edge) or not _source_call_can_mint_taint(edge):
+            continue
+        call_construct = edge.get("meta", {}).get("call_construct")
+        is_resolved = edge.get("is_resolved", True)
+        io_modes = call_site_modes(edge.get("meta"))
+        io_target_kinds = call_site_target_kinds(edge.get("meta"))
+        matched = _match_propagation_entry(
+            by_callee, edge["dst"], ambiguous_names,
+            call_construct=call_construct, is_resolved=is_resolved,
+            language=language, io_modes=io_modes, io_target_kinds=io_target_kinds,
+        )
+        if not matched:
+            continue
+        callers.append((edge["src"], edge["dst"], matched))
+        key = (matched.module, matched.name, matched.kind)
+        for index in sibling_indexes.get(key, ()):
+            sibling = _match_propagation_entry(
+                index, edge["dst"], ambiguous_names,
+                call_construct=call_construct, is_resolved=is_resolved,
+                language=language, io_modes=io_modes,
+                io_target_kinds=io_target_kinds,
+            )
+            if sibling and sibling.taint_label != matched.taint_label:
+                callers.append((edge["src"], edge["dst"], sibling))
+
+    # INV-sukoh: one expression, one flow. ``os.environ.get(...)`` emits an
+    # attribute-reference edge AND a call edge, so the parent row and its own
+    # slot-family row both match the single read.
+    return subsume_slot_family_parents(callers)
+
+
 def subsume_slot_family_parents(
     callers: Sequence[tuple[str, str, TEntry]],
 ) -> list[tuple[str, str, TEntry]]:
@@ -3334,11 +3414,10 @@ def propagate_taint_structural(
 
     forward_adj, reverse_adj = _build_adjacency(edges)
 
-    # Index: callee name → source/sink/sanitizer (list per name).
-    # Index by qualified name, catalog name, AND short method name (last
-    # component after dots) to match unresolved edges that only have the
-    # bare method name (e.g., "decrypt" instead of "Fernet.decrypt").
-    source_by_callee = _build_callee_index(sources)
+    # Index: callee name → sink/sanitizer (list per name); sources are indexed
+    # inside find_source_callers. Index by qualified name, catalog name, AND
+    # short method name (last component after dots) to match unresolved edges
+    # that only have the bare method name (e.g., "decrypt" for "Fernet.decrypt").
     sink_by_callee = _build_callee_index(sinks)
     sanitizer_by_callee = _build_sanitizer_index_multi(sanitizers)
 
@@ -3346,27 +3425,8 @@ def propagate_taint_structural(
     # A "source caller" is a node that has an outgoing call edge to a source.
     # _lookup_named_entry honors the edge's module hint and ambiguous_names so
     # a bare ambiguous callee (str.replace, dict.get) is not falsely matched
-    # (WI-razol).
-    source_callers: list[tuple[str, str, TaintSource]] = []
-    # (caller_symbol_id, source_callee_symbol_id, TaintSource)
-    for edge in edges:
-        if not _is_taint_call_edge(edge):
-            continue
-        matched = _match_propagation_entry(
-            source_by_callee, edge["dst"], ambiguous_names,
-            call_construct=edge.get("meta", {}).get("call_construct"),
-            is_resolved=edge.get("is_resolved", True),
-            language=language,
-            io_modes=call_site_modes(edge.get("meta")),
-            io_target_kinds=call_site_target_kinds(edge.get("meta")),
-        )
-        if matched and _source_call_can_mint_taint(edge):
-            source_callers.append((edge["src"], edge["dst"], matched))
-
-    # INV-sukoh: one expression, one flow. ``os.environ.get(...)`` emits an
-    # attribute-reference edge AND a call edge, so the parent row and its own
-    # slot-family row both match the single read.
-    source_callers = subsume_slot_family_parents(source_callers)
+    # (WI-razol). (caller_symbol_id, source_callee_symbol_id, TaintSource)
+    source_callers = find_source_callers(edges, sources, ambiguous_names, language)
 
     # Step 2: Find sink call sites — which symbol IDs call taint sinks?
     sink_callers: dict[str, list[tuple[str, TaintSink]]] = defaultdict(list)
@@ -4483,9 +4543,8 @@ def propagate_taint_ddg(
         k: v for k, v in function_summaries.items() if k == v.function
     }
 
-    # Index sources, sinks, sanitizers by name (same as structural) — a list
-    # per name so _lookup_named_entry can disambiguate by module/ambiguity.
-    source_by_callee = _build_callee_index(sources)
+    # Index sinks and sanitizers by name (same as structural) — a list per
+    # name so _lookup_named_entry can disambiguate by module/ambiguity.
     sink_by_callee = _build_callee_index(sinks)
     sanitizer_by_callee = _build_sanitizer_index_multi(sanitizers)
 
@@ -4497,29 +4556,9 @@ def propagate_taint_ddg(
     # and redirect edges live — ``ddg_edges`` carry def-use, not I/O meta.
     source_name_index, sink_name_index = _name_flow_indexes(call_edges)
 
-    # Step 1: Find source call sites (module + ambiguous_names aware — WI-razol)
-    source_callers: list[tuple[str, str, TaintSource]] = []
-    for edge in call_edges:
-        if not _is_taint_call_edge(edge):
-            continue
-        matched = _match_propagation_entry(
-            source_by_callee, edge["dst"], ambiguous_names,
-            call_construct=edge.get("meta", {}).get("call_construct"),
-            is_resolved=edge.get("is_resolved", True),
-            language=language,
-            io_modes=call_site_modes(edge.get("meta")),
-            io_target_kinds=call_site_target_kinds(edge.get("meta")),
-        )
-        if matched and _source_call_can_mint_taint(edge):
-            # WI-lipis: the ddg arm asks the identical question through the
-            # identical predicate. Two copies is how the sink side's call
-            # family drifted across three consumers.
-            source_callers.append((edge["src"], edge["dst"], matched))
-
-    # INV-sukoh: one expression, one flow. ``os.environ.get(...)`` emits an
-    # attribute-reference edge AND a call edge, so the parent row and its own
-    # slot-family row both match the single read.
-    source_callers = subsume_slot_family_parents(source_callers)
+    # Step 1: Find source call sites (module + ambiguous_names aware — WI-razol),
+    # through the one helper the structural arm uses.
+    source_callers = find_source_callers(call_edges, sources, ambiguous_names, language)
 
     # Step 2: Find sink call sites (module + ambiguous_names aware — WI-razol)
     sink_callers: dict[str, list[tuple[str, TaintSink]]] = defaultdict(list)

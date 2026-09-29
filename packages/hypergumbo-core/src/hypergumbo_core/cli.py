@@ -5408,7 +5408,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     ``subprocess``, ``env_read``, ``host_info_read``, ``env_write``,
     ``ipc_send``, ``ipc_recv``, ``browser_storage_write``,
     ``browser_storage_read``, ``db_read``, ``db_write``, ``process_send``,
-    ``logging``. ``env_read`` is an ambient CONFIGURATION read (environment
+    ``logging``, ``navigation_read``. ``env_read`` is a CONFIGURATION read (environment
     variables, system properties, argv) and ``host_info_read`` is a host
     DESCRIPTION read (``runtime.GOOS``, ``os.uname``, ``navigator.platform``,
     ``pwd.getpwnam``); they were one boundary until INV-tutar, and the split
@@ -6329,7 +6329,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     ``ciphertext``, ``derived_key``. The source and sink catalogs are derived
     automatically from ``io_primitives/*.yaml`` (every write-side primitive is
     a sink at ``trust_level=untrusted``; ``env_read``, ``host_info_read``,
-    ``net_recv``, and ``ipc_recv`` primitives are sources). ``host_description``
+    ``net_recv``, ``ipc_recv``, ``db_read``, ``navigation_read`` are sources). ``host_description``
     is NOT a weaker ``host_secret``: it is a different fact, and a claim naming
     one does not match flows carrying the other (INV-tutar). YAML files under ``taint_sources/`` and
     ``taint_sanitizers/`` contribute cryptographic labels and sanitizer

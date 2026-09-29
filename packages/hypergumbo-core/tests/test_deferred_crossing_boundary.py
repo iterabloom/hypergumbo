@@ -573,9 +573,11 @@ class TestTheDatabaseTwinVocabulary:
     def test_it_is_catalog_declarable_and_declared_last(self) -> None:
         assert "db_compose" in CATALOG_BOUNDARY_TYPES
         assert "db_compose" in KNOWN_IO_BOUNDARIES
-        # Declared LAST so first-declared-wins resolution of every existing
-        # row is untouched by the addition.
-        assert CATALOG_BOUNDARY_TYPES[-1] == "db_compose"
+        # Declared after every boundary that existed before it, so
+        # first-declared-wins resolution of every existing row is untouched by
+        # the addition; only boundaries added later follow it.
+        later = CATALOG_BOUNDARY_TYPES[CATALOG_BOUNDARY_TYPES.index("db_compose") + 1:]
+        assert later == ("navigation_read",)
 
     def test_clause_1_it_mints_no_taint(self) -> None:
         assert "db_compose" not in AUTO_SOURCE_LABEL_MAP

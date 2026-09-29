@@ -49,7 +49,7 @@ than a comment someone has to keep true.
 
 THE SECTIONS, and why headline membership is NOT one of them
 ------------------------------------------------------------
-Four axes partition the twenty values:
+Four axes partition the twenty-one values:
 
 ``data_crossing``     the axiom's canonical section. Data crosses the process
                       boundary at this call site, in a named direction.
@@ -71,7 +71,7 @@ the shape ADR-0024's fold-residue discipline says to put on the spec instead.
 
 KNOWN GAPS, stated rather than left for the next reader to rediscover
 --------------------------------------------------------------------
-1. ADR-0016's "controlled vocabulary" table documents NINE of these twenty.
+1. ADR-0016's "controlled vocabulary" table documents TEN of these twenty-one.
    ``env_write``, ``db_read``, ``db_write``, ``process_send``, ``logging``,
    ``browser_storage_read``, ``browser_storage_write``, ``net_listen``,
    ``db_compose``, ``external_potential`` and ``command_launch`` are absent
@@ -388,6 +388,24 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
             "MINTED, for net_listen's reason. NOT named `db_query`: that string "
             "is the database_query linker's call_kind and names a call that "
             "EXECUTES a query -- the opposite reading."
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # AXIS_DATA_CROSSING again, declared after the deferred pair so that
+    # first-declared-wins leaves every existing row's primary boundary alone.
+    # ------------------------------------------------------------------
+    IoBoundarySpec(
+        name="navigation_read",
+        axis=AXIS_DATA_CROSSING,
+        direction=DIRECTION_INBOUND,
+        catalog_declarable=True,
+        counts_in_headline=True,
+        description=(
+            "Read a value the party that NAVIGATED to this page chose -- the "
+            "page URL, the referrer, window.name. A link can put anything in "
+            "them, so it mints untrusted_input (INV-dadu). The URL spellings "
+            "may also carry a credential and are declared SIMULTANEOUS with "
+            "env_read, so they mint host_secret as well."
         ),
     ),
     # ------------------------------------------------------------------
