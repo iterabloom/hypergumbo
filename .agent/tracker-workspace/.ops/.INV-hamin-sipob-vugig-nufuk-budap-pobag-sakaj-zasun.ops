@@ -1,0 +1,30 @@
+- op: create  # ca75
+  at: '2026-09-29T16:45:17Z'  # ca75
+  by: agent  # ca75
+  actor: jgstern_agent  # ca75
+  clock: 1  # ca75
+  nonce: ca75  # ca75
+  data:  # ca75
+    kind: invariant  # ca75
+    title: "A repository's own .hypergumbo.toml loads catalogue overlays by default and undisclosed: a repo can grant completeness to its own modules and turn a real secret-to-network flow into a clean verdict (ADR-0045 vs ADR-0047 ruling 9)"  # ca75
+    status: violated  # ca75
+    priority: 2  # ca75
+    parent:  # ca75
+    tags:  # ca75
+    - adr_0047  # ca75
+    - catalogue  # ca75
+    isbefore: []  # ca75
+    duplicate_of: []  # ca75
+    not_duplicate_of: []  # ca75
+    pr_ref:  # ca75
+    description: "FOUND 2026-09-29 in an ADR-0047 implementation audit.\n\nTWO RULINGS COLLIDE -- the resolution is the OWNER's:\n- ADR-0045 ruling 3 / A4 (as implemented): <repo>/.hypergumbo.toml is the project config tier and loads by default; its `io_primitives` paths feed the overlay chain (user_config.py:345-374, cli.py:5378-5382).\n- ADR-0047 ruling 9: \"The repo tier does not load by default ... A repository that ships an overlay silencing its own boundaries is the shape INV-zosun was filed about, and it arrives on a machine whose owner never opted into it.\"\nThe code follows ADR-0045, so the hazard ruling 9 names is live -- through the .toml, not the .hypergumbo/ directory (which nothing reads).\n\nREPRO (re-run by the main agent on dev ed6d9d3591): main.py writes os.environ[\"API_KEY\"] to telnetlib.Telnet(...).write -- a REAL secret-to-network flow. Claim: host_secret must not reach network.\n- without .hypergumbo.toml: inconclusive rc 2 (telnetlib unclassified).\n- with a repo-shipped .hypergumbo.toml `io_primitives = [\"deps.yaml\"]`, where deps.yaml grants `module_completeness: complete` to telnetlib: confirmed_with_caveats rc 3; the only caveat is an unrelated unknown_receiver_scope. JSON: user_supplied false, completeness_grants [], no layer names the file. Only a stderr line calling it \"project-local\" shows it loaded.\nA repository the operator never vouched for turned a real secret exfiltration into a clean-with-caveats verdict. Fixture: scratchpad audit47/repo3.\n\nAlso noted: an unknown key in a repo's .hypergumbo.toml makes even `hypergumbo sketch` exit 2 (agent-measured, not re-run)."  # ca75
+    fields:  # ca75
+      statement: "Catalogue data an analysed repository supplies never changes a verdict unless the operator opted in, and when it does the verdict names it as repository-supplied."  # ca75
+      root_cause: "load_layered_config always reads <repo>/.hypergumbo.toml and its io_primitives overlays enter _resolve_io_overlays; catalog_provenance receives only CLI and claims-file paths, so the verdict cannot name the file."  # ca75
+- op: discuss  # 488b
+  at: '2026-09-29T16:52:00Z'  # 488b
+  by: agent  # 488b
+  actor: jgstern_agent  # 488b
+  clock: 2  # 488b
+  nonce: 488b  # 488b
+  message: "OWNER RULINGS 2026-09-29 (in session, relayed verbatim where quoted), resolving the ADR-0045 vs ADR-0047 ruling-9 collision this item names:\nQ1 \"Does the vouched/community line apply to every catalogue family, not just io_primitives?\" -> \"every family\".\nQ2 \"A repository's .hypergumbo.toml may set preferences, but catalogue data in it stays off unless the operator opts in, and when used the verdict names it\" -> \"agreed\".\nQ3 vocabulary built-in / community / yours / repository-supplied, retire \"project-local\" -> \"agreed mostly, although 'repository-supplied' sounds like it is blurring stuff that is present already in the cloned repo versus stuff that the user might add or modify nearby in that same cloned repo.\"\nAgent response to Q3 (NOT yet owner-ratified): name the tier by LOCATION -- \"in-repo\" -- because hypergumbo cannot know who authored a file in a working tree; disclose the git state it CAN check (committed-and-unchanged vs modified/untracked) per loaded in-repo file.\nTo be recorded in ADR-0061 (amends ADR-0045 ruling 3 and ADR-0047 rulings 1/6/9)."  # 488b
