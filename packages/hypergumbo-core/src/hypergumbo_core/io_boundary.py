@@ -3357,6 +3357,12 @@ class ModeArgument:
 # Languages inheriting a catalogue inherit this table through
 # :func:`mode_argument_for`, exactly as they inherit the rows — a copied ``cpp``
 # entry would be a second home for one fact and would drift on the first edit.
+#: POSIX ``<fcntl.h>`` access and creation flags and the mode each implies.
+_POSIX_OPEN_FLAG_MODES: Mapping[str, str] = {
+    "O_RDONLY": "r", "O_WRONLY": "w", "O_RDWR": "w",
+    "O_APPEND": "w", "O_CREAT": "w", "O_TRUNC": "w",
+}
+
 _MODE_ARGUMENT_POSITIONS: dict[str, dict[str, ModeArgument]] = {
     "python": {
         "open": ModeArgument(position=1, keyword="mode"),
@@ -3370,7 +3376,13 @@ _MODE_ARGUMENT_POSITIONS: dict[str, dict[str, ModeArgument]] = {
         "ZipFile": ModeArgument(position=1, keyword="mode"),
         "FileIO": ModeArgument(position=1, keyword="mode"),
     },
-    "c": {"fopen": ModeArgument(position=1)},
+    # WI-bulub: POSIX ``open(path, flags)`` / ``openat(dirfd, path, flags)``
+    # take Go's shape -- the mode is the NAMES of OR-ed flag macros.
+    "c": {
+        "fopen": ModeArgument(position=1),
+        "open": ModeArgument(position=1, flag_modes=_POSIX_OPEN_FLAG_MODES),
+        "openat": ModeArgument(position=2, flag_modes=_POSIX_OPEN_FLAG_MODES),
+    },
     # WI-nolut (2026-09-06): node's ``fs.open(path, flags[, mode], cb)`` /
     # ``fs.openSync(path, flags)`` / ``fs.promises.open(path, flags)`` put the
     # catalogue's "mode" -- the FLAGS string, 'r' / 'w' / 'a+' / 'wx' -- at

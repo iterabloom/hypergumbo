@@ -17,7 +17,7 @@ ambiguous_names:
   - read          # unistd read vs project-local read()
   - write         # unistd write vs project-local write()
   - open          # fcntl open vs project-local open()
-  - close         # unistd close vs project-local close()
+  - close         # unistd close vs project-local close() -- NO ROW by decision (WI-bulub; see fcntl fs_write)
   - send          # socket send vs project-local send()
   - recv          # socket recv vs project-local recv()
   - connect       # socket connect vs project-local connect()
@@ -37,6 +37,17 @@ ambiguous_names:
 fs_read:
   - module: stdio
     functions: [fopen, fseek, rewind, ungetc, ftell]
+  - module: fcntl
+    functions: [open, openat]
+    notes: >-
+      WI-bulub: POSIX open, declared under fs_read AND fs_write so the mode
+      seam owns it -- stdio.fopen's shape, and Go's os.OpenFile's for a FLAG
+      argument: io_boundary._MODE_ARGUMENT_POSITIONS["c"] reads the flag NAMES
+      (O_WRONLY / O_RDWR / O_CREAT / O_TRUNC / O_APPEND write, O_RDONLY alone
+      reads). A flag the producer cannot read (a variable, a macro of flags)
+      keeps THIS first-declared row, as an unstamped fopen does. Both names
+      were in ambiguous_names with no row at all, so a correct <fcntl.h>
+      module slot reached nothing.
   - module: stdio
     functions: [fread, fgets, fgetc, fscanf, getc, getline]
     boundary_ruling: call_site_undecidable
@@ -96,6 +107,20 @@ fs_write:
       fputc:   {names: [1], content: [0], danger: false}
       fwrite:  {names: [3], content: [0], danger: false}
       putc:    {names: [1], content: [0], danger: false}
+  - module: fcntl
+    functions: [open, openat, creat]
+    notes: >-
+      WI-bulub: the write half of open/openat (see the fs_read twin), plus
+      creat, which is open(p, O_CREAT|O_WRONLY|O_TRUNC) and always writes.
+      close(fd) has NO row, by decision (WI-bulub, 2026-09-29): it releases a
+      descriptor and moves no bytes the far side chose -- descriptor
+      lifecycle, python's os.close precedent. fclose keeps its fs_write row
+      because it FLUSHES the stdio buffer, a write close(2) does not do.
+    resource_naming:
+      # class D, fopen's class: a tainted path reaching open IS the finding.
+      open:   {names: [0], content: [], danger: true}
+      openat: {names: [1], content: [], danger: true}
+      creat:  {names: [0], content: [], danger: true}
   - module: stdlib
     functions: [mkstemp, mkdtemp, mkostemp, mkstemps]
     notes: "POSIX temp file/dir creation"
