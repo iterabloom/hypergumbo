@@ -23,3 +23,11 @@
     fields:  # 4820
       statement: "Taint and io-boundaries give one call site one answer: a sink row gated by requires_target_kind is selected by the site's io_target_kind in taint exactly as the boundary tagger selects it. VIOLATED: taint never passes io_target_kinds when matching sinks, so a stamped writer always gets its abstention-fallback sink."  # 4820
       root_cause: "taint.py structural (~L3329) and DDG (~L4476) sink loops call _match_propagation_entry without io_target_kinds=; _needed_write is None and _target_kind_admits admits only abstention_fallback entries. WI-suhug wired the source side and io-boundaries, not the sink match."  # 4820
+- op: update  # eab4
+  at: '2026-09-29T02:27:03Z'  # eab4
+  by: agent  # eab4
+  actor: jgstern_agent  # eab4
+  clock: 2  # eab4
+  nonce: eab4  # eab4
+  set:  # eab4
+    status: satisfied  # eab4

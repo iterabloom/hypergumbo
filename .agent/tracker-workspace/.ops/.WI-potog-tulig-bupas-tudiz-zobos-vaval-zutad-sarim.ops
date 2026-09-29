@@ -1,0 +1,22 @@
+- op: create  # 6d56
+  at: '2026-09-29T02:26:46Z'  # 6d56
+  by: agent  # 6d56
+  actor: jgstern_agent  # 6d56
+  clock: 1  # 6d56
+  nonce: 6d56  # 6d56
+  data:  # 6d56
+    kind: work_item  # 6d56
+    title: "go: a net.Dial*/Listen* connection on a unix-family network stamps net_stream (network); an AF_UNIX socket is process-local (pipe -> ipc) -- the Go twin of WI-baran"  # 6d56
+    status: todo_hard  # 6d56
+    priority: 3  # 6d56
+    parent:  # 6d56
+    tags:  # 6d56
+    - io_boundary  # 6d56
+    - taint  # 6d56
+    - go  # 6d56
+    isbefore: []  # 6d56
+    duplicate_of: []  # 6d56
+    not_duplicate_of: []  # 6d56
+    pr_ref:  # 6d56
+    description: "FOUND 2026-09-28 reading back INV-totar's A/B. go.py stamps every net.Dial / net.DialTimeout / net.Listen connection io_target_kind=net_stream, so a Unix-domain socket is a network crossing. podman pkg/machine/shim/claim_darwin.go: con, _ := net.DialTimeout(\"unix\", helperSock, ...); fmt.Fprintln(con, \"GO\") -> io-boundaries net_send, taint zone network. It is a process-local socket: pipe -> ipc_send / ipc is the exact answer.\n\nThis is the Go twin of WI-baran (c sys/socket send*/recv*: the descriptor's FAMILY decides, AF_UNIX -> pipe). The first argument of net.Dial* / net.Listen* is the network name as a string literal in the common case (\"unix\", \"unixgram\", \"unixpacket\" -> pipe; \"tcp*\"/\"udp*\"/\"ip*\" -> net_stream; a variable abstains).\n\nFIX SHAPE: read the literal network argument where the connection is bound; stamp pipe for the unix family. Both consumers (io-boundaries and taint, now wired by INV-totar) follow the stamp. Size first: count net.Dial*/Listen* by network literal on the Go cohort."  # 6d56
+    fields: {}  # 6d56

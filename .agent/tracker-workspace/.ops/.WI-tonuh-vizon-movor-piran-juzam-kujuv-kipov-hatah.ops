@@ -1,0 +1,20 @@
+- op: create  # 530e
+  at: '2026-09-29T00:22:28Z'  # 530e
+  by: agent  # 530e
+  actor: jgstern_agent  # 530e
+  clock: 1  # 530e
+  nonce: 530e  # 530e
+  data:  # 530e
+    kind: work_item  # 530e
+    title: "partial-install warnings never find a linker's requirement row: LINKER_LANGUAGE_REQUIREMENTS is keyed jni / swift_objc / dependency but diagnostics carry registered names (jni-linker ...), so package suggestions and the WI-ruman relevance gate never run"  # 530e
+    status: todo_hard  # 530e
+    priority: 3  # 530e
+    parent:  # 530e
+    tags:  # 530e
+    - analysis_quality  # 530e
+    isbefore: []  # 530e
+    duplicate_of: []  # 530e
+    not_duplicate_of: []  # 530e
+    pr_ref:  # 530e
+    description: "FOUND 2026-09-28 by the docstring-staleness audit (reviewer code aside), confirmed by reading the code on dev.\n\npartial_install_warnings.LINKER_LANGUAGE_REQUIREMENTS is keyed \"jni\", \"swift_objc\", \"dependency\". check_partial_linker_requirements looks it up with diag.linker_name, and linkers.registry.get_linker_diagnostics sets linker_name=linker.name -- the REGISTERED name (\"jni-linker\", \"dependency-linker\", ...). The .get() never hits, so (1) the per-requirement package suggestions are never produced and (2) the WI-ruman relevance gate (suppress a warning whose unmet requirements map only to languages absent from the tree) never fires. The registry's own example docstring (registry.py ~L1290) also shows linker_name=\"jni\". The module docstring now says the gate is inert (staleness audit C bundle).\n\nFIX SHAPE: key the table by registered linker name (or normalise at lookup), with a production-path test through get_linker_diagnostics, not a hand-built LinkerDiagnostics. Check WI-ruman's own closing test for the same hand-built-input shape. swift-objc-linker also declares no requirements."  # 530e
+    fields: {}  # 530e
