@@ -134,7 +134,7 @@ _IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*"
 _EVENT_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
 
 
-def _extract_event_from_match(match: re.Match, literal_group: int, var_group: int) -> tuple[str, str]:
+def _extract_event_from_match(match: re.Match[str], literal_group: int, var_group: int) -> tuple[str, str]:
     """Extract event and event_type from a regex match.
 
     Args:
@@ -810,22 +810,22 @@ def link_websocket(
     # Synthesized Symbols use the canonical ``make_file_id`` shape, derive
     # ``language`` from the file extension, and stamp ``stable_id`` via
     # ``make_file_stable_id`` to satisfy the INV-piroh schema gate.
-    for file_path, pattern_type in files_with_patterns.items():
-        language = _language_for_file(file_path, pattern_type)
-        file_id = _make_file_id(language, file_path)
+    for ep_path, pattern_type in files_with_patterns.items():
+        language = _language_for_file(ep_path, pattern_type)
+        file_id = _make_file_id(language, ep_path)
         if file_id in existing_ids:
             continue
-        file_name = Path(file_path).name
+        file_name = Path(ep_path).name
         symbols.append(Symbol(
             id=file_id,
             name=file_name,
             kind="file",
             language=language,
-            path=file_path,
+            path=ep_path,
             span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            stable_id=make_file_stable_id(language, file_path),
+            stable_id=make_file_stable_id(language, ep_path),
         ))
 
     # Pattern types that use "message" as a synthetic placeholder for

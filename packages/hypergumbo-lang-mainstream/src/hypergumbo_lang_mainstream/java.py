@@ -1733,8 +1733,9 @@ def _extract_symbols(
                 # Extract all modifiers for the modifiers field
                 modifiers = _extract_modifiers(node, source)
 
-                # Build meta dict
-                meta: dict[str, object] | None = None
+                # Build meta dict (declared above; WI-hokag: re-annotating it here
+                # was a no-redef, the same type bound twice)
+                meta = None
 
                 # Extract all annotations for rich metadata
                 # Route detection is now handled by YAML patterns (ADR-3aaa v1.0.x)
