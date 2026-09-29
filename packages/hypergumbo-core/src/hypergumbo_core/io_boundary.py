@@ -1158,72 +1158,26 @@ class IoBoundaryCatalog:
         the first-declared row so an unstamped call is classified exactly as it
         was before either existed.
         """
-        # Qualified-name match always wins (exact). It can still be several
-        # rows when the primitive is dual-classified, so the mode decides.
-        qualified_hits = self._qualified_rows(name)
-        if qualified_hits:
+        # INV-foda: the arm order, the slot split and the method-on-a-
+        # disjunction refusal live in :func:`named_lookup_arm`, which taint's
+        # ``_lookup_named_entry`` calls too. What stays here is this
+        # consumer's own narrowing -- the mode and target-kind seams -- and
+        # the INV-sapit refusal below.
+        arm, hits = named_lookup_arm(
+            self._qualified_rows(name), self._by_short.get(name) or [],
+            module_hint, call_construct=call_construct,
+        )
+        if arm != NAMED_ARM_GATE:
+            if not hits:
+                # A refusal, or nothing indexed under the name. After a
+                # mismatched module this is likely NOT an IO primitive (e.g.,
+                # crypto/rand.Read is not net.Conn.Read).
+                return None
+            # A qualified or module-filtered set can still be several rows
+            # when the primitive is dual-classified, so the mode decides.
             return select_by_mode(
-                _narrow_by_target_kind(qualified_hits, io_target_kinds),
-                io_modes,
+                _narrow_by_target_kind(hits, io_target_kinds), io_modes,
             )
-
-        hits = self._by_short.get(name)
-        if not hits:
-            return None
-
-        # If we have module context, filter matches
-        if module_hint and module_hint != "external":
-            candidates = _module_hint_candidates(module_hint)
-            filtered = [
-                p for p in hits
-                if any(_module_matches(p.module, c) for c in candidates)
-            ]
-            # INV-nizom: a DISJUNCTIVE slot is file context, not receiver
-            # evidence, so the F3 construct rule applies to it exactly as it
-            # applies to no hint at all. ``cpp.py`` joins every ``#include`` in
-            # the file into one slot and says so itself — "this call could be
-            # from any of the included headers" — which is an uncertainty set;
-            # ``fut.wait()`` in a unit that includes ``<sys/wait.h>`` was
-            # matching ``sys/wait.wait`` (kind=function) on it.
-            #
-            # ARITY IS THE DISCRIMINATOR, and _module_hint_candidates already
-            # computes it: a language emitting ONE module per slot expands to a
-            # single candidate (``os``, ``fmt``, ``java.io.File``) and never
-            # reaches this branch. That distinction is load-bearing rather than
-            # cosmetic — ``call_construct == "method"`` does NOT mean "instance
-            # method". Go spells ``os.Open(p)`` as a selector expression,
-            # indistinguishable in shape from ``f.Close()``, and stamps both
-            # ``method``; a rule keyed on the construct ALONE was measured on
-            # whisper.cpp and removed 51 matches — the 2 target false positives
-            # and 49 true ones (``os.Open``, ``os.Stat``, ``fmt.Fprintln``,
-            # ``net/http.NewRequest``, ``logging.exception``). A definite module
-            # slot is precisely what disambiguates those, which is why the gate
-            # defers to it and why this refusal must not.
-            #
-            # READ IN THE AXIS'S TERMS (ADR-0059), this drops rows CALLED ON A
-            # NAMED OWNER when the stamp says ``method`` and the slot does not
-            # say which owner the call is on. A ``method`` stamp alone is not
-            # evidence of an instance receiver: Go stamps it on ``os.Open`` and
-            # java on a qualified static. So the arm must not fire on a slot
-            # that DOES name the owner. A single module does, and so does a
-            # disjunction whose every entry spells the same owner in another
-            # package (java's wildcard slot, :func:`slot_names_one_owner`).
-            # Without that exemption, java's statics could not be keyed as the
-            # functions they are: 36 jedis classifications were lost
-            # (INV-zikab step 4).
-            if (call_construct == "method" and len(candidates) > 1
-                    and not slot_names_one_owner(module_hint)):
-                filtered = [p for p in filtered if not called_on_a_named_owner(p.kind)]
-            if filtered:
-                return select_by_mode(
-                    _narrow_by_target_kind(
-                        prefer_exact_owner(filtered, module_hint), io_target_kinds,
-                    ),
-                    io_modes,
-                )
-            # No match with module filtering — this is likely NOT an IO
-            # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
-            return None
 
         # INV-sapit: the SHORT-NAME fallback is the only path a first-party callable
         # can reach, and the only one it can be wrong on. The two paths above are safe
@@ -4174,6 +4128,108 @@ def prefer_exact_owner(rows: Sequence[Any], module_hint: str) -> list[Any]:
         if normalize_module_separators(r.module).casefold() in wanted
     ]
     return exact or list(rows)
+
+
+#: The arms of :func:`named_lookup_arm`, in the order it tries them.
+NAMED_ARM_QUALIFIED: Final = "qualified"
+NAMED_ARM_MODULE: Final = "module"
+NAMED_ARM_GATE: Final = "gate"
+
+
+def named_lookup_arm(
+    qualified_rows: Sequence[Any],
+    short_rows: Sequence[Any],
+    module_hint: str | None,
+    *,
+    call_construct: str | None = None,
+) -> tuple[str, list[Any]]:
+    """Which arm decides a named catalogue lookup, and the rows it may pick from.
+
+    INV-foda. ONE RULE FOR BOTH CONSUMERS. ``lookup_with_module`` and taint's
+    ``_lookup_named_entry`` answer the same question -- which catalogue row is
+    this call -- and were two copies of this rule that had drifted in five
+    places: the arm ORDER, the disjunctive-slot split (INV-funuf, io only), the
+    method-on-a-disjunction arm (INV-nizom, io only), separator-insensitive
+    qualified names (io only) and the ``<external>`` placeholder (taint only).
+    The largest was the split: c/cpp put the file's ``#include`` list in the
+    slot, taint compared the joined string, and every ``send`` / ``recv`` /
+    ``getenv`` in a file with two includes was an io boundary with NO taint
+    entry -- ``send(fd, getenv("API_KEY"), ...)`` confirmed "no secret reaches
+    the network".
+
+    The arms, in order:
+
+    1. ``qualified`` -- an exact qualified-name hit names the primitive
+       outright, whatever the slot says. Each caller computes these rows,
+       because the two index the catalogue differently.
+    2. ``module`` -- a usable slot filters the short-name rows to those it can
+       name, spelling by spelling (:func:`_module_hint_candidates`). An empty
+       result is a REFUSAL: a present, mismatched module is evidence this is a
+       different symbol (``crypto/rand.Read`` is not ``net.Conn.Read``).
+    3. ``gate`` -- no usable slot (none, or a placeholder in
+       :data:`_UNRESOLVED_MODULE_PLACEHOLDERS_IO`, ADR-0017 §3a): the caller
+       hands the rows to :func:`gate_named_entry` after its own narrowing.
+
+    QUALIFIED FIRST, AND THAT WAS A CHOICE. taint filtered first; the one
+    measured divergence of that kind (pretix ``defusedcsv`` ``csv.writer``) was
+    a real csv write that the qualified arm classified and the filter refused.
+    A refusal is the silent direction: a missed row reads ``confirmed``, a
+    spurious one reads ``violated``.
+
+    Returns ``(arm, rows)``; ``rows`` is empty only on a refusal or when there
+    was nothing to choose from. Duck-typed: each row exposes ``.module`` and
+    ``.kind``.
+    """
+    if qualified_rows:
+        return NAMED_ARM_QUALIFIED, list(qualified_rows)
+    if not short_rows:
+        return NAMED_ARM_MODULE, []
+    if module_hint and module_hint not in _UNRESOLVED_MODULE_PLACEHOLDERS_IO:
+        candidates = _module_hint_candidates(module_hint)
+        filtered = [
+            p for p in short_rows
+            if any(_module_matches(p.module, c) for c in candidates)
+        ]
+        # INV-nizom: a DISJUNCTIVE slot is file context, not receiver
+        # evidence, so the F3 construct rule applies to it exactly as it
+        # applies to no hint at all. ``cpp.py`` joins every ``#include`` in
+        # the file into one slot and says so itself — "this call could be
+        # from any of the included headers" — which is an uncertainty set;
+        # ``fut.wait()`` in a unit that includes ``<sys/wait.h>`` was
+        # matching ``sys/wait.wait`` (kind=function) on it.
+        #
+        # ARITY IS THE DISCRIMINATOR, and _module_hint_candidates already
+        # computes it: a language emitting ONE module per slot expands to a
+        # single candidate (``os``, ``fmt``, ``java.io.File``) and never
+        # reaches this branch. That distinction is load-bearing rather than
+        # cosmetic — ``call_construct == "method"`` does NOT mean "instance
+        # method". Go spells ``os.Open(p)`` as a selector expression,
+        # indistinguishable in shape from ``f.Close()``, and stamps both
+        # ``method``; a rule keyed on the construct ALONE was measured on
+        # whisper.cpp and removed 51 matches — the 2 target false positives
+        # and 49 true ones (``os.Open``, ``os.Stat``, ``fmt.Fprintln``,
+        # ``net/http.NewRequest``, ``logging.exception``). A definite module
+        # slot is precisely what disambiguates those, which is why the gate
+        # defers to it and why this refusal must not.
+        #
+        # READ IN THE AXIS'S TERMS (ADR-0059), this drops rows CALLED ON A
+        # NAMED OWNER when the stamp says ``method`` and the slot does not
+        # say which owner the call is on. A ``method`` stamp alone is not
+        # evidence of an instance receiver: Go stamps it on ``os.Open`` and
+        # java on a qualified static. So the arm must not fire on a slot
+        # that DOES name the owner. A single module does, and so does a
+        # disjunction whose every entry spells the same owner in another
+        # package (java's wildcard slot, :func:`slot_names_one_owner`).
+        # Without that exemption, java's statics could not be keyed as the
+        # functions they are: 36 jedis classifications were lost
+        # (INV-zikab step 4).
+        if (call_construct == "method" and len(candidates) > 1
+                and not slot_names_one_owner(module_hint)):
+            filtered = [p for p in filtered if not called_on_a_named_owner(p.kind)]
+        return NAMED_ARM_MODULE, (
+            prefer_exact_owner(filtered, module_hint) if filtered else []
+        )
+    return NAMED_ARM_GATE, list(short_rows)
 
 
 def _module_hint_candidates(module_hint: str) -> list[str]:

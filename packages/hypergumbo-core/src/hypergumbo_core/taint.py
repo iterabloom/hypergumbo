@@ -921,62 +921,58 @@ def _lookup_named_entry(
     ambiguous_names: frozenset[str],
     call_construct: str | None = None,
 ):
-    """Pick the matching catalog entry from ``hits``, mirroring
-    :meth:`io_boundary.IoBoundaryCatalog.lookup_with_module` (WI-razol).
+    """Pick the matching catalog entry from ``hits`` by the rule
+    :meth:`io_boundary.IoBoundaryCatalog.lookup_with_module` uses (WI-razol).
 
     ``hits`` is the index bucket for ``callee_name`` (entries registered under
     that short OR qualified name); each entry exposes ``module`` / ``name`` /
-    ``kind`` attributes.
+    ``kind`` / ``qualified_name`` attributes.
 
-    * No hits → ``None``.
-    * With a usable module hint, filter to entries whose ``module`` matches
-      (via :func:`io_boundary._module_matches`) and return the first match,
-      preferring an entry whose module IS the slot
-      (:func:`io_boundary.prefer_exact_owner`, INV-vusum);
-      if none match, return ``None`` — a present-but-mismatched module means
-      this is not the catalogued primitive (e.g. ``sys.stdout.write`` is not
-      ``asyncio.StreamWriter.write``; F156.A1).
-    * With no usable module hint, delegate to the shared kind-aware gate
-      (:func:`io_boundary.gate_named_entry`, io-boundary:F3): an untyped
-      method call (``call_construct == "method"``) has no receiver evidence
-      and never matches (INV-tapat/INV-maluk — ``str.replace`` must not match
-      ``Path.replace``), a free-function call may match only a function-kind
-      hit, and the ``ambiguous_names`` short-name set is retained as the
+    INV-foda: THE RULE IS :func:`io_boundary.named_lookup_arm`, SHARED WITH
+    ``lookup_with_module``. This function used to carry its own copy, and the
+    copies drifted: it filtered by module before trying the qualified name,
+    compared the c/cpp ``#include`` slot as one joined string (so ``send`` /
+    ``getenv`` under two includes had no taint entry while io-boundaries
+    classified them), lacked the INV-nizom method-on-a-disjunction refusal and
+    matched qualified names separator-sensitively. The arms, in order:
+
+    * an entry whose ``qualified_name`` is the callee (separator-insensitive:
+      ``std::env::consts`` is ``std::env.consts``) wins outright;
+    * with a usable module hint, the entries the slot can name, preferring one
+      whose module IS the slot (INV-vusum); none is a refusal -- a present,
+      mismatched module means this is not the catalogued primitive
+      (``sys.stdout.write`` is not ``asyncio.StreamWriter.write``; F156.A1);
+    * with no usable hint (none, ``external`` or ``<external>``, ADR-0017 §3a),
+      the shared kind-aware gate (:func:`io_boundary.gate_named_entry`,
+      io-boundary:F3): an untyped method call never matches, a free-function
+      call may match only a function-kind hit, and ``ambiguous_names`` is the
       meta-absent / non-Python safety net.
 
-    A qualified ``callee_name`` (e.g. ``"os.replace"`` /
-    ``"pathlib.Path.write_text"``) carries its own receiver evidence (the full
-    module path), so an exact ``qualified_name`` match wins regardless of
-    ambiguity OR kind — mirroring :meth:`lookup_with_module`'s qualified-name-
-    first branch, which runs before its kind-aware gate (io-boundary:F3).
+    Mode and target-kind narrowing happen in the caller, before this, as the
+    io consumer narrows after it; the ROW CHOICE is the shared part.
     """
     if not hits:
         return None
-    # Both spellings of the unresolved-receiver placeholder are exempted, per
-    # ADR-0017 §3a: when the analyzer could not recover module information,
-    # degrade to short-name matching rather than reject, because rejecting
-    # outright suppresses legitimate findings. `<external>` was missing here
-    # (only the bare `external` was tested), so it fell into the module-FILTER
-    # branch below and was compared as though it were a real module name —
-    # matching nothing and silently dropping the finding. Harvested from the
-    # retired `_sink_module_compatible`, which had it right.
-    if module_hint and module_hint not in _UNRESOLVED_MODULE_PLACEHOLDERS:
-        from .io_boundary import _module_matches, prefer_exact_owner
-        matches = [h for h in hits if _module_matches(h.module, module_hint)]
-        # INV-vusum: the entry whose module IS the slot outranks one the slot
-        # merely contains, as in lookup_with_module; else the first match.
-        return prefer_exact_owner(matches, module_hint)[0] if matches else None
-    # Exact qualified-name match carries its own receiver evidence — allow it
-    # before the kind-aware no-module gate (parity with lookup_with_module's
-    # qualified-name-first branch).
-    for h in hits:
-        if h.qualified_name == callee_name:
-            return h
-    from .io_boundary import gate_named_entry
-    return gate_named_entry(
-        hits, callee_name, module_hint, ambiguous_names,
-        call_construct=call_construct,
+    from .io_boundary import (
+        NAMED_ARM_GATE,
+        gate_named_entry,
+        named_lookup_arm,
+        normalize_module_separators,
     )
+    wanted = normalize_module_separators(callee_name)
+    qualified = [
+        h for h in hits
+        if normalize_module_separators(h.qualified_name) == wanted
+    ]
+    arm, rows = named_lookup_arm(
+        qualified, hits, module_hint, call_construct=call_construct,
+    )
+    if arm == NAMED_ARM_GATE:
+        return gate_named_entry(
+            rows, callee_name, module_hint, ambiguous_names,
+            call_construct=call_construct,
+        )
+    return rows[0] if rows else None
 
 
 def _retry_name_unqualified(
