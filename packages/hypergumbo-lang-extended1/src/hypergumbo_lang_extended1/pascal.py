@@ -341,14 +341,14 @@ class PascalAnalyzer(TreeSitterAnalyzer):
         for child in node.children:
             self._extract_symbols_recursive(child, rel_path, analysis, file_anchor)
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Register symbols with lowercase names for case-insensitive matching."""
         global_symbols[symbol.name.lower()] = symbol
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
@@ -361,7 +361,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
 
     def _extract_edges_recursive(
         self, node: "tree_sitter.Node", rel_path: str, run_id: str,
-        global_symbols: dict, edges: list[Edge],
+        global_symbols: dict[str, Symbol], edges: list[Edge],
     ) -> None:
         """Recursively extract call edges."""
         call_name = None

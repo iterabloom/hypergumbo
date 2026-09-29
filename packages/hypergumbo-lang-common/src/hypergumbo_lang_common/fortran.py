@@ -821,7 +821,7 @@ class FortranAnalyzer(TreeSitterAnalyzer):
     grammar_module = "tree_sitter_fortran"
     create_file_symbols = False
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Keep ``field``/``variable`` data anchors OUT of call resolution (WI-jusus).
 
         Fortran is imperative, so BOTH kinds must be skipped: a derived-type
@@ -859,7 +859,7 @@ class FortranAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

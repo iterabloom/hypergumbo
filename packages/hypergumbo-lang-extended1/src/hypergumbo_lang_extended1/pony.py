@@ -44,7 +44,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -198,7 +198,7 @@ def _extract_method(
     cap_str = f" {capability}" if capability else ""
     signature = f"fun{cap_str} {name}({', '.join(params)})"
 
-    meta: dict = {"params": params, "parent_type": current_type}
+    meta: dict[str, Any] = {"params": params, "parent_type": current_type}
     if capability:
         meta["capability"] = capability
 
@@ -536,14 +536,14 @@ class PonyAnalyzer(TreeSitterAnalyzer):
         analysis.import_aliases["__symbol_registry__"] = "present"
         return analysis
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Register symbol by name for cross-file resolution."""
         global_symbols[symbol.name] = symbol
 
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

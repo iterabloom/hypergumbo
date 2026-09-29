@@ -838,7 +838,7 @@ class ApexAnalyzer(TreeSitterAnalyzer):
         return analysis
 
     def register_symbol(
-        self, symbol: Symbol, global_symbols: dict,
+        self, symbol: Symbol, global_symbols: dict[str, Symbol],
     ) -> None:
         """Register symbol by qualified name only.
 
@@ -849,7 +849,7 @@ class ApexAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

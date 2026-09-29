@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -119,7 +119,7 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
 def _make_symbol(analyzer: "TreeSitterAnalyzer", rel_path: str, run_id: str,
                  source: bytes, node: "tree_sitter.Node",
                  name: str, kind: str,
-                 signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
+                 signature: Optional[str] = None, meta: Optional[dict[str, Any]] = None) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1
@@ -258,7 +258,7 @@ class HlslAnalyzer(TreeSitterAnalyzer):
     file_patterns: ClassVar[list[str]] = ["*.hlsl", "*.hlsli", "*.fx"]
     language_pack_name = "hlsl"
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Only register function symbols for cross-file call resolution."""
         if symbol.kind == "function":
             global_symbols[symbol.name] = symbol
@@ -286,7 +286,7 @@ class HlslAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

@@ -439,7 +439,7 @@ class CircomTreeSitterAnalyzer(TreeSitterAnalyzer):
         file_path: Path,
         rel_path: str,
         local_symbols: dict,
-        global_symbols: dict,
+        global_symbols: dict[str, Symbol],
         run: "AnalysisRun",
         import_aliases: dict,
         resolver: "NameResolver",

@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -233,7 +233,7 @@ def _extract_wgsl_symbols(
 
                 # Check for entry point attributes
                 entry_type = _detect_entry_point(node, source)
-                meta: Optional[dict] = None
+                meta: Optional[dict[str, Any]] = None
                 if entry_type:
                     meta = {"entry_point": entry_type}
 
@@ -436,7 +436,7 @@ class WgslAnalyzer(TreeSitterAnalyzer):
         return analysis
 
     def register_symbol(
-        self, symbol: Symbol, global_symbols: dict,
+        self, symbol: Symbol, global_symbols: dict[str, Symbol],
     ) -> None:
         """Register symbol globally; functions indexed by lowercase name."""
         if symbol.kind == "function":
@@ -447,7 +447,7 @@ class WgslAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

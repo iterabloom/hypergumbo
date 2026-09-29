@@ -33,7 +33,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -72,7 +72,7 @@ def _extract_formal_part(node: "tree_sitter.Node", source: bytes) -> Optional[st
 
 
 def _make_symbol(analyzer: "AdaAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node", name: str, kind: str,
-                 source: bytes, signature: Optional[str] = None, meta: Optional[dict] = None,
+                 source: bytes, signature: Optional[str] = None, meta: Optional[dict[str, Any]] = None,
                  cc_node: "Optional[tree_sitter.Node]" = None) -> Symbol:
     """Create a Symbol with consistent formatting.
 
@@ -350,7 +350,7 @@ class AdaAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

@@ -37,7 +37,7 @@ Edge Types
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -152,7 +152,7 @@ def _extract_shape(
 
         # WI-bokab (v7): file-identity anchor; ``rel_path`` is repo-relative.
         file_anchor = analyzer._file_anchor(rel_path)
-        meta: dict = {"traits": traits} if traits else {}
+        meta: dict[str, Any] = {"traits": traits} if traits else {}
         # WI-rilal / audit-0013 fold: a service shape folds to kind='interface'
         # with the framework role recorded alongside any traits.
         if framework_role:
@@ -505,7 +505,7 @@ class SmithyAnalyzer(TreeSitterAnalyzer):
 
         return analysis
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Register symbol with both full name and short name."""
         global_symbols[symbol.name] = symbol
         # Also register short name (without namespace)
@@ -517,7 +517,7 @@ class SmithyAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

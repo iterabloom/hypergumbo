@@ -53,7 +53,7 @@ TLA+-Specific Considerations
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Optional
 
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
@@ -130,7 +130,7 @@ def _extract_symbols_from_file(
         node: "tree_sitter.Node",
         name: str,
         kind: str,
-        meta: dict | None = None,
+        meta: dict[str, Any] | None = None,
         signature: Optional[str] = None,
     ) -> None:
         start_line = node.start_point[0] + 1
@@ -178,7 +178,7 @@ def _extract_symbols_from_file(
             name_node = find_child_by_type(node, "identifier")
             if name_node:
                 name = node_text(name_node, source).strip()
-                meta: dict = {}
+                meta: dict[str, Any] = {}
                 # Check if inside local_definition
                 if node.parent and node.parent.type == "local_definition":
                     meta["is_local"] = True
@@ -332,7 +332,7 @@ class TLAPlusAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

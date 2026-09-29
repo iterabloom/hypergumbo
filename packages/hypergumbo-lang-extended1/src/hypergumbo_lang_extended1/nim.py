@@ -50,7 +50,7 @@ from __future__ import annotations
 import posixpath
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -120,7 +120,7 @@ def _declared_name_node(
 def _make_symbol(
     analyzer: "NimAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node",
     name: str, kind: str, source: bytes,
-    signature: Optional[str] = None, meta: Optional[dict] = None,
+    signature: Optional[str] = None, meta: Optional[dict[str, Any]] = None,
     is_exported: bool = False,
 ) -> Symbol:
     """Create a Symbol with consistent formatting."""
@@ -879,7 +879,7 @@ class NimAnalyzer(TreeSitterAnalyzer):
 
         return analysis
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Keep field/variable symbols OUT of the call-resolution registry (WI-jusus).
 
         A ``field``/``variable`` is a data anchor, never a call or instantiation
@@ -906,7 +906,7 @@ class NimAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

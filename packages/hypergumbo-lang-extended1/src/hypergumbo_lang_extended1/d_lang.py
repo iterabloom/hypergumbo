@@ -43,7 +43,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -92,7 +92,7 @@ def _make_symbol(
     rel_path: str, run_id: str, node: "tree_sitter.Node",
     name: str, kind: str, source: bytes,
     analyzer: "DAnalyzer",
-    signature: Optional[str] = None, meta: Optional[dict] = None,
+    signature: Optional[str] = None, meta: Optional[dict[str, Any]] = None,
 ) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
@@ -197,7 +197,7 @@ def _process_function_declaration(
     else:
         # WI-situj: stamp the first-parameter type so the receiver_type_dispatch
         # linker can recover UFCS calls (``x.func()`` ≡ ``func(x)``) against it.
-        fn_meta: dict = {}
+        fn_meta: dict[str, Any] = {}
         first_type = _first_param_type(node, source)
         if first_type:
             fn_meta["ufcs_receiver_type"] = first_type
@@ -833,7 +833,7 @@ class DAnalyzer(TreeSitterAnalyzer):
         return _extract_import_aliases(tree, source)
 
     def register_symbol(
-        self, symbol: Symbol, global_symbols: dict,
+        self, symbol: Symbol, global_symbols: dict[str, Any],
     ) -> None:
         """Register symbols with module-qualified names for disambiguation.
 
@@ -864,7 +864,7 @@ class DAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Any],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

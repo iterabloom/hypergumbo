@@ -32,7 +32,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -78,7 +78,7 @@ def _find_children_by_type(
 def _make_symbol(
     analyzer: "FishAnalyzer", rel_path: str, run_id: str, node: "tree_sitter.Node",
     source: bytes, name: str, kind: str,
-    signature: Optional[str] = None, meta: Optional[dict] = None,
+    signature: Optional[str] = None, meta: Optional[dict[str, Any]] = None,
 ) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
@@ -228,7 +228,7 @@ class FishAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
