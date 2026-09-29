@@ -13,9 +13,10 @@
 # Rows are exactly the call edges the analyzers EMIT today, probed on dev:
 #   python      builtins.eval / exec / compile   (module-level and in functions)
 #   javascript  window.eval; bare eval (JS_KNOWN_GLOBAL_CALLS, WI-nokab)
-# NOT YET REACHABLE, and so not rowed: `new Function(s)` and a string
-# `setTimeout(s)` emit no call edge (a string and a function argument are one
-# call shape), and rowing them would claim coverage nothing can deliver.
+# NOT YET REACHABLE, and so not rowed: the shapes under `unreached:` below emit
+# no call edge (a string and a function argument are one call shape), so a row
+# would claim coverage nothing can deliver. verify-claims reads `unreached:` and
+# names these shapes on any clean verdict over this zone (INV-pivam).
 description: "Evaluating data as code in the running process"
 zone: code_execution
 trust_level: untrusted
@@ -34,3 +35,12 @@ sinks:
       functions: [eval]
     - module: eval
       functions: [eval]
+
+# Per language: shapes that evaluate data as code but that no call edge reaches.
+unreached:
+  javascript:
+    - "new Function(s)"
+    - "setTimeout(s) / setInterval(s) with a string argument"
+  typescript:
+    - "new Function(s)"
+    - "setTimeout(s) / setInterval(s) with a string argument"

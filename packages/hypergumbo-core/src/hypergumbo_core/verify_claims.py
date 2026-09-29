@@ -165,7 +165,11 @@ How It Works
    ``blind_by_source_taint`` substitutes a per-label ``ScopedBlindness``
    that ignores no-catalogue languages the label cannot start in, and
    ``_disclose_scoped_blindness`` names those set-aside languages in
-   ``details`` (WI-rusil).
+   ``details`` (WI-rusil). A taint claim over one of ``taint_sinks/``'s
+   non-boundary zones (ADR-0060) then passes through ``_apply_sink_zone_gap``:
+   a present language with no sink in the zone withholds a clean verdict, and
+   declared unreached shapes qualify it with ``CAVEAT_UNREACHED_SINK_SHAPES``
+   (INV-pivam).
 5. ``catalog_provenance`` records which catalogues the verdicts were computed
    against, keeping command-line catalogues apart from the claims file's
    ``extra_catalogs`` (the analysed repository supplying its own grading
@@ -729,6 +733,76 @@ CHOICE_SHAPED_SOURCE_NAMES: frozenset[str] = frozenset({
 #: ever be a SELECTION finding, never an injected payload, and a claim whose
 #: question is injection is reading a stronger fact than the label states.
 CAVEAT_CHOICE_SHAPED_SOURCE = "choice_shaped_source"
+
+#: Caveat kind: the claim's sink zone has shapes the analysis cannot reach in a
+#: language present in the repo, so a clean verdict holds only for the sinks it
+#: could see (INV-pivam). The zones are ADR-0060's non-boundary ones; the shapes
+#: are the ``unreached:`` entries of their shipped files (``new Function(s)``,
+#: a string ``setTimeout``, an ``innerHTML`` assignment). Measured before this
+#: existed: a JS ``new Function(process.env.X)()`` against "host_secret must
+#: not reach code_execution" read ``confirmed`` rc 0 with ``caveats: []``.
+CAVEAT_UNREACHED_SINK_SHAPES = "unreached_sink_shapes"
+
+
+@dataclass(frozen=True)
+class SinkZoneGap:
+    """What one taint claim's sink zone cannot see, per language (INV-pivam).
+
+    Built by ``cmd_verify_claims`` for claims over a zone ``taint_sinks/``
+    ships (ADR-0060), over the languages present in the repo that a flow of
+    the claim can be in.
+
+    ``uncovered_languages``: present languages with NO sink in the zone, so a
+    flow into it there cannot be found at all -- the verdict is withheld, as
+    it is for a language with no taint catalogue (INV-potu), one zone at a
+    time. ``unreached_shapes``: for present languages that do have sinks in
+    the zone, the shapes of it no call edge reaches -- a clean verdict is
+    qualified with :data:`CAVEAT_UNREACHED_SINK_SHAPES` naming them.
+    """
+
+    zone: str
+    uncovered_languages: tuple[str, ...]
+    unreached_shapes: tuple[tuple[str, tuple[str, ...]], ...]
+
+
+def _apply_sink_zone_gap(verdict: ClaimVerdict, gap: SinkZoneGap) -> ClaimVerdict:
+    """Withhold or qualify a clean verdict by what its sink zone cannot see.
+
+    A ``violated`` or ``inconclusive`` verdict is untouched: a found flow is
+    trustworthy whatever else the zone misses, and a withheld verdict is
+    already the stronger statement. A language with no sink in the zone
+    dominates an unreached shape, for the reason blindness dominates a caveat
+    in :func:`_require_coverage_to_confirm`.
+    """
+    if verdict.verdict not in CONFIRMING_VERDICTS:
+        return verdict
+    if gap.uncovered_languages:
+        langs = ", ".join(gap.uncovered_languages)
+        return _require_coverage_to_confirm(verdict, (
+            f"language(s) {langs} ha{'s' if len(gap.uncovered_languages) == 1 else 've'} "
+            f"no sink in the '{gap.zone}' zone, so a flow into it there could "
+            f"not be seen"
+        ))
+    if not gap.unreached_shapes:
+        return verdict
+    entries = sorted(
+        f"{lang}: {shape}" for lang, shapes in gap.unreached_shapes for shape in shapes
+    )
+    return replace(
+        verdict,
+        verdict="confirmed_with_caveats",
+        caveats=_merge_caveat(verdict.caveats, {
+            "kind": CAVEAT_UNREACHED_SINK_SHAPES,
+            "zone": gap.zone,
+            "entries": entries,
+            "detail": (
+                f"No flow reaches a '{gap.zone}' sink the analysis can see. "
+                f"These shapes belong to the zone but no call edge reaches "
+                f"them, so a flow through one would not be found: "
+                f"{'; '.join(entries)}."
+            ),
+        }),
+    )
 
 
 def is_choice_shaped_source(primitive: str) -> bool:
@@ -5914,6 +5988,7 @@ def verify_claims(
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
     blind_by_source_taint: Mapping[str, ScopedBlindness] | None = None,
+    sink_zone_gaps: Mapping[tuple[str, str], SinkZoneGap] | None = None,
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -5939,6 +6014,9 @@ def verify_claims(
         blind_by_source_taint: Per source label, a claim-scoped replacement
             for ``blind_reason`` / ``blind_opaque_sites`` (WI-rusil). A taint
             claim whose label is absent uses the repo-wide pair.
+        sink_zone_gaps: Per ``(source_taint, prohibited_sink_zone)``, what the
+            claim's sink zone cannot see in the languages present (INV-pivam);
+            applied after the coverage gate by :func:`_apply_sink_zone_gap`.
 
     Returns:
         List of ClaimVerdict objects, one per claim.
@@ -5967,6 +6045,11 @@ def verify_claims(
         # branch so a constraint kind added later cannot ship unable to
         # distinguish "looked and found nothing" from "did not look".
         verdict = _require_coverage_to_confirm(verdict, reason, opaque)
+        tf = claim.constraint_taint_flow
+        if tf is not None and sink_zone_gaps:
+            gap = sink_zone_gaps.get((tf.source_taint, tf.prohibited_sink_zone))
+            if gap is not None:
+                verdict = _apply_sink_zone_gap(verdict, gap)
         if scoped is not None and claim.constraint_taint_flow is not None:
             verdict = _disclose_scoped_blindness(
                 verdict, claim.constraint_taint_flow.source_taint, scoped,
