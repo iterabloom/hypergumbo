@@ -117,6 +117,10 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # resolver surface, so admitting it is the same decision that
             # admitted the socket API rather than a new one.
             "netdb",
+            # 2026-09-29 WI-bulub. <fcntl.h> is POSIX.1 and declares open /
+            # openat / creat, whose descriptors <unistd.h>'s read/write (on
+            # this line) consume -- the other half of the same file API.
+            "fcntl",
         }),
     ),
     "cpp": Scope(
