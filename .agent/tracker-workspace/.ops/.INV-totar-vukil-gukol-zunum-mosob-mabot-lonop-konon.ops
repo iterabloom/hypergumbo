@@ -1,0 +1,25 @@
+- op: create  # 4820
+  at: '2026-09-29T00:21:34Z'  # 4820
+  by: agent  # 4820
+  actor: jgstern_agent  # 4820
+  clock: 1  # 4820
+  nonce: '4820'  # 4820
+  data:  # 4820
+    kind: invariant  # 4820
+    title: "taint sink matching never receives the call site's io_target_kind: a target-kind-gated sink resolves only to its fallback, so io.WriteString(os.Stderr, secret) is host_fs to taint and logging to io-boundaries"  # 4820
+    status: violated  # 4820
+    priority: 2  # 4820
+    parent:  # 4820
+    tags:  # 4820
+    - taint  # 4820
+    - io_boundary  # 4820
+    - go  # 4820
+    - analysis_quality  # 4820
+    isbefore: []  # 4820
+    duplicate_of: []  # 4820
+    not_duplicate_of: []  # 4820
+    pr_ref:  # 4820
+    description: "FOUND 2026-09-28 by the docstring-staleness audit (a reviewer's code aside), reproduced on dev 7fda36600b.\n\nREPRO (scratchpad sinkgate/): a Go file with only `io.WriteString(os.Stderr, os.Getenv(\"API_KEY\"))`.\n- io-boundaries: env_read os.Getenv; logging io.WriteString (the WI-suhug write-side seam selects the row by the site's io_target_kind std_stream).\n- verify-claims: `host_secret -> prohibited_sink_zone: logging` CONFIRMED (0 flows) -- a false all-clear; `host_secret -> host_fs` VIOLATED (1 flow).\nOne call site, two answers: io-boundaries says the secret is logged, taint says it is written to disk.\n\nROOT CAUSE. Both propagators call `_match_propagation_entry` for SINKS without `io_target_kinds=` (taint.py structural pass ~L3329, DDG pass ~L4476); only the SOURCE calls pass it. So `_needed_write` is None and `_target_kind_admits` admits only the primitive's `abstention_fallback` sink entry (fs_write -> host_fs for io.WriteString, logging for fmt.Fprint*). WI-suhug (done, PR #743) shipped TaintSink.requires_target_kind + abstention_fallback and measured the move in io-boundaries (29 MOVED); the taint half of the seam was never wired, so every stamped Go writer (1,194 stamped sites on that item's six repos) keeps its fallback sink in taint.\n\nFIX SHAPE: pass `io_target_kinds=call_site_target_kinds(edge.get(\"meta\"))` at both sink match sites; add a production-path test (a stamped io.WriteString / fmt.Fprintln to os.Stderr and to a cmd.StdinPipe()) asserting the taint zone equals the io-boundaries boundary. Measure the Go cohort (verdict moves expected on logging / ipc / host_fs claims). Scope: every target-kind-gated sink row (go io.WriteString / fmt.Fprint*, c unistd.write, haskell hPut*)."  # 4820
+    fields:  # 4820
+      statement: "Taint and io-boundaries give one call site one answer: a sink row gated by requires_target_kind is selected by the site's io_target_kind in taint exactly as the boundary tagger selects it. VIOLATED: taint never passes io_target_kinds when matching sinks, so a stamped writer always gets its abstention-fallback sink."  # 4820
+      root_cause: "taint.py structural (~L3329) and DDG (~L4476) sink loops call _match_propagation_entry without io_target_kinds=; _needed_write is None and _target_kind_admits admits only abstention_fallback entries. WI-suhug wired the source side and io-boundaries, not the sink match."  # 4820
