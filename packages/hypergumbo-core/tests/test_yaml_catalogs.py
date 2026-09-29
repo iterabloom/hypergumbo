@@ -187,7 +187,7 @@ def test_every_family_answers_the_extensibility_question():
 
 
 def test_ruling_10_table_is_the_shipped_registry():
-    """The ten families carry exactly the ADR-0047 ruling-10 verdicts.
+    """The eleven families carry exactly the ADR-0047 ruling-10 verdicts.
 
     Pinned as a table rather than a count so a future edit that flips one
     family's channel has to change this test and say so, instead of drifting.
@@ -211,6 +211,10 @@ def test_ruling_10_table_is_the_shipped_registry():
         "cfg_nodes": (None, None, None),
         "taint_sources": ("taint_sources.d", None, None),
         "taint_sanitizers": ("taint_sanitizers.d", None, None),
+        # ADR-0060: NON-boundary sinks only. No channel: a project's sinks
+        # enter through --taint-sinks / extra_catalogs:, and an I/O sink
+        # belongs in io_primitives.d.
+        "taint_sinks": (None, None, None),
         "function_summaries": (
             "function_summaries.d", None, "CAVEAT_USER_SUPPLIED_SANITIZER",
         ),

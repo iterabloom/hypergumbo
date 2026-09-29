@@ -168,6 +168,20 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         no_channel_reason=None,
     ),
     CatalogSpec(
+        directory="taint_sinks",
+        purpose="Built-in taint sinks with NO I/O-boundary counterpart "
+        "(code_execution, dom_injection); every I/O sink is derived from "
+        "io_primitives instead.",
+        loader="hypergumbo_core.taint",
+        adr="ADR-0060",
+        user_channel=None,
+        no_channel_reason="A project's own sinks already enter through "
+        "--taint-sinks and a claims file's extra_catalogs:, and an I/O sink "
+        "belongs in io_primitives.d. A taint_sinks.d directory would be a "
+        "third home for one kind of edit, and the sibling .d directories "
+        "are declared but not yet read (WI-mimap).",
+    ),
+    CatalogSpec(
         directory="function_summaries",
         purpose="Per-language function summaries (return-type and "
         "side-effect annotations consumed by language-config).",

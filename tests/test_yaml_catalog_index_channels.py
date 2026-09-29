@@ -72,8 +72,8 @@ def test_json_mode_carries_the_channel_fields(capsys):
 def test_table_mode_names_the_scoped_and_gated_families(capsys):
     assert _load().main([]) == 0
     out = capsys.readouterr().out
-    assert "User channel: 7 of 10 families" in out
-    assert "internal: io_primitives_overlays, cfg_nodes, url_folding" in out
+    assert "User channel: 7 of 11 families" in out
+    assert "internal: io_primitives_overlays, cfg_nodes, taint_sinks, url_folding" in out
     assert "limited to the 'library_patterns' section" in out
     assert "ride CAVEAT_USER_SUPPLIED_SANITIZER" in out
 
