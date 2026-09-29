@@ -29,3 +29,10 @@
   set: {}  # 51be
   add:  # 51be
     isbefore: [INV-dadum-jojon-hotil-supof-zunaj-sonof-lirut-vufoj]  # 51be
+- op: discuss  # 768a
+  at: '2026-09-29T07:28:38Z'  # 768a
+  by: agent  # 768a
+  actor: jgstern_agent  # 768a
+  clock: 3  # 768a
+  nonce: 768a  # 768a
+  message: "PREMISE RE-CHECK 2026-09-29 on dev 6929699126 (same-day, by an independent re-check agent): CURRENT, two clauses corrected.\nHOLDS: AUTO_SINK_ZONE_MAP (taint.py:1742) has 8 zones; verify-claims rejects code_execution and dom_injection (exit 2, lists the 8). No io_primitives row or overlay in ANY language covers eval/exec/Function/innerHTML/document.write/insertAdjacentHTML/ScriptEngine/vm/instance_eval; every eval/exec catalogue hit is an ambiguous_names entry or erlang file:eval (an fs_read row). Command injection stays covered by the subprocess zone -- the gap is in-process evaluation and DOM injection. Expressiveness holds: a project --taint-sinks file with zone code_execution on window.eval + document.write gives VIOLATED, 2 flows, ddg/confirmed.\nCORRECTION 1 (JS reach): the string argument is irrelevant. Bare eval, new Function, setTimeout (with a function argument too), alert, parseInt and new URL all emit NO edge, because js_ts.py:1084 JS_KNOWN_GLOBAL_CALLS allowlists only fetch. document.write, window.eval, insertAdjacentHTML already emit calls edges; innerHTML/outerHTML ASSIGNMENTS emit nothing. (The allowlist is also the mechanism behind WI-fahod.)\nCORRECTION 2: Python already emits builtins.eval/exec/compile call edges, so Python's gap is the catalogue only, not reach."  # 768a

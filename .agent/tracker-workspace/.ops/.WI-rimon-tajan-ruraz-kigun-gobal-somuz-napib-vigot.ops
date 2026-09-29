@@ -38,3 +38,10 @@
   set: {}  # 312f
   add:  # 312f
     not_duplicate_of: [WI-vihof-tidah-folif-gibup-logat-fason-hujaz-gipiv]  # 312f
+- op: discuss  # 234f
+  at: '2026-09-29T07:28:37Z'  # 234f
+  by: agent  # 234f
+  actor: jgstern_agent  # 234f
+  clock: 4  # 234f
+  nonce: 234f  # 234f
+  message: "PREMISE RE-CHECK 2026-09-29 on dev 6929699126: CURRENT, one claim narrowed. Mechanism unchanged: c.py:626 still binds a call by NAME to any same-named in-repo definition (no vendored-path or include check; the c.py:566-576 comment even names the nuttx shim). #1291 (INV-foda) does not reach it: a call resolved in-repo never goes through named_lookup_arm, and taint's resolved-edge path (taint.py ~1185-1234) refuses because the file path is not sys/socket.\n\nFALSE ALL-CLEAR, reproduced twice (by a re-check agent and independently by me): src/main.c with getenv then sendto on separate lines, plus lib/wamr/core/shared/platform/nuttx/nuttx_platform.c defining stub sendto/recvfrom (errno = ENOTSUP, like the real one). verify-claims host_secret -> network: CONFIRMED, 0 flows; io-boundaries: env_read only, no net_send/net_recv. CONTROL (no lib/): VIOLATED, stdlib.getenv -> sys/socket.sendto. Variant: a shim whose BODY calls send still reports (through the shim), so the miss needs a stub body; the real shim is a stub.\n\nfluent-bit 07585fe census re-run (analyze_c + classify_call): 163 rows (was 162); 116 still resolve to nuttx_platform.c (lines 243-264), 8 to sgx_socket.c, none classified. NARROWED: only 48 of the 116 are FIRST-PARTY callers (src 5, plugins 7, tests 36); 68 are vendored-to-vendored (monkey 31, WAMR 23, nghttp2 6, c-ares 3, librdkafka 3, onigmo 2). Of WI-baran's 12 repos, fluent-bit is the only one with resolved socket rows. Artifacts: ~/hypergumbo_lab_notebook/premise_09292026/rimon/."  # 234f

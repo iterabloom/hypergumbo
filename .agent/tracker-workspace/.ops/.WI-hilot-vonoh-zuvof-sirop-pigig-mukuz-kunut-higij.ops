@@ -1,0 +1,23 @@
+- op: create  # 2aae
+  at: '2026-09-29T08:25:04Z'  # 2aae
+  by: agent  # 2aae
+  actor: jgstern_agent  # 2aae
+  clock: 1  # 2aae
+  nonce: 2aae  # 2aae
+  data:  # 2aae
+    kind: work_item  # 2aae
+    title: "cpp: a C header spelled the C++ way (<cstdlib>, <cstdio>, <cstring>) matches no C catalogue row, so getenv/fopen/printf in such a file classify as nothing"  # 2aae
+    status: todo_hard  # 2aae
+    priority: 3  # 2aae
+    parent:  # 2aae
+    tags:  # 2aae
+    - cpp  # 2aae
+    - catalogue  # 2aae
+    - io_boundary  # 2aae
+    - taint  # 2aae
+    isbefore: []  # 2aae
+    duplicate_of: []  # 2aae
+    not_duplicate_of: []  # 2aae
+    pr_ref:  # 2aae
+    description: "FOUND 2026-09-29 while building WI-rimon's C++ fixture, on dev 8a1f82137a.\n\nA C++ file that includes <cstdlib> / <cstring> / <cstdio> (the C++ spellings of the C headers) gets its C-inherited calls stamped with a module slot of those names, e.g. `cstdlib,cstring,sys/socket.h`. c.yaml keys the rows under the STEM (`stdlib`, `stdio`, `string`), and io_boundary deliberately does not map `cstdlib` -> `stdlib` (comment above _HEADER_SUFFIXES: \"stripping a leading c from an arbitrary module slot would maul crypto, cmath...\"). Because a non-sentinel slot SUPPRESSES the short-name fallback, getenv / fopen / printf in such a file classify as NOTHING.\n\nMEASURED (fixture: #include <cstdlib>, <cstring>, <sys/socket.h>; getenv(\"API_KEY\") then sendto(fd, key, ...) on separate lines):\n- io-boundaries: external_potential `cstdlib,cstring,sys/socket.h.getenv`; net_send sys/socket.sendto (only because <sys/socket.h> is spelled the C way).\n- verify-claims host_secret -> network: INCONCLUSIVE, \"calls into 3 module(s) that the I/O catalog could not classify (cstdlib, cstring, sys/socket)\".\nNot a false all-clear (the coverage gate withholds), but every C++ repo that spells its C headers the C++ way loses the C half of its catalogue.\n\nFIX SHAPE (not designed): a CLOSED table of the C++ standard <cXXX> headers (cassert cctype cerrno cfenv cfloat cinttypes climits clocale cmath csetjmp csignal cstdarg cstddef cstdint cstdio cstdlib cstring ctime cuchar cwchar cwctype) mapped to their C stems -- a closed list, which is exactly what the \"leading c\" objection says an open rule cannot be. Measure on the cpp corpus (whisper.cpp, modsecurity, ...) both ways before shipping; a slot that newly matches can also newly REFUSE a short-name fallback that used to fire."  # 2aae
+    fields: {}  # 2aae
