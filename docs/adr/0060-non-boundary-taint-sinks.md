@@ -3,7 +3,6 @@
 
 Status: Accepted by the agent under the owner's standing autonomy ruling; owner review requested
 Date: 2026-09-29
-Supersedes: ADR-0017 (§2b, the rule that every built-in sink is derived from `io_primitives/`)
 Related: [ADR-0016](0016-io-boundary-analysis.md), [ADR-0017](0017-taint-zone-dataflow.md), [ADR-0061](0061-catalogue-tiers-for-every-family.md)
 
 ## Context

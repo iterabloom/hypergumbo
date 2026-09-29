@@ -25,7 +25,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0014](0014-generalized-symbol-identity.md) | Generalized Symbol Identity (stable_id / shape_id) | Accepted — partially superseded by ADR-0035 (see amendment table) | 2026-02-20 |
 | [0015](0015-dataflow-access-modes.md) | Dataflow Access Modes on Edges | Accepted — partially superseded by ADR-0038 (emission guidance only) | 2026-03-15 |
 | [0016](0016-io-boundary-analysis.md) | I/O Boundary Analysis and Security Claim Verification | Accepted | 2026-03-18 |
-| [0017](0017-taint-zone-dataflow.md) | Taint-Zone Dataflow Analysis | Partially superseded by ADR-0037, ADR-0038, ADR-0052, ADR-0060, ADR-0061 | 2026-03-22 |
+| [0017](0017-taint-zone-dataflow.md) | Taint-Zone Dataflow Analysis | Partially superseded by ADR-0037, ADR-0038 | 2026-03-22 |
 | [0018](0018-transcript-sync-and-playbook-injection.md) | Vendor-Agnostic Transcript Sync and LLM-Driven Playbook Injection | Accepted | 2026-03-29 |
 | [0019](0019-remote-access-transport.md) | Remote Access Transport | Accepted — Part A server side implemented (tracker v0.2.0); native client absent; Part B not started | 2026-03-30 |
 | [0020](0020-tui-screenshot-annotation-and-inline-preview.md) | TUI Screenshot Annotation and Inline Preview | Implemented (tracker v0.2.0) | 2026-03-30 |
@@ -51,9 +51,9 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0042](0042-survey-rename.md) | Survey Rename | Accepted | 2026-06-10 |
 | [0043](0043-stage-ordering-contract.md) | Stage-Ordering Contract for `run_behavior_map` | Accepted | 2026-06-12 |
 | [0044](0044-synthesis-mechanisms-are-synthetic-pass-ids.md) | Symbol-Synthesis Values Are Synthetic Pass IDs (WI-kadop field-split withdrawn) | Accepted | 2026-07-01 |
-| [0045](0045-user-config-and-backend-trust.md) | User Configuration and Backend Trust Are Separate Stores | Partially superseded by ADR-0061 | 2026-08-23 |
+| [0045](0045-user-config-and-backend-trust.md) | User Configuration and Backend Trust Are Separate Stores | Accepted | 2026-08-23 |
 | [0046](0046-two-axis-taint-precision.md) | Two-Axis Taint Precision — Correctness and Usefulness | Accepted | 2026-08-27 |
-| [0047](0047-catalogue-scope-and-user-visible-homes.md) | Catalogue Scope, and Where a User's Catalogue Data Lives | Partially superseded by ADR-0061 | 2026-08-27 |
+| [0047](0047-catalogue-scope-and-user-visible-homes.md) | Catalogue Scope, and Where a User's Catalogue Data Lives | Accepted | 2026-08-27 |
 | [0048](0048-taint-precision-benchmark-frame.md) | The Taint-Precision Benchmark — Equal Allocation, Declared Frame, Pinned SHA | Accepted | 2026-08-28 |
 | [0049](0049-deferred-crossings-are-disclosed-not-minted.md) | A Deferred Crossing Is Disclosed, Not Minted (extends ADR-0016) | Accepted | 2026-08-29 |
 | [0050](0050-io-boundary-axis.md) | The I/O-Boundary Axis | Accepted | 2026-09-01 |
@@ -66,8 +66,8 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0057](0057-attribute-level-coexistence.md) | Multi-backend coexistence at the attribute, not the record — one node/edge per declaration, every attribute a set of (value, provenance) pairs, a Phase-C merge pass, a per-record arbitration property with one `config.toml` default, a per-backend merge-anchor declaration; partially supersedes ADR-0012 §Step 3 | Accepted — implementation in progress (§10 producer contract landed, WI-hohuh) | 2026-09-18 |
 | [0058](0058-callable-signature-axis.md) | The callable-signature axis — `Symbol.signature` retires a false `free-text` justification (ADR-0051's defect one field over), declares an axiom and two notions, and closes its nine value-parsing consumers behind a gate that fails on a tenth | Accepted | 2026-09-21 |
 | [0059](0059-io-primitive-kind-axis.md) | The I/O-primitive-kind axis — `functions:` / `methods:` / `attributes:` say how a primitive is reached from its row's own module (instance / the module itself / read), never what an analyzer stamps; 18 literal consumer sites behind three predicates; a shrink-only ledger of the 91 rows it rejects | Accepted | 2026-09-23 |
-| [0060](0060-non-boundary-taint-sinks.md) | Built-in taint sinks that are not I/O boundaries — `taint_sinks/` ships `code_execution` (eval/exec) and `dom_injection` (document.write) sinks; a gate refuses any row `io_primitives` could derive; partially supersedes ADR-0017 §2b | Accepted by the agent; owner review requested | 2026-09-29 |
-| [0061](0061-catalogue-tiers-for-every-family.md) | Four catalogue tiers — built-in, community, yours, in-repo — for every catalogue family; community and un-opted in-repo rows may add findings but never make a verdict cleaner; a row's tier travels in its file's `provenance:` line; in-repo catalogue data loads only on opt-in; partially supersedes ADR-0045, ADR-0047, ADR-0017 §2 | Accepted — implementation pending | 2026-09-29 |
+| [0060](0060-non-boundary-taint-sinks.md) | Built-in taint sinks that are not I/O boundaries — `taint_sinks/` ships `code_execution` (eval/exec) and `dom_injection` (document.write) sinks; a gate refuses any row `io_primitives` could derive | Accepted by the agent; owner review requested | 2026-09-29 |
+| [0061](0061-catalogue-tiers-for-every-family.md) | Four catalogue tiers — built-in, community, yours, in-repo — for every catalogue family; community and un-opted in-repo rows may add findings but never make a verdict cleaner; a row's tier travels in its file's `provenance:` line; in-repo catalogue data loads only on opt-in | Accepted — implementation in progress | 2026-09-29 |
 
 > ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
 
