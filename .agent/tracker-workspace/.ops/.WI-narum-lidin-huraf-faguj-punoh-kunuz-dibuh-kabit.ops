@@ -27,3 +27,10 @@
   clock: 2  # c598
   nonce: c598  # c598
   message: "SECOND INSTANCE, same shape, 2026-09-27 on branch jgstern-agent/fix/erlang-application-lifecycle (a YAML-only change): in a loaded 287-file targeted run (8,775 passed, 2 failed), tests/test_watcher_lifecycle.py::TestLauncherNamesTheOwner::test_owner_pid_comes_from_the_harness_variable failed with 'AssertionError: launcher did not start a watcher', beside a repeat of test_a_hangup_is_named_too. Both files re-run alone immediately after: 38 passed in 5.50s. Two auto-pr process-lifecycle tests that spawn a child and wait on it, both failing only under load, suggests the fixtures' waits (30s proc.wait; the launcher's watcher-start check) assume an unloaded machine, or a shared resource between them. Not diagnosed."  # c598
+- op: discuss  # 97da
+  at: '2026-09-29T18:56:57Z'  # 97da
+  by: agent  # 97da
+  actor: jgstern_agent  # 97da
+  clock: 3  # 97da
+  nonce: 97da  # 97da
+  message: "Recurred 2026-09-29, twice: loaded smart-test runs of 616 and ~2000 test files both failed test_a_hangup_is_named_too at proc.wait(timeout=30); run alone it passes 8/8 in 6 s. Same shape as filed."  # 97da
