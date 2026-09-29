@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §1d: CFG node mapping for C (tree-sitter-c grammar), WI-himob.
+#
+# Child references: "field:name" → child_by_field_name("name"),
+#                   "type:name" → first child with .type == "name"
+#
+# C++ is NOT covered by this file: its grammar adds try/catch, range-for and
+# lambdas, and a cpp spec would be claiming coverage nobody measured.
+language: c
+grammar: tree-sitter-c
+
+conditional:
+  - node_type: if_statement
+    condition_child: "field:condition"
+    true_child: "field:consequence"
+    false_child: "field:alternative"
+
+loop:
+  - node_type: while_statement
+    condition_child: "field:condition"
+    body_child: "field:body"
+  - node_type: do_statement
+    condition_child: "field:condition"
+    body_child: "field:body"
+  - node_type: for_statement
+    condition_child: "field:condition"
+    body_child: "field:body"
+
+break_statement: [break_statement]
+continue_statement: [continue_statement]
+return_statement: [return_statement]
+
+switch:
+  - node_type: switch_statement
+    scrutinee_child: "field:condition"
+    arms_child: "field:body"
+    arm_type: case_statement
+
+# Node types that ARE a call in this grammar (WI-joluk): consumed by
+# cfg.uncovered_semantic_lines to decide whether the CFG saw every call.
+call_node_types:
+  - call_expression
+
+# Atomic statement node types: recorded as ONE CfgStatement each, so
+# c_def_use's walker is handed the whole statement. Excluded because classify()
+# owns them: return_statement, if/while/do/for/switch. `goto_statement` and
+# labels are not modelled as edges (disclosed in c_def_use's docstring).
+atomic_statement:
+  - declaration
+  - expression_statement
