@@ -50,3 +50,10 @@
   clock: 5  # d9a6
   nonce: d9a6  # d9a6
   message: "Residual filed 2026-09-28 as INV-totar: the taint half of this item's write-side seam was never wired. Both propagators match SINKS without io_target_kinds, so a stamped writer keeps its abstention-fallback sink in taint while io-boundaries selects the stamped row (repro: io.WriteString(os.Stderr, secret) -> io-boundaries logging, taint host_fs; a host_secret->logging claim CONFIRMS). The 29 MOVED measured here were io-boundaries moves; this item stays closed on its filed row."  # d9a6
+- op: discuss  # 875b
+  at: '2026-09-29T02:27:45Z'  # 875b
+  by: agent  # 875b
+  actor: jgstern_agent  # 875b
+  clock: 6  # 875b
+  nonce: 875b  # 875b
+  message: "INV-totar (the taint half of this item's write-side seam) fixed in PR #1288: both propagators now match sinks with the call site's io_target_kinds. Go A/B: 5 sink sites moved to the stamped zone, 0 verdicts changed."  # 875b

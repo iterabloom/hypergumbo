@@ -1,0 +1,25 @@
+- op: create  # 503b
+  at: '2026-09-29T03:10:59Z'  # 503b
+  by: agent  # 503b
+  actor: jgstern_agent  # 503b
+  clock: 1  # 503b
+  nonce: 503b  # 503b
+  data:  # 503b
+    kind: invariant  # 503b
+    title: "rust: a function declared in an extern block is not a symbol, so a call to it stays unresolved and matches a catalogue row by short name -- loro's wasm_bindgen Date.now() is reported as std::time::Instant.now"  # 503b
+    status: violated  # 503b
+    priority: 3  # 503b
+    parent:  # 503b
+    tags:  # 503b
+    - rust  # 503b
+    - io_boundary  # 503b
+    - taint  # 503b
+    - analysis_quality  # 503b
+    isbefore: []  # 503b
+    duplicate_of: []  # 503b
+    not_duplicate_of: []  # 503b
+    pr_ref:  # 503b
+    description: "FOUND 2026-09-28 during INV-timu's premise check, on loro crates/loro-internal/src/change.rs. The wasm32 variant of get_sys_timestamp (300-311) declares JavaScript's Date.now through wasm_bindgen and calls it:\n\n    #[wasm_bindgen]\n    extern \"C\" {\n        #[wasm_bindgen(js_namespace = Date)]\n        pub fn now() -> f64;\n    }\n    now()\n\nio-boundaries reports this as host_info_read with primitive std::time::Instant.now -- a Rust type the code never touches. The boundary happens to be right (a clock read); the primitive is not.\n\nISOLATED REPRO (dev 51c73cce78), one file, no wasm_bindgen needed:\n\n    extern \"C\" { fn now() -> f64; fn getpid() -> i32; }\n    fn native() -> f64 { unsafe { now() } }\n    fn pid() -> i32 { unsafe { getpid() } }\n\n- symbols: native, pid, file -- NEITHER foreign declaration (now, getpid) is a symbol;\n- calls: native -> rust:external:0-0:now (is_resolved False), pid -> rust:external:0-0:getpid (False);\n- io-boundaries: host_info_read std::time::Instant.now, io_edge_src native.\n\nTWO MECHANISMS, ONE ROOT:\n1. The rust analyzer does not extract function declarations inside a foreign block (`extern \"C\" { ... }`, the tree-sitter foreign_mod_item / function_signature_item shape), so a call to one cannot resolve to its declaration and stays unresolved with module slot `external`.\n2. An unresolved call with no module hint then reaches the catalogue by SHORT NAME: rust.yaml rows `now` under std::time::Instant and std::time::SystemTime, `now` is not in ambiguous_names, and the first row wins.\n\nSECOND MANIFESTATION, same root: add `mod helpers { pub fn now() -> u64 { 7 } } use helpers::*;` to the file and native()'s call to the extern `now` RESOLVES (is_resolved True) to helpers::now -- the only same-named symbol, because the real callee has none.\n\nWHY IT MATTERS BEYOND A NAME: every FFI declaration whose name matches a catalogued primitive gets that primitive's boundary whether or not it crosses it -- an extern `write`, `open`, `send`, `remove`, `exit`, `now` -- and becomes a taint source or sink. Direction: fabricated boundaries/findings (FP) and, via the helpers shape, a confidently-wrong resolved edge. POPULATION NOT SIZED: count foreign-block declarations and the calls to them whose short name hits a catalogue row, on the rust corpus (loro, arti, wasmtime, firecracker, ripgrep, zoxide) before fixing.\n\nFIX SHAPE (to be confirmed by reading the rust analyzer first): emit a symbol per foreign-block function (kind function; record the ABI, and the wasm_bindgen js_namespace where present) so a bare call resolves to it; then decide what an FFI declaration's I/O classification is (a declaration names no catalogued module, so it should classify nothing unless a row names the foreign function). Check the C/C++ analogue (a local prototype of a libc function IS the libc function -- the opposite answer) so the fix does not cross languages blindly. Check the wasm_bindgen linker (WI-fikab) for whether it already mints something for these declarations."  # 503b
+    fields:  # 503b
+      statement: "A call to a function declared in the same file -- including a foreign-block (extern) declaration -- resolves to that declaration, and is classified by the I/O catalogue only if a row names that function; it is never classified by a catalogue row that merely shares its short name."  # 503b
+      root_cause: "The rust analyzer extracts no symbol for function declarations inside extern blocks, so calls to them are unresolved with module slot external; the catalogue lookup then matches the bare name (now -> std::time::Instant.now, first of two rows; now is not in rust ambiguous_names). With another same-named symbol in scope, the call instead resolves to that symbol."  # 503b
