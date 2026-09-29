@@ -21,3 +21,10 @@
     pr_ref:  # 118d
     description: "Filed 2026-09-07 from WI-gulaz. That PR reads a Django model's forward `ForeignKey` / `OneToOneField` class-body fields into `DjangoRelationIndex.relation_fields` (`Payment.order -> Order`) and consults them ONLY through the manager oracle (`self.order.payments`, `payment.order.event.items`). The same fact belongs in the project class field map (`class_field_types[C][field] -> Symbol`) that WI-hiziz Site 3 resolves `self.<field>.<method>()` against -- `self.order.mark_paid()` would then resolve to `Order.mark_paid`, a call-graph edge that today is an unresolved external `mark_paid`. Kept out of WI-gulaz so that PR's measurement priced one mechanism (manager typing) and not two (manager typing + a call-graph resolution change with its own precision profile).\n\nThe 2026-09-06 derivability census sized this as S4 \"Django relation field -> model\": 131 pretix sites, payoff cell \"project class -> no module (precision)\".\n\nWHAT TO BUILD. Feed `relation_fields` into `_collect_class_field_maps`'s output for model classes (the by-class-id maps in `analyze_python`'s pre-pass), gated by the same WI-supat trust rules the constructor-typed fields use. Measure the call-graph delta (resolved edges added, and whether any resolves to the wrong same-short-name class) and the taint delta separately.\n\nONE FACT, ONE HOME: when this lands, `relation_fields` should be read FROM the field map rather than kept as a second map, or the two will drift."  # 118d
     fields: {}  # 118d
+- op: discuss  # 270c
+  at: '2026-09-29T10:19:00Z'  # 270c
+  by: agent  # 270c
+  actor: jgstern_agent  # 270c
+  clock: 2  # 270c
+  nonce: 270c  # 270c
+  message: "WI-kufok (PR #1298, 2026-09-29) measured this item's population from the other side: of pretix's 1,122 attribute-receiver save/delete sites, ~1,060 are on models that OVERRIDE save (Order, Quota, Event, Device, Voucher; ~40 pretix models override save/delete), so they stay the external placeholder -- the ORM re-key correctly refuses them, and resolving them to the project override is this item's call-graph job. ~/hypergumbo_lab_notebook/kufok_09292026/RESULT.md."  # 270c

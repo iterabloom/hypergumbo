@@ -27,3 +27,18 @@
   clock: 2  # 3e5a
   nonce: 3e5a  # 3e5a
   message: "PREMISE RE-CHECK 2026-09-29 on dev 6929699126: CURRENT, context drifted. After ensure_def_use_extractors_registered(): registered_def_use_languages() and registered_ddg_languages() = go, java, javascript, python, rust, typescript -- c still absent; cfg_nodes/ has no c.yaml. verify-claims dataflow_coverage for c: 4 blockers (cfg_mapping, atomic_statement, def_use_extractor, ddg_spec); catalog_sinks 54, catalog_sources 40 (filed 39), sanitizers 0.\nREPRO (3 #includes so the slot is a list; taint finds these since #1291): getenv then send -> VIOLATED, stdlib.getenv -> sys/socket.send, structural/unavailable. The DISCARD twin (getenv result dropped, constant sent) gives byte-identical verdicts. CONTROL Go real flow: ddg/confirmed; Go discard: ddg_mixed/escaped, flows_removed_by_walk 0 -- consistent with the filed cost claim (the extractor changes the label, not the count). taint.py:4786 still gates on adjudicated and barrier_sites; dataflow_scope.py:137 still records 0/14/139.\nDRIFT: (1) the java twin (WI-gotun) SHIPPED, 5ba272e787, 2026-09-27 -- \"ranked below its java twin\" now means the twin is done. (2) Reconsider trigger (b) names INV-busis, which closed satisfied on a RE-SCOPED statement (disclosure, PR #875), not by closing escape sites; the condition never fired. Proposed re-point: \"the walk's unconfirmed class becomes non-empty on a cohort\". Note: #1291 added +142 C flows in the INV-foda A/B (foda_09282026/RESULT.md), all structural -- the population this item prices has grown."  # 3e5a
+- op: update  # a5f5
+  at: '2026-09-29T12:03:59Z'  # a5f5
+  by: agent  # a5f5
+  actor: jgstern_agent  # a5f5
+  clock: 3  # a5f5
+  nonce: a5f5  # a5f5
+  set:  # a5f5
+    status: done  # a5f5
+- op: discuss  # c8a4
+  at: '2026-09-29T12:03:59Z'  # c8a4
+  by: agent  # c8a4
+  actor: jgstern_agent  # c8a4
+  clock: 4  # c8a4
+  nonce: c8a4  # c8a4
+  message: "DONE in PR #1300 (merged, dev dcf0709076). c_def_use (java_def_use's one-walker shape: declarations through the declarator chain incl. parenthesized declarators, x = / x +=, field/pointer/subscript writes mutating their root, update expressions; the callee NAME and type positions are not reads), cfg_nodes/c.yaml (if/while/do/for/switch, call_node_types, atomic_statement: declaration + expression_statement), a DDG spec named through c.py's _get_function_name, and c in dataflow_scope's force-import list. C++ is deliberately NOT covered (try/catch, range-for, lambdas unmapped) and became the data-flow-INCAPABLE exemplar in test_taint_recall_corpus.\nBEHAVIOURAL EVIDENCE on merged dev: getenv(\"API_KEY\") -> send(fd, k, ...) now VIOLATED ddg/confirmed; the twin (secret read, a different value sent) now VIOLATED ddg_mixed/not_attempted -- they were byte-identical structural/unavailable before. dataflow_coverage for c: blockers [] (was cfg_mapping, atomic_statement, def_use_extractor, ddg_spec).\nMEASURED, 10 C repos (~/hypergumbo_lab_notebook/himob_09292026/RESULT.md): evidence rows structural 205 -> 70, ddg 7 -> 23, ddg_mixed 7 -> 134; 924 flows both arms; 0 verdicts changed (the item priced it: the extractor changes the label, not the count). 3 newly confirmed haproxy flows read back real (NOTIFY_SOCKET -> connect, HAPROXY_TRACE -> fopen, recv -> send).\nRe the reconsider trigger (b) that named INV-busis: that item closed by disclosure, so it will not fire; not re-pointed here since the item is closed.\nNot modelled (stated in c_def_use's docstring): a for-loop's initializer/update, pointer aliasing (q = p; *q = v), goto."  # c8a4
