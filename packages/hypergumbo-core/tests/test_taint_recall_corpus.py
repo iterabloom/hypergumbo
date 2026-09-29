@@ -527,22 +527,23 @@ _UNRELATED_PYTHON = (
     "    return target\n"
 )
 
-#: A C file that exists ONLY to put a data-flow-INCAPABLE language in the
+#: A C++ file that exists ONLY to put a data-flow-INCAPABLE language in the
 #: scope table. It reads no source, so it contributes no flow to any claim.
 #:
 #: That is exactly what these tests need: a test that distinguishes capable
 #: from incapable is vacuous once every language in its fixture is capable.
 #: JavaScript held this role until WI-nonad wired it, then Java until WI-gotun
-#: did. C is the replacement because it has a taint catalogue and no part of
-#: the data-flow machinery (no cfg mapping, no extractor), so it is incapable
-#: for a reason that is not about to be removed by the next extractor. The
+#: did, then C until WI-himob did. C++ is the replacement: it serves the C
+#: catalogue (through ``_CATALOG_PARENTS``) and has no part of the data-flow
+#: machinery -- ``cfg_nodes/c.yaml`` is deliberately not aliased to it, because
+#: its grammar adds try/catch, range-for and lambdas nobody has mapped. The
 #: PARTIAL case Java used to exercise (some blockers, not all) is pinned at unit
 #: level in ``test_dataflow_scope.py``.
-_C_INCAPABLE = (
+_CPP_INCAPABLE = (
     "#include <stdio.h>\n"
     "#include <stdlib.h>\n"
     "\n"
-    "void touch(void) {\n"
+    "void touch() {\n"
     "    FILE *f = fopen(\"/tmp/out.txt\", \"w\");\n"
     "    fputs(\"constant\", f);\n"
     "}\n"
@@ -670,19 +671,19 @@ def test_published_scope_distinguishes_capable_from_incapable(
     one repo come out on opposite sides, so a table that hardcoded either
     answer fails.
 
-    THE INCAPABLE EXEMPLAR IS C. JavaScript held that role until WI-nonad
-    wired it, then Java until WI-gotun did, and each swap is deliberate rather
-    than cosmetic: a test that distinguishes capable from incapable is vacuous
-    the moment every language in its fixture is capable, and flipping an
-    assertion to ``True`` without adding a replacement would have left exactly
-    that. See ``_C_INCAPABLE`` for why C.
+    THE INCAPABLE EXEMPLAR IS C++. JavaScript held that role until WI-nonad
+    wired it, then Java until WI-gotun did, then C until WI-himob did, and each
+    swap is deliberate rather than cosmetic: a test that distinguishes capable
+    from incapable is vacuous the moment every language in its fixture is
+    capable, and flipping an assertion to ``True`` without adding a replacement
+    would have left exactly that. See ``_CPP_INCAPABLE`` for why C++.
     """
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "leak.js").write_text(_JS_LEAK, encoding="utf-8")
     (tmp_path / "src" / "util.py").write_text(
         _UNRELATED_PYTHON, encoding="utf-8",
     )
-    (tmp_path / "src" / "leak.c").write_text(_C_INCAPABLE, encoding="utf-8")
+    (tmp_path / "src" / "leak.cpp").write_text(_CPP_INCAPABLE, encoding="utf-8")
 
     scope = _run(tmp_path, capsys)["envelope"]["dataflow_coverage"]
     by_lang = {row["language"]: row for row in scope["languages"]}
@@ -693,16 +694,16 @@ def test_published_scope_distinguishes_capable_from_incapable(
     # is what stops the wiring from silently regressing.
     assert by_lang["javascript"]["dataflow_capable"] is True
     assert by_lang["javascript"]["blockers"] == []
-    assert by_lang["c"]["dataflow_capable"] is False
+    assert by_lang["cpp"]["dataflow_capable"] is False
     # The blockers are the actionable half — "not covered" without saying
     # which of the four independent prerequisites is missing is a status, not
-    # a scope. C lacks all four.
-    assert set(by_lang["c"]["blockers"]) == {
+    # a scope. C++ lacks all four.
+    assert set(by_lang["cpp"]["blockers"]) == {
         "cfg_mapping", "atomic_statement", "def_use_extractor", "ddg_spec",
     }
     # The catalog the uncovered language would have served is the disclosure
     # that matters.
-    assert by_lang["c"]["catalog_sinks"] > 0
+    assert by_lang["cpp"]["catalog_sinks"] > 0
 
     # The a2 fact, machine-readable rather than prose (R16). Re-pointed
     # 2026-09-02 when WI-kabif granted §3a removal authority: no flow's
@@ -723,7 +724,7 @@ def test_published_scope_reaches_the_text_view(tmp_path: Path, capsys) -> None:
     renderer, so a text reader of a violated claim never learned flows had
     been set aside. This is the same disclosure on the same surface, pinned.
 
-    Carries the C file for the same reason the test above does: the
+    Carries the C++ file for the same reason the test above does: the
     ``def_use_extractor`` assertion is about a BLOCKER string reaching the text
     renderer, and a repo whose languages are all capable has no blockers to
     render — the assertion would fail, and "fixing" it by deleting the line
@@ -731,14 +732,14 @@ def test_published_scope_reaches_the_text_view(tmp_path: Path, capsys) -> None:
     """
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "leak.js").write_text(_JS_LEAK, encoding="utf-8")
-    (tmp_path / "src" / "leak.c").write_text(_C_INCAPABLE, encoding="utf-8")
+    (tmp_path / "src" / "leak.cpp").write_text(_CPP_INCAPABLE, encoding="utf-8")
 
     out = _run_text(tmp_path, capsys)
 
     assert "Data-flow coverage" in out
     assert "javascript" in out
     # Rows are padded to the longest language name, hence \s+.
-    assert re.search(r"\n  c\s+sources \d+, sinks \d+ .*wired: NO", out)
+    assert re.search(r"\n  cpp\s+sources \d+, sinks \d+ .*wired: NO", out)
     assert "def_use_extractor" in out
     assert "call-graph reachability" in out
 
