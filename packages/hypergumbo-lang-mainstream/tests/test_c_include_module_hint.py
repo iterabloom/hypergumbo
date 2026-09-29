@@ -91,10 +91,31 @@ class TestTheIncludeSetReachesTheModuleSlot:
 
 
 class TestTheAmbiguityGuardStillHolds:
-    def test_a_project_local_send_is_not_stamped(self, tmp_path: Path) -> None:
-        """THE GUARD THIS ITEM EXISTS TO PRESERVE. A repo defining its own
-        ``send`` must resolve to it, not acquire a sys/socket owner path.
-        Loosening a withholding gate is the false-all-clear direction."""
+    def test_a_project_local_send_in_the_calling_file_is_not_stamped(
+        self, tmp_path: Path,
+    ) -> None:
+        """THE GUARD THIS ITEM EXISTS TO PRESERVE. A file defining its own
+        ``send`` calls it, not a sys/socket owner path."""
+        (tmp_path / "use.c").write_text(
+            "static int send(int fd, const char *b, int n, int f) { return 0; }\n"
+            "int go(int fd) { return send(fd, \"x\", 1, 0); }\n"
+        )
+        assert _module_slots(tmp_path, "send") == [], (
+            "a project-local send acquired an external module slot"
+        )
+
+    def test_a_same_named_send_in_another_file_does_not_capture_the_libc_call(
+        self, tmp_path: Path,
+    ) -> None:
+        """WI-rimon REVERSED this case, which used to assert the opposite.
+
+        ``use.c`` includes ``<sys/socket.h>``, so the ``send`` it calls is the
+        one that header declares; ``shim.c``'s is a link-time interposer or a
+        platform stub (fluent-bit's nuttx shim returns ``-1``/``ENOTSUP`` like
+        this one returns 0), and name resolution cannot see which the build
+        links. Resolving to the stub hid the socket I/O: a false all-clear, the
+        direction the old docstring meant to guard against but produced.
+        """
         (tmp_path / "shim.c").write_text(
             "int send(int fd, const char *b, int n, int f) { return 0; }\n"
         )
@@ -102,9 +123,7 @@ class TestTheAmbiguityGuardStillHolds:
             "#include <sys/socket.h>\n"
             "int go(int fd) { return send(fd, \"x\", 1, 0); }\n"
         )
-        assert _module_slots(tmp_path, "send") == [], (
-            "a project-local send acquired an external module slot"
-        )
+        assert _module_slots(tmp_path, "send") == ["sys/socket.h"]
 
     def test_a_file_with_no_system_includes_stays_external(
         self, tmp_path: Path
