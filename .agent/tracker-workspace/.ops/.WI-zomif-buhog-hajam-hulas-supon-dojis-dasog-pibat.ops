@@ -1,0 +1,21 @@
+- op: create  # 65b9
+  at: '2026-09-29T06:33:27Z'  # 65b9
+  by: agent  # 65b9
+  actor: jgstern_agent  # 65b9
+  clock: 1  # 65b9
+  nonce: 65b9  # 65b9
+  data:  # 65b9
+    kind: work_item  # 65b9
+    title: "CI flake: test_watcher_lifecycle test_owner_pid_falls_back_to_first_non_shell_ancestor 'launcher did not start a watcher' on an unrelated PR; passes 30/30 locally and on re-run (sibling of WI-narum)"  # 65b9
+    status: todo_hard  # 65b9
+    priority: 3  # 65b9
+    parent:  # 65b9
+    tags:  # 65b9
+    - tooling  # 65b9
+    - flaky_test  # 65b9
+    isbefore: []  # 65b9
+    duplicate_of: []  # 65b9
+    not_duplicate_of: []  # 65b9
+    pr_ref:  # 65b9
+    description: "FOUND 2026-09-29: PR #1292's CI (a javascript.yaml row move, no Python source touched) failed on tests/test_watcher_lifecycle.py::TestLauncherNamesTheOwner::test_owner_pid_falls_back_to_first_non_shell_ancestor -- \"AssertionError: launcher did not start a watcher\". The same file passed 30/30 locally on that branch, and an empty re-run commit passed CI (merged). The test's own history is a timing fix: 722ea33a57 \"give the detached-launch wait 20 s, not 5 s\", so the launch wait is still load-sensitive on the CI runner.\n\nSibling of WI-narum (test_a_hangup_is_named_too, 30 s timeout under a loaded smart-test run) -- same family: a subprocess-lifecycle test with a wall-clock bound that a loaded machine can exceed. Not reproduced deterministically; no root cause claimed.\n\nFIX SHAPE (unbuilt): wait on the condition the test asserts (the watcher's pid/record file appearing) with a generous bound, or run the lifecycle tests serially (xdist_group), rather than raising the constant again."  # 65b9
+    fields: {}  # 65b9
