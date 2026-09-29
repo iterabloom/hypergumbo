@@ -1,0 +1,24 @@
+- op: create  # b5a1
+  at: '2026-09-29T16:45:47Z'  # b5a1
+  by: agent  # b5a1
+  actor: jgstern_agent  # b5a1
+  clock: 1  # b5a1
+  nonce: b5a1  # b5a1
+  data:  # b5a1
+    kind: invariant  # b5a1
+    title: "--no-default-overlays does not reach taint: community io rows still derive taint sinks/sources, silently, and catalog_provenance still lists shipped_default"  # b5a1
+    status: violated  # b5a1
+    priority: 3  # b5a1
+    parent:  # b5a1
+    tags:  # b5a1
+    - adr_0047  # b5a1
+    - catalogue  # b5a1
+    - taint  # b5a1
+    isbefore: []  # b5a1
+    duplicate_of: []  # b5a1
+    not_duplicate_of: []  # b5a1
+    pr_ref:  # b5a1
+    description: "FOUND 2026-09-29 in an ADR-0047 implementation audit.\n\n`--no-default-overlays` removes the community overlays from the I/O-boundary lookup only. The taint catalogue derives sinks/sources from io_primitives through load_catalog WITHOUT the flag (taint.py:1881, cli.py:6546-6557), so community rows still act as taint sinks and sources, and no notice says so.\n\nREPRO (main agent, dev ed6d9d3591): os.environ[\"API_KEY\"] -> requests.post (requests is a COMMUNITY row, python-http-clients.yaml); claim host_secret must not reach network.\n- default: violated rc 1, stderr carries the community notice.\n- with --no-default-overlays: STILL violated rc 1 via requests.post, stderr carries NO community notice, and catalog_provenance still contains shipped_default.\nDirection: this ADDS findings (not a false clean), so it is lower-risk than INV-lamap/INV-hamin, but the flag's help text promises the rows are omitted and the run silently uses them.\nAgent-read, not measured: language analyzers also build lookup tables from community rows during survey/sketch (py.py:683, haskell.py:699,813), where no notice fires."  # b5a1
+    fields:  # b5a1
+      statement: "When the operator omits the community overlays, no part of the run uses a community row."  # b5a1
+      root_cause: "The taint catalogue calls load_catalog without the no-default-overlays setting (taint.py:1881), so the flag is honoured by the boundary lookup only."  # b5a1

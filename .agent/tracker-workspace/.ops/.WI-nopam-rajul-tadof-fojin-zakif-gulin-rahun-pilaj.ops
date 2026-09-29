@@ -1,0 +1,21 @@
+- op: create  # 7a76
+  at: '2026-09-29T17:02:56Z'  # 7a76
+  by: agent  # 7a76
+  actor: jgstern_agent  # 7a76
+  clock: 1  # 7a76
+  nonce: 7a76  # 7a76
+  data:  # 7a76
+    kind: work_item  # 7a76
+    title: "Every shipped catalogue file declares provenance: builtin|community, and a gate refuses one that does not (ADR-0061 ruling 3)"  # 7a76
+    status: todo_hard  # 7a76
+    priority: 2  # 7a76
+    parent:  # 7a76
+    tags:  # 7a76
+    - adr_0061  # 7a76
+    - catalogue  # 7a76
+    isbefore: []  # 7a76
+    duplicate_of: []  # 7a76
+    not_duplicate_of: []  # 7a76
+    pr_ref:  # 7a76
+    description: "ADR-0061 ruling 3 (merged #1308). Every shipped catalogue file (every family registered in yaml_catalogs.YAML_CATALOGS) declares `provenance: builtin` or `provenance: community` in its header; a gate (in the style of test_catalogue_scope_gates.py) refuses a shipped file that declares neither, and refuses `builtin` on a file carrying a third-party module. A community file also carries a dated `retrieved:`.\nThis is the PREREQUISITE for the per-family community moves (they need the declaration to exist) and for INV-lamap (the loader reading tier from the declaration instead of the directory).\nAcceptance: the gate runs over every family's shipped files and is shown red by a mutation (drop one declaration; mark a file with a third-party row builtin)."  # 7a76
+    fields: {}  # 7a76

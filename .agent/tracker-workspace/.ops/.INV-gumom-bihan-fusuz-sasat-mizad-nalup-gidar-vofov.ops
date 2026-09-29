@@ -1,0 +1,23 @@
+- op: create  # 1ee3
+  at: '2026-09-29T16:45:51Z'  # 1ee3
+  by: agent  # 1ee3
+  actor: jgstern_agent  # 1ee3
+  clock: 1  # 1ee3
+  nonce: 1ee3  # 1ee3
+  data:  # 1ee3
+    kind: invariant  # 1ee3
+    title: "catalog_provenance has no user_config layer: config.toml, the *.d directories and a repo's .hypergumbo.toml never appear in the verdict JSON (ADR-0047 ruling 6)"  # 1ee3
+    status: violated  # 1ee3
+    priority: 3  # 1ee3
+    parent:  # 1ee3
+    tags:  # 1ee3
+    - adr_0047  # 1ee3
+    - catalogue  # 1ee3
+    isbefore: []  # 1ee3
+    duplicate_of: []  # 1ee3
+    not_duplicate_of: []  # 1ee3
+    pr_ref:  # 1ee3
+    description: "FOUND 2026-09-29 in an ADR-0047 implementation audit.\n\nADR-0047 ruling 6: \"catalog_provenance gains layer keys for shipped_default AND user_config\". Only CLI and claims-file paths reach catalog_provenance (cli.py:6936-6950, verify_claims.py:2024-2082). Absent from the verdict JSON (agent-checked; the io_primitives.d case re-checked by the main agent: after init-catalogs, user_supplied false and no user_config layer):\nconfig.toml io_primitives, $XDG_CONFIG_HOME/hypergumbo/io_primitives.d, <repo>/.hypergumbo.toml, frameworks.d, dataflow_patterns.d, library_signatures.d, and non-terminating function_summaries.d entries.\nThe one stderr line calls the user's own io_primitives.d files \"project-local\", the same word used for CLI flags and repo files.\nConsequence: a verdict cannot say which of the operator's files it rested on; INV-hamin is the sharp case."  # 1ee3
+    fields:  # 1ee3
+      statement: "Every catalogue file that loaded into a verify-claims run is named in catalog_provenance under its tier."  # 1ee3
+      root_cause: "catalog_provenance is built from the CLI and claims-file paths only; the config-tier and .d-directory loaders never report what they loaded."  # 1ee3
