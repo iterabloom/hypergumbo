@@ -19,3 +19,11 @@
     pr_ref:  # 5145
     description: "ADR-0061 OQ2 + ruling 1 for frameworks/ (107 files, third-party by nature, no declared tier) and dataflow_patterns library_patterns.\nWork: (1) MEASURE whether a frameworks/ or dataflow_patterns row can make a verify-claims verdict cleaner (remove a finding or an uncertainty) -- e.g. by marking an entrypoint, adding/removing a dispatch edge, or setting an access_mode that changes taint direction. Record the answer per family in ADR-0061 ruling 2's table. (2) Declare provenance per file (community for third-party frameworks). (3) If (1) finds a removing effect, apply the ADD-ONLY withholding to it; if not, disclosure in catalog-inventory suffices.\nDepends on the provenance-declaration item."  # 5145
     fields: {}  # 5145
+- op: update  # f65d
+  at: '2026-09-29T17:24:47Z'  # f65d
+  by: agent  # f65d
+  actor: jgstern_agent  # f65d
+  clock: 2  # f65d
+  nonce: f65d  # f65d
+  set:  # f65d
+    title: "frameworks/ and dataflow_patterns: measure whether a row can make a verdict cleaner, then declare tiers (ADR-0061 open question)"  # f65d

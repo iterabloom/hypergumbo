@@ -35,3 +35,10 @@
   clock: 3  # f274
   nonce: f274  # f274
   message: "ADR-0061 ruling 4 (merged #1308) is the decided fix: .hypergumbo.toml preferences still load; its catalogue keys and <repo>/.hypergumbo/<family>.d/ load only on opt-in (a per-run flag, or a per-path grant in XDG_STATE_HOME like backend trust; no config.toml key); naming a file on the command line is itself the opt-in. OPEN (OQ1): the owner has not yet ratified the 'in-repo' name or the git-state disclosure (committed / modified / untracked)."  # f274
+- op: discuss  # 54ca
+  at: '2026-09-29T17:24:43Z'  # 54ca
+  by: agent  # 54ca
+  actor: jgstern_agent  # 54ca
+  clock: 4  # 54ca
+  nonce: 54ca  # 54ca
+  message: "OWNER RATIFIED 2026-09-29: the tier name 'in-repo' and the git-state disclosure (each loaded in-repo file reported committed / modified / untracked) -- ADR-0061 ruling 4 is now fully owner-ruled."  # 54ca
