@@ -26,3 +26,18 @@
   clock: 2  # 1174
   nonce: '1174'  # 1174
   message: "PREMISE RE-CHECK 2026-09-29 on dev 6929699126: CURRENT, and worse than filed; the denominator drifted. Code unchanged since WI-sakir (2a92c2a650): ts_def_use.py:348 _JSTS_FUNCTION_NODE_TYPES = {function_declaration, method_definition}; ddg_build.py:244 walks only those.\nREPRO: host_secret -> network, all three sharing symbol id javascript:app.js:1-5:handler:function -- function handler -> VIOLATED ddg/confirmed; const handler = (url) => {} and a function expression -> VIOLATED structural/unavailable.\nIT CAUSES FALSE POSITIVES, not only lost precision (reproduced twice, by the re-check agent and independently by me): the key is read and only its length logged, fetch(url) sends no secret. function declaration -> CONFIRMED (0 flows); the same body as an arrow -> VIOLATED, structural/unavailable.\ndash.js re-measured (survey 212 s; ~/hypergumbo_lab_notebook/premise_09292026/mufag/), span-matching symbols to tree-sitter node types: 3,981 of 7,592 JS callable SYMBOLS never walked (arrow 2,000 vs filed 2,001; function_expression 1,981 vs filed 3,515). Counting syntactic function nodes: 4,902 of 8,510. The filed 11,600 denominator did not reproduce with this instrument (the filing's instrument was a spy on ddg_build._solve_one_function, not span-matching). apollo-server and the \"TS 0 sinks\" clause were not re-checked."  # 1174
+- op: update  # 1e63
+  at: '2026-09-29T11:10:11Z'  # 1e63
+  by: agent  # 1e63
+  actor: jgstern_agent  # 1e63
+  clock: 3  # 1e63
+  nonce: '1e63'  # 1e63
+  set:  # 1e63
+    status: done  # 1e63
+- op: discuss  # d967
+  at: '2026-09-29T11:10:12Z'  # d967
+  by: agent  # d967
+  actor: jgstern_agent  # d967
+  clock: 4  # d967
+  nonce: d967  # d967
+  message: "FIXED in PR #1299 (merged, dev c796fc6258). LanguageDdgSpec gains bound_callable_node_types (JS/TS: arrow_function, function_expression, function, generator_function). Such a node is walked ONLY under the id the ANALYZER emitted at its exact span: ddg_build.analyzer_symbol_index over the survey nodes verify-claims already holds, keyed (language, path, start line, start col, end line); a span two symbols share is dropped, not guessed. No name is re-derived in the DDG -- js_ts names these callables half a dozen ways (handler, _cb_<callee>@<col>, _iife), and a second copy would drift.\nBEHAVIOURAL EVIDENCE on merged dev (the premise-check repro): key read, only its length logged, unrelated fetch(url) -- function declaration CONFIRMED, the same body as `const handler = (url) => {}` now CONFIRMED (was VIOLATED structural/unavailable). A real leak in an arrow or a function expression reads VIOLATED ddg/confirmed (test_js_binding_named_callables_are_walked, 6 cases; mutation of the registration turns 4 red).\nMEASURED (~/hypergumbo_lab_notebook/mufag_09292026/): dash.js DDG walked symbols 2,315 -> 4,275, DDG build 7.3 s -> 10.6 s (direct timing; the 262 s -> 557 s verify-claims wall clock in the A/B log was concurrent-load noise). Verdict A/B dash.js, growthbook, apollo-server: 0 verdicts changed; dash.js 1 of 3 and apollo-server 1 of 3 findings moved off structural; growthbook unchanged (43 structural) -- its code is mostly .tsx, which the typescript spec's *.ts glob does not reach (the WI-fovus family). unleash/koel A/B still running at close; not asserted.\nNOT ASSERTED: that an expression-bodied arrow (x => f(x)) yields DDG edges -- its body is an expression, not a statement block; walked if the CFG builder handles it, otherwise it keeps the structural arm."  # d967
