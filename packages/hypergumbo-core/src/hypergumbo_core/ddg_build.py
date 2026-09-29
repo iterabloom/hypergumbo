@@ -47,6 +47,21 @@ class context is not walked for Python, so a method is keyed as
 ``...:function`` rather than ``...:method``. Go *is* receiver-aware,
 because its spec supplies a namer.
 
+Callables Named by Their Binding (WI-mufag)
+-------------------------------------------
+Some callables carry no name of their own: ``const handler = (req) => {...}``,
+``obj.f = function () {}``, an anonymous callback. The analyzer names each
+after its BINDING, and in JavaScript it does so half a dozen ways
+(``handler``, ``_cb_<callee>@<col>``, ``_iife``, ...). A spec lists those node
+types in ``bound_callable_node_types``, and such a node is walked ONLY under
+the id the analyzer emitted at exactly its span -- ``analyzer_symbols``,
+passed in by the caller that already holds the survey. Re-deriving the names
+here would be a second copy of the analyzer's naming that drifts; a node the
+analyzer did not name is not walked. Before this, dash.js had 3,981 of 7,592
+callable symbols the DDG never walked, and a flow inside one read
+``structural`` -- a FALSE ``violated`` where the same body as a declaration
+was refuted by the walk.
+
 Refinement Hook
 ---------------
 The WI-dilih receiver-hint refinement is genuinely Python-specific — it
@@ -98,6 +113,9 @@ class LanguageDdgSpec:
             kind slot; defaults to ``"function"``.
         refine: Optional callable invoked per function to derive extra
             hints; see the module docstring.
+        bound_callable_node_types: AST node types the ANALYZER names after
+            their binding (WI-mufag). Walked only under the analyzer's own id
+            for the node's exact span; see "Callables Named by Their Binding".
     """
 
     language: str
@@ -106,6 +124,40 @@ class LanguageDdgSpec:
     name_for: Optional[Callable[[Any, bytes], Optional[str]]] = None
     kind_for: Optional[Callable[[Any], str]] = None
     refine: Optional[Callable[..., dict[tuple[int, str], str]]] = None
+    bound_callable_node_types: frozenset[str] = frozenset()
+
+
+_CALLABLE_KINDS = frozenset({"function", "method", "getter", "setter"})
+
+#: ``(language, repo-relative path, start line, start column, end line)`` of an
+#: analyzer symbol -> its id. 1-based lines, 0-based column, as ``Span`` has them.
+AnalyzerSymbolIndex = dict[tuple[str, str, int, int, int], str]
+
+
+def analyzer_symbol_index(nodes: Sequence[dict[str, Any]]) -> AnalyzerSymbolIndex:
+    """Index a survey's CALLABLE symbols by exact span, for the binding-named walk.
+
+    A key two symbols share is dropped rather than resolved by order: with no
+    way to tell them apart, walking either under the other's id would be a
+    guess, and an unwalked callable keeps the structural arm it had.
+    """
+    index: AnalyzerSymbolIndex = {}
+    clashes: set[tuple[str, str, int, int, int]] = set()
+    for node in nodes:
+        if node.get("kind") not in _CALLABLE_KINDS:
+            continue
+        span = node.get("span") or {}
+        key = (
+            node.get("language", ""), node.get("path", ""),
+            span.get("start_line", 0), span.get("start_col", 0), span.get("end_line", 0),
+        )
+        if key in index:
+            clashes.add(key)
+        index[key] = node["id"]
+    for key in clashes:
+        del index[key]
+    return index
+
 
 
 @dataclass
@@ -204,6 +256,7 @@ def _walk_functions(
     deps: dict[str, Any],
     mapping: Any,
     refine_ctx: dict[str, Any],
+    analyzer_symbols: Optional[AnalyzerSymbolIndex] = None,
 ) -> None:
     """Walk an AST collecting per-function DDG edges and refinement hints.
 
@@ -253,6 +306,18 @@ def _walk_functions(
                 )
                 _solve_one_function(
                     current, body_node, source, spec, sym_id, out, deps,
+                    mapping, refine_ctx,
+                )
+        elif current.type in spec.bound_callable_node_types and analyzer_symbols:
+            # WI-mufag: the analyzer's id at this exact span, or no walk.
+            bound_id = analyzer_symbols.get((
+                spec.language, rel_path, current.start_point[0] + 1,
+                current.start_point[1], current.end_point[0] + 1,
+            ))
+            body_node = current.child_by_field_name("body")
+            if bound_id is not None and body_node is not None:
+                _solve_one_function(
+                    current, body_node, source, spec, bound_id, out, deps,
                     mapping, refine_ctx,
                 )
         stack.extend(reversed(current.children))
@@ -319,6 +384,7 @@ def _solve_one_function(
 def build_repo_ddg(
     repo_root: Path,
     languages: Sequence[str] = ("python",),
+    analyzer_symbols: Optional[AnalyzerSymbolIndex] = None,
 ) -> RepoDdg:
     """Build the aggregated DDG for a repository.
 
@@ -328,6 +394,9 @@ def build_repo_ddg(
             languages with no cfg mapping are skipped silently — the
             caller falls back to structural taint propagation, which is
             the pre-existing behaviour when DDG data is unavailable.
+        analyzer_symbols: The analyzer's callable symbols by exact span
+            (:func:`analyzer_symbol_index`). Without it no binding-named
+            callable is walked, which is the behaviour before WI-mufag.
 
     Returns:
         A :class:`RepoDdg`. Empty when tree-sitter is unavailable.
@@ -375,7 +444,9 @@ def build_repo_ddg(
             logger.debug("no tree-sitter grammar for %s; skipping", language)
             continue
         parser = tree_sitter.Parser(ts_language)
-        _walk_language(repo_root, spec, parser, mapping, out, deps)
+        _walk_language(
+            repo_root, spec, parser, mapping, out, deps, analyzer_symbols or {},
+        )
 
     return out
 
@@ -387,6 +458,7 @@ def _walk_language(
     mapping: Any,
     out: RepoDdg,
     deps: dict[str, Any],
+    analyzer_symbols: AnalyzerSymbolIndex,
 ) -> None:
     """Walk every source file of one language under ``repo_root``."""
     for path in repo_root.rglob(spec.file_glob):
@@ -401,6 +473,7 @@ def _walk_language(
         refine_ctx = _refine_context(spec, tree, source)
         _walk_functions(
             tree.root_node, source, spec, rel_path, out, deps, mapping, refine_ctx,
+            analyzer_symbols,
         )
 
 

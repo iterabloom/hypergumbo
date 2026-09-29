@@ -347,12 +347,22 @@ def _jsts_callable_kind(node: Any) -> str:
 # at all (dash.js: 0 of 766 methods, 0 of 54 getters reached the DDG).
 _JSTS_FUNCTION_NODE_TYPES = frozenset({"function_declaration", "method_definition"})
 
+# WI-mufag: callables js_ts.py names after their BINDING (``const h = () =>``,
+# ``_cb_<callee>@<col>``, ``_iife``). Walked under the analyzer's own id for the
+# node's span, never a name derived here -- see ddg_build's "Callables Named by
+# Their Binding". ``function`` is the older grammar's spelling of
+# ``function_expression``.
+_JSTS_BOUND_CALLABLE_NODE_TYPES = frozenset({
+    "arrow_function", "function_expression", "function", "generator_function",
+})
+
 register_ddg_language(LanguageDdgSpec(
     language="typescript",
     file_glob="*.ts",
     function_node_types=_JSTS_FUNCTION_NODE_TYPES,
     name_for=_jsts_callable_name,
     kind_for=_jsts_callable_kind,
+    bound_callable_node_types=_JSTS_BOUND_CALLABLE_NODE_TYPES,
 ))
 
 # Same grammar, same function node types, different glob. `*.js` only — `.mjs`
@@ -366,4 +376,5 @@ register_ddg_language(LanguageDdgSpec(
     function_node_types=_JSTS_FUNCTION_NODE_TYPES,
     name_for=_jsts_callable_name,
     kind_for=_jsts_callable_kind,
+    bound_callable_node_types=_JSTS_BOUND_CALLABLE_NODE_TYPES,
 ))

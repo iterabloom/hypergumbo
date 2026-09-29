@@ -184,3 +184,59 @@ class TestBuildRepoDdg:
         result = build_repo_ddg(tmp_path, ["python"])
         assert len(result.ddg_edges) >= 1
         assert any(e.symbol_id for e in result.ddg_edges)
+
+
+class TestBindingNamedCallables:
+    """WI-mufag: a node the ANALYZER names after its binding is walked under the
+    analyzer's own id for its exact span, and not walked without one."""
+
+    _SRC = "def handler(req):\n    secret = req.password\n    send(secret)\n"
+    _KEY = ("python", "m.py", 1, 0, 3)
+    _ID = "python:m.py:1-3:bound_name:function"
+
+    def _spec_walking_only_bound_nodes(self) -> None:
+        import importlib
+
+        import hypergumbo_lang_mainstream.py_def_use as py_mod
+        from hypergumbo_core.cfg import get_def_use_extractor
+
+        if get_def_use_extractor("python") is None:
+            importlib.reload(py_mod)
+        register_ddg_language(LanguageDdgSpec(
+            language="python", file_glob="*.py",
+            function_node_types=frozenset(),
+            bound_callable_node_types=frozenset({"function_definition"}),
+        ))
+
+    def test_walked_under_the_analyzer_id(self, tmp_path: Path) -> None:
+        self._spec_walking_only_bound_nodes()
+        (tmp_path / "m.py").write_text(self._SRC)
+        result = build_repo_ddg(tmp_path, ["python"], {self._KEY: self._ID})
+        assert result.ddg_symbols == {self._ID}
+        assert result.ddg_edges
+
+    def test_not_walked_without_an_analyzer_symbol(self, tmp_path: Path) -> None:
+        """THE CONTROL: no index entry, no walk -- never a name derived here."""
+        self._spec_walking_only_bound_nodes()
+        (tmp_path / "m.py").write_text(self._SRC)
+        assert build_repo_ddg(tmp_path, ["python"]).ddg_symbols == set()
+        assert build_repo_ddg(tmp_path, ["python"], {}).ddg_symbols == set()
+
+
+class TestAnalyzerSymbolIndex:
+    def _node(self, sid: str, kind: str = "function", line: int = 1) -> dict[str, Any]:
+        return {
+            "id": sid, "kind": kind, "language": "javascript", "path": "a.js",
+            "span": {"start_line": line, "start_col": 4, "end_line": line + 2},
+        }
+
+    def test_keys_a_callable_by_its_exact_span(self) -> None:
+        from hypergumbo_core.ddg_build import analyzer_symbol_index
+
+        index = analyzer_symbol_index([self._node("f"), self._node("v", kind="variable", line=9)])
+        assert index == {("javascript", "a.js", 1, 4, 3): "f"}
+
+    def test_a_shared_span_is_dropped_not_guessed(self) -> None:
+        from hypergumbo_core.ddg_build import analyzer_symbol_index
+
+        assert analyzer_symbol_index([self._node("f"), self._node("g")]) == {}
