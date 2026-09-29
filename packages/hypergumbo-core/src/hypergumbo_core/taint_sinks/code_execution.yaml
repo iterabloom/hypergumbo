@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0060: Built-in taint sinks that are NOT I/O boundaries -- in-process code
+# execution. (WI-nokab)
+#
+# Every other built-in sink is derived from io_primitives/ (51e1d232f3), because
+# a hand-kept list of I/O primitives drifted from the catalogue that already
+# enumerates them. That rationale does not reach these rows: evaluation crosses
+# no I/O boundary (python.yaml's builtins note says so on the record), so no
+# io_primitives row exists to drift from. test_shipped_taint_sinks.py refuses a
+# row here whose zone is boundary-derived, or that names a catalogued I/O
+# primitive, so this directory cannot quietly regrow the list that was retired.
+#
+# Rows are exactly the call edges the analyzers EMIT today, probed on dev:
+#   python      builtins.eval / exec / compile   (module-level and in functions)
+#   javascript  window.eval; bare eval (JS_KNOWN_GLOBAL_CALLS, WI-nokab)
+# NOT YET REACHABLE, and so not rowed: `new Function(s)` and a string
+# `setTimeout(s)` emit no call edge (a string and a function argument are one
+# call shape), and rowing them would claim coverage nothing can deliver.
+description: "Evaluating data as code in the running process"
+zone: code_execution
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: builtins
+      functions: [eval, exec, compile]
+  javascript:
+    - module: window
+      functions: [eval]
+    - module: eval
+      functions: [eval]
+  typescript:
+    - module: window
+      functions: [eval]
+    - module: eval
+      functions: [eval]

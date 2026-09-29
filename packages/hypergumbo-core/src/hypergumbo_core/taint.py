@@ -2025,10 +2025,14 @@ def _merge_with_user_override(
 _TAINT_SOURCES_DIR = Path(__file__).parent / "taint_sources"
 _TAINT_SANITIZERS_DIR = Path(__file__).parent / "taint_sanitizers"
 _IO_PRIMITIVES_DIR = Path(__file__).parent / "io_primitives"
-# Note: there is no ``_TAINT_SINKS_DIR``.  Commit 51e1d232f3 retired the
-# shipped ``taint_sinks/`` directory and derives all built-in sinks from
-# ``io_primitives/*.yaml`` via :func:`_derive_auto_imports_from_io_primitives`.
-# Project-local sinks still flow in via the ``--taint-sinks`` CLI flag.
+# Built-in I/O sinks are derived from ``io_primitives/*.yaml`` via
+# :func:`_derive_auto_imports_from_io_primitives` (51e1d232f3 retired the old
+# hand-kept ``taint_sinks/`` for drifting from that catalogue). ``taint_sinks/``
+# ships again under ADR-0060 for sinks with NO I/O counterpart only -- code
+# execution and DOM injection -- and test_shipped_taint_sinks.py refuses a row
+# there that io_primitives could derive. Project-local sinks still flow in via
+# the ``--taint-sinks`` CLI flag.
+_TAINT_SINKS_DIR = Path(__file__).parent / "taint_sinks"
 
 
 def _resolve_catalog_paths(paths: list[Path]) -> list[Path]:
@@ -2174,13 +2178,13 @@ def load_builtin_taint_catalog(
     enumeration: adding a primitive there propagates into taint analysis
     automatically, which replaces the manual drift-guard previously shipped
     under WI-hizik.  Built-in sinks come entirely from layer 2 — the
-    shipped ``taint_sinks/`` directory was retired in 51e1d232f3.
+    shipped ``taint_sinks/`` directory was retired in 51e1d232f3; ADR-0060
+    restores it for NON-boundary sinks only (code execution, DOM injection).
     """
     source_paths = sorted(_TAINT_SOURCES_DIR.glob("*.yaml")) if _TAINT_SOURCES_DIR.exists() else []
+    sink_paths = sorted(_TAINT_SINKS_DIR.glob("*.yaml"))
     sanitizer_paths = sorted(_TAINT_SANITIZERS_DIR.glob("*.yaml")) if _TAINT_SANITIZERS_DIR.exists() else []
-    # No built-in sinks: 51e1d232f3 retired the shipped ``taint_sinks/``
-    # directory and derives them from ``io_primitives/`` instead.
-    user_catalog = load_taint_catalog(source_paths, [], sanitizer_paths)
+    user_catalog = load_taint_catalog(source_paths, sink_paths, sanitizer_paths)
 
     auto_sources, auto_sinks, ambiguous_by_lang = (
         _derive_auto_imports_from_io_primitives(
