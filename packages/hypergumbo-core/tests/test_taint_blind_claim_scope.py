@@ -214,3 +214,26 @@ def test_both_checks_are_scoped_together() -> None:
         True, ["php"], edges, {"python"}, {}, source_languages=frozenset({"python"}),
     )
     assert scoped is None or "php" not in scoped
+
+
+def test_a_supported_language_outside_the_scope_does_not_block() -> None:
+    """INV-rorur: the scope narrows the supported-language set WITH the edges.
+
+    Left whole, a supported language the claim's flows cannot be in (Go, beside
+    a Python-only label) had no edge in the scoped list and read as "analyzed
+    but produced no call edges". Measured on the shipped CLI: python + go gave
+    ``inconclusive`` rc 2; python alone gave ``confirmed`` rc 0.
+    """
+    from hypergumbo_core.cli import _taint_blind_reason
+    from hypergumbo_core.io_boundary import load_catalog
+
+    catalogs = {lang: load_catalog(lang) for lang in ("python", "go")}
+    edges = [
+        _call("python:app.py:1-2:handler:function", "python:app.py:4-5:helper:function"),
+    ]
+    unscoped, _ = _taint_blind_reason(True, [], edges, {"python", "go"}, catalogs)
+    assert unscoped is not None and "go" in unscoped
+    scoped, _ = _taint_blind_reason(
+        True, [], edges, {"python", "go"}, catalogs, source_languages=frozenset({"python"}),
+    )
+    assert scoped is None

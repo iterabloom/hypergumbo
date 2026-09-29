@@ -6064,6 +6064,60 @@ def _uncatalogued_code_languages(
     return sorted(set(unsupported_taint_languages) & languages_with_calls)
 
 
+def _sink_zone_gaps(
+    claims: list[Any],
+    taint_catalog: Any,
+    present_languages: AbstractSet[str],
+    flow_languages_by_label: Mapping[str, AbstractSet[str]],
+) -> dict[tuple[str, str], Any]:
+    """What each taint claim's sink zone cannot see, per language (INV-pivam).
+
+    Only ADR-0060's zones are judged this way. An I/O-derived zone's sinks come
+    from the same catalogue whose presence the no-catalogue gate already checks
+    per language; a non-boundary zone can be empty for a language whose
+    catalogue is otherwise full (Go has no ``code_execution`` sink), which that
+    gate cannot see.
+
+    ``present_languages`` are the taint-supported languages with production
+    source in the repo (the census that decides support), narrowed to the
+    languages a flow of the claim can be in when its label is project-declared
+    (WI-rusil). Presence is by source file, not by call edge: a JS file whose
+    only injection is ``new Function(s)`` emits no call edge at all, which is
+    the case this gate exists for. A language with no taint catalogue is the
+    blindness gate's to report.
+    """
+    from .taint import shipped_non_boundary_sink_zones
+    from .verify_claims import SinkZoneGap
+
+    zones = shipped_non_boundary_sink_zones()
+    gaps: dict[tuple[str, str], Any] = {}
+    for claim in claims:
+        tf = claim.constraint_taint_flow
+        if tf is None or tf.prohibited_sink_zone not in zones:
+            continue
+        key = (tf.source_taint, tf.prohibited_sink_zone)
+        if key in gaps:
+            continue
+        present = set(present_languages)
+        if tf.source_taint in flow_languages_by_label:
+            present &= set(flow_languages_by_label[tf.source_taint])
+        zone = tf.prohibited_sink_zone
+        uncovered = sorted(
+            lang for lang in present
+            if not any(s.zone == zone for s in taint_catalog.sinks_for_language(lang))
+        )
+        unreached = tuple(sorted(
+            (lang, shapes) for lang, shapes in zones[zone].items()
+            if lang in present and lang not in uncovered
+        ))
+        if uncovered or unreached:
+            gaps[key] = SinkZoneGap(
+                zone=zone, uncovered_languages=tuple(uncovered),
+                unreached_shapes=unreached,
+            )
+    return gaps
+
+
 def _languages_a_flow_can_be_in(
     origins: AbstractSet[str], census_edges: list[dict[str, Any]],
 ) -> frozenset[str]:
@@ -6219,6 +6273,12 @@ def _taint_blind_reason(
             edge for edge in scoped_edges
             if edge.get("src", "").split(":", 1)[0] in source_languages
         ]
+        # The supported-language set is scoped WITH the edges (INV-rorur):
+        # left whole, every supported language outside the scope has no edge
+        # in the scoped list and reads as "produced no call edges".
+        taint_supported_languages = (
+            set(taint_supported_languages) & set(source_languages)
+        )
     # WI-mital: the build-target linker mints a ``calls`` edge from a Cargo
     # ``[[bin]]`` symbol (language slot ``toml``) to the ``main()`` it names, so
     # a manifest appears to make calls and blocks every claim over a Rust binary
@@ -6852,6 +6912,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # Only a label a project catalogue declares in specific languages narrows;
     # a built-in label can start in any language and keeps the answer above.
     blind_by_source_taint: dict[str, ScopedBlindness] = {}
+    flow_languages_by_label: dict[str, frozenset[str]] = {}
     if has_taint_claims and taint_catalog is not None:
         from .taint import load_builtin_taint_catalog, source_origin_languages
 
@@ -6871,6 +6932,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             if _origins is None:
                 continue
             _flow_langs = _languages_a_flow_can_be_in(_origins, _census_edges)
+            flow_languages_by_label[_tf.source_taint] = _flow_langs
             _reason, _opaque = _taint_blind_reason(
                 has_taint_claims, unsupported_taint_languages,
                 raw_edges, set(per_lang_sinks), catalogs,
@@ -6883,6 +6945,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 not_counted=[lang for lang in _census if lang not in _flow_langs],
                 origin_languages=sorted(_origins),
             )
+    sink_zone_gaps: dict[tuple[str, str], Any] = {}
+    if has_taint_claims and taint_catalog is not None:
+        sink_zone_gaps = _sink_zone_gaps(
+            claims, taint_catalog, set(per_lang_sinks), flow_languages_by_label,
+        )
     # INV-nuhun: the taint arm's half of INV-fibis's disclosure. Stamped HERE
     # rather than inside ``compute_boundary_coverage`` because this is the first
     # point that holds BOTH the call edges and the taint SINK catalogue — the
@@ -6909,6 +6976,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         blind_reason=_blind_reason,
         blind_opaque_sites=_blind_opaque,
         blind_by_source_taint=blind_by_source_taint,
+        sink_zone_gaps=sink_zone_gaps,
         # INV-faput: the SHIPPED catalogue rows a repo-supplied row replaced.
         # Read off the catalogue here because this is the last point that
         # still knows — the displaced rows are gone from every structure the

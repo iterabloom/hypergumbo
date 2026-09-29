@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0060: Built-in Taint Sinks That Are Not I/O Boundaries
 
-Status: Accepted by the agent under the owner's standing autonomy ruling; owner review requested
+Status: Accepted
 Date: 2026-09-29
 Related: [ADR-0016](0016-io-boundary-analysis.md), [ADR-0017](0017-taint-zone-dataflow.md), [ADR-0061](0061-catalogue-tiers-for-every-family.md)
 
@@ -44,7 +44,21 @@ those.**
 It also pins the set of shipped zones.
 
 **4. Rows cover only call edges the analyzers emit.** A sink that no call edge
-can reach would claim coverage the tool cannot deliver.
+can reach would claim coverage the tool cannot deliver. The shapes of a zone
+that no call edge reaches are declared per language under the file's
+`unreached:` key instead.
+
+**5. A claim over these zones is judged per language.** A language can carry a
+full taint catalogue and still have no sink in one of these zones, which the
+no-catalogue check cannot see. So, for the languages in the repository that a
+flow of the claim can be in:
+
+- **A language with no sink in the claim's zone withholds a clean verdict**
+  (`inconclusive`), naming the language.
+- **A language whose sinks in the zone miss declared `unreached:` shapes
+  qualifies a clean verdict** (`confirmed_with_caveats`, caveat
+  `unreached_sink_shapes`), naming each shape.
+- **A found flow is reported regardless** (`violated`).
 
 ## Consequences
 
@@ -56,20 +70,19 @@ can reach would claim coverage the tool cannot deliver.
   | `code_execution` | JavaScript/TypeScript | `window.eval`, bare `eval` |
   | `dom_injection` | JavaScript/TypeScript | `document.write`, `document.writeln` |
 
-- **Not covered.** No call edge reaches these shapes today, and the YAML
-  headers list them:
-  - `el.innerHTML = s` and `outerHTML` (assignments emit no edge);
-  - `insertAdjacentHTML` on a receiver the analysis cannot type;
+- **Declared unreached** (JavaScript and TypeScript), and so named on every
+  clean verdict over their zone:
   - `new Function(s)`;
-  - `setTimeout` or `setInterval` given a string.
-- **Known gap: claims on these zones can report a false `confirmed`.** A claim
-  naming one of the zones reads `confirmed`, with no caveat, when:
-  - the only flow uses one of the shapes above; or
-  - the repository's language has no sink in that zone.
-
-  Before this ADR the same claim was refused as naming an unknown zone. Until a
-  verdict discloses the zone's coverage for the languages present, a clean
-  verdict on these zones asserts only that no *listed* sink was reached.
+  - `setTimeout` or `setInterval` given a string;
+  - `el.innerHTML = s` and `outerHTML` (assignments emit no edge);
+  - `insertAdjacentHTML` on a receiver the analysis cannot type.
+- **Other languages read `inconclusive` on these zones** until they gain sinks
+  in them: a Go, Java or Rust repository cannot be confirmed free of code
+  execution by a catalogue with no Go, Java or Rust evaluation sink.
+- **Deserialization is not code execution here.** `pickle.loads`,
+  `yaml.load`, Java `ObjectInputStream` and Ruby `Marshal` ask a different
+  question ("untrusted data is never deserialized"), and belong in a zone of
+  their own if one is added.
 - **Where the operator's own sinks go.** Non-I/O sinks the operator adds belong
   in their own catalogue (ADR-0061 ruling 7: `taint_sinks.d/`, `--taint-sinks`
   or a claims file). I/O sinks belong in `io_primitives`.

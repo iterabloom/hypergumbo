@@ -2035,6 +2035,29 @@ _IO_PRIMITIVES_DIR = Path(__file__).parent / "io_primitives"
 _TAINT_SINKS_DIR = Path(__file__).parent / "taint_sinks"
 
 
+def shipped_non_boundary_sink_zones() -> dict[str, dict[str, tuple[str, ...]]]:
+    """The sink zones ``taint_sinks/`` ships, each with its unreached shapes.
+
+    ADR-0060's zones are not derived from an I/O boundary, so their coverage
+    varies by language in a way the no-catalogue gate cannot see: a language can
+    carry a full taint catalogue and still have no sink in ``code_execution``.
+    verify-claims judges these zones per language (INV-pivam) and reads two
+    facts from the shipped files: which zones they are, and, per language, the
+    shapes (``unreached:``) that belong to the zone but that no call edge
+    reaches, so a clean verdict names them instead of implying it saw them.
+
+    Returns ``{zone: {language: shapes}}``; a zone with no unreached shape maps
+    to an empty dict.
+    """
+    zones: dict[str, dict[str, tuple[str, ...]]] = {}
+    for path in sorted(_TAINT_SINKS_DIR.glob("*.yaml")):
+        data = _safe_load_catalog_yaml(path, "sinks", dict)
+        shapes = zones.setdefault(data["zone"], {})
+        for lang, entries in (data.get("unreached") or {}).items():
+            shapes[lang] = tuple(entries)
+    return zones
+
+
 def _resolve_catalog_paths(paths: list[Path]) -> list[Path]:
     """Resolve project-local taint-catalog path arguments to a file list.
 
