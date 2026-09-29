@@ -1,0 +1,23 @@
+- op: create  # b913
+  at: '2026-09-29T17:05:19Z'  # b913
+  by: agent  # b913
+  actor: jgstern_agent  # b913
+  clock: 1  # b913
+  nonce: b913  # b913
+  data:  # b913
+    kind: invariant  # b913
+    title: "code_execution / dom_injection claims read a false confirmed: new Function, string setTimeout, and any language with no sink in the zone pass silently (ADR-0060)"  # b913
+    status: violated  # b913
+    priority: 2  # b913
+    parent:  # b913
+    tags:  # b913
+    - taint  # b913
+    - catalogue  # b913
+    isbefore: []  # b913
+    duplicate_of: []  # b913
+    not_duplicate_of: []  # b913
+    pr_ref:  # b913
+    description: "FOUND 2026-09-29 reviewing ADR-0060 (merged #1301). ADR-0060 now states this gap in its Consequences.\nA claim naming the new zones reads plain `confirmed` (rc 0, no caveat) when the only flow uses a shape no call edge reaches, or when the repo's language has no sink in that zone. Before ADR-0060 the same claim was refused as an unknown zone (rc 2) -- a loud failure became a quiet false pass.\nREPRO (dev ed6d9d3591; fixtures in the session scratchpad adr60/, re-creatable in 4 lines each), claim host_secret must not reach code_execution:\n- JS `const s = process.env.X; new Function(s)();` -> confirmed rc 0, caveats [].\n- JS `setTimeout(s, 1)` with a string -> confirmed rc 0, caveats [].\n- Go repo (os.Getenv + fmt.Println): confirmed rc 0 although Go has NO code_execution sink (INV-potu's vacuous-language shape, at zone granularity).\n- Java ScriptEngine.eval / Node vm.runInNewContext / Go plugin.Open were inconclusive only because those modules are uncatalogued -- incidental, not a gate that knows the zone is uncovered.\nFix direction: a claim naming a zone with no sink for a language present in the repo is inconclusive for that language (INV-potu's rule, per zone); the known-unreached shapes (WI-bonah's list) ride the verdict as a caveat, not only as YAML comments. Scope question for the owner: whether pickle.loads / yaml.load (deserialization) belong in code_execution."  # b913
+    fields:  # b913
+      statement: "A taint claim whose sink zone has no sink for a language present in the repo, or whose zone has known-unreached shapes, never reads a plain confirmed for that language."  # b913
+      root_cause: "The unsupported-language gate is per language, not per zone, and ADR-0060's not-covered list lives only in YAML comments, so verify-claims cannot see that a zone is uncovered."  # b913

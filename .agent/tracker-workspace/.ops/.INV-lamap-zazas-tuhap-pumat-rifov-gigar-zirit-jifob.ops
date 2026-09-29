@@ -21,3 +21,10 @@
     fields:  # 52ff
       statement: "A row's vouch status follows its declared provenance, wherever the file lives; a community row never licenses a clean verdict until someone explicitly vouches for it."  # 52ff
       root_cause: "io_boundary.py stamps unvouched by shipped-directory path only; init-catalogs copies community overlays into the user io_primitives.d where the loader treats them as user rows."  # 52ff
+- op: discuss  # 43de
+  at: '2026-09-29T17:05:35Z'  # 43de
+  by: agent  # 43de
+  actor: jgstern_agent  # 43de
+  clock: 2  # 43de
+  nonce: 43de  # 43de
+  message: "ADR-0061 ruling 3 (merged #1308) is the decided fix: the loader reads a row's tier from its file's provenance: line, never from its directory; deleting provenance: community is the act of vouching. Needs WI-nopam first (every shipped file declares provenance)."  # 43de
