@@ -19,3 +19,39 @@
     pr_ref:  # 7a76
     description: "ADR-0061 ruling 3 (merged #1308). Every shipped catalogue file (every family registered in yaml_catalogs.YAML_CATALOGS) declares `provenance: builtin` or `provenance: community` in its header; a gate (in the style of test_catalogue_scope_gates.py) refuses a shipped file that declares neither, and refuses `builtin` on a file carrying a third-party module. A community file also carries a dated `retrieved:`.\nThis is the PREREQUISITE for the per-family community moves (they need the declaration to exist) and for INV-lamap (the loader reading tier from the declaration instead of the directory).\nAcceptance: the gate runs over every family's shipped files and is shown red by a mutation (drop one declaration; mark a file with a third-party row builtin)."  # 7a76
     fields: {}  # 7a76
+- op: update  # 4cb6
+  at: '2026-09-29T17:05:33Z'  # 4cb6
+  by: agent  # 4cb6
+  actor: jgstern_agent  # 4cb6
+  clock: 2  # 4cb6
+  nonce: 4cb6  # 4cb6
+  set: {}  # 4cb6
+  add:  # 4cb6
+    isbefore: [WI-dikit-juvaj-mozob-hojig-tidim-masav-mapor-fafuk]  # 4cb6
+- op: update  # 9fe4
+  at: '2026-09-29T17:05:33Z'  # 9fe4
+  by: agent  # 9fe4
+  actor: jgstern_agent  # 9fe4
+  clock: 3  # 9fe4
+  nonce: 9fe4  # 9fe4
+  set: {}  # 9fe4
+  add:  # 9fe4
+    isbefore: [WI-tigud-lavut-tijad-zorod-mifur-vuzum-narah-larap]  # 9fe4
+- op: update  # 502e
+  at: '2026-09-29T17:05:34Z'  # 502e
+  by: agent  # 502e
+  actor: jgstern_agent  # 502e
+  clock: 4  # 502e
+  nonce: 502e  # 502e
+  set: {}  # 502e
+  add:  # 502e
+    isbefore: [WI-hipun-kozut-gavob-duraj-zazah-babos-balin-pahiz]  # 502e
+- op: update  # 29ce
+  at: '2026-09-29T17:05:34Z'  # 29ce
+  by: agent  # 29ce
+  actor: jgstern_agent  # 29ce
+  clock: 5  # 29ce
+  nonce: 29ce  # 29ce
+  set: {}  # 29ce
+  add:  # 29ce
+    isbefore: [INV-lamap-zazas-tuhap-pumat-rifov-gigar-zirit-jifob]  # 29ce
