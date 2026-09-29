@@ -108,6 +108,11 @@ FAMILY_CONSEQUENCE: "dict[str, str]" = {
         "Declares what makes a tainted value safe. Without them real flows "
         "stay reported after they have been made harmless — noise, not risk."
     ),
+    "taint_sinks": (
+        "Declares the sinks no I/O boundary can derive — evaluating data as "
+        "code, writing it into a page as HTML. Without them a claim cannot "
+        "forbid code or DOM injection at all (ADR-0060)."
+    ),
     "function_summaries": (
         "Describes callees whose source is not analysed. A wrong "
         "'terminates' verdict closes a branch that is really open and DELETES "
