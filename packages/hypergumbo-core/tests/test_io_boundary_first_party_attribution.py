@@ -83,6 +83,8 @@ SHADOWED_NAME = {
     # java.nio.file.Files.createDirectory: function-kind, and outside java's
     # ambiguous_names (createDirectories is on it). Added with WI-gotun.
     "java": "createDirectory",
+    # unistd.unlink: function-kind, outside c's ambiguous_names. Added with WI-himob.
+    "c": "unlink",
 }
 
 
