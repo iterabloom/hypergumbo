@@ -19,6 +19,8 @@ stdlib_provenance:
 ambiguous_names:
   - read          # fs.read vs any .read()
   - write         # fs.write vs any .write()
+  - eval          # ADR-0060: global eval vs any .eval() (e.g. page.eval in test drivers)
+  - writeln       # ADR-0060: document.writeln vs any .writeln()
   - open          # fs.open vs any .open()
   - close         # fs.close vs any .close()
   - end           # response.end vs stream.end, any .end()

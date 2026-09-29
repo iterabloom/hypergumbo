@@ -177,6 +177,14 @@ ambiguous_names:
   - credits       # builtins.credits vs any local credits()
   - license       # builtins.license vs any local license() or attribute
   - help          # builtins.help vs any local help() / .help() (CLI frameworks)
+  # ADR-0060 / WI-nokab: the shipped code_execution sinks (taint_sinks/) are
+  # builtins by construction, like the six above; no io_primitives row names
+  # them. A bare eval/exec/compile carries `builtins` in the module slot and
+  # still matches; a hint-less `model.eval()` (torch), `cursor.exec()` or
+  # `pattern.compile()` must not be read as evaluating code.
+  - eval          # builtins.eval vs model.eval() / any .eval()
+  - exec          # builtins.exec vs any .exec() (Qt dialogs, DB cursors)
+  - compile       # builtins.compile vs re.compile / any .compile()
 
 fs_read:
   # ---------------------------------------------------------------
