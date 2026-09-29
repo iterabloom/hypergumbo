@@ -1,193 +1,111 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0047: Catalogue Scope, and Where a User's Catalogue Data Lives
 
-- Status: Partially superseded by ADR-0061 (rulings 1, 5 and 6; ruling 9's repo-tier half); rulings 2, 3, 4, 7, 8, 10 and ruling 9's developer offer in force
+- Status: Accepted
 - Date: 2026-08-27
-- Supersedes: —
-- Superseded by: [ADR-0061](0061-catalogue-tiers-for-every-family.md) (rulings 1, 5, 6; ruling 9's repo tier)
-- Related: ADR-0016 (I/O Boundary Analysis — §27 catalogue scope and §35 overlays, both amended here), ADR-0045 (User Configuration and Backend Trust — the two config tiers and the `io_primitives` setting this builds on), ADR-0017 (Taint-Zone Dataflow — the `taint_*` catalogues), ADR-3aaa (the `frameworks/` catalogue). Tracker items: WI-sutuk (the project-wide filing), WI-bahid (the Go case and its measurement), INV-safig, INV-fotav (where the standing ruling was given), INV-zosun (verdict-level catalogue disclosure), INV-lufib (per-language overlay scoping), WI-vafit (the user-facing inventory).
-
-**Decision provenance.** This ADR records a **fresh human ruling** given
-2026-08-27, and it **changes a standing owner ruling** rather than restating
-one. The prior ruling — *"io_primitives stays STDLIB-SCOPED (ADR-0016 §27);
-third-party is USER-SUPPLIED via overlays"* — was given 2026-08-11 on INV-safig
-and reaffirmed in person on INV-fotav. It is not reversed lightly and §Context
-below records what it was protecting.
-
-The question put to the owner was: *"Can hypergumbo ship third-party rows it
-doesn't vouch for, loaded by default? That reverses your stdlib-only ruling."*
-The answer was **"yes as long as it's loud about it"**, and the conditional is
-load-bearing rather than decorative — it is why the disclosure is required in
-DEFAULT HUMAN OUTPUT and not only in a JSON field (now ADR-0061 ruling 5). Ruling 9's two
-audiences were separated by the owner in the same exchange. Rulings 2–5, 7, 8
-and 10 are engineering consequences of those two answers.
+- Related: ADR-0016 (I/O Boundary Analysis — catalogue scope and overlays), ADR-0045 (User Configuration and Backend Trust — the config tiers), ADR-0017 (Taint-Zone Dataflow — the `taint_*` catalogues), ADR-0061 (the four catalogue tiers), ADR-3aaa (the `frameworks/` catalogue).
 
 ## Context
 
-### The standing ruling, and that it was enforced once at higher cost
+hypergumbo analyses the repository in front of it, not the repository's
+installed dependencies. To see I/O or taint that happens inside a library, it
+needs a row saying what that library call does. The shipped catalogues hold rows
+hypergumbo can stand behind: the standard library of each language (ADR-0016).
+Every language also has dozens of popular third-party libraries, and a real
+application that uses only those would otherwise report no boundaries at all.
+So hypergumbo also ships rows it does not maintain, and users need to add their
+own.
 
-ADR-0016 scopes the shipped catalogues to *"a curated list of stdlib
-functions, not an unbounded set of library APIs"*, bounded by *"what hypergumbo
-can be responsible for"*, and sends third-party rows to *"a project-local
-overlay, not more built-in rows"*.
+That raises three design questions:
 
-This is not aspirational. Commit `864f55ed02` (2026-04-24, "strict-stdlib cull
-cross-language") culled six languages and added structural tests, on the
-reasoning that *"once you allow popular wrappers, the maintenance treadmill is
-unbounded — every language has dozens of HTTP clients, ORMs, logging façades."*
-`tokio::fs` / `tokio::net` went out at a **91.7% name-for-name mirror rate**
-against still-shipping `std::` rows — a *higher* overlap than any row now under
-discussion. The "everyone uses this spelling" argument was heard and rejected.
+- how shipped-but-unmaintained rows are kept apart from vouched ones;
+- where a user's own catalogue data lives;
+- which catalogue families a user may extend at all.
 
-### Practice diverged, in the open, and the mechanism is visible
-
-| catalogue | third-party rows | share |
-|---|---|---|
-| elixir | 155 | 29.4% |
-| haskell | 68 | 31.5% |
-| swift | 38 | 36.5% |
-| go | 33 | 17.4% |
-| python | 4 ungoverned + 29 `django.db.models` | — |
-
-Three catalogue headers **declare** third-party scope deliberately — swift names
-"SwiftNIO, AsyncHTTPClient, NIOSSL"; haskell says "and common libraries"; elixir
-goes furthest, naming "a galaxy of HTTP clients (HTTPoison, Tesla, Req, Finch,
-Mint)" and justifying it with a UAT bug report: **a real Phoenix/Ecto repository
-returned ZERO boundaries.**
-
-Openly-declared drift is still drift, not a competing policy. But the mechanism
-is worth naming: **scope gates exist for 6 of 14 languages**, and the eight with
-none (go, elixir, erlang, haskell, swift, objc, c, cpp) are exactly where the
-rows accumulated. Java's `javax.*` / `jakarta.*` allowance is *not* a carve-out
-and must not be cited as precedent — the test defines Java's stdlib as "the JDK
-(`java.*`) plus the historically-bundled `javax.*` and the standardized
-`jakarta.*`", which is a statement about the platform, not an exception to it.
-
-### The overlays that do exist ship to nobody
-
-`docs/io-primitives-overlays/` holds three overlays. `pyproject.toml` declares
-`packages = ["src/hypergumbo_core"]`, so **`docs/` is not in the wheel**: an
-installed hypergumbo cannot load them at all. The extension point ADR-0016 §35
-granted has, in practice, no artifact a user can reach.
-
-### The wider shape: 89% of the catalogue data has no user channel
-
-`hypergumbo_core.yaml_catalogs` registers **8 catalogue families, 156 YAML
-files**, with a drift check already gating the registry against the tree.
-
-| family | files | user channel today |
-|---|---|---|
-| `frameworks` | 107 | **none** |
-| `dataflow_patterns` | 20 | **none** |
-| `io_primitives` | 15 | `--io-primitives`, ADR-0045 config |
-| `cfg_nodes` | 5 | **none** |
-| `function_summaries` | 4 | **none** |
-| `taint_sources` / `taint_sanitizers` | 3 | `--taint-*`, `extra_catalogs:` |
-| `url_folding` | 2 | **none** (and no governing ADR) |
-
-**138 of 156 files — 89% — cannot be extended by a user at all**, and the
-largest family is `frameworks/`, which is precisely what someone with an
-in-house framework needs to reach.
-
-### What already exists and should be reused
-
-- **ADR-0045 landed two config tiers** — `$XDG_CONFIG_HOME/hypergumbo/config.toml`
-  and `<repo>/.hypergumbo.toml` — with **`io_primitives` overlay paths as its
-  first real setting**. The "user points at overlays" half is built.
-- **`load_catalog(language, overlay_paths=...)` is already a delta layer**, in
-  ascending precedence, and deliberately drops `stdlib_modules` from an overlay
-  so a `requests` overlay cannot relabel a PyPI package as stdlib.
-- **Verdict-level catalogue disclosure exists** (INV-zosun): the `verify-claims`
-  envelope carries `catalog_provenance.layers.io_primitives.{claims_file, cli}`
-  and a `user_supplied` flag, built because *"a 5-line project-local overlay
-  re-opens INV-buzab's false confirm."*
-- **Per-language overlay scoping is a solved hazard** (INV-lufib): a claims-file
-  overlay was once applied to every language, hard-failing any repo that also
-  contained JavaScript.
+The catalogue registry (`hypergumbo_core.yaml_catalogs.YAML_CATALOGS`) is where
+the answers are declared and checked.
 
 ## Decision
 
-**1. Scope.** Superseded by ADR-0061 rulings 1–3: four tiers (built-in, community, yours, in-repo) for every catalogue family, and a community row may add a finding but never make a verdict cleaner.
+**1. Tiers.** Every catalogue row is **built-in**, **community**, **yours** or
+**in-repo**, whatever family it belongs to. A community row may add a finding
+but never make a verdict cleaner. ADR-0061 defines the tiers.
 
-**2. Seed, never copy.** Base catalogues live in the wheel and are **never
-materialized** into a user directory. Only *deltas* live in the user's config
-dir. A full copy means the next release's rows never reach that user, silently,
-and the tool quietly degrades for exactly the people who engaged with it enough
-to run the command. Deltas do not have that failure mode, and the loader already
-speaks them.
+**2. Seed, never copy.** Built-in catalogues live in the installed package and
+are **never copied** into a user directory. Only a user's *deltas* live in their
+config directory. A full copy would silently stop the next release's rows
+reaching exactly the users who engaged enough to customise.
 
-**3. A user's catalogue data lives under `$XDG_CONFIG_HOME/hypergumbo/`**:
-`config.toml` (ADR-0045) beside one `<family>.d/` directory for each family
-whose registry entry declares a user channel (ruling 7). The list is derived
-from the registry, not written here. Where catalogue data inside an analysed
-repository lives, and when it loads, is ADR-0061 ruling 4.
+**3. A user's catalogue data lives under `$XDG_CONFIG_HOME/hypergumbo/`.**
 
-Nobody edits files inside their site-packages. A catalogue family that is
-declared user-extensible must have a home a user can find without being told
-where Python installed the wheel.
+- **Layout.** `config.toml` (ADR-0045) sits beside one `<family>.d/` directory
+  for each family whose registry entry declares a user channel (ruling 7).
+- **The list is derived from the registry,** not written here.
+- **Nobody edits files inside their site-packages.** An extensible family must
+  have a home a user can find without knowing where Python installed the
+  package.
+- **Catalogue data inside an analysed repository** lives and loads as ADR-0061
+  ruling 4 says.
 
-**4. Materialization is an explicit subcommand, never an implicit first-run
-write.** ADR-0045's own precedent is a *human-owned* config file the tool may
-read but not write; silently creating files in someone's config directory on
-first invocation is the surprise that precedent exists to avoid. Default-on
-loading does **not** require materialization — the shipped overlays load from
-the wheel; the subcommand exists so a user can *edit* them. Each seeded file is
-stamped `seeded_from:` (the hypergumbo version it was copied from), so its
-staleness against the shipped source is checkable.
+**4. The home is created by an explicit subcommand, never on first run.**
 
-**5. Provenance.** Superseded by ADR-0061 ruling 3: every shipped file declares `provenance: builtin` or `provenance: community`, and the loader reads a row's tier from that declaration, never from its directory.
+- **`hypergumbo init-catalogs`** creates the home and seeds the community
+  overlays into it, so the user can edit them. Silently creating files in
+  someone's config directory is the surprise ADR-0045's human-owned config
+  exists to avoid.
+- **Loading community rows doesn't depend on this command.** They load from the
+  package by default.
+- **Each seeded file is stamped `seeded_from:`** with the hypergumbo version it
+  came from, so its staleness against the shipped source is checkable.
 
-**6. Disclosure.** Superseded by ADR-0061 ruling 5: `catalog_provenance` names every loaded file under `builtin` / `community` / `yours` / `in_repo`, and a run that loads community rows says so on stderr.
+**5. Provenance.** Every shipped catalogue file declares
+`provenance: builtin` or `provenance: community`, and a community file carries
+a dated `retrieved:`. The loader reads a row's tier from that declaration
+(ADR-0061 ruling 3).
 
-**7. The registry answers extensibility.** `CatalogSpec` gains the fields
-naming whether a family is user-extensible and where the user's file goes, so
-`scripts/yaml-catalog-index --check` — already a gate — refuses a family that
-declares a channel it does not have. A new catalogue family cannot land without
-someone answering the question.
+**6. Disclosure.**
 
-**8. Every language gets a scope gate.** The eight ungated languages get the
-same gate shape as the six that have one. The asymmetry is the mechanical cause
-of the drift and leaving it in place guarantees a repeat.
+- **Every run that loads community rows says so in its default human output,**
+  not only in JSON.
+- **The `verify-claims` envelope names every loaded catalogue file by tier**
+  (ADR-0061 ruling 5).
 
-**9. hypergumbo never writes into an analysed repository.** Whether catalogue
-data inside one loads is ADR-0061 ruling 4 (off unless the operator opts in).
+**7. The registry answers extensibility.** Each family's registry entry either
+declares a user channel or gives a reason it has none, and
+`scripts/yaml-catalog-index --check` refuses an entry that does neither. A new
+catalogue family cannot land without someone answering the question.
 
-**Two audiences, two mechanisms — and they are not the same offer.** Collapsing
-them was the error this ruling corrects.
+**8. Every language has a scope gate.** `test_catalogue_scope_gates.py` refuses
+a built-in row outside that language's standard-library line.
 
-**The normal user has `$XDG_CONFIG_HOME/hypergumbo/`, and that is a
-SUBCOMMAND, not an offer.** They run the ruling-4 command; it creates their
-config home and populates it with the community overlays. Nothing is proposed
-to them unprompted, and the contents are not "examples" — they are the user's
-actual working configuration, some of which happens to be community-sourced
-third-party rows.
+**9. hypergumbo never writes into an analysed repository.** Catalogue data
+inside one loads only when the operator opts in (ADR-0061 ruling 4).
 
-**The hypergumbo developer has `~/hypergumbo`, and THAT is where the offer
-belongs.** A literal `hypergumbo` directory in the home directory is a
-repository checkout; nobody creates one by accident, which makes its presence a
-deliberate signal in a way that a config directory is not. When hypergumbo sees
-it, it may **offer once** to place *examples of repo-tier overlay files* there
-— the material a developer needs to see what a `.hypergumbo/` in an analysed
-repository would contain, without one being written into any repository.
+**Two audiences, two mechanisms.**
+
+- **The normal user has `$XDG_CONFIG_HOME/hypergumbo/`, and it is created by a
+  subcommand, not an offer.** Ruling 4's command creates it and seeds the
+  community overlays, which are the user's working configuration rather than
+  examples.
+- **The hypergumbo developer has `~/hypergumbo`, and that is where the offer
+  belongs.** A literal `hypergumbo` directory in the home directory is a
+  repository checkout. Nobody creates one by accident, so its presence is a
+  deliberate signal. When hypergumbo sees it, it may **offer once** to place
+  example in-repo overlay files there, showing what a repository's
+  `.hypergumbo/` would contain without writing one into any repository.
 
 Three constraints keep the offer an offer:
 
-- **Nothing is ever written into an analysed repository.** Writing a file into
-  someone's working tree is how a tool gets its output committed by accident,
-  and a repo-tier overlay is exactly the file whose presence should be a
-  deliberate act by that repository's owner.
-- **A decline is recorded as a decision**, reusing ADR-0045 ruling 8 verbatim:
-  *"The store records declines as well as grants… The nudge goes quiet for any
-  path with a recorded decision."* An offer that cannot be answered permanently
-  is a nag, and the project has already written down why that is corrosive:
-  *"A nudge that fires when it is already moot trains people to skim past the
-  one sentence that must land."*
-- **It is never raised in a non-interactive context.** No prompt when stdin is
-  not a TTY — the shape `cli.py` already applies to progress output. An offer
-  that blocks a CI run or an agent invocation is a defect, not a courtesy.
+- **Nothing is ever written into an analysed repository.** A file written into
+  someone's working tree is how a tool's output gets committed by accident.
+- **A decline is recorded as a decision** (ADR-0045 ruling 8), so the offer
+  goes quiet. An offer that cannot be answered permanently is a nag.
+- **It is never raised in a non-interactive context.** There is no prompt when
+  stdin is not a TTY. An offer that blocks a CI run or an agent invocation is a
+  defect.
 
 **10. A family gets a user channel when it describes the USER'S world, not the
-LANGUAGE'S.** That is the whole test, and it decides each family by inspection:
+LANGUAGE'S.** That test decides each family:
 
 | family | describes | channel |
 |---|---|---|
@@ -201,101 +119,82 @@ LANGUAGE'S.** That is the whole test, and it decides each family by inspection:
 | `cfg_nodes` | tree-sitter node types | no |
 | `url_folding` | wiring to shipped engines | no |
 
-**`cfg_nodes` is internal beyond argument.** Its rows are grammar node types and
-field names (`if_statement`, `field:condition`) against a named grammar version.
-A user cannot know better than the grammar, and a wrong row silently breaks the
-CFG, which silently breaks the taint walk.
+**`cfg_nodes` is internal.**
 
-**`url_folding` is internal for a mechanical reason:** its rows name
-`engine: fold_array_join`, a Python function inside `url_folding/__init__.py`.
-A user-supplied file could only reference engines the package already contains,
-so the channel would be inert without also accepting user code. **This also
-answers OQ2** — it has no governing ADR because it is a dispatch table wiring
-languages to shipped engines, not a decision surface. That is worth documenting;
-it is not an ADR-shaped gap.
+- Its rows are grammar node types and field names (`if_statement`,
+  `field:condition`) against a named grammar version.
+- A user cannot know better than the grammar.
+- A wrong row silently breaks the control-flow graph, and with it the taint
+  walk.
 
-**`dataflow_patterns` is MIXED, and that is the finding.** It is not one kind of
-data. The grammar section is `node_type: assignment / write: left` — internal by
-the same reasoning as `cfg_nodes`. But **9 of its 20 files carry a
-`library_patterns` section** whose rows are regex matches over call syntax
-(`'\.append\('` → `access_mode: mutate`), matched *"by method name regardless
-of receiver type"*. That is a statement about libraries and idioms, and a user
-with an in-house collection type has a legitimate row to add. **The channel is
-scoped to that section**, not to the file: a family can be half-internal, and
-granting the whole file would hand a user the grammar rules as well.
+**`url_folding` is internal for a mechanical reason.**
 
-**`function_summaries` gets the channel it most obviously needs and the gate it
-least obviously needs.** Its entries describe callees *"whose source is not
-analyzed"* — dependencies, which is exactly where a user knows something
-hypergumbo cannot. But its own header states the risk: *"A wrong `terminates`
-verdict lets the walk close a branch that is really open, which deletes a real
-security finding; a wrong `propagates` verdict only leaves an unknown unknown."*
-A user-supplied terminating summary **is** a sanitizer declaration by another
-name — it removes a flow the tool would otherwise report — and today
-`verify_claims` discloses nothing about function summaries at all, while
-`CAVEAT_USER_SUPPLIED_SANITIZER` already exists for the structurally identical
-case. So: a user summary that TERMINATES a branch rides the existing
-`user_supplied_sanitizer` caveat and its exit-3 contract. A propagating one does
-not, because it cannot silence anything. Granting this channel without that gate
-would re-open INV-buzab's shape on a fresh surface.
+- Its rows name `engine: fold_array_join`, a Python function inside
+  `url_folding/__init__.py`.
+- A user's file could only reference engines the package already contains, so
+  the channel would be inert without also accepting user code.
+- It is a dispatch table, not a decision surface.
+
+**`dataflow_patterns` is mixed.**
+
+- **The grammar section is internal,** for the `cfg_nodes` reason. Its rows
+  look like `node_type: assignment / write: left`.
+- **The `library_patterns` section describes libraries.** Its rows are regex
+  matches over call syntax (`'\.append\('` → `access_mode: mutate`), and a user
+  with an in-house collection type has a legitimate row to add.
+- **So the channel covers that section only,** never the whole file.
+
+**`function_summaries` gets a channel, and a gate.**
+
+- **Why a channel.** Its entries describe callees whose source is not analysed,
+  which is exactly where a user knows something hypergumbo cannot.
+- **Why a gate.** A summary that *terminates* a branch removes a flow the tool
+  would otherwise report, which makes it a sanitizer declaration by another
+  name.
+- **So:**
+  - a user summary that terminates a branch carries the
+    `user_supplied_sanitizer` caveat and its exit-3 contract;
+  - a propagating one carries none, because it cannot silence anything.
 
 ## Consequences
 
 ### Positive
 
-- The ~15 user-facing strings asserting stdlib-only become **true again**, which
-  no other option achieves: today they describe a state the catalogues do not
-  satisfy.
-- Recall is preserved for the Phoenix/Ecto and SwiftNIO cases that motivated the
-  drift, without the tool claiming to vouch for those rows.
-- A user can finally see and edit what their installation knows.
-- The 89% no-channel finding gets a gate, so it stops being invisible.
+- **Statements that the built-in catalogues are standard-library-only are
+  true.**
+- **Recall on applications built on popular third-party libraries is kept,**
+  without the tool claiming to vouch for those rows.
+- **A user can see and edit what their installation knows.**
+- **Every family either has a user channel or states why not.**
 
 ### Negative
 
-- **hypergumbo still ships and must maintain ~300 third-party rows.** This ADR
-  changes who is *responsible* for their correctness, not who carries the files.
-  The unbounded-treadmill objection in ADR-0016 and in commit `864f55ed02` is
-  answered only partially, and a future ADR may have to revisit it if the
-  overlay set grows the way that commit predicted.
-- A materialized overlay can go stale against its shipped source; its
-  `seeded_from:` stamp makes that visible but does not prevent it.
-- Default-on loading means a default run's results now depend on files the
-  project does not vouch for — mitigated by disclosure (ADR-0061 ruling 5), not eliminated.
+- **hypergumbo ships third-party rows it does not maintain.** Disclosure bounds
+  the cost; it does not remove the maintenance burden.
+- **A seeded overlay can go stale against its shipped source.** `seeded_from:`
+  makes that visible but does not prevent it.
+- **A default run's results depend partly on community rows.** Disclosure, and
+  the rule that such rows never make a verdict cleaner, mitigate this but don't
+  eliminate it.
 
 ### Neutral
 
-- The `HIGH_RISK_PRIMITIVES` drift guard (WI-sugav / WI-gitad) must widen its
-  corpus from built-in catalogues to built-ins **plus shipped default
-  overlays**. Its intent — no entry that resolves to nothing anywhere — is
-  preserved exactly, and this incidentally removes the one genuine cost WI-bahid
-  identified for culling Go's `execabs` rows.
+- **`HIGH_RISK_PRIMITIVES`' drift guard checks community overlays as well as
+  built-in catalogues,** so no entry resolves to nothing anywhere.
 
 ## Alternatives Considered
 
-**A1 — Enforce the standing ruling strictly: cull, ship nothing.** The literal
-reading, and the cheapest to state. Rejected because the Phoenix/Ecto UAT
-already showed what it produces: a real application, analysed, reporting zero
-boundaries. Correct by the letter and useless to the person running it.
+**A1 — Ship only standard-library rows.** Rejected: an application built on
+third-party libraries is analysed as having no boundaries at all. That is
+correct by the letter and useless to the person running it.
 
-**A2 — Materialize full copies of the base catalogues.** The most obvious
-reading of "put it where the user can edit it". Rejected: it guarantees that
-upgrades never reach the users who engaged most. See ruling 2.
+**A2 — Copy the full built-in catalogues into the user's directory.** Rejected:
+upgrades would never reach the users who engaged most. See ruling 2.
 
-**A3 — Materialize implicitly on first run.** Better ergonomics than a
-subcommand, and rejected for ADR-0045's reason: `$XDG_CONFIG_HOME` is the
-user's, and a tool that writes there uninvited has made a decision that was not
-its to make.
+**A3 — Create the user's catalogue home on first run.** Rejected for ADR-0045's
+reason: `$XDG_CONFIG_HOME` is the user's, and a tool that writes there uninvited
+has made a decision that was not its to make.
 
-**A4 — Widen the built-in catalogues officially and drop the stdlib claim.**
-Honest about what ships today, and the option this ADR is closest to. Rejected
-because it discards the distinction that makes the disclosure meaningful: with
-no vouched/unvouched line, a user cannot tell an audited `os.write` row from a
-community `HTTPoison.post` row, and the strings would have to say the tool
-vouches for both.
-
-## Open Questions
-
-- **OQ1 and OQ2 — RULED, see ruling 10.** Both were settled by reading the
-  files rather than by deferring them.
-- **OQ3 — RULED, see ADR-0061 ruling 4.** In-repo catalogue data does not load unless the operator opts in.
+**A4 — Treat third-party rows as built-in and drop the standard-library line.**
+Rejected: a user could no longer tell an audited `os.write` row from an
+unmaintained `HTTPoison.post` row.

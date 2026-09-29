@@ -1,10 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0045: User Configuration and Backend Trust Are Separate Stores
 
-- Status: Partially superseded by ADR-0061 (ruling 3, for catalogue data); the rest in force
+- Status: Accepted
 - Date: 2026-08-23 (adopted by the owner the same day, with implementation authorised)
-- Supersedes: —
-- Superseded by: [ADR-0061](0061-catalogue-tiers-for-every-family.md) (ruling 3, for catalogue data)
 - Related: ADR-0012 (Pass Unification and Multi-Fidelity — the backends this configures), ADR-0013 (Structured Tracker — the `$XDG_CACHE_HOME` out-of-tree-state and human-owned-config-file patterns reused here), ADR-0016 §35 / ADR-0017 §370 (overlay precedence, which this deliberately *inverts* for trust), ADR-0061 (catalogue tiers, including when in-repo catalogue data loads), ADR-0022 (Per-Language Configuration Surface — a different sense of "configuration"; see §Naming below); tracker items WI-sobig (the trigger), WI-jivim, WI-nanom (the next backend this must serve), WI-gojum.
 
 ## Context

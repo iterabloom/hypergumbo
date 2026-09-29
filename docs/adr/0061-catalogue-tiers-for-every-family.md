@@ -1,13 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0061: Four Catalogue Tiers, for Every Family
 
-Status: Accepted (owner rulings 2026-09-29; implementation pending)
-Supersedes: ADR-0047 (rulings 1, 5 and 6; ruling 9's repo-tier half); ADR-0045 (ruling 3, for catalogue data); ADR-0017 (§2's built-in / project-local split)
+Status: Accepted — implementation in progress
 Related: [ADR-0016](0016-io-boundary-analysis.md), [ADR-0017](0017-taint-zone-dataflow.md), [ADR-0045](0045-user-config-and-backend-trust.md), [ADR-0047](0047-catalogue-scope-and-user-visible-homes.md), [ADR-0060](0060-non-boundary-taint-sinks.md)
-
-Rulings 1, 4 and 6 are the owner's. The name `in-repo` and the git-state
-disclosure in ruling 4 are the agent's proposal and await ratification (OQ1).
-The rest are engineering consequences of those rulings.
 
 ## Context
 
@@ -22,15 +17,9 @@ analysed.
 These sources deserve different trust. A row can do more than add a finding.
 It can also make a verdict cleaner. A sanitizer clears a flow, a summary can
 end a taint branch, and an I/O row makes a call count as examined. A clean
-verdict is only as trustworthy as the least-trusted row it rests on. ADR-0047
-separated vouched rows from community rows for the I/O catalogue alone. That
-left three problems:
-
-- Third-party rows in the other families, sanitizers among them, read as
-  built-in.
-- A file inside the analysed repository could change verdicts without the
-  operator choosing to load it.
-- The documentation called three different sources "project-local".
+verdict is only as trustworthy as the least-trusted row it rests on, so every
+row needs a tier, whatever family it belongs to, and the verdict has to say
+which tiers it rested on.
 
 ## Decision
 
@@ -63,7 +52,7 @@ The test is what a row can do, not which family it belongs to.
   (exit 3).
 - **The second column is still a reading, not a measurement.** Whether a
   `frameworks` or `dataflow_patterns` row can remove a finding gets measured for
-  each family when it is implemented (OQ2).
+  each family when it is implemented (Open Questions).
 - **Consequence: third-party crypto sanitizers stop clearing flows.** The
   `cryptography`, `aes_gcm` and `ring` sanitizers become community rows. A
   program that decrypts, re-encrypts and writes will read `violated` on a
@@ -107,7 +96,7 @@ The test is what a row can do, not which family it belongs to.
   - `untracked`.
 
   A file named on the command line that lives inside the repository is reported
-  the same way. This part is the agent's proposal (OQ1).
+  the same way.
 
 **5. Every loaded file is disclosed by tier.**
 
@@ -152,8 +141,7 @@ repository, and flags last one run, so neither can be that home.
   follows from ruling 2 for repos that use third-party crypto, test or logging
   libraries. It is measured on the corpus before those rows move, and the
   change is reported with its size and direction.
-- **Repositories that relied on `.hypergumbo.toml` loading their overlays
-  silently need an opt-in.**
+- **A repository's `.hypergumbo.toml` overlays need an opt-in to load.**
 
 ### Neutral
 
@@ -173,8 +161,7 @@ repository, and flags last one run, so neither can be that home.
 
 ## Open Questions
 
-- **OQ1 — Ratify the `in-repo` name and the git-state disclosure** (ruling 4).
-- **OQ2 — Which `frameworks` and `dataflow_patterns` rows can remove a
-  finding.** Measured per family at implementation.
-- **OQ3 — Whether any third-party library earns built-in status.** This ADR
-  keeps the standard-library line. Widening it needs a new owner ruling.
+- **Which `frameworks` and `dataflow_patterns` rows can remove a finding.**
+  Measured per family at implementation (ruling 2).
+- **Whether any third-party library earns built-in status.** The built-in line
+  is the standard-library line; widening it needs a new owner ruling.
