@@ -1,0 +1,54 @@
+- op: create  # f2c5
+  at: '2026-09-28T16:30:29Z'  # f2c5
+  by: agent  # f2c5
+  actor: jgstern_agent  # f2c5
+  clock: 1  # f2c5
+  nonce: f2c5  # f2c5
+  data:  # f2c5
+    kind: invariant  # f2c5
+    title: "per-call-site collapse loses a site that carries no stamp: one in-memory bufio.NewScanner erases a real ipc_recv receive in the same function"  # f2c5
+    status: violated  # f2c5
+    priority: 2  # f2c5
+    parent:  # f2c5
+    tags:  # f2c5
+    - io_boundary  # f2c5
+    - taint  # f2c5
+    - analysis_quality  # f2c5
+    isbefore: []  # f2c5
+    duplicate_of: []  # f2c5
+    not_duplicate_of: []  # f2c5
+    pr_ref:  # f2c5
+    description: "FOUND 2026-09-28 while fixing WI-punar. Measured on the shipped io-boundaries at dev (scratchpad collapse/):\n\n  func f(r io.Reader) { sc := bufio.NewScanner(r) }                                -> ipc_recv chain bufio.NewScanner\n  func f(s string, r io.Reader) {\n      a := bufio.NewScanner(strings.NewReader(s))    // stamped io_target_kind in_memory\n      b := bufio.NewScanner(r)                        // unstamped: a parameter\n  }                                                                                -> NO ipc_recv chain (only external_potential)\n\nAdding a harmless in-memory scanner ERASED the real one's receive. Both sites collapse into one edge (deduplicate_edges). ir._absorb_per_call_site_key treats a site that OMITS the key as a disagreement and removes the singular io_target_kind, which is right. But io_target_kind_values then lists only the values sites HAVE: ['in_memory']. call_site_target_kinds returns ('in_memory',), and target_kinds_cross_no_boundary (docstring: 'EVERY collapsed call site') answers True. The unstamped site's absence is lost between the two.\n\nDIRECTION: the false-all-clear one. The call is examined (the catalogue classified it), so no chain means a must_not_exist ipc_recv claim can confirm. taint._source_call_can_mint_taint reads the same flattened tuple, so no source is minted either.\n\nSCOPE: every per_call_site key with an absence meaning (io_target_kind, io_mode, redirect_target, call_arg_shape, ...). WI-punar worked around it for JS listeners by stamping every site (#1281's second commit). Go's bufio / io.WriteString / fmt.Fprint* stamps and the WI-nunab os.File receiver stamps leave parameters unstamped, so they are exposed.\n\nFIX SHAPE (not built): make absence representable in <key>_values (e.g. a sentinel that call_site_target_kinds and call_site_modes surface as 'unknown'), so a consumer's EVERY-site rule sees the unstamped site; or have the readers treat a non-uniform _values whose members are all non-crossing as unknown. Measure the Go cohort for chains restored."  # f2c5
+    fields:  # f2c5
+      statement: "A collapsed edge's per-site values must let a consumer tell 'every site carries this value' from 'some sites carry it and others carry nothing': a site with no io_target_kind stamp must not be read as agreeing with a stamped sibling. VIOLATED: a stamped in_memory bufio.NewScanner beside an unstamped parameter scanner in one function reads as crossing no boundary, and the real ipc_recv chain and taint source vanish."  # f2c5
+      root_cause: "ir._absorb_per_call_site_key drops the singular key when a site omits it but records only present values in <key>_values; io_boundary.call_site_target_kinds flattens that to the present values, and target_kinds_cross_no_boundary / taint._source_call_can_mint_taint then see only the stamped sites."  # f2c5
+- op: discuss  # e576
+  at: '2026-09-28T17:06:50Z'  # e576
+  by: agent  # e576
+  actor: jgstern_agent  # e576
+  clock: 2  # e576
+  nonce: e576  # e576
+  message: "Correction to the description: the WI-punar workaround merged as PR #1282 (second commit 2f13e03a99), not #1281."  # e576
+- op: update  # f48d
+  at: '2026-09-28T20:12:01Z'  # f48d
+  by: agent  # f48d
+  actor: jgstern_agent  # f48d
+  clock: 3  # f48d
+  nonce: f48d  # f48d
+  set:  # f48d
+    status: satisfied  # f48d
+- op: discuss  # eed6
+  at: '2026-09-28T20:12:01Z'  # eed6
+  by: agent  # eed6
+  actor: jgstern_agent  # eed6
+  clock: 4  # eed6
+  nonce: eed6  # eed6
+  message: "Fixed in PR #1283 (4a90935b2b + manifest dbfeca8c7e). Root cause as filed: ir._absorb_per_call_site_key dropped the singular key when a site omitted it but listed only present values in <key>_values. The collapse now lists an unstamped site as None (JSON null), sorted first so the cap never drops it, and merges an absorbed edge's own _values (apply_external_id_remap can absorb an already-collapsed edge; its values were lost before). Readers: io_boundary.call_site_modes / call_site_target_kinds return None for that site and read a malformed member as None instead of dropping it. Consumers give None the single-unstamped-call meaning: _boundary_for_target_kind -> (False, None) so target_kinds_cross_no_boundary is False, resolve_target_kind_across_sites abstains and taint._source_call_can_mint_taint mints; the mode seam reads None as the default read (resolve_mode_boundary), so mode_spanned_boundaries reports both fs boundaries; taint._name_flow_indexes: a None env_var site empties the source name set, a None redirect_origin_names site makes the sink set None (the INV-fumod pair proof abstains).\n\nBEHAVIOURAL EVIDENCE on merged dev dbfeca8c7e (shipped CLI):\n- the filed Go repro (in-memory bufio.NewScanner + parameter scanner): io-boundaries -> ipc_recv bufio.NewScanner, fs_read bufio.Scanner.Scan (dev before: neither).\n- same + exec.Command(b.Text()), untrusted_input -> subprocess: violated, 2 flows, rc 1 (before: inconclusive, 0 flows, rc 2).\n- SIBLING found while fixing, the mode seam: json.load(open(p)) + open(q,'w'), must_not_exist fs_read: violated rc 1 (before: CONFIRMED rc 0, a false all-clear).\nTests: core test_per_site_absence_is_a_value.py; lang-mainstream test_collapsed_site_keeps_its_crossing.py (the three repros, each with a one-site control).\n\nSCOPE, enumerated by grep over packages/*/src: the only readers of any <key>_values are call_site_modes, call_site_target_kinds, and taint's env_var_values / redirect_origin_names_values reads, and all four are fixed. call_arg_shape_values and redirect_target(_resolved)_values have no reader; their consumers read the singular key only, which is absent whenever sites disagree (unchanged, conservative). Cached behaviour maps are keyed on an analyzer-identity hash of the source, so a pre-fix map is not reused.\n\nA/B (~/hypergumbo_lab_notebook/rajak_09282026/RESULT.md), 7 repos (coredns, alertmanager, fastapi, prometheus, podman, beads, feast): ZERO chains gained or lost, 28/28 verdicts identical. The null-bearing io edges on that cohort are 7 os.File.Close [None, host_path] (Close is not target-kind-decided) and 2 open sites (feast's already spanned r/w; podman's is a project method). Correct on the constructed instances; NO measured corpus effect -- not a recall gain. The WI-punar every-site stamping in js_ts is no longer needed for correctness; it stays because the crossing stamp names the target kind (comment updated)."  # eed6
+- op: update  # c671
+  at: '2026-09-28T20:12:02Z'  # c671
+  by: agent  # c671
+  actor: jgstern_agent  # c671
+  clock: 5  # c671
+  nonce: c671  # c671
+  set:  # c671
+    pr_ref: '1283'  # c671
