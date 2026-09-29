@@ -4244,6 +4244,49 @@ def named_lookup_arm(
     return NAMED_ARM_GATE, list(short_rows)
 
 
+#: Shipped catalogues by language for :func:`declared_by_an_included_header`,
+#: consulted once per resolved cross-file call, so loaded once per process.
+_INCLUDED_HEADER_CATALOGS: dict[str, IoBoundaryCatalog] = {}
+
+
+def declared_by_an_included_header(
+    language: str, callee_name: str, system_includes: Sequence[str],
+) -> bool:
+    """Whether a header this translation unit includes declares ``callee_name``.
+
+    WI-rimon. The C and C++ resolvers bound a free-function call by NAME to any
+    same-named in-repo definition, so a vendored platform shim re-implementing
+    ``sendto`` for another OS captured every ``sendto`` in the repository -- and
+    a resolved call is never classified (taint's resolved-edge gate refuses a
+    first-party symbol matched by name alone, rightly), so the socket I/O
+    vanished: ``sendto(fd, getenv("K"), ...)`` CONFIRMED "no secret reaches the
+    network" on the shipped CLI. On fluent-bit 440 resolved calls went to
+    WAMR's sgx/nuttx shims, mruby's Win32 shim and monkey's mk_core this way.
+
+    C decides this, not a repository-shape heuristic. A translation unit that
+    includes ``<sys/socket.h>`` calls the ``sendto`` that header DECLARES. A
+    same-named definition in another file must match that prototype or the
+    build fails, so it can only be a link-time interposer or a platform
+    replacement of the same contract, and name resolution cannot see which one
+    the build links. Either way the call is the catalogued primitive. (A
+    definition in the CALLING file is visible to it by C scoping and is the
+    caller's business -- the resolvers keep it.)
+
+    "Declares" is asked of the catalogue by the ONE row-choice rule
+    (:func:`named_lookup_arm`, through ``lookup_with_module``) with the include
+    list as the disjunctive module slot, so this cannot disagree with how the
+    unresolved edge the call becomes will be classified.
+    """
+    if not system_includes:
+        return False
+    catalog = _INCLUDED_HEADER_CATALOGS.get(language)
+    if catalog is None:
+        catalog = _INCLUDED_HEADER_CATALOGS[language] = load_catalog(language)
+    return catalog.lookup_with_module(
+        callee_name, ",".join(system_includes), call_construct="function",
+    ) is not None
+
+
 def _module_hint_candidates(module_hint: str) -> list[str]:
     """Expand a module slot into the spellings it may legitimately stand for.
 
