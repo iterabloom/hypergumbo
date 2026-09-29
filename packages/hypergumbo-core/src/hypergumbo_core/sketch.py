@@ -6653,7 +6653,7 @@ def _generate_sketch_impl(
         signatures = {s.id: s.signature for s in symbols if s.signature}
 
         # Track selected symbols for stats
-        selected_key_symbols: list[Symbol] = [] if stats_out is not None else None  # type: ignore
+        selected_key_symbols: list[Symbol] = [] if stats_out is not None else None  # type: ignore[assignment]
 
         symbols_section = _format_symbols(
             symbols,
