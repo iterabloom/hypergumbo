@@ -1,0 +1,8 @@
+Original commit body from e146fb25c74cfa8fca6ee95db783767998cda44b:
+
+The last two bare ignores (sketch.py's deliberate None default,
+lua.py's tree argument) carry the codes mypy names, so each suppression
+now says what it suppresses. warn_unused_ignores is already on, so no
+unused suppression remains. Whole-tree mypy strict 515 -> 513.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
