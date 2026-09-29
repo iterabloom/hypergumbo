@@ -37,7 +37,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -237,7 +237,7 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
 
         return analysis
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Any]) -> None:
         """Register symbols by lowercase name for case-insensitive VHDL lookup.
 
         WI-morud: store as a multi-value list per lowercased name so the
@@ -255,7 +255,7 @@ class VhdlAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Any],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: ListNameResolver,
     ) -> list[Edge]:

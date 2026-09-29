@@ -1097,7 +1097,7 @@ class DartAnalyzer(TreeSitterAnalyzer):
         """Extract import hints for disambiguation."""
         return _extract_import_hints(tree, source)
 
-    def register_symbol(self, symbol: Symbol, global_symbols: dict) -> None:
+    def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
         """Keep field/variable symbols OUT of the call-resolution registry (WI-jusus).
 
         A ``field``/``variable`` is a data anchor, never a call or instantiation
@@ -1116,7 +1116,7 @@ class DartAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -128,7 +128,7 @@ class _FileContext:
 
 def _make_symbol(analyzer: "TreeSitterAnalyzer", ctx: _FileContext,
                  node: "tree_sitter.Node", name: str, kind: str,
-                 signature: Optional[str] = None, meta: Optional[dict] = None) -> Symbol:
+                 signature: Optional[str] = None, meta: Optional[dict[str, Any]] = None) -> Symbol:
     """Create a Symbol with consistent formatting."""
     start_line = node.start_point[0] + 1
     end_line = node.end_point[0] + 1

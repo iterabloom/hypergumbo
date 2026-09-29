@@ -77,7 +77,7 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
@@ -872,7 +872,7 @@ def _extract_behaviour_callbacks(
     source: bytes,
     file_path: Path,
     file_symbols: dict[str, Symbol],
-    global_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Any],
     run_id: str,
     file_symbols_multi: dict[str, list[Symbol]] | None = None,
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
@@ -1305,7 +1305,7 @@ def _extract_edges_from_tree(
     source: bytes,
     file_path: str,
     local_symbols: dict[str, Symbol],
-    global_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Any],
     run_id: str,
     resolver: "NameResolver",
     alias_hints: dict[str, str] | None = None,
@@ -1604,7 +1604,7 @@ def _handle_dot_call(
     dot_node: "tree_sitter.Node",
     source: bytes,
     symbols_at: SymbolsAt,
-    global_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Any],
     resolver: "NameResolver",
     alias_hints: dict[str, str],
     edges: list[Edge],
@@ -1804,7 +1804,7 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
     def register_symbol(
         self,
         symbol: Symbol,
-        global_symbols: dict,
+        global_symbols: dict[str, Any],
     ) -> None:
         """Register symbol by qualified name only.
 
@@ -1852,7 +1852,7 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Any],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

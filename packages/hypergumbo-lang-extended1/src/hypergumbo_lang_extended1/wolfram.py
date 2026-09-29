@@ -39,7 +39,7 @@ Wolfram Language Considerations
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
@@ -147,7 +147,7 @@ def _extract_symbols_from_file(
         node: "tree_sitter.Node",
         name: str,
         kind: str,
-        meta: dict | None = None,
+        meta: dict[str, Any] | None = None,
         signature: Optional[str] = None,
     ) -> None:
         """Add a symbol if not already seen."""
@@ -340,7 +340,7 @@ class WolframAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Symbol],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:

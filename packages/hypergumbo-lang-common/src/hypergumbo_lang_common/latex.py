@@ -33,7 +33,7 @@ LaTeX documents are structured differently from programming languages:
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -394,7 +394,7 @@ class LatexAnalyzer(TreeSitterAnalyzer):
     def extract_edges_from_file(  # pragma: no cover
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str,
-        local_symbols: dict[str, Symbol], global_symbols: dict,
+        local_symbols: dict[str, Symbol], global_symbols: dict[str, Any],
         run: "AnalysisRun", import_aliases: dict[str, str],
         resolver: "NameResolver",
     ) -> list[Edge]:
