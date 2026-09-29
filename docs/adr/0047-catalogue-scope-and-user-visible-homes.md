@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0047: Catalogue Scope, and Where a User's Catalogue Data Lives
 
-- Status: **Accepted**
+- Status: Partially superseded by ADR-0061 (rulings 1, 5 and 6; ruling 9's repo-tier half); rulings 2, 3, 4, 7, 8, 10 and ruling 9's developer offer in force
 - Date: 2026-08-27
 - Supersedes: —
-- Superseded by: —
-- Related: ADR-0016 (I/O Boundary Analysis — §27 catalogue scope and §35 project-local overlays, both amended here), ADR-0045 (User Configuration and Backend Trust — the two config tiers and the `io_primitives` setting this builds on), ADR-0017 (Taint-Zone Dataflow — the `taint_*` catalogues), ADR-3aaa (the `frameworks/` catalogue). Tracker items: WI-sutuk (the project-wide filing), WI-bahid (the Go case and its measurement), INV-safig, INV-fotav (where the standing ruling was given), INV-zosun (verdict-level catalogue disclosure), INV-lufib (per-language overlay scoping), WI-vafit (the user-facing inventory).
+- Superseded by: [ADR-0061](0061-catalogue-tiers-for-every-family.md) (rulings 1, 5, 6; ruling 9's repo tier)
+- Related: ADR-0016 (I/O Boundary Analysis — §27 catalogue scope and §35 overlays, both amended here), ADR-0045 (User Configuration and Backend Trust — the two config tiers and the `io_primitives` setting this builds on), ADR-0017 (Taint-Zone Dataflow — the `taint_*` catalogues), ADR-3aaa (the `frameworks/` catalogue). Tracker items: WI-sutuk (the project-wide filing), WI-bahid (the Go case and its measurement), INV-safig, INV-fotav (where the standing ruling was given), INV-zosun (verdict-level catalogue disclosure), INV-lufib (per-language overlay scoping), WI-vafit (the user-facing inventory).
 
 **Decision provenance.** This ADR records a **fresh human ruling** given
 2026-08-27, and it **changes a standing owner ruling** rather than restating
@@ -17,8 +17,8 @@ below records what it was protecting.
 The question put to the owner was: *"Can hypergumbo ship third-party rows it
 doesn't vouch for, loaded by default? That reverses your stdlib-only ruling."*
 The answer was **"yes as long as it's loud about it"**, and the conditional is
-load-bearing rather than decorative — it is why ruling 6 requires the
-disclosure in DEFAULT HUMAN OUTPUT and not only in a JSON field. Ruling 9's two
+load-bearing rather than decorative — it is why the disclosure is required in
+DEFAULT HUMAN OUTPUT and not only in a JSON field (now ADR-0061 ruling 5). Ruling 9's two
 audiences were separated by the owner in the same exchange. Rulings 2–5, 7, 8
 and 10 are engineering consequences of those two answers.
 
@@ -107,15 +107,7 @@ in-house framework needs to reach.
 
 ## Decision
 
-**1. Scope is about what hypergumbo VOUCHES for, not about what it ships.**
-The shipped *catalogues* stay stdlib-only — ADR-0016 §27 is unchanged for them.
-hypergumbo may additionally **ship community overlays it does not vouch for**,
-which are loaded by default and disclosed as unvouched. The third-party rows
-now in five catalogues move into those overlays, `django.db.models` included.
-This is the amendment: the previous ruling said third-party is *user-supplied*;
-it is now *shipped, unvouched, and disclosed*. The maintenance burden ADR-0016
-declined is not eliminated by this — it is **bounded by disclosure instead of by
-exclusion**, and §Consequences says so plainly rather than claiming otherwise.
+**1. Scope.** Superseded by ADR-0061 rulings 1–3: four tiers (built-in, community, yours, in-repo) for every catalogue family, and a community row may add a finding but never make a verdict cleaner.
 
 **2. Seed, never copy.** Base catalogues live in the wheel and are **never
 materialized** into a user directory. Only *deltas* live in the user's config
@@ -124,17 +116,11 @@ and the tool quietly degrades for exactly the people who engaged with it enough
 to run the command. Deltas do not have that failure mode, and the loader already
 speaks them.
 
-**3. A user's catalogue data lives under `$XDG_CONFIG_HOME/hypergumbo/`**, per
-family, with the repo tier at `<repo>/.hypergumbo/`:
-
-```
-$XDG_CONFIG_HOME/hypergumbo/
-  config.toml          # ADR-0045
-  io_primitives.d/     # per-family overlay directory
-  taint_sources.d/
-  frameworks.d/
-  README.md
-```
+**3. A user's catalogue data lives under `$XDG_CONFIG_HOME/hypergumbo/`**:
+`config.toml` (ADR-0045) beside one `<family>.d/` directory for each family
+whose registry entry declares a user channel (ruling 7). The list is derived
+from the registry, not written here. Where catalogue data inside an analysed
+repository lives, and when it loads, is ADR-0061 ruling 4.
 
 Nobody edits files inside their site-packages. A catalogue family that is
 declared user-extensible must have a home a user can find without being told
@@ -145,31 +131,13 @@ write.** ADR-0045's own precedent is a *human-owned* config file the tool may
 read but not write; silently creating files in someone's config directory on
 first invocation is the surprise that precedent exists to avoid. Default-on
 loading does **not** require materialization — the shipped overlays load from
-the wheel; the subcommand exists so a user can *edit* them.
+the wheel; the subcommand exists so a user can *edit* them. Each seeded file is
+stamped `seeded_from:` (the hypergumbo version it was copied from), so its
+staleness against the shipped source is checkable.
 
-**5. An unvouched row declares its provenance, and staleness is checkable.**
-Every shipped-but-unvouched overlay carries `provenance: community`, a dated
-`retrieved:`, and — once materialized — `seeded_from:` naming the hypergumbo
-version it was copied from. "hypergumbo does not maintain these rows" is then a
-fact a reader can check rather than a sentence in a header.
+**5. Provenance.** Superseded by ADR-0061 ruling 3: every shipped file declares `provenance: builtin` or `provenance: community`, and the loader reads a row's tier from that declaration, never from its directory.
 
-**6. Disclosure has three states, not two — and it is LOUD.** The owner's
-"yes" to ruling 1 was conditioned on this, so it is a requirement and not a
-nicety.
-
-`catalog_provenance` gains layer keys for `shipped_default` and `user_config`.
-The existing boolean `user_supplied` cannot express *"hypergumbo shipped it and
-does not vouch for it"*, which is the state this ADR creates; conflating it
-with either neighbour would re-open exactly the INV-zosun gap.
-
-**A JSON field alone does not satisfy this.** A reader who never opens the
-envelope must still learn that unvouched rows were loaded, so a run that loads
-them emits a one-line stderr notice naming the overlays and their `retrieved:`
-dates — the shape already used for an `in_progress` catalogue, which warns per
-queried language on every run. Silence is the failure mode this whole ADR
-exists to remove: the tool asserting stdlib-only while shipping 300
-third-party rows was silent, and that is what made it wrong rather than merely
-generous.
+**6. Disclosure.** Superseded by ADR-0061 ruling 5: `catalog_provenance` names every loaded file under `builtin` / `community` / `yours` / `in_repo`, and a run that loads community rows says so on stderr.
 
 **7. The registry answers extensibility.** `CatalogSpec` gains the fields
 naming whether a family is user-extensible and where the user's file goes, so
@@ -181,11 +149,8 @@ someone answering the question.
 same gate shape as the six that have one. The asymmetry is the mechanical cause
 of the drift and leaving it in place guarantees a repeat.
 
-**9. The repo tier does not load by default, and hypergumbo never writes into
-an analysed repository.** A repository that ships an overlay silencing its own
-boundaries is the shape INV-zosun was filed about, and it arrives on a machine
-whose owner never opted into it — so the repo tier stays opt-in per invocation
-or per user config, not automatic.
+**9. hypergumbo never writes into an analysed repository.** Whether catalogue
+data inside one loads is ADR-0061 ruling 4 (off unless the operator opts in).
 
 **Two audiences, two mechanisms — and they are not the same offer.** Collapsing
 them was the error this ruling corrects.
@@ -222,13 +187,14 @@ Three constraints keep the offer an offer:
   that blocks a CI run or an agent invocation is a defect, not a courtesy.
 
 **10. A family gets a user channel when it describes the USER'S world, not the
-LANGUAGE'S.** That is the whole test, and it decides all eight by inspection:
+LANGUAGE'S.** That is the whole test, and it decides each family by inspection:
 
 | family | describes | channel |
 |---|---|---|
-| `io_primitives` | libraries and their I/O | **yes** (exists) |
-| `taint_sources` / `taint_sanitizers` | the user's trust model | **yes** (exists) |
-| `frameworks` | conventions, including in-house ones | **yes** (new) |
+| `io_primitives` | libraries and their I/O | **yes** |
+| `taint_sources` / `taint_sanitizers` / `taint_sinks` | the user's trust model | **yes** |
+| `frameworks` | conventions, including in-house ones | **yes** |
+| `library_signatures` | the types library calls return | **yes** |
 | `function_summaries` | dependency behaviour | **yes, gated** (see below) |
 | `dataflow_patterns` → `library_patterns` | library and idiom mutation | **yes** (section-scoped) |
 | `dataflow_patterns` → grammar rules | tree-sitter node types | no |
@@ -292,10 +258,10 @@ would re-open INV-buzab's shape on a fresh surface.
   The unbounded-treadmill objection in ADR-0016 and in commit `864f55ed02` is
   answered only partially, and a future ADR may have to revisit it if the
   overlay set grows the way that commit predicted.
-- A materialized overlay can go stale against its shipped source; ruling 5
-  makes that visible but does not prevent it.
+- A materialized overlay can go stale against its shipped source; its
+  `seeded_from:` stamp makes that visible but does not prevent it.
 - Default-on loading means a default run's results now depend on files the
-  project does not vouch for — mitigated by ruling 6, not eliminated.
+  project does not vouch for — mitigated by disclosure (ADR-0061 ruling 5), not eliminated.
 
 ### Neutral
 
@@ -332,4 +298,4 @@ vouches for both.
 
 - **OQ1 and OQ2 — RULED, see ruling 10.** Both were settled by reading the
   files rather than by deferring them.
-- **OQ3 — RULED, see ruling 9.** The repo tier does not load by default.
+- **OQ3 — RULED, see ADR-0061 ruling 4.** In-repo catalogue data does not load unless the operator opts in.
