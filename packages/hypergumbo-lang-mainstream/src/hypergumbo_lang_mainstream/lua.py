@@ -908,7 +908,7 @@ class LuaAnalyzer(TreeSitterAnalyzer):
 
         for fa in file_analyses:
             edges = _extract_edges_from_file(
-                fa.tree,  # type: ignore
+                fa.tree,  # type: ignore[arg-type]
                 fa.source,
                 fa.path,
                 fa.symbols,
