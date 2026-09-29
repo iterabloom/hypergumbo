@@ -4452,6 +4452,12 @@ class DjangoRelationIndex:
             for owner in self._lineage(cls)
         )
 
+    def defines_on_lineage(self, cls: Symbol, name: str) -> bool:
+        """True iff ``cls`` itself or a PROJECT BASE of it defines ``name``, so
+        ``<instance>.<name>()`` reaches the project's override rather than
+        Django's own (WI-kufok)."""
+        return name in self.class_methods.get(cls.id, ()) or self.defines_in_bases(cls, name)
+
     def defines_in_bases(self, cls: Symbol, name: str) -> bool:
         """True iff a PROJECT BASE of ``cls`` -- not ``cls`` itself -- defines
         ``name``, so ``super().<name>()`` inside ``cls`` reaches that base's
@@ -7657,6 +7663,34 @@ def _is_django_model_instance(
     )
 
 
+def _django_orm_attribute_write(
+    func: ast.Attribute,
+    oracle: "_DjangoReceiverOracle | None",
+) -> ExternalRef | None:
+    """``<receiver>.save()`` / ``.delete()`` through an ATTRIBUTE receiver, as
+    the ORM write it is, or ``None`` (WI-kufok).
+
+    The instance-write re-key lived only in ``_process_call``'s bare-Name
+    branch, so ``self.order.save()`` (the Site-3 branch) and
+    ``pos.order.delete()`` (the chain branch) emitted the ``external``
+    placeholder whatever typed the receiver: 0 of 1,086 such sites on pretix
+    reached ``django.db.models``. The oracle already types those receivers --
+    a declared ``ForeignKey``, a setUp fixture field, a relation off a typed
+    local -- so this asks it, at every emit site that can see one.
+
+    REFUSED WHEN THE MODEL OVERRIDES THE METHOD. That call is the project's own
+    ``save``, and WI-sihoh types the write at its ``super().save()``; re-keying
+    here too would report one logical write twice. The bare-Name branch gets
+    the same refusal for free, from resolution winning its first-party edge.
+    """
+    if oracle is None or func.attr not in DJANGO_ORM_INSTANCE_WRITE_METHODS:
+        return None
+    model = oracle.model_instance(func.value)
+    if model is None or oracle.index.defines_on_lineage(model, func.attr):
+        return None
+    return ExternalRef(lang="python", module_path=DJANGO_ORM_MODULE, name=func.attr)
+
+
 def _class_directly_extends_django_model(
     class_short_name: str,
     local_symbols: dict[str, Symbol],
@@ -8631,7 +8665,28 @@ def _process_call(
             # exactly the shadow FP the exclusion was added to prevent.
             field_name = func.value.attr
             method_name = func.attr
-            if (
+            _orm_ref = _django_orm_attribute_write(func, django_oracle)
+            if _orm_ref is not None:
+                # WI-kufok: a typed relation or fixture field's write. Carries
+                # no ``inherited_field_receiver``: the ORM row is the answer,
+                # and that stamp would route the call to the parent-field walk.
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=f"python:{DJANGO_ORM_MODULE}:0-0:{method_name}:unresolved",
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="ast_call",
+                    is_resolved=False,
+                    meta={
+                        "call_construct": "method",
+                        "framework_dispatch": "django_orm",
+                        "resolution_quality": "type_inferred",
+                    },
+                    dst_ref=_orm_ref,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                ))
+            elif (
                 caller_symbol.kind == "method"
                 and "self" not in var_types
                 and "self" in _caller_locals
@@ -8797,14 +8852,26 @@ def _process_call(
                         ):
                             chain_meta["receiver_type_id"] = chain_cls.id
                         chain_meta["resolution_quality"] = "type_inferred"
+                    # WI-kufok: ``pos.order.delete()`` off a typed local is the
+                    # ORM write, whatever the return-type walk found.
+                    _chain_module = "external"
+                    _orm_ref = _django_orm_attribute_write(func, django_oracle)
+                    if _orm_ref is not None:
+                        _chain_module = DJANGO_ORM_MODULE
+                        chain_meta = {
+                            "call_construct": "method",
+                            "framework_dispatch": "django_orm",
+                            "resolution_quality": "type_inferred",
+                        }
                     edges.append(Edge.create(
                         src=caller_symbol.id,
-                        dst=f"python:external:0-0:{callee}:unresolved",
+                        dst=f"python:{_chain_module}:0-0:{callee}:unresolved",
                         edge_type="calls",
                         line=call_node.lineno,
                         evidence_type="ast_call_direct",
                         is_resolved=False,
                         meta=chain_meta,
+                        dst_ref=_orm_ref,
                         origin=PASS_ID,
                         origin_run_id=run_id,
                     ))
