@@ -288,7 +288,16 @@ env_read:
     attributes: [env, argv]
   - module: document
     attributes: [cookie, location, referrer]
-    notes: "Browser document globals (cookie/referrer leak fingerprintable data)"
+    notes: >-
+      Browser document globals. env_read means MAY CARRY A CREDENTIAL (INV-nular's
+      ruling), and all three can: cookie holds session tokens, a page URL can carry
+      an OAuth or reset token, and referrer leaks the previous page's URL with
+      whatever it carried. location and referrer are ALSO attacker-influenceable;
+      that second reading derives no untrusted_input source yet (INV-dadu, blocked
+      on WI-nokab), and moving them out of env_read would drop the secret one.
+  - module: window
+    attributes: [location]
+    notes: "The same Location object as document.location, so the same boundary (INV-dadu parity; it was host_info_read, the only spelling of the page URL that was not a host_secret source)."
 
 # INV-tutar: host DESCRIPTION reads. Split out of env_read because
 # AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
@@ -337,8 +346,8 @@ host_info_read:
     attributes: [userAgent, language, languages, platform, geolocation, cookieEnabled, onLine]
     notes: "Browser environment / capability detection"
   - module: window
-    attributes: [location, navigator, screen, document]
-    notes: "Browser window globals"
+    attributes: [navigator, screen, document]
+    notes: "Browser window globals that describe the host. window.location is env_read, beside document.location (INV-dadu)."
 
 ipc_send:
   - module: process
