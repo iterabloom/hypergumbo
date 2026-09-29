@@ -1,0 +1,3 @@
+Original commit body from 1ba2bb6b2b268dab7785b0e4af143be8b2d39185:
+
+Second bundle of the 2026-09-28 docstring-staleness audit (A+B+D merged as #1285). Concise prose for capabilities the module docstrings omitted, each re-verified against the code. Docstrings and comments only (AST comparison with docstrings stripped: no executable change in any of 33 files). 16 line-pinned citations relocated by anchor; ARCHITECTURE.md regenerated. partial_install_warnings.py now states that its relevance gate is currently inert (requirement-table keys do not match registered linker names; code defect to be filed).
