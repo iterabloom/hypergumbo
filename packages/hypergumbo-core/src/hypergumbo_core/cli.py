@@ -5884,6 +5884,7 @@ def _print_io_boundaries_by_file(
 def _build_ddg_for_verify_claims(
     repo_root: Path,
     candidate_languages: Optional[Sequence[str]] = None,
+    analyzer_nodes: Optional[Sequence[dict[str, Any]]] = None,
 ) -> tuple[
     list["DdgEdge"],
     set[str],
@@ -5921,7 +5922,11 @@ def _build_ddg_for_verify_claims(
     available — the caller falls back to the structural pass in that case.
     """
     from .dataflow_scope import ensure_def_use_extractors_registered
-    from .ddg_build import build_repo_ddg, registered_ddg_languages
+    from .ddg_build import (
+        analyzer_symbol_index,
+        build_repo_ddg,
+        registered_ddg_languages,
+    )
 
     # Registration is an import side effect, so a def/use module nobody imports
     # registers nothing and its language is skipped by build_repo_ddg — which
@@ -5947,7 +5952,11 @@ def _build_ddg_for_verify_claims(
     else:
         languages = tuple(sorted(set(candidate_languages) & available))
 
-    result = build_repo_ddg(repo_root, languages)
+    # WI-mufag: the survey's own callable symbols, so a callable the analyzer
+    # names after its binding is walked under exactly that id.
+    result = build_repo_ddg(
+        repo_root, languages, analyzer_symbol_index(analyzer_nodes or []),
+    )
     return (
         result.ddg_edges,
         result.ddg_symbols,
@@ -6682,7 +6691,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse,
                 ddg_forfeits, ddg_unaccounted,
             ) = _build_ddg_for_verify_claims(
-                repo_root, sorted(per_lang_sinks),
+                repo_root, sorted(per_lang_sinks), behavior_map.get("nodes", []),
             )
             ddg_walkable_count = len(ddg_symbols)
             ddg_forfeited_count = len(ddg_forfeits)
