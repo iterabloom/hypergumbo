@@ -46,3 +46,10 @@
   clock: 4  # c08e
   nonce: c08e  # c08e
   message: "PARITY PART DONE in PR #1292 (dev 97ff6e24ef + f12ca53d8e + 24735aac13): window.location moved host_info_read -> env_read beside document.location; document's row note now records why it stays env_read. Re-verified on merged dev: const u = window.location.href; fetch(url + u) -> host_secret -> network VIOLATED 1 flow (was CONFIRMED 0, host_info_read). A/B on 8 JS/TS repos (~/hypergumbo_lab_notebook/dadu_09292026/RESULT.md): 8 verdicts inconclusive -> violated, flows +47 / -15 where all 15 '-' are the same window.location flows relabelled host_description -> host_secret. Read back: growthbook oauth/callback.tsx POSTs window.location.search/hash (the OAuth code) with fetch -- the credential-in-URL case, previously invisible to host_secret claims. This item stays VIOLATED for its re-scoped statement (no untrusted_input source), blocked on WI-nokab."  # c08e
+- op: discuss  # 4f02
+  at: '2026-09-29T13:26:25Z'  # 4f02
+  by: agent  # 4f02
+  actor: jgstern_agent  # 4f02
+  clock: 5  # 4f02
+  nonce: 4f02  # 4f02
+  message: "UNBLOCKED 2026-09-29: WI-nokab shipped code_execution and dom_injection sinks (PR #1301, ADR-0060). On dev, document.referrer -> eval / window.eval is a host_secret -> code_execution violation and -> document.write a host_secret -> dom_injection violation today, under the owner's 09-29 ruling that location/referrer stay env_read. What remains on this item is unchanged and still the owner's: whether the page URL/referrer ALSO carries an attacker-input label (untrusted_input). innerHTML assignment and the other unreached shapes are WI-bonah."  # 4f02

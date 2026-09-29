@@ -33,3 +33,18 @@
   clock: 3  # b557
   nonce: b557  # b557
   message: "Staleness audit 2026-07-21: PARTIALLY RESOLVED (already noted in-thread). The two genuine no-redef renames landed (commit bcfc50e875): framework_patterns.py resolved_symbol (1606-1644), scala.py class_meta (566-586). The 5 remaining named sites are unfixed: java.py:1022/1101 (deferred behind the WI-zaziz smart-test slice limitation), catalog.py:455/470, supply_chain.py:~885, linkers/websocket.py:~790. Kept open for those 5 residual shadowing sites. Title unchanged (still the accurate task)."  # b557
+- op: update  # b71b
+  at: '2026-09-29T14:23:33Z'  # b71b
+  by: agent  # b71b
+  actor: jgstern_agent  # b71b
+  clock: 4  # b71b
+  nonce: b71b  # b71b
+  set:  # b71b
+    status: done  # b71b
+- op: discuss  # a58d
+  at: '2026-09-29T14:23:33Z'  # a58d
+  by: agent  # a58d
+  actor: jgstern_agent  # a58d
+  clock: 5  # a58d
+  nonce: a58d  # a58d
+  message: "DONE in PR #1304 (merged). The five residual sites named in-thread are renamed apart: catalog.py's linker loop `reg` -> `linker_reg` (was RegisteredLinker in a variable typed RegisteredAnalyzer); supply_chain.py's Cargo members regex `match` -> `members_match` (was Match[str] in a variable typed Path by an earlier loop); linkers/websocket.py's file-symbol loop `file_path` -> `ep_path` (str in a variable typed Path); java.py's second `meta: dict[str, object] | None` annotation in one scope dropped (the no-redef). Evidence: the whole-tree mypy strict run no longer reports those assignment / call-arg / arg-type / no-redef errors (631 -> 621 with websocket's re.Match[str]); baseline lowered; 21,041 selected tests pass at 100% scoped coverage, so the renames changed no behaviour."  # a58d
