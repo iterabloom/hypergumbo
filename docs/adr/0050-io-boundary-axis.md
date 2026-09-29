@@ -86,11 +86,11 @@ description.
 
 ### 2. Sections
 
-Four axes partition the twenty values.
+Four axes partition the twenty-one values.
 
 | Axis | Meaning | Values |
 |---|---|---|
-| `data_crossing` | The canonical section. Data crosses the process boundary at this call site, in a named direction. | `fs_read`, `fs_write`, `net_send`, `net_recv`, `ipc_recv`, `ipc_send`, `env_read`, `env_write`, `host_info_read`, `db_read`, `db_write`, `process_send`, `logging`, `browser_storage_read`, `browser_storage_write` |
+| `data_crossing` | The canonical section. Data crosses the process boundary at this call site, in a named direction. | `fs_read`, `fs_write`, `net_send`, `net_recv`, `ipc_recv`, `ipc_send`, `env_read`, `env_write`, `host_info_read`, `db_read`, `db_write`, `process_send`, `logging`, `browser_storage_read`, `browser_storage_write`, `navigation_read` |
 | `opacity` | Control left this process. The classification is correct and the analysis cannot see past it, so it does not license "I looked and found nothing." | `subprocess`, `command_launch` |
 | `deferred_crossing` | The call *arranges* a crossing it does not itself perform (ADR-0049). | `net_listen`, `db_compose` |
 | `speculative` | Synthesised uncertainty; declarable by no catalogue. | `external_potential` |

@@ -289,17 +289,38 @@ env_read:
   - module: process
     attributes: [env, argv]
   - module: document
-    attributes: [cookie, location, referrer]
+    attributes: [cookie]
+    notes: "Session tokens. env_read means MAY CARRY A CREDENTIAL (INV-nular's ruling); nothing a link sets, so not navigation_read."
+  - module: document
+    attributes: [location, referrer, URL, documentURI, baseURI]
+    simultaneous: true
     notes: >-
-      Browser document globals. env_read means MAY CARRY A CREDENTIAL (INV-nular's
-      ruling), and all three can: cookie holds session tokens, a page URL can carry
-      an OAuth or reset token, and referrer leaks the previous page's URL with
-      whatever it carried. location and referrer are ALSO attacker-influenceable;
-      that second reading derives no untrusted_input source yet (INV-dadu, blocked
-      on WI-nokab), and moving them out of env_read would drop the secret one.
+      The page URL in its spellings, and the referrer. A URL can carry an OAuth
+      or reset token and the referrer leaks the previous page's URL with
+      whatever it carried, so they are env_read (INV-nular). Whoever sent the
+      user here also CHOSE them, so they are navigation_read too; both are true
+      at once, hence `simultaneous` (INV-dadu).
   - module: window
     attributes: [location]
-    notes: "The same Location object as document.location, so the same boundary (INV-dadu parity; it was host_info_read, the only spelling of the page URL that was not a host_secret source)."
+    simultaneous: true
+    notes: "The same Location object as document.location, so the same two boundaries (INV-dadu)."
+
+# INV-dadu: values the party that NAVIGATED to the page chose. A link can put
+# anything in them, so they mint untrusted_input. The URL rows are declared
+# `simultaneous` with their env_read twins above; window.name carries no
+# credential by any standard use and is navigation_read alone.
+navigation_read:
+  - module: document
+    attributes: [location, referrer, URL, documentURI, baseURI]
+    simultaneous: true
+    notes: "Declared under env_read too (a URL may carry a credential); see that row."
+  - module: window
+    attributes: [location]
+    simultaneous: true
+    notes: "The same Location object as document.location."
+  - module: window
+    attributes: [name]
+    notes: "Set by the opener and kept across navigations: the classic cross-origin carrier."
 
 # INV-tutar: host DESCRIPTION reads. Split out of env_read because
 # AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and

@@ -5,7 +5,7 @@ Provides a per-language catalog of I/O primitive functions/methods, each
 classified by boundary type. The closed set of catalog-declarable boundary
 tags is ``CATALOG_BOUNDARY_TYPES`` below (fs_read/fs_write, net_send/net_recv,
 ipc_recv/ipc_send, env_read/host_info_read/env_write, subprocess,
-db_read/db_write,
+db_read/db_write, navigation_read,
 process_send, logging, browser_storage_read/browser_storage_write,
 ``net_listen`` and ``db_compose``); the synthesized ``external_potential`` and
 disclosed ``command_launch`` complete ``KNOWN_IO_BOUNDARIES``. ``net_listen``
