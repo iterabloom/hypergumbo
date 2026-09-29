@@ -7,6 +7,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Changed
+
+- **The TUI type-checks under mypy strict, save two deliberate exceptions** (INV-zogud). Its screens' key bindings, preference dictionaries, table and tree widgets and screen callbacks now carry their real types; 35 of its 37 strict errors are gone. Left: `action_back` overrides Textual's async method with a sync one, and one guard mypy reads as unreachable; changing either would change behaviour. No behaviour changes.
+
 ## [0.9.0] - 2026-09-25
 
 ### Added

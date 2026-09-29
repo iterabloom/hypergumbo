@@ -66,6 +66,7 @@ from pathlib import Path
 from typing import Any, Callable, ClassVar
 
 from textual.app import App, ComposeResult
+from textual.binding import BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.events import Click, MouseDown, MouseMove, MouseUp, Resize
@@ -92,7 +93,7 @@ from rich.text import Text as RichText
 
 from hypergumbo_tracker.hotspot_markup import render_hotspots
 from hypergumbo_tracker.id_matching import build_item_id_pattern
-from hypergumbo_tracker.item_nav_render import build_nav_modal_content
+from hypergumbo_tracker.item_nav_render import NavModalContent, build_nav_modal_content
 from hypergumbo_tracker.models import CompiledItem, FieldSchema, Tier
 from hypergumbo_tracker.nav_history import NavigationHistory
 from hypergumbo_tracker.store import (
@@ -491,7 +492,7 @@ def _format_filter_entry(
     return text
 
 
-_PREFS_DEFAULTS: dict = {
+_PREFS_DEFAULTS: dict[str, Any] = {
     "hidden_statuses": [],
     "display_order": [],
     "hidden_tags": [],
@@ -516,7 +517,7 @@ _MAX_TOGGLE_SESSIONS = 9
 _TUI_RELOAD_INTERVAL: float = float(os.environ.get("HTRAC_RELOAD_INTERVAL", "5.0"))
 
 
-def _load_tui_preferences(path: Path) -> dict:
+def _load_tui_preferences(path: Path) -> dict[str, Any]:
     """Load TUI preferences from disk. Returns defaults on missing/corrupt file.
 
     Supports version 1 (hidden_statuses, display_order only) and version 2
@@ -541,7 +542,7 @@ def _load_tui_preferences(path: Path) -> dict:
         hrs_raw = data.get("human_read_state", {})
         hrs = hrs_raw if isinstance(hrs_raw, dict) else {}
         rlp = data.get("race_log_path", "")
-        result: dict = {
+        result: dict[str, Any] = {
             "hidden_statuses": hs,
             "display_order": do,
             "hidden_tags": data.get("hidden_tags", []),
@@ -961,7 +962,7 @@ class DiscussScreen(ModalScreen[str | None]):
     string; Cancel or Escape returns None.
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -998,7 +999,7 @@ class ConfirmScreen(ModalScreen[bool]):
     (clear discussion) and potentially other destructive actions.
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -1033,7 +1034,7 @@ class TierMoveScreen(ModalScreen[str | None]):
     Returns the chosen move string or None if cancelled.
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -1099,7 +1100,7 @@ class NewItemScreen(ModalScreen[dict[str, Any] | None]):
     cancelled.
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -1120,7 +1121,7 @@ class NewItemScreen(ModalScreen[dict[str, Any] | None]):
         """Return statuses allowed for the given kind, or all statuses."""
         kc = self._kinds_config.get(kind)
         if kc is not None and kc.allowed_statuses is not None:
-            return kc.allowed_statuses
+            return list(kc.allowed_statuses)
         return self._statuses
 
     def compose(self) -> ComposeResult:
@@ -1216,7 +1217,7 @@ class EditItemScreen(ModalScreen[dict[str, Any] | None]):
     nothing changed.
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -1345,7 +1346,7 @@ class ParentScreen(ModalScreen[str | None]):
     (distinct from empty-string submission).
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -1390,7 +1391,7 @@ class BeforeScreen(ModalScreen[dict[str, list[str]] | None]):
     IDs to remove. Returns ``{"add": [...], "remove": [...]}`` or None.
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -1451,7 +1452,7 @@ class DisambiguateScreen(ModalScreen[str | None]):
     with ``None``.
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -1498,7 +1499,7 @@ class LockScreen(ModalScreen[dict[str, list[str]] | None]):
     or None.
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -1579,7 +1580,7 @@ class ItemNavModal(ModalScreen[None]):
     instances or mounting a full app.
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "close", "Close"),
     ]
 
@@ -1627,7 +1628,7 @@ class ItemNavModal(ModalScreen[None]):
             yield Static(content.detail, id="nav-detail")
             yield Static(content.activity, id="nav-activity")
 
-    def _build_content(self):
+    def _build_content(self) -> NavModalContent:
         current = self._history.current()
         assert current is not None, "history always has the initial ID pushed"
         detail_text, activity_text = self._content_for(current)
@@ -1727,9 +1728,9 @@ class _AnnotationCanvas(Widget):
 
     can_focus = False
 
-    def __init__(self, frozen_strips: list | None = None, **kwargs: Any) -> None:
+    def __init__(self, frozen_strips: list[Strip] | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self._frozen_strips: list = frozen_strips or []
+        self._frozen_strips: list[Strip] = frozen_strips or []
         self._rects: list[tuple[int, int, int, int, str]] = []
         self._labels: list[tuple[int, int, str, str]] = []
         self._arrows: list[tuple[int, int, int, int, str]] = []
@@ -1901,7 +1902,7 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
     None on discard.
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "discard", "Discard"),
         ("enter", "confirm", "Confirm"),
         ("r", "rect_mode", "Rect"),
@@ -1942,7 +1943,7 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
 
     def __init__(
         self, svg_content: str,
-        frozen_strips: list | None = None,
+        frozen_strips: list[Strip] | None = None,
     ) -> None:
         super().__init__()
         self._svg_content = svg_content
@@ -2132,7 +2133,7 @@ class AnnotationScreen(ModalScreen[list[object] | None]):
 # ---------------------------------------------------------------------------
 
 
-class TrackerApp(App):
+class TrackerApp(App[None]):
     """Textual TUI for the hypergumbo tracker.
 
     Three layout tiers are fully implemented:
@@ -2289,7 +2290,7 @@ class TrackerApp(App):
     }
     """
 
-    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         ("q", "quit", "Quit"),
         ("escape", "back", "Back"),
         ("t", "toggle_tree", "Tree"),
@@ -2334,7 +2335,7 @@ class TrackerApp(App):
         Path(path).mkdir(parents=True, exist_ok=True)
         return super().deliver_screenshot(filename, path, time_format)
 
-    def __init__(self, tracker_set: TrackerSet, **kwargs: object) -> None:
+    def __init__(self, tracker_set: TrackerSet, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._tracker_set = tracker_set
         self._layout_tier = "compact"
@@ -2356,7 +2357,7 @@ class TrackerApp(App):
         self._filter_panel_visible: bool = False
         self._current_session_counts: dict[str, int] = {}
         self._toggle_sessions: list[dict[str, int]] = []
-        self._last_filters: dict[str, list[str]] = {
+        self._last_filters: dict[str, Any] = {
             "hidden_statuses": [], "hidden_tags": [],
         }
         self._filter_entries: list[tuple[str, str]] = []  # (type:key, label) ordered
@@ -2685,7 +2686,7 @@ class TrackerApp(App):
         visible = {i.id for i in self._filtered_items()}
         return {i.id for i in self._items} - visible
 
-    def _populate_table(self, table: DataTable, width: int, tier: str) -> None:
+    def _populate_table(self, table: DataTable[Any], width: int, tier: str) -> None:
         """Populate a DataTable with items, adapting columns to width and tier.
 
         Shared by both compact (#item-table) and standard/wide (#std-table).
@@ -2803,7 +2804,7 @@ class TrackerApp(App):
             parent = item.parent if item.parent in item_ids else None
             children_map.setdefault(parent, []).append(item)
 
-        def _add_children(parent_node: TreeNode, parent_id: str | None) -> None:
+        def _add_children(parent_node: TreeNode[Any], parent_id: str | None) -> None:
             for child in children_map.get(parent_id, []):
                 tier_char = (
                     _TIER_INDICATOR.get(child.tier, "?") if child.tier else "?"
@@ -3104,7 +3105,9 @@ class TrackerApp(App):
         # Determine which columns to colorize (all except deps which has
         # its own styling)
         col_keys = [c.key.value for c in table.columns.values()]
-        text_cols = [k for k in col_keys if k not in ("row_num", "deps")]
+        text_cols = [
+            k for k in col_keys if k is not None and k not in ("row_num", "deps")
+        ]
 
         for idx, row_key in enumerate(table.rows):
             rid = str(row_key.value)
@@ -3218,7 +3221,7 @@ class TrackerApp(App):
         self._show_std_detail(item_id)
         self._update_chain_highlight(item_id)
 
-    def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
+    def on_tree_node_highlighted(self, event: Tree.NodeHighlighted[Any]) -> None:
         """Auto-update right panel when tree cursor moves."""
         if self._layout_tier not in ("standard", "wide"):
             return
@@ -4491,7 +4494,7 @@ class TrackerApp(App):
             self.notify("No drift detected", severity="information")
             return
 
-        def _on_confirm(confirmed: bool) -> None:
+        def _on_confirm(confirmed: bool | None) -> None:
             if not confirmed:
                 return
             try:
