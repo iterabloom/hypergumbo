@@ -36,3 +36,18 @@
   clock: 3  # 768a
   nonce: 768a  # 768a
   message: "PREMISE RE-CHECK 2026-09-29 on dev 6929699126 (same-day, by an independent re-check agent): CURRENT, two clauses corrected.\nHOLDS: AUTO_SINK_ZONE_MAP (taint.py:1742) has 8 zones; verify-claims rejects code_execution and dom_injection (exit 2, lists the 8). No io_primitives row or overlay in ANY language covers eval/exec/Function/innerHTML/document.write/insertAdjacentHTML/ScriptEngine/vm/instance_eval; every eval/exec catalogue hit is an ambiguous_names entry or erlang file:eval (an fs_read row). Command injection stays covered by the subprocess zone -- the gap is in-process evaluation and DOM injection. Expressiveness holds: a project --taint-sinks file with zone code_execution on window.eval + document.write gives VIOLATED, 2 flows, ddg/confirmed.\nCORRECTION 1 (JS reach): the string argument is irrelevant. Bare eval, new Function, setTimeout (with a function argument too), alert, parseInt and new URL all emit NO edge, because js_ts.py:1084 JS_KNOWN_GLOBAL_CALLS allowlists only fetch. document.write, window.eval, insertAdjacentHTML already emit calls edges; innerHTML/outerHTML ASSIGNMENTS emit nothing. (The allowlist is also the mechanism behind WI-fahod.)\nCORRECTION 2: Python already emits builtins.eval/exec/compile call edges, so Python's gap is the catalogue only, not reach."  # 768a
+- op: update  # 085d
+  at: '2026-09-29T13:26:24Z'  # 085d
+  by: agent  # 085d
+  actor: jgstern_agent  # 085d
+  clock: 4  # 085d
+  nonce: 085d  # 085d
+  set:  # 085d
+    status: done  # 085d
+- op: discuss  # 7f97
+  at: '2026-09-29T13:26:24Z'  # 7f97
+  by: agent  # 7f97
+  actor: jgstern_agent  # 7f97
+  clock: 5  # 7f97
+  nonce: 7f97  # 7f97
+  message: "FIXED in PR #1301 (merged, dev bfdead0700), decided in ADR-0060 (Accepted by the agent under the standing autonomy ruling -- OWNER REVIEW REQUESTED; revert = delete taint_sinks/ and the loader's two lines). THE DECISION: taint_sinks/ ships again for NON-boundary sinks only (the retirement in 51e1d232f3 was about hand-kept I/O rows drifting from io_primitives, which cannot apply to eval), beside the shipped non-boundary taint_sources/ (crypto, key_material). test_shipped_taint_sinks refuses a shipped row in a boundary-derived zone or naming a catalogued I/O primitive. Zones: code_execution (python builtins.eval/exec/compile; JS/TS window.eval and bare eval, which now emits its call edge via JS_KNOWN_GLOBAL_CALLS) and dom_injection (document.write/writeln). eval/exec/compile (python) and eval/writeln (JS) joined ambiguous_names so torch's model.eval(), re's pattern.compile() and untyped .eval() are not read as sinks.\nBEHAVIOURAL EVIDENCE on merged dev: one JS function reading document.referrer then eval(r) / window.eval(r) / document.write(r): host_secret -> code_execution VIOLATED (eval.eval, window.eval); host_secret -> dom_injection VIOLATED (document.write). Before: prohibited_sink_zone: code_execution was rejected as unknown (exit 2).\nMEASURED (~/hypergumbo_lab_notebook/nokab_09292026/RESULT.md): existing claims unchanged on dash.js, apollo-server, fastapi, django. New zones on django: 3 real, by-design flows (shell's $PYTHONSTARTUP and stdin -> exec; manage_translations eval(cmd)); dash.js/apollo-server/fastapi INCONCLUSIVE by the uncovered-module gate.\nRESIDUAL filed as WI-bonah: innerHTML/outerHTML assignment, insertAdjacentHTML on an untyped receiver, new Function(s), string setTimeout/setInterval reach no sink. The title's \"ships no sink\" no longer holds; its reach clause does, for those four shapes, and lives on WI-bonah."  # 7f97

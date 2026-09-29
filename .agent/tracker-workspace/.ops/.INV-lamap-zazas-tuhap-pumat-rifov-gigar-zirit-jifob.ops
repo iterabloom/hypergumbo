@@ -1,0 +1,23 @@
+- op: create  # 52ff
+  at: '2026-09-29T16:44:16Z'  # 52ff
+  by: agent  # 52ff
+  actor: jgstern_agent  # 52ff
+  clock: 1  # 52ff
+  nonce: 52ff  # 52ff
+  data:  # 52ff
+    kind: invariant  # 52ff
+    title: "init-catalogs turns community rows into vouched ones: seeded copies in io_primitives.d load as the user's own rows and license clean verdicts the shipped originals cannot (provenance: community is ignored)"  # 52ff
+    status: violated  # 52ff
+    priority: 2  # 52ff
+    parent:  # 52ff
+    tags:  # 52ff
+    - adr_0047  # 52ff
+    - catalogue  # 52ff
+    isbefore: []  # 52ff
+    duplicate_of: []  # 52ff
+    not_duplicate_of: []  # 52ff
+    pr_ref:  # 52ff
+    description: "FOUND 2026-09-29 in an ADR-0047 implementation audit (owner asked for clarity on supported / community / user tiers).\n\nRULING VIOLATED: ADR-0047 rulings 1 and 5 -- community rows are shipped, UNVOUCHED and disclosed, and \"hypergumbo does not maintain these rows\" is a checkable fact via `provenance: community`.\n\nROOT CAUSE: io_boundary.py:2224-2289 stamps a row unvouched only when its FILE sits in the shipped io_primitives_overlays/ directory. `init-catalogs` (catalogue_home.py:321-342) seeds copies of those overlays into $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/; the copies keep `provenance: community` and gain `seeded_from:`, but the loader ignores both, so they load as the user's OWN rows and displace the shipped originals on qualified-name match.\n\nREPRO (re-run by the main agent on dev ed6d9d3591): repo = `import requests; requests.get(url)`; claim `boundary: fs_write, must_not_exist: true`.\n- XDG_CONFIG_HOME empty: inconclusive rc 2 (\"could not classify requests\" -- community rows never license a clean verdict).\n- XDG_CONFIG_HOME after `init-catalogs`: confirmed rc 0. JSON `user_supplied: false`. stderr STILL prints \"loaded community I/O rows hypergumbo does not vouch for\".\nThe verdict happens to be true for this fixture; the defect is that unvouched rows now license clean verdicts while every disclosure says they cannot. Fixtures: scratchpad audit47/repo4, cfg5.\n\nFIX DIRECTION (not built): vouch status follows the row's declared provenance, not its directory; a seeded community row stays unvouched until the user removes the marker (an explicit act of vouching)."  # 52ff
+    fields:  # 52ff
+      statement: "A row's vouch status follows its declared provenance, wherever the file lives; a community row never licenses a clean verdict until someone explicitly vouches for it."  # 52ff
+      root_cause: "io_boundary.py stamps unvouched by shipped-directory path only; init-catalogs copies community overlays into the user io_primitives.d where the loader treats them as user rows."  # 52ff
