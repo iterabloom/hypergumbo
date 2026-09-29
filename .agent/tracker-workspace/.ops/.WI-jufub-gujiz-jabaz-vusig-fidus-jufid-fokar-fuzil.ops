@@ -22,3 +22,20 @@
     pr_ref:  # 3d8c
     description: "FOUND 2026-09-28 while fixing INV-totar. WI-dutah reclassified the standard output streams from ipc_send to logging in python, c/cpp, javascript and rust (\"terminal output is logging, not IPC\"), and go.yaml's own io.WriteString / fmt.Fprint* / os.File notes cite WI-dutah (std_stream -> logging). The sweep missed two catalogues:\n\n- go.yaml ipc_send: module os, attributes [Stdout, Stderr]\n- java.yaml ipc_send: module java.lang.System, attributes [out, err] (kotlin, scala and groovy inherit it)\n\nEFFECT, measured on dev 45fc5a483a: a Go file whose one statement is io.WriteString(os.Stderr, os.Getenv(\"API_KEY\")) gives io-boundaries ipc_send os.Stderr beside logging io.WriteString, and verify-claims host_secret -> ipc VIOLATED through the attribute reference (sink_primitives [os.Stderr]). One write, two zones, and the second one is the zone WI-dutah ruled out. Any mention of os.Stderr (log.SetOutput(os.Stderr), passing it to a constructor) is an ipc sink.\n\nFIX SHAPE: move the four attributes to logging as WI-dutah did for the other languages (test pattern: test_python_catalog_stdio_is_logging_not_ipc_send), regenerate the derived docs, and A/B the Go and Java cohort on ipc / logging claims. Every row that LOSES an ipc sink must be read back (the removal direction)."  # 3d8c
     fields: {}  # 3d8c
+- op: update  # 5b4e
+  at: '2026-09-29T20:38:35Z'  # 5b4e
+  by: agent  # 5b4e
+  actor: jgstern_agent  # 5b4e
+  clock: 2  # 5b4e
+  nonce: 5b4e  # 5b4e
+  set:  # 5b4e
+    status: wont_do  # 5b4e
+  add:  # 5b4e
+    duplicate_of: [WI-runos-vados-sinog-lahop-zifig-tamus-gusoz-famuf]  # 5b4e
+- op: discuss  # 73b6
+  at: '2026-09-29T20:38:35Z'  # 73b6
+  by: agent  # 73b6
+  actor: jgstern_agent  # 73b6
+  clock: 3  # 73b6
+  nonce: 73b6  # 73b6
+  message: "Duplicate of WI-runos (folded, owner 09-29). Same root: the stdio -> logging ruling missed go and java; same fix. The Go rows and this item's measured repro are carried onto WI-runos."  # 73b6

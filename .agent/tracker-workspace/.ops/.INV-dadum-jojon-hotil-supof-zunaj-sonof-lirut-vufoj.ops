@@ -53,3 +53,10 @@
   clock: 5  # 4f02
   nonce: 4f02  # 4f02
   message: "UNBLOCKED 2026-09-29: WI-nokab shipped code_execution and dom_injection sinks (PR #1301, ADR-0060). On dev, document.referrer -> eval / window.eval is a host_secret -> code_execution violation and -> document.write a host_secret -> dom_injection violation today, under the owner's 09-29 ruling that location/referrer stay env_read. What remains on this item is unchanged and still the owner's: whether the page URL/referrer ALSO carries an attacker-input label (untrusted_input). innerHTML assignment and the other unreached shapes are WI-bonah."  # 4f02
+- op: discuss  # 3ff8
+  at: '2026-09-29T20:33:27Z'  # 3ff8
+  by: agent  # 3ff8
+  actor: jgstern_agent  # 3ff8
+  clock: 6  # 3ff8
+  nonce: 3ff8  # 3ff8
+  message: "INVESTIGATED 2026-09-29 on dev 596b845156, for the owner's question. document.location.hash -> eval under untrusted_input -> code_execution: inconclusive rc 2, and the same under dom_injection with document.write. Under host_secret both read violated. So today the canonical DOM-XSS claim can never read violated when the flow starts at the page URL. It reads inconclusive only because the eval/document.write call trips the unclassified-module gate, filed as INV-dudal. Fixing INV-dudal before this item would turn that into a false confirmed. Recommendation and mechanism options are with the owner."  # 3ff8

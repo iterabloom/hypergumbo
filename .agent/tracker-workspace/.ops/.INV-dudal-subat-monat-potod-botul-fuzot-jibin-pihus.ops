@@ -1,0 +1,24 @@
+- op: create  # f1eb
+  at: '2026-09-29T20:33:16Z'  # f1eb
+  by: agent  # f1eb
+  actor: jgstern_agent  # f1eb
+  clock: 1  # f1eb
+  nonce: f1eb  # f1eb
+  data:  # f1eb
+    kind: invariant  # f1eb
+    title: "javascript: a call to a shipped non-I/O taint sink (eval, document.write) counts as a module the I/O catalog could not classify, so every claim in a repo that calls one reads inconclusive"  # f1eb
+    status: violated  # f1eb
+    priority: 3  # f1eb
+    parent:  # f1eb
+    tags:  # f1eb
+    - taint  # f1eb
+    - verify_claims  # f1eb
+    - javascript  # f1eb
+    isbefore: []  # f1eb
+    duplicate_of: []  # f1eb
+    not_duplicate_of: []  # f1eb
+    pr_ref:  # f1eb
+    description: "FOUND 2026-09-29 while investigating INV-dadu, on dev 596b845156. Fixtures: ~/.../scratchpad/dadu is transient; the repro is below in full.\n\nREPRO (one JS file each, claim host_secret -> network, verify-claims --format json):\n  repo : const s = document.location.hash; document.write(s);   -> inconclusive rc 2, \"calls into 1 module(s) that the I/O catalog could not classify (document)\"\n  repo2: const s = document.location.hash; eval(s);              -> inconclusive rc 2, \"... could not classify (eval)\"\n  repo3: const s = document.location.hash; console.log(s.length); -> confirmed rc 0   (CONTROL)\nThe claim is about the NETWORK; neither file touches it. The same gate withholds untrusted_input -> code_execution / dom_injection on repo/repo2.\n\nWHAT IS WRONG. eval and document.write are rows hypergumbo SHIPS (taint_sinks/code_execution.yaml, dom_injection.yaml, ADR-0060), so \"never examined\" is false about them: the catalogue has examined them and says what they are. The coverage gate asks only the I/O catalogue, which by ADR-0060's own rule never rows them. So in JS every repo that calls eval or document.write gets no clean verdict on ANY claim. The direction is safe (false inconclusive, never a false clean), but it is noise on every claim.\n\nROOT CAUSE: NOT TRACED. Suspected: the unclassified-module check consults io_primitives + module_completeness only; shipped taint_sinks rows are not an examined classification. Trace before designing.\n\nORDERING HAZARD, the reason this is filed with INV-dadu. Today an untrusted_input claim over location.hash -> eval reads inconclusive ONLY because of this gate. The page URL derives no untrusted_input source (INV-dadu), so fixing this gate FIRST turns that canonical DOM-XSS case into confirmed_with_caveats: a false all-clear. Land INV-dadu's source (or ship both together) before loosening this. Loosening a withholding gate is the false-all-clear direction.\n\nNOT MEASURED: how many corpus JS/TS repos call eval or document.write, i.e. how many verdicts this withholds. Python's builtins.eval did not trip it in the INV-pivam fixtures."  # f1eb
+    fields:  # f1eb
+      statement: "A call whose callee a shipped hypergumbo catalogue classifies is never reported as never-examined; a claim unrelated to that callee is not withheld by it."  # f1eb
+      root_cause: "Not traced. Suspected: the unclassified-module coverage check consults io_primitives and module_completeness only, and ADR-0060's taint_sinks rows are by rule never I/O rows."  # f1eb
