@@ -1,0 +1,22 @@
+- op: create  # d5d2
+  at: '2026-09-29T17:03:59Z'  # d5d2
+  by: agent  # d5d2
+  actor: jgstern_agent  # d5d2
+  clock: 1  # d5d2
+  nonce: d5d2  # d5d2
+  data:  # d5d2
+    kind: work_item  # d5d2
+    title: "Taint families: third-party crypto sources and sanitizers become community rows; a community sanitizer no longer clears a flow (ADR-0061 rulings 1-2)"  # d5d2
+    status: todo_hard  # d5d2
+    priority: 2  # d5d2
+    parent:  # d5d2
+    tags:  # d5d2
+    - adr_0061  # d5d2
+    - catalogue  # d5d2
+    - taint  # d5d2
+    isbefore: []  # d5d2
+    duplicate_of: []  # d5d2
+    not_duplicate_of: []  # d5d2
+    pr_ref:  # d5d2
+    description: "ADR-0061 rulings 1-2 for the TAINT families. Third-party rows sit undisclosed in the shipped built-in taint catalogues (audit 2026-09-29):\n- taint_sources/crypto.yaml, key_material.yaml: python `cryptography.*`; rust `aes_gcm`, `ring::aead`, `hkdf`, `ring::rand`; TS `@noble/ciphers`.\n- taint_sanitizers/encryption.yaml: python `cryptography` x4; rust `aes_gcm`, `ring`, `hkdf`.\nWork: move them to community files (provenance: community, retrieved:), and implement the ADD-ONLY rule: a community SOURCE still mints taint (adds), a community SANITIZER does not clear a flow; the verdict names the withheld sanitizer rows.\nMeasured today (audit fixture): the shipped Fernet.encrypt sanitizer turns a plaintext->host_fs claim from violated into plain confirmed with sanitized_flows 1, no caveat, no community notice.\nEXPECTED METRIC MOVE (pre-register before building): more violated plaintext->host_fs / key_material claims on repos using cryptography / aes_gcm / ring. Measure on the corpus with arm A/B before landing; state direction and size in the PR (ADR-0061 Consequences).\nDepends on the provenance-declaration item."  # d5d2
+    fields: {}  # d5d2
