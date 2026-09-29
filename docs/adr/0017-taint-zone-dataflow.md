@@ -2,7 +2,7 @@
 # ADR-0017: Taint-Zone Dataflow Analysis
 
 Date: 2026-03-22
-Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance), ADR-0052 (§3a removal-COVERAGE ambition retired — the removal capability itself stays in force; §7a untouched); core STRUCTURAL taint analysis in force. Per-subsection implementation state, re-measured 2026-08-26 on dev `daafb0abb1` — the single "measured 2026-08-02" verdict this line used to carry had gone stale in five places (INV-lataj), and it collapsed two different failure modes into one phrase: **§3a** DDG walk RUNS and, since 2026-09-02 (WI-kabif, PR #716), ADJUDICATES — it REMOVES a flow whose walk returns `unconfirmed`; the "never decides inclusion" this line carried until 2026-09-09 was stale from that date. **Confirm-only IN PRACTICE** (ADR-0052): removal is implemented but measurement 0007 found the `unconfirmed` population EMPTY on an 11-repo corpus, and growing it is a retired goal; **§3c–3d** mixed-coverage verdicts LIVE; **§4b** declared summaries LIVE (declared terminating entries reach `_use_site_terminates`; no count is pinned here — this catalogue's size moved 33 → 108 → 113 across two edits in two days, and `taint.py`'s own docstring already carries a stale "38" for exactly that reason); **§4a** inferred summaries IMPLEMENTED BUT UNWIRED (`infer_summary`, zero production callers — and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite IMPLEMENTED BUT UNWIRED (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it — those are different jobs, so the two are named separately here. See Phased Implementation for anchor commits
+Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance), ADR-0060 (§2b: built-in sinks that are not I/O boundaries ship in `taint_sinks/`), ADR-0061 (§2: catalogue tiers), ADR-0052 (§3a removal-COVERAGE ambition retired — the removal capability itself stays in force; §7a untouched); core STRUCTURAL taint analysis in force. Per-subsection implementation state, re-measured 2026-08-26 on dev `daafb0abb1` — the single "measured 2026-08-02" verdict this line used to carry had gone stale in five places (INV-lataj), and it collapsed two different failure modes into one phrase: **§3a** DDG walk RUNS and, since 2026-09-02 (WI-kabif, PR #716), ADJUDICATES — it REMOVES a flow whose walk returns `unconfirmed`; the "never decides inclusion" this line carried until 2026-09-09 was stale from that date. **Confirm-only IN PRACTICE** (ADR-0052): removal is implemented but measurement 0007 found the `unconfirmed` population EMPTY on an 11-repo corpus, and growing it is a retired goal; **§3c–3d** mixed-coverage verdicts LIVE; **§4b** declared summaries LIVE (declared terminating entries reach `_use_site_terminates`; no count is pinned here — this catalogue's size moved 33 → 108 → 113 across two edits in two days, and `taint.py`'s own docstring already carries a stale "38" for exactly that reason); **§4a** inferred summaries IMPLEMENTED BUT UNWIRED (`infer_summary`, zero production callers — and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite IMPLEMENTED BUT UNWIRED (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it — those are different jobs, so the two are named separately here. See Phased Implementation for anchor commits
 
 > Amended in place — see the 2026-06-11 amendment banner below and the inline pointer markers in §3a and the "Interaction with ADR-0015 `access_mode` metadata" subsection.
 
@@ -66,7 +66,7 @@ PlazaFlow is a specification, not a codebase. The taint catalogs in §2 (CRDT re
 
 - **Phases 2-4 (DDG, summaries, cross-language).** Validated against the same fixtures plus hypergumbo's own Python codebase (once a Python extractor exists). The Python extractor has the advantage of being testable against code we control: hypergumbo itself uses filesystem IO, subprocess calls, and has clear data-flow patterns.
 
-**PlazaFlow-specific catalogs are project-local, not built-in.** The CRDT, relay, and vsock taint catalogs in §2 are examples of project-specific configuration, not built-in catalogs shipped with hypergumbo. Built-in catalogs cover general patterns (crypto decryption → plaintext, filesystem writes, network sends). PlazaFlow catalogs are validated when PlazaFlow code exists; the infrastructure they plug into is validated independently.
+**PlazaFlow-specific catalogs are the operator's own, not shipped.** The CRDT, relay, and vsock taint catalogs in §2 are examples of project-specific configuration, not catalogues shipped with hypergumbo. Shipped catalogues cover general patterns (crypto decryption → plaintext, filesystem writes, network sends), in the tiers of ADR-0061. PlazaFlow catalogs are validated when PlazaFlow code exists; the infrastructure they plug into is validated independently.
 
 ### What "dataflow analysis" means here
 
@@ -367,7 +367,7 @@ The taint analysis system grows by accretion of contributed code and configurati
 
 Extend the IO primitive catalog pattern (ADR-0016) to a general taint source/sink/sanitizer system.
 
-**General-purpose architecture, PlazaFlow as first client.** The taint catalog system is project-agnostic: any project can define its own taint sources, sinks, and sanitizers by writing YAML files. Hypergumbo ships with built-in catalogs for common patterns (crypto, filesystem, network — similar to the existing IO primitive catalogs). The PlazaFlow-specific catalogs below (CRDT content, relay communication, vsock channels) demonstrate project-specific customization that a user would provide alongside their `security-claims.yaml`. The `verify-claims` command loads both built-in and project-local catalogs, with project-local entries taking precedence.
+**General-purpose architecture, PlazaFlow as first client.** The taint catalog system is project-agnostic: anyone can define taint sources, sinks, and sanitizers by writing YAML files. Which rows hypergumbo vouches for, which it ships without vouching for, and which the operator supplies are the catalogue tiers of [ADR-0061](0061-catalogue-tiers-for-every-family.md) — **built-in** (standard library), **community** (third-party libraries, such as the `cryptography` / `aes_gcm` / `ring` rows in the examples below), **yours**, and **in-repo** — and they apply to the taint families as to every other. The PlazaFlow-specific catalogs below (CRDT content, relay communication, vsock channels) are examples of the operator's own catalogues, supplied alongside `security-claims.yaml`. On a qualified-name match the more specific tier wins; the full precedence chain is in the spec's catalogue section.
 
 #### 2a. Taint source catalogs
 
@@ -431,10 +431,10 @@ sources:
       return_tainted: true
 ```
 
-**`start_at` semantics: `caller` (default) vs. `callee`.** Most taint sources name a *callee* in some library — `aes_gcm::Aes256Gcm::decrypt`, `crypto.subtle.decrypt`, `Y.Map.get` — and what becomes tainted is the return value at the *caller's* site. That's the default and matches everything in §2a above. But the same catalog mechanism is also the natural place to declare *synthetic* entry-point sources: a project-local catalog can declare "every runtime CLI handler in this codebase is a source taint" so that reachability claims like "no path from runtime CLI to dev-zone sinks" can be expressed as taint flows. For those synthetic sources, the source *is* the callee — the handler function — and propagation should seed at the source-callee symbol itself, not at every place that invokes it. The `start_at: callee` opt-in expresses this:
+**`start_at` semantics: `caller` (default) vs. `callee`.** Most taint sources name a *callee* in some library — `aes_gcm::Aes256Gcm::decrypt`, `crypto.subtle.decrypt`, `Y.Map.get` — and what becomes tainted is the return value at the *caller's* site. That's the default and matches everything in §2a above. But the same catalog mechanism is also the natural place to declare *synthetic* entry-point sources: an operator's own catalogue can declare "every runtime CLI handler in this codebase is a source taint" so that reachability claims like "no path from runtime CLI to dev-zone sinks" can be expressed as taint flows. For those synthetic sources, the source *is* the callee — the handler function — and propagation should seed at the source-callee symbol itself, not at every place that invokes it. The `start_at: callee` opt-in expresses this:
 
 ```yaml
-# Synthetic entry-point source — project-local catalog
+# Synthetic entry-point source — an operator's own catalogue
 description: "Each runtime CLI subcommand handler is a taint source"
 taint_label: runtime_cli_entry
 start_at: callee   # seed BFS at the handler itself, not at its callers
@@ -450,9 +450,14 @@ Default behavior (`start_at: caller`, applied when the key is omitted) preserves
 
 #### 2b. Taint sink catalogs
 
-Built-in taint sinks are derived directly from `io_primitives/*.yaml` — every IO primitive whose `boundary` is a write-side category (`fs_write`, `subprocess`, `net_send`, `env_write`, `ipc_send`, `browser_storage_write`) becomes a structural taint sink at `trust_level=untrusted` in a zone determined by `AUTO_SINK_ZONE_MAP` in `taint.py`. Hypergumbo does not ship a built-in `taint_sinks/` directory; auto-derivation from the IO primitive catalog covers the built-in case without a second source of truth that could drift out of sync. The YAML schemas shown below remain valid as a contract for **project-local** sink catalogs loaded via the `--taint-sinks` CLI flag — these are where project-specific zones (`relay`, `compute_host`, `dev_zone`, `user_cache`, `install_artifact`, …) are declared. See `taint.py:load_builtin_taint_catalog` for the implementation and `AUTO_SINK_ZONE_MAP` for the boundary→zone mapping.
+Built-in taint sinks come from two places, and no sink is listed in both:
 
-**Built-in zone vocabulary (6 zones, auto-derived).** `AUTO_SINK_ZONE_MAP` is the single source of truth — a freshly-installed `hypergumbo verify-claims` with no project configuration knows about exactly these six zones:
+- **I/O sinks are derived from `io_primitives/`.** Every I/O primitive whose `boundary` is a write-side category becomes a structural taint sink at `trust_level=untrusted`, in the zone `AUTO_SINK_ZONE_MAP` (`taint.py`) assigns. `io_primitives` is the one list of I/O functions, so an I/O sink is never written down twice.
+- **Sinks that are not I/O boundaries ship in `taint_sinks/`** ([ADR-0060](0060-non-boundary-taint-sinks.md)): evaluating data as code (`code_execution`) and writing data into a page as markup (`dom_injection`). A gate refuses a row there that `io_primitives` could derive.
+
+The YAML schemas below are the contract for the operator's own sink catalogues (`--taint-sinks`, a claims file's `extra_catalogs:`, and the `taint_sinks.d/` home of ADR-0061), which is where project-specific zones (`relay`, `compute_host`, `dev_zone`, `user_cache`, `install_artifact`, …) are declared.
+
+**Built-in zones.** A freshly-installed `hypergumbo verify-claims` with no configuration knows the zones derived from I/O boundaries:
 
 | boundary (io_primitives) | zone | trust_level |
 |--------------------------|------|-------------|
@@ -460,15 +465,19 @@ Built-in taint sinks are derived directly from `io_primitives/*.yaml` — every 
 | `subprocess` | `subprocess` | `untrusted` |
 | `net_send` | `network` | `untrusted` |
 | `env_write` | `host_env` | `untrusted` |
-| `ipc_send` | `ipc` | `untrusted` |
+| `ipc_send`, `process_send` | `ipc` | `untrusted` |
 | `browser_storage_write` | `browser_storage` | `untrusted` |
+| `db_write` | `database` | `untrusted` |
+| `logging` | `logging` | `untrusted` |
 
-> **Note (WI-bibuk, 2026-05-23):** the `subprocess` zone was split out from `host_fs`. Shelling out to a trusted external program (`pip`, `git`, `rustup`, `gitleaks`) is a different trust surface than writing to arbitrary filesystem paths — the external program owns where its bytes land. Claims that prohibit `host_fs` no longer fire on legitimate `subprocess.run` invocations; claims that need to prohibit shelling out use `prohibited_sink_zone: subprocess` explicitly.
+plus ADR-0060's `code_execution` and `dom_injection`.
 
-**Project-local zones (open set).** Projects extend the vocabulary by declaring sinks in YAML and passing them via `--taint-sinks` or `extra_catalogs:`. The PlazaFlow zones (`relay`, `compute_host`, `persistent_storage`) used as worked examples throughout this ADR are themselves project-local — they are not built-in. Hypergumbo's own self-claims add `dev_zone`, `install_artifact`, `tmp_artifact`, `user_cache`, `user_out` via `docs/hypergumbo-self-catalog/`. User-defined zones are first-class in `verify-claims` constraints and behave identically to built-in zones for taint-flow checking.
+**`subprocess` is its own zone, not part of `host_fs`.** Shelling out to an external program (`pip`, `git`, `rustup`) is a different trust surface from writing to an arbitrary path — the program owns where its bytes land — so a `host_fs` claim does not fire on `subprocess.run`, and a claim that forbids shelling out names `prohibited_sink_zone: subprocess`.
+
+**Your zones (open set).** The operator extends the vocabulary by declaring sinks in their own YAML. The PlazaFlow zones (`relay`, `compute_host`, `persistent_storage`) used as worked examples throughout this ADR are of this kind — they are not built-in. Hypergumbo's own self-claims add `dev_zone`, `install_artifact`, `tmp_artifact`, `user_cache`, `user_out` via `docs/hypergumbo-self-catalog/`. User-defined zones are first-class in `verify-claims` constraints and behave identically to built-in zones for taint-flow checking.
 
 ```yaml
-# taint_sinks/relay_communication.yaml — project-local catalog passed via --taint-sinks
+# relay_communication.yaml — an operator's own sink catalogue
 description: "Data sent to untrusted relays"
 zone: relay
 trust_level: untrusted
@@ -486,7 +495,7 @@ sinks:
 ```
 
 ```yaml
-# taint_sinks/host_filesystem.yaml
+# host_filesystem.yaml — an operator's own sink catalogue, narrowing host_fs
 description: "Writes to the compute host filesystem (not guest VM)"
 zone: host_fs
 trust_level: untrusted
@@ -925,7 +934,7 @@ Verdicts become more precise:
 - **No external dependencies.** Pure Python implementation — no JVM, no subprocess coordination, no external tool versioning. `pip install hypergumbo` gets the full taint analysis capability for languages with extractors.
 - **Full Rust coverage from day one.** Rust has a native def/use extractor, closing the gap for PlazaFlow's three Rust-side taint claims (TF-001, TF-002, TF-004). Both sides of TypeScript↔Rust bridges have DDG precision.
 - **Accretion model.** The system grows as contributors add def/use extractors, taint catalogs, and function summaries — the same way hypergumbo already grows with IO primitive catalogs, dataflow patterns, and language analyzers. LLMs can assist at development time (generating draft extractors and catalogs), keeping the barrier to contribution low while the runtime stays fully deterministic.
-- **Project-agnostic infrastructure.** While PlazaFlow is the first client and motivating use case, the entire infrastructure (CFG builder, reaching-def solver, taint propagation engine, function summaries, `verify-claims` extensions) is project-agnostic. PlazaFlow-specific artifacts are limited to project-local taint catalogs and claim YAML files. If PlazaFlow's architecture changes, only those project-local YAML files need updating — the core infrastructure, built-in catalogs, and def/use extractors are unaffected.
+- **Project-agnostic infrastructure.** While PlazaFlow is the first client and motivating use case, the entire infrastructure (CFG builder, reaching-def solver, taint propagation engine, function summaries, `verify-claims` extensions) is project-agnostic. PlazaFlow-specific artifacts are limited to its own taint catalogues and claim YAML files. If PlazaFlow's architecture changes, only those YAML files need updating — the core infrastructure, built-in catalogs, and def/use extractors are unaffected.
 
 ### Negative
 
@@ -970,7 +979,7 @@ ADR-0015's `access_mode` field (read/write/mutate/delete) classifies what an edg
 
 The original ordering had Rust first (motivated by PlazaFlow's trust-boundary verification needs) with Python as a fallback if PlazaFlow code was delayed; the actual landing order put Python first via the accepted-ADR revision (see `fad503239213` and the "Python is the first extractor" rationale in Context). Phase 1 and Phase 2 together produce structural and DDG-precise taint analysis; Phase 2b extends Rust precision for borrow-mediated mutation; Phase 3 enables interprocedural taint flow via summaries; Phase 4 extends propagation across language boundaries via the existing linker edge types.
 
-**Production deployments.** PlazaFlow (the motivating use case in Context) consumes Phase 1 through Phase 4 once its codebase exists. The first in-tree deployment is hypergumbo's own self-audit: `docs/hypergumbo.claims.yaml` declares per-CLI-entry-point taint-flow claims (every runtime subcommand prohibited from reaching `host_fs` / `network` / `subprocess` / `install_artifact` / `dev_zone`), `docs/hypergumbo-self-catalog/` declares the project-local sources / sinks / sanitizers those claims reference, and `hypergumbo verify-claims docs/hypergumbo.claims.yaml` runs the full pipeline (per-language outer loop → CFG → def/use post-pass → reaching-def → **structural** propagation with module filtering). Two corrections to what that sentence used to claim: the module filter named `_sink_module_compatible` never ran (see §3a), and the propagation is structural — `propagate_taint_ddg` decides inclusion by call-graph BFS and uses DDG data only to select a confidence label. The wrapper-discipline pattern documented in `SECURITY.md` (`safety_zones.py`'s `cache_write`, `user_out_write`, `install_artifact_copy`, …) is the project-local artifact that makes path-bounded zone claims expressible against this ADR's sink-by-callee-name matching model.
+**Production deployments.** PlazaFlow (the motivating use case in Context) consumes Phase 1 through Phase 4 once its codebase exists. The first in-tree deployment is hypergumbo's own self-audit: `docs/hypergumbo.claims.yaml` declares per-CLI-entry-point taint-flow claims (every runtime subcommand prohibited from reaching `host_fs` / `network` / `subprocess` / `install_artifact` / `dev_zone`), `docs/hypergumbo-self-catalog/` declares the sources / sinks / sanitizers those claims reference (loaded through the claims file's `extra_catalogs:`), and `hypergumbo verify-claims docs/hypergumbo.claims.yaml` runs the full pipeline (per-language outer loop → CFG → def/use post-pass → reaching-def → **structural** propagation with module filtering). Two corrections to what that sentence used to claim: the module filter named `_sink_module_compatible` never ran (see §3a), and the propagation is structural — `propagate_taint_ddg` decides inclusion by call-graph BFS and uses DDG data only to select a confidence label. The wrapper-discipline pattern documented in `SECURITY.md` (`safety_zones.py`'s `cache_write`, `user_out_write`, `install_artifact_copy`, …) is the operator-supplied artifact that makes path-bounded zone claims expressible against this ADR's sink-by-callee-name matching model.
 
 ### 8. Testing strategy
 

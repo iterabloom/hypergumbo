@@ -80,6 +80,7 @@ The `verify-claims --json` envelope advances 2.4 → 2.5.
 ### Documentation
 
 - **`VERIFY-CLAIMS-SCOPE.md` says why no verdict consults partial parses**: no measured rule singles out the verdicts a partial parse could affect.
+- **Catalogue tiers are decided for every family (ADR-0061).** Catalogue rows come in four tiers — built-in, community, yours, in-repo — for I/O primitives, taint, summaries, signatures and frameworks alike; a community row may add a finding but never make a verdict cleaner, and catalogue data inside the analysed repository loads only when you opt in. The spec's new *Catalogue tiers* section lists what is implemented and what is not yet; ADR-0016, ADR-0017, ADR-0045, ADR-0047 and ADR-0060 now agree with it and with each other.
 
 ## [8.1.0] - 2026-09-25
 
