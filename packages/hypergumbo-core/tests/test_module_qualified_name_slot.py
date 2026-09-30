@@ -56,14 +56,14 @@ def test_java_system_in_reaches_its_ipc_recv_row():
 @pytest.mark.parametrize(
     "lang,module,name,boundary",
     [
-        ("java", "System", "System.out", "ipc_send"),
-        ("java", "System", "System.err", "ipc_send"),
+        ("java", "System", "System.out", "logging"),
+        ("java", "System", "System.err", "logging"),
         ("python", "sys", "sys.stderr", "logging"),
         ("python", "sys", "sys.stdin", "ipc_recv"),
         ("python", "os", "os.environ", "env_read"),
         ("python", "sys", "sys.argv", "env_read"),
         ("go", "os", "os.Stdin", "ipc_recv"),
-        ("go", "os", "os.Stdout", "ipc_send"),
+        ("go", "os", "os.Stdout", "logging"),
         ("go", "runtime", "runtime.GOOS", "host_info_read"),
         ("c", "stdio", "stdio.stdin", "ipc_recv"),
         ("javascript", "process", "process.env", "env_read"),

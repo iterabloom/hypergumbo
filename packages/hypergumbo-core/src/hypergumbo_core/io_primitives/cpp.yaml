@@ -60,10 +60,10 @@ fs_read:
       than replacing the include list, because replacing it would delete
       std::printf's match against c.yaml's inherited stdio row.
 
-ipc_send:
+logging:
   - module: std
-    attributes: [cout, cerr]
-    notes: "iostream stdout/stderr — the C++-idiomatic counterpart of c.yaml's stdio.stdout/stderr"
+    attributes: [cout, cerr, clog]
+    notes: "iostream stdout/stderr/log — the C++-idiomatic counterpart of c.yaml's stdio.stdout/stderr, and logging as they are (WI-runos; WI-tolif, WI-dutah: terminal output is not IPC). clog is stderr, buffered."
 
 ipc_recv:
   - module: std

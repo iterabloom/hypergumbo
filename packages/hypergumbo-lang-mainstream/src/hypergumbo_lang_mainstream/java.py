@@ -3786,8 +3786,8 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
         # whose base resolves to an imported class or to ``System``
         # (an implicit java.lang import).  Pairs with the
         # ``attributes:`` entries in io_primitives/java.yaml
-        # (System.out, System.err under ipc_send; System.in under
-        # ipc_recv).
+        # (System.out, System.err under logging since WI-runos;
+        # System.in under ipc_recv).
         #
         # Deliberate deviation from Go/JS: the callee-skip logic is
         # disabled by passing node kinds that do not occur in Java.

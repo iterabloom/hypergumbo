@@ -439,8 +439,6 @@ host_info_read:
     notes: "Constants, not functions, but captured as host_info_read"
 
 ipc_send:
-  - module: os
-    attributes: [Stdout, Stderr]
   - module: os.File
     methods: [Write, WriteString]
     boundary_ruling: call_site_undecidable
@@ -463,6 +461,9 @@ ipc_send:
     notes: "WI-suhug: the ipc_send twin of the logging row (see it)."
 
 logging:
+  - module: os
+    attributes: [Stdout, Stderr]
+    notes: "WI-runos: the process's own standard output -- terminal output, logging, not IPC (WI-tolif, WI-dutah). A mention of the stream is the sink, as sys.stderr is in python."
   - module: os.File
     methods: [Write, WriteString]
     boundary_ruling: call_site_undecidable

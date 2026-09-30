@@ -10,8 +10,8 @@ io-boundaries said ``logging``, and ``host_secret -> logging`` CONFIRMED with
 0 flows, a false all-clear.
 
 Each case runs both commands on one file and asks them for the same zone,
-counting only flows whose sink IS the writer: ``os.Stderr`` is also an
-``ipc_send`` attribute row of its own, which is a different sink.
+counting only flows whose sink IS the writer: ``os.Stderr`` is also a
+``logging`` attribute row of its own (WI-runos), which is a different sink.
 """
 
 from __future__ import annotations

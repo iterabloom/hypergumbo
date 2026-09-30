@@ -69,9 +69,9 @@ proves it: it is opaque AND curated, so it counts in the headline, while
 are disclosed and excluded. An axis query would have to special-case exactly one value, which is
 the shape ADR-0024's fold-residue discipline says to put on the spec instead.
 
-KNOWN GAPS, stated rather than left for the next reader to rediscover
---------------------------------------------------------------------
-1. ADR-0016's "controlled vocabulary" table documents TEN of these twenty-one.
+KNOWN GAP, stated rather than left for the next reader to rediscover
+------------------------------------------------------------------
+ADR-0016's "controlled vocabulary" table documents TEN of these twenty-one.
    ``env_write``, ``db_read``, ``db_write``, ``process_send``, ``logging``,
    ``browser_storage_read``, ``browser_storage_write``, ``net_listen``,
    ``db_compose``, ``external_potential`` and ``command_launch`` are absent
@@ -79,14 +79,14 @@ KNOWN GAPS, stated rather than left for the next reader to rediscover
    vocabulary grew and its documentation did not, which is the drift INV-tafig
    describes; the descriptions below are sourced from the shipped catalogue
    rows and the consumer code, not from that table.
-2. ``logging`` is the one ``data_crossing`` value naming a PURPOSE rather than
-   a medium, and it OVERLAPS ``ipc_send`` on stdout -- go's ``fmt.Println`` and
-   haskell's ``Prelude.putStrLn`` are catalogued ``logging`` while
-   ``stdout.write`` is catalogued ``ipc_send``. That is a genuine per-value
-   question and it is NOT settled here. It is recorded as the first candidate
-   for a per-value audit under ADR-0024's family-audit methodology, which is
-   the whole point of having an axiom to audit against. NO ROW MOVES on the
-   strength of this note.
+
+``logging`` AND ``ipc_send`` ARE SPLIT BY MEDIUM (audit-findings 0021, which
+answered the question this docstring used to leave open). ``logging`` is the
+process's own standard output / error -- the channel whose far side the
+launcher chose -- written directly or through a facility whose default
+destination it is; ``ipc_send`` is a channel the program set up. The call-site
+evidence between them is the write target's ``io_target_kind``, mapped by
+``io_boundary._WRITE_TARGET_KIND_BOUNDARY``.
 """
 
 from __future__ import annotations
@@ -219,9 +219,10 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         catalog_declarable=True,
         counts_in_headline=True,
         description=(
-            "Send data to another process -- stdout write, pipe write, shared "
-            "memory write. See the module docstring's gap 2: the stdout half "
-            "overlaps `logging`, unsettled."
+            "Send data to another process over a channel the program set up "
+            "or addressed -- a pipe, a child's stdin, a local socket, an IPC "
+            "message channel, a signal. NOT the process's own standard output, "
+            "which is `logging` (audit-findings 0021)."
         ),
     ),
     IoBoundarySpec(
@@ -319,11 +320,12 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         catalog_declarable=True,
         counts_in_headline=True,
         description=(
-            "Emit data to a log sink -- java.util.logging.Logger, go fmt/io "
-            "print, Prelude.putStrLn, Swift print. THE ONE CANONICAL VALUE "
-            "NAMING A PURPOSE RATHER THAN A MEDIUM, and it overlaps ipc_send "
-            "on stdout. First candidate for a per-value audit; see the module "
-            "docstring, gap 2. No row moves on that note."
+            "Write to the process's own standard output or standard error -- "
+            "the channel whose far side the launcher chose, not the program -- "
+            "directly (sys.stderr, os.Stdout, System.out, std::cerr) or through "
+            "a print or logging facility whose default destination it is "
+            "(print, fmt.Println, java.util.logging.Logger, Prelude.putStrLn). "
+            "A medium, like every data_crossing value (audit-findings 0021)."
         ),
     ),
     IoBoundarySpec(

@@ -233,10 +233,6 @@ host_info_read:
   - module: java.lang.Runtime
     methods: [availableProcessors, totalMemory, freeMemory, maxMemory]
 
-ipc_send:
-  - module: java.lang.System
-    attributes: [out, err]
-
 ipc_recv:
   - module: java.lang.System
     attributes: [in]
@@ -355,6 +351,9 @@ db_write:
 # and surface in external_potential (Plan C, PR C) when first-party
 # code uses them.
 logging:
+  - module: java.lang.System
+    attributes: [out, err]
+    notes: "WI-runos: the process's own standard output -- terminal output, logging, not IPC (WI-tolif, WI-dutah). kotlin and scala inherit this row through _CATALOG_PARENTS."
   - module: java.util.logging.Logger
     methods: [log, logp, fine, finer, finest, info, warning, severe, config]
     notes: "java.util.logging (JDK built-in)"
