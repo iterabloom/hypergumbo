@@ -209,6 +209,30 @@ is its own row question:
   program is thereby arranged to do later") is the test. python's are
   deliberate for its `logging` completeness entry and say so.
 
+## Migration impact (measured)
+
+Pre-registered A/B, dev `544ac087ee` vs the moves, same 12 repositories, seven
+claims (host_secret / untrusted_input into ipc and logging, host_description
+into logging, two controls); record in the lab notebook
+(`runos_09302026/RESULT.md`).
+
+- All 552 `ipc_send` crossings moved to `logging`, count for count; `ipc_send`
+  is empty on all 12 after.
+- `host_secret -> ipc` went violated -> inconclusive on 7 repositories and
+  `untrusted_input -> ipc` on 6 — every IPC finding there was a stream mention.
+  None went to confirmed: the coverage gate still withholds on those repos.
+- `untrusted_input -> logging` inconclusive -> violated on sbt (its java
+  files); `host_description -> logging` inconclusive -> violated on apt
+  (`std::clog`). No verdict moved in any other direction; both controls
+  unchanged.
+- Every removed ipc flow reappears in the twin logging claim with the same
+  source and sink. Its representative PATH can differ, because flows are
+  collapsed per zone — a pre-registered prediction keyed on the path was
+  refuted by exactly that.
+- Not predicted: the new `std::clog` row took apt's 93 clog calls out of
+  `external_potential` (disclosed only) into `logging` (headline), so apt's
+  `total_io_edges` rose 336 -> 429. No other repository's total moved.
+
 ## Keep, with its re-evaluation trigger
 
 A logging facility's row names its **default** destination. A configured

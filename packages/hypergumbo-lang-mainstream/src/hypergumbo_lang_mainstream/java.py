@@ -867,11 +867,9 @@ _JAVA_LANG_TYPES: frozenset[str] = JAVA_LANG_TYPES
 
 #: Expressions that NAME a standard stream.
 #:
-#: ``System.in`` only. ``System.out`` / ``System.err`` are the WRITE direction,
-#: and java.yaml rows them as attributes under ``ipc_send`` -- the stale sibling
-#: of WI-dutah's ``logging`` ruling for c / rust / js / elixir. That is disclosed
-#: here and NOT followed: re-pointing a shipped write row is a separate change
-#: with its own blast radius, and this item is the read direction.
+#: ``System.in`` only. ``System.out`` / ``System.err`` are the WRITE direction:
+#: java.yaml rows them as attributes under ``logging`` (WI-runos, audit-findings
+#: 0021), and this set is the read direction.
 _JAVA_STD_STREAM_EXPRS: frozenset[str] = frozenset({
     "System.in", "java.lang.System.in",
 })
