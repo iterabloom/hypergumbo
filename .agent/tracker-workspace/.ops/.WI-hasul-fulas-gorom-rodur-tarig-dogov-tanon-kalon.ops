@@ -28,3 +28,18 @@
   clock: 2  # b44d
   nonce: b44d  # b44d
   message: "ORDERING (owner 09-29): after WI-nopam. A module_completeness grant makes a verdict cleaner, which ADR-0061 permits only for built-in rows, and a row's tier comes from its file's provenance: line. c.yaml's libc headers are standard library, so the grants this item adds are built-in and must sit in a file WI-nopam has stamped provenance: builtin (and its gate checks). Recorded as WI-nopam isbefore WI-hasul."  # b44d
+- op: update  # 2394
+  at: '2026-09-30T10:32:12Z'  # 2394
+  by: agent  # 2394
+  actor: jgstern_agent  # 2394
+  clock: 3  # 2394
+  nonce: '2394'  # 2394
+  set:  # 2394
+    status: done  # 2394
+- op: discuss  # 548a
+  at: '2026-09-30T10:32:12Z'  # 548a
+  by: agent  # 548a
+  actor: jgstern_agent  # 548a
+  clock: 4  # 548a
+  nonce: 548a  # 548a
+  message: "Done in PR #1329 (merged, dev 39f98f3f5a). c.yaml gains module_completeness for the 15 C headers that declare NO I/O -- errno stdint stdbool stddef stdarg limits float linux/limits sys/types sys/param inttypes strings libgen ctype math -- each probed from glibc's own declarations (gcc -E, preprocessor line markers; docs/surveys/c-stdlib-module-io-enumeration.md) and pinned with its refusals by test_c_module_completeness.py; the C stdlib line in test_catalogue_scope_gates.py admits them with reasons. REFUSED, with reasons: string (strfry reads the clock, WI-pavob; strerror/strsignal may read message catalogues), assert (stderr on failure), and stdio unistd stdlib sys/socket sys/stat fcntl dirent (unrowed I/O -- filed WI-dohod). MEASURED, pre-registered (~/hypergumbo_lab_notebook/hasul_09302026/RESULT.md), measurement 0023's cohort: unexaminable-module sets shrink by EXACTLY the granted headers each includes (passt 66->56, torsocks 17->13, libvfio-user 26->20), nothing added, all 21 verdicts and evidence counts IDENTICAL. So the labels the title names do NOT return yet: every repo still includes an ungranted header -- the I/O headers (WI-dohod), linux/* and net* headers (unaudited), torsocks' own headers (filed INV-dobuh), libvfio-user's python test modules. This item's deliverable (a per-module dated completeness block for c.yaml, gate unloosened) is done; the verdict-label return is not asserted."  # 548a

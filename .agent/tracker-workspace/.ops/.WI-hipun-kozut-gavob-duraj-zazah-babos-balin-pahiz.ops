@@ -34,3 +34,18 @@
   clock: 3  # 0ada
   nonce: 0ada  # 0ada
   message: "WI-nopam (PR #1317) declared every frameworks/ file: 99 community, 8 builtin (main-functions, language-conventions, naming-conventions, library-exports, config-conventions, cocoa, jax-rs, jakarta-cdi -- each with its reason in BUILTIN_FRAMEWORK_FILES in test_catalogue_scope_gates.py; mixed files such as node-http, test-frameworks, go-encoding-callbacks, web_audio and swiftui are community as a whole). dataflow_patterns: every <lang>.yaml is builtin; PyYAML's rows moved to the community companion python-pyyaml.yaml. Remaining here: step (1) measure whether a frameworks/dataflow row can make a verdict cleaner, then (3) withhold if so. Step (2) is done."  # 0ada
+- op: update  # 5e9c
+  at: '2026-09-30T08:57:32Z'  # 5e9c
+  by: agent  # 5e9c
+  actor: jgstern_agent  # 5e9c
+  clock: 4  # 5e9c
+  nonce: 5e9c  # 5e9c
+  set:  # 5e9c
+    status: done  # 5e9c
+- op: discuss  # f6ca
+  at: '2026-09-30T08:57:32Z'  # f6ca
+  by: agent  # f6ca
+  actor: jgstern_agent  # f6ca
+  clock: 5  # f6ca
+  nonce: f6ca  # f6ca
+  message: "Done. (1) MEASURED (PR #1326, record ~/hypergumbo_lab_notebook/hipun_09302026/RESULT.md, pre-registered): arm B = dev a196aaddb5 with every community file removed from frameworks/ (99) and dataflow_patterns/ (1), fresh survey per arm, 5 repos using the frameworks those files describe (flask-restful-test, gin-realworld, full-stack-fastapi-template, nest, microservices-demo), 7 generic taint + 3 boundary must_not_exist claims: 50 verdicts, verdict / flow set / caveat kinds IDENTICAL in all. Reach confirmed (the rows did act): concept-bearing symbols flask-restful-test 116 vs 25, fastapi-template 193 vs 91, nest 2998 vs 1871; edges +46 (fastapi-template), +380 (nest); entrypoints 50 vs 26 (fastapi-template). ADR-0061 ruling 2 now records these families as disclosed, not withheld; spec status updated. (2) Provenance declared per file by WI-nopam (#1317). (3) No removing effect measured, so disclosure (catalog-inventory, docs/CATALOGUES.md from WI-lidof, catalog_provenance tiers for your .d files) suffices. NOT established: that no framework row can ever lift the 'language produced no call edges' coverage gate -- that case did not arise in the cohort; it is now ADR-0061's open question."  # f6ca
