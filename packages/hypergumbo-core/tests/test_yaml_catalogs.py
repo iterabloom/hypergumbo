@@ -211,10 +211,10 @@ def test_ruling_10_table_is_the_shipped_registry():
         "cfg_nodes": (None, None, None),
         "taint_sources": ("taint_sources.d", None, None),
         "taint_sanitizers": ("taint_sanitizers.d", None, None),
-        # ADR-0060: NON-boundary sinks only. No channel: a project's sinks
-        # enter through --taint-sinks / extra_catalogs:, and an I/O sink
-        # belongs in io_primitives.d.
-        "taint_sinks": (None, None, None),
+        # ADR-0060: NON-boundary sinks only. ADR-0061 ruling 7 gives the
+        # operator's taint model one persistent home for sinks too; an I/O
+        # sink still belongs in io_primitives.d.
+        "taint_sinks": ("taint_sinks.d", None, None),
         "function_summaries": (
             "function_summaries.d", None, "CAVEAT_USER_SUPPLIED_SANITIZER",
         ),

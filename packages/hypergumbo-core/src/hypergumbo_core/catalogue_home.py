@@ -81,6 +81,9 @@ WIRED_CHANNELS = frozenset({
     "dataflow_patterns.d",   # WI-sofov, library_patterns section only
     "function_summaries.d",  # WI-sofov, gated by CAVEAT_USER_SUPPLIED_SANITIZER
     "library_signatures.d",  # WI-lalot
+    "taint_sources.d",       # WI-mimap, a user layer below the claims file
+    "taint_sinks.d",         # WI-mimap
+    "taint_sanitizers.d",    # WI-mimap, stamped user_supplied like the others
 })
 
 
@@ -218,7 +221,7 @@ def _wired_listing(channels: "Sequence[str]") -> str:
 
 def _inert_listing(channels: "Sequence[str]") -> str:
     inert = [c for c in channels if c not in WIRED_CHANNELS]
-    if not inert:  # pragma: no cover - true only once every channel is wired
+    if not inert:  # every declared channel is wired today (WI-mimap)
         return ""
     lines = "\n".join(f"  {c}/" for c in inert)
     return (
