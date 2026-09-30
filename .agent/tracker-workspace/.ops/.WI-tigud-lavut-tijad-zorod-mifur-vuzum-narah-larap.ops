@@ -19,3 +19,10 @@
     pr_ref:  # 9386
     description: "ADR-0061 rulings 1-2 for function_summaries and library_signatures. Third-party rows in shipped built-in files (audit 2026-09-29):\n- function_summaries/*_stdlib.yaml: go testify x4 (TERMINATING -- they end a taint branch), zap x3; python django.db.models x3; rust aes_gcm x2 (one a sanitizer), serde_json x2.\n- library_signatures/python.yaml: django.db.models x22 (python.yaml:44-46 also still says the io catalogue carries django.db.models rows; those moved to a community overlay).\nWork: move them to community files; ADD-ONLY rule: a community terminating summary does not end a branch (a propagating one still propagates); a community library signature -- if it can make a verdict cleaner by typing a receiver (MEASURE this; ADR-0061 ruling 2's second column is a reading) -- has that effect withheld. Verdict names withheld rows.\nPre-register the expected move (more violated/inconclusive on testify/zap/django repos) and measure A/B before landing.\nDepends on the provenance-declaration item."  # 9386
     fields: {}  # 9386
+- op: discuss  # 972e
+  at: '2026-09-30T01:46:07Z'  # 972e
+  by: agent  # 972e
+  actor: jgstern_agent  # 972e
+  clock: 2  # 972e
+  nonce: 972e  # 972e
+  message: "WI-nopam (PR #1317) did this item's MOVE half: function_summaries/go_testify_zap.yaml, python_django.yaml, rust_aes_gcm_serde_json.yaml and library_signatures/python-django.yaml declare provenance: community. Their loaders already rank community below built-in (a community row takes a key only when no built-in row holds it). Remaining here: withholding the CLEANING effect -- a community terminating summary (testify x4) must not end a branch; a community library signature's receiver typing to be measured and withheld if it can clean a verdict. python.yaml's stale comment about django rows went with the move."  # 972e

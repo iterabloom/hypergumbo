@@ -20,3 +20,10 @@
     pr_ref:  # d5d2
     description: "ADR-0061 rulings 1-2 for the TAINT families. Third-party rows sit undisclosed in the shipped built-in taint catalogues (audit 2026-09-29):\n- taint_sources/crypto.yaml, key_material.yaml: python `cryptography.*`; rust `aes_gcm`, `ring::aead`, `hkdf`, `ring::rand`; TS `@noble/ciphers`.\n- taint_sanitizers/encryption.yaml: python `cryptography` x4; rust `aes_gcm`, `ring`, `hkdf`.\nWork: move them to community files (provenance: community, retrieved:), and implement the ADD-ONLY rule: a community SOURCE still mints taint (adds), a community SANITIZER does not clear a flow; the verdict names the withheld sanitizer rows.\nMeasured today (audit fixture): the shipped Fernet.encrypt sanitizer turns a plaintext->host_fs claim from violated into plain confirmed with sanitized_flows 1, no caveat, no community notice.\nEXPECTED METRIC MOVE (pre-register before building): more violated plaintext->host_fs / key_material claims on repos using cryptography / aes_gcm / ring. Measure on the corpus with arm A/B before landing; state direction and size in the PR (ADR-0061 Consequences).\nDepends on the provenance-declaration item."  # d5d2
     fields: {}  # d5d2
+- op: discuss  # bbaf
+  at: '2026-09-30T01:46:07Z'  # bbaf
+  by: agent  # bbaf
+  actor: jgstern_agent  # bbaf
+  clock: 2  # bbaf
+  nonce: bbaf  # bbaf
+  message: "WI-nopam (PR #1317) did this item's MOVE half: the third-party taint rows now sit in taint_sources/crypto_community.yaml, key_material_community.yaml and taint_sanitizers/encryption_community.yaml, each declaring provenance: community. They still take full effect (the taint loader globs the directory and does not read the tier). Remaining here: the ADD-ONLY rule (a community sanitizer does not clear a flow; the verdict names the withheld rows), pre-registered and measured A/B."  # bbaf

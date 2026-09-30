@@ -1,0 +1,23 @@
+- op: create  # eb31
+  at: '2026-09-30T03:01:56Z'  # eb31
+  by: agent  # eb31
+  actor: jgstern_agent  # eb31
+  clock: 1  # eb31
+  nonce: eb31  # eb31
+  data:  # eb31
+    kind: invariant  # eb31
+    title: "A provenance: community file in the function_summaries.d, library_signatures.d, dataflow_patterns.d or frameworks.d channel loads as yours (ADR-0061 ruling 3 outside io_primitives)"  # eb31
+    status: violated  # eb31
+    priority: 3  # eb31
+    parent:  # eb31
+    tags:  # eb31
+    - adr_0061  # eb31
+    - catalogue  # eb31
+    isbefore: []  # eb31
+    duplicate_of: []  # eb31
+    not_duplicate_of: []  # eb31
+    pr_ref:  # eb31
+    description: "Residual of INV-lamap (PR #1319). No shipped mechanism puts a community file in these channels today (init-catalogs seeds io_primitives.d only), so nothing is mis-vouched yet -- but a user who copies a shipped community companion (e.g. function_summaries/go_testify_zap.yaml, a TERMINATING-summary file) into function_summaries.d gets its rows stamped user_supplied and treated as vouched. Fix: in each channel loader, a file declaring provenance: community gets the family's community treatment (add-only for summaries/signatures/dataflow; the cleaning effect withheld once WI-dikit/WI-tigud/WI-hipun land). Pair with WI-tigud."  # eb31
+    fields:  # eb31
+      statement: "A catalogue file's tier comes from its provenance: line in every family's user channel, so a community file there stays community until the line is deleted."  # eb31
+      root_cause: "Only io_boundary.load_catalog reads the line for user-channel files (INV-lamap, PR #1319); the other wired channels stamp every file in <family>.d as the user's (function_summaries user_supplied=True, library_signatures and dataflow as user rows)."  # eb31

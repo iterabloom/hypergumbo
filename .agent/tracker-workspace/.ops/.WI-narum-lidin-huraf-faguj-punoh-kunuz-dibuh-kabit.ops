@@ -34,3 +34,10 @@
   clock: 3  # 97da
   nonce: 97da  # 97da
   message: "Recurred 2026-09-29, twice: loaded smart-test runs of 616 and ~2000 test files both failed test_a_hangup_is_named_too at proc.wait(timeout=30); run alone it passes 8/8 in 6 s. Same shape as filed."  # 97da
+- op: discuss  # 99fd
+  at: '2026-09-30T01:46:07Z'  # 99fd
+  by: agent  # 99fd
+  actor: jgstern_agent  # 99fd
+  clock: 4  # 99fd
+  nonce: 99fd  # 99fd
+  message: "Seen again 2026-09-29 on the WI-nopam branch: 3 failed of 23,416 in a 775-file targeted run (2 were real and fixed); test_a_hangup_is_named_too failed under load (subprocess wait timeout=30) and passed alone (8/8). Nothing auto-pr related was touched."  # 99fd
