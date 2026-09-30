@@ -1150,7 +1150,7 @@ def _manifest_files(repo_root: Path, file_names: "Container[str]") -> "Iterator[
     30+ minutes before any analysis ran. A symlinked manifest FILE is still
     read -- reading one file is bounded.
     """
-    from .discovery import DEFAULT_EXCLUDES
+    from .discovery import DEFAULT_EXCLUDES, walks_into
 
     skip = set(DEFAULT_EXCLUDES)
     stack = [repo_root]
@@ -1164,9 +1164,7 @@ def _manifest_files(repo_root: Path, file_names: "Container[str]") -> "Iterator[
             if entry.is_file():
                 if entry.name in file_names:
                     yield entry
-            elif entry.is_dir() and not entry.is_symlink():
-                if entry.name in skip or entry.name.startswith("."):
-                    continue
+            elif walks_into(entry, skip):
                 stack.append(entry)
 
 

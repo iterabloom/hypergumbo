@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.discovery import walks_into
 from hypergumbo_core.supply_chain import (
     collect_first_party_package_names,
     collect_workspace_package_names,
@@ -79,3 +80,27 @@ def test_a_symlinked_directory_is_not_entered_but_a_linked_file_is_read(
     (repo / "linked_dir").symlink_to(elsewhere)
     (repo / "Cargo.toml").symlink_to(real / "Cargo.toml")
     assert collect_first_party_package_names(repo) == {"inside-real"}
+
+
+class TestTheSharedRule:
+    """``walks_into`` is the one rule every hand-written repository walk asks
+    (supply_chain here, py.py's source roots and py_deps' pyproject walk in the
+    mainstream package), so a cycle cannot be fixed in one and missed in
+    the next -- which is how INV-pivir reopened."""
+
+    def test_a_real_directory_is_walked(self, tmp_path: Path) -> None:
+        (tmp_path / "pkg").mkdir()
+        assert walks_into(tmp_path / "pkg")
+
+    def test_a_directory_symlink_is_not(self, tmp_path: Path) -> None:
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "link").symlink_to(tmp_path / "pkg")
+        assert not walks_into(tmp_path / "link")
+
+    def test_skipped_and_dot_names_and_files_are_not(self, tmp_path: Path) -> None:
+        for name in ("node_modules", ".git"):
+            (tmp_path / name).mkdir()
+        (tmp_path / "f.txt").write_text("x")
+        assert not walks_into(tmp_path / "node_modules", {"node_modules"})
+        assert not walks_into(tmp_path / ".git")
+        assert not walks_into(tmp_path / "f.txt")

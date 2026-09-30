@@ -241,7 +241,7 @@ def _find_pyproject_files(repo_root: Path) -> list[Path]:
 
     Returns sorted by path for deterministic output.
     """
-    from hypergumbo_core.discovery import DEFAULT_EXCLUDES
+    from hypergumbo_core.discovery import DEFAULT_EXCLUDES, walks_into
 
     skip = set(DEFAULT_EXCLUDES)
     out: list[Path] = []
@@ -255,9 +255,8 @@ def _find_pyproject_files(repo_root: Path) -> list[Path]:
         for entry in entries:
             if entry.is_file() and entry.name == "pyproject.toml":
                 out.append(entry)
-            elif entry.is_dir():
-                if entry.name in skip or entry.name.startswith("."):
-                    continue
+            # INV-pivir: never into a directory symlink (a cycle is unbounded).
+            elif walks_into(entry, skip):
                 stack.append(entry)
     return sorted(out)
 
