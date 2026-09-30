@@ -60,3 +60,34 @@
   clock: 6  # 3ff8
   nonce: 3ff8  # 3ff8
   message: "INVESTIGATED 2026-09-29 on dev 596b845156, for the owner's question. document.location.hash -> eval under untrusted_input -> code_execution: inconclusive rc 2, and the same under dom_injection with document.write. Under host_secret both read violated. So today the canonical DOM-XSS claim can never read violated when the flow starts at the page URL. It reads inconclusive only because the eval/document.write call trips the unclassified-module gate, filed as INV-dudal. Fixing INV-dudal before this item would turn that into a false confirmed. Recommendation and mechanism options are with the owner."  # 3ff8
+- op: discuss  # 239a
+  at: '2026-09-29T20:39:20Z'  # 239a
+  by: agent  # 239a
+  actor: jgstern_agent  # 239a
+  clock: 7  # 239a
+  nonce: 239a  # 239a
+  message: "OWNER DECISION 09-29: YES -- the page URL/referrer ALSO carry an attacker-input label, and keep host_secret. Mechanism (agent recommendation, approved): a new inbound boundary navigation_read deriving untrusted_input, declared SIMULTANEOUS with env_read on document.location / window.location / document.referrer, plus the unrowed document.URL / documentURI / baseURI / window.name. Not net_recv (nothing is received at the call site), not a shipped taint_sources file (sources merge on (module,name,kind): it would DISPLACE the host_secret source). Built-in tier (DOM standard). Lands before INV-dudal."  # 239a
+- op: update  # d287
+  at: '2026-09-29T20:39:21Z'  # d287
+  by: agent  # d287
+  actor: jgstern_agent  # d287
+  clock: 8  # d287
+  nonce: d287  # d287
+  set: {}  # d287
+  add:  # d287
+    isbefore: [INV-dudal-subat-monat-potod-botul-fuzot-jibin-pihus]  # d287
+- op: update  # 0455
+  at: '2026-09-29T23:41:16Z'  # 0455
+  by: agent  # 0455
+  actor: jgstern_agent  # 0455
+  clock: 9  # 0455
+  nonce: '0455'  # 0455
+  set:  # 0455
+    status: satisfied  # 0455
+- op: discuss  # a7dd
+  at: '2026-09-29T23:41:16Z'  # a7dd
+  by: agent  # a7dd
+  actor: jgstern_agent  # a7dd
+  clock: 10  # a7dd
+  nonce: a7dd  # a7dd
+  message: "SATISFIED. Fixed in PR #1316 (merged, dev 9e5376a8cb).\n\nBEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev (one JS file: const s = document.location.hash; then eval(s) / document.write(s) on its own line):\n  untrusted_input -> code_execution   was inconclusive rc 2, now VIOLATED rc 1, origins: 1 navigation_read\n  untrusted_input -> dom_injection    was inconclusive rc 2, now VIOLATED rc 1, origins: 1 navigation_read\n  host_secret     -> code_execution   violated rc 1 before and after (origins: 1 env_read) -- the secret reading is KEPT\n\nMECHANISM (owner-approved 09-29): a new io boundary navigation_read (data_crossing, inbound, declared last) deriving untrusted_input. document.location / referrer / URL / documentURI / baseURI and window.location are declared under env_read AND navigation_read, simultaneous; window.name under navigation_read alone; document.cookie keeps env_read alone. The taint engine needed a change too: both propagation arms matched ONE source per call site, so the second label was dropped. find_source_callers (shared by both arms) now mints one source per label for a primitive with same-(module,name,kind) siblings; nothing changes for a one-label primitive.\n\nMEASURED (pre-registered, 0 refutations, ~/hypergumbo_lab_notebook/navread_09292026/RESULT.md): 10 JS/TS repos, 12 untrusted_input verdicts inconclusive -> violated, 0 toward confirmed, flows +83 / -0 all from navigation_read, host_secret flows and env_read chains identical, total_io_edges up by exactly the navigation_read chain count, 39/39 added network/storage flows re-label a same-path host_secret flow. Read back: one sampled flow's only use is window.location.assign(url), a navigation -- filed WI-vujik (an attribute source row fires on a receiver use; pre-existing for host_secret, now counted under both labels).\n\nNOT ASSERTED: that the added flows are precise. They carry the precision of their host_secret twins (mostly structural / ddg_mixed not_attempted). No page-URL -> eval/document.write flow exists in this cohort, so the injection zones moved on the constructed repro only."  # a7dd
