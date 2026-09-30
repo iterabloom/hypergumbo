@@ -299,6 +299,14 @@ class TaintSanitizer:
     #: assembled, so every consumer reads the same answer instead of trying to
     #: re-derive provenance from a path it no longer has.
     user_supplied: bool = False
+    #: ADR-0061 ruling 2 (WI-dikit): True when this entry came from a file
+    #: declaring ``provenance: community`` -- shipped, or left in a taint
+    #: channel with the line intact. A community sanitizer REMOVES a finding,
+    #: which is the half an unvouched row may not do, so the walks do not treat
+    #: it as a barrier: the flow is reported and names it
+    #: (``TaintFlowFinding.withheld_sanitizers``). Stamped at load, like
+    #: ``user_supplied``, never read from the YAML.
+    community: bool = False
 
     @property
     def short_name(self) -> str:
@@ -531,6 +539,11 @@ class TaintFlowFinding:
     # several. Empty whenever ``sanitized`` is False.
     sanitized_by: tuple[str, ...] = ()
     sanitized_by_user_supplied: tuple[str, ...] = ()
+    # ADR-0061 ruling 2 (WI-dikit): COMMUNITY sanitizers the route crosses and
+    # that were NOT credited. Such a sanitizer would have cleared this flow had
+    # it been vouched for; it is named so the reader knows the finding rests on
+    # withholding it, and what vouching for it would change. Empty when none.
+    withheld_sanitizers: tuple[str, ...] = ()
     source_module: str = ""
     sink_module: str = ""
     # WI-vazal: the io_primitives boundary the SOURCE was derived from
@@ -755,6 +768,7 @@ class TaintFlowFinding:
             # declared field to serialize, which is what caught them missing.
             "sanitized_by": list(self.sanitized_by),
             "sanitized_by_user_supplied": list(self.sanitized_by_user_supplied),
+            "withheld_sanitizers": list(self.withheld_sanitizers),
             # INV-karud: the sets are what the finding actually claims.
             # Serializing only the witness scalars would put the n x m
             # over-claim back for every consumer that reads JSON.
@@ -883,6 +897,9 @@ def collapse_unadjudicated_flows(
             )),
             sanitized_by_user_supplied=tuple(sorted(
                 {b for m in grp for b in m.sanitized_by_user_supplied}
+            )),
+            withheld_sanitizers=tuple(sorted(
+                {b for m in grp for b in m.withheld_sanitizers}
             )),
             # INV-muhij Finding A. The scalars stay ``grp[0]``'s -- they are
             # the witness the ``path`` belongs to -- but the row now also says
@@ -2305,7 +2322,9 @@ def load_builtin_taint_catalog(
         community._sinks, user_catalog._sinks,
     )
     for lang, sans in community._sanitizers.items():
-        user_catalog._sanitizers.setdefault(lang, []).extend(sans)
+        user_catalog._sanitizers.setdefault(lang, []).extend(
+            replace(san, community=True) for san in sans
+        )
     # WI-razol: carry the io_primitives ambiguous_names onto the catalog so
     # match_source / match_sink disambiguate exactly as io-boundaries does.
     user_catalog._ambiguous_names = ambiguous_by_lang
@@ -3456,6 +3475,60 @@ def _seeds_at_caller(entry: TaintEntry) -> bool:
     return not isinstance(entry, TaintSource) or entry.start_at == "caller"
 
 
+def _withheld_sanitizer_callers(
+    edges: list[dict[str, Any]],
+    sanitizers: list["TaintSanitizer"],
+) -> "tuple[list[TaintSanitizer], dict[str, dict[str, list[TaintSanitizer]]]]":
+    """Split out the COMMUNITY sanitizers, and index where they are called.
+
+    ADR-0061 ruling 2 (WI-dikit): a row from a community file may add a
+    finding but never remove one. A sanitizer only ever removes, so a
+    community one is not a barrier: the walks are handed the VOUCHED
+    sanitizers alone, and a flow whose route crosses a community one is
+    reported. The index built here -- by the same registrar the barrier uses,
+    so the two cannot disagree about what counts as calling a sanitizer -- is
+    what lets :func:`_name_withheld` say which community sanitizer each such
+    flow crossed.
+
+    Returns ``(vouched, withheld_callers)``.
+    """
+    vouched = [s for s in sanitizers if not s.community]
+    withheld = [s for s in sanitizers if s.community]
+    callers: dict[str, dict[str, list[TaintSanitizer]]] = defaultdict(dict)
+    if withheld:
+        _register_sanitizer_callers(
+            edges, _build_sanitizer_index_multi(withheld), callers,
+        )
+    return vouched, callers
+
+
+def _name_withheld(
+    findings: list[TaintFlowFinding],
+    withheld_callers: "Mapping[str, Mapping[str, list[TaintSanitizer]]]",
+) -> list[TaintFlowFinding]:
+    """Stamp each reported flow with the community sanitizers its route crosses.
+
+    Read against THE ROUTE REPORTED, as :func:`_attribute_sanitizers` reads
+    barriers: naming a sanitizer the reported route never crossed would say
+    something the analysis did not establish. A node counts when it calls a
+    community sanitizer for THIS flow's label, which is exactly the test that
+    would have made it a barrier had the sanitizer been vouched for.
+    """
+    if not withheld_callers:
+        return findings
+    out: list[TaintFlowFinding] = []
+    for finding in findings:
+        names: list[str] = []
+        for node in finding.path:
+            for san in withheld_callers.get(node, {}).get(finding.taint_label, ()):
+                if san.qualified_name not in names:
+                    names.append(san.qualified_name)
+        out.append(
+            replace(finding, withheld_sanitizers=tuple(names)) if names else finding
+        )
+    return out
+
+
 def propagate_taint_structural(
     edges: list[dict[str, Any]],
     sources: list[TaintSource],
@@ -3497,6 +3570,8 @@ def propagate_taint_structural(
     # short method name (last component after dots) to match unresolved edges
     # that only have the bare method name (e.g., "decrypt" for "Fernet.decrypt").
     sink_by_callee = _build_callee_index(sinks)
+    # ADR-0061 ruling 2 (WI-dikit): only a VOUCHED sanitizer is a barrier.
+    sanitizers, withheld_callers = _withheld_sanitizer_callers(edges, sanitizers)
     sanitizer_by_callee = _build_sanitizer_index_multi(sanitizers)
 
     # Step 1: Find source call sites — which symbol IDs call taint sources?
@@ -3662,7 +3737,9 @@ def propagate_taint_structural(
     # none of them is entitled to a pair claim. Collapsing HERE rather than in
     # the consumer keeps one home for the rule — a second consumer of
     # ``propagate_taint_*`` would otherwise get the raw n x m product back.
-    return collapse_unadjudicated_flows(findings)
+    return collapse_unadjudicated_flows(
+        _name_withheld(findings, withheld_callers),
+    )
 
 
 def _reachability_past_sanitizers(
@@ -4629,6 +4706,10 @@ def propagate_taint_ddg(
     # Index sinks and sanitizers by name (same as structural) — a list per
     # name so _lookup_named_entry can disambiguate by module/ambiguity.
     sink_by_callee = _build_callee_index(sinks)
+    # ADR-0061 ruling 2 (WI-dikit): only a VOUCHED sanitizer is a barrier.
+    sanitizers, withheld_callers = _withheld_sanitizer_callers(
+        call_edges, sanitizers,
+    )
     sanitizer_by_callee = _build_sanitizer_index_multi(sanitizers)
 
     # Build call-graph adjacency for structural fallback
@@ -5110,4 +5191,6 @@ def propagate_taint_ddg(
     # INV-karud. This arm emits all three methods, and the collapse is
     # method-aware: ``ddg`` findings pass through with their pair claim intact
     # because the walk actually confirmed a dependence for them.
-    return collapse_unadjudicated_flows(findings)
+    return collapse_unadjudicated_flows(
+        _name_withheld(findings, withheld_callers),
+    )

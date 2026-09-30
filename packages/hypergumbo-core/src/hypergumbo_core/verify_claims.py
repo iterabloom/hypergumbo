@@ -84,10 +84,11 @@ Caveats
 Any verdict may carry a structured ``caveats`` list, built through one shared
 constructor so the text and JSON renderers disclose identically. On a clean
 verdict a non-empty list makes it ``confirmed_with_caveats``;
-``CAVEAT_CHOICE_SHAPED_SOURCE`` rides a ``violated`` verdict, and caveats
-raised on a clean path survive a coverage downgrade to ``inconclusive``
-(``_require_coverage_to_confirm``). Twelve ``CAVEAT_*`` constants exist, plus
-one unconstanted kind (``deferred_crossing``). The four longest-standing:
+``CAVEAT_CHOICE_SHAPED_SOURCE`` and ``CAVEAT_WITHHELD_COMMUNITY_SANITIZER``
+ride a ``violated`` verdict, and caveats raised on a clean path survive a
+coverage downgrade to ``inconclusive`` (``_require_coverage_to_confirm``).
+Fourteen ``CAVEAT_*`` constants exist, plus one unconstanted kind
+(``deferred_crossing``). The four longest-standing:
 
 - ``CAVEAT_USER_SUPPLIED_SANITIZER`` — the clean answer depends on a
   sanitizer, or a function summary, supplied by the analysed repository
@@ -110,11 +111,12 @@ one unconstanted kind (``deferred_crossing``). The four longest-standing:
   (``_ARM_TAINT``, ``untyped_receiver_sink_zones``), which discloses the sink
   receivers it could not type.
 
-The remaining eight — ``CAVEAT_ACCESSOR_NAME_RECEIVER``,
+The remaining ten — ``CAVEAT_ACCESSOR_NAME_RECEIVER``,
 ``CAVEAT_UNKNOWN_RECEIVER_SCOPE``, ``CAVEAT_ANALYZER_METHOD_CALL_BLIND``,
 ``CAVEAT_ANALYZER_SUPPRESSED_METHODS``, ``CAVEAT_ANALYZER_CONSTRUCT_BLIND``,
-``CAVEAT_SINK_BEFORE_SOURCE_ONLY``, ``CAVEAT_HIGHER_FIDELITY_AVAILABLE`` and
-``CAVEAT_CHOICE_SHAPED_SOURCE`` — are each documented at their own
+``CAVEAT_SINK_BEFORE_SOURCE_ONLY``, ``CAVEAT_HIGHER_FIDELITY_AVAILABLE``,
+``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_UNREACHED_SINK_SHAPES`` and
+``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` — are each documented at their own
 definition.
 
 A verdict may carry more than one kind at once.
@@ -742,6 +744,18 @@ CAVEAT_CHOICE_SHAPED_SOURCE = "choice_shaped_source"
 #: existed: a JS ``new Function(process.env.X)()`` against "host_secret must
 #: not reach code_execution" read ``confirmed`` rc 0 with ``caveats: []``.
 CAVEAT_UNREACHED_SINK_SHAPES = "unreached_sink_shapes"
+
+#: Caveat kind: a reported flow crosses a sanitizer from a COMMUNITY catalogue
+#: file, which was not credited (ADR-0061 ruling 2, WI-dikit). A community row
+#: may add a finding but never remove one, and a sanitizer only removes, so the
+#: flow is reported -- and the verdict names the withheld sanitizers, because
+#: the finding rests on withholding them and the operator can vouch for one
+#: (copy its file into taint_sanitizers.d and delete the provenance line).
+#: Rides the VIOLATED path, like the choice-shaped caveat: it qualifies a
+#: reported finding, not a clean verdict. Measured before this existed: the
+#: shipped ``Fernet.encrypt`` sanitizer turned a plaintext -> host_fs claim
+#: into plain ``confirmed`` with ``sanitized_flows: 1`` and no caveat.
+CAVEAT_WITHHELD_COMMUNITY_SANITIZER = "withheld_community_sanitizer"
 
 
 @dataclass(frozen=True)
@@ -5185,6 +5199,9 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         # independent refuters read `collapsed_flow_count` as unreconcilable.
         "sink_call_sites": [list(site) for site in v.sink_call_sites],
         "collapsed_flow_count": v.collapsed_flow_count,
+        # ADR-0061 ruling 2 (WI-dikit): community sanitizers this route crosses
+        # that were NOT credited -- vouched for, they would have cleared it.
+        "withheld_sanitizers": list(v.withheld_sanitizers),
     }
 
 
@@ -5959,6 +5976,25 @@ def _verify_taint_claim_uncredited(
         if is_choice_shaped_source(v.source_primitive)
     })
     violated_caveats: list[dict[str, Any]] = []
+    _withheld = sorted({
+        name for v in violations for name in v.withheld_sanitizers
+    })
+    if _withheld:
+        _withheld_flows = sum(1 for v in violations if v.withheld_sanitizers)
+        violated_caveats.append({
+            "kind": CAVEAT_WITHHELD_COMMUNITY_SANITIZER,
+            "entries": _withheld,
+            "detail": (
+                f"{_withheld_flows} of these flow(s) pass through a sanitizer "
+                f"from a COMMUNITY catalogue file, which hypergumbo ships "
+                f"without maintaining and does not credit (ADR-0061): "
+                f"{', '.join(_withheld)}. Vouched for, it would have cleared "
+                f"them. To vouch for one, copy its file into "
+                f"$XDG_CONFIG_HOME/hypergumbo/taint_sanitizers.d/ and delete "
+                f"its `provenance: community` line; the verdict will then "
+                f"carry the user-supplied-sanitizer caveat instead."
+            ),
+        })
     if _choice_sources:
         violated_caveats.append({
             "kind": CAVEAT_CHOICE_SHAPED_SOURCE,
