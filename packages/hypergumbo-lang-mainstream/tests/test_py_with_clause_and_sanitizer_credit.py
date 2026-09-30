@@ -102,6 +102,20 @@ def _verdict(tmp_path: Path, source: str, capsys: pytest.CaptureFixture[str],
     (repo / "a.py").write_text(source)
     (tmp_path / "claims.yaml").write_text(_CLAIMS)
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    # The shipped Fernet rows are COMMUNITY rows, which may not clear a flow
+    # (ADR-0061, WI-dikit). The credit MECHANISM is what this file pins, so the
+    # fixture vouches for them the way an operator does: a copy in its own
+    # taint_sanitizers.d with the provenance line deleted.
+    import hypergumbo_core.taint as taint
+
+    shipped = Path(taint.__file__).parent / "taint_sanitizers" / \
+        "encryption_community.yaml"
+    channel = tmp_path / "config" / "hypergumbo" / "taint_sanitizers.d"
+    channel.mkdir(parents=True)
+    (channel / "encryption.yaml").write_text(
+        shipped.read_text().replace("provenance: community\n", ""),
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     main(["verify-claims", str(repo), "--claims", str(tmp_path / "claims.yaml"),
           "--format", "json"])
     return json.loads(capsys.readouterr().out)["verdicts"][0]
