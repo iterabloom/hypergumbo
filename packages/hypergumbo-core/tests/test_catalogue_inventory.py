@@ -105,14 +105,17 @@ def test_declared_extensible_is_not_reported_as_readable(inv) -> None:
     assert len(extensible) > 1, "fixture wrong: only one extensible family"
     read_now = {f.directory for f in extensible if f.read_now}
     assert read_now == {"io_primitives", "frameworks", "dataflow_patterns",
-                        "function_summaries", "library_signatures"}, (
+                        "function_summaries", "library_signatures",
+                        "taint_sources", "taint_sinks", "taint_sanitizers"}, (
         "a channel changed readability without the inventory being told — "
         "update _WIRED_CHANNELS so users are neither sent to an inert "
         "directory nor told a working one is dead"
     )
+    # Every declared channel is read today (WI-mimap wired the three taint
+    # ones). A new channel must arrive wired, or this goes red.
     still_inert = {f.directory for f in extensible if not f.read_now}
-    assert still_inert == {"taint_sources", "taint_sanitizers"}, (
-        "the remaining unwired channels changed — a user must not be sent to "
+    assert still_inert == set(), (
+        "a declared channel is read by nothing — a user must not be sent to "
         "a directory nothing reads, nor told a working one is dead"
     )
 
@@ -176,11 +179,29 @@ def test_text_output_answers_all_four_questions(capsys, monkeypatch,
     out = capsys.readouterr().out
     assert "catalogue inventory" in out          # what this is
     assert "io_primitives.d/" in out             # where my file goes
-    assert "NOT read yet" in out                 # and where it would be inert
+    assert "taint_sinks.d/" in out               # every taint channel is read
+    assert "NOT read yet" not in out             # no declared channel is inert
     assert "Not extensible:" in out              # and why not, for the rest
     assert "in_progress" in out                  # per-language status
     assert "unvouched" in out                    # how to weigh a clean result
     assert "Without them" in out or "Without these" in out   # why care
+
+
+def test_a_declared_but_unwired_channel_is_called_inert(capsys, monkeypatch,
+                                                       tmp_path) -> None:
+    """Every declared channel is read today, so the inert line is exercised
+    by un-wiring one: a channel added to the registry before its loader must
+    say so rather than send a user to a directory nothing reads."""
+    import hypergumbo_core.catalogue_inventory as ci
+    from hypergumbo_core.cli import cmd_catalog_inventory
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(ci, "WIRED_CHANNELS",
+                        ci.WIRED_CHANNELS - {"taint_sinks.d"})
+    args = _Args()
+    args.format = "text"
+    assert cmd_catalog_inventory(args) == 0
+    assert "declared (taint_sinks.d/) — NOT read yet" in capsys.readouterr().out
 
 
 def test_json_output_carries_the_same_facts(capsys, monkeypatch,
@@ -206,7 +227,7 @@ def test_json_output_carries_the_same_facts(capsys, monkeypatch,
     # entries can DELETE a finding, and the caveat is what discloses it.
     assert fs["channel_gated"] == "CAVEAT_USER_SUPPLIED_SANITIZER"
     ts = next(f for f in doc["families"] if f["directory"] == "taint_sources")
-    assert ts["extensible"] is True and ts["read_now"] is False
+    assert ts["extensible"] is True and ts["read_now"] is True
     # Section-scoped: readable, but the scope has to survive to the reader.
     df = next(f for f in doc["families"]
               if f["directory"] == "dataflow_patterns")

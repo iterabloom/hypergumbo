@@ -2102,6 +2102,9 @@ def load_full_taint_catalog(
     cli_sanitizer_paths: list[Path] | None = None,
     io_overlay_paths: "Sequence[Path] | None" = None,
     include_community: bool = True,
+    channel_source_paths: list[Path] | None = None,
+    channel_sink_paths: list[Path] | None = None,
+    channel_sanitizer_paths: list[Path] | None = None,
 ) -> TaintCatalog:
     """Load built-in taint catalogs and merge in user-supplied YAML files.
 
@@ -2121,6 +2124,16 @@ def load_full_taint_catalog(
     4. CLI extras — ``cli_*_paths`` (the ``--taint-sources`` /
        ``--taint-sinks`` / ``--taint-sanitizers`` flags).
 
+    THE USER'S CHANNELS (ADR-0061 ruling 7, WI-mimap). ``channel_*_paths``
+    are the files in ``$XDG_CONFIG_HOME/hypergumbo/taint_sources.d/``,
+    ``taint_sinks.d/`` and ``taint_sanitizers.d/``: the one persistent home for
+    the operator's own taint model, since a claims file travels with a
+    repository and a flag lasts one run. They form a user layer BELOW the
+    claims file -- a scanned directory is the least specific statement of
+    intent -- and their sanitizers are stamped ``user_supplied`` like the
+    others. A channel file that still declares ``provenance: community`` is
+    not the operator's: it joins the community layer and only adds.
+
     INV-hukug: layers 3 and 4 are kept distinct so a CLI flag (layer 4)
     *replaces* a claims-file entry (layer 3) on a matching
     ``(module, name, kind)`` instead of coexisting with it as a duplicate.
@@ -2139,40 +2152,55 @@ def load_full_taint_catalog(
     cli_sink_paths = _resolve_catalog_paths(cli_sink_paths or [])
     cli_sanitizer_paths = _resolve_catalog_paths(cli_sanitizer_paths or [])
 
+    channels = [
+        _resolve_catalog_paths(list(paths or []))
+        for paths in (channel_source_paths, channel_sink_paths,
+                      channel_sanitizer_paths)
+    ]
+    community_channels = [
+        [p for p in paths if _declares_community_file(p)] for paths in channels
+    ]
+    yours_channels = [
+        [p for p in paths if not _declares_community_file(p)] for paths in channels
+    ]
+
     catalog = load_builtin_taint_catalog(
         io_overlay_paths, include_community=include_community,
+        community_channel_paths=(
+            community_channels[0], community_channels[1], community_channels[2],
+        ),
     )
 
     any_extra = extra_source_paths or extra_sink_paths or extra_sanitizer_paths
     any_cli = cli_source_paths or cli_sink_paths or cli_sanitizer_paths
-    if not (any_extra or any_cli):
+    if not (any_extra or any_cli or any(yours_channels)):
         return catalog
 
-    # Two user layers: claims-file extras (lower) and CLI extras (higher).
-    # CLI overrides claims on (module, name, kind) for sources/sinks
-    # (INV-hukug); sanitizers concatenate (claims then CLI). The unified user
-    # layer then overrides the built-in catalog (layers 1+2).
+    # Three user layers, ascending: the user's channels, claims-file extras,
+    # CLI extras. A higher layer overrides a lower one on (module, name,
+    # kind) for sources/sinks (INV-hukug); sanitizers concatenate. The unified
+    # user layer then overrides the built-in catalog (layers 1+2).
+    channel_layer = load_taint_catalog(*yours_channels)
     claims_layer = load_taint_catalog(
         extra_source_paths, extra_sink_paths, extra_sanitizer_paths,
     )
     cli_layer = load_taint_catalog(
         cli_source_paths, cli_sink_paths, cli_sanitizer_paths,
     )
-    # User-over-user (claims file vs CLI). A displacement here is one user
-    # layer overriding another, which INV-hukug already documents as intended
-    # precedence and which removes no SHIPPED coverage — so it is not carried.
-    user_sources, _ = _merge_with_user_override(
-        claims_layer._sources, cli_layer._sources,
-    )
-    user_sinks, _ = _merge_with_user_override(
-        claims_layer._sinks, cli_layer._sinks,
-    )
+    # User-over-user. A displacement here is one user layer overriding
+    # another, which INV-hukug already documents as intended precedence and
+    # which removes no SHIPPED coverage — so it is not carried.
+    user_sources, user_sinks = channel_layer._sources, channel_layer._sinks
+    for upper in (claims_layer, cli_layer):
+        user_sources, _ = _merge_with_user_override(user_sources, upper._sources)
+        user_sinks, _ = _merge_with_user_override(user_sinks, upper._sinks)
     # INV-pojib: STAMPED HERE, which is the only place that still knows these
     # entries came from a user path. Below this line the layers merge into one
     # catalogue and a consumer asking "did the repo supply this?" would have to
     # re-derive it from paths it no longer holds.
     user_sanitizers: dict[str, list[TaintSanitizer]] = {}
-    for layer in (claims_layer._sanitizers, cli_layer._sanitizers):
+    for layer in (channel_layer._sanitizers, claims_layer._sanitizers,
+                  cli_layer._sanitizers):
         for lang, sans in layer.items():
             user_sanitizers.setdefault(lang, []).extend(
                 replace(san, user_supplied=True) for san in sans
@@ -2205,6 +2233,8 @@ def _declares_community_file(path: Path) -> bool:
 def load_builtin_taint_catalog(
     io_overlay_paths: "Sequence[Path] | None" = None,
     include_community: bool = True,
+    community_channel_paths: "tuple[Sequence[Path], Sequence[Path], Sequence[Path]]" = (
+        (), (), ()),
 ) -> TaintCatalog:
     """Load built-in taint catalogs shipped with hypergumbo.
 
@@ -2232,15 +2262,22 @@ def load_builtin_taint_catalog(
     source_paths = sorted(_TAINT_SOURCES_DIR.glob("*.yaml")) if _TAINT_SOURCES_DIR.exists() else []
     sink_paths = sorted(_TAINT_SINKS_DIR.glob("*.yaml"))
     sanitizer_paths = sorted(_TAINT_SANITIZERS_DIR.glob("*.yaml")) if _TAINT_SANITIZERS_DIR.exists() else []
-    if not include_community:
-        # ``--no-default-overlays`` omits COMMUNITY rows from every family
-        # (ADR-0061 ruling 5, INV-fikoh): the shipped community taint files go
-        # with the community I/O overlays below.
-        source_paths, sink_paths, sanitizer_paths = (
-            [p for p in paths if not _declares_community_file(p)]
-            for paths in (source_paths, sink_paths, sanitizer_paths)
-        )
-    user_catalog = load_taint_catalog(source_paths, sink_paths, sanitizer_paths)
+    # ADR-0061: a file's tier is its provenance line. The built-in files load
+    # as they always have; the COMMUNITY ones -- shipped, plus any the operator
+    # dropped in a taint channel still declaring the line -- load as their own
+    # layer below, which only ADDS (ruling 2). ``--no-default-overlays`` omits
+    # that layer entirely (ruling 5, INV-fikoh).
+    shipped = (source_paths, sink_paths, sanitizer_paths)
+    builtin_paths = [
+        [p for p in paths if not _declares_community_file(p)] for paths in shipped
+    ]
+    community_paths: "list[list[Path]]" = [[], [], []]
+    if include_community:
+        community_paths = [
+            [p for p in paths if _declares_community_file(p)] + list(extra)
+            for paths, extra in zip(shipped, community_channel_paths, strict=True)
+        ]
+    user_catalog = load_taint_catalog(*builtin_paths)
 
     auto_sources, auto_sinks, ambiguous_by_lang = (
         _derive_auto_imports_from_io_primitives(
@@ -2256,6 +2293,19 @@ def load_builtin_taint_catalog(
     )
     user_catalog._displaced_sources = displaced_sources
     user_catalog._displaced_sinks = displaced_sinks
+    # The community layer ONLY ADDS: an entry whose (module, name, kind) a
+    # built-in or auto-derived entry already holds is dropped, never the
+    # other way round, and nothing it drops is a displacement worth
+    # disclosing -- the vouched row stayed.
+    community = load_taint_catalog(*community_paths)
+    user_catalog._sources, _ = _merge_with_user_override(
+        community._sources, user_catalog._sources,
+    )
+    user_catalog._sinks, _ = _merge_with_user_override(
+        community._sinks, user_catalog._sinks,
+    )
+    for lang, sans in community._sanitizers.items():
+        user_catalog._sanitizers.setdefault(lang, []).extend(sans)
     # WI-razol: carry the io_primitives ambiguous_names onto the catalog so
     # match_source / match_sink disambiguate exactly as io-boundaries does.
     user_catalog._ambiguous_names = ambiguous_by_lang

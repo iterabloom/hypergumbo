@@ -174,12 +174,12 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         "io_primitives instead.",
         loader="hypergumbo_core.taint",
         adr="ADR-0060",
-        user_channel=None,
-        no_channel_reason="A project's own sinks already enter through "
-        "--taint-sinks and a claims file's extra_catalogs:, and an I/O sink "
-        "belongs in io_primitives.d. A taint_sinks.d directory would be a "
-        "third home for one kind of edit, and the sibling .d directories "
-        "are declared but not yet read (WI-mimap).",
+        # ADR-0061 ruling 7: the operator's taint model gets ONE persistent
+        # home, for sinks as for sources and sanitizers. The claims file
+        # travels with the repository and a flag lasts one run, so neither
+        # can be that home. (An I/O sink still belongs in io_primitives.d.)
+        user_channel="taint_sinks.d",
+        no_channel_reason=None,
     ),
     CatalogSpec(
         directory="function_summaries",

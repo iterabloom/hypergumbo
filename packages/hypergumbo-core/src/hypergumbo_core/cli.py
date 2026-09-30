@@ -309,6 +309,7 @@ from .repo_tier_offer import maybe_offer_repo_tier_examples
 from .catalogue_home import (
     materialize_catalogue_home,
     user_catalogue_home,
+    user_channel_files,
     user_overlay_paths,
 )
 from .user_config import LayeredConfig
@@ -5499,7 +5500,6 @@ def _loaded_catalogue_files(
     the graph the verdict reads, and which of them the analysis consulted is
     not recorded in the graph.
     """
-    from .catalogue_home import user_channel_files
     from .function_summaries import get_summaries_dir
     from .io_boundary import default_overlays, shipped_catalog_paths
     from .taint import (
@@ -5532,6 +5532,8 @@ def _loaded_catalogue_files(
         for family, paths in taint_paths.items():
             files += [F(family, p, False)
                       for p in _resolve_catalog_paths(list(paths))]
+            # WI-mimap: the operator's taint channel for this family.
+            files += [F(family, p, False) for p in user_channel_files(family)]
         files += [F("function_summaries", p, False)
                   for p in user_channel_files("function_summaries")]
     for family in ("frameworks", "dataflow_patterns", "library_signatures"):
@@ -6868,6 +6870,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # the boundary lookup omits them here too.
                 include_community=not getattr(
                     args, "no_default_overlays", False),
+                # ADR-0061 ruling 7 (WI-mimap): the operator's persistent
+                # taint model, a user layer below the claims file.
+                channel_source_paths=user_channel_files("taint_sources"),
+                channel_sink_paths=user_channel_files("taint_sinks"),
+                channel_sanitizer_paths=user_channel_files("taint_sanitizers"),
             )
         except (FileNotFoundError, TaintCatalogError) as exc:
             print(f"Error: {exc}", file=sys.stderr)

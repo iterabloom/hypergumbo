@@ -509,3 +509,27 @@ def test_a_foreign_language_overlay_in_the_channel_does_not_break_a_run(
     assert len({p.name for p in paths}) > 1, "fixture wrong: one language only"
     catalog = load_catalog("python", overlay_paths=paths)
     assert catalog.is_supported
+
+
+def test_the_readme_lists_no_inert_channel_while_every_channel_is_read(
+    home: Path,
+) -> None:
+    """WI-mimap wired the three taint channels, so every declared channel is
+    read and the README must not send anyone to a dead directory."""
+    text = materialize_catalogue_home(home, version="9.9.9").readme.read_text()
+    assert "NOT yet consulted" not in text
+    assert "taint_sinks.d/" in text
+
+
+def test_a_channel_declared_before_its_loader_is_called_inert(
+    home: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other branch, for the next family declared before it is wired."""
+    import hypergumbo_core.catalogue_home as ch
+
+    monkeypatch.setattr(ch, "WIRED_CHANNELS",
+                        ch.WIRED_CHANNELS - {"taint_sinks.d"})
+    text = materialize_catalogue_home(home, version="9.9.9").readme.read_text()
+    assert "NOT yet consulted" in text
+    inert = text.split("NOT yet consulted", 1)[1]
+    assert "taint_sinks.d/" in inert
