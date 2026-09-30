@@ -1,0 +1,22 @@
+- op: create  # d2a3
+  at: '2026-09-30T08:22:08Z'  # d2a3
+  by: agent  # d2a3
+  actor: jgstern_agent  # d2a3
+  clock: 1  # d2a3
+  nonce: d2a3  # d2a3
+  data:  # d2a3
+    kind: work_item  # d2a3
+    title: "Row the unrowed I/O in C's stdio, unistd, stdlib, sys/socket, sys/stat, fcntl and dirent, then audit them for module_completeness"  # d2a3
+    status: todo_hard  # d2a3
+    priority: 3  # d2a3
+    parent:  # d2a3
+    tags:  # d2a3
+    - c  # d2a3
+    - io_boundary  # d2a3
+    - catalogue  # d2a3
+    isbefore: []  # d2a3
+    duplicate_of: []  # d2a3
+    not_duplicate_of: []  # d2a3
+    pr_ref:  # d2a3
+    description: "Residual of WI-hasul (grants for the 15 C headers that declare NO I/O; docs/surveys/c-stdlib-module-io-enumeration.md). The core I/O headers cannot be granted complete: each declares I/O c.yaml does not row. Probed from glibc (gcc -E) and checked against c.yaml on 2026-09-30, unrowed I/O includes: stdio popen/pclose (subprocess), perror/puts/vprintf/vfprintf/vdprintf/dprintf (logging), freopen/fdopen, fseeko/ftello/fgetpos/fsetpos, renameat, tmpnam/tempnam; unistd pread/pwrite, pipe, dup/dup2, lseek, unlinkat/linkat/symlinkat/readlinkat, fsync, fchown/lchown, getlogin (host_info_read), sethostname; stdlib setenv/unsetenv/putenv (env_write), secure_getenv (env_read), mkdtemp/mktemp, realpath, getloadavg; sys/socket socket/socketpair/bind/listen/accept4/shutdown/getsockopt/setsockopt/getsockname/getpeername; sys/stat mkfifo/mknod/fchmod/fchmodat/utimensat/futimens/umask; fcntl fcntl/posix_fallocate; dirent fdopendir/readdir_r. Each row needs its boundary (and mode/ambiguous_names care: C has no namespaces), measured A/B (recall), and then a per-header completeness audit in the survey. On measurement 0023's cohort these headers are the main remaining blockers besides linux/* and net* headers and first-party headers (filed separately)."  # d2a3
+    fields: {}  # d2a3
