@@ -322,3 +322,93 @@ logging:
   - module: stdio
     attributes: [stdout, stderr]
     notes: "Terminal / log output; redirectable but not an IPC channel"
+
+# ---------------------------------------------------------------------------
+# module_completeness -- 2026-09-30 audit (WI-hasul).
+#
+# Scope, method, the probe, and every REFUSAL with its reason:
+#   docs/surveys/c-stdlib-module-io-enumeration.md
+#
+# A grant asserts that EVERY I/O primitive the header declares is catalogued,
+# which is what lets a consumer read a call into it as an examined negative.
+# These are the headers that declare NO I/O at all -- their whole surface,
+# probed from glibc's own declarations (gcc -E with the preprocessor's line
+# markers), is types, macros, and pure functions over memory and numbers.
+# Matching is EXACT: a grant for `sys/types` says nothing about `sys/socket`.
+# Refuse-by-default: `string` (strfry reads the clock, WI-pavob; strerror and
+# strsignal may read libc's message catalogues), `assert` (writes to stderr
+# on failure), and every header with I/O not yet rowed (stdio, unistd,
+# stdlib, sys/socket, sys/stat, fcntl, dirent, ...) are deliberately absent.
+# ---------------------------------------------------------------------------
+module_completeness:
+  - module: errno
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "Declares no function: the errno lvalue and E* constants."
+  - module: stdint
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "Declares no function: fixed-width integer types and limits."
+  - module: stdbool
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "Declares no function: bool, true, false."
+  - module: stddef
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "Declares no function: size_t, ptrdiff_t, NULL, offsetof."
+  - module: stdarg
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "Declares no function: the va_* macros."
+  - module: limits
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "Declares no function: numeric limit macros."
+  - module: float
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "Declares no function: floating-point limit macros."
+  - module: linux/limits
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "Declares no function: PATH_MAX, NAME_MAX and friends."
+  - module: sys/types
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "Declares no function: the POSIX scalar types (pid_t, ssize_t, ...)."
+  - module: sys/param
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "Declares no function: MIN/MAX, NBBY, MAXPATHLEN and other macros."
+  - module: inttypes
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: >-
+      imaxabs, imaxdiv, strtoimax, strtoumax, wcstoimax, wcstoumax: arithmetic
+      and string-to-integer conversion over caller memory.
+  - module: strings
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: >-
+      bcmp, bcopy, bzero, ffs*, index, rindex, strcasecmp*, strncasecmp*: pure
+      comparisons and copies over caller memory.
+  - module: libgen
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: "dirname and basename (__xpg_basename): string manipulation of a path the caller holds; neither touches the filesystem."
+  - module: ctype
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: >-
+      is*/to* character classification and case mapping, and their _l locale
+      variants: lookups in in-memory locale tables; loading a locale is
+      setlocale's (locale.h), not these functions'.
+  - module: math
+    completeness: complete
+    retrieved: "2026-09-30"
+    notes: >-
+      814 declarations, every one a numeric function (trigonometric,
+      exponential, rounding, classification, the _Float* variants); they set
+      errno and floating-point exception flags and touch nothing outside the
+      process.
