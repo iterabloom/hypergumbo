@@ -144,14 +144,20 @@ def get_summaries_dir() -> Path:
 
 def load_function_summaries(
     search_dir: Optional[Path] = None,
+    *,
+    include_community: bool = True,
 ) -> dict[str, FunctionSummary]:
     """Load all function summaries from YAML files in a directory.
 
     Returns a dict mapping function name → FunctionSummary.
     Caches results to avoid repeated disk I/O.
+
+    ``include_community=False`` leaves the shipped COMMUNITY files out -- what
+    ``--no-default-overlays`` asks of every family (ADR-0061 ruling 5,
+    INV-fikoh). The two answers are cached apart.
     """
     search = search_dir or get_summaries_dir()
-    cache_key = str(search)
+    cache_key = f"{search}|community={include_community}"
     if cache_key in _SUMMARY_CACHE:
         return _SUMMARY_CACHE[cache_key]
 
@@ -191,6 +197,8 @@ def load_function_summaries(
         return 1 if declares_community(item[1]) else 0
 
     loaded.sort(key=_rank)
+    if not include_community:
+        loaded = [item for item in loaded if _rank(item) != 1]
     for yaml_path, data in loaded:
         adds_only = _rank((yaml_path, data)) == 1
         for entry in data["summaries"]:
