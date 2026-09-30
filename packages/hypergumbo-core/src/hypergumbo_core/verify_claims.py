@@ -84,11 +84,11 @@ Caveats
 Any verdict may carry a structured ``caveats`` list, built through one shared
 constructor so the text and JSON renderers disclose identically. On a clean
 verdict a non-empty list makes it ``confirmed_with_caveats``;
-``CAVEAT_CHOICE_SHAPED_SOURCE`` and ``CAVEAT_WITHHELD_COMMUNITY_SANITIZER``
-ride a ``violated`` verdict, and caveats raised on a clean path survive a
-coverage downgrade to ``inconclusive`` (``_require_coverage_to_confirm``).
-Fourteen ``CAVEAT_*`` constants exist, plus one unconstanted kind
-(``deferred_crossing``). The four longest-standing:
+``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` and
+``CAVEAT_WITHHELD_COMMUNITY_SUMMARY`` ride a ``violated`` verdict, and caveats
+raised on a clean path survive a coverage downgrade to ``inconclusive``
+(``_require_coverage_to_confirm``). Fifteen ``CAVEAT_*`` constants exist, plus
+one unconstanted kind (``deferred_crossing``). The four longest-standing:
 
 - ``CAVEAT_USER_SUPPLIED_SANITIZER`` — the clean answer depends on a
   sanitizer, or a function summary, supplied by the analysed repository
@@ -111,12 +111,13 @@ Fourteen ``CAVEAT_*`` constants exist, plus one unconstanted kind
   (``_ARM_TAINT``, ``untyped_receiver_sink_zones``), which discloses the sink
   receivers it could not type.
 
-The remaining ten — ``CAVEAT_ACCESSOR_NAME_RECEIVER``,
+The remaining eleven — ``CAVEAT_ACCESSOR_NAME_RECEIVER``,
 ``CAVEAT_UNKNOWN_RECEIVER_SCOPE``, ``CAVEAT_ANALYZER_METHOD_CALL_BLIND``,
 ``CAVEAT_ANALYZER_SUPPRESSED_METHODS``, ``CAVEAT_ANALYZER_CONSTRUCT_BLIND``,
 ``CAVEAT_SINK_BEFORE_SOURCE_ONLY``, ``CAVEAT_HIGHER_FIDELITY_AVAILABLE``,
-``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_UNREACHED_SINK_SHAPES`` and
-``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` — are each documented at their own
+``CAVEAT_CHOICE_SHAPED_SOURCE``, ``CAVEAT_UNREACHED_SINK_SHAPES``,
+``CAVEAT_WITHHELD_COMMUNITY_SANITIZER`` and
+``CAVEAT_WITHHELD_COMMUNITY_SUMMARY`` — are each documented at their own
 definition.
 
 A verdict may carry more than one kind at once.
@@ -756,6 +757,15 @@ CAVEAT_UNREACHED_SINK_SHAPES = "unreached_sink_shapes"
 #: shipped ``Fernet.encrypt`` sanitizer turned a plaintext -> host_fs claim
 #: into plain ``confirmed`` with ``sanitized_flows: 1`` and no caveat.
 CAVEAT_WITHHELD_COMMUNITY_SANITIZER = "withheld_community_sanitizer"
+
+#: Caveat kind: this run's call graph calls function summaries from a
+#: COMMUNITY file that would TERMINATE a taint branch, and the walk did not let
+#: them (ADR-0061 ruling 2, WI-tigud). Terminating removes a finding, which an
+#: unvouched row may not do, so a flow they would have closed may be among the
+#: reported ones. RUN-SCOPED like the user-summary credit -- a withheld
+#: termination changes which branches the walk follows, not one finding -- so
+#: it rides every violated taint verdict of the run and may over-name.
+CAVEAT_WITHHELD_COMMUNITY_SUMMARY = "withheld_community_summary"
 
 
 @dataclass(frozen=True)
@@ -5412,6 +5422,7 @@ def verify_taint_claim(
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     coverage: Optional[BoundaryCoverage] = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
+    withheld_community_summaries: "Sequence[str]" = (),
 ) -> ClaimVerdict:
     """Verify a taint claim and stamp the fidelity behind the answer.
 
@@ -5425,6 +5436,7 @@ def verify_taint_claim(
         displaced_sources=displaced_sources,
         coverage=coverage,
         credited_user_summaries=credited_user_summaries,
+        withheld_community_summaries=withheld_community_summaries,
     )
     if coverage is not None:
         verdict.analysis_fidelity = dict(coverage.analysis_fidelity)
@@ -5440,6 +5452,7 @@ def _verify_taint_claim_uncredited(
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     coverage: Optional[BoundaryCoverage] = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
+    withheld_community_summaries: "Sequence[str]" = (),
 ) -> ClaimVerdict:
     """Verify a single taint-flow claim against propagation findings.
 
@@ -5995,6 +6008,23 @@ def _verify_taint_claim_uncredited(
                 f"carry the user-supplied-sanitizer caveat instead."
             ),
         })
+    if withheld_community_summaries:
+        violated_caveats.append({
+            "kind": CAVEAT_WITHHELD_COMMUNITY_SUMMARY,
+            "entries": sorted(withheld_community_summaries),
+            "detail": (
+                f"This run calls function summaries from a COMMUNITY "
+                f"catalogue file that would end a taint branch -- "
+                f"{', '.join(sorted(withheld_community_summaries))} -- and "
+                f"hypergumbo does not let an unmaintained row remove a "
+                f"finding (ADR-0061), so the walk kept those branches open. "
+                f"Run-scoped: it names every such summary the run's call "
+                f"graph reaches, which may include one no reported flow "
+                f"crossed. To vouch for one, copy its file into "
+                f"$XDG_CONFIG_HOME/hypergumbo/function_summaries.d/ and delete "
+                f"its `provenance: community` line."
+            ),
+        })
     if _choice_sources:
         violated_caveats.append({
             "kind": CAVEAT_CHOICE_SHAPED_SOURCE,
@@ -6173,6 +6203,7 @@ def verify_claims(
     displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     credited_user_summaries: "AbstractSet[str] | None" = None,
+    withheld_community_summaries: "Sequence[str]" = (),
     blind_by_source_taint: Mapping[str, ScopedBlindness] | None = None,
     sink_zone_gaps: Mapping[tuple[str, str], SinkZoneGap] | None = None,
 ) -> list[ClaimVerdict]:
@@ -6223,6 +6254,7 @@ def verify_claims(
                 displaced_sources=displaced_sources,
                 coverage=coverage,
                 credited_user_summaries=credited_user_summaries,
+                withheld_community_summaries=withheld_community_summaries,
             )
         else:
             verdict = verify_claim(claim, boundary_map, coverage=coverage)

@@ -73,7 +73,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from typing import (
     TYPE_CHECKING,
@@ -4444,6 +4444,34 @@ def _summary_terminates(summary: "FunctionSummary") -> bool:
     )
 
 
+def withheld_community_summaries(
+    call_edges: "Iterable[Mapping[str, Any]]",
+    summaries: "Mapping[str, FunctionSummary]",
+) -> list[str]:
+    """The community TERMINATING summaries this run's call graph calls.
+
+    ADR-0061 ruling 2 (WI-tigud): the walk does not let one close a branch
+    (:func:`_use_site_terminates`), and a flow it would have closed is reported
+    instead. RUN-SCOPED, like the user-summary credit: a withheld termination
+    changes which branches the walk follows, not a single finding, so this
+    names every community terminating summary a call edge in the run reaches,
+    which may over-name one no walked branch crossed -- the safe direction for
+    a disclosure. Qualified keys only (the alias index is never consulted).
+    """
+    withheld = {
+        qualified for qualified, summary in summaries.items()
+        if qualified == summary.function
+        and getattr(summary, "community", False)
+        and _summary_terminates(summary)
+    }
+    if not withheld:
+        return []
+    return sorted({
+        name for edge in call_edges
+        if (name := _qualified_callee(str(edge.get("dst", "")))) in withheld
+    })
+
+
 def _use_site_terminates(
     symbol_id: str,
     use_line: int,
@@ -4494,7 +4522,15 @@ def _use_site_terminates(
         return False
     for qualified in callees:
         summary = summaries.get(qualified)
-        if summary is None or not _summary_terminates(summary):
+        # ADR-0061 ruling 2 (WI-tigud): a COMMUNITY summary never closes a
+        # branch -- terminating removes a finding, which an unvouched row may
+        # not do. The branch stays open, as it would for an uncatalogued
+        # callee; ``withheld_community_summaries`` names what was withheld.
+        if (
+            summary is None
+            or getattr(summary, "community", False)
+            or not _summary_terminates(summary)
+        ):
             return False
     # ADR-0047 ruling 10 (WI-sofov). Record WHOSE word this closure rests on,
     # and only once the line has actually terminated -- an entry consulted on a
