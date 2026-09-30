@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **343** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 98 core, 4 CLI, 36 tracker)
-- **49993** symbols (functions, classes, methods)
-- **197841** edges by type:
-  - calls: 113145
-  - contains: 45809
-  - imports: 16256
-  - instantiates: 11870
-  - references: 7477
-  - module_attr_ref: 1684
-  - other: 1600
+- **344** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 99 core, 4 CLI, 36 tracker)
+- **50121** symbols (functions, classes, methods)
+- **198354** edges by type:
+  - calls: 113360
+  - contains: 45928
+  - imports: 16343
+  - instantiates: 11889
+  - references: 7543
+  - module_attr_ref: 1689
+  - other: 1602
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 49993 Symbols + 197841 Edges + UsageContexts           │
+│  Output: 50121 Symbols + 198354 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,21 +279,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9896.6 | ir.py |
+| `Symbol` | class | 9905.9 | ir.py |
 | `len` | external_symbol | 7594.0 | <external> |
-| `write_text` | external_symbol | 6770.0 | <external> |
-| `Span` | class | 6522.2 | ir.py |
+| `write_text` | external_symbol | 6776.0 | <external> |
+| `Span` | class | 6528.1 | ir.py |
 | `LinkerContext` | class | 3548.3 | registry.py |
-| `get` | external_symbol | 3168.0 | <external> |
-| `load_catalog` | function | 2988.8 | io_boundary.py |
+| `get` | external_symbol | 3174.0 | <external> |
+| `load_catalog` | function | 3000.8 | io_boundary.py |
 | `Edge.create` | method | 2387.2 | ir.py |
-| `str` | external_symbol | 2240.0 | <external> |
+| `str` | external_symbol | 2244.0 | <external> |
+| `Path` | external_symbol | 2158.0 | <external> |
 | `next` | external_symbol | 2153.0 | <external> |
-| `Path` | external_symbol | 2148.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1682.0 | <external> |
+| `append` | external_symbol | 1684.0 | <external> |
 
 ## Pattern System
 
@@ -506,6 +506,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
 | `deleak-ledger` | Delete-only de-leaker for the dogfood issue ledger (agent_notes). |
 | `finetune-transcript-model` | G-Vendi-guided data selection and finetuning for the local transcript model. |
+| `generate-catalogues-doc` | Generate ``docs/CATALOGUES.md`` from the catalogue registry (ADR-0061 ruling 6). |
 | `generate-concept-axes` | Generate ``docs/concept-axes.md`` — a human-readable by-axis view |
 | `generate-concepts` | Generate docs/CONCEPTS.md — the concept-vocabulary registry. |
 | `generate-security-md` | Regenerate the audited-IO-surface section of SECURITY.md. |
@@ -602,6 +603,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes (registry-derived).
 - **`hypergumbo_core.catalogue_home`**: ADR-0047 rulings 3 and 4 — a findable home for the user's catalogue...
 - **`hypergumbo_core.catalogue_inventory`**: WI-vafit — the inventory a USER needs of what this installation knows.
+- **`hypergumbo_core.catalogues_doc`**: Render ``docs/CATALOGUES.md``: the one user-facing page about catal...
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
 - **`hypergumbo_core.check_id_construction`**: Static enforcement of ADR-0034's id-construction discipline (WI-vod...
 - **`hypergumbo_core.check_recorded_producer_input`**: Static enforcement of ADR-0057 §12: cross-backend tests run on RECO...
@@ -947,8 +949,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: bf8db18bbebe
-  commit_count: 7799
+  commit: e2bc903a6806
+  commit_count: 7825
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
