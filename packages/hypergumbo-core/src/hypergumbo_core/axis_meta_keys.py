@@ -629,7 +629,11 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "'in_memory' on event-listener call edges "
                     "(`process.on('uncaughtException', h)`) whose event "
                     "carries nothing from outside the process -- javascript "
-                    "edges, so disjoint from both."
+                    "edges, so disjoint from both. And java.py: on stream READ "
+                    "edges from the receiver's binding (WI-tusav), and "
+                    "'std_stream' on a PrintStream method call whose receiver "
+                    "is System.out / System.err (WI-dorus) -- java edges, and "
+                    "no edge is both a read and a write."
                 )),
     MetaKeySpec("attr_carrier", AXIS_EDGE_META,
                 "On a `module_attr_ref` edge: the CALL at whose argument, "

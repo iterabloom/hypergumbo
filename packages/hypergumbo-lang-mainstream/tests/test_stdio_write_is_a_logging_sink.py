@@ -44,10 +44,11 @@ _CLAIMS = (
 )
 
 #: case -> (file name, body, the stream's sink primitive as verify-claims names
-#: it, the sink the LOGGING row names). The two differ for go only: since
-#: INV-hopib a stream handed to a call that is itself a sink in the same zone is
-#: reported by that call, so go's write is ``io.WriteString``'s -- and the
-#: stream must still be absent from ipc, which is this item's half.
+#: it, the sink the LOGGING row names). They differ where the stream is
+#: handed to a call that is itself a sink in the same zone (INV-hopib): go's
+#: write is ``io.WriteString``'s, and since WI-dorus java's is
+#: ``PrintStream.println``'s. The stream must still be absent from ipc, which
+#: is this item's half.
 _CASES = {
     "go": (
         "main.go",
@@ -60,7 +61,7 @@ _CASES = {
         "public class Main {\n    public static void main(String[] args) {\n"
         '        String k = System.getenv("API_KEY");\n'
         "        System.out.println(k);\n    }\n}\n",
-        "java.lang.System.out", "java.lang.System.out",
+        "java.lang.System.out", "java.io.PrintStream.println",
     ),
     "cpp": (
         "main.cpp",

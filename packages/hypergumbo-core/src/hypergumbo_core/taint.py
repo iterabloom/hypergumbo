@@ -1966,8 +1966,17 @@ def _derive_auto_imports_from_io_primitives(
         target_kind_fallback = target_kind_fallback_boundaries(catalog)
         for prim in catalog.primitives:
             key = (prim.module, prim.name, prim.kind)
-            gated_boundary = prim.boundary if key in target_kind_gated else ""
-            is_fallback = target_kind_fallback.get(key) == prim.boundary
+            # WI-dorus: a row that REQUIRES a stamp is gated too, and is never
+            # the fallback -- an unstamped call is not admitted at all.
+            gated_boundary = (
+                prim.boundary
+                if key in target_kind_gated or prim.requires_target_kind
+                else ""
+            )
+            is_fallback = (
+                target_kind_fallback.get(key) == prim.boundary
+                and not prim.requires_target_kind
+            )
             if prim.boundary in AUTO_SOURCE_LABEL_MAP:
                 sources_by_lang[lang].append(TaintSource(
                     taint_label=AUTO_SOURCE_LABEL_MAP[prim.boundary],

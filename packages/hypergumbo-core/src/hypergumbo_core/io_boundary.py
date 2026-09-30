@@ -765,6 +765,22 @@ class IoPrimitive:
     leave the catalogue READING as though a fallback had been chosen while the
     registry order quietly decided it. That is the very defect this removes.
     """
+    requires_target_kind: Optional[str] = None  # axis: bounded-enum
+    """The ``io_target_kind`` without which this row does NOT apply (WI-dorus).
+
+    One of the target kinds :data:`_READ_TARGET_KIND_BOUNDARY` /
+    :data:`_WRITE_TARGET_KIND_BOUNDARY` key -- ``host_path``, ``std_stream``,
+    ``pipe``, ``net_stream`` -- and it must map to THIS row's boundary in this
+    row's direction (checked at load). ``_narrow_by_target_kind`` keeps the row
+    only when every collapsed site's stamp resolves to it. There is NO
+    abstention: an unstamped call does not fall back to the row, it stays
+    unclassified, which is what it was before the row existed -- the WI-suhug
+    rule ("an unrecoverable origin classifies exactly as before") for a type
+    whose unstamped population has no safe default. ``java.io.PrintStream`` is
+    the case: ``System.out.println`` is a standard-output write, but a
+    PrintStream is also a buffer, a file or a socket, and classifying those as
+    a log would stop them withholding a verdict they cannot support.
+    """
     resource_naming_args: Optional[list[int]] = None
     """Argument positions that merely NAME the resource this sink acts on
     (WI-bulag / arc T9, owner ruling 2026-09-13 option (i)).
@@ -1530,6 +1546,16 @@ class IoBoundaryCatalog:
                             f"reader and the row would read as having chosen "
                             f"a fallback while the registry order decided it."
                         )
+                # WI-dorus. Row-level, validated at load: a kind the analyzers
+                # never stamp, or one that maps to a DIFFERENT boundary in this
+                # row's direction, would make a row that can never match read
+                # as a sink or source that exists.
+                requires_target_kind = entry.get("requires_target_kind")
+                if requires_target_kind is not None:
+                    requires_target_kind = str(requires_target_kind)
+                    _check_required_target_kind(
+                        language, module, boundary, requires_target_kind,
+                    )
                 # WI-bulag / arc T9. Row-level for the same reason
                 # ``boundary_ruling`` and ``abstains_to`` are, and validated at
                 # load for the same reason too: every failure mode is silent,
@@ -1552,6 +1578,7 @@ class IoBoundaryCatalog:
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
                         abstains_to=abstains_to,
+                        requires_target_kind=requires_target_kind,
                         resource_naming_args=_naming.get(func_name, (None, None, False))[0],
                         content_args=_naming.get(func_name, (None, None, False))[1],
                         resource_is_danger=_naming.get(func_name, (None, None, False))[2],
@@ -1566,6 +1593,7 @@ class IoBoundaryCatalog:
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
                         abstains_to=abstains_to,
+                        requires_target_kind=requires_target_kind,
                         resource_naming_args=_naming.get(method_name, (None, None, False))[0],
                         content_args=_naming.get(method_name, (None, None, False))[1],
                         resource_is_danger=_naming.get(method_name, (None, None, False))[2],
@@ -1580,6 +1608,7 @@ class IoBoundaryCatalog:
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
                         abstains_to=abstains_to,
+                        requires_target_kind=requires_target_kind,
                     ))
 
         primitives = _apply_abstention_targets(language, primitives)
@@ -2990,6 +3019,42 @@ def _target_kind_gated_directions(
     return gated
 
 
+def _check_required_target_kind(
+    language: str, module: str, boundary: str, kind: str,
+) -> None:
+    """Refuse a ``requires_target_kind`` that could never select its own row."""
+    for direction, values in _GATING_VALUES_BY_DIRECTION.items():
+        if boundary in values:
+            answer = _TARGET_MAP_BY_DIRECTION[direction].get(kind)
+            if answer == boundary:
+                return
+            raise ValueError(
+                f"{language}: {module} row under {boundary!r} declares "
+                f"requires_target_kind={kind!r}, which a {direction} resolves "
+                f"to {answer!r}, not to this row's boundary. Expected a kind "
+                f"from {sorted(k for k, b in _TARGET_MAP_BY_DIRECTION[direction].items() if b == boundary)}."
+            )
+    raise ValueError(
+        f"{language}: {module} row under {boundary!r} declares "
+        f"requires_target_kind={kind!r}, but {boundary!r} is not a read or "
+        f"write boundary a target kind can select."
+    )
+
+
+def _required_kind_holds(
+    row: IoPrimitive, target_kinds: Optional[Sequence[Optional[str]]],
+) -> bool:
+    """Whether every site's stamp resolves to a ``requires_target_kind`` row."""
+    direction = next(
+        d for d, values in _GATING_VALUES_BY_DIRECTION.items()
+        if row.boundary in values
+    )
+    return bool(
+        resolve_target_kind_across_sites(target_kinds, direction=direction)
+        == row.boundary
+    )
+
+
 def _target_kind_discriminated_keys(
     primitives: Iterable[IoPrimitive],
 ) -> frozenset[tuple[str, str, str]]:
@@ -3030,6 +3095,12 @@ def _narrow_by_target_kind(
     way -- stamping ``io_mode`` for C moved nothing until this same arm was
     narrowed too, because a predicate is inert until every call site passes it.
     """
+    # WI-dorus: a row that requires a stamp is dropped without one -- there is
+    # no abstention to fall back to (``IoPrimitive.requires_target_kind``).
+    hits = [
+        h for h in hits
+        if h.requires_target_kind is None or _required_kind_holds(h, target_kinds)
+    ]
     gated = _target_kind_gated_directions(hits)
     if not gated:
         return list(hits)
