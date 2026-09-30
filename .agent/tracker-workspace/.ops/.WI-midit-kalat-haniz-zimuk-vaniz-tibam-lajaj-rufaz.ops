@@ -1,0 +1,22 @@
+- op: create  # 02c0
+  at: '2026-09-30T20:51:53Z'  # 02c0
+  by: agent  # 02c0
+  actor: jgstern_agent  # 02c0
+  clock: 1  # 02c0
+  nonce: 02c0  # 02c0
+  data:  # 02c0
+    kind: work_item  # 02c0
+    title: "stream-object sink still uncheckable in two shapes: a stream used through an ALIAS (out = sys.stderr) carries no carrier, and cpp std::cerr << k is not wired (INV-hopib residual)"  # 02c0
+    status: todo_hard  # 02c0
+    priority: 4  # 02c0
+    parent:  # 02c0
+    tags:  # 02c0
+    - taint  # 02c0
+    - io_boundary  # 02c0
+    - analysis_quality  # 02c0
+    isbefore: []  # 02c0
+    duplicate_of: []  # 02c0
+    not_duplicate_of: []  # 02c0
+    pr_ref:  # 02c0
+    description: "Residual of INV-hopib (PR #1340). The filed instance -- print(k, file=sys.stderr) -- is one row now, and a stream written through a call that is not a sink names that call in sink_carriers. Two shapes still produce a stream-object record that names a sink with no arguments and no receiver at the cited line:\n1. AN ALIAS. `out = sys.stderr` then `print(k, file=out)` / `out.write(k)`: the attribute's only use is an assignment, so it carries no attr_carrier (None), the subsumption keeps it (correctly -- nothing vouches for dropping it), and the record names sys.stderr at the assignment line with sink_carriers []. The write happens through `out` on another line. Fix shape (not built): follow the alias's binding to its call uses (the DDG knows `out`'s uses), or stamp the alias's carrier set.\n2. CPP `std::cerr << k`. cpp.py passes no carrier kinds: its stream writes are `<<` binary expressions, not calls, so the record names std.cerr with no carrier. Arguably the stream IS the receiver of operator<< (the statement's receiver clause), but the record does not say so. Fix shape: stamp \"operator<<@line\" when the attribute is the left operand of a `<<` binary_expression (chained: the innermost).\nNeither measured on a corpus. The A/B for #1340 (~/hypergumbo_lab_notebook/hopib_09302026) left apt and modsecurity unchanged, as pre-registered, because cpp is not wired."  # 02c0
+    fields: {}  # 02c0
