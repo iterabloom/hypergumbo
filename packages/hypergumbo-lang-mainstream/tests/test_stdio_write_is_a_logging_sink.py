@@ -43,27 +43,31 @@ _CLAIMS = (
     "        source_taint: host_secret\n        prohibited_sink_zone: logging\n"
 )
 
-#: case -> (file name, body, the stream's sink primitive as verify-claims names it)
+#: case -> (file name, body, the stream's sink primitive as verify-claims names
+#: it, the sink the LOGGING row names). The two differ for go only: since
+#: INV-hopib a stream handed to a call that is itself a sink in the same zone is
+#: reported by that call, so go's write is ``io.WriteString``'s -- and the
+#: stream must still be absent from ipc, which is this item's half.
 _CASES = {
     "go": (
         "main.go",
         'package main\n\nimport (\n\t"io"\n\t"os"\n)\n\nfunc main() {\n'
         '\tio.WriteString(os.Stderr, os.Getenv("API_KEY"))\n}\n',
-        "os.Stderr",
+        "os.Stderr", "io.WriteString",
     ),
     "java": (
         "Main.java",
         "public class Main {\n    public static void main(String[] args) {\n"
         '        String k = System.getenv("API_KEY");\n'
         "        System.out.println(k);\n    }\n}\n",
-        "java.lang.System.out",
+        "java.lang.System.out", "java.lang.System.out",
     ),
     "cpp": (
         "main.cpp",
         "#include <stdlib.h>\n#include <iostream>\n\nint main() {\n"
         '    const char *k = getenv("API_KEY");\n'
         "    std::cerr << k << std::endl;\n    return 0;\n}\n",
-        "std.cerr",
+        "std.cerr", "std.cerr",
     ),
 }
 
@@ -90,18 +94,18 @@ def _sinks(verdict: dict) -> set[str]:
 def test_the_write_is_a_logging_flow(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str,
 ) -> None:
-    name, body, stream = _CASES[case]
+    name, body, _stream, logged_as = _CASES[case]
     verdicts = _verdicts(tmp_path, monkeypatch, name, body)
     log = verdicts["HS-LOG"]
     assert log["verdict"] == "violated", log["details"]
-    assert stream in _sinks(log), _sinks(log)
+    assert logged_as in _sinks(log), _sinks(log)
 
 
 @pytest.mark.parametrize("case", sorted(_CASES))
 def test_the_write_is_not_an_ipc_flow(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str,
 ) -> None:
-    name, body, stream = _CASES[case]
+    name, body, stream, _logged_as = _CASES[case]
     ipc = _verdicts(tmp_path, monkeypatch, name, body)["HS-IPC"]
     assert stream not in _sinks(ipc), ipc["details"]
     assert ipc["verdict"] != "violated", ipc["details"]
