@@ -3,8 +3,9 @@
 # hypergumbo's OWN third-party I/O overlay — and the worked example of the
 # `module_completeness` mechanism.
 #
-# The two sibling examples in this directory show how to declare what a
-# dependency DOES (primitive rows). This one shows the other half, added
+# The community overlays (hypergumbo_core/io_primitives_overlays/, copied into
+# your io_primitives.d/ by `hypergumbo init-catalogs`) show how to declare what
+# a dependency DOES (primitive rows). This one shows the other half, added
 # 2026-08-15: how to declare that the list is COMPLETE, so a call into that
 # dependency which the catalogue could not classify counts as an EXAMINED
 # NEGATIVE rather than as a place the analysis could not look.

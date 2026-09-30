@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Generate ``docs/CATALOGUES.md`` from the catalogue registry (ADR-0061 ruling 6).
+
+The page's registry facts -- families, channels, which channels are read, file
+counts per tier -- come from ``hypergumbo_core.yaml_catalogs`` and the files'
+own ``provenance:`` lines; the renderer is ``hypergumbo_core.catalogues_doc``.
+``test_catalogues_doc.py`` fails when the committed page is stale.
+
+Usage:
+    ./scripts/generate-catalogues-doc            # Write docs/CATALOGUES.md
+    ./scripts/generate-catalogues-doc --check    # Exit 1 if it is stale
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
+
+from hypergumbo_core.catalogues_doc import render_catalogues_markdown  # noqa: E402
+
+DOC = REPO_ROOT / "docs" / "CATALOGUES.md"
+
+
+def main(argv: "list[str] | None" = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--check", action="store_true",
+                        help="exit 1 if docs/CATALOGUES.md is stale")
+    args = parser.parse_args(argv)
+    text = render_catalogues_markdown()
+    if args.check:
+        if not DOC.is_file() or DOC.read_text(encoding="utf-8") != text:
+            print("docs/CATALOGUES.md is stale; run ./scripts/generate-catalogues-doc",
+                  file=sys.stderr)
+            return 1
+        print("OK: docs/CATALOGUES.md is up-to-date")
+        return 0
+    DOC.write_text(text, encoding="utf-8")
+    print(f"wrote {DOC.relative_to(REPO_ROOT)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

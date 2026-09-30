@@ -180,18 +180,19 @@ _EXAMPLE_OVERLAY = """\
 #
 # EXAMPLE repo-tier I/O primitive overlay.
 #
-# Copy this file to <repo>/.hypergumbo/io_primitives.d/ in a repository you
-# own, to teach hypergumbo about I/O that only that repository performs --
-# an in-house HTTP client, a vendored driver, a wrapper the analysis cannot
-# see through.
+# Copy this file into a repository you own and name it from that
+# repository's .hypergumbo.toml (io_primitives = ["path/to/this.yaml"]), to
+# teach hypergumbo about I/O that only that repository performs -- an
+# in-house HTTP client, a vendored driver, a wrapper the analysis cannot see
+# through.
 #
-# THE REPO TIER DOES NOT LOAD BY DEFAULT. A repository that shipped an overlay
-# silencing its own boundaries would arrive on a machine whose owner never
-# opted into it, so loading it is opt-in per invocation or per user config
-# (ADR-0047 ruling 9). hypergumbo never writes into a repository it analyses.
+# IN-REPO CATALOGUE DATA DOES NOT LOAD BY DEFAULT. A repository that shipped
+# an overlay silencing its own boundaries would arrive on a machine whose
+# owner never opted into it, so it loads only with --in-repo-catalogues (one
+# run) or `hypergumbo trust-catalogues` (one repository) -- ADR-0061 ruling 4.
+# hypergumbo never writes into a repository it analyses.
 language: python
 status: overlay
-provenance: user
 net_send:
   - module: acme.internal.transport
     functions: [post_payload]
@@ -209,9 +210,10 @@ directory, which is a deliberate signal that you are a developer of the tool
 rather than only a user of it. You were asked first, and the answer was
 recorded — you will not be asked again.
 
-**Nothing here is loaded.** These are examples of what a `<repo>/.hypergumbo/`
-would contain. hypergumbo never writes into a repository it analyses, and the
-repo tier does not load by default.
+**Nothing here is loaded.** These are examples of in-repo catalogue data.
+hypergumbo never writes into a repository it analyses, and in-repo catalogue
+data loads only when you opt in (`--in-repo-catalogues`, or
+`hypergumbo trust-catalogues`).
 
 This directory is safe to delete. If you keep it, consider adding it to your
 `.git/info/exclude` — it is generated, and it is not part of the project.

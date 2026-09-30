@@ -17,8 +17,8 @@
 # ktor, kotlin-logging (mu.KLogger / io.github.oshai.kotlinlogging),
 # Android SDK (android.util.Log), Exposed ORM
 # (org.jetbrains.exposed.*) — is removed. First-party calls into them
-# surface in `external_potential` (Plan C, PR C); project-local taint
-# catalogs (WI-votan) provide per-project classification when needed.
+# surface in `external_potential` (Plan C, PR C); an I/O overlay of your
+# own (io_primitives.d/, --io-primitives) classifies them when needed.
 provenance: builtin
 language: kotlin
 # Plan C, PR B / INV-titih: partial catalog. Promotion to

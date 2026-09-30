@@ -158,13 +158,14 @@ Two additive changes:
 Total chain counts will change. If you compute health metrics off
 chain counts, recalibrate against the post-cull numbers.
 
-### ...maintain a project-local taint catalog (`--taint-sources` / `--taint-sinks` / `--taint-sanitizers`)
+### ...maintain your own taint catalogue (`--taint-sources` / `--taint-sinks` / `--taint-sanitizers`, or `taint_*.d/`)
 
-No change. Project-local catalogs continue to override the built-in
-catalog the same way they did before. If a third-party wrapper your
-project cares about is no longer in the global catalog, you can
-re-add it for your repo via a project-local catalog without
-affecting anyone else.
+No change: your taint catalogues override the built-in one the same way
+they did before. If a third-party wrapper your project cares about is no
+longer in the shipped I/O catalogue, re-add its I/O rows in an overlay of
+your own — `$XDG_CONFIG_HOME/hypergumbo/io_primitives.d/`, or
+`--io-primitives` for one run — and both the boundary map and the derived
+taint sinks see it ([CATALOGUES.md](CATALOGUES.md)).
 
 ### ...are a catalog contributor for a non-Python language
 
