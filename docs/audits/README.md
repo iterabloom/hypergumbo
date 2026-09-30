@@ -82,6 +82,7 @@ write an ADR vs an audit-findings document."
 | [0018](0018-symbol-kind-type-family-abstract-predicate.md) | Symbol.kind Type Family — the abstract-type predicate | `Symbol.kind` | All RESOLVED (no fold; remedy is a consumer predicate layer) |
 | [0019](0019-backend-agreement-rust-aardvark-dns.md) | Backend agreement — `rust` (tree-sitter) vs `rust_analyzer` on the recorded aardvark-dns fixture | backend agreement (sibling format, `kind: backend_agreement`) | Measurement (no verdict rows) |
 | [0020](0020-recovery-linker-supersession-precision.md) | Which recovery passes may demote the stub they consumed (ADR-0057 §14.1) | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED / REFUSED, per pass |
+| [0021](0021-logging-family.md) | The `logging` family — is a standard-stream write `logging` or `ipc_send`? | io-boundary membership (sibling format, `kind: io_boundary_membership`) | `logging` / `ipc_send` CANONICAL, redefined by medium; 7 rows moved |
 
 ## Sibling formats
 
@@ -89,7 +90,7 @@ A document under `docs/audits/` declares what it is in the first
 fenced YAML block: `kind: audit_verdicts` is the verdict-table format
 below, checked by `scripts/check-audit-findings`; any other `kind` is a
 sibling format the lint skips (`hypergumbo_core.audit_findings.declared_kind`).
-One sibling exists:
+Siblings:
 
 - **`kind: backend_agreement`** — the per-attribute agreement table
   `hypergumbo backend-agreement` renders from a survey artifact's
@@ -100,6 +101,14 @@ One sibling exists:
   in this series; regenerate `0019` with
   `scripts/regenerate-backend-agreement-table`, which keeps the
   hand-written `## Reading` section.
+
+- **`kind: io_boundary_membership`** — which catalogue ROWS belong to an
+  io-boundary value ([ADR-0050](../adr/0050-io-boundary-axis.md)), rather than
+  whether a value stays. The io-boundary axis is not one of the registries the
+  `audit_verdicts` lifecycle predicates are bound to, and a membership answer
+  is a list of row moves, not a per-value lifecycle. The block records each
+  value's verdict and its medium definition, the moves, any kept asymmetry,
+  and the adjacent defects filed rather than moved. First instance: `0021`.
 
 ## File format
 

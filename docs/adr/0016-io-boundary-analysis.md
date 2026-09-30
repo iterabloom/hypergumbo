@@ -142,7 +142,7 @@ Define a controlled vocabulary for system boundary types:
 | `net_recv` | inbound | Receive data from network | `socket.recv()`, `TcpStream::read()`, HTTP response body |
 | `net_send` | outbound | Send data to network | `socket.send()`, `TcpStream::write()`, HTTP request body |
 | `ipc_recv` | inbound | Receive data from another process | `stdin.read()`, pipe read, shared memory read |
-| `ipc_send` | outbound | Send data to another process | `stdout.write()`, pipe write, shared memory write |
+| `ipc_send` | outbound | Send data to another process over a channel the program set up | pipe write, a child's stdin, a local socket, a signal (standard output is `logging`: [audit-findings 0021](../audits/0021-logging-family.md)) |
 | `env_read` | inbound | Read ambient CONFIGURATION — values that may carry a credential | `os.environ`, `std::env::var()`, command-line args |
 | `host_info_read` | inbound | Read host DESCRIPTION or user identity — not a secret (split from `env_read` by INV-tutar) — **including the clock** (WI-pavob, WI-tubij) | `runtime.GOOS`, `os.uname()`, `navigator.platform`, `pwd.getpwnam()`, `time.time()`, `Instant::now()` |
 | `navigation_read` | inbound | Read a value the party that NAVIGATED to the page chose — attacker input (INV-dadu). The URL spellings may also carry a credential and are declared `simultaneous` with `env_read` | `document.location`, `document.referrer`, `document.URL`, `window.name` |
