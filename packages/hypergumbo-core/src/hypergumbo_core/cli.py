@@ -5440,7 +5440,39 @@ def _resolve_io_overlay_origins(
     out += [
         (Path(p), "cli") for p in (getattr(args, "io_primitives", None) or [])
     ]
+    if getattr(args, "no_default_overlays", False):
+        out = _omit_community_overlays(out)
     return out
+
+
+def _omit_community_overlays(
+    origins: "list[tuple[Path, str]]",
+) -> "list[tuple[Path, str]]":
+    """Drop overlays declaring ``provenance: community``, and say which.
+
+    ``--no-default-overlays`` omits COMMUNITY rows (ADR-0061 ruling 5,
+    INV-fikoh), and the tier is the file's own line (ruling 3), so a community
+    copy in io_primitives.d -- the ones ``init-catalogs`` seeds -- goes with
+    the shipped originals. A path that does not exist is kept for the real
+    load to refuse.
+    """
+    from .io_boundary import overlay_declares_community
+
+    kept: "list[tuple[Path, str]]" = []
+    omitted: "list[Path]" = []
+    for path, origin in origins:
+        if path.is_file() and overlay_declares_community(path):
+            omitted.append(path)
+        else:
+            kept.append((path, origin))
+    if omitted:
+        print(
+            f"--no-default-overlays: omitted {len(omitted)} overlay(s) that "
+            f"declare provenance: community: "
+            f"{', '.join(str(p) for p in omitted)}.",
+            file=sys.stderr,
+        )
+    return kept
 
 
 def _loaded_catalogue_files(
@@ -5453,7 +5485,9 @@ def _loaded_catalogue_files(
     """Every catalogue file a verify-claims run read, for ADR-0061 ruling 5.
 
     The I/O catalogue each language loaded (and its parent), the shipped
-    community defaults unless omitted, and every overlay path. When the taint
+    community defaults unless omitted (``include_default_overlays=False`` also
+    drops the shipped community taint and summary files, as the run does),
+    and every overlay path. When the taint
     catalogue loaded (``taint_paths`` is not ``None``): the shipped taint and
     function-summary files, the files the flags and claims file named (a
     directory stands for its YAML files), and the user's function_summaries.d.
@@ -5472,6 +5506,7 @@ def _loaded_catalogue_files(
         _TAINT_SANITIZERS_DIR,
         _TAINT_SINKS_DIR,
         _TAINT_SOURCES_DIR,
+        _declares_community_file,
         _resolve_catalog_paths,
     )
     from .verify_claims import LoadedCatalogueFile as F
@@ -5491,7 +5526,9 @@ def _loaded_catalogue_files(
             ("taint_sanitizers", _TAINT_SANITIZERS_DIR),
             ("function_summaries", get_summaries_dir()),
         ):
-            files += [F(family, p, True) for p in sorted(directory.glob("*.yaml"))]
+            files += [F(family, p, True) for p in sorted(directory.glob("*.yaml"))
+                      if include_default_overlays
+                      or not _declares_community_file(p)]
         for family, paths in taint_paths.items():
             files += [F(family, p, False)
                       for p in _resolve_catalog_paths(list(paths))]
@@ -6827,6 +6864,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # catalogue extend the auto-derived taint sinks, so a
                 # third-party primitive is declared once rather than twice.
                 io_overlay_paths=io_overlays,
+                # INV-fikoh: and the flag that omits the community rows from
+                # the boundary lookup omits them here too.
+                include_community=not getattr(
+                    args, "no_default_overlays", False),
             )
         except (FileNotFoundError, TaintCatalogError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
@@ -7073,6 +7114,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         # precision the mechanism does not have.
                         credited_user_summaries=credited_user_summaries,
                         refuted_flows=refuted_flows,
+                        include_community=not getattr(
+                            args, "no_default_overlays", False),
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
@@ -10961,8 +11004,9 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
             "Do not load the community I/O overlays that ship with "
             "hypergumbo. They are third-party rows hypergumbo distributes "
             "and discloses but does not vouch for (ADR-0047); this omits "
-            "them, leaving only the stdlib-scoped built-in catalog plus any "
-            "overlay you supply."
+            "them, and any overlay declaring provenance: community, leaving "
+            "only the stdlib-scoped built-in catalog plus the overlays you "
+            "vouch for."
         ),
     )
     p_io.add_argument(
@@ -11176,10 +11220,12 @@ what I could not check" -- and decide per repository whether that is acceptable.
         "--no-default-overlays",
         action="store_true",
         help=(
-            "Do not load the community I/O overlays that ship with "
-            "hypergumbo (ADR-0047). They are third-party rows hypergumbo "
-            "distributes and discloses but does not vouch for; a verdict "
-            "reached with them is disclosed as such."
+            "Do not load community catalogue rows: the community I/O "
+            "overlays that ship with hypergumbo, any overlay declaring "
+            "provenance: community, and the community taint and "
+            "function-summary files (ADR-0061). They are third-party rows "
+            "hypergumbo distributes and discloses but does not vouch for; a "
+            "verdict reached with them is disclosed as such."
         ),
     )
     p_vc.add_argument(

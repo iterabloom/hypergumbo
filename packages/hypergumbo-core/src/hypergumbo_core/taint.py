@@ -1797,6 +1797,7 @@ AUTO_SOURCE_LABEL_MAP: dict[str, str] = {
 def _derive_auto_imports_from_io_primitives(
     io_catalog_dir: Path,
     overlay_paths: "Sequence[Path] | None" = None,
+    include_defaults: bool = True,
 ) -> tuple[
     dict[str, list[TaintSource]],
     dict[str, list[TaintSink]],
@@ -1845,6 +1846,12 @@ def _derive_auto_imports_from_io_primitives(
     are grouped by their declared ``language:`` and applied only to that
     language's catalogue, because ``load_catalog`` refuses a cross-language
     overlay rather than attributing I/O to the wrong tree.
+
+    ``include_defaults`` is ``load_catalog``'s: ``False`` leaves the shipped
+    COMMUNITY overlays out, so ``--no-default-overlays`` reaches the taint arm
+    as well as the boundary lookup (INV-fikoh). Before it was threaded here a
+    community ``requests.post`` row still derived a network sink under the
+    flag, silently.
     """
     from hypergumbo_core.io_boundary import (
         _CATALOG_ALIASES,
@@ -1887,6 +1894,7 @@ def _derive_auto_imports_from_io_primitives(
         catalog = load_catalog(
             language,
             overlay_paths=overlays_by_lang.get(language) or None,
+            include_defaults=include_defaults,
         )
         # BUCKET UNDER THE LANGUAGE REQUESTED, NOT ``catalog.language``. For an
         # alias those differ — ``load_catalog("typescript").language`` is
@@ -2093,6 +2101,7 @@ def load_full_taint_catalog(
     cli_sink_paths: list[Path] | None = None,
     cli_sanitizer_paths: list[Path] | None = None,
     io_overlay_paths: "Sequence[Path] | None" = None,
+    include_community: bool = True,
 ) -> TaintCatalog:
     """Load built-in taint catalogs and merge in user-supplied YAML files.
 
@@ -2130,7 +2139,9 @@ def load_full_taint_catalog(
     cli_sink_paths = _resolve_catalog_paths(cli_sink_paths or [])
     cli_sanitizer_paths = _resolve_catalog_paths(cli_sanitizer_paths or [])
 
-    catalog = load_builtin_taint_catalog(io_overlay_paths)
+    catalog = load_builtin_taint_catalog(
+        io_overlay_paths, include_community=include_community,
+    )
 
     any_extra = extra_source_paths or extra_sink_paths or extra_sanitizer_paths
     any_cli = cli_source_paths or cli_sink_paths or cli_sanitizer_paths
@@ -2184,8 +2195,16 @@ def load_full_taint_catalog(
     return catalog
 
 
+def _declares_community_file(path: Path) -> bool:
+    """Does a shipped taint file declare ``provenance: community``?"""
+    from .yaml_catalogs import declares_community
+
+    return declares_community(yaml.safe_load(path.read_text(encoding="utf-8")))
+
+
 def load_builtin_taint_catalog(
     io_overlay_paths: "Sequence[Path] | None" = None,
+    include_community: bool = True,
 ) -> TaintCatalog:
     """Load built-in taint catalogs shipped with hypergumbo.
 
@@ -2213,11 +2232,20 @@ def load_builtin_taint_catalog(
     source_paths = sorted(_TAINT_SOURCES_DIR.glob("*.yaml")) if _TAINT_SOURCES_DIR.exists() else []
     sink_paths = sorted(_TAINT_SINKS_DIR.glob("*.yaml"))
     sanitizer_paths = sorted(_TAINT_SANITIZERS_DIR.glob("*.yaml")) if _TAINT_SANITIZERS_DIR.exists() else []
+    if not include_community:
+        # ``--no-default-overlays`` omits COMMUNITY rows from every family
+        # (ADR-0061 ruling 5, INV-fikoh): the shipped community taint files go
+        # with the community I/O overlays below.
+        source_paths, sink_paths, sanitizer_paths = (
+            [p for p in paths if not _declares_community_file(p)]
+            for paths in (source_paths, sink_paths, sanitizer_paths)
+        )
     user_catalog = load_taint_catalog(source_paths, sink_paths, sanitizer_paths)
 
     auto_sources, auto_sinks, ambiguous_by_lang = (
         _derive_auto_imports_from_io_primitives(
             _IO_PRIMITIVES_DIR, io_overlay_paths,
+            include_defaults=include_community,
         )
     )
     user_catalog._sources, displaced_sources = _merge_with_user_override(
@@ -4376,6 +4404,7 @@ def propagate_taint_ddg(
     credited_user_summaries: set[str] | None = None,
     refuted_flows: list["TaintFlowFinding"] | None = None,
     unaccounted_names: Mapping[str, AbstractSet[str]] | None = None,
+    include_community: bool = True,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -4516,7 +4545,9 @@ def propagate_taint_ddg(
         from .io_boundary import load_catalog
         _io_names = frozenset(
             f"{p.module}.{p.name}" if p.module else p.name
-            for p in load_catalog(language).primitives
+            for p in load_catalog(
+                language, include_defaults=include_community,
+            ).primitives
         )
     inherits: dict[tuple[str, int, str], set[str]] = defaultdict(set)
     for sym_id, statements in (stmt_defuse or {}).items():
@@ -4538,7 +4569,9 @@ def propagate_taint_ddg(
     # ``parse`` collide with almost anything.
     if function_summaries is None:
         from .function_summaries import load_function_summaries
-        function_summaries = load_function_summaries()
+        function_summaries = load_function_summaries(
+            include_community=include_community,
+        )
     summaries = {
         k: v for k, v in function_summaries.items() if k == v.function
     }
