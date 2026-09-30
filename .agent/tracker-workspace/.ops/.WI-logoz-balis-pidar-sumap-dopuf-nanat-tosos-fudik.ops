@@ -1,0 +1,22 @@
+- op: create  # 884b
+  at: '2026-09-30T19:14:49Z'  # 884b
+  by: agent  # 884b
+  actor: jgstern_agent  # 884b
+  clock: 1  # 884b
+  nonce: 884b  # 884b
+  data:  # 884b
+    kind: work_item  # 884b
+    title: "community Oban.insert* is rowed ipc_send: a job enqueue is a database insert, db_write (audit-findings 0021)"  # 884b
+    status: todo_hard  # 884b
+    priority: 3  # 884b
+    parent:  # 884b
+    tags:  # 884b
+    - catalogue  # 884b
+    - io_boundary  # 884b
+    - elixir  # 884b
+    isbefore: []  # 884b
+    duplicate_of: []  # 884b
+    not_duplicate_of: []  # 884b
+    pr_ref:  # 884b
+    description: "Adjacent finding of audit-findings 0021 (Step 5). Filed, not moved.\nThe community overlay io_primitives_overlays/elixir-web-and-db.yaml rows Oban.insert / insert! / insert_all under ipc_send (\"Oban job queue -- enqueue background jobs\"). Oban persists jobs in a database table (PostgreSQL / SQLite / MySQL via Ecto); the crossing at the call is a database insert, which the axis spells db_write.\nCommunity tier (ADR-0061): the row only ADDS findings, so the defect is the zone (ipc instead of database), not a false all-clear.\nFix shape: re-point to db_write in the overlay; check whether the overlay's other Ecto rows already use db_write for the same shape."  # 884b
+    fields: {}  # 884b
