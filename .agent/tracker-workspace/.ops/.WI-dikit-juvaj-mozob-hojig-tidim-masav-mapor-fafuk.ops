@@ -27,3 +27,25 @@
   clock: 2  # bbaf
   nonce: bbaf  # bbaf
   message: "WI-nopam (PR #1317) did this item's MOVE half: the third-party taint rows now sit in taint_sources/crypto_community.yaml, key_material_community.yaml and taint_sanitizers/encryption_community.yaml, each declaring provenance: community. They still take full effect (the taint loader globs the directory and does not read the tier). Remaining here: the ADD-ONLY rule (a community sanitizer does not clear a flow; the verdict names the withheld rows), pre-registered and measured A/B."  # bbaf
+- op: update  # 2c18
+  at: '2026-09-30T11:36:54Z'  # 2c18
+  by: agent  # 2c18
+  actor: jgstern_agent  # 2c18
+  clock: 3  # 2c18
+  nonce: 2c18  # 2c18
+  set:  # 2c18
+    status: done  # 2c18
+- op: discuss  # 2fd9
+  at: '2026-09-30T11:36:55Z'  # 2fd9
+  by: agent  # 2fd9
+  actor: jgstern_agent  # 2fd9
+  clock: 4  # 2fd9
+  nonce: 2fd9  # 2fd9
+  message: "Done in PR #1330 (merged, dev 6a3b004ec1). The third-party crypto rows were moved to community files by WI-nopam (#1317); this implements the ADD-ONLY rule: a sanitizer loaded from a file declaring provenance: community (TaintSanitizer.community, stamped at load) is not a barrier in either walk; the flow is reported, its evidence row names it (withheld_sanitizers), and the violated verdict carries a withheld_community_sanitizer caveat saying how to vouch (copy the file into taint_sanitizers.d, delete the line). Community SOURCES still mint taint (they add). BEHAVIOURAL EVIDENCE on merged dev: rotate() Fernet decrypt -> seal_and_store encrypt -> write, claim plaintext never reaches host_fs: violated rc 1, sanitized_flows 0, caveat withheld_community_sanitizer, withheld_sanitizers [cryptography.fernet.Fernet.encrypt, ...] (was inconclusive rc 2 with sanitized_flows 1 on dev a196aaddb5); vouched control (test_community_sanitizer_is_not_credited.py): the file copied into taint_sanitizers.d without the line -> sanitized_flows 1 + user_supplied_sanitizer. PRE-REGISTERED A/B (~/hypergumbo_lab_notebook/dikit_09302026/RESULT.md): 6 repos using cryptography (podman-compose feast nova mlflow litellm airflow), 54 verdicts: IDENTICAL, 0 refutations, ZERO MEASURED EFFECT -- no arm-A flow was sanitized by any moved row. arti (the only Rust repo, aes-gcm/ring/hkdf rows) NOT measured: it hangs in two more repository walks (INV-pivir reopened); ceph dropped for cost. The ADR-0061 Consequences prediction (more violated plaintext verdicts) is not borne out on this cohort, which has no flow it applies to."  # 2fd9
+- op: discuss  # 4cf8
+  at: '2026-09-30T12:34:35Z'  # 4cf8
+  by: agent  # 4cf8
+  actor: jgstern_agent  # 4cf8
+  clock: 5  # 4cf8
+  nonce: 4cf8  # 4cf8
+  message: "arti measured after INV-pivir's second fix (the walks no longer hang): A = dev 554aa88b8b + walk fix, B = + WI-dikit; 9 claims identical, sanitized_flows 0, no plaintext/key_material flow in either arm. With it the cohort is 7 repos / 63 verdicts, zero effect; the Rust aes-gcm/ring/hkdf rows met no flow. (Recorded while PR for INV-pivir part 2 was in CI; tracker write deferred until... NOTE: written after checking no auto-pr rebase could restore over it -- see below.)"  # 4cf8

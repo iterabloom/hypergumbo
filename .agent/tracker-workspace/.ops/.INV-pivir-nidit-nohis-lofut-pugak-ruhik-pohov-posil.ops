@@ -21,3 +21,33 @@
     fields:  # 704b
       statement: "Every repository walk terminates: a walk never follows a directory symlink it cannot bound, so a symlink cycle cannot make a command run forever."  # 704b
       root_cause: "supply_chain.collect_first_party_package_names and its pyproject sibling walk with a stack of Path.iterdir() entries and push every entry.is_dir() -- which follows symlinks -- with no visited set; arti's maint/rust-maint-common/{maint,common} -> . makes two self-links per level, an exponential walk."  # 704b
+- op: update  # 1629
+  at: '2026-09-30T10:19:08Z'  # 1629
+  by: agent  # 1629
+  actor: jgstern_agent  # 1629
+  clock: 2  # 1629
+  nonce: '1629'  # 1629
+  set:  # 1629
+    status: satisfied  # 1629
+- op: discuss  # 41e0
+  at: '2026-09-30T10:19:08Z'  # 41e0
+  by: agent  # 41e0
+  actor: jgstern_agent  # 41e0
+  clock: 3  # 41e0
+  nonce: '41e0'  # 41e0
+  message: "Fixed in PR #1328 (merged, dev 554aa88b8b; #1327 closed after an HTTP 405 rebase-merge conflict on .ci/affected-tests.txt, rebuilt on dev). Root cause: supply_chain's two manifest stack walks pushed every entry.is_dir() -- which follows symlinks -- with no visited set. Both now go through _manifest_files, which does not descend into a directory symlink (the rule Path.rglob and discovery follow); a linked manifest FILE is still read. BEHAVIOURAL EVIDENCE on merged dev: collect_first_party_package_names on arti (maint/rust-maint-common/{maint,common} -> .) returns 91 names in 0 s; before, verify-claims on arti ran 30+ min at 100% CPU and was killed (faulthandler stack in the item). test_manifest_walk_symlink_cycle.py: both collectors terminate on a self-link cycle (alarm-guarded); removing the guard reds all three with TimeoutError."  # 41e0
+- op: update  # 88bd
+  at: '2026-09-30T11:08:08Z'  # 88bd
+  by: agent  # 88bd
+  actor: jgstern_agent  # 88bd
+  clock: 4  # 88bd
+  nonce: 88bd  # 88bd
+  set:  # 88bd
+    status: violated  # 88bd
+- op: discuss  # 9a51
+  at: '2026-09-30T11:08:08Z'  # 9a51
+  by: agent  # 9a51
+  actor: jgstern_agent  # 9a51
+  clock: 5  # 9a51
+  nonce: 9a51  # 9a51
+  message: "REOPENED 2026-09-30 with a positive counterexample: the statement is general (every repository walk terminates) and the #1328 fix covered the filed instance only. Re-running arti's WI-dikit arms on dev 554aa88b8b (with #1328) hung again, 37 min at ~705 MB; faulthandler stack: pathlib.is_dir <- hypergumbo_lang_mainstream.py._detect_source_roots (py.py:2412) <- analyze_python. The same hand-written iterdir() stack walk, pushing every entry.is_dir(), exists in py.py _detect_source_roots and py_deps.py (pyproject walk, :252) as well. Sweep: 39 .iterdir() call sites across packages; the three unbounded repository walks are supply_chain (fixed), py.py and py_deps.py; os.walk (discovery, cli) defaults to followlinks=False; the rest are single-level listings or non-repository directories. Fix: one shared predicate in core for whether a repository walk may descend into an entry, used by all three."  # 9a51
