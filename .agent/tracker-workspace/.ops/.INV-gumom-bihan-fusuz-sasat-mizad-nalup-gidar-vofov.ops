@@ -21,3 +21,18 @@
     fields:  # 1ee3
       statement: "Every catalogue file that loaded into a verify-claims run is named in catalog_provenance under its tier."  # 1ee3
       root_cause: "catalog_provenance is built from the CLI and claims-file paths only; the config-tier and .d-directory loaders never report what they loaded."  # 1ee3
+- op: update  # b6aa
+  at: '2026-09-30T04:14:52Z'  # b6aa
+  by: agent  # b6aa
+  actor: jgstern_agent  # b6aa
+  clock: 2  # b6aa
+  nonce: b6aa  # b6aa
+  set:  # b6aa
+    status: satisfied  # b6aa
+- op: discuss  # c9af
+  at: '2026-09-30T04:14:53Z'  # c9af
+  by: agent  # c9af
+  actor: jgstern_agent  # c9af
+  clock: 3  # c9af
+  nonce: c9af  # c9af
+  message: "Fixed in PR #1320 (merged, dev d48540acc7). catalog_provenance gains 'tiers': every file the verify-claims run read, under builtin/community/yours/in_repo (git state for a file inside the repo), plus completeness grants from config.toml / io_primitives.d / opted-in .hypergumbo.toml (origin user_channel/config/in_repo_config) and withheld_completeness_grants for community files; user_supplied true when any yours/in_repo file loaded. BEHAVIOURAL EVIDENCE on merged dev: a run with a config.toml io_primitives path and an init-catalogs-seeded home -> tiers.yours [mine.yaml], tiers.community [the 8 seeded overlays + shipped community taint/summary/overlay files], tiers.builtin [python.yaml, taint + summary built-ins], user_supplied true (the filed case read user_supplied false with no layer). Statement scope NOT fully asserted: the shipped files of the analysis-stage families (frameworks, dataflow_patterns, library_signatures, cfg_nodes, url_folding) are not listed (the graph does not record which the analysis consulted) -- filed as a residual. Also noted: io overlays for OTHER languages (seeded elixir/go/...) are listed because they are read and parsed, though their rows apply to no language in the run."  # c9af
