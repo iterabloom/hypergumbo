@@ -113,6 +113,12 @@ class FunctionSummary:
     #: that is really open and DELETES a real finding, so verify_claims has to
     #: be able to say whose word a clean answer rests on.
     user_supplied: bool = False
+    #: ADR-0061 ruling 2 (WI-tigud): True when this entry came from a SHIPPED
+    #: file declaring ``provenance: community``. A terminating summary removes
+    #: a finding -- the half an unvouched row may not do -- so the walk never
+    #: lets a community summary close a branch. Stamped at load, never read
+    #: from the YAML.
+    community: bool = False
 
 
 # Conservative default: all params flow to return
@@ -206,6 +212,7 @@ def load_function_summaries(
             if yaml_path in user_paths:
                 summary = replace(summary, user_supplied=True)
             if adds_only:
+                summary = replace(summary, community=True)
                 result.setdefault(summary.function, summary)
             else:
                 result[summary.function] = summary

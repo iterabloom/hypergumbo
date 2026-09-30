@@ -6783,6 +6783,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
     credited_user_summaries: set[str] = set()
+    # WI-tigud: the community TERMINATING summaries this run's call graph
+    # calls -- the walk does not let them close a branch, and the violated
+    # verdicts say so. Run-scoped, like ``credited_user_summaries``.
+    withheld_summaries: list[str] = []
     # WI-kabif. Flows the §3a walk REFUTED and removed, collected across every
     # language for the same reason ``credited_user_summaries`` is: the removal
     # count is a property of the RUN, and a per-language split would imply a
@@ -7130,6 +7134,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         ambiguous_names=lang_ambiguous,
                         language=lang,
                     ))
+            from .function_summaries import load_function_summaries
+            from .taint import withheld_community_summaries
+            withheld_summaries = withheld_community_summaries(
+                raw_edges,
+                load_function_summaries(include_community=not getattr(
+                    args, "no_default_overlays", False)),
+            )
 
         # INV-karud (a3), PUBLISHED SCOPE. Per-flow ``analysis_method`` says
         # how one flow was adjudicated; it cannot say what the analysis was
@@ -7251,6 +7262,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # branch this run. Empty unless they wrote one, so an installation with
         # no user summaries produces byte-identical verdicts to before.
         credited_user_summaries=credited_user_summaries,
+        # WI-tigud: community terminating summaries the walk did not credit.
+        withheld_community_summaries=withheld_summaries,
     )
 
     # INV-zosun: assemble the catalogue provenance BEFORE either renderer, so
