@@ -75,6 +75,12 @@ class TestTheLoader:
         with pytest.raises(ValueError, match="requires_target_kind"):
             _catalog(tmp_path, section="fs_write")
 
+    def test_a_boundary_no_stamp_selects_is_refused(self, tmp_path: Path) -> None:
+        """``subprocess`` is not a read or write boundary a target kind
+        chooses between, so no stamp could ever select such a row."""
+        with pytest.raises(ValueError, match="not a read or write boundary"):
+            _catalog(tmp_path, kind="pipe", section="subprocess")
+
 
 class TestNarrowing:
     def test_the_stamp_keeps_the_row(self) -> None:
