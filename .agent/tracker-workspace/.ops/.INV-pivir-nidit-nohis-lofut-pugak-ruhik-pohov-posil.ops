@@ -51,3 +51,18 @@
   clock: 5  # 9a51
   nonce: 9a51  # 9a51
   message: "REOPENED 2026-09-30 with a positive counterexample: the statement is general (every repository walk terminates) and the #1328 fix covered the filed instance only. Re-running arti's WI-dikit arms on dev 554aa88b8b (with #1328) hung again, 37 min at ~705 MB; faulthandler stack: pathlib.is_dir <- hypergumbo_lang_mainstream.py._detect_source_roots (py.py:2412) <- analyze_python. The same hand-written iterdir() stack walk, pushing every entry.is_dir(), exists in py.py _detect_source_roots and py_deps.py (pyproject walk, :252) as well. Sweep: 39 .iterdir() call sites across packages; the three unbounded repository walks are supply_chain (fixed), py.py and py_deps.py; os.walk (discovery, cli) defaults to followlinks=False; the rest are single-level listings or non-repository directories. Fix: one shared predicate in core for whether a repository walk may descend into an entry, used by all three."  # 9a51
+- op: update  # 5a29
+  at: '2026-09-30T12:39:39Z'  # 5a29
+  by: agent  # 5a29
+  actor: jgstern_agent  # 5a29
+  clock: 6  # 5a29
+  nonce: 5a29  # 5a29
+  set:  # 5a29
+    status: satisfied  # 5a29
+- op: discuss  # 1d22
+  at: '2026-09-30T12:39:39Z'  # 1d22
+  by: agent  # 1d22
+  actor: jgstern_agent  # 1d22
+  clock: 7  # 1d22
+  nonce: 1d22  # 1d22
+  message: "Fixed across the family in PR #1331 (merged, dev ad028b5042), after #1328 fixed the first two walks. discovery.walks_into(entry, skip) is the one rule every hand-written repository walk asks: a real directory, not skipped, not dot-prefixed, never a symlink (what os.walk and Path.rglob already do); supply_chain's manifest walks, py._detect_source_roots and py_deps._find_pyproject_files all route through it. Sweep: 39 .iterdir() sites -- those were the unbounded repository walks; os.walk defaults to followlinks=False; the rest are single-level. BEHAVIOURAL EVIDENCE, the filed repro on merged dev: hypergumbo verify-claims on arti (maint/rust-maint-common/{maint,common} -> .) completes in 122 s, rc 1, 9 verdicts (was killed after 30+ min twice). Tests: alarm-guarded cycle tests for all four walkers; a type-clean mutation of the predicate reds the Python ones with TimeoutError. The general statement is asserted for the hand-written iterdir() walks the sweep found; a future walker is covered only if it asks walks_into."  # 1d22

@@ -26,3 +26,18 @@
   clock: 2  # 972e
   nonce: 972e  # 972e
   message: "WI-nopam (PR #1317) did this item's MOVE half: function_summaries/go_testify_zap.yaml, python_django.yaml, rust_aes_gcm_serde_json.yaml and library_signatures/python-django.yaml declare provenance: community. Their loaders already rank community below built-in (a community row takes a key only when no built-in row holds it). Remaining here: withholding the CLEANING effect -- a community terminating summary (testify x4) must not end a branch; a community library signature's receiver typing to be measured and withheld if it can clean a verdict. python.yaml's stale comment about django rows went with the move."  # 972e
+- op: update  # b438
+  at: '2026-09-30T13:39:06Z'  # b438
+  by: agent  # b438
+  actor: jgstern_agent  # b438
+  clock: 3  # b438
+  nonce: b438  # b438
+  set:  # b438
+    status: done  # b438
+- op: discuss  # adf9
+  at: '2026-09-30T13:39:06Z'  # adf9
+  by: agent  # adf9
+  actor: jgstern_agent  # adf9
+  clock: 4  # adf9
+  nonce: adf9  # adf9
+  message: "Done in PR #1333 (merged, dev 132f2a29e3). MOVE half by WI-nopam (#1317). SUMMARIES: a FunctionSummary from a shipped community file is stamped community at load and never closes a taint branch (_use_site_terminates); withheld_community_summaries() names the community TERMINATING summaries the run's call graph reaches, and every violated taint verdict of that run carries withheld_community_summary (run-scoped, like the user-summary credit). A propagating community summary changes nothing (the walk reads only termination). SIGNATURES: measured, not withheld -- pre-registered A/B on pretix (~/hypergumbo_lab_notebook/tigud_09302026/RESULT.md), python-django.yaml removed in arm B: 12 claims, verdicts and caveat kinds identical, the rows ADD flows (untrusted-input-no-database evidence 190 vs 85); no verdict cleaner with them -> disclosed (ADR-0061 ruling 2 now says so). BEHAVIOURAL EVIDENCE on merged dev: gin, host-secret-no-logging violated rc 1 with withheld_community_summary [testify require.Error, require.NoError]; summary A/B on gin + gin-realworld (pre-registered): no verdict or flow change (the calls sit in _test.go files, whose sourced flows verdicts exclude). Unit: test_community_summary_withheld.py (vouched control closes, community does not; the caveat rides violated, not clean). Residual already filed: INV-hokuj (a community file dropped in function_summaries.d loads as yours)."  # adf9

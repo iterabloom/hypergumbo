@@ -1,0 +1,30 @@
+- op: create  # 8330
+  at: '2026-09-30T14:45:58Z'  # 8330
+  by: agent  # 8330
+  actor: jgstern_agent  # 8330
+  clock: 1  # 8330
+  nonce: '8330'  # 8330
+  data:  # 8330
+    kind: work_item  # 8330
+    title: "Source docstrings and comments still use the retired tier word \"project-local\" (WI-lidof residual)"  # 8330
+    status: todo_hard  # 8330
+    priority: 4  # 8330
+    parent:  # 8330
+    tags:  # 8330
+    - adr_0061  # 8330
+    - documentation  # 8330
+    isbefore: []  # 8330
+    duplicate_of: []  # 8330
+    not_duplicate_of: []  # 8330
+    pr_ref:  # 8330
+    description: "Residual of WI-lidof (ADR-0061 ruling 6). The filed row retired \"project-local\" from help text, stderr and docs (PRs #1334 and the follow-up). What remains, in the retired TIER sense, is developer-facing only: module docstrings and comments in core -- io_boundary.py (about 14 sites: the module docstring's Overlays paragraph, load_overlay_catalog, IoPrimitiveOverlayError, the _OVERLAY_STATUS comment, the overlay layering in the loader), taint.py (about 15: module docstring, TaintSource/TaintSanitizer field comments, load_taint_catalog_paths, the WI-votan extension API notes), verify_claims.py (4: extra_catalogs field docs, the INV-pojib/faput helpers), cli.py (4: _resolve_io_overlay_origins, the taint-catalogue assembly comments), user_config.py:27, safety_zones.py:10, js_ts.py:1024; tests: test_go_web_framework_overlay.py:10/96 (an assertion MESSAGE), test_safety_zones.py:7, test_taint.py:3135/3379.\nEach needs its own reading: \"project-local\" there means variously a user-supplied file (yours), an overlay named by flag, the claims file's extra_catalogs (in-repo, opted in by --claims) or any non-shipped row -- a mechanical replace would mislabel some. NOT in scope: c.yaml / c.py / kotlin.py / hypergumbo_tracker setup.py, where the word means a first-party function, type or hook; RELEASE-NOTES, docs/measurements and ADR-0041's amendment, which are historical records.\nEnumerate with: grep -rn \"project-local\" packages/*/src packages/*/tests --include=*.py"  # 8330
+    fields: {}  # 8330
+- op: update  # 2f6a
+  at: '2026-09-30T14:46:09Z'  # 2f6a
+  by: agent  # 2f6a
+  actor: jgstern_agent  # 2f6a
+  clock: 2  # 2f6a
+  nonce: 2f6a  # 2f6a
+  set: {}  # 2f6a
+  add:  # 2f6a
+    not_duplicate_of: [WI-bapuk-fazuj-pujaj-raram-hofur-pakis-bufol-gidav]  # 2f6a
