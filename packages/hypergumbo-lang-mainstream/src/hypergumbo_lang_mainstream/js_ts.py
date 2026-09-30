@@ -6720,6 +6720,8 @@ def _analyze_javascript_impl(
             run_id=run.execution_id,
             call_node_kinds=("call_expression",),
             call_function_field_names=("function",),
+            # INV-hopib: record the call a stream is handed to.
+            carrier_call_kinds=("call_expression", "new_expression"),
             # INV-fafol: anchor each read to the callable that performs it,
             # not to the file. Propagation pairs a source and a sink that
             # share a caller, so a file-anchored source can never reach any

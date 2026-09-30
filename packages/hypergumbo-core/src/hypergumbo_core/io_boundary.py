@@ -2777,6 +2777,21 @@ def call_site_target_kinds(
     return _call_site_values(edge_meta, "io_target_kind")
 
 
+def call_site_attr_carriers(
+    edge_meta: Optional[Mapping[str, Any]],
+) -> tuple[Optional[str], ...]:
+    """Every ``attr_carrier`` among an attribute edge's collapsed uses (INV-hopib).
+
+    The third reader of this shape, beside :func:`call_site_modes` and
+    :func:`call_site_target_kinds`: a stream used through ``print`` on one line
+    and through ``json.dump`` on the next collapses to one edge carrying
+    ``attr_carrier_values``, and ``None`` there is a use outside any call. A
+    consumer reading only the singular key would take one use's carrier for the
+    whole relationship -- and drop a stream that is still written elsewhere.
+    """
+    return _call_site_values(edge_meta, "attr_carrier")
+
+
 def target_kinds_cross_no_boundary(target_kinds: Sequence[Optional[str]]) -> bool:
     """True when EVERY collapsed call site discards what it is handed.
 

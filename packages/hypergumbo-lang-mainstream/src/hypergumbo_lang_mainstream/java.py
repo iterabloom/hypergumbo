@@ -3826,6 +3826,11 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             run_id=run.execution_id,
             call_node_kinds=("__never_match_java__",),
             call_function_field_names=("__unused__",),
+            # INV-hopib: record the call a stream is handed to, or whose
+            # receiver it is (``System.out.println(x)``: the field_access is
+            # the method_invocation's ``object``).
+            carrier_call_kinds=("method_invocation", "object_creation_expression"),
+            carrier_receiver_fields=("object",),
             # INV-fafol: anchor each read to the callable that performs it.
             enclosing_symbols=symbols_for_path(
                 _symbols_by_path, str(pf.path),

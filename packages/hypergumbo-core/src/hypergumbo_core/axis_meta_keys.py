@@ -631,6 +631,33 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "carries nothing from outside the process -- javascript "
                     "edges, so disjoint from both."
                 )),
+    MetaKeySpec("attr_carrier", AXIS_EDGE_META,
+                "On a `module_attr_ref` edge: the CALL at whose argument, "
+                "keyword or receiver position the attribute was used, as "
+                "`<callee as spelled>@<call line>` -- `print@7` for "
+                "`print(k, file=sys.stderr)`, `io.WriteString@12` for "
+                "`io.WriteString(os.Stderr, k)`, `System.out.println@4` for "
+                "the receiver form. Absent for a use outside any call "
+                "(`out = sys.stderr`). INV-hopib: a stream-object row's sink "
+                "was matched wherever the object was used, so one write was "
+                "two findings and one of them named a sink with no arguments "
+                "and no receiver. taint drops the stream's sink site when "
+                "every use is carried by a call that is itself a matched sink "
+                "in the same zone (`_subsume_sink_sites`), and a surviving "
+                "stream finding names its carriers (`sink_carriers`). PER CALL "
+                "SITE: one function writes `sys.stderr` through `print` on one "
+                "line and `json.dump` on the next, and only the first is a "
+                "sink; a collapsed edge's `attr_carrier_values` keeps both, "
+                "with `None` for an uncarried use.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "TWO writers over DISJOINT edges, the io_target_kind "
+                    "shape: py.py's module-attribute pass stamps python "
+                    "edges, and base.emit_module_attribute_refs stamps the "
+                    "tree-sitter languages that pass it carrier node kinds "
+                    "(go, java, javascript). No edge is emitted by both."
+                )),
     MetaKeySpec("redirect_target", AXIS_EDGE_META,
                 "The path (or `<unresolved>`) a shell redirection writes to "
                 "or reads from — the `/etc/cron.d/pwned` in "

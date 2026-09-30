@@ -94,10 +94,11 @@ from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_callback_registration, is_grpc_rpc_implementation
 from .member_names import MEMBER_NAME_SEPARATORS, member_owner
 from .symbol_kinds import type_like_kind_names
-from .io_primitive_kinds import KIND_FUNCTION, KIND_METHOD
+from .io_primitive_kinds import KIND_FUNCTION, KIND_METHOD, read_not_called
 from .io_boundary import (
     suppresses_resource_naming_finding,
     _UNRESOLVED_MODULE_PLACEHOLDERS_IO,
+    call_site_attr_carriers,
     call_site_modes,
     call_site_target_kinds,
     read_boundary_for_target_kind,
@@ -674,6 +675,14 @@ class TaintFlowFinding:
     #: ``len(source_primitives) * len(sink_call_sites)``, and any shortfall is
     #: reachability having excluded a pair.
     sink_call_sites: tuple[tuple[str, str], ...] = ()
+    #: INV-hopib: for a sink that is a stream OBJECT (an attribute row), the
+    #: calls it was written through, as ``<callee>@<line>`` -- ``json.dump@9``
+    #: for ``json.dump(secret, sys.stdout)``. The stream has no arguments of its
+    #: own, so without these the record names a sink a reader cannot check the
+    #: value against. Empty for a call sink, and for a stream every use of which
+    #: was outside a call. A stream carried ONLY by calls that are themselves
+    #: sinks in the same zone is not a finding at all (``_subsume_sink_sites``).
+    sink_carriers: tuple[str, ...] = ()
     #: How many (source call site, sink call site) pairs this finding stands
     #: for. 1 for an uncollapsed or adjudicated finding. Kept so the pair count
     #: stays available to a consumer that wants it rather than being traded
@@ -776,6 +785,7 @@ class TaintFlowFinding:
             "sink_primitives": list(self.sink_primitives),
             "sink_symbols": list(self.sink_symbols),
             "sink_call_sites": [list(site) for site in self.sink_call_sites],
+            "sink_carriers": list(self.sink_carriers),
             "collapsed_flow_count": self.collapsed_flow_count,
         }
 
@@ -888,6 +898,10 @@ def collapse_unadjudicated_flows(
             # against |source_primitives| x |sink_call_sites|.
             sink_call_sites=tuple(sorted(
                 {site for m in grp for site in m.sink_call_sites}
+            )),
+            # INV-hopib: every call the group's stream sinks were written through.
+            sink_carriers=tuple(sorted(
+                {c for m in grp for c in m.sink_carriers}
             )),
             # A route through a different barrier is a different sanitizer
             # credit, and INV-pojib requires the user-supplied ones to stay
@@ -3450,12 +3464,33 @@ def subsume_slot_family_parents(
 
 def _subsume_sink_sites(
     sink_callers: dict[str, list[tuple[str, TaintSink]]],
+    *,
+    carriers: Optional[Mapping[tuple[str, str], tuple[Optional[str], ...]]] = None,
+    site_lines: Optional[Mapping[tuple[str, str], Sequence[int]]] = None,
 ) -> None:
-    """Apply :func:`subsume_slot_family_parents` to the sink index, in place.
+    """Apply the two sink-side subsumptions to the sink index, in place.
 
     The sink index is keyed by caller and holds ``(callee_id, sink)`` pairs
     rather than the flat triples the source arm carries, so this adapts the
     shape instead of duplicating the relation (L9: one fact, one home).
+
+    1. :func:`subsume_slot_family_parents` (INV-sukoh): ``sys.stderr.write(x)``
+       names the stream in its own module slot.
+    2. INV-hopib: a stream-object sink CARRIED by a call that is itself a sink.
+       ``print(k, file=sys.stderr)`` matched ``sys.stderr`` as a sink of its
+       own beside ``print``, because the stream's ``module_attr_ref`` edge is a
+       taint call edge wherever the object is used: one write, two findings,
+       and the stream's names a sink with no arguments. ``carriers`` maps each
+       ``(caller, callee)`` attribute site to its uses'
+       ``attr_carrier`` values (``<callee>@<line>``, ``None`` for a use
+       outside any call; :func:`call_site_attr_carriers`). The stream site is
+       dropped when EVERY use is carried, and every carrier is a matched
+       non-attribute sink AT THE SAME CALLER, on the carrier's line, whose name
+       is the carrier's last name component, in the stream's zone. Anything
+       less keeps it: an uncarried use may write through an alias, a carrier
+       that is not a sink (``json.dump``, a first-party helper) leaves the
+       stream the only thing the record can name, and a carrier in another
+       zone would take the other claim's only finding with it.
     """
     for caller_id, sites in list(sink_callers.items()):
         kept = subsume_slot_family_parents(
@@ -3464,6 +3499,64 @@ def _subsume_sink_sites(
         sink_callers[caller_id] = [
             (callee_id, sink) for _caller, callee_id, sink in kept
         ]
+    if not carriers:
+        return
+    lines = site_lines or {}
+    for caller_id, sites in list(sink_callers.items()):
+        carried_by = {
+            (sink.name, sink.zone, line)
+            for callee_id, sink in sites
+            if not read_not_called(sink.kind)
+            for line in lines.get((caller_id, callee_id), ())
+        }
+        sink_callers[caller_id] = [
+            (callee_id, sink) for callee_id, sink in sites
+            if not _carried_by_sink_calls(
+                carriers.get((caller_id, callee_id), ()), sink.zone, carried_by,
+            )
+        ]
+
+
+def _carried_by_sink_calls(
+    uses: tuple[Optional[str], ...],
+    zone: str,
+    carried_by: set[tuple[str, str, int]],
+) -> bool:
+    """Whether EVERY use in ``uses`` is a call ``carried_by`` holds in ``zone``."""
+    if not uses:
+        return False
+    for use in uses:
+        if use is None:
+            return False
+        callee, _, line = use.rpartition("@")
+        name = re.split(r"\.|::", callee)[-1]
+        if not line.isdigit() or (name, zone, int(line)) not in carried_by:
+            return False
+    return True
+
+
+def _note_sink_site(
+    edge: Mapping[str, Any],
+    carriers: dict[tuple[str, str], tuple[Optional[str], ...]],
+    site_lines: dict[tuple[str, str], list[int]],
+) -> None:
+    """Record a matched sink edge's carriers and lines for the INV-hopib step.
+
+    ONE HOME for both propagators, which match sinks in two separate loops.
+    """
+    key = (edge["src"], edge["dst"])
+    uses = call_site_attr_carriers(edge.get("meta"))
+    if uses:
+        carriers[key] = uses
+    site_lines.setdefault(key, []).extend(
+        ln for ln in _edge_call_sites(dict(edge))
+        if ln not in site_lines.get(key, [])
+    )
+
+
+def _named_carriers(uses: tuple[Optional[str], ...]) -> tuple[str, ...]:
+    """The ``sink_carriers`` a finding reports: every carried use, sorted."""
+    return tuple(sorted({u for u in uses if u is not None}))
 
 
 def _seeds_at_caller(entry: TaintEntry) -> bool:
@@ -3584,6 +3677,8 @@ def propagate_taint_structural(
     # Step 2: Find sink call sites — which symbol IDs call taint sinks?
     sink_callers: dict[str, list[tuple[str, TaintSink]]] = defaultdict(list)
     # Maps caller_symbol_id → (sink_callee_symbol_id, TaintSink)
+    sink_carriers: dict[tuple[str, str], tuple[Optional[str], ...]] = {}
+    sink_site_lines: dict[tuple[str, str], list[int]] = {}
     for edge in edges:
         if not _is_taint_call_edge(edge):
             continue
@@ -3603,10 +3698,14 @@ def propagate_taint_structural(
             site = (edge["dst"], matched)
             if site not in sink_callers[edge["src"]]:
                 sink_callers[edge["src"]].append(site)
+            _note_sink_site(edge, sink_carriers, sink_site_lines)
 
     # INV-sukoh on the sink side: two of the four shipped parent rows are
     # sinks, so ``sys.stdout.write(x)`` doubles exactly as the env read does.
-    _subsume_sink_sites(sink_callers)
+    # INV-hopib: and a stream written through a sink call is that call's.
+    _subsume_sink_sites(
+        sink_callers, carriers=sink_carriers, site_lines=sink_site_lines,
+    )
 
     # (caller, callee) -> every line that call occurs on, for
     # ``_source_and_sink_are_one_call``. The DDG pass already builds this index
@@ -3717,6 +3816,9 @@ def propagate_taint_structural(
                 # different sinks; recording the callee alone under-counts one
                 # sink reached from two callers. Both shapes are live.
                 sink_call_sites=((sink_node, sink_callee_id),),
+                sink_carriers=_named_carriers(
+                    sink_carriers.get((sink_node, sink_callee_id), ()),
+                ),
                 sanitized=is_sanitized,
                 sanitized_by=sanitized_by,
                 sanitized_by_user_supplied=sanitized_by_user,
@@ -4762,6 +4864,8 @@ def propagate_taint_ddg(
 
     # Step 2: Find sink call sites (module + ambiguous_names aware — WI-razol)
     sink_callers: dict[str, list[tuple[str, TaintSink]]] = defaultdict(list)
+    sink_carriers: dict[tuple[str, str], tuple[Optional[str], ...]] = {}
+    sink_site_lines: dict[tuple[str, str], list[int]] = {}
     for edge in call_edges:
         if not _is_taint_call_edge(edge):
             continue
@@ -4793,10 +4897,14 @@ def propagate_taint_ddg(
             sink_site = (edge["dst"], matched)
             if sink_site not in sink_callers[edge["src"]]:
                 sink_callers[edge["src"]].append(sink_site)
+            _note_sink_site(edge, sink_carriers, sink_site_lines)
 
     # INV-sukoh, same as the structural arm: the parent attribute row and its
-    # own slot family both match one ``sys.stdout.write(x)``.
-    _subsume_sink_sites(sink_callers)
+    # own slot family both match one ``sys.stdout.write(x)``. INV-hopib: and a
+    # stream written through a sink call is reported by that call.
+    _subsume_sink_sites(
+        sink_callers, carriers=sink_carriers, site_lines=sink_site_lines,
+    )
 
     # Step 3: Find sanitizer call sites — through the SHARED helper, so the
     # INV-finoh resolution-/kind-aware gate applies here too.
@@ -5187,6 +5295,9 @@ def propagate_taint_ddg(
                         resource_naming_only=taint_sink.resource_naming_only,
                         trusted_sink=taint_sink.trust_level == TRUST_LEVEL_TRUSTED,
                         sink_call_sites=((sink_node, sink_callee_id),),
+                        sink_carriers=_named_carriers(
+                            sink_carriers.get((sink_node, sink_callee_id), ()),
+                        ),
                         sanitized=is_sanitized,
                         sanitized_by=sanitized_by,
                         sanitized_by_user_supplied=sanitized_by_user,
@@ -5211,6 +5322,9 @@ def propagate_taint_ddg(
                         resource_naming_only=taint_sink.resource_naming_only,
                         trusted_sink=taint_sink.trust_level == TRUST_LEVEL_TRUSTED,
                 sink_call_sites=((sink_node, sink_callee_id),),  # INV-kakad
+                sink_carriers=_named_carriers(
+                    sink_carriers.get((sink_node, sink_callee_id), ()),
+                ),
                 sanitized=is_sanitized,
                 sanitized_by=sanitized_by,
                 sanitized_by_user_supplied=sanitized_by_user,

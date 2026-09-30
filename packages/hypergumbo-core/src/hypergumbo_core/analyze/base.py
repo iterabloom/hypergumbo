@@ -2943,6 +2943,9 @@ def emit_module_attribute_refs(
     skip_context_kinds: tuple[str, ...] = (),
     skip_ancestor_kinds: tuple[str, ...] = (),
     enclosing_symbols: "Sequence[Symbol] | None" = None,
+    carrier_call_kinds: tuple[str, ...] = (),
+    carrier_receiver_fields: tuple[str, ...] = (),
+    carrier_arguments_field: str = "arguments",
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
 
@@ -3041,6 +3044,22 @@ def emit_module_attribute_refs(
             inside an import declaration is an import*) and is closed over
             shapes nobody has enumerated.  See
             :func:`_has_ancestor_of_kind`.
+        carrier_call_kinds: INV-hopib. Call node types whose use of an
+            attribute is recorded on its edge as ``meta["attr_carrier"]`` =
+            ``<callee as spelled>@<call line>``: the attribute is a direct
+            child of the call's ``carrier_arguments_field`` node, or its
+            receiver -- a ``carrier_receiver_fields`` child of the call
+            (java's ``object``), or the object of the member access that is
+            the call's callee (``os.Stdout.Write(b)``). A stream-object row
+            is matched wherever the object is used, so ``io.WriteString(
+            os.Stderr, k)`` made ``os.Stderr`` a taint sink beside the call
+            that writes; the carrier is what lets taint report the write once
+            and lets a surviving stream finding name its call. Empty (the
+            default) stamps nothing, so cpp and rust -- whose stream writes
+            are ``<<`` expressions and ``stdout()`` calls, not attribute
+            uses inside a call -- are unaffected.
+        carrier_receiver_fields: see ``carrier_call_kinds``.
+        carrier_arguments_field: the call's arguments field name.
         scoped_path: When True, switches the helper to a left-recursive
             path-walk model used by languages whose scoped access is
             not a binary ``object`` / ``property`` pair.  Rust's
@@ -3151,6 +3170,11 @@ def emit_module_attribute_refs(
         qname = f"{real_module}{sep}{attr_name}"
         line_no = node.start_point[0] + 1
         owner = _innermost_callable_at(line_no, enclosing_symbols)
+        carrier = _attr_carrier(
+            node, source, node_kinds, object_field_names,
+            call_function_field_names, carrier_call_kinds,
+            carrier_receiver_fields, carrier_arguments_field,
+        )
         edges_out.append(Edge.create(
             src=(owner.id if owner is not None else caller_symbol.id),
             dst=f"{lang}:{real_module}:0-0:{qname}:attribute",
@@ -3159,7 +3183,62 @@ def emit_module_attribute_refs(
             origin=pass_id,
             origin_run_id=run_id,
             evidence_type="module_attribute_reference",
+            meta={"attr_carrier": carrier} if carrier is not None else None,
         ))
+
+
+def _attr_carrier(
+    node: "tree_sitter.Node",
+    source: bytes,
+    node_kinds: tuple[str, ...],
+    object_field_names: tuple[str, ...],
+    call_function_field_names: tuple[str, ...],
+    call_kinds: tuple[str, ...],
+    receiver_fields: tuple[str, ...],
+    arguments_field: str,
+) -> Optional[str]:
+    """``<callee>@<line>`` of the call that USES ``node``, or None (INV-hopib).
+
+    See ``carrier_call_kinds`` on :func:`emit_module_attribute_refs`. Node
+    identity is compared by ``.id``: tree-sitter returns a fresh wrapper per
+    accessor call.
+    """
+    parent = node.parent
+    if not call_kinds or parent is None:
+        return None
+    grand = parent.parent
+    call = None
+    if grand is not None and grand.type in call_kinds:
+        args = grand.child_by_field_name(arguments_field)
+        if args is not None and args.id == parent.id:
+            call = grand
+    if call is None and parent.type in call_kinds:
+        if any(
+            (r := parent.child_by_field_name(f)) is not None and r.id == node.id
+            for f in receiver_fields
+        ):
+            call = parent
+    if (
+        call is None
+        and parent.type in node_kinds
+        and grand is not None
+        and grand.type in call_kinds
+        and any(
+            (o := parent.child_by_field_name(f)) is not None and o.id == node.id
+            for f in object_field_names
+        )
+        and any(
+            (c := grand.child_by_field_name(f)) is not None and c.id == parent.id
+            for f in call_function_field_names
+        )
+    ):
+        call = grand
+    if call is None:
+        return None
+    args = call.child_by_field_name(arguments_field)
+    end = args.start_byte if args is not None else call.end_byte
+    callee = source[call.start_byte:end].decode("utf-8", "replace").strip()
+    return f"{callee}@{call.start_point[0] + 1}"
 
 
 def make_file_finder(patterns: list[str]) -> Callable[[Path], Iterator[Path]]:  # pragma: no cover

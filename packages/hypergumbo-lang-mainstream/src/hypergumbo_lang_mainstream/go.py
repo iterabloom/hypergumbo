@@ -4283,6 +4283,8 @@ def _extract_edges_from_file(
             call_function_field_names=("function",),
             # INV-fafol: anchor each read to the callable that performs it.
             enclosing_symbols=list(local_symbols.values()),
+            # INV-hopib: record the call a stream is handed to.
+            carrier_call_kinds=("call_expression",),
         )
 
     return edges

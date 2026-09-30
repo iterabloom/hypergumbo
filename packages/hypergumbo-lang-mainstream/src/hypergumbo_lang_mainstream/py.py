@@ -3720,6 +3720,37 @@ def _collect_call_func_attr_ids(block_nodes: list[ast.AST]) -> set[int]:
     return ids
 
 
+def _collect_attr_carriers(block_nodes: list[ast.AST]) -> dict[int, str]:
+    """Map each Attribute node a call USES to that call, as ``<callee>@<line>``.
+
+    INV-hopib. A stream-object row (``sys.stderr``) is matched through the
+    ``module_attr_ref`` edge wherever the object appears, so in
+    ``print(k, file=sys.stderr)`` the stream became a taint sink of its own
+    beside ``print`` -- one write, two findings, one of them naming a sink with
+    no arguments. The call that CARRIES the stream is what makes the record
+    checkable and what lets taint recognise the duplicate
+    (``taint._subsume_sink_sites``). Three positions, each DIRECT: a positional
+    argument, a keyword value, and the receiver of a method call
+    (``sys.stderr.write`` -- whose own callee attribute is skipped by
+    :func:`_collect_call_func_attr_ids`, so its receiver is the node that
+    reaches here). Nested shapes (``f(g(sys.stderr))``) are carried by the
+    INNERMOST call, since that is the call the object is handed to.
+    """
+    carriers: dict[int, str] = {}
+    for root in block_nodes:
+        for sub in ast.walk(root):
+            if not isinstance(sub, ast.Call):
+                continue
+            label = f"{ast.unparse(sub.func)}@{sub.lineno}"
+            used = [*sub.args, *(kw.value for kw in sub.keywords)]
+            if isinstance(sub.func, ast.Attribute):
+                used.append(sub.func.value)
+            for node in used:
+                if isinstance(node, ast.Attribute):
+                    carriers[id(node)] = label
+    return carriers
+
+
 def _build_property_getter_index(
     symbols: list[Symbol],
 ) -> dict[tuple[str, str], Symbol]:
@@ -5652,6 +5683,8 @@ def _extract_edges(
         # so we can skip them below — `os.getenv("X")` already produces a
         # `calls` edge and doesn't need a redundant `module_attr_ref`.
         call_func_attr_ids = _collect_call_func_attr_ids(block_nodes)
+        # INV-hopib: the call each attribute use is handed to, if any.
+        attr_carriers = _collect_attr_carriers(block_nodes)
         # Scope-bounded walk (mirrors _emit_variable_refs): a nested
         # function/class body is a DIFFERENT scope with its own alias bindings
         # and its own _emit_module_attr_refs pass, so descending into it here
@@ -5729,6 +5762,7 @@ def _extract_edges(
                         ))
                         return
             qname = f"{real_module}.{sub.attr}"
+            carrier = attr_carriers.get(id(sub))
             edges.append(Edge.create(
                 src=caller_symbol.id,
                 dst=f"python:{real_module}:0-0:{qname}:attribute",
@@ -5737,6 +5771,7 @@ def _extract_edges(
                 evidence_type="module_attribute_reference",
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                meta={"attr_carrier": carrier} if carrier is not None else None,
             ))
 
         def _walk(nodes: list[ast.AST]) -> None:
