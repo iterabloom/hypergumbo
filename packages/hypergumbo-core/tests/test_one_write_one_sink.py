@@ -24,6 +24,8 @@ reads are pinned in the lang-mainstream package.
 
 from __future__ import annotations
 
+from typing import Any
+
 from hypergumbo_core.axis_meta_keys import META_KEYS, per_call_site_keys
 from hypergumbo_core.io_boundary import call_site_attr_carriers
 from hypergumbo_core.taint import (
@@ -169,3 +171,126 @@ class TestTheRecord:
             self._finding(("json.dump@9",)), self._finding(("log.SetOutput@3",)),
         ])
         assert row.sink_carriers == ("json.dump@9", "log.SetOutput@3")
+
+
+class TestThePropagator:
+    """The carrier travels from the edge into the propagator's sink index."""
+
+    def _edges(self, carrier: str | None) -> list[dict]:
+        attr = {"src": _CALLER, "dst": _STREAM, "type": "module_attr_ref", "line": 7}
+        if carrier is not None:
+            attr["meta"] = {"attr_carrier": carrier}
+        return [
+            {"src": _CALLER, "dst": "python:os:0-0:getenv:unresolved", "type": "calls",
+             "line": 6, "is_resolved": False,
+             "meta": {"evidence_type": "ast_call_direct"}},
+            {"src": _CALLER, "dst": _PRINT, "type": "calls", "line": 7,
+             "is_resolved": False, "meta": {"evidence_type": "ast_call_direct"}},
+            attr,
+        ]
+
+    def _flows(self, carrier: str | None) -> list[TaintFlowFinding]:
+        from hypergumbo_core.taint import TaintSource, propagate_taint_structural
+        return propagate_taint_structural(
+            self._edges(carrier),
+            [TaintSource(taint_label="host_secret", module="os", name="getenv",
+                         kind="function")],
+            [_stream_sink(), _call_sink()],
+            [],
+        )
+
+    def test_a_carried_stream_is_not_a_second_finding(self) -> None:
+        sinks = {p for f in self._flows("print@7") for p in f.sink_primitives}
+        assert sinks == {"builtins.print"}
+
+    def test_an_uncarried_stream_still_is(self) -> None:
+        """THE CONTROL: the same edges without the stamp keep both."""
+        sinks = {p for f in self._flows(None) for p in f.sink_primitives}
+        assert sinks == {"builtins.print", "sys.stderr"}
+
+    def test_a_surviving_stream_names_its_carrier(self) -> None:
+        (stream,) = [f for f in self._flows("json.dump@7")
+                     if "sys.stderr" in f.sink_primitives]
+        assert stream.sink_carriers == ("json.dump@7",)
+
+
+def _carriers(parse, lang: str, source: str, imports: dict[str, str], **kinds) -> list:
+    from hypergumbo_core.analyze.base import emit_module_attribute_refs
+    from hypergumbo_core.ir import Span, Symbol
+
+    caller = Symbol(id=f"{lang}:f:1-9:f:function", name="f", kind="function",
+                    language=lang, path="f",
+                    span=Span(start_line=1, end_line=9, start_col=0, end_col=0))
+    edges: list = []
+    emit_module_attribute_refs(
+        parse(source), source.encode(), imports, caller, lang, edges,
+        pass_id="t", run_id="t", **kinds,
+    )
+    return [(e.dst.split(":")[-2], (e.meta or {}).get("attr_carrier")) for e in edges]
+
+
+def _parser(module: str):
+    import importlib
+
+    import tree_sitter
+
+    grammar = importlib.import_module(module)
+    parser = tree_sitter.Parser(tree_sitter.Language(grammar.language()))
+    return lambda src: parser.parse(src.encode()).root_node
+
+
+_GO_KINDS: dict[str, Any] = {
+    "node_kinds": ("selector_expression",), "object_field_names": ("operand",),
+    "property_field_names": ("field",), "call_node_kinds": ("call_expression",),
+    "call_function_field_names": ("function",),
+    "carrier_call_kinds": ("call_expression",),
+}
+_JS_KINDS: dict[str, Any] = {
+    "node_kinds": ("member_expression",), "object_field_names": ("object",),
+    "property_field_names": ("property",), "call_node_kinds": ("call_expression",),
+    "call_function_field_names": ("function",),
+    "carrier_call_kinds": ("call_expression", "new_expression"),
+}
+_JAVA_KINDS: dict[str, Any] = {
+    "node_kinds": ("field_access",), "object_field_names": ("object",),
+    "property_field_names": ("field",), "call_node_kinds": ("__never__",),
+    "call_function_field_names": ("__unused__",),
+    "carrier_call_kinds": ("method_invocation",),
+    "carrier_receiver_fields": ("object",),
+}
+
+
+class TestTheHelperStamp:
+    """``base.emit_module_attribute_refs`` stamps the carrier in each shape."""
+
+    def test_an_argument(self) -> None:
+        got = _carriers(_parser("tree_sitter_go"), "go",
+                        'package m\nfunc f() {\n\tio.WriteString(os.Stderr, "x")\n}\n',
+                        {"os": "os"}, **_GO_KINDS)
+        assert got == [("os.Stderr", "io.WriteString@3")]
+
+    def test_the_receiver_of_a_member_callee(self) -> None:
+        got = _carriers(_parser("tree_sitter_javascript"), "javascript",
+                        "function f() {\n  process.stdout.write(k);\n}\n",
+                        {"process": "process"}, **_JS_KINDS)
+        assert got == [("process.stdout", "process.stdout.write@2")]
+
+    def test_the_receiver_field_of_the_call(self) -> None:
+        got = _carriers(_parser("tree_sitter_java"), "java",
+                        "class A { void f() {\n  System.out.println(k);\n} }\n",
+                        {"System": "System"}, **_JAVA_KINDS)
+        assert got == [("System.out", "System.out.println@2")]
+
+    def test_a_use_outside_any_call_has_none(self) -> None:
+        got = _carriers(_parser("tree_sitter_javascript"), "javascript",
+                        "function f() {\n  const s = process.stdout;\n}\n",
+                        {"process": "process"}, **_JS_KINDS)
+        assert got == [("process.stdout", None)]
+
+    def test_no_carrier_kinds_stamps_nothing(self) -> None:
+        """THE CONTROL: a language that passes no carrier kinds is untouched."""
+        kinds = {k: v for k, v in _GO_KINDS.items() if k != "carrier_call_kinds"}
+        got = _carriers(_parser("tree_sitter_go"), "go",
+                        'package m\nfunc f() {\n\tio.WriteString(os.Stderr, "x")\n}\n',
+                        {"os": "os"}, **kinds)
+        assert got == [("os.Stderr", None)]
