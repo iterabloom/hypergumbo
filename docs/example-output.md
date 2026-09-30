@@ -535,7 +535,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ------------------- START of docs/hypergumbo-self-catalog/user_cache_sinks.yaml 
 ```
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Layer-3 project-local catalog — user_cache zone sinks.
+# hypergumbo's in-repo self-audit catalogue — user_cache zone sinks.
 #
 # Hypergumbo's internal wrappers in safety_zones.py are the canonical
 # user_cache write callees. Declaring them here, NOT builtins.open or

@@ -477,7 +477,7 @@ in the `total_io_edges` headline (`subprocess` is opaque *and* counted).
 
 Values that name what data crosses the process boundary at this call site, and in which direction. Per ADR-0050 this is the only axis a new catalogue-declarable boundary should occupy.
 
-- **`browser_storage_read`** — Read from browser-local storage. Like fs_read and for the same reason, deliberately NOT in AUTO_SOURCE_LABEL_MAP: sensitivity depends on what is stored, so a project-local catalogue adds its own taint_sources rows for its threat model.
+- **`browser_storage_read`** — Read from browser-local storage. Like fs_read and for the same reason, deliberately NOT in AUTO_SOURCE_LABEL_MAP: sensitivity depends on what is stored, so you add your own taint_sources rows for your threat model (taint_sources.d/).
 - **`browser_storage_write`** — Write to browser-local storage (localStorage and peers). Structurally distinct from the host filesystem -- reachable via XSS, not via local-user FS access (WI-lokuv).
 - **`db_read`** — Read from a database or persistent store -- java.sql.Connection, erlang ets/dets, CoreData NSManagedObjectContext, sqlite3.
 - **`db_write`** — Write to a database or persistent store -- java.sql.Statement, erlang ets/dets, CoreData NSManagedObjectContext.

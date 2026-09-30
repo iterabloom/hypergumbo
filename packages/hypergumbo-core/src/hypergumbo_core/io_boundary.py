@@ -1992,7 +1992,7 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
             f"I/O primitive overlay {path} must declare "
             f"status: {_OVERLAY_STATUS!r}, got {status!r}. "
             f"'provenance_declared' is a claim about a language's stdlib "
-            f"citation and is not available to a project-local overlay.",
+            f"citation and is not available to an overlay.",
         )
     # THE SPELLING IS REFUSED; THE DECLARATION IS NOT (owner, 2026-08-15).
     # An overlay describes THIRD-PARTY modules, so a key named ``stdlib_*`` in

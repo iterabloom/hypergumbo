@@ -50,7 +50,7 @@
 
 language: bash
 
-# REQUIRED, and it must be exactly this. A project-local overlay declares
+# REQUIRED, and it must be exactly this. An overlay you supply declares
 # `overlay`; `complete` asserts a provenance-backed stdlib enumeration and
 # is not available to you, and any other value is rejected outright.
 status: overlay

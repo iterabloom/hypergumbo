@@ -223,9 +223,11 @@ A load-time validator hard-errors on any catalog declaring
 are auditable. The hostname allowlist defends against typos and
 unofficial sources.
 
-Project-local catalogs remain the escape hatch for "my project
-depends on a wrapper not in the global catalog and I want it
-classified" — they always take precedence over built-in entries.
+Your own catalogue rows remain the escape hatch for "my project
+depends on a wrapper not in the built-in catalogue and I want it
+classified" — an I/O overlay in your `io_primitives.d/` (or named by
+`--io-primitives`), and taint rows in your `taint_*.d/`. See
+[CATALOGUES.md](CATALOGUES.md).
 
 ## Reference
 
