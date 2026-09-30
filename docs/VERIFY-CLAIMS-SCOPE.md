@@ -217,13 +217,14 @@ condition that guards the sink rather than being one of its arguments.
 Precision says nothing about **recall**. A repository with one reported flow
 and forty real ones scores 100%.
 
-Two caveat kinds ride a `violated` verdict rather than a clean one, because
+Three caveat kinds ride a `violated` verdict rather than a clean one, because
 they qualify a reported finding:
 
 | `kind` | what it tells you |
 |---|---|
 | `choice_shaped_source` | Some evidence rows are rooted at a source whose value the far side *chose* from a constrained set rather than authored, so the finding can only be a selection, never an injected payload. |
 | `withheld_community_sanitizer` | Some reported flows pass through a sanitizer from a **community** catalogue file — third-party rows hypergumbo ships without maintaining (ADR-0061) — which was not credited. Vouched for, it would have cleared them; the evidence rows name it under `withheld_sanitizers`. To vouch for one, copy its file into `$XDG_CONFIG_HOME/hypergumbo/taint_sanitizers.d/` and delete its `provenance: community` line: the flow is then cleared under `user_supplied_sanitizer`. |
+| `withheld_community_summary` | This run's call graph calls function summaries from a **community** file that would *end* a taint branch (e.g. testify's `require.*`), and they were not allowed to: an unmaintained row may not remove a finding. Run-scoped, so it may name a summary no reported flow crossed. To vouch for one, copy its file into `$XDG_CONFIG_HOME/hypergumbo/function_summaries.d/` and delete its `provenance: community` line. |
 
 ## Related
 
