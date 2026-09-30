@@ -347,8 +347,8 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
         description=(
             "Read from browser-local storage. Like fs_read and for the same "
             "reason, deliberately NOT in AUTO_SOURCE_LABEL_MAP: sensitivity "
-            "depends on what is stored, so a project-local catalogue adds its "
-            "own taint_sources rows for its threat model."
+            "depends on what is stored, so you add your own taint_sources "
+            "rows for your threat model (taint_sources.d/)."
         ),
     ),
     # ------------------------------------------------------------------

@@ -1464,8 +1464,7 @@ stdlib_modules:
 #
 # SPELLED ``module_completeness`` since 2026-08-15. The old
 # ``stdlib_module_completeness:`` is still READ from shipped catalogues so
-# no curated file breaks, but it is not accepted in a project-local
-# overlay: an overlay describes THIRD-PARTY modules, so a ``stdlib_*`` key
+# no curated file breaks, but it is not accepted in an overlay: an overlay describes THIRD-PARTY modules, so a ``stdlib_*`` key
 # there asserts something about a stdlib it is not describing. The concept
 # was never stdlib-specific — only its authors were.
 #

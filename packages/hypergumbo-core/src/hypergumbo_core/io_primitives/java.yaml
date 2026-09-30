@@ -134,8 +134,8 @@ fs_read:
       reason the BufferedReader row gives.
   # Plan C, PR A: Apache Commons IO removed under strict-stdlib rule.
   # First-party calls into Commons IO surface in external_potential
-  # (Plan C, PR C); project-local taint-source catalogs (WI-votan) handle
-  # case-by-case classification.
+  # (Plan C, PR C); an io_primitives overlay of your own (io_primitives.d/)
+  # classifies them case by case.
 
 fs_write:
   - module: java.io.File
@@ -162,8 +162,8 @@ net_send:
   # strict-stdlib rule (Netty, OkHttp / Retrofit, Spring Web /
   # RestTemplate / WebClient, Apache HttpClient 4.x / 5.x, Unirest).
   # First-party calls into these surface in external_potential
-  # (Plan C, PR C); project-local taint-source catalogs (WI-votan)
-  # provide per-project classification when needed.
+  # (Plan C, PR C); an io_primitives overlay of your own (io_primitives.d/)
+  # classifies them per project when needed.
 
 net_recv:
   - module: java.net.ServerSocket

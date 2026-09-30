@@ -10,9 +10,9 @@
 # dependency which the catalogue could not classify counts as an EXAMINED
 # NEGATIVE rather than as a place the analysis could not look.
 #
-# Unlike its siblings this file is LOADED — docs/hypergumbo.claims.yaml
-# declares it under `extra_catalogs: io_primitives:` — because these are the
-# dependencies hypergumbo itself ships. Read it as a filled-in template.
+# This file is LOADED by hypergumbo's own self-audit —
+# docs/hypergumbo.claims.yaml declares it under `extra_catalogs:
+# io_primitives:` — because these are the dependencies hypergumbo itself ships. Read it as a filled-in template.
 #
 # ===================================================================
 # THE ONE THING TO UNDERSTAND BEFORE COPYING THIS

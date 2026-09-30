@@ -13,7 +13,7 @@
 #
 # THE SIX ARE NOT ARBITRARY. Each pairs an auto-derived taint LABEL with an
 # auto-derived sink ZONE, so every claim here is expressible without any
-# project-local catalogue:
+# catalogue of your own:
 #
 #   label `untrusted_input`  <- io_primitives boundaries net_recv, ipc_recv,
 #                               db_read, navigation_read (the page URL,

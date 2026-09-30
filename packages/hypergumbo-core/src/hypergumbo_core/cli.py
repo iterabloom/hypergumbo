@@ -11198,11 +11198,12 @@ inconclusive, or the claims file failed validation; 3 = at least one
 Exit 3 means every claim held, but at least one held on something you have to
 see for yourself. FOUR things raise it, in two families.
 
-The claim rested on the ANALYSED REPOSITORY's own word:
-  - a sanitizer it declared through `extra_catalogs:` or `--taint-sanitizers`
-    was credited with removing a flow the tool would otherwise have reported
-    (INV-pojib);
-  - a row it supplied DISPLACED a shipped catalogue row that could have
+The claim rested on catalogue data that did not ship with hypergumbo -- a
+`--taint-*` flag, the claims file's `extra_catalogs:`, or your own channel
+directories:
+  - a sanitizer from there was credited with removing a flow the tool would
+    otherwise have reported (INV-pojib);
+  - a row from there DISPLACED a shipped catalogue row that could have
     produced evidence for this very claim (INV-faput).
 
 Or the analysis looked and could not adjudicate what it saw:

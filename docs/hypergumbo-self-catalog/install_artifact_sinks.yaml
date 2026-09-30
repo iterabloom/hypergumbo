@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Layer-3 project-local catalog — install_artifact zone sinks.
+# hypergumbo's in-repo self-audit catalogue — install_artifact zone sinks.
 #
 # Used by extras subcommands (install-gitleaks, install-rust-analyzer)
 # to land installed binaries under ~/.local/bin or similar. Distinct
