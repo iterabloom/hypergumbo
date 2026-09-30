@@ -1,0 +1,24 @@
+- op: create  # 5089
+  at: '2026-09-30T19:14:54Z'  # 5089
+  by: agent  # 5089
+  actor: jgstern_agent  # 5089
+  clock: 1  # 5089
+  nonce: '5089'  # 5089
+  data:  # 5089
+    kind: work_item  # 5089
+    title: "logging rows that write nothing: python basicConfig/StreamHandler, go slog.New*Handler, elixir Logger.metadata/configure configure a facility (audit-findings 0021)"  # 5089
+    status: todo_hard  # 5089
+    priority: 3  # 5089
+    parent:  # 5089
+    tags:  # 5089
+    - catalogue  # 5089
+    - io_boundary  # 5089
+    - python  # 5089
+    - go  # 5089
+    - elixir  # 5089
+    isbefore: []  # 5089
+    duplicate_of: []  # 5089
+    not_duplicate_of: []  # 5089
+    pr_ref:  # 5089
+    description: "Adjacent finding of audit-findings 0021 (Step 5). Filed, not moved.\nlogging rows that write nothing at the call -- they configure or construct a logging facility, which ADR-0049's clause (\"not what the program is thereby arranged to do later\") excludes from data_crossing:\n- python logging.basicConfig, logging.StreamHandler (function rows in python.yaml's `logging` entry). NOTE: deliberate -- python.yaml's `logging` module_completeness entry says \"Module-level emitters, basicConfig, and the file/stream handler constructors rowed\". Read that rationale before deciding; the completeness entry may be why they are rows.\n- go log/slog NewTextHandler, NewJSONHandler\n- elixir Logger.metadata, Logger.configure\nEffect: each call is a `logging` taint sink; a secret passed as configuration (a handler's prefix, a metadata value) is reported as logged at a site that writes nothing. Not measured.\nFix shape (not decided): drop the rows, or keep them and state why in the audit's terms. Either way the completeness entries that list them must stay true."  # 5089
+    fields: {}  # 5089

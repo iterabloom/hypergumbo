@@ -1,0 +1,22 @@
+- op: create  # 7973
+  at: '2026-09-30T19:14:44Z'  # 7973
+  by: agent  # 7973
+  actor: jgstern_agent  # 7973
+  clock: 1  # 7973
+  nonce: '7973'  # 7973
+  data:  # 7973
+    kind: work_item  # 7973
+    title: "elixir Task.async/start spawns are rowed ipc_send: a spawn inside the BEAM crosses no process boundary (audit-findings 0021)"  # 7973
+    status: todo_hard  # 7973
+    priority: 3  # 7973
+    parent:  # 7973
+    tags:  # 7973
+    - catalogue  # 7973
+    - io_boundary  # 7973
+    - elixir  # 7973
+    isbefore: []  # 7973
+    duplicate_of: []  # 7973
+    not_duplicate_of: []  # 7973
+    pr_ref:  # 7973
+    description: "Adjacent finding of audit-findings 0021 (Step 5). Filed, not moved.\nelixir.yaml rows Task.async / async_stream / start / start_link / Supervisor.start_child as ipc_send (\"Task spawns -- async execution boundary\"). A spawn inside the BEAM transfers no data across the process boundary at the call; the axiom (ADR-0050 / ADR-0049 ruling 1: \"what data crosses the process boundary at this call site\") does not admit it. The spawned function's own calls are where any crossing happens.\nEffect: each Task spawn is an `ipc` taint sink and an ipc_send headline crossing. Not measured.\nFix shape (not decided): no row, or process_send if the argument closure is considered sent to the new process (erlang's spawn rows are the precedent to check first -- grep erlang.yaml for spawn before deciding)."  # 7973
+    fields: {}  # 7973
