@@ -894,7 +894,7 @@ def test_verify_claims_cli_taint_sources_flag_wires_user_source(
     assert data["verdicts"][0]["verdict"] == "violated"
     # Visibility: summary line to stderr names the counts so the user
     # knows the override took effect.
-    assert "Loaded project-local taint catalog" in err
+    assert "Loaded taint catalogues named by flag or claims file" in err
     assert "1 source path(s)" in err
 
 
@@ -959,7 +959,7 @@ def test_verify_claims_extra_catalogs_claims_file_key(
     out, err = capsys.readouterr()
     data = json.loads(out)
     assert data["verdicts"][0]["verdict"] == "violated"
-    assert "Loaded project-local taint catalog" in err
+    assert "Loaded taint catalogues named by flag or claims file" in err
 
 
 def test_verify_claims_bad_taint_source_path_errors(

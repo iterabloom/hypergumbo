@@ -91,7 +91,7 @@ raised on a clean path survive a coverage downgrade to ``inconclusive``
 one unconstanted kind (``deferred_crossing``). The four longest-standing:
 
 - ``CAVEAT_USER_SUPPLIED_SANITIZER`` — the clean answer depends on a
-  sanitizer, or a function summary, supplied by the analysed repository
+  sanitizer, or a function summary, that did not ship with hypergumbo
   rather than the shipped catalogue. A shipped-catalogue sanitizer earns
   plain ``confirmed``.
 - ``CAVEAT_OPAQUE_BOUNDARY`` — named launch sites whose *launched program*
@@ -5332,7 +5332,7 @@ def _sanitizer_attribution(findings: list["TaintFlowFinding"]) -> str:
         # than by a claim about a sanitizer nobody named.
         return ""
     shown = ", ".join(
-        f"{name} (project-local)" if name in repo_supplied else name
+        f"{name} (user-supplied)" if name in repo_supplied else name
         for name in named
     )
     # "via X" WHEN ONE CANDIDATE, "one of" WHEN SEVERAL, because the barrier
@@ -5734,11 +5734,13 @@ def _verify_taint_claim_uncredited(
                 "kind": CAVEAT_USER_SUPPLIED_SANITIZER,
                 "entries": sorted(repo_supplied),
                 "detail": (
-                    f"A sanitizer supplied by the analysed repository is "
+                    f"A sanitizer that did not ship with hypergumbo -- from "
+                    f"a --taint-sanitizers flag, the claims file's "
+                    f"extra_catalogs:, or your taint_sanitizers.d/ -- is "
                     f"credited with removing {sanitized_flows} flow(s) that "
                     f"would otherwise have been reported: {shown}. The tool "
                     f"cannot check that the named function neutralises the "
-                    f"taint; it takes the repository's word for it."
+                    f"taint; it takes that file's word for it."
                 ),
             })
         # INV-nuhun. LAST, and only on this path. A ``violated`` verdict never

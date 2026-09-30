@@ -737,7 +737,7 @@ class TestSanitizedFlowsAreDisclosed:
             f"the sanitizer holding the verdict up must be NAMED, or the reader "
             f"cannot check it against the source; got: {verdict.details!r}"
         )
-        assert "project-local" in verdict.details, (
+        assert "user-supplied" in verdict.details, (
             f"and it must be marked as supplied by the analysed repository, "
             f"which is the whole distinction INV-pojib is about; got: "
             f"{verdict.details!r}"
@@ -756,7 +756,7 @@ class TestSanitizedFlowsAreDisclosed:
         f.sanitized_by = ("cryptography.fernet.Fernet.encrypt",)
         verdict = verify_taint_claim(self._claim(), [f])
         assert "Fernet.encrypt" in verdict.details
-        assert "project-local" not in verdict.details, (
+        assert "user-supplied" not in verdict.details, (
             f"a shipped-catalogue sanitizer is not repo-supplied; got: "
             f"{verdict.details!r}"
         )
@@ -2020,7 +2020,7 @@ class TestARepoSuppliedSanitizerReachesTheExitCode:
         The attribution string and the caveat are two consumers of "which
         sanitizers were credited, and which came from a user path". Two homes
         for one fact drift immediately, so they read it from one predicate and
-        this test is what keeps them honest: ``(project-local)`` in the prose
+        this test is what keeps them honest: ``(user-supplied)`` in the prose
         and ``confirmed_with_caveats`` in the value must appear together or not
         at all, in BOTH directions.
         """
@@ -2030,10 +2030,10 @@ class TestARepoSuppliedSanitizerReachesTheExitCode:
             [self._repo_supplied(), self._built_in()],
         ):
             verdict = verify_taint_claim(self._claim(), findings)
-            marked = "project-local" in verdict.details
+            marked = "user-supplied" in verdict.details
             caveated = verdict.verdict == "confirmed_with_caveats"
             assert marked == caveated, (
-                f"prose says project-local={marked} but the verdict value says "
+                f"prose says user-supplied={marked} but the verdict value says "
                 f"caveated={caveated}; got {verdict.verdict!r} / "
                 f"{verdict.details!r}"
             )

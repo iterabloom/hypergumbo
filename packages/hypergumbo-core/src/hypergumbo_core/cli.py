@@ -1643,14 +1643,16 @@ def _warn_overlay_only_catalogs(catalogs: Mapping[str, Any]) -> List[str]:
     for lang in warned:
         print(
             f"⚠  {lang!r} ships no I/O primitive catalogue: its I/O is "
-            f"classified only by the project-local overlay rows loaded above, "
+            f"classified only by the overlay rows loaded above, "
             f"and a call they do not name is unclassified.",
             file=sys.stderr,
         )
     return warned
 
 
-def _warn_default_overlays(languages: Iterable[str]) -> List[str]:
+def _warn_default_overlays(
+    languages: Iterable[str], *, offer_remedies: bool = True,
+) -> List[str]:
     """ADR-0047 ruling 6: say LOUDLY that unvouched rows were loaded.
 
     The owner's ruling that admits these rows is CONDITIONAL — hypergumbo may
@@ -1682,11 +1684,17 @@ def _warn_default_overlays(languages: Iterable[str]) -> List[str]:
         named = ", ".join(
             f"{o.path.name} (retrieved {o.retrieved})" for o in overlays
         )
+        # ``offer_remedies=False`` where the command honours neither remedy
+        # (``slice --io-boundary`` loads the shipped catalogue as it is), so
+        # the notice does not tell a reader to do something with no effect.
+        remedy = (
+            " Override them in $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/, "
+            "or omit them with --no-default-overlays."
+            if offer_remedies else ""
+        )
         print(
             f"⚠  {lang!r}: loaded community I/O rows hypergumbo does "
-            f"not vouch for — {named}. Override them in "
-            f"$XDG_CONFIG_HOME/hypergumbo/io_primitives.d/, or omit them "
-            f"with --no-default-overlays.",
+            f"not vouch for — {named}.{remedy}",
             file=sys.stderr,
         )
     return warned
@@ -1753,7 +1761,8 @@ def _apply_io_boundary_filter(
 
     # WI-najil: same in_progress-catalog disclosure as io-boundaries/verify-claims.
     _warn_in_progress_catalogs({n.language for n in nodes if n.language})
-    _warn_default_overlays({n.language for n in nodes if n.language})
+    _warn_default_overlays({n.language for n in nodes if n.language},
+                           offer_remedies=False)
 
     catalogs: Dict[str, Any] = {}
     for node in nodes:
@@ -5390,7 +5399,7 @@ def _resolve_io_overlays(
     claims_paths: "list[Path] | None" = None,
     repo_root: "Path | None" = None,
 ) -> "list[Path]":
-    """Project-local I/O primitive overlay paths, in ASCENDING precedence.
+    """The I/O primitive overlay paths beyond the shipped ones, ASCENDING precedence.
 
     INV-fotav. Mirrors the taint arm's layering (INV-hukug) rather than
     inventing a second rule: claims-file ``extra_catalogs: io_primitives:``
@@ -5586,7 +5595,8 @@ def _disclose_io_overlays(paths: "list[Path]") -> None:
     """
     if paths:
         print(
-            f"Loaded {len(paths)} project-local I/O primitive overlay(s): "
+            f"Loaded {len(paths)} I/O primitive overlay(s) beyond the "
+            f"shipped catalogues: "
             f"{', '.join(str(p) for p in paths)}. Overlay entries override "
             f"built-in catalog entries on qualified-name match; later paths "
             f"override earlier ones.",
@@ -6886,7 +6896,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
         if any_taint_flags:
             print(
-                "Loaded project-local taint catalog: "
+                "Loaded taint catalogues named by flag or claims file: "
                 f"{len(cli_sources) + len(claims_sources)} source path(s), "
                 f"{len(cli_sinks) + len(claims_sinks)} sink path(s), "
                 f"{len(cli_sanitizers) + len(claims_sanitizers)} sanitizer "
@@ -11046,13 +11056,14 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         default=None,
         metavar="PATH",
         help=(
-            "Project-local I/O primitive overlay YAML. Repeatable; a later "
+            "An I/O primitive overlay YAML for this run. Repeatable; a later "
             "path outranks an earlier one, and all outrank the built-in "
             "catalog on qualified-name match. The built-in catalog stays "
             "stdlib-scoped by design (ADR-0016), so third-party libraries "
-            "(requests, httpx, ...) are declared here. See "
-            "hypergumbo_core/io_primitives_overlays/ for the shipped community "
-            "overlays, which are loaded by default. (INV-fotav)"
+            "(requests, httpx, ...) are declared in an overlay. For a "
+            "persistent one use $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ "
+            "(`hypergumbo init-catalogs` seeds the community overlays there); "
+            "see docs/CATALOGUES.md. (INV-fotav)"
         ),
     )
     _add_minimal_argument(p_io)
@@ -11170,8 +11181,11 @@ Claims file format (YAML):
         #   prohibited_sink_zone: host_fs
         #   allowed_sanitizers: []
 
-A top-level `extra_catalogs:` key may declare project-local taint catalogs
-(see --taint-sources/--taint-sinks/--taint-sanitizers; WI-votan).
+A top-level `extra_catalogs:` key may name extra catalogue files --
+`io_primitives`, `sources`, `sinks`, `sanitizers` (see --io-primitives and
+--taint-sources/--taint-sinks/--taint-sanitizers; WI-votan). Your persistent
+taint model belongs in $XDG_CONFIG_HOME/hypergumbo/taint_sources.d/,
+taint_sinks.d/ and taint_sanitizers.d/; see docs/CATALOGUES.md.
 
 The claims file is validated up front: a malformed YAML, an unexpected
 shape, an unknown field name, or a boundary value outside the vocabulary
@@ -11265,13 +11279,14 @@ what I could not check" -- and decide per repository whether that is acceptable.
         default=None,
         metavar="PATH",
         help=(
-            "Project-local I/O primitive overlay YAML. Repeatable; a later "
+            "An I/O primitive overlay YAML for this run. Repeatable; a later "
             "path outranks an earlier one, and all outrank the built-in "
             "catalog on qualified-name match. The built-in catalog stays "
             "stdlib-scoped by design (ADR-0016), so third-party libraries "
-            "(requests, httpx, ...) are declared here. See "
-            "hypergumbo_core/io_primitives_overlays/ for the shipped community "
-            "overlays, which are loaded by default. (INV-fotav)"
+            "(requests, httpx, ...) are declared in an overlay. For a "
+            "persistent one use $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ "
+            "(`hypergumbo init-catalogs` seeds the community overlays there); "
+            "see docs/CATALOGUES.md. (INV-fotav)"
         ),
     )
     p_vc.add_argument(
@@ -11280,7 +11295,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         default=None,
         metavar="PATH",
         help=(
-            "Project-local taint source YAML file or directory. "
+            "A taint source YAML file or directory for this run. "
             "Repeatable. Entries whose (module, name, kind) matches an "
             "auto-derived or built-in source are overridden. (WI-votan)"
         ),
@@ -11291,7 +11306,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         default=None,
         metavar="PATH",
         help=(
-            "Project-local taint sink YAML file or directory. "
+            "A taint sink YAML file or directory for this run. "
             "Repeatable. Entries whose (module, name, kind) matches an "
             "auto-derived or built-in sink are overridden. (WI-votan)"
         ),
@@ -11302,7 +11317,7 @@ what I could not check" -- and decide per repository whether that is acceptable.
         default=None,
         metavar="PATH",
         help=(
-            "Project-local taint sanitizer YAML file or directory. "
+            "A taint sanitizer YAML file or directory for this run. "
             "Repeatable. User sanitizers concatenate onto the built-in "
             "list. (WI-votan)"
         ),

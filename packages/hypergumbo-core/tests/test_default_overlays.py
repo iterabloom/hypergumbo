@@ -228,6 +228,22 @@ class TestTheDisclosureTheRulingRequires:
         assert _warn_default_overlays(silent[:2]) == []
         assert capsys.readouterr().err == ""
 
+    def test_it_offers_remedies_only_where_the_command_honours_them(
+        self, capsys,
+    ):
+        """``slice --io-boundary`` honours neither io_primitives.d nor
+        --no-default-overlays, so its notice must not send the reader there;
+        io-boundaries and verify-claims honour both and keep the advice."""
+        from hypergumbo_core.cli import _warn_default_overlays
+
+        _warn_default_overlays(["python"])
+        assert "--no-default-overlays" in capsys.readouterr().err
+        _warn_default_overlays(["python"], offer_remedies=False)
+        err = capsys.readouterr().err
+        assert "does not vouch" in err.lower()
+        assert "--no-default-overlays" not in err
+        assert "io_primitives.d" not in err
+
     def test_it_fires_once_per_language_not_once_per_file(self, capsys):
         from hypergumbo_core.cli import _warn_default_overlays
 

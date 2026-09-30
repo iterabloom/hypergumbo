@@ -139,9 +139,11 @@ hypergumbo io-boundaries --show-external-potential   # opt into the (large) exte
 hypergumbo --help --all                        # comprehensive help for all commands
 ```
 
-### Project-local taint catalogs
+### Catalogues: built-in, community, yours, in-repo
 
-`verify-claims` ships with paranoid defaults auto-derived from the built-in IO primitive catalog. Projects can supply their own trust zones, sanitizers, and label maps:
+Every analysis runs on catalogue rows — which calls are I/O, which values are tainted, what makes them safe. Each row is one of four tiers, declared on its file's `provenance:` line: **built-in** (standard-library rows hypergumbo vouches for), **community** (third-party rows it ships without maintaining — they can add a finding but never make a verdict cleaner), **yours** (files under `$XDG_CONFIG_HOME/hypergumbo/` or named on the command line), and **in-repo** (a repository's own `.hypergumbo.toml` catalogue keys, loaded only when you opt in with `--in-repo-catalogues` or `hypergumbo trust-catalogues`). [docs/CATALOGUES.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/CATALOGUES.md) says where each family's files live and how to add a row.
+
+Your persistent taint model lives in `$XDG_CONFIG_HOME/hypergumbo/taint_sources.d/`, `taint_sinks.d/` and `taint_sanitizers.d/` (`hypergumbo init-catalogs` creates them). For one run, name files on the command line:
 
 ```bash
 hypergumbo verify-claims --claims claims.yaml \
@@ -150,7 +152,7 @@ hypergumbo verify-claims --claims claims.yaml \
     --taint-sanitizers myrepo/taint/sanitizers.yaml
 ```
 
-Each flag accepts a YAML file or a directory (globbed as `*.yaml`), and is repeatable. The same paths can be declared inside the claims YAML under `extra_catalogs: {sources, sinks, sanitizers}` — relative paths resolve against the claims-file directory. User entries whose `(module, name, kind)` triple matches a built-in replace it; sanitizers concatenate.
+Each flag accepts a YAML file or a directory (globbed as `*.yaml`), and is repeatable. The same paths can be declared inside the claims YAML under `extra_catalogs: {io_primitives, sources, sinks, sanitizers}` — relative paths resolve against the claims-file directory. Precedence, lowest first: your channel directories, the claims file, the flags; an entry whose `(module, name, kind)` triple matches a built-in replaces it, and sanitizers concatenate.
 
 Results are automatically cached in `~/.cache/hypergumbo/`. Just run:
 ```bash
@@ -167,7 +169,7 @@ See `hypergumbo --help` for all options.
 - **Linkers**: Tier 2 edge-recovery passes across four subcategories — Protocol (HTTP, WebSocket, message queues, SQL), Bridge (JNI, wasm_bindgen, Tauri IPC, language-pair FFI), Framework (gRPC, GraphQL, React components, DI resolution, ORM), Infrastructure (containment, inheritance, module imports). [Full catalogue](https://github.com/iterabloom/hypergumbo/blob/dev/docs/LINKERS.md).
 - **Framework patterns**: FastAPI, Django, Rails, Spring Boot, Phoenix, Express, and [many more](https://github.com/iterabloom/hypergumbo/blob/dev/docs/FRAMEWORKS.md)
 - **I/O boundary detection**: Maps every call chain that reaches the filesystem, network, subprocess, environment, IPC, or browser-local storage — across FFI boundaries
-- **Taint-flow analysis**: Traces data from sensitive sources (environment variables, received network input, crypto outputs, key material) to sinks in six trust zones (`host_fs`, `network`, `host_env`, `ipc`, `browser_storage`, `relay`), with sanitizer awareness
+- **Taint-flow analysis**: Traces data from sensitive sources (environment variables, received network input, crypto outputs, key material) to sinks in ten built-in trust zones (`host_fs`, `network`, `subprocess`, `host_env`, `ipc`, `browser_storage`, `database`, `logging`, `code_execution`, `dom_injection`), with sanitizer awareness; a project can declare its own zones
 - **Supply chain tiers**: Classifies code as first-party, internal, external, or derived for dependency-aware analysis
 
 ## How It Works

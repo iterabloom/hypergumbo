@@ -2,7 +2,9 @@
 # ADR-0016: I/O primitive catalog for JavaScript/TypeScript (Node.js)
 #
 # Maps Node.js built-in module functions to I/O boundary types.
-# Third-party packages (express, axios, etc.) trace through these.
+# Third-party packages (express, axios, ...) are NOT seen through: hypergumbo
+# analyses your repository, not node_modules, so their I/O needs an overlay
+# (docs/CATALOGUES.md).
 # Also used for TypeScript (same runtime primitives).
 provenance: builtin
 language: javascript

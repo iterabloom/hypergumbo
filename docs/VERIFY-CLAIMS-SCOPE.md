@@ -46,7 +46,7 @@ each with a `kind`. These are the kinds the tool can emit:
 
 | `kind` | what it tells you |
 |---|---|
-| `user_supplied_sanitizer` | A sanitizer **the analysed repository declared** (via `extra_catalogs:` or `--taint-sanitizers`) is credited with removing a flow that would otherwise have been reported. The tool cannot check that assertion; it takes the repository's word that the named function neutralises the taint. |
+| `user_supplied_sanitizer` | A sanitizer **that did not ship with hypergumbo** — from `--taint-sanitizers`, the claims file's `extra_catalogs:`, or your `taint_sanitizers.d/` — is credited with removing a flow that would otherwise have been reported. The tool cannot check that assertion; it takes that file's word that the named function neutralises the taint. |
 | `displaced_shipped_entry` | A catalogue entry hypergumbo ships was **replaced** by one the repository supplied, and the replaced entry is the kind that could have produced evidence for *this* claim. |
 | `opaque_boundary` | The claim held everywhere the analysis could see, and control leaves the process at named call sites whose launched program is not in the edge set. |
 | `untyped_receiver` | Named call sites reach a method the catalogue declares **for this boundary** through a receiver whose type could not be determined — e.g. `sock.sendall(payload)` where `sock` is an unannotated parameter. The flow could be neither constructed nor ruled out. |
@@ -70,10 +70,11 @@ follow down to the stdlib call it eventually makes.
 
 If your project's egress goes through a third-party client the tool ships no
 rows for, a claim about the network boundary will be clean because the tool
-never saw the call. Two community overlays now ship in the wheel and load by
-default — `python-http-clients.yaml` and `go-web-frameworks.yaml` — and every
+never saw the call. Eight community overlays ship in the wheel and load by
+default — Python HTTP clients and web/ORM, Go web frameworks and x/sys+gRPC,
+Elixir web and DB, Haskell network and extras, SwiftNIO and logging — and every
 run that uses them says so on stderr, because hypergumbo does **not** vouch for
-those rows (ADR-0047). They make third-party egress *visible*; they never
+those rows (ADR-0061; see [CATALOGUES.md](CATALOGUES.md)). They make third-party egress *visible*; they never
 license a clean verdict, so a call they classify still counts as unexamined and
 no claim is confirmed on their strength. For anything they do not cover, supply
 your own overlay in `$XDG_CONFIG_HOME/hypergumbo/io_primitives.d/` or via

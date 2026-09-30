@@ -17,11 +17,13 @@
 # The stdlib scope itself is deliberate and stays (ADR-0016 §27: "a curated
 # list of stdlib functions, not an unbounded set of library APIs") — owning
 # every third-party API surface is the maintenance burden that ADR declined.
-# Supply third-party primitives through a PROJECT-LOCAL OVERLAY instead:
+# Supply third-party primitives through an OVERLAY of your own instead: a
+# file in $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/, or for one run
 #     hypergumbo io-boundaries . --io-primitives my-overlay.yaml
-# or `extra_catalogs: io_primitives:` in a claims file. Worked example:
-# hypergumbo_core/io_primitives_overlays/python-http-clients.yaml, which
-# ships in the wheel and loads by default (ADR-0047).
+# or `extra_catalogs: io_primitives:` in a claims file. Worked examples:
+# the community overlays (python-http-clients.yaml, ...), which ship in the
+# wheel, load by default, and are copied into io_primitives.d/ by
+# `hypergumbo init-catalogs` (docs/CATALOGUES.md).
 provenance: builtin
 language: python
 
