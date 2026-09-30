@@ -50,9 +50,12 @@ The test is what a row can do, not which family it belongs to.
 - **Built-in rows and your rows take full effect.** When your row removes a
   finding, the verdict still carries the existing user-supplied-sanitizer caveat
   (exit 3).
-- **The second column is still a reading, not a measurement.** Whether a
-  `frameworks` or `dataflow_patterns` row can remove a finding gets measured for
-  each family when it is implemented (Open Questions).
+- **`frameworks` and `dataflow_patterns` rows are disclosed, not withheld.**
+  Measured with every community file in both families removed, on five
+  repositories using the frameworks they describe: no verdict, flow or caveat
+  changed, while the rows added up to 1,127 concept-bearing symbols, 380 edges
+  and 24 entrypoints. They add structure and removed nothing there. A family
+  later shown to remove a finding gets the withholding.
 - **Consequence: third-party crypto sanitizers stop clearing flows.** The
   `cryptography`, `aes_gcm` and `ring` sanitizers become community rows. A
   program that decrypts, re-encrypts and writes will read `violated` on a
@@ -161,7 +164,9 @@ repository, and flags last one run, so neither can be that home.
 
 ## Open Questions
 
-- **Which `frameworks` and `dataflow_patterns` rows can remove a finding.**
-  Measured per family at implementation (ruling 2).
+- **Whether a framework row can lift a coverage gate.** A framework-derived
+  edge could make a language count as having produced call edges, which would
+  make a verdict cleaner. The measurement behind ruling 2 did not meet that
+  case: every language in it already produced call edges.
 - **Whether any third-party library earns built-in status.** The built-in line
   is the standard-library line; widening it needs a new owner ruling.
