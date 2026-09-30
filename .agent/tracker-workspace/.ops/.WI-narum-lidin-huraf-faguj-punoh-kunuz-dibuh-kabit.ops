@@ -41,3 +41,17 @@
   clock: 4  # 99fd
   nonce: 99fd  # 99fd
   message: "Seen again 2026-09-29 on the WI-nopam branch: 3 failed of 23,416 in a 775-file targeted run (2 were real and fixed); test_a_hangup_is_named_too failed under load (subprocess wait timeout=30) and passed alone (8/8). Nothing auto-pr related was touched."  # 99fd
+- op: discuss  # 2271
+  at: '2026-09-30T14:08:46Z'  # 2271
+  by: agent  # 2271
+  actor: jgstern_agent  # 2271
+  clock: 5  # 2271
+  nonce: '2271'  # 2271
+  message: "Seen again 2026-09-30 in the WI-lidof smart-test run (660 files, -n 6, 24m45s): test_a_hangup_is_named_too TimeoutExpired after 30s; 21981 other tests passed. Re-run alone via smart-test: all 8 tests in test_autopr_signal_termination.py pass (exit 0). Same shape as filed: load-only."  # 2271
+- op: discuss  # aef2
+  at: '2026-09-30T15:12:46Z'  # aef2
+  by: agent  # aef2
+  actor: jgstern_agent  # aef2
+  clock: 6  # aef2
+  nonce: aef2  # aef2
+  message: "Again 2026-09-30 in a second loaded run (666 files, 23m10s): test_a_hangup_is_named_too TimeoutExpired 30s, 19208 others passed. 2 of 2 loaded runs today, 0 of 1 alone -- under load it is no longer intermittent here."  # aef2
