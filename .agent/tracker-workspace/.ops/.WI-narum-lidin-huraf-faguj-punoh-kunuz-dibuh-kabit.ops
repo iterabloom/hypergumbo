@@ -55,3 +55,10 @@
   clock: 6  # aef2
   nonce: aef2  # aef2
   message: "Again 2026-09-30 in a second loaded run (666 files, 23m10s): test_a_hangup_is_named_too TimeoutExpired 30s, 19208 others passed. 2 of 2 loaded runs today, 0 of 1 alone -- under load it is no longer intermittent here."  # aef2
+- op: discuss  # 98c2
+  at: '2026-09-30T23:23:05Z'  # 98c2
+  by: agent  # 98c2
+  actor: jgstern_agent  # 98c2
+  clock: 7  # 98c2
+  nonce: 98c2  # 98c2
+  message: "Again 2026-09-30, the 3rd and 4th loaded smart-test runs of the day (INV-hopib 804 files; WI-dorus 839 files, 37 min): test_a_hangup_is_named_too TimeoutExpired 30s each time, every other test passing. 4 of 4 loaded runs today, 0 of 1 alone."  # 98c2

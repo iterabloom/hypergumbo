@@ -21,3 +21,10 @@
     pr_ref:  # c83f
     description: "Found while doing WI-runos (audit-findings 0021, Step 4). Measured on dev 544ac087ee with one-file repos:\n  kotlin: val k = System.getenv(\"API_KEY\"); System.err.println(k)\n  scala:  val k = System.getenv(\"API_KEY\"); System.err.println(k)\nBoth analyzers emit `calls kotlin|scala:external:0-0:println:external_symbol` and NO module_attr_ref for System.err (java emits `module_attr_ref ... System.out`). So java.lang.System.out / .err -- rowed logging since WI-runos and inherited by kotlin and scala through _CATALOG_PARENTS -- is never reached from a kotlin or scala FILE: host_secret -> logging reads confirmed_with_caveats, host_secret -> ipc likewise. A stdio write in kotlin or scala is seen by neither zone.\nThe spec already records the mechanism gap (\"Groovy and Kotlin have neither mechanism and emit no module_attr_ref edges\"); this is its measured consequence for the stdio rows, and scala is in it too.\nThe WI-runos A/B confirms: okhttp's and sbt's System.out crossings all came from .java files.\nFix shape: wire emit_module_attribute_refs into the kotlin and scala analyzers (WI-gapam wired the others), or reach it from the call through receiver typing (WI-dorus). Measure: kotlin/scala logging findings should only be ADDED."  # c83f
     fields: {}  # c83f
+- op: discuss  # df3a
+  at: '2026-09-30T23:23:16Z'  # df3a
+  by: agent  # df3a
+  actor: jgstern_agent  # df3a
+  clock: 2  # df3a
+  nonce: df3a  # df3a
+  message: "WI-dorus (PR #1341) typed java's System.out/err receivers as java.io.PrintStream and rowed PrintStream's writers (requires_target_kind: std_stream). kotlin and scala inherit those rows via _CATALOG_PARENTS, but their analyzers neither emit the System.out attribute ref nor type/stamp the receiver, so kotlin/scala stdio writes are still seen by no zone. Either fix (the attribute ref, or porting the java receiver typing + std_stream stamp) now lands on rows that exist."  # df3a
