@@ -14,9 +14,10 @@ The core mechanism is pinned in ``hypergumbo-core``'s
 ``test_one_write_one_sink``; the analyzers' stamp is what these exercise, per
 language, and the controls are the shapes that must KEEP the stream: a carrier
 that is not a sink (``json.dump``, ``log.SetOutput``), and a receiver whose
-method no catalogue rows (``System.out.println``, ``process.stdout.write``) --
-where the stream is the only sink there is, and the carrier is what makes the
-record checkable.
+method no catalogue rows (``process.stdout.write``) -- where the stream is the
+only sink there is, and the carrier is what makes the record checkable. java's
+``System.out.println`` was that control until WI-dorus rowed PrintStream's
+standard-stream writes; it is now the receiver form of one write, one row.
 """
 
 from __future__ import annotations
@@ -65,7 +66,7 @@ _CASES = {
         "public class Main {\n    public static void main(String[] args) {\n"
         '        String k = System.getenv("API_KEY");\n'
         "        System.out.println(k);\n    }\n}\n",
-        [(["java.lang.System.out"], ["System.out.println@4"])],
+        [(["java.io.PrintStream.println"], [])],
     ),
     "javascript_receiver": (
         "main.js",

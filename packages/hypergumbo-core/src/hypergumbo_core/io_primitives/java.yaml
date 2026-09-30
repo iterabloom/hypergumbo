@@ -354,6 +354,18 @@ logging:
   - module: java.lang.System
     attributes: [out, err]
     notes: "WI-runos: the process's own standard output -- terminal output, logging, not IPC (WI-tolif, WI-dutah). kotlin and scala inherit this row through _CATALOG_PARENTS."
+  - module: java.io.PrintStream
+    methods: [append, format, print, printf, println, write, writeBytes, flush, checkError]
+    requires_target_kind: std_stream
+    notes: >-
+      WI-dorus: a PrintStream method on System.out / System.err -- the java analyzer types that
+      receiver as java.io.PrintStream and stamps io_target_kind std_stream, so these rows apply there
+      and ONLY there. Every other PrintStream (over a ByteArrayOutputStream, a file, a socket, or a
+      parameter whose origin is not visible) stays unclassified, as before the rows existed: there
+      is no abstention (requires_target_kind). The list is PrintStream's whole writing surface as
+      reflected from JDK 25.0.2 (docs/surveys/java-printstream-io-enumeration.md); checkError
+      flushes. close and charset are not rows, and no module_completeness is granted -- a grant
+      would make every unstamped PrintStream an examined negative.
   - module: java.util.logging.Logger
     methods: [log, logp, fine, finer, finest, info, warning, severe, config]
     notes: "java.util.logging (JDK built-in)"

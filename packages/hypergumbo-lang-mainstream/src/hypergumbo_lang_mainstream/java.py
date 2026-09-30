@@ -874,6 +874,43 @@ _JAVA_STD_STREAM_EXPRS: frozenset[str] = frozenset({
     "System.in", "java.lang.System.in",
 })
 
+#: WI-dorus: the receiver spellings whose static type the FIELD fixes --
+#: ``java.lang.System.out`` and ``.err`` are declared ``java.io.PrintStream``.
+_JAVA_STD_OUTPUT_RECEIVERS: frozenset[str] = frozenset({
+    "System.out", "System.err", "java.lang.System.out", "java.lang.System.err",
+})
+
+#: The type those fields declare.
+_JAVA_PRINT_STREAM = "java.io.PrintStream"
+
+
+def _java_std_output_receiver(
+    object_node: "tree_sitter.Node",
+    source: bytes,
+    var_types: dict[str, str],
+    imports: dict[str, str],
+    class_symbols: dict[str, Symbol],
+    project_class_names: frozenset[str],
+) -> bool:
+    """Whether a call's receiver is the process's own ``System.out`` / ``.err``.
+
+    WI-dorus. The field fixes the receiver's type, but the call was emitted with
+    the ``external`` module slot and counted as an untyped-receiver site in the
+    ``unknown_receiver_scope`` caveat. Worse, the cascade took the FIELD NAME
+    (``out``) as the receiver, so a local named ``out`` lent ``System.out`` its
+    own type. A bare ``System`` counts only when nothing in scope shadows it: a
+    local, a project class, or an import of some other ``System``.
+    """
+    if _node_text(object_node, source).replace(" ", "") not in _JAVA_STD_OUTPUT_RECEIVERS:
+        return False
+    return (
+        "System" not in var_types
+        and "System" not in class_symbols
+        and "System" not in project_class_names
+        and imports.get("System", "java.lang.System") == "java.lang.System"
+    )
+
+
 #: Constructors whose argument is a filesystem PATH or ``File``.
 _JAVA_PATH_STREAM_TYPES: frozenset[str] = frozenset({
     "File", "FileInputStream", "FileReader", "RandomAccessFile",
@@ -2510,6 +2547,7 @@ def _extract_edges(
                 method_name = _node_text(name_node, source) if name_node else None
                 receiver_name = None
                 explicit_fq_module: str | None = None
+                stdio_receiver = False
 
                 if object_node is not None:
                     if object_node.type == "identifier":
@@ -2532,6 +2570,15 @@ def _extract_edges(
                             explicit_fq_module = fq_type
                         if fa_field:
                             receiver_name = _node_text(fa_field, source)
+                        # WI-dorus: ``System.out.println(x)`` is a call on a
+                        # PrintStream INSTANCE, not on a type named by a path,
+                        # and its receiver is not a variable named ``out``.
+                        if _java_std_output_receiver(
+                            object_node, source, var_types, imports,
+                            class_symbols, project_class_names,
+                        ):
+                            stdio_receiver = True
+                            explicit_fq_module = None
                         # If the object is "this", treat the field as the
                         # receiver for type inference (this.repo → "repo")
                         if (
@@ -2558,6 +2605,10 @@ def _extract_edges(
                     pr4_receiver_type_hint: str | None = None
                     pr4_inherited_field_receiver: str | None = None
                     pr4_enclosing_class_hint: str | None = None
+                    if stdio_receiver:
+                        # The field's declared type; the cases below that
+                        # look the receiver up BY NAME are skipped for it.
+                        pr4_receiver_type_hint = _JAVA_PRINT_STREAM
 
                     # WI-gajuh: a CHAINED receiver -- ``s.getOutputStream()
                     # .write(b)`` -- has no name to look up, but the inner
@@ -2649,7 +2700,10 @@ def _extract_edges(
                                 pr4_enclosing_class_hint = current_class
 
                     # Case 2: ClassName.method() - static call
-                    elif receiver_name and receiver_name in class_symbols:
+                    elif (
+                        receiver_name and receiver_name in class_symbols
+                        and not stdio_receiver
+                    ):
                         candidate = f"{receiver_name}.{method_name}"
                         lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                         # WI-fuhaj: consult file imports. Without this guard,
@@ -2696,7 +2750,10 @@ def _extract_edges(
                     # cascade breaks and ``c`` would have no
                     # receiver_type_hint on the next call, costing the
                     # Site-2 resolution.
-                    elif receiver_name and receiver_name in var_types:
+                    elif (
+                        receiver_name and receiver_name in var_types
+                        and not stdio_receiver
+                    ):
                         type_class_name = var_types[receiver_name]
                         pr4_receiver_type_hint = type_class_name
                         candidate = (
@@ -2744,6 +2801,7 @@ def _extract_edges(
                     if (
                         not edge_added
                         and receiver_name
+                        and not stdio_receiver
                         and receiver_name not in var_types
                         and receiver_name not in class_symbols
                         and class_fields
@@ -2796,7 +2854,10 @@ def _extract_edges(
                     # class or variable but might still match a symbol via imports.
                     # Also reachable when Case 2's import guard rejects a mismatched
                     # static call — WI-fuhaj — so the guard must be repeated here.
-                    if not edge_added and receiver_name and resolver:
+                    if (
+                        not edge_added and receiver_name and resolver
+                        and not stdio_receiver
+                    ):
                         candidates = [f"{receiver_name}.{method_name}"]
                         # Try imported class name
                         if receiver_name in imports:
@@ -3245,6 +3306,15 @@ def _extract_edges(
                                     **(_unresolved_edge.meta or {}),
                                     "io_target_kind": _target_kind,
                                 }
+                        # WI-dorus: the WRITE twin -- a PrintStream method on
+                        # System.out / System.err writes the process's own
+                        # standard stream, which is what java.yaml's
+                        # ``requires_target_kind: std_stream`` rows wait for.
+                        if stdio_receiver:
+                            _unresolved_edge.meta = {
+                                **(_unresolved_edge.meta or {}),
+                                "io_target_kind": "std_stream",
+                            }
                         edges.append(_unresolved_edge)
 
         # Object creation: new ClassName()
