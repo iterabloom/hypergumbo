@@ -365,7 +365,13 @@ from .paths import classify_test_file, is_migration_file
 # reasoning: an added key, and the flows it counts are no longer in
 # ``evidence_count``. ``trust_level: trusted`` on a project sink used to be
 # documented and inert; it now excludes that sink's flows and discloses them.
-VERIFY_CLAIMS_SCHEMA_VERSION = "2.5"
+# 2.6 adds the per-evidence-row ``sink_carriers`` (INV-hopib): the calls a
+# stream-object sink was written through. And a stream written ONLY through
+# calls that are themselves sinks in the same zone is no longer a row of its
+# own beside them -- ``print(k, file=sys.stderr)`` is one row, not two -- so
+# ``evidence_count`` and the ``details`` count can fall with no verdict moving,
+# which is the carve-out's "changed the meaning of an existing key".
+VERIFY_CLAIMS_SCHEMA_VERSION = "2.6"
 
 #: Verdict values that ASSERT THE CLAIM HOLDS. The one predicate for "did this
 #: claim pass", consumed by the coverage gate, the CLI's exit code and the CLI's
@@ -5208,6 +5214,9 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         # from two callers is two pairs under one name — the reason three
         # independent refuters read `collapsed_flow_count` as unreconcilable.
         "sink_call_sites": [list(site) for site in v.sink_call_sites],
+        # INV-hopib: a stream-object sink names the calls it was written
+        # through, so the record can be checked against its own line.
+        "sink_carriers": list(v.sink_carriers),
         "collapsed_flow_count": v.collapsed_flow_count,
         # ADR-0061 ruling 2 (WI-dikit): community sanitizers this route crosses
         # that were NOT credited -- vouched for, they would have cleared it.

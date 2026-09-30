@@ -296,4 +296,4 @@ class TestTheEnvelope:
         ``evidence_count`` the same way. 2.4 -> 2.5, re-pointed.
         """
         from hypergumbo_core.verify_claims import VERIFY_CLAIMS_SCHEMA_VERSION
-        assert VERIFY_CLAIMS_SCHEMA_VERSION == "2.5"
+        assert VERIFY_CLAIMS_SCHEMA_VERSION == "2.6"
