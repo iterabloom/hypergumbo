@@ -22,6 +22,8 @@ The CLI uses argparse with subcommands for different operations:
   ``uninstall-embeddings``, ``add-extras`` / ``remove-extras``,
   ``init-catalogs`` (scaffold the user catalogue channels, ADR-0047),
   ``trust-backend`` (record a per-repo backend opt-in, ADR-0045),
+  ``trust-catalogues`` (record a per-repo opt-in to the repository's own
+  catalogue data, ADR-0061),
   ``backend-agreement`` (measure two backends' agreement from an
   artifact's provenance slot, ADR-0057 §5).
 
@@ -3662,6 +3664,41 @@ def cmd_trust_backend(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_trust_catalogues(args: argparse.Namespace) -> int:
+    """Record, revoke, or show the per-repository in-repo catalogue grant.
+
+    ADR-0061 ruling 4: catalogue data inside the analysed repository (the
+    catalogue keys of its ``.hypergumbo.toml``) loads only when the operator
+    opts in. This is the per-repository opt-in, keyed by the resolved path and
+    kept under ``$XDG_STATE_HOME`` like backend trust; ``--in-repo-catalogues``
+    is the per-run one. A refusal is recorded too, so the run stops asking.
+    """
+    from .in_repo_catalogues import (
+        grant_store_root,
+        read_in_repo_decision,
+        record_in_repo_decision,
+    )
+
+    repo_root = Path(args.path).resolve()
+    if args.show:
+        decision = read_in_repo_decision(repo_root)
+        state = {None: "no decision recorded", True: "GRANTED",
+                 False: "DECLINED"}[decision]
+        print(f"in-repo catalogues: {state} for {repo_root}")
+        return 0
+    granted = not args.revoke
+    record_in_repo_decision(repo_root, granted)
+    verb = "Granted" if granted else "Declined"
+    print(f"{verb} in-repo catalogue data for {repo_root}")
+    print(f"  recorded in {grant_store_root()}")
+    if granted:
+        print(
+            "  Its .hypergumbo.toml catalogue keys now load on every run; each "
+            "file is reported in the verdict with its git state.",
+        )
+    return 0
+
+
 def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
     """Install rust-analyzer (WI-dotud) or report availability via ``--check``.
 
@@ -5375,12 +5412,130 @@ def _resolve_io_overlays(
     (analysis from a cached map with no repository in hand) and not a
     defensive branch.
     """
-    paths: "list[Path]" = list(user_overlay_paths())
+    return [p for p, _ in _resolve_io_overlay_origins(args, claims_paths, repo_root)]
+
+
+def _resolve_io_overlay_origins(
+    args: argparse.Namespace,
+    claims_paths: "list[Path] | None" = None,
+    repo_root: "Path | None" = None,
+) -> "list[tuple[Path, str]]":
+    """:func:`_resolve_io_overlays`, with each path's origin beside it.
+
+    The origin -- ``user_channel`` / ``config`` / ``in_repo_config`` /
+    ``claims_file`` / ``cli`` -- is what lets a verdict name whose file each
+    completeness grant came from (ADR-0061 ruling 5), which the flat list
+    cannot say once the layers are concatenated.
+    """
+    out: "list[tuple[Path, str]]" = [
+        (p, "user_channel") for p in user_overlay_paths()
+    ]
     if repo_root is not None:
-        paths += _load_config_or_exit(repo_root).io_primitives
-    paths += list(claims_paths or [])
-    paths += [Path(p) for p in (getattr(args, "io_primitives", None) or [])]
-    return paths
+        config = _load_config_or_exit(repo_root)
+        out += [(p, "config") for p in config.io_primitives]
+        out += [(p, "in_repo_config") for p in _opted_in_repo_overlays(
+            args, repo_root, config.in_repo_io_primitives,
+        )]
+    out += [(Path(p), "claims_file") for p in claims_paths or []]
+    out += [
+        (Path(p), "cli") for p in (getattr(args, "io_primitives", None) or [])
+    ]
+    return out
+
+
+def _loaded_catalogue_files(
+    languages: "Iterable[str]",
+    io_overlays: "Sequence[Path]",
+    *,
+    include_default_overlays: bool,
+    taint_paths: "Optional[Mapping[str, Sequence[Path]]]",
+) -> "list[Any]":
+    """Every catalogue file a verify-claims run read, for ADR-0061 ruling 5.
+
+    The I/O catalogue each language loaded (and its parent), the shipped
+    community defaults unless omitted, and every overlay path. When the taint
+    catalogue loaded (``taint_paths`` is not ``None``): the shipped taint and
+    function-summary files, the files the flags and claims file named (a
+    directory stands for its YAML files), and the user's function_summaries.d.
+    Then the user's analysis-stage channels (frameworks.d, dataflow_patterns.d,
+    library_signatures.d), marked ``stage="analysis"``.
+
+    NOT LISTED: the shipped files of the analysis-stage families (frameworks,
+    dataflow_patterns, library_signatures, cfg_nodes, url_folding). They shape
+    the graph the verdict reads, and which of them the analysis consulted is
+    not recorded in the graph.
+    """
+    from .catalogue_home import user_channel_files
+    from .function_summaries import get_summaries_dir
+    from .io_boundary import default_overlays, shipped_catalog_paths
+    from .taint import (
+        _TAINT_SANITIZERS_DIR,
+        _TAINT_SINKS_DIR,
+        _TAINT_SOURCES_DIR,
+        _resolve_catalog_paths,
+    )
+    from .verify_claims import LoadedCatalogueFile as F
+
+    files: "list[Any]" = []
+    for lang in sorted(set(languages)):
+        files += [F("io_primitives", p, True) for p in shipped_catalog_paths(lang)]
+        if include_default_overlays:
+            files += [F("io_primitives_overlays", o.path, True)
+                      for o in default_overlays(lang)]
+    files += [F("io_primitives", Path(p), False) for p in io_overlays
+              if Path(p).is_file()]
+    if taint_paths is not None:
+        for family, directory in (
+            ("taint_sources", _TAINT_SOURCES_DIR),
+            ("taint_sinks", _TAINT_SINKS_DIR),
+            ("taint_sanitizers", _TAINT_SANITIZERS_DIR),
+            ("function_summaries", get_summaries_dir()),
+        ):
+            files += [F(family, p, True) for p in sorted(directory.glob("*.yaml"))]
+        for family, paths in taint_paths.items():
+            files += [F(family, p, False)
+                      for p in _resolve_catalog_paths(list(paths))]
+        files += [F("function_summaries", p, False)
+                  for p in user_channel_files("function_summaries")]
+    for family in ("frameworks", "dataflow_patterns", "library_signatures"):
+        files += [F(family, p, False, "analysis")
+                  for p in user_channel_files(family)]
+    return files
+
+
+def _opted_in_repo_overlays(
+    args: argparse.Namespace, repo_root: Path, in_repo: "list[Path]",
+) -> "list[Path]":
+    """The project tier's overlays, if the operator opted in; else none.
+
+    ADR-0061 ruling 4 (INV-hamin). ``<repo>/.hypergumbo.toml`` is catalogue
+    data the analysed repository supplies, and a repository that ships an
+    overlay granting completeness to its own egress module can turn a real
+    exfiltration into a clean verdict. So its paths load only on
+    ``--in-repo-catalogues`` or a recorded grant (``trust-catalogues``). With
+    neither, the run says once what it did not load and how to opt in; after
+    a recorded decline it stays quiet (ADR-0045 ruling 8).
+    """
+    from .in_repo_catalogues import read_in_repo_decision
+
+    if not in_repo:
+        return []
+    if getattr(args, "in_repo_catalogues", False):
+        return list(in_repo)
+    decision = read_in_repo_decision(repo_root)
+    if decision:
+        return list(in_repo)
+    if decision is None:
+        print(
+            f"NOTE: {repo_root / '.hypergumbo.toml'} names in-repo catalogue "
+            f"data that was NOT loaded: {', '.join(str(p) for p in in_repo)}. "
+            f"Catalogue data inside the analysed repository loads only when "
+            f"you opt in (ADR-0061): --in-repo-catalogues for this run, or "
+            f"`hypergumbo trust-catalogues {repo_root}` for this repository "
+            f"(add --revoke to record a refusal and silence this note).",
+            file=sys.stderr,
+        )
+    return []
 
 
 def _disclose_io_overlays(paths: "list[Path]") -> None:
@@ -5420,6 +5575,8 @@ def _warn_community_overlays(paths: "Iterable[Path]") -> "list[Path]":
     )
 
     named: "list[Path]" = []
+    described: "list[str]" = []
+    withheld_lines: "list[str]" = []
     for path in paths:
         path = Path(path)
         # A missing or malformed file is the REAL load's to report, loudly and
@@ -5429,21 +5586,29 @@ def _warn_community_overlays(paths: "Iterable[Path]") -> "list[Path]":
         if not overlay_declares_community(path):
             continue
         named.append(path)
-        retrieved = load_yaml_strict(
+        retrieved = (load_yaml_strict(
             path.read_text(encoding="utf-8"), origin=str(path),
-        ).get("retrieved", "undated")
+        ) or {}).get("retrieved", "undated")
+        described.append(f"{path} (retrieved {retrieved})")
         withheld = sorted(load_overlay_catalog(path).module_completeness)
-        grants = (
-            f" Its module_completeness grant(s) for {', '.join(withheld)} "
-            f"are withheld."
-            if withheld else ""
-        )
+        if withheld:
+            withheld_lines.append(
+                f"   {path.name}: module_completeness grant(s) for "
+                f"{', '.join(withheld)} are withheld."
+            )
+    if named:
+        # ONE line for the set, not one per file: init-catalogs seeds a file
+        # per community overlay, and eight warnings on every run is how a
+        # notice stops being read.
         print(
-            f"⚠  {path} (retrieved {retrieved}) declares provenance: community: "
-            f"its I/O rows can add a detection but never count as examined.{grants} "
-            f"To vouch for it, delete its `provenance: community` line.",
+            f"⚠  {len(named)} I/O overlay(s) declare provenance: community: "
+            f"{', '.join(described)}. Their rows can add a detection but never "
+            f"count as examined. To vouch for a file, delete its "
+            f"`provenance: community` line.",
             file=sys.stderr,
         )
+        for line in withheld_lines:
+            print(line, file=sys.stderr)
     return named
 
 
@@ -6510,9 +6675,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # the same layering the taint arm uses (INV-hukug).
     from .verify_claims import load_extra_catalog_paths as _load_extras
     _, _, _, _claims_io_overlays = _load_extras(claims_path)
-    io_overlays = _resolve_io_overlays(
+    io_overlay_origins = _resolve_io_overlay_origins(
         args, _claims_io_overlays, repo_root=repo_root,
     )
+    io_overlays = [p for p, _ in io_overlay_origins]
     _disclose_io_overlays(io_overlays)
 
     # Walks ``census_nodes``, not the raw map: under a declared artifact
@@ -7062,7 +7228,22 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
        # count. The flag is passed on separately so the community line is
        # dropped rather than reported as zero-from-a-layer-that-was-loaded.
        catalog_languages=languages,
-       include_default_overlays=not getattr(args, "no_default_overlays", False))
+       include_default_overlays=not getattr(args, "no_default_overlays", False),
+       # ADR-0061 ruling 5 (INV-gumom): every file the run read, by tier.
+       tier_files=_loaded_catalogue_files(
+           languages,
+           io_overlays,
+           include_default_overlays=not getattr(
+               args, "no_default_overlays", False),
+           taint_paths=(
+               {"taint_sources": [*claims_sources, *cli_sources],
+                "taint_sinks": [*claims_sinks, *cli_sinks],
+                "taint_sanitizers": [*claims_sanitizers, *cli_sanitizers]}
+               if taint_catalog is not None else None
+           ),
+       ),
+       repo_root=repo_root,
+       io_overlay_origins=io_overlay_origins)
 
     # Output
     if _read_view_wants_json(args):
@@ -10127,6 +10308,25 @@ The output begins with passes suggested for your current directory."""
     )
     p_trust.set_defaults(func=cmd_trust_backend)
 
+    # hypergumbo trust-catalogues (ADR-0061 ruling 4)
+    p_trust_cat = sub.add_parser(
+        "trust-catalogues",
+        help=(
+            "Record a per-repository decision to load (or refuse) the "
+            "catalogue data a repository's own .hypergumbo.toml names"
+        ),
+    )
+    p_trust_cat.add_argument(
+        "path", nargs="?", default=".", help="Repository root (default: .)",
+    )
+    p_trust_cat.add_argument(
+        "--revoke", action="store_true", help="Record a refusal instead of a grant",
+    )
+    p_trust_cat.add_argument(
+        "--show", action="store_true", help="Print the recorded decision and exit",
+    )
+    p_trust_cat.set_defaults(func=cmd_trust_catalogues)
+
     # hypergumbo backend-agreement (ADR-0057 §5)
     p_agree = sub.add_parser(
         "backend-agreement",
@@ -10766,6 +10966,17 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         ),
     )
     p_io.add_argument(
+        "--in-repo-catalogues",
+        action="store_true",
+        help=(
+            "Load the catalogue data this repository's own .hypergumbo.toml "
+            "names (its io_primitives overlays) for this run. Catalogue data "
+            "inside the analysed repository is off unless you opt in "
+            "(ADR-0061); `hypergumbo trust-catalogues PATH` opts in for one "
+            "repository instead of one run."
+        ),
+    )
+    p_io.add_argument(
         "--io-primitives",
         action="append",
         default=None,
@@ -10969,6 +11180,17 @@ what I could not check" -- and decide per repository whether that is acceptable.
             "hypergumbo (ADR-0047). They are third-party rows hypergumbo "
             "distributes and discloses but does not vouch for; a verdict "
             "reached with them is disclosed as such."
+        ),
+    )
+    p_vc.add_argument(
+        "--in-repo-catalogues",
+        action="store_true",
+        help=(
+            "Load the catalogue data this repository's own .hypergumbo.toml "
+            "names (its io_primitives overlays) for this run. Catalogue data "
+            "inside the analysed repository is off unless you opt in "
+            "(ADR-0061); `hypergumbo trust-catalogues PATH` opts in for one "
+            "repository instead of one run."
         ),
     )
     p_vc.add_argument(

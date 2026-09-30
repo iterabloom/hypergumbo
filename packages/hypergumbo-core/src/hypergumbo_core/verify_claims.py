@@ -2009,6 +2009,84 @@ def _parse_taint_flow(
     )
 
 
+#: ADR-0061 ruling 5: the tiers ``catalog_provenance["tiers"]`` groups every
+#: loaded catalogue file under, always all four.
+CATALOGUE_TIERS: tuple[str, ...] = ("builtin", "community", "yours", "in_repo")
+
+
+@dataclass(frozen=True)
+class LoadedCatalogueFile:
+    """One catalogue file a verify-claims run read, before it is given a tier.
+
+    ``shipped`` says the file came from the installed package, where the tier
+    is its ``provenance:`` line alone. ``stage`` is ``"verify"`` for a file the
+    verify step reads itself, and ``"analysis"`` for a file in one of the
+    user's channels that the ANALYSIS reads while building the graph
+    (frameworks.d, dataflow_patterns.d, library_signatures.d) -- listed because
+    the operator placed it there, and marked because a graph served from cache
+    was built by an earlier run.
+    """
+
+    family: str  # axis: free-text — a YAML_CATALOGS directory name, displayed and never branched on.
+    path: Path
+    shipped: bool
+    stage: str = "verify"  # axis: bounded-enum
+
+
+def catalogue_tiers(
+    files: "Iterable[LoadedCatalogueFile]", repo_root: "Optional[Path]",
+) -> dict[str, list[dict[str, str]]]:
+    """Group loaded catalogue files by tier (ADR-0061 rulings 3-5).
+
+    The tier is the file's own ``provenance:`` line where it says
+    ``community``. Otherwise a shipped file is ``builtin``, and a file the
+    operator or the repository supplied is named by LOCATION: ``in_repo`` when
+    it lives inside the analysed repository, ``yours`` when it does not. A file
+    inside the repository -- whatever its tier -- carries its git state
+    (``committed`` / ``modified`` / ``untracked``), which is what hypergumbo
+    can check about who wrote it.
+
+    Describing must not fail a run it only reports on, so a file that cannot
+    be re-read here is listed by its location alone (the real load already
+    succeeded or already failed loudly).
+    """
+    from .in_repo_catalogues import git_state, is_inside
+    from .yaml_catalogs import declares_community
+
+    out: dict[str, list[dict[str, str]]] = {tier: [] for tier in CATALOGUE_TIERS}
+    seen: set[tuple[str, str]] = set()
+    for item in files:
+        key = (item.family, str(Path(item.path).resolve()))
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            data = yaml.safe_load(Path(item.path).read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):  # pragma: no cover - see docstring
+            data = None
+        entry = {"family": item.family, "path": str(item.path)}
+        if item.stage != "verify":
+            entry["stage"] = item.stage
+        community = declares_community(data)
+        if community:
+            entry["retrieved"] = str(data.get("retrieved", ""))
+        inside = (
+            not item.shipped and repo_root is not None
+            and is_inside(repo_root, item.path)
+        )
+        if inside:
+            assert repo_root is not None
+            entry["git_state"] = git_state(repo_root, item.path)
+        if community:
+            tier = "community"
+        elif item.shipped:
+            tier = "builtin"
+        else:
+            tier = "in_repo" if inside else "yours"
+        out[tier].append(entry)
+    return out
+
+
 #: The catalogue layers a verdict can rest on, in ASCENDING precedence within
 #: each kind. Fixed and always emitted so a consumer never has to read a
 #: missing key as "none" — the same convention ``dataflow_coverage`` follows.
@@ -2026,6 +2104,10 @@ def catalog_provenance(
     load_bearing: "Optional[Mapping[str, Sequence[str]]]" = None,
     catalog_languages: "Optional[Iterable[str]]" = None,
     include_default_overlays: bool = True,
+    *,
+    tier_files: "Sequence[LoadedCatalogueFile]" = (),
+    repo_root: "Optional[Path]" = None,
+    io_overlay_origins: "Sequence[tuple[Path, str]]" = (),
 ) -> dict[str, Any]:
     """Record which catalogues a verdict was computed against (INV-zosun).
 
@@ -2082,16 +2164,30 @@ def catalog_provenance(
     whole of ``telnetlib``, and those are not comparable claims. So the grants
     are enumerated separately, by MODULE.
 
+    EVERY LOADED FILE, BY TIER (ADR-0061 ruling 5, INV-gumom). ``layers``
+    names only what came from the command line and the claims file, so a
+    verdict resting on ``config.toml``, the user's ``<family>.d/`` channels or
+    a repository's own ``.hypergumbo.toml`` named none of them. ``tiers`` lists
+    every file in ``tier_files`` under ``builtin`` / ``community`` / ``yours``
+    / ``in_repo`` (:func:`catalogue_tiers`), and ``io_overlay_origins`` -- each
+    I/O overlay path with where it came from -- lets the completeness grants of
+    the config-tier and channel files be named like the flag's. A grant in a
+    COMMUNITY file is withheld at load (INV-lamap), so it is listed under
+    ``withheld_completeness_grants`` instead.
+
     Returns:
         ``{"user_supplied": bool, "layers": {kind: {"cli": [...],
         "claims_file": [...]}}, "completeness_grants": [...],
+        "withheld_completeness_grants": [...], "tiers": {tier: [...]},
         "kind_adjudication": {...}}`` — paths as strings, exactly as the user
         wrote them, so a reader can find the file; one grant record per overlay
         that vouched for at least one module; and
         :func:`~.io_boundary.kind_assertion_census` over ``catalog_languages``,
         which is how much of what the rows ASSERT has been argued for in
         writing. Every key is always present, so a consumer never reads a
-        missing one as zero.
+        missing one as zero. ``user_supplied`` is true when any file came from
+        the operator or the repository -- the flag, the claims file, the
+        config tiers or a channel directory.
     """
     from .io_boundary import default_overlays, kind_assertion_census
 
@@ -2108,6 +2204,20 @@ def catalog_provenance(
         *_completeness_grants(io_cli, "cli"),
         *_completeness_grants(io_claims, "claims_file"),
     ]
+    from .io_boundary import overlay_declares_community
+
+    withheld: list[dict[str, Any]] = []
+    for path, origin in io_overlay_origins:
+        if origin in ("cli", "claims_file"):
+            continue  # named above, from ``layers``
+        # Every path here loaded already -- a bad one ended the run with exit 2
+        # before a verdict existed -- so re-reading its declaration is safe.
+        community = overlay_declares_community(Path(path))
+        (withheld if community else grants).extend(
+            _completeness_grants([path], origin),
+        )
+    tiers = catalogue_tiers(tier_files, repo_root)
+    any_user = any_user or bool(tiers["yours"]) or bool(tiers["in_repo"])
     # THE THIRD STATE (ADR-0047). ``user_supplied`` is a boolean and this is a
     # value neither of its settings describes: hypergumbo SHIPPED these rows
     # and does not vouch for them. Collapsing it into "shipped, therefore
@@ -2150,6 +2260,8 @@ def catalog_provenance(
         "user_supplied": any_user,
         "layers": out,
         "completeness_grants": grants,
+        "withheld_completeness_grants": withheld,
+        "tiers": tiers,
         "shipped_default": shipped,
         "load_bearing_grants": bearing,
         "kind_adjudication": census,
@@ -2325,11 +2437,24 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
         "NOTE: these verdicts were computed against USER-SUPPLIED catalogue "
         "input.",
     ]
+    named: set[str] = set()
     for kind, layer in sorted(provenance.get("layers", {}).items()):
         for origin, label in (("cli", "CLI flag"),
                               ("claims_file", "claims-file extra_catalogs")):
             for path in layer.get(origin, []):
+                named.add(str(path))
                 lines.append(f"  {kind}: {path}  [{label}]")
+    # ADR-0061 ruling 5 (INV-gumom): the files no flag or claims file named --
+    # config.toml, the user's channels, the repository's own .hypergumbo.toml.
+    tiers = provenance.get("tiers") or {}
+    for entry in tiers.get("yours") or []:
+        if entry["path"] not in named:
+            lines.append(f"  {entry['family']}: {entry['path']}  [yours]")
+    for entry in tiers.get("in_repo") or []:
+        lines.append(
+            f"  {entry['family']}: {entry['path']}  "
+            f"[in-repo, {entry.get('git_state', 'untracked')}]"
+        )
     lines.append(
         "  A verdict is only as truthful as the catalogue behind it: a row "
         "with the wrong",
@@ -2362,9 +2487,8 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
             "(closed-world):",
         )
         for grant in grants:
-            label = (
-                "CLI flag" if grant.get("origin") == "cli"
-                else "claims-file extra_catalogs"
+            label = _GRANT_ORIGIN_LABELS.get(
+                str(grant.get("origin")), str(grant.get("origin")),
             )
             modules = ", ".join(grant.get("modules") or ())
             lines.append(
@@ -2373,7 +2497,33 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
             lines.append(
                 f"      from {grant.get('path')}  [{label}]",
             )
+    withheld = provenance.get("withheld_completeness_grants") or []
+    if withheld:
+        lines.append("")
+        lines.append(
+            "  WITHHELD GRANTS — these files declare provenance: community, so "
+            "their completeness",
+        )
+        lines.append(
+            "  grants did not apply (ADR-0061); delete the line to vouch for "
+            "a file:",
+        )
+        for grant in withheld:
+            lines.append(
+                f"    {grant.get('language')}: "
+                f"{', '.join(grant.get('modules') or ())}  from {grant.get('path')}",
+            )
     return lines
+
+
+#: How the text rendering names where a completeness grant came from.
+_GRANT_ORIGIN_LABELS: dict[str, str] = {
+    "cli": "CLI flag",
+    "claims_file": "claims-file extra_catalogs",
+    "user_channel": "your io_primitives.d",
+    "config": "your config.toml",
+    "in_repo_config": "the repository's .hypergumbo.toml, opted in",
+}
 
 
 def validate_taint_flow_vocabulary(

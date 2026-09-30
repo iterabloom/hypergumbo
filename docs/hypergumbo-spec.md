@@ -260,7 +260,7 @@ Two optional TOML tiers, both absent by default (ADR-0045):
 | Tier | Path | Purpose |
 |---|---|---|
 | User | `$XDG_CONFIG_HOME/hypergumbo/config.toml` | Your preferences, across projects |
-| Project | `<repo>/.hypergumbo.toml` | Preferences this repository needs; it lives in the analysed repository, so its catalogue data is **in-repo** (see [Catalogue tiers](#catalogue-tiers)) |
+| Project | `<repo>/.hypergumbo.toml` | Preferences this repository needs; it lives in the analysed repository, so its catalogue data is **in-repo** and loads only when you opt in (see [Catalogue tiers](#catalogue-tiers)) |
 
 Recognised settings: `io_primitives` (list of I/O primitive overlay paths; relative entries resolve against **their own config file**, not the working directory — catalogue data, governed by [Catalogue tiers](#catalogue-tiers)), and the `[merge]` table — the ADR-0057 §5 arbitration default (WI-hukuf), a preference allowed in both tiers because it executes nothing:
 
@@ -298,8 +298,8 @@ A row makes a verdict *cleaner* when it can move it toward `confirmed`: a saniti
 |---|---|
 | built-in / community split for every family | every shipped file declares its tier, and `test_catalogue_scope_gates.py` refuses a built-in file that names anything outside the standard-library line, in every family. The third-party taint, summary, signature and dataflow rows are in community files. Outside `io_primitives`, a community row still takes full effect: a community sanitizer, terminating summary or library signature is not yet withheld (WI-dikit, WI-tigud, WI-hipun) |
 | a row's tier comes from its file's `provenance:` line | done for `io_primitives` (a community overlay anywhere — a copy `init-catalogs` seeded into `io_primitives.d/`, a `config.toml` path, a flag — stays community: its rows never count as examined, its `module_completeness` grants are withheld, and the run names it) and for the shipped files of `function_summaries`, `library_signatures` and `dataflow_patterns` (a community row only adds). The other families' user channels do not read it yet |
-| in-repo catalogue data loads only on opt-in | `.hypergumbo.toml`'s `io_primitives` loads without one; nothing reads `<repo>/.hypergumbo/` |
-| every loaded file named in `catalog_provenance` by tier | only files named on the command line or in the claims file are listed; config-file and `<family>.d/` files are not |
+| in-repo catalogue data loads only on opt-in | done for `.hypergumbo.toml`'s `io_primitives`: it loads only with `--in-repo-catalogues` (one run) or `hypergumbo trust-catalogues [PATH]` (one repository; `--revoke` records a refusal, `--show` prints the decision), and a run that skips it says so until you decide. Nothing reads `<repo>/.hypergumbo/` yet |
+| every loaded file named in `catalog_provenance` by tier | `catalog_provenance.tiers` lists, under `builtin` / `community` / `yours` / `in_repo`, the I/O catalogue each language loaded and every overlay, the taint and function-summary files when taint ran, and your `frameworks.d`, `dataflow_patterns.d` and `library_signatures.d` files (marked `stage: analysis`); a file inside the repository carries its git state. Grants from `config.toml`, your channels and an opted-in `.hypergumbo.toml` are named in `completeness_grants`; a community file's grants in `withheld_completeness_grants`. Not listed: the shipped files of the analysis-stage families (frameworks, dataflow_patterns, library_signatures, cfg_nodes, url_folding) |
 | `--no-default-overlays` omits community rows everywhere | the boundary lookup only; taint still uses them |
 | a `yours` home for each taint family | `taint_sources.d/` and `taint_sanitizers.d/` are created but not read; `taint_sinks.d/` does not exist yet |
 

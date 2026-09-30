@@ -1776,6 +1776,23 @@ def _catalog_path_for(language: str) -> Optional[Path]:
     return None
 
 
+def shipped_catalog_paths(language: str) -> "list[Path]":
+    """The shipped built-in files :func:`load_catalog` reads for ``language``.
+
+    Its own catalogue (directly or by alias) and, where the language inherits
+    one, its parent's -- the same resolution ``load_catalog`` performs, so a
+    verdict naming the files it rested on (ADR-0061 ruling 5) names these.
+    """
+    path = _catalog_path_for(language)
+    if path is None:
+        return []
+    paths = [path]
+    parent = _CATALOG_PARENTS.get(language)
+    if parent and (_CATALOG_DIR / f"{parent}.yaml").exists():
+        paths.append(_CATALOG_DIR / f"{parent}.yaml")
+    return paths
+
+
 def is_language_supported(language: str) -> bool:
     """True if ``language`` has an I/O primitive catalog (directly, via
     alias, or with a parent). Callers use this to distinguish "found
