@@ -2397,7 +2397,7 @@ def _detect_source_roots(repo_root: Path) -> list[Path]:
 
     Returns a list sorted by path (deterministic for tests and consumers).
     """
-    from hypergumbo_core.discovery import DEFAULT_EXCLUDES
+    from hypergumbo_core.discovery import DEFAULT_EXCLUDES, walks_into
 
     skip = set(DEFAULT_EXCLUDES)
     roots: list[Path] = []
@@ -2409,9 +2409,8 @@ def _detect_source_roots(repo_root: Path) -> list[Path]:
         except (PermissionError, OSError):  # pragma: no cover
             continue
         for entry in entries:
-            if not entry.is_dir():
-                continue
-            if entry.name in skip or entry.name.startswith("."):
+            # INV-pivir: never into a directory symlink (a cycle is unbounded).
+            if not walks_into(entry, skip):
                 continue
             if entry.name == "src":
                 # Classify and stop descending — either a source root, a

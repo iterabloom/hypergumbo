@@ -525,6 +525,27 @@ def _looks_like_virtualenv(directory: str) -> bool:
     return any((base / marker).exists() for marker in _VENV_MARKERS)
 
 
+def walks_into(entry: Path, skip: "Iterable[str]" = ()) -> bool:
+    """May a hand-written repository walk descend into ``entry``? (INV-pivir)
+
+    A real directory whose name is neither in ``skip`` nor dot-prefixed -- and
+    NEVER a directory SYMLINK. ``os.walk`` (``followlinks=False``) and
+    ``Path.rglob`` already refuse to follow one; the iterative ``iterdir()``
+    walks that read a repository's own manifests and source roots did not,
+    because ``Path.is_dir()`` follows the link. A link back to an ancestor --
+    arti's ``maint/rust-maint-common/{maint,common} -> .``, two self-links per
+    level -- then makes the walk exponential, and ``verify-claims`` sat at 100%
+    CPU for 30+ minutes before any analysis ran. Every such walk asks this, so
+    the rule cannot be fixed in one walker and forgotten in the next.
+    """
+    return (
+        entry.is_dir()
+        and not entry.is_symlink()
+        and entry.name not in set(skip)
+        and not entry.name.startswith(".")
+    )
+
+
 def is_pruned_dir(
     name: str,
     abs_dir: Path,
