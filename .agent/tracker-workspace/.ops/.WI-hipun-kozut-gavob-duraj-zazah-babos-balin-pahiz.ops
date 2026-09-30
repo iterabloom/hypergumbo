@@ -27,3 +27,10 @@
   nonce: f65d  # f65d
   set:  # f65d
     title: "frameworks/ and dataflow_patterns: measure whether a row can make a verdict cleaner, then declare tiers (ADR-0061 open question)"  # f65d
+- op: discuss  # 0ada
+  at: '2026-09-30T01:46:07Z'  # 0ada
+  by: agent  # 0ada
+  actor: jgstern_agent  # 0ada
+  clock: 3  # 0ada
+  nonce: 0ada  # 0ada
+  message: "WI-nopam (PR #1317) declared every frameworks/ file: 99 community, 8 builtin (main-functions, language-conventions, naming-conventions, library-exports, config-conventions, cocoa, jax-rs, jakarta-cdi -- each with its reason in BUILTIN_FRAMEWORK_FILES in test_catalogue_scope_gates.py; mixed files such as node-http, test-frameworks, go-encoding-callbacks, web_audio and swiftui are community as a whole). dataflow_patterns: every <lang>.yaml is builtin; PyYAML's rows moved to the community companion python-pyyaml.yaml. Remaining here: step (1) measure whether a frameworks/dataflow row can make a verdict cleaner, then (3) withhold if so. Step (2) is done."  # 0ada

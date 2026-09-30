@@ -42,3 +42,18 @@
   clock: 4  # 54ca
   nonce: 54ca  # 54ca
   message: "OWNER RATIFIED 2026-09-29: the tier name 'in-repo' and the git-state disclosure (each loaded in-repo file reported committed / modified / untracked) -- ADR-0061 ruling 4 is now fully owner-ruled."  # 54ca
+- op: update  # 8ec6
+  at: '2026-09-30T04:14:08Z'  # 8ec6
+  by: agent  # 8ec6
+  actor: jgstern_agent  # 8ec6
+  clock: 5  # 8ec6
+  nonce: 8ec6  # 8ec6
+  set:  # 8ec6
+    status: satisfied  # 8ec6
+- op: discuss  # ba6f
+  at: '2026-09-30T04:14:08Z'  # ba6f
+  by: agent  # ba6f
+  actor: jgstern_agent  # ba6f
+  clock: 6  # ba6f
+  nonce: ba6f  # ba6f
+  message: "Fixed in PR #1320 (merged, dev d48540acc7). Root cause: load_layered_config merged <repo>/.hypergumbo.toml's io_primitives into the overlay chain by default. Now LayeredConfig keeps the project tier apart (in_repo_io_primitives) and cli._opted_in_repo_overlays loads it only on --in-repo-catalogues or a grant recorded by the new 'hypergumbo trust-catalogues [PATH]' (XDG_STATE_HOME/hypergumbo/catalogue-grants.d, keyed by resolved path; --revoke records a refusal). BEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev (os.environ API_KEY -> telnetlib.Telnet(...).write; repo-shipped .hypergumbo.toml -> deps.yaml granting telnetlib + telnetlib.Telnet; claim host_secret must not reach network): default -> inconclusive rc 2, stderr 'NOT loaded' naming deps.yaml (was confirmed_with_caveats rc 3 on pinned dev e6dad62c3b); --in-repo-catalogues -> confirmed_with_caveats rc 3 and the verdict now names it: tiers.in_repo [deps.yaml, git_state untracked], completeness_grants origin in_repo_config [telnetlib, telnetlib.Telnet], user_supplied true. Production-path tests: test_in_repo_catalogue_opt_in.py (flag, grant, refusal, default). Residual filed: <repo>/.hypergumbo/<family>.d/ is still read by nothing."  # ba6f

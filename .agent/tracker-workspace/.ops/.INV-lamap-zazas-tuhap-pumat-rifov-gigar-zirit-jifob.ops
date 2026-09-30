@@ -28,3 +28,18 @@
   clock: 2  # 43de
   nonce: 43de  # 43de
   message: "ADR-0061 ruling 3 (merged #1308) is the decided fix: the loader reads a row's tier from its file's provenance: line, never from its directory; deleting provenance: community is the act of vouching. Needs WI-nopam first (every shipped file declares provenance)."  # 43de
+- op: update  # 58bb
+  at: '2026-09-30T03:01:45Z'  # 58bb
+  by: agent  # 58bb
+  actor: jgstern_agent  # 58bb
+  clock: 3  # 58bb
+  nonce: 58bb  # 58bb
+  set:  # 58bb
+    status: satisfied  # 58bb
+- op: discuss  # 1e7f
+  at: '2026-09-30T03:01:45Z'  # 1e7f
+  by: agent  # 1e7f
+  actor: jgstern_agent  # 1e7f
+  clock: 4  # 1e7f
+  nonce: 1e7f  # 1e7f
+  message: "Fixed in PR #1319 (merged, dev e6dad62c3b). Root cause: load_catalog stamped rows unvouched only when the file sat in the shipped io_primitives_overlays/ directory. Now the tier comes from the file's provenance: line wherever it sits (ADR-0061 ruling 3, io_boundary.overlay_declares_community): community rows are unvouched, their module_completeness grants are withheld, they do not restate the stdlib status, and the run names each such file and says deleting the line is how to vouch. BEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev (requests.get + fs_write must_not_exist): XDG_CONFIG_HOME empty -> inconclusive rc 2; after init-catalogs -> inconclusive rc 2 (was confirmed rc 0), stderr names each seeded file 'declares provenance: community'. Control (production-path test test_seeded_community_overlay_stays_community.py): with the line deleted -> confirmed rc 0. A test that pinned the defect (test_a_materialized_overlay_still_loads_as_a_user_overlay) was rewritten to the ruling. Residuals: the notice names every seeded file, all languages, on every run (to be scoped to the run's languages with INV-gumom); the user channels of function_summaries/library_signatures/dataflow_patterns/frameworks do not yet read the provenance line (a seeded community file there would load as yours) -- none is seeded there today."  # 1e7f
