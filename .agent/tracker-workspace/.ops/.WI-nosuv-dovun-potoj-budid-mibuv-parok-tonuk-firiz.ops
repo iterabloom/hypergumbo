@@ -1,0 +1,21 @@
+- op: create  # 1b9d
+  at: '2026-09-30T04:15:08Z'  # 1b9d
+  by: agent  # 1b9d
+  actor: jgstern_agent  # 1b9d
+  clock: 1  # 1b9d
+  nonce: 1b9d  # 1b9d
+  data:  # 1b9d
+    kind: work_item  # 1b9d
+    title: "catalog_provenance tiers omits the shipped files of the analysis-stage families (frameworks, dataflow_patterns, library_signatures, cfg_nodes, url_folding)"  # 1b9d
+    status: todo_hard  # 1b9d
+    priority: 3  # 1b9d
+    parent:  # 1b9d
+    tags:  # 1b9d
+    - adr_0061  # 1b9d
+    - catalogue  # 1b9d
+    isbefore: []  # 1b9d
+    duplicate_of: []  # 1b9d
+    not_duplicate_of: []  # 1b9d
+    pr_ref:  # 1b9d
+    description: "Residual of INV-gumom (PR #1320). ADR-0061 ruling 5: 'The verify-claims JSON lists every catalogue file the run loaded.' tiers lists the verify-stage files (io, taint, function_summaries) and the user's analysis-stage channel files (stage: analysis), but not the SHIPPED files the analysis consulted while building the graph -- including community ones (99 frameworks files, python-django.yaml signatures, python-pyyaml.yaml dataflow). The graph does not record which were consulted, so listing them needs the analysis to stamp that into the survey (e.g. analysis_runs or limits), and a cached graph must carry it. Until then the gap is stated in the spec's implementation-status table."  # 1b9d
+    fields: {}  # 1b9d

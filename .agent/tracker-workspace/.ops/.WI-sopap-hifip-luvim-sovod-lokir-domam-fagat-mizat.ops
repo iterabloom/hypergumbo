@@ -1,0 +1,21 @@
+- op: create  # 2095
+  at: '2026-09-30T04:15:03Z'  # 2095
+  by: agent  # 2095
+  actor: jgstern_agent  # 2095
+  clock: 1  # 2095
+  nonce: '2095'  # 2095
+  data:  # 2095
+    kind: work_item  # 2095
+    title: "Read <repo>/.hypergumbo/<family>.d/ on opt-in (ADR-0061 ruling 1's in-repo location, read by nothing today)"  # 2095
+    status: todo_hard  # 2095
+    priority: 3  # 2095
+    parent:  # 2095
+    tags:  # 2095
+    - adr_0061  # 2095
+    - catalogue  # 2095
+    isbefore: []  # 2095
+    duplicate_of: []  # 2095
+    not_duplicate_of: []  # 2095
+    pr_ref:  # 2095
+    description: "Residual of INV-hamin (PR #1320). ADR-0061 ruling 1 places in-repo catalogue data in .hypergumbo.toml's catalogue keys AND <repo>/.hypergumbo/<family>.d/ (catalogue_home.repo_catalogue_home). The .toml keys now load only on opt-in (--in-repo-catalogues / trust-catalogues). The .d directories are read by nothing, so there is no hazard today -- but a user following the ADR and the registry docstring ('repo tier: <repo>/.hypergumbo/') gets no effect and no error, the io_primitives.d shape WI-talaz closed once. Work: read each wired channel's in-repo directory behind the same opt-in gate, list its files under catalog_provenance tiers.in_repo with git state, and decide per family whether in-repo rows get the yours treatment once opted in (ruling 2 says un-opted in-repo rows only add)."  # 2095
+    fields: {}  # 2095

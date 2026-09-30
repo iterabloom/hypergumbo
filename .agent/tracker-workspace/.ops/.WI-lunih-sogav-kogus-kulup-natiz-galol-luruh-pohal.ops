@@ -1,0 +1,21 @@
+- op: create  # e770
+  at: '2026-09-30T05:16:10Z'  # e770
+  by: agent  # e770
+  actor: jgstern_agent  # e770
+  clock: 1  # e770
+  nonce: e770  # e770
+  data:  # e770
+    kind: work_item  # e770
+    title: "--no-default-overlays does not reach the analysis stage: community frameworks, library_signatures and dataflow rows and the analyzers' community-io lookups still build the graph"  # e770
+    status: todo_hard  # e770
+    priority: 3  # e770
+    parent:  # e770
+    tags:  # e770
+    - adr_0061  # e770
+    - catalogue  # e770
+    isbefore: []  # e770
+    duplicate_of: []  # e770
+    not_duplicate_of: []  # e770
+    pr_ref:  # e770
+    description: "Residual of INV-fikoh (PR #1322). ADR-0061 ruling 5: '--no-default-overlays omits community rows from every family'. The verify step now honours it (io overlays, taint derivation, community taint files, community function summaries). The ANALYSIS stage does not: survey/sketch build the graph with the 99 community frameworks/ files, library_signatures/python-django.yaml, dataflow_patterns/python-pyyaml.yaml, and analyzers that build lookup tables from community io rows (py.py:683, haskell.py:699,813 per the original INV-fikoh note; not re-measured). The flag is not an option of the analysis commands, and verify-claims may read a cached graph, so this needs a design decision: an analysis-level flag that becomes part of the cache key, or a stated limit. Decide with WI-hipun (which measures whether frameworks/dataflow rows can make a verdict cleaner at all)."  # e770
+    fields: {}  # e770

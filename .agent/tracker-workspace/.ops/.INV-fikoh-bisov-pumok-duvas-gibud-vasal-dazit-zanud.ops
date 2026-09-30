@@ -22,3 +22,18 @@
     fields:  # b5a1
       statement: "When the operator omits the community overlays, no part of the run uses a community row."  # b5a1
       root_cause: "The taint catalogue calls load_catalog without the no-default-overlays setting (taint.py:1881), so the flag is honoured by the boundary lookup only."  # b5a1
+- op: update  # 9a33
+  at: '2026-09-30T05:16:09Z'  # 9a33
+  by: agent  # 9a33
+  actor: jgstern_agent  # 9a33
+  clock: 2  # 9a33
+  nonce: 9a33  # 9a33
+  set:  # 9a33
+    status: satisfied  # 9a33
+- op: discuss  # 8c9d
+  at: '2026-09-30T05:16:09Z'  # 8c9d
+  by: agent  # 8c9d
+  actor: jgstern_agent  # 8c9d
+  clock: 3  # 8c9d
+  nonce: 8c9d  # 8c9d
+  message: "Fixed in PR #1322 (merged, dev cb4aa0dd8e). Root cause: the taint catalogue called load_catalog without the no-default-overlays setting. Now include_community threads through load_full_taint_catalog / load_builtin_taint_catalog / _derive_auto_imports_from_io_primitives (-> load_catalog include_defaults), skips the shipped *_community.yaml taint files, load_function_summaries(include_community=False) skips community summaries, propagate_taint_ddg threads it, and community-declared operator overlays (init-catalogs seeds) are omitted and named. BEHAVIOURAL EVIDENCE, the filed repro re-run on merged dev (os.environ API_KEY -> requests.post; host_secret must not reach network): default -> violated rc 1 via requests.post, community notice (control); --no-default-overlays -> inconclusive rc 2, no requests.post evidence, no community notice, catalog_provenance tiers.community empty and shipped_default empty (was violated rc 1 via requests.post, no notice, shipped_default present). Statement scope NOT fully asserted: the analysis stage (graph building) still uses community frameworks/library_signatures/dataflow rows and the analyzers' own community-io lookups (py.py, haskell.py) -- the flag is not an analysis option. Residual filed."  # 8c9d
