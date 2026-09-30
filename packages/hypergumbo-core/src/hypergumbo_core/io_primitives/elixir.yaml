@@ -41,6 +41,7 @@
 # Naming convention: Elixir calls render as `Module.function` — the
 # dotted form matches the `module.name` lookup the io_boundary engine
 # uses for `kind="function"` entries.
+provenance: builtin
 language: elixir
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``

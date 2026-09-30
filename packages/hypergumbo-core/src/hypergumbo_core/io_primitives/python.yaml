@@ -22,6 +22,7 @@
 # or `extra_catalogs: io_primitives:` in a claims file. Worked example:
 # hypergumbo_core/io_primitives_overlays/python-http-clients.yaml, which
 # ships in the wheel and loads by default (ADR-0047).
+provenance: builtin
 language: python
 
 # Plan C, PR B: this is the worked-example catalog — Python's stdlib

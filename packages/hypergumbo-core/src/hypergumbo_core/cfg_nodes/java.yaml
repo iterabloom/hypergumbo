@@ -5,6 +5,7 @@
 #
 # Child references: "field:name" → child_by_field_name("name"),
 #                   "type:name" → first child with .type == "name"
+provenance: builtin
 language: java
 grammar: tree-sitter-java
 

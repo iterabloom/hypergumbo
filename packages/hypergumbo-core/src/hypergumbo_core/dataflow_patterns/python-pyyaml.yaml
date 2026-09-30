@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Dataflow library patterns for PyYAML (Python).
+#
+# A COMMUNITY companion of python.yaml (ADR-0061). python.yaml is built-in and
+# may name only the standard library; PyYAML is a third-party package, so its
+# serialization rows live here, ship without being maintained, and are read
+# after python.yaml's rows (see dataflow._with_community_library_patterns).
+# Only library_patterns are read from this file. The loader finds it by its
+# `language:` line, not by its name.
+#
+# `retrieved` is the date these rows were last edited, the latest date they
+# can have been checked against PyYAML's API.
+provenance: community
+retrieved: 2026-06-28
+language: python
+
+library_patterns:
+  # dump: object → file (writes the file)
+  - match: '\byaml\.dump\('
+    access_mode: write
+  - match: '\byaml\.safe_dump\('
+    access_mode: write
+  # load: file → object (reads the file)
+  - match: '\byaml\.load\('
+    access_mode: read
+  - match: '\byaml\.safe_load\('
+    access_mode: read

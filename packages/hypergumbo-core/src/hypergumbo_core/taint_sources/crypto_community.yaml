@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017: Taint sources — third-party decryption outputs ("plaintext").
+#
+# A COMMUNITY companion (ADR-0061): these rows describe third-party libraries
+# and ship without being maintained. The standard-library rows for the same
+# label sit in the built-in file named below; the loader reads both, and the
+# tier comes from the provenance line, not the file name.
+#
+# `retrieved` is the date these rows were last edited, the latest date they
+# can have been checked against the libraries they describe.
+# Built-in companion: crypto.yaml.
+provenance: community
+retrieved: 2026-03-25
+description: "Cryptographic decryption outputs — data is now plaintext"
+taint_label: plaintext
+
+sources:
+  python:
+    - module: cryptography.fernet
+      functions: [Fernet.decrypt]
+      return_tainted: true
+    - module: cryptography.hazmat.primitives.ciphers.aead
+      methods: [AESGCM.decrypt, AESCCM.decrypt, ChaCha20Poly1305.decrypt]
+      return_tainted: true
+
+  rust:
+    - module: aes_gcm
+      methods: [Aes256Gcm::decrypt, Aes256Gcm::decrypt_in_place]
+      return_tainted: true
+    - module: ring::aead
+      methods: [OpeningKey::open_in_place]
+      return_tainted: true
+      argument_tainted: [0]
+
+  typescript:
+    - module: "@noble/ciphers"
+      methods: [decrypt]
+      return_tainted: true

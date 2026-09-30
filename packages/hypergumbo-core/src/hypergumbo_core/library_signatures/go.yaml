@@ -17,6 +17,7 @@
 #
 # STDLIB ONLY (ADR-0047). Third-party framework producers -- gin.Default,
 # fiber.New, echo.New -- are community-overlay rows, not shipped ones.
+provenance: builtin
 language: go
 module_completeness: partial
 signatures:

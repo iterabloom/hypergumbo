@@ -220,11 +220,44 @@ def get_dataflow_config(language: str) -> Optional[DataflowConfig]:
     yaml_path = _DATAFLOW_DIR / f"{language}.yaml"
     if yaml_path.is_file():
         config = load_dataflow_config(yaml_path)
+        config = _with_community_library_patterns(language, config)
         _config_cache[language] = _with_user_library_patterns(language, config)
     else:
         _config_cache[language] = None
 
     return _config_cache[language]
+
+
+def _with_community_library_patterns(
+    language: str, config: DataflowConfig,
+) -> DataflowConfig:
+    """Append the shipped COMMUNITY ``library_patterns`` rows for ``language``.
+
+    ADR-0061: a file has one tier, and ``<language>.yaml`` is built-in, so it
+    may name only the standard library. A row anchored on a third-party module
+    (``\\byaml\\.dump\\(``) lives in a companion file that names its language on
+    its ``language:`` line and declares ``provenance: community``. Only its
+    ``library_patterns`` are read, by the same reasoning that scopes the user
+    channel below: the grammar rows belong to the language.
+
+    Appended after the built-in rows and before the user's. Both consumers
+    resolve a line that several rows match by mode priority, not by row order,
+    so where the rows sit changes nothing about what they classify.
+    """
+    from .yaml_catalogs import declares_community
+
+    extra: "List[Dict[str, Any]]" = []
+    for path in sorted(_DATAFLOW_DIR.glob("*.yaml")):
+        if path.stem == language:
+            continue
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if data.get("language") != language or not declares_community(data):
+            continue
+        extra.extend(data.get("library_patterns") or [])
+    if not extra:
+        return config
+    return replace(config,
+                   library_patterns=[*config.library_patterns, *extra])
 
 
 def _with_user_library_patterns(

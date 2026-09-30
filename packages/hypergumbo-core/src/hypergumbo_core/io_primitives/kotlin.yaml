@@ -19,6 +19,7 @@
 # (org.jetbrains.exposed.*) — is removed. First-party calls into them
 # surface in `external_potential` (Plan C, PR C); project-local taint
 # catalogs (WI-votan) provide per-project classification when needed.
+provenance: builtin
 language: kotlin
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``

@@ -12,6 +12,7 @@
 #   * a free function is keyed by its bare name
 #   * the VALUE is a BARE type, because the swift catalogue keys its rows by bare
 #     type (`FileManager`, `URLSession`) -- unlike go, swift does NOT qualify.
+provenance: builtin
 language: swift
 module_completeness: partial
 signatures:

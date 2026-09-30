@@ -2,6 +2,7 @@
 # ADR-0016: I/O primitive catalog for C
 #
 # Maps C standard library and POSIX functions to I/O boundary types.
+provenance: builtin
 language: c
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``

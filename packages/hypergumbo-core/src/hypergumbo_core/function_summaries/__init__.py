@@ -38,6 +38,8 @@ from typing import Any, Optional
 
 import yaml
 
+from ..yaml_catalogs import declares_community
+
 logger = logging.getLogger(__name__)
 
 
@@ -171,16 +173,34 @@ def load_function_summaries(
         user_paths = user_channel_files("function_summaries")
         paths = [*paths, *user_paths]
 
+    loaded: "list[tuple[Path, dict[str, Any]]]" = []
     for yaml_path in paths:
         with open(yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         if not data or "summaries" not in data:
             continue
+        loaded.append((yaml_path, data))
+
+    # ADR-0061 ruling 2: a shipped COMMUNITY row only adds. Community files load
+    # after the built-in ones and take a name -- full or short -- only when no
+    # built-in row holds it, so which file happens to sort first cannot decide
+    # whose word a summary is. The user's files still load last and win.
+    def _rank(item: "tuple[Path, dict[str, Any]]") -> int:
+        if item[0] in user_paths:
+            return 2
+        return 1 if declares_community(item[1]) else 0
+
+    loaded.sort(key=_rank)
+    for yaml_path, data in loaded:
+        adds_only = _rank((yaml_path, data)) == 1
         for entry in data["summaries"]:
             summary = _parse_summary(entry)
             if yaml_path in user_paths:
                 summary = replace(summary, user_supplied=True)
-            result[summary.function] = summary
+            if adds_only:
+                result.setdefault(summary.function, summary)
+            else:
+                result[summary.function] = summary
             # Also index by short name (last component)
             if "." in summary.function:
                 short = summary.function.rsplit(".", 1)[-1]

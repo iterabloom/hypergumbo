@@ -11,6 +11,7 @@
 #     edge for a property write (the WI-zumoz class);
 #   - `el.insertAdjacentHTML(pos, s)`: emitted, but on an untyped receiver, so a
 #     row would match any project method of that name by its short name alone.
+provenance: builtin
 description: "Writing data into the document as HTML"
 zone: dom_injection
 trust_level: untrusted

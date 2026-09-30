@@ -2,6 +2,7 @@
 # ADR-0016: I/O primitive catalog for Java
 #
 # Maps Java standard library classes/methods to I/O boundary types.
+provenance: builtin
 language: java
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``

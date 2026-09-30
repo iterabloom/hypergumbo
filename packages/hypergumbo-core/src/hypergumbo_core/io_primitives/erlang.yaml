@@ -5,6 +5,7 @@
 # Erlang uses module:function/arity syntax; we list by module and function.
 # Third-party libraries (cowboy, ranch, etc.) call these primitives
 # transitively, so covering stdlib + OTP is sufficient.
+provenance: builtin
 language: erlang
 # WI-tukif (Plan C, PR B): catalog audited against erlang.org/doc/man/
 # 2026-05-24 for OTP 26. Strict-stdlib coverage: file/filelib/prim_file

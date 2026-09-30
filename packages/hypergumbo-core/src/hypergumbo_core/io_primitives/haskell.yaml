@@ -16,6 +16,7 @@
 # net_recv rows at all, because `base` has no sockets. That is a fact about
 # Haskell rather than a gap in the file — see the comment where those sections
 # used to be.
+provenance: builtin
 language: haskell
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``

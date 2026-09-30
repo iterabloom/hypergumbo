@@ -29,6 +29,7 @@
 # than by a release cadence, so this is MORE stable than a stdlib, not less.
 # tcsh and fish diverge and would get their own files; that is what
 # per-language catalogs are for.
+provenance: builtin
 language: bash
 # NOT `complete`: this covers the shell's REDIRECTION surface only. Pipes are
 # deliberately excluded (a | b is a process topology, not a filesystem

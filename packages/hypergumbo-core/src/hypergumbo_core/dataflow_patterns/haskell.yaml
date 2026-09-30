@@ -4,6 +4,7 @@
 # Haskell uses pattern matching and do-notation for binding; mutation is
 # rare (IORef/MVar are handled at the library level via I/O catalog).
 # These patterns cover the syntactic binding sites visible in the AST.
+provenance: builtin
 language: haskell
 
 assignments:

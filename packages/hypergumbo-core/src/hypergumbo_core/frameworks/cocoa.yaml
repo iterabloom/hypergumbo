@@ -8,6 +8,7 @@
 # Note: ObjC selectors may include colons for keyword methods, but the
 # lifecycle hooks here are mostly parameterless (no colons in name).
 
+provenance: builtin
 id: cocoa
 language: [objc]
 

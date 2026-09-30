@@ -18,6 +18,10 @@
 # Apollo consumer importing via a workspace can fail the package.json
 # dependency check).
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-05-26
 id: node-http
 language: javascript
 
