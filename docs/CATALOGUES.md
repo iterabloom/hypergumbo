@@ -25,6 +25,15 @@ an I/O row that makes a call count as examined, a library signature that
 types a receiver. A source, a sink, a framework pattern or an I/O detection
 only ever adds.
 
+**What a community row may not do, exactly.** A community I/O row never makes
+a call count as examined, and its `module_completeness` grants are withheld; a
+community taint sanitizer is not a barrier (the flow is reported and names it,
+`withheld_community_sanitizer`); a community terminating summary never closes
+a taint branch (`withheld_community_summary`). Community `frameworks`,
+`dataflow_patterns` and `library_signatures` rows are disclosed rather than
+withheld: measured with every one of them removed, they made no verdict
+cleaner, only added structure and flows (ADR-0061 ruling 2).
+
 **A file's tier is its own `provenance:` line**, never the directory it sits
 in. A community file you copy into your config home is still community;
 deleting its `provenance: community` line is how you vouch for it, and it is

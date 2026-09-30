@@ -281,7 +281,7 @@ Unknown settings and wrong types are refused rather than ignored, naming the fil
 
 ### Catalogue tiers
 
-Catalogue data — I/O primitives, taint sources / sinks / sanitizers, function summaries, library signatures, framework patterns, dataflow library patterns — comes in four tiers, named by who vouches for it ([ADR-0061](adr/0061-catalogue-tiers-for-every-family.md)). The tiers apply to every family.
+Catalogue data — I/O primitives, taint sources / sinks / sanitizers, function summaries, library signatures, framework patterns, dataflow library patterns — comes in four tiers, named by who vouches for it ([ADR-0061](adr/0061-catalogue-tiers-for-every-family.md)). The tiers apply to every family. The user-facing page is [CATALOGUES.md](CATALOGUES.md), generated from the registry by `scripts/generate-catalogues-doc` (a test fails when it is stale).
 
 | Tier | What | Vouched for by | Where it lives | Can it make a verdict cleaner? |
 |---|---|---|---|---|
