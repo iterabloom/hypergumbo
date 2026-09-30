@@ -1080,6 +1080,9 @@ class TestViolatedFlowEvidence:
                 # reason the modules are bare — this fixture builds a finding
                 # directly, so no propagator stamped a site.
                 "sink_call_sites": [],
+                # INV-hopib: the calls a stream-object sink was written
+                # through. Empty here: ``replace`` is a call, not a stream.
+                "sink_carriers": [],
                 "collapsed_flow_count": 1,
                 # ADR-0061 ruling 2 (WI-dikit): community sanitizers the route
                 # crossed and that were not credited. Empty here: none on it.
