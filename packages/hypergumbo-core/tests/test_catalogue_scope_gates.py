@@ -126,6 +126,16 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # openat / creat, whose descriptors <unistd.h>'s read/write (on
             # this line) consume -- the other half of the same file API.
             "fcntl",
+            # 2026-09-30 WI-hasul: the no-I/O headers module_completeness
+            # grants. C11 (errno, stdint, stdbool, stddef, stdarg, limits,
+            # float, inttypes, ctype, math), POSIX (sys/types, strings,
+            # libgen), and two that ship with the C library on every Linux
+            # system rather than through a package manager: glibc's
+            # <sys/param.h> and the kernel UAPI <linux/limits.h> -- the
+            # "platform" half of ADR-0061's built-in line.
+            "errno", "stdint", "stdbool", "stddef", "stdarg", "limits",
+            "float", "inttypes", "ctype", "math", "sys/types", "strings",
+            "libgen", "sys/param", "linux/limits",
         }),
     ),
     "cpp": Scope(
