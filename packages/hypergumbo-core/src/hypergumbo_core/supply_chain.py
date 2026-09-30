@@ -53,7 +53,7 @@ import re
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Container, Iterator, Optional
 
 
 class Tier(IntEnum):
@@ -1121,10 +1121,38 @@ def collect_workspace_package_names(repo_root: Path) -> set[str]:
     is present (non-Python repo → all deps stay tier 3, unchanged behavior).
     """
     from .profile import _load_toml
+    names: set[str] = set()
+    for entry in _manifest_files(repo_root, {"pyproject.toml"}):
+        try:
+            content = entry.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, IOError):  # pragma: no cover - unreadable file
+            continue
+        data = _load_toml(content)
+        if not isinstance(data, dict):
+            continue
+        own = _own_distribution_name(data)
+        if own:
+            names.add(_normalize_pep503(own))
+    return names
+
+
+def _manifest_files(repo_root: Path, file_names: "Container[str]") -> "Iterator[Path]":
+    """Every file under ``repo_root`` whose name is in ``file_names``.
+
+    Skips ``discovery.DEFAULT_EXCLUDES`` and dot-prefixed directories, so a
+    vendored ``.venv/site-packages/<pkg>/`` manifest cannot leak in.
+
+    DOES NOT DESCEND INTO A DIRECTORY SYMLINK (INV-pivir), which is what
+    ``Path.rglob`` and discovery already do. ``Path.is_dir()`` follows links,
+    so the walk this replaces pushed a link back to its own parent forever:
+    arti's ``maint/rust-maint-common/{maint,common} -> .`` is two self-links
+    per level, an exponential walk, and ``verify-claims`` sat at 100% CPU for
+    30+ minutes before any analysis ran. A symlinked manifest FILE is still
+    read -- reading one file is bounded.
+    """
     from .discovery import DEFAULT_EXCLUDES
 
     skip = set(DEFAULT_EXCLUDES)
-    names: set[str] = set()
     stack = [repo_root]
     while stack:
         cur = stack.pop()
@@ -1133,22 +1161,13 @@ def collect_workspace_package_names(repo_root: Path) -> set[str]:
         except (PermissionError, OSError):  # pragma: no cover - unreadable dir
             continue
         for entry in entries:
-            if entry.is_file() and entry.name == "pyproject.toml":
-                try:
-                    content = entry.read_text(encoding="utf-8", errors="ignore")
-                except (OSError, IOError):  # pragma: no cover - unreadable file
-                    continue
-                data = _load_toml(content)
-                if not isinstance(data, dict):
-                    continue
-                own = _own_distribution_name(data)
-                if own:
-                    names.add(_normalize_pep503(own))
-            elif entry.is_dir():
+            if entry.is_file():
+                if entry.name in file_names:
+                    yield entry
+            elif entry.is_dir() and not entry.is_symlink():
                 if entry.name in skip or entry.name.startswith("."):
                     continue
                 stack.append(entry)
-    return names
 
 
 def _own_cargo_package_name(content: str) -> Optional[str]:
@@ -1272,31 +1291,13 @@ def collect_first_party_package_names(repo_root: Path) -> set[str]:
     where "this repo publishes it" and "this reference resolves to it" can come
     apart, and a later reader should know that before widening the rule.
     """
-    from .discovery import DEFAULT_EXCLUDES
-
-    skip = set(DEFAULT_EXCLUDES)
     names: set[str] = set()
-    stack = [repo_root]
-    while stack:
-        cur = stack.pop()
+    for entry in _manifest_files(repo_root, _FIRST_PARTY_MANIFESTS):
         try:
-            entries = list(cur.iterdir())
-        except (PermissionError, OSError):  # pragma: no cover - unreadable dir
+            content = entry.read_text(encoding="utf-8", errors="ignore")
+        except OSError:  # pragma: no cover - unreadable file
             continue
-        for entry in entries:
-            if entry.is_file():
-                reader = _FIRST_PARTY_MANIFESTS.get(entry.name)
-                if reader is None:
-                    continue
-                try:
-                    content = entry.read_text(encoding="utf-8", errors="ignore")
-                except OSError:  # pragma: no cover - unreadable file
-                    continue
-                own = reader(content)
-                if own:
-                    names.add(own)
-            elif entry.is_dir():
-                if entry.name in skip or entry.name.startswith("."):
-                    continue
-                stack.append(entry)
+        own = _FIRST_PARTY_MANIFESTS[entry.name](content)
+        if own:
+            names.add(own)
     return names
