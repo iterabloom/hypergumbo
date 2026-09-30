@@ -22,3 +22,10 @@
     fields:  # f1eb
       statement: "A call whose callee a shipped hypergumbo catalogue classifies is never reported as never-examined; a claim unrelated to that callee is not withheld by it."  # f1eb
       root_cause: "Not traced. Suspected: the unclassified-module coverage check consults io_primitives and module_completeness only, and ADR-0060's taint_sinks rows are by rule never I/O rows."  # f1eb
+- op: discuss  # 8e15
+  at: '2026-09-29T23:41:16Z'  # 8e15
+  by: agent  # 8e15
+  actor: jgstern_agent  # 8e15
+  clock: 2  # 8e15
+  nonce: '8e15'  # 8e15
+  message: "UNBLOCKED 2026-09-29: INV-dadu landed (PR #1316), so the page URL is an untrusted_input source. Loosening this gate no longer turns location.hash -> eval into a false confirmed under untrusted_input: on merged dev that claim is VIOLATED (a found flow is reported regardless of the gate). Still true: every clean verdict in a JS repo that calls eval or document.write is withheld."  # 8e15

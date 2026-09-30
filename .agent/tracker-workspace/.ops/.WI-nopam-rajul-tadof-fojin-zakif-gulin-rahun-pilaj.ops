@@ -64,3 +64,18 @@
   set: {}  # 279c
   add:  # 279c
     isbefore: [WI-hasul-fulas-gorom-rodur-tarig-dogov-tanon-kalon]  # 279c
+- op: update  # 5c91
+  at: '2026-09-30T01:45:24Z'  # 5c91
+  by: agent  # 5c91
+  actor: jgstern_agent  # 5c91
+  clock: 7  # 5c91
+  nonce: 5c91  # 5c91
+  set:  # 5c91
+    status: done  # 5c91
+- op: discuss  # 3334
+  at: '2026-09-30T01:45:24Z'  # 3334
+  by: agent  # 3334
+  actor: jgstern_agent  # 3334
+  clock: 8  # 3334
+  nonce: '3334'  # 3334
+  message: "Done in PR #1317 (merged, dev 95c604b823). All 180 shipped catalogue files across the 11 families declare provenance: builtin (81) or community (99 frameworks + 8 io overlays + 8 new companions; each with retrieved:). The gate in test_catalogue_scope_gates.py draws the ADR-0016 stdlib line (CATALOGUE_SCOPE) for every family: refuses a file declaring neither tier, a community file with no date, a non-builtin cfg_nodes/url_folding file, and a builtin file naming anything outside the line (per-family extractors: module: values exact incl. io module_completeness; qualified names for sanitizers/summaries; key owners + returned types for library_signatures; anchored modules for dataflow library_patterns; a reasoned allowlist of 8 builtin frameworks files).\nAcceptance evidence: on merged dev, test_catalogue_scope_gates.py + test_community_companion_rows.py: 598 passed. Mutations (each red, restored): drop cfg_nodes/c.yaml's line; mark crypto_community.yaml builtin; mark frameworks/flask.yaml builtin -> 3 gate failures + the controls green. The extractor also flags all 8 io overlays when simulated builtin (positive control).\nThird-party rows moved to community companions: taint crypto/key_material/encryption *_community.yaml; function_summaries go_testify_zap, python_django, rust_aes_gcm_serde_json; library_signatures python-django.yaml; dataflow python-pyyaml.yaml. Loaders: a community row only ADDS (function_summaries ranks builtin<community<user and community takes a name only when free; library_signatures/dataflow read companions by language: line + tier).\nZero verdict effect, measured: every merged view dumped from a pinned origin/dev worktree vs this tree is identical, except the short alias 'filter' (now the builtin Array.prototype.filter), which production never reads (taint keeps qualified keys only; 71/71 qualified summaries identical).\nNOT done here: withholding a community row's cleaning effect (WI-dikit, WI-tigud, WI-hipun); the I/O loader still reads the directory (INV-lamap)."  # 3334
