@@ -4,6 +4,10 @@
 # Vapor is a Swift web framework. Routes are defined using
 # app.get(), app.post(), etc. Controllers extend RouteCollection.
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: vapor
 language: swift
 

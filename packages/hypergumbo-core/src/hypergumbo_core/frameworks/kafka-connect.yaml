@@ -13,6 +13,10 @@
 #
 # Examples: Apache Iceberg's IcebergSinkTask, Debezium's PostgresConnector
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-03-12
 id: kafka-connect
 language: java
 

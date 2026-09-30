@@ -12,6 +12,7 @@
 # - latex.py: LaTeX document structure
 # - starlark.py: Bazel/Buck build rules
 
+provenance: builtin
 id: language-conventions
 language: multi
 

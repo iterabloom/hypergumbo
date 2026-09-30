@@ -1593,11 +1593,17 @@ class TestPythonLibraryPatterns:
     """
 
     def _load_python_config(self):
+        """python.yaml plus its shipped community companions: PyYAML's rows
+        are third-party, so they live in python-pyyaml.yaml (ADR-0061)."""
+        from hypergumbo_core.dataflow import _with_community_library_patterns
+
         py_yaml = (
             Path(__file__).parent.parent
             / "src" / "hypergumbo_core" / "dataflow_patterns" / "python.yaml"
         )
-        return load_dataflow_config(py_yaml)
+        return _with_community_library_patterns(
+            "python", load_dataflow_config(py_yaml),
+        )
 
     def test_python_config_has_library_patterns(self) -> None:
         """python.yaml should include library_patterns."""

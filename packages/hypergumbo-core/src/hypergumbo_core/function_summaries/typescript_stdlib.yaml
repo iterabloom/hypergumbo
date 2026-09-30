@@ -5,6 +5,7 @@
 # propagation. Each entry describes which parameters flow to the return
 # value, which mutate self/receiver, and sanitization effects.
 
+provenance: builtin
 summaries:
   - function: "Buffer.from"
     param_to_return: {0: true}

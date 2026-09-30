@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0017 §4b: Function summaries for Go's testify and zap.
+#
+# A COMMUNITY companion of go_stdlib.yaml (ADR-0061): these rows describe third-party
+# libraries, ship without being maintained, and only ADD -- a summary here takes
+# a name, full or short, only when no built-in file holds it (see
+# load_function_summaries). go_stdlib.yaml holds the standard-library rows hypergumbo
+# vouches for; the scope and field conventions in its header apply here too.
+#
+# `retrieved` is the date these rows were last edited, the latest date they can
+# have been checked against the libraries they describe.
+provenance: community
+retrieved: 2026-09-14
+summaries:
+  # --- github.com/stretchr/testify/require: assertions consume their operands ---
+  - function: "github.com/stretchr/testify/require.NoError"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "github.com/stretchr/testify/require.Error"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "github.com/stretchr/testify/require.Contains"
+    param_to_return: {}
+    side_effect: true
+
+  - function: "github.com/stretchr/testify/require.Equal"
+    param_to_return: {}
+    side_effect: true
+
+  # --- go.uber.org/zap: the single most-consulted callee on the cohort (18) ---
+  # zap.String(key, val) returns a Field CARRYING val. It is a constructor, not
+  # a sink — the value reaches the log only when the Field is passed to a
+  # logger. Marking it terminating would silently delete every structured-log
+  # leak in a zap codebase, which is the largest single miss this catalogue
+  # could produce.
+  - function: "go.uber.org/zap.String"
+    param_to_return: {1: true}
+
+  - function: "go.uber.org/zap.Any"
+    param_to_return: {1: true}
+
+  - function: "go.uber.org/zap.Error"
+    param_to_return: {0: true}

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# ADR-0017 §4b: Function summaries for the Go stdlib and common libraries.
+# ADR-0017 §4b: Function summaries for the Go standard library.
 #
 # SCOPE: ENUMERATION-DERIVED, NOT A STDLIB SURVEY.
 # Every entry here is a callee the ADR-0017 §3a walk was measured CONSULTING at
@@ -26,6 +26,7 @@
 # wrong `propagates` verdict only leaves an unknown unknown. When unsure, do
 # not mark it terminating.
 
+provenance: builtin
 summaries:
   # --- fmt: the dominant Go escape-site callee family on the cohort ---
   - function: "fmt.Printf"
@@ -148,35 +149,3 @@ summaries:
       param_index: 0
       caller_to_callback_args: {}
       callback_return_to_outer_return: false
-
-  # --- github.com/stretchr/testify/require: assertions consume their operands ---
-  - function: "github.com/stretchr/testify/require.NoError"
-    param_to_return: {}
-    side_effect: true
-
-  - function: "github.com/stretchr/testify/require.Error"
-    param_to_return: {}
-    side_effect: true
-
-  - function: "github.com/stretchr/testify/require.Contains"
-    param_to_return: {}
-    side_effect: true
-
-  - function: "github.com/stretchr/testify/require.Equal"
-    param_to_return: {}
-    side_effect: true
-
-  # --- go.uber.org/zap: the single most-consulted callee on the cohort (18) ---
-  # zap.String(key, val) returns a Field CARRYING val. It is a constructor, not
-  # a sink — the value reaches the log only when the Field is passed to a
-  # logger. Marking it terminating would silently delete every structured-log
-  # leak in a zap codebase, which is the largest single miss this catalogue
-  # could produce.
-  - function: "go.uber.org/zap.String"
-    param_to_return: {1: true}
-
-  - function: "go.uber.org/zap.Any"
-    param_to_return: {1: true}
-
-  - function: "go.uber.org/zap.Error"
-    param_to_return: {0: true}

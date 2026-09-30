@@ -17,6 +17,7 @@
 # expressions, so module context is often "external".  Only include methods
 # distinctive enough to avoid false positives without module disambiguation.
 # Overly generic names (write, read, run, data) go in ambiguous_names.
+provenance: builtin
 language: swift
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``

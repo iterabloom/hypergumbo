@@ -5,6 +5,7 @@
 # are identical. This file exists so get_dataflow_config("typescript")
 # resolves without falling back to javascript.yaml. Keep this in sync
 # with javascript.yaml.
+provenance: builtin
 language: typescript
 
 assignments:

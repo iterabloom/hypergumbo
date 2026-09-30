@@ -4,6 +4,10 @@
 # Matches FastAPI route decorators, Pydantic models, and Depends injection.
 # Symbols matching these patterns get enriched with concept metadata.
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-07-31
 id: fastapi
 language: python
 

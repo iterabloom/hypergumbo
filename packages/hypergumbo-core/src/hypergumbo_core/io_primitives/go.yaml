@@ -2,6 +2,7 @@
 # ADR-0016: I/O primitive catalog for Go
 #
 # Maps Go standard library functions to I/O boundary types.
+provenance: builtin
 language: go
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``

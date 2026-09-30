@@ -19,6 +19,7 @@
 # directly rather than going through a generic regex dispatcher. Phase A
 # scope: only this one language uses this idiom and the inline call from
 # linkers/http.py:_find_elm_let_bound_url_calls is the canonical caller.
+provenance: builtin
 idiom: array_join
 engine: fold_array_join
 languages:

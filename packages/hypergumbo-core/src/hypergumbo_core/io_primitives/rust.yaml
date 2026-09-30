@@ -3,6 +3,7 @@
 #
 # Maps std library functions to I/O boundary types. Covers Rust stable std.
 # Third-party crates (tokio, reqwest, etc.) trace through these primitives.
+provenance: builtin
 language: rust
 # WI-tukif (Plan C, PR B) audited this catalog against doc.rust-lang.org/std/
 # on 2026-05-24 for Rust 1.78 and recorded that "coverage is complete for the

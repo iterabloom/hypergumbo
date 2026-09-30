@@ -17,6 +17,7 @@
 # no call edge (a string and a function argument are one call shape), so a row
 # would claim coverage nothing can deliver. verify-claims reads `unreached:` and
 # names these shapes on any clean verdict over this zone (INV-pivam).
+provenance: builtin
 description: "Evaluating data as code in the running process"
 zone: code_execution
 trust_level: untrusted

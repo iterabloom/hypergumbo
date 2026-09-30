@@ -16,6 +16,7 @@
 # KEY SHAPE (java.py): a static factory is keyed `Class.method`; the VALUE is the
 # fully-qualified type, because java qualifies its module slot through the declaring
 # file's imports (WI-gajuh).
+provenance: builtin
 language: java
 module_completeness: partial
 signatures:

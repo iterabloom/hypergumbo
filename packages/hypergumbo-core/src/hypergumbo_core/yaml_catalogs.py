@@ -15,7 +15,7 @@ Why this exists. The catalog set grew organically — ``frameworks/`` landed in
 the initial pattern-system work, ``io_primitives/`` landed with ADR-0016, the
 ``dataflow_patterns/`` + ``cfg_nodes/`` + ``taint_*`` + ``function_summaries/``
 family landed across ADR-0015 / ADR-0017, and ADR-0047 added the user-channel
-and community-overlay families. With ten registered directories holding 169
+and community-overlay families. With eleven registered directories holding 180
 YAML files there is no longer a single place to enumerate them. Without a
 registry, new categories drift in and out of documentation, generate-architecture
 counted only ``frameworks/``, and there was no drift-detection equivalent to the
@@ -221,6 +221,25 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         no_channel_reason=None,
     ),
 )
+
+
+#: ADR-0061 ruling 3: the tiers a SHIPPED catalogue file declares on its
+#: ``provenance:`` line -- ``builtin`` (standard-library rows hypergumbo
+#: vouches for) or ``community`` (third-party rows it ships without
+#: maintaining). The tier is read from that line, never from the directory a
+#: file sits in; ``test_catalogue_scope_gates.py`` refuses a shipped file that
+#: declares neither, and a built-in file that names a third-party library.
+PROVENANCE_BUILTIN = "builtin"
+PROVENANCE_COMMUNITY = "community"
+
+
+def declares_community(data: object) -> bool:
+    """True when a parsed catalogue file declares ``provenance: community``.
+
+    A community row ADDS and never displaces a built-in one (ADR-0061 ruling
+    2), so the loaders that merge by key ask this of each shipped file.
+    """
+    return isinstance(data, dict) and data.get("provenance") == PROVENANCE_COMMUNITY
 
 
 _PKG_ROOT = Path(__file__).parent

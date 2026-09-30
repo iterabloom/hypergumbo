@@ -20,6 +20,7 @@
 # C++-only, and bare ``cout``/``cerr``/``cin`` (after ``using namespace
 # std;``) are tracked separately because they need the ``using``
 # declaration to be modeled before they can be safely resolved here.
+provenance: builtin
 language: cpp
 
 # Plan C, PR B / INV-titih: partial catalog. Promotion to

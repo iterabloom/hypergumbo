@@ -7,6 +7,10 @@
 # For Python GraphQL (Strawberry, Ariadne, Graphene), see graphql-python.yaml
 # For Ruby GraphQL (graphql-ruby), see graphql-ruby.yaml
 
+# ADR-0061: shipped, not maintained by hypergumbo. `retrieved` is the date these
+# rows were last edited, the latest date they can have been checked upstream.
+provenance: community
+retrieved: 2026-06-18
 id: graphql
 language: javascript
 

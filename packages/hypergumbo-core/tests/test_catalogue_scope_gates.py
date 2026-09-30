@@ -46,13 +46,18 @@ new catalogue is gated the moment it lands.
 
 from __future__ import annotations
 
+import datetime
+import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+import yaml
 
 import hypergumbo_core.io_boundary as _iob
 from hypergumbo_core.io_boundary import load_catalog
+from hypergumbo_core.yaml_catalogs import YAML_CATALOGS
 
 _CATALOG_DIR = Path(_iob.__file__).parent / "io_primitives"
 
@@ -203,6 +208,12 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # handle's own method (`f.Write(b)`, `w.WriteString(s)`) has a
             # row. Both stdlib: package os's File, package bufio's Writer.
             "bufio.Writer", "os.File",
+            # 2026-09-29 WI-nopam (ADR-0061: the built-in line is drawn for
+            # every family). The Go packages the TAINT and SUMMARY catalogues
+            # name: crypto/aes, crypto/cipher and crypto/rand are the stdlib's
+            # cipher and randomness packages, and net/http/fcgi is net/http's
+            # FastCGI server. All ship with the Go toolchain.
+            "crypto/aes", "crypto/cipher", "crypto/rand", "net/http/fcgi",
         }),
     ),
     "haskell": Scope(
@@ -268,6 +279,16 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # `dns/promises` and the `dns.Resolver` class as its two other
             # spellings of the same surface. Nothing here comes through npm.
             "dns", "dns.promises", "dns.Resolver",
+            # 2026-09-29 WI-nopam (ADR-0061). Node core modules the catalogue's
+            # module_completeness grants name (`url`, `zlib`, `crypto` and the
+            # promise spellings of `fs`, `stream` and `timers`), the ECMAScript
+            # globals the function summaries name (JSON, String, Array,
+            # Promise), Node's `Buffer` global, and `eval`, the global function
+            # spelled as its own pseudo-module exactly as `fetch` is. Each is a
+            # runtime built-in; none comes through npm.
+            "url", "zlib", "crypto", "fs/promises", "stream/promises",
+            "timers/promises", "JSON", "String", "Array", "Promise", "Buffer",
+            "eval",
         }),
     ),
     "kotlin": Scope(
@@ -361,6 +382,10 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "the catalogues accept."
         ),
         prefixes=("std::",),
+        # 2026-09-29 WI-nopam (ADR-0061). `Vec` and `String` are std types the
+        # PRELUDE brings into scope under their bare names, which is how the
+        # function summaries spell them (`Vec::push`, `String::from`).
+        modules=frozenset({"Vec", "String"}),
     ),
     "scala": Scope(
         why=(
@@ -396,6 +421,12 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "NSManagedObjectContext", "NWConnection", "NWListener",
             "NotificationCenter", "Process", "ProcessInfo", "Swift",
             "URLRequest", "URLSession", "os",
+            # 2026-09-29 WI-nopam (ADR-0061). The Foundation types the library
+            # signatures return: URL, Data, Pipe and URLSession's four task
+            # types, all part of the same OS-shipped framework as URLSession.
+            "URL", "Data", "Pipe", "URLSessionDataTask",
+            "URLSessionDownloadTask", "URLSessionUploadTask",
+            "URLSessionWebSocketTask",
         }),
     ),
 }
@@ -469,3 +500,306 @@ def test_every_scope_entry_explains_itself(language: str) -> None:
         f"CATALOGUE_SCOPE[{language!r}].why is too short to record a "
         f"judgement about where {language}'s standard library ends"
     )
+
+
+# ---------------------------------------------------------------------------
+# EVERY FAMILY DECLARES ITS TIER (ADR-0061 ruling 3, WI-nopam).
+# ---------------------------------------------------------------------------
+#
+# ADR-0061 draws the built-in line -- the standard-library line above -- for
+# every catalogue family, not only the I/O catalogue, and makes the tier a
+# property the FILE declares (`provenance: builtin` or `provenance:
+# community`), never one inferred from the directory it sits in. The gate below
+# is the other half: a declaration nothing checks is a comment.
+#
+# It refuses three things:
+#   1. a shipped file that declares neither tier;
+#   2. a community file with no dated `retrieved:`;
+#   3. a BUILT-IN file carrying a row outside the standard-library line.
+# The third is the one that matters. A built-in row takes full effect, including
+# the effects that make a verdict cleaner, so a third-party row declared
+# built-in is exactly the undisclosed vouching ADR-0061 exists to end.
+#
+# HOW "OUTSIDE THE LINE" IS DECIDED, PER FAMILY. The families spell a library
+# differently, so each has an extractor that returns the spellings a file
+# names, and every spelling is checked against the SAME `CATALOGUE_SCOPE`:
+#   * io_primitives, io_primitives_overlays, taint_sources, taint_sinks: every
+#     `module:` value (which includes the io `module_completeness` grants --
+#     the rows that turn an unclassified call into an examined negative);
+#   * taint_sanitizers, function_summaries: the qualified names;
+#   * library_signatures: each key's owner and each returned type;
+#   * dataflow_patterns: the module a `library_patterns` regex anchors on
+#     (`\bjson\.dump\(`), since the rest match a method name on any receiver;
+#   * frameworks: rows are regexes over decorators and names with no module
+#     field, so there is no spelling to check. A frameworks file may declare
+#     built-in only when `BUILTIN_FRAMEWORK_FILES` names it WITH its reason --
+#     the allowlist shape again, failing closed on a new file.
+#   * cfg_nodes, url_folding: built-in only (ADR-0061 ruling 1); their rows are
+#     grammar node types and hypergumbo's own folding engines.
+
+_PKG_ROOT = Path(_iob.__file__).parent
+TIERS = ("builtin", "community")
+
+#: ADR-0061 ruling 1: these families describe grammars and hypergumbo's own
+#: engines, not anyone's libraries, so they have the built-in tier only.
+BUILTIN_ONLY_FAMILIES = frozenset({"cfg_nodes", "url_folding"})
+
+#: Catalogue language keys that share another language's standard library.
+SCOPE_ALIASES = {"typescript": "javascript"}
+
+#: Short spellings a catalogue uses for a standard-library name, each mapped
+#: to the name it abbreviates. The gate checks the TARGET against the line, so
+#: an entry cannot admit a third-party name: it can only say what a short
+#: spelling means.
+SHORT_SPELLINGS: dict[str, dict[str, str]] = {
+    # Go code names a package by its last path element once imported.
+    "go": {
+        "exec": "os/exec", "http": "net/http",
+        "Listener": "net.Listener", "Cmd": "os/exec.Cmd",
+    },
+    # Java code names a class by its simple name once imported.
+    "java": {
+        "DriverManager": "java.sql.DriverManager",
+        "Connection": "java.sql.Connection",
+        "Statement": "java.sql.Statement",
+        "PreparedStatement": "java.sql.PreparedStatement",
+        "Files": "java.nio.file.Files",
+        "Runtime": "java.lang.Runtime",
+        "ProcessBuilder": "java.lang.ProcessBuilder",
+        "Process": "java.lang.Process",
+        "Socket": "java.net.Socket",
+        "ServerSocket": "java.net.ServerSocket",
+    },
+}
+
+#: Frameworks files that may declare built-in, each with the reason. Everything
+#: else in frameworks/ is community: a framework is a third-party library by
+#: nature, and a file that MIXES a stdlib idiom with a library one (node-http,
+#: test-frameworks, go-encoding-callbacks, web_audio, swiftui) is community as a
+#: whole, because a file has one tier.
+BUILTIN_FRAMEWORK_FILES: dict[str, str] = {
+    "main-functions.yaml": "Each language's own entry-point syntax (func "
+    "main, public static void main, fn main); no library is named.",
+    "language-conventions.yaml": "Shapes hypergumbo's own analyzers emit for "
+    "CUDA, WGSL, COBOL, LaTeX and Starlark; no library is named.",
+    "naming-conventions.yaml": "Naming heuristics (*Controller, *Handler) "
+    "that match on a symbol's name alone; no library is named.",
+    "library-exports.yaml": "Each language's own export syntax (index-file "
+    "exports, Go capitalisation, pub items); no library is named.",
+    "config-conventions.yaml": "Symbols hypergumbo's own config-file "
+    "analyzers emit for package manifests; no library is named.",
+    "cocoa.yaml": "UIKit and AppKit lifecycle hooks: Apple system frameworks "
+    "that ship with the OS, the same line the objc entry above draws.",
+    "jax-rs.yaml": "Jakarta REST annotations. The java entry above admits "
+    "jakarta.* and javax.* as what the Java platform IS.",
+    "jakarta-cdi.yaml": "Jakarta CDI annotations, jakarta.* / javax.* only; "
+    "admitted by the same java line as jax-rs.",
+}
+
+
+def _shipped_files() -> list[tuple[str, Path]]:
+    return [
+        (spec.directory, path)
+        for spec in YAML_CATALOGS
+        for path in sorted((_PKG_ROOT / spec.directory).glob("*.yaml"))
+    ]
+
+
+SHIPPED_FILES = _shipped_files()
+_IDS = [f"{family}/{path.name}" for family, path in SHIPPED_FILES]
+
+
+def _data(path: Path) -> dict:
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    assert isinstance(data, dict), f"{path}: not a mapping"
+    return data
+
+
+def _candidates(name: str, qualified: bool) -> list[str]:
+    """The spellings to try for ``name``.
+
+    A ``module:`` field is a module, and is checked EXACTLY, as the io gate
+    above checks it: a prefix rule would admit Hackage's
+    ``System.Directory.Extra`` under ``System.Directory``. A QUALIFIED name
+    (``logging.Logger.debug``, ``Vec::push``) does not separate the module from
+    the member, so every prefix cut at a ``.`` or ``::`` boundary is a
+    candidate. ``/`` is never a cut: ``net/http/fcgi`` must itself be on the Go
+    line, because ``golang.org/x/...`` shows a shared path prefix is not a
+    shared library.
+    """
+    if not qualified:
+        return [name]
+    parts = re.split(r"(\.|::)", name)
+    return ["".join(parts[:i]) for i in range(len(parts), 0, -2)]
+
+
+def _admitted(language: str, name: str, qualified: bool) -> bool:
+    language = SCOPE_ALIASES.get(language, language)
+    scope = CATALOGUE_SCOPE.get(language)
+    short = SHORT_SPELLINGS.get(language, {})
+    for candidate in _candidates(name, qualified):
+        for spelling in (candidate, short.get(candidate)):
+            if spelling is None:
+                continue
+            if scope is not None and scope.admits(spelling, CATALOGUE_SCOPE):
+                return True
+            # CPython answers this one itself: the interpreter's own list of
+            # its standard-library top-level modules.
+            if language == "python" and spelling.split(".")[0] in \
+                    sys.stdlib_module_names:
+                return True
+    return False
+
+
+def _module_values(node: object) -> list[str]:
+    if isinstance(node, dict):
+        found = [node["module"]] if isinstance(node.get("module"), str) else []
+        for value in node.values():
+            found.extend(_module_values(value))
+        return found
+    if isinstance(node, list):
+        return [m for item in node for m in _module_values(item)]
+    return []
+
+
+def _by_language_modules(
+    data: dict, section: str,
+) -> list[tuple[str, str, bool]]:
+    return [
+        (lang, module, False)
+        for lang, entries in (data.get(section) or {}).items()
+        for module in _module_values(entries)
+    ]
+
+
+_ANCHORED_MODULE = re.compile(r"^\\b([A-Za-z_][\w]*)(?:\\\.|:)")
+
+
+def _spellings(family: str, path: Path) -> list[tuple[str, str, bool]]:
+    """``(language, spelling, qualified)`` for every library name a file names."""
+    data = _data(path)
+    if family in ("io_primitives", "io_primitives_overlays"):
+        lang = data.get("language", path.stem)
+        return [(lang, m, False) for m in _module_values(data)]
+    if family == "taint_sources":
+        return _by_language_modules(data, "sources")
+    if family == "taint_sinks":
+        return _by_language_modules(data, "sinks")
+    if family == "taint_sanitizers":
+        return [
+            (lang, name, True)
+            for transform in data.get("transforms") or []
+            for lang, names in (transform.get("functions") or {}).items()
+            for name in names
+        ]
+    if family == "function_summaries":
+        lang = path.stem.split("_")[0]
+        return [(lang, s["function"], True) for s in data.get("summaries") or []]
+    if family == "library_signatures":
+        lang = data["language"]
+        out: list[tuple[str, str, bool]] = []
+        for section in ("signatures", "package_variables"):
+            for key, returned in (data.get(section) or {}).items():
+                out.append((lang, key.rsplit(".", 1)[0], True))
+                out.append((lang, returned, True))
+        return out
+    if family == "dataflow_patterns":
+        lang = data["language"]
+        return [
+            (lang, m.group(1), False)
+            for row in data.get("library_patterns") or []
+            if (m := _ANCHORED_MODULE.match(row.get("match", "")))
+        ]
+    return []
+
+
+@pytest.mark.parametrize("family, path", SHIPPED_FILES, ids=_IDS)
+def test_every_shipped_catalogue_file_declares_its_tier(
+    family: str, path: Path,
+) -> None:
+    """ADR-0061 ruling 3: a file says whose word its rows are."""
+    declared = _data(path).get("provenance")
+    assert declared in TIERS, (
+        f"{family}/{path.name} declares provenance {declared!r}. Every shipped "
+        f"catalogue file must say `provenance: builtin` (hypergumbo vouches: "
+        f"standard-library rows) or `provenance: community` (shipped, not "
+        f"maintained, never makes a verdict cleaner) -- ADR-0061 ruling 3."
+    )
+
+
+@pytest.mark.parametrize("family, path", SHIPPED_FILES, ids=_IDS)
+def test_a_community_file_is_dated(family: str, path: Path) -> None:
+    """A community row is a third-party claim; its date is what lets a reader
+    judge how stale it is (ADR-0061 ruling 3)."""
+    data = _data(path)
+    if data.get("provenance") != "community":
+        return
+    retrieved = data.get("retrieved")
+    if isinstance(retrieved, str):
+        retrieved = datetime.date.fromisoformat(retrieved)
+    assert isinstance(retrieved, datetime.date), (
+        f"{family}/{path.name} is community but has no `retrieved:` date"
+    )
+
+
+@pytest.mark.parametrize("family, path", SHIPPED_FILES, ids=_IDS)
+def test_a_builtin_file_names_only_the_standard_library(
+    family: str, path: Path,
+) -> None:
+    """ADR-0061 rulings 1-3: built-in means hypergumbo vouches, and the line
+    it vouches up to is the standard library."""
+    data = _data(path)
+    if data.get("provenance") != "builtin":
+        assert family not in BUILTIN_ONLY_FAMILIES, (
+            f"{family} has the built-in tier only (ADR-0061 ruling 1)"
+        )
+        return
+    if family == "frameworks":
+        assert path.name in BUILTIN_FRAMEWORK_FILES, (
+            f"frameworks/{path.name} declares builtin but is not in "
+            f"BUILTIN_FRAMEWORK_FILES. A framework is a third-party library; "
+            f"declare it community, or add it to that table WITH the reason "
+            f"it names no library."
+        )
+        return
+    strays = sorted({
+        f"{lang}: {name}" for lang, name, qualified in _spellings(family, path)
+        if not _admitted(lang, name, qualified)
+    })
+    assert strays == [], (
+        f"{family}/{path.name} declares builtin but names "
+        f"{len(strays)} spelling(s) outside the standard-library line: "
+        f"{strays}\n\nHOW TO FIX. Move third-party rows to a file declaring "
+        f"`provenance: community` with a `retrieved:` date (ADR-0061). If a "
+        f"spelling IS the standard library, add it to CATALOGUE_SCOPE (or "
+        f"SHORT_SPELLINGS, for an abbreviation) in this file with the reason."
+    )
+
+
+def test_every_builtin_framework_entry_names_a_builtin_file() -> None:
+    """The allowlist's other direction: a stale entry, or one for a file that
+    declares community, would be a reason attached to nothing."""
+    stale = sorted(
+        name for name in BUILTIN_FRAMEWORK_FILES
+        if not (_PKG_ROOT / "frameworks" / name).is_file()
+        or _data(_PKG_ROOT / "frameworks" / name).get("provenance") != "builtin"
+    )
+    assert stale == []
+
+
+def test_every_short_spelling_resolves_inside_the_line() -> None:
+    """An abbreviation may say what a short name means; it may not admit one."""
+    bad = sorted(
+        f"{lang}: {short} -> {full}"
+        for lang, table in SHORT_SPELLINGS.items()
+        for short, full in table.items()
+        if not CATALOGUE_SCOPE[lang].admits(full, CATALOGUE_SCOPE)
+    )
+    assert bad == []
+
+
+def test_the_gate_reaches_every_family() -> None:
+    """ASSERT REACH: the parametrisation walks every registered family, and
+    each one contributes files."""
+    reached = {family for family, _ in SHIPPED_FILES}
+    assert reached == {spec.directory for spec in YAML_CATALOGS}

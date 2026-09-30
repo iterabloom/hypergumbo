@@ -63,6 +63,48 @@ def _rows_from(path: "Path", section: str = "signatures") -> dict[str, str]:
     return out
 
 
+def _community_companions(lang: str) -> "list[Path]":
+    """Shipped files declaring ``provenance: community`` for ``lang`` (ADR-0061).
+
+    ``<lang>.yaml`` holds the language's built-in rows. Third-party rows live in
+    a companion file (``python-django.yaml``) that names its language on its
+    ``language:`` line and declares itself community, because a file has one
+    tier and a built-in file may name only the standard library.
+    """
+    import yaml
+
+    from hypergumbo_core.yaml_catalogs import declares_community
+
+    found: "list[Path]" = []
+    for path in sorted(_DIR.glob("*.yaml")):
+        data = yaml.safe_load(path.read_text()) or {}
+        if data.get("language") == lang and declares_community(data):
+            found.append(path)
+    return found
+
+
+def _load_section(lang: str, section: str) -> dict[str, str]:
+    """Built-in rows, then community rows that only ADD, then the user's rows.
+
+    ADR-0061 ruling 2: a community row never displaces a built-in one, so it
+    takes a key only when the built-in file left it free. The user's channel
+    still wins over both.
+    """
+    from hypergumbo_core.catalogue_home import user_channel_files
+
+    out: dict[str, str] = {}
+    path = _DIR / f"{lang}.yaml"
+    if path.is_file():
+        out.update(_rows_from(path, section))
+    for companion in _community_companions(lang):
+        for key, value in _rows_from(companion, section).items():
+            out.setdefault(key, value)
+    for user_file in user_channel_files("library_signatures"):
+        if user_file.stem == lang:
+            out.update(_rows_from(user_file, section))
+    return out
+
+
 @lru_cache(maxsize=None)
 def load_library_signatures(lang: str) -> dict[str, str]:
     """``<producer key>`` -> ``<returned type>`` for one language, or ``{}``.
@@ -75,19 +117,11 @@ def load_library_signatures(lang: str) -> dict[str, str]:
     advertised to users while nothing scanned it, and declaring a channel that no
     loader consults repeats exactly that. A user row for the same key replaces the
     shipped one — a collision means the user knows something about their own
-    build that this file cannot (the shipped rows are stdlib plus, since
-    INV-mumov's Phase 6 PR 1, the Django QuerySet API).
+    build that this file cannot. The shipped rows are the standard library,
+    plus community rows (since INV-mumov's Phase 6 PR 1, the Django QuerySet API)
+    that only add.
     """
-    from hypergumbo_core.catalogue_home import user_channel_files
-
-    out: dict[str, str] = {}
-    path = _DIR / f"{lang}.yaml"
-    if path.is_file():
-        out.update(_rows_from(path))
-    for user_file in user_channel_files("library_signatures"):
-        if user_file.stem == lang:
-            out.update(_rows_from(user_file))
-    return out
+    return _load_section(lang, "signatures")
 
 
 @lru_cache(maxsize=None)
@@ -100,13 +134,4 @@ def load_library_package_variables(lang: str) -> dict[str, str]:
     called, so it has its own section (``package_variables``) of the same row file.
     It is read the same way, and the user's channel wins in the same way.
     """
-    from hypergumbo_core.catalogue_home import user_channel_files
-
-    out: dict[str, str] = {}
-    path = _DIR / f"{lang}.yaml"
-    if path.is_file():
-        out.update(_rows_from(path, "package_variables"))
-    for user_file in user_channel_files("library_signatures"):
-        if user_file.stem == lang:
-            out.update(_rows_from(user_file, "package_variables"))
-    return out
+    return _load_section(lang, "package_variables")

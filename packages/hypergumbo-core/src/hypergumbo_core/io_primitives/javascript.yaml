@@ -4,6 +4,7 @@
 # Maps Node.js built-in module functions to I/O boundary types.
 # Third-party packages (express, axios, etc.) trace through these.
 # Also used for TypeScript (same runtime primitives).
+provenance: builtin
 language: javascript
 # WI-nolut (2026-09-06): promoted from ``in_progress``. The promotion is a
 # citation check only (ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES); coverage is

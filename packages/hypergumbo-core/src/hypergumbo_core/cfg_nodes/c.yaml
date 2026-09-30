@@ -6,6 +6,7 @@
 #
 # C++ is NOT covered by this file: its grammar adds try/catch, range-for and
 # lambdas, and a cpp spec would be claiming coverage nobody measured.
+provenance: builtin
 language: c
 grammar: tree-sitter-c
 
