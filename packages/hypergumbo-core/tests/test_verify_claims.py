@@ -1081,6 +1081,9 @@ class TestViolatedFlowEvidence:
                 # directly, so no propagator stamped a site.
                 "sink_call_sites": [],
                 "collapsed_flow_count": 1,
+                # ADR-0061 ruling 2 (WI-dikit): community sanitizers the route
+                # crossed and that were not credited. Empty here: none on it.
+                "withheld_sanitizers": [],
             }
         ]
 

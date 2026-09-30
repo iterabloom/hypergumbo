@@ -426,9 +426,9 @@ def test_verify_claims_taint_flow_violated(tmp_path: Path, capsys) -> None:
     assert "approximate" in data["verdicts"][0]["details"]
 
 
-def test_verify_claims_taint_flow_confirmed(tmp_path: Path, capsys) -> None:
-    """Taint-flow claim confirmed when sanitizer is on the path."""
-    bmap = _make_behavior_map(
+def _fernet_reencrypt_map() -> dict:
+    """handler decrypts (source); store encrypts (sanitizer) then writes (sink)."""
+    return _make_behavior_map(
         nodes=[
             {"id": "python:app.py:1-10:handler:function", "name": "handler",
              "kind": "function", "language": "python", "path": "app.py",
@@ -458,8 +458,11 @@ def test_verify_claims_taint_flow_confirmed(tmp_path: Path, capsys) -> None:
              "type": "calls", "confidence": 0.9},
         ],
     )
+
+
+def _fernet_run(tmp_path: Path, sanitizer_paths: "list[str] | None") -> int:
     input_file = tmp_path / "hg.json"
-    input_file.write_text(json.dumps(bmap))
+    input_file.write_text(json.dumps(_fernet_reencrypt_map()))
 
     claims = {
         "claims": [
@@ -483,11 +486,36 @@ def test_verify_claims_taint_flow_confirmed(tmp_path: Path, capsys) -> None:
     args.input = str(input_file)
     args.claims = str(claims_file)
     args.json_output = False
+    args.taint_sanitizers = sanitizer_paths
+    return cmd_verify_claims(args)
 
-    rc = cmd_verify_claims(args)
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "CONFIRMED" in out
+
+def test_verify_claims_taint_flow_confirmed(tmp_path: Path, capsys) -> None:
+    """Taint-flow claim confirmed when a VOUCHED sanitizer is on the path.
+
+    ``Fernet.encrypt`` ships only as a COMMUNITY row (ADR-0061), which may not
+    clear a flow, so the fixture vouches for it the way an operator does: its
+    own sanitizer file, named on the command line. That earns the verdict the
+    user-supplied-sanitizer caveat (exit 3) -- the sanitizer is the operator's
+    word, not hypergumbo's."""
+    mine = tmp_path / "fernet.yaml"
+    mine.write_text(
+        "transforms:\n  - input_taint: plaintext\n    output_taint: ciphertext\n"
+        "    functions:\n      python:\n        - Fernet.encrypt\n"
+    )
+    rc = _fernet_run(tmp_path, [str(mine)])
+    assert rc == 3
+    assert "CONFIRMED" in capsys.readouterr().out
+
+
+def test_verify_claims_a_community_sanitizer_alone_does_not_confirm(
+    tmp_path: Path, capsys,
+) -> None:
+    """The same map with only the shipped COMMUNITY sanitizer: the flow is
+    reported (WI-dikit)."""
+    rc = _fernet_run(tmp_path, None)
+    assert rc == 1
+    assert "VIOLATED" in capsys.readouterr().out
 
 
 def test_verify_claims_taint_no_sources(tmp_path: Path, capsys) -> None:
