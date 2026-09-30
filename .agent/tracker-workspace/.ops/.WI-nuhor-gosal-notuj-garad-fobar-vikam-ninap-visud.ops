@@ -1,0 +1,22 @@
+- op: create  # 9bb1
+  at: '2026-09-30T19:13:57Z'  # 9bb1
+  by: agent  # 9bb1
+  actor: jgstern_agent  # 9bb1
+  clock: 1  # 9bb1
+  nonce: 9bb1  # 9bb1
+  data:  # 9bb1
+    kind: work_item  # 9bb1
+    title: "elixir GenServer.call/cast and Process.send are ipc_send while erlang's ! is process_send: one BEAM message send, two boundaries (audit-findings 0021)"  # 9bb1
+    status: todo_hard  # 9bb1
+    priority: 3  # 9bb1
+    parent:  # 9bb1
+    tags:  # 9bb1
+    - catalogue  # 9bb1
+    - io_boundary  # 9bb1
+    - elixir  # 9bb1
+    isbefore: []  # 9bb1
+    duplicate_of: []  # 9bb1
+    not_duplicate_of: []  # 9bb1
+    pr_ref:  # 9bb1
+    description: "Adjacent finding of audit-findings 0021 (Step 5). Filed, not moved.\nThe same act has two boundaries across the BEAM catalogues. erlang.yaml rows `erlang.!` (and link/monitor/register/...) as process_send, whose registry description is exactly this case: \"Send a message to another runtime-managed process or actor -- erlang send ... the far side is a peer inside the same runtime, not an OS pipe\". elixir.yaml rows the elixir spellings of the same message send as ipc_send:\n- GenServer.call / cast / abcast / multi_call (\"GenServer message passing\")\n- Process.send / send_after (\"Raw process messaging\")\nEffect: zero on taint today (AUTO_SINK_ZONE_MAP maps both ipc_send and process_send to the `ipc` zone); the io-boundaries headline reports elixir sends as OS IPC and erlang's as process_send.\nFix shape: move to process_send. A pure relabel with no zone change -- verify with an io-boundaries A/B that ONLY the boundary label moves."  # 9bb1
+    fields: {}  # 9bb1

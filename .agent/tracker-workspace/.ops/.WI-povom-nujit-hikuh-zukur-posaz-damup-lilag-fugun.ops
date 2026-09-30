@@ -1,0 +1,23 @@
+- op: create  # b5d1
+  at: '2026-09-30T19:13:52Z'  # b5d1
+  by: agent  # b5d1
+  actor: jgstern_agent  # b5d1
+  clock: 1  # b5d1
+  nonce: b5d1  # b5d1
+  data:  # b5d1
+    kind: work_item  # b5d1
+    title: "in-process pub/sub is rowed ipc_send: objc NSNotificationCenter post*, swift NotificationCenter.post cross no process boundary (audit-findings 0021)"  # b5d1
+    status: todo_hard  # b5d1
+    priority: 3  # b5d1
+    parent:  # b5d1
+    tags:  # b5d1
+    - catalogue  # b5d1
+    - io_boundary  # b5d1
+    - objc  # b5d1
+    - swift  # b5d1
+    isbefore: []  # b5d1
+    duplicate_of: []  # b5d1
+    not_duplicate_of: []  # b5d1
+    pr_ref:  # b5d1
+    description: "Adjacent finding of audit-findings 0021 (docs/audits/0021-logging-family.md, Step 5). Filed, not moved.\nipc_send is \"data sent to another process over a channel the program set up\" (the audit's definition, now in io_boundary_types and ADR-0050). These rows cross NO process boundary -- an in-process notification is delivered to observers in the same process:\n- objc NSNotificationCenter: postNotificationName:object:, postNotificationName:object:userInfo:, postNotification: (the row's own note: \"In-process pub/sub; classified as IPC for boundary analysis\")\n- swift NotificationCenter.post (\"In-process pub/sub notification posting\")\nTheir cross-process siblings NSDistributedNotificationCenter / DistributedNotificationCenter are correctly ipc_send and are NOT in scope.\nEffect: each post is an `ipc` taint sink and an ipc_send headline crossing. Not measured on a corpus.\nRelated: WI-rivur item 2 (NSNotificationCenter.removeObserver rowed ipc_recv) -- same root (\"a boundary chosen by what the call is ABOUT, not what it DOES\"), different rows.\nFix shape (not decided): delete the rows (no crossing), or a non-crossing representation if one exists. Measure the removal direction: every lost ipc finding must be read back."  # b5d1
+    fields: {}  # b5d1

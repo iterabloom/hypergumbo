@@ -28,3 +28,10 @@
   nonce: d07d  # d07d
   set:  # d07d
     status: done  # d07d
+- op: discuss  # 2310
+  at: '2026-09-30T15:26:50Z'  # 2310
+  by: agent  # 2310
+  actor: jgstern_agent  # 2310
+  clock: 3  # 2310
+  nonce: '2310'  # 2310
+  message: "Done in PR #1334 (page + sweep) and PR #1335 (sweep residue). Evidence on merged dev 795862a9fc:\n- docs/CATALOGUES.md: the four tiers, what each may do to a verdict and exactly what a community row may not do (withheld_community_sanitizer / withheld_community_summary; frameworks/dataflow/signatures disclosed, per the WI-hipun/WI-tigud measurements), every family with built-in and community file counts and its yours channel, a minimal row per channel (each example loads through its family's loader in test_catalogues_doc.py), the in-repo opt-in, --no-default-overlays, and where a run says what it rested on. Registry facts generated from YAML_CATALOGS: ./scripts/generate-catalogues-doc --check -> \"OK: docs/CATALOGUES.md is up-to-date\"; a test fails when it is stale.\n- README: \"### Catalogues: built-in, community, yours, in-repo\" section pointing at the page; the meta-package README mirrors it (README sync gate green).\n- Vocabulary: `hypergumbo verify-claims --help | grep -ci project-local` -> 0; the epilog now says \"catalogue data that did not ship with hypergumbo -- a --taint-* flag, the claims file's extra_catalogs:, or your own channel directories\" (was \"the ANALYSED REPOSITORY's own word ... --taint-sanitizers\", contradiction #16). Overlay-status error, observed live: \"... is not available to an overlay.\" No \"project-local\" left in docs/, READMEs or shipped catalogues except historical records (RELEASE-NOTES, measurements, ADR-0041 amendment) and c.yaml, where it means a first-party FUNCTION (different sense, kept).\n- OPEN_DOC_CONTRADICTIONS.md: #5, 7, 8, 10, 13 (INV-lamap), 14, 15, 16, 17, 18, 20, 23 and 24 each re-checked on dev and resolved; the \"not covered anywhere\" list is the page.\nResidual filed: WI-lipop -- source docstrings/comments still using the retired word (each needs its own reading; not in the filed scope of help/stderr/docs)."  # 2310

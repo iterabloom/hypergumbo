@@ -39,3 +39,18 @@
     title: "go os.Stdout/os.Stderr and java.lang.System.{out,err} are still ipc_send: WI-tolif's stdio-to-logging ruling never reached go or java (kotlin/scala inherit java), so a stdio write is a second (ipc) sink"  # a3b2
   add:  # a3b2
     tags: [go, taint]  # a3b2
+- op: update  # 9475
+  at: '2026-09-30T17:45:05Z'  # 9475
+  by: agent  # 9475
+  actor: jgstern_agent  # 9475
+  clock: 4  # 9475
+  nonce: '9475'  # 9475
+  set:  # 9475
+    title: "stdio attribute rows still ipc_send in go (os.Stdout/Stderr), java (System.out/err; kotlin/scala inherit) and cpp (std::cout/cerr): the stdio-to-logging ruling missed them, so a stdio write is a false ipc sink AND (java, cpp) a missed logging sink"  # 9475
+- op: discuss  # 85f8
+  at: '2026-09-30T17:45:06Z'  # 85f8
+  by: agent  # 85f8
+  actor: jgstern_agent  # 85f8
+  clock: 5  # 85f8
+  nonce: 85f8  # 85f8
+  message: "RE-VERIFIED 2026-09-30 on dev 795862a9fc (repros in the session scratchpad; claims host_secret -> ipc and host_secret -> logging). Still open, still correctly premised in its core -- but the SCOPE WAS UNDERSTATED and ONE DIRECTION WAS MISSING.\n\n1. THE FILED GO REPRO STILL FIRES. io.WriteString(os.Stderr, os.Getenv(\"API_KEY\")): HS-IPC VIOLATED (sink os.Stderr) beside HS-LOG VIOLATED (sink io.WriteString). One write, two zones. log.SetOutput(os.Stderr) in a function holding the secret: HS-IPC VIOLATED through the bare mention.\n\n2. SCOPE CORRECTION: C++ IS IN THE FAMILY. The 09-29 sweep (\"the ONLY stdout/stderr rows still under ipc_send are go and java\") matched by NAME and missed cpp.yaml's `ipc_send: module std, attributes [cout, cerr]`, whose own note calls it \"the C++-idiomatic counterpart of c.yaml's stdio.stdout/stderr\" -- and those are logging. Re-swept now through load_catalog for all 16 languages, by boundary: ipc_send stdio rows exist ONLY in go (os.Stdout/Stderr), java/kotlin/scala (System.out/err, inherited), and cpp (std::cout/cerr). Measured: `std::cerr << getenv(\"API_KEY\")` (C getenv; std::getenv via <cstdlib> is not a source today, separately) gives HS-IPC VIOLATED (sink std.cerr) and HS-LOG **CONFIRMED rc-clean**. std::clog is unrowed. stdin/cin stay ipc_recv everywhere (consistent, out of scope). Title updated to name cpp.\n\n3. THE FIX IS NOT ONLY A REMOVAL. The description says \"Fixing it REMOVES findings\". For go that is right for the direct write (logging is already found through io.WriteString / fmt.Fprint* via the std_stream stamp). For JAVA and CPP it is half the story: today the LOGGING claim is falsely clean -- System.out.println(System.getenv(\"API_KEY\")) reads HS-LOG confirmed_with_caveats (only unknown_receiver_scope, from WI-dorus), and the cpp case above reads HS-LOG confirmed. Moving the rows to logging should ADD those logging violations while removing the ipc ones. The A/B must pre-register BOTH directions and read back both the removed ipc flows and the added logging flows.\n\n4. STALE PARAGRAPH: \"NOT TO BE CONFUSED WITH WI-bojud ... Both can be true at once\". WI-bojud is wont_do -- its premise was false: System.out DOES reach its row (the java survey here shows module_attr_ref Main.main -> java:System:0-0:System.out). The live java receiver-typing residual is WI-dorus. INV-hopib (stream-object row matching a non-call use) is still violated and does persist under logging (python sys.stderr, below on INV-hopib).\n\nPremise checks that HOLD: WI-dutah's record says scala was a no-op because it has no stdio entries (inherits java via _CATALOG_PARENTS scala/kotlin -> java; confirmed in io_boundary.py and through the loader). test_python_catalog_stdio_is_logging_not_ipc_send exists (test_io_boundary.py:125) as the test pattern. go.yaml's io.WriteString / Fprint* notes cite WI-dutah."  # 85f8
