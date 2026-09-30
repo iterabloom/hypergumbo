@@ -27,3 +27,18 @@
   clock: 2  # a1c1
   nonce: a1c1  # a1c1
   message: "SCOPE EXTENDED by ADR-0061 ruling 7 (merged #1308, owner rulings 2026-09-29): the taint families get one persistent 'yours' home, so this item now also covers ADDING taint_sinks.d/ and reversing the no_channel_reason recorded on taint_sinks in yaml_catalogs.py (an agent decision taken with ADR-0060, answered by ruling 7). Acceptance: taint_sources.d/, taint_sanitizers.d/ and taint_sinks.d/ are all read by verify-claims, disclosed under the 'yours' tier (INV-gumom), and catalog-inventory reports them as read."  # a1c1
+- op: update  # 11aa
+  at: '2026-09-30T06:42:35Z'  # 11aa
+  by: agent  # 11aa
+  actor: jgstern_agent  # 11aa
+  clock: 3  # 11aa
+  nonce: 11aa  # 11aa
+  set:  # 11aa
+    status: done  # 11aa
+- op: discuss  # b1ca
+  at: '2026-09-30T06:42:35Z'  # b1ca
+  by: agent  # b1ca
+  actor: jgstern_agent  # b1ca
+  clock: 4  # b1ca
+  nonce: b1ca  # b1ca
+  message: "Done in PR #1324 (merged, dev a196aaddb5). verify-claims reads $XDG_CONFIG_HOME/hypergumbo/taint_sources.d, taint_sinks.d (new; registry channel declared per ADR-0061 ruling 7) and taint_sanitizers.d as a user layer below the claims file and the flags; channel sanitizers are stamped user_supplied (existing caveat); a channel file still declaring provenance: community joins the community layer, which only adds and which --no-default-overlays omits (the shipped *_community.yaml files load the same way, result-identical today). WIRED_CHANNELS includes all three, so catalog-inventory and the seeded README report every declared channel as read. BEHAVIOURAL EVIDENCE on merged dev: crm.lookup source in taint_sources.d -> violated rc 1 (the no-channel control is refused rc 2 unknown label), file listed in catalog_provenance tiers.yours; + crm.scrub in taint_sanitizers.d -> sanitized_flows 1 with caveat user_supplied_sanitizer [crm.scrub] (rc 2 only because crm itself is unclassified); catalog-inventory JSON read_now True for taint_sources/taint_sanitizers/taint_sinks. Residual (WI-lidof's sweep): the user_supplied_sanitizer caveat says 'supplied by the analysed repository' and stderr 'project-local', wrong for the operator's own channel."  # b1ca

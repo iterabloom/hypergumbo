@@ -1,0 +1,23 @@
+- op: create  # 704b
+  at: '2026-09-30T07:25:37Z'  # 704b
+  by: agent  # 704b
+  actor: jgstern_agent  # 704b
+  clock: 1  # 704b
+  nonce: 704b  # 704b
+  data:  # 704b
+    kind: invariant  # 704b
+    title: "verify-claims never returns on a repository holding a self-referencing directory symlink: supply_chain's manifest walkers follow directory symlinks with no visited set"  # 704b
+    status: violated  # 704b
+    priority: 2  # 704b
+    parent:  # 704b
+    tags:  # 704b
+    - supply_chain  # 704b
+    - verify_claims  # 704b
+    isbefore: []  # 704b
+    duplicate_of: []  # 704b
+    not_duplicate_of: []  # 704b
+    pr_ref:  # 704b
+    description: "FOUND 2026-09-30 during the WI-dikit A/B: both arti arms (A = dev a196aaddb5, B = the WI-dikit branch) ran 30+ min at 100% CPU / 43 MB RSS with no cache dir and no stderr; killed (rc 143). faulthandler stack: pathlib.is_file <- supply_chain.collect_first_party_package_names (supply_chain.py:1287) <- cmd_verify_claims (cli.py:6610). arti has maint/rust-maint-common/maint -> . and .../common -> . (57 symlinks total). Python 3.12's rglob does NOT follow directory symlinks (2,343 entries on arti instantly), so discovery is unaffected; the two hand-written stack walkers in supply_chain.py (~1130 pyproject names, ~1287 first-party manifests) are. Fix: one shared walker that does not descend into a directory symlink (matching rglob/discovery), both callers through it; sweep for other stack walkers (dataflow.py:339 is an AST walk, not a filesystem one)."  # 704b
+    fields:  # 704b
+      statement: "Every repository walk terminates: a walk never follows a directory symlink it cannot bound, so a symlink cycle cannot make a command run forever."  # 704b
+      root_cause: "supply_chain.collect_first_party_package_names and its pyproject sibling walk with a stack of Path.iterdir() entries and push every entry.is_dir() -- which follows symlinks -- with no visited set; arti's maint/rust-maint-common/{maint,common} -> . makes two self-links per level, an exponential walk."  # 704b

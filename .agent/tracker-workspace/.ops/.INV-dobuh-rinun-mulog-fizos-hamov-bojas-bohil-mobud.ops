@@ -1,0 +1,23 @@
+- op: create  # b483
+  at: '2026-09-30T08:22:13Z'  # b483
+  by: agent  # b483
+  actor: jgstern_agent  # b483
+  clock: 1  # b483
+  nonce: b483  # b483
+  data:  # b483
+    kind: invariant  # b483
+    title: "A C call's #include set that names a first-party header can never be enumerated, so it withholds every clean verdict in that file"  # b483
+    status: violated  # b483
+    priority: 3  # b483
+    parent:  # b483
+    tags:  # b483
+    - c  # b483
+    - verify_claims  # b483
+    isbefore: []  # b483
+    duplicate_of: []  # b483
+    not_duplicate_of: []  # b483
+    pr_ref:  # b483
+    description: "FOUND 2026-09-30 in the WI-hasul A/B. torsocks' unexaminable-module set includes its own headers common/log, common/utils, lib/torsocks and tap/tap. Even with every libc header granted, a stamped call in a file that includes one of them stays unexamined, so the file's verdicts can never be clean. Candidate fix: drop from the stamped include set any header that resolves to a file inside the repository (the analyzer knows the tree), since a call resolving into first-party code would have resolved to its definition; measure the recall/verdict effect. NOT a loosening of the ALL-expansion over libc headers (INV-zimud stays)."  # b483
+    fields:  # b483
+      statement: "An included header the repository itself defines does not make a stamped libc call unexaminable: the gate asks the catalogue only about headers a catalogue could describe."  # b483
+      root_cause: "WI-lajus stamps a file's whole #include set on an ambiguous bare call, and INV-zimud's ALL-expansion asks module_io_is_enumerated of every disjunct; a first-party header (torsocks' common/log.h, common/utils.h, lib/torsocks.h, tap/tap.h) is in no catalogue and can never be granted."  # b483
