@@ -50,6 +50,11 @@ The test is what a row can do, not which family it belongs to.
 - **Built-in rows and your rows take full effect.** When your row removes a
   finding, the verdict still carries the existing user-supplied-sanitizer caveat
   (exit 3).
+- **Community `library_signatures` rows are disclosed, not withheld.** Typing a
+  receiver is in the second column because it can shrink the untyped-receiver
+  disclosures, but measured on the Django application the shipped community
+  signatures were written for, they added flows and made no verdict or caveat
+  set cleaner.
 - **`frameworks` and `dataflow_patterns` rows are disclosed, not withheld.**
   Measured with every community file in both families removed, on five
   repositories using the frameworks they describe: no verdict, flow or caveat
