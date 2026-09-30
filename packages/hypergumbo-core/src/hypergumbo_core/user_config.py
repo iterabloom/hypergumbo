@@ -202,7 +202,13 @@ class LayeredConfig:
     precedence order, and reversing here would invert it silently.
     """
 
+    #: The USER tier's ``io_primitives`` paths (``config.toml``).
     io_primitives: "list[Path]" = field(default_factory=list)
+    #: The PROJECT tier's ``io_primitives`` paths (``<repo>/.hypergumbo.toml``).
+    #: Catalogue data inside the analysed repository, so it is kept apart and
+    #: loads only when the operator opts in (ADR-0061 ruling 4, INV-hamin);
+    #: ``cli._resolve_io_overlays`` places it above the user tier when it does.
+    in_repo_io_primitives: "list[Path]" = field(default_factory=list)
     #: ``[merge]`` (ADR-0057 §5, WI-hukuf). Scalar-valued: the project tier
     #: REPLACES the user tier key by key — an order cannot be concatenated.
     merge_prefer: "tuple[str, ...]" = ()
@@ -361,10 +367,8 @@ def load_layered_config(
     _validate(proj_flat, proj_path, is_project=True)
 
     merged = LayeredConfig(
-        io_primitives=(
-            _paths_from(user_flat, user_path)
-            + _paths_from(proj_flat, proj_path)
-        ),
+        io_primitives=_paths_from(user_flat, user_path),
+        in_repo_io_primitives=_paths_from(proj_flat, proj_path),
     )
     for flat in (user_flat, proj_flat):  # ascending: the project tier wins each key it sets
         _apply_merge_settings(merged, flat)

@@ -128,6 +128,7 @@
     "--exclude-tests",
     "--format",
     "--help",
+    "--in-repo-catalogues",
     "--include-tests",
     "--input",
     "--io-primitives",
@@ -322,6 +323,12 @@
     "--show",
     "-h"
   ],
+  "trust-catalogues": [
+    "--help",
+    "--revoke",
+    "--show",
+    "-h"
+  ],
   "uninstall-embeddings": [
     "--all",
     "--help",
@@ -342,6 +349,7 @@
     "--claims",
     "--format",
     "--help",
+    "--in-repo-catalogues",
     "--include-non-production-sources",
     "--input",
     "--io-primitives",
