@@ -270,7 +270,10 @@ def _readme_text(channels: Sequence[str]) -> str:
         "were last checked against upstream. Compare them against the shipped\n"
         "overlays to judge staleness. hypergumbo does not vouch for community\n"
         "rows — seeding them here does not change that, it just makes them\n"
-        "yours to edit.\n"
+        "yours to edit. A file keeps its `provenance: community` line, and\n"
+        "while it does its rows can add a detection but never count as\n"
+        "examined, and its module_completeness grants are withheld. Deleting\n"
+        "that line is how you vouch for the file (ADR-0061).\n"
         "\n"
         "Re-running the command never overwrites a file you already have.\n"
     )
