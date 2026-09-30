@@ -5398,6 +5398,53 @@ def _disclose_io_overlays(paths: "list[Path]") -> None:
             f"override earlier ones.",
             file=sys.stderr,
         )
+    _warn_community_overlays(paths)
+
+
+def _warn_community_overlays(paths: "Iterable[Path]") -> "list[Path]":
+    """Name each loaded overlay that declares ``provenance: community``.
+
+    ADR-0061 ruling 3 (INV-lamap): the tier is the file's own line, so a
+    community file loaded from the user's io_primitives.d -- where
+    ``init-catalogs`` seeds copies of the shipped overlays -- is still
+    community: its rows add detections but never count as examined, and its
+    ``module_completeness`` grants are withheld. The run says so, names the
+    withheld modules, and says how to vouch: delete the line.
+
+    Returns the community paths named (for testability).
+    """
+    from .io_boundary import (
+        load_overlay_catalog,
+        load_yaml_strict,
+        overlay_declares_community,
+    )
+
+    named: "list[Path]" = []
+    for path in paths:
+        path = Path(path)
+        # A missing or malformed file is the REAL load's to report, loudly and
+        # with its own exit code; this notice only describes a file that loads.
+        if not path.is_file():
+            continue
+        if not overlay_declares_community(path):
+            continue
+        named.append(path)
+        retrieved = load_yaml_strict(
+            path.read_text(encoding="utf-8"), origin=str(path),
+        ).get("retrieved", "undated")
+        withheld = sorted(load_overlay_catalog(path).module_completeness)
+        grants = (
+            f" Its module_completeness grant(s) for {', '.join(withheld)} "
+            f"are withheld."
+            if withheld else ""
+        )
+        print(
+            f"⚠  {path} (retrieved {retrieved}) declares provenance: community: "
+            f"its I/O rows can add a detection but never count as examined.{grants} "
+            f"To vouch for it, delete its `provenance: community` line.",
+            file=sys.stderr,
+        )
+    return named
 
 
 def cmd_io_boundaries(args: argparse.Namespace) -> int:

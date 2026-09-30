@@ -26,7 +26,11 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
   off via ``--no-default-overlays``) beneath any project-local ones. Their rows
   are stamped ``IoPrimitive.unvouched``: they can add a detection but never
   count as examined for a clean verdict, and a shipped default may not declare
-  ``module_completeness`` (``validate_default_overlays``).
+  ``module_completeness`` (``validate_default_overlays``). The stamp follows the
+  FILE's ``provenance: community`` line wherever the file sits (ADR-0061,
+  ``overlay_declares_community``), so a copy seeded into the user's
+  io_primitives.d stays unvouched and its completeness grants are withheld
+  until the line is deleted.
 - **Mode discrimination.** A primitive can be rowed at more than one mode, so
   a write stops classifying as a read, and a single primitive can name more
   than one boundary at once.
@@ -716,7 +720,8 @@ class IoPrimitive:
     kind: str  # axis: io-primitive-kind
     notes: str = ""  # axis: free-text — prose caveats for a human reader; no consumer branches on it.
     simultaneous: bool = False
-    #: True when this row came from a SHIPPED COMMUNITY overlay — rows
+    #: True when this row came from a COMMUNITY overlay — a file declaring
+    #: ``provenance: community``, wherever it sits (ADR-0061 ruling 3): rows
     #: hypergumbo distributes and discloses but does NOT vouch for
     #: (ADR-0047). It is deliberately asymmetric in effect: an unvouched row
     #: can still produce a DETECTION (that direction only ever adds findings)
@@ -2229,18 +2234,6 @@ def load_catalog(
     _paths: list[Path] = list(_default_paths)
     _paths.extend(Path(p) for p in overlay_paths or ())
 
-    # A COMMUNITY ROW IS NOT PART OF THE STDLIB ENUMERATION, so a shipped
-    # default must not restate what the catalogue claims about it.
-    # ``status: provenance_declared`` says a language's STDLIB surface was
-    # enumerated against a cited source; ``merge`` is self-over-argument with
-    # the overlay as receiver, so without this python went
-    # provenance_declared -> in_progress the moment defaults loaded, and every
-    # python run would have emitted "io-boundary results may be incomplete"
-    # alongside the true ADR-0047 disclosure. A USER overlay's effect on
-    # status is left exactly as it was — that is a separate question.
-    _base_status = catalog.status
-    _base_provenance = catalog.stdlib_provenance
-
     for overlay_path in _paths:
         overlay = load_overlay_catalog(Path(overlay_path))
         if overlay.language and not _is_known_overlay_language(overlay.language):
@@ -2279,20 +2272,43 @@ def load_catalog(
             continue
         # ``merge`` is self-over-argument, so the overlay is the receiver: a
         # later overlay outranks an earlier one and both outrank the built-in.
-        if overlay_path in _default_paths:
+        #
+        # THE TIER IS THE FILE'S OWN DECLARATION, NOT ITS DIRECTORY (ADR-0061
+        # ruling 3, INV-lamap). ``init-catalogs`` seeds copies of the shipped
+        # overlays into the user's io_primitives.d, and while the stamp keyed
+        # on the shipped directory those copies loaded as the user's own rows
+        # and licensed clean verdicts the originals cannot. A community file
+        # stays community until someone deletes its ``provenance: community``
+        # line, which is the act of vouching. A shipped default is community
+        # by construction (``validate_default_overlays``).
+        community = (
+            overlay_path in _default_paths
+            or overlay_declares_community(Path(overlay_path))
+        )
+        if community:
             # Mark every row so a later consumer can tell a row hypergumbo
-            # vouches for from one it merely ships. Stamped at merge rather
-            # than in the YAML so a file cannot claim to be vouched-for by
-            # omitting a key.
+            # vouches for from one it merely ships, and WITHHOLD the file's
+            # completeness grants: a grant turns an unclassified call into an
+            # examined negative, the removing half ADR-0061 ruling 2 denies an
+            # unvouched row. (A shipped default may not declare one at all.)
             overlay = replace(overlay, primitives=[
                 replace(prim, unvouched=True) for prim in overlay.primitives
-            ])
+            ], module_completeness={})
+        # A COMMUNITY ROW IS NOT PART OF THE STDLIB ENUMERATION, so it must not
+        # restate what the catalogue claims about it. ``status:
+        # provenance_declared`` says a language's STDLIB surface was enumerated
+        # against a cited source; ``merge`` is self-over-argument with the
+        # overlay as receiver, so without this python went provenance_declared
+        # -> in_progress the moment defaults loaded, and every python run
+        # would have emitted "io-boundary results may be incomplete" beside
+        # the true ADR-0047 disclosure. The status kept is the one BEFORE this
+        # file, so a file of yours merged earlier keeps its effect. A USER
+        # overlay's effect on status is left exactly as it was.
+        _status, _provenance = catalog.status, catalog.stdlib_provenance
         catalog = overlay.merge(catalog)
-        if overlay_path in _default_paths:
+        if community:
             catalog = replace(
-                catalog,
-                status=_base_status,
-                stdlib_provenance=_base_provenance,
+                catalog, status=_status, stdlib_provenance=_provenance,
             )
         if path is None:
             # ``merge`` builds a fresh catalogue whose ``is_supported`` defaults
@@ -2301,6 +2317,22 @@ def load_catalog(
             catalog = replace(catalog, overlay_only=True)
 
     return catalog
+
+
+def overlay_declares_community(path: Path) -> bool:
+    """Does this overlay FILE declare ``provenance: community`` (ADR-0061)?
+
+    The tier is read from the file's own line, so a community file copied
+    anywhere -- a user's io_primitives.d, a path in config.toml, a command-line
+    flag -- stays community until the line is deleted. The file has already
+    been loaded successfully by :func:`load_overlay_catalog` wherever this is
+    asked during a load, so a parse error here cannot be a new one.
+    """
+    from .yaml_catalogs import declares_community
+
+    return declares_community(load_yaml_strict(
+        path.read_text(encoding="utf-8"), origin=str(path),
+    ))
 
 
 def _is_known_overlay_language(language: str) -> bool:

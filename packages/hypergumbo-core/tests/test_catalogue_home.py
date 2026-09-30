@@ -233,16 +233,17 @@ def test_the_result_is_a_frozen_record(home: Path) -> None:
 # The property that makes the directory worth creating
 # ----------------------------------------------------------------------
 
-def test_a_materialized_overlay_still_loads_as_a_user_overlay(home: Path) -> None:
+def test_a_materialized_overlay_still_loads_and_stays_community(home: Path) -> None:
     """THE POINT OF THE WHOLE FEATURE, and the one failure that would make it
     worse than doing nothing: shipping a directory whose contents the loader
     rejects. The ``seeded_from:`` stamp is a new top-level key, so this is not
     hypothetical — it asserts the stamped file is still valid input.
 
-    Also checks the rows arrive VOUCHED. A shipped default is stamped
-    ``unvouched`` at merge and therefore does not EXAMINE (#598/ADR-0047); a
-    file the user has materialized into their own config home is theirs, and
-    the distinction is the whole reason the third state exists."""
+    Also checks WHOSE rows they are. A seeded file keeps its ``provenance:
+    community`` line, and ADR-0061 ruling 3 reads the tier from that line,
+    never from the directory: the rows stay unvouched (they add a detection but
+    do not EXAMINE, #598/ADR-0047) until the user deletes the line, which is
+    the act of vouching (INV-lamap)."""
     from hypergumbo_core.io_boundary import load_catalog
 
     result = materialize_catalogue_home(home, version="9.9.9")
@@ -250,13 +251,20 @@ def test_a_materialized_overlay_still_loads_as_a_user_overlay(home: Path) -> Non
     assert seeded, "fixture wrong: no python overlay was seeded"
 
     catalog = load_catalog("python", overlay_paths=seeded, include_defaults=False)
-    from_user = {p.qualified_name for p in catalog.primitives}
     baseline = {p.qualified_name for p in
                 load_catalog("python", include_defaults=False).primitives}
-    assert from_user - baseline, "the seeded overlay contributed no rows"
-    assert not any(p.unvouched for p in catalog.primitives), (
-        "a row the user materialized into their own config home must not be "
-        "stamped unvouched — that state is for rows hypergumbo ships"
+    added = [p for p in catalog.primitives if p.qualified_name not in baseline]
+    assert added, "the seeded overlay contributed no rows"
+    assert all(p.unvouched for p in added), (
+        "a seeded file still declares provenance: community, so its rows "
+        "must not count as examined"
+    )
+
+    for path in seeded:
+        path.write_text(path.read_text().replace("provenance: community\n", ""))
+    vouched = load_catalog("python", overlay_paths=seeded, include_defaults=False)
+    assert not any(p.unvouched for p in vouched.primitives), (
+        "with the line deleted the file is the user's, and its rows count"
     )
 
 
