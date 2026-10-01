@@ -94,11 +94,12 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     ),
     EdgeTypeSpec(
         "extends", AXIS_RELATIONSHIP,
-        "Class extends a superclass.",
+        "Class extends a superclass, or an interface / trait / protocol "
+        "extends its base type.",
     ),
     EdgeTypeSpec(
         "implements", AXIS_RELATIONSHIP,
-        "Class implements an interface.",
+        "Class or struct implements an interface / trait / protocol.",
     ),
     EdgeTypeSpec(
         "contains", AXIS_RELATIONSHIP,

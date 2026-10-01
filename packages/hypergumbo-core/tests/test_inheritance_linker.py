@@ -755,7 +755,13 @@ class TestInheritanceLinker:
         assert implements_edges[0].src == cls.id
 
     def test_trait_extends_trait(self) -> None:
-        """Trait extending another trait creates implements edge."""
+        """Trait extending another trait creates an EXTENDS edge (WI-kalug).
+
+        Scala spells it ``trait JsonSerializable extends Serializable``: an
+        abstract type cannot *implement* another one, it inherits from it.
+        This test pinned ``implements`` until WI-kalug, which made the edge
+        type follow the SOURCE kind for every inherently-abstract kind.
+        """
         base_trait = Symbol(
             id="sym:Serializable",
             name="Serializable",
@@ -789,7 +795,8 @@ class TestInheritanceLinker:
         assert len(result.edges) == 1
         assert result.edges[0].src == "sym:JsonSerializable"
         assert result.edges[0].dst == "sym:Serializable"
-        assert result.edges[0].edge_type == "implements"
+        assert result.edges[0].edge_type == "extends"
+        assert result.edges[0].evidence_type == "ast_extends"
 
     def test_rust_struct_resolves_to_trait_when_struct_collision_exists(self) -> None:
         """Rust struct's base_class with both a trait and a struct of the same
@@ -1024,6 +1031,73 @@ class TestInheritanceLinker:
         edge_map = {e.dst: e.edge_type for e in result.edges}
         assert edge_map["sym:BaseService"] == "extends"
         assert edge_map["sym:Logging"] == "implements"
+
+
+def _sym(sid: str, name: str, kind: str, language: str, bases=None) -> Symbol:
+    return Symbol(
+        id=sid, name=name, kind=kind, language=language, path=f"/x.{language}",
+        span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+        origin=language, origin_run_id="test-run",
+        meta={"base_classes": bases} if bases else None,
+    )
+
+
+class TestAbstractSourceExtends:
+    """WI-kalug: an inherently-abstract source's bases are ``extends``.
+
+    The resolve loop tries the interface map first and labelled ANY
+    interface/trait/protocol target ``implements`` — regardless of the
+    source. So Java ``interface IChild extends IBase``, PHP ``interface
+    PChild extends PBase``, Swift ``protocol WChild: WBase`` and a TypeScript
+    ``interface Child extends Base`` all came out ``implements``, which no
+    such language means. A CLASS implementing an interface is unchanged.
+    """
+
+    def test_interface_to_interface_is_extends(self) -> None:
+        base = _sym("j:IBase", "IBase", "interface", "java")
+        child = _sym("j:IChild", "IChild", "interface", "java", ["IBase"])
+        result = link_inheritance(LinkerContext(
+            repo_root=Path("/t"), symbols=[base, child], edges=[],
+        ))
+        assert [(e.src, e.dst, e.edge_type, e.evidence_type)
+                for e in result.edges] == [
+            ("j:IChild", "j:IBase", "extends", "ast_extends"),
+        ]
+
+    def test_protocol_to_protocol_is_extends(self) -> None:
+        base = _sym("s:WBase", "WBase", "protocol", "swift")
+        child = _sym("s:WChild", "WChild", "protocol", "swift", ["WBase"])
+        result = link_inheritance(LinkerContext(
+            repo_root=Path("/t"), symbols=[base, child], edges=[],
+        ))
+        assert [(e.dst, e.edge_type) for e in result.edges] == [
+            ("s:WBase", "extends"),
+        ]
+
+    def test_class_to_interface_stays_implements(self) -> None:
+        iface = _sym("j:I", "I", "interface", "java")
+        cls = _sym("j:C", "C", "class", "java", ["I"])
+        result = link_inheritance(LinkerContext(
+            repo_root=Path("/t"), symbols=[iface, cls], edges=[],
+        ))
+        assert [(e.dst, e.edge_type) for e in result.edges] == [
+            ("j:I", "implements"),
+        ]
+
+    def test_analyzer_extends_edge_is_not_doubled(self) -> None:
+        """The js_ts analyzer already emits ``Child -extends-> Base``; the
+        linker re-derives the SAME triple and must skip it, not add an
+        ``implements`` twin."""
+        base = _sym("t:Base", "Base", "interface", "typescript")
+        child = _sym("t:Child", "Child", "interface", "typescript", ["Base"])
+        existing = Edge.create(
+            src="t:Child", dst="t:Base", edge_type="extends", line=1,
+            origin="javascript", origin_run_id="r", evidence_type="ast_extends",
+        )
+        result = link_inheritance(LinkerContext(
+            repo_root=Path("/t"), symbols=[base, child], edges=[existing],
+        ))
+        assert result.edges == []
 
 
 # ---------------------------------------------------------------------------
