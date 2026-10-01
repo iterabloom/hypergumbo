@@ -122,3 +122,109 @@ class TestCategoriesDoNotMakeProjectClasses:
         e = _send(analyze_objc(root).edges, "frob")
         assert e.dst == "objc:external:0-0:frob:unresolved", e.dst
         assert (e.meta or {}).get("receiver_type_hint") == "Svc"
+
+
+class TestAClassMessageToAProjectClassIsHintOnly:
+    """WI-dason: the class-MESSAGE arm takes the same ``project_classes`` guard
+    the declared arm already had (WI-higob).
+
+    ``[Svc alloc]`` used to put ``Svc`` in the module slot, which asserts an
+    external module that does not exist -- 583 of 3,300 typed objc slots on the
+    four-repository corpus named a first-party class. A project class is a
+    symbol, not a module, so it rides in ``receiver_type_hint`` only, exactly as
+    a declared ``(Svc *)s`` receiver does in the test above.
+    """
+
+    def _project(self, root: Path, body: str) -> list[Edge]:
+        _check_grammar_or_skip(is_objc_tree_sitter_available, "objc")
+        root.mkdir(parents=True)
+        (root / "Svc.m").write_text(
+            "@interface Svc : NSObject\n+ (void)log:(NSString *)m;\n@end\n"
+            "@implementation Svc\n+ (void)log:(NSString *)m { }\n@end\n"
+        )
+        (root / "Main.m").write_text(WRAP % body)
+        return analyze_objc(root).edges
+
+    def test_a_class_message_to_a_project_class(self, tmp_path: Path) -> None:
+        edges = self._project(tmp_path / "a", "- (void)run {\n    [Svc alloc];\n}")
+        e = _send(edges, "alloc")
+        assert e.dst == "objc:external:0-0:alloc:unresolved", e.dst
+        assert e.dst_ref is None
+        assert (e.meta or {}).get("receiver_type_hint") == "Svc"
+        assert (e.meta or {}).get("call_construct") == "method"
+
+    def test_a_project_class_method_found_by_selector_but_deferred(self, tmp_path: Path) -> None:
+        """``+[Svc log:]`` exists, but a cross-class selector hit is deferred
+        (INV-fahub), so the send reaches the unresolved arm -- the shape of the
+        corpus's worst offender, ``[DDLog log:...]`` (116 slots)."""
+        edges = self._project(tmp_path / "b", "- (void)run {\n    [Svc log:@\"x\"];\n}")
+        e = _send(edges, "log:")
+        assert e.dst == "objc:external:0-0:log::unresolved", e.dst
+        assert e.dst_ref is None
+        assert (e.meta or {}).get("receiver_type_hint") == "Svc"
+
+    def test_CONTROL_a_framework_class_message_keeps_the_slot(self, tmp_path: Path) -> None:
+        edges = self._project(tmp_path / "c", (
+            "- (void)run {\n    [NSFileManager defaultManager];\n}"
+        ))
+        e = _send(edges, "defaultManager")
+        assert e.dst == "objc:NSFileManager:0-0:defaultManager:unresolved", e.dst
+        assert e.dst_ref is not None and e.dst_ref.module_path == "NSFileManager"
+
+    def test_CONTROL_a_category_does_not_make_the_class_messaged_first_party(
+        self, tmp_path: Path,
+    ) -> None:
+        _check_grammar_or_skip(is_objc_tree_sitter_available, "objc")
+        root = tmp_path / "d"
+        root.mkdir()
+        (root / "NSFileManager+X.m").write_text(
+            "@implementation NSFileManager (X)\n- (void)x_go { }\n@end\n"
+        )
+        (root / "Main.m").write_text(WRAP % (
+            "- (void)run {\n    [NSFileManager defaultManager];\n}"
+        ))
+        e = _send(analyze_objc(root).edges, "defaultManager")
+        assert e.dst == "objc:NSFileManager:0-0:defaultManager:unresolved", e.dst
+
+
+class TestANonClassTypeSpellingIsNotADeclaredClass:
+    """WI-dason, second shape: ``__auto_type`` parses as a ``type_identifier``
+    and reached the module slot 89 times on CocoaLumberjack, naming a module
+    that cannot exist. It is a type-inference KEYWORD, so the declaration is
+    read the way ``id x = [obj sel]`` is: the registry's answer for the
+    initialiser, else untyped. ``instancetype`` is the same family."""
+
+    def test_auto_type_takes_the_initialisers_registered_class(self, tmp_path: Path) -> None:
+        edges = _edges(tmp_path / "a", WRAP % (
+            "- (void)run {\n"
+            "    __auto_type fm = [NSFileManager defaultManager];\n"
+            "    [fm fileExistsAtPath:@\"/tmp/x\"];\n"
+            "}"
+        ))
+        e = _send(edges, "fileExistsAtPath:")
+        assert e.dst == "objc:NSFileManager:0-0:fileExistsAtPath::unresolved", e.dst
+        assert (e.meta or {}).get("receiver_type_hint") == "NSFileManager"
+        assert tag_io_boundaries(edges, {"objc": load_catalog("objc")}) >= 1
+
+    def test_auto_type_with_an_unregistered_initialiser_stays_untyped(
+        self, tmp_path: Path,
+    ) -> None:
+        edges = _edges(tmp_path / "b", WRAP % (
+            "- (void)run {\n"
+            "    __auto_type q = [self make];\n"
+            "    [q frob];\n"
+            "}"
+        ))
+        e = _send(edges, "frob")
+        assert e.dst == "objc:external:0-0:frob:unresolved", e.dst
+        assert "receiver_type_hint" not in (e.meta or {})
+
+    def test_an_instancetype_parameter_is_not_a_class(self, tmp_path: Path) -> None:
+        edges = _edges(tmp_path / "c", WRAP % (
+            "- (void)take:(instancetype)b {\n"
+            "    [b frob];\n"
+            "}"
+        ))
+        e = _send(edges, "frob")
+        assert e.dst == "objc:external:0-0:frob:unresolved", e.dst
+        assert "receiver_type_hint" not in (e.meta or {})
