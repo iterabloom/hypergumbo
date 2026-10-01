@@ -780,17 +780,38 @@ class LanguageStats:
     shebang scripts surface for bash); otherwise the count falls back to
     the language's extension globs. Matches ``analysis_runs[L].files_analyzed``
     for languages with a registered analyzer.
+
+    ``test_files`` (WI-ritaf) is how many of those ``files`` sit on a test or
+    test-support path (``selection.filters.is_test_path`` on the repo-relative
+    path -- the predicate the sketch's "N non-test + M test" files line uses).
+    ``files - test_files`` is the language's non-test footprint, so a consumer
+    asking "what is this project written in?" can tell a production language
+    from one that appears only as test fixtures. It is a SEPARATE field on
+    purpose: ``files`` must stay the enumerated count, because the WI-jadig
+    pre-filter skips an analyzer whose languages read ``files == 0``, and
+    shrinking it would stop the fixture languages' analyzers from running.
+    ``None`` means not measured (a profile restored from a cache written
+    before the field existed) and is omitted from ``to_dict``; it is never
+    read as ``0``, which is the positive claim "no test files".
     """
 
     files: int = 0
     loc: int = 0
+    test_files: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"files": self.files, "loc": self.loc}
+        result: dict[str, Any] = {"files": self.files, "loc": self.loc}
+        if self.test_files is not None:
+            result["test_files"] = self.test_files
+        return result
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "LanguageStats":
-        return cls(files=d.get("files", 0), loc=d.get("loc", 0))
+        return cls(
+            files=d.get("files", 0),
+            loc=d.get("loc", 0),
+            test_files=d.get("test_files"),
+        )
 
 
 @dataclass
@@ -903,6 +924,7 @@ def _detect_languages(
     # wired to the six analyzers whose name equals their language and
     # silently absent for the rest. First declaring producer wins.
     from .analyze.registry import analyzers_for_language, ensure_discovered
+    from .selection.filters import is_test_path
     ensure_discovered()
 
     for lang, patterns in LANGUAGE_EXTENSIONS.items():
@@ -917,7 +939,15 @@ def _detect_languages(
             files = set(find_files(repo_root, patterns, excludes=excludes))
         if files:
             loc = sum(_count_loc(f) for f in files) if count_loc else 0
-            languages[lang] = LanguageStats(files=len(files), loc=loc)
+            # WI-ritaf: classify on the REPO-RELATIVE path, so a checkout that
+            # itself lives under a ``tests/`` directory is not all-test.
+            test_files = sum(
+                1 for f in files
+                if is_test_path(f.relative_to(repo_root).as_posix())
+            )
+            languages[lang] = LanguageStats(
+                files=len(files), loc=loc, test_files=test_files,
+            )
 
     return languages
 
