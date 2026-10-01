@@ -68,18 +68,18 @@ Synthetic nodes (linker stand-ins, doc-graph nodes) previously collapsed or mult
 
 The normative kind→axis table. This table is the artifact; the validator enforces conformance, and a new synthetic-emitting kind MUST be added to this table (via ADR amendment or successor audit-findings doc) before it ships.
 
-> **Reading note (kept current to v8).** This table was authored as the v6 design and is now annotated in place so a reader extracting only §3 sees the **live keys**. Several rows were re-keyed by the later amendments below — the synthetic:F2 protocol-synth chokepoint, and especially the **v8 SITE-key + widened-route-key** amendment (2026-06-16). Where a row's v6 mint key was superseded, the cell now leads with **CURRENT (v8):** and points to the amendment; the amendment section is retained as history/rationale. Rows without a **CURRENT (v8):** marker are unchanged from v6.
+> The table states the live (scheme v8) keys. The v8 SITE-key and widened-route-key rows are explained in the v8 section below the table.
 
 | Kind / synthetic family | Representative producers | Axis | Identity key |
 |---|---|---|---|
 | Message-queue topic / event channel | `message_queue.py`, `event_sourcing.py` | LOGICAL | `(category, queue_type, topic)` |
 | Database query / table stand-in | `database_query.py` | LOGICAL | `(category, db, logical query/table)` |
-| External symbol (unresolved import / external package target) | import linkers, `dependency.py` externals | LOGICAL | `(ecosystem/language, module path, name)` — current as of v8; a kind-slot re-keying (the "5b" limb, ADR-0036 Ruling 2, ~1,645 node-id changes) is **deferred** to the v6/ADR-0037 coordinated event, NOT landed in this slice (see synthetic:F2 amendment below). |
-| `route` | route analyzers/linkers | LOGICAL (within-run id v8-widened) | **CURRENT (v8):** `route_site:{language}:{normalize_path(rel_path)}:{route:{method}:{path}}` — the v6 mint key `route:{method}:{path}` is widened by the `widen_route_stable_ids` post-pass with the declaring file + language (see the v8 amendment below: WI-gokiv). A §3-only reader must use the widened key; the bare `route:{method}:{path}` collided cross-file/cross-language (146 nodes). |
+| External symbol (unresolved import / external package target) | import linkers, `dependency.py` externals | LOGICAL | `(ecosystem/language, module path, name)`. The node id's kind slot is `external_symbol` (ADR-0036 Ruling 2 / WI-pubiv; ADR-0037 ruling 4). |
+| `route` | route analyzers/linkers | LOGICAL (within-run id v8-widened) | `route_site:{language}:{normalize_path(rel_path)}:{route:{method}:{path}}` — the mint key `route:{method}:{path}` widened by the `widen_route_stable_ids` post-pass with the declaring file + language (WI-gokiv; see the v8 section below). |
 | Entry-point | entrypoint detection | LOGICAL | `entry:{entry_type}:{name}` (unchanged) |
-| `call_site` (http) | `http.py` → `make_site_stable_id` | SITE | **CURRENT (v8):** `site:http:{rel_path}:{method}:{url_path}` at mint; `:occ:<n>` added downstream (v8, WI-napoh — see amendment below). Replaces the v6 file-blind `make_route_stable_id`/`make_protocol_stable_id` factory this SITE kind wrongly borrowed (31 http/sql nodes collided). |
+| `call_site` (http) | `http.py` → `make_site_stable_id` | SITE | `site:http:{rel_path}:{method}:{url_path}` at mint; `:occ:<n>` added downstream (WI-napoh; see the v8 section below). |
 | `call_site` (subprocess) | `subprocess_cli.py::_scan_python_file` | SITE | `(path, invoked command, occurrence idx)` |
-| `call_site` (sql) | `database_query.py` → `make_site_stable_id` | SITE | **CURRENT (v8):** `site:db_query:{rel_path}:{query_type}:{tables}` at mint; `:occ:<n>` added downstream (v8, WI-napoh — see amendment below). Replaces the v6 file-blind LOGICAL factory this SITE kind wrongly borrowed (counted in the 31 http/sql collision nodes). |
+| `call_site` (sql) | `database_query.py` → `make_site_stable_id` | SITE | `site:db_query:{rel_path}:{query_type}:{tables}` at mint; `:occ:<n>` added downstream (WI-napoh; see the v8 section below). |
 | `call_site` (abi) | `solidity_abi.py::link_solidity_abi` | SITE | `(path, contract/function, occurrence idx)` |
 | `link` (markdown) | `markdown.py::MarkdownAnalyzer._extract_links_from_paragraph` | SITE | `(path, link target, occurrence idx)` |
 | Protocol-synth stand-in — null-filled by the `make_synthetic_symbol_identity` chokepoint (IPC, Phoenix IPC, OpenAPI operation, ObjC bridge incl. `#selector` references, WebSocket, WASM-bindgen, yjs_crdt, crypto_flow, …) | `ipc.py`, `openapi.py`, `swift_objc.py`, `websocket.py`, `wasm_bindgen.py`, `yjs_crdt.py`, `crypto_flow.py`, … | injective (SITE-style) | `(protocol_origin, kind, path, name, occurrence)` |
@@ -102,8 +102,7 @@ message_queue's `(queue_type, type, topic)`) and are preserved byte-for-byte by 
 skip-if-set guard; the other protocol families — including **yjs_crdt** and **crypto_flow** — leave
 `stable_id=None` and are filled here. (graphql / graphql_resolver also mint Class-B nodes; their
 self-stamped `stable_id`s are preserved untouched, with any non-canonical-format residue tracked
-separately under `_check_stable_id_format`.) The 5b external_symbol kind-slot re-keying (ADR-0036
-Ruling 2, ~1,645 node-id changes) is deferred to the v6 / ADR-0037 coordinated event, not this slice.
+separately under `_check_stable_id_format`.)
 
 The External-symbol identity key matches the shipped boundary dedupe behavior for non-file kinds (`_dedupe_key` / `_canonical_external_stable_id`, `ir.py::_canonical_external_stable_id`): the module-path slot keeps same-named symbols in different external modules distinct, as §1's zero-by-design-collision contract requires. `(ecosystem, name)` is §4's presentation-time aggregation key — a view rule, never an identity key.
 
@@ -122,12 +121,12 @@ The read-side companion defect — the dependency linker's global flat `dict[dep
 Two validator changes (ADR-0033 substrate), replacing the 5% umbrella threshold at `spec_validator.py::_check_writer_contract`:
 
 - **Per-file emit-time uniqueness — hard check.** Within one file's emitted symbols, a duplicated stable_id is an `error`, not a rate contribution. Zero tolerance; this is the by-design-collision-free contract made executable at the producer boundary.
-- **Whole-corpus collision rate — threshold near zero.** The umbrella check's threshold drops from 5% to effectively zero (a shrink-only pinned baseline for not-yet-migrated producers, ratcheted to 0). The denominator **includes the None-stable_id cohort** (WI-niluv's lesson): the report states both the collision rate over all Symbols and the None-cohort size as separate lines, so "no stable_id" and "colliding stable_id" are never conflated and a false all-clear of INV-tazaj's 2026-06-01 shape cannot recur. WI-niluv's denominator fix must land before or with this gate. **Landed-vs-deferred (see status blocks below):** the threshold-and-denominator validator surface and the producer reconciliation passes have landed (corpus-wide 43 → 14 collision groups, 0.43% → 0.1% on the self-tree); the corpus rate is **not yet at the ratcheted-to-0 target** — the residual ~14 are the INV-zudob cross-file file-identity class, whose fix is the deferred v7/WI-bokab bump (§6 follow-on), not this slice. The v8 amendment further drove the corpus collision count toward 0 by re-keying the route/SITE synthetic families.
+- **Whole-corpus collision rate — threshold near zero.** The umbrella check's threshold drops from 5% to effectively zero (a shrink-only pinned baseline for not-yet-migrated producers, ratcheted to 0). The denominator **includes the None-stable_id cohort** (WI-niluv's lesson): the report states both the collision rate over all Symbols and the None-cohort size as separate lines, so "no stable_id" and "colliding stable_id" are never conflated and a false all-clear of INV-tazaj's 2026-06-01 shape cannot recur. WI-niluv's denominator fix must land before or with this gate. **Landed:** the threshold-and-denominator validator surface and the producer reconciliation passes (corpus-wide 43 → 14 collision groups, 0.43% → 0.1% on the self-tree), then the v7 file-identity bump for the residual INV-zudob cross-file class (WI-bokab, §6) and the v8 re-keying of the route/SITE synthetic families (§3).
 - **Kind→axis conformance.** The §3 table is checked: synthetic kinds in the table must carry identity of the declared shape; a synthetic-emitting kind absent from the table is a violation.
 
-Closure of the identity umbrellas (INV-tazaj, META-fabaz, INV-zudob) requires one full-corpus re-measurement under the new gates — positive evidence, not non-reproduction. **Status:** INV-tazaj's per-file (HARD) limb is met on the real corpus; the corpus-rate limb is **partially closed** — driven from 0.43% to 0.1%, with full closure of the INV-zudob cross-file class awaiting the deferred v7 file-identity bump (WI-bokab) and the v8 route/SITE re-keying. The two status blocks immediately below record precisely what landed vs what remains deferred.
+Closure of the identity umbrellas (INV-tazaj, META-fabaz, INV-zudob) requires one full-corpus re-measurement under the new gates — positive evidence, not non-reproduction. **Status:** INV-tazaj, INV-zudob and META-fabaz are closed `satisfied` on the tracker; the v7 (WI-bokab) and v8 bumps closed INV-tazaj's corpus-rate limb (spec §"`stable_id_scheme` version history"). The two blocks immediately below record the validator surface and the producer reconciliation passes.
 
-**Implementation status (validator surface landed; producer fix deferred).** The validator
+**Implementation status (validator surface).** The validator
 half of this section shipped as a follow-on PR to the §6 atomic bump: `validate_ir` now runs
 `_check_stable_id_per_file_uniqueness` (the hard `error`), the corpus umbrella threshold dropped
 to ~0 over an all-Symbols denominator, and `compute_stable_id_stats` surfaces the always-present
@@ -153,12 +152,10 @@ collisions flow to the SITE occurrence pass instead.) This **realizes §6's rese
 (re-calling `assemble_stable_id` is impossible without widening the Symbol), but it stays scheme
 v6 and only the colliding symbols' values change (narrow blast radius, not a corpus-wide rehash).
 **Measured (self-tree):** per-file collisions 35 → 0; corpus-wide 43 → 14 groups (0.43% → 0.1%).
-**The residual ~14 are a DIFFERENT mechanism, NOT closed here:** cross-file collisions of
-same-named top-level symbols in file-scoped tree-sitter languages (e.g. a bash `usage()` defined
-in several scripts) whose hash omits file identity — the INV-zudob class, whose fix folds file
-identity into the top-level `containing_stable_id` (a genuine corpus-wide rehash), tracked
-separately. **INV-tazaj's per-file (HARD) contract is now met on the real corpus; full closure of
-the corpus-rate limb awaits that cross-file file-identity fix.**
+**The residual ~14 were a DIFFERENT mechanism:** cross-file collisions of same-named top-level
+symbols in file-scoped tree-sitter languages (e.g. a bash `usage()` defined in several scripts)
+whose hash omitted file identity — the INV-zudob class, closed by folding file identity into the
+top-level `containing_stable_id` in the v7 bump (WI-bokab, §6).
 
 ### 6. One atomic v5→v6 scheme bump
 
