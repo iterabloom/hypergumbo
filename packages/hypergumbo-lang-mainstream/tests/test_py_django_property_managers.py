@@ -214,6 +214,8 @@ def untyped(thing, f):
     thing.checkins.all()
     thing.fee_count.filter(a=1)
     thing.rows.filter(a=1)
+    guessed = thing.fees.get(pk=1)
+    guessed.save()
 
 
 def bound(order: Order):
@@ -392,7 +394,15 @@ class TestInstanceBinding:
     def test_a_get_through_the_property_binds_the_model(self, edges: list[Edge]) -> None:
         """``fee = order.fees.get(...)`` binds ``fee`` to ``OrderFee``, so its
         ``save()`` is the ORM instance write (WI-gamas)."""
-        assert _slot(edges, "fee.save()", "save") == DJANGO_ORM_MODULE
+        assert _slot(edges, "    fee.save()", "save") == DJANGO_ORM_MODULE
+
+    def test_a_name_only_root_binds_no_model(self, edges: list[Edge]) -> None:
+        """Widening the SLOT must not widen the BINDING: off an untyped root the
+        manager is typed by name, but which model it yields is unknown, so
+        ``guessed`` stays untyped and its ``save()`` is not the ORM write."""
+        assert _slot(edges, "guessed = thing.fees.get(pk=1)", "get") == DJANGO_ORM_MODULE
+        assert _orm_edge(edges, _line_of(VIEWS, "guessed.save()"), "save") is not None
+        assert _slot(edges, "guessed.save()", "save") != DJANGO_ORM_MODULE
 
 
 class TestNoModelsNoRule:
