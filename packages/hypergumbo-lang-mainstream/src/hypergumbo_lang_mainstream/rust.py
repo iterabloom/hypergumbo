@@ -3201,6 +3201,14 @@ def _extract_edges_from_file(
                             if lr.found and lr.symbol is not None:
                                 target = lr.symbol
                         if target is not None:
+                            # NO ``call_construct`` (WI-dapap). ``macro_body``
+                            # named the detector that found the site, not a
+                            # construct. The real construct differs per site
+                            # (``self.m()``, ``Self::f()``, ``f()``), and
+                            # stamping it is not inert: a ``method`` stamp here
+                            # enters ``unknown_receiver_scope``'s denominator,
+                            # while the same call OUTSIDE a macro is stamped
+                            # ``function``. Both are WI-pukip.
                             edges.append(Edge.create(
                                 src=current_function.id,
                                 dst=target.id,
@@ -3209,7 +3217,6 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
-                                meta={"call_construct": "macro_body"},
                             ))
 
     # WI-vipur: emit module_attr_ref edges for scoped attribute reads

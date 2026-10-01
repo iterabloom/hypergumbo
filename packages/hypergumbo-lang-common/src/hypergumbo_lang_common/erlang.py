@@ -595,8 +595,12 @@ def _extract_edges_from_file(
                     # is an inference from a macro name plus an include, and a
                     # consumer telling a seen call from an inferred one reads
                     # exactly this field.
+                    #
+                    # NO ``call_construct``. No call construct was parsed at the
+                    # site, and "it came from a macro" is already stated by
+                    # ``evidence_type`` above; a ``macro`` construct restated
+                    # the pathway on a second axis (WI-dapap).
                     evidence_type="macro_expansion",
-                    meta={"call_construct": "macro"},
                 ))
 
         elif node.type == "call":

@@ -249,7 +249,7 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
 FACT_HOMES: Final[dict[str, FactHome]] = {
     "return_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=300,
+        line=301,
         anchor="method_return_types: dict[str, str]",
         home="FileAnalysis.method_return_types",
         populated_by=("go", "rust", "swift", "objc"),
@@ -266,7 +266,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "parameter_arity": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/axis_meta_keys.py",
-        line=1138,
+        line=1146,
         anchor='MetaKeySpec("parameters"',
         home='Symbol.meta["parameters"] / Symbol.meta["params"]',
         populated_by=("15 analyzers, including py.py",),
@@ -284,7 +284,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "value_type": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py",
-        line=262,
+        line=263,
         anchor="class_field_types: dict[str, dict[str, str]]",
         home="FileAnalysis.class_field_types",
         populated_by=("csharp", "cpp"),

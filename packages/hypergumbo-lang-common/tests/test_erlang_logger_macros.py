@@ -199,7 +199,9 @@ go() ->
 """)
     edge = _logger_edges(tmp_path)[0]
     assert edge.evidence_type == "macro_expansion"
-    assert edge.meta.get("call_construct") == "macro"
+    # And ONLY there: no call construct was parsed at a macro use, so the edge
+    # carries none rather than restating the pathway as ``macro`` (WI-dapap).
+    assert "call_construct" not in (edge.meta or {})
     # And it is priced BELOW a call the analyzer actually saw, because the
     # expansion is an extra inference step on top of the same unresolved dst.
     assert edge.confidence < _seen_call_confidence(tmp_path)
