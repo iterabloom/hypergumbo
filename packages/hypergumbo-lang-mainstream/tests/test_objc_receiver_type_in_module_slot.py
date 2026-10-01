@@ -163,6 +163,19 @@ class TestAClassMessageToAProjectClassIsHintOnly:
         assert e.dst_ref is None
         assert (e.meta or {}).get("receiver_type_hint") == "Svc"
 
+    def test_a_class_message_to_the_callers_own_class_keeps_the_self_route(
+        self, tmp_path: Path,
+    ) -> None:
+        """``[Main make]`` inside Main is the lookup a ``self`` send makes
+        (inherited_calls Site 1 over Main's own chain), so it carries
+        ``enclosing_class`` and NO hint -- never the module slot either."""
+        edges = self._project(tmp_path / "own", "- (void)run {\n    [Main make];\n}")
+        e = _send(edges, "make")
+        assert e.dst == "objc:external:0-0:make:unresolved", e.dst
+        assert e.dst_ref is None
+        assert "receiver_type_hint" not in (e.meta or {})
+        assert (e.meta or {}).get("enclosing_class") == "Main"
+
     def test_CONTROL_a_framework_class_message_keeps_the_slot(self, tmp_path: Path) -> None:
         edges = self._project(tmp_path / "c", (
             "- (void)run {\n    [NSFileManager defaultManager];\n}"
@@ -223,6 +236,46 @@ class TestANonClassTypeSpellingIsNotADeclaredClass:
         edges = _edges(tmp_path / "c", WRAP % (
             "- (void)take:(instancetype)b {\n"
             "    [b frob];\n"
+            "}"
+        ))
+        e = _send(edges, "frob")
+        assert e.dst == "objc:external:0-0:frob:unresolved", e.dst
+        assert "receiver_type_hint" not in (e.meta or {})
+
+
+class TestANullabilityQualifierIsSkippedForTheClassAfterIt:
+    """WI-dason, third shape: the grammar does not know ``nonnull`` (nor
+    ``null_unspecified`` / ``null_resettable``), parses it as a
+    ``type_identifier`` AHEAD of the class, and the first one used to win --
+    13 slots on the corpus named ``nonnull``. ``nullable`` parses as a
+    qualifier and was never affected."""
+
+    def test_a_nonnull_parameter_carries_the_class_after_it(self, tmp_path: Path) -> None:
+        edges = _edges(tmp_path / "a", WRAP % (
+            "- (BOOL)check:(nonnull NSFileManager *)fm {\n"
+            "    return [fm fileExistsAtPath:@\"/tmp/x\"];\n"
+            "}"
+        ))
+        e = _send(edges, "fileExistsAtPath:")
+        assert e.dst == "objc:NSFileManager:0-0:fileExistsAtPath::unresolved", e.dst
+        assert tag_io_boundaries(edges, {"objc": load_catalog("objc")}) >= 1
+
+    def test_null_unspecified_and_null_resettable_are_skipped_too(self, tmp_path: Path) -> None:
+        edges = _edges(tmp_path / "b", WRAP % (
+            "- (void)a:(null_unspecified NSString *)p b:(null_resettable NSData *)q {\n"
+            "    [p frobP];\n"
+            "    [q frobQ];\n"
+            "}"
+        ))
+        assert _send(edges, "frobP").dst == "objc:NSString:0-0:frobP:unresolved"
+        assert _send(edges, "frobQ").dst == "objc:NSData:0-0:frobQ:unresolved"
+
+    def test_a_nonnull_id_parameter_stays_untyped(self, tmp_path: Path) -> None:
+        """``(nonnull id<NSCopying>)`` -- the protocol name is not a class, and
+        skipping the qualifier must not reach into the protocol list."""
+        edges = _edges(tmp_path / "c", WRAP % (
+            "- (void)take:(nonnull id<NSCopying>)c {\n"
+            "    [c frob];\n"
             "}"
         ))
         e = _send(edges, "frob")

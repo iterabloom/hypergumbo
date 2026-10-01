@@ -57,7 +57,9 @@ is also what lets ``inherited_calls`` Site 2 look the selector up on that
 class instead of walking the CALLER's class for it (Site 1). A non-class type
 KEYWORD (``__auto_type``, ``instancetype``; :data:`_OBJC_NON_CLASS_TYPE_SPELLINGS`)
 is not a declared class at all: the declaration is read the way ``id x = ...``
-is, so the initialiser's registered return class types it or nothing does.
+is, so the initialiser's registered return class types it or nothing does. A
+nullability qualifier the grammar misreads as a type (``nonnull``;
+:data:`_OBJC_NULLABILITY_QUALIFIERS`) is skipped for the class after it.
 """
 
 from __future__ import annotations
@@ -66,7 +68,7 @@ import re
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional
 
 from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
@@ -145,16 +147,34 @@ _OBJC_NON_CLASS_TYPE_SPELLINGS: frozenset[str] = frozenset(
     {"__auto_type", "instancetype", "id", "Class"}
 )
 
+#: Nullability QUALIFIERS the grammar does not know, so they parse as a
+#: ``type_identifier`` AHEAD of the class they qualify (WI-dason):
+#: ``(nonnull NSString *)path`` reads ``nonnull`` first, and 13 slots on the
+#: seven-repository objc corpus (SDWebImage 11, ResearchKit 2) named
+#: ``nonnull``. Unlike a keyword they do not mean "no class": the class is the
+#: NEXT ``type_identifier``. ``nullable`` / ``_Nonnull`` / ``__nonnull`` and the
+#: rest parse as ``type_qualifier`` and never reach here.
+_OBJC_NULLABILITY_QUALIFIERS: frozenset[str] = frozenset(
+    {"nonnull", "null_unspecified", "null_resettable"}
+)
+
 
 def _objc_declared_class(
-    node: "tree_sitter.Node | None", source: bytes,
+    type_identifiers: "Iterable[tree_sitter.Node]", source: bytes,
 ) -> str | None:
-    """The class a declaration's ``type_identifier`` names, or ``None`` for a
-    keyword in :data:`_OBJC_NON_CLASS_TYPE_SPELLINGS` (WI-dason)."""
-    if node is None:
-        return None
-    text = node_text(node, source)
-    return None if text in _OBJC_NON_CLASS_TYPE_SPELLINGS else text
+    """The class a declaration names, given its ``type_identifier`` nodes in
+    document order, or ``None`` (WI-dason).
+
+    A nullability qualifier is skipped; the first other spelling is the
+    declared type, and a keyword in :data:`_OBJC_NON_CLASS_TYPE_SPELLINGS`
+    means the declaration names no class at all.
+    """
+    for node in type_identifiers:
+        text = node_text(node, source)
+        if text in _OBJC_NULLABILITY_QUALIFIERS:
+            continue
+        return None if text in _OBJC_NON_CLASS_TYPE_SPELLINGS else text
+    return None
 
 
 def _objc_return_class(signature: str | None, owner: str | None) -> str | None:
@@ -833,7 +853,8 @@ def _objc_declared_receiver_types(
         for sub in iter_tree(node):
             if sub.type == "method_parameter":
                 t_cls = _objc_declared_class(
-                    _first_descendant(sub, "type_identifier"), source,
+                    (d for d in iter_tree(sub) if d.type == "type_identifier"),
+                    source,
                 )
                 names = [c for c in sub.children if c.type == "identifier"]
                 if t_cls is not None and names:
@@ -846,9 +867,10 @@ def _objc_declared_receiver_types(
                 # its own `declaration` child, which `iter_tree` reaches on its
                 # own, and contributes no direct `type_identifier` here.
                 # WI-dason: a non-class keyword (``__auto_type x = ...``) is no
-                # declared class, so it falls to the registry branch below.
+                # declared class, so it falls to the registry branch below; a
+                # leading ``nonnull`` is skipped for the class after it.
                 t = _objc_declared_class(
-                    next((c for c in sub.children if c.type == "type_identifier"), None),
+                    (c for c in sub.children if c.type == "type_identifier"),
                     source,
                 )
                 # ...but ONLY the declarator binds in a fast-enumeration loop. The
@@ -1098,13 +1120,22 @@ def _extract_edges_from_file(
                         # module, so the class rides in ``receiver_type_hint``
                         # like a declared project-class receiver -- which also
                         # sends it to inherited_calls Site 2 (the selector on
-                        # THAT class) rather than Site 1 (the caller's class).
+                        # THAT class) rather than Site 1 (the CALLER's class,
+                        # where an empty hint sent it: ``[ORKTextAnswerFormat
+                        # new]`` inside ORKOrderedTask bound ORKOrderedTask.new).
+                        # A message to the caller's OWN class
+                        # (``[RACSignal empty]`` in a RACSignal method) is the
+                        # same lookup Site 1 already makes, so it keeps that
+                        # route and no hint: Site 2 refuses any objc class
+                        # with more than one class symbol (interface +
+                        # implementation + categories), and 12 such
+                        # resolutions on the corpus were correct.
                         _module: str | None = None
                         if receiver_name and receiver_name[0].isupper():
-                            if receiver_name in project_classes:
-                                _declared = receiver_name
-                            else:
+                            if receiver_name not in project_classes:
                                 _module = receiver_name
+                            elif receiver_name != _enclosing_type:
+                                _declared = receiver_name
                         elif _declared is not None and _declared not in project_classes:
                             _module = _declared
                         if _module is not None:
