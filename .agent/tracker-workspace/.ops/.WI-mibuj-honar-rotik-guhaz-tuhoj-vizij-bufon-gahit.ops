@@ -30,3 +30,10 @@
     tags: [dogfood_tranche_04]  # 8dd4
   remove:  # 8dd4
     tags: [dogfood_tranch_04]  # 8dd4
+- op: discuss  # 2c2c
+  at: '2026-10-01T01:06:28Z'  # 2c2c
+  by: agent  # 2c2c
+  actor: jgstern_agent  # 2c2c
+  clock: 3  # 2c2c
+  nonce: 2c2c  # 2c2c
+  message: "PREMISE CHECK 2026-09-30 (dev 134a06d505): CURRENT-WITH-UPDATES.\nMechanism holds: slice.py:832-834 (was :733-735) appends \"file_limit\" to limits_hit and `continue`s past the dropped node; nothing counts what was skipped. SliceResult (slice.py:320-374) and to_dict() carry entry_nodes/node_ids/edge_ids/query/limits_hit/node_depths/node_tiers/admission_stats only; the CLI summary (cli.py:2170-2177) prints nodes/edges/\"limits hit: file_limit\", no shortfall. No commit since filing touches this (git log --since=2026-06-05 -- slice.py: none on limits_hit).\nRepro 1 (fixture, 7 files, target() called from 6): `hypergumbo slice --entry target --reverse --max-files 3` -> limits_hit [file_limit], 2 of 6 callers emitted, feature keys = edge_ids, entry_nodes, id, limits_hit, name, node_depths, node_ids, node_tiers, query. No dropped/total count.\nRepro 2 (self-survey of this repo at 134a06d505, 55,141 nodes / 217,668 edges; `slice --input self.json --entry Edge.create --reverse`, defaults): limits_hit [file_limit, hub_pruned]; Edge.create has 656 direct `calls` callers in the map, 340 in the slice (316 = 48% dropped); 237 caller files, 99 in the slice (138 = 58% dropped). At filing: 169/557 callers, 107/207 files dropped -- the shortfall GREW.\nNot re-measured: the 13/282 prevalence census.\nProposed update: refresh the line cite (slice.py:832-834) and the Edge.create numbers; note hub_pruned is a second silent-truncation flag with the same missing-magnitude shape (slice.py:707-708), so the fix should report magnitude per limit, not only file_limit."  # 2c2c
