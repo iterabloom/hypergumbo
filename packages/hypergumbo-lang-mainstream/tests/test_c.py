@@ -639,6 +639,8 @@ class TestCGetFunctionNameEdgeCases:
 
         mock_node = MagicMock()
         mock_node.children = [mock_child]
+        # No declarator: the name is read off the ``declarator`` field chain.
+        mock_node.child_by_field_name.return_value = None
 
         result = _get_function_name(mock_node, b"source")
         assert result is None
