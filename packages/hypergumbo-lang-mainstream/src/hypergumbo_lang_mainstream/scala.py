@@ -19,8 +19,9 @@ This analyzer uses tree-sitter to parse Scala files and extract:
 - Inheritance: extends/with base classes and traits (into symbol meta["base_classes"], for classes and traits)
 
 Modifiers (access/abstract/final/sealed/override/implicit/lazy/case) are
-captured on Symbol.modifiers, and parameter/variable types are tracked
-to disambiguate type-qualified method calls.
+captured on Symbol.modifiers, and parameter/variable types -- declared, or
+inferred from a declared return type (WI-gokop) -- are tracked to
+disambiguate type-qualified method calls.
 
 If tree-sitter with Scala support is not installed, the analyzer warns and
 returns a skipped result (``skip_reason_code=DEPENDENCY_UNAVAILABLE``).
@@ -29,8 +30,20 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, classes, objects, traits, enums, givens and
-   val/var members, with signatures
+   val/var members, with signatures. Each ``def``'s declared return type, and
+   each typed member ``val`` or class parameter, feeds the base return-type
+   registry (``_extract_scala_return_type_name``), qualified through the
+   declaring file's imports; the element of a container it returns
+   (``Seq[File]`` -> ``File``) feeds a scala-local element registry.
 2. Pass 2: Extract call edges, import edges, and eta-expansion references edges using NameResolver
+   - A method call's receiver is typed by :class:`_ScalaReceiverTyper`: the
+     nearest lexical binder when its type can be said, else the file-wide
+     declared map as before; an inferred ``val``, a call result, a chained
+     receiver, a parameterless member, ``this`` and ``asInstanceOf[T]`` are
+     typed through the registry, and a ``for`` generator, a one-parameter
+     lambda / ``case`` / ``_`` of an element-passing call and a ``.get`` /
+     ``.head`` projection through the element registry. A qualified project
+     type binds only where its path allows (the import check below).
    - An explicit import outranks a same-named project symbol in another
      package: the bind is refused when no reading of the import (absolute
      or relative to a package or object in scope) can name that symbol.
@@ -588,20 +601,106 @@ def _declared_type_name(parent: "tree_sitter.Node", source: bytes) -> "str | Non
     rather than written in bare.
     """
     for child in parent.children:
-        if child.type == "type_identifier":
-            return node_text(child, source)
-        if child.type == "stable_type_identifier":
-            return node_text(child, source)
-        if child.type == "generic_type":
-            base = _declared_type_name(child, source)
-            # A base this change INVENTED from a type argument is refused when
-            # it is an implicitly-imported name: it cannot qualify, so its only
-            # reachable effect is a short-name mis-bind. See
-            # :data:`_SCALA_IMPLICIT_IMPORT_TYPES` for the measurement.
-            if base is not None and base not in _SCALA_IMPLICIT_IMPORT_TYPES:
-                return base
-            return None
+        if child.type in _SCALA_TYPE_NODES:
+            return _type_node_name(child, source)
     return None
+
+
+def _type_node_name(node: "tree_sitter.Node", source: bytes) -> "str | None":
+    """The NAME one type node contributes, by :func:`_declared_type_name`'s rules.
+
+    Split out so a type reached through a FIELD (a ``def``'s ``return_type``, a
+    ``typed_pattern``'s type) is named by the same rules as one found among a
+    declaration's children, rather than by a second copy of them.
+    """
+    if node.type in ("type_identifier", "stable_type_identifier"):
+        return node_text(node, source)
+    if node.type == "generic_type":
+        base = _declared_type_name(node, source)
+        # A base this change INVENTED from a type argument is refused when
+        # it is an implicitly-imported name: it cannot qualify, so its only
+        # reachable effect is a short-name mis-bind. See
+        # :data:`_SCALA_IMPLICIT_IMPORT_TYPES` for the measurement.
+        if base is not None and base not in _SCALA_IMPLICIT_IMPORT_TYPES:
+            return base
+    return None
+
+
+def _scala_type_parameter_names(node: "tree_sitter.Node", source: bytes) -> "set[str]":
+    """The type parameters in scope at a member: its own and its enclosing type's.
+
+    ``def get: T`` in ``class Box[T]`` names no type a caller could look up.
+    """
+    names: set[str] = set()
+    current: "tree_sitter.Node | None" = node
+    while current is not None:
+        params = find_child_by_type(current, "type_parameters")
+        if params is not None:
+            names.update(node_text(c, source) for c in params.children if c.type == "identifier")
+        if current.type in ("class_definition", "trait_definition"):
+            break
+        current = current.parent
+    return names
+
+
+def _registrable_type(name: "str | None", member: "tree_sitter.Node", source: bytes) -> "str | None":
+    """``name`` as a return-type registry value, or ``None`` to register nothing.
+
+    Two refusals, both about types the registry would INVENT for a caller that
+    wrote no type at all. An implicitly-imported name (``String``, ``Int``,
+    ``List``, ``Option``) cannot qualify, so its only reachable effect is the
+    short-name mis-bind WI-pokam measured (:data:`_SCALA_IMPLICIT_IMPORT_TYPES`).
+    A type parameter names nothing outside the declaration.
+    """
+    if name is None or name in _SCALA_IMPLICIT_IMPORT_TYPES:
+        return None
+    if name in _scala_type_parameter_names(member, source):
+        return None
+    return name
+
+
+def _extract_scala_return_type_name(node: "tree_sitter.Node", source: bytes) -> "str | None":
+    """The type a ``def``'s DECLARED return type names, for the registry (WI-gokop).
+
+    Read off the ``return_type`` field and named by :func:`_type_node_name`, so a
+    qualified type keeps its path and a generic one contributes its base
+    (``Buffer[String]`` -> ``Buffer``), exactly as an annotation would. Then:
+
+    * ``this.type`` -- the fluent-builder return -- names the enclosing type, the
+      same resolution swift gives ``-> Self``;
+    * a WRAPPER is NOT unwrapped. ``Future[T]`` and ``Try[T]`` register as
+      ``Future`` / ``Try``, and ``Option[T]`` / ``Either[L, R]`` register nothing
+      (implicit-import names), rather than any of them reading as ``T``: a
+      receiver bound to ``opt()`` or ``fut()`` calls the WRAPPER's methods
+      (``getOrElse``, ``map``), and typing it ``T`` would hand them to ``T``. Rust
+      unwraps in its registry because ``?`` and ``.unwrap()`` project the value at
+      nearly every use; Scala's projections -- ``for``, ``map``, ``case Some(x)``
+      -- bind a NEW name, which is an element type, not this registry's answer;
+    * a tuple, function, compound or other structural type names no single owner
+      and registers nothing.
+
+    Implicits are not resolved (ADR-0006 leaves them future work).
+    """
+    rt = node.child_by_field_name("return_type")
+    if rt is None:
+        return None
+    if rt.type == "singleton_type":
+        ident = find_child_by_type(rt, "identifier")
+        if ident is not None and node_text(ident, source) == "this":
+            return _get_enclosing_type(node, source)
+        return None
+    return _registrable_type(_type_node_name(rt, source), node, source)
+
+
+
+def _class_parameter_member(node: "tree_sitter.Node", source: bytes) -> "str | None":
+    """``Owner.param`` for a ``class_parameter``, or ``None`` when either is unnamed."""
+    owner = node.parent.parent if node.parent is not None else None
+    owner_name = find_child_by_type(owner, "identifier") if owner is not None else None
+    param_name = find_child_by_type(node, "identifier")
+    if owner_name is None or param_name is None:  # pragma: no cover - the grammar names both
+        return None
+    return f"{node_text(owner_name, source)}.{node_text(param_name, source)}"
 
 
 def _extract_annotations_scala(
@@ -810,9 +909,38 @@ def _extract_symbols_from_file(
     source: bytes,
     file_path: str,
     run_id: str,
+    element_types: "dict[str, str] | None" = None,
 ) -> FileAnalysis:
-    """Extract symbols from a single Scala file."""
+    """Extract symbols from a single Scala file.
+
+    ``element_types`` (WI-gokop), when given, receives ``<Owner>.<member>`` ->
+    the ELEMENT type of a container the member returns (``def files:
+    Seq[File]`` -> ``File``), beside the return types this records in
+    ``FileAnalysis.method_return_types``. First writer wins, as in the base
+    aggregation of the latter.
+    """
     analysis = FileAnalysis()
+    # WI-gokop: a registered type is written as the DECLARING file names it, so a
+    # library type is qualified through THIS file's imports (``FileWriter`` ->
+    # ``java.io.FileWriter``) and a caller that never imports it -- inference
+    # needs no import -- still gets the path. java's registry does the same
+    # (WI-gajuh). Pass 2 keeps the path, which tells same-named project types
+    # apart, and looks a member up by the simple name
+    # (:meth:`_ScalaReceiverTyper.symbol_type_name`).
+    import_hints = _extract_import_hints(tree, source)
+
+    def _qualified(name: str) -> str:
+        return name if "." in name else import_hints.get(name, name)
+
+    def _register_type(key: str, name: "str | None") -> None:
+        if name is not None:
+            analysis.method_return_types.setdefault(key, _qualified(name))
+
+    def _register_element(key: str, type_holder: "tree_sitter.Node | None") -> None:
+        name = _declared_element(type_holder, source)
+        if name is not None and element_types is not None:
+            element_types.setdefault(key, _qualified(name))
+
     # WI-bokab (v7): file-identity anchor for this file's symbols. ``file_path`` is
     # the repo-relative path (the extract override passes ``rel_path``). Folded into
     # make_typed_stable_id's containing slot so same-name functions/methods in
@@ -893,6 +1021,9 @@ def _extract_symbols_from_file(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[func_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
+                if not is_secondary_ctor:
+                    _register_type(full_name, _extract_scala_return_type_name(node, source))
+                    _register_element(full_name, node.child_by_field_name("return_type"))
 
         elif node.type == "function_declaration":
             name_node = find_child_by_type(node, "identifier")
@@ -944,6 +1075,19 @@ def _extract_symbols_from_file(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[func_name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
+                _register_type(full_name, _extract_scala_return_type_name(node, source))
+                _register_element(full_name, node.child_by_field_name("return_type"))
+
+        elif node.type == "class_parameter":
+            # WI-gokop: a class parameter is a member its owner's callers can
+            # reach (always for a case class or a ``val`` parameter), and Scala
+            # reads a member exactly as it calls a parameterless ``def``, so it
+            # registers like one: ``box.boxed.write(..)`` types ``boxed``.
+            member = _class_parameter_member(node, source)
+            if member is not None:
+                _register_type(
+                    member, _registrable_type(_declared_type_name(node, source), node, source))
+                _register_element(member, node)
 
         elif node.type == "class_definition":
             name_node = find_child_by_type(node, "identifier")
@@ -1269,6 +1413,13 @@ def _extract_symbols_from_file(
                 # call target, so it is not registered here at all.
                 if scope == "field":
                     analysis.symbol_by_name[full_name] = symbol
+                    # WI-gokop: a typed (or constructed) member is read like a
+                    # parameterless ``def``, so it registers like one.
+                    _inst = find_child_by_type(node, "instance_expression")
+                    _holder = _inst if _inst is not None else node
+                    _register_type(full_name, _registrable_type(
+                        _declared_type_name(_holder, source), node, source))
+                    _register_element(full_name, _holder)
 
     return analysis
 
@@ -1300,6 +1451,658 @@ def _extract_param_types_scala(
     return param_types
 
 
+#: WI-gokop. The scopes whose DIRECT children may declare a ``val`` / ``var`` that
+#: a later expression reads. In a BLOCK-like scope a declaration is visible only
+#: after it; in a TEMPLATE-like scope every member is visible everywhere in it.
+_SCALA_BLOCK_SCOPES: Final = frozenset({"block", "indented_block", "case_clause"})
+_SCALA_TEMPLATE_SCOPES: Final = frozenset({
+    "template_body", "with_template_body", "enum_body", "compilation_unit",
+})
+_SCALA_VALUE_DEFS: Final = frozenset({
+    "val_definition", "var_definition", "val_declaration", "var_declaration",
+})
+#: The types whose methods a ``this`` / bare call inside them belongs to.
+_SCALA_OWNER_DEFS: Final = frozenset({"class_definition", "object_definition", "trait_definition"})
+
+
+#: WI-gokop. Generic types whose ONE type argument is the element a ``for``
+#: generator, an element-passing call's lambda, or a projection (``.get``,
+#: ``.head``) hands out. ``Either`` is right-biased: its element is ``R``. A
+#: ``Map`` hands out pairs, so it is not here.
+_SCALA_ELEMENT_CONTAINERS: Final = frozenset({
+    "List", "Seq", "IndexedSeq", "LinearSeq", "Vector", "Set", "SortedSet",
+    "Iterable", "Iterator", "Array", "ArraySeq", "Stream", "LazyList", "Buffer",
+    "ArrayBuffer", "ListBuffer", "Queue", "Option", "Some", "Future", "Try",
+    "Success", "Either", "NonEmptyList",
+})
+#: Methods whose function argument receives ONE element of the receiver.
+_SCALA_ELEMENT_PASSING: Final = frozenset({
+    "map", "flatMap", "foreach", "filter", "filterNot", "withFilter", "exists",
+    "forall", "find", "count", "takeWhile", "dropWhile", "partition", "span",
+    "groupBy", "sortBy", "maxBy", "minBy", "maxByOption", "minByOption",
+    "distinctBy", "tapEach", "collect", "collectFirst", "indexWhere",
+})
+#: Methods that return a container of the receiver's OWN elements.
+_SCALA_ELEMENT_PRESERVING: Final = frozenset({
+    "filter", "filterNot", "withFilter", "take", "drop", "takeRight", "dropRight",
+    "takeWhile", "dropWhile", "distinct", "distinctBy", "reverse", "sorted",
+    "sortBy", "sortWith", "tail", "init", "slice", "toList", "toSeq", "toVector",
+    "toSet", "toIndexedSeq", "toArray", "toIterable", "iterator", "view",
+    "headOption", "lastOption", "find",
+})
+#: Methods that return ONE element of the receiver -- the call-site projection
+#: Rust's ``?`` / ``.unwrap()`` is, which is where Scala's wrapper is unwrapped.
+_SCALA_ELEMENT_PROJECTING: Final = frozenset({
+    "get", "head", "last", "getOrElse", "orNull", "next",
+})
+
+
+def _generic_element(generic: "tree_sitter.Node", source: bytes) -> "tree_sitter.Node | None":
+    """The type node a container's element is, or ``None`` for any other type."""
+    base = next((c for c in generic.children
+                 if c.type in ("type_identifier", "stable_type_identifier")), None)
+    targs = find_child_by_type(generic, "type_arguments")
+    if base is None or targs is None:  # pragma: no cover - a generic type has both
+        return None
+    container = node_text(base, source).rsplit(".", 1)[-1]
+    args = [c for c in targs.children if c.is_named]
+    if container not in _SCALA_ELEMENT_CONTAINERS:
+        return None
+    if container == "Either":
+        return args[-1] if len(args) == 2 else None
+    return args[0] if len(args) == 1 else None
+
+
+def _declared_element(node: "tree_sitter.Node | None", source: bytes) -> "str | None":
+    """The element type a declaration's type states (``xs: Seq[File]`` -> ``File``).
+
+    ``node`` is the declaration (its first type child is read, as
+    :func:`_declared_type_name` reads it) or a type node itself. Refused like an
+    inferred type (:func:`_registrable_type`): the element of ``Seq[String]``
+    can qualify to nothing, and only invites the short-name mis-bind.
+    """
+    if node is None:
+        return None
+    if node.type not in _SCALA_TYPE_NODES:
+        node = next((c for c in node.children if c.type in _SCALA_TYPE_NODES), None)
+    if node is None or node.type != "generic_type":
+        return None
+    element = _generic_element(node, source)
+    if element is None:
+        return None
+    return _registrable_type(_type_node_name(element, source), node, source)
+
+
+def _pattern_binds(pattern: "tree_sitter.Node", name: str, source: bytes) -> "_Binder | None":
+    """The binder a PATTERN makes for ``name``, or ``None`` when it binds none.
+
+    A lowercase identifier in a Scala pattern is a binder; a capitalised one is a
+    stable identifier the pattern COMPARES against (``case Foo =>``), so it binds
+    nothing. ``case q: FileWriter`` (a ``typed_pattern``) declares the type;
+    every other binder -- ``case Some(x)``, ``case h :: t``, a tuple -- binds a
+    name whose type the pattern does not state.
+    """
+    if pattern.type == "identifier":
+        text = node_text(pattern, source)
+        return _Binder() if text == name and not text[:1].isupper() else None
+    if pattern.type == "typed_pattern":
+        bound = find_child_by_type(pattern, "identifier")
+        if bound is not None and node_text(bound, source) == name:
+            return _Binder(declared=pattern)
+    for child in pattern.children:
+        if child.type in _SCALA_TYPE_NODES:
+            continue
+        found = _pattern_binds(child, name, source)
+        if found is not None:
+            return found
+    return None
+
+
+class _Binder(NamedTuple):
+    """What the binder of a name says about its value (WI-gokop).
+
+    At most one field is set; none set is a binder of UNKNOWN type, which still
+    shadows every same-named binding outside it.
+    """
+
+    #: A declaration whose own children carry the declared type: a parameter, a
+    #: class parameter, a typed lambda binding, a ``typed_pattern``.
+    declared: "tree_sitter.Node | None" = None
+    #: A ``val`` / ``var`` definition: annotation, ``new``, else its initialiser.
+    value_def: "tree_sitter.Node | None" = None
+    #: An expression whose TYPE the name takes (``for { y = expr }``).
+    expr: "tree_sitter.Node | None" = None
+    #: A container expression whose ELEMENT the name takes: a ``for`` generator,
+    #: or the receiver of an element-passing call (``xs.map(x => ..)``).
+    element_of: "tree_sitter.Node | None" = None
+
+
+def _element_passing_receiver(
+    call_arg: "tree_sitter.Node", source: bytes,
+) -> "tree_sitter.Node | None":
+    """The receiver whose elements ``call_arg`` -- a function argument -- is passed.
+
+    ``call_arg`` sits under ``arguments`` (``xs.map(x => ..)``) or is itself the
+    block / case block argument (``xs.map { x => .. }``). The call must be
+    ``recv.m`` with ``m`` in :data:`_SCALA_ELEMENT_PASSING`.
+    """
+    holder = call_arg.parent
+    if holder is not None and holder.type == "arguments":
+        holder = holder.parent
+    elif holder is not None and holder.type == "block":
+        holder = holder.parent
+    if holder is None or holder.type != "call_expression":
+        return None
+    function = holder.child_by_field_name("function")
+    if function is None or function.type != "field_expression":
+        return None
+    field = function.child_by_field_name("field")
+    if field is None or node_text(field, source) not in _SCALA_ELEMENT_PASSING:
+        return None
+    return function.child_by_field_name("value")
+
+
+class _ScalaReceiverTyper:
+    """The type of a receiver EXPRESSION, for one file of Pass 2 (WI-gokop).
+
+    Before this, ``scala.py`` typed a receiver from one file-wide ``var_types``
+    map filled by DECLARATIONS only, which left every inferred binding untyped:
+    ``val x = mk()``, ``mk().foo()``, ``a.b.foo()``, ``this.foo()``,
+    ``for (y <- ys)``, ``xs.map(z => z.foo())``.
+
+    TWO SOURCES, IN THIS ORDER.
+
+    1. A LEXICAL walk from the expression outwards finds the NEAREST binder of
+       a name (:class:`_Binder`): a lambda parameter, a ``case`` pattern, a
+       ``for`` enumerator, a parameter, a class parameter, or a ``val`` /
+       ``var`` of an enclosing block or template. When that binder's type can
+       be said, it is the answer, and it beats the file-wide map. The walk
+       stops at the nearest binder either way, so a typed ``val`` OUTSIDE a
+       lambda never types the lambda's same-named parameter.
+    2. Otherwise the file-wide map answers, exactly as before this class
+       existed. That is a measured choice, not an oversight. Letting an untyped
+       binder SHADOW the map (the stricter reading) dropped 264 hints on sbt
+       and 236 on lila, and a sample of them read against the source was
+       mostly right by naming convention: ``{ s => s.get(k) }`` where every
+       ``s`` in sbt is a ``State``, ``threads.forEach { thread => .. }``. The
+       map's file-wide leak (ADR-0006 "Scope Handling") is pre-existing and
+       is neither widened nor narrowed here: an INFERRED binding is never
+       written to it.
+
+    TYPES. An INFERRED binding takes the type of its right-hand side, through the
+    return-type registry the base analyzer aggregates from every file's
+    ``method_return_types``. A call looks its callee up as ``<Owner>.<name>``:
+    the receiver's type for ``r.m()``, the enclosing types (and an anonymous
+    class's parent) for a bare ``m()``, then a top-level ``m``; each owner's
+    base classes are walked when it does not declare the member. A case-class
+    ``Foo(..)`` with no registered ``apply`` is a ``Foo``;
+    ``x.asInstanceOf[T]`` is a ``T``.
+
+    ELEMENTS, the same walk one level down. A container's element type comes from
+    a declaration (``xs: Seq[File]``) or from the element registry the analyzer
+    fills beside the return-type one (``def files: Seq[File]``), and is carried
+    through the calls that keep it (``xs.filter(..)``, ``.toList``). It types a
+    ``for`` generator's binder, the parameter of a one-parameter lambda or
+    ``case`` passed to an element-passing call (``map``, ``foreach``, ...), a
+    placeholder ``_`` there, and a projection (``opt.get``, ``xs.head``). That is
+    where a wrapper is unwrapped -- never for the wrapper itself.
+
+    WHAT THE REGISTRY HOLDS: a type as its DECLARING file names it, qualified
+    through that file's imports -- a library type and an imported project type
+    alike. The qualified path is KEPT, because it is the only thing that tells
+    two same-named project types apart: 74 lila files declare a class ``Env``,
+    and ``env.tournament.version(id)`` bound to ``lila.challenge.Env.version``
+    until the call site checked the bind against ``lila.tournament.Env``
+    (:func:`_import_names_elsewhere`, the WI-tipoh check). The simple name is
+    derived where a symbol is looked up (:meth:`symbol_type_name`).
+
+    KNOWN IMPRECISION, shared with every registry in the tree: keys are simple
+    owner names, first writer wins, so two same-named types in different
+    packages share one entry; a companion object and its class share one
+    namespace. Implicit conversions, extension methods and type aliases are not
+    resolved.
+    """
+
+    def __init__(
+        self,
+        source: bytes,
+        registry: "dict[str, str]",
+        elements: "dict[str, str]",
+        var_types: "dict[str, str]",
+        global_symbols: "dict[str, Symbol]",
+        import_aliases: "dict[str, str]",
+        file_packages: "dict[str, _ScalaFile] | None",
+        project_packages: "frozenset[str]",
+    ) -> None:
+        self._source = source
+        self._registry = registry
+        self._elements = elements
+        self._var_types = var_types
+        self._global_symbols = global_symbols
+        self._import_aliases = import_aliases
+        self._file_packages = file_packages
+        self._project_packages = project_packages
+        self._scopes: "dict[int, dict[str, list[tree_sitter.Node]]]" = {}
+        self._memo: "dict[tuple[int, bool], str | None]" = {}
+        self._active: "set[tuple[int, bool]]" = set()
+
+    # -- names ---------------------------------------------------------------
+
+    def receiver_type(self, name: str, at: "tree_sitter.Node") -> "str | None":
+        """The type of the value ``name`` denotes at ``at``."""
+        if name == "this":
+            return self._this_type(at)
+        binder = self._lexical(name, at)
+        found = self._binder_type(binder) if binder is not None else None
+        return found if found is not None else self._var_types.get(name)
+
+    def _binder_type(self, binder: _Binder) -> "str | None":
+        if binder.declared is not None:
+            return _declared_type_name(binder.declared, self._source)
+        if binder.value_def is not None:
+            return self._value_def(binder.value_def, element=False)
+        if binder.expr is not None:
+            return self.expr_type(binder.expr)
+        if binder.element_of is not None:
+            return self.element_type(binder.element_of)
+        return None
+
+    def _binder_element(self, binder: _Binder) -> "str | None":
+        if binder.declared is not None:
+            return _declared_element(binder.declared, self._source)
+        if binder.value_def is not None:
+            return self._value_def(binder.value_def, element=True)
+        if binder.expr is not None:
+            return self.element_type(binder.expr)
+        return None  # an element's own element is not tracked
+
+    def _lexical(self, name: str, at: "tree_sitter.Node") -> "_Binder | None":
+        cur = at.parent
+        while cur is not None:
+            kind = cur.type
+            hit: "_Binder | None" = None
+            if kind == "lambda_expression":
+                hit = self._lambda_binds(cur, name)
+            elif kind == "case_clause":
+                hit = self._case_binds(cur, name)
+            elif kind == "for_expression":
+                hit = self._for_binds(cur, name, at)
+            elif kind in ("function_definition", "function_declaration"):
+                hit = self._params_bind(cur, "parameters", "parameter", name)
+            elif kind == "class_definition":
+                hit = self._params_bind(cur, "class_parameters", "class_parameter", name)
+            if hit is not None:
+                return hit
+            if kind in _SCALA_BLOCK_SCOPES or kind in _SCALA_TEMPLATE_SCOPES:
+                found = self._scope_value_def(cur, name, at)
+                if found is not None:
+                    pattern = found.child_by_field_name("pattern")
+                    # A destructuring pattern states no per-name type.
+                    if pattern is not None and pattern.type == "identifier":
+                        return _Binder(value_def=found)
+                    return _Binder()
+            cur = cur.parent
+        return None
+
+    def _lambda_binds(self, lam: "tree_sitter.Node", name: str) -> "_Binder | None":
+        # The parameters are what precedes ``=>``; ``x => x`` must not read the
+        # BODY ``x`` as a parameter. Only a ONE-parameter lambda takes an element.
+        params: "list[tuple[str, tree_sitter.Node | None]]" = []
+        for child in lam.children:
+            if child.type == "=>":
+                break
+            if child.type == "identifier":
+                params.append((node_text(child, self._source), None))
+            elif child.type == "bindings":
+                for bound in child.children:
+                    ident = find_child_by_type(bound, "identifier")
+                    if ident is not None:
+                        params.append((node_text(ident, self._source), bound))
+        for pname, binding in params:
+            if pname != name:
+                continue
+            if binding is not None and any(c.type in _SCALA_TYPE_NODES for c in binding.children):
+                return _Binder(declared=binding)
+            if len(params) == 1:
+                return _Binder(element_of=_element_passing_receiver(lam, self._source))
+            return _Binder()
+        return None
+
+    def _case_binds(self, clause: "tree_sitter.Node", name: str) -> "_Binder | None":
+        pattern = clause.child_by_field_name("pattern")
+        hit = _pattern_binds(pattern, name, self._source) if pattern is not None else None
+        if hit is None or hit != _Binder() or pattern is None or pattern.type != "identifier":
+            return hit
+        # ``xs.foreach { case x => .. }``: a WHOLE-pattern binder in a case block
+        # passed to an element-passing call takes the element. A Scala 3
+        # ``indented_cases`` / ``match`` is no element-passing call.
+        block = clause.parent
+        if block is None or block.type != "case_block":
+            return hit
+        return _Binder(element_of=_element_passing_receiver(block, self._source))
+
+    def _for_binds(
+        self, loop: "tree_sitter.Node", name: str, at: "tree_sitter.Node",
+    ) -> "_Binder | None":
+        # Enumerators bind in order, each visible to the ones after it and to the
+        # body. A generator ``y <- ys`` binds an ELEMENT of ``ys``; a value
+        # definition ``y = expr`` binds ``expr``'s type.
+        hit: "_Binder | None" = None
+        enumerators = find_child_by_type(loop, "enumerators")
+        for enum in enumerators.children if enumerators is not None else ():
+            if enum.type != "enumerator":
+                continue
+            if enum.start_byte <= at.start_byte < enum.end_byte:
+                break
+            named = [c for c in enum.children if c.is_named and c.type != "guard"]
+            if not named:  # pragma: no cover - an enumerator always binds a pattern
+                continue
+            found = _pattern_binds(named[0], name, self._source)
+            if found is None:
+                continue
+            hit = found
+            if found == _Binder() and named[0].type == "identifier" and len(named) > 1:
+                generator = any(c.type == "<-" for c in enum.children)
+                hit = (_Binder(element_of=named[-1]) if generator
+                       else _Binder(expr=named[-1]))
+        return hit
+
+    def _params_bind(
+        self, owner: "tree_sitter.Node", list_type: str, param_type: str, name: str,
+    ) -> "_Binder | None":
+        for plist in owner.children:
+            if plist.type != list_type:
+                continue
+            for param in plist.children:
+                if param.type != param_type:
+                    continue
+                ident = find_child_by_type(param, "identifier")
+                if ident is not None and node_text(ident, self._source) == name:
+                    return _Binder(declared=param)
+        return None
+
+    def _scope_value_def(
+        self, scope: "tree_sitter.Node", name: str, at: "tree_sitter.Node",
+    ) -> "tree_sitter.Node | None":
+        index = self._scopes.get(scope.id)
+        if index is None:
+            index = {}
+            for child in scope.children:
+                if child.type not in _SCALA_VALUE_DEFS:
+                    continue
+                pattern = child.child_by_field_name("pattern")
+                for bound in _pattern_names(pattern, self._source) if pattern is not None else ():
+                    index.setdefault(bound, []).append(child)
+            self._scopes[scope.id] = index
+        before_only = scope.type in _SCALA_BLOCK_SCOPES
+        chosen: "tree_sitter.Node | None" = None
+        for defn in index.get(name, ()):
+            if defn.start_byte <= at.start_byte < defn.end_byte:
+                continue  # its own initialiser
+            if before_only and defn.end_byte > at.start_byte:
+                break
+            chosen = defn
+            if not before_only:
+                break
+        return chosen
+
+    def _value_def(self, defn: "tree_sitter.Node", *, element: bool) -> "str | None":
+        """A ``val`` / ``var``'s type (or element type), memoised, cycle-safe."""
+        key = (defn.id, element)
+        if key in self._memo:
+            return self._memo[key]
+        if key in self._active:
+            return None  # ``val a = b; val b = a``
+        self._active.add(key)
+        try:
+            inst = find_child_by_type(defn, "instance_expression")
+            if element:
+                found = _declared_element(inst if inst is not None else defn, self._source)
+            else:
+                found = _declared_type_name(inst if inst is not None else defn, self._source)
+            if found is None and inst is None and defn.child_by_field_name("type") is None:
+                value = defn.child_by_field_name("value")
+                if value is not None:
+                    found = self.element_type(value) if element else self.expr_type(value)
+        finally:
+            self._active.discard(key)
+        self._memo[key] = found
+        return found
+
+    def _this_type(self, at: "tree_sitter.Node") -> "str | None":
+        cur = at.parent
+        while cur is not None:
+            if cur.type in _SCALA_OWNER_DEFS:
+                ident = find_child_by_type(cur, "identifier")
+                return node_text(ident, self._source) if ident is not None else None
+            if cur.type in ("enum_definition", "given_definition") or (
+                cur.type == "instance_expression"
+                and find_child_by_type(cur, "template_body") is not None
+            ):
+                return None  # ``this`` is an enum, a given or an anonymous class
+            cur = cur.parent
+        return None
+
+    # -- expressions -------------------------------------------------------------
+
+    def expr_type(self, expr: "tree_sitter.Node") -> "str | None":
+        """The type of a receiver expression, or ``None`` when it cannot be said."""
+        kind = expr.type
+        if kind == "identifier":
+            return self.receiver_type(node_text(expr, self._source), expr)
+        if kind == "wildcard":
+            # A placeholder ``_`` used as a receiver is the parameter of the
+            # function argument it sits in (``xs.map(_.foo())``).
+            arg = self._placeholder_argument(expr)
+            receiver = _element_passing_receiver(arg, self._source) if arg is not None else None
+            return self.element_type(receiver) if receiver is not None else None
+        if kind == "parenthesized_expression":
+            inner = next((c for c in expr.children if c.is_named), None)
+            return self.expr_type(inner) if inner is not None else None
+        if kind == "instance_expression":
+            return _declared_type_name(expr, self._source)
+        if kind == "generic_function":
+            return self._cast_type(expr)
+        if kind in ("field_expression", "call_expression"):
+            target = self._member_access(expr)
+            if target is None:
+                return None
+            receiver, member = target
+            if receiver is None:
+                return self._bare_call_type(expr, member, element=False)
+            owner = self._owner(receiver)
+            found = self._member(owner, member, self._registry) if owner is not None else None
+            if found is None and member in _SCALA_ELEMENT_PROJECTING:
+                found = self.element_type(receiver)
+            return found
+        return None
+
+    def element_type(self, expr: "tree_sitter.Node") -> "str | None":
+        """The element type of a container expression, or ``None``."""
+        kind = expr.type
+        if kind == "identifier":
+            name = node_text(expr, self._source)
+            binder = self._lexical(name, expr) if name != "this" else None
+            return self._binder_element(binder) if binder is not None else None
+        if kind == "parenthesized_expression":
+            inner = next((c for c in expr.children if c.is_named), None)
+            return self.element_type(inner) if inner is not None else None
+        if kind in ("field_expression", "call_expression"):
+            target = self._member_access(expr)
+            if target is None:
+                return None
+            receiver, member = target
+            if receiver is None:
+                return self._bare_call_type(expr, member, element=True)
+            owner = self._owner(receiver)
+            found = self._member(owner, member, self._elements) if owner is not None else None
+            if found is None and member in _SCALA_ELEMENT_PRESERVING:
+                found = self.element_type(receiver)
+            return found
+        return None
+
+    def _member_access(
+        self, expr: "tree_sitter.Node",
+    ) -> "tuple[tree_sitter.Node | None, str] | None":
+        """``(receiver, member)`` for ``r.m`` / ``r.m(..)``, ``(None, f)`` for a
+        bare ``f(..)``, else ``None``. A type argument (``f[T](..)``) is skipped."""
+        function: "tree_sitter.Node | None" = expr
+        if expr.type == "call_expression":
+            function = expr.child_by_field_name("function")
+            if function is not None and function.type == "generic_function":
+                function = function.child_by_field_name("function")
+            if function is not None and function.type == "identifier":
+                return None, node_text(function, self._source)
+        if function is None or function.type != "field_expression":
+            return None
+        value = function.child_by_field_name("value")
+        field = function.child_by_field_name("field")
+        if value is None or field is None:  # pragma: no cover - the grammar sets both
+            return None
+        return value, node_text(field, self._source)
+
+    def _placeholder_argument(self, wildcard: "tree_sitter.Node") -> "tree_sitter.Node | None":
+        """The function argument a placeholder ``_`` receiver expands in.
+
+        Up through the chain it is the receiver of (``_.a().b``) to the first
+        node that is an argument; anything else ends the walk.
+        """
+        cur = wildcard
+        while cur.parent is not None:
+            parent = cur.parent
+            if parent.type in ("arguments", "block"):
+                return cur
+            receiver_of = (
+                parent.child_by_field_name("value") if parent.type == "field_expression"
+                else parent.child_by_field_name("function")
+                if parent.type in ("call_expression", "generic_function") else None)
+            if receiver_of != cur:
+                return None
+            cur = parent
+        return None  # pragma: no cover - a placeholder always sits in an expression
+
+    def _cast_type(self, generic: "tree_sitter.Node") -> "str | None":
+        function = generic.child_by_field_name("function")
+        targs = generic.child_by_field_name("type_arguments")
+        if (
+            function is not None and targs is not None
+            and function.type == "field_expression"
+            and (field := function.child_by_field_name("field")) is not None
+            and node_text(field, self._source) == "asInstanceOf"
+        ):
+            return _declared_type_name(targs, self._source)
+        return None
+
+    def _bare_call_type(
+        self, call: "tree_sitter.Node", name: str, *, element: bool,
+    ) -> "str | None":
+        registry = self._elements if element else self._registry
+        if self._lexical(name, call) is not None or name in self._var_types:
+            return None  # a call of a VALUE (a function, an ``apply``)
+        for owner in self._enclosing_owners(call):
+            found = self._member(owner, name, registry)
+            if found is not None:
+                return found
+        top = registry.get(name)
+        if top is not None:
+            return top
+        # An implicitly-imported name (``Map(..)``, ``List(..)``) is the
+        # standard library's, whatever the project calls a type: measured on
+        # sbt, ``Map(pairs*)`` read as the project's ``SessionVar.Map`` bound two
+        # ``.get`` calls to it -- the collider WI-pokam measured, reached a new
+        # way.
+        if name[:1].isupper() and name not in _SCALA_IMPLICIT_IMPORT_TYPES:
+            found = self._member(name, "apply", registry)
+            if found is not None or element:
+                return found
+            sym = self._global_symbols.get(name)
+            if sym is not None and sym.kind == "class" and _is_project_type(
+                name, self._global_symbols, self._import_aliases,
+                self._file_packages, self._project_packages,
+            ):
+                return name  # a case class's synthesised ``apply``
+        return None
+
+    def _owner(self, value: "tree_sitter.Node") -> "str | None":
+        """The type a member access on ``value`` looks in: its value's type, or an
+        object / type named bare when no binder in scope takes the name."""
+        typed = self.expr_type(value)
+        if typed is not None:
+            return typed
+        if value.type == "identifier":
+            name = node_text(value, self._source)
+            if (
+                name[:1].isupper() and name not in _SCALA_IMPLICIT_IMPORT_TYPES
+                and self._lexical(name, value) is None and name not in self._var_types
+            ):
+                return name
+        return None
+
+    def _enclosing_owners(self, at: "tree_sitter.Node") -> "list[str]":
+        owners: list[str] = []
+        cur = at.parent
+        while cur is not None:
+            if cur.type in _SCALA_OWNER_DEFS:
+                ident = find_child_by_type(cur, "identifier")
+                if ident is not None:
+                    owners.append(node_text(ident, self._source))
+            elif cur.type == "instance_expression" and find_child_by_type(
+                cur, "template_body",
+            ) is not None:
+                parent = _declared_type_name(cur, self._source)
+                if parent is not None:
+                    owners.append(parent)
+            cur = cur.parent
+        return owners
+
+    def _member(self, owner: str, member: str, registry: "dict[str, str]") -> "str | None":
+        """``owner.member``'s registered entry, through ``owner``'s base classes."""
+        queue = [owner.rsplit(".", 1)[-1]]
+        seen: set[str] = set()
+        while queue and len(seen) < 32:
+            cls = queue.pop(0)
+            if cls in seen:
+                continue
+            seen.add(cls)
+            found = registry.get(f"{cls}.{member}")
+            if found is not None:
+                return found
+            sym = self._global_symbols.get(cls)
+            queue.extend((sym.meta or {}).get("base_classes", []) if sym is not None else [])
+        return None
+
+    def symbol_type_name(self, type_name: str) -> str:
+        """The name a type's MEMBERS are registered and resolved under: a
+        qualified PROJECT type by its simple name, anything else unchanged.
+
+        A project symbol is named ``<Type>.<member>`` with the type's simple name,
+        and the ``inherited_calls`` linker looks a ``receiver_type_hint`` up by
+        it; the qualified path still decides WHICH same-named type a bind may
+        land on (see the call site) and fills the module slot.
+        """
+        if "." not in type_name:
+            return type_name
+        simple = type_name.rsplit(".", 1)[1]
+        sym = self._global_symbols.get(simple)
+        if (
+            sym is not None and sym.kind in ("class", "object", "trait")
+            and _import_names_project_path(type_name, self._project_packages)
+        ):
+            return simple
+        return type_name
+
+
+def _pattern_names(pattern: "tree_sitter.Node", source: bytes) -> "list[str]":
+    """Every name a value-definition PATTERN binds (``val (a, b) = ..`` binds two)."""
+    if pattern.type == "identifier":
+        return [node_text(pattern, source)]
+    names: list[str] = []
+    for child in pattern.children:
+        if child.type not in _SCALA_TYPE_NODES:
+            names.extend(_pattern_names(child, source))
+    return names
+
+
 def _extract_edges_from_file(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -1312,11 +2115,16 @@ def _extract_edges_from_file(
     file_symbols: "list[Symbol] | None" = None,
     file_packages: "dict[str, _ScalaFile] | None" = None,
     project_packages: "frozenset[str]" = frozenset(),
+    method_return_type_registry: "dict[str, str] | None" = None,
+    element_registry: "dict[str, str] | None" = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
-    Tracks variable types from function parameters and constructor assignments
-    (``val x = new Foo()``) to disambiguate method calls like ``x.bar()``.
+    Types a method call's receiver to disambiguate ``x.bar()``: from declared
+    types (parameters, annotations, ``new``) and, through
+    ``method_return_type_registry``, from inferred ones -- a call result, a
+    chained receiver, a parameterless member, ``this`` (WI-gokop,
+    :class:`_ScalaReceiverTyper`).
 
     ``file_packages`` maps each analysed file to its package and the types it
     declares (:class:`_ScalaFile`). It lets a symbol
@@ -1336,6 +2144,10 @@ def _extract_edges_from_file(
     file_anchor = file_anchor_symbol("scala", str(file_path), PASS_ID, run_id)
     var_types: dict[str, str] = {}
     _scoped_imports = _block_scoped_imports(tree.root_node, source)
+    typer = _ScalaReceiverTyper(
+        source, method_return_type_registry or {}, element_registry or {}, var_types,
+        global_symbols, import_aliases, file_packages, project_packages,
+    )
 
     def _applies(name: str, at: "tree_sitter.Node") -> bool:
         """Whether the file's import of ``name`` is in force at ``at``: always
@@ -1431,6 +2243,7 @@ def _extract_edges_from_file(
                 # two questions).
                 has_receiver = False
                 inline_path: "str | None" = None
+                receiver_type: "str | None" = None
                 if not callee_node:
                     field_node = find_child_by_type(node, "field_expression")
                     if field_node:
@@ -1439,6 +2252,7 @@ def _extract_edges_from_file(
                         if len(ids) >= 2:
                             receiver_name = node_text(ids[0], source)
                             callee_node = ids[-1]
+                            receiver_type = typer.receiver_type(receiver_name, node)
                         elif ids:
                             # The receiver is an EXPRESSION, so it contributed
                             # no identifier of its own and the single id is the
@@ -1449,14 +2263,23 @@ def _extract_edges_from_file(
                             _value = field_node.child_by_field_name("value")
                             if _value is not None:
                                 inline_path = _inline_path(_value, source)
+                                # WI-gokop: a call result, a member, a cast.
+                                receiver_type = typer.expr_type(_value)
 
                 if callee_node:
                     callee_name = node_text(callee_node, source)
 
                     # Type-qualified resolution: receiver.method() → Type.method
                     edge_added = False
-                    if receiver_name and receiver_name in var_types:
-                        type_name = var_types[receiver_name]
+                    if receiver_type:
+                        # WI-gokop: a QUALIFIED project type (from the registry,
+                        # or written inline) looks its member up by the simple
+                        # name, and the qualified path must not contradict the
+                        # symbol found -- the same WI-tipoh check an explicit
+                        # import gets. Without it a same-named type in another
+                        # package took the bind (lila: 74 ``Env`` classes).
+                        type_name = typer.symbol_type_name(receiver_type)
+                        stated = receiver_type if type_name != receiver_type else None
                         qualified = f"{type_name}.{callee_name}"
                         target = local_symbols.get(qualified)
                         if target is None:
@@ -1466,11 +2289,16 @@ def _extract_edges_from_file(
                                 caller_path=_caller_path,
                             )
                             if lookup.found and lookup.symbol is not None and not (
-                                _applies(type_name, node) and _import_names_elsewhere(
+                                stated is None and _applies(type_name, node)
+                                and _import_names_elsewhere(
                                     lookup.symbol, import_aliases.get(type_name), file_packages,
                                     import_aliases)
                             ):
                                 target = lookup.symbol
+                        if target is not None and stated is not None and _import_names_elsewhere(
+                            target, stated, file_packages, import_aliases,
+                        ):
+                            target = None
                         if target is not None:
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -1510,11 +2338,8 @@ def _extract_edges_from_file(
                         # less: ``new Untyped(x).createNewFile()`` cannot be a
                         # call on the enclosing class under any reading.
                         gate_meta: dict = {"call_construct": "method"}
-                        receiver_type = (
-                            var_types.get(receiver_name) if receiver_name else None
-                        )
                         if receiver_type:
-                            gate_meta["receiver_type_hint"] = receiver_type
+                            gate_meta["receiver_type_hint"] = typer.symbol_type_name(receiver_type)
                         # WI-sigog / INV-linub L3: the receiver TYPE this branch
                         # has just inferred must also reach the MODULE SLOT, not
                         # only ``meta``. The two slots answer different questions
@@ -1765,13 +2590,17 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
     #: :func:`_package_readings` of ``_file_packages``, built on the first file of
     #: Pass 2, when every package is known.
     _project_packages: "Optional[frozenset[str]]" = None
+    #: ``<Owner>.<member>`` -> the element type of the container it returns, for
+    #: this run only (WI-gokop). Reset by :meth:`analyze`.
+    _element_types: "Optional[dict[str, str]]" = None
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
         file_path: Path, rel_path: str, run: "AnalysisRun",
     ) -> FileAnalysis:
         """Extract functions, classes, objects, traits from a Scala file."""
-        analysis = _extract_symbols_from_file(tree, source, rel_path, run.execution_id)
+        analysis = _extract_symbols_from_file(
+            tree, source, rel_path, run.execution_id, element_types=self._element_types)
         if self._file_packages is not None:
             self._file_packages[rel_path] = _ScalaFile(
                 _scala_file_package(tree.root_node, source),
@@ -1810,6 +2639,8 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
             file_symbols=self.file_symbols(local_symbols),
             file_packages=self._file_packages,
             project_packages=self._project_package_readings(),
+            method_return_type_registry=self._method_return_type_registry,
+            element_registry=self._element_types,
         )
 
     def _project_package_readings(self) -> "frozenset[str]":
@@ -1825,6 +2656,7 @@ class ScalaAnalyzer(TreeSitterAnalyzer):
         """
         self._file_packages = {}
         self._project_packages = None
+        self._element_types = {}
         return super().analyze(repo_root, max_files)
 
 
