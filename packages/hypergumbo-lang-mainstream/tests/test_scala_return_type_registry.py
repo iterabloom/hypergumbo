@@ -285,6 +285,73 @@ class TestDeliberatelyNotInferred:
         assert _hint(e) == "FileWriter"
 
 
+class TestNestedTypeReference:
+    """A return type written as a TYPE MEMBER of a project object
+    (``Outer.Inner``) is the type ``Inner``: its members are looked up by the
+    leaf. Measured on sbt: ``NetworkClient.parseArgs`` returns
+    ``NetworkClient.Arguments``, and ``parseArgs(..).withBaseDirectory(..)``
+    stayed unresolved -- and a parameter typed ``Arguments`` that the registry
+    re-typed lost the bind it had before."""
+
+    _FILES: ClassVar[dict[str, str]] = {
+        "lib/Lib.scala": (
+            "package demo.lib\n\n"
+            "object Outer {\n"
+            "  class Inner {\n"
+            "    def ping(): Int = 1\n"
+            "  }\n"
+            "  def make(): Outer.Inner = new Inner\n"
+            "}\n"
+        ),
+        "lib/File.scala": (
+            "package demo.lib\n\n"
+            "class File {\n"
+            "  def exists(): Boolean = true\n"
+            "}\n"
+        ),
+        "Main.scala": (
+            "package demo\n\n"
+            "import demo.lib.Outer\n\n"
+            "object Use {\n"
+            "  def nestedType(): Unit = {\n"
+            "    Outer.make().ping()\n"
+            "  }\n"
+            "  def jdk(f: java.io.File): Unit = {\n"
+            "    f.exists()\n"
+            "  }\n"
+            "}\n"
+        ),
+    }
+
+    @pytest.fixture(scope="class")
+    def nested_edges(self, tmp_path_factory: pytest.TempPathFactory) -> list:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        root = tmp_path_factory.mktemp("gokop_nested")
+        for rel, text in self._FILES.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text)
+        result = analyze_scala(root)
+        assert not result.skipped
+        return [e for e in result.edges if e.edge_type == "calls"]
+
+    def test_a_type_member_binds_through_its_leaf(self, nested_edges: list) -> None:
+        pings = [e for e in nested_edges if e.dst.split(":")[3].endswith("ping")]
+        assert len(pings) == 1, [e.dst for e in nested_edges]
+        assert pings[0].is_resolved and pings[0].dst.endswith(":Inner.ping:method"), pings[0].dst
+
+    def test_a_library_path_ending_in_a_project_type_name_stays_the_library(
+        self, nested_edges: list,
+    ) -> None:
+        """``java.io.File`` is not the project's ``demo.lib.File``: neither a
+        project package nor rooted at a project type, so it keeps its path."""
+        hits = [e for e in nested_edges if e.dst.split(":")[3].endswith("exists")]
+        assert len(hits) == 1, [e.dst for e in nested_edges]
+        assert not hits[0].is_resolved
+        assert hits[0].dst == "scala:java.io.File:0-0:exists:unresolved"
+        assert _hint(hits[0]) == "java.io.File"
+
+
 class TestImplicitNameCollider:
     """A project type NESTED in an object, which shares a name Scala imports
     implicitly, does not capture the standard library's: outside that object
