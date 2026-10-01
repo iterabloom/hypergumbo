@@ -1,0 +1,22 @@
+- op: create  # e682
+  at: '2026-10-01T01:28:46Z'  # e682
+  by: agent  # e682
+  actor: jgstern_agent  # e682
+  clock: 1  # e682
+  nonce: e682  # e682
+  data:  # e682
+    kind: work_item  # e682
+    title: "javascript: a CommonJS export (module.exports = { f } / exports.h = h) sets is_exported=False -- a positive 'not exported' claim, wrong for every CommonJS export"  # e682
+    status: todo_hard  # e682
+    priority: 3  # e682
+    parent:  # e682
+    tags:  # e682
+    - javascript  # e682
+    - analysis_quality  # e682
+    - supply_chain  # e682
+    isbefore: []  # e682
+    duplicate_of: []  # e682
+    not_duplicate_of: []  # e682
+    pr_ref:  # e682
+    description: "FOUND 2026-09-30 by the WI-sinol premise check (dry run group A); reproduced on dev b16e3e9271.\n\nTHE DEFECT. A CommonJS export never sets `is_exported`, and since INV-kubup made the field three-valued (None = no rule, False = measured not exported), the javascript analyzer's `False` is a POSITIVE claim that the symbol is not public -- and it is wrong for every CommonJS export.\n\nREPRO (scratch fixture lib.js, `hypergumbo survey`):\n    function f() {...}  function h() {...}  function priv() {...}\n    module.exports = { f };\n    exports.h = h;\n  -> f is_exported=False, h is_exported=False, priv is_exported=False.\nExpected: f and h True (exported through module.exports / exports.<name>), priv False (or None if the analyzer cannot decide).\n\nWHY IT MATTERS. (1) WI-sinol's fix (gate module_exports edges on a positive export signal) cannot use `is_exported` while CommonJS reads False -- gating on it would drop the correct `f` edge. (2) Every consumer that branches on exportedness (dead-code `--seeds exports`, supply-chain public-API classification, the merge pass) reads CommonJS modules as having no public API.\n\nSCOPE TO CHECK BEFORE FIXING (not measured): the shapes `module.exports = { f, g }`, `module.exports.f = ...`, `exports.f = ...`, `module.exports = f` (default export of a function), `module.exports = class X {}`, and re-exports `module.exports = require('./x')`. ESM `export` sets the field today (WI-zimum phase 2 / WI-gipag); this is the CommonJS half only.\nRelated: WI-sinol (consumer), INV-kubup (made False a positive claim), WI-zimum (exportedness for dead-code seeds)."  # e682
+    fields: {}  # e682

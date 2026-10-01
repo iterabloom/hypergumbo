@@ -1,0 +1,24 @@
+- op: create  # 1163
+  at: '2026-10-01T01:25:33Z'  # 1163
+  by: agent  # 1163
+  actor: jgstern_agent  # 1163
+  clock: 1  # 1163
+  nonce: '1163'  # 1163
+  data:  # 1163
+    kind: work_item  # 1163
+    title: "The CI self-map is built without receiver typing: run the scip-python backend in the map the test-only-reachability gate reads (WI-mifag's real blocker)"  # 1163
+    status: todo_hard  # 1163
+    priority: 2  # 1163
+    parent:  # 1163
+    tags:  # 1163
+    - ci_infrastructure  # 1163
+    - receiver_typing  # 1163
+    - multi_fidelity  # 1163
+    - analysis_quality  # 1163
+    isbefore:  # 1163
+    - WI-mifag-vunus-vosug-ratam-fomij-voguz-nizad-tamir  # 1163
+    duplicate_of: []  # 1163
+    not_duplicate_of: []  # 1163
+    pr_ref:  # 1163
+    description: "FOUND 2026-09-30, verified at the owner's request: WI-mifag's real blocker, which no item tracked.\n\nTHE GAP. WI-mifag (gate METHODS in the test-only-reachability ratchet) needs a self-map in which a method reference resolves to its owning type. WI-nanom (done, PR #1083) shipped that capability as the scip-python backend -- but OPT-IN, and the CI map build never opts in:\n- Both CI map builds are a bare `python -m hypergumbo_core run . --out /tmp/self-tree.json` (.woodpecker/full-suite.yml:127; .github/workflows/full-suite.yml:296). No `--backend scip-python`, no HYPERGUMBO_SCIP_PYTHON env, and the repo has no .hypergumbo.toml with `[backends] scip_python = true`.\n- The Woodpecker step's image is python:3.11-bookworm and it installs core + mainstream + common + extended1 only: not hypergumbo-lang-scip-python, no node/npm, no `npm install -g @sourcegraph/scip-python@0.6.6`. The backend's gate (hypergumbo_lang_scip_python/gate.py) needs BOTH an opt-in and the binary on PATH; with neither, the run is plain ast-python.\n\nPOLICY ALLOWS IT. ADR-0045 ruling 5: a backend that executes nothing from the analysed repo (pyright) is a plain preference, not a trust grant -- unlike rust-analyzer, which \"will never run in CI\" (WI-romuh) because it executes build.rs. ADR-0057 :231 records scip_python as `executes_analysed_code=False`. registry.npmjs.org is in ALLOWED_WEBSITES.md (for agents; the CI runner's own network access was NOT checked).\n\nWHAT TO DO.\n1. In the step that builds the map the test-only-reachability gate reads: install hypergumbo-lang-scip-python, node, and scip-python 0.6.6; opt in for THAT RUN ONLY via the HYPERGUMBO_SCIP_PYTHON env on the step. Not a repo-level .hypergumbo.toml: that would also change every local run and the self-claims gate's pinned verdicts (INV-fugu shows how sensitive that gate is to analysis changes).\n2. Decide per consumer of the shared /tmp/self-tree.json: self-tree-validation reads the same file, so either build a second, backend-enabled map for the reachability gate or re-baseline self-tree-validation deliberately.\n3. Prove it ran: the map's analysis_runs carries the scip_python pass with no dependency_unavailable / skip; report the typed share of method receivers.\nCOST, measured by WI-nanom on hypergumbo-core/src only (179 files): 40 s, 2.1 GB RSS. The whole repo was NOT measured.\n\nSCOPE LINE. This row is the map. Making demotion_reason resolve a method reference through its receiver type (instead of the bare last-name component) stays WI-mifag's deliverable 2. Note also WI-kutal (self.method() resolved by bare name), the analyzer-side half of the same gap.\n\nDEPENDS ON the row that ports the test-only-reachability gate into the live (Woodpecker) CI: until then no CI run reads this map for the gate."  # 1163
+    fields: {}  # 1163
