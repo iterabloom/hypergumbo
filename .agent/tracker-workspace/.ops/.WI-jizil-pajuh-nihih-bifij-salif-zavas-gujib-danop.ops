@@ -30,3 +30,10 @@
   set: {}  # ea97
   add:  # ea97
     not_duplicate_of: [WI-vokiz-muhif-bagiv-tazuj-supon-padik-nudoj-pigij]  # ea97
+- op: discuss  # 565c
+  at: '2026-10-01T00:55:25Z'  # 565c
+  by: agent  # 565c
+  actor: jgstern_agent  # 565c
+  clock: 3  # 565c
+  nonce: 565c  # 565c
+  message: "PREMISE CHECK 2026-09-30 (dev 134a06d505): CURRENT-WITH-UPDATES -- the divergence has already recurred.\n\n- cli.py:11163 `verify_claims_epilog` is still a hand-written string; the boundary enumeration sits at ~L11170-11177 and nothing in cli.py references IO_BOUNDARY_TYPES. Today's WI-lidof edits (2209b48a46, b0712dbffc) touched the extra_catalogs paragraph, not the enumeration.\n- Registry (io_boundary_types.py:156 IO_BOUNDARY_TYPES) now names 21 boundaries; the help lists 20. Missing from help: navigation_read -- added to the registry 2026-09-29 in 8f2178a437 (INV-dadu), the day before this check. Nothing in help is absent from the registry. (Help was hand-extended since PR #776 with db_compose, process_send and browser_storage_read/write.)\n- `hypergumbo verify-claims --help | grep -c navigation_read` -> 0.\n- Behaviour (scratch fixture, one-file repo): `boundary: navigation_read` -> ACCEPTED (verdict inconclusive, rc 2 because the fixture has no call edges -- NOT a validation error); `boundary: not_a_real_boundary` -> \"Error: unknown boundary ...; valid boundaries:\" listing all 21 incl. navigation_read, rc 2.\n- No test compares the epilog to the registry: grep of packages/hypergumbo-core/tests for verify_claims_epilog / navigation_read in test_cli_docs_prose_gate.py finds nothing.\n\nProposed update to the description: the instance count is now \"help 20 / validator 21, missing navigation_read (8f2178a437)\"; the fix as written (derive the enumeration from IO_BOUNDARY_TYPES at parser construction) stands unchanged. not_duplicate_of WI-vokiz (done, unrelated tree_sitter decode row) still correct."  # 565c
