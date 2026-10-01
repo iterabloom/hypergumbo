@@ -93,6 +93,11 @@ single adjudicator, as in WI-gibom's pass for 0006.
 | VACUOUS:KIND-MISDECLARED | 3 | |
 | VACUOUS:CONFIGURED-ACTION | 0 | |
 
+> **What a row counts.** Each row is one (source call site, sink call site)
+> pair included by call-graph reachability, not a claim that a value flowed,
+> so the row rate is a rate over reachability pairs. See
+> [What a row counts](README.md#what-a-row-counts).
+
 Unweighted per-repo mean useful: **28.0%**.
 
 **The band does not trip on either estimator** (30.9% pooled, 28.0%

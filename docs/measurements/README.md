@@ -46,6 +46,38 @@ disbelieve the number.
 One markdown file per measurement, named `<NNNN>-<topic>.md`, numbered
 independently of the ADR and audit-findings series.
 
+## What a row counts
+
+A taint-precision record reports two units. A **situation** is the
+post-`INV-karud` collapse record. A **row** is one (source call site, sink call
+site) pair, the pair `collapsed_flow_count` counts. Before the collapse existed
+(0001, 0003), a reported flow was one source→sink pair, and those records call
+it a flow.
+
+**A row is a call-graph reachability pair, not a claim that a value flowed.**
+Every row was included because the sink is reachable from the source in the
+call graph (`if sink_node in reachable`, `propagate_taint_structural` in
+`taint.py`). That holds whatever the row's `analysis_method` is: ADR-0017 §3a's
+walk never adds a row. It raises a row to `ddg` where it finds a dependence,
+and since `b26d97bd11` (2026-09-02) it also removes a row whose dependence it
+refutes. For a `structural` row, nothing beyond reachability was checked
+except two narrow pair refusals: `_source_and_sink_are_one_call` (INV-lozat)
+and `_source_names_can_reach_sink` (INV-fumod). The published
+`dataflow_coverage` block states this as `inclusion_decided_by`.
+
+So the row denominator grows with how much a source reaches, not with how much
+tainted data moves. A source that is a FILE node reaches everything its file
+calls. On kamaraflow (2026-08-27, `WI-badab`), one `argv` read was paired with
+four distinct sinks for a collapsed count of 8, in a repository with one
+`os.makedirs` call site. Nothing is miscounted. The count is of a different
+population than a reader of "precision per row" assumes.
+
+ADR-0048 F1 still requires the row rate beside the situation rate in every
+record. **A record that publishes a row rate says, beside it, that the rate is
+over reachability pairs**, and links this section. Records 0001, 0003, 0004,
+0005, 0006 and 0012 publish row rates and carry that note. Every row rate in
+the index below is over this population.
+
 ## Index
 
 | ID | Title | Instrument | Result |

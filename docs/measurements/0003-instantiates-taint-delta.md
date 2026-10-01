@@ -87,6 +87,12 @@ passed, and control dependence only are FALSE POSITIVES.
 | pretix | 24 | 0 | 24 | 0.0% |
 | **combined** | **35** | **1** | **34** | **2.9%** |
 
+> **What a flow counts.** This record predates the situation collapse, so a
+> flow is one source→sink pair, the unit later records call a row. It was
+> included by call-graph reachability, not by a claim that
+> a value flowed, so the precision here is a rate over reachability pairs. See
+> [What a row counts](README.md#what-a-row-counts).
+
 **2.9% against a ≈41% baseline.** The widening landed an order of magnitude
 below the layer it landed into.
 
