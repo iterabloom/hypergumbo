@@ -98,6 +98,10 @@ Class and method symbols include rich metadata in their `meta` field:
 - `base_classes`: List of base class/interface names including generics
   Example: `extends Repository<User> implements IService` → `["Repository<User>", "IService"]`
 
+**Interface metadata:**
+- `base_classes`: the interface's `extends` bases (WI-kalug), every one an
+  `extends` base. Example: `interface C extends A, ns.B<T>` → `["A", "ns.B<T>"]`
+
 **Method metadata:**
 - `decorators`: List of decorator dicts with name, args, kwargs
   (a NestJS route path is read off the decorators for ``stable_id``
@@ -2768,17 +2772,61 @@ def _resolve_base_class_js(
     return candidates_sorted[0]
 
 
+def _pick_inheritance_target(
+    sym: Symbol,
+    class_sym: Optional[Symbol],
+    iface_sym: Optional[Symbol],
+) -> Optional[tuple[Symbol, str]]:
+    """Choose the resolved base and its edge type for one base name.
+
+    A CLASS source prefers a class base (``extends``) over an interface base
+    (``implements``) — the pre-WI-kalug order. An INTERFACE source prefers an
+    interface base and falls back to a class (TypeScript lets an interface
+    extend a class); either way the edge is ``extends``, because an interface
+    never implements anything. A candidate that is the source itself is
+    skipped. Returns ``None`` when neither candidate is usable.
+    """
+    if sym.kind == "interface":
+        for cand in (iface_sym, class_sym):
+            if cand is not None and cand.id != sym.id:
+                return cand, "extends"
+        return None
+    if class_sym is not None and class_sym.id != sym.id:
+        return class_sym, "extends"
+    if iface_sym is not None and iface_sym.id != sym.id:
+        return iface_sym, "implements"
+    return None
+
+
+def _resolved_inheritance_edge(
+    sym: Symbol, target: Symbol, edge_type: str, run: AnalysisRun,
+) -> Edge:
+    """The resolved ``extends`` / ``implements`` edge from *sym* to *target*."""
+    return Edge.create(
+        src=sym.id,
+        dst=target.id,
+        edge_type=edge_type,
+        line=sym.span.start_line if sym.span else 0,
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        evidence_type=f"ast_{edge_type}",
+    )
+
+
 def _extract_inheritance_edges(
     symbols: list[Symbol],
     classes_by_name: dict[str, list[Symbol]],
     parsed_files: list["_ParsedFile"],
     run: AnalysisRun,
 ) -> list[Edge]:
-    """Extract extends/implements edges from class inheritance.
+    """Extract extends/implements edges from class and interface inheritance.
 
-    For each class with base_classes metadata, creates extends/implements edges
-    to base classes/interfaces that exist in the analyzed codebase. This enables
-    the type hierarchy linker to create dispatches_to edges for polymorphic dispatch.
+    For each class or interface with base_classes metadata, creates
+    extends/implements edges to base classes/interfaces that exist in the
+    analyzed codebase, and an unresolved-external edge (F4/A2) for a base that
+    resolves to none. This enables the type hierarchy linker to create
+    dispatches_to edges for polymorphic dispatch. An interface source's edges
+    are always ``extends`` (WI-kalug; see ``_pick_inheritance_target``).
 
     When multiple classes or interfaces share the same name (common in monorepos
     and repos with test stubs), uses import-aware disambiguation via
@@ -2831,7 +2879,7 @@ def _extract_inheritance_edges(
                     )
 
     for sym in symbols:
-        if sym.kind != "class":
+        if sym.kind not in ("class", "interface"):
             continue
 
         base_classes = sym.meta.get("base_classes", []) if sym.meta else []
@@ -2854,26 +2902,9 @@ def _extract_inheritance_edges(
             iface_sym = _resolve_base_class_js(
                 base_name, sym, interfaces_by_name, parsed_files
             )
-            if base_sym is not None and base_sym.id != sym.id:
-                edges.append(Edge.create(
-                    src=sym.id,
-                    dst=base_sym.id,
-                    edge_type="extends",
-                    line=sym.span.start_line if sym.span else 0,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type="ast_extends",
-                ))
-            elif iface_sym is not None and iface_sym.id != sym.id:
-                edges.append(Edge.create(
-                    src=sym.id,
-                    dst=iface_sym.id,
-                    edge_type="implements",
-                    line=sym.span.start_line if sym.span else 0,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type="ast_implements",
-                ))
+            picked = _pick_inheritance_target(sym, base_sym, iface_sym)
+            if picked is not None:
+                edges.append(_resolved_inheritance_edge(sym, *picked, run))
             elif base_sym is None and iface_sym is None:
                 # F4/A2: the base resolves to neither a project class nor a
                 # project interface. Before declaring it external, re-resolve an
@@ -2890,23 +2921,9 @@ def _extract_inheritance_edges(
                     ri = _resolve_base_class_js(
                         canonical, sym, interfaces_by_name, parsed_files
                     )
-                    if rb is not None and rb.id != sym.id:
-                        edges.append(Edge.create(
-                            src=sym.id, dst=rb.id, edge_type="extends",
-                            line=sym.span.start_line if sym.span else 0,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_extends",
-                        ))
-                        continue
-                    if ri is not None and ri.id != sym.id:
-                        edges.append(Edge.create(
-                            src=sym.id, dst=ri.id, edge_type="implements",
-                            line=sym.span.start_line if sym.span else 0,
-                            origin=PASS_ID,
-                            origin_run_id=run.execution_id,
-                            evidence_type="ast_implements",
-                        ))
+                    picked = _pick_inheritance_target(sym, rb, ri)
+                    if picked is not None:
+                        edges.append(_resolved_inheritance_edge(sym, *picked, run))
                         continue
 
                 # Module hint: named import of the member, else a default/
@@ -2927,7 +2944,11 @@ def _extract_inheritance_edges(
                 ):
                     continue
 
-                is_impl = base_name in implements_by_class.get(
+                # An interface's bases are all ``extends`` bases (WI-kalug); the
+                # implements-clause map is keyed by (path, name) and a merged
+                # ``class Foo implements Bar`` must not relabel ``interface Foo
+                # extends Bar``.
+                is_impl = sym.kind == "class" and base_name in implements_by_class.get(
                     (sym_path, sym.name), set()
                 )
                 edge_type = "implements" if is_impl else "extends"
@@ -3860,11 +3881,9 @@ def _extract_base_classes(
                         base_classes.append(base_name + type_args)
                 elif heritage_child.type == "implements_clause":
                     # implements_clause contains interface list
-                    for impl_child in heritage_child.children:
-                        if impl_child.type in ("identifier", "type_identifier"):
-                            base_classes.append(_node_text(impl_child, source))
-                        elif impl_child.type == "generic_type":
-                            base_classes.append(_node_text(impl_child, source))
+                    base_classes.extend(
+                        _heritage_type_names(heritage_child, source)
+                    )
                 elif heritage_child.type == "identifier":
                     # JavaScript: class_heritage directly contains identifier
                     base_classes.append(_node_text(heritage_child, source))
@@ -3893,11 +3912,54 @@ def _extract_implements_names(
         if child.type == "class_heritage":
             for heritage_child in child.children:
                 if heritage_child.type == "implements_clause":
-                    for impl_child in heritage_child.children:
-                        if impl_child.type in (
-                            "identifier", "type_identifier", "generic_type",
-                        ):
-                            names.append(_node_text(impl_child, source))
+                    names.extend(_heritage_type_names(heritage_child, source))
+    return names
+
+
+# The type nodes a heritage TYPE list (``implements A, B<T>, ns.C`` or an
+# interface's ``extends A, ns.B<T>``) can name. ``nested_type_identifier`` is
+# the namespace-qualified form (``ng.OnInit``); it was missing from the
+# implements reader, which silently dropped ``implements ng.OnInit``.
+_HERITAGE_TYPE_NODES: frozenset[str] = frozenset({
+    "identifier", "type_identifier", "generic_type", "nested_type_identifier",
+})
+
+
+def _heritage_type_names(
+    clause: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Return the base type names a heritage type-list clause names.
+
+    The ONE reader for a comma-separated list of TYPES — a class's
+    ``implements_clause`` and an interface's ``extends_type_clause``. Names
+    keep their generic arguments and namespace qualifier (``Observer<number>``,
+    ``ns.Gen<string>``); the inheritance-edge extractor strips them. A class's
+    ``extends`` clause is NOT a type list (it is an expression — a call, a
+    cast, a member access) and has its own reader in ``_extract_base_classes``.
+    """
+    return [
+        _node_text(c, source)
+        for c in clause.children
+        if c.type in _HERITAGE_TYPE_NODES
+    ]
+
+
+def _extract_interface_bases(
+    node: "tree_sitter.Node", source: bytes
+) -> list[str]:
+    """Return the bases of an ``interface_declaration`` (WI-kalug).
+
+    ``interface Child<T> extends Base, Observer<number>`` carries an
+    ``extends_type_clause``. Before WI-kalug no reader looked at it, so
+    interface symbols had no ``base_classes`` meta and ``interface Child
+    extends Base`` produced zero inheritance edges in the analyzer and in the
+    core inheritance linker alike. Every base here is an ``extends`` base:
+    TypeScript has no ``implements`` for an interface.
+    """
+    names: list[str] = []
+    for child in node.children:
+        if child.type == "extends_type_clause":
+            names.extend(_heritage_type_names(child, source))
     return names
 
 
@@ -4428,6 +4490,7 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
+                iface_bases = _extract_interface_bases(node, source)
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "interface", lang),
                     name=name,
@@ -4437,6 +4500,7 @@ def _extract_symbols(
                     span=span,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
+                    meta={"base_classes": iface_bases} if iface_bases else None,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(

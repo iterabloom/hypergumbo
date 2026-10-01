@@ -12,7 +12,12 @@ How It Works
    extends/implements) and class/module symbols with included_modules metadata
    (for includes)
 2. For each base class name, looks up the target symbol
-3. Creates extends (for classes) or implements (for interfaces) edges
+3. Creates extends (for classes) or implements (for interfaces) edges. The
+   edge type follows the SOURCE as well as the target: an inherently-abstract
+   source (interface / trait / protocol) only ever *extends* its bases —
+   Java/TS/PHP ``interface A extends B``, Scala ``trait A extends B``, Swift
+   ``protocol A: B`` — so its edges are ``extends`` even to an interface
+   target (WI-kalug). Only a concrete type *implements* an interface.
 4. When a base resolves to no in-tree symbol (an external/stdlib base), mints an
    unresolved-external ``extends`` edge instead of dropping the relationship —
    WI-jubag Approach C, the framework-agnostic chokepoint generalization of the
@@ -42,7 +47,7 @@ import time
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
-from ..symbol_kinds import type_like_kind_names
+from ..symbol_kinds import abstract_type_kind_names, type_like_kind_names
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
@@ -375,7 +380,8 @@ def _create_inheritance_edges(
     """Create extends/implements edges from base_classes metadata.
 
     For each symbol with base_classes metadata:
-    - If base is an interface in our codebase -> implements edge
+    - If base is an interface in our codebase -> implements edge, unless the
+      SOURCE is itself an interface/trait/protocol -> extends edge (WI-kalug)
     - If base is a class in our codebase -> extends edge
     - If base resolves to no in-tree symbol (external/stdlib) -> an
       unresolved-external ``extends`` edge (WI-jubag Approach C); see
@@ -425,6 +431,9 @@ def _create_inheritance_edges(
                 srcs_with_analyzer_external.add(e.src)
 
     edges: list[Edge] = []
+    # WI-kalug: an abstract type inherits from an abstract base; it does not
+    # implement it. Registry-derived, so a new abstract kind joins the rule.
+    abstract_kinds = abstract_type_kind_names()
 
     for sym in symbols:
         if sym.kind not in type_like_kind_names():
@@ -477,7 +486,9 @@ def _create_inheritance_edges(
                 )
                 if resolved is not None:
                     target_sym, is_fallback = resolved
-                    edge_type = "implements"
+                    edge_type = (
+                        "extends" if sym.kind in abstract_kinds else "implements"
+                    )
                     break
                 if rust_kind_discipline:
                     continue
