@@ -502,6 +502,12 @@ def _walk_tree(node: "tree_sitter.Node"):
         stack.extend(reversed(current.children))
 
 
+#: The parameter type nodes that bind a receiver type.
+_JAVA_PARAM_TYPE_NODES: frozenset[str] = frozenset({
+    "type_identifier", "scoped_type_identifier", "generic_type", "array_type",
+})
+
+
 def _extract_param_types(
     node: "tree_sitter.Node", source: bytes
 ) -> dict[str, str]:
@@ -512,8 +518,16 @@ def _extract_param_types(
             client.send();  // resolves to Client.send
         }
 
+    A parameter whose type is spelled with its package (``javax.crypto.Cipher c``)
+    binds that qualified name, which ``_qualify_receiver_type`` takes as its own
+    module, exactly as a declared LOCAL of the same spelling already did through
+    :func:`_declared_type_name` (WI-halin: the parameter arm matched only bare,
+    generic and array types, so the qualified spelling bound nothing).
+
     Returns:
-        Dict mapping parameter names to their type names (simple name only, not qualified).
+        Dict mapping parameter names to their type names, as the source spells
+        them (``Client``, or ``javax.crypto.Cipher``), generics and array
+        brackets stripped.
     """
     param_types: dict[str, str] = {}
 
@@ -533,7 +547,7 @@ def _extract_param_types(
             param_type = None
             param_name = None
             for subchild in child.children:
-                if subchild.type in ("type_identifier", "generic_type", "array_type"):
+                if subchild.type in _JAVA_PARAM_TYPE_NODES:
                     # Extract just the base type name (e.g., "Client" from "Client<T>")
                     param_type = _extract_type_text(subchild, source)
                     # Strip generic parameters for lookup
@@ -551,7 +565,7 @@ def _extract_param_types(
             param_type = None
             param_name = None
             for subchild in child.children:
-                if subchild.type in ("type_identifier", "generic_type", "array_type"):
+                if subchild.type in _JAVA_PARAM_TYPE_NODES:
                     param_type = _extract_type_text(subchild, source)
                     if "<" in param_type:
                         param_type = param_type.split("<")[0]
@@ -945,6 +959,23 @@ _JAVA_STREAM_READ_METHODS: frozenset[str] = frozenset({
 _JAVA_STREAM_UNWRAP_BUDGET: int = 8
 
 
+def _java_created_type_name(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """The type an ``object_creation_expression`` names, as the source spells it.
+
+    Generic arguments are stripped and a package path is KEPT, so
+    ``new java.io.FileOutputStream(p)`` names ``java.io.FileOutputStream`` and
+    ``new ArrayList<String>()`` names ``ArrayList`` -- the receiver-typing
+    spelling :func:`_qualify_receiver_type` accepts, the same one a declared
+    type carries (:func:`_declared_type_name`).
+    """
+    type_node = node.child_by_field_name("type")
+    if type_node is None:  # pragma: no cover - the grammar always fields a type
+        return None
+    return _node_text(type_node, source).strip().split("<", 1)[0].strip() or None
+
+
 def _java_object_creation_type(
     node: "tree_sitter.Node", source: bytes,
 ) -> Optional[str]:
@@ -955,11 +986,8 @@ def _java_object_creation_type(
     as their bare spellings -- the tables below are keyed on short names because
     that is what an import makes the source say.
     """
-    type_node = node.child_by_field_name("type")
-    if type_node is None:  # pragma: no cover - the grammar always fields a type
-        return None
-    text = _node_text(type_node, source).strip().split("<", 1)[0].strip()
-    return text.rsplit(".", 1)[-1] or None
+    text = _java_created_type_name(node, source)
+    return None if text is None else text.rsplit(".", 1)[-1]
 
 
 def _java_enclosing_body(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
@@ -2320,28 +2348,75 @@ def _extract_edges(
             project_class_names,
         ) or type_name
 
-    def _chained_receiver_type(
-        inner: "tree_sitter.Node", current_class: str | None,
+    def _static_type_owner(obj: "tree_sitter.Node") -> str | None:
+        """The registry owner when ``obj`` NAMES A TYPE -- a static call's receiver.
+
+        WI-halin. ``Cipher.getInstance(..)`` is called on a TYPE, so its owner
+        is the path the file establishes for that type, the same slot the
+        unresolved emit writes for the call itself: a project class bare (the
+        way Pass 1 keys its methods), a single-type import, an inline package
+        path (``java.nio.file.Files``), or -- for a CAPITALISED name -- the
+        wildcard / ``java.lang`` disjunction (:func:`_wildcard_candidate_slot`).
+        A type parameter is never a type here, and the caller takes a bound
+        variable first (so a local named ``Files`` stays the local); a
+        lowercase name is never sent to a wildcard package. ``None`` for
+        anything else.
+        """
+        if obj.type == "field_access":
+            return _fully_qualified_type_reference(_node_text(obj, source))
+        if obj.type != "identifier":
+            return None
+        name = _node_text(obj, source)
+        if name in type_params:
+            return None
+        if name in class_symbols:
+            return name
+        if name in imports:
+            return imports[name]
+        if name[:1].isupper() and (wildcard_imports or name in _JAVA_LANG_TYPES):
+            return _wildcard_candidate_slot(wildcard_imports or [], name)
+        return None
+
+    def _call_return_type(
+        call: "tree_sitter.Node", current_class: str | None,
     ) -> str | None:
-        """What ``inner`` returns, for ``inner(...).method()`` (WI-gajuh)."""
-        inner_name = inner.child_by_field_name("name")
-        if inner_name is None:  # pragma: no cover - the grammar always names one
-            return None
-        inner_obj = inner.child_by_field_name("object")
-        owner: str | None = None
-        if inner_obj is None:
+        """What the ``method_invocation`` ``call`` returns, per the registry.
+
+        WI-gajuh read one link: ``inner(..).method()`` with ``inner`` called on
+        nothing, a typed variable or a project class. WI-halin reads the whole
+        chain, rooted at any receiver whose type the file establishes -- a
+        static type (``Cipher.getInstance(..)``, ``Runtime.getRuntime()
+        .exec(c)``), a constructor (``new Socket(h, p).getOutputStream()``) or
+        ``this`` -- and each link's answer becomes the next link's owner. The
+        walk is an explicit loop over the chain the parser already built, so a
+        long builder chain costs one step per link and no recursion; the first
+        link the registry does not know ends it with ``None``.
+        """
+        links: list["tree_sitter.Node"] = []
+        root: "tree_sitter.Node | None" = call
+        while root is not None and root.type == "method_invocation":
+            links.append(root)
+            root = root.child_by_field_name("object")
+        owner: str | None
+        if root is None or root.type == "this":
             owner = current_class
-        elif inner_obj.type == "identifier":
-            recv = _node_text(inner_obj, source)
-            if recv in var_types:
-                owner = _registry_owner(var_types[recv])
-            elif recv in class_symbols:
-                owner = recv
-        if owner is None:
-            return None
-        return _registry_lookup(
-            method_return_type_registry, owner, _node_text(inner_name, source),
-        )
+        elif root.type == "identifier" and _node_text(root, source) in var_types:
+            owner = _registry_owner(var_types[_node_text(root, source)])
+        elif root.type == "object_creation_expression":
+            created = _java_created_type_name(root, source)
+            owner = None if created is None else _registry_owner(created)
+        else:
+            owner = _static_type_owner(root)
+        returned: str | None = None
+        for link in reversed(links):
+            link_name = link.child_by_field_name("name")
+            if owner is None or link_name is None:
+                return None
+            returned = _registry_lookup(
+                method_return_type_registry, owner, _node_text(link_name, source),
+            )
+            owner = None if returned is None else _registry_owner(returned)
+        return returned
     # Track class inheritance: child_class_name -> parent_class_name
     # Uses global map if provided (for cross-file inheritance), plus
     # augmented with per-file extends relationships discovered during traversal.
@@ -2621,12 +2696,29 @@ def _extract_edges(
                         and object_node.type == "method_invocation"
                         and method_return_type_registry
                     ):
-                        pr4_receiver_type_hint = _chained_receiver_type(
+                        pr4_receiver_type_hint = _call_return_type(
                             object_node, current_class,
                         )
+                    # WI-halin: a CONSTRUCTOR receiver --
+                    # ``new FileOutputStream(p).write(b)`` -- is the one
+                    # expression whose type the source writes outright.
+                    elif (
+                        object_node is not None
+                        and object_node.type == "object_creation_expression"
+                    ):
+                        pr4_receiver_type_hint = _java_created_type_name(
+                            object_node, source,
+                        )
 
-                    # Case 1: this.method() or method() - resolve in current class
-                    if receiver_name is None or receiver_name == "this":
+                    # Case 1: this.method() or method() - resolve in current class.
+                    # WI-halin: ONLY those (and ``super.m()``, whose handling is
+                    # unchanged). A receiver EXPRESSION -- a constructor, a
+                    # chained call, a cast, a literal -- also leaves
+                    # ``receiver_name`` at ``None``, and reading that as an
+                    # implicit ``this`` bound ``new FileOutputStream(p).write(b)``
+                    # to the ENCLOSING class's own ``write`` as a resolved call,
+                    # so the sink edge was never emitted at all.
+                    if object_node is None or object_node.type in ("this", "super"):
                         if current_class:
                             candidate = f"{current_class}.{method_name}"
                             lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
@@ -2772,23 +2864,6 @@ def _extract_edges(
                             )
                         ):
                             resolved_sym = lookup_result.symbol
-                        elif method_return_type_registry:
-                            # WI-gajuh, the WI-lalot interface: the method is
-                            # not a project symbol, so its return type can only
-                            # come from a LIBRARY row -- ``java.net.Socket
-                            # .getOutputStream`` -> ``java.io.OutputStream``.
-                            # Bind the assigned variable to it.
-                            library_ret = _registry_lookup(
-                                method_return_type_registry,
-                                _registry_owner(type_class_name), method_name,
-                            )
-                            parent_node = node.parent
-                            if (
-                                library_ret is not None
-                                and parent_node is not None
-                                and parent_node.type == "variable_declarator"
-                            ):
-                                _bind_declarator(parent_node, library_ret, exact=False)
 
                     # Case 3.5: inherited field.method() — Site 3.
                     # WI-puvil (PR-5): the parent-chain field walk
@@ -2848,6 +2923,22 @@ def _extract_edges(
                             parent_node = node.parent
                             if parent_node and parent_node.type == "variable_declarator":
                                 _bind_declarator(parent_node, ret_name, exact=False)
+                    # WI-gajuh, the WI-lalot interface: a method that is not a
+                    # project symbol can only be typed from a LIBRARY row --
+                    # ``java.net.Socket.getOutputStream`` ->
+                    # ``java.io.OutputStream``. WI-halin: read through the same
+                    # chain walk the chained receiver uses, so ``var c =
+                    # Cipher.getInstance(..)`` (a static owner) binds as well as
+                    # ``var o = s.getOutputStream()`` (a typed variable) did.
+                    elif resolved_sym is None and method_return_type_registry:
+                        parent_node = node.parent
+                        if (
+                            parent_node is not None
+                            and parent_node.type == "variable_declarator"
+                        ):
+                            library_ret = _call_return_type(node, current_class)
+                            if library_ret is not None:
+                                _bind_declarator(parent_node, library_ret, exact=False)
 
                     # Case 4: Fallback - try imported class or just the receiver name
                     # This handles edge cases where the receiver isn't recognized as a
@@ -3057,8 +3148,11 @@ def _extract_edges(
                             object_node, receiver_name, explicit_fq_module,
                             var_types, imports, type_params,
                         )
+                        # WI-halin: a static import names a BARE call (and,
+                        # as before, ``this.m()``), never a call on a receiver
+                        # expression such as ``make().assertEquals(x)``.
                         if (
-                            (receiver_name is None or receiver_name == "this")
+                            (object_node is None or object_node.type == "this")
                             and static_imports is not None
                             and method_name in static_imports
                         ):
@@ -3288,12 +3382,19 @@ def _extract_edges(
                         # ``make_unresolved_edge`` because that helper is shared
                         # by every analyzer -- the same place c.py and go.py put
                         # theirs.
+                        # WI-halin: a CONSTRUCTOR receiver is now typed too, which
+                        # selects the same dual rows, so its origin is read from
+                        # the constructor itself.
                         if (
                             method_name in _JAVA_STREAM_READ_METHODS
-                            and receiver_name
+                            and object_node is not None
                         ):
-                            _target_kind = _java_receiver_stream_kind(
-                                node, source, receiver_name,
+                            _target_kind = (
+                                _java_receiver_stream_kind(
+                                    node, source, receiver_name,
+                                )
+                                if receiver_name
+                                else _java_stream_kind_of(object_node, source)
                             )
                             if _target_kind is not None:
                                 # Rebuilt rather than indexed: ``Edge.meta`` is
@@ -3356,13 +3457,20 @@ def _extract_edges(
 
             # Track variable type for type inference
             # Check if this new expression is part of a variable assignment
-            if type_name and node.parent:
-                parent = node.parent
-                # Java variable declarations: Type varName = new Type();
-                # The declaration (visited first) bound the declared type;
-                # the constructor narrows it to the concrete one.
-                if parent.type == "variable_declarator":
-                    _bind_declarator(parent, type_name, exact=True)
+            # Java variable declarations: Type varName = new Type();
+            # The declaration (visited first) bound the declared type;
+            # the constructor narrows it to the concrete one. WI-halin: the
+            # type is read as written, so ``var f = new java.io.FileOutputStream(p)``
+            # and ``var xs = new ArrayList<String>()`` bind too (only a bare
+            # ``type_identifier`` did).
+            created_type = _java_created_type_name(node, source)
+            parent = node.parent
+            if (
+                created_type is not None
+                and parent is not None
+                and parent.type == "variable_declarator"
+            ):
+                _bind_declarator(parent, created_type, exact=True)
 
         # Method references: App::transform, this::process, Class::new
         # Creates a "references" edge from the enclosing method to the

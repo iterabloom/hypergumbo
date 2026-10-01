@@ -44,6 +44,18 @@ class TestTheRowsThemselves:
         for value in load_library_signatures("java").values():
             assert "." in value, value
 
+    def test_java_keys_carry_the_owners_package(self) -> None:
+        """WI-halin: java asks the registry with the owner path the calling file
+        establishes (`java.net.Socket.getOutputStream`), so a short-owner key
+        (`Socket.getOutputStream`) never matched and raised nothing -- every row
+        shipped that way. The owner is a lowercase package path then a type."""
+        rows = load_library_signatures("java")
+        assert rows["java.net.Socket.getOutputStream"] == "java.io.OutputStream"
+        for key in rows:
+            *package, owner, method = key.split(".")
+            assert package and all(p[:1].islower() for p in package), key
+            assert owner[:1].isupper() and method[:1].islower(), key
+
     def test_objc_selector_keys_survive_yaml(self) -> None:
         """An objc selector carries colons, so `A.sel:with:: T` is ambiguous YAML and
         every key is quoted. This pins that the quoting held."""
@@ -147,15 +159,18 @@ class TestThroughTheAnalyzers:
 
     def test_java_types_a_receiver_from_a_static_factory(self, tmp_path: Path) -> None:
         """`DriverManager.getConnection` is one of the nine rows WI-lalot measured as
-        INERT in real code."""
+        INERT in real code.
+
+        The local is ``var`` so only the ROW can type it: a declared
+        ``Connection c`` types itself (INV-vugon) and passed with the row inert
+        (WI-halin)."""
         from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "M.java").write_text(
-            "import java.sql.Connection;\n"
             "import java.sql.DriverManager;\n"
             "public class M {\n"
             "  void go(String u, String s) throws Exception {\n"
-            "    Connection c = DriverManager.getConnection(u);\n"
+            "    var c = DriverManager.getConnection(u);\n"
             "    c.prepareStatement(s);\n"
             "  }\n"
             "}\n"
