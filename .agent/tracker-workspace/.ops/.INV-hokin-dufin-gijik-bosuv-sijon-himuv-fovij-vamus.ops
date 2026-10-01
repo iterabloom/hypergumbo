@@ -1,0 +1,32 @@
+- op: create  # 1700
+  at: '2026-10-01T01:25:15Z'  # 1700
+  by: agent  # 1700
+  actor: jgstern_agent  # 1700
+  clock: 1  # 1700
+  nonce: '1700'  # 1700
+  data:  # 1700
+    kind: invariant  # 1700
+    title: "WI-ratuv's test-only-reachability gate has never run in the live CI: it exists only in the GitHub full-suite workflow (schedule disabled 07-23), not in .woodpecker/full-suite.yml"  # 1700
+    status: violated  # 1700
+    priority: 2  # 1700
+    parent:  # 1700
+    tags:  # 1700
+    - ci_infrastructure  # 1700
+    - testing  # 1700
+    isbefore: []  # 1700
+    duplicate_of: []  # 1700
+    not_duplicate_of: []  # 1700
+    pr_ref:  # 1700
+    description: "FOUND 2026-09-30 while tracing WI-mifag's blocker (owner asked to verify no item tracks it).\n\nTHE FACT. WI-ratuv's test-only-reachability ratchet is defined in exactly one CI file, and that file does not run:\n- The step \"Test-only-reachability ratchet (WI-ratuv)\" exists only in .github/workflows/full-suite.yml (~:299-316). It was added there by 89f3c7f457 on 2026-09-02.\n- That workflow's schedule was commented out on 2026-07-23 (c35d88e371, \"disable scheduled full-suite/nightly runs during forge migration\"); its only remaining trigger is workflow_dispatch. GitHub Actions is disabled (recorded on WI-bavak).\n- The live cron is .woodpecker/full-suite.yml (created 897a207870, 2026-07-24). It ports the two sibling self-tree gates -- self-tree-validation (WI-jigup) and self-claims-gate (WI-vanun) -- but has NO test-only-reachability step. Neither .woodpecker/nightly.yml nor .woodpecker/woodpecker.yml references scripts/check-test-only-reachability.\n- No test pins the gate's presence in the live CI (contrast tests/test_ci_self_claims_gate_scope.py, which pins the self-claims arm).\nSo since the day it merged, no scheduled or per-PR CI run has executed the gate WI-ratuv was closed on. The baseline .ci/test-only-reachability-baseline.json has not changed since 89f3c7f457. NOT CHECKED: whether anyone ran the GitHub workflow by manual dispatch since 09-02.\n\nTHIS IS A REPEAT OF A KNOWN SHAPE. The self-claims gate was lost the same way (the comment above .woodpecker/full-suite.yml's self-claims-gate step: it \"had been running on NOTHING since cutover\", \"the original port dropped the step\"). That instance was fixed by porting the step and pinning it with a test; the class -- a gate added to, or left only in, the dormant GitHub workflows -- was not closed.\n\nFIX SHAPE.\n1. Port the step into .woodpecker/full-suite.yml's self-tree-validation step, which already builds /tmp/self-tree.json: `python scripts/check-test-only-reachability --map /tmp/self-tree.json` (copy the GHA step's exit-code handling: exit 2 = infrastructure -> warn, continue).\n2. Pin it like the self-claims arm: a test that the live Woodpecker full-suite invokes the script.\n3. Before trusting the gate, run it once against a current self-map: the baseline is four weeks old and was never exercised by CI, so the first run may fail on drift that accumulated unseen. Adjudicate that drift; do NOT just rewrite the baseline (WI-ratuv's own ruling: a rubber-stamped ratchet is worse than none).\n4. Structural follow-up (the class): diff every step of .github/workflows/{full-suite,nightly}.yml against .woodpecker/ and list any other gate that exists only in a dormant file. Only full-suite.yml was compared here (its three self-tree gates: two ported, this one not); nightly.yml was NOT compared.\n\nWI-ratuv is not reopened by this row: its gate logic is not in question, only where it runs. This row blocks the receiver-typing map item and WI-mifag, which both extend a gate that currently runs nowhere."  # 1700
+    fields:  # 1700
+      statement: "Every CI gate that a closed tracker item relies on runs in the live CI configuration (.woodpecker/), and a test pins its presence there."  # 1700
+      root_cause: "WI-ratuv (89f3c7f457, 2026-09-02) added its ratchet step only to .github/workflows/full-suite.yml, whose schedule was disabled on 2026-07-23 (c35d88e371) for the forge migration; the live Woodpecker full-suite (897a207870, 2026-07-24) ports the sibling self-tree-validation and self-claims gates but not this one, and no test pins it."  # 1700
+- op: update  # 5ce1
+  at: '2026-10-01T01:26:00Z'  # 5ce1
+  by: agent  # 5ce1
+  actor: jgstern_agent  # 5ce1
+  clock: 2  # 5ce1
+  nonce: 5ce1  # 5ce1
+  set: {}  # 5ce1
+  add:  # 5ce1
+    isbefore: [WI-losig-domon-janak-rumop-rubas-rapas-vinuj-zohih]  # 5ce1
