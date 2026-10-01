@@ -1248,13 +1248,36 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "connection."),
     MetaKeySpec("topic", AXIS_EDGE_META,
                 "Message-queue / pub-sub topic (or channel) an event_publishes "
-                "edge with meta['channel_kind']='queue' targets — the literal "
-                "topic string, or "
-                "the variable's identifier name when the topic is dynamic (see "
-                "``topic_type``)."),
+                "edge with meta['channel_kind']='queue' targets — the topic "
+                "STRING: written as a literal, or the value of a same-file "
+                "string constant the call site names. ``None`` when the site "
+                "names an identifier that could not be resolved (WI-misod); the "
+                "identifier is then on ``topic_identifier``, never here."),
     MetaKeySpec("topic_type", AXIS_EDGE_META,
-                "Whether the message-queue ``topic`` was a string 'literal' or "
-                "a 'variable' reference resolved to its identifier name."),
+                "How the message-queue ``topic`` is known (``_name_args`` "
+                "kinds): 'literal' (a string at the site), 'constant' (an "
+                "identifier resolved to a same-file string constant) or "
+                "'unresolved' (an identifier whose value is not known). On a "
+                "symbol it describes the SITE; on an edge it describes the JOIN "
+                "('literal' only when both ends are literal; 'unresolved' when "
+                "the ends were joined on an equal identifier)."),
+    MetaKeySpec("topic_identifier", AXIS_EDGE_META,
+                "The identifier a message-queue site wrote in place of a topic "
+                "string (``None`` when it wrote a literal); on an edge, the "
+                "identifier an identifier-join compared (``None`` for a value "
+                "join). WI-misod: kept apart from ``topic`` so an identifier is "
+                "never read as the topic."),
+    MetaKeySpec("channel_identifier", AXIS_EDGE_META,
+                "IPC-linker analogue of ``topic_identifier``: the identifier an "
+                "Electron IPC site wrote in place of a channel string, or the "
+                "identifier an identifier-join compared. ``channel`` then holds "
+                "the channel VALUE or ``None`` (WI-misod)."),
+    MetaKeySpec("event_identifier", AXIS_EDGE_META,
+                "Event-sourcing-linker analogue of ``topic_identifier``: the "
+                "identifier a publish / subscribe site wrote in place of an "
+                "event-name string, or the identifier an identifier-join "
+                "compared. ``event_name`` then holds the event VALUE, or "
+                "``None`` when the identifier could not be resolved (WI-misod)."),
     MetaKeySpec("queue_type", AXIS_EDGE_META,
                 "Message-queue family/pattern that produced a publish/subscribe "
                 "edge, from the message_queue linker's queue classification."),

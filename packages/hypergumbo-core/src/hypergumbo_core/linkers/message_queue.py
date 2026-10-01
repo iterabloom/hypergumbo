@@ -52,21 +52,29 @@ Redis Pub/Sub:
 
 Topic Detection Strategy
 ------------------------
-Patterns can use either string literals or variables for topic names:
-- Literal: producer.produce('orders', msg) -> exact topic 'orders'
-- Variable: producer.produce(topic, msg) -> variable name 'topic'
+A topic is written as a string literal or as an identifier. The shared
+``_name_args`` helper (WI-misod) classifies each site:
+- Literal: producer.produce('orders', msg) -> topic 'orders' (``literal``)
+- Constant: ORDERS = 'orders'; producer.produce(ORDERS, msg) -> topic 'orders'
+  (``constant``; same-file module-scope string constant, ``topic_identifier``
+  keeps 'ORDERS')
+- Unresolved: producer.produce(config.topic, msg) -> topic NOT known
+  (``unresolved``; meta ``topic`` is None, ``topic_identifier`` is 'config.topic')
 
-For variable-based topics, we use heuristic matching:
-- If publisher uses `ORDERS_TOPIC` and subscriber uses `ORDERS_TOPIC`, link them
-- Confidence is lower for variable-based matches (0.65 vs 0.9)
+Publishers join subscribers on the topic VALUE (confidence 0.9) when both
+values are known. When either side is unresolved they join only on an equal
+IDENTIFIER (``variable_match``, confidence 0.65) -- an identifier's text is never
+compared with a topic string. Edge ``topic_type`` labels the JOIN
+(literal / constant / unresolved); symbol ``topic_type`` labels the SITE.
 
 How It Works
 ------------
 1. Find all source files (Python, JavaScript, TypeScript, Java)
 2. Scan each file for message queue patterns using regex
-3. Extract topic names (literals) or variable names from patterns
+3. Extract topic literals, resolving identifiers to same-file string constants
 4. Create symbols for producers and consumers
-5. Create edges linking publishers to subscribers on matching topics/variables
+5. Create edges linking publishers to subscribers on matching topic values
+   (or, when a value is unknown, on matching identifiers)
 
 Why This Design
 ---------------
@@ -93,6 +101,14 @@ from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import js_ts_language_from_path, read_masked_source
+from ._name_args import (
+    KIND_LITERAL,
+    NAME_ARG_RE,
+    ConstantResolver,
+    NameArg,
+    name_arg_from_match,
+    pair_by_name,
+)
 from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("message-queue-linker")
@@ -103,12 +119,18 @@ class MessageQueuePattern:
     """Represents a detected message queue pattern."""
 
     type: str  # 'publish' or 'subscribe'
-    topic: str  # Topic/queue/channel name (literal value or variable name)
+    topic: str  # Topic value when known, else the identifier written (label)
     line: int  # Line number in source
     file_path: str  # Source file path
     language: str  # Source language
     queue_type: str  # 'kafka', 'rabbitmq', 'sqs', 'redis'
-    topic_type: str = "literal"  # 'literal' or 'variable'
+    topic_type: str = KIND_LITERAL  # 'literal' | 'constant' | 'unresolved'
+    topic_identifier: str | None = None  # identifier written at the site, if any
+
+    @property
+    def arg(self) -> NameArg:
+        """The site's topic as a :class:`NameArg` (WI-misod)."""
+        return NameArg(self.topic, self.topic_type, self.topic_identifier)
 
 
 @dataclass
@@ -120,18 +142,9 @@ class MessageQueueLinkResult:
     run: AnalysisRun | None = None
 
 
-# ============================================================================
-# Common patterns for variable detection
-# ============================================================================
-
-# Identifier pattern: matches variable names, constants, and simple attribute access
-# Examples: topic, TOPIC_NAME, config.topic, self.topic_name
-_IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*"
-
-# Topic argument pattern: matches either a string literal OR an identifier
-# Group 1: string literal content (if literal)
-# Group 2: identifier/variable name (if variable)
-_TOPIC_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
+# Topic argument pattern (shared, ``_name_args``): a string literal (group 1)
+# OR an identifier (group 2) -- topic, TOPIC_NAME, config.topic, self.topic.
+_TOPIC_ARG = NAME_ARG_RE
 
 
 # ============================================================================
@@ -288,54 +301,34 @@ def _detect_language(file_path: Path) -> str:
     return "unknown"  # pragma: no cover
 
 
-def _extract_topic_from_match(match: re.Match) -> tuple[str, str]:
-    """Extract topic and topic_type from a regex match.
-
-    The _TOPIC_ARG pattern captures:
-    - Group 1 (or N): string literal content (if literal)
-    - Group 2 (or N+1): identifier/variable name (if variable)
-
-    Returns:
-        tuple of (topic_value, topic_type) where topic_type is 'literal' or 'variable'
-    """
-    # Try groups 1 and 2 first (standard case)
-    literal = match.group(1)
-    variable = match.group(2)
-
-    if literal:
-        return (literal, "literal")
-    elif variable:
-        return (variable, "variable")
-    else:
-        # Fallback - shouldn't happen with our patterns
-        return ("unknown", "variable")  # pragma: no cover
-
-
 def _scan_file(file_path: Path, content: str) -> list[MessageQueuePattern]:
     """Scan a file for message queue patterns.
 
-    Detects both literal topic names (e.g., 'orders') and variable references
-    (e.g., topic, TOPIC_NAME, config.topic).
+    Detects literal topic names (e.g., 'orders') and identifier references
+    (e.g., topic, TOPIC_NAME, config.topic); an identifier bound to a same-file
+    module-scope string constant resolves to that string (WI-misod).
     """
     patterns: list[MessageQueuePattern] = []
     language = _detect_language(file_path)
+    resolver = ConstantResolver(content, language)
 
     def add_pattern(
-        match: re.Match,
+        match: re.Match[str],
         pattern_type: str,
         queue_type: str,
     ) -> None:
         """Helper to add a pattern with proper topic extraction."""
-        topic, topic_type = _extract_topic_from_match(match)
+        arg = name_arg_from_match(match, 1, 2, resolver)
         line = content[: match.start()].count("\n") + 1
         patterns.append(MessageQueuePattern(
             type=pattern_type,
-            topic=topic,
+            topic=arg.label,
             line=line,
             file_path=str(file_path),
             language=language,
             queue_type=queue_type,
-            topic_type=topic_type,
+            topic_type=arg.kind,
+            topic_identifier=arg.identifier,
         ))
 
     # Kafka patterns
@@ -365,7 +358,7 @@ def _scan_file(file_path: Path, content: str) -> list[MessageQueuePattern]:
         add_pattern(match, "subscribe", "rabbitmq")
 
     for match in RABBITMQ_CONSUME_POSITIONAL_PATTERN.finditer(content):
-        topic, topic_type = _extract_topic_from_match(match)
+        arg = name_arg_from_match(match, 1, 2, resolver)
         line = content[: match.start()].count("\n") + 1
         # Avoid duplicates - if keyword pattern already found something on this line,
         # skip positional pattern entirely (keyword pattern is more precise)
@@ -376,12 +369,13 @@ def _scan_file(file_path: Path, content: str) -> list[MessageQueuePattern]:
         if not already_found:
             patterns.append(MessageQueuePattern(
                 type="subscribe",
-                topic=topic,
+                topic=arg.label,
                 line=line,
                 file_path=str(file_path),
                 language=language,
                 queue_type="rabbitmq",
-                topic_type=topic_type,
+                topic_type=arg.kind,
+                topic_identifier=arg.identifier,
             ))
 
     for match in RABBITMQ_SEND_TO_QUEUE_PATTERN.finditer(content):
@@ -412,24 +406,32 @@ def _scan_file(file_path: Path, content: str) -> list[MessageQueuePattern]:
 
     # JavaScript Redis subscribe (avoid duplicates from generic pattern above)
     for match in REDIS_SUBSCRIBE_JS_PATTERN.finditer(content):
-        topic, topic_type = _extract_topic_from_match(match)
+        arg = name_arg_from_match(match, 1, 2, resolver)
         line = content[: match.start()].count("\n") + 1
         already_found = any(
-            p.line == line and p.topic == topic
+            p.line == line and p.topic == arg.label
             for p in patterns
         )
         if not already_found:
             patterns.append(MessageQueuePattern(
                 type="subscribe",
-                topic=topic,
+                topic=arg.label,
                 line=line,
                 file_path=str(file_path),
                 language=language,
                 queue_type="redis",
-                topic_type=topic_type,
+                topic_type=arg.kind,
+                topic_identifier=arg.identifier,
             ))
 
     return patterns
+
+
+def _stable_topic_parts(arg: NameArg) -> tuple[str, ...]:
+    """stable_id segments naming a site's topic: the value, or a marked identifier."""
+    if arg.value is not None:
+        return (arg.value,)
+    return ("unresolved", arg.label)
 
 
 def _create_symbol(pattern: MessageQueuePattern, root: Path) -> Symbol:
@@ -468,16 +470,21 @@ def _create_symbol(pattern: MessageQueuePattern, root: Path) -> Symbol:
         # form when topic contained ``:`` — e.g. SQS URLs and redis subject
         # patterns). The factory hashes into ``sha256:<16hex>`` and lets the
         # topic carry any embedded ``:`` without breaking the validator.
+        # WI-misod: an unresolved identifier is not a topic, so its stable_id
+        # carries a marker segment and cannot collide with a topic string.
         stable_id=make_protocol_stable_id(
             "message_queue",
             pattern.queue_type,
             pattern.type,
-            pattern.topic,
+            *_stable_topic_parts(pattern.arg),
         ),
         meta={
             "queue_type": pattern.queue_type,
-            "topic": pattern.topic,
+            # WI-misod: the topic VALUE -- None when the identifier written at
+            # the site could not be resolved (see ``topic_identifier``).
+            "topic": pattern.arg.value,
             "topic_type": pattern.topic_type,
+            "topic_identifier": pattern.topic_identifier,
             "message_type": pattern.type,
             "framework_role": framework_role,
         },
@@ -509,89 +516,83 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
         except (OSError, IOError):  # pragma: no cover
             pass
 
-    # Create symbols
+    # Create symbols. Each pattern keeps ITS OWN symbol: a (path, line) index
+    # would hand two same-line patterns one symbol between them.
     symbols: list[Symbol] = []
+    symbol_of: dict[int, Symbol] = {}
     for pattern in all_patterns:
         symbol = _create_symbol(pattern, root)
         symbol.origin = [PASS_ID]
         symbol.origin_run_id = run.execution_id
         symbols.append(symbol)
+        symbol_of[id(pattern)] = symbol
 
-    # Group patterns by (queue_type, topic)
-    publishers: dict[tuple[str, str], list[MessageQueuePattern]] = {}
-    subscribers: dict[tuple[str, str], list[MessageQueuePattern]] = {}
+    publishers = [p for p in all_patterns if p.type == "publish"]
+    subscribers = [p for p in all_patterns if p.type != "publish"]
 
-    for pattern in all_patterns:
-        key = (pattern.queue_type, pattern.topic)
-        if pattern.type == "publish":
-            publishers.setdefault(key, []).append(pattern)
-        else:
-            subscribers.setdefault(key, []).append(pattern)
-
-    # Build (file_path, line) -> symbol index for fast lookup
-    symbol_by_location: dict[tuple[str, int], Symbol] = {
-        (s.path, s.span.start_line): s for s in symbols if s.span
-    }
-
-    # Create edges from publishers to subscribers
+    # Create edges from publishers to subscribers. WI-misod: the shared
+    # ``pair_by_name`` joins on the topic VALUE when both are known and on the
+    # IDENTIFIER only when one side is unresolved -- never an identifier's text
+    # against a topic string. Sites never join across queue families.
     edges: list[Edge] = []
-    for key, pubs in publishers.items():
-        subs = subscribers.get(key, [])
-        for pub in pubs:
-            pub_symbol = symbol_by_location.get((pub.file_path, pub.line))
-            for sub in subs:
-                sub_symbol = symbol_by_location.get((sub.file_path, sub.line))
-                if pub_symbol and sub_symbol:
-                    # ADR-0031: read discovery_language for synthetic stand-ins
-                    # emitted by Class-B linker producers; fall back to language
-                    # for real-source declarations and for Symbols that haven't
-                    # migrated yet (double-write absorbs the Phase 1 window).
-                    # Prefer Symbol fields over the pattern object's language
-                    # because the Symbol is what consumers downstream of this
-                    # linker will see; the pattern is an internal intermediate.
-                    _pub_lang = pub_symbol.discovery_language or pub_symbol.language
-                    _sub_lang = sub_symbol.discovery_language or sub_symbol.language
-                    is_cross_language = _pub_lang != _sub_lang
-                    # Confidence depends on whether topics are literal or variable
-                    # Literal-to-literal: high confidence (exact match)
-                    # Variable-to-variable: lower confidence (heuristic match)
-                    is_variable_match = (
-                        pub.topic_type == "variable" or sub.topic_type == "variable"
-                    )
-                    base_confidence = 0.65 if is_variable_match else 0.9
-                    confidence = base_confidence - (0.1 if is_cross_language else 0.0)
-                    # Pass linker-specific meta via Edge.create's meta= kwarg
-                    # so Edge.create merges it with the dataflow fields —
-                    # assigning edge.meta afterward would wipe the dataflow
-                    # meta fields set above (INV-forim).
-                    # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
-                    # MQ publisher→subscriber via topic is publish-
-                    # family shape; "queue" is the channel kind.
-                    # Canonical 'event_publishes' +
-                    # meta['channel_kind']='queue'. Same fold target
-                    # as audit-findings 0001's 'enqueues'.
-                    edge = Edge.create(
-                        src=pub_symbol.id,
-                        dst=sub_symbol.id,
-                        edge_type="event_publishes",
-                        line=pub.line,
-                        confidence=confidence,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                        evidence_type="variable_match" if is_variable_match else "topic_match",
-                        access_mode="write",
-                        channel=key[1],
-                        meta={
-                            "channel_kind": "queue",
-                            "queue_type": key[0],
-                            "topic": key[1],
-                            "topic_type": "variable" if is_variable_match else "literal",
-                        },
-                        # derived-from consumed-none: both ends are minted from a file scan and
-                        #   joined on the topic
-                        derived_from=[],
-                    )
-                    edges.append(edge)
+    for pub, sub, join in pair_by_name(
+        publishers,
+        subscribers,
+        lambda p: p.arg,
+        lambda p: p.arg,
+        scope=lambda p: p.queue_type,
+    ):
+        pub_symbol = symbol_of[id(pub)]
+        sub_symbol = symbol_of[id(sub)]
+        # ADR-0031: read discovery_language for synthetic stand-ins
+        # emitted by Class-B linker producers; fall back to language
+        # for real-source declarations and for Symbols that haven't
+        # migrated yet (double-write absorbs the Phase 1 window).
+        # Prefer Symbol fields over the pattern object's language
+        # because the Symbol is what consumers downstream of this
+        # linker will see; the pattern is an internal intermediate.
+        _pub_lang = pub_symbol.discovery_language or pub_symbol.language
+        _sub_lang = sub_symbol.discovery_language or sub_symbol.language
+        is_cross_language = _pub_lang != _sub_lang
+        # Confidence depends on what the join compared:
+        # value-to-value: high confidence (exact topic match)
+        # identifier-to-identifier: lower confidence (heuristic match)
+        is_variable_match = not join.on_value
+        base_confidence = 0.65 if is_variable_match else 0.9
+        confidence = base_confidence - (0.1 if is_cross_language else 0.0)
+        # Pass linker-specific meta via Edge.create's meta= kwarg
+        # so Edge.create merges it with the dataflow fields —
+        # assigning edge.meta afterward would wipe the dataflow
+        # meta fields set above (INV-forim).
+        # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
+        # MQ publisher→subscriber via topic is publish-
+        # family shape; "queue" is the channel kind.
+        # Canonical 'event_publishes' +
+        # meta['channel_kind']='queue'. Same fold target
+        # as audit-findings 0001's 'enqueues'.
+        edge = Edge.create(
+            src=pub_symbol.id,
+            dst=sub_symbol.id,
+            edge_type="event_publishes",
+            line=pub.line,
+            confidence=confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="variable_match" if is_variable_match else "topic_match",
+            access_mode="write",
+            channel=join.channel,
+            meta={
+                "channel_kind": "queue",
+                "queue_type": pub.queue_type,
+                "topic": join.value,
+                "topic_type": join.kind,
+                "topic_identifier": join.identifier,
+            },
+            # derived-from consumed-none: both ends are minted from a file scan and
+            #   joined on the topic
+            derived_from=[],
+        )
+        edges.append(edge)
 
     run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.duration_ms = int((time.time() - start_time) * 1000)
