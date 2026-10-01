@@ -46,12 +46,12 @@ from hypergumbo_core.verify_claims import (
     verify_claim,
 )
 
-#: Spelled ``net/http`` (the require path), NOT ``Net::HTTP`` as ruby source
-#: writes it: the ruby analyzer emits the receiver constant lowercased and
-#: without its namespace (``ruby:http:0-0:get``), and ``_module_matches``
-#: requires a suffix match to agree in case (INV-dijor), so a ``Net::HTTP`` row
-#: cannot match. That is the analyzer's slot, filed separately; this file is
-#: about whether the overlay applies at all.
+#: Spelled ``net/http`` (the require path). The ruby analyzer emits the
+#: receiver constant as written (``ruby:Net::HTTP:0-0:get``, WI-surar), and
+#: ``_module_matches`` folds ``::`` and ``/`` alike, so this row and a
+#: ``Net::HTTP`` row both match it. The spelling is the analyzer's business
+#: (pinned in the ruby package); this file is about whether the overlay
+#: applies at all.
 RUBY_OVERLAY = """\
 language: ruby
 status: overlay
@@ -64,7 +64,7 @@ net_recv:
 #: Captured from ``hypergumbo survey`` over ``Net::HTTP.get(URI(u))``.
 RUBY_GET_EDGE = {
     "src": "ruby:app.rb:2-4:fetch:function",
-    "dst": "ruby:http:0-0:get:external_symbol",
+    "dst": "ruby:Net::HTTP:0-0:get:external_symbol",
     "type": "calls",
     "line": 3,
     "meta": {"call_construct": "method"},
@@ -193,14 +193,14 @@ class TestTheVerdicts:
         of ruby's I/O."""
         file_write = {
             "src": "ruby:app.rb:6-8:save:function",
-            "dst": "ruby:file:0-0:write:external_symbol",
+            "dst": "ruby:File:0-0:write:external_symbol",
             "type": "calls",
             "line": 7,
             "meta": {"call_construct": "method"},
         }
         _catalogs, coverage = self._coverage(tmp_path, [RUBY_GET_EDGE, file_write])
         assert coverage.complete is False
-        assert "file" in (coverage.reason or "")
+        assert "File" in (coverage.reason or "")
         verdict = verify_claim(self._claim("fs_write"), BoundaryMap(), coverage)
         assert verdict.verdict == "inconclusive", verdict.verdict
 

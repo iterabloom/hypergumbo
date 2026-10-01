@@ -120,9 +120,8 @@ def test_a_constant_receiver_is_not_bound_to_another_class(
 
 
 def test_an_undeclared_constant_names_its_module(calls: dict[str, set[str]]) -> None:
-    """The constant-external fallback's spelling (WI-rijij); WI-surar owns
-    whether ``file`` is the right one."""
-    assert calls["load"] == {"file:0-0:read:external_symbol"}, calls["load"]
+    """The constant-external fallback names the constant as written (WI-surar)."""
+    assert calls["load"] == {"File:0-0:read:external_symbol"}, calls["load"]
 
 
 def test_the_owner_that_declares_the_method_still_resolves(calls: dict[str, set[str]]) -> None:
@@ -174,3 +173,132 @@ def test_a_root_prefixed_receiver_resolves_both_ways(tmp_path: Path) -> None:
     b = {e.dst for e in edges if e.src.endswith("App#b:method")}
     assert any(d.endswith("Alfred.delete:method") for d in a), a
     assert any(d.endswith("Resolver.using:method") for d in b), b
+
+
+# --- WI-surar: the slot is the constant's owner path, as ruby writes it -------
+#
+# ``Net::HTTP.get(u)`` used to emit ``ruby:http:0-0:get``: the namespace cut
+# off and the rest lowercased, with or without ``require 'net/http'``. ADR-0051
+# says the module slot names the OWNER PATH of the called symbol; ``Net::HTTP``
+# is that owner, and ``http`` is neither it nor the require path. The overlay
+# row a ruby author writes (``module: Net::HTTP``) could not match, because a
+# component-suffix match must agree in case (INV-dijor), and the dropped
+# namespace was the only thing telling ``Net::HTTP`` from ``Faraday::HTTP``.
+
+_OWNER_SRC = """require 'net/http'
+require 'json'
+require 'set'
+
+class Client
+  def fetch(u)
+    Net::HTTP.get(URI(u))
+  end
+
+  def rooted(u)
+    ::Net::HTTP.get(URI(u))
+  end
+
+  def other(u)
+    Faraday::HTTP.get(u)
+  end
+
+  def save(p, s)
+    File.write(p, s)
+  end
+
+  def decode(t)
+    JSON.parse(t)
+  end
+
+  def bag
+    Set.new([1])
+  end
+end
+"""
+
+
+@pytest.fixture(scope="module")
+def owner_slots(tmp_path_factory: pytest.TempPathFactory) -> dict[str, set[tuple[str, str]]]:
+    """caller -> {(dst module slot, dst_ref.module_path)} for constant_external calls."""
+    from hypergumbo_core.ir import symbol_path_slot
+    from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+    root = tmp_path_factory.mktemp("surar")
+    (root / "client.rb").write_text(_OWNER_SRC)
+    out: dict[str, set[tuple[str, str]]] = {}
+    for e in analyze_ruby(root).edges:
+        if e.edge_type != "calls" or (e.meta or {}).get("receiver") != "constant_external":
+            continue
+        caller = e.src.split(":")[-2].rsplit("#", 1)[-1]
+        ref = e.dst_ref.module_path if e.dst_ref is not None else None
+        out.setdefault(caller, set()).add((symbol_path_slot(e.dst), ref))
+    return out
+
+
+@pytest.mark.parametrize("caller,slot", [
+    ("fetch", "Net::HTTP"),
+    ("rooted", "Net::HTTP"),   # the root prefix is not part of the owner
+    ("other", "Faraday::HTTP"),
+    ("save", "File"),
+    ("decode", "JSON"),
+    ("bag", "Set"),            # a require hint does not replace the owner
+])
+def test_the_slot_is_the_constant_as_written(
+    owner_slots: dict[str, set[tuple[str, str]]], caller: str, slot: str,
+) -> None:
+    # REACH FIRST: every caller must have produced a constant_external edge,
+    # or the equality below would be about an empty set.
+    assert caller in owner_slots, owner_slots
+    assert owner_slots[caller] == {(slot, slot)}, owner_slots[caller]
+
+
+def test_the_slot_does_not_depend_on_a_require(tmp_path: Path) -> None:
+    """The filed repro says "with or without a require"; the fixture above has
+    one, so the other half is pinned here."""
+    from hypergumbo_lang_mainstream.ruby import analyze_ruby
+
+    (tmp_path / "a.rb").write_text("def f(u)\n  Net::HTTP.get(URI(u))\nend\n")
+    dsts = {e.dst for e in analyze_ruby(tmp_path).edges
+            if (e.meta or {}).get("receiver") == "constant_external"}
+    assert dsts == {"ruby:Net::HTTP:0-0:get:unresolved"}, dsts
+
+
+_NET_CLAIM = ("claims:\n  - id: C\n    text: t\n    constraint:\n"
+              "      boundary: net_recv\n      must_not_exist: true\n")
+
+
+def _net_verdict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                 module: str, call: str) -> str:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.rb").write_text(
+        f"require 'net/http'\ndef fetch(u)\n  {call}.get(URI(u))\nend\n")
+    overlay = tmp_path / "ov.yaml"
+    overlay.write_text("language: ruby\nstatus: overlay\nnet_recv:\n"
+                       f"  - module: {module}\n    functions: [get]\n")
+    claims = tmp_path / "claims.yaml"
+    claims.write_text(_NET_CLAIM)
+    out = _run(["verify-claims", str(repo), "--claims", str(claims),
+                "--io-primitives", str(overlay), "--format", "json"],
+               tmp_path / "cache", monkeypatch)
+    (verdict,) = json.loads(out)["verdicts"]
+    return verdict["verdict"]
+
+
+@pytest.mark.parametrize("module", ["Net::HTTP", "net/http", "HTTP"])
+def test_an_overlay_row_spelled_as_ruby_writes_it_reaches_the_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, module: str,
+) -> None:
+    """The behaviour the item states: ``module: Net::HTTP`` was inconclusive
+    (no row matched ``http``). The require-path and unqualified spellings keep
+    matching."""
+    assert _net_verdict(tmp_path, monkeypatch, module, "Net::HTTP") == "violated"
+
+
+def test_the_namespace_tells_two_http_constants_apart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The control: a ``Net::HTTP`` row must NOT classify ``Faraday::HTTP.get``.
+    Before the fix both calls emitted ``http``, so nothing could tell them
+    apart. FAIL-CLOSED: the unvouched module withholds a clean verdict."""
+    assert _net_verdict(tmp_path, monkeypatch, "Net::HTTP", "Faraday::HTTP") == "inconclusive"

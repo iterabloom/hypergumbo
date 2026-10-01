@@ -46,7 +46,8 @@ How It Works
      ancestors. A constant the project does not declare (``JSON.parse``)
      yields an unresolved ``calls`` edge with
      ``meta["receiver"] = "constant_external"`` and an ``ExternalRef`` whose
-     module comes from the require hints, else the lowercased constant.
+     module is the constant as written, less a root ``::`` (``Net::HTTP``,
+     the owner path ADR-0051 asks for; WI-surar).
    - Passes 2b / 2c / 2d and 3, plus a post-pass inheritance sweep
 4. Detect method calls and require statements
 5. Track variable types from constructor/factory calls (``var = Class.new``)
@@ -2228,7 +2229,6 @@ def _try_receiver_call(
     edges: list[Edge],
     run_id: str,
     method_resolver: ListNameResolver | None = None,
-    require_hints: dict[str, str] | None = None,
 ) -> bool:
     """Try to resolve a receiver-qualified method call.
 
@@ -2367,7 +2367,7 @@ def _try_receiver_call(
         # WI-rijij / WI-mafik: ``Set.new(...)`` where the receiver is
         # external (e.g. ``require "set"``). Fall through to the
         # constant-external fallback so the call gets attributed to
-        # the require source module (``set``, ``json``, ...).
+        # the receiver constant (``Set``, ``JSON``, ...).
 
     # Build list of candidate class names to try
     # For scope_resolution: try full name first, then short name as fallback.
@@ -2437,28 +2437,33 @@ def _try_receiver_call(
         return True
 
     # WI-rijij / WI-mafik: constant-receiver call (``JSON.parse``,
-    # ``Set.new``) that didn't resolve to a project symbol. Attribute
-    # the call to the source module via require_hints (or, failing
-    # that, the lowercased constant name as a heuristic) so cross-
-    # language linkers and io-boundary catalogs can match the call
-    # against ruby stdlib / gem primitives. Strip a leading ``::`` so
-    # ``::JSON`` and ``JSON`` route to the same module.
-    if require_hints is None:  # pragma: no cover - defensive default
-        require_hints = {}
+    # ``Set.new``) that didn't resolve to a project symbol. It gets an
+    # unresolved edge whose module slot names the receiver constant, so
+    # io-boundary catalogues and user overlays can match the call against
+    # ruby stdlib / gem primitives.
+    #
+    # WI-surar: the slot is the constant AS WRITTEN, less a root ``::`` --
+    # ``Net::HTTP``, ``File``, ``JSON``. ADR-0051 says the slot names the
+    # OWNER PATH of the called symbol, and in ruby that is the constant the
+    # call is made on. This used to cut a namespaced constant to its last
+    # segment, look that up in the file's require hints, and otherwise
+    # lowercase it, so ``Net::HTTP.get`` emitted ``http``: neither the owner
+    # nor the require path. An overlay row spelled as ruby writes it
+    # (``module: Net::HTTP``) could not match, because a component-suffix
+    # match must agree in case (INV-dijor), and the dropped namespace was the
+    # only thing telling ``Net::HTTP`` from ``Faraday::HTTP``.
+    #
+    # THE REQUIRE HINT IS DELIBERATELY NOT CONSULTED HERE. It maps a require
+    # path's PascalCased basename to that path (``require 'set'`` gives
+    # ``Set -> set``): evidence of which file was loaded, keyed on one
+    # segment, so it names a file rather than the owner and would re-drop the
+    # namespace (``Foo::Client`` would take ``require 'bar/client'``). It
+    # still serves bare-call disambiguation and base-class resolution. The
+    # matcher folds ``::`` and ``/`` alike and compares case-insensitively on
+    # equal paths, so ``Net::HTTP`` still matches a ``net/http`` row, and
+    # ``Set``/``JSON`` still match ``set``/``json``.
     if receiver_node.type in ("constant", "scope_resolution"):
-        bare_class = receiver_class.lstrip(":")
-        if "::" in bare_class:  # pragma: no cover - inline-namespace receivers
-            bare_class = bare_class.rsplit("::", 1)[-1]
-        module_hint = require_hints.get(bare_class)
-        if module_hint is None:
-            short = short_name.lstrip(":") if short_name else None
-            if short and "::" in short:  # pragma: no cover - inline-namespace receivers
-                short = short.rsplit("::", 1)[-1]
-            if short:
-                module_hint = require_hints.get(short)
-        if module_hint is None:
-            # Heuristic: ``JSON`` → ``json``, ``Set`` → ``set``.
-            module_hint = bare_class.lower()
+        module_hint = receiver_class.lstrip(":")
         edges.append(Edge.create(
             src=current_method.id,
             dst=f"ruby:{module_hint}:0-0:{method_name}:unresolved",
@@ -2747,7 +2752,6 @@ def _extract_edges_from_file(
                             current_method, global_symbols, resolver,
                             node.start_point[0] + 1, edges, run_id,
                             method_resolver=method_resolver,
-                            require_hints=require_hints,
                         ):
                             pass  # Resolved via receiver
                         elif receiver_node is not None:
