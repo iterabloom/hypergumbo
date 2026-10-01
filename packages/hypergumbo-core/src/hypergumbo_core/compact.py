@@ -1134,7 +1134,10 @@ def _reproject_features(
     (an entrypoint whose symbol was pruned is dropped; so is a feature whose
     anchor was pruned). The result is the twin of INV-tarol's slice fix:
     feature scope is re-derived from the emitted graph rather than copied
-    wholesale. ``admission_stats`` (not node-keyed) passes through unchanged.
+    wholesale. ``admission_stats`` and ``limits_detail`` (counts, not
+    node-keyed) pass through unchanged: ``limits_detail`` sizes what the
+    BFS limits cut from the full-graph slice, not what this view's budget
+    cut.
     """
     reprojected: List[dict[str, Any]] = []
     for feat in features:

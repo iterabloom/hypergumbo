@@ -1982,6 +1982,10 @@
           },
           "description": "Limits reached during traversal (e.g. hop_limit)"
         },
+        "limits_detail": {
+          "type": "object",
+          "description": "Per limit in limits_hit (same keys), when any was hit: cap (the query value), nodes_omitted / edges_omitted / files_omitted (the frontier the limit kept out of the final slice -- a lower bound, nothing beyond it was walked), and nodes_not_expanded for hop_limit / hub_pruned"
+        },
         "node_depths": {
           "type": "object",
           "description": "Node ID \u2192 BFS depth, when recorded"

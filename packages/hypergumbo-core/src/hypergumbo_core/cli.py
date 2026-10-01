@@ -2175,6 +2175,18 @@ def cmd_slice(args: argparse.Namespace) -> int:
         print(f"  modules: {len(feature_dict.get('modules', {}))}")
     if result.limits_hit:
         print(f"  limits hit: {', '.join(result.limits_hit)}")
+        # WI-mibuj: the flag alone hides how much the limit cost; print the
+        # frontier it stopped (a lower bound -- see slice._limits_detail).
+        for limit, counts in result.limits_detail.items():
+            line = (
+                f"    {limit} (cap {counts['cap']}): "
+                f"{counts['nodes_omitted']} node(s), "
+                f"{counts['edges_omitted']} edge(s), "
+                f"{counts['files_omitted']} file(s) omitted at the frontier"
+            )
+            if "nodes_not_expanded" in counts:
+                line += f"; {counts['nodes_not_expanded']} node(s) not expanded"
+            print(line)
 
     # Output summary (always at the end)
     cached_set = {input_path} if was_cached else set()
