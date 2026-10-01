@@ -236,6 +236,9 @@ class TestFindAnsibleFiles:
 
     def test_finds_files_in_handlers_dir(self, tmp_path: Path) -> None:
         """Test files in handlers/ directory are discovered."""
+        # A bare handlers/ directory name is not Ansible evidence (WI-jifog);
+        # ansible.cfg marks the tree.
+        (tmp_path / "ansible.cfg").write_text("[defaults]\n")
         handlers_dir = tmp_path / "handlers"
         handlers_dir.mkdir()
         (handlers_dir / "main.yml").write_text("- name: Handler")
@@ -245,6 +248,9 @@ class TestFindAnsibleFiles:
 
     def test_finds_files_in_vars_dir(self, tmp_path: Path) -> None:
         """Test files in vars/ directory are discovered."""
+        # A bare vars/ directory name is not Ansible evidence (WI-jifog);
+        # ansible.cfg marks the tree.
+        (tmp_path / "ansible.cfg").write_text("[defaults]\n")
         vars_dir = tmp_path / "vars"
         vars_dir.mkdir()
         (vars_dir / "main.yml").write_text("app_name: test")

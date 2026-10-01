@@ -25,6 +25,9 @@ dependencies = [
   # degrade silently (returning None) instead of parsing.
   'tomli~=2.0; python_version < "3.11"',
   "hypergumbo-core==8.1.0",
+  # yaml_ansible.find_ansible_files composes YAML to tell a playbook from
+  # other YAML (WI-jifog); imported directly, so declared directly.
+  "pyyaml~=6.0.3",
   # Tree-sitter grammars for mainstream languages
   "tree-sitter-javascript~=0.25.0",
   "tree-sitter-typescript~=0.23.2",
