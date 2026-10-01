@@ -1,0 +1,21 @@
+- op: create  # f33b
+  at: '2026-10-01T09:06:07Z'  # f33b
+  by: agent  # f33b
+  actor: jgstern_agent  # f33b
+  clock: 1  # f33b
+  nonce: f33b  # f33b
+  data:  # f33b
+    kind: work_item  # f33b
+    title: "swift: tuple destructuring, enum-payload (case let) and accessor-implicit (newValue/oldValue) bindings carry no receiver type"  # f33b
+    status: todo_hard  # f33b
+    priority: 3  # f33b
+    parent:  # f33b
+    tags:  # f33b
+    - swift  # f33b
+    - analysis_quality  # f33b
+    isbefore: []  # f33b
+    duplicate_of: []  # f33b
+    not_duplicate_of: []  # f33b
+    pr_ref:  # f33b
+    description: "FILED 2026-10-01 from WI-mofil-tidog-forob-tovah-givud-lijog-vuvug-gutid (the per-cause sizing of its 622).\n\nMECHANISM. Three Swift binding forms bind a name the swift binding pass never records, so a receiver bound by them is untyped:\n  (a) TUPLE destructuring: `let (stream, source) = RequestBody.makeStream()` -- needs a tuple return type split per position (the return-type registry stores `_swift_bare_type`, which refuses a tuple outright).\n  (b) ENUM PAYLOAD bindings: `case .map(let map)`, `if case let .some(x) = y`, `guard case .x(let v) = e` -- needs the enum case's associated-value types (Pass 1 extracts enum cases as members; their payload types are not recorded). WI-mofil made the if/guard arm SKIP case clauses (it used to bind the case NAME, e.g. `some`).\n  (c) Accessor-implicit names: `newValue` in `set` / `willSet`, `oldValue` in `didSet` -- the property's declared type. WI-mofil made accessors scopes, so binding these is now a local `_bind` into the accessor's scope.\n\nSIZED (WI-mofil causes.py on dev 8cfcab7b07; lowercase-hint method sites where _type_of returned None; same-file declarations; multi-call lines excluded):\n  tuple:     vapor 4 . hummingbird 72 . Kingfisher 3 . Alamofire (<2, not listed) . swift-argument-parser 0\n  case-let:  vapor 20+2 . hummingbird 16 . Alamofire 12 . swift-argument-parser 7+1\n  newValue:  vapor 5 . Kingfisher 8\nRead back: hummingbird Tests/HummingbirdTests/ApplicationTests.swift:839-845 `let (requestBody, source) = RequestBody.makeStream(); source.yield(...)` was typed `Source` before WI-mofil ONLY through an `init(source: Source)` parameter leaking file-wide; the leak is closed, and the true type (RequestBody.Source) needs (a).\n\nPRICE ON THE MODULE SLOT AND PRIMITIVES REACHED (L5); many of these are PROJECT types, refused by INV-kotob. (c) is the cheapest; (a) and (b) need new Pass-1 rows."  # f33b
+    fields: {}  # f33b

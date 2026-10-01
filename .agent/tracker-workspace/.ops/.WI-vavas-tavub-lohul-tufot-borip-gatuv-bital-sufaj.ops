@@ -1,0 +1,23 @@
+- op: create  # 8961
+  at: '2026-10-01T09:06:01Z'  # 8961
+  by: agent  # 8961
+  actor: jgstern_agent  # 8961
+  clock: 1  # 8961
+  nonce: '8961'  # 8961
+  data:  # 8961
+    kind: work_item  # 8961
+    title: "inherited_calls registers a Go Site-1 (implicit-receiver) walker, but Go has no implicit receiver: on dev it bound a bare Process() to an embedded type's method (0.9); after WI-bivin no Go producer feeds it"  # 8961
+    status: todo_hard  # 8961
+    priority: 3  # 8961
+    parent:  # 8961
+    tags:  # 8961
+    - go  # 8961
+    - call_graph  # 8961
+    - linker  # 8961
+    - analysis_quality  # 8961
+    isbefore: []  # 8961
+    duplicate_of: []  # 8961
+    not_duplicate_of: []  # 8961
+    pr_ref:  # 8961
+    description: "FOUND 2026-10-01 while fixing WI-bivin-ronup-kuzam-giliz-sinoz-gihug-tigas-rovom (branch jgstern-agent/fix/bivin, not merged).\n\ninherited_calls._MRO_WALKERS registers \"go\": _walk_insertion_order, so a Go calls edge stamped meta.enclosing_class (INV-fahub's make_unresolved_edge(..., enclosing_class=...)) is recovered by the Site-1 walker into the enclosing struct's embedded types. Site 1 is the implicit-receiver shape (\"bare or this.method() call\"). Go has NO implicit receiver: a promoted method is reached only through a selector (c.Process()), so a bare Process() inside func (c *Caller) Run() is never a method of Caller or of anything it embeds.\n\nLive (dev 7a645c6c76, hypergumbo survey on a 3-file compiling package: a_typea.go declares func (a *TypeA) Process(), proc.go declares func Process(), caller.go declares type Caller struct{ TypeA } and func (c *Caller) Run() { Process() }): the analyzer emitted go:external:0-0:Process (enclosing_class=Caller) and the inherited-calls linker added Caller.Run -> TypeA.Process at confidence 0.9. The real callee is proc.go's Process.\n\nOn the bivin branch the analyzer resolves a bare name in the caller's own package and never to a method, so that stamp is gone: Go edges carrying enclosing_class went from 9 to 0 over 8 corpus repos (alertmanager 0, beads 4 -> 0, coredns 0, prometheus 5 -> 0, git-bug 0, jaeger 0, cert-manager 0, runc 0; analyze_go only, A/B record in ~/hypergumbo_lab_notebook/decontend/run_09302026/bivin/). The \"go\" walker entry is then a consumer with no producer on that corpus (the dot-import lookup route can still stamp in principle; not observed).\n\nDECISION NEEDED (not made here): remove \"go\" from _MRO_WALKERS (and its tests), or document what Go call shape it is meant to recover. NOT CHECKED: whether any OTHER Go producer stamps enclosing_class (inherited_field_receiver / Site 3), and the inherited_calls tests that pin the Go walker."  # 8961
+    fields: {}  # 8961
