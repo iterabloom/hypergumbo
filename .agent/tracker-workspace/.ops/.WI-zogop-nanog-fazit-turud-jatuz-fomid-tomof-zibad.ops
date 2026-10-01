@@ -1,0 +1,19 @@
+- op: create  # 3c37
+  at: '2026-10-01T03:00:12Z'  # 3c37
+  by: agent  # 3c37
+  actor: jgstern_agent  # 3c37
+  clock: 1  # 3c37
+  nonce: 3c37  # 3c37
+  data:  # 3c37
+    kind: work_item  # 3c37
+    title: "Symbol.kind JSON Schema enum never re-closed after ADR-0027 Phase 4b; the generator's description cites dynamic emit sites that no longer exist"  # 3c37
+    status: todo_hard  # 3c37
+    priority: 3  # 3c37
+    parent:  # 3c37
+    tags: []  # 3c37
+    isbefore: []  # 3c37
+    duplicate_of: []  # 3c37
+    not_duplicate_of: []  # 3c37
+    pr_ref:  # 3c37
+    description: "Found while working WI-fubom (ADR retracted-text sweep), 2026-09-30, on dev 8cfcab7b07.\n\nADR-0027's Phase-1 schema note said the Symbol.kind JSON Schema enum, re-opened by ADR-0028 Phase 1 because of dynamic kind=f\"ipc_{...}\" emit sites, \"returns at Phase 4b once the per-cluster producer migrations land\". Phase 4b shipped (all 71 endpoint_shape values removed through SCHEMA_VERSION 0.6.0), and the enum was never closed.\n\nChecked in the tree:\n- docs/schema.json $defs/Symbol/properties/kind is {\"type\": \"string\", \"x-axis-of-values\": {...}}: no enum.\n- The dynamic emit sites are gone: linkers/ipc.py:521 and linkers/phoenix_ipc.py:292 carry only comments (\"was kind=f\\\"ipc_{pattern.type}\\\"\").\n- scripts/generate_schema_lib.py (the kind description, ~L476-493) still says the enum \"is intentionally open ... until ADR-0027 Phase 4b producer migrations land per-cluster — current production includes dynamic kind=f\\\"ipc_{...}\\\" emits at ipc.py:498 and phoenix_ipc.py:276\". Both halves of that are false today, and that text ships in docs/schema.json.\n\nNot checked: whether any other producer emits a Symbol.kind outside SYMBOL_KINDS (pending_classification values like bin/handler are registered, so they would not block an enum). That is the measurement this item needs before deciding.\n\nDecision needed (owner or a measured agent call): close the enum (a schema change; regenerate docs/schema.json; SCHEMA_VERSION bump), or keep it open and rewrite the generator description to give the real reason. Either way the generator text is wrong today. WI-fubom's branch rewrote ADR-0027's note to state the current shape and does not decide this."  # 3c37
+    fields: {}  # 3c37

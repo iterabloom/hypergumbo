@@ -1,0 +1,21 @@
+- op: create  # 36d0
+  at: '2026-10-01T03:00:43Z'  # 36d0
+  by: agent  # 36d0
+  actor: jgstern_agent  # 36d0
+  clock: 1  # 36d0
+  nonce: 36d0  # 36d0
+  data:  # 36d0
+    kind: work_item  # 36d0
+    title: "auto-pr post-merge residuals split from WI-kifuh: --squash read -p has no tty guard; pull-failure hint omits tracker reconcile; no .ops protection around the post-merge pull"  # 36d0
+    status: todo_hard  # 36d0
+    priority: 3  # 36d0
+    parent:  # 36d0
+    tags:  # 36d0
+    - tracker  # 36d0
+    - ci  # 36d0
+    isbefore: []  # 36d0
+    duplicate_of: []  # 36d0
+    not_duplicate_of: []  # 36d0
+    pr_ref:  # 36d0
+    description: "Split out of WI-kifuh-mahig-simol-ruris-nigif-katin-mazid-jigoz (its \"SECOND FINDING\", 2026-09-03 run on PR #743), whose main finding is fixed on branch jgstern-agent/fix/kifuh. The premise check of 2026-09-30 found the interactive-prompt half fixed by 7359007100 (cleanup_local's retry `read -p` now runs only under `[[ -t 0 ]]`). Three residuals remain in scripts/auto-pr, re-read at dev 8cfcab7b07 (line numbers from the kifuh worktree, after that branch's edits):\n\n1. The --squash confirmation (`read -p \"Continue with squash merge? [y/N]\"`, ~:2830, global flag parsing) has no tty guard. Under `set -Eeuo pipefail` with stdin closed (every --detach child, every backgrounded agent run) `read` returns 1 at EOF and the run aborts in flag parsing. Not observed in production (--squash is discouraged and rare); stated from the code.\n2. cleanup_local's non-interactive pull-failure hint (~:2798) prints `git pull origin <base> && git branch -D <branch>`. `scripts/tracker reconcile` (added by 6a9a0a317f, 2026-09-04) is the documented way through a post-merge pull that aborts on colliding .ops (AGENTS.md \"Op Durability\"); the hint does not name it.\n3. Nothing protects pending .ops around the post-merge `git pull` in cleanup_local (~:2750) or _autopr_flush_cleanup. Incoming tracker-sync commits whose ops files are still pending locally abort the pull. WI-kifuh's fix moved auto-pr's OWN --tracker-id write to after this pull, so that write no longer adds a colliding op; ops pending from before the run still can collide. Not measured: how often the pull fails this way since 09-15.\n\nscripts/auto-pr is a governance file: a fix needs owner approval per AGENTS.md (needs_human_review first, no preemptive PR)."  # 36d0
+    fields: {}  # 36d0

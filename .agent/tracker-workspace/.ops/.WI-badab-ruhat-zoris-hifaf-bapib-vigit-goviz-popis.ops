@@ -43,3 +43,19 @@
   clock: 4  # eedc
   nonce: eedc  # eedc
   message: "OWNER DECISION 2026-09-30: resolution (a). State in docs/measurements/README.md, and in the measurement records that publish a row rate, what the row-level denominator counts: for analysis_method=structural, call-graph REACHABILITY pairs (sink_node in reachable), not claims that a value flowed -- so no measurement republishes a per-row rate without that caveat. No published number changes. Options (b) (stop publishing the row rate, which would amend ADR-0048 F1) and (c) (restrict the row denominator to ddg/ddg_mixed pairs) are NOT chosen; ADR-0048 F1 stands as ratified. Owner's words: \"agreed, it should be (a)\"."  # eedc
+- op: update  # 9c26
+  at: '2026-10-01T02:16:53Z'  # 9c26
+  by: agent  # 9c26
+  actor: jgstern_agent  # 9c26
+  clock: 5  # 9c26
+  nonce: 9c26  # 9c26
+  set:  # 9c26
+    status: done  # 9c26
+    pr_ref: '#1353'  # 9c26
+- op: discuss  # dea2
+  at: '2026-10-01T02:16:53Z'  # dea2
+  by: agent  # dea2
+  actor: jgstern_agent  # dea2
+  clock: 6  # dea2
+  nonce: dea2  # dea2
+  message: "DONE via resolution (a), the owner's choice (2026-09-30). PR #1353, merged to dev as 8cfcab7b07.\nWHAT SHIPPED:\n- docs/measurements/README.md gains the section \"What a row counts\". A row is a source->sink pair included by call-graph reachability (propagate_taint_structural, `if sink_node in reachable`). ADR-0017 §3a never adds a row: it raises one to ddg and, since b26d97bd11, removes one it refutes. A structural row has only the INV-lozat / INV-fumod pair refusals beyond reachability. The section uses the kamaraflow illustration from this item, and states the rule that a record publishing a row rate says beside it that the rate is over reachability pairs.\n- Records 0001 and 0003 (pre-collapse \"flows\") and 0004, 0005, 0006 and 0012 (rows), which are the records that publish a row rate, now carry that note under their headline tables. The README and the 0012 headline were the two places the premise check found bare.\n- CHANGELOG Documentation entry.\nNOT CHANGED: no published number. ADR-0048 F1 stands as ratified. Options (b) and (c) were not chosen. No gate enforces the new README rule; scripts/check-measurement-frame checks only that a `unit` key exists. Any future enforcement would be a separate item; none was filed.\nChecks: check-measurement-frame OK (22 framed, 7 grandfathered); targeted smart-test 287 passed; CI green at merge."  # dea2
