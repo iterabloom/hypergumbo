@@ -3632,7 +3632,7 @@ def _uncatalogued_external_modules(
     doing ``Net::HTTP.new(...).post(path, "key=#{ENV['API_KEY']}")``: both the
     ``net_send`` and ``fs_write`` claims return ``confirmed`` rc 0, with an empty
     ``unsupported_taint_languages`` and no disclosure of any kind — and the
-    analyzer is not blind, it emits ``calls -> ruby:http:0-0:new:external_symbol``.
+    analyzer is not blind, it emits ``calls -> ruby:Net::HTTP:0-0:new:external_symbol``.
     Tracked separately; naming it here rather than asserting it away is the
     point, because a gate that mis-states its own scope is the shape of defect
     this function exists to correct.

@@ -28,8 +28,9 @@ def save(p, s)
 end
 """
 
-#: ``net/http``, because the ruby analyzer emits ``Net::HTTP.get`` as
-#: ``ruby:http:0-0:get`` (see the core file's note).
+#: ``net/http``, the require path: it matches the analyzer's
+#: ``ruby:Net::HTTP:0-0:get`` because the matcher folds ``::`` and ``/``
+#: alike. The ``Net::HTTP`` spelling is pinned in test_ruby_constant_receiver.
 _OVERLAY = """language: ruby
 status: overlay
 net_recv:

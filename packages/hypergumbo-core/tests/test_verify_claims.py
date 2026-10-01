@@ -1481,7 +1481,7 @@ class TestComputeBoundaryCoverage:
         """
         ruby_call = {
             "src": "ruby:main.rb:3-7:exfiltrate:function",
-            "dst": "ruby:http:0-0:new:external_symbol",
+            "dst": "ruby:Net::HTTP:0-0:new:external_symbol",
             "type": "calls",
         }
         cov = compute_boundary_coverage(

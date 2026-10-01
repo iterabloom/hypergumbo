@@ -1170,10 +1170,9 @@ require_relative 'helpers/string_utils.rb'
         self, tmp_path: Path,
     ) -> None:
         """A scoped-constant-receiver call (``Rack::Utils.parse``) that resolves
-        to no project symbol and has no require hint is attributed to the
-        lowercased constant name as an unresolved external ``calls`` edge
-        (WI-rijij / WI-mafik); the scope_resolution receiver exercises the
-        short-name require-hint fallback before the lowercase heuristic."""
+        to no project symbol is attributed to the constant as written, namespace
+        included, as an unresolved external ``calls`` edge (WI-rijij / WI-mafik;
+        the spelling is WI-surar's)."""
         from hypergumbo_lang_mainstream.ruby import analyze_ruby
 
         (tmp_path / "worker.rb").write_text("""
@@ -1201,6 +1200,7 @@ end
             f"Expected 1 constant_external call edge, got {len(ext_edges)}"
         )
         assert ext_edges[0].is_resolved is False
+        assert ext_edges[0].dst_ref.module_path == "Rack::Utils"
 
 class TestRubySignatureExtraction:
     """Tests for Ruby method signature extraction."""
@@ -2702,7 +2702,7 @@ end
             caller: {e.dst for e in call_edges if e.src.endswith(f"App#{caller}:method")}
             for caller in ("run", "run_qualified")
         }
-        assert by_caller["run"] == {"ruby:finder:0-0:locate:unresolved"}, by_caller
+        assert by_caller["run"] == {"ruby:Finder:0-0:locate:unresolved"}, by_caller
         assert any(d.endswith(":Admin..UserFinder#locate:method") for d in by_caller["run_qualified"]), by_caller
 
     def test_receiver_call_outside_method_is_anchored_on_the_file(self, tmp_path: Path) -> None:
