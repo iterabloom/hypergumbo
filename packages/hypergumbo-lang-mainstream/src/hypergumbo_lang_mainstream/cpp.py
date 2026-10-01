@@ -476,7 +476,16 @@ def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[
     shape = c_family_declarator(node)
     leaf = shape.name
     if leaf is None:
-        return None  # pragma: no cover - a declarator chain always ends in a name
+        return None  # a macro-call-shaped declarator (``c_family_declarator``)
+    # A definition with no function_declarator is a function only when it is a
+    # conversion operator. Otherwise it is a macro tree-sitter could not expand,
+    # e.g. ``class API X : public MoveOnly<X, Y> {..}`` read as a definition
+    # whose declarator is the template ``MoveOnly<..>``: naming that would mint
+    # a phantom function and anchor the class body's calls on it.
+    if shape.function_declarator is None and not any(
+        n.type == "operator_cast" for n in iter_tree(leaf)
+    ):
+        return None
     if leaf.type == "qualified_identifier":
         # namespace::class::method or class::method; a conversion operator's
         # leaf spans its parameter list, which is not part of its name.
@@ -1311,7 +1320,8 @@ def _extract_edges_from_tree(
     resolver: NameResolver,
     namespace_aliases: dict[str, str] | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
-    file_symbols: list[Symbol] | None = None,
+    *,
+    file_symbols: list[Symbol],
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a parsed tree.
 
@@ -1324,12 +1334,10 @@ def _extract_edges_from_tree(
             definition an edge is drawn from is found in it by POSITION
             (INV-midag, WI-saduj); ``local_symbols`` keeps one symbol per name,
             so of ``P::run``/``Q::run`` or two overloads it drew every edge
-            from the last. Omitted (a direct call), the dict's values stand in.
+            from the last. Required, so no caller can fall back to that view.
     """
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
-    if file_symbols is None:
-        file_symbols = list({s.id: s for s in local_symbols.values()}.values())
     # Only callables: a struct defined in a function's return type
     # (``struct S {..} f() {..}``) starts at the same position as the definition.
     decl_index = symbols_at([s for s in file_symbols if s.kind in ("function", "method")])

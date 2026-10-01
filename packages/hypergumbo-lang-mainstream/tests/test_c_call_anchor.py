@@ -110,3 +110,22 @@ int lookup(int i)
     assert {r[2] for r in refs} == {7, 12}, refs  # reach: both references
     for start, end, line in refs:
         assert start <= line <= end, (start, end, line)
+
+
+def test_a_macro_named_definition_mints_no_symbol(tmp_path: Path) -> None:
+    """A ``function_declarator`` directly inside another is a macro tree-sitter
+    could not expand (x265's ``PFX(name)(args)``, lua's ``LUALIB_API int (f)
+    (args)`` read as a function named ``int``). Naming the inner one would mint a
+    symbol called ``PFX`` or ``int`` and anchor real calls on it; the definition
+    stays unnamed, as it was. (Its calls stay unemitted: a residual, not pinned.)"""
+    (tmp_path / "m.c").write_text("""\
+void foo(void);
+int PFX(cpu_test)(void) { foo(); return 0; }
+LUALIB_API int (luaL_loadstring) (const char *s) { foo(); return 0; }
+int ok(void) { foo(); return 0; }
+""")
+    result = analyze_c(tmp_path)
+    names = {s.name for s in result.symbols if s.kind == "function"}
+    assert "ok" in names, names  # reach: the plain definition is named
+    assert not names & {"PFX", "int", "cpu_test", "luaL_loadstring"}, names
+    assert 4 in {a[3] for a in _anchors(result)}, _anchors(result)
