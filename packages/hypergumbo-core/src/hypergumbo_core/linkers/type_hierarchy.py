@@ -39,8 +39,13 @@ Limitations
 - Only works where some pass emits inheritance edges: `inheritance-linker`
   (e.g. Go struct embedding) or the analyzers listed in `depends_on`
 - Dispatch through concrete `extends` is disabled for Go, C++, Rust and C#
-  (`NO_VIRTUAL_EXTENDS_LANGUAGES`) unless the child is itself abstract
-  (interface, trait, protocol, abstract class); `implements` is unaffected
+  (`NO_VIRTUAL_EXTENDS_LANGUAGES`) unless the child or the parent is abstract
+  (interface, trait, protocol, abstract class); `implements` is unaffected.
+  The parent-abstract arm admits every same-named method pair across the hop,
+  so a non-virtual C++ method hiding one of its abstract base's methods gets
+  an edge too; and a concrete intermediate class (abstract `Shape` <- concrete
+  `Square` <- `Fancy`) is still a denied hop, so `Shape::area` does not reach
+  `Fancy::area`
 """
 
 from __future__ import annotations
@@ -88,12 +93,14 @@ PASS_ID = make_pass_id("type-hierarchy-linker")
 #              never the embedder's same-named shadow method.
 #   - cpp    — only methods marked `virtual` dispatch polymorphically;
 #              non-virtual methods are statically resolved at the static
-#              type.  Pessimistic until per-method virtual tracking lands.
+#              type.  Pessimistic until per-method virtual tracking lands,
+#              except across a hop into an abstract base (WI-nizug).
 #   - rust   — no inheritance; struct/trait are separate concepts.  Trait
 #              dispatch flows through `implements` edges, which are
 #              unaffected by this gate.
 #   - csharp — methods are non-virtual unless marked `virtual`/`override`.
-#              Pessimistic until per-method tracking lands.
+#              Pessimistic until per-method tracking lands, except across a
+#              hop into an abstract base (WI-nizug).
 #
 # Languages WITH virtual dispatch through `extends` (default behavior):
 # Java, Kotlin, Python, Ruby, Scala, Swift, and any analyzer not in the
@@ -111,20 +118,43 @@ def _extends_admits_dispatch(
     language: str | None,
     child_kind: str | None = None,
     child_modifiers: Sequence[str] | None = None,
+    *,
+    parent_kind: str | None = None,
+    parent_modifiers: Sequence[str] | None = None,
 ) -> bool:
-    """Return True if `extends` edges in this language imply virtual dispatch.
+    """Return True if this `extends` hop implies virtual dispatch.
 
     A None or empty language is treated as default-allow (the conservative
-    choice for unknown analyzers).
+    choice for unknown analyzers). Outside ``NO_VIRTUAL_EXTENDS_LANGUAGES``
+    every hop is admitted.
 
-    Override for abstract-extends-abstract: even in languages without
-    virtual dispatch through concrete extends (Go, C++, Rust, C#), interface
-    inheritance IS virtual dispatch via interface satisfaction. Go interface
-    embedding (`type Bar interface { Foo; ... }`) and C# interface
-    inheritance both produce extends edges between interface symbols, and
-    callers of the parent interface's method dispatch to any concrete
-    implementation that satisfies the embedded/extended interface. The
-    deny-list applies only when the child is a concrete class/struct.
+    Inside the deny-list a hop is admitted when EITHER endpoint is an
+    abstract type (``is_abstract_type``: interface / trait / protocol, or a
+    type carrying the ``abstract`` modifier):
+
+    * **child abstract** — interface-extends-interface. Callers of the parent
+      interface's method dispatch to whatever concrete type satisfies the
+      child. Both endpoints are abstract here, so this arm and the next agree.
+      No deny-list analyzer emits such a hop as ``extends`` on the fixtures
+      measured for WI-nizug: C# ``interface IB : IA`` and Go interface
+      embedding emit no edge at all (WI-ruzid, WI-gutas), and Rust
+      supertraits (``trait Solid: Shape``) emit none either. The arm is kept
+      for the producers those items will add.
+    * **parent abstract** (WI-nizug) — an abstract-base hierarchy:
+      ``class Square : public Shape`` (C++) or ``class Square : Shape`` (C#)
+      with ``Shape`` abstract. The hop is ``extends: Square -> Shape`` and
+      ``Square`` is concrete, so a child-only test could never pass. An
+      abstract type cannot be instantiated; its methods are reached through
+      a concrete descendant, which is exactly the dispatch this edge records.
+
+    The parent arm is an approximation, not per-method truth: a non-virtual
+    C++ method (or a C# ``new`` method) of a concrete child that shares a
+    name with a method of its abstract parent also gets an edge. Per-method
+    ``virtual`` / ``override`` tracking would be exact; C# already records
+    those modifiers, C++ records ``virtual`` only on pure virtuals.
+
+    ``parent_kind`` is None when the parent has no in-tree symbol (an
+    unresolved external base), and then only the child is tested.
     """
     if not language:
         return True
@@ -137,7 +167,9 @@ def _extends_admits_dispatch(
     # Swift protocol silently produced no dispatch at all while the equivalent
     # Java interface produced one. `abstract class` reaches this too, via the
     # modifier, which the literal could never express.
-    return is_abstract_type(child_kind or "", child_modifiers or ())
+    return is_abstract_type(
+        child_kind or "", child_modifiers or (),
+    ) or is_abstract_type(parent_kind or "", parent_modifiers or ())
 
 
 def build_inheritance_maps(
@@ -196,10 +228,14 @@ def admitted_inheritance_edges(
             # edge: child --extends/inherits--> parent. Virtual dispatch
             # through concrete inheritance is language-dependent.
             child_sym = symbol_by_id.get(edge.src)
-            child_lang = child_sym.language if child_sym else None
-            child_kind = child_sym.kind if child_sym else None
-            child_mods = child_sym.modifiers if child_sym else None
-            if not _extends_admits_dispatch(child_lang, child_kind, child_mods):
+            parent_sym = symbol_by_id.get(edge.dst)
+            if not _extends_admits_dispatch(
+                child_sym.language if child_sym else None,
+                child_sym.kind if child_sym else None,
+                child_sym.modifiers if child_sym else None,
+                parent_kind=parent_sym.kind if parent_sym else None,
+                parent_modifiers=parent_sym.modifiers if parent_sym else None,
+            ):
                 continue
             yield edge, True
         else:
