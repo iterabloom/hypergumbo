@@ -770,6 +770,13 @@ def cmd_score(args: argparse.Namespace) -> int:
 #   4. searching only the SOURCE symbol's span, which makes the sink listing
 #      structurally empty for every multi-hop situation
 #
+# Measurement 0012's refuters found two more, closed the same way (WI-binod):
+# a whole-file pseudo-symbol listed every site of the path's functions a
+# second time (``innermost_span``), and ``$BASH_SOURCE`` was listed as an
+# environment read because the builder kept its own list of bash-assigned
+# names instead of reading bash.py's (``_bash_parameter_sets``). Block
+# comments are still matched, deliberately -- see ``_COMMENT_OPENERS``.
+#
 # Defect 4 is the load-bearing one: ArkLib#3's path is main (201-255) then
 # generate_dot_graph (110-137), `open` is called in the second, and the packet
 # printed "(none found in span)". That is manufactured evidence of absence, and
@@ -891,6 +898,12 @@ def sink_search_spans(
     nobody asked. External symbols name no file and are skipped; a symbol with
     no span is skipped rather than read as line 0, because an excerpt at the
     top of a file reads as evidence and is not.
+
+    A file-anchored symbol comes back with end ``-1``: module-level code,
+    widened to the whole file by ``render_packet``, which holds the line
+    count. Spans returned here may NEST (that whole-file span contains every
+    function on the path); ``render_packet`` lists each site once, under
+    ``innermost_span``, so nesting cannot double-attribute a site (WI-binod).
     """
     symbols = list(flow.get("path") or []) or [flow.get("source_symbol") or ""]
     seen: set[tuple[str, int, int, str]] = set()
@@ -916,8 +929,59 @@ def sink_search_spans(
     return spans
 
 
-#: Shell parameters that are not environment reads: positionals and specials.
-_SHELL_NON_ENV = frozenset("0123456789@*#?$!-_")
+def innermost_span(
+    lineno: int, rel: str, spans: "list[tuple[str, int, int, str]]",
+) -> "int | None":
+    """Index of the NARROWEST span on ``rel`` that contains ``lineno``.
+
+    WI-binod. Path symbols can NEST: a file-anchored symbol is widened to the
+    whole file, and a closure sits inside its enclosing function. Searching
+    each span independently listed a site once per enclosing span -- ArkLib
+    :5's ``open()`` calls appeared under ``revert_nav`` AND under the
+    module-level symbol, as though module-level execution reached them. A
+    site belongs to the innermost path symbol whose body contains it, so it
+    is listed there and only there. A tie (two symbols declaring the same
+    span) goes to the first on the path, so the listing is deterministic.
+    ``None`` means no span on ``rel`` contains the line.
+    """
+    best: int | None = None
+    for i, (path, start, end, _name) in enumerate(spans):
+        if path != rel or not start <= lineno <= end:
+            continue
+        if best is None or end - start < spans[best][2] - spans[best][1]:
+            best = i
+    return best
+
+
+def _bash_parameter_sets() -> "tuple[frozenset[str], frozenset[str]]":
+    """bash.py's own classification of the names BASH assigns.
+
+    ONE HOME FOR THE FACT (WI-binod). This builder used to keep a second list
+    -- positionals and specials only -- and so kept listing ``$BASH_SOURCE``
+    as an environment read after hypergumbo itself stopped emitting one
+    (INV-nular). The instrument then asserted something the tool under
+    measurement no longer does. Reading the analyzer's sets means a name added
+    there reaches the packet with no second edit.
+
+    Returns ``(shell_state, host_description)``: names bash maintains as its
+    own bookkeeping (never a source), and names it sets from syscalls, which
+    bash.py routes to ``shell.hostinfo`` rather than ``env.environ``
+    (INV-tutar). Positionals and specials (``$1``, ``$?``) need no entry:
+    ``_SHELL_EXPANSION`` matches identifiers only, and ``_`` is in the first
+    set.
+    """
+    from hypergumbo_lang_mainstream.bash import (
+        _HOST_DESCRIPTION_NAMES,
+        _SHELL_STATE_NAMES,
+    )
+
+    return _SHELL_STATE_NAMES, _HOST_DESCRIPTION_NAMES
+
+
+#: The ``source_primitive`` values a bash parameter expansion produces, by
+#: the catalogue rows bash.py's expansions are matched against
+#: (``env.environ`` and ``shell.hostinfo``). ``env`` is the older spelling.
+_SHELL_EXPANSION_PRIMITIVES = frozenset({"environ", "env", "hostinfo"})
 
 _SHELL_EXPANSION = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
 _SHELL_ASSIGN = re.compile(
@@ -936,8 +1000,17 @@ _SHELL_BINDERS = (
 )
 
 
-def shell_env_sites(lines: "list[str]") -> "list[tuple[int, str]]":
+def shell_env_sites(
+    lines: "list[str]", primitive: str = "environ",
+) -> "list[tuple[int, str]]":
     """Lines where an AMBIENT shell parameter is expanded.
+
+    ``primitive`` selects which half of bash.py's split to list: ``hostinfo``
+    lists the host-description names bash sets from syscalls (``$HOSTNAME``,
+    ``$PWD``); anything else lists the inherited environment, excluding those
+    AND every name bash assigns itself (``$BASH_SOURCE``, ``$RANDOM``). Both
+    sets are bash.py's (``_bash_parameter_sets``), so the listing follows what
+    the analyzer emits rather than a second opinion about it.
 
     A bash ``environ`` source names no literal token, so name matching finds
     nothing and the packet shows an empty listing for a source that is really
@@ -958,6 +1031,13 @@ def shell_env_sites(lines: "list[str]") -> "list[tuple[int, str]]":
     dropped. That errs toward showing the adjudicator less, which is the safe
     direction for a listing whose job is to support a refutation.
     """
+    shell_state, host_description = _bash_parameter_sets()
+
+    def wanted(name: str) -> bool:
+        if primitive == "hostinfo":
+            return name in host_description
+        return name not in shell_state and name not in host_description
+
     assigned: set[str] = set()
     for line in lines:
         cooked = scrub(line, "bash")
@@ -972,7 +1052,7 @@ def shell_env_sites(lines: "list[str]") -> "list[tuple[int, str]]":
         body = raw.split("#", 1)[0] if raw.lstrip().startswith("#") else raw
         names = {
             n for n in _SHELL_EXPANSION.findall(body)
-            if n not in assigned and n not in _SHELL_NON_ENV
+            if n not in assigned and wanted(n)
         }
         if names:
             out.append((lineno, raw.rstrip("\n")))
@@ -1110,9 +1190,9 @@ def render_packet(flow: dict[str, Any], repo_root: Path) -> str:
             f"   -- SOURCE sites in {src_rel} span {span[0]}-{span[1]} --"
         )
         primitive = str(flow.get("source_primitive") or "")
-        if src_lang == "bash" and primitive in {"environ", "env"}:
+        if src_lang == "bash" and primitive in _SHELL_EXPANSION_PRIMITIVES:
             hits = [
-                (n, s) for n, s in shell_env_sites(src_lines)
+                (n, s) for n, s in shell_env_sites(src_lines, primitive)
                 if span[0] <= n <= span[1]
             ]
         else:
@@ -1128,30 +1208,54 @@ def render_packet(flow: dict[str, Any], repo_root: Path) -> str:
             )
 
     names = sink_names(flow)
-    spans = sink_search_spans(flow)
+    texts: dict[str, "list[str] | None"] = {}
+    spans: list[tuple[str, int, int, str]] = []
+    module_level: set[int] = set()
+    for rel, start, end, symbol_name in sink_search_spans(flow):
+        if rel not in texts:
+            texts[rel] = _read_lines(repo_root, rel)
+        lines = texts[rel]
+        if end == -1:
+            # A file-anchored symbol: module-level code. Widened here, where
+            # the line count is known, and labelled by what it IS rather than
+            # by its name -- ``file`` read as a claim about a variable of that
+            # name in ArkLib :3.
+            module_level.add(len(spans))
+            end = len(lines) if lines is not None else end
+        spans.append((rel, start, end, symbol_name))
+
+    def label(i: int) -> str:
+        return "module level" if i in module_level else spans[i][3]
+
     out.append(
-        f"   -- SINK {names} sites across {len(spans)} path symbol(s) --"
+        f"   -- SINK {names} sites across {len(spans)} path symbol(s); "
+        f"each site under the narrowest path symbol containing it --"
     )
     total = 0
-    for rel, start, end, symbol_name in spans:
-        lines = _read_lines(repo_root, rel)
+    for i, (rel, start, end, _symbol_name) in enumerate(spans):
+        lines = texts[rel]
         if lines is None:
-            out.append(f"     {symbol_name} ({rel}): (unreadable)")
+            out.append(f"     {label(i)} ({rel}): (unreadable)")
             continue
-        if end == -1:
-            end = len(lines)
-        hits = find_sites(
-            lines, names, start, end,
-            _language_of(rel, lines[0] if lines else ""),
-        )
+        hits = [
+            (lineno, text) for lineno, text in find_sites(
+                lines, names, start, end,
+                _language_of(rel, lines[0] if lines else ""),
+            )
+            if innermost_span(lineno, rel, spans) == i
+        ]
         total += len(hits)
         if hits:
-            out.append(f"     in {symbol_name} ({rel} {start}-{end}):")
+            where = "at" if i in module_level else "in"
+            out.append(f"     {where} {label(i)} ({rel} {start}-{end}):")
             for lineno, text in hits:
                 out.append(f"     {lineno:6}: {text}")
     if not total:
+        # A span is printed only when it covers a line: an unreadable or
+        # empty file has none, and ``1--1`` / ``1-0`` read as a searched range.
         scope = ", ".join(
-            f"{n} {r} {s}-{e}" for r, s, e, n in spans
+            f"{label(i)} {r}" + (f" {s}-{e}" if e >= s else "")
+            for i, (r, s, e, _n) in enumerate(spans)
         ) or "no first-party symbol on the path"
         out.append(f"        (none found; searched {scope})")
     return "\n".join(out)
