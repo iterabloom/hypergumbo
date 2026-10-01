@@ -311,10 +311,10 @@ The `concurrency` group with `cancel-in-progress: false` ensures only one full s
 #### Stop-the-Line Protocol
 
 When full suite fails:
-1. All subsequent PRs fail fast-ci unless title starts with `fix(job-XXXXX): `
+1. All subsequent PRs fail fast-ci unless title starts with `fix(job-`; the failing run's own prefix `fix(job-XXXXX): ` is the one CI prints
 2. This creates audit trail in commit history
 3. Forces immediate attention to broken trunk
-4. No weaseling allowed - exact prefix required
+4. No weaseling allowed - the `fix(job-` prefix is required. Any job id is accepted, not only the failing run's, to avoid race conditions when multiple full-suite runs fail
 
 Valid:
 ```
@@ -457,7 +457,7 @@ The current implementation accepts:
 - `fix(job-XXXXX): description` - exact match
 - `fix(job-*` - any job ID (intentionally flexible)
 
-Note: The implementation is more permissive than originally specified. It allows any `fix(job-*)` pattern, not just the exact failing job ID. This is intentional to avoid race conditions when multiple full-suite runs fail.
+Note: the check accepts any `fix(job-*)` pattern, not just the exact failing job ID, deliberately, to avoid race conditions when multiple full-suite runs fail.
 
 ## Consequences
 
