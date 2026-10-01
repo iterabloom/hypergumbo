@@ -1,0 +1,22 @@
+- op: create  # 7a85
+  at: '2026-10-01T15:25:53Z'  # 7a85
+  by: agent  # 7a85
+  actor: jgstern_agent  # 7a85
+  clock: 1  # 7a85
+  nonce: 7a85  # 7a85
+  data:  # 7a85
+    kind: work_item  # 7a85
+    title: "erlang: -callback emits no symbol and a custom -behaviour emits only an imports edge (sibling of WI-vitas); Elixir @behaviour :erlang_mod unread"  # 7a85
+    status: todo_hard  # 7a85
+    priority: 2  # 7a85
+    parent:  # 7a85
+    tags:  # 7a85
+    - erlang  # 7a85
+    - analyzer  # 7a85
+    - linker_gap  # 7a85
+    isbefore: []  # 7a85
+    duplicate_of: []  # 7a85
+    not_duplicate_of: []  # 7a85
+    pr_ref:  # 7a85
+    description: "**Erlang behaviours are modelled only for the OTP table, the sibling of WI-vitas-bovod-tojos-lukin-kutip-jabah-konuj-fatis (Elixir).** Repro (erlang analyzer, dev @ 4dfb1d645a, 2026-10-01):\n\n    %% shape.erl\n    -module(shape).\n    -callback area() -> integer().\n    %% square.erl\n    -module(square).\n    -behaviour(shape).\n    -export([area/0]).\n    area() -> 1.\n\nEmitted: `module shape`, `module square`, `function area/0`, files, and ONE edge `imports square.erl -> erlang:shape:0-0:module:module` (evidence `behaviour`). Absent:\n1. `-callback area() -> integer().` produces no symbol, so a custom behaviour's required function does not exist;\n2. `-behaviour(shape)` produces no module -> behaviour type relationship (`implements`), and no callback -> implementation `dispatches_to`. `_extract_behaviour_callback_edges` acts only for OTP_BEHAVIOUR_CALLBACKS keys (gen_server etc.), as module -> callback `dispatches_to`.\n\nThe Elixir side now emits a `@callback` symbol (kind function/macro, `modifiers=[\"abstract\"]`, kept out of call resolution), `implements` module -> behaviour (in-repo module, else `elixir:external:0-0:<B>:unresolved`), and callback -> implementation `dispatches_to` (evidence `behaviour_callback`); see that item's branch. Erlang should get the same shape. Note Erlang function names carry arity (`area/0`), so the callback can match by name/arity exactly, which Elixir cannot.\n\nRelated, Elixir-side: `@behaviour :gen_cycle` (an Erlang module as an atom) is not read by the Elixir analyzer at all: plausible 3 sites (`:gen_cycle` x2, `:otel_sampler`), livebook 1. Not on the parity column: erlang is not in `test_interface_dispatch_parity.py` CASES."  # 7a85
+    fields: {}  # 7a85
