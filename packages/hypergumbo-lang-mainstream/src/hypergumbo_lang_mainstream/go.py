@@ -142,11 +142,54 @@ the construct as for the module slot, because ``var_types`` is per function and
 consulting it would also mark the ``url.Parse`` that defines the local as a
 method call. The resolved-lookup emit sites stamp ``function`` without asking
 about a receiver; they were not examined for this change.
+
+A BARE IDENTIFIER RESOLVES IN THE CALLER'S OWN PACKAGE (WI-bivin, 2026-09-30).
+Go scoping answers a bare name exactly: a declaration of the caller's own
+package, a builtin, a dot-imported name, or a local binding -- never another
+package's declaration. The bare-identifier arms (a call ``New()``, a function
+passed as an argument ``register(handler)``, a struct-literal field value
+``Command{Run: run}``) used to check the caller's own FILE and then ask the
+repo-wide resolver with no path hint, so a same-package callee in another file
+competed with every package's declaration of that name: three or more became
+the ``external`` placeholder, two bound the path-sorted first one at 0.57 (a
+wrong-package edge when the caller's package sorts later), and a sole
+candidate in another package was bound at 0.80 though Go cannot mean it.
+
+``_go_package_scopes`` now groups the Pass-1 declarations by PACKAGE -- the
+file's directory AND its ``package`` clause, so the external test package
+``x_test`` is a different scope from ``x`` in the same directory -- and each
+file's bare identifiers are looked up in its own package's scope only, less
+the package's ``_test.go`` files when the caller is not one (``go build``
+never compiles them). A name bound in the enclosing declaration (a closure, a
+parameter) is checked FIRST and resolves to nothing, as Go's function scope
+precedes the package's; the check over-approximates (``_go_names_bound_in``
+counts the whole declaration), so ``names := names(x)``, whose right side
+still means the package function, stays silent. Methods
+and fields are left out: a bare identifier cannot name one, even though the
+file's ``symbol_by_name`` lists a method under its bare name too. Several
+same-package candidates are build-constraint variants of one declaration
+(``p_linux.go`` / ``p_windows.go``); the resolver binds the path-sorted first
+at ``1/sqrt(N)`` with no ambiguity threshold, since every candidate is the
+right package. The dot-import fallback still uses the repo-wide resolver with
+the dot-imported path as its hint, the one way a bare name reaches another
+package. Directory, not go.mod-relative import path, is the identity: one
+directory is one package (plus its ``_test`` twin) in every module layout.
+
+Since a bare call resolved in its own package is never a method, INV-fahub's
+bare-method deferral no longer fires on that route, and with it went the
+``enclosing_class`` stamp that let the inherited_calls Site-1 walker bind a
+bare ``Process()`` inside ``func (c *Caller) Run()`` to an embedded type's
+``Process`` method (dev 7a645c6c76: ``Caller.Run -> TypeA.Process`` at 0.9 in
+a package whose ``func Process()`` was the real callee). Go has no implicit
+receiver; a promoted method is reached only as ``c.Process()``. For a bare name
+the deferral remains reachable only through the dot-import lookup (selector
+calls are unchanged).
 """
 from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 import time
 import warnings
@@ -1300,6 +1343,72 @@ def _make_go_qualified_name(
     return sep.join(parts)
 
 
+#: Symbol kinds a BARE Go identifier can never name (WI-bivin): a method needs
+#: a receiver (``s.Close()``), a field an operand (``s.f``). Every other Pass-1
+#: kind -- function, struct, interface, type, variable -- is a package-level
+#: declaration a bare name reaches (a call, a conversion ``T(x)``, a call
+#: through a function-valued ``var``).
+_GO_MEMBER_KINDS: Final[frozenset[str]] = frozenset({"method", "field"})
+
+#: One Go package's package-level declarations, by bare name.
+GoPackageScope = dict[str, list[Symbol]]
+
+
+@dataclass
+class _GoFileAnalysis(FileAnalysis):
+    """A Go file's Pass-1 result plus its ``package`` clause (WI-bivin).
+
+    The directory alone does not identify a package: the external test package
+    ``x_test`` lives in ``x``'s directory, and its bare names cannot reach
+    ``x``'s declarations. ``_go_package_scopes`` keys on both.
+    """
+
+    package_name: Optional[str] = None
+
+
+def _add_to_package_scope(scope: GoPackageScope, symbols: list[Symbol]) -> None:
+    """Add the package-level declarations among ``symbols`` to ``scope``."""
+    for sym in symbols:
+        if sym.kind not in _GO_MEMBER_KINDS:
+            scope.setdefault(sym.name, []).append(sym)
+
+
+#: (directory, ``package`` clause, caller is a ``_test.go`` file).
+GoPackageKey = tuple[str, Optional[str], bool]
+
+
+def _go_package_key(go_file: Path, package_name: Optional[str]) -> GoPackageKey:
+    """The package-scope key a file's bare identifiers resolve under."""
+    return (str(go_file.parent), package_name, go_file.name.endswith("_test.go"))
+
+
+def _go_package_scopes(
+    file_analyses: Mapping[Path, _GoFileAnalysis],
+) -> dict[GoPackageKey, GoPackageScope]:
+    """Group Pass-1 declarations by Go package: (directory, ``package`` clause).
+
+    The scope a bare identifier resolves in (see the module docstring). The
+    directory is the identity because one directory holds one package (plus its
+    ``_test`` twin) whatever the module layout, so no go.mod arithmetic is
+    needed and a multi-module repository needs no special case.
+
+    Each package has two scopes, told apart by the key's last slot: a
+    ``_test.go`` file sees every file of its package, a non-test file sees only
+    the non-test files -- ``go build`` never compiles a ``_test.go`` file, so a
+    helper declared in one is out of reach of the package's own code.
+    """
+    scopes: dict[GoPackageKey, GoPackageScope] = {}
+    for go_file, analysis in file_analyses.items():
+        directory, package, is_test = _go_package_key(go_file, analysis.package_name)
+        visible_from = (True,) if is_test else (False, True)
+        for caller_is_test in visible_from:
+            _add_to_package_scope(
+                scopes.setdefault((directory, package, caller_is_test), {}),
+                analysis.symbols,
+            )
+    return scopes
+
+
 
 def _go_init_value(
     var_spec: "tree_sitter.Node", value_node: "tree_sitter.Node | None",
@@ -1340,7 +1449,7 @@ def _extract_symbols_from_file(
     parser: "tree_sitter.Parser",
     run: AnalysisRun,
     file_stable_id: str = "",
-) -> FileAnalysis:
+) -> _GoFileAnalysis:
     """Extract symbols from a single Go file.
 
     Uses iterative tree traversal to avoid RecursionError on deeply nested code.
@@ -1359,11 +1468,11 @@ def _extract_symbols_from_file(
         tree = parser.parse(source)
     except (OSError, IOError) as e:  # pragma: no cover - IO errors hard to trigger in tests
         run.record_failed_file(str(file_path), f"{type(e).__name__}: {e}")
-        return FileAnalysis()
+        return _GoFileAnalysis()
     # WI-bulaz: a parse that needed error recovery is recorded, not silent.
     record_partial_parse(run, str(file_path), tree)
 
-    analysis = FileAnalysis()
+    analysis = _GoFileAnalysis()
 
     # WI-potun: extract //go:build constraint from top-of-file comments.
     # Build directives appear as comment nodes before the package clause.
@@ -1378,7 +1487,9 @@ def _extract_symbols_from_file(
             break  # past the preamble, no more build directives
 
     # ADR-0032 Phase 4 PR4: extract package once for qualified_name population.
+    # WI-bivin: kept on the analysis too, as half of the package-scope key.
     package_name = _extract_go_package(tree.root_node, source)
+    analysis.package_name = package_name
 
     # Extract import aliases for this file (used later in edge extraction)
     analysis.import_aliases = _extract_import_aliases(tree.root_node, source)
@@ -3037,6 +3148,39 @@ def _go_receiver_handle_kind(
     )
 
 
+def _go_bare_reference_target(
+    ref_name: str,
+    local_symbols: dict[str, Symbol],
+    own_package: ListNameResolver,
+    current_function: Symbol,
+    bound_names: frozenset[str],
+) -> tuple[Symbol, Optional[float]] | None:
+    """The function a BARE identifier in value position names, if any (WI-bivin).
+
+    Serves ``register(handler)`` and ``Command{Run: run}``. Go scoping places a
+    bare name in the caller's own package, so a hit in the caller's file wins
+    (confidence ``None``: ``Edge.create`` derives it), then ``own_package`` --
+    never the repo-wide resolver, whose sole candidate in ANOTHER package was
+    bound here at 0.70 and whose two-way tie bound the path-sorted first at
+    0.49. A method or field the file lists under its bare name is skipped, as
+    a bare identifier cannot name one. A non-function hit (a variable, a type)
+    and a self-reference name nothing, as before; so does a name in
+    ``bound_names`` (bound in the enclosing declaration: a local value, which
+    Go finds before any package-level declaration).
+    """
+    if ref_name in bound_names:
+        return None
+    local = local_symbols.get(ref_name)
+    if local is not None and local.kind not in _GO_MEMBER_KINDS:
+        if local.kind == "function" and local.id != current_function.id:
+            return local, None
+        return None
+    found = own_package.lookup(ref_name)
+    if found.symbol is not None and found.symbol.kind == "function":
+        return found.symbol, 0.70 * found.confidence
+    return None
+
+
 def _extract_function_reference_edges(
     args_node: "tree_sitter.Node",
     source: bytes,
@@ -3048,6 +3192,9 @@ def _extract_function_reference_edges(
     edges: list[Edge],
     run: AnalysisRun,
     scoped_vars: dict[str, str] | None = None,
+    *,
+    own_package: ListNameResolver,
+    bound_names: frozenset[str],
 ) -> None:
     """Detect function identifiers passed as arguments and create call edges.
 
@@ -3067,6 +3214,11 @@ def _extract_function_reference_edges(
     Identifiers found in ``scoped_vars`` are skipped to avoid false
     positives where a local variable shares a name with a function
     (e.g., ``start := time.Now()`` vs ``func start()``).
+
+    A bare ``identifier`` resolves in the caller's own package
+    (``own_package``, WI-bivin; ``_go_bare_reference_target``), unless it is in
+    ``bound_names`` (a local value of the enclosing declaration). The selector
+    form still asks the repo-wide ``resolver`` by its field name alone.
     """
     _scoped = scoped_vars or {}
     for arg in args_node.children:
@@ -3075,32 +3227,21 @@ def _extract_function_reference_edges(
             # Skip identifiers that are local variables in the current scope
             if ref_name in _scoped:
                 continue
-            # Check if it's a known function/method (local or global)
-            if ref_name in local_symbols:
-                sym = local_symbols[ref_name]
-                if sym.kind in ("function", "method") and sym.id != current_function.id:
-                    edges.append(Edge.create(
-                        src=current_function.id,
-                        dst=sym.id,
-                        edge_type="calls",
-                        line=line,
-                        evidence_type="function_reference_arg",
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                    ))
-            else:
-                lookup_result = resolver.lookup(ref_name)
-                if lookup_result.found and lookup_result.symbol.kind in ("function", "method"):
-                    edges.append(Edge.create(
-                        src=current_function.id,
-                        dst=lookup_result.symbol.id,
-                        edge_type="calls",
-                        line=line,
-                        evidence_type="function_reference_arg",
-                        confidence=0.70 * lookup_result.confidence,
-                        origin=PASS_ID,
-                        origin_run_id=run.execution_id,
-                    ))
+            target = _go_bare_reference_target(
+                ref_name, local_symbols, own_package, current_function,
+                bound_names,
+            )
+            if target is not None:
+                edges.append(Edge.create(
+                    src=current_function.id,
+                    dst=target[0].id,
+                    edge_type="calls",
+                    line=line,
+                    evidence_type="function_reference_arg",
+                    confidence=target[1],
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                ))
         elif arg.type == "selector_expression":
             # h.GetAPI or pkg.Handler
             field_node = find_child_by_field(arg, "field")
@@ -3242,6 +3383,7 @@ def _extract_edges_from_file(
     method_return_type_registry: dict[str, str] | None = None,
     dot_imports: list[str] | None = None,
     file_symbols: list[Symbol] | None = None,
+    package_scope: GoPackageScope | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -3264,11 +3406,25 @@ def _extract_edges_from_file(
     transformed by stripping the module prefix so that suffix matching in
     the resolver operates on repo-relative paths (e.g., ``pkg/log``)
     instead of full module paths (e.g., ``github.com/example/trivy/pkg/log``).
+
+    ``package_scope`` (WI-bivin) is the caller's own package's package-level
+    declarations (``_go_package_scopes``), the only scope a BARE identifier
+    resolves in -- the repo-wide ``resolver`` is never asked about one, save
+    through a dot import. A direct caller that passes none gets this file's own
+    declarations as the scope: what is known of its package, never another's.
     """
     # Every declaration of this file, by position (INV-midag).
-    decl_index = symbols_at(
+    own_decls = (
         file_symbols if file_symbols is not None
         else list({s.id: s for s in local_symbols.values()}.values()))
+    decl_index = symbols_at(own_decls)
+    if package_scope is None:
+        package_scope = {}
+        _add_to_package_scope(package_scope, own_decls)
+    # No ambiguity threshold: every candidate is the caller's own package, so
+    # several are build-constraint variants of ONE declaration, and binding the
+    # path-sorted first at 1/sqrt(N) beats withholding a call Go scoping places.
+    own_package = ListNameResolver(package_scope)
     if import_aliases is None:
         import_aliases = {}
     if resolver is None:
@@ -3989,12 +4145,36 @@ def _extract_edges_from_file(
                             ))
                             callee_name = None  # Already handled
 
+                    # WI-bivin: a BARE name bound in the enclosing declaration
+                    # (a closure, a parameter, a range variable) is that local
+                    # value -- Go looks in the function's own scope before the
+                    # package's -- so it resolves to no declaration at all and
+                    # stays silent, by INV-foluz's rule (``_go_names_bound_in``).
+                    # Checked FIRST: a local ``open`` or ``wrapper`` used to bind
+                    # to the package (or the repo) declaration of that name.
+                    if (
+                        callee_name
+                        and func_node.type == "identifier"
+                        and callee_name in _bound_names(node)
+                    ):
+                        callee_name = None
+
                     if callee_name:
                         # Check local symbols first — but NOT when the call
                         # is package-qualified (import_path_hint set), because
                         # e.g. bug.AddComment() should resolve to the imported
-                        # package, not a local method named AddComment.
-                        if callee_name in local_symbols and import_path_hint is None:
+                        # package, not a local method named AddComment. Nor,
+                        # for a BARE call, when the file's hit is a method or
+                        # field listed under its bare name (WI-bivin): a bare
+                        # identifier cannot name one.
+                        if (
+                            callee_name in local_symbols
+                            and import_path_hint is None
+                            and not (
+                                func_node.type == "identifier"
+                                and local_symbols[callee_name].kind in _GO_MEMBER_KINDS
+                            )
+                        ):
                             callee = local_symbols[callee_name]
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -4008,7 +4188,14 @@ def _extract_edges_from_file(
                             ))
                         # Check global symbols with disambiguation via ListNameResolver
                         else:
-                            lookup_result = resolver.lookup(callee_name, path_hint=import_path_hint)
+                            # WI-bivin: a BARE call resolves in the caller's own
+                            # package and nowhere else (bar the dot-import
+                            # fallback below); only a selector asks repo-wide.
+                            lookup_result = (
+                                own_package.lookup(callee_name)
+                                if func_node.type == "identifier"
+                                else resolver.lookup(callee_name, path_hint=import_path_hint)
+                            )
                             if (
                                 not lookup_result.found
                                 and import_path_hint is None
@@ -4129,11 +4316,7 @@ def _extract_edges_from_file(
                             # specific package exported the symbol, but
                             # surfacing one of the dot-import paths gives
                             # downstream linkers the right place to look.
-                            elif (
-                                func_node.type == "identifier"
-                                and dot_imports
-                                and callee_name not in _bound_names(node)
-                            ):
+                            elif func_node.type == "identifier" and dot_imports:
                                 source_pkg = dot_imports[0]
                                 ref = ExternalRef(
                                     lang="go",
@@ -4159,12 +4342,10 @@ def _extract_edges_from_file(
                             # claim still names a CALL. It used to emit nothing,
                             # so the call site vanished; every other analyzer
                             # mints the ``external`` placeholder here, as Python
-                            # has since INV-foluz. A name bound in the enclosing
-                            # declaration stays silent, for INV-foluz's reason.
-                            elif (
-                                func_node.type == "identifier"
-                                and callee_name not in _bound_names(node)
-                            ):
+                            # has since INV-foluz. (A name bound in the enclosing
+                            # declaration never gets here: see WI-bivin above.)
+                            # ``func_node`` is an ``identifier`` on this arm.
+                            else:
                                 edges.append(make_unresolved_edge(
                                     "go", current_function.id, callee_name,
                                     node.start_point[0] + 1, PASS_ID,
@@ -4181,6 +4362,8 @@ def _extract_edges_from_file(
                         local_symbols, global_symbols, resolver,
                         node.start_point[0] + 1, edges, run,
                         scoped_vars=var_types,
+                        own_package=own_package,
+                        bound_names=_bound_names(node),
                     )
 
         # Detect function references in struct literal fields
@@ -4200,35 +4383,22 @@ def _extract_edges_from_file(
                     # Unwrap literal_element to find the actual expression
                     value_node = value_elem.children[0] if value_elem.children else value_elem
                     if value_node.type == "identifier":
-                        ref_name = node_text(value_node, source)
-                        if ref_name in local_symbols:
-                            sym = local_symbols[ref_name]
-                            if sym.kind in ("function", "method") and sym.id != current_function.id:
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=sym.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="struct_field_reference",
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                ))
-                        else:
-                            lookup_result = resolver.lookup(ref_name)
-                            if (
-                                lookup_result.found
-                                and lookup_result.symbol.kind in ("function", "method")
-                            ):
-                                edges.append(Edge.create(
-                                    src=current_function.id,
-                                    dst=lookup_result.symbol.id,
-                                    edge_type="calls",
-                                    line=node.start_point[0] + 1,
-                                    evidence_type="struct_field_reference",
-                                    confidence=0.70 * lookup_result.confidence,
-                                    origin=PASS_ID,
-                                    origin_run_id=run.execution_id,
-                                ))
+                        # WI-bivin: the caller's own package, as for a call.
+                        field_ref = _go_bare_reference_target(
+                            node_text(value_node, source), local_symbols,
+                            own_package, current_function, _bound_names(node),
+                        )
+                        if field_ref is not None:
+                            edges.append(Edge.create(
+                                src=current_function.id,
+                                dst=field_ref[0].id,
+                                edge_type="calls",
+                                line=node.start_point[0] + 1,
+                                evidence_type="struct_field_reference",
+                                confidence=field_ref[1],
+                                origin=PASS_ID,
+                                origin_run_id=run.execution_id,
+                            ))
                     elif value_node.type == "selector_expression":
                         # pkg.Handler or obj.Method as field value
                         sel_field = find_child_by_field(value_node, "field")
@@ -5616,7 +5786,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     go_dep_manifest = parse_go_mod_dependencies(repo_root)
 
     # Pass 1: Extract all symbols
-    file_analyses: dict[Path, FileAnalysis] = {}
+    file_analyses: dict[Path, _GoFileAnalysis] = {}
     files_skipped = 0
     files_processed = 0
 
@@ -5650,6 +5820,10 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
                 if symbol.name not in global_symbols:
                     global_symbols[symbol.name] = []
                 global_symbols[symbol.name].append(symbol)
+
+    # WI-bivin: the same declarations grouped by PACKAGE, the scope a bare
+    # identifier resolves in.
+    package_scopes = _go_package_scopes(file_analyses)
 
     # Aggregate field type registry from all files for chained field
     # access resolution (e.g., r.integration.Notify() → Integration.Notify).
@@ -5702,6 +5876,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             method_return_type_registry=method_return_type_registry,
             dot_imports=analysis.dot_imports,
             file_symbols=analysis.symbols,
+            package_scope=package_scopes[_go_package_key(go_file, analysis.package_name)],
         )
 
         # ADR-0015 Tier 1: annotate call edges with dataflow access modes
