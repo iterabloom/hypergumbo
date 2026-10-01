@@ -73,7 +73,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 
 from .ir import Symbol, Edge, is_external_boundary
 from .ranking import (
@@ -85,6 +85,7 @@ from .selection.filters import (
     EXAMPLE_PATH_PATTERNS,  # re-export for backwards compatibility
     EXCLUDED_KINDS,  # re-export: test_compact.py imports this  # noqa: F401
     is_excluded_kind,
+    is_key_symbol,
     is_test_path as _is_test_path,  # re-export: test_compact.py imports this  # noqa: F401
     is_example_path as _is_example_path,
     key_symbols,
@@ -716,6 +717,7 @@ def select_by_connectivity(
     centrality: Dict[str, float] | None = None,
     interleave: bool = False,
     bridges_per_seed: int = 2,
+    seed_eligible: "Callable[[Symbol], bool] | None" = None,
 ) -> ConnectivityResult:
     """Select symbols to maximize connectivity of the induced subgraph.
 
@@ -756,6 +758,13 @@ def select_by_connectivity(
             containment). Requires an ordered ``seed_ids``. The default
             preserves the original preload policy for callers that need every
             seed present regardless of budget.
+        seed_eligible: Optional predicate a node must satisfy to be ADMITTED
+            WITHOUT AN EDGE — i.e. as a seed or as the no-seed bootstrap.
+            Greedy bridge picks are never filtered by it: a seed is chosen for
+            what it IS, a bridge for what it CONNECTS, and only the first is a
+            claim about importance (WI-fadab). When no symbol satisfies it, the
+            bootstrap falls back to the whole population so a repo of only
+            non-eligible nodes still yields output. ``None`` admits everything.
 
     Returns:
         ConnectivityResult with selected symbols and induced edges.
@@ -786,6 +795,17 @@ def select_by_connectivity(
         sorted(seed_ids) if isinstance(seed_ids, (set, frozenset))
         else list(seed_ids)
     )
+    # WI-fadab: one gate for every edge-less admission. Filtering the sequence
+    # (not testing inside each loop) keeps the order of the survivors, so the
+    # interleave's budget-independent stream -- and with it containment -- is
+    # untouched: the predicate reads the symbol, never the budget.
+    bootstrap_pool: List[Symbol] = symbols
+    if seed_eligible is not None:
+        seed_seq = [
+            sid for sid in seed_seq
+            if sid in symbol_by_id and seed_eligible(symbol_by_id[sid])
+        ]
+        bootstrap_pool = [s for s in symbols if seed_eligible(s)] or symbols
 
     uf = UnionFind([])
     frontier: set[str] = set()
@@ -857,8 +877,8 @@ def select_by_connectivity(
         # frontier to grow from and the stream would emit nothing. The
         # highest-centrality node is budget-independent, so seeding with it costs
         # containment nothing.
-        if not seed_seq and symbols:
-            _admit(max(symbols, key=lambda s: centrality.get(s.id, 0)).id)
+        if not seed_seq and bootstrap_pool:
+            _admit(max(bootstrap_pool, key=lambda s: centrality.get(s.id, 0)).id)
 
         seed_cursor = 0
         while len(selected_ids) < max_additional:
@@ -887,8 +907,8 @@ def select_by_connectivity(
                 _admit(sid)
 
         # Handle empty seed case: start with highest-centrality node
-        if not selected_ids and symbols:
-            best_sym = max(symbols, key=lambda s: centrality.get(s.id, 0))
+        if not selected_ids and bootstrap_pool:
+            best_sym = max(bootstrap_pool, key=lambda s: centrality.get(s.id, 0))
             _admit(best_sym.id)
             max_additional -= 1
 
@@ -1259,9 +1279,24 @@ def format_compact_behavior_map(
     # (see the WI-vofud note below on why it keeps the adaptive seed policy),
     # and a file node is frequently the only thing joining two islands, so
     # narrowing it would remove the bridges the mode exists to find.
+    #
+    # WI-fadab: that exemption is for BRIDGES, and it had also been leaving the
+    # connectivity SEEDS unfiltered — the seed list is "the important symbols"
+    # claim, the bridge picks are not. Measured on the self-analysis map at
+    # --max-symbols 10: four pyproject [project.scripts] ``file`` entrypoints led
+    # the output as seeds, and four ``external_symbol`` placeholders followed as
+    # picks. So connectivity mode now (a) drops external-boundary nodes from its
+    # population, as the tiered view does — they have no source, and two callers
+    # of ``time.monotonic`` are not structurally joined by it, so a boundary
+    # "bridge" manufactures connectivity the code does not have — and (b) admits
+    # only key symbols as seeds or as the bootstrap (``seed_eligible`` below),
+    # while greedy bridge picks stay unfiltered. The centrality path needs
+    # neither: ``key_symbols`` already excludes both shapes.
     if not connectivity_aware:
         edges = production_edges(symbols, edges)
         symbols = key_symbols(symbols)
+    else:
+        symbols = [s for s in symbols if not is_external_boundary(s)]
 
     # Extract entrypoint symbol_ids to force-include them, ranked by
     # (-confidence, symbol_id) for a stable, budget-independent order.
@@ -1359,7 +1394,8 @@ def format_compact_behavior_map(
         # prefix of a larger one's (measured 55/120 -> 120/120 budget pairs
         # contained across the eight 2026-07-17 maps, pretix included).
         conn_result = select_by_connectivity(
-            symbols, edges, seed_order, config.max_symbols, interleave=True
+            symbols, edges, seed_order, config.max_symbols, interleave=True,
+            seed_eligible=is_key_symbol,
         )
 
         # Create compact output
