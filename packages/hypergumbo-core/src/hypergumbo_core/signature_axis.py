@@ -361,7 +361,7 @@ LEGACY_VALUE_PARSERS: Final[tuple[LegacyValueParser, ...]] = (
     ),
     LegacyValueParser(
         path="packages/hypergumbo-lang-common/src/hypergumbo_lang_common/dart.py",
-        line=817,
+        line=829,
         anchor="resolved_sym.signature",
         fact="return_type",
         note="Chained-call receiver typing.",
