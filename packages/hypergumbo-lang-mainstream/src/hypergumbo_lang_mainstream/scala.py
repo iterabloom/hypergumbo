@@ -2083,13 +2083,20 @@ class _ScalaReceiverTyper:
         if "." not in type_name:
             return type_name
         simple = type_name.rsplit(".", 1)[1]
-        sym = self._global_symbols.get(simple)
-        if (
-            sym is not None and sym.kind in ("class", "object", "trait")
-            and _import_names_project_path(type_name, self._project_packages)
+        if not self._is_project_type_name(simple):
+            return type_name
+        # A project PACKAGE path (``lila.user.UserApi``), or a type member of a
+        # project type or object (``NetworkClient.Arguments``, sbt: the declared
+        # return of ``parseArgs``). Either way the leaf is the type.
+        if _import_names_project_path(type_name, self._project_packages) or (
+            self._is_project_type_name(type_name.split(".", 1)[0])
         ):
             return simple
         return type_name
+
+    def _is_project_type_name(self, name: str) -> bool:
+        sym = self._global_symbols.get(name)
+        return sym is not None and sym.kind in ("class", "object", "trait")
 
 
 def _pattern_names(pattern: "tree_sitter.Node", source: bytes) -> "list[str]":
