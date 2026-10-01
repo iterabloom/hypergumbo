@@ -716,7 +716,7 @@ INHERITANCE_EDGE_TYPE_LANGUAGES: Final[dict[str, frozenset[str]]] = {
     }),
     "inherits": frozenset({"bitbake", "solidity"}),
     "implements": frozenset({
-        "dart", "graphql", "haskell", "java", "javascript", "rust",
+        "dart", "elixir", "graphql", "haskell", "java", "javascript", "rust",
         "typescript", "vhdl",
     }),
 }

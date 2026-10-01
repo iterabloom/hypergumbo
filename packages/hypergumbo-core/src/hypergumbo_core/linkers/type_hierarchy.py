@@ -770,10 +770,17 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     # labels its own edges from the clause a base is written in (WI-lahub):
     # Dart has no interface kind, so only the clause separates extends from
     # implements, and inheritance-linker's label is keyed on the target's kind.
+    #
+    # ``elixir`` emits ``implements`` (module -> behaviour, WI-vitas) but this
+    # linker builds no dispatch from it: an Elixir function is ``kind
+    # "function"``, never ``"method"``, so the analyzer emits the
+    # callback -> implementation ``dispatches_to`` itself. Declared because the
+    # clause names who produces the edges indexed here, not who gains from them.
     depends_on=[
         [
-            "inheritance-linker", "blade", "dart", "haskell", "java", "javascript",
-            "python", "ruby", "rust", "rust_analyzer", "scip_python", "twig", "vhdl",
+            "inheritance-linker", "blade", "dart", "elixir", "haskell", "java",
+            "javascript", "python", "ruby", "rust", "rust_analyzer",
+            "scip_python", "twig", "vhdl",
         ],
     ],
 )

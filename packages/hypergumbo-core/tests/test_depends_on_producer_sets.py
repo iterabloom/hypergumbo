@@ -232,8 +232,9 @@ class TestTypeHierarchyDeclaresItsEdgeSources:
 
     def test_the_clause_is_exactly_this(self) -> None:
         assert _clause_containing("type-hierarchy-linker", "inheritance-linker") == [
-            "inheritance-linker", "blade", "dart", "haskell", "java", "javascript",
-            "python", "ruby", "rust", "rust_analyzer", "scip_python", "twig", "vhdl",
+            "inheritance-linker", "blade", "dart", "elixir", "haskell", "java",
+            "javascript", "python", "ruby", "rust", "rust_analyzer",
+            "scip_python", "twig", "vhdl",
         ]
 
 
