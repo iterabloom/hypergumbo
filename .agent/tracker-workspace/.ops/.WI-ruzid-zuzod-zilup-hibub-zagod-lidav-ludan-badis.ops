@@ -1,0 +1,20 @@
+- op: create  # 1e60
+  at: '2026-10-01T03:52:21Z'  # 1e60
+  by: agent  # 1e60
+  actor: jgstern_agent  # 1e60
+  clock: 1  # 1e60
+  nonce: '1e60'  # 1e60
+  data:  # 1e60
+    kind: work_item  # 1e60
+    title: "C# interface inheritance (interface IChild : IBase) emits no edge: interface symbols carry no base_classes"  # 1e60
+    status: todo_hard  # 1e60
+    priority: 2  # 1e60
+    parent:  # 1e60
+    tags:  # 1e60
+    - analysis_quality  # 1e60
+    isbefore: []  # 1e60
+    duplicate_of: []  # 1e60
+    not_duplicate_of: []  # 1e60
+    pr_ref:  # 1e60
+    description: "Surfaced by WI-kalug-takiz-lumim-falaj-kopuf-tapor-kizof-sajur's family sweep (2026-09-30, branch jgstern-agent/fix/kalug-ts-interface-extends).\n\nC# interface inheritance emits NO edge: `interface IChild : IBase { void N(); }` gives IChild meta with no base_classes, so neither the analyzer nor the core inheritance linker sees the relation. The class case works (`class Impl : IChild` -> base_classes ['IChild'] -> Impl -implements-> IChild from the inheritance-linker).\n\nCode (relocate by name): csharp.py `_extract_base_list` (def ~645) is called from the class/struct branch (~745); the `interface_declaration` branch (~783) does not call it.\n\nREPRO: fixture c.cs = `interface IBase { void M(); }` / `interface IChild : IBase { void N(); }` / `class Impl : IChild { ... }`; `hypergumbo survey . --out f.json` -> only edge is Impl -implements-> IChild; IChild node meta = {'visibility_signal': 'default'}.\n\nExpected after a fix: IChild -extends-> IBase. With WI-kalug's core change (an interface/trait/protocol source's edges are `extends`), adding base_classes to C# interface symbols is enough; no edge-type work in csharp.py.\n\nNote: linkers/type_hierarchy.py `_extends_admits_dispatch` docstring states \"C# interface inheritance ... produce[s] extends edges between interface symbols\" -- not true on this repro."  # 1e60
+    fields: {}  # 1e60
