@@ -1,0 +1,21 @@
+- op: create  # 9e67
+  at: '2026-10-01T01:30:04Z'  # 9e67
+  by: agent  # 9e67
+  actor: jgstern_agent  # 9e67
+  clock: 1  # 9e67
+  nonce: '9e67'  # 9e67
+  data:  # 9e67
+    kind: work_item  # 9e67
+    title: "bash: export A=1 B=2 drops B, and bare export X / declare -x / readonly emit no symbol at all"  # 9e67
+    status: todo_hard  # 9e67
+    priority: 3  # 9e67
+    parent:  # 9e67
+    tags:  # 9e67
+    - bash  # 9e67
+    - analysis_quality  # 9e67
+    isbefore: []  # 9e67
+    duplicate_of: []  # 9e67
+    not_duplicate_of: []  # 9e67
+    pr_ref:  # 9e67
+    description: "FOUND 2026-09-30 by the WI-nasil premise check (dry run group H); reproduced on dev b16e3e9271.\n\nTHE DEFECT. The bash analyzer's export arm (hypergumbo_lang_mainstream/bash.py ~1005-1030) reads only the FIRST assignment of an `export` statement and recognises only `export NAME=value`, so four ordinary declaration shapes emit no symbol:\n\nREPRO (scratch fixture env.sh, `hypergumbo survey`):\n    export A=1 B=2     -> A only; B is dropped\n    export X           -> nothing (bare export of an existing variable)\n    declare -x D=1     -> nothing\n    readonly R=1       -> nothing\n    export C=3         -> C (control)\n  Emitted names: [A, C] (kind export).\n\nWHY SEPARATE FROM WI-nasil. WI-nasil is about DUPLICATES (one Symbol per export statement, so a re-exported variable has several same-(path,name,kind) symbols); this is MISSING symbols. They share a code site and a modelling decision -- what one environment-variable declaration IS in the graph -- so whoever decides WI-nasil should decide these shapes in the same change. Dropping `B` in `export A=1 B=2` is data loss in a construct the analyzer already claims to handle.\n\nNOT CHECKED: `local -x`, `typeset -x`, `declare -r`, `export -f` (exporting a function), `export -n` (un-export), and whether taint's bash env-read sources depend on these symbols.\nRelated: WI-nasil (same site), WI-zihuf and WI-binod (bash environment-read modelling)."  # 9e67
+    fields: {}  # 9e67
