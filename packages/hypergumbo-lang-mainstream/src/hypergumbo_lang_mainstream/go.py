@@ -176,14 +176,15 @@ package. Directory, not go.mod-relative import path, is the identity: one
 directory is one package (plus its ``_test`` twin) in every module layout.
 
 Since a bare call resolved in its own package is never a method, INV-fahub's
-bare-method deferral no longer fires on that route, and with it went the
-``enclosing_class`` stamp that let the inherited_calls Site-1 walker bind a
-bare ``Process()`` inside ``func (c *Caller) Run()`` to an embedded type's
-``Process`` method (dev 7a645c6c76: ``Caller.Run -> TypeA.Process`` at 0.9 in
-a package whose ``func Process()`` was the real callee). Go has no implicit
-receiver; a promoted method is reached only as ``c.Process()``. For a bare name
-the deferral remains reachable only through the dot-import lookup (selector
-calls are unchanged).
+bare-method deferral (``defer_bare_method_call``) could no longer fire in Go and
+is no longer applied: a dot-import lookup accepts only exact / path-hint
+matches, and a hint-less selector reaches the resolver only with one candidate.
+With it went the ``enclosing_class`` stamp that let the inherited_calls Site-1
+walker bind a bare ``Process()`` inside ``func (c *Caller) Run()`` to an
+embedded type's ``Process`` method (dev 7a645c6c76: ``Caller.Run ->
+TypeA.Process`` at 0.9 in a package whose ``func Process()`` was the real
+callee). Go has no implicit receiver; a promoted method is reached only as
+``c.Process()``.
 """
 from __future__ import annotations
 
@@ -215,7 +216,6 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
-    defer_bare_method_call,
     emit_module_attribute_refs,
     populate_docstrings_from_tree,
     find_child_by_field,
@@ -4208,36 +4208,18 @@ def _extract_edges_from_file(
                                 lookup_result = _go_lookup_through_dot_imports(
                                     resolver, callee_name, dot_imports, module_path,
                                 )
-                            # INV-fahub: a BARE identifier call (``import_path_hint
-                            # is None`` — no package evidence) that resolves only to
-                            # a DIFFERENT type's METHOD on weak (ambiguous /
-                            # non-exact) short-name evidence is a magnet — dozens of
-                            # bare call sites collapse onto one arbitrary
-                            # ``Type.method``. Withhold that bind and emit an honest
-                            # unresolved edge stamped with the enclosing class, so
-                            # the inherited_calls Site-1 walker can recover a genuine
-                            # inherited implicit-receiver call (and a true cross-class
-                            # magnet stays external). Free functions, same-class
-                            # methods, and strong exact / path-hint matches are
-                            # unaffected; a package-qualified selector (``pkg.Foo()``,
-                            # ``import_path_hint`` set) carries real routing evidence
-                            # and is never withheld here. The enclosing type is the
-                            # receiver of the calling method (``Type.method`` →
-                            # ``Type``); a free-function caller has no enclosing type.
-                            _enclosing_type = (
-                                current_function.name.rsplit(".", 1)[0]
-                                if "." in current_function.name else None
-                            )
-                            _sym = lookup_result.symbol
-                            _defer = (
-                                import_path_hint is None
-                                and _sym is not None
-                                and defer_bare_method_call(
-                                    _sym.kind, _sym.name,
-                                    lookup_result.match_type, _enclosing_type,
-                                )
-                            )
-                            if lookup_result.found and not _defer:
+                            # INV-fahub's bare-method deferral (defer_bare_method_call
+                            # + an ``enclosing_class`` stamp for the inherited_calls
+                            # Site-1 walker) is NOT applied here, and cannot fire
+                            # (WI-bivin): a bare name resolves in its own package,
+                            # which holds no methods, or through a dot import, which
+                            # accepts only exact / path-hint matches; a selector with
+                            # no hint reaches this lookup only with one candidate
+                            # (the ambiguity guard above takes two or more), an exact
+                            # match. Go has no implicit receiver for Site 1 to
+                            # recover; on dev the stamp let it bind a bare
+                            # ``Process()`` to an embedded type's method.
+                            if lookup_result.found:
                                 # Scale base confidence by resolver's confidence multiplier
                                 edge_confidence = 0.80 * lookup_result.confidence
                                 edges.append(Edge.create(
@@ -4250,15 +4232,6 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "function"},
-                                ))
-                            elif _defer:
-                                # Bare call only (``import_path_hint`` is None here),
-                                # so the target module is unknown → external hint.
-                                edges.append(make_unresolved_edge(
-                                    "go", current_function.id, callee_name,
-                                    node.start_point[0] + 1, PASS_ID,
-                                    run.execution_id,
-                                    enclosing_class=_enclosing_type,
                                 ))
                             # Bug #2 fix: Create edge for external/unresolved method calls
                             # This enables linkers to potentially match across languages
