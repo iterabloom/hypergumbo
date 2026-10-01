@@ -41,3 +41,10 @@
   nonce: 8d84  # 8d84
   set:  # 8d84
     parent: INV-vusog-kimig-vasin-gomot-sahud-ponul-nilov-novuv  # 8d84
+- op: discuss  # 9f22
+  at: '2026-10-01T16:28:02Z'  # 9f22
+  by: agent  # 9f22
+  actor: jgstern_agent  # 9f22
+  clock: 5  # 9f22
+  nonce: 9f22  # 9f22
+  message: "NOTE 2026-10-01 (from WI-vitas-bovod-tojos-lukin-kutip-jabah-konuj-fatis): this item's title names defimpl protocol detection, but its closure note covers only the @behaviour directive and the BEHAVIOUR_CALLBACKS additions, and elixir.py on dev @ 4dfb1d645a contains no defimpl/defprotocol handling at all (grep: 0 occurrences). Live repro: defprotocol Size + defimpl Size, for: Map emits two bare 'function size' symbols with no module, and a nested defimpl's def is named under the enclosing module (Outer.size). Filed as WI-forof-mohip-himul-mokus-togih-lujaj-jimal-nizov. Status of this item left unchanged."  # 9f22

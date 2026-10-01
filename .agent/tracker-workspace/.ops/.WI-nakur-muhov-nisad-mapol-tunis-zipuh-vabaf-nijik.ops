@@ -1,0 +1,20 @@
+- op: create  # fd78
+  at: '2026-10-01T16:06:12Z'  # fd78
+  by: agent  # fd78
+  actor: jgstern_agent  # fd78
+  clock: 1  # fd78
+  nonce: fd78  # fd78
+  data:  # fd78
+    kind: work_item  # fd78
+    title: "WI-rasal producer-set scanner sees only literal edge_type= kwargs; an analyzer choosing extends/implements from data (dart, js_ts externals) is invisible to the type-hierarchy depends_on gate"  # fd78
+    status: todo_hard  # fd78
+    priority: 3  # fd78
+    parent:  # fd78
+    tags:  # fd78
+    - linker_gap  # fd78
+    isbefore: []  # fd78
+    duplicate_of: []  # fd78
+    not_duplicate_of: []  # fd78
+    pr_ref:  # fd78
+    description: "**Found while fixing WI-lahub-nitas-kopok-notas-sizir-sodis-kudut-fivov.**\n\nThe WI-rasal gate `test_depends_on_producer_sets.py::TestTypeHierarchyDeclaresItsEdgeSources::test_every_direct_analyzer_emitter_is_declared` derives the producer set with `_pass_ids_emitting_edge_type`. That function counts an analyzer only when an `Edge.create(...)` call passes a LITERAL constant `edge_type=\"extends\"` / `\"implements\"`.\n\nAn analyzer that picks the label from data cannot be seen by it. WI-lahub's Dart emitter does this (`edge_type=ref.edge_type`, one call for extends/implements/includes chosen by the clause), and so does part of js_ts's external-base path (`edge_type=edge_type`). For such an analyzer the gate is vacuously green. By reading the scanner (the mutation was NOT run), deleting `dart` from `type-hierarchy-linker.depends_on` would not fail it. WI-lahub added `dart` by hand and pinned it with a behavioural test in its own package (`test_dart_inheritance.py::TestPipeline::test_type_hierarchy_declares_dart_as_an_edge_source`). The general gate is still blind.\n\nMutation check to run first: remove `\"dart\"` from the clause and run `test_every_direct_analyzer_emitter_is_declared`. Expected: it stays green, which proves the blind spot.\n\nFix options: (a) a behavioural producer set, built by running each analyzer on a per-language inheritance fixture and collecting the edge types it emits (the parity column's corpus already exists for this); (b) extend the AST scan to string constants that are VALUES of a module-level dict whose other values are evidence types. (b) is fragile; (a) is the instrument that cannot be fooled by indirection."  # fd78
+    fields: {}  # fd78
