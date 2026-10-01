@@ -1,0 +1,21 @@
+- op: create  # e250
+  at: '2026-10-01T14:06:58Z'  # e250
+  by: agent  # e250
+  actor: jgstern_agent  # e250
+  clock: 1  # e250
+  nonce: e250  # e250
+  data:  # e250
+    kind: work_item  # e250
+    title: "js-module-linker mints the import target's file id with the IMPORTER's language: a .ts importing ./util.js gets a phantom typescript:src/util.js file node beside the real javascript one"  # e250
+    status: todo_hard  # e250
+    priority: 2  # e250
+    parent:  # e250
+    tags:  # e250
+    - dogfood  # e250
+    - analysis_quality  # e250
+    isbefore: []  # e250
+    duplicate_of: []  # e250
+    not_duplicate_of: []  # e250
+    pr_ref:  # e250
+    description: "Found 2026-10-01 while working WI-majov (dev af4e16964b). The js-module-linker mints the import TARGET's file id with the IMPORTER's language, so a TypeScript file importing a JavaScript file gets a second, wrong-language file node for the target.\n\nRepro: src/main.ts = `import { u } from \"./util.js\"; console.log(u());`, src/util.js = `export function u() { return 1; }`; `hypergumbo run` on that dir. Output has BOTH `javascript:src/util.js:1-1:file:file` (the JS/TS analyzer's node) AND `typescript:src/util.js:1-1:file:file` (origin js-module-linker). The edges `typescript:src/main.ts:1-1:file:file imports typescript:src/util.js:1-1:file:file` and `typescript:src/util.js:1-1:file:file module_exports javascript:src/util.js:1-1:u:function` both hang off the phantom, so the real util.js file node has no inbound import.\n\nSite: packages/hypergumbo-core/src/hypergumbo_core/linkers/js_module.py ~805, `sym_id = make_file_id(lang, rel_path)` where `lang` is the language parsed from the IMPORTER's id (~728). The existing-symbol dedup map (~688) is keyed on the canonical id, so a language mismatch misses it and a new Symbol is minted (~815). Fix: take the target's language from the resolved target path with the analyzer's rule (js_ts._get_language_for_file; core's js_ts_language_from_path once its .mts/.cts drift is fixed). Violates INV-movor's statement (one file-kind Symbol per path across all producers); INV-movor's fix covered the absolute-path shape, not this one.\n\nNot measured: corpus frequency (mixed .ts -> .js imports). WI-sinol is also working in js_module.py (module_exports export status); different lines."  # e250
+    fields: {}  # e250
