@@ -1,0 +1,22 @@
+- op: create  # b21b
+  at: '2026-10-01T08:15:54Z'  # b21b
+  by: agent  # b21b
+  actor: jgstern_agent  # b21b
+  clock: 1  # b21b
+  nonce: b21b  # b21b
+  data:  # b21b
+    kind: work_item  # b21b
+    title: "scala: a type alias (lila type Fu[A] = Future[A]) is never expanded, so 1,016 receivers WI-gokop newly types carry a hint (Fu/Funit) that qualifies to no module and has no element"  # b21b
+    status: todo_hard  # b21b
+    priority: 3  # b21b
+    parent:  # b21b
+    tags:  # b21b
+    - scala  # b21b
+    - analysis_quality  # b21b
+    - io_boundary  # b21b
+    isbefore: []  # b21b
+    duplicate_of: []  # b21b
+    not_duplicate_of: []  # b21b
+    pr_ref:  # b21b
+    description: "FOUND 2026-10-01 by WI-gokop-nudub-zunal-zibij-fuvad-libot-bituk-visid (branch jgstern-agent/feat/gokop-scala-inferred-receivers, not yet integrated).\n\nWHAT. scala.py does not expand a type alias. lila declares `type Fu[A] = Future[A]` (and `Funit`), and writes its async API in those names. With WI-gokop's return-type registry, a receiver bound to such a call is now typed -- but typed `Fu` / `Funit`, a name that qualifies to no module: on lila, 951 newly-gained `receiver_type_hint`s are `Fu` and 65 are `Funit`, and every one of them keeps the `external` module slot. The Future's own methods (`map`, `flatMap`, `dmap` via extension) therefore reach no catalogue row and the element type is never read (an alias is not in _SCALA_ELEMENT_CONTAINERS, so `fu.map(x => x.foo())` leaves `x` untyped).\n\nMEASURED (A/B, same core, origin/dev vs the WI-gokop branch): lila 951 + 65 hints, slot external. sbt: not measured for aliases.\n\nFIX SHAPE (not designed): record `type_definition` aliases in Pass 1 (name -> right-hand type node, with its type parameters), expand an alias when naming a type (_type_node_name) and when reading an element (_generic_element), first writer wins like the other registries. Precision: an alias is name-keyed like everything else here; same-named aliases in different packages collide."  # b21b
+    fields: {}  # b21b
