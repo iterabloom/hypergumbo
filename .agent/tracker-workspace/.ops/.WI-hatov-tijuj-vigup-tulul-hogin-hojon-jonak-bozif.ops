@@ -1,0 +1,21 @@
+- op: create  # 91d4
+  at: '2026-10-01T03:51:21Z'  # 91d4
+  by: agent  # 91d4
+  actor: jgstern_agent  # 91d4
+  clock: 1  # 91d4
+  nonce: 91d4  # 91d4
+  data:  # 91d4
+    kind: work_item  # 91d4
+    title: "java: super.m() inside an override resolves to the override itself (Case 1 treats super like this), a false self-recursion call edge"  # 91d4
+    status: todo_hard  # 91d4
+    priority: 3  # 91d4
+    parent:  # 91d4
+    tags:  # 91d4
+    - java  # 91d4
+    - call_graph  # 91d4
+    isbefore: []  # 91d4
+    duplicate_of: []  # 91d4
+    not_duplicate_of: []  # 91d4
+    pr_ref:  # 91d4
+    description: "FOUND 2026-09-30 while working WI-halin (branch jgstern-agent/fix/halin). java.py's Case 1 (the current-class lookup) handles super.m() exactly like this.m(): it looks up <EnclosingClass>.m, so a super call inside an override resolves to the OVERRIDE ITSELF (a false self-recursion edge) rather than to the parent's method.\n\nREPRO (dev 8cfcab7b07 and the halin branch alike; analyze_java on one file):\n  public class A extends B { void m() { super.m(); } }\n  class B { void m() {} }\n-> one calls edge, A.m -> A.m (ast_call_direct, resolved). Expected: A.m -> B.m, or an unresolved edge carrying enclosing_class for the inherited_calls linker to walk from the PARENT.\n\nWI-halin deliberately left super.m() on its old path (it narrowed Case 1 to object_node None / this / super, excluding receiver expressions only), so this behaviour is unchanged there. Corpus frequency not measured. Direction: a false edge on the call graph (slice / reverse slice / centrality), and it can hide the parent's body from reachability. Siblings (kotlin/scala/csharp super calls) not checked."  # 91d4
+    fields: {}  # 91d4

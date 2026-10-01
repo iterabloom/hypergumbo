@@ -1,0 +1,22 @@
+- op: create  # 7dfc
+  at: '2026-10-01T03:33:45Z'  # 7dfc
+  by: agent  # 7dfc
+  actor: jgstern_agent  # 7dfc
+  clock: 1  # 7dfc
+  nonce: 7dfc  # 7dfc
+  data:  # 7dfc
+    kind: work_item  # 7dfc
+    title: "tracker TUI TrackerApp integration modal tests read write side effects after a fixed pause count: a submit can read 'not called' under load, and cancel/not-called tests pass vacuously"  # 7dfc
+    status: todo_hard  # 7dfc
+    priority: 3  # 7dfc
+    parent:  # 7dfc
+    tags:  # 7dfc
+    - testing  # 7dfc
+    - flaky_isolation  # 7dfc
+    - ci_infrastructure  # 7dfc
+    isbefore: []  # 7dfc
+    duplicate_of: []  # 7dfc
+    not_duplicate_of: []  # 7dfc
+    pr_ref:  # 7dfc
+    description: "FOUND WHILE FIXING WI-ruhul-kujah-sasar-mofov-mohoh-gotis-soron-fazun (2026-09-30), branch jgstern-agent/fix/ruhul.\n\nTHE SAME TICK-COUNT HAZARD, IN THE TrackerApp INTEGRATION TESTS. packages/hypergumbo-tracker/tests/test_tui.py drives write modals through the full TrackerApp (action_discuss / edit / new / parent / before / lock / tier-move / confirm), then does `pilot.click(\"#submit\")` followed by one or two `pilot.pause()` calls and asserts on the side effect (a `patch.object(tracker_set, ...)` mock's calls, the store, or a notification). 38 click sites on #submit/#yes/#cancel/#no sit below the modal unit classes.\n\nMECHANISM (same as WI-ruhul): the side effect is several message-queue hops after the click (Click -> Button -> Pressed bubbling to the screen -> dismiss -> app.call_next(callback) -> the TrackerSet write). `Pilot.pause` ends in Textual 7.5.0's `wait_for_idle`, which calls the process idle when its CPU time stops advancing against wall-clock time; a worker descheduled on a loaded box looks idle, so `pause` can return after one event-loop iteration.\n\nREPRO OF THE MODEL (scratch script, not a pytest run): TrackerApp + `_make_tracker_set`, `action_discuss`, fill #discuss-input, then `Pilot.pause` patched to one `asyncio.sleep(0)` (the one-tick model WI-ruhul's TestWaitForDismissalHelper uses) before `click(\"#submit\"); pause(); pause()`:\n    normal  [1, 1, 1, 1]   (discuss mock call_count)\n    starved [0, 0, 0, 0]\nSo test_discuss_submit-shaped tests read \"not called\" under the model. NOT OBSERVED IN CI: no cron log I have read names one of these tests; this is from the model, not from a CI failure.\n\nSECOND SHAPE, WORSE: the `click(\"#cancel\"); pause(); mock.assert_not_called()` tests pass VACUOUSLY under the same model -- they assert an absence before the thing that would cause it has had time to happen. They cannot flake; they also cannot catch a cancel that writes.\n\nFIX DIRECTION (not built): wait on a CONDITION, as `_wait_for_dismissal` does for the unit tests -- e.g. wait until `app.screen` is no longer the modal AND the app's callback has run (a hook on TrackerApp's push_screen callbacks, or awaiting the push_screen future via `push_screen(..., wait_for_dismiss=True)` in the test seam), then assert. For the not-called shapes, wait for the dismissal first so the absence is asserted AFTER the cancel has been processed."  # 7dfc
+    fields: {}  # 7dfc
