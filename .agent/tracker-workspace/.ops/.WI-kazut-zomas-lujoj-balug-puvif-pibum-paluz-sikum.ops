@@ -20,3 +20,10 @@
     pr_ref:  # 60c0
     description: "FOUND 2026-09-28 closing WI-johib (PR #1279). ruby's _try_receiver_call tries a scope_resolution receiver's SHORT NAME as a candidate (Prometheus::Client -> 'Client'), and ruby symbol names carry no namespace (a class Client in any module is named 'Client'). So an EXTERNAL namespaced constant whose last segment matches a project class is treated as that class. Measured on postal after #1279: Prometheus::Client.registry -> project Client -> the inherited-calls linker -> HasPrometheusMetrics.registry, a wrong binding (1 site on postal; 0 on chatwoot).\n\nFIX SHAPE (not built): take the short-name candidate only when the full name cannot be external. For example, require that the leading namespace segment ('Prometheus') is itself a project module, or record the namespace on class symbols (meta) and compare it. Measure on postal and chatwoot. WI-surar (the lowercased module slot) is adjacent: it is about the external spelling, not the binding."  # 60c0
     fields: {}  # 60c0
+- op: discuss  # 016a
+  at: '2026-10-01T12:22:26Z'  # 016a
+  by: agent  # 016a
+  actor: jgstern_agent  # 016a
+  clock: 2  # 016a
+  nonce: 016a  # 016a
+  message: "BEARING from WI-surar (branch jgstern-agent/fix/surar, local commit d5e987abce, not merged): the ruby constant-external fallback now spells the module slot as the receiver constant AS WRITTEN (Prometheus::Client::Counter, not counter). So once this item routes a namespaced external constant whose last segment names a project class away from the project-owner path, the fallback will carry the full Prometheus::Client... owner path with no further change. Measured on postal with the branch: Prometheus::Client::Counter.new -> slot Prometheus::Client::Counter. This item's own defect (short-name capture by a project class) is NOT changed by WI-surar: the project_owners check in _try_receiver_call still includes the short name for a scope_resolution receiver."  # 016a
