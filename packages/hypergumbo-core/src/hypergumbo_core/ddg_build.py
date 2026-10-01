@@ -62,6 +62,30 @@ callable symbols the DDG never walked, and a flow inside one read
 ``structural`` -- a FALSE ``violated`` where the same body as a declaration
 was refuted by the walk.
 
+Bindings That Hold Callables (WI-rovun)
+---------------------------------------
+Go anchors every call under a package-level ``var`` on the VARIABLE
+(INV-nopoh): ``var rootCmd = &cobra.Command{Run: func(cmd, args) {...}}``
+is one ``variable`` symbol whose span is the ``var_spec``. That node is a
+binding, not a callable -- it has no ``body`` field, and it may hold several
+function literals plus initializer code that runs in no literal at all. A spec
+says so with two fields: ``bound_anchor_kinds`` admits the analyzer's
+``variable`` symbols into :func:`analyzer_symbol_index` (for that language
+only), and ``bound_bodies_for`` names the literal bodies. Each body is walked
+under the binding's id, and the results MERGE under that id.
+
+The walk may not refute (``forfeit_refutation``) when the binding holds more
+than one body or any call outside its bodies. Two literals under one anchor
+are two functions to the program, so a value crossing between them is a
+cross-function flow the intraprocedural walk cannot follow -- for two
+declarations the taint pass never asks. A call outside the bodies (cobra's
+``Args: cobra.ExactArgs(1)``, an immediately invoked literal's caller) runs in
+no CFG, so an exhausted walk says nothing about it. Confirmation stays
+available in both cases: a dependence the walk FINDS is real.
+
+A plain data variable (``var logger = log.New(...)``) is indexed but holds no
+body, so it is never walked: the index admits the kind, the hook decides.
+
 Refinement Hook
 ---------------
 The WI-dilih receiver-hint refinement is genuinely Python-specific — it
@@ -116,6 +140,14 @@ class LanguageDdgSpec:
         bound_callable_node_types: AST node types the ANALYZER names after
             their binding (WI-mufag). Walked only under the analyzer's own id
             for the node's exact span; see "Callables Named by Their Binding".
+        bound_bodies_for: Optional callable ``(node, source) -> [body, ...]``
+            for a bound node that is a BINDING rather than a callable (WI-rovun):
+            the bodies of the callables it holds, in source order. ``None``
+            means the node is itself the callable and its ``body`` field is
+            walked. See "Bindings That Hold Callables".
+        bound_anchor_kinds: Symbol kinds, beyond the callable ones, that the
+            analyzer anchors such a binding's calls on (Go: ``variable``).
+            Admitted into :func:`analyzer_symbol_index` for this language only.
     """
 
     language: str
@@ -125,6 +157,8 @@ class LanguageDdgSpec:
     kind_for: Optional[Callable[[Any], str]] = None
     refine: Optional[Callable[..., dict[tuple[int, str], str]]] = None
     bound_callable_node_types: frozenset[str] = frozenset()
+    bound_bodies_for: Optional[Callable[[Any, bytes], list[Any]]] = None
+    bound_anchor_kinds: frozenset[str] = frozenset()
 
 
 _CALLABLE_KINDS = frozenset({"function", "method", "getter", "setter"})
@@ -140,12 +174,21 @@ def analyzer_symbol_index(nodes: Sequence[dict[str, Any]]) -> AnalyzerSymbolInde
     A key two symbols share is dropped rather than resolved by order: with no
     way to tell them apart, walking either under the other's id would be a
     guess, and an unwalked callable keeps the structural arm it had.
+
+    A non-callable kind enters only where its language's spec declares it in
+    ``bound_anchor_kinds`` (WI-rovun), so a language whose analyzer emits a
+    ``variable`` beside a callable at one span is not given a clash it never
+    had. The registry is read at call time: the caller force-imports the
+    language packages first, as it must for ``build_repo_ddg`` anyway.
     """
     index: AnalyzerSymbolIndex = {}
     clashes: set[tuple[str, str, int, int, int]] = set()
     for node in nodes:
-        if node.get("kind") not in _CALLABLE_KINDS:
-            continue
+        kind = node.get("kind")
+        if kind not in _CALLABLE_KINDS:
+            spec = _DDG_LANGUAGES.get(node.get("language", ""))
+            if spec is None or kind not in spec.bound_anchor_kinds:
+                continue
         span = node.get("span") or {}
         key = (
             node.get("language", ""), node.get("path", ""),
@@ -314,13 +357,69 @@ def _walk_functions(
                 spec.language, rel_path, current.start_point[0] + 1,
                 current.start_point[1], current.end_point[0] + 1,
             ))
-            body_node = current.child_by_field_name("body")
-            if bound_id is not None and body_node is not None:
-                _solve_one_function(
-                    current, body_node, source, spec, bound_id, out, deps,
-                    mapping, refine_ctx,
+            if bound_id is not None:
+                _solve_bound_node(
+                    current, source, spec, bound_id, out, deps, mapping,
+                    refine_ctx,
                 )
         stack.extend(reversed(current.children))
+
+
+def _solve_bound_node(
+    node: Any,
+    source: bytes,
+    spec: LanguageDdgSpec,
+    bound_id: str,
+    out: RepoDdg,
+    deps: dict[str, Any],
+    mapping: Any,
+    refine_ctx: dict[str, Any],
+) -> None:
+    """Walk a bound node's body -- or, for a binding, each body it holds.
+
+    See "Bindings That Hold Callables" for why a binding forfeits refutation
+    when the walk cannot see all of it. A node that is itself the callable
+    (no hook) is gated exactly as a declaration is, by its body's coverage.
+    """
+    if spec.bound_bodies_for is None:
+        body_node = node.child_by_field_name("body")
+        bodies = [] if body_node is None else [body_node]
+    else:
+        bodies = spec.bound_bodies_for(node, source)
+    for body_node in bodies:
+        _solve_one_function(
+            node, body_node, source, spec, bound_id, out, deps, mapping,
+            refine_ctx,
+        )
+    if (
+        spec.bound_bodies_for is not None
+        and bound_id in out.ddg_symbols
+        and _binding_walk_incomplete(node, bodies, mapping)
+    ):
+        out.forfeit_refutation.add(bound_id)
+
+
+def _binding_walk_incomplete(node: Any, bodies: list[Any], mapping: Any) -> bool:
+    """True when a binding's walk cannot license a refutation (WI-rovun).
+
+    More than one body, or a call anywhere in the binding outside every body.
+    Also True when the language declares no ``call_node_types``: coverage
+    outside the bodies is then unknowable, and unknowable forfeits -- the same
+    default-deny as :func:`cfg.uncovered_semantic_lines`.
+    """
+    if len(bodies) > 1 or not mapping.call_node_types:
+        return True
+    call_types = frozenset(mapping.call_node_types)
+    walked = {(b.start_byte, b.end_byte, b.type) for b in bodies}
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if (current.start_byte, current.end_byte, current.type) in walked:
+            continue
+        if current.type in call_types:
+            return True
+        stack.extend(current.children)
+    return False
 
 
 def _solve_one_function(
@@ -360,15 +459,20 @@ def _solve_one_function(
             for s in block.statements
             if s.defines or s.uses
         ]
+        # EXTEND, never assign: a binding's bodies share one id (WI-rovun), and
+        # an assignment kept only the last body's statements while every
+        # body's edges stayed in ``ddg_edges``.
         if stmts:
-            out.stmt_defuse[sym_id] = stmts
+            out.stmt_defuse.setdefault(sym_id, []).extend(stmts)
         # INV-lupav L4. Collected on the same terms as ``stmt_defuse`` and for
         # the same reason: a function with no edges is never walked, and the
         # empty answer this returns for an unpopulated CFG would be a lie about
         # one that was.
         unaccounted = deps["unaccounted_names"](cfg, body_node, source)
         if unaccounted:
-            out.unaccounted_names[sym_id] = unaccounted
+            out.unaccounted_names[sym_id] = (
+                out.unaccounted_names.get(sym_id, frozenset()) | unaccounted
+            )
     if spec.refine is not None:
         hints = spec.refine(
             node=node,
@@ -378,7 +482,7 @@ def _solve_one_function(
             **refine_ctx,
         )
         if hints:
-            out.hints_by_caller[sym_id] = hints
+            out.hints_by_caller.setdefault(sym_id, {}).update(hints)
 
 
 def build_repo_ddg(

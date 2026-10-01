@@ -223,6 +223,151 @@ class TestBindingNamedCallables:
         assert build_repo_ddg(tmp_path, ["python"], {}).ddg_symbols == set()
 
 
+class TestBindingsThatHoldCallables:
+    """WI-rovun: a bound node that is a BINDING rather than a callable.
+
+    Go's ``var rootCmd = &Command{Run: func(...) {...}}`` is anchored by the
+    analyzer on the ``var_spec`` -- a node with no ``body`` of its own, holding
+    one or more function literals and possibly other initializer code. The
+    spec's ``bound_bodies_for`` hook names the bodies; each is walked under the
+    analyzer's id for the binding, and the walk may not refute (forfeit) when
+    the binding holds more than one body or code outside its bodies.
+
+    Python stands in for the shape here because it is the language core's tests
+    can drive: ``decorated_definition`` has no ``body`` field (it has
+    ``definition``), and a class holds several bodies.
+    """
+
+    _ONE = (
+        "@{decorator}\n"
+        "def handler(req):\n"
+        "    secret = req.password\n"
+        "    send(secret)\n"
+    )
+    _TWO = (
+        "class Holder:\n"
+        "    def a(self, req):\n"
+        "        secret = req.password\n"
+        "        send(secret)\n"
+        "    def b(self, req):\n"
+        "        other = req.name\n"
+        "        send(other)\n"
+    )
+    _ID = "python:m.py:1-4:bound_name:variable"
+
+    @staticmethod
+    def _decorated_body(node: Any, source: bytes) -> list[Any]:
+        return [node.child_by_field_name("definition").child_by_field_name("body")]
+
+    @staticmethod
+    def _method_bodies(node: Any, source: bytes) -> list[Any]:
+        return [
+            child.child_by_field_name("body")
+            for child in node.child_by_field_name("body").children
+            if child.type == "function_definition"
+        ]
+
+    def _register(self, node_type: str, hook: Any) -> None:
+        import importlib
+
+        import hypergumbo_lang_mainstream.py_def_use as py_mod
+        from hypergumbo_core.cfg import get_def_use_extractor
+
+        if get_def_use_extractor("python") is None:
+            importlib.reload(py_mod)
+        register_ddg_language(LanguageDdgSpec(
+            language="python", file_glob="*.py",
+            function_node_types=frozenset(),
+            bound_callable_node_types=frozenset({node_type}),
+            bound_bodies_for=hook,
+        ))
+
+    def _one(self, tmp_path: Path, decorator: str, hook: Any) -> RepoDdg:
+        self._register("decorated_definition", hook)
+        (tmp_path / "m.py").write_text(self._ONE.format(decorator=decorator))
+        return build_repo_ddg(
+            tmp_path, ["python"], {("python", "m.py", 1, 0, 4): self._ID},
+        )
+
+    def test_a_body_named_by_the_hook_is_walked_under_the_binding_id(
+        self, tmp_path: Path,
+    ) -> None:
+        result = self._one(tmp_path, "staticmethod", self._decorated_body)
+        assert result.ddg_symbols == {self._ID}
+        assert result.ddg_edges
+        assert {e.symbol_id for e in result.ddg_edges} == {self._ID}
+
+    def test_without_the_hook_a_node_with_no_body_field_is_not_walked(
+        self, tmp_path: Path,
+    ) -> None:
+        """THE CONTROL: the hook is what reaches the body."""
+        assert self._one(tmp_path, "staticmethod", None).ddg_symbols == set()
+
+    def test_one_body_and_nothing_else_keeps_refutation(self, tmp_path: Path) -> None:
+        result = self._one(tmp_path, "staticmethod", self._decorated_body)
+        assert self._ID in result.ddg_symbols
+        assert self._ID not in result.forfeit_refutation
+
+    def test_a_call_outside_the_bodies_forfeits_refutation(self, tmp_path: Path) -> None:
+        """``@app.route("/x")`` runs in the binding's context, not the body's:
+        the walk never sees it, so an exhausted walk is not evidence."""
+        result = self._one(tmp_path, 'app.route("/x")', self._decorated_body)
+        assert self._ID in result.ddg_symbols
+        assert self._ID in result.forfeit_refutation
+
+    def test_every_body_is_walked_and_merged_and_refutation_is_forfeit(
+        self, tmp_path: Path,
+    ) -> None:
+        """Two bodies under one anchor are two functions to the program: a value
+        crossing between them is a CROSS-function flow the intraprocedural walk
+        cannot follow, so its ``False`` would be unearned."""
+        self._register("class_definition", self._method_bodies)
+        (tmp_path / "m.py").write_text(self._TWO)
+        sid = "python:m.py:1-7:Holder:variable"
+        result = build_repo_ddg(
+            tmp_path, ["python"], {("python", "m.py", 1, 0, 7): sid},
+        )
+        assert result.ddg_symbols == {sid}
+        assert {e.use_line for e in result.ddg_edges} >= {4, 7}
+        # Merged, not overwritten: the first body's statements survive the second.
+        assert {line for line, _, _ in result.stmt_defuse[sid]} >= {3, 4, 6, 7}
+        assert sid in result.forfeit_refutation
+
+    def test_a_language_with_no_call_node_types_forfeits(self, tmp_path: Path) -> None:
+        """Coverage outside the bodies is unknowable without call node types,
+        and unknowable forfeits -- the same default-deny as the body gate."""
+        from hypergumbo_core.ddg_build import _binding_walk_incomplete
+
+        mapping = type("M", (), {"call_node_types": []})()
+        assert _binding_walk_incomplete(_FakeNode(), [object()], mapping) is True
+
+    def test_merge_unions_unaccounted_names_and_hints(self) -> None:
+        """A second body under the same id ADDS to the first's record."""
+        from hypergumbo_core.cfg import DdgEdge
+
+        out = RepoDdg()
+        spec = LanguageDdgSpec(
+            language="python", file_glob="*.py",
+            function_node_types=frozenset(),
+            refine=lambda **kw: {(kw["body_node"], "x"): "T"},
+        )
+        result = type("R", (), {
+            "bailed_out": False,
+            "ddg_edges": [DdgEdge("x", "b", 1, "b", 2, "s")],
+        })()
+        deps = {
+            "build_function_cfg": lambda *a: type("C", (), {"blocks": {}})(),
+            "populate_def_use_for_cfg": lambda *a: None,
+            "solve_reaching_defs": lambda cfg: result,
+            "uncovered_semantic_lines": lambda *a: frozenset(),
+            "unaccounted_names": lambda cfg, body, src: frozenset({body}),
+        }
+        for body in (1, 2):
+            _solve_one_function(None, body, b"", spec, "s", out, deps, None, {})
+        assert out.unaccounted_names["s"] == frozenset({1, 2})
+        assert out.hints_by_caller["s"] == {(1, "x"): "T", (2, "x"): "T"}
+
+
 class TestAnalyzerSymbolIndex:
     def _node(self, sid: str, kind: str = "function", line: int = 1) -> dict[str, Any]:
         return {
@@ -240,3 +385,21 @@ class TestAnalyzerSymbolIndex:
         from hypergumbo_core.ddg_build import analyzer_symbol_index
 
         assert analyzer_symbol_index([self._node("f"), self._node("g")]) == {}
+
+    def test_a_spec_declared_anchor_kind_is_admitted_for_its_language_only(self) -> None:
+        """WI-rovun: Go anchors a package-level literal on a ``variable``. The
+        kind is admitted for a language whose spec declares it, and no other --
+        javascript's ``variable`` stays out, as the test above pins."""
+        from hypergumbo_core.ddg_build import analyzer_symbol_index
+
+        register_ddg_language(LanguageDdgSpec(
+            language="fakelang", file_glob="*.f",
+            function_node_types=frozenset(),
+            bound_anchor_kinds=frozenset({"variable"}),
+        ))
+        fake_var = {**self._node("fv", kind="variable"), "language": "fakelang"}
+        fake_cls = {**self._node("fc", kind="class", line=20), "language": "fakelang"}
+        index = analyzer_symbol_index(
+            [fake_var, fake_cls, self._node("jv", kind="variable", line=9)],
+        )
+        assert index == {("fakelang", "a.js", 1, 4, 3): "fv"}
