@@ -1,0 +1,20 @@
+- op: create  # 9cee
+  at: '2026-10-01T17:45:03Z'  # 9cee
+  by: agent  # 9cee
+  actor: jgstern_agent  # 9cee
+  clock: 1  # 9cee
+  nonce: 9cee  # 9cee
+  data:  # 9cee
+    kind: work_item  # 9cee
+    title: "php: Laravel Route::resource/apiResource with a STRING controller ('PhotoController') emits zero route markers (controller read only from ::class)"  # 9cee
+    status: todo_hard  # 9cee
+    priority: 3  # 9cee
+    parent:  # 9cee
+    tags:  # 9cee
+    - route  # 9cee
+    isbefore: []  # 9cee
+    duplicate_of: []  # 9cee
+    not_duplicate_of: []  # 9cee
+    pr_ref:  # 9cee
+    description: "php.py `_extract_laravel_routes`, resource branch: the controller of `Route::resource(...)` / `Route::apiResource(...)` is read ONLY from a `class_constant_access_expression` (`PhotoController::class`). The string-controller form `Route::resource('photos', 'PhotoController')` (the Laravel <= 7 idiom, still in older apps) and its double-quoted twin emit the `resource` UsageContext but ZERO route markers: `controller` stays None and the `if controller:` guard skips all 7 (or 5) RESTful routes. Silent drop of the whole resource, not a degrade.\n\nLive repro (2026-10-01, worktree ~/hg_wt/fadip, branch with WI-fadip's fix applied), analyze_php on:\n\n    <?php\n    Route::resource('photos', 'PhotoController');\n    Route::resource(\"books\", \"BookController\");\n    Route::resource('tags', TagController::class);\n\n  contexts: resource /photos, resource /books, resource /tags\n  route markers: only /tags, /tags/create, /tags/{id}, /tags/{id}/edit (4 distinct paths of the 7 routes)\n\nFix direction: read a string controller through `_php_string_value` (WI-fadip's single literal reader, which accepts both quote styles and refuses interpolation) and strip any namespace prefix the same way the 'Controller@action' arm keeps it. Decide whether a resource with NO resolvable controller should still emit path-only markers (it has a path and verbs; only controller_action is unknown) instead of dropping all of them.\n\nNot measured: frequency on a corpus. koel (the only Laravel repo in ~/whole_bunch_of_repos) uses `::class` only.\nFound while fixing WI-fadip-tojup-fonug-hokoz-bomin-jarib-javik-vibud (not a quote-style defect, so filed separately)."  # 9cee
+    fields: {}  # 9cee

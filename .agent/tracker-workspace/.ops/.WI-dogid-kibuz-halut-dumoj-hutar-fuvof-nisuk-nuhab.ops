@@ -1,0 +1,19 @@
+- op: create  # 24cd
+  at: '2026-10-01T17:24:06Z'  # 24cd
+  by: agent  # 24cd
+  actor: jgstern_agent  # 24cd
+  clock: 1  # 24cd
+  nonce: 24cd  # 24cd
+  data:  # 24cd
+    kind: work_item  # 24cd
+    title: "call_construct: register the value vocabulary in audit_findings._REGISTRIES and move the call-construct value-family survey to docs/audits"  # 24cd
+    status: todo_hard  # 24cd
+    priority: 3  # 24cd
+    parent:  # 24cd
+    tags: []  # 24cd
+    isbefore: []  # 24cd
+    duplicate_of: []  # 24cd
+    not_duplicate_of: []  # 24cd
+    pr_ref:  # 24cd
+    description: "RESIDUAL of WI-dapap (2026-10-01). docs/surveys/call-construct-value-family-audit.md says it is a survey only because `audit_findings.validate_against_registry` has no registry for `Edge.meta[\"call_construct\"]`; its \"conversion trigger\" is: once the value allowlist exists AND the axis is registered in `audit_findings._REGISTRIES`, move it to `docs/audits/<NN>-call-construct-value-family.md` and let the mechanical check run.\n\nWI-dapap landed half of that: the allowlist is `hypergumbo_core.call_constructs.CALL_CONSTRUCT_VALUES` (branch jgstern-agent/fix/dapap). It did NOT register the axis: `_AxisRegistry` needs `specs` with `.name` and `.axis`, a `canonical_axis` and an `endpoint_axis`, and `CallConstructValue` carries no `axis` attribute. Registering is a choice about what the canonical axis string is (e.g. \"source_construct\") and whether the endpoint (deprecation-window) axis applies to a meta-key vocabulary at all; that is the work here, plus the doc move, its README index row and an audit number.\n\nAcceptance: the moved document validates under `test_audit_findings.py::test_live_tree_audit_findings_docs_parse_and_validate`, with the macro / macro_body rows RESOLVED (absent from the registry) and the 10 CANONICAL rows present on the canonical axis; a mutation (declaring `macro` again) turns it red."  # 24cd
+    fields: {}  # 24cd
