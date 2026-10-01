@@ -47,9 +47,10 @@ canonical unit with the row rate beside it, cohort seed `20260825`.
 
 ### Why n=94 and not 112, and why that is not a shrunken sample
 
-F2 samples *exactly* M=7 from each repo, which is what makes the pooled rate
-and the unweighted per-repo mean the same number by construction. That is no
-longer reachable: five repositories cannot supply seven situations, because
+F2 samples *exactly* M=7 from each repo, which is what makes the pooled
+situation rate and the unweighted per-repo mean of situation rates the same
+number by construction (the row rate is not equalised by it; ADR-0048). That
+is no longer reachable: five repositories cannot supply seven situations, because
 **the defects they exhibited were fixed** — shellcheck fell 23 → 3 and
 cert-manager 9 → 3 as vacuous families closed.
 

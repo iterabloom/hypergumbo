@@ -267,8 +267,9 @@ pass 4's adversarial refutations, which live in a separate file. The first cut
 of this arm asserted 38 against the file whose name says "final", failed, and
 only then found `pass4-summary.json`. `tmux#3` is one of the seven refuted —
 so it is an FP here and would have been a TP had the assertion not been written.
-Filed as `WI-tuhop`, together with the fact that **ADR-0048 publishes 44/112 =
-39.3% for 0006 while 0006 publishes 38/112 = 33.9%**.
+Filed as `WI-tuhop`, together with the fact that **ADR-0048 published 44/112 =
+39.3% for 0006 while 0006 publishes 38/112 = 33.9%**; ADR-0048 now carries
+38/112.
 
 ## A register correction this arm found
 
