@@ -1,0 +1,22 @@
+- op: create  # a6df
+  at: '2026-10-01T15:33:41Z'  # a6df
+  by: agent  # a6df
+  actor: jgstern_agent  # a6df
+  clock: 1  # a6df
+  nonce: a6df  # a6df
+  data:  # a6df
+    kind: work_item  # a6df
+    title: "type_hierarchy gates dispatch per HOP, not per METHOD: non-virtual/static name-hiding methods get dispatches_to across an abstract-base hop, and C# concrete-base virtual/override pairs get none (C# already records the modifiers)"  # a6df
+    status: todo_hard  # a6df
+    priority: 2  # a6df
+    parent:  # a6df
+    tags:  # a6df
+    - linker  # a6df
+    - protocol  # a6df
+    - linker_gap  # a6df
+    isbefore: []  # a6df
+    duplicate_of: []  # a6df
+    not_duplicate_of: []  # a6df
+    pr_ref:  # a6df
+    description: "**Residual of WI-nizug-lavig-duhob-finog-mudus-rizut-zidub-jurit (branch `jgstern-agent/fix/nizug`).**\n\n`type_hierarchy` gates dispatch per inheritance HOP and per language (`NO_VIRTUAL_EXTENDS_LANGUAGES`), never per METHOD. After WI-nizug a hop into an abstract parent is admitted, so for C++ and C# every same-named method pair across that hop gets a `dispatches_to`, virtual or not. Measured on a fixture with the worktree code:\n\n    class Shape { public: virtual int area() = 0; int describe() { return 0; } };\n    class Square : public Shape { public: int area() override { return 1; } int describe() { return 2; } };\n\nemits `Shape::area -> Square::area` (correct) AND `Shape::describe -> Square::describe` (false: non-virtual name hiding, statically resolved). The reverse gap also stands: C# `class Base { public virtual int F() }` / `class Kid : Base { public override int F() }` (a CONCRETE base with virtual members, the common C# shape) still emits no dispatch, because neither endpoint is abstract.\n\n**Measured on grpc** (survey dev vs the WI-nizug branch, 1905 added edges): a lexical read of each added edge's parent declaration found 11 whose parent is a STATIC member function, all false: `ConfigSelector::Equals` (static `Equals(cs1, cs2)`, an overload beside the pure virtual `Equals(other)`; 4 edges), `ExternalAccountCredentials::Create` (3), `Subchannel::Create` (2), `BaseNode::ChannelArgName` (1), `BaseNode::ChannelArgsCompare` (1). The cpp analyzer records `[]` modifiers on these nodes, so `static` is invisible to the gate. A static member never dispatches in any language, so a language-agnostic \"skip a static parent method\" guard would be exact, once producers record `static`. Not checked: same-name overloads with differing signatures among the other 1894 edges (the read was lexical: parent declared `virtual`/pure, or child marked `override`).\n\n**The producer data is already there for C#.** On the fixture, C# symbols carry per-method modifiers: `Shape.Area ['abstract']`, `Shape.Peri ['virtual']`, `Square.Area ['override']`, `Square.Peri ['override']`, `Kid2.F ['new']`. A method-level rule for C# (\"dispatch parent.m -> child.m iff child.m carries `override`\") is exact and needs no edge schema change. C++ records `virtual`/`abstract` only on PURE virtuals (`Base::f` for `virtual int f(){...}` has modifiers `[]`, per the 2026-09-30 premise check on WI-nizug), so C++ needs a producer change first (record `virtual` and `override` on every member function).\n\n**Prior decisions to respect.** WI-fahot (wont_do) rejected a per-EDGE `meta.virtual_dispatch` flag in favour of WI-rumim's language-profile registry; this proposal reads per-METHOD symbol modifiers instead and adds no edge schema, so that objection does not apply as stated, but the owner should confirm. The gate is in one place: `type_hierarchy.admitted_inheritance_edges` / `_extends_admits_dispatch`; a method-level test would sit at the override-matching step in `link_type_hierarchy` instead.\n\nCarries a dead-code claim if it lands (C# concrete-base virtual overrides become reachable)."  # a6df
+    fields: {}  # a6df

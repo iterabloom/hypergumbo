@@ -1,0 +1,21 @@
+- op: create  # beaa
+  at: '2026-10-01T16:05:10Z'  # beaa
+  by: agent  # beaa
+  actor: jgstern_agent  # beaa
+  clock: 1  # beaa
+  nonce: beaa  # beaa
+  data:  # beaa
+    kind: work_item  # beaa
+    title: "Dart mixin application class (class A = B with M;) and extension type declarations emit no symbol, so no inheritance edge either"  # beaa
+    status: todo_hard  # beaa
+    priority: 3  # beaa
+    parent:  # beaa
+    tags:  # beaa
+    - dart  # beaa
+    - analyzer  # beaa
+    isbefore: []  # beaa
+    duplicate_of: []  # beaa
+    not_duplicate_of: []  # beaa
+    pr_ref:  # beaa
+    description: "**Found while fixing WI-lahub-nitas-kopok-notas-sizir-sodis-kudut-fivov** (branch `jgstern-agent/fix/lahub`, not yet merged).\n\nTwo Dart type declarations produce NO symbol, so they also get no inheritance edge (WI-lahub's edges need a source symbol, matched by position):\n\n1. **Mixin application class** `class A = Base with M implements I;`. The grammar puts the name inside `mixin_application_class` (`class_definition > mixin_application_class > identifier`), and `dart.py` looks for an `identifier` directly under `class_definition`, finds none and skips the declaration. Pinned as current behaviour by `test_dart_inheritance.py::TestClauseLabels::test_mixin_application_class_has_no_source_symbol`. That test must be inverted by the fix.\n2. **Extension type** `extension type ET(int i) implements Shape {}` (`extension_type_declaration`, Dart 3.3). The analyzer has no branch for that node type.\n\nRepro (tree-sitter-language-pack dart grammar): run `analyze_dart` on a file containing both declarations. No symbol named `A` or `ET` is emitted.\n\nFix: emit `A` as kind `class` (its heritage is in `mixin_application`: a bare `type_identifier` superclass, then `mixins`, then `interfaces`), and emit `ET` (kind to be decided: it is a zero-cost wrapper type, not a class). Then add both node types to `_DART_HERITAGE_DECLS`. Not measured on a corpus: the one Dart corpus repo (sherpa-onnx) was not searched for either construct."  # beaa
+    fields: {}  # beaa
