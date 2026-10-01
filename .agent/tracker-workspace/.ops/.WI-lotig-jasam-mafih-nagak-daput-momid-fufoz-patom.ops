@@ -35,3 +35,10 @@
   clock: 3  # a18a
   nonce: a18a  # a18a
   message: "Observed while running check-package-coverage for the INV-dabov PR; re-run with no edits passed all six packages, and the test passes standalone. Filed rather than folded into that PR: it is tracker-package test infrastructure, unrelated to the verify-claims change, and a security fix should not carry an unrelated gate tweak."  # a18a
+- op: discuss  # 45f2
+  at: '2026-10-01T03:33:56Z'  # 45f2
+  by: agent  # 45f2
+  actor: jgstern_agent  # 45f2
+  clock: 4  # 45f2
+  nonce: 45f2  # 45f2
+  message: "BEARS ON THIS ROW (from WI-ruhul-kujah-sasar-mofov-mohoh-gotis-soron-fazun, branch jgstern-agent/fix/ruhul, local, not merged):\n\nDirection (b) is built for the tracker package's four properties: packages/hypergumbo-tracker/tests/test_compile_properties.py now applies one shared `settings(max_examples=50, deadline=None, suppress_health_check=[HealthCheck.too_slow])` to test_idempotency, test_permutation_invariance, test_created_at_always_set and test_updated_at_gte_created_at.\n\nBehavioral pin, not a syntactic one: TestPropertiesSurviveASlowExample patches the module's compile_ops to sleep 0.3 s on its FIRST call only, then calls each property. Before the change, all four failed with FlakyFailure wrapping DeadlineExceeded (\"Falsified on the first call but did not on a subsequent one\"), which is this row's mechanism exactly; after it, all four pass.\n\nNOT COVERED, still exposed: tests/test_transcript_pipeline_properties.py (5 properties at lines ~118-216, `@settings(max_examples=50)`, no deadline=). No `register_profile` exists in the repo, so direction (a) is still unbuilt. This row's own test_idempotency observation is plausibly what WI-ruhul's 08-21 discussion recorded (the failure messages there were not kept)."  # 45f2
