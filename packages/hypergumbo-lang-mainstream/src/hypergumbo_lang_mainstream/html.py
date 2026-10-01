@@ -14,9 +14,10 @@ How It Works
    can emit a HTML_ENTRY entry; other HTML files (templates, 404
    pages, docs) are not flagged
 4. Scan content with regex for <script src="..."> patterns
-5. Create ``references`` edges (meta ref_construct ``script_src``) from the
+5. Resolve each src onto the repo file it names (see "Edge Destinations")
+6. Create ``references`` edges (meta ref_construct ``script_src``) from the
    HTML file to referenced scripts
-6. Track line numbers for accurate source mapping
+7. Track line numbers for accurate source mapping
 
 The regex pattern handles both single and double quotes, and is
 case-insensitive to match HTML conventions.
@@ -29,12 +30,58 @@ Detected Patterns
 
 Edge Destinations
 -----------------
-Script references create edges to synthetic IDs like:
-  javascript:path/to/file.js:0-0:ref:script
+A src naming an in-repo JS/TS file resolves onto that file's canonical
+node id, ``make_file_id(<lang>, <path>)`` -- the id the JS/TS analyzer mints
+for the same file (WI-majov). Before this, every src -- in-repo or not --
+pointed at a raw-URL placeholder, so the HTML -> script linkage (the whole of
+this analyzer's cross-file output) landed on a phantom ``external_symbol``
+while the real file node sat unlinked beside it. Resolution rules:
 
-These reference IDs may not correspond to analyzed symbols (external
-CDN scripts, etc.), but enable graph construction when the script
-is also analyzed.
+- **Relative to the HTML file's directory, for both forms.** ``./a.js`` and
+  ``a.js`` are relative URLs; a root-absolute ``/src/main.ts`` takes the HTML
+  file's directory as the web root (Vite's convention: the project root is
+  the directory holding ``index.html``). The query string and fragment are
+  dropped and the path is percent-decoded, as a browser does.
+- **No wider web-root guessing.** The real web root of a root-absolute src is
+  configuration (a server's static dir), not something the file says. Walking
+  ancestor directories or falling back to the repo root was measured on the
+  273-repo corpus (2026-10-01): the repo-root fallback added 0 resolutions
+  beyond the HTML directory, and the ancestor walk added 2, one of them false
+  (vault ``ui/tests/index.html``'s ``/testem.js`` is served by Testem itself;
+  ``ui/testem.js`` is Testem's config file). A wrong resolution is worse than
+  an honest placeholder, so neither is attempted.
+- **Lexically confined to the repo.** A path that normalizes above the repo
+  root, a URL with a scheme (``https:``, ``data:``, ...), and a
+  protocol-relative ``//host/...`` never resolve.
+- **Only JS/TS files.** The target must be an existing file with a suffix the
+  JS/TS analyzer discovers (``_JS_TS_SUFFIXES``, parity-tested against its
+  ``file_patterns`` minus ``.vue``/``.svelte``, which a browser does not load
+  through ``<script src>``). The language is that analyzer's own
+  ``_get_language_for_file`` result, so ``/src/main.ts`` resolves to
+  ``typescript:...``. For any other suffix the owning analyzer's file id is
+  not known here. A pre-implementation scan of the corpus found every
+  existing in-repo src target to be a JS/TS file; running this analyzer over
+  the same 273 repos (2026-10-01) resolves 11,932 of 12,614 srcs in 46 repos
+  (11,913 ``javascript``, 19 ``typescript``), and the other 682 keep the
+  placeholder.
+
+A resolved id may name a file the JS/TS analyzer did not emit (an excluded
+directory, a ``max_files`` cut): the orchestrator's
+``synthesize_file_symbols_for_dangling_edges`` then mints the real
+first-party file Symbol for it, so the edge never falls to a placeholder.
+Because the edge now ends on a real file, it also obeys that file's supply
+chain tier: when the default tier filter drops the file (minified vendor JS),
+the edge goes with it, exactly as any other edge into a tier-filtered file
+does, and the file is listed in ``limits.tier_filtered_files``. On Alamofire
+(2026-10-01) that is 664 of 1,660 script edges, all into its jazzy docs'
+``jquery.min.js`` / ``lunr.min.js``. Before resolution those edges survived
+only because their phantom placeholder sat at tier 3.
+
+Anything that does not resolve keeps the synthetic reference id
+``<lang>:<src>:0-0:ref:script`` (CDN scripts, build outputs not in the repo,
+template expressions like ``{{ url_for(...) }}``), which boundary synthesis
+turns into an ``external_symbol``. Its language comes from the src's suffix
+by the same rule, so an unresolved ``/src/missing.ts`` is ``typescript``.
 
 Why This Design
 ---------------
@@ -46,15 +93,19 @@ Why This Design
 - High confidence (0.95) reflects reliability of static <script> tags
 - Reference IDs allow graceful handling of external/missing scripts
 """
+import posixpath
 import re
 import time
 from pathlib import Path
 from typing import Iterator
+from urllib.parse import unquote
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from hypergumbo_core.analyze.base import AnalysisResult
+from hypergumbo_core.analyze.base import AnalysisResult, make_file_id
 from hypergumbo_core.analyze.registry import register_analyzer
+
+from .js_ts import _get_language_for_file
 
 PASS_ID = make_pass_id("html")
 
@@ -63,6 +114,17 @@ SCRIPT_SRC_PATTERN = re.compile(
     r'<script\s+[^>]*src\s*=\s*["\']([^"\']+)["\']',
     re.IGNORECASE
 )
+
+#: Suffixes of the files the JS/TS analyzer discovers, minus the single-file
+#: component formats (``.vue``/``.svelte``) a browser never loads through
+#: ``<script src>``. Parity with ``JstsTreeSitterAnalyzer.file_patterns`` is
+#: pinned by a test, so a new JS/TS extension cannot drift silently.
+_JS_TS_SUFFIXES = frozenset(
+    {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"}
+)
+
+#: A URL scheme (RFC 3986: ``ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":"``).
+_URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
 
 
 def find_html_files(
@@ -75,6 +137,39 @@ def find_html_files(
 def _make_file_id(path: str) -> str:
     """Generate ID for an HTML file node."""
     return f"html:{path}:1-1:file:file"
+
+
+def _src_path(script_src: str) -> str:
+    """The URL path of a src: query and fragment dropped, percent-decoded."""
+    return unquote(script_src.split("#", 1)[0].split("?", 1)[0])
+
+
+def _resolve_script_src(
+    script_src: str, html_file: Path, repo_root: Path
+) -> Path | None:
+    """Return the in-repo JS/TS file a ``<script src>`` loads, or None.
+
+    Rules and their measured rationale: module docstring, "Edge
+    Destinations". The result is ``repo_root / <normalized relative path>``,
+    i.e. the same string form ``find_files(repo_root)`` yields to the JS/TS
+    analyzer, so the minted file id matches its node byte for byte.
+    """
+    if script_src.startswith("//") or _URL_SCHEME.match(script_src):
+        return None
+    path = _src_path(script_src)
+    if not path:
+        return None
+    try:
+        html_dir = html_file.parent.relative_to(repo_root).as_posix()
+    except ValueError:  # pragma: no cover - find_files yields under repo_root
+        return None
+    rel = posixpath.normpath(posixpath.join(html_dir, path.lstrip("/")))
+    if rel == ".." or rel.startswith("../"):
+        return None
+    target = repo_root / rel
+    if target.suffix.lower() not in _JS_TS_SUFFIXES or not target.is_file():
+        return None
+    return target
 
 
 @register_analyzer("html", supports_max_files=True)
@@ -149,9 +244,17 @@ def analyze_html(
             char_pos = match.start()
             line_num = content[:char_pos].count("\n") + 1
 
-            # Create edge from HTML file to script
-            # The dst is a reference ID (the script may not exist in our analysis)
-            script_ref_id = f"javascript:{script_src}:0-0:ref:script"
+            # WI-majov: land on the in-repo file's canonical node when the src
+            # names one; otherwise a reference id that boundary synthesis
+            # turns into an external_symbol (CDN script, missing build output).
+            target = _resolve_script_src(script_src, html_file, repo_root)
+            if target is not None:
+                script_ref_id = make_file_id(
+                    _get_language_for_file(target), str(target)
+                )
+            else:
+                ref_lang = _get_language_for_file(Path(_src_path(script_src)))
+                script_ref_id = f"{ref_lang}:{script_src}:0-0:ref:script"
 
             # INV-vavat / ADR-0023: ``<script src>`` is a *reference*
             # relationship; the script_src specificity is a CONSTRUCT, not a

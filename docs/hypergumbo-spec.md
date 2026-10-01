@@ -365,7 +365,7 @@ Hypergumbo supports 100+ languages via tree-sitter grammars (see [LANGUAGES.md](
 * 🟩 JSON, YAML, TOML, XML, HCL/Terraform, Dockerfile, Makefile, Just, CMake, SQL, GraphQL, Protobuf, Thrift
 
 **Markup:**
-* 🟩 HTML (script tag extraction), CSS, LaTeX, Markdown
+* 🟩 HTML (script tag extraction; a `<script src>` naming an in-repo JS/TS file, relative or root-absolute against the HTML file's directory, lands on that file's node, and any other src keeps an `external_symbol` placeholder — WI-majov), CSS, LaTeX, Markdown
 
 ### Dependency strategy
 * **All-in-one package**: `pip install hypergumbo` includes Python AST + tree-sitter grammars for all supported languages as standard dependencies (see [LANGUAGES.md](LANGUAGES.md) for the full list)
