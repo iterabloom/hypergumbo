@@ -135,23 +135,27 @@ def _top_level_shape(path: Path) -> _TopShape:
 def find_ansible_files(root: Path) -> list[Path]:
     """Find Ansible YAML files in a directory tree.
 
-    Two path arms NOMINATE a ``.yml``/``.yaml`` file as a candidate: it is
-    at the repository root, or a repo-relative directory component is an
-    Ansible directory name (``_ANSIBLE_DIRS``). Path alone is never enough
-    (WI-jifog: ``.yamllint.yaml`` and a plain ``web/vars/app.yaml`` were
-    both tagged ``language=ansible``). A candidate is claimed when:
+    Two path arms NOMINATE a ``.yml``/``.yaml`` file as a candidate. Path
+    alone is never enough (WI-jifog: ``.yamllint.yaml`` and a plain
+    ``web/vars/app.yaml`` were both tagged ``language=ansible``):
 
-    - it is itself a playbook (``_TopShape.is_play_list``) -- either arm; or
-    - it is on the directory arm AND lies under an *Ansible tree root*.
+    - playbook arm: the file is at the repository root, or directly in a
+      directory that has an Ansible-named subdirectory (``contrib/ansible/
+      site.yml`` beside ``contrib/ansible/tasks/``). Claimed iff it is
+      itself a playbook (``_TopShape.is_play_list``).
+    - directory arm: a repo-relative directory component is an Ansible
+      directory name (``_ANSIBLE_DIRS``). Claimed iff it is a playbook or
+      it lies under an *Ansible tree root*.
 
     Ansible vars/defaults/group_vars files are plain mappings, so their own
     content cannot identify them; the tree root supplies the evidence. A
-    tree root is the directory holding an ``ansible.cfg``, or the path
-    prefix before the first Ansible directory name of a playbook or of a
-    role entry point (``tasks/main.yml`` holding a task list). Roots are
-    scoped: an ``ansible.cfg`` under ``deploy/`` does not make
-    ``app/vars/x.yaml`` Ansible. Only repo-relative components count, so a
-    checkout that happens to live under ``.../vars/`` is not affected.
+    tree root is the directory holding an ``ansible.cfg`` or a playbook-arm
+    playbook, or the path prefix before the first Ansible directory name of
+    a directory-arm playbook or of a role entry point (``tasks/main.yml``
+    holding a task list). Roots are scoped: an ``ansible.cfg`` under
+    ``deploy/`` does not make ``app/vars/x.yaml`` Ansible. Only
+    repo-relative components count, so a checkout that happens to live
+    under ``.../vars/`` is not affected.
     """
     # Use the global FileIndex if available to avoid a redundant walk.
     from hypergumbo_core.discovery import get_file_index
@@ -165,10 +169,10 @@ def find_ansible_files(root: Path) -> list[Path]:
         ]
 
     tree_roots: set[tuple[str, ...]] = set()
-    candidates: list[tuple[Path, tuple[str, ...], Optional[int], _TopShape]] = []
+    nominated: list[tuple[Path, tuple[str, ...], int]] = []
+    loose: dict[tuple[str, ...], list[Path]] = {}
     for path in all_files:
-        rel_parts = path.relative_to(root).parts
-        dir_parts = rel_parts[:-1]
+        dir_parts = path.relative_to(root).parts[:-1]
         if path.name == "ansible.cfg":
             tree_roots.add(dir_parts)
             continue
@@ -177,29 +181,42 @@ def find_ansible_files(root: Path) -> list[Path]:
         first = next(
             (i for i, part in enumerate(dir_parts) if part in _ANSIBLE_DIRS), None,
         )
-        if first is None and dir_parts:
-            continue  # neither at the root nor under an Ansible directory
-        shape = _top_level_shape(path)
-        candidates.append((path, dir_parts, first, shape))
         if first is None:
-            if shape.is_play_list:
+            loose.setdefault(dir_parts, []).append(path)
+        else:
+            nominated.append((path, dir_parts, first))
+
+    claimed: set[Path] = set()
+    # Playbook arm: a YAML file at the repo root, or BESIDE an Ansible
+    # directory (``contrib/ansible/site.yml`` next to ``contrib/ansible/
+    # tasks/``), is claimed iff it is a playbook, and then roots its tree.
+    beside_dirs: set[tuple[str, ...]] = {()}
+    beside_dirs.update(dir_parts[:first] for _path, dir_parts, first in nominated)
+    for dir_parts in beside_dirs:
+        for path in loose.get(dir_parts, ()):
+            if _top_level_shape(path).is_play_list:
+                claimed.add(path)
                 tree_roots.add(dir_parts)
-        elif shape.is_play_list or (
+
+    # Directory arm: a playbook or a role entry point roots the tree at the
+    # prefix before its first Ansible directory name.
+    shaped: list[tuple[Path, tuple[str, ...], _TopShape]] = []
+    for path, dir_parts, first in nominated:
+        shape = _top_level_shape(path)
+        if shape.is_play_list or (
             shape.is_task_list
             and path.name in _ROLE_ENTRY_NAMES
             and dir_parts[-1] == "tasks"
         ):
             tree_roots.add(dir_parts[:first])
+        shaped.append((path, dir_parts, shape))
+    for path, dir_parts, shape in shaped:
+        if shape.is_play_list or any(
+            dir_parts[:len(r)] == r for r in tree_roots
+        ):
+            claimed.add(path)
 
-    return [
-        path
-        for path, dir_parts, first, shape in candidates
-        if shape.is_play_list
-        or (
-            first is not None
-            and any(dir_parts[:len(r)] == r for r in tree_roots)
-        )
-    ]
+    return [path for path in all_files if path in claimed]
 
 
 def _find_all_children_by_type(
