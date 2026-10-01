@@ -386,7 +386,8 @@ def _create_inheritance_edges(
     - If base resolves to no in-tree symbol (external/stdlib) -> an
       unresolved-external ``extends`` edge (WI-jubag Approach C); see
       ``_external_base_edge`` for the guards
-    - If edge already exists (from analyzer) -> skip to avoid duplicates
+    - If an analyzer already connected the pair (extends OR implements) ->
+      skip: one relation, one edge
 
     Uses ``resolve_target_symbol`` to disambiguate when multiple classes or
     interfaces share the same name.
@@ -401,9 +402,13 @@ def _create_inheritance_edges(
     Returns:
         List of NEW extends/implements edges (not duplicates)
     """
-    # Build set of existing edge keys for deduplication
-    existing_edge_keys: set[tuple[str, str, str]] = {
-        (e.src, e.dst, e.edge_type)
+    # Pairs an analyzer already connected. Keyed WITHOUT the edge type: one
+    # inheritance relation is one edge. Keyed with it, an analyzer that labels
+    # a pair differently from this linker (Kotlin labelled interface->interface
+    # ``implements`` until WI-kalug) got a second, contradicting edge for the
+    # same relation; the analyzer's edge stands, as for an external base.
+    existing_pairs: set[tuple[str, str]] = {
+        (e.src, e.dst)
         for e in existing_edges
         if e.edge_type in ("extends", "implements")
     }
@@ -519,9 +524,8 @@ def _create_inheritance_edges(
             if target_sym.id == sym.id:
                 continue
 
-            # Skip if edge already exists (from analyzer)
-            edge_key = (sym.id, target_sym.id, edge_type)
-            if edge_key in existing_edge_keys:
+            # Skip if an analyzer already connected this pair (either label)
+            if (sym.id, target_sym.id) in existing_pairs:
                 continue
 
             # INV-zuhub: simple-name fallback edges carry conf <= 0.5 and

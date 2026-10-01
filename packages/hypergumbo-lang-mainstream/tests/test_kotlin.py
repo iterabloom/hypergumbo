@@ -491,6 +491,42 @@ class Circle : Drawable {
         assert implements_edges[0].src == circle.id
         assert implements_edges[0].dst == drawable.id
 
+    def test_interface_extending_interface_is_extends(self, tmp_path: Path) -> None:
+        """``interface KChild : KBase`` is an ``extends`` edge (WI-kalug).
+
+        The resolver tries the interface map first and labelled every
+        interface target ``implements`` -- including from an interface
+        source, which does not implement anything. The core inheritance
+        linker now labels the same relation ``extends``; had Kotlin kept
+        ``implements``, the pipeline carried both labels for one relation.
+        """
+        from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
+
+        (tmp_path / "Shapes.kt").write_text("""
+interface KBase {
+    fun m()
+}
+
+interface KChild : KBase {
+    fun n()
+}
+
+class KImpl : KChild {
+    override fun m() {}
+    override fun n() {}
+}
+""")
+        result = analyze_kotlin(tmp_path)
+        by_name = {s.name: s for s in result.symbols if s.kind in ("class", "interface")}
+        got = sorted(
+            (e.src, e.edge_type, e.dst, e.evidence_type)
+            for e in result.edges if e.edge_type in ("extends", "implements")
+        )
+        assert got == sorted([
+            (by_name["KChild"].id, "extends", by_name["KBase"].id, "ast_extends"),
+            (by_name["KImpl"].id, "implements", by_name["KChild"].id, "ast_implements"),
+        ])
+
     def test_no_edge_for_external_superclass(self, tmp_path: Path) -> None:
         """No edge created when superclass is not in analyzed codebase."""
         from hypergumbo_lang_mainstream.kotlin import analyze_kotlin
