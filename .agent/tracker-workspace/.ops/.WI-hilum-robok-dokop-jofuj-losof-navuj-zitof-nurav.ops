@@ -1,0 +1,22 @@
+- op: create  # 93b9
+  at: '2026-10-01T20:22:37Z'  # 93b9
+  by: agent  # 93b9
+  actor: jgstern_agent  # 93b9
+  clock: 1  # 93b9
+  nonce: 93b9  # 93b9
+  data:  # 93b9
+    kind: work_item  # 93b9
+    title: "cpp: a call to an overloaded name resolves to ONE same-name definition (no arity check), so an overload calling its sibling becomes a false self-call (sherpa-onnx InitKeywords)"  # 93b9
+    status: todo_hard  # 93b9
+    priority: 3  # 93b9
+    parent:  # 93b9
+    tags:  # 93b9
+    - cpp  # 93b9
+    - call_graph  # 93b9
+    - analysis_quality  # 93b9
+    isbefore: []  # 93b9
+    duplicate_of: []  # 93b9
+    not_duplicate_of: []  # 93b9
+    pr_ref:  # 93b9
+    description: "FOUND 2026-10-01 reading WI-saduj's edge diff on sherpa-onnx. This is the CALLEE side; WI-saduj fixed the caller side (the src of an edge).\n\ncpp resolves a call's TARGET through `local_symbols` (symbol_by_name: one symbol per name, the last registered) and the name resolver, with no arity or parameter-type check, so among overloads every call goes to one of them. When the caller is itself one of the overloads, the edge can become a false SELF-call.\n\nInstance (sherpa-onnx/csrc/keyword-spotter-transducer-impl.h): `void InitKeywords(std::istream &is)` (L283), `void InitKeywords()` (L294-316) and `template <typename Manager> void InitKeywords(Manager *mgr)` (L319-337). The calls `InitKeywords(is)` at L300 and L314, inside InitKeywords() (L294), are emitted on dev as InitKeywords@319 -> InitKeywords@319 (wrong src AND wrong dst), and after WI-saduj as KeywordSpotterTransducerImpl::InitKeywords@294 -> @294: a self-call. The real callee is the L283 overload.\n\nJava has an ambiguity guard for overloads (WI-satug); cpp has none. Not measured: how many cpp calls edges have an overloaded dst name in the same file, nor how many are self-edges. Sibling to check: c has no overloads, but `#ifdef` alternatives of one name give the same one-symbol-per-name collapse on the callee side."  # 93b9
+    fields: {}  # 93b9
