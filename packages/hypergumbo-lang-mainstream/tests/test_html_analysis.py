@@ -214,3 +214,101 @@ def test_inv_tajap_index_html_in_subdirectory_still_emits_concept(
     assert file_syms, "expected the subdirectory index.html to be analyzed"
     concepts = (file_syms[0].meta or {}).get("concepts", [])
     assert any(c.get("concept") == "html_entry" for c in concepts)
+
+
+# ---------------------------------------------------------------------------
+# WI-majov: a ``<script src>`` naming an in-repo JS/TS file must land on that
+# file's real node, not on a phantom ``external_symbol`` placeholder. Relative
+# and root-absolute srcs both resolve against the HTML file's directory (a
+# leading "/" takes that directory as the web root, the Vite convention); the
+# language comes from the resolved file, the way the JS/TS analyzer tags it.
+
+
+def _script_edges(data: dict) -> list[dict]:
+    return [
+        e for e in data["edges"]
+        if e["type"] == "references"
+        and (e.get("meta") or {}).get("ref_construct") == "script_src"
+    ]
+
+
+def _run(tmp_path: Path) -> dict:
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False
+    )
+    return json.loads(out_path.read_text())
+
+
+def test_wi_majov_script_src_resolves_onto_first_party_file_nodes(
+    tmp_path: Path,
+) -> None:
+    """Production path: root-absolute ``/src/main.ts`` and relative
+    ``./src/util.js`` both land on the existing file nodes; a CDN URL keeps
+    its external placeholder."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.ts").write_text(
+        'import { u } from "./util.js";\nconsole.log(u());\n'
+    )
+    (tmp_path / "src" / "util.js").write_text(
+        "export function u() { return 1; }\n"
+    )
+    (tmp_path / "index.html").write_text(
+        "<!doctype html>\n<html><body>\n"
+        '<script type="module" src="/src/main.ts"></script>\n'
+        '<script src="./src/util.js"></script>\n'
+        '<script src="https://cdn.example.com/lib.js"></script>\n'
+        "</body></html>\n"
+    )
+
+    data = _run(tmp_path)
+    nodes = {n["id"]: n for n in data["nodes"]}
+    edges = _script_edges(data)
+    assert len(edges) == 3, edges  # reach: all three tags were seen
+    by_dst = {e["dst"]: e for e in edges}
+
+    for dst, lang, path in (
+        ("typescript:src/main.ts:1-1:file:file", "typescript", "src/main.ts"),
+        ("javascript:src/util.js:1-1:file:file", "javascript", "src/util.js"),
+    ):
+        assert dst in by_dst, f"{dst} not an edge dst; got {sorted(by_dst)}"
+        assert by_dst[dst]["is_resolved"] is True
+        node = nodes[dst]
+        assert node["kind"] == "file"
+        assert node["language"] == lang
+        assert node["path"] == path
+
+    cdn = [d for d in by_dst if "cdn.example.com" in d]
+    assert len(cdn) == 1
+    assert by_dst[cdn[0]]["is_resolved"] is False
+    assert nodes[cdn[0]]["kind"] == "external_symbol"
+
+    # No html script placeholder (``...:0-0:ref:...``) survives for either
+    # in-repo script. (The JS/TS analyzer's own ``import "./util.js"``
+    # placeholder is a different producer and out of scope here.)
+    phantoms = [
+        i for i, n in nodes.items()
+        if n["kind"] == "external_symbol" and ":0-0:ref:" in i
+        and ("main.ts" in i or "util.js" in i)
+    ]
+    assert phantoms == []
+
+
+def test_wi_majov_relative_src_from_subdirectory_with_query(
+    tmp_path: Path,
+) -> None:
+    """A src is relative to the HTML file's own directory (``..`` allowed
+    while it stays inside the repo); a cache-busting query is not part of
+    the path."""
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "a.js").write_text("function a() {}\n")
+    # Not ``site/``: discovery excludes it (mkdocs build output).
+    (tmp_path / "pages").mkdir()
+    (tmp_path / "pages" / "page.html").write_text(
+        '<html><script src="../lib/a.js?v=3#x"></script></html>\n'
+    )
+
+    data = _run(tmp_path)
+    edges = _script_edges(data)
+    assert [e["dst"] for e in edges] == ["javascript:lib/a.js:1-1:file:file"]
+    assert edges[0]["is_resolved"] is True
