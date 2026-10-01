@@ -148,6 +148,34 @@ class TestAnsibleContentDiscriminator:
         (tmp_path / "group_vars" / "web.yml").write_text("x: 1\n")
         assert self._rels(tmp_path) == {"playbooks/site.yml", "group_vars/web.yml"}
 
+    def test_playbook_beside_ansible_dirs_marks_its_tree(self, tmp_path: Path) -> None:
+        """containerd's contrib/ansible layout: the play sits beside tasks/ and vars/.
+
+        The playbook is neither at the root nor under an Ansible-named
+        directory; it is found because it sits directly in a directory with
+        an Ansible-named subdirectory, and it roots that tree.
+        """
+        base = tmp_path / "contrib" / "ansible"
+        (base / "tasks").mkdir(parents=True)
+        (base / "vars").mkdir()
+        (base / "cri-containerd.yaml").write_text(
+            "---\n- hosts: all\n  become: true\n  tasks:\n"
+            "    - include_tasks: tasks/k8s.yaml\n"
+        )
+        (base / "tasks" / "k8s.yaml").write_text("- name: key\n  apt_key: {}\n")
+        (base / "vars" / "vars.yaml").write_text("version: 1\n")
+        # Control: a non-playbook beside an Ansible-named directory is not
+        # claimed and does not root a tree.
+        other = tmp_path / "contrib" / "other"
+        (other / "tasks").mkdir(parents=True)
+        (other / "config.yaml").write_text("- id: x\n  run: y\n")
+        (other / "tasks" / "jobs.yaml").write_text("- name: j\n  cron: z\n")
+        assert self._rels(tmp_path) == {
+            "contrib/ansible/cri-containerd.yaml",
+            "contrib/ansible/tasks/k8s.yaml",
+            "contrib/ansible/vars/vars.yaml",
+        }
+
     def test_evidence_is_scoped_to_its_tree(self, tmp_path: Path) -> None:
         """Ansible under deploy/ does not make app/vars/*.yaml Ansible."""
         (tmp_path / "deploy" / "group_vars").mkdir(parents=True)
