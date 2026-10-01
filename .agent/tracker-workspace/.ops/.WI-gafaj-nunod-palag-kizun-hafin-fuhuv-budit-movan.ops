@@ -1,0 +1,21 @@
+- op: create  # 503a
+  at: '2026-10-01T12:50:54Z'  # 503a
+  by: agent  # 503a
+  actor: jgstern_agent  # 503a
+  clock: 1  # 503a
+  nonce: 503a  # 503a
+  data:  # 503a
+    kind: work_item  # 503a
+    title: "js-module-linker: module_exports never reaches an exported non-callable binding (export const store = {...}; koel: 0 of 111 exported variables), so an import of a store module reaches neither the store nor its methods"  # 503a
+    status: todo_hard  # 503a
+    priority: 3  # 503a
+    parent:  # 503a
+    tags:  # 503a
+    - javascript  # 503a
+    - linker_infrastructure  # 503a
+    isbefore: []  # 503a
+    duplicate_of: []  # 503a
+    not_duplicate_of: []  # 503a
+    pr_ref:  # 503a
+    description: "FOUND 2026-10-01 by WI-sinol (branch jgstern-agent/fix/sinol), measured on koel.\n\nTHE GAP. module_exports is emitted only for kinds in js_module.py `_EXPORTABLE_KINDS` = {function, method, class, getter, setter, constructor}. An exported NON-callable binding -- `export const playlistStore = { ... }`, `export const http = new Http()`, `module.exports = sharp` where sharp is a variable -- is part of the module's public surface (the module_exports definition in edge_types.py: \"Module exposes a symbol as part of its public surface\") but never gets the edge.\n\nWHY IT SURFACED NOW. Before WI-sinol the linker sent module_exports to EVERY symbol of an exportable kind, so a koel store's object-literal methods (e.g. radioStationStore.ts `byId`) were reached file -> method directly, by accident. WI-sinol gates the edge on is_exported is True, which those methods are not (they are members of an exported object, not exports). A traversal a.ts -imports-> store.ts -module_exports-> ? now reaches neither the store nor its methods.\n\nNUMBERS (koel, WI-sinol branch survey): 111 JS/TS variables carry is_exported=True; 0 of them have a module_exports edge, before or after WI-sinol.\n\nDECISION NEEDED: add `variable` (and possibly `constant`) to the kinds the edge may reach, and whether an exported object literal should `contains` its methods so traversal continues. Not measured: the effect on slice / reverse-slice output.\nRelated: WI-sinol."  # 503a
+    fields: {}  # 503a
