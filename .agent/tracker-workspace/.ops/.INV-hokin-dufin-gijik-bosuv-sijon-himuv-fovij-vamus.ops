@@ -30,3 +30,10 @@
   set: {}  # 5ce1
   add:  # 5ce1
     isbefore: [WI-losig-domon-janak-rumop-rubas-rapas-vinuj-zohih]  # 5ce1
+- op: discuss  # 2d6f
+  at: '2026-10-01T01:37:40Z'  # 2d6f
+  by: agent  # 2d6f
+  actor: jgstern_agent  # 2d6f
+  clock: 3  # 2d6f
+  nonce: 2d6f  # 2d6f
+  message: "SCOPE CLARIFICATION 2026-09-30 (owner asked): this row does NOT ask for a per-PR gate. WI-ratuv was deliberately kept out of per-PR CI because building the map takes ~13m40s (script header; owner-approved design, PR #717) and was meant to ride the twice-daily scheduled full-suite. That decision stands. The defect is only WHICH scheduled job it was wired into: the GitHub copy (schedule off since 07-23) instead of the live Woodpecker copy. The fix adds one step to .woodpecker/full-suite.yml's self-tree-validation step, which already builds /tmp/self-tree.json, so the added cost on the cron is seconds. The \"test pinning it\" is a cheap unit test that reads the Woodpecker YAML and asserts the step is present (like tests/test_ci_self_claims_gate_scope.py), not a test that runs the gate."  # 2d6f
