@@ -21,3 +21,10 @@
     fields:  # ffee
       statement: "Any registry populated as an import side effect must expose a restore path that works after the registry is cleared. Re-importing an already-imported module does not re-run its decorators, so a restore built on import alone returns success while restoring nothing."  # ffee
       root_cause: "dataflow_scope.ensure_def_use_extractors_registered restored the def/use registry by importing four modules; sys.modules caching made that a no-op after cfg.clear_def_use_extractors(). ddg_build.clear_ddg_languages() has the identical shape and is still unguarded."  # ffee
+- op: discuss  # f349
+  at: '2026-10-01T02:12:51Z'  # f349
+  by: agent  # f349
+  actor: jgstern_agent  # f349
+  clock: 2  # f349
+  nonce: f349  # f349
+  message: "HANDOVER FROM WI-kogop-poguh-nanig-gikuf-linup-sibuj-tojum-jidom (closed 2026-09-30 on its filed instance, owner-agreed). That row was this item's def/use half, observed from the test side. Its filed repro passed twice (smart-test --full --no-cov -n 5: 31729 passed, 0 failed, both runs), and a deterministic probe shows ensure_def_use_extractors_registered() restoring javascript after clear + reload-only-py.\n\nTHE RESIDUAL NOW LIVES HERE ONLY (this item's unclosed item 1). dataflow_capable needs BOTH the def/use extractor AND ddg_spec (dataflow_scope.py ~400/412, ddg_build._DDG_LANGUAGES). Only the def/use registry is compared against a baseline. A loss of javascript's DDG spec with its def/use extractor intact would not trigger a reload, and the language would read incapable.\nTest-side mutators of _DDG_LANGUAGES: test_ddg_build.py _preserve_registry (~:32-39, snapshot then clear+update) and clear_ddg_languages (~:71, inside the fixture). The 09-30 premise check found no live path (no test there first-imports ts_def_use inside the fixture window). Read only, not run.\nStatus stays violated: unclosed items 1 and 3 (no gate on future side-effect registries) are unchanged."  # f349

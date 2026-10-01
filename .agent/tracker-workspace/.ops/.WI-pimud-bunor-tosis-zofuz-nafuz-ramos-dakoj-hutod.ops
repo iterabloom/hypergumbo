@@ -1,0 +1,19 @@
+- op: create  # 1bbd
+  at: '2026-10-01T03:00:26Z'  # 1bbd
+  by: agent  # 1bbd
+  actor: jgstern_agent  # 1bbd
+  clock: 1  # 1bbd
+  nonce: 1bbd  # 1bbd
+  data:  # 1bbd
+    kind: work_item  # 1bbd
+    title: "Decide whether to gate docs/adr against retained-text markers (the excise-don't-banner rule drifted in 20 ADRs with no check)"  # 1bbd
+    status: todo_hard  # 1bbd
+    priority: 3  # 1bbd
+    parent:  # 1bbd
+    tags: []  # 1bbd
+    isbefore: []  # 1bbd
+    duplicate_of: []  # 1bbd
+    not_duplicate_of: []  # 1bbd
+    pr_ref:  # 1bbd
+    description: "Proposed by WI-fubom (ADR retracted-text sweep), 2026-09-30. Filed for a decision, not implemented.\n\nThe rule \"excise the superseded body, don't banner it\" was already written in docs/adr/README.md and AGENTS.md, and the WI-fubom sweep still found it broken in 20 ADRs (branch jgstern-agent/docs/fubom-adr-retracted-text). Nothing mechanical checks it, so it will drift again.\n\nCandidate check: a test over docs/adr/*.md that fails on retained-text markers, i.e. phrases whose only job is to say the text near them is not current. Phrases that marked real instances in this sweep: \"retained as-is\", \"retained here as\", \"recorded rather than deleted\", \"for historical context\", \"No body text below\", \"No section body was removed\", \"do not ingest\", \"NOT the original\", \"Invalidated by ADR-\", \"[Superseded by ADR-\" inside a body, \"originally (said|described|named|predicted|asserted|proposed|planned)\", \"previously (described|named|said)\", \"earlier revisions of this ADR\".\n\nWhat it cannot do: judge. A regex is a finder (WI-fubom's own premise check says so); most of the sweep's real instances were found by READING (stale claims with no marker at all: ADR-0013's five OS-enforcement sentences, ADR-0035's \"deferred v7\", ADR-0043's sub-step table). So a phrase gate stops the banner shape coming back, not stale prose in general.\n\nCosts to weigh before building it: (1) it constrains every concurrent ADR edit, so landing it mid-run can break other branches at integration; (2) the README lifecycle section's own Status:/Supersedes: convention must stay legal (the owner deferred retiring that convention indefinitely; this check must not touch it); (3) needs an allowlist for the judged-keep sites WI-fubom left (ADR-0027 L10, ADR-0028 Migration banner, ADR-0036 Enforcement banner, 3bbb \"The taxonomy as originally specified\")."  # 1bbd
+    fields: {}  # 1bbd
