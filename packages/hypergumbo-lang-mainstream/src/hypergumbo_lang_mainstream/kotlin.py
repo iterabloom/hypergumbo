@@ -2199,9 +2199,10 @@ def _extract_inheritance_edges(
 ) -> list[Edge]:
     """Extract extends/implements edges from class inheritance (META-001).
 
-    For each class with base_classes metadata, creates:
+    For each class or interface with base_classes metadata, creates:
     - extends edges to base classes
-    - implements edges to interfaces
+    - implements edges from a class to an interface
+    - extends edges from an interface to its base interface (WI-kalug)
 
     When multiple classes or interfaces share the same name (common in repos with
     test stubs), uses import-aware disambiguation via ``_resolve_base_class_kotlin()``
@@ -2237,7 +2238,9 @@ def _extract_inheritance_edges(
                 base_name, sym, interface_by_name, sym_file_imports
             )
             if iface_sym is not None and iface_sym.id != sym.id:
-                edge_type = "implements"
+                # An interface EXTENDS its base interface; only a class
+                # implements one (WI-kalug, matching the core linker).
+                edge_type = "extends" if sym.kind == "interface" else "implements"
                 base_sym = iface_sym
             else:
                 class_sym = _resolve_base_class_kotlin(

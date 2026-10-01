@@ -240,19 +240,23 @@ class TestInterfaceInheritancePipeline:
             include_sketch_precomputed=False, progress=False,
         )
         bm = json.loads(out.read_text())
-        names = {n["id"]: n["name"] for n in bm["nodes"]}
-        # An unresolved target is compared by its full id: the id carries the
-        # module hint (``rxjs`` vs the core linker's ``external`` sentinel).
+        nodes = {n["id"]: n for n in bm["nodes"]}
+
+        def label(node_id: str) -> str:
+            # An external base is compared by its id's MODULE slot, which is
+            # what distinguishes the analyzer's ``rxjs`` hint from the core
+            # linker's ``external`` sentinel.
+            node = nodes[node_id]
+            if node["kind"] == "external_symbol":
+                return f"{node_id.split(':')[1]}:{node['name']}"
+            return node["name"]
+
         got = sorted(
-            (
-                names.get(e["src"]),
-                e["type"],
-                e["dst"] if e["dst"].endswith(":unresolved") else names[e["dst"]],
-            )
+            (label(e["src"]), e["type"], label(e["dst"]))
             for e in bm["edges"] if e["type"] in ("extends", "implements")
         )
         assert got == [
             ("Child", "extends", "Base"),
             ("K", "implements", "Child"),
-            ("MyObs", "extends", "typescript:rxjs:0-0:Observer:unresolved"),
+            ("MyObs", "extends", "rxjs:Observer"),
         ]

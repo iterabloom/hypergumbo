@@ -1099,6 +1099,22 @@ class TestAbstractSourceExtends:
         ))
         assert result.edges == []
 
+    def test_analyzer_edge_of_other_label_is_not_doubled(self) -> None:
+        """One relation, one edge. If an analyzer already connected the pair
+        under the OTHER inheritance label, the linker does not add a second
+        edge with its own label beside it — the analyzer's edge stands, as it
+        does for an external base (the name dedup)."""
+        base = _sym("k:KBase", "KBase", "interface", "kotlin")
+        child = _sym("k:KChild", "KChild", "interface", "kotlin", ["KBase"])
+        existing = Edge.create(
+            src="k:KChild", dst="k:KBase", edge_type="implements", line=1,
+            origin="kotlin", origin_run_id="r", evidence_type="ast_implements",
+        )
+        result = link_inheritance(LinkerContext(
+            repo_root=Path("/t"), symbols=[base, child], edges=[existing],
+        ))
+        assert result.edges == []
+
 
 # ---------------------------------------------------------------------------
 # WI-gifar (PR-1 of INV-nilud inherited_calls campaign):
