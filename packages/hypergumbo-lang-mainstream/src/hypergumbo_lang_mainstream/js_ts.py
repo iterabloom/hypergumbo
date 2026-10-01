@@ -4829,35 +4829,122 @@ def _collect_exported_names(
     - ``export default function foo() {}`` /
       ``export default class Bar {}`` — default export of a named decl
     - ``export const foo = ...`` / ``export let ...`` / ``export var ...``
-    - ``export { foo, bar }`` — named re-export (export_clause)
-    - ``export { foo } from './bar'`` — named re-export-from
+    - ``export { foo, bar }`` / ``export { foo as bar }`` — export_clause;
+      the LOCAL name (``foo``) is collected, because the set is matched
+      against declarations and ``bar`` names none (WI-sinol)
     - ``export default identifier`` where identifier is a bare name
+    - TypeScript ``export = identifier``
+    - CommonJS assignments, see ``_extract_commonjs_export_names``
+
+    ``export { foo } from './bar'`` is skipped: it re-exports a binding of
+    ANOTHER module and declares nothing here, so collecting ``foo`` would mark
+    an unrelated same-named local declaration (WI-sinol).
 
     Default exports without an explicit name (e.g. ``export default
     () => {}`` or ``export default 42``) are NOT added because there's
     no symbol name to match against the analyzer's Symbol.name field.
 
-    Only the *top-level* export_statement children of the root module
-    are considered. Nested re-exports inside a function body are rare
-    and not part of the public module surface.
+    Only the *top-level* statements of the root module are considered.
+    Nested re-exports inside a function body are rare and not part of the
+    public module surface; a ``module.exports = ...`` guarded by an ``if``
+    (the UMD wrapper) is therefore NOT collected.
     """
     names: set[str] = set()
     for child in root.children:
-        if child.type != "export_statement":
-            continue
-        _extract_export_names_from_statement(child, source, names)
+        if child.type == "export_statement":
+            _extract_export_names_from_statement(child, source, names)
+        elif child.type == "expression_statement":
+            _extract_commonjs_export_names(child, source, names)
     return names
+
+
+def _is_module_exports(node: "tree_sitter.Node", source: bytes) -> bool:
+    """True iff *node* is the member expression ``module.exports``."""
+    if node.type != "member_expression":
+        return False
+    obj = node.child_by_field_name("object")
+    prop = node.child_by_field_name("property")
+    return (
+        obj is not None and prop is not None
+        and obj.type == "identifier" and _node_text(obj, source) == "module"
+        and _node_text(prop, source) == "exports"
+    )
+
+
+def _extract_commonjs_export_names(
+    stmt: "tree_sitter.Node", source: bytes, out: set[str],
+) -> None:
+    """Populate *out* with the local names a CommonJS assignment exports.
+
+    WI-tavag: before this, a CommonJS export set nothing, and since INV-kubup
+    reads an absent name as a MEASURED ``is_exported=False``, every CommonJS
+    export was positively claimed private. Recognised (the shapes Node's own
+    CJS named-export detection, cjs-module-lexer, recognises, minus the ones
+    that bind no local declaration):
+
+    - ``module.exports = f`` — the whole module is the binding ``f``
+    - ``module.exports = { f, k: g, m() {} }`` — each property is a
+      ``require()``-visible name; a shorthand or ``key: identifier`` value
+      exports that local binding, and an object-literal method (which this
+      analyzer emits as its own symbol) exports itself
+    - ``exports.k = f`` / ``module.exports.k = f`` — one named export
+    - chains, e.g. express's ``exports = module.exports = createApplication``
+
+    A bare ``exports = f`` only rebinds the local alias and exports nothing;
+    ``module.exports = require('./x')`` re-exports another module and binds no
+    local declaration; a computed ``exports[k] = f`` has no static name. All
+    three collect nothing. Function and class EXPRESSIONS on the right-hand
+    side are not collected either: the analyzer emits no symbol for them, so
+    there is nothing for a name to match.
+    """
+    expr = stmt.child(0)
+    whole = named = False
+    while expr is not None and expr.type == "assignment_expression":
+        left = expr.child_by_field_name("left")
+        if left is not None and _is_module_exports(left, source):
+            whole = True
+        elif left is not None and left.type == "member_expression":
+            obj = left.child_by_field_name("object")
+            if obj is not None and (
+                (obj.type == "identifier" and _node_text(obj, source) == "exports")
+                or _is_module_exports(obj, source)
+            ):
+                named = True
+        expr = expr.child_by_field_name("right")
+    if expr is None or not (whole or named):
+        return
+    if expr.type == "identifier":
+        out.add(_node_text(expr, source))
+    elif expr.type == "object" and whole:
+        for prop in expr.children:
+            if prop.type == "shorthand_property_identifier":
+                out.add(_node_text(prop, source))
+            elif prop.type == "pair":
+                value = prop.child_by_field_name("value")
+                if value is not None and value.type == "identifier":
+                    out.add(_node_text(value, source))
+            elif prop.type == "method_definition":
+                # A computed key (``[k]() {}``) has no static name.
+                method_name = _find_name_in_children(prop, source)
+                if method_name:
+                    out.add(method_name)
 
 
 def _extract_export_names_from_statement(
     node: "tree_sitter.Node", source: bytes, out: set[str],
 ) -> None:
     """Populate *out* with the identifier names exported by *node*."""
+    reexport_from = node.child_by_field_name("source") is not None
     for child in node.children:
         ctype = child.type
         if ctype in (
             "function_declaration", "class_declaration",
             "generator_function_declaration",
+            # WI-sinol: the TypeScript declaration forms. Absent here, an
+            # ``export abstract class`` / ``export interface`` / ``export
+            # enum`` / ``export type`` read as a measured "not exported".
+            "abstract_class_declaration", "interface_declaration",
+            "enum_declaration", "type_alias_declaration",
         ):
             # WI-zavad: ``export function* g(){}`` must mark its symbol
             # is_exported=True like ``export function f(){}`` does.
@@ -4871,18 +4958,15 @@ def _extract_export_names_from_statement(
                     name_node = var_child.child_by_field_name("name")
                     if name_node is not None and name_node.type == "identifier":
                         out.add(_node_text(name_node, source))
-        elif ctype == "export_clause":
-            # export { foo, bar } or export { foo as bar }
+        elif ctype == "export_clause" and not reexport_from:
+            # export { foo, bar } or export { foo as bar }: collect the LOCAL
+            # name. The set is matched against declarations, and the alias
+            # ``bar`` names no declaration -- collecting it left ``foo``
+            # measured "not exported" and could mark an unrelated local
+            # ``bar`` (WI-sinol).
             for clause_child in child.children:
                 if clause_child.type == "export_specifier":
-                    # Prefer the alias (``alias`` field) when present so
-                    # the exported name matches the public surface.
-                    alias = clause_child.child_by_field_name("alias")
-                    name_node = (
-                        alias
-                        if alias is not None
-                        else clause_child.child_by_field_name("name")
-                    )
+                    name_node = clause_child.child_by_field_name("name")
                     if name_node is not None:
                         out.add(_node_text(name_node, source))
         elif ctype == "identifier":

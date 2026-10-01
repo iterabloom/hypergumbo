@@ -14,8 +14,14 @@ canonical `kind="file"` symbol for each resolved target (minting one with the
    `imports_module` type away, and consumers recover that specialization
    from `dst.kind == 'file'`)
 2. `module_exports` - from the target file symbol to each function, method,
-   class, getter, setter or constructor defined in that file (enabling
-   cross-file reachability)
+   class, getter, setter or constructor that the file EXPORTS (enabling
+   cross-file reachability). "Exports" is the analyzer's positive verdict,
+   ``Symbol.is_exported is True`` (ESM ``export``; CommonJS
+   ``module.exports`` / ``exports.x``). WI-sinol: the kind filter alone sent
+   the edge to class members and private helpers too (14 of 26 edges false
+   on the htrac frontend), telling a consumer that ``ItemList.render`` is
+   importable. ``False`` and ``None`` (no verdict) both withhold the edge;
+   a class member is reached through its exported class.
 
 Together these create a traversable path:
   file_A --imports--> file_B --module_exports--> functionInB
@@ -81,7 +87,9 @@ PASS_ID = make_pass_id("js-module-linker")
 # .js first because it's the most common in real-world JS/TS projects.
 _PROBE_EXTENSIONS = (".js", ".ts", ".jsx", ".tsx", ".mjs", ".mts", ".vue", ".json")
 
-# Symbol kinds that represent "exported" callable code in a JS/TS module.
+# Symbol kinds that represent exportable callable code in a JS/TS module.
+# A kind is necessary, not sufficient: module_exports also requires
+# ``is_exported is True`` (WI-sinol).
 #
 # ADR-0027 Phase-2 audit (WI-jukav): all members are AXIS_LANGUAGE_CONSTRUCT
 # (Cluster A) and stable across Phase 3. JS ``export`` declarations only
@@ -690,10 +698,18 @@ def link_js_modules(
                 make_file_id(sym.language, sym.path)
             ] = sym
 
-    # Build map: normalized_file_path -> list of exportable symbols
+    # Build map: normalized_file_path -> list of EXPORTED symbols.
+    # WI-sinol: the kind filter alone admitted class members and private
+    # helpers. ``is_exported is True`` is the analyzer's positive verdict
+    # (ESM ``export``, CommonJS ``module.exports`` / ``exports.x``); ``False``
+    # (measured private) and ``None`` (no verdict) both withhold the edge.
     symbols_by_file: dict[str, list[Symbol]] = defaultdict(list)
     for sym in symbols:
-        if sym.kind in _EXPORTABLE_KINDS and sym.language in _JS_LANGUAGES:
+        if (
+            sym.kind in _EXPORTABLE_KINDS
+            and sym.language in _JS_LANGUAGES
+            and sym.is_exported is True
+        ):
             symbols_by_file[sym.path].append(sym)
 
     # Cache for module_file and npm_package symbols to avoid duplicates
