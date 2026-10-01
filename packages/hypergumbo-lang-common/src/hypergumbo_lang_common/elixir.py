@@ -46,6 +46,39 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
   because Python randomises string hashing per process, made the analyzer
   non-deterministic across runs.
 - OTP/Phoenix/WebSocket behaviour callback edges (use GenServer, @behaviour Plug, etc.)
+- Behaviours as a TYPE relationship (WI-vitas). A behaviour is Elixir's
+  interface mechanism, and three facts model it:
+
+  * ``@callback name(args) :: ret`` is a symbol on its module: kind
+    ``function`` (``macro`` for ``@macrocallback``) with
+    ``modifiers=["abstract"]`` -- the same marking cpp and kotlin give an
+    abstract member. Its ``signature`` is the declaration surface after the
+    name, verbatim (``() :: integer``). It is a DECLARATION, never a call
+    target: ``register_symbol`` keeps it out of the call-resolution indexes
+    and files it under ``global_symbols["__callbacks__"][module]`` instead,
+    because a behaviour does not define its callbacks (``Shape.area()`` is an
+    undefined-function error). The ``_inside_typespec`` rule is untouched:
+    the typespec BODY still emits no call edge (WI-dokib).
+  * ``@behaviour X`` emits ``implements`` from the module to ``X`` (alias
+    expanded): the in-repo module when one is defined, else the unresolved
+    target ``elixir:external:0-0:X:unresolved`` -- the core inheritance
+    linker's external sentinel, with the full module name because an Elixir
+    module's dotted name IS its identity. ``use X`` implies a behaviour only
+    where X's ``__using__`` is known to set one: for a library X,
+    ``USE_IMPLIED_BEHAVIOURS`` (read from each library's source; ``use
+    Agent`` sets none); for an in-repo X, the ``@behaviour`` directives in
+    the ``quote`` of its ``defmacro __using__`` (``_extract_using_index``,
+    gathered in Pass 1 and followed through nested ``use``). NOT read: the
+    Phoenix web-module dispatcher, ``use AppWeb, :live_view``, whose quote
+    lives in ``def live_view`` (WI-nunar).
+  * each callback ``dispatches_to`` every clause of the same-named, same-kind
+    function in each implementing module (evidence ``behaviour_callback``), the
+    abstract-member -> implementation shape ``linkers/type_hierarchy`` builds
+    for languages with methods. That linker cannot build it here: it indexes
+    ``kind == "method"`` only, and an Elixir function is not a method.
+
+  A directive inside ``quote`` belongs to the module that runs ``use`` and
+  emits nothing here (the INV-sinah rule), and so does a ``@callback`` there.
 
 If tree-sitter with Elixir support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -131,6 +164,39 @@ BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
         "handle_disconnect", "terminate",
     ],
 }
+
+#: ``use X`` -> the behaviour X's ``__using__`` declares on the using module.
+#: Read from each library's source (main branches, 2026-10-01), because the
+#: callback table above is NOT this map: ``use Plug.Builder`` and
+#: ``use Plug.Router`` set ``@behaviour Plug``, not a behaviour of their own,
+#: and ``Agent``, ``Task`` and ``Phoenix.Component`` set none (their
+#: ``__using__`` defines ``child_spec`` / imports only). ``WebSock`` has no
+#: ``__using__`` at all; it is reached by ``@behaviour WebSock``.
+USE_IMPLIED_BEHAVIOURS: dict[str, str] = {
+    "GenServer": "GenServer",
+    "Supervisor": "Supervisor",
+    "Phoenix.LiveView": "Phoenix.LiveView",
+    "Phoenix.LiveComponent": "Phoenix.LiveComponent",
+    "Plug.Builder": "Plug",
+    "Plug.Router": "Plug",
+    "WebSockex": "WebSockex",
+}
+
+#: Module attributes that declare a behaviour's required member, and the
+#: symbol kind of the member each one requires (``def`` vs ``defmacro``).
+_CALLBACK_ATTRIBUTES: dict[str, str] = {
+    "callback": "function",
+    "macrocallback": "macro",
+}
+
+#: The modifier that marks a callback declaration -- the marking cpp and
+#: kotlin give an abstract member. Nothing else in this analyzer emits it.
+_CALLBACK_MODIFIER = "abstract"
+
+#: ``global_symbols`` key of the callback index: behaviour module name ->
+#: its callback symbols. Mirrors ``__multi__``; callbacks live here INSTEAD of
+#: the call-resolution indexes (see ``ElixirAnalyzer.register_symbol``).
+_CALLBACKS_KEY = "__callbacks__"
 
 # Elixir Kernel and stdlib functions that are auto-imported into every
 # module.  Bare calls to these names (e.g., ``inspect(data)``) should
@@ -507,19 +573,119 @@ _TYPESPEC_ATTRIBUTES: frozenset[str] = frozenset({
 })
 
 
+def _module_attribute_call(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, "tree_sitter.Node"]]:
+    """``@name args`` -> ``(name, the attribute's call node)``, else None.
+
+    The one reading of the attribute shape, ``unary_operator("@", call(
+    identifier, arguments))``, shared by the typespec guard, the ``@callback``
+    symbol and the ``@behaviour`` directive. A bare ``@name`` (an attribute
+    READ, whose operand is an ``identifier``) is not a declaration and
+    returns None.
+    """
+    if node.type != "unary_operator" or not node.children:
+        return None
+    if node_text(node.children[0], source) != "@":
+        return None
+    operand = node.children[-1]
+    if operand.type != "call":
+        return None
+    target = find_child_by_type(operand, "identifier")
+    if target is None:  # pragma: no cover - `@` binds tighter than `.`: `@m.f(1)` is a call OF `@m`, never `@` over a nameless call
+        return None
+    return node_text(target, source), operand
+
+
 def _inside_typespec(node: "tree_sitter.Node", source: bytes) -> bool:
     """Is ``node`` inside ``@spec`` / ``@type`` / ``@callback`` (and kin)?"""
     current = node.parent
     while current is not None:
-        if current.type == "unary_operator" and current.children:
-            if node_text(current.children[0], source) == "@":
-                operand = current.children[-1]
-                if operand.type == "call":
-                    target = find_child_by_type(operand, "identifier")
-                    if target and node_text(target, source) in _TYPESPEC_ATTRIBUTES:
-                        return True
+        attribute = _module_attribute_call(current, source)
+        if attribute is not None and attribute[0] in _TYPESPEC_ATTRIBUTES:
+            return True
         current = current.parent
     return False
+
+
+def _callback_head(
+    attribute_call: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, str]]:
+    """``(name, signature)`` of a ``@callback`` declaration, or None.
+
+    The attribute's argument is the typespec ``head :: return``, optionally
+    wrapped as ``head :: return when t: term``. Both wrappers are a
+    ``binary_operator`` whose FIRST child leads toward the head, so the head
+    is reached by descending first children. It is a ``call`` (``area()``,
+    ``scale(s :: t, f :: number)``) or, for a paren-less zero-arity callback,
+    a bare ``identifier`` (``simple :: :ok``).
+
+    The signature is the declaration surface after the name, verbatim
+    (ADR-0058): the parameter list (``()`` when the source wrote none) and
+    the rest of the spec -- ``() :: integer``.
+    """
+    args = find_child_by_type(attribute_call, "arguments")
+    if args is None or not args.named_children:
+        return None
+    spec = args.named_children[0]
+    head = spec
+    while head.type == "binary_operator" and head.children:
+        head = head.children[0]
+    if head.type == "identifier":
+        name, params = node_text(head, source), "()"
+    elif head.type == "call":
+        name_node = find_child_by_type(head, "identifier")
+        if name_node is None:
+            return None
+        name = node_text(name_node, source)
+        params_node = find_child_by_type(head, "arguments")
+        params = node_text(params_node, source) if params_node is not None else "()"
+    else:
+        return None
+    rest = source[head.end_byte:spec.end_byte].decode("utf-8", errors="replace")
+    return name, f"{params} {rest.strip()}".strip()
+
+
+def _callback_symbol(
+    node: "tree_sitter.Node", source: bytes, file_path: str, run_id: str,
+) -> Optional[Symbol]:
+    """The symbol a ``@callback`` / ``@macrocallback`` declares, or None.
+
+    Owned by the enclosing module. Not emitted inside ``quote`` (a template
+    for the module that runs ``use``, INV-sinah) or where the nearest module
+    is atom-named or absent (no reliable owner) -- the ``defstruct`` rules.
+    """
+    attribute = _module_attribute_call(node, source)
+    if attribute is None or attribute[0] not in _CALLBACK_ATTRIBUTES:
+        return None
+    if (_has_quote_ancestor(node, source)
+            or not _nearest_enclosing_module_resolvable(node, source)):
+        return None
+    head = _callback_head(attribute[1], source)
+    if head is None:
+        return None
+    name, signature = head
+    kind = _CALLBACK_ATTRIBUTES[attribute[0]]
+    full_name = f"{'.'.join(_get_enclosing_modules(node, source))}.{name}"
+    start_line = node.start_point[0] + 1
+    end_line = node.end_point[0] + 1
+    return Symbol(
+        id=make_symbol_id("elixir", file_path, start_line, end_line, full_name, kind),
+        name=full_name,
+        kind=kind,
+        language="elixir",
+        path=file_path,
+        span=Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=node.start_point[1],
+            end_col=node.end_point[1],
+        ),
+        origin=PASS_ID,
+        origin_run_id=run_id,
+        signature=signature,
+        modifiers=[_CALLBACK_MODIFIER],
+    )
 
 
 def _caller_outside_def(
@@ -867,6 +1033,135 @@ def _extract_phoenix_routes(
     return contexts, route_symbols
 
 
+def _first_alias_argument(call: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The first ``alias`` argument of a directive call (``use X`` / ``behaviour X``)."""
+    args = find_child_by_type(call, "arguments")
+    if args is None:
+        return None
+    return find_child_by_type(args, "alias")
+
+
+#: What ``_behaviour_directives`` writes for ``@behaviour unquote(__MODULE__)``,
+#: the spelling a ``__using__`` template uses for "the module defining me".
+_UNQUOTED_MODULE = "unquote(__MODULE__)"
+
+
+def _is_unquoted_module(call: "tree_sitter.Node", source: bytes) -> bool:
+    """Is the directive's argument ``unquote(__MODULE__)``?"""
+    args = find_child_by_type(call, "arguments")
+    inner = find_child_by_type(args, "call") if args is not None else None
+    return inner is not None and node_text(inner, source) == _UNQUOTED_MODULE
+
+
+def _behaviour_directives(
+    tree: "tree_sitter.Tree", source: bytes,
+) -> list[tuple[str, str, "tree_sitter.Node"]]:
+    """Every ``use X`` and ``@behaviour X`` naming a module, in order.
+
+    Returns ``(directive, written_module, node)`` with ``directive`` either
+    ``"use"`` or ``"behaviour"``. The ONE parse of these directives: the
+    framework-callback table, the behaviour type relationship and the
+    ``__using__`` index all read it, so they cannot disagree about what a file
+    declared. The module is an alias, or -- for ``@behaviour`` only --
+    ``unquote(__MODULE__)``, recorded as ``_UNQUOTED_MODULE`` and meaningful
+    only inside a ``quote``. Any other argument (``@behaviour :gen_cycle``, an
+    Erlang module) is not read.
+    """
+    directives: list[tuple[str, str, "tree_sitter.Node"]] = []
+    for node in iter_tree(tree.root_node):
+        if node.type == "call":
+            target = find_child_by_type(node, "identifier")
+            if target is None or node_text(target, source) != "use":
+                continue
+            alias = _first_alias_argument(node)
+            if alias is not None:
+                directives.append(("use", node_text(alias, source), node))
+            continue
+        attribute = _module_attribute_call(node, source)
+        if attribute is not None and attribute[0] == "behaviour":
+            alias = _first_alias_argument(attribute[1])
+            if alias is not None:
+                directives.append(("behaviour", node_text(alias, source), node))
+            elif _is_unquoted_module(attribute[1], source):
+                directives.append(("behaviour", _UNQUOTED_MODULE, node))
+    return directives
+
+
+def _using_macro_module(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The module whose ``defmacro __using__`` encloses ``node``, else None."""
+    current = node.parent
+    while current is not None:
+        if current.type == "call":
+            target = find_child_by_type(current, "identifier")
+            if (target is not None and node_text(target, source) == "defmacro"
+                    and _get_function_name(current, source) == "__using__"):
+                if not _nearest_enclosing_module_resolvable(current, source):
+                    return None
+                return ".".join(_get_enclosing_modules(current, source))
+        current = current.parent
+    return None
+
+
+def _extract_using_index(
+    tree: "tree_sitter.Tree", source: bytes,
+) -> dict[str, tuple[list[str], list[str]]]:
+    """What each module's ``__using__`` template declares on its USER.
+
+    ``module -> (behaviours, used_modules)``: the ``@behaviour`` directives and
+    the ``use`` directives inside a ``quote`` in ``defmacro __using__``. This is
+    how an in-repo behaviour is usually adopted -- ``use Plausible.Cache`` runs
+    a ``__using__`` whose ``quote`` sets ``@behaviour Plausible.Cache`` -- and
+    the in-repo analogue of ``USE_IMPLIED_BEHAVIOURS``. ``unquote(__MODULE__)``
+    is the defining module. Names are alias-expanded with the DEFINING file's
+    aliases, because an alias inside a ``quote`` is expanded where the quote is
+    written. A ``use`` here is followed transitively in Pass 2.
+    """
+    index: dict[str, tuple[list[str], list[str]]] = {}
+    alias_hints: Optional[dict[str, str]] = None
+    for directive, written, node in _behaviour_directives(tree, source):
+        if not _has_quote_ancestor(node, source):
+            continue
+        module = _using_macro_module(node, source)
+        if module is None:
+            continue
+        if alias_hints is None:
+            alias_hints = _extract_alias_hints(tree, source)
+        behaviours, used = index.setdefault(module, ([], []))
+        if written == _UNQUOTED_MODULE:
+            behaviours.append(module)
+        elif directive == "behaviour":
+            behaviours.append(_expand_alias(written, alias_hints))
+        else:
+            used.append(_expand_alias(written, alias_hints))
+    return index
+
+
+def _implied_behaviours(
+    used: str,
+    using_index: dict[str, tuple[list[str], list[str]]],
+    visiting: Optional[set[str]] = None,
+) -> list[str]:
+    """The behaviours ``use <used>`` declares on the using module, in order.
+
+    The library table (``USE_IMPLIED_BEHAVIOURS``) and the in-repo ``__using__``
+    index, followed through every ``use`` a template itself performs
+    (``use Plug.Router`` -> ``use Plug.Builder`` -> ``@behaviour Plug``), with a
+    visited set so a cycle of templates terminates.
+    """
+    visiting = set() if visiting is None else visiting
+    visiting.add(used)
+    found: list[str] = []
+    library = USE_IMPLIED_BEHAVIOURS.get(used)
+    if library is not None:
+        found.append(library)
+    behaviours, nested = using_index.get(used, ([], []))
+    found.extend(behaviours)
+    for inner in nested:
+        if inner not in visiting:
+            found.extend(_implied_behaviours(inner, using_index, visiting))
+    return list(dict.fromkeys(found))
+
+
 def _extract_behaviour_callbacks(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -876,64 +1171,28 @@ def _extract_behaviour_callbacks(
     run_id: str,
     file_symbols_multi: dict[str, list[Symbol]] | None = None,
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
+    alias_hints: dict[str, str] | None = None,
+    using_index: dict[str, tuple[list[str], list[str]]] | None = None,
 ) -> list[Edge]:
-    """Extract behaviour-callback ``dispatches_to`` edges from OTP/Phoenix decls.
+    """Extract the edges ``use X`` / ``@behaviour X`` imply.
 
-    When a module uses ``use GenServer``, ``use Phoenix.LiveView``, etc., or
-    declares ``@behaviour Plug``, the framework invokes specific callback
-    functions (init, handle_call, mount, render, ...).  Without these edges,
-    callback functions appear as orphans.
+    Two independent readings of the same directives (``_behaviour_directives``):
 
-    Detects two directive forms:
-
-    1. ``use Module`` — e.g. ``use GenServer``, ``use WebSock``
-    2. ``@behaviour Module`` — e.g. ``@behaviour Plug``, ``@behaviour NexAI.Middleware``
-
-    Both forms are mapped to ``BEHAVIOUR_CALLBACKS`` and create edges from the
-    enclosing module symbol to each implemented callback function.
+    1. The FRAMEWORK CALLBACK TABLE. When a module uses ``use GenServer``,
+       ``use Phoenix.LiveView``, etc., or declares ``@behaviour Plug``, the
+       framework invokes specific callback functions (init, handle_call, mount,
+       render, ...). For X in ``BEHAVIOUR_CALLBACKS``, the module
+       ``dispatches_to`` each implemented callback, so they are not orphans.
+    2. The BEHAVIOUR TYPE RELATIONSHIP (WI-vitas), for every behaviour, in-repo
+       or not: see ``_behaviour_type_edges``.
     """
     edges: list[Edge] = []
+    directives = _behaviour_directives(tree, source)
 
-    # Collect (behaviour_module_name, ast_node) pairs from both forms
-    behaviour_hits: list[tuple[str, "tree_sitter.Node"]] = []
-
-    for node in iter_tree(tree.root_node):
-        # Form 1: `use Module`
-        if node.type == "call":
-            target = find_child_by_type(node, "identifier")
-            if target is not None and node_text(target, source) == "use":
-                args = find_child_by_type(node, "arguments")
-                if args is not None:
-                    for child in args.children:
-                        if child.type == "alias":
-                            used_module = node_text(child, source)
-                            if used_module in BEHAVIOUR_CALLBACKS:
-                                behaviour_hits.append((used_module, node))
-                            break
-
-        # Form 2: `@behaviour Module`
-        # AST: unary_operator(@) → call(identifier="behaviour", arguments(alias=...))
-        elif node.type == "unary_operator":
-            op = find_child_by_type(node, "@")
-            if op is not None:
-                inner_call = find_child_by_type(node, "call")
-                if inner_call is not None:
-                    ident = find_child_by_type(inner_call, "identifier")
-                    if ident is not None and node_text(ident, source) == "behaviour":
-                        args = find_child_by_type(inner_call, "arguments")
-                        if args is not None:
-                            for child in args.children:
-                                if child.type == "alias":
-                                    beh_module = node_text(child, source)
-                                    if beh_module in BEHAVIOUR_CALLBACKS:
-                                        behaviour_hits.append(
-                                            (beh_module, node)
-                                        )
-                                    break
-
-    # Create callback edges for each behaviour hit
-    for used_module, node in behaviour_hits:
-        expected_callbacks = BEHAVIOUR_CALLBACKS[used_module]
+    for _directive, used_module, node in directives:
+        expected_callbacks = BEHAVIOUR_CALLBACKS.get(used_module)
+        if expected_callbacks is None:
+            continue
 
         enclosing_modules = _get_enclosing_modules(node, source)
         if not enclosing_modules:
@@ -974,6 +1233,129 @@ def _extract_behaviour_callbacks(
                     meta={"mechanism": "callback"},
                 ))
 
+    edges.extend(_behaviour_type_edges(
+        directives, source, file_symbols, global_symbols, run_id,
+        global_symbols_multi or {}, alias_hints or {}, using_index or {},
+    ))
+    return edges
+
+
+def _behaviour_type_edges(
+    directives: list[tuple[str, str, "tree_sitter.Node"]],
+    source: bytes,
+    file_symbols: dict[str, Symbol],
+    global_symbols: dict[str, Any],
+    run_id: str,
+    global_symbols_multi: dict[str, list[Symbol]],
+    alias_hints: dict[str, str],
+    using_index: dict[str, tuple[list[str], list[str]]],
+) -> list[Edge]:
+    """``implements`` to each behaviour, and callback -> implementation dispatch.
+
+    The behaviours a directive names: ``@behaviour X`` names X after alias
+    expansion; ``use X`` names what X's ``__using__`` declares
+    (``_implied_behaviours``: the library table, then the in-repo
+    ``__using__`` index) and nothing when that is unknown (``use ExUnit.Case``
+    declares no behaviour).
+
+    For each (module, behaviour) pair, once however many directives repeat it:
+
+    - ``implements`` from the module to the behaviour's in-repo module symbol,
+      else to the unresolved ``elixir:external:0-0:<Behaviour>:unresolved``
+      (evidence ``ast_implements``; ``@behaviour`` is Elixir's implements
+      clause);
+    - for each ``@callback`` the in-repo behaviour declares, ``dispatches_to``
+      from the callback to every clause of the module's public function of the
+      same name and kind. Arity is NOT matched: an Elixir function symbol
+      carries no arity, and a signature cannot be counted for a clause whose
+      parameters are patterns.
+
+    Skipped: a directive inside ``quote`` (it belongs to the module that runs
+    ``use``, INV-sinah -- attributing ``quote do @behaviour Cache end`` to
+    ``Cache`` is a self-edge), one whose nearest module has no alias name, and
+    a module naming itself.
+    """
+    edges: list[Edge] = []
+    callbacks_by_behaviour: dict[str, list[Symbol]] = global_symbols.get(
+        _CALLBACKS_KEY, {},
+    )
+    seen: set[tuple[str, str]] = set()
+    for directive, written, node in directives:
+        if (written == _UNQUOTED_MODULE
+                or _has_quote_ancestor(node, source)
+                or not _nearest_enclosing_module_resolvable(node, source)):
+            continue
+        expanded = _expand_alias(written, alias_hints)
+        behaviours = (
+            [expanded] if directive == "behaviour"
+            else _implied_behaviours(expanded, using_index)
+        )
+        module_name = ".".join(_get_enclosing_modules(node, source))
+        module_sym = file_symbols.get(module_name) or global_symbols.get(module_name)
+        if module_sym is None:  # pragma: no cover - a resolvable module always has a symbol
+            continue
+        for behaviour in behaviours:
+            if behaviour == module_name or (module_sym.id, behaviour) in seen:
+                continue
+            seen.add((module_sym.id, behaviour))
+            edges.extend(_behaviour_edges(
+                module_sym, module_name, behaviour, node.start_point[0] + 1,
+                global_symbols, callbacks_by_behaviour, global_symbols_multi,
+                run_id,
+            ))
+    return edges
+
+
+def _behaviour_edges(
+    module_sym: Symbol,
+    module_name: str,
+    behaviour: str,
+    line: int,
+    global_symbols: dict[str, Any],
+    callbacks_by_behaviour: dict[str, list[Symbol]],
+    global_symbols_multi: dict[str, list[Symbol]],
+    run_id: str,
+) -> list[Edge]:
+    """The ``implements`` edge and the callback dispatch for one pair."""
+    edges: list[Edge] = []
+    target = global_symbols.get(behaviour)
+    if isinstance(target, Symbol) and target.kind == "module":
+        edges.append(Edge.create(
+            src=module_sym.id,
+            dst=target.id,
+            edge_type="implements",
+            line=line,
+            evidence_type="ast_implements",
+            origin=PASS_ID,
+            origin_run_id=run_id,
+        ))
+    else:
+        edges.append(Edge.create(
+            src=module_sym.id,
+            dst=f"elixir:external:0-0:{behaviour}:unresolved",
+            edge_type="implements",
+            line=line,
+            evidence_type="ast_implements",
+            is_resolved=False,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+        ))
+
+    for callback in callbacks_by_behaviour.get(behaviour, ()):
+        short_name = callback.name.rsplit(".", 1)[-1]
+        for impl in global_symbols_multi.get(f"{module_name}.{short_name}", ()):
+            if impl.kind != callback.kind or "private" in impl.modifiers:
+                continue
+            edges.append(Edge.create(
+                src=callback.id,
+                dst=impl.id,
+                edge_type="dispatches_to",
+                line=line,
+                evidence_type="behaviour_callback",
+                origin=PASS_ID,
+                origin_run_id=run_id,
+                meta={"mechanism": "callback"},
+            ))
     return edges
 
 
@@ -1296,6 +1678,14 @@ def _extract_symbols_from_tree(
                                 origin=PASS_ID,
                                 origin_run_id=run_id,
                             ))
+
+        elif node.type == "unary_operator":
+            # WI-vitas: a ``@callback`` is a behaviour's required member. Like a
+            # field it is appended to ``symbols`` only -- NOT to symbol_by_name /
+            # symbols_by_name -- so it never becomes a local call target.
+            callback = _callback_symbol(node, source, file_path, run_id)
+            if callback is not None:
+                symbols.append(callback)
 
     return symbols, symbol_by_name, symbols_by_name
 
@@ -1798,6 +2188,13 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
 
     lang = "elixir"
     file_patterns: ClassVar[list[str]] = ["*.ex", "*.exs"]
+    #: ``module -> (behaviours, used modules)`` its ``__using__`` declares,
+    #: filled in Pass 1 (``_extract_using_index``) and reset per ``analyze()``.
+    _using_index: dict[str, tuple[list[str], list[str]]]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._using_index = {}
     language_pack_name = "elixir"
     create_file_symbols = False
 
@@ -1819,8 +2216,22 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
         never a call target, and its qualified name (``User.name``) would
         otherwise suffix-match a bare ``name(…)`` call and mint a wrong ``calls``
         edge. It still reaches output via ``analysis.symbols``.
+
+        A ``@callback`` declaration (WI-vitas) is filed under
+        ``global_symbols["__callbacks__"][<behaviour module>]`` and NOWHERE
+        else: in ``__multi__`` its short name would make every bare ``area()``
+        in the file, and every importer's, a call of a function that has no
+        body; under its qualified name ``Shape.area()`` -- an undefined-function
+        error in Elixir -- would resolve to it. Pass 2 reads the index to link
+        each callback to its implementations.
         """
         if symbol.kind == "field":
+            return
+        if _CALLBACK_MODIFIER in symbol.modifiers:
+            callbacks: dict[str, list[Symbol]] = global_symbols.setdefault(
+                _CALLBACKS_KEY, {},
+            )
+            callbacks.setdefault(_symbol_module(symbol.name), []).append(symbol)
             return
         global_symbols[symbol.name] = symbol
         short_name = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
@@ -1841,6 +2252,9 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
         )
         analysis.symbols = symbols
         analysis.symbol_by_name = symbol_by_name
+        # WI-vitas: what this file's ``__using__`` templates declare on their
+        # users, gathered in Pass 1 so a ``use`` in ANY file can read it.
+        self._using_index.update(_extract_using_index(tree, source))
         return analysis
 
     def get_import_aliases(
@@ -1885,12 +2299,15 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
             file_symbols=self.file_symbols(local_symbols),
         )
 
-        # Behaviour callback edges (use GenServer, use Phoenix.LiveView, etc.)
+        # Behaviour edges: the framework callback table (use GenServer, ...)
+        # and every behaviour's implements + callback dispatch (WI-vitas).
         callback_edges = _extract_behaviour_callbacks(
             tree, source, file_path, local_symbols, global_symbols,
             run.execution_id,
             file_symbols_multi=local_symbols_multi,
             global_symbols_multi=global_multi,
+            alias_hints=import_aliases,
+            using_index=self._using_index,
         )
         edges.extend(callback_edges)
 
@@ -1934,6 +2351,7 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
     ) -> AnalysisResult:
         """Override to initialize pending route symbols before analysis."""
         self._pending_route_symbols: list[Symbol] = []
+        self._using_index = {}
         self._current_run_id = ""
         return super().analyze(repo_root, max_files=max_files)
 
