@@ -1088,14 +1088,16 @@ Top-level block introduced in INV-morag (option B) that documents the level of r
 ```json
 {
   "languages": {
-    "python": {"files": 42, "loc": 15230},
-    "javascript": {"files": 18, "loc": 8420}
+    "python": {"files": 42, "loc": 15230, "test_files": 11},
+    "javascript": {"files": 18, "loc": 8420, "test_files": 0}
   },
   "frameworks": ["fastapi", "react"]
 }
 ```
 
 **File-count definition:** `languages[L].files` is the count of files the language-L analyzer would enumerate on this repo. When an analyzer registers a canonical `find_files` callable, that callable's output is the count — so extensionless shebang scripts (e.g., `.githooks/pre-commit`, `scripts/auto-pr`) appear in `languages.bash.files`, matching `analysis_runs[bash].files_analyzed`. Otherwise the count falls back to the language's extension globs (e.g., `*.py` / `*.pyi` for Python).
+
+**Test-file share:** `languages[L].test_files` is how many of `languages[L].files` sit on a test or test-support path (`tests/`, `fixtures/`, `*_test.*`, `spec/`, ...: `selection.filters.is_test_path` applied to the repo-relative path, the same predicate the sketch's "N non-test + M test" files line uses). `files - test_files` is the language's non-test footprint, so a consumer asking "what is this project written in?" can separate production languages from languages that appear only as test fixtures (`test_files == files`). `files` is deliberately NOT reduced: the WI-jadig file-presence pre-filter skips an analyzer whose declared languages all read `files == 0`, so shrinking it would stop analyzers from running on fixture files. `test_files` is omitted when it was not measured (a profile restored from a cache written before the field existed); absent is not `0`. (WI-ritaf.)
 
 **LOC definition:** Lines of code counts non-empty lines in files matching language extensions — the SLOC convention shared with `cloc` and `tokei`'s "code" tally. Whitespace-only lines are excluded; comments are NOT stripped. Expect the number to run ~10-20% lower than raw `wc -l` for typical source files (the gap is blank lines). Lock files (poetry.lock, package-lock.json, etc.) are excluded. See [§15 File role classification](#15-file-role-classification) for the proposed taxonomy that would also exclude pure data files from LOC counts.
 

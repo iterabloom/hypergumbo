@@ -69,7 +69,12 @@
               },
               "loc": {
                 "type": "integer",
-                "description": "Source-lines-of-code (SLOC) for this language \u2014 the file-level LOC convention. Distinct from the per-symbol line_span (physical end-start+1 span). WI-bozid: the schema previously declared phantom `lines`/`percentage` keys the producer (profile.LanguageStats.to_dict) never emits; the real emitted shape is {files, loc}."
+                "description": "Source-lines-of-code (SLOC) for this language \u2014 the file-level LOC convention. Distinct from the per-symbol line_span (physical end-start+1 span). WI-bozid: the schema previously declared phantom `lines`/`percentage` keys the producer (profile.LanguageStats.to_dict) never emits; the real emitted shape is {files, loc} plus test_files."
+              },
+              "test_files": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "How many of `files` sit on a test or test-support path (tests/, fixtures/, *_test.*, ...; selection.filters.is_test_path on the repo-relative path). `files - test_files` is the language's non-test footprint: a language with test_files == files appears only in tests or fixtures. `files` itself is not reduced, so analyzers still run on fixture files (WI-ritaf). Omitted when not measured (a profile restored from a cache that predates the field); absent is not 0."
               }
             }
           }
