@@ -34,6 +34,12 @@ weakness rather than answer the question.
 | **Sample** — pretix, stratified 44 of 205 | 205 | 43 | 17 | 26 | **39.5%** | 1 |
 | combined | 265 | 85 | 28 | 57 | 32.9% | 19 |
 
+> **What a flow counts.** This record predates the situation collapse, so a
+> flow is one source→sink pair, the unit later records call a row. It was
+> included by call-graph reachability, not by a claim that
+> a value flowed, so the precision here is a rate over reachability pairs. See
+> [What a row counts](README.md#what-a-row-counts).
+
 Population-weighted across both (pretix's strata re-weighted to their share of
 its 205 flows): **≈41%**.
 

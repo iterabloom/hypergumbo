@@ -94,6 +94,11 @@ because it scores better.
 | **row** (source→sink pair, pre-collapse) | 33 | 297 | **11.1%** |
 | **situation** (post-collapse) | 19 | 59 | **32.2%** |
 
+> **What a row counts.** Each row is one (source call site, sink call site)
+> pair included by call-graph reachability, not a claim that a value flowed,
+> so the row rate is a rate over reachability pairs. See
+> [What a row counts](README.md#what-a-row-counts).
+
 **Per-situation precision is 2.9× per-row precision on this population.** The
 two rates are computed from the same adjudication over the same repositories at
 the same commit; only the unit differs.
