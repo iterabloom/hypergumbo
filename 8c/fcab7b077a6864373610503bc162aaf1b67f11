@@ -1,0 +1,24 @@
+Original commit body from 71f4d56523b17f879b8d12d111df98ba72208f7a:
+
+Addresses WI-badab (owner decision 2026-09-30: resolution (a)).
+
+A per-row taint precision rate is over (source, sink) pairs that were
+included because the sink is reachable from the source in the call graph
+(propagate_taint_structural, `if sink_node in reachable`). ADR-0017 §3a's
+walk never adds a row: it raises one to `ddg`, and since b26d97bd11 can
+remove one it refutes. A `structural` row has nothing beyond reachability
+checked except two narrow pair refusals (INV-lozat, INV-fumod). So the row
+denominator grows with how much a source reaches, not with how much
+tainted data moves, and nothing said so: docs/measurements/README.md did
+not define a row, and 0012 published "rows 30.0% / 28.8%" bare.
+
+- README: new section "What a row counts", with the rule that a record
+  publishing a row rate says beside it that the rate is over reachability
+  pairs.
+- Records 0001, 0003 (pre-collapse "flows"), 0004, 0005, 0006 and 0012,
+  which publish row rates: a note under each headline table.
+
+No published number changes. ADR-0048 F1 (row rate beside situation, every
+time) stands as ratified; options (b) and (c) were not chosen.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
