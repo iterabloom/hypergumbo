@@ -40,3 +40,10 @@
   clock: 4  # 3a67
   nonce: 3a67  # 3a67
   message: "CORRECTION to my correction just above: v8 is NOT clean of catalogued receivers. Its 19 test/mjsunit/asm files that construct a WebSocket (emscripten-generated bundles, e.g. test/mjsunit/asm/embenchen/box2d.js) each carry one peer.socket.onmessage = ... (19 sites), where ws = new WebSocket(url, opts) (:4265) is stored as an object-literal field { socket: ws } (:4276) and the handler is assigned through peer.socket. That is a field-bound receiver reached through an object literal rather than this, so it is outside the analyzer's typing as well. The v8 analyzer census count (0 assignment edges) stands; the claim that none of its spellings sit on a catalogued receiver was wrong and is withdrawn."  # 3a67
+- op: discuss  # 8f63
+  at: '2026-10-01T14:31:10Z'  # 8f63
+  by: agent  # 8f63
+  actor: jgstern_agent  # 8f63
+  clock: 5  # 8f63
+  nonce: 8f63  # 8f63
+  message: "RECLASSIFICATION in the WI-zohuk sizing above, after reading each site: nestjs/nest integration/websockets/e2e/gateway.spec.ts:135 is an ANNOTATED outer let (let eventSource: EventSource; at :106, eventSource = new EventSource(...) at :127), not a plain one; and lila ui/lib/src/socket.ts:326 (ws.onerror = ws.onclose = ws.onopen = ws.onmessage = () => {} after const ws = this.ws) is a local alias of a field. Final tally over the 36 files: emitted 4; plain outer-let assignment 4; annotated outer let 5; field or field alias 6; chained declarator 2; not a typing gap (factory return, wrapper class) 6. Typable 21, emitted 4, missed 17. Record: docs/measurements/0030-js-handler-assignment-corpus-delta.md on branch jgstern-agent/docs/zohuk-handler-assignment-measurement."  # 8f63
