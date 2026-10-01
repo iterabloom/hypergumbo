@@ -51,20 +51,27 @@ Web Workers / postMessage:
 
 Channel Detection Strategy
 --------------------------
-Patterns can use either string literals or variables for channel names:
-- Literal: ipcRenderer.send('open-file', data) -> exact channel 'open-file'
-- Variable: ipcRenderer.send(CHANNEL, data) -> variable name 'CHANNEL'
+A channel is written as a string literal or as an identifier. The shared
+``_name_args`` helper (WI-misod) classifies each site:
+- Literal: ipcRenderer.send('open-file', data) -> channel 'open-file' (``literal``)
+- Constant: const OPEN = 'open-file'; ipcRenderer.send(OPEN, data) -> channel
+  'open-file' (``constant``; same-file module-scope string constant,
+  ``channel_identifier`` keeps 'OPEN')
+- Unresolved: ipcRenderer.send(config.channel, data) -> channel NOT known
+  (``unresolved``; meta ``channel`` is None, ``channel_identifier`` keeps the text)
 
-For variable-based channels, we use heuristic matching:
-- If sender uses `OPEN_CHANNEL` and receiver uses `OPEN_CHANNEL`, link them
-- Confidence is lower for variable-based matches (0.65 vs 0.85)
+Senders join receivers on the channel VALUE (confidence 0.85) when both are
+known; when either side is unresolved they join only on an equal IDENTIFIER
+(``variable_match``, confidence 0.65). Edge ``channel_type`` labels the JOIN,
+symbol ``channel_type`` the SITE.
 
 How It Works
 ------------
 1. Find all JavaScript/TypeScript files in the repository
 2. Scan each file for IPC patterns using regex
-3. Extract channel names (literals) or variable names from patterns
-4. Create edges linking files with matching channels/variables
+3. Extract channel literals, resolving identifiers to same-file string constants
+4. Create edges linking sites with matching channel values (or, when a value
+   is unknown, matching identifiers)
 5. Detect contextBridge.exposeInMainWorld() wrappers in preload scripts,
    then scan other files for window.namespace.method() calls and create
    canonical ``calls`` edges (``meta["bridge_kind"]="context_bridge"``; the
@@ -92,6 +99,14 @@ from typing import Iterator
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path, read_source_bytes
+from ._name_args import (
+    KIND_LITERAL,
+    NAME_ARG_RE,
+    ConstantResolver,
+    NameArg,
+    name_arg_from_match,
+    pair_by_name,
+)
 from .registry import (
     LinkerContext,
     LinkerRequirement,
@@ -109,11 +124,17 @@ class IpcPattern:
     """Represents a detected IPC pattern."""
 
     type: str  # 'send' or 'receive'
-    channel: str  # Channel name (literal value or variable name, may be empty for postMessage)
+    channel: str  # Channel value when known, else the identifier written (empty for postMessage)
     line: int  # Line number in source
     file_path: str  # Source file path
     pattern_type: str  # 'electron', 'postmessage', 'worker'
-    channel_type: str = "literal"  # 'literal' or 'variable'
+    channel_type: str = KIND_LITERAL  # 'literal' | 'constant' | 'unresolved'
+    channel_identifier: str | None = None  # identifier written at the site, if any
+
+    @property
+    def arg(self) -> NameArg:
+        """The site's channel as a :class:`NameArg` (WI-misod)."""
+        return NameArg(self.channel, self.channel_type, self.channel_identifier)
 
 
 @dataclass
@@ -125,17 +146,9 @@ class IpcLinkResult:
     run: AnalysisRun | None = None
 
 
-# ============================================================================
-# Common patterns for variable detection (shared with MQ linker pattern)
-# ============================================================================
-
-# Identifier pattern: matches variable names, constants, and simple attribute access
-_IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*"
-
-# Channel argument pattern: matches either a string literal OR an identifier
-# Group 1: string literal content (if literal)
-# Group 2: identifier/variable name (if variable)
-_CHANNEL_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
+# Channel argument pattern (shared, ``_name_args``): a string literal OR an
+# identifier, as two consecutive capture groups.
+_CHANNEL_ARG = NAME_ARG_RE
 
 
 # Regex patterns for IPC detection
@@ -301,26 +314,13 @@ def detect_context_bridge_functions(
     return results
 
 
-def _extract_channel_from_match(match: re.Match, literal_group: int, var_group: int) -> tuple[str, str]:
-    """Extract channel and channel_type from a regex match.
-
-    Args:
-        match: Regex match object
-        literal_group: Group index for string literal content
-        var_group: Group index for variable name
-
-    Returns:
-        tuple of (channel_value, channel_type) where channel_type is 'literal' or 'variable'
-    """
-    literal = match.group(literal_group)
-    variable = match.group(var_group)
-
-    if literal:
-        return (literal, "literal")
-    elif variable:
-        return (variable, "variable")
-    else:
-        return ("unknown", "variable")  # pragma: no cover
+def _channel_site(arg: NameArg) -> dict[str, str | None]:
+    """The channel fields of a detected-pattern dict, from a :class:`NameArg`."""
+    return {
+        "channel": arg.label,
+        "channel_type": arg.kind,
+        "channel_identifier": arg.identifier,
+    }
 
 
 def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
@@ -331,7 +331,9 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
         language: Programming language ('javascript', 'typescript', etc.)
 
     Returns:
-        List of detected patterns with type, channel, channel_type, and line info.
+        List of detected patterns with type, channel, channel_type,
+        channel_identifier and line info. ``channel`` is the value when known,
+        else the identifier written at the site (``channel_type`` says which).
     """
     # Only process JavaScript/TypeScript
     if language not in ("javascript", "typescript"):
@@ -339,17 +341,17 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
 
     patterns: list[dict] = []
     text = source.decode("utf-8", errors="replace")
+    resolver = ConstantResolver(text, language)
 
     # Detect Electron ipcRenderer.send/invoke
     # Groups: 1=method, 2=literal channel, 3=variable channel
     for match in ELECTRON_SEND_PATTERN.finditer(text):
         method = match.group(1)  # 'send' or 'invoke'
-        channel, channel_type = _extract_channel_from_match(match, 2, 3)
+        arg = name_arg_from_match(match, 2, 3, resolver)
         line = text[:match.start()].count("\n") + 1
         patterns.append({
             "type": "send",
-            "channel": channel,
-            "channel_type": channel_type,
+            **_channel_site(arg),
             "line": line,
             "pattern_type": "electron",
             "method": method,
@@ -359,12 +361,11 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
     # Groups: 1=method, 2=literal channel, 3=variable channel
     for match in ELECTRON_RECEIVE_PATTERN.finditer(text):
         method = match.group(1)  # 'on' or 'handle' or 'handleOnce'
-        channel, channel_type = _extract_channel_from_match(match, 2, 3)
+        arg = name_arg_from_match(match, 2, 3, resolver)
         line = text[:match.start()].count("\n") + 1
         patterns.append({
             "type": "receive",
-            "channel": channel,
-            "channel_type": channel_type,
+            **_channel_site(arg),
             "line": line,
             "pattern_type": "electron",
             "method": method,
@@ -373,12 +374,11 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
     # Detect Electron main-to-renderer push: webContents.send / sender.send
     # Groups: 1=literal channel, 2=variable channel
     for match in WEBCONTENTS_SEND_PATTERN.finditer(text):
-        channel, channel_type = _extract_channel_from_match(match, 1, 2)
+        arg = name_arg_from_match(match, 1, 2, resolver)
         line = text[:match.start()].count("\n") + 1
         patterns.append({
             "type": "send",
-            "channel": channel,
-            "channel_type": channel_type,
+            **_channel_site(arg),
             "line": line,
             "pattern_type": "electron",
             "method": "webcontents_send",
@@ -388,12 +388,11 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
     # Groups: 1=method, 2=literal channel, 3=variable channel
     for match in ELECTRON_RENDERER_RECEIVE_PATTERN.finditer(text):
         method = match.group(1)  # 'on' or 'once'
-        channel, channel_type = _extract_channel_from_match(match, 2, 3)
+        arg = name_arg_from_match(match, 2, 3, resolver)
         line = text[:match.start()].count("\n") + 1
         patterns.append({
             "type": "receive",
-            "channel": channel,
-            "channel_type": channel_type,
+            **_channel_site(arg),
             "line": line,
             "pattern_type": "electron",
             "method": method,
@@ -474,7 +473,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     line=p["line"],
                     file_path=str(file_path),
                     pattern_type=p["pattern_type"],
-                    channel_type=p.get("channel_type", "literal"),
+                    channel_type=p.get("channel_type", KIND_LITERAL),
+                    channel_identifier=p.get("channel_identifier"),
                 ))
 
             files_analyzed += 1
@@ -485,22 +485,10 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 f"{type(e).__name__}: {e}",
             )
 
-    # Group patterns by channel
-    send_by_channel: dict[str, list[IpcPattern]] = {}
-    receive_by_channel: dict[str, list[IpcPattern]] = {}
-
-    # NB: distinct loop variable from the ``for p in patterns`` (dict) loop
-    # above — reusing ``p`` left mypy narrowing this IpcPattern iteration to the
-    # earlier ``dict`` type (spurious attr-defined on .type/.channel).
-    for pat in all_patterns:
-        if pat.type == "send":
-            if pat.channel not in send_by_channel:
-                send_by_channel[pat.channel] = []
-            send_by_channel[pat.channel].append(pat)
-        else:
-            if pat.channel not in receive_by_channel:
-                receive_by_channel[pat.channel] = []
-            receive_by_channel[pat.channel].append(pat)
+    # Named-channel sites only: postMessage / 'message' listeners carry no
+    # channel, and the join skips them (see the module docstring).
+    senders = [pat for pat in all_patterns if pat.type == "send" and pat.channel]
+    receivers = [pat for pat in all_patterns if pat.type != "send" and pat.channel]
 
     # Create symbols and edges for matching channels
     edges: list[Edge] = []
@@ -543,8 +531,11 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 meta={
-                    "channel": channel,
+                    # WI-misod: the channel VALUE -- None when the identifier
+                    # written at the site could not be resolved.
+                    "channel": pattern.arg.value,
                     "channel_type": pattern.channel_type,
+                    "channel_identifier": pattern.channel_identifier,
                     "pattern_type": pattern.pattern_type,
                     "framework_role": f"ipc_{pattern.type}",
                 },
@@ -552,47 +543,50 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
             created_symbol_ids.add(sym_id)
         return sym_id
 
-    for channel, senders in send_by_channel.items():
-        if not channel:  # Skip empty channel (postMessage without named channel)
-            continue
+    # Every named send site gets a symbol, joined or not.
+    for sender in senders:
+        _ensure_symbol(sender, sender.channel)
 
-        receivers = receive_by_channel.get(channel, [])
-        for sender in senders:
-            src_id = _ensure_symbol(sender, channel)
-            for receiver in receivers:
-                dst_id = _ensure_symbol(receiver, channel)
-                # Confidence depends on whether channels are literal or variable
-                is_variable_match = (
-                    sender.channel_type == "variable" or receiver.channel_type == "variable"
-                )
-                confidence = 0.65 if is_variable_match else 0.85
-                # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
-                # Electron renderer→main message exchange is the
-                # publish-family shape; "ipc" is the channel kind.
-                # Canonical 'event_publishes' + meta['channel_kind']='ipc'.
-                # Pass meta via kwarg so Edge.create merges with dataflow
-                # fields — assigning edge.meta afterward would wipe out
-                # the dataflow meta fields (INV-forim).
-                edge = Edge.create(
-                    src=src_id,
-                    dst=dst_id,
-                    edge_type="event_publishes",
-                    line=sender.line,
-                    confidence=confidence,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type="variable_match" if is_variable_match else "ipc_channel_match",
-                    access_mode="write",
-                    channel=channel,
-                    meta={
-                        "channel_kind": "ipc",
-                        "channel_type": "variable" if is_variable_match else "literal",
-                    },
-                    # derived-from consumed-none: both ends are minted from a file scan and joined
-                    #   on the channel
-                    derived_from=[],
-                )
-                edges.append(edge)
+    # WI-misod: the shared ``pair_by_name`` joins on the channel VALUE when
+    # both are known and on the IDENTIFIER only when one side is unresolved --
+    # never an identifier's text against a channel string.
+    for sender, receiver, join in pair_by_name(
+        senders, receivers, lambda p: p.arg, lambda p: p.arg,
+    ):
+        src_id = _ensure_symbol(sender, sender.channel)
+        dst_id = _ensure_symbol(receiver, receiver.channel)
+        # Confidence depends on what the join compared: values (exact) or
+        # identifiers (heuristic).
+        is_variable_match = not join.on_value
+        confidence = 0.65 if is_variable_match else 0.85
+        # ADR-0023 §6 Phase 3 / audit-findings 0002 (WI-hahap-farid):
+        # Electron renderer→main message exchange is the
+        # publish-family shape; "ipc" is the channel kind.
+        # Canonical 'event_publishes' + meta['channel_kind']='ipc'.
+        # Pass meta via kwarg so Edge.create merges with dataflow
+        # fields — assigning edge.meta afterward would wipe out
+        # the dataflow meta fields (INV-forim).
+        edge = Edge.create(
+            src=src_id,
+            dst=dst_id,
+            edge_type="event_publishes",
+            line=sender.line,
+            confidence=confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="variable_match" if is_variable_match else "ipc_channel_match",
+            access_mode="write",
+            channel=join.channel,
+            meta={
+                "channel_kind": "ipc",
+                "channel_type": join.kind,
+                "channel_identifier": join.identifier,
+            },
+            # derived-from consumed-none: both ends are minted from a file scan and joined
+            #   on the channel
+            derived_from=[],
+        )
+        edges.append(edge)
 
     # audit-findings 0002 (WI-hahap-farid): the converse-direction
     # message_receive edges are dropped — the forward

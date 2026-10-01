@@ -1285,6 +1285,9 @@
             "channel": {
               "description": "Logical dataflow channel / conduit the data flows through on a dataflow-family edge \u2014 a message topic (``event_publishes``), IPC channel, CRDT document, crypto primitive, etc. The CONDUIT referent ONLY (WI-pozom): a WebSocket route path uses ``url_path`` and a dispatch target is the edge ``dst`` \u2014 never ``channel``. The transport family is on the co-occurring ``channel_kind`` key."
             },
+            "channel_identifier": {
+              "description": "IPC-linker analogue of ``topic_identifier``: the identifier an Electron IPC site wrote in place of a channel string, or the identifier an identifier-join compared. ``channel`` then holds the channel VALUE or ``None`` (WI-misod)."
+            },
             "channel_kind": {
               "description": "Channel shape on event / message edges (e.g. 'websocket', 'message_queue', 'crdt')."
             },
@@ -1308,6 +1311,9 @@
             },
             "env_var_values": {
               "description": "Every distinct ``env_var`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``env_var`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). A site that carried no ``env_var`` is listed as ``null``, sorted first and never capped away, so one site's value cannot read as every site's (INV-rajak). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
+            },
+            "event_identifier": {
+              "description": "Event-sourcing-linker analogue of ``topic_identifier``: the identifier a publish / subscribe site wrote in place of an event-name string, or the identifier an identifier-join compared. ``event_name`` then holds the event VALUE, or ``None`` when the identifier could not be resolved (WI-misod)."
             },
             "ffi_mechanism": {
               "description": "FFI mechanism for cross-language bridges where ``bridge_kind`` is too coarse (e.g. specific JNI / WASM-bindgen / luajit-ffi variants)."
@@ -1400,10 +1406,13 @@
               "description": "Database table a database-query edge reads or writes, extracted from the query by the database_query linker."
             },
             "topic": {
-              "description": "Message-queue / pub-sub topic (or channel) an event_publishes edge with meta['channel_kind']='queue' targets \u2014 the literal topic string, or the variable's identifier name when the topic is dynamic (see ``topic_type``)."
+              "description": "Message-queue / pub-sub topic (or channel) an event_publishes edge with meta['channel_kind']='queue' targets \u2014 the topic STRING: written as a literal, or the value of a same-file string constant the call site names. ``None`` when the site names an identifier that could not be resolved (WI-misod); the identifier is then on ``topic_identifier``, never here."
+            },
+            "topic_identifier": {
+              "description": "The identifier a message-queue site wrote in place of a topic string (``None`` when it wrote a literal); on an edge, the identifier an identifier-join compared (``None`` for a value join). WI-misod: kept apart from ``topic`` so an identifier is never read as the topic."
             },
             "topic_type": {
-              "description": "Whether the message-queue ``topic`` was a string 'literal' or a 'variable' reference resolved to its identifier name."
+              "description": "How the message-queue ``topic`` is known (``_name_args`` kinds): 'literal' (a string at the site), 'constant' (an identifier resolved to a same-file string constant) or 'unresolved' (an identifier whose value is not known). On a symbol it describes the SITE; on an edge it describes the JOIN ('literal' only when both ends are literal; 'unresolved' when the ends were joined on an equal identifier)."
             },
             "url_path": {
               "description": "URL / route path on a protocol-boundary edge (e.g. a WebSocket endpoint path, or a cross-language WS client\u2192server route). Distinct from ``channel`` (the dataflow conduit/topic) per WI-pozom."

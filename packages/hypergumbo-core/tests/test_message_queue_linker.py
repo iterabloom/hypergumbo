@@ -388,7 +388,7 @@ class TestVariableTopicPatterns:
     """Tests for variable-based topic detection."""
 
     def test_python_kafka_producer_with_variable(self, tmp_path: Path):
-        """Detect producer.produce(topic_var, ...) pattern with variable."""
+        """producer.produce(topic_var, ...) resolves a same-file string constant (WI-misod)."""
         code = dedent('''
             from confluent_kafka import Producer
             topic = "orders"
@@ -399,8 +399,9 @@ class TestVariableTopicPatterns:
         patterns = _scan_file(file, code)
         assert len(patterns) == 1
         assert patterns[0].type == "publish"
-        assert patterns[0].topic == "topic"
-        assert patterns[0].topic_type == "variable"
+        assert patterns[0].topic == "orders"
+        assert patterns[0].topic_type == "constant"
+        assert patterns[0].topic_identifier == "topic"
         assert patterns[0].queue_type == "kafka"
 
     def test_python_kafka_consumer_with_variable(self, tmp_path: Path):
@@ -415,8 +416,9 @@ class TestVariableTopicPatterns:
         patterns = _scan_file(file, code)
         assert len(patterns) == 1
         assert patterns[0].type == "subscribe"
-        assert patterns[0].topic == "EVENTS_TOPIC"
-        assert patterns[0].topic_type == "variable"
+        assert patterns[0].topic == "events"
+        assert patterns[0].topic_type == "constant"
+        assert patterns[0].topic_identifier == "EVENTS_TOPIC"
 
     def test_js_kafka_with_variable(self, tmp_path: Path):
         """Detect JavaScript Kafka with variable topic."""
@@ -432,8 +434,9 @@ class TestVariableTopicPatterns:
         file.write_text(code)
         patterns = _scan_file(file, code)
         assert len(patterns) == 1
-        assert patterns[0].topic == "topicName"
-        assert patterns[0].topic_type == "variable"
+        assert patterns[0].topic == "user-events"
+        assert patterns[0].topic_type == "constant"
+        assert patterns[0].topic_identifier == "topicName"
 
     def test_java_kafka_template_with_variable(self, tmp_path: Path):
         """Detect Java KafkaTemplate.send(topicVar, ...) with variable."""
@@ -450,8 +453,9 @@ class TestVariableTopicPatterns:
         file.write_text(code)
         patterns = _scan_file(file, code)
         assert len(patterns) == 1
-        assert patterns[0].topic == "TOPIC"
-        assert patterns[0].topic_type == "variable"
+        assert patterns[0].topic == "events"
+        assert patterns[0].topic_type == "constant"
+        assert patterns[0].topic_identifier == "TOPIC"
 
     def test_attribute_access_variable(self, tmp_path: Path):
         """Detect config.topic style attribute access."""
@@ -463,8 +467,12 @@ class TestVariableTopicPatterns:
         file.write_text(code)
         patterns = _scan_file(file, code)
         assert len(patterns) == 1
+        # A dotted reference is never resolved: labelled unresolved, and its
+        # value is unknown rather than the identifier's text (WI-misod).
         assert patterns[0].topic == "config.topic_name"
-        assert patterns[0].topic_type == "variable"
+        assert patterns[0].topic_type == "unresolved"
+        assert patterns[0].topic_identifier == "config.topic_name"
+        assert patterns[0].arg.value is None
 
     def test_literal_topic_type(self, tmp_path: Path):
         """Verify literal topics have topic_type='literal'."""
@@ -478,9 +486,10 @@ class TestVariableTopicPatterns:
         assert len(patterns) == 1
         assert patterns[0].topic == "user-events"
         assert patterns[0].topic_type == "literal"
+        assert patterns[0].topic_identifier is None
 
     def test_variable_linking_same_name(self, tmp_path: Path):
-        """Links variable topics when using same variable name."""
+        """Same-named constants with the same value join on the VALUE (WI-misod)."""
         producer = tmp_path / "producer.py"
         producer.write_text(dedent('''
             from confluent_kafka import Producer
@@ -499,10 +508,38 @@ class TestVariableTopicPatterns:
 
         assert len(result.symbols) == 2
         assert len(result.edges) == 1
-        # Variable matches have lower confidence
-        assert result.edges[0].confidence == 0.65
-        assert result.edges[0].evidence_type == "variable_match"
-        assert result.edges[0].meta["topic_type"] == "variable"
+        # Both resolved to "orders": an exact value match, not a name heuristic
+        assert result.edges[0].confidence == 0.9
+        assert result.edges[0].evidence_type == "topic_match"
+        assert result.edges[0].meta["topic_type"] == "constant"
+        assert result.edges[0].meta["topic"] == "orders"
+
+    def test_unresolved_identifiers_join_on_the_identifier(self, tmp_path: Path):
+        """An imported (unresolvable) constant joins only an equal identifier."""
+        producer = tmp_path / "producer.py"
+        producer.write_text(dedent('''
+            from settings import TOPIC
+            producer.produce(TOPIC, value='order')
+        '''))
+
+        consumer = tmp_path / "consumer.py"
+        consumer.write_text(dedent('''
+            from settings import TOPIC
+            consumer.subscribe([TOPIC])
+            consumer.subscribe(["TOPIC"])
+        '''))
+
+        result = link_message_queues(tmp_path)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst.startswith("python:consumer.py:3-3:")
+        assert edge.confidence == 0.65
+        assert edge.evidence_type == "variable_match"
+        assert edge.meta["topic_type"] == "unresolved"
+        assert edge.meta["topic"] is None
+        assert edge.meta["topic_identifier"] == "TOPIC"
+        assert "channel" not in edge.meta
 
     def test_cross_language_variable_linking(self, tmp_path: Path):
         """Cross-language variable topic linking has reduced confidence."""
@@ -526,9 +563,9 @@ class TestVariableTopicPatterns:
         result = link_message_queues(tmp_path)
 
         assert len(result.edges) == 1
-        # Variable + cross-language: 0.65 - 0.1 = 0.55
-        assert result.edges[0].confidence == 0.55
-        assert result.edges[0].meta["topic_type"] == "variable"
+        # Both constants resolve to "events": value match, cross-language 0.9 - 0.1
+        assert result.edges[0].confidence == 0.8
+        assert result.edges[0].meta["topic_type"] == "constant"
 
     def test_symbol_has_topic_type_metadata(self, tmp_path: Path):
         """Symbols include topic_type in metadata."""
@@ -539,10 +576,16 @@ class TestVariableTopicPatterns:
 
         assert len(result.symbols) == 1
         symbol = result.symbols[0]
-        assert symbol.meta["topic_type"] == "variable"
+        assert symbol.meta["topic_type"] == "unresolved"
+        assert symbol.meta["topic"] is None
+        assert symbol.meta["topic_identifier"] == "topic_var"
 
-    def test_mixed_literal_and_variable_no_match(self, tmp_path: Path):
-        """Literal 'topic' doesn't match variable 'topic' (different values)."""
+    def test_constant_topic_joins_literal_subscriber(self, tmp_path: Path):
+        """WI-misod repro: a constant-topic publish joins its literal-topic subscriber.
+
+        Before WI-misod this test pinned the defect -- it asserted NO edge,
+        because the subscriber's topic was stored as the identifier 'topic'.
+        """
         producer = tmp_path / "producer.py"
         producer.write_text(dedent('''
             from kafka import KafkaProducer
@@ -558,8 +601,54 @@ class TestVariableTopicPatterns:
 
         result = link_message_queues(tmp_path)
 
-        # No edges: literal 'orders' != variable 'topic'
-        assert len(result.edges) == 0
+        assert len(result.edges) == 1
+        assert result.edges[0].meta["topic"] == "orders"
+        assert result.edges[0].meta["topic_type"] == "constant"
+        assert result.edges[0].confidence == 0.9
+
+    def test_item_repro_variable_publish_reaches_literal_subscriber(self, tmp_path: Path):
+        """WI-misod filed repro: EVENTS_TOPIC = "orders" publish gets its edge."""
+        (tmp_path / "pub.py").write_text(dedent('''
+            EVENTS_TOPIC = "orders"
+            producer.produce(EVENTS_TOPIC, msg)
+            producer.produce("orders", msg)
+        '''))
+        (tmp_path / "sub.py").write_text('consumer.subscribe(["orders"])\n')
+
+        result = link_message_queues(tmp_path)
+
+        pubs = {s.id: s for s in result.symbols if s.meta["message_type"] == "publish"}
+        constant_pub = next(s for s in pubs.values() if s.meta["topic_type"] == "constant")
+        assert constant_pub.meta["topic"] == "orders"
+        assert constant_pub.meta["topic_identifier"] == "EVENTS_TOPIC"
+        assert sorted(e.src for e in result.edges) == sorted(pubs)
+        assert {e.meta["topic_type"] for e in result.edges} == {"constant", "literal"}
+
+    def test_same_line_publishers_keep_their_own_symbols(self, tmp_path: Path):
+        """Two publishers on one line each source their own edge."""
+        (tmp_path / "pub.py").write_text("producer.send('a', m); producer.send('b', m)\n")
+        (tmp_path / "sub.py").write_text(
+            "consumer.subscribe(['a'])\nconsumer.subscribe(['b'])\n"
+        )
+
+        result = link_message_queues(tmp_path)
+
+        pairs = sorted(
+            (e.src.split(":")[-2], e.dst.split(":")[-2]) for e in result.edges
+        )
+        assert pairs == [
+            ("kafka.publish.a", "kafka.subscribe.a"),
+            ("kafka.publish.b", "kafka.subscribe.b"),
+        ]
+
+    def test_identifier_text_does_not_join_an_equal_string(self, tmp_path: Path):
+        """An unresolved identifier named `orders` is not the topic 'orders'."""
+        (tmp_path / "pub.py").write_text("producer.produce(orders, msg)\n")
+        (tmp_path / "sub.py").write_text('consumer.subscribe(["orders"])\n')
+
+        result = link_message_queues(tmp_path)
+
+        assert result.edges == []
 
 
 class TestMessageQueueLinker:

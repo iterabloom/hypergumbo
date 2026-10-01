@@ -50,18 +50,32 @@ Go:
 - channel send / receive (ch <- v, <-ch)
 - event-bus publish / subscribe calls
 
-Variable Event Detection
-------------------------
-Event names stored in variables are detected with lower confidence (0.65 vs 0.85):
-- const EVENT = 'user_created'; emitter.emit(EVENT) -> detected with event_type="variable"
-- Direct literal event names have event_type="literal" and higher confidence
+Event Name Detection
+--------------------
+An event name is written as a string literal or as an identifier. The shared
+``_name_args`` helper (WI-misod) classifies each site (``event_type``):
+- ``literal``: emitter.emit('user_created') -> event 'user_created'
+- ``constant``: const EVENT = 'user_created'; emitter.emit(EVENT) -> event
+  'user_created' (same-file module-scope string constant; ``event_identifier``
+  keeps 'EVENT')
+- ``unresolved``: emitter.emit(events.USER_CREATED) -> event NOT known (meta
+  ``event_name`` is None, ``event_identifier`` keeps the text)
+- ``variable``: Django signals and Go channels, whose identity IS the identifier
+  (``post_save``, ``ch``); there is no string to resolve.
+
+Publishers join subscribers on the (case-folded) event VALUE when both are
+known (confidence 0.85). When either side's value is unknown they join only on
+an equal IDENTIFIER (confidence 0.65) -- an identifier's text is never compared
+with an event string.
 
 How It Works
 ------------
 1. Scan source files for event patterns
-2. Extract event names from publishers and subscribers (literal or variable)
-3. Match publishers to subscribers by event name
-4. Create event_publishes edges with confidence based on event_type
+2. Extract event names from publishers and subscribers, resolving identifiers
+   to same-file string constants
+3. Match publishers to subscribers by event value (or, when a value is
+   unknown, by identifier)
+4. Create event_publishes edges with confidence based on what the join compared
 
 Why This Design
 ---------------
@@ -85,6 +99,16 @@ from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
+from ._name_args import (
+    KIND_LITERAL,
+    KIND_UNRESOLVED,
+    KIND_VARIABLE,
+    NAME_ARG_RE,
+    ConstantResolver,
+    NameArg,
+    name_arg_from_match,
+    pair_by_name,
+)
 
 PASS_ID = make_pass_id("event-sourcing-linker")
 
@@ -93,13 +117,24 @@ PASS_ID = make_pass_id("event-sourcing-linker")
 class EventPattern:
     """Represents a detected event publisher or subscriber."""
 
-    event_name: str  # Event/signal name
+    event_name: str  # Event value when known, else the identifier written (label)
     pattern_type: str  # "publish" or "subscribe"
     line: int  # Line number in source
     file_path: str  # Source file path
     language: str  # Source language
     framework: str  # Framework: emitter, django, spring
-    event_type: str = "literal"  # "literal" or "variable"
+    event_type: str = KIND_LITERAL  # literal | constant | unresolved | variable
+    event_identifier: str | None = None  # identifier written at the site, if any
+
+    @property
+    def arg(self) -> NameArg:
+        """The site's event name as a :class:`NameArg` (WI-misod)."""
+        return NameArg(self.event_name, self.event_type, self.event_identifier)
+
+    @property
+    def known_name(self) -> str | None:
+        """The event's name as far as it is known: None only when unresolved."""
+        return None if self.event_type == KIND_UNRESOLVED else self.event_name
 
 
 @dataclass
@@ -111,31 +146,30 @@ class EventSourcingLinkResult:
     run: AnalysisRun | None = None
 
 
-# Pattern for matching variable identifiers (e.g., EVENT_NAME, events.USER_CREATED)
-_IDENTIFIER = r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*"
-
-# Combined pattern: matches either quoted string literal or variable identifier
-# Group 1: literal event name, Group 2: variable identifier
-_EVENT_ARG = rf"(?:['\"]([^'\"]+)['\"]|({_IDENTIFIER}))"
+# Event argument (shared, ``_name_args``): a quoted string literal OR an
+# identifier (EVENT_NAME, events.USER_CREATED), as two consecutive groups.
+_EVENT_ARG = NAME_ARG_RE
 
 
-def _extract_event_from_match(
-    match: re.Match, literal_group: int = 1, var_group: int = 2
-) -> tuple[str, str]:
-    """Extract event name and event_type from a regex match.
-
-    The _EVENT_ARG pattern captures:
-    - Group literal_group: string literal (e.g., 'user_created')
-    - Group var_group: variable identifier (e.g., EVENT_NAME, events.USER)
-
-    Returns:
-        Tuple of (event_name, event_type) where event_type is "literal" or "variable".
-    """
-    literal = match.group(literal_group)
-    if literal:
-        return literal, "literal"
-    variable = match.group(var_group)
-    return variable, "variable"
+def _named_event(
+    arg: NameArg,
+    pattern_type: str,
+    line: int,
+    file_path: Path,
+    language: str,
+    framework: str,
+) -> EventPattern:
+    """An :class:`EventPattern` whose event name is a classified :class:`NameArg`."""
+    return EventPattern(
+        event_name=arg.label,
+        pattern_type=pattern_type,
+        line=line,
+        file_path=str(file_path),
+        language=language,
+        framework=framework,
+        event_type=arg.kind,
+        event_identifier=arg.identifier,
+    )
 
 
 # ============================================================================
@@ -325,19 +359,14 @@ def _detect_language(file_path: Path) -> str:
 def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]:
     """Scan JavaScript/TypeScript file for event patterns."""
     patterns: list[EventPattern] = []
+    resolver = ConstantResolver(content, js_ts_language_from_path(file_path))
 
     # Emit patterns (publishers) - supports variables
     for match in JS_EMIT_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match)
+        arg = name_arg_from_match(match, 1, 2, resolver)
         line = content[: match.start()].count("\n") + 1
-        patterns.append(EventPattern(
-            event_name=event_name,
-            pattern_type="publish",
-            line=line,
-            file_path=str(file_path),
-            language=js_ts_language_from_path(file_path),
-            framework="emitter",
-            event_type=event_type,
+        patterns.append(_named_event(
+            arg, "publish", line, file_path, js_ts_language_from_path(file_path), "emitter",
         ))
 
     # dispatchEvent patterns (publishers) - literal only (complex pattern)
@@ -356,30 +385,18 @@ def _scan_javascript_events(file_path: Path, content: str) -> list[EventPattern]
 
     # On/once patterns (subscribers) - supports variables
     for match in JS_ON_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match)
+        arg = name_arg_from_match(match, 1, 2, resolver)
         line = content[: match.start()].count("\n") + 1
-        patterns.append(EventPattern(
-            event_name=event_name,
-            pattern_type="subscribe",
-            line=line,
-            file_path=str(file_path),
-            language=js_ts_language_from_path(file_path),
-            framework="emitter",
-            event_type=event_type,
+        patterns.append(_named_event(
+            arg, "subscribe", line, file_path, js_ts_language_from_path(file_path), "emitter",
         ))
 
     # addEventListener patterns (subscribers) - supports variables
     for match in JS_ADD_LISTENER_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match)
+        arg = name_arg_from_match(match, 1, 2, resolver)
         line = content[: match.start()].count("\n") + 1
-        patterns.append(EventPattern(
-            event_name=event_name,
-            pattern_type="subscribe",
-            line=line,
-            file_path=str(file_path),
-            language=js_ts_language_from_path(file_path),
-            framework="emitter",
-            event_type=event_type,
+        patterns.append(_named_event(
+            arg, "subscribe", line, file_path, js_ts_language_from_path(file_path), "emitter",
         ))
 
     return patterns
@@ -397,6 +414,7 @@ def _scan_python_events(
     permissive (unit callers testing the raw patterns); the production linker
     passes ``ctx.detected_frameworks`` (a real, possibly-empty set)."""
     patterns: list[EventPattern] = []
+    resolver = ConstantResolver(content, "python")
     _django = detected_frameworks is None or "django" in detected_frameworks
 
     # Django signal.send patterns (publishers)
@@ -411,7 +429,8 @@ def _scan_python_events(
             file_path=str(file_path),
             language="python",
             framework="django",
-            event_type="variable",  # Django signals are always identifiers
+            event_type=KIND_VARIABLE,  # Django signals are always identifiers
+            event_identifier=signal_name,
         ))
 
     # Django signal.connect patterns (subscribers)
@@ -425,7 +444,8 @@ def _scan_python_events(
             file_path=str(file_path),
             language="python",
             framework="django",
-            event_type="variable",  # Django signals are always identifiers
+            event_type=KIND_VARIABLE,  # Django signals are always identifiers
+            event_identifier=signal_name,
         ))
 
     # Django @receiver decorator patterns (subscribers)
@@ -439,49 +459,32 @@ def _scan_python_events(
             file_path=str(file_path),
             language="python",
             framework="django",
-            event_type="variable",  # Django signals are always identifiers
+            event_type=KIND_VARIABLE,  # Django signals are always identifiers
+            event_identifier=signal_name,
         ))
 
     # Generic event bus publish patterns - supports variables
     for match in PYTHON_EVENT_PUBLISH_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match)
+        arg = name_arg_from_match(match, 1, 2, resolver)
         line = content[: match.start()].count("\n") + 1
-        patterns.append(EventPattern(
-            event_name=event_name,
-            pattern_type="publish",
-            line=line,
-            file_path=str(file_path),
-            language="python",
-            framework="event_bus",
-            event_type=event_type,
+        patterns.append(_named_event(
+            arg, "publish", line, file_path, "python", "event_bus",
         ))
 
     # Generic event bus subscribe patterns - supports variables
     for match in PYTHON_EVENT_SUBSCRIBE_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match)
+        arg = name_arg_from_match(match, 1, 2, resolver)
         line = content[: match.start()].count("\n") + 1
-        patterns.append(EventPattern(
-            event_name=event_name,
-            pattern_type="subscribe",
-            line=line,
-            file_path=str(file_path),
-            language="python",
-            framework="event_bus",
-            event_type=event_type,
+        patterns.append(_named_event(
+            arg, "subscribe", line, file_path, "python", "event_bus",
         ))
 
     # Event handler decorator patterns - supports variables
     for match in PYTHON_EVENT_DECORATOR_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match)
+        arg = name_arg_from_match(match, 1, 2, resolver)
         line = content[: match.start()].count("\n") + 1
-        patterns.append(EventPattern(
-            event_name=event_name,
-            pattern_type="subscribe",
-            line=line,
-            file_path=str(file_path),
-            language="python",
-            framework="event_bus",
-            event_type=event_type,
+        patterns.append(_named_event(
+            arg, "subscribe", line, file_path, "python", "event_bus",
         ))
 
     return patterns
@@ -490,6 +493,7 @@ def _scan_python_events(
 def _scan_java_events(file_path: Path, content: str) -> list[EventPattern]:
     """Scan Java file for event patterns."""
     patterns: list[EventPattern] = []
+    resolver = ConstantResolver(content, "java")
 
     # Spring publishEvent patterns (publishers)
     for match in SPRING_PUBLISH_PATTERN.finditer(content):
@@ -555,30 +559,18 @@ def _scan_java_events(file_path: Path, content: str) -> list[EventPattern]:
 
     # Generic Java event publishing: fire/dispatch/notify with string args
     for match in JAVA_GENERIC_PUBLISH_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match, 2, 3)
+        arg = name_arg_from_match(match, 2, 3, resolver)
         line = content[: match.start()].count("\n") + 1
-        patterns.append(EventPattern(
-            event_name=event_name,
-            pattern_type="publish",
-            line=line,
-            file_path=str(file_path),
-            language="java",
-            framework="event_bus",
-            event_type=event_type,
+        patterns.append(_named_event(
+            arg, "publish", line, file_path, "java", "event_bus",
         ))
 
     # Generic Java event subscribing: register/addListener with string args
     for match in JAVA_GENERIC_SUBSCRIBE_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match, 2, 3)
+        arg = name_arg_from_match(match, 2, 3, resolver)
         line = content[: match.start()].count("\n") + 1
-        patterns.append(EventPattern(
-            event_name=event_name,
-            pattern_type="subscribe",
-            line=line,
-            file_path=str(file_path),
-            language="java",
-            framework="event_bus",
-            event_type=event_type,
+        patterns.append(_named_event(
+            arg, "subscribe", line, file_path, "java", "event_bus",
         ))
 
     return patterns
@@ -596,6 +588,7 @@ def _scan_go_events(file_path: Path, content: str) -> list[EventPattern]:
       ``bus.Subscribe("event", ...)`` using conventional method names.
     """
     patterns: list[EventPattern] = []
+    resolver = ConstantResolver(content, "go")
 
     # Channel send: ch <- value
     for match in GO_CHANNEL_SEND_PATTERN.finditer(content):
@@ -608,7 +601,8 @@ def _scan_go_events(file_path: Path, content: str) -> list[EventPattern]:
             file_path=str(file_path),
             language="go",
             framework="channel",
-            event_type="variable",
+            event_type=KIND_VARIABLE,
+            event_identifier=channel_name,
         ))
 
     # Channel receive: val := <-ch or case val := <-ch
@@ -624,35 +618,24 @@ def _scan_go_events(file_path: Path, content: str) -> list[EventPattern]:
             file_path=str(file_path),
             language="go",
             framework="channel",
-            event_type="variable",
+            event_type=KIND_VARIABLE,
+            event_identifier=channel_name,
         ))
 
     # Event bus publish: bus.Publish("event", ...) etc.
     for match in GO_EVENT_BUS_PUBLISH_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match, 2, 3)
+        arg = name_arg_from_match(match, 2, 3, resolver)
         line = content[: match.start()].count("\n") + 1
-        patterns.append(EventPattern(
-            event_name=event_name,
-            pattern_type="publish",
-            line=line,
-            file_path=str(file_path),
-            language="go",
-            framework="event_bus",
-            event_type=event_type,
+        patterns.append(_named_event(
+            arg, "publish", line, file_path, "go", "event_bus",
         ))
 
     # Event bus subscribe: bus.Subscribe("event", ...) etc.
     for match in GO_EVENT_BUS_SUBSCRIBE_PATTERN.finditer(content):
-        event_name, event_type = _extract_event_from_match(match, 2, 3)
+        arg = name_arg_from_match(match, 2, 3, resolver)
         line = content[: match.start()].count("\n") + 1
-        patterns.append(EventPattern(
-            event_name=event_name,
-            pattern_type="subscribe",
-            line=line,
-            file_path=str(file_path),
-            language="go",
-            framework="event_bus",
-            event_type=event_type,
+        patterns.append(_named_event(
+            arg, "subscribe", line, file_path, "go", "event_bus",
         ))
 
     return patterns
@@ -719,14 +702,23 @@ def _create_event_symbol(pattern: EventPattern, root: Path) -> Symbol:
         # category ``no_colon``). The factory hashes (framework,
         # pattern_type, event_name) into ``sha256:<16hex>`` so two events
         # named ``dispatch`` from different frameworks remain distinct.
+        # WI-misod: an unresolved identifier is not an event name, so its
+        # stable_id carries a marker segment and cannot collide with one.
         stable_id=make_protocol_stable_id(
             "event_sourcing",
             pattern.framework,
             pattern.pattern_type,
-            pattern.event_name,
+            *(
+                (pattern.event_name,)
+                if pattern.known_name is not None
+                else (KIND_UNRESOLVED, pattern.event_name)
+            ),
         ),
         meta={
-            "event_name": pattern.event_name,
+            # WI-misod: None when the identifier written at the site could not
+            # be resolved (see ``event_identifier``).
+            "event_name": pattern.known_name,
+            "event_identifier": pattern.event_identifier,
             "framework": pattern.framework,
             "pattern_type": pattern.pattern_type,
             "event_type": pattern.event_type,
@@ -765,92 +757,73 @@ def link_events(
         except (OSError, IOError):  # pragma: no cover
             pass
 
-    # Separate publishers
     publishers = [p for p in all_patterns if p.pattern_type == "publish"]
-
-    # Build subscriber lookup by event name
-    subscriber_by_event: dict[str, list[tuple[EventPattern, Symbol]]] = {}
+    subscribers = [p for p in all_patterns if p.pattern_type == "subscribe"]
 
     # Create symbols for all patterns
     symbols: list[Symbol] = []
     edges: list[Edge] = []
+    symbol_of: dict[int, Symbol] = {}
 
     for pattern in all_patterns:
         symbol = _create_event_symbol(pattern, root)
         symbol.origin = [PASS_ID]
         symbol.origin_run_id = run.execution_id
         symbols.append(symbol)
+        symbol_of[id(pattern)] = symbol
 
-        if pattern.pattern_type == "subscribe":
-            event_key = pattern.event_name.lower()
-            if event_key not in subscriber_by_event:
-                subscriber_by_event[event_key] = []
-            subscriber_by_event[event_key].append((pattern, symbol))
+    # Create edges from publishers to matching subscribers. WI-misod: the
+    # shared ``pair_by_name`` joins on the case-folded event VALUE when both
+    # are known and on the IDENTIFIER only when one side's value is unknown
+    # (unresolved, or a Django signal / Go channel) -- never an identifier's
+    # text against an event string.
+    for publisher, sub_pattern, join in pair_by_name(
+        publishers,
+        subscribers,
+        lambda p: p.arg,
+        lambda p: p.arg,
+        casefold=True,
+    ):
+        pub_symbol = symbol_of[id(publisher)]
+        sub_symbol = symbol_of[id(sub_pattern)]
 
-    # Build (file_path, line) -> symbol index for fast publisher lookup.
-    # Post-fold: filter on meta["framework_role"] since kind is now "function".
-    publisher_symbol_index: dict[tuple[str, int], Symbol] = {}
-    for s in symbols:
-        if (s.meta or {}).get("framework_role") == "event_publisher" and s.span:
-            publisher_symbol_index[(s.path, s.span.start_line)] = s
+        # Lower confidence for an identifier join (the value is not verified)
+        base_confidence = 0.85 if join.on_value else 0.65
 
-    # Create edges from publishers to matching subscribers
-    for publisher in publishers:
-        pub_symbol = publisher_symbol_index.get(
-            (publisher.file_path, publisher.line)
+        # Pass linker-specific meta via Edge.create's meta= kwarg so
+        # Edge.create merges it with the dataflow fields — assigning
+        # to edge.meta after construction would wipe the dataflow
+        # meta fields set by the kwargs above (INV-forim).
+        #
+        # ADR-0028 Phase 3 / audit-findings 0014: pattern-detection leak
+        # (event_name_match was a regex/naming-pattern shape).
+        # Fold to evidence_type="naming_convention" +
+        # meta["detection_pattern"]="event_name".
+        edge = Edge.create(
+            src=pub_symbol.id,
+            dst=sub_symbol.id,
+            edge_type="event_publishes",
+            line=publisher.line,
+            confidence=base_confidence,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="naming_convention",
+            access_mode="write",
+            channel=join.channel,
+            meta={
+                "event_name": join.channel,
+                "event_identifier": join.identifier,
+                "publisher_framework": publisher.framework,
+                "subscriber_framework": sub_pattern.framework,
+                "publisher_event_type": publisher.event_type,
+                "subscriber_event_type": sub_pattern.event_type,
+                "detection_pattern": "event_name",
+            },
+            # derived-from consumed-none: both ends are minted from a file scan and joined
+            #   on the event name
+            derived_from=[],
         )
-
-        if pub_symbol is None:  # pragma: no cover
-            continue
-
-        event_key = publisher.event_name.lower()
-        if event_key in subscriber_by_event:
-            for sub_pattern, sub_symbol in subscriber_by_event[event_key]:
-                # ADR-0031: read discovery_language for synthetic stand-ins
-                # emitted by Class-B linker producers; fall back to language
-                # for real-source declarations and for Symbols that haven't
-                # migrated yet (double-write absorbs the Phase 1 window).
-                is_variable_event = (
-                    publisher.event_type == "variable"
-                    or sub_pattern.event_type == "variable"
-                )
-
-                # Lower confidence for variable event names (can't verify at static analysis)
-                base_confidence = 0.65 if is_variable_event else 0.85
-
-                # Pass linker-specific meta via Edge.create's meta= kwarg so
-                # Edge.create merges it with the dataflow fields — assigning
-                # to edge.meta after construction would wipe the dataflow
-                # meta fields set by the kwargs above (INV-forim).
-                #
-                # ADR-0028 Phase 3 / audit-findings 0014: pattern-detection leak
-                # (event_name_match was a regex/naming-pattern shape).
-                # Fold to evidence_type="naming_convention" +
-                # meta["detection_pattern"]="event_name".
-                edge = Edge.create(
-                    src=pub_symbol.id,
-                    dst=sub_symbol.id,
-                    edge_type="event_publishes",
-                    line=publisher.line,
-                    confidence=base_confidence,
-                    origin=PASS_ID,
-                    origin_run_id=run.execution_id,
-                    evidence_type="naming_convention",
-                    access_mode="write",
-                    channel=publisher.event_name,
-                    meta={
-                        "event_name": publisher.event_name,
-                        "publisher_framework": publisher.framework,
-                        "subscriber_framework": sub_pattern.framework,
-                        "publisher_event_type": publisher.event_type,
-                        "subscriber_event_type": sub_pattern.event_type,
-                        "detection_pattern": "event_name",
-                    },
-                    # derived-from consumed-none: both ends are minted from a file scan and joined
-                    #   on the event name
-                    derived_from=[],
-                )
-                edges.append(edge)
+        edges.append(edge)
 
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned

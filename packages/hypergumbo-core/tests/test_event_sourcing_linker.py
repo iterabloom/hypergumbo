@@ -555,7 +555,7 @@ class TestVariableEventPatterns:
     """Tests for variable event name detection."""
 
     def test_js_emit_with_variable(self, tmp_path: Path):
-        """Detects emitter.emit(EVENT_NAME) with variable event."""
+        """emitter.emit(EVENT_NAME) resolves a same-file string constant (WI-misod)."""
         code = dedent('''
             const EVENT_NAME = 'user:created';
             emitter.emit(EVENT_NAME, data);
@@ -566,8 +566,9 @@ class TestVariableEventPatterns:
 
         publishers = [p for p in patterns if p.pattern_type == "publish"]
         assert len(publishers) == 1
-        assert publishers[0].event_name == "EVENT_NAME"
-        assert publishers[0].event_type == "variable"
+        assert publishers[0].event_name == "user:created"
+        assert publishers[0].event_type == "constant"
+        assert publishers[0].event_identifier == "EVENT_NAME"
 
     def test_js_emit_with_literal(self, tmp_path: Path):
         """Verifies literal event names have event_type='literal'."""
@@ -595,8 +596,9 @@ class TestVariableEventPatterns:
 
         subscribers = [p for p in patterns if p.pattern_type == "subscribe"]
         assert len(subscribers) == 1
-        assert subscribers[0].event_name == "EVENT"
-        assert subscribers[0].event_type == "variable"
+        assert subscribers[0].event_name == "user:created"
+        assert subscribers[0].event_type == "constant"
+        assert subscribers[0].event_identifier == "EVENT"
 
     def test_js_add_event_listener_with_variable(self, tmp_path: Path):
         """Detects addEventListener(EVENT, handler) with variable event."""
@@ -610,8 +612,9 @@ class TestVariableEventPatterns:
 
         subscribers = [p for p in patterns if p.pattern_type == "subscribe"]
         assert len(subscribers) == 1
-        assert subscribers[0].event_name == "CLICK"
-        assert subscribers[0].event_type == "variable"
+        assert subscribers[0].event_name == "click"
+        assert subscribers[0].event_type == "constant"
+        assert subscribers[0].event_identifier == "CLICK"
 
     def test_js_dotted_variable(self, tmp_path: Path):
         """Detects emitter.emit(events.USER_CREATED) with dotted variable."""
@@ -625,7 +628,9 @@ class TestVariableEventPatterns:
         publishers = [p for p in patterns if p.pattern_type == "publish"]
         assert len(publishers) == 1
         assert publishers[0].event_name == "events.USER_CREATED"
-        assert publishers[0].event_type == "variable"
+        assert publishers[0].event_type == "unresolved"
+        assert publishers[0].event_identifier == "events.USER_CREATED"
+        assert publishers[0].known_name is None
 
     def test_python_event_bus_with_variable(self, tmp_path: Path):
         """Detects EventBus.publish(EVENT_NAME) with variable event."""
@@ -639,8 +644,9 @@ class TestVariableEventPatterns:
 
         publishers = [p for p in patterns if p.pattern_type == "publish"]
         assert len(publishers) == 1
-        assert publishers[0].event_name == "EVENT_NAME"
-        assert publishers[0].event_type == "variable"
+        assert publishers[0].event_name == "user:created"
+        assert publishers[0].event_type == "constant"
+        assert publishers[0].event_identifier == "EVENT_NAME"
 
     def test_python_event_bus_with_literal(self, tmp_path: Path):
         """Verifies literal event names have event_type='literal'."""
@@ -668,7 +674,7 @@ class TestVariableEventPatterns:
         subscribers = [p for p in patterns if p.pattern_type == "subscribe"]
         assert len(subscribers) == 1
         assert subscribers[0].event_name == "USER_CREATED"
-        assert subscribers[0].event_type == "variable"
+        assert subscribers[0].event_type == "unresolved"
 
     def test_python_decorator_with_variable(self, tmp_path: Path):
         """Detects @on_event(EVENT) with variable event."""
@@ -684,7 +690,7 @@ class TestVariableEventPatterns:
         subscribers = [p for p in patterns if p.pattern_type == "subscribe"]
         assert len(subscribers) == 1
         assert subscribers[0].event_name == "USER_CREATED"
-        assert subscribers[0].event_type == "variable"
+        assert subscribers[0].event_type == "unresolved"
 
     def test_django_signals_always_variable(self, tmp_path: Path):
         """Django signals use identifiers, so always event_type='variable'."""
@@ -699,6 +705,9 @@ class TestVariableEventPatterns:
         assert len(publishers) == 1
         assert publishers[0].event_name == "post_save"
         assert publishers[0].event_type == "variable"
+        assert publishers[0].event_identifier == "post_save"
+        # A signal object's identifier IS its identity: a known name.
+        assert publishers[0].known_name == "post_save"
 
     def test_symbol_includes_event_type(self, tmp_path: Path):
         """Verifies event_type is included in symbol meta."""
@@ -708,7 +717,9 @@ class TestVariableEventPatterns:
         result = link_events(tmp_path)
 
         assert len(result.symbols) == 1
-        assert result.symbols[0].meta["event_type"] == "variable"
+        assert result.symbols[0].meta["event_type"] == "unresolved"
+        assert result.symbols[0].meta["event_name"] is None
+        assert result.symbols[0].meta["event_identifier"] == "EVENT_NAME"
 
     def test_edge_includes_event_type(self, tmp_path: Path):
         """Verifies event types are included in edge meta."""
@@ -721,8 +732,11 @@ class TestVariableEventPatterns:
         result = link_events(tmp_path)
 
         assert len(result.edges) == 1
-        assert result.edges[0].meta["publisher_event_type"] == "variable"
-        assert result.edges[0].meta["subscriber_event_type"] == "variable"
+        assert result.edges[0].meta["publisher_event_type"] == "unresolved"
+        assert result.edges[0].meta["subscriber_event_type"] == "unresolved"
+        assert result.edges[0].meta["event_name"] is None
+        assert result.edges[0].meta["event_identifier"] == "EVENT"
+        assert "channel" not in result.edges[0].meta
         assert result.edges[0].confidence == 0.65
 
     def test_literal_event_higher_confidence(self, tmp_path: Path):
@@ -740,8 +754,12 @@ class TestVariableEventPatterns:
         assert result.edges[0].meta["subscriber_event_type"] == "literal"
         assert result.edges[0].confidence == 0.85
 
-    def test_mixed_literal_variable_lower_confidence(self, tmp_path: Path):
-        """Variable on either side results in lower confidence."""
+    def test_identifier_text_does_not_join_an_equal_string(self, tmp_path: Path):
+        """An unresolved identifier MYEVENT is not the event 'myevent' (WI-misod).
+
+        Before WI-misod this test pinned the defect: the identifier's text was
+        case-folded and joined to the literal at confidence 0.65.
+        """
         pub = tmp_path / "publisher.js"
         pub.write_text("emitter.emit('myevent', data);")
 
@@ -750,9 +768,54 @@ class TestVariableEventPatterns:
 
         result = link_events(tmp_path)
 
+        assert result.edges == []
+
+    def test_constant_joins_its_value_not_its_name(self, tmp_path: Path):
+        """WI-misod: emit(CREATED) with CREATED = 'user:created' joins
+        on('user:created'), not on('created') (the pre-fix wrong edge)."""
+        (tmp_path / "pub.js").write_text(
+            "const CREATED = 'user:created';\nemitter.emit(CREATED, data);\n"
+        )
+        (tmp_path / "sub.js").write_text(
+            "emitter.on('user:created', a);\nemitter.on('created', b);\n"
+        )
+
+        result = link_events(tmp_path)
+
         assert len(result.edges) == 1
-        # Subscriber uses variable, so lower confidence
-        assert result.edges[0].confidence == 0.65
+        edge = result.edges[0]
+        assert edge.dst.endswith("sub.js:1-1:user:created:function")
+        assert edge.meta["event_name"] == "user:created"
+        assert edge.meta["publisher_event_type"] == "constant"
+        assert edge.confidence == 0.85
+
+    def test_signal_identity_join_keeps_its_name(self, tmp_path: Path):
+        """Django signals (identity = identifier) still join each other, and the
+        edge asserts the signal name; they never join an equal string."""
+        (tmp_path / "signals.py").write_text(
+            "post_save.send(sender=User)\n"
+            "post_save.connect(handler)\n"
+            "EventBus.subscribe('post_save', other)\n"
+        )
+
+        result = link_events(tmp_path)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.dst.endswith("signals.py:2-2:post_save:function")
+        assert edge.meta["event_name"] == "post_save"
+        assert edge.meta["channel"] == "post_save"
+        assert edge.confidence == 0.65
+
+    def test_same_line_publishers_keep_their_own_symbols(self, tmp_path: Path):
+        """Two publishers on one line each source their own edge."""
+        (tmp_path / "pub.js").write_text("a.emit('x'); b.emit('y');\n")
+        (tmp_path / "sub.js").write_text("a.on('x', f);\nb.on('y', g);\n")
+
+        result = link_events(tmp_path)
+
+        pairs = sorted((e.src.split(":")[-2], e.dst.split(":")[-2]) for e in result.edges)
+        assert pairs == [("x", "x"), ("y", "y")]
 
 
 class TestEventSymbolFormat:
