@@ -274,10 +274,12 @@ class TestNamelessReceiverKeepsTheSentinel:
     Scala. It had no test in THIS package, and CI tests packages in isolation,
     so the gap was invisible until a local edit put the file in scope.
 
-    Behaviourally it is also the honest control for the fix: a nameless receiver
-    is real (``new File(p)`` is unambiguously a `java.io.File`) but unnamed, so
-    ``var_types`` holds nothing for it and the slot must stay ``external``
-    rather than guess. Typing THESE is WI-pokam, not this change.
+    Behaviourally it was also the control for that fix: a nameless receiver is
+    real but unnamed, so ``var_types`` holds nothing for it. WI-gokop now types
+    a nameless receiver EXPRESSION when it states its type -- ``new File(p)`` is
+    unambiguously a ``java.io.File`` -- so that case moved from the sentinel to
+    the slot. ``fetch()``, whose return type nothing declares, is still the
+    control: it keeps the sentinel rather than guess.
     """
 
     def _edges(self, tmp_path: Path):
@@ -292,17 +294,17 @@ class TestNamelessReceiverKeepsTheSentinel:
             and (e.meta or {}).get("call_construct") == "method"
         ]
 
-    def test_constructor_receiver_emits_a_method_edge_with_the_sentinel(
+    def test_constructor_receiver_is_typed_by_its_constructor(
         self, tmp_path: Path,
     ) -> None:
         """``new File(p).createNewFile()`` -- the receiver is an
-        instance_expression, so the field_expression yields one identifier."""
+        instance_expression, so the field_expression yields one identifier. Its
+        type is the constructed one (WI-gokop), qualified through the import."""
         edges = self._edges(tmp_path)
         got = [e for e in edges if e.dst.endswith(":createNewFile:unresolved")]
         assert len(got) == 1, [e.dst for e in edges]
-        assert got[0].dst == "scala:external:0-0:createNewFile:unresolved"
-        assert got[0].dst_ref is None
-        assert "receiver_type_hint" not in (got[0].meta or {})
+        assert got[0].dst == "scala:java.io.File:0-0:createNewFile:unresolved"
+        assert (got[0].meta or {}).get("receiver_type_hint") == "File"
 
     def test_call_receiver_emits_a_method_edge_with_the_sentinel(
         self, tmp_path: Path,
