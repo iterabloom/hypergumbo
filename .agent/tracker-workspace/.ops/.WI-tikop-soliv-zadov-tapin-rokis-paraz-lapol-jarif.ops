@@ -1,0 +1,23 @@
+- op: create  # 5a68
+  at: '2026-10-01T20:22:30Z'  # 5a68
+  by: agent  # 5a68
+  actor: jgstern_agent  # 5a68
+  clock: 1  # 5a68
+  nonce: 5a68  # 5a68
+  data:  # 5a68
+    kind: work_item  # 5a68
+    title: "c/cpp: a function definition whose name comes from an unexpandable macro (TEST_BEGIN(x) {..}, PFX(x)(args), export-macro class misparse) gets no symbol; its calls stay unemitted -- redis 2598+210+15 sites, tmate 26, sherpa-onnx 3"  # 5a68
+    status: todo_hard  # 5a68
+    priority: 3  # 5a68
+    parent:  # 5a68
+    tags:  # 5a68
+    - c  # 5a68
+    - cpp  # 5a68
+    - call_graph  # 5a68
+    - analysis_quality  # 5a68
+    isbefore: []  # 5a68
+    duplicate_of: []  # 5a68
+    not_duplicate_of: []  # 5a68
+    pr_ref:  # 5a68
+    description: "FOUND 2026-10-01 measuring WI-saduj (residual: same symptom, different cause). After WI-saduj's declarator walk, the c/cpp function definitions still left WITHOUT a symbol on the measured repos are all definitions whose name comes from a MACRO tree-sitter cannot expand. Calls inside them are left unemitted (by design since #1237: they are not anchored on the file).\n\nMeasured (instrument: every call_expression/new_expression whose innermost tree-sitter function_definition has no analyzer symbol at its position; ~/hypergumbo_lab_notebook/decontend/run_09302026/saduj/measure.py, after2.* outputs):\n  redis (c):  2598 call sites in defs shaped `parenthesized_declarator>identifier` -- jemalloc's test macro `TEST_BEGIN(test_x) { ... }`; 210 sites in defs whose declarator is a bare `identifier` -- deps/fast_float/fast_float.h, a C++ header the C grammar parses (redis has no C++ file, so header_owner gives .h to C).\n  tmate (c):  26 sites, `pointer_declarator>identifier`, compat/tree.h (RB_GENERATE-style macro bodies).\n  x265 / redis: `PFX(name)(args)` and `LUALIB_API int (f) (args)` parse as a function_declarator directly inside another. WI-saduj deliberately leaves these unnamed rather than mint symbols called `PFX` or `int` (test_c_call_anchor::test_a_macro_named_definition_mints_no_symbol).\n  sherpa-onnx (cpp): `class SHERPA_ONNX_API X : public MoveOnly<X, Y> {..}` parses as a function_definition whose declarator is the template `MoveOnly<..>`; the class and its methods get no symbols at all (also deliberately not named by WI-saduj).\n  crun, bento4, modsecurity, falco: 0 remaining.\n\nNot decided here: whether to name such a definition (the macro ARGUMENT is the real name for TEST_BEGIN and PFX; for the export-macro class, the fix is the parse, not the name -- cf. WI-gafip for objc's argument-less attribute macros). Priority P3: the sites are concentrated in vendored test code (jemalloc tests) and one header misparse."  # 5a68
+    fields: {}  # 5a68
