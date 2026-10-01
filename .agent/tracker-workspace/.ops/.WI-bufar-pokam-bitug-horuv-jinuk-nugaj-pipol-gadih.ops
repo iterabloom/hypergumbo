@@ -26,3 +26,10 @@
   clock: 2  # 03ff
   nonce: 03ff  # 03ff
   message: "Cross-ref from WI-majov (2026-10-01): the svelte.py:237 bare-path site listed here also has a SECOND defect beyond the id-slot shape. The import names an existing in-repo file, but the edge lands on a phantom external_symbol instead of that file's node. Filed separately as WI-modan-tizob-bilag-fanas-simip-guzuz-homoj-rimut, with a repro covering svelte, vue, the js_ts phantom import, and vue-component-linker labelling a .svelte file as vue. Fixing only the slot count here would leave that phantom canonical-looking, not resolved."  # 03ff
+- op: discuss  # 3e8b
+  at: '2026-10-01T16:23:12Z'  # 3e8b
+  by: agent  # 3e8b
+  actor: jgstern_agent  # 3e8b
+  clock: 3  # 3e8b
+  nonce: 3e8b  # 3e8b
+  message: "Cross-ref from WI-pifus (2026-10-01, local branch jgstern-agent/fix/pifus, commit f13f35fb0f, not yet integrated): astro.py's _AstroFileExtractor no longer takes repo_root; it takes the rel_path the base class computed, and the `path: Path` parameter is gone from extract/_process_tag/_parse_frontmatter_js and the other per-file helpers. Before that fix every astro src/file id carried the analysis root's own directory name as a leading component (astroroot/src/Page.astro instead of src/Page.astro). Two consequences for this item: (1) a branch editing the astro.py:314 bare-path site will textually conflict with WI-pifus in _process_tag (same hunk region; the line numbers cited here moved by about -10 on that branch); (2) resolving an astro import such as ./Header.astro to the imported file's node needs the importer's root-relative path, which is only correct after WI-pifus. The 4 astro edges counted here were measured on the pre-fix code: their dst is the raw import path and is unaffected by WI-pifus, but their src file ids carried the wrong path."  # 3e8b

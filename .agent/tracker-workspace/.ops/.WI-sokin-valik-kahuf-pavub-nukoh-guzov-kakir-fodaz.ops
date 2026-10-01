@@ -1,0 +1,21 @@
+- op: create  # 6a60
+  at: '2026-10-01T16:06:07Z'  # 6a60
+  by: agent  # 6a60
+  actor: jgstern_agent  # 6a60
+  clock: 1  # 6a60
+  nonce: 6a60  # 6a60
+  data:  # 6a60
+    kind: work_item  # 6a60
+    title: "Dart grammar parses dart:ffi 'external' field declarations as ERROR and swallows whole classes (2 lost in sherpa-onnx bindings)"  # 6a60
+    status: todo_hard  # 6a60
+    priority: 3  # 6a60
+    parent:  # 6a60
+    tags:  # 6a60
+    - dart  # 6a60
+    - analyzer  # 6a60
+    isbefore: []  # 6a60
+    duplicate_of: []  # 6a60
+    not_duplicate_of: []  # 6a60
+    pr_ref:  # 6a60
+    description: "**Found while measuring WI-lahub-nitas-kopok-notas-sizir-sodis-kudut-fivov on sherpa-onnx.**\n\nThe tree-sitter Dart grammar from tree-sitter-language-pack fails to parse the `external` field declarations that dart:ffi bindings use:\n\n    final class Cfg extends Struct {\n      @Int32()\n      external int debug;\n      external Pointer<Utf8> provider;\n    }\n\nThe result is `ERROR` nodes. Some of them swallow following declarations entirely. In `flutter/sherpa_onnx/lib/src/sherpa_onnx_bindings.dart`, `SherpaOnnxOfflineTtsConfig` (line 288) and `SherpaOnnxOfflineRecognizerConfig` (line 504) emit no symbol at all, on dev and on the WI-lahub branch alike. The ERROR walk of that file shows ERROR spans beginning at the `external` keyword of nearly every field.\n\nMeasured: 2 classes are lost in that one file. Not measured: how many fields and methods are lost, or how many other files are affected. A first measurement would count ERROR nodes and their spans across the 116 sherpa-onnx `.dart` files.\n\nPossible fixes, in order of reach:\n(a) a grammar upgrade, if a newer tree-sitter-dart parses `external` fields;\n(b) analyzer-side recovery that scans ERROR-node text for `class X extends/implements ...` headers, which is fragile;\n(c) at minimum, record the partial parse. Check that `record_partial_parse` already records it on the run and that the loss is visible in the output."  # 6a60
+    fields: {}  # 6a60
