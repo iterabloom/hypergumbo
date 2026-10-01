@@ -34,7 +34,7 @@ alone would desynchronise the two passes' spans.
 Three-pass analysis:
 - Pass 1: Extract all symbols from all files and collect methods into a global registry
 - Pass 1.5: Propagate each class's base_classes into its methods' meta['parent_base_classes'] (so .m @implementation methods inherit the .h @interface bases for framework pattern matching)
-- Pass 2: Extract edges using the global symbol registry — resolve method-call edges (local, then cross-file via NameResolver), emit #import edges, and emit unresolved calls with a module hint for PascalCase (class) receivers.
+- Pass 2: Extract edges using the global symbol registry — resolve method-call edges (local, then cross-file via NameResolver), emit #import edges, and emit unresolved calls with a module hint for PascalCase (class) receivers that the repo does not declare.
 
 Receiver typing (WI-higob, WI-garar): an unresolved send whose receiver is
 lowercase still gets a class. It comes from the receiver's declaration in
@@ -46,6 +46,18 @@ Return classes come from a registry aggregated in Pass 1 and merged with
 ``load_library_signatures("objc")``, in-repo declarations first. The class
 is carried in ``receiver_type_hint``, and becomes the module hint only when
 it is not a class the repo declares.
+
+ONE GUARD, BOTH ARMS (WI-dason). The module slot asserts an EXTERNAL owner
+(ADR-0051), so a class the repo declares never fills it -- whichever arm found
+the class. The declared arm has had that guard since WI-higob; the
+class-MESSAGE arm (``[Svc alloc]``, ``[DDLog log:...]``) did not, and 583 of
+3,300 typed slots on the four-repository objc corpus named a first-party
+class. Both arms now put a project class in ``receiver_type_hint`` only, which
+is also what lets ``inherited_calls`` Site 2 look the selector up on that
+class instead of walking the CALLER's class for it (Site 1). A non-class type
+KEYWORD (``__auto_type``, ``instancetype``; :data:`_OBJC_NON_CLASS_TYPE_SPELLINGS`)
+is not a declared class at all: the declaration is read the way ``id x = ...``
+is, so the initialiser's registered return class types it or nothing does.
 """
 
 from __future__ import annotations
@@ -119,6 +131,30 @@ def _extract_type_name(node: "tree_sitter.Node", source: bytes) -> str:
         elif child.type == "abstract_pointer_declarator":
             parts.append("*")
     return "".join(parts)
+
+
+#: Spellings that sit where a declaration's class would and are NOT classes
+#: (WI-dason). ``__auto_type`` is clang's type-inference keyword and
+#: ``instancetype`` the related-result-type keyword; both parse as a
+#: ``type_identifier``, so a receiver declared with one used to carry the
+#: KEYWORD as its class -- 89 module slots on CocoaLumberjack named
+#: ``__auto_type``. ``id`` and ``Class`` are the same family; the grammar parses
+#: them as non-``type_identifier`` nodes today, and they are listed so that a
+#: grammar change cannot start typing a receiver as ``id``.
+_OBJC_NON_CLASS_TYPE_SPELLINGS: frozenset[str] = frozenset(
+    {"__auto_type", "instancetype", "id", "Class"}
+)
+
+
+def _objc_declared_class(
+    node: "tree_sitter.Node | None", source: bytes,
+) -> str | None:
+    """The class a declaration's ``type_identifier`` names, or ``None`` for a
+    keyword in :data:`_OBJC_NON_CLASS_TYPE_SPELLINGS` (WI-dason)."""
+    if node is None:
+        return None
+    text = node_text(node, source)
+    return None if text in _OBJC_NON_CLASS_TYPE_SPELLINGS else text
 
 
 def _objc_return_class(signature: str | None, owner: str | None) -> str | None:
@@ -796,10 +832,12 @@ def _objc_declared_receiver_types(
         types: dict[str, str] = {}
         for sub in iter_tree(node):
             if sub.type == "method_parameter":
-                t = _first_descendant(sub, "type_identifier")
+                t_cls = _objc_declared_class(
+                    _first_descendant(sub, "type_identifier"), source,
+                )
                 names = [c for c in sub.children if c.type == "identifier"]
-                if t is not None and names:
-                    types[node_text(names[-1], source)] = node_text(t, source)
+                if t_cls is not None and names:
+                    types[node_text(names[-1], source)] = t_cls
             elif sub.type in ("declaration", "for_statement"):
                 # WI-higob: `for (NSString *p in paths)` declares `p`'s class in
                 # exactly the shape a local declaration uses -- a direct
@@ -807,7 +845,12 @@ def _objc_declared_receiver_types(
                 # through the same branch. A C-style `for (int i = 0; ...)` wraps
                 # its own `declaration` child, which `iter_tree` reaches on its
                 # own, and contributes no direct `type_identifier` here.
-                t = next((c for c in sub.children if c.type == "type_identifier"), None)
+                # WI-dason: a non-class keyword (``__auto_type x = ...``) is no
+                # declared class, so it falls to the registry branch below.
+                t = _objc_declared_class(
+                    next((c for c in sub.children if c.type == "type_identifier"), None),
+                    source,
+                )
                 # ...but ONLY the declarator binds in a fast-enumeration loop. The
                 # COLLECTION is also a direct `identifier` child of the
                 # `for_statement`, so accepting `identifier` here typed `paths`
@@ -823,10 +866,11 @@ def _objc_declared_receiver_types(
                         if name is None:  # pragma: no cover - a declarator always names something
                             continue
                         if t is not None:
-                            types[node_text(name, source)] = node_text(t, source)
+                            types[node_text(name, source)] = t
                             continue
                         # WI-higob: ``id x = [obj sel]`` -- no declared class;
-                        # the registry knows what ``sel`` returns.
+                        # the registry knows what ``sel`` returns. WI-dason:
+                        # ``__auto_type x = [obj sel]`` is the same case.
                         msg = next((m for m in c.children if m.type == "message_expression"), None)
                         if msg is not None and registry:
                             ret = _objc_send_result_class(msg, source, types, registry)
@@ -1005,9 +1049,8 @@ def _extract_edges_from_file(
                         # message does -- the catalogue's objc rows key by
                         # bare class, so the declaration is the whole match.
                         # A PROJECT class is a symbol, not a module, and rides
-                        # in ``receiver_type_hint`` only; the class-MESSAGE
-                        # arm keeps its WI-nigah behaviour unchanged (a
-                        # project class in that slot is WI-marok's question).
+                        # in ``receiver_type_hint`` only, on the class-MESSAGE
+                        # arm too since WI-dason (below).
                         receiver_name = _extract_message_receiver(node, source)
                         if receiver_name is None:
                             # WI-higob: a NESTED receiver ``[[obj make] frob]``
@@ -1049,12 +1092,21 @@ def _extract_edges_from_file(
                                 if not receiver_name[0].isupper()
                                 else None
                             )
+                        # WI-dason: ONE ``project_classes`` guard for BOTH
+                        # arms. A class message to a class the repo declares
+                        # (``[Svc alloc]``) names a symbol, not an external
+                        # module, so the class rides in ``receiver_type_hint``
+                        # like a declared project-class receiver -- which also
+                        # sends it to inherited_calls Site 2 (the selector on
+                        # THAT class) rather than Site 1 (the caller's class).
+                        _module: str | None = None
                         if receiver_name and receiver_name[0].isupper():
-                            _module: str | None = receiver_name
+                            if receiver_name in project_classes:
+                                _declared = receiver_name
+                            else:
+                                _module = receiver_name
                         elif _declared is not None and _declared not in project_classes:
                             _module = _declared
-                        else:
-                            _module = None
                         if _module is not None:
                             edges.append(make_unresolved_edge(
                                 "objc", current_method.id, selector,

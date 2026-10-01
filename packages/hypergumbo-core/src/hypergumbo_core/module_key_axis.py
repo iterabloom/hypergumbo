@@ -195,15 +195,19 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/objc.py"
                 ),
-                line=1053,
-                anchor="_module: str | None = receiver_name",
+                line=1107,
+                anchor="_module = receiver_name",
                 note=(
                     "Reads as a receiver-variable site and is not: it is "
                     "gated on receiver_name[0].isupper(), and a capitalised "
                     "Objective-C message receiver is normally a CLASS name. "
                     "The 2026-09-01 audit recorded this as objc writing a "
                     "receiver variable; that attribution was wrong and the "
-                    "lowercase identifiers it counted came from swift."
+                    "lowercase identifiers it counted came from swift. "
+                    "Since WI-dason the site is also gated on the class NOT "
+                    "being one the repo declares: a project class is a "
+                    "symbol, not an external owner, and rides in "
+                    "receiver_type_hint only."
                 ),
             ),
         ),
