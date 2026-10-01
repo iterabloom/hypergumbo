@@ -1,0 +1,21 @@
+- op: create  # f24b
+  at: '2026-10-01T23:54:49Z'  # f24b
+  by: agent  # f24b
+  actor: jgstern_agent  # f24b
+  clock: 1  # f24b
+  nonce: f24b  # f24b
+  data:  # f24b
+    kind: work_item  # f24b
+    title: "websocket and http linkers store a call-site identifier as the event / URL (WI-misod's mechanism, two more linkers)"  # f24b
+    status: todo_hard  # f24b
+    priority: 2  # f24b
+    parent:  # f24b
+    tags:  # f24b
+    - protocol_linkers  # f24b
+    - analysis_quality  # f24b
+    isbefore: []  # f24b
+    duplicate_of: []  # f24b
+    not_duplicate_of: []  # f24b
+    pr_ref:  # f24b
+    description: "**Defect (same mechanism as WI-misod-toruv-gimip-botuj-kadup-ludon-damib-buguk, in two more linkers).** The websocket linker and the HTTP linker still store a call-site IDENTIFIER in the slot that holds the joined value.\n\n- `linkers/websocket.py` `_extract_event_from_match` (~L137-156) returns `(identifier, \"variable\")` for `socket.emit(EVENT, ...)` / `socket.on(EVENT, ...)` / `channel_layer.send(channel_var, ...)`; `link_websocket` groups sends and receives in ONE dict keyed by that raw string (~L748-757), so `emit(EVENT)` with `const EVENT = 'chat'` never joins `on('chat')`, and an identifier whose text equals another site's string does join it. Edge meta `event` / `channel` carry the identifier.\n- `linkers/http.py` `_extract_url_from_match` (~L433-447) returns `(identifier, \"variable\")` for `fetch(API_URL)`; `link_http` then route-matches the identifier text as if it were a URL path. The module docstring (~L64) claims `const API_URL = '/api/users'; fetch(API_URL)` is \"detected\" -- it is detected, but never resolved, so it matches no route. (Template literals are folded against module consts by `_extract_module_constants`, JS-only; bare identifiers are not.)\n\n**Cure available.** WI-misod added `linkers/_name_args.py` (`ConstantResolver`, `name_arg_from_match`, `pair_by_name`) and wired message_queue / ipc / event_sourcing to it: same-file module-scope string constants resolve to their value (`constant`), anything else is labelled `unresolved` with value None and joins only an equal identifier. websocket.py is a direct fit (same `_EVENT_ARG` regex, same raw-string grouping). http.py needs the resolver at the bare-identifier sites and a decision about whether its JS-only `_extract_module_constants` should be replaced by the shared resolver.\n\n**Not measured:** corpus frequency of either shape. Not done in WI-misod because websocket.py / http.py were outside the filed scope (ship the scope measured, file the residual)."  # f24b
+    fields: {}  # f24b

@@ -62,3 +62,10 @@
   clock: 7  # 98c2
   nonce: 98c2  # 98c2
   message: "Again 2026-09-30, the 3rd and 4th loaded smart-test runs of the day (INV-hopib 804 files; WI-dorus 839 files, 37 min): test_a_hangup_is_named_too TimeoutExpired 30s each time, every other test passing. 4 of 4 loaded runs today, 0 of 1 alone."  # 98c2
+- op: discuss  # 847f
+  at: '2026-10-01T23:46:23Z'  # 847f
+  by: agent  # 847f
+  actor: jgstern_agent  # 847f
+  clock: 8  # 847f
+  nonce: 847f  # 847f
+  message: "CANDIDATE DIAGNOSIS from WI-zimor (2026-10-01): an inherited SIG_IGN for SIGHUP, from launching smart-test under `nohup`. I have not verified it with a passing run under the board.\nObserved: test_a_hangup_is_named_too failed (TimeoutExpired 30s) in BOTH of my 481-file targeted runs. I launched both as `nohup slot run test ... &`, which is the detached pattern LIVE section 6 prescribes. Every other test passed (16,635 and 16,636 passed).\nMechanism: nohup sets SIGHUP to SIG_IGN. That disposition is inherited through slot, smart-test, pytest and subprocess.Popen: Python's restore_signals resets only SIGPIPE/SIGXFZ/SIGXFSZ, not SIGHUP. POSIX: a signal that was ignored on entry to a non-interactive shell cannot be trapped or reset, so act.sh's HUP trap never fires, the child never exits, and proc.wait(timeout=30) expires.\nMinimal repro (this box): nohup bash -c 'bash -c \"trap \\\"echo TRAPPED; exit 129\\\" HUP; kill -HUP \\$\\$; echo NOT-KILLED\"; echo rc=$?' prints NOT-KILLED rc=0. The same command without nohup prints TRAPPED rc=129.\nThis would explain \"fails loaded, passes alone\": the loaded runs are the detached/nohup ones, and the alone re-runs are foreground. It is not about load.\nSuggested fix (not made; out of my scope): in the test's Popen calls (lines 127 and 266), reset the disposition in the child, e.g. preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_DFL). Do not change auto-pr: ignoring SIGHUP under nohup is what the user asked for.\nCheck before closing: run the file under nohup with and without the fix, and confirm it fails without the fix and passes with it."  # 847f

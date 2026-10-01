@@ -1,0 +1,20 @@
+- op: create  # a361
+  at: '2026-10-01T23:26:02Z'  # a361
+  by: agent  # a361
+  actor: jgstern_agent  # a361
+  clock: 1  # a361
+  nonce: a361  # a361
+  data:  # a361
+    kind: work_item  # a361
+    title: "Retired edge-type names documented as live: renders (view_template x3), enqueues (ruby.py x3), crdt_publishes (yjs_crdt.py x2)"  # a361
+    status: todo_hard  # a361
+    priority: 3  # a361
+    parent:  # a361
+    tags:  # a361
+    - docs  # a361
+    isbefore: []  # a361
+    duplicate_of: []  # a361
+    not_duplicate_of: []  # a361
+    pr_ref:  # a361
+    description: "Found by WI-sipuk's new registry cross-reference sub-check (scripts/check-docstring-drift --registry-refs, branch jgstern-agent/feat/sipuk-registry-refs, not yet merged), on dev 96155dd17f. Each site was verified against the code that emits the edge.\n\nRetired edge-type names documented as live, all on the ADR-0023 §6 fold list, all removed from edge_types by Phase 4b (685e672c48):\n- `renders`: linkers/view_template.py:70 (\"get the ``renders`` edge they should\"), linkers/_view_template_core.py:250 (\"emit ``renders`` edges + symbols\") and :261 (\"LinkerResult with new ``renders`` edges\"). The emit site, _view_template_core.py:308, is edge_type=\"references\".\n- `enqueues`: hypergumbo_lang_mainstream/ruby.py:2241 (\"emit ``enqueues`` edges instead of ``calls``\"), :2490 (\"Create an enqueues edge\", which the scan does NOT flag because a bare word without an underscore is not read as a name) and :2495. _try_job_enqueue emits edge_type=\"event_publishes\" (three Edge.create sites, at about :2515-:2548).\n- `crdt_publishes`: linkers/yjs_crdt.py:302 and :340 describe the false positives the WI-vurig gate removed as \"crdt_publishes edges\". crdt_publishes was folded onto event_publishes on 2026-05-01 (a9f030c93b), before the 2026-05-10 observation those lines cite. So the name was wrong even when that prose was written.\n\nFix: reword each in place to the canonical name (references / event_publishes), keeping line counts so nothing line-pinned moves. I found no line-pinned citations into these files (signature_axis / module_key_axis). Docs-only. After the fix, `--registry-refs` on the live tree drops from 16 flagged to 9."  # a361
+    fields: {}  # a361

@@ -1,0 +1,20 @@
+- op: create  # 1e6b
+  at: '2026-10-01T23:25:44Z'  # 1e6b
+  by: agent  # 1e6b
+  actor: jgstern_agent  # 1e6b
+  clock: 1  # 1e6b
+  nonce: 1e6b  # 1e6b
+  data:  # 1e6b
+    kind: work_item  # 1e6b
+    title: "lua_ffi and napi linkers emit four evidence_type values the evidence-type registry lacks (luajit_ffi_c/_load, napi_create_function/addon_api); producer-coherence misses the tuple-return flow"  # 1e6b
+    status: todo_hard  # 1e6b
+    priority: 2  # 1e6b
+    parent:  # 1e6b
+    tags:  # 1e6b
+    - analysis_quality  # 1e6b
+    isbefore: []  # 1e6b
+    duplicate_of: []  # 1e6b
+    not_duplicate_of: []  # 1e6b
+    pr_ref:  # 1e6b
+    description: "Found by WI-sipuk's new registry cross-reference sub-check (scripts/check-docstring-drift --registry-refs, branch jgstern-agent/feat/sipuk-registry-refs, not yet merged), on dev 96155dd17f. Verified by reading the code, not inferred from the scan.\n\nTwo linkers emit evidence_type values that are NOT in the evidence-type registry (evidence_types.all_evidence_type_names()):\n- linkers/lua_ffi.py: _scan_ffi_calls returns (\"luajit_ffi_c\") at :122 and (\"luajit_ffi_load\") at :131; the loop at :198 unpacks them and Edge.create(evidence_type=evidence_type) at :246 emits them. The registry has only luajit_ffi_lookup (evidence_types.py:307), the unresolved-path value at :288.\n- linkers/napi.py: _scan returns \"napi_create_function\" (:165) and \"napi_addon_api\" (:171/:177/:182); export_map carries them (:274, :291) into Edge.create(evidence_type=evidence_type) at :314.\n- Their own tests pin the unregistered values: packages/hypergumbo-core/tests/test_lua_ffi_linker.py:347 (== \"luajit_ffi_c\"), test_napi_linker.py:137/233/282.\n- The docstrings (lua_ffi.py:97, napi.py:152) describe the code correctly; the defect is code/registry disagreement, not prose drift.\n\nWhy the existing gates miss it: producer_coherence's literal path matches only a KEYWORD literal at the Edge.create site, and the WI-zipis helper descent binds helper PARAMETERS. Here the value is a string literal inside a returned tuple, unpacked in a for-loop / dict lookup, then passed as a Name. That is a third indirection shape (a value that flows through a return tuple), and LIVE rule 3 says it is probably not the only member.\n\nNOT checked: whether the runtime coherence / validation_report path flags these edges in a real run, and what derive_confidence does with an unregistered evidence type (the _CONFIDENCE_SEEDS lookup). I did not sweep other linkers for the tuple-return shape; the registry sub-check found only these two because their docstrings happen to name the values.\n\nDecision needed: register the four values (each needs an axis + confidence seed), or map them onto a registered value (e.g. luajit_ffi_lookup's resolved twin) and update the tests. And extend producer-coherence to the tuple-return flow, or file that as its own residual."  # 1e6b
+    fields: {}  # 1e6b
