@@ -29,8 +29,12 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    field-type registry (``_register_swift_field_type``), and each
    declaration's argument labels ``meta["arg_labels"]``.
 2. Pass 2: Extract call, import and ``references`` edges using NameResolver.
-   A receiver is typed before resolution: locals and parameters from a
-   per-function scope map (file-level declarations shared), call results and
+   A receiver is typed before resolution: locals, parameters (a closure's
+   annotated ones too) and every ``let`` / ``var`` clause of an ``if`` /
+   ``guard`` / ``while`` condition from a scope map per callable body --
+   function, closure, initialiser, subscript, accessor -- in which a binding
+   is visible only from the end of its declaration (file-level declarations
+   shared and position-free), call results and
    chained or cast receivers through the return-type registry
    (``_swift_receiver_expr_type``), and implicit-``self`` properties through
    the field-type registry, walking base classes.
@@ -123,6 +127,17 @@ PASS_ID = make_pass_id("swift")
 
 #: INV-bamij: declarations whose BODY anchors a call that sits in no function.
 _TYPE_BODY_NODES: frozenset[str] = frozenset({"class_declaration", "protocol_declaration"})
+
+#: WI-mofil: the nodes whose body is a receiver-typing SCOPE -- one map each,
+#: looked up innermost-first. Every callable body, not only ``func``: a closure,
+#: an initialiser / deinitialiser, a subscript, and each property accessor
+#: (``computed_property`` is the shorthand getter's body and holds ``get`` /
+#: ``set``; ``willSet`` / ``didSet`` are clauses of their own).
+_SWIFT_SCOPE_NODES: frozenset[str] = frozenset({
+    "function_declaration", "lambda_literal", "init_declaration",
+    "deinit_declaration", "subscript_declaration", "computed_property",
+    "computed_getter", "computed_setter", "willset_clause", "didset_clause",
+})
 
 
 def find_swift_files(repo_root: Path) -> Iterator[Path]:
@@ -1335,7 +1350,9 @@ def _swift_receiver_expr_type(
     ``await``, parentheses -- are stripped; a cast names its type outright; a
     call is typed by :func:`_swift_call_type`, which recurses back here for its
     own receiver, so ``a.b().c().d()`` is walked rather than one level being
-    special-cased. A parenthesised TUPLE (more than one element) is not a
+    special-cased. A generic constructor (``constructor_expression``) names
+    its type as a plain one does, and a bare name is looked up in the scope
+    map (WI-mofil). A parenthesised TUPLE (more than one element) is not a
     receiver type the catalogue knows and yields ``None``, as does a cast to a
     collection (``o as! [String]``) -- ``_swift_bare_type`` is the one rule for
     which spellings are receiver types.
@@ -1372,6 +1389,21 @@ def _swift_receiver_expr_type(
                 _swift_bare_type(node_text(cast_to, source))
                 if cast_to is not None else None
             )
+        if node.type == "constructor_expression":
+            # WI-mofil: a GENERIC constructor (``ManagedAtomic<Bool>(false)``)
+            # parses as ``constructor_expression``, not ``call_expression``, so
+            # it was untyped while ``Store()`` was typed. Its ``user_type``
+            # names the type; a collection (``[String](...)``) has none and
+            # stays a refusal, through the same ``_swift_bare_type`` rule.
+            built = find_child_by_type(node, "user_type")
+            return (
+                _swift_bare_type(node_text(built, source))
+                if built is not None else None
+            )
+        if node.type == "simple_identifier":
+            # WI-mofil: a bare NAME (``let t = s``, ``guard let fm = maybe``)
+            # evaluates to whatever the scope map says that name is.
+            return type_of(node_text(node, source))
         if node.type == "call_expression":
             return _swift_call_type(node, source, type_of, registry, field_of)
         if node.type == "navigation_expression":
@@ -1468,6 +1500,53 @@ def _swift_call_result_type(
         if vtype is not None:
             return vtype
     return None
+
+def _swift_condition_bindings(
+    node: "tree_sitter.Node",
+) -> list[tuple["tree_sitter.Node", "tree_sitter.Node | None", "tree_sitter.Node | None"]]:
+    """Every ``let`` / ``var`` clause of an ``if`` / ``guard`` / ``while`` condition.
+
+    Returns ``(name, annotation, rhs)`` per clause; ``annotation`` is the
+    clause's ``type_annotation`` node and ``rhs`` the expression after its
+    ``=``, either ``None`` when absent (``if let s`` shorthand has neither).
+
+    WI-mofil. The grammar lays a condition out FLAT -- clauses are runs of
+    siblings separated by top-level ``,`` tokens, ending at the body's
+    ``statements`` (or ``{`` / ``else``). The arm this replaces took the
+    condition's FIRST ``simple_identifier`` and its FIRST ``=``: in ``if flag,
+    let s = f()`` it typed ``flag`` as ``f()``'s result, in ``if let a = f(),
+    let b = g()`` it never bound ``b``, and in ``if case let .some(x) = y`` it
+    bound the case NAME ``some``. A clause is read here only when it OPENS
+    with ``let`` / ``var`` followed by a name; a ``case`` clause (an enum
+    payload, typed by nothing here) and a boolean clause bind nothing.
+    """
+    clauses: list[list["tree_sitter.Node"]] = [[]]
+    for child in node.children:
+        if child.type in ("statements", "{", "else"):
+            break
+        if child.type == ",":
+            clauses.append([])
+        else:
+            clauses[-1].append(child)
+    out: list[tuple["tree_sitter.Node", "tree_sitter.Node | None", "tree_sitter.Node | None"]] = []
+    for clause in clauses:
+        # The keyword (``if`` / ``guard`` / ``while``) opens the first clause.
+        body = [c for c in clause if c.type not in ("if", "guard", "while")]
+        if (
+            len(body) < 2
+            or body[0].type != "value_binding_pattern"
+            or body[1].type != "simple_identifier"
+        ):
+            continue
+        annotation = next((c for c in body[2:3] if c.type == "type_annotation"), None)
+        eq = next((i for i, c in enumerate(body) if c.type == "="), None)
+        rhs = (
+            next((c for c in body[eq + 1:] if c.is_named), None)
+            if eq is not None else None
+        )
+        out.append((body[1], annotation, rhs))
+    return out
+
 
 def _extract_var_type(node: "tree_sitter.Node", source: bytes) -> tuple[str | None, str | None]:
     """Extract variable name and type from a property_declaration node.
@@ -1587,7 +1666,13 @@ def _extract_edges_from_file(
     # chain reaches a class / protocol / ERROR before any function is
     # file-level; a lookup walks its own function ancestors innermost-first,
     # then the file level.
-    _scoped_types: dict[int, dict[str, str]] = {}
+    # WI-mofil: a scoped binding is VISIBLE FROM a byte offset -- the end of
+    # its declaration -- and a lookup takes the latest binding visible at the
+    # use. Keyed by name alone, a later ``let container = KDC<K>(...)`` retyped
+    # the field ``container`` two lines above it (hummingbird), and ``let s =
+    # s.session()`` read its own initialiser's ``s`` as the local. File-level
+    # declarations stay position-free: a global is visible throughout.
+    _scoped_types: dict[int, dict[str, list[tuple[int, str]]]] = {}
 
     def _function_ancestors(n: "tree_sitter.Node", *, through_errors: bool) -> list[int]:
         # ERROR nodes cut both ways. A DECLARATION under one is file-level:
@@ -1600,7 +1685,12 @@ def _extract_edges_from_file(
         chain: list[int] = []
         cur = n.parent
         while cur is not None:
-            if cur.type == "function_declaration":
+            # WI-mofil: every callable BODY is a scope -- its parameters and
+            # locals are invisible outside it. Only ``function_declaration``
+            # was one: a closure-local ``let`` landed in the enclosing
+            # function's map, and an init / subscript / accessor body's
+            # landed in the FILE-level map, typing that name in every method.
+            if cur.type in _SWIFT_SCOPE_NODES:
                 chain.append(cur.start_byte)
             elif cur.type in ("class_declaration", "protocol_declaration"):
                 break
@@ -1609,11 +1699,14 @@ def _extract_edges_from_file(
             cur = cur.parent
         return chain
 
-    def _scope_for(n: "tree_sitter.Node") -> dict[str, str]:
+    def _bind(n: "tree_sitter.Node", name: str, vtype: str, visible_from: int) -> None:
         chain = _function_ancestors(n, through_errors=False)
         if not chain:
-            return var_types
-        return _scoped_types.setdefault(chain[0], {})
+            var_types[name] = vtype
+            return
+        _scoped_types.setdefault(chain[0], {}).setdefault(name, []).append(
+            (visible_from, vtype),
+        )
 
     def _inherited_field_type(name: str, n: "tree_sitter.Node") -> str | None:
         # WI-higob: implicit-self access to a property the enclosing type or
@@ -1654,10 +1747,13 @@ def _extract_edges_from_file(
         return _lookup
 
     def _type_of(name: str, n: "tree_sitter.Node") -> str | None:
+        at = n.start_byte
         for key in _function_ancestors(n, through_errors=True):
-            types = _scoped_types.get(key)
-            if types is not None and name in types:
-                return types[name]
+            visible = [
+                b for b in _scoped_types.get(key, {}).get(name, ()) if b[0] <= at
+            ]
+            if visible:
+                return max(visible, key=lambda b: b[0])[1]
         if name in var_types:
             return var_types[name]
         return _inherited_field_type(name, n)
@@ -1678,32 +1774,32 @@ def _extract_edges_from_file(
                     method_return_type_registry,
                 )
             if vname and vtype:
-                _scope_for(node)[vname] = vtype
-        elif node.type in ("if_statement", "guard_statement"):
+                _bind(node, vname, vtype, node.end_byte)
+        elif node.type in ("if_statement", "guard_statement", "while_statement"):
             # WI-higob: `if let x = <expr>` / `guard let x = <expr>` bind a name
             # to an expression whose type slice 2's walker already computes.
-            # The grammar lays the binding out flat -- `value_binding_pattern`,
-            # then the bound `simple_identifier`, then `=`, then the RHS -- so
-            # the RHS is the first named sibling after the `=`.
-            if find_child_by_type(node, "value_binding_pattern") is not None:
-                _kids = list(node.children)
-                _eq = next(
-                    (i for i, c in enumerate(_kids) if c.type == "="), None,
+            # WI-mofil: EVERY `let`/`var` clause binds, a clause annotation
+            # names the type outright, and `while let` binds the same way. A
+            # shorthand clause (`if let s`) has no RHS and re-binds `s` to
+            # itself, which the outer declaration already types.
+            for _name, _ann, _rhs in _swift_condition_bindings(node):
+                _bound = node_text(_name, source)
+                declared_names.add(_bound)
+                _bt = (
+                    _swift_bare_type(node_text(_ann, source).lstrip(":"))
+                    if _ann is not None else None
                 )
-                _name = find_child_by_type(node, "simple_identifier")
-                _rhs = next(
-                    (c for c in _kids[_eq + 1:] if c.is_named),
-                    None,
-                ) if _eq is not None else None
-                if _name is not None and _rhs is not None:
-                    declared_names.add(node_text(_name, source))
+                if _bt is None and _rhs is not None:
                     _bt = _swift_receiver_expr_type(
-                        _rhs, source, _type_lookup_at(node),
+                        _rhs, source, _type_lookup_at(_rhs),
                         method_return_type_registry,
                     )
-                    if _bt:
-                        _scope_for(node)[node_text(_name, source)] = _bt
-        elif node.type == "parameter":
+                if _bt:
+                    _bind(node, _bound, _bt, (_rhs or _ann or _name).end_byte)
+        elif node.type in ("parameter", "lambda_parameter"):
+            # WI-mofil: an ANNOTATED closure parameter (`{ (fm: FileManager)
+            # in ... }`) has the parameter's layout and binds the same way,
+            # into the closure's own scope. An unannotated one yields no type.
             # INV-fahub / WI-votar recall recovery: thread function/method
             # parameter types (previously dropped) into the receiver map so a
             # param-typed receiver (`func handle(client: Client)` → its
@@ -1713,7 +1809,7 @@ def _extract_edges_from_file(
             if pname:
                 declared_names.add(pname)
             if pname and ptype:
-                _scope_for(node)[pname] = ptype
+                _bind(node, pname, ptype, node.end_byte)
 
     for node in iter_tree(tree.root_node):
         if node.type == "import_declaration":
@@ -1753,7 +1849,10 @@ def _extract_edges_from_file(
                     # Try type-qualified resolution (receiver type tracking)
                     if receiver_hint and not resolved:
                         type_name = _type_of(receiver_hint, node) or receiver_hint
-                        qualified_name = f"{type_name}.{callee_name}"
+                        # WI-mofil: a declared type keeps its spelling
+                        # (``Result<Success, Failure>``); symbols are keyed by
+                        # the bare name, as the module slot strips it.
+                        qualified_name = f"{type_name.split('<', 1)[0]}.{callee_name}"
                         # INV-fatap: a bare-name match is not evidence of the
                         # callee. A project extension declaring
                         # ``removeItem(atPath:)`` captured
