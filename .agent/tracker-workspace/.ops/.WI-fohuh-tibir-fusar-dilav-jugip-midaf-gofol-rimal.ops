@@ -1,0 +1,22 @@
+- op: create  # ba60
+  at: '2026-10-01T20:21:06Z'  # ba60
+  by: agent  # ba60
+  actor: jgstern_agent  # ba60
+  clock: 1  # ba60
+  nonce: ba60  # ba60
+  data:  # ba60
+    kind: work_item  # ba60
+    title: "cuda: a function returning a pointer gets no symbol and every call in it is dropped (_get_function_name descends no pointer_declarator)"  # ba60
+    status: todo_hard  # ba60
+    priority: 3  # ba60
+    parent:  # ba60
+    tags:  # ba60
+    - cuda  # ba60
+    - call_graph  # ba60
+    - analysis_quality  # ba60
+    isbefore: []  # ba60
+    duplicate_of: []  # ba60
+    not_duplicate_of: []  # ba60
+    pr_ref:  # ba60
+    description: "FOUND 2026-10-01 sweeping WI-saduj's mechanism (a definition whose name sits under a pointer_declarator gets no symbol) across the C-family analyzers.\n\ncuda.py `_get_function_name` and `_extract_cuda_signature` look for a `function_declarator` as a DIRECT child of the `function_definition` and descend NO wrapper at all, so every CUDA function returning a pointer gets no symbol and every call inside it is left unemitted. Its final `return None` is marked `# pragma: no cover`, but it is reachable.\n\nRepro (dev 4208070d1d, analyze_cuda_files on a scratch dir with k.cu):\n  __device__ int helper(int x) { return x; }\n  __device__ int plain(int n) { return helper(n); }\n  __device__ float *one_ptr(float *p) { helper(1); return p; }\n  __device__ float **two_ptr(float **p) { helper(2); return p; }\n-> symbols: helper, plain only; calls: one edge (line 2, from plain). one_ptr and two_ptr and the calls on lines 3 and 4 are absent.\n\nFIX SHAPE: the declarator-chain walk WI-saduj adds to c.py (`c_family_declarator`: follow the `declarator` field and the unnamed inner declarator of parenthesized/reference wrappers; the innermost function_declarator is the function's own). lang-common cannot import lang-mainstream, so either move the walk to hypergumbo_core.analyze.base and use it from c, cpp and cuda, or give cuda its own call. Also check glsl.py / hlsl.py (they mention function_declarator; neither language has pointers, so likely unaffected -- NOT checked). Not measured on a corpus repo: no CUDA repo was looked for."  # ba60
+    fields: {}  # ba60

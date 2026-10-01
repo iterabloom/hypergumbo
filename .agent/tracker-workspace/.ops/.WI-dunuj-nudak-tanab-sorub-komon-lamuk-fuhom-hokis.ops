@@ -1,0 +1,20 @@
+- op: create  # 965b
+  at: '2026-10-01T19:54:40Z'  # 965b
+  by: agent  # 965b
+  actor: jgstern_agent  # 965b
+  clock: 1  # 965b
+  nonce: 965b  # 965b
+  data:  # 965b
+    kind: work_item  # 965b
+    title: "yaml_ansible never reads a playbook outside root / Ansible-named dirs (24 unclaimed playbooks: ceph 22, qemu 2)"  # 965b
+    status: todo_hard  # 965b
+    priority: 3  # 965b
+    parent:  # 965b
+    tags:  # 965b
+    - dogfood  # 965b
+    isbefore: []  # 965b
+    duplicate_of: []  # 965b
+    not_duplicate_of: []  # 965b
+    pr_ref:  # 965b
+    description: "yaml_ansible's find_ansible_files (packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/yaml_ansible.py) only READS a YAML file whose path nominates it: at the repo root, under an Ansible-named directory (roles/tasks/handlers/playbooks/vars/defaults/group_vars/host_vars), or (since WI-jifog-huzan-nipob-hovig-mogad-jurup-havas-patit) directly in a directory that has such a subdirectory. A playbook anywhere else is never nominated, so it is generic `yaml`, never `ansible`, and contributes no playbook/task symbols or include edges.\n\nMeasured 2026-10-01 on the 271-repo corpus with the WI-jifog branch (jgstern-agent/fix/jifog @ 175050555e): 24 play-shaped YAML files (top-level list of mappings with a hosts/import_playbook key, via yaml_ansible._top_level_shape) are not claimed, in 2 repos: ceph 22 (src/ceph-volume/ceph_volume/tests/functional/batch/centos/bluestore/*/{setup,test,test_zap}.yml ...) and qemu 2 (scripts/ci/setup/build-environment.yml, gitlab-runner.yml -- the qemu header says \"This is an ansible playbook file\"). The baseline (origin/dev 135952dd34) did not claim these either: this is a pre-existing recall gap, not a regression.\n\nNot measured: whether the play-shape test is precise enough to nominate EVERY YAML file in a repo (a non-Ansible list of mappings carrying a `hosts` key would be claimed); the corpus scan found 24 hits and all 24 have Ansible paths or headers, which is a sample of 2 repos, not a precision bound. Cost: nominating every YAML means composing every YAML file up to 1 MiB (kubernetes-scale repos have thousands).\n\nPossible fix: nominate every .yml/.yaml for the play-shape check (claim iff play-list; then it roots its tree as the beside-arm does), with a measured cost and an FP sample on the corpus."  # 965b
+    fields: {}  # 965b
