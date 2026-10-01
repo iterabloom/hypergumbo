@@ -1,0 +1,21 @@
+- op: create  # eb49
+  at: '2026-10-01T14:08:03Z'  # eb49
+  by: agent  # eb49
+  actor: jgstern_agent  # eb49
+  clock: 1  # eb49
+  nonce: eb49  # eb49
+  data:  # eb49
+    kind: work_item  # eb49
+    title: "Callable producers in ~20 analyzers compute no stable_id and ride the WI-motiz backstop floor: same-file overloads get an emission-order ordinal, not arity"  # eb49
+    status: todo_hard  # eb49
+    priority: 3  # eb49
+    parent:  # eb49
+    tags:  # eb49
+    - schema  # eb49
+    - analysis_quality  # eb49
+    isbefore: []  # eb49
+    duplicate_of: []  # eb49
+    not_duplicate_of: []  # eb49
+    pr_ref:  # eb49
+    description: "Residual of WI-motiz-bakop-vogoz-fubir-kupob-fihak-pikob-haran (branch jgstern-agent/fix/motiz, not yet integrated). That branch gives populate_kind_stable_ids (analyze/base.py) a DEFAULT arm: any unmapped kind on a language-bearing Symbol gets make_declaration_stable_id(kind, language, path, name), and same-file same-name siblings are split afterwards by split_within_file_stable_id_collisions (ADR-0035 §1 occurrence index). That removes every None; it does NOT give these producers the ADR-0035 producer formula (compute_stable_id untyped tier, or make_typed_stable_id).\n\nMEASURED (sampled corpus fixture: up to 4 small files per language from ~/whole_bunch_of_repos plus hand snippets for circom/gdscript/wolfram/solidity/nim/vhdl; 3,176 symbols; dev 4376f204f1 vs the branch): 525 symbols in 69 (language, kind) pairs were None before and are filled by the default arm. Callable kinds among them: erlang function 69, agda function 38, ocaml 19, clojure 18, cuda 13, thrift 10, elixir 8, julia 6, zig 6, haskell 5, lean 5, nix 5, llvm_ir function 4, glsl 4, qml 4, cmake 3, fortran 3, gdscript 2, r 2, circom 1, elm 1, wolfram 1. Member kinds from MAINSTREAM producers that otherwise compute ids: csharp property 4, swift property 1, php field 3, scala object 2.\n\nWHAT THE FLOOR LOSES: arity, decorators and the scope chain. Two same-name callables in one file share the floor key and are told apart only by their emission-order ordinal, so adding or removing an earlier same-name sibling renumbers later ones (an edit elsewhere in the file churns identity, which ADR-0035 §1 says should survive).\n\nWHERE A PRODUCER FIX ADDS NOTHING (measured): for clojure/elixir/erlang/haskell/ocaml, compute_stable_id finds no params node (_PARAMS_NODE_TYPES = parameters/formal_parameters/parameter_list/function_parameters) and no decorator node on any function of the fixture, so the untyped formula would carry only (kind, file, name) -- the floor's information. Erlang and Elixir names already carry arity or module (greet/1, Demo.main).\n\nWHERE IT MAY ADD SOMETHING (NOT verified, each needs its own check): languages with same-file overloading or multiple dispatch -- cuda (C++ overloads), glsl (overloads), julia (multiple dispatch; julia.py already calls make_typed_stable_id for some forms but 6/6 functions in the sample were None), fortran generic interfaces. MEASURED CAVEAT: on the same sample, compute_stable_id run on the position-matched declaration node finds a params node for cuda 0/13, glsl 0/4, julia 0/6, fortran 0/3 (thrift 10/10, but thrift has no overloading). In the C-family grammars the parameter_list sits under the declarator, not as a direct child of function_definition, so a producer that simply calls compute_stable_id on the definition node would still hash param_count 0; the fix has to hand it the declarator or count the parameters itself. Also the mainstream member kinds (csharp/swift property, php field, scala object), where a sibling kind in the same producer already gets the producer formula.\n\nAcceptance: per language, either the producer computes the ADR-0035 formula for its callables (with a test that two same-name overloads in one file get ids that do not depend on emission order), or a written per-language verdict that the formula adds nothing for that grammar. Do not close on the none_cohort number: it is 0 by construction once the default arm lands."  # eb49
+    fields: {}  # eb49
