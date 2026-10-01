@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# COMMUNITY I/O primitive overlay — Python web frameworks, Django ORM and ujson.
+# COMMUNITY I/O primitive overlay — Python web frameworks, Django ORM and file
+# storage, and the ujson / defusedcsv stdlib drop-ins.
 #
 # THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT, and every run that
 # loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
@@ -60,6 +61,49 @@ fs_write:
       mirrors the catalogued json.dump file-write. orjson is deliberately NOT
       listed beside it -- its API is dumps/loads only, with no dump, so it has
       no file-write surface to catalogue and adding it would match nothing.
+  - module: defusedcsv.csv
+    functions: [writer]
+    notes: >-
+      WI-nibav. Drop-in for stdlib csv that escapes a leading = + - @ | % against
+      CSV injection (pretix). SURFACE READ, NOT ASSUMED (raphaelm/defusedcsv
+      3.0.0): the package's top level holds only `version`; defusedcsv.csv
+      re-exports stdlib csv and defines its own `writer` (a proxy over
+      csv.writer) and `DictWriter` (a subclass of csv.DictWriter). This row
+      MIRRORS the stdlib csv rows and nothing else -- stdlib rows `writer` and
+      not `DictWriter`, so the drop-in does too, and the two cannot disagree
+      about one write. Without this row the call was classified as stdlib
+      csv.writer by _module_matches' component-suffix arm alone, which also
+      calls `mycsvlib.csv` stdlib csv. That arm is KEPT (go's under-qualified
+      filepath / grpc rows depend on it; measured, WI-mujod); this row is
+      what identifies defusedcsv, because prefer_exact_owner picks the row
+      whose module IS the call's module over the suffix match.
+  # WI-nibav. django.core.files.storage.default_storage: a LazyObject over
+  # storages['default'], which is FileSystemStorage unless the project's
+  # STORAGES setting names another backend (then these calls may cross the
+  # network instead; the row describes Django's default). SURFACE READ from
+  # django's core/files/storage/{base,filesystem}.py: save -> _save
+  # (os.open + write, file_move_safe), delete -> os.remove / os.rmdir, open ->
+  # File(open(path, mode)), dual like builtins.open with the mode in the same
+  # seat and default 'rb'. Rowed `functions:` per ADR-0059: the calls are made
+  # on the named global itself (`default_storage.save(...)` is valid as
+  # written). NOT rowed, because they touch no file: url (urljoin of base_url),
+  # path (safe_join), generate_filename / get_valid_name /
+  # get_alternative_name (string work). Instances of FileSystemStorage and
+  # `storages[alias]` lookups are not rowed here.
+  - module: django.core.files.storage.default_storage
+    functions: [save, delete, open]
+    notes: "open is dual-classified: fs_write under a write mode, fs_read otherwise (see fs_read)."
+
+fs_read:
+  - module: django.core.files.storage.default_storage
+    functions: [open, exists, listdir, size, get_accessed_time,
+                get_created_time, get_modified_time, is_name_available,
+                get_available_name]
+    notes: >-
+      WI-nibav; see the fs_write row. open with the default 'rb' reads;
+      exists is os.path.lexists, listdir os.scandir, size os.path.getsize, the
+      get_*_time trio os.path.get{a,c,m}time; is_name_available and
+      get_available_name call exists.
 
 net_listen:
   # ADR-0049 LAUNCH rows (measurement 0010), moved with python's stdlib launch
