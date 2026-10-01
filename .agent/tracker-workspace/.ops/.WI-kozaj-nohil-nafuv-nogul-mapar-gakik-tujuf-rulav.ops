@@ -1,0 +1,21 @@
+- op: create  # 7a7f
+  at: '2026-10-01T18:28:39Z'  # 7a7f
+  by: agent  # 7a7f
+  actor: jgstern_agent  # 7a7f
+  clock: 1  # 7a7f
+  nonce: 7a7f  # 7a7f
+  data:  # 7a7f
+    kind: work_item  # 7a7f
+    title: "stdlib csv: csv.DictWriter is unrowed although csv is declared complete, and the csv.writer row sits on the constructor (INV-gujoh shape) because writerow arrives untyped"  # 7a7f
+    status: todo_hard  # 7a7f
+    priority: 2  # 7a7f
+    parent:  # 7a7f
+    tags:  # 7a7f
+    - analysis_quality  # 7a7f
+    - adr_0017  # 7a7f
+    isbefore: []  # 7a7f
+    duplicate_of: []  # 7a7f
+    not_duplicate_of: []  # 7a7f
+    pr_ref:  # 7a7f
+    description: "FOUND BY WI-nibav (2026-10-01) while deciding whether a defusedcsv row should exist at all.\n\npython.yaml rows stdlib csv as ONE fs_write row, `csv.writer` (functions), and declares `csv` module_completeness: complete (\"reader/writer wrap objects the caller opened; csv opens nothing\"). Two defects in that pair, both checked on real analyzer output (dev 7ae732c64a-era py.py, fixture `with open(p, \"w\") as f: w = csv.writer(f); w.writerow([t]); dw = csv.DictWriter(f, fieldnames=[\"a\"]); dw.writerow({\"a\": t})`):\n\n1. csv.DictWriter is UNROWED, yet the module is declared complete. The analyzer types the instance: `dw.writerow(...)` arrives as module `csv.DictWriter`, name `writerow`, construct method, and nothing classifies it. Under the json.dump precedent (python.yaml's pickle note: a write INTO a caller-opened object is rowed fs_write) the DictWriter write surface (writerow / writerows / writeheader) is an fs_write, so `complete` is a false examined-negative for any program that writes through DictWriter: a host_fs claim can read `confirmed` while the data reaches the file.\n\n2. The one row there is, `csv.writer`, is a CONSTRUCTOR row in INV-gujoh's sense: csv.writer(f) builds a writer and writes nothing; the data goes in at `w.writerow(row)`. Taint therefore checks the FILE argument, not the row data. Moving the row to the executor is NOT licensed yet (ADR-0049 ruling 3, represented crossing): `w.writerow` arrives with NO module (`python:external:0-0:writerow`), because csv.writer's return type is not declared in library_signatures/python.yaml. Deleting the constructor row today would lose the only represented crossing.\n\nProposed shape, not decided here: declare csv.writer's return type (a `_csv.Writer`-style owner) in library_signatures/python.yaml, row writerow/writerows on it and on csv.DictWriter (+ writeheader), then demote the constructor row with a verify-claims A/B per INV-gujoh. The community defusedcsv.csv row (WI-nibav) mirrors the stdlib csv rows exactly and must follow whatever this decides (a test pins the mirror). Corpus usage: DictWriter appears in pretix (src), airflow, superset, pytorch/tensorflow scripts (grep, not a census)."  # 7a7f
+    fields: {}  # 7a7f
