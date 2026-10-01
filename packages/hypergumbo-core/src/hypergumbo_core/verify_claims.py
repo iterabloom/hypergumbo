@@ -198,6 +198,7 @@ if TYPE_CHECKING:
 import yaml
 
 from .axis_meta_keys import call_family_edge_types
+from .call_constructs import reached_row_kind
 from .edge_types import is_grpc_rpc_implementation
 from .io_primitive_kinds import (
     called_on_a_named_owner,
@@ -4267,11 +4268,12 @@ def method_starved_modules(
 
     So the question here is a PROXY. Did the analyzer emit, for a module that
     has instance-method rows, the calls those rows describe? A module counts as
-    examined when some call edge into it carries a construct among the kinds
-    the module declares (route 1), or names one of its function-kind rows
-    (route 2). The blind-Kotlin case fails both: before WI-nasuf, a repo
-    reached ``java.io.File`` only through its constructor, so the analysis did
-    not look.
+    examined when some call edge into it carries a construct that reaches a
+    kind the module declares (route 1, through the declared crosswalk
+    :func:`hypergumbo_core.call_constructs.reached_row_kind`), or names one of
+    its function-kind rows (route 2). The blind-Kotlin case fails both: before
+    WI-nasuf, a repo reached ``java.io.File`` only through its constructor, so
+    the analysis did not look.
 
     The proxy is loose in one direction, stated so it is not mistaken for more.
     One method-stamped edge satisfies route 1 for the WHOLE module, even an
@@ -4332,6 +4334,10 @@ def method_starved_modules(
     # blindness — and reporting it as blindness would downgrade every JS/TS repo
     # on earth, which is the blanket-downgrade failure mode this check is built
     # to avoid. ``None`` (could not check) is not ``empty`` (checked, found none).
+    # That measurement predates WI-nasuf and WI-dosuh: js_ts now stamps
+    # ``method`` on its untyped-receiver placeholders and ``assignment`` on a
+    # handler registration, so a JS repo that emits either is checked, not
+    # abstained on. The abstention is per language and per run.
     languages_with_construct_evidence: set[str] = {
         edge.get("src", "").split(":", 1)[0]
         for edge in raw_edges
@@ -4355,7 +4361,7 @@ def method_starved_modules(
         if not module or module not in modules:
             continue
         called.add(module)
-        # SATISFIED WHEN THE CONSTRUCT MATCHES ANY KIND THE MODULE DECLARES.
+        # SATISFIED WHEN THE CONSTRUCT REACHES A KIND THE MODULE DECLARES.
         #
         # Was `== "method"`, which asked a different question than the docstring
         # above states. A function-construct call into a module that declares
@@ -4363,13 +4369,22 @@ def method_starved_modules(
         # analysis DID look — whether it then matched a specific NAME is the
         # uncatalogued-module gate's job, one rung further down, not this one's.
         #
+        # THE CONSTRUCT IS TRANSLATED, NOT COMPARED (WI-dapap). ``call_construct``
+        # and ``IoPrimitive.kind`` are two axes, and testing the first for
+        # membership in the second's value set worked only where the tokens
+        # coincide. ``ws.onmessage = h`` (construct ``assignment``) reaches the
+        # METHOD row ``WebSocket.onmessage`` and classifies ``net_recv``, yet the
+        # raw test reported ``WebSocket`` starved in the same run (WI-zohuk).
+        # ``reached_row_kind`` is the declared crosswalk; an undeclared construct
+        # and ``constructor`` map to None and satisfy nothing here.
+        #
         # THE ORIGINAL SIGNAL IS UNCHANGED for the population it was built on: a
         # module declaring ONLY methods still cannot be satisfied by a
         # function-construct call, because "function" is not among its kinds.
         # That is the blind-Kotlin case (java.io.File, java.net.Socket) and the
         # INV-nular miskinding case, and both still starve.
-        construct = (edge.get("meta") or {}).get("call_construct")
-        if construct and construct in module_kinds[language].get(module, set()):
+        reached = reached_row_kind((edge.get("meta") or {}).get("call_construct"))
+        if reached is not None and reached in module_kinds[language].get(module, set()):
             satisfied.add(module)
             continue
         # SECOND ROUTE: THE CALLED NAME MATCHES A FUNCTION-KIND PRIMITIVE.

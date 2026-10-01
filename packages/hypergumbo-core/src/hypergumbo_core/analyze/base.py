@@ -145,6 +145,7 @@ from ..ir import (
 # cycle; ``analyze.base`` stays the producer-facing surface it has always been.
 from ..ir import sanitize_id_name_segment as sanitize_id_name_segment
 from ..axis_meta_keys import write_meta_key
+from ..call_constructs import require_declared as _require_declared_construct
 from ..symbol_resolution import NameResolver
 from ..pass_silence import DEPENDENCY_UNAVAILABLE
 
@@ -1040,7 +1041,9 @@ def make_unresolved_edge(
             ``doFinal`` — from turning into a PHANTOM BARRIER, since the
             sanitizer path matches on the short name and never reads
             ``module_hint``. Omit it only when the call genuinely has no
-            receiver.
+            receiver. Must be a value declared in
+            :mod:`hypergumbo_core.call_constructs`; any other raises
+            ``ValueError``.
     """
     dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
     # ADR-0037 ruling 2: derive dst_ref from the components this helper already holds,
@@ -1074,7 +1077,9 @@ def make_unresolved_edge(
     if inherited_field_receiver is not None:
         hint_meta["inherited_field_receiver"] = inherited_field_receiver
     if call_construct is not None:
-        hint_meta["call_construct"] = call_construct
+        # The declared vocabulary (WI-dapap): a value computed at run time is
+        # checked here, where the static emit scan cannot see it.
+        hint_meta["call_construct"] = _require_declared_construct(call_construct)
     return Edge.create(
         src=src_id,
         dst=dst_id,
