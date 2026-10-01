@@ -237,8 +237,13 @@ class TestLinkJsModules:
         lang: str = "javascript",
         start_line: int = 5,
         end_line: int = 10,
+        is_exported: bool | None = True,
     ) -> Symbol:
-        """Helper to create a function/method symbol."""
+        """Helper to create a function/method symbol.
+
+        Exported by default: the fixture files declare them with ``export``,
+        and WI-sinol gates module_exports on ``is_exported is True``.
+        """
         return Symbol(
             id=f"{lang}:{path}:{start_line}-{end_line}:{name}:{kind}",
             name=name,
@@ -253,6 +258,7 @@ class TestLinkJsModules:
             ),
             origin="js",
             origin_run_id="test-run",
+            is_exported=is_exported,
         )
 
     def test_cjs_import_marks_module_system_commonjs(self, repo_root: Path) -> None:
@@ -1258,6 +1264,7 @@ class TestAliasIntegration:
             span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
             origin="js",
             origin_run_id="test-run",
+            is_exported=True,  # WI-sinol: module_exports needs an export
         )
 
     def test_tsconfig_alias_resolves(self, tmp_path: Path) -> None:
@@ -1602,6 +1609,7 @@ class TestMonorepoIntegration:
             span=Span(start_line=5, end_line=10, start_col=0, end_col=0),
             origin="js",
             origin_run_id="test-run",
+            is_exported=True,  # WI-sinol: module_exports needs an export
         )
 
     def test_monorepo_subdirectory_tsconfig(self, tmp_path: Path) -> None:
@@ -1884,3 +1892,58 @@ class TestInvMovorCanonicalFileIdReuse:
         assert len(emitted_file_syms) == 1
         expected_stable = make_file_stable_id("javascript", "src/utils.js")
         assert emitted_file_syms[0].stable_id == expected_stable
+
+
+class TestModuleExportsNeedAnExport:
+    """WI-sinol: ``module_exports`` reaches only what the module exports.
+
+    The edge type means "module exposes a symbol as part of its public
+    surface". The linker used to emit it to every symbol of an exportable KIND
+    in the target file: class members (methods, getters) and private helpers
+    too. It now requires the analyzer's POSITIVE export verdict
+    (``is_exported is True``); ``False`` (measured private) and ``None`` (no
+    verdict) both withhold the edge.
+    """
+
+    def test_only_exported_symbols_get_module_exports(
+        self, repo_root: Path,
+    ) -> None:
+        def sym(name: str, kind: str, line: int, exported: bool | None) -> Symbol:
+            path = "src/utils.js"
+            return Symbol(
+                id=f"javascript:{path}:{line}-{line}:{name}:{kind}",
+                name=name, kind=kind, language="javascript", path=path,
+                span=Span(start_line=line, end_line=line, start_col=0, end_col=0),
+                origin="js", origin_run_id="test-run", is_exported=exported,
+            )
+
+        app = Symbol(
+            id="javascript:src/app.js:1-1:app.js:file", name="app.js",
+            kind="file", language="javascript", path="src/app.js",
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="js", origin_run_id="test-run",
+        )
+        exported_class = sym("A", "class", 1, True)
+        members = [
+            sym("A.render", "method", 2, False),
+            sym("A.x", "getter", 3, False),
+            sym("A.x", "setter", 4, False),
+            sym("A.constructor", "constructor", 5, False),
+        ]
+        exported_fn = sym("g", "function", 7, True)
+        private_fn = sym("priv", "function", 8, False)
+        undecided_fn = sym("unknown", "function", 9, None)
+        imp = Edge.create(
+            src=app.id, dst="javascript:./utils:0-0:module:module",
+            edge_type="imports", line=1, origin="js", origin_run_id="test-run",
+        )
+        result = link_js_modules(
+            repo_root=repo_root,
+            symbols=[app, exported_class, *members, exported_fn, private_fn,
+                     undecided_fn],
+            edges=[imp],
+        )
+        # Reach first: the import resolved, so the export loop ran.
+        assert [e.edge_type for e in result.edges].count("imports") == 1
+        dsts = {e.dst for e in result.edges if e.edge_type == "module_exports"}
+        assert dsts == {exported_class.id, exported_fn.id}

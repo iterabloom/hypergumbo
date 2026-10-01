@@ -42,7 +42,7 @@ def _fn(path: str, name: str) -> Symbol:
         id=f"typescript:{path}:1-3:{name}:function", name=name, kind="function",
         language="typescript", path=path,
         span=Span(start_line=1, end_line=3, start_col=0, end_col=1),
-        origin="ts", origin_run_id="r",
+        origin="ts", origin_run_id="r", is_exported=True,
     )
 
 
