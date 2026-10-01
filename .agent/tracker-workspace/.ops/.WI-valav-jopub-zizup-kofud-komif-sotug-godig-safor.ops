@@ -28,3 +28,19 @@
   clock: 2  # 78fa
   nonce: 78fa  # 78fa
   message: "PREMISE CHECK 2026-09-30 (dev 7f0f993843): CURRENT-WITH-UPDATES (overlaps WI-tabig).\nMechanism holds: _index_django_relations_in_file (py.py ~4772-4911) fills related_managers only from ForeignKey/M2M fields (related_name or <model>_set) and manager_names from manager constructors; no @property is read anywhere in _collect_django_relation_index (py.py:4604).\nLive repro (analyze_python, scratch fixture: Order with @property fees returning self.all_fees(manager='objects'); OrderFee.order = ForeignKey(Order, related_name=\"all_fees\")):\n  order.all_fees.filter(...) -> python:django.db.models:0-0:filter:unresolved (framework_dispatch=django_orm)\n  order.fees.filter(...)     -> python:external:0-0:filter:unresolved\nThe +32 pretix figure was NOT re-measured.\nUpdates:\n 1. DUPLICATE FAMILY: WI-tabig (P4, filed 09-07) is the same shape -- OrderPosition.checkins = @property returning self.all_checkins(manager='objects') -- and proposes the mechanism (property-getter return path via WI-gubar's _build_property_getter_index, one-return bound). This item (P2) carries the measured value. Propose fold one into the other (owner decides which survives).\n 2. The DjangoRelationIndex docstring (py.py:4366-4372, from 17da6af2e9) lists \"a @property that returns a QuerySet (pretix's OrderPosition.checkins)\" as a CORRECT miss under the refutation condition. A fix must amend that text, and should keep the item's own rule: adjudicate on the getter's return expression, never the name.\n 3. Side observation, not this item's claim: order.fees itself is emitted as a calls edge to python:external:0-0:fees:unresolved even though Order.fees is an in-repo property symbol (receiver_type_id=Order is stamped on the edge). Not investigated whether a property-getter edge is expected there."  # 78fa
+- op: discuss  # 71bf
+  at: '2026-10-01T01:19:03Z'  # 71bf
+  by: agent  # 71bf
+  actor: jgstern_agent  # 71bf
+  clock: 3  # 71bf
+  nonce: 71bf  # 71bf
+  message: "FOLD 2026-09-30 (owner delegated the decision): WI-tabig-botud (P4, filed 09-07) is folded INTO this item as a duplicate in mechanism. This item survives because it carries the measured value (+32 ORM edges from `fees` alone on pretix) and the current premise check.\nWhat WI-tabig contributes, now part of this item's scope:\n- A SECOND instance of the same shape: pretix `OrderPosition.checkins` is a @property returning `self.all_checkins(manager='objects')` (FK `Checkin.position`, related_name=\"all_checkins\"). Call sites recorded on WI-tabig: pdf.py:732/736, services/checkin.py:1110/1119 (`op.checkins.all()/.filter()/.order_by()`). WI-gulaz correctly refuses to type `op.checkins` today (the class does not own that accessor).\n- A candidate MECHANISM: type `<instance>.<property>` through the property-getter return path -- `_build_property_getter_index` (py.py:3754, from WI-gubar) already indexes getters for `references` edges. Bound it to a getter with exactly ONE `return` whose expression is a manager root or a QuerySet-returning chain under the oracle; anything else refuses. This is the same rule this item states: adjudicate on the RETURN EXPRESSION, never the name.\n- WI-tabig's sizing ask stands: count @property getters on model classes whose return is an ORM chain (pretix, django) and measure with measurement 0003's method before building."  # 71bf
+- op: update  # 695f
+  at: '2026-10-01T01:19:04Z'  # 695f
+  by: agent  # 695f
+  actor: jgstern_agent  # 695f
+  clock: 4  # 695f
+  nonce: 695f  # 695f
+  set: {}  # 695f
+  add:  # 695f
+    tags: [taint, receiver_typing]  # 695f

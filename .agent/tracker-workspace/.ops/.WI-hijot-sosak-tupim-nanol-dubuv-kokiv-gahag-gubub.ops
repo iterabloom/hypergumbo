@@ -28,3 +28,20 @@
   clock: 2  # bc6f
   nonce: bc6f  # bc6f
   message: "Cross-ref backfill: closure of this item advances INV-pohik-jumos-dutar-nudus-bupuf-hoduj-hohuk-pitad, the May-28 dogfood integrated cluster on call-graph non-traversal of dispatch-primitive patterns. Return-type registry resolution (Scala portion of the INV-dihos campaign) is one of the dispatch primitives the integrated cluster covers. Note: parent INV-dihos is closed (satisfied), so this is now effectively top-of-chain for the Scala phase."  # bc6f
+- op: update  # c7bb
+  at: '2026-10-01T01:19:08Z'  # c7bb
+  by: agent  # c7bb
+  actor: jgstern_agent  # c7bb
+  clock: 3  # c7bb
+  nonce: c7bb  # c7bb
+  set:  # c7bb
+    status: wont_do  # c7bb
+  add:  # c7bb
+    duplicate_of: [WI-gokop-nudub-zunal-zibij-fuvad-libot-bituk-visid]  # c7bb
+- op: discuss  # 3bc0
+  at: '2026-10-01T01:19:09Z'  # 3bc0
+  by: agent  # 3bc0
+  actor: jgstern_agent  # 3bc0
+  clock: 4  # 3bc0
+  nonce: 3bc0  # 3bc0
+  message: "Folded into WI-gokop-nudub (owner delegated the decision, 2026-09-30): this item's scope (Scala return-type registry for call-result and chained receivers) is a strict subset of WI-gokop, which also covers for-binders and lambda parameters, is P2, and carries a measured baseline. This item's deliverables (Pass-1 method_return_types population, Pass-2 registry read, the _extract_scala_return_type_name helper with generic strip and Option/Try/Future/Either unwrap, implicits deferred) were copied onto WI-gokop, and its `isbefore` WI-hudam was transferred to WI-gokop. Closed wont_do as a duplicate, per the tracker's convention for folds; no work was done here."  # 3bc0
