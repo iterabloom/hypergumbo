@@ -26,6 +26,18 @@ collect related nodes. Traversal respects configurable limits:
   synthetic routing nodes the BFS walks through but drops from the output,
   together with every edge touching them.
 
+Every limit that stops the walk is named in ``limits_hit`` AND sized in
+``limits_detail`` (WI-mibuj): per limit, the cap value plus the nodes, edges
+and files it kept out of the final slice (and, for ``hop_limit`` /
+``hub_pruned``, the slice nodes it refused to expand). The flag alone could
+not tell a reverse slice that lost half its callers to ``max_files`` from one
+that lost none. Hub pruning and the hop limit stop a node BEFORE its edges are
+filtered, so their shortfall is sized by a probe that runs the same per-edge
+filters (``follow(record=False)``) without touching ``admission_stats``: an
+edge another filter would refuse anyway is not a limit's shortfall. The counts
+are the frontier the limit stopped -- a lower bound, since nothing beyond an
+omitted node was walked (``_limits_detail``).
+
 A forward slice adds a file's ``imports`` edges only when it reaches a
 container-kind node in that file (class, module, file, ...;
 ``_CONTAINER_KINDS`` in ``slice_graph``): a function entry does not pull in
@@ -329,6 +341,9 @@ class SliceResult:
         edge_ids: IDs of all edges in the slice.
         query: The query that produced this result.
         limits_hit: List of limits that were reached (e.g., "hop_limit").
+        limits_detail: The shortfall magnitude of each limit in
+            ``limits_hit`` (WI-mibuj), keyed by the same names; empty when no
+            limit was hit. See :func:`_limits_detail` for the counters.
         admission_stats: Per-rule edge-admission counters for forward dataflow
             BFS (WI-hukoh Phase A telemetry). Empty dict unless the query has
             ``dataflow=True``. Keys:
@@ -347,6 +362,7 @@ class SliceResult:
     edge_ids: Set[str]
     query: SliceQuery
     limits_hit: List[str] = field(default_factory=list)
+    limits_detail: Dict[str, Dict[str, int]] = field(default_factory=dict)
     node_depths: Dict[str, int] = field(default_factory=dict)
     node_tiers: Dict[str, int] = field(default_factory=dict)
     admission_stats: Dict[str, int] = field(default_factory=dict)
@@ -369,6 +385,11 @@ class SliceResult:
             "query": self.query.to_dict(),
             "limits_hit": self.limits_hit,
         }
+        if self.limits_detail:
+            result["limits_detail"] = {
+                limit: dict(sorted(counts.items()))
+                for limit, counts in sorted(self.limits_detail.items())
+            }
         if self.node_depths:
             result["node_depths"] = dict(sorted(self.node_depths.items()))
         if self.node_tiers:
@@ -667,15 +688,157 @@ def slice_graph(
                 if not query.reverse and not query.exclude_imports:
                     add_file_imports(member.path)
 
+    # WI-mibuj: what each limit STOPPED, so a truncated slice can say how
+    # much is missing instead of only that something is. limit -> ids of
+    # the edges it refused (with the edge itself, for the pass-through
+    # check) and of the nodes it kept out; hop_limit / hub_pruned also
+    # record the slice nodes they refused to expand.
+    limit_edges: Dict[str, Dict[str, Edge]] = {}
+    limit_nodes: Dict[str, Set[str]] = {}
+    not_expanded: Dict[str, Set[str]] = {}
+
+    def hit(limit: str) -> None:
+        if limit not in limits_hit:
+            limits_hit.append(limit)
+
+    def record_stopped(limit: str, edge: Edge, next_node: Symbol) -> None:
+        limit_edges.setdefault(limit, {})[edge.id] = edge
+        limit_nodes.setdefault(limit, set()).add(next_node.id)
+
+    def follow(
+        edge: Edge, current_id: str, record: bool,
+    ) -> tuple[Symbol, bool] | None:
+        """Apply every per-edge filter except the file limit.
+
+        Returns ``(next_node, terminal)`` when ``edge`` may be followed, else
+        ``None``. ``record=False`` is the PROBE used to size what hub pruning
+        and the hop limit stopped (WI-mibuj): it applies the same filters but
+        leaves ``admission_stats`` and ``limits_hit`` untouched, so an edge a
+        filter would refuse anyway is never counted as a limit's shortfall.
+        """
+        # Filter by confidence
+        if edge.confidence < query.min_confidence:
+            return None
+
+        # Skip structural edges to prevent BFS explosion:
+        # - Forward: structural edges (extends, implements, contains)
+        #   are excluded to prevent fan-out through shared ancestors
+        #   (e.g., all controllers sharing ApplicationController).
+        #   Note: dispatches_to is NOT structural — it IS followed.
+        # - Reverse: 'contains' edges are excluded to prevent false positives.
+        #   Without this, reverse slice from method M would traverse
+        #   M → Class (via contains) → unrelated callers of Class.
+        #   extends/implements are kept in reverse (useful for "who
+        #   inherits from this?" queries).
+        # The folded gRPC RPC-implementation edge (``implements`` +
+        # meta['protocol']='grpc', audit-findings 0016) is kept forward-
+        # traversable — it is a cross-service reachability conduit
+        # (client → stub → server → impl), not a plain structural
+        # 'implements' — so it is NOT forward-skipped here.
+        # WI-satal: the one ``contains`` edge that IS a call -- a
+        # constructed class to its initializer (``construction.py``).
+        # py / js_ts / dart land a construction on the CLASS, so without
+        # this a forward slice stopped at the class and a reverse slice
+        # from ``__init__`` found no caller.
+        is_ctor_hop = (edge.src, edge.dst) in ctor_hops
+        if (
+            not query.reverse
+            and edge.edge_type in _STRUCTURAL_EDGE_TYPES
+            and not is_grpc_rpc_implementation(edge.edge_type, edge.meta)
+            and not is_ctor_hop
+        ):
+            return None
+        if query.reverse and edge.edge_type == "contains" and not is_ctor_hop:
+            return None
+
+        # Skip import edges when exclude_imports is set.
+        # Import edges are file-level package dependencies, not
+        # function-level call relationships.
+        if query.exclude_imports and edge.edge_type in IMPORT_EDGE_TYPES:
+            return None
+
+        # ADR-0015: dataflow mode — only follow data-dependency chains.
+        # Forward: follow write/mutate edges (find what this symbol writes to).
+        #   PLUS one-hop downstream read admission from writer nodes
+        #   (WI-saful option 1): when current_id is a writer (has any
+        #   outgoing write/mutate edge), its outgoing read edges are
+        #   admitted as terminals — the dst is added to the slice but
+        #   NOT enqueued for further BFS expansion.
+        # Reverse: follow read edges (find who reads from this symbol).
+        # Edges without access_mode metadata are still followed (graceful
+        # degradation when annotation coverage is incomplete).
+        #
+        # WI-hukoh Phase A: every branch increments a counter in
+        # admission_stats so we can measure per-rule admission frequency
+        # on real repos and predict option-2 impact before implementing it.
+        # A probe (record=False) counts nothing: the counters describe the
+        # walk, not the sizing of what a limit stopped.
+        terminal = False
+        stat = None
+        admitted = True
+        if query.dataflow and edge.meta is not None and "access_mode" in edge.meta:
+            mode = edge.meta["access_mode"]
+            if query.reverse:
+                admitted = mode == "read"
+                stat = "admitted_reverse_read" if admitted else "rejected_other"
+            elif mode in ("write", "mutate"):
+                stat = "admitted_writer_src"
+            elif mode == "read" and current_id in writer_node_ids:
+                stat = "admitted_downstream_read"
+                terminal = True
+            else:
+                # Rejected by the dataflow rule. (The old
+                # would_admit_dst_reader predictive counter read
+                # dest_access_mode, removed in ADR-0038 ruling 3.)
+                admitted = False
+                stat = (
+                    "rejected_read_from_non_writer" if mode == "read"
+                    else "rejected_other"
+                )
+        elif query.dataflow:
+            # No access_mode on the edge: graceful degradation admits it.
+            stat = "admitted_no_annotation"
+        if record and stat is not None:
+            admission_stats[stat] += 1
+        if not admitted:
+            return None
+
+        # Get the node at the other end of the edge: reverse follows edges
+        # TO current, so next is src; forward follows edges FROM it, so dst.
+        next_node = node_by_id.get(edge.src if query.reverse else edge.dst)
+        if next_node is None:
+            return None
+
+        # Filter test nodes (by path or annotation, e.g. Rust #[test])
+        if query.exclude_tests and is_test_node(next_node.path, next_node.meta):
+            return None
+
+        # Filter utility files (docs, examples, scripts)
+        if query.exclude_utility and is_utility_file(next_node.path):
+            return None
+
+        # Check tier limit
+        if query.max_tier is not None:
+            node_tier = getattr(next_node, 'supply_chain_tier', 1)
+            if node_tier > query.max_tier:
+                if record:
+                    hit("tier_limit")
+                    record_stopped("tier_limit", edge, next_node)
+                return None
+
+        return next_node, terminal
+
+    def probe_stopped(limit: str, current_id: str, stopped: List[Edge]) -> None:
+        """Record the edges a limit kept ``current_id`` from expanding."""
+        not_expanded.setdefault(limit, set()).add(current_id)
+        for edge in stopped:
+            followed = follow(edge, current_id, record=False)
+            if followed is not None:
+                record_stopped(limit, edge, followed[0])
+
     # BFS traversal
     while queue:
         current_id, hop = queue.popleft()
-
-        # Check hop limit for next level (None means unlimited)
-        if query.max_hops is not None and hop >= query.max_hops:
-            if "hop_limit" not in limits_hit:
-                limits_hit.append("hop_limit")
-            continue
 
         # Get edges to follow based on direction
         if query.reverse:
@@ -684,6 +847,12 @@ def slice_graph(
         else:
             # Forward: follow edges FROM this node (find callees)
             relevant_edges = edges_from.get(current_id, [])
+
+        # Check hop limit for next level (None means unlimited)
+        if query.max_hops is not None and hop >= query.max_hops:
+            hit("hop_limit")
+            probe_stopped("hop_limit", current_id, relevant_edges)
+            continue
 
         # Hub node pruning: skip traversal for high-degree nodes.
         # Entry nodes and their immediate neighbors (depth ≤ 1) are exempt.
@@ -704,8 +873,8 @@ def slice_graph(
                 if e.edge_type != "dispatches_to"
             ]
             if len(non_dispatch_edges) > query.hub_threshold:
-                if "hub_pruned" not in limits_hit:
-                    limits_hit.append("hub_pruned")
+                hit("hub_pruned")
+                probe_stopped("hub_pruned", current_id, non_dispatch_edges)
                 # Still follow dispatches_to edges even when hub-pruned
                 relevant_edges = [
                     e for e in relevant_edges
@@ -715,123 +884,16 @@ def slice_graph(
                     continue
 
         for edge in relevant_edges:
-            # Filter by confidence
-            if edge.confidence < query.min_confidence:
+            followed = follow(edge, current_id, record=True)
+            if followed is None:
                 continue
-
-            # Skip structural edges to prevent BFS explosion:
-            # - Forward: structural edges (extends, implements, contains)
-            #   are excluded to prevent fan-out through shared ancestors
-            #   (e.g., all controllers sharing ApplicationController).
-            #   Note: dispatches_to is NOT structural — it IS followed.
-            # - Reverse: 'contains' edges are excluded to prevent false positives.
-            #   Without this, reverse slice from method M would traverse
-            #   M → Class (via contains) → unrelated callers of Class.
-            #   extends/implements are kept in reverse (useful for "who
-            #   inherits from this?" queries).
-            # The folded gRPC RPC-implementation edge (``implements`` +
-            # meta['protocol']='grpc', audit-findings 0016) is kept forward-
-            # traversable — it is a cross-service reachability conduit
-            # (client → stub → server → impl), not a plain structural
-            # 'implements' — so it is NOT forward-skipped here.
-            # WI-satal: the one ``contains`` edge that IS a call -- a
-            # constructed class to its initializer (``construction.py``).
-            # py / js_ts / dart land a construction on the CLASS, so without
-            # this a forward slice stopped at the class and a reverse slice
-            # from ``__init__`` found no caller.
-            is_ctor_hop = (edge.src, edge.dst) in ctor_hops
-            if (
-                not query.reverse
-                and edge.edge_type in _STRUCTURAL_EDGE_TYPES
-                and not is_grpc_rpc_implementation(edge.edge_type, edge.meta)
-                and not is_ctor_hop
-            ):
-                continue
-            if query.reverse and edge.edge_type == "contains" and not is_ctor_hop:
-                continue
-
-            # Skip import edges when exclude_imports is set.
-            # Import edges are file-level package dependencies, not
-            # function-level call relationships.
-            if query.exclude_imports and edge.edge_type in IMPORT_EDGE_TYPES:
-                continue
-
-            # ADR-0015: dataflow mode — only follow data-dependency chains.
-            # Forward: follow write/mutate edges (find what this symbol writes to).
-            #   PLUS one-hop downstream read admission from writer nodes
-            #   (WI-saful option 1): when current_id is a writer (has any
-            #   outgoing write/mutate edge), its outgoing read edges are
-            #   admitted as terminals — the dst is added to the slice but
-            #   NOT enqueued for further BFS expansion.
-            # Reverse: follow read edges (find who reads from this symbol).
-            # Edges without access_mode metadata are still followed (graceful
-            # degradation when annotation coverage is incomplete).
-            #
-            # WI-hukoh Phase A: every branch increments a counter in
-            # admission_stats so we can measure per-rule admission frequency
-            # on real repos and predict option-2 impact before implementing it.
-            terminal = False
-            if query.dataflow and edge.meta is not None and "access_mode" in edge.meta:
-                mode = edge.meta["access_mode"]
-                if query.reverse:
-                    if mode not in ("read",):
-                        admission_stats["rejected_other"] += 1
-                        continue
-                    admission_stats["admitted_reverse_read"] += 1
-                else:
-                    if mode in ("write", "mutate"):
-                        admission_stats["admitted_writer_src"] += 1
-                    elif (
-                        mode == "read"
-                        and current_id in writer_node_ids
-                    ):
-                        admission_stats["admitted_downstream_read"] += 1
-                        terminal = True
-                    else:
-                        # Rejected by the dataflow rule. (The old
-                        # would_admit_dst_reader predictive counter read
-                        # dest_access_mode, removed in ADR-0038 ruling 3.)
-                        if mode == "read":
-                            admission_stats["rejected_read_from_non_writer"] += 1
-                        else:
-                            admission_stats["rejected_other"] += 1
-                        continue
-            elif query.dataflow:
-                # No access_mode on the edge: graceful degradation admits it.
-                admission_stats["admitted_no_annotation"] += 1
-
-            # Get the node at the other end of the edge
-            if query.reverse:
-                # Reverse: we're following edges TO current, so next is src
-                next_node = node_by_id.get(edge.src)
-            else:
-                # Forward: we're following edges FROM current, so next is dst
-                next_node = node_by_id.get(edge.dst)
-
-            if next_node is None:
-                continue
-
-            # Filter test nodes (by path or annotation, e.g. Rust #[test])
-            if query.exclude_tests and is_test_node(next_node.path, next_node.meta):
-                continue
-
-            # Filter utility files (docs, examples, scripts)
-            if query.exclude_utility and is_utility_file(next_node.path):
-                continue
-
-            # Check tier limit
-            if query.max_tier is not None:
-                node_tier = getattr(next_node, 'supply_chain_tier', 1)
-                if node_tier > query.max_tier:
-                    if "tier_limit" not in limits_hit:
-                        limits_hit.append("tier_limit")
-                    continue
+            next_node, terminal = followed
 
             # Check file limit
             if next_node.path not in files_seen:
                 if len(files_seen) >= query.max_files:
-                    if "file_limit" not in limits_hit:
-                        limits_hit.append("file_limit")
+                    hit("file_limit")
+                    record_stopped("file_limit", edge, next_node)
                     continue
                 files_seen.add(next_node.path)
 
@@ -886,10 +948,88 @@ def slice_graph(
         edge_ids=visited_edges,
         query=query,
         limits_hit=limits_hit,
+        limits_detail=_limits_detail(
+            query, limits_hit, limit_edges, limit_nodes, not_expanded,
+            visited_nodes, visited_edges, node_by_id,
+        ),
         node_depths=node_depths,
         node_tiers=node_tiers,
         admission_stats=admission_stats,
     )
+
+
+def _limits_detail(
+    query: SliceQuery,
+    limits_hit: List[str],
+    limit_edges: Dict[str, Dict[str, Edge]],
+    limit_nodes: Dict[str, Set[str]],
+    not_expanded: Dict[str, Set[str]],
+    slice_nodes: Set[str],
+    slice_edges: Set[str],
+    node_by_id: Dict[str, Symbol],
+) -> Dict[str, Dict[str, int]]:
+    """Size what each limit in ``limits_hit`` kept out of the slice (WI-mibuj).
+
+    Per limit, against the FINAL slice (after pass-through filtering):
+
+    - ``cap``: the query value that bounded the walk (``max_files``,
+      ``hub_threshold``, ``max_hops`` or ``max_tier``).
+    - ``nodes_omitted``: distinct nodes at the far end of an edge that passed
+      every other filter, were refused by this limit, and are NOT in the
+      slice -- a node the limit stopped once but the walk reached another way
+      is not omitted.
+    - ``edges_omitted``: distinct such edges absent from the slice. An edge
+      can be omitted while its far-end node is present (a pruned hub's edge
+      to a node reached elsewhere).
+    - ``files_omitted``: distinct files of the omitted nodes that hold no
+      slice node.
+    - ``nodes_not_expanded`` (``hop_limit`` / ``hub_pruned`` only): slice
+      nodes whose expansion the limit refused.
+
+    Pass-through nodes, and edges touching one, never appear in the output,
+    so they are never counted as omitted.
+
+    The counts are the FRONTIER the limit stopped, not the total: what lies
+    beyond an omitted node was never walked, so the true shortfall is at
+    least ``nodes_omitted`` and may be larger. The same node can be counted
+    under two limits, so the per-limit counts do not sum to a union.
+    """
+    caps: Dict[str, int | None] = {
+        "file_limit": query.max_files,
+        "hub_pruned": query.hub_threshold,
+        "hop_limit": query.max_hops,
+        "tier_limit": query.max_tier,
+    }
+
+    # Every id here was resolved through node_by_id when it was recorded or
+    # admitted, so the lookups cannot miss.
+    def outputs(node_id: str) -> bool:
+        return node_by_id[node_id].kind not in query.pass_through_kinds
+
+    slice_files = {node_by_id[nid].path for nid in slice_nodes}
+    detail: Dict[str, Dict[str, int]] = {}
+    for limit in limits_hit:
+        # A limit is only ever hit when its cap is set.
+        cap = caps[limit]
+        assert cap is not None
+        nodes = {
+            nid for nid in limit_nodes.get(limit, set()) - slice_nodes
+            if outputs(nid)
+        }
+        edges = [
+            e for eid, e in limit_edges.get(limit, {}).items()
+            if eid not in slice_edges and outputs(e.src) and outputs(e.dst)
+        ]
+        counts = {
+            "cap": cap,
+            "nodes_omitted": len(nodes),
+            "edges_omitted": len(edges),
+            "files_omitted": len({node_by_id[nid].path for nid in nodes} - slice_files),
+        }
+        if limit in ("hop_limit", "hub_pruned"):
+            counts["nodes_not_expanded"] = len(not_expanded.get(limit, set()))
+        detail[limit] = counts
+    return detail
 
 
 def rank_slice_nodes(

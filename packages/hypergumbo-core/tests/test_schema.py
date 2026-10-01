@@ -790,6 +790,8 @@ class TestTopLevelBlockTyping:
                 dataflow=True,
             ),
             limits_hit=["hop_limit"],
+            # WI-mibuj: slice_graph sizes every limit it names.
+            limits_detail={"hop_limit": {"cap": 1, "nodes_omitted": 1}},
             node_depths={"n1": 0},
             node_tiers={"n1": 1},
             admission_stats={"admitted_writer_src": 1},
