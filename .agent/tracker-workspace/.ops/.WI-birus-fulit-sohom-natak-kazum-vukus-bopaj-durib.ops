@@ -1,0 +1,22 @@
+- op: create  # cd6f
+  at: '2026-10-01T19:48:30Z'  # cd6f
+  by: agent  # cd6f
+  actor: jgstern_agent  # cd6f
+  clock: 1  # cd6f
+  nonce: cd6f  # cd6f
+  data:  # cd6f
+    kind: work_item  # cd6f
+    title: "bash.yaml's clock rows (shell.SECONDS / EPOCHSECONDS / EPOCHREALTIME, host_info_read) have no producer: bash.py drops all three via _SHELL_STATE_NAMES before emitting any edge"  # cd6f
+    status: todo_hard  # cd6f
+    priority: 3  # cd6f
+    parent:  # cd6f
+    tags:  # cd6f
+    - taint  # cd6f
+    - catalogue  # cd6f
+    - io_boundary  # cd6f
+    isbefore: []  # cd6f
+    duplicate_of: []  # cd6f
+    not_duplicate_of: []  # cd6f
+    pr_ref:  # cd6f
+    description: "FOUND 2026-10-01 while working WI-binod-pulal-lazar-nakor-vakup-jorut-zodan-rubog (live repro record: ~/hypergumbo_lab_notebook/decontend/run_09302026/binod/).\n\nWHAT. packages/hypergumbo-core/src/hypergumbo_core/io_primitives/bash.yaml declares a host_info_read row `module: shell, attributes: [SECONDS, EPOCHSECONDS, EPOCHREALTIME]` (WI-tubij's clock rows). bash.py never emits an edge those rows could match. In the expansion branch (bash.py around line 1230) every one of the three names is in `_SHELL_STATE_NAMES` (lines 277-289), so the branch `continue`s before it reaches the only two destinations it builds, `bash:env:0-0:env.environ:attribute` and `bash:shell:0-0:shell.hostinfo:attribute`. No other code in packages/*/src names `shell.SECONDS` or EPOCHSECONDS (grep, dev c930ed9e01). A catalogue row with no producer (LIVE rule 7).\n\nLIVE REPRO (dev c930ed9e01, via scripts/measure-taint-precision.py collect). Fixture scripts/run.sh:\n  echo \"$HOSTNAME\" > \"$SCRIPT_DIR/host.txt\"\n  echo \"$SECONDS\" > \"$SCRIPT_DIR/t.txt\"\nwith a claim `source_taint: host_description, prohibited_sink_zone: host_fs`. Verdict violated, evidence_count=1, and the one flow's `source_primitives` is `[\"shell.hostinfo\"]` only. The $SECONDS read produced no source.\n\nNOT CHECKED. Whether WI-tubij's measurement counted bash clock reads as matched (its discussion says the bash surface was verified against GNU bash 5.2.21, which is the surface, not the producer). Whether the right cure is (a) emit `bash:shell:0-0:shell.SECONDS:attribute` etc. for the three clock names before the `_SHELL_STATE_NAMES` exclusion, or (b) drop the row and record that bash clock reads are not modelled. WI-rihos and WI-tilig discuss whether clock reads should be host_description at all; this item is only about the row being inert."  # cd6f
+    fields: {}  # cd6f
