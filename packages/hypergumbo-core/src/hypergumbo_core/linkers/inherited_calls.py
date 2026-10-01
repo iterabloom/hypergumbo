@@ -562,8 +562,12 @@ _MRO_WALKERS: dict[str, Callable[
     # edges these walkers traverse. Walker choice follows the language's MRO
     # shape: single-superclass-then-interfaces (Java-like) for php/js/ts/csharp/
     # objc; insertion-order BFS for go struct embedding, rust trait impls, and
-    # C++ multiple inheritance. (dart/lua/zig emit no inheritance model, so no
-    # walker recovers anything for them — deliberately unregistered.)
+    # C++ multiple inheritance. (lua/zig emit no inheritance model, so no
+    # walker recovers anything for them — deliberately unregistered. dart has
+    # emitted extends/implements/includes edges since WI-lahub but has no
+    # walker yet: its member lookup runs class, mixins right to left, then the
+    # superclass, and ``implements`` contributes no implementation, which no
+    # walker here models.)
     "go": _walk_insertion_order,
     "rust": _walk_insertion_order,
     "php": _walk_single_then_interfaces,
@@ -872,7 +876,7 @@ def _extract_method_short_name(callee_name: str) -> str:
     #
     # Derived, not hand-copied, from the three emission paths:
     #   Site 1  — ``enclosing_class`` producers INTERSECT ``_MRO_WALKERS``
-    #             (dart/lua/zig stamp the hint but have no walker, deliberately)
+    #             (dart/lua/zig stamp the hint but have no walker)
     #   Site 2  — ``receiver_type_hint`` producers; these need NO walker,
     #             because step 1 resolves the method directly on the inferred
     #             type (this is what adds ``d`` and ``kotlin``)

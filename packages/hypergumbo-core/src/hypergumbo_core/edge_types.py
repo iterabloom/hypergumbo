@@ -707,12 +707,13 @@ def find_axis_drift(
 # the INV-nosoz defect.
 INHERITANCE_EDGE_TYPE_LANGUAGES: Final[dict[str, frozenset[str]]] = {
     "extends": frozenset({
-        "blade", "java", "javascript", "python", "ruby", "twig", "typescript",
+        "blade", "dart", "java", "javascript", "python", "ruby", "twig",
+        "typescript",
     }),
     "inherits": frozenset({"bitbake", "solidity"}),
     "implements": frozenset({
-        "graphql", "haskell", "java", "javascript", "rust", "typescript",
-        "vhdl",
+        "dart", "graphql", "haskell", "java", "javascript", "rust",
+        "typescript", "vhdl",
     }),
 }
 

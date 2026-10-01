@@ -766,10 +766,13 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     # ``inheritance-linker`` (hence the pass id at the head of the clause), plus
     # the analyzers that emit ``extends``/``implements`` themselves. That is why
     # Go repos falsified it — ``go`` is not and need not be in this list, since
-    # inheritance-linker turns Go struct embedding into the edges.
+    # inheritance-linker turns Go struct embedding into the edges. ``dart``
+    # labels its own edges from the clause a base is written in (WI-lahub):
+    # Dart has no interface kind, so only the clause separates extends from
+    # implements, and inheritance-linker's label is keyed on the target's kind.
     depends_on=[
         [
-            "inheritance-linker", "blade", "haskell", "java", "javascript",
+            "inheritance-linker", "blade", "dart", "haskell", "java", "javascript",
             "python", "ruby", "rust", "rust_analyzer", "scip_python", "twig", "vhdl",
         ],
     ],

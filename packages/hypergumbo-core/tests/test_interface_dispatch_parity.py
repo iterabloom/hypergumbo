@@ -116,12 +116,6 @@ KNOWN_HOLES: dict[str, str] = {
         "isolation. Pre-existing (reproduces at 9f0a163833^). This cell cannot "
         "go green until that is fixed; it is not a dispatch defect."
     ),
-    "dart": (
-        "PRODUCER (WI-lahub). Both types and both methods are emitted correctly with "
-        "dot-qualified names, but the analyzer emits NO inheritance edge at all "
-        "for `class Square implements Shape` — so type_hierarchy has nothing to "
-        "build its maps from."
-    ),
     "elixir": (
         "PRODUCER (WI-vitas). `@callback area() :: integer` produces no symbol at all, so "
         "the behaviour's required function does not exist, and `@behaviour "

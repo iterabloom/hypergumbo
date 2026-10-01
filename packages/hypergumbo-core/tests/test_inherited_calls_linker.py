@@ -3406,7 +3406,8 @@ class TestFleetSite1Walkers:
     base class's method. Validates the ``_MRO_WALKERS`` registration + Site-1
     dispatch for go/rust/php/js/ts/csharp/cpp/objc (the walker functions
     themselves are covered by the ruby/groovy/java/scala/swift tests above;
-    dart/lua/zig are deliberately unregistered — no inheritance model)."""
+    dart/lua/zig are unregistered — lua/zig have no inheritance model, and
+    dart's mixin-first lookup order has no walker yet)."""
 
     def test_each_fleet_language_recovers_inherited_call(self) -> None:
         from hypergumbo_core.analyze.base import make_unresolved_edge
