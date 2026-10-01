@@ -108,17 +108,6 @@ CASES: dict[str, tuple[str, str]] = {
 # of them. Three of the eight are producer gaps, three are vocabulary gaps in
 # a consumer, one is an unrelated analyzer crash, one is an anchoring choice.
 KNOWN_HOLES: dict[str, str] = {
-    "cpp": (
-        "CONSUMER SEMANTICS — the producer half is now fixed. Pure virtuals ARE "
-        "emitted (`Shape::area`) and containment roots them, but "
-        "type_hierarchy._extends_admits_dispatch asks whether the CHILD is "
-        "abstract, and for a C++ abstract base the abstract one is the PARENT: "
-        "the edge is `extends: Square -> Shape` with Square concrete. The rule "
-        "is correct for interface-extends-interface (Go embedding, C# interface "
-        "inheritance) and wrong for abstract-base inheritance. Widening it "
-        "touches all four NO_VIRTUAL_EXTENDS languages, so it is tracked "
-        "separately rather than bundled here."
-    ),
     "kotlin": (
         "ANALYZER CRASH, unrelated to dispatch. The Kotlin analyzer emits ZERO "
         "type symbols when a file holds 2+ bodied type declarations, "
