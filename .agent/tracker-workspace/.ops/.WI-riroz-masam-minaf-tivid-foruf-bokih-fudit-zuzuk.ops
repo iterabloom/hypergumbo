@@ -1,0 +1,21 @@
+- op: create  # 1bf2
+  at: '2026-10-01T16:04:59Z'  # 1bf2
+  by: agent  # 1bf2
+  actor: jgstern_agent  # 1bf2
+  clock: 1  # 1bf2
+  nonce: 1bf2  # 1bf2
+  data:  # 1bf2
+    kind: work_item  # 1bf2
+    title: "Dart has no inherited_calls MRO walker; now that dart emits inheritance edges (WI-lahub), inherited implicit-this calls stay unresolved"  # 1bf2
+    status: todo_hard  # 1bf2
+    priority: 3  # 1bf2
+    parent:  # 1bf2
+    tags:  # 1bf2
+    - dart  # 1bf2
+    - linker_gap  # 1bf2
+    isbefore: []  # 1bf2
+    duplicate_of: []  # 1bf2
+    not_duplicate_of: []  # 1bf2
+    pr_ref:  # 1bf2
+    description: "**Found while fixing WI-lahub-nitas-kopok-notas-sizir-sodis-kudut-fivov** (branch `jgstern-agent/fix/lahub`, not yet merged).\n\nAfter WI-lahub the Dart analyzer emits `extends` (superclass and mixin `on` clause), `implements` and `includes` (`with` mixins, evidence `ast_includes`) edges. `linkers/inherited_calls.py` still registers no Dart entry in `_MRO_WALKERS`, so a bare inherited implicit-`this` call inside a Dart class (Site 1) is still not resolved to the ancestor's method. Dart stamps the `enclosing_class` hint already.\n\n**Why no existing walker fits.** Dart member lookup on `class C extends B with M1, M2 implements I` runs C, then M2, then M1 (the last mixin wins), then B and B's chain. `implements` contributes NO implementation. `_walk_single_then_interfaces` walks `extends` (priority 0) before `includes` (priority 2) and also walks `implements`, so it would pick B's method over M2's override and could resolve into an interface that provides no body.\n\n**Fix sketch.** A Dart walker that orders `includes` parents in reverse source order (the edges carry `line`; one clause is one line in the common case, so order needs the clause position, not just the line), then the `extends` parent, and skips `implements`. Register `dart` in `_MRO_WALKERS` and in the linker's `depends_on` (the WI-rasal test derives it).\n\nNot measured: how many Dart call sites this would recover. The one Dart repo in `~/whole_bunch_of_repos/` (sherpa-onnx) has 105 Dart inheritance edges after WI-lahub, all to external bases (dart:ffi `Struct`/`Opaque`, Flutter widgets), so it cannot measure in-tree recovery."  # 1bf2
+    fields: {}  # 1bf2
