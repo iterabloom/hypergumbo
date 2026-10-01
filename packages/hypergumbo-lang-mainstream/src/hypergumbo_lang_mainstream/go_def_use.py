@@ -307,10 +307,51 @@ def _go_symbol_kind(node: Any) -> str:
     return "method" if node.type == "method_declaration" else "function"
 
 
+def _go_bound_literal_bodies(node: Any, source: bytes) -> list[Any]:
+    """The bodies of the function literals a PACKAGE-LEVEL ``var_spec`` holds.
+
+    WI-rovun. The Go analyzer anchors every call under a package-level ``var``
+    on that variable's own symbol (INV-nopoh) -- cobra's ``Run: func(cmd, args)
+    {...}``, ``var handler = func(...) {...}`` -- so the DDG walks those
+    literals under the same id, which ``ddg_build`` takes from the analyzer at
+    the ``var_spec``'s exact span rather than rebuilding it here (WI-mufag).
+
+    The package-level test is the analyzer's own (``_go_package_level_var_name``),
+    so the two cannot disagree about which ``var`` is a binding: a ``var``
+    inside a function is a LOCAL (INV-sidab) whose literal is already part of
+    the enclosing function's CFG, and gets no bodies here.
+
+    OUTERMOST literals only, in source order. A literal nested in another is
+    part of the outer body's CFG (as one nested in a declaration is), and
+    walking it again would record its statements twice.
+
+    A literal's parameters are not definitions, exactly as a declaration's are
+    not: ``build_function_cfg`` is handed the body in both cases.
+    """
+    from .go import _go_package_level_var_name
+
+    if _go_package_level_var_name(node, source) is None:
+        return []
+    bodies: list[Any] = []
+    stack = list(reversed(node.children))
+    while stack:
+        current = stack.pop()
+        if current.type == "func_literal":
+            body = current.child_by_field_name("body")
+            if body is not None:
+                bodies.append(body)
+            continue
+        stack.extend(reversed(current.children))
+    return bodies
+
+
 register_ddg_language(LanguageDdgSpec(
     language="go",
     file_glob="*.go",
     function_node_types=frozenset({"function_declaration", "method_declaration"}),
     name_for=_go_function_name,
     kind_for=_go_symbol_kind,
+    bound_callable_node_types=frozenset({"var_spec"}),
+    bound_bodies_for=_go_bound_literal_bodies,
+    bound_anchor_kinds=frozenset({"variable"}),
 ))
