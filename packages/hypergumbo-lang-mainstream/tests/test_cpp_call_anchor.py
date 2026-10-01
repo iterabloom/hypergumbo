@@ -135,3 +135,26 @@ int **S2_pp() { sink(15); return 0; }
     # A function returning a function pointer: its OWN parameters, and no return
     # type rather than a false ``int``.
     assert sigs["getfn"] == "(void)", sigs
+
+
+def test_a_macro_misparse_mints_no_function(tmp_path: Path) -> None:
+    """A definition with no function declarator is a function only when it is a
+    conversion operator. ``class API X : public MoveOnly<X, Y> {..}`` (sherpa-onnx)
+    parses as a definition whose declarator is the template ``MoveOnly<..>``, and
+    ``PFX(name)(args)`` (x265) as a macro call; naming either would mint a phantom
+    function and draw the body's calls from it."""
+    (tmp_path / "m.cpp").write_text("""\
+void g();
+template <typename T, typename U> class MoveOnly {};
+class SHERPA_API Stream : public MoveOnly<Stream, int> {
+ public:
+  void f() { g(); }
+};
+int PFX(cpu_test)(void) { g(); return 0; }
+void ok() { g(); }
+""")
+    result = analyze_cpp(tmp_path)
+    names = {s.name for s in result.symbols if s.kind in ("function", "method")}
+    assert "ok" in names, names  # reach
+    assert not names & {"MoveOnly", "PFX", "cpu_test", "Stream"}, names
+    assert 8 in _contained(result, "calls")

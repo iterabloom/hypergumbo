@@ -157,7 +157,8 @@ class CFamilyDeclarator(NamedTuple):
     ``template_function`` or ``operator_cast``); ``returns_function`` is True when
     a second, OUTER ``function_declarator`` wraps it, i.e. the function returns a
     function pointer; ``pointer_depth`` counts the ``pointer_declarator`` levels
-    of the return type.
+    of the return type. Both nodes are None for a macro-call-shaped declarator,
+    which names no function (:func:`c_family_declarator`).
     """
 
     function_declarator: Optional["tree_sitter.Node"]
@@ -172,6 +173,13 @@ def _is_declarator_or_name(node_type: str) -> bool:
     return node_type.endswith(("declarator", "identifier")) or node_type in (
         "operator_name", "destructor_name", "template_function", "operator_cast",
     )
+
+
+def _is_macro_call_name(function_declarator: "tree_sitter.Node") -> bool:
+    """Whether a ``function_declarator`` directly wraps another (see
+    :func:`c_family_declarator`): the outer one is a macro call's argument list."""
+    inner = function_declarator.child_by_field_name("declarator")
+    return inner is not None and inner.type == "function_declarator"
 
 
 def c_family_declarator(node: "tree_sitter.Node") -> CFamilyDeclarator:
@@ -190,6 +198,14 @@ def c_family_declarator(node: "tree_sitter.Node") -> CFamilyDeclarator:
     (``parenthesized_declarator``, C++'s ``reference_declarator``), until a node
     that is not a declarator: the name. The INNERMOST ``function_declarator`` on
     the way is the function's own.
+
+    A ``function_declarator`` whose declarator is DIRECTLY another one names no
+    function: C has no function returning a function, so a real nested one
+    always has a ``parenthesized_declarator`` between. That shape is a macro
+    tree-sitter cannot expand -- ``int PFX(cpu_test)(void)`` (x265),
+    ``LUALIB_API int (luaL_loadstring) (...)`` read as a function named ``int``
+    -- and the walk returns no declarator for it rather than mint a symbol
+    named after the macro.
     """
     function_declarator = None
     outer_functions = 0
@@ -198,6 +214,8 @@ def c_family_declarator(node: "tree_sitter.Node") -> CFamilyDeclarator:
     current = node.child_by_field_name("declarator")
     while current is not None and current.type.endswith("_declarator"):
         if current.type == "function_declarator":
+            if _is_macro_call_name(current):
+                return CFamilyDeclarator(None, None, False, 0)
             if function_declarator is not None:
                 outer_functions += 1
             function_declarator = current
