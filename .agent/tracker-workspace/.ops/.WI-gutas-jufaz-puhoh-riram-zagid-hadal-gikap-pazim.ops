@@ -1,0 +1,20 @@
+- op: create  # 7851
+  at: '2026-10-01T03:52:31Z'  # 7851
+  by: agent  # 7851
+  actor: jgstern_agent  # 7851
+  clock: 1  # 7851
+  nonce: '7851'  # 7851
+  data:  # 7851
+    kind: work_item  # 7851
+    title: "Go interface embedding (type GChild interface { GBase; ... }) emits no edge: interface symbols carry no base_classes"  # 7851
+    status: todo_hard  # 7851
+    priority: 2  # 7851
+    parent:  # 7851
+    tags:  # 7851
+    - analysis_quality  # 7851
+    isbefore: []  # 7851
+    duplicate_of: []  # 7851
+    not_duplicate_of: []  # 7851
+    pr_ref:  # 7851
+    description: "Surfaced by WI-kalug-takiz-lumim-falaj-kopuf-tapor-kizof-sajur's family sweep (2026-09-30, branch jgstern-agent/fix/kalug-ts-interface-extends).\n\nGo interface embedding emits NO edge: `type GChild interface { GBase; N() }` gives GChild meta with no base_classes (only `concepts` and `visibility_signal`), and no extends edge is emitted by the analyzer or the core inheritance linker. go.py records embedding as base_classes for STRUCTS only (struct-embedding branch ~1636/1669).\n\nREPRO: fixture e.go = `package p` / `type GBase interface { M() }` / `type GChild interface { GBase; N() }`; `hypergumbo survey . --out f.json` -> zero extends/implements edges; GChild meta has no base_classes.\n\nlinkers/type_hierarchy.py `_extends_admits_dispatch` docstring states \"Go interface embedding (`type Bar interface { Foo; ... }`) ... produce[s] extends edges between interface symbols\" -- not true on this repro, so the dispatch override that docstring justifies has no Go input. Not measured: whether a Go interface-embedding edge changes dispatches_to on any corpus repo (WI-tudib handles promoted methods for satisfaction separately; check it before fixing).\n\nWith WI-kalug's core change, base_classes on the embedding interface is enough for the core linker to emit GChild -extends-> GBase."  # 7851
+    fields: {}  # 7851

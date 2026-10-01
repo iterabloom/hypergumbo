@@ -1,0 +1,22 @@
+- op: create  # 84db
+  at: '2026-10-01T05:09:46Z'  # 84db
+  by: agent  # 84db
+  actor: jgstern_agent  # 84db
+  clock: 1  # 84db
+  nonce: 84db  # 84db
+  data:  # 84db
+    kind: work_item  # 84db
+    title: "perl: a class-method call (HTTP::Tiny->new, File::Spec->catfile) on a package the repo does not define emits no calls edge, and binds a same-named sub in ANOTHER package when one exists"  # 84db
+    status: todo_hard  # 84db
+    priority: 2  # 84db
+    parent:  # 84db
+    tags:  # 84db
+    - perl  # 84db
+    - call_graph  # 84db
+    - analysis_quality  # 84db
+    isbefore: []  # 84db
+    duplicate_of: []  # 84db
+    not_duplicate_of: []  # 84db
+    pr_ref:  # 84db
+    description: "FOUND 2026-10-01 while sweeping WI-surar's family (constant / namespaced receivers) across sibling languages. Record: WI-surar's report, ~/hypergumbo_lab_notebook/decontend/run_09302026/surar.md.\n\nperl.py's method_call_expression arm (the `->` operator) resolves the method by SHORT NAME through resolver.lookup and emits an edge only when that lookup finds something; otherwise it emits NOTHING. Fixture (scratch, analyze_perl on worktree sources at origin/dev 7a645c6c76):\n\n    use LWP::UserAgent;\n    sub f {\n      my $u = shift;\n      my $r = HTTP::Tiny->new->get($u);   # no edge\n      LWP::Simple::get($u);               # perl:LWP::Simple:0-0:get:unresolved (correct)\n      File::Spec->catfile($u);            # no edge\n    }\n\nTwo defects in one arm:\n  (1) INV-foluz's shape in perl: a class-method call on a package the repo does not define (HTTP::Tiny->new, File::Spec->catfile, LWP::UserAgent->new) emits no calls edge, so no catalogue or overlay row can ever classify it, and the package name the source spells is discarded.\n  (2) WI-johib's shape in perl: when the repo DOES define some sub of the same short name, `Pkg->m` binds it receiver-blind, whatever package declares it. REPRODUCED: 'package Foo; sub catfile {1}' plus 'File::Spec->catfile(\"a\")' in sub f emits calls perl:a.pl:4-6:f:function -> perl:a.pl:2-2:catfile:function (Foo's catfile).\n\nFIX SHAPE (not built): read the invocant; when it is a bareword package name, look up Pkg::m first and otherwise emit make_unresolved_edge with module_hint=Pkg as written (owner path per ADR-0051, the spelling the function-call arm already uses for LWP::Simple::get). A variable invocant ($ua->get) is a separate, harder case (needs a declared/constructed type). NOT measured: frequency on any corpus repo; no corpus repo is NAMED perl/mojo/catalyst/dancer in ~/whole_bunch_of_repos (a name grep, not a file-extension find)."  # 84db
+    fields: {}  # 84db
