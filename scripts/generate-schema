@@ -296,7 +296,49 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                     },
                     "avg_confidence": {
                         "type": "number",
-                        "description": "Mean edge confidence (3 decimal places)"
+                        "description": (
+                            "Mean of edge confidence over edges carrying a "
+                            "confidence value (3 decimal places). EDGES ONLY: "
+                            "nodes carry no confidence. Edge confidence is a "
+                            "few per-evidence-type spikes, so this mean can "
+                            "sit between spikes on a value no edge carries -- "
+                            "read edge_confidence for the shape. 0.0 when no "
+                            "edge carries confidence (edge_confidence."
+                            "histogram is then empty)"
+                        )
+                    },
+                    # WI-zimor: the distribution behind avg_confidence.
+                    "edge_confidence": {
+                        "type": "object",
+                        "description": (
+                            "Distribution of edge confidence over the same "
+                            "edges avg_confidence averages (edges only)"
+                        ),
+                        "properties": {
+                            "histogram": {
+                                "type": "object",
+                                "description": (
+                                    "Edge count per confidence value at 0.01 "
+                                    "resolution, keyed by the value formatted "
+                                    "to two decimals (\"0.85\"), ascending. "
+                                    "Empty when no edge carries confidence"
+                                ),
+                                "additionalProperties": {
+                                    "type": "integer", "minimum": 1
+                                }
+                            },
+                            "median": {
+                                "type": ["number", "null"],
+                                "description": (
+                                    "Lower median of edge confidence (3 "
+                                    "decimal places): always a value some "
+                                    "edge carries. null when no edge carries "
+                                    "confidence"
+                                )
+                            }
+                        },
+                        "required": ["histogram", "median"],
+                        "additionalProperties": False
                     },
                     "languages": {
                         "type": "object",
