@@ -4704,6 +4704,172 @@ class TestDefaultSelectionSharesSketchPopulation:
         )
 
 
+def _boundary_symbol(name: str, language: str = "python") -> Symbol:
+    """An external-boundary placeholder shaped like ``create_boundary_nodes``'s."""
+    return Symbol(
+        id=f"{language}:<external>:0-0:{name}:external_symbol",
+        name=name,
+        kind="external_symbol",
+        language=language,
+        path="<external>",
+        span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+        meta={"external_boundary": True},
+        supply_chain_tier=3,
+        supply_chain_reason="unresolved external reference",
+    )
+
+
+class TestConnectivityDefaultPopulation:
+    """WI-fadab: the DEFAULT (connectivity) path narrows its SEEDS, not its bridges.
+
+    WI-zulij made connectivity compact's default and exempted it from the
+    key-symbol narrowing, because a file node is often the only thing joining
+    two islands. That exemption was written for BRIDGE picks, but it also left
+    the SEED list (entrypoints, cross-cutting endpoints, the no-seed bootstrap)
+    and the external-boundary placeholders unfiltered. Measured on the
+    self-analysis map: at ``--max-symbols 10`` four of ten emitted nodes were
+    ``pyproject.toml`` [project.scripts] ``file`` nodes (entrypoint SEEDS) and
+    four were ``external_symbol`` nodes at ``<external>`` — the noise sat at the
+    head of what compact advertises as the most important symbols.
+
+    The policy these tests pin: a seed is a key symbol (seeds are not bridges);
+    boundary nodes are not in the population at all (they have no source, and a
+    shared stdlib callee is not a structural bridge — the tiered view already
+    drops them); a non-key node reached as a real bridge is still admitted.
+    """
+
+    def _map(self, symbols, eps=()):
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "nodes": [s.to_dict() for s in symbols],
+            "edges": [],
+            "entrypoints": list(eps),
+        }
+
+    def _run(self, symbols, edges, eps=(), k=10):
+        return format_compact_behavior_map(
+            self._map(symbols, eps), symbols, edges,
+            CompactConfig(max_symbols=k, min_symbols=1),
+            connectivity_aware=True,
+        )
+
+    def test_non_key_entrypoint_is_not_a_seed(self):
+        """The self-map shape: a pyproject [project.scripts] ``file`` entrypoint
+        pointing at an unresolved console-script target.
+
+        Before the fix the stream opened with the file seed and spent its first
+        bridge pick on the boundary node next to it.
+        """
+        script_entry = make_symbol("pyproject.toml", path="pyproject.toml", kind="file")
+        target = _boundary_symbol("pkg.cli:main")
+        main = make_symbol("main", path="src/cli.py")
+        helper = make_symbol("helper", path="src/util.py")
+        symbols = [script_entry, target, main, helper]
+        edges = [
+            make_edge(script_entry.id, target.id),
+            make_edge(main.id, helper.id),
+        ]
+        eps = [
+            {"symbol_id": script_entry.id, "confidence": 0.95},
+            {"symbol_id": main.id, "confidence": 0.90},
+        ]
+        result = self._run(symbols, edges, eps, k=4)
+        names = [n["name"] for n in result["nodes"]]
+        assert "main" in names, (
+            f"non-vacuity: the key-symbol entrypoint must still seed; got {names}"
+        )
+        kinds = [n["kind"] for n in result["nodes"]]
+        assert "file" not in kinds and "external_symbol" not in kinds, (
+            f"connectivity default emitted non-key seeds / boundary nodes: {kinds}"
+        )
+
+    def test_boundary_node_is_not_a_bridge(self):
+        """Two functions that both call ``time.monotonic`` are not connected.
+
+        A shared external callee scores as a perfect bridge (component growth
+        2), so before the fix it won the first pick; joining two islands through
+        a stdlib placeholder manufactures structure the code does not have.
+        """
+        a = make_symbol("ep_a", path="src/a.py")
+        b = make_symbol("ep_b", path="src/b.py")
+        clock = _boundary_symbol("time:monotonic")
+        symbols = [a, b, clock]
+        edges = [
+            make_edge(a.id, clock.id, edge_type="references"),
+            make_edge(b.id, clock.id, edge_type="references"),
+        ]
+        eps = [
+            {"symbol_id": a.id, "confidence": 0.9},
+            {"symbol_id": b.id, "confidence": 0.8},
+        ]
+        result = self._run(symbols, edges, eps, k=3)
+        names = [n["name"] for n in result["nodes"]]
+        assert names == ["ep_a", "ep_b"], (
+            f"boundary node reached the connectivity default: {names}"
+        )
+        assert result["nodes_summary"]["omitted"]["count"] == 0, (
+            "a boundary node is outside the population, so it is not 'omitted' "
+            "either (the --no-connectivity path's key_symbols already treats it "
+            "so)"
+        )
+
+    def test_bootstrap_without_seeds_starts_from_a_key_symbol(self):
+        """No entrypoints and no cross-cutting edges: the stream bootstraps from
+        the highest-centrality node — which must be a key symbol, or the
+        bootstrap is just another unfiltered seed.
+
+        The hub is a Makefile ``target``, NOT a ``file``: the dampener stack's
+        file-kind stage already demotes a ``file`` hub below its callers, so a
+        ``file`` fixture passes on the unfixed code and tests nothing. Edges are
+        ``references`` (not ``calls``) so no cross-cutting seed exists and the
+        bootstrap branch is what actually runs.
+        """
+        real = [make_symbol(f"h_{i}", path=f"src/h{i}.py") for i in range(3)]
+        hub = make_symbol("build", path="Makefile", kind="target")
+        symbols = real + [hub]
+        edges = [make_edge(s.id, hub.id, edge_type="references") for s in real]
+        result = self._run(symbols, edges, k=10)
+        kinds = [n["kind"] for n in result["nodes"]]
+        assert kinds[0] != "target", (
+            f"the bootstrap seed was a non-key node; emitted kinds in order: {kinds}"
+        )
+        # The hub still joins the three islands, so it is admitted — as the
+        # FIRST bridge pick, not as the seed.
+        assert kinds[1] == "target", (
+            f"the non-key hub must still be admitted as a bridge; got {kinds}"
+        )
+
+    def test_select_by_connectivity_seed_eligible_both_policies(self):
+        """``seed_eligible`` gates seeds AND the bootstrap, under both the
+        interleaved (compact) and preload (tiered) policies, and falls back to
+        the whole population when nothing is eligible — an all-file repo still
+        gets an output rather than an empty one.
+        """
+        from hypergumbo_core.compact import select_by_connectivity
+        from hypergumbo_core.selection.filters import is_key_symbol
+
+        fn = make_symbol("fn", path="src/f.py")
+        fl = make_symbol("f.toml", path="f.toml", kind="file")
+        edges = [make_edge(fn.id, fl.id, edge_type="references")]
+        cent = {fn.id: 0.1, fl.id: 0.9}
+        for interleave, budget in ((True, 1), (False, 0)):
+            seeded = select_by_connectivity(
+                [fn, fl], edges, [fl.id], budget, centrality=dict(cent),
+                interleave=interleave, seed_eligible=is_key_symbol,
+            )
+            assert [s.name for s in seeded.included.symbols] == ["fn"], interleave
+            boot = select_by_connectivity(
+                [fn, fl], edges, [], budget, centrality=dict(cent),
+                interleave=interleave, seed_eligible=is_key_symbol,
+            )
+            assert [s.name for s in boot.included.symbols][:1] == ["fn"], interleave
+            nothing_eligible = select_by_connectivity(
+                [fl], [], [], max(budget, 1), centrality={fl.id: 0.9},
+                interleave=interleave, seed_eligible=is_key_symbol,
+            )
+            assert [s.name for s in nothing_eligible.included.symbols] == ["f.toml"]
+
+
 class TestConnectivityContainmentMonotonicity:
     """WI-vofud's containment property, for CONNECTIVITY mode.
 
