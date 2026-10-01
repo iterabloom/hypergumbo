@@ -1,0 +1,20 @@
+- op: create  # 4c3d
+  at: '2026-10-01T14:57:04Z'  # 4c3d
+  by: agent  # 4c3d
+  actor: jgstern_agent  # 4c3d
+  clock: 1  # 4c3d
+  nonce: 4c3d  # 4c3d
+  data:  # 4c3d
+    kind: work_item  # 4c3d
+    title: "annotation-convention linker labels .tsx annotation sites 'tsx' and .mts/.cts sites 'unknown' (grammar-name language_from_path used as a language label)"  # 4c3d
+    status: todo_hard  # 4c3d
+    priority: 3  # 4c3d
+    parent:  # 4c3d
+    tags:  # 4c3d
+    - linker  # 4c3d
+    isbefore: []  # 4c3d
+    duplicate_of: []  # 4c3d
+    not_duplicate_of: []  # 4c3d
+    pr_ref:  # 4c3d
+    description: "**Defect.** The annotation-convention linker (linkers/annotation_convention.py) labels the nodes it mints from the file suffix with core `language_from_path`, which returns tree-sitter GRAMMAR names, not analyzer language tags. A `// @hg:route GET /api/x` in `A.tsx` mints `tsx:A.tsx:1-1:GET /api/x:function` with discovery_language=\"tsx\" (the JS/TS analyzer tags that file `typescript`); the same directive in `B.mts` mints `unknown:B.mts:1-1:GET /api/y:function` with discovery_language=None (`.mts` is not in `_EXTENSION_TO_LANGUAGE`). Sites: annotation_convention.py ~193/216 (publishers), ~233/254 (subscribers), ~305/316 (routes), ~349/369 (dispatches).\n\n**Repro (2026-10-01, branch jgstern-agent/fix/komum, function-level).** `link_annotations(root, [Symbol(path=\"A.tsx\", language=\"typescript\"), Symbol(path=\"B.mts\", language=\"typescript\")])` with the two files above returns exactly those two ids. Not reproduced through a full survey; not measured on the corpus (`@hg:` directives are opt-in and rare).\n\n**Why it matters.** The id's language slot names a language no analyzer emits (`tsx`) or none at all (`unknown`). WI-dovog showed verify-claims derives \"languages that made calls\" from the id's first segment; a `tsx` slot there has no I/O catalog.\n\n**Fix sketch.** The linker is language-agnostic, so it needs an analyzer-tag mapping, not the grammar map: `.tsx/.mts/.cts -> typescript` (as `js_ts_language_from_path` does for the JS family), and an explicit decision for every other grammar name that differs from its analyzer's tag. Sibling: WI-komum fixed the same grammar-name mislabel in websocket.py `_language_for_file` (`.tsx` -> `tsx`) for the JS family only."  # 4c3d
+    fields: {}  # 4c3d

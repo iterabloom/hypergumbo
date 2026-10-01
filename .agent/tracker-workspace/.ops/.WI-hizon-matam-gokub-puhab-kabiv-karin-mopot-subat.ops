@@ -1,0 +1,21 @@
+- op: create  # 5f7c
+  at: '2026-10-01T14:57:17Z'  # 5f7c
+  by: agent  # 5f7c
+  actor: jgstern_agent  # 5f7c
+  clock: 1  # 5f7c
+  nonce: 5f7c  # 5f7c
+  data:  # 5f7c
+    kind: work_item  # 5f7c
+    title: "http, graphql and message_queue linkers never scan .mjs/.cjs/.mts/.cts files (message_queue also skips .jsx/.tsx): narrower globs than the JS/TS analyzer"  # 5f7c
+    status: todo_hard  # 5f7c
+    priority: 3  # 5f7c
+    parent:  # 5f7c
+    tags:  # 5f7c
+    - linker  # 5f7c
+    - http_linker  # 5f7c
+    isbefore: []  # 5f7c
+    duplicate_of: []  # 5f7c
+    not_duplicate_of: []  # 5f7c
+    pr_ref:  # 5f7c
+    description: "**Recall gap.** Three JS-family linkers glob a narrower JS/TS extension set than the JS/TS analyzer (`*.js *.jsx *.ts *.tsx *.mjs *.cjs *.mts *.cts`), so client calls in ES-module / CommonJS variants are never scanned:\n- http.py `_find_source_files`: js/jsx/ts/tsx only (misses .mjs .cjs .mts .cts).\n- graphql.py `_find_source_files`: js/jsx/ts/tsx only (same four missing).\n- message_queue.py `_find_source_files`: `*.js *.ts` only (misses .jsx .tsx .mjs .cjs .mts .cts).\n\n**Repro (2026-10-01, branch jgstern-agent/fix/komum, function-level).** One file per extension, each with `fetch('/api/x')`, a gql query and `producer.send({ topic: ... })`: http and graphql `_find_source_files` return only .js/.jsx/.ts/.tsx; `link_message_queues` mints symbols only for the .js and .ts files. Not measured on the corpus (how many .mjs/.cjs/.mts/.cts files carry such calls is unknown).\n\n**Note for the fix.** Once these globs widen, the label must come from `js_ts_language_from_path`, which on WI-komum's branch maps .mts/.cts -> typescript (it used to say javascript). http's dispatch sends every non-py/go/rb/java/elm suffix to `_scan_javascript_file`, so widening its glob reaches the JS scanner without a dispatch change; message_queue's `_detect_language` would need the new suffixes too (it returns \"unknown\" under `# pragma: no cover` otherwise)."  # 5f7c
+    fields: {}  # 5f7c
