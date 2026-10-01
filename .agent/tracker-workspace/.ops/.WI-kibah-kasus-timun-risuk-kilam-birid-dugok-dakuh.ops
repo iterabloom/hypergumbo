@@ -1,0 +1,22 @@
+- op: create  # cafd
+  at: '2026-10-01T09:04:51Z'  # cafd
+  by: agent  # cafd
+  actor: jgstern_agent  # cafd
+  clock: 1  # cafd
+  nonce: cafd  # cafd
+  data:  # cafd
+    kind: work_item  # cafd
+    title: "go: a selector-form function reference (register(pkg.Handler), Command{RunE: pkg.Run}) is resolved by its field name repo-wide -- reg(http.NotFound) binds a repo function NotFound at 0.70"  # cafd
+    status: todo_hard  # cafd
+    priority: 3  # cafd
+    parent:  # cafd
+    tags:  # cafd
+    - go  # cafd
+    - call_graph  # cafd
+    - analysis_quality  # cafd
+    isbefore: []  # cafd
+    duplicate_of: []  # cafd
+    not_duplicate_of: []  # cafd
+    pr_ref:  # cafd
+    description: "FOUND 2026-10-01 while fixing WI-bivin-ronup-kuzam-giliz-sinoz-gihug-tigas-rovom (branch jgstern-agent/fix/bivin, not merged).\n\ngo.py resolves the SELECTOR form of a function reference by its field name alone, repo-wide, with no package or receiver evidence: in _extract_function_reference_edges (a function passed as an argument, r.Get(\"/x\", h.GetAPI) or register(pkg.Handler)) and in the keyed_element arm (cobra.Command{RunE: pkg.Run}), both call resolver.lookup(ref_name) with no path_hint. The operand is never consulted: an import alias (pkg.Handler) is not turned into the import-path hint the call arm uses, and a typed receiver (h.GetAPI with h of a known type) is not turned into Type.GetAPI. So:\n- a name declared once anywhere in the repo binds there at 0.70, even when the operand is an EXTERNAL package (http.NotFound -> a repo function NotFound);\n- two candidates bind the path-sorted first at 0.70/sqrt(2) = 0.49;\n- three or more bind nothing (ambiguity_threshold=3).\n\nWI-bivin fixed the BARE-identifier form of both arms (caller's own package only). The selector form is the same missing-evidence mechanism on a different construct and was deliberately left out of that branch.\n\nLive repro (analyze_go on the bivin branch; package a declares func NotFound(), package b does reg(http.NotFound) and C{H: http.NotFound} with \"net/http\" imported): Use -> a/a.go NotFound twice, function_reference_arg 0.70 and struct_field_reference 0.70 -- a call edge into a package b never imports, for a stdlib function.\n\nNOT MEASURED: frequency on the corpus; how many selector refs have an import-alias operand vs a typed-receiver operand vs an untyped one. Related: WI-ravav-ruguz-loziz-kajag-milub-naval-bufar-dadil (whether a struct-literal field value should be a calls edge at all).\n\nACCEPTANCE: a selector function reference whose operand is an import alias resolves only within the imported package (or to the unresolved placeholder for an external package); one whose operand has a tracked type resolves to Type.method; neither falls back to a repo-wide short-name pick."  # cafd
+    fields: {}  # cafd

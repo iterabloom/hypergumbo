@@ -1,0 +1,21 @@
+- op: create  # d05b
+  at: '2026-10-01T09:04:43Z'  # d05b
+  by: agent  # d05b
+  actor: jgstern_agent  # d05b
+  clock: 1  # d05b
+  nonce: d05b  # d05b
+  data:  # d05b
+    kind: work_item  # d05b
+    title: "swift: a declared-but-UNTYPED name does not shadow -- _type_of falls through it to an outer binding or the field and stamps that type on a different variable; and if/for/do blocks are not scopes"  # d05b
+    status: todo_hard  # d05b
+    priority: 3  # d05b
+    parent:  # d05b
+    tags:  # d05b
+    - swift  # d05b
+    - analysis_quality  # d05b
+    isbefore: []  # d05b
+    duplicate_of: []  # d05b
+    not_duplicate_of: []  # d05b
+    pr_ref:  # d05b
+    description: "FILED 2026-10-01 from WI-mofil-tidog-forob-tovah-givud-lijog-vuvug-gutid's A/B read-back.\n\nMECHANISM. The swift binding pass records a name only when it can TYPE it. A declared-but-untyped name -- an unannotated closure parameter, a local whose initialiser the registry cannot type, a parameter of an unextractable type -- leaves NO entry, so `_type_of` falls THROUGH it to an outer binding, `var_types`, or `_inherited_field_type`, and stamps the OUTER name's type on a different variable. ABSENT != EMPTY: an untyped declaration is a positive claim that shadows, and is read as nothing.\n\nINSTANCES, read back:\n  hummingbird Sources/HummingbirdCore/Request/URI.swift:46-47  `queries.map { query -> ... in var query = query; ... query.read(until:) }` -- the closure parameter `query` is unannotated, so the receiver resolves through the OUTER `guard var query = _query` (Parser). Correct only because both are Parser.\n  fixture (WI-mofil probe): `func go(s: FileManager) { let s = s.makeSession(store); s.dataTask(with: u) }` -- the local s is untyped (no registry row), so `s.dataTask` is stamped FileManager from the parameter it shadows: swift:FileManager:0-0:dataTask.\n\nA second, related gap: an `if`/`for`/`do` body is not a scope in the map (only functions and, since WI-mofil, closures are), so a binding inside one block types a same-named receiver AFTER the block. Pre-existing; WI-mofil made scoped bindings position-aware (visible from the end of the declaration) but not block-scoped.\n\nDIRECTION. Record every declaration in its scope with a None type (a tombstone) and stop the lookup at the innermost visible binding, typed or not; make `statements` blocks scopes (guard binds into its PARENT block, if/while-let into the body). Measure BOTH directions: tombstones REMOVE stamps, some of which are coincidentally correct today (Kingfisher ProcessorCollectionViewController.swift:88 was typed UIAlertController only through a closure-local leak WI-mofil closed)."  # d05b
+    fields: {}  # d05b
