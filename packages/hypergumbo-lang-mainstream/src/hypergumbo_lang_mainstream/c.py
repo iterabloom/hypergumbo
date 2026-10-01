@@ -33,7 +33,12 @@ Call-edge details:
 - **Enclosing function**: found by position (``symbols_at`` /
   ``symbol_declared_by`` on the ``function_definition`` node), not by name,
   so ``#ifdef`` / ``#else`` definitions of one name in one file anchor to the
-  right alternative.
+  right alternative. The dispatch-table body scan uses the same lookup.
+- **Function names at any declarator depth**: ``c_family_declarator`` walks
+  the whole declarator chain (``char **f()``, ``int (f)(int)``, a function
+  returning a function pointer), so no definition is left without a symbol
+  and its calls unemitted because its name sat under a second
+  ``pointer_declarator`` (WI-saduj). cpp.py shares the walk.
 
 If tree-sitter-c is not installed, the analyzer warns and returns a
 skipped result.
@@ -70,7 +75,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, NamedTuple, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -143,32 +148,94 @@ def _find_identifier_in_children(node: "tree_sitter.Node", source: bytes) -> Opt
     return None
 
 
+class CFamilyDeclarator(NamedTuple):
+    """What a C/C++ definition's declarator chain says about the function.
+
+    ``function_declarator`` holds the function's OWN parameter list; ``name`` is
+    the leaf naming it (``identifier``, and in C++ also ``qualified_identifier``,
+    ``field_identifier``, ``operator_name``, ``destructor_name``,
+    ``template_function`` or ``operator_cast``); ``returns_function`` is True when
+    a second, OUTER ``function_declarator`` wraps it, i.e. the function returns a
+    function pointer; ``pointer_depth`` counts the ``pointer_declarator`` levels
+    of the return type.
+    """
+
+    function_declarator: Optional["tree_sitter.Node"]
+    name: Optional["tree_sitter.Node"]
+    returns_function: bool
+    pointer_depth: int
+
+
+def _is_declarator_or_name(node_type: str) -> bool:
+    """A node a declarator wrapper can hold as its inner declarator. The rest of
+    its named children are modifiers (``ms_call_modifier``, attributes)."""
+    return node_type.endswith(("declarator", "identifier")) or node_type in (
+        "operator_name", "destructor_name", "template_function", "operator_cast",
+    )
+
+
+def c_family_declarator(node: "tree_sitter.Node") -> CFamilyDeclarator:
+    """Walk a ``function_definition``'s declarator chain down to the name.
+
+    WI-saduj. The name of a C or C++ function can sit at any depth: ``char **f()``
+    nests two ``pointer_declarator`` s, ``int *&f()`` (C++) a pointer and a
+    ``reference_declarator``, ``int (f)(int)`` a ``parenthesized_declarator``, and
+    a function returning a function pointer, ``int (*f(void))(int)``, puts its own
+    ``function_declarator`` INSIDE the declarator of the pointer it returns, under
+    an outer one holding the returned pointer's parameters. The previous readers
+    descended exactly one ``pointer_declarator``, so every deeper shape got no
+    symbol and every call in it was left unemitted (crun's ``char
+    **read_dir_entries``). This walk follows the ``declarator`` field, and the
+    unnamed inner declarator of the wrappers that have no such field
+    (``parenthesized_declarator``, C++'s ``reference_declarator``), until a node
+    that is not a declarator: the name. The INNERMOST ``function_declarator`` on
+    the way is the function's own.
+    """
+    function_declarator = None
+    outer_functions = 0
+    pointers = 0
+    pointers_at_function = 0
+    current = node.child_by_field_name("declarator")
+    while current is not None and current.type.endswith("_declarator"):
+        if current.type == "function_declarator":
+            if function_declarator is not None:
+                outer_functions += 1
+            function_declarator = current
+            pointers_at_function = pointers
+        elif current.type == "pointer_declarator":
+            pointers += 1
+        inner = current.child_by_field_name("declarator")
+        if inner is None:
+            inner = next(
+                (c for c in current.named_children if _is_declarator_or_name(c.type)),
+                None,
+            )
+        current = inner
+    if function_declarator is None:
+        return CFamilyDeclarator(None, current, False, 0)
+    return CFamilyDeclarator(
+        function_declarator, current, outer_functions > 0, pointers_at_function,
+    )
+
+
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Extract function name from function_definition or declaration."""
-    # Look for declarator which contains the function name
-    for child in node.children:
-        if child.type == "function_declarator":
-            # Function declarator contains identifier
-            return _find_identifier_in_children(child, source)
-        elif child.type == "pointer_declarator":
-            # Handle pointer return types: int* func()
-            for subchild in child.children:
-                if subchild.type == "function_declarator":
-                    return _find_identifier_in_children(subchild, source)
-    return None
+    """The name a C ``function_definition`` defines, at any declarator depth."""
+    shape = c_family_declarator(node)
+    if shape.function_declarator is None or shape.name is None:
+        return None
+    if shape.name.type in ("identifier", "type_identifier"):
+        return str(node_text(shape.name, source))
+    return None  # pragma: no cover - only a malformed (ERROR) leaf is neither
 
 
 def _find_function_declarator(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
-    """Find the function_declarator node within a function definition or declaration."""
-    for child in node.children:
-        if child.type == "function_declarator":
-            return child
-        elif child.type == "pointer_declarator":
-            # Pointer return type: int* func()
-            for subchild in child.children:
-                if subchild.type == "function_declarator":
-                    return subchild
-    return None  # pragma: no cover
+    """The function's own ``function_declarator``: for a definition, at any depth
+    (:func:`c_family_declarator`); for a prototype, the first one among the
+    declaration's declarators (``int a, f(int);``), which is the only shape
+    ``_extract_symbols`` emits a prototype for."""
+    if node.type == "declaration":
+        return next((c for c in node.children if c.type == "function_declarator"), None)
+    return c_family_declarator(node).function_declarator
 
 
 def _extract_c_signature(
@@ -207,6 +274,13 @@ def _extract_c_signature(
     # Build signature with parameters
     sig = "(" + ", ".join(param_strs) + ")"
 
+    # A function returning a function pointer: its return type is spelled around
+    # the name (``int (*f(void))(int)``), so no return type is rendered rather
+    # than a false ``int``.
+    shape = c_family_declarator(node)
+    if shape.returns_function:
+        return sig
+
     # Extract return type (before the function_declarator)
     return_type_parts: list[str] = []
     for child in node.children:
@@ -217,12 +291,8 @@ def _extract_c_signature(
             return_type_parts.append(node_text(child, source))
 
     if return_type_parts:
-        return_type = " ".join(return_type_parts)
-        # Add pointer indicator if function_declarator is wrapped in pointer_declarator
-        for child in node.children:
-            if child.type == "pointer_declarator":
-                return_type += "*"
-                break
+        # One ``*`` per pointer level: ``char **f()`` returns ``char**``.
+        return_type = " ".join(return_type_parts) + "*" * shape.pointer_depth
         if return_type and return_type != "void":
             sig += f" {return_type}"
 
@@ -536,10 +606,10 @@ def _extract_edges(
     Uses global symbol registry to resolve cross-file references.
     Identifies the enclosing function by position through
     ``symbols_at(file_symbols)`` (this file's declarations only), so it stays
-    correct when multiple files define functions with the same name.
-    ``local_symbols`` is consulted only to look up the function symbol when
-    linking lookup functions to dispatch tables (and, when ``file_symbols``
-    is omitted, to rebuild this file's declaration list).
+    correct when multiple files, or two ``#ifdef`` alternatives in one file,
+    define functions with the same name; the function that uses a dispatch
+    table is found the same way. ``local_symbols`` is consulted only when
+    ``file_symbols`` is omitted, to rebuild this file's declaration list.
     Uses iterative traversal to avoid RecursionError on deeply nested code.
     """
     if resolver is None:  # pragma: no cover - defensive
@@ -880,23 +950,15 @@ def _extract_edges(
     # lookup functions (e.g., get_builtin) to the dispatch table variable,
     # completing the chain from the caller through to the dispatched targets.
     if dispatch_tables:
-        str_path = str(file_path)
         for node in iter_tree(tree.root_node):
             if node.type != "function_definition":
                 continue
-            func_name = _get_function_name(node, source)
-            if func_name is None:
-                continue  # pragma: no cover - defensive (malformed AST)
-            # Resolve the function symbol from local or global tables
-            func_sym = None
-            if local_symbols and func_name in local_symbols:
-                func_sym = local_symbols[func_name]
-            elif func_name in global_symbols:  # pragma: no cover - fallback
-                gs = global_symbols[func_name]
-                if gs.path == str_path:
-                    func_sym = gs
+            # The referring function, by the definition's POSITION (INV-midag):
+            # by name, of two ``#ifdef`` alternatives the reference in the first
+            # was attributed to the second (WI-saduj).
+            func_sym = symbol_declared_by(node, decl_index)
             if func_sym is None:
-                continue  # pragma: no cover - defensive
+                continue  # pragma: no cover - a definition the symbol pass could not name (malformed)
             # Scan function body for dispatch table variable references
             body = node.child_by_field_name("body")
             if body is None:

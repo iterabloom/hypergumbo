@@ -30,7 +30,17 @@ Call-edge details:
 - **Anchor**: a call in no function (a global initialiser) is anchored on
   the file's anchor symbol (``file_anchor_symbol``), except for
   ``c_family_is_not_a_call`` shapes; a call inside a function the analyzer
-  cannot name is not emitted.
+  cannot name is not emitted. The enclosing definition is found by its
+  POSITION (``symbols_at`` / ``symbol_declared_by`` over ``file_symbols()``),
+  never its short name: the name-keyed view keeps one symbol per name, so of
+  ``P::run``/``Q::run`` or two overloads every call, ``new``, dispatch-table
+  use and ``std::cout`` read was drawn from the last (WI-saduj).
+- **Definition names**: found at any declarator depth by the shared
+  ``c_family_declarator`` walk (``char **f()``, ``int *&f()``, a function
+  returning a function pointer), and for every leaf tree-sitter-cpp gives a
+  definition: qualified and plain identifiers, an explicit specialisation
+  (``template <> void f<int>(int)``, named ``f``), ``operator==``, a
+  destructor and a conversion operator (WI-saduj).
 - **Member calls**: ``this->a->b()`` is resolved through class field types
   (``_resolve_cpp_field_chain``). A member call whose method name is in
   ``_CPP_STL_METHODS`` (``v.clear()``) is never resolved against project
@@ -86,7 +96,7 @@ from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
+from hypergumbo_lang_mainstream.c import c_family_declarator, c_family_is_not_a_call
 from hypergumbo_lang_mainstream.header_owner import headers_owned_by
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -102,6 +112,8 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     node_text as _node_text,
     stamp_io_mode_from_call,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -367,18 +379,18 @@ def _extract_cpp_signature(
     if node.type not in ("function_definition", "declaration"):
         return None  # pragma: no cover
 
-    # Find function_declarator (may be wrapped in pointer_declarator or reference_declarator)
-    declarator = _find_child_by_type(node, "function_declarator")
-    if not declarator:
-        ptr_decl = _find_child_by_type(node, "pointer_declarator")
-        if ptr_decl:
-            declarator = _find_child_by_type(ptr_decl, "function_declarator")
-    if not declarator:
-        ref_decl = _find_child_by_type(node, "reference_declarator")
-        if ref_decl:
-            declarator = _find_child_by_type(ref_decl, "function_declarator")
-    if not declarator:
-        return None  # pragma: no cover
+    # The function's own declarator, at any depth (``c_family_declarator``). A
+    # conversion operator (``operator bool() const``) has none: its parameter
+    # list sits in the ``operator_cast``'s abstract declarator.
+    shape = c_family_declarator(node)
+    declarator = shape.function_declarator
+    if declarator is None and shape.name is not None:
+        declarator = next(
+            (n for n in iter_tree(shape.name) if n.type == "abstract_function_declarator"),
+            None,
+        )
+    if declarator is None:
+        return None  # pragma: no cover - every definition shape names its parameters
 
     # Find parameter_list
     param_list = _find_child_by_type(declarator, "parameter_list")
@@ -395,10 +407,18 @@ def _extract_cpp_signature(
     # Build signature with parameters
     sig = "(" + ", ".join(param_strs) + ")"
 
-    # Extract return type (collect nodes before function_declarator)
+    # A function returning a function pointer: its return type is spelled
+    # around the name (``int (*f(void))(int)``), so it is not rendered, rather
+    # than rendered as a false ``int``.
+    if shape.returns_function:
+        return sig
+
+    # Extract return type (collect nodes before the declarator, which is the
+    # name itself for a conversion operator: ``S::operator int`` is no type)
+    declarator_node = node.child_by_field_name("declarator")
     return_type_parts: list[str] = []
     for child in node.children:
-        if child.type == "function_declarator":
+        if child == declarator_node:
             break
         if child.type in (
             "primitive_type", "type_identifier", "qualified_identifier",
@@ -415,48 +435,69 @@ def _extract_cpp_signature(
     return sig
 
 
+def _cpp_operator_cast_name(node: "tree_sitter.Node", source: bytes) -> str:
+    """``operator bool`` for the ``operator_cast`` of ``operator bool() const``:
+    the text before its parameter list, whitespace collapsed."""
+    params = next(
+        (n for n in iter_tree(node) if n.type == "parameter_list"), None,
+    )
+    end = params.start_byte if params is not None else node.end_byte
+    return " ".join(source[node.start_byte:end].decode("utf-8", errors="replace").split())
+
+
+def _cpp_in_class_body(node: "tree_sitter.Node") -> bool:
+    """Whether a ``function_definition`` is a member defined in a class body
+    (directly, or as a member template). A ``friend`` definition is not: its
+    parent is the ``friend_declaration``, and it defines a free function."""
+    parent = node.parent
+    if parent is not None and parent.type == "template_declaration":
+        parent = parent.parent
+    return parent is not None and parent.type == "field_declaration_list"
+
+
 def _extract_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[tuple[str, str]]:
-    """Extract function name and kind from function_definition or field_declaration.
+    """Extract function name and kind from a ``function_definition``.
 
-    Returns (name, kind) tuple where kind is 'function' or 'method'.
-    Handles pointer return types where function_declarator is wrapped
-    inside pointer_declarator (e.g., ``T* create()``).
+    Returns (name, kind) tuple where kind is 'function' or 'method'. The name
+    is found at any declarator depth by ``c_family_declarator`` (WI-saduj):
+    ``char **f()``, ``int *&f()`` and a function returning a function pointer
+    each got no symbol when only one wrapper level was descended. The leaf
+    decides the name and kind:
+
+    - ``qualified_identifier`` (``A::run``, ``A::operator bool``): method.
+    - ``identifier``: function; ``field_identifier`` (an in-class method): method.
+    - ``template_function`` (an explicit specialisation ``template <> void
+      f<int>(int)``): the template's name, ``f``, so it sits beside the primary
+      template the way an overload sits beside its siblings.
+    - ``operator_name``, ``destructor_name``, ``operator_cast``: a method when
+      defined in a class body, else a function (a free or ``friend``
+      ``operator==``).
     """
-    declarator = _find_child_by_type(node, "function_declarator")
-    if not declarator:
-        # Pointer return types: function_definition -> pointer_declarator -> function_declarator
-        ptr_decl = _find_child_by_type(node, "pointer_declarator")
-        if ptr_decl:
-            declarator = _find_child_by_type(ptr_decl, "function_declarator")
-    if not declarator:
-        # Reference return types: function_definition -> reference_declarator -> function_declarator
-        ref_decl = _find_child_by_type(node, "reference_declarator")
-        if ref_decl:
-            declarator = _find_child_by_type(ref_decl, "function_declarator")
-    if not declarator:
-        return None  # pragma: no cover - defensive
-
-    # Check for qualified name (Class::method)
-    qualified = _find_child_by_type(declarator, "qualified_identifier")
-    if qualified:
-        # It's a class method implementation
-        # Format: namespace::class::method or class::method
-        full_name = _node_text(qualified, source)
-        return (full_name, "method")
-
-    # Check for simple identifier (standalone function)
-    ident = _find_child_by_type(declarator, "identifier")
-    if ident:
-        name = _node_text(ident, source)
-        return (name, "function")
-
-    # Check for field_identifier (method declaration in class)
-    field_ident = _find_child_by_type(declarator, "field_identifier")
-    if field_ident:
-        name = _node_text(field_ident, source)
-        return (name, "method")
-
-    return None  # pragma: no cover - defensive
+    shape = c_family_declarator(node)
+    leaf = shape.name
+    if leaf is None:
+        return None  # pragma: no cover - a declarator chain always ends in a name
+    if leaf.type == "qualified_identifier":
+        # namespace::class::method or class::method; a conversion operator's
+        # leaf spans its parameter list, which is not part of its name.
+        cast = next((n for n in iter_tree(leaf) if n.type == "operator_cast"), None)
+        if cast is not None:
+            prefix = source[leaf.start_byte:cast.start_byte].decode("utf-8", errors="replace")
+            return (prefix + _cpp_operator_cast_name(cast, source), "method")
+        return (_node_text(leaf, source), "method")
+    if leaf.type == "identifier":
+        return (_node_text(leaf, source), "function")
+    if leaf.type == "field_identifier":
+        return (_node_text(leaf, source), "method")
+    if leaf.type == "template_function":
+        name = _node_text(leaf, source).split("<", 1)[0].strip()
+    elif leaf.type == "operator_cast":
+        name = _cpp_operator_cast_name(leaf, source)
+    elif leaf.type in ("operator_name", "destructor_name"):
+        name = _node_text(leaf, source)
+    else:
+        return None  # pragma: no cover - no other name leaf in tree-sitter-cpp
+    return (name, "method" if _cpp_in_class_body(node) else "function")
 
 
 # WI-jusus: node-type sets for field/variable (data-member) emission.
@@ -1270,6 +1311,7 @@ def _extract_edges_from_tree(
     resolver: NameResolver,
     namespace_aliases: dict[str, str] | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a parsed tree.
 
@@ -1278,9 +1320,19 @@ def _extract_edges_from_tree(
     Args:
         namespace_aliases: Mapping of alias -> qualified_namespace for path_hint (ADR-0007)
         field_type_registry: Class field types for chained ``this->`` resolution.
+        file_symbols: Every symbol of this file (``file_symbols()``). The
+            definition an edge is drawn from is found in it by POSITION
+            (INV-midag, WI-saduj); ``local_symbols`` keeps one symbol per name,
+            so of ``P::run``/``Q::run`` or two overloads it drew every edge
+            from the last. Omitted (a direct call), the dict's values stand in.
     """
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
+    if file_symbols is None:
+        file_symbols = list({s.id: s for s in local_symbols.values()}.values())
+    # Only callables: a struct defined in a function's return type
+    # (``struct S {..} f() {..}``) starts at the same position as the definition.
+    decl_index = symbols_at([s for s in file_symbols if s.kind in ("function", "method")])
     edges: list[Edge] = []
     _caller_path = str(file_path)
     file_id = _make_file_id(str(file_path))
@@ -1382,13 +1434,8 @@ def _extract_edges_from_tree(
             # inherit the file anchor from the walk's root. A call inside it is
             # left unemitted, as before, rather than attributed to the file:
             # the file anchor is for code that is in no function at all.
-            new_function = None
-            result = _extract_function_name(node, source)
-            if result:
-                name, _ = result
-                short_name = name.split("::")[-1] if "::" in name else name
-                if short_name in local_symbols:
-                    new_function = local_symbols[short_name]
+            # WI-saduj: found by the definition's POSITION, never its short name.
+            new_function = symbol_declared_by(node, decl_index)
 
         # Include directive
         elif node.type == "preproc_include":
@@ -1902,25 +1949,13 @@ def _extract_edges_from_tree(
     # variables, creating `references` edges carrying
     # meta.ref_construct='dispatch_table'.
     if dispatch_tables:
-        str_path = str(file_path)
         for dt_node in iter_tree(tree.root_node):
             if dt_node.type != "function_definition":
                 continue
-            fn_result = _extract_function_name(dt_node, source)
-            if fn_result is None:
-                continue  # pragma: no cover - defensive
-            fn_name, _ = fn_result
-            short_fn = fn_name.split("::")[-1] if "::" in fn_name else fn_name
-            # Resolve the function symbol from local or global tables
-            func_sym = None
-            if local_symbols and short_fn in local_symbols:
-                func_sym = local_symbols[short_fn]
-            elif short_fn in global_symbols:  # pragma: no cover - fallback
-                gs = global_symbols[short_fn]
-                if gs.path == str_path:
-                    func_sym = gs
+            # The referring definition, by POSITION (WI-saduj), as in the walk.
+            func_sym = symbol_declared_by(dt_node, decl_index)
             if func_sym is None:
-                continue  # pragma: no cover - defensive
+                continue  # pragma: no cover - a definition the symbol pass could not name
             body = dt_node.child_by_field_name("body")
             if body is None:
                 continue  # pragma: no cover - defensive
@@ -2039,7 +2074,9 @@ def _extract_edges_from_tree(
         ),
         # INV-fafol: anchor each read to the callable that performs it, not to
         # the file. A source and a sink must share a caller to propagate.
-        enclosing_symbols=list(local_symbols.values()),
+        # The full list, not the name-keyed view: a read in an overload the
+        # view lost fell to the file anchor (WI-saduj).
+        enclosing_symbols=file_symbols,
     )
 
     return edges
@@ -2125,6 +2162,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
             local_symbols, global_symbols, run, resolver,
             namespace_aliases=import_aliases,
             field_type_registry=getattr(self, "_field_type_registry", None),
+            file_symbols=self.file_symbols(local_symbols),
         )
 
     def get_import_aliases(
