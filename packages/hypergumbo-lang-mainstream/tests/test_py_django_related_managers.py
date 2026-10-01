@@ -22,7 +22,11 @@ QuerySet-returning members carry the module, its closed method set emits.
 THE REFUTATION CONDITION, pre-registered: an accessor-like attribute on a
 receiver whose resolved class does NOT own it must not be typed -- a
 serializer field named like an accessor, a ``@property`` that returns a
-QuerySet, an untyped root. Ownership walks the project bases, so an accessor
+QuerySet, an untyped root. (Two of the three were later overturned on
+narrower terms: the untyped root by INV-mumov, see
+``test_py_django_untyped_relation_root.py``; the QuerySet-returning property by
+WI-valav, adjudicated on the getter's return expression, see
+``test_py_django_property_managers.py``.) Ownership walks the project bases, so an accessor
 declared on an abstract base (``ForeignKey("self", related_name="addons")``)
 is owned by the concrete subclass.
 """

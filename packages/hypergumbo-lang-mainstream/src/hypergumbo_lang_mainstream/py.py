@@ -4363,13 +4363,29 @@ class DjangoRelationIndex:
       that is one), the gate on ``manager_names`` and on the ``.objects``
       instance binding: a non-model class with an attribute called ``all`` or
       ``objects`` is refused.
+    * ``property_managers[C][name]`` -- ``(kind, model)`` for a ``@property``
+      / ``@cached_property`` getter on a model ``C`` whose single ``return``
+      is a manager or a QuerySet (WI-valav, absorbing WI-tabig): pretix's
+      ``Order.fees`` returns ``self.all_fees(manager='objects')``, so
+      ``order.fees`` is the same related manager ``order.all_fees`` is, while
+      the index -- which reads DECLARATIONS -- had nothing to read. Filled by
+      :func:`_collect_django_property_managers` after this index is built,
+      because adjudicating a return expression needs the finished index.
+    * ``property_kinds_by_name[name]`` -- the same population keyed by the
+      property NAME alone, for the name-only rule (INV-mumov), filled once at
+      the end of that pass.
 
     THE REFUTATION CONDITION, pre-registered before the index existed: an
     accessor-like attribute on a receiver whose resolved class does NOT own it
     must not be typed. That is a property of the lookup, not a filter: a
-    serializer field named ``meta_properties``, a ``@property`` that returns a
-    QuerySet (pretix's ``OrderPosition.checkins``), an untyped root, all miss
-    the index and keep the ``external`` slot.
+    serializer field named ``meta_properties``, or a known class that declares
+    no such accessor, misses the index and keeps the ``external`` slot. (The
+    pre-registration also listed "a ``@property`` that returns a QuerySet
+    (pretix's ``OrderPosition.checkins``)" and "an untyped root". INV-mumov
+    overturned the second for the no-evidence case; WI-valav overturns the
+    first, and on the same terms: such a property IS owned by its class, so it
+    is typed -- but only when the getter's RETURN EXPRESSION is a manager or a
+    QuerySet under this index, never because of what the property is called.)
     """
 
     related_managers: dict[str, dict[str, Symbol]] = field(default_factory=dict)
@@ -4400,6 +4416,27 @@ class DjangoRelationIndex:
     #: are read in that order (declared first, inferred only on a miss) so a
     #: real relation can never be shadowed by a same-named fixture field.
     instance_field_types: dict[str, dict[str, Symbol]] = field(default_factory=dict)
+    #: WI-valav: see the class docstring. ``kind`` is the manager-root kind the
+    #: oracle answers with -- ``"related"`` (a RelatedManager, which keeps its
+    #: ``add`` / ``remove`` / ``clear`` / ``set`` write surface), ``"manager"``
+    #: (a model manager such as ``.objects``) or ``"queryset"`` (neither has a
+    #: write surface of its own); ``model`` is the class the manager yields, or
+    #: ``None`` when the root's class did not resolve.
+    property_managers: dict[str, dict[str, "tuple[str, Symbol | None]"]] = field(
+        default_factory=dict,
+    )
+    property_kinds_by_name: dict[str, str] = field(default_factory=dict)
+
+    def property_manager(self, cls: Symbol, name: str) -> "tuple[str, Symbol | None] | None":
+        """``(kind, model)`` when ``<cls instance>.<name>`` is a property the
+        index admitted. Walks the project bases, so a property declared on an
+        abstract base (pretix's ``AbstractPosition``) is owned by every
+        concrete subclass, exactly as :meth:`accessor_model` walks them."""
+        for owner in self._lineage(cls):
+            hit = self.property_managers.get(owner.id, {}).get(name)
+            if hit is not None:
+                return hit
+        return None
 
     def fixture_field_model(self, cls: Symbol, name: str) -> Symbol | None:
         """The model ``<cls instance>.<name>`` is when a setUp-family method
@@ -4637,6 +4674,187 @@ def _collect_django_relation_index(
         if cls_id in index.model_ids
     }
     return index
+
+
+def _is_property_getter_decorator(dec: ast.expr) -> bool:
+    """``@property`` or ``@cached_property`` -- an attribute READ that runs the
+    getter and yields its return value, which is the only fact WI-valav uses.
+
+    ``functools.cached_property`` and ``django.utils.functional.cached_property``
+    are matched by their attribute form too. A ``@x.setter`` / ``@x.deleter``
+    is an ``ast.Attribute`` on the property itself and is not a getter, so it
+    never matches (the WI-sizut collision cannot arise from the AST).
+    """
+    if isinstance(dec, ast.Name):
+        return dec.id in ("property", "cached_property")
+    return isinstance(dec, ast.Attribute) and dec.attr == "cached_property"
+
+
+def _single_return_value(fn: ast.FunctionDef) -> ast.expr | None:
+    """The value of ``fn``'s ONE ``return`` statement, else ``None``.
+
+    Two returns refuse, even if both are managers: a getter that returns a
+    QuerySet on one branch and ``None`` on another is not a manager, and
+    adjudicating per branch would type the attribute on the branch nobody can
+    tell apart at the call site. A nested ``def`` / ``class`` has its own
+    returns and is not counted.
+    """
+    returns: list[ast.Return] = []
+    stack: list[ast.AST] = list(fn.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if isinstance(node, ast.Return):
+            returns.append(node)
+        stack.extend(ast.iter_child_nodes(node))
+    if len(returns) != 1:
+        return None
+    return returns[0].value
+
+
+def _django_manager_expr(
+    oracle: "_DjangoReceiverOracle", expr: ast.expr,
+) -> "tuple[str, Symbol | None] | None":
+    """``(kind, model)`` when ``expr`` denotes a Django manager or QuerySet on
+    TYPED evidence, else ``None``. The adjudicator for WI-valav's getters.
+
+    Admitted, recursively:
+
+    * a manager root the oracle reaches from a RESOLVED root
+      (``self.all_fees``, ``self.event.seats``, ``Checkin.all``) -- the
+      ``"accessor_name"`` provenance is refused, because typing a SECOND name
+      off a first name-only guess compounds weak evidence (the getter's name
+      would then feed the name-only rule itself);
+    * the ``.objects`` marker, on any root, exactly as WI-sozoj trusts it;
+    * a related manager CALLED with only ``manager=`` --
+      ``self.all_fees(manager='objects')`` is Django's
+      ``RelatedManager.__call__``, which returns the same relation's manager
+      (the pretix shape: ``Order.fees``, ``Order.positions``,
+      ``OrderPosition.checkins``, ``Customer.stored_addresses``);
+    * a member in the ORM's :data:`TYPE_PRESERVING_MEMBERS` row called on any
+      of the above, which is a QuerySet (``self.tokens.filter(active=True)``).
+
+    Everything else is refused -- ``.count()``, ``.exists()``, ``.first()``,
+    ``.get()`` return an int, a bool or an INSTANCE, not a manager.
+    """
+    if isinstance(expr, ast.Attribute):
+        if expr.attr == "objects":
+            return "manager", oracle.manager_model(expr)
+        kind, provenance = oracle.manager_root_provenance(expr)
+        if kind is None or provenance != "typed_root":
+            return None
+        return kind, oracle.manager_model(expr)
+    if not (isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute)):
+        return None
+    if (
+        not expr.args
+        and len(expr.keywords) == 1
+        and expr.keywords[0].arg == "manager"
+    ):
+        called = _django_manager_expr(oracle, expr.func)
+        return called if called is not None and called[0] == "related" else None
+    if expr.func.attr in TYPE_PRESERVING_MEMBERS.get(DJANGO_ORM_MODULE, ()):
+        inner = _django_manager_expr(oracle, expr.func.value)
+        return ("queryset", inner[1]) if inner is not None else None
+    return None
+
+
+def _collect_django_property_managers(
+    file_analyses: dict[Path, "FileAnalysis"],
+    index: DjangoRelationIndex,
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+) -> None:
+    """Admit Django MODEL properties whose getter returns a manager or a
+    QuerySet into ``index.property_managers`` (WI-valav, absorbing WI-tabig).
+
+    WHY A SEPARATE PASS, AFTER THE INDEX. The question is about the getter's
+    RETURN EXPRESSION -- ``self.all_fees(manager='objects')`` is a manager
+    only because ``OrderFee.order`` declares ``related_name="all_fees"``,
+    possibly in another file -- so it is answered by the same
+    :class:`_DjangoReceiverOracle` every other Django receiver goes through,
+    which needs the finished relation index and ``model_ids``.
+    ``_build_property_getter_index`` (WI-gubar) indexes getter SYMBOLS, which
+    carry no body; the body is what is adjudicated, so it is read here.
+
+    MODEL CLASSES ONLY. The name-only half of the rule widens with this map,
+    and a property on a view or a form says nothing about the schema.
+
+    A FIXED POINT, MONOTONE. A getter may return another admitted property
+    (``return self.paid_fees.exclude(...)``); each round can only ADD entries
+    and an entry is never revised, so the loop ends on ``changed``. The round
+    cap is the guard against a pathological tree, as in
+    :func:`_collect_django_setup_fields`.
+    """
+    units: list[tuple[
+        Symbol, list[tuple[str, str, ast.expr]], Callable[[str], Symbol | None],
+    ]] = []
+    for analysis in file_analyses.values():
+        if not isinstance(analysis.tree, ast.Module):  # pragma: no cover - always ast.parse output
+            continue
+        counts = _class_name_counts(analysis.tree)
+        resolve_name = _make_class_name_resolver(
+            analysis.symbol_by_name, analysis.imports, global_symbols,
+            counts, resolver,
+        )
+        for node in ast.walk(analysis.tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            sym = analysis.symbol_by_name.get(node.name)
+            # The same twin guard as the index's own per-file pass.
+            if (
+                sym is None or sym.kind != "class" or counts.get(node.name, 0) != 1
+                or sym.id not in index.model_ids
+            ):
+                continue
+            getters: list[tuple[str, str, ast.expr]] = []
+            for stmt in node.body:
+                if not (
+                    isinstance(stmt, ast.FunctionDef)
+                    and stmt.args.args
+                    and any(_is_property_getter_decorator(d) for d in stmt.decorator_list)
+                ):
+                    continue
+                value = _single_return_value(stmt)
+                if value is not None:
+                    getters.append((stmt.name, stmt.args.args[0].arg, value))
+            if getters:
+                units.append((sym, getters, resolve_name))
+    changed = True
+    rounds = 0
+    while changed and rounds < 4:
+        changed = False
+        rounds += 1
+        for sym, getters, resolve_name in units:
+            owned = index.property_managers.setdefault(sym.id, {})
+            for name, self_name, value in getters:
+                if name in owned:
+                    continue
+                # The getter's first parameter denotes the instance, whatever
+                # it is called; ``self`` is the oracle's own spelling of that.
+                var_types: dict[str, Symbol] = (
+                    {} if self_name == "self" else {self_name: sym}
+                )
+                oracle = _DjangoReceiverOracle(index, var_types, sym, resolve_name)
+                hit = _django_manager_expr(oracle, value)
+                if hit is not None:
+                    owned[name] = hit
+                    changed = True
+    index.property_managers = {
+        cls_id: owned for cls_id, owned in index.property_managers.items() if owned
+    }
+    kinds: dict[str, set[str]] = {}
+    for owned in index.property_managers.values():
+        for name, (kind, _model) in owned.items():
+            kinds.setdefault(name, set()).add(kind)
+    # A name two models declare with different kinds keeps no write surface
+    # under the name-only rule: ``"queryset"`` emits the shared ORM method set
+    # and nothing a RelatedManager alone has.
+    index.property_kinds_by_name = {
+        name: next(iter(found)) if len(found) == 1 else "queryset"
+        for name, found in kinds.items()
+    }
 
 
 #: The methods a Django/unittest test class builds its fixture in (WI-zamud).
@@ -5045,7 +5263,9 @@ class _DjangoReceiverOracle:
 
     def manager_root(self, expr: ast.expr) -> str | None:
         """``"related"`` for ``<instance>.<accessor>``, ``"manager"`` for
-        ``<Model>.<manager>``, else ``None``.
+        ``<Model>.<manager>``, else ``None``. A model property the index
+        admitted (WI-valav) answers with the kind its getter returns, which
+        adds ``"queryset"`` for a getter that returns a QuerySet chain.
 
         KIND ONLY. :meth:`manager_root_provenance` answers the second question --
         how the answer was reached -- and every caller here wants only the kind,
@@ -5079,9 +5299,18 @@ class _DjangoReceiverOracle:
                 return "manager", "typed_root"
             return None, None
         owner = self.instance_class(expr.value)
-        if owner is not None and self.index.accessor_model(owner, expr.attr) is not None:
-            return "related", "typed_root"
-        if owner is None and not self._refuted_by_a_known_owner(expr.value):
+        if owner is not None:
+            if self.index.accessor_model(owner, expr.attr) is not None:
+                return "related", "typed_root"
+            # WI-valav: a property the class (or a project base) owns whose
+            # getter returns a manager or a QuerySet. Consulted only AFTER the
+            # declared accessor, so a declaration always wins over an inferred
+            # getter return.
+            prop = self.index.property_manager(owner, expr.attr)
+            if prop is not None:
+                return prop[0], "typed_root"
+            return None, None
+        if not self._refuted_by_a_known_owner(expr.value):
             # INV-mumov: a declared accessor on a root nothing is known about.
             # WI-gulaz reaches the index only through ``instance_class``, so a
             # bare parameter (``event.seats.filter(...)``) or an unresolved
@@ -5115,7 +5344,13 @@ class _DjangoReceiverOracle:
             # Django models rather than merely unlikely to fire.
             if self.index.declares_accessor_anywhere(expr.attr):
                 return "related", "accessor_name"
-            return None, None
+            # WI-valav: the same rule for a model PROPERTY the index admitted on
+            # its return expression -- a name this project's models declare as
+            # manager-valued, with the same disclosure. A getter the pass
+            # refused never enters this map, so its name types nothing here.
+            prop_kind = self.index.property_kinds_by_name.get(expr.attr)
+            if prop_kind is not None:
+                return prop_kind, "accessor_name"
         return None, None
 
     def _refuted_by_a_known_owner(self, expr: ast.expr) -> bool:
@@ -5185,7 +5420,13 @@ class _DjangoReceiverOracle:
                 return cls
             return None
         owner = self.instance_class(expr.value)
-        return self.index.accessor_model(owner, expr.attr) if owner is not None else None
+        if owner is None:
+            return None
+        model = self.index.accessor_model(owner, expr.attr)
+        if model is not None:
+            return model
+        prop = self.index.property_manager(owner, expr.attr)
+        return prop[1] if prop is not None else None
 
     def model_instance(self, expr: ast.expr) -> Symbol | None:
         """The Django MODEL class ``expr`` is an instance of, or ``None``.
@@ -9354,7 +9595,12 @@ def analyze_python(
     # WI-zamud: the test-fixture half, AFTER the relation index because typing
     # ``self.orga = Organizer.objects.create(...)`` needs the manager rule the
     # index carries. A repository with no Django models never reaches it.
+    # WI-valav's property pass runs first, so a fixture built through a model
+    # property (``self.fee = self.order.fees.create(...)``) binds too.
     if _django_index is not None:
+        _collect_django_property_managers(
+            file_analyses, _django_index, global_symbols, resolver,
+        )
         _collect_django_setup_fields(
             file_analyses, _django_index, global_symbols, resolver,
         )
