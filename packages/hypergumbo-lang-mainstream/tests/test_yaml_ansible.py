@@ -52,6 +52,157 @@ class TestFindAnsibleFiles:
         assert len(files) == 1
         assert "main.yml" in files[0].name
 
+class TestAnsibleContentDiscriminator:
+    """WI-jifog: a YAML file is claimed as Ansible only on Ansible evidence.
+
+    The path arms (root-level, or under an Ansible-named directory) only
+    nominate candidates. A candidate is claimed when it is itself a playbook
+    (a top-level list with a play keyword), or when it sits under an Ansible
+    tree root evidenced by ``ansible.cfg``, a playbook, or a role entry
+    point (``tasks/main.yml`` holding a task list).
+    """
+
+    @staticmethod
+    def _rels(root: Path) -> set[str]:
+        from hypergumbo_lang_mainstream.yaml_ansible import find_ansible_files
+
+        return {p.relative_to(root).as_posix() for p in find_ansible_files(root)}
+
+    def test_root_yamllint_config_not_claimed(self, tmp_path: Path) -> None:
+        """The filed instance: a root-level yamllint config is not Ansible."""
+        (tmp_path / ".yamllint.yaml").write_text(
+            "extends: default\nrules:\n  line-length:\n    max: 120\n"
+        )
+        assert self._rels(tmp_path) == set()
+
+    def test_root_list_of_mappings_without_play_key_not_claimed(
+        self, tmp_path: Path
+    ) -> None:
+        """A root list of mappings (pre-commit hook manifest) is not a playbook."""
+        (tmp_path / ".pre-commit-hooks.yaml").write_text(
+            "- id: lint\n  name: lint\n  entry: lint\n  language: python\n"
+        )
+        assert self._rels(tmp_path) == set()
+
+    def test_root_playbook_claimed(self, tmp_path: Path) -> None:
+        (tmp_path / "site.yml").write_text(
+            "---\n- name: Web\n  hosts: web\n  tasks: []\n"
+        )
+        (tmp_path / "imports.yml").write_text(
+            "- import_playbook: site.yml\n"
+            "- ansible.builtin.import_playbook: other.yml\n"
+        )
+        assert self._rels(tmp_path) == {"site.yml", "imports.yml"}
+
+    def test_plain_config_in_vars_dir_not_claimed(self, tmp_path: Path) -> None:
+        """The directory arm's measured misfire: web/vars/app.yaml."""
+        (tmp_path / "web" / "vars").mkdir(parents=True)
+        (tmp_path / "web" / "vars" / "app.yaml").write_text("port: 8080\nhost: x\n")
+        (tmp_path / "src" / "tasks").mkdir(parents=True)
+        (tmp_path / "src" / "tasks" / "jobs.yaml").write_text(
+            "- name: nightly\n  cron: '0 0 * * *'\n"
+        )
+        assert self._rels(tmp_path) == set()
+
+    def test_ansible_cfg_marks_vars_files(self, tmp_path: Path) -> None:
+        (tmp_path / "ansible.cfg").write_text("[defaults]\n")
+        (tmp_path / "group_vars").mkdir()
+        (tmp_path / "group_vars" / "all.yml").write_text("ntp_server: x\n")
+        (tmp_path / "host_vars").mkdir()
+        (tmp_path / "host_vars" / "web1.yml").write_text("$ANSIBLE_VAULT;1.1;AES256\n0123\n")
+        assert self._rels(tmp_path) == {"group_vars/all.yml", "host_vars/web1.yml"}
+
+    def test_role_entry_point_marks_role_tree(self, tmp_path: Path) -> None:
+        role = tmp_path / "roles" / "web"
+        for sub in ("tasks", "defaults", "vars", "handlers"):
+            (role / sub).mkdir(parents=True)
+        (role / "tasks" / "main.yml").write_text("- name: install\n  package: nginx\n")
+        (role / "defaults" / "main.yml").write_text("web_port: 80\n")
+        (role / "vars" / "main.yml").write_text("---\n")
+        (role / "handlers" / "main.yml").write_text("- name: restart\n  service: x\n")
+        # A second role without its own entry point is in the same tree.
+        (tmp_path / "roles" / "db" / "defaults").mkdir(parents=True)
+        (tmp_path / "roles" / "db" / "defaults" / "main.yml").write_text("db_port: 5432\n")
+        assert self._rels(tmp_path) == {
+            "roles/web/tasks/main.yml",
+            "roles/web/defaults/main.yml",
+            "roles/web/vars/main.yml",
+            "roles/web/handlers/main.yml",
+            "roles/db/defaults/main.yml",
+        }
+
+    def test_tasks_main_that_is_not_a_task_list_is_not_evidence(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "tasks").mkdir()
+        (tmp_path / "tasks" / "main.yaml").write_text("schedule: daily\n")
+        (tmp_path / "vars").mkdir()
+        (tmp_path / "vars" / "app.yaml").write_text("port: 1\n")
+        assert self._rels(tmp_path) == set()
+
+    def test_playbook_marks_its_tree(self, tmp_path: Path) -> None:
+        """A playbook under playbooks/ roots the tree at the playbooks/ parent."""
+        (tmp_path / "playbooks").mkdir()
+        (tmp_path / "playbooks" / "site.yml").write_text("- hosts: all\n")
+        (tmp_path / "group_vars").mkdir()
+        (tmp_path / "group_vars" / "web.yml").write_text("x: 1\n")
+        assert self._rels(tmp_path) == {"playbooks/site.yml", "group_vars/web.yml"}
+
+    def test_evidence_is_scoped_to_its_tree(self, tmp_path: Path) -> None:
+        """Ansible under deploy/ does not make app/vars/*.yaml Ansible."""
+        (tmp_path / "deploy" / "group_vars").mkdir(parents=True)
+        (tmp_path / "deploy" / "ansible.cfg").write_text("[defaults]\n")
+        (tmp_path / "deploy" / "group_vars" / "all.yml").write_text("a: 1\n")
+        (tmp_path / "app" / "vars").mkdir(parents=True)
+        (tmp_path / "app" / "vars" / "config.yaml").write_text("b: 2\n")
+        assert self._rels(tmp_path) == {"deploy/group_vars/all.yml"}
+
+    def test_ansible_named_ancestor_of_repo_root_is_ignored(
+        self, tmp_path: Path
+    ) -> None:
+        """Only repo-relative directories count: a checkout under .../vars/."""
+        root = tmp_path / "vars" / "repo"
+        (root / "conf").mkdir(parents=True)
+        (root / "conf" / "app.yaml").write_text("k: v\n")
+        assert self._rels(root) == set()
+
+    def test_unparseable_root_yaml_not_claimed(self, tmp_path: Path) -> None:
+        (tmp_path / "broken.yml").write_text("- hosts: [unterminated\n")
+        (tmp_path / "latin.yml").write_bytes(b"\xff\xfe\x00- hosts: all\n")
+        assert self._rels(tmp_path) == set()
+
+    def test_oversized_root_yaml_not_parsed(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.yaml_ansible import _MAX_SHAPE_BYTES
+
+        big = "- hosts: all\n" + "#" * (_MAX_SHAPE_BYTES + 1) + "\n"
+        (tmp_path / "huge.yml").write_text(big)
+        assert self._rels(tmp_path) == set()
+
+    def test_behavior_map_has_no_ansible_language_for_yamllint_only_repo(
+        self, tmp_path: Path
+    ) -> None:
+        """Live repro of the filed defect through the production entry point."""
+        import json
+
+        from hypergumbo_core.cli import run_behavior_map
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".yamllint.yaml").write_text(
+            "extends: default\nrules:\n  line-length:\n    max: 120\n"
+        )
+        (repo / "main.py").write_text("def f():\n    return 1\n")
+        out = tmp_path / "map.json"
+        run_behavior_map(repo_root=repo, out_path=out, include_sketch_precomputed=False)
+
+        data = json.loads(out.read_text())
+        assert "yaml" in data["metrics"]["languages"]
+        assert "ansible" not in data["metrics"]["languages"]
+        langs = {n["path"].rsplit("/", 1)[-1]: n["language"] for n in data["nodes"]
+                 if n["kind"] == "file" and n["path"].endswith(".yamllint.yaml")}
+        assert langs == {".yamllint.yaml": "yaml"}
+
+
 class TestYAMLTreeSitterAvailability:
     """Tests for tree-sitter-yaml availability checking."""
 
@@ -436,8 +587,12 @@ class TestAnsibleFileNodes:
 
         playbook_dir = tmp_path / "playbooks" / "groups"
         playbook_dir.mkdir(parents=True)
+        # A real play (hosts:): it is what marks this tree as Ansible
+        # (WI-jifog); a bare task list under playbooks/ is not evidence.
         (playbook_dir / "backup-server.yml").write_text(
-            '- import_tasks: "{{ tasks_path }}/yumrepos.yml"\n'
+            '- hosts: backup\n'
+            '  tasks:\n'
+            '    - import_tasks: "{{ tasks_path }}/yumrepos.yml"\n'
         )
         tasks_dir = tmp_path / "tasks"
         tasks_dir.mkdir()
@@ -464,7 +619,9 @@ class TestAnsibleFileNodes:
         playbook_dir = tmp_path / "playbooks"
         playbook_dir.mkdir()
         (playbook_dir / "site.yml").write_text(
-            '- import_tasks: "{{ tasks_path }}/setup.yml"\n'
+            '- hosts: all\n'
+            '  tasks:\n'
+            '    - import_tasks: "{{ tasks_path }}/setup.yml"\n'
         )
         # Two setup.yml in different directories.
         a = tmp_path / "roles" / "a" / "tasks"
@@ -592,18 +749,25 @@ class TestAnsibleEmptyFile:
         """Handles empty YAML files gracefully."""
         from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
-        playbook = tmp_path / "empty.yml"
+        # Under an evidenced tree, so the empty file is claimed and reaches
+        # extraction (an empty root-level file is not a playbook: WI-jifog).
+        (tmp_path / "ansible.cfg").write_text("[defaults]\n")
+        (tmp_path / "vars").mkdir()
+        playbook = tmp_path / "vars" / "empty.yml"
         playbook.write_text("")
 
         result = analyze_ansible(tmp_path)
 
         assert result.run is not None
+        assert [s.name for s in result.symbols if s.kind == "file"] == ["empty.yml"]
 
     def test_handles_comment_only_file(self, tmp_path: Path) -> None:
         """Handles files with only comments."""
         from hypergumbo_lang_mainstream.yaml_ansible import analyze_ansible
 
-        playbook = tmp_path / "comments.yml"
+        (tmp_path / "ansible.cfg").write_text("[defaults]\n")
+        (tmp_path / "vars").mkdir()
+        playbook = tmp_path / "vars" / "comments.yml"
         playbook.write_text("""# This is a comment
 # Another comment
 """)
@@ -611,6 +775,7 @@ class TestAnsibleEmptyFile:
         result = analyze_ansible(tmp_path)
 
         assert result.run is not None
+        assert [s.name for s in result.symbols if s.kind == "file"] == ["comments.yml"]
 
 class TestAnsibleParserFailure:
     """Tests for parser failure handling."""

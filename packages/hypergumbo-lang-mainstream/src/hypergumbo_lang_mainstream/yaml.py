@@ -4,7 +4,7 @@
 The YAML language is recognised by file classification (174 ``.yaml`` /
 ``.yml`` files on the self-corpus), but before this analyzer only
 ``yaml_ansible`` ran — and that pass matches ONLY Ansible-shaped YAML
-(playbooks, ``roles/`` etc., root files), leaving 173 of 174 YAML files
+(playbooks, files in an evidenced Ansible tree), leaving 173 of 174 YAML files
 with zero nodes in the behavior map. Generic YAML — CI workflows,
 framework-pattern catalogs (``packages/*/frameworks/*.yaml``), the
 self-catalog, config — was invisible: a consumer asking "what YAML does
@@ -26,8 +26,10 @@ so a ``language="yaml"`` anchor and a ``language="ansible"`` anchor for the
 dedup (``ir.create_boundary_nodes``) only collapses *dangling* file-id
 references, not two real file Symbols. To keep the INV-hojus "one file node
 per file" invariant, this analyzer SUBTRACTS the Ansible analyzer's claimed
-set: it skips every path in ``find_ansible_files(root)``. Each physical YAML
-file therefore gets exactly one anchor — Ansible-shaped files via
+set: it skips every path in ``find_ansible_files(root)`` (which claims a
+file only on Ansible evidence -- its own playbook shape, or an
+``ansible.cfg`` / playbook / role entry point rooting its tree; WI-jifog).
+Each physical YAML file therefore gets exactly one anchor — Ansible-shaped files via
 ``yaml_ansible`` (``language="ansible"``, with its task/include content),
 everything else via this pass (``language="yaml"``, anchor only).
 
