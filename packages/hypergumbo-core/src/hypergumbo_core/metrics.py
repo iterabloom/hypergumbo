@@ -3,7 +3,8 @@
 
 Computes summary statistics from nodes and edges:
 - Total counts (nodes, edges, files)
-- Average confidence across edges
+- Average confidence across edges, plus the distribution behind it
+  (``edge_confidence``: histogram + median)
 - Per-language breakdowns
 - Per-supply-chain-tier breakdowns
 - A ``debug`` sub-block with introspection counts
@@ -14,10 +15,48 @@ These metrics help agents quickly assess the scope and quality
 of an analysis without traversing the full graph. The supply chain
 tier breakdown shows how many nodes/edges come from first-party code
 vs external dependencies.
+
+Why ``edge_confidence`` exists (WI-zimor): edge confidence is not a
+continuous quantity. Producers stamp per-evidence-type literals (ADR-0039
+ruling 1; WI-famiv), so a real map is a handful of tight spikes -- on this
+repository's self map 0.85 / 0.4 / 0.5 / 0.95 / 0.9 / 0.8 carry 99.8% of
+edges -- and the scalar ``avg_confidence`` (0.746 there) lands BETWEEN
+spikes, on a value no edge carries. Thresholding on it cuts between spikes.
+The histogram shows the shape; the median is the LOWER median
+(as ``statistics.median_low``), so it is always a value some edge carries
+(an even-count midpoint could again sit between two spikes). Histogram
+keys are the value at 0.01 resolution (``f"{c:.2f}"``), ascending: the
+literal producers use two decimals, so their spikes are exact, while the
+few producers that multiply confidences (e.g. ``0.85 * lookup * penalty``)
+fold into their 0.01 bucket, which bounds the key set to 101 on [0, 1].
+Mode and multimodality are derivable from the histogram and are not
+published separately. Both summaries are over EDGES only: nodes carry no
+``confidence`` (``Symbol`` has none). With no confidence-bearing edge the
+median is ``None`` and the histogram empty -- no measurement, said
+positively -- while ``avg_confidence`` keeps its legacy ``0.0``
+placeholder, which the empty histogram lets a reader recognise.
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List
+
+
+def _edge_confidence_distribution(confidences: List[float]) -> Dict[str, Any]:
+    """Histogram (0.01 resolution, ascending keys) + lower median.
+
+    ``median`` is ``None`` when there is nothing to summarise, so an empty
+    input is not reported as a measured confidence of 0.
+    """
+    ordered = sorted(confidences)
+    histogram: Dict[str, int] = {}
+    for value in ordered:
+        key = f"{value:.2f}"
+        histogram[key] = histogram.get(key, 0) + 1
+    # Lower median (== statistics.median_low): the middle value for an odd
+    # count, the lower of the two middle values for an even one -- always a
+    # value some edge carries.
+    median = round(ordered[(len(ordered) - 1) // 2], 3) if ordered else None
+    return {"histogram": histogram, "median": median}
 
 
 def compute_metrics(
@@ -36,8 +75,9 @@ def compute_metrics(
 
     Returns:
         Metrics dict with total_nodes, total_edges, avg_confidence,
-        total_files, per-language breakdowns, and a ``debug`` sub-block
-        with introspection counts.
+        edge_confidence (``{histogram, median}`` over edge confidence --
+        see the module docstring), total_files, per-language breakdowns,
+        and a ``debug`` sub-block with introspection counts.
 
         ``total_files`` is the **node-distinct-path** count — the number
         of distinct ``node.path`` values that survive analysis. INV-mozaf
@@ -54,9 +94,11 @@ def compute_metrics(
     total_nodes = len(nodes)
     total_edges = len(edges)
 
-    # Compute average confidence
+    # Edge confidence: mean (legacy scalar) plus the distribution behind it
+    # (WI-zimor; see module docstring). Edges only -- nodes carry none.
     confidences = [e.get("confidence", 0.0) for e in edges if "confidence" in e]
     avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+    edge_confidence = _edge_confidence_distribution(confidences)
 
     # INV-mozaf canonical definition (WI-soraj re-canonicalization):
     # ``total_files`` = unique path count across nodes. Matches what
@@ -178,6 +220,7 @@ def compute_metrics(
         "total_edges": total_edges,
         "total_files": total_files,
         "avg_confidence": round(avg_confidence, 3),
+        "edge_confidence": edge_confidence,
         "languages": languages,
         "by_supply_chain_tier": by_supply_chain_tier,
         "debug": debug,

@@ -749,6 +749,29 @@ class TestTopLevelBlockTyping:
         }
         jsonschema.Draft202012Validator(scs).validate(real)
 
+    def test_metrics_edge_confidence_validates_and_states_scope(self):
+        """WI-zimor: the edge-confidence distribution block validates against
+        its declared schema (populated and empty), and both confidence
+        summaries say they are over EDGES (nodes carry no confidence)."""
+        from hypergumbo_core.metrics import compute_metrics
+
+        schema = load_schema()
+        props = schema["properties"]["metrics"]["properties"]
+        dist_schema = props["edge_confidence"]
+        populated = compute_metrics(
+            [], [{"confidence": 0.4}, {"confidence": 0.85}, {"confidence": 0.85}],
+        )["edge_confidence"]
+        empty = compute_metrics([], [])["edge_confidence"]
+        validator = jsonschema.Draft202012Validator(dist_schema)
+        validator.validate(populated)
+        validator.validate(empty)
+        # A malformed histogram (non-integer count) is rejected: the schema
+        # pins the shape, not just the key name.
+        with pytest.raises(jsonschema.ValidationError):
+            validator.validate({"histogram": {"0.40": "3"}, "median": 0.4})
+        assert "edge" in props["avg_confidence"]["description"].lower()
+        assert "edge" in dist_schema["description"].lower()
+
     def test_metrics_properties_match_compute_metrics(self):
         """The metrics block's property set equals compute_metrics() output."""
         from hypergumbo_core.metrics import compute_metrics
