@@ -1,0 +1,22 @@
+- op: create  # 0f3c
+  at: '2026-10-01T15:32:37Z'  # 0f3c
+  by: agent  # 0f3c
+  actor: jgstern_agent  # 0f3c
+  clock: 1  # 0f3c
+  nonce: 0f3c  # 0f3c
+  data:  # 0f3c
+    kind: work_item  # 0f3c
+    title: "type_hierarchy: a concrete intermediate class still denies its extends hop in cpp/csharp, so an abstract base's method never reaches a grandchild override (Shape <- Square <- Fancy)"  # 0f3c
+    status: todo_hard  # 0f3c
+    priority: 3  # 0f3c
+    parent:  # 0f3c
+    tags:  # 0f3c
+    - linker  # 0f3c
+    - protocol  # 0f3c
+    - linker_gap  # 0f3c
+    isbefore: []  # 0f3c
+    duplicate_of: []  # 0f3c
+    not_duplicate_of: []  # 0f3c
+    pr_ref:  # 0f3c
+    description: "**Residual of WI-nizug-lavig-duhob-finog-mudus-rizut-zidub-jurit (branch `jgstern-agent/fix/nizug`).**\n\nWI-nizug widened `type_hierarchy._extends_admits_dispatch` so that, in the deny-list languages (`NO_VIRTUAL_EXTENDS_LANGUAGES` = go/cpp/rust/csharp), an `extends` hop is admitted when its CHILD **or its PARENT** is an abstract type. The test is per HOP. A concrete intermediate class therefore still breaks the chain:\n\n    class Shape  { public: virtual int area() = 0; };            // abstract\n    class Square : public Shape  { public: int area() override { return 1; } };\n    class Fancy  : public Square { public: int area() override { return 3; } };\n\nMeasured on the worktree code (fixture survey, run_behavior_map): `Shape::area -> Square::area` IS emitted; `Shape::area -> Fancy::area` and `Square::area -> Fancy::area` are NOT, because the hop `Fancy -> Square` has a concrete child and a concrete parent and is denied. In C++ (and C#: `override` of an override) both are real virtual dispatch: virtual-ness is inherited.\n\n**Candidate shape.** Admit a hop whose parent is abstract OR transitively derives (through any inheritance edge) from an abstract type, i.e. the C++ notion of a *polymorphic* class, approximated by \"has an abstract ancestor\". This keeps the same approximation level as WI-nizug (non-virtual name-hiding methods also get edges) and widens it to deeper hierarchies, so it moves more edges than WI-nizug did; measure on a C++ corpus repo (sherpa-onnx, powerdns, grpc) before shipping. Per-method precision (separate item) would make both rules exact for C#.\n\n**Size, measured on the WI-nizug after-surveys** (cpp `extends` edges that are still denied — neither end abstract — but whose parent has an abstract ancestor through `extends`): grpc 98 of 966 denied hops (1829 cpp extends total), sherpa-onnx 0 of 27, powerdns 0 of 72. Not counted: how many `dispatches_to` edges those 98 hops would add, or how many of them are true (needs the after-run with the candidate rule)."  # 0f3c
+    fields: {}  # 0f3c

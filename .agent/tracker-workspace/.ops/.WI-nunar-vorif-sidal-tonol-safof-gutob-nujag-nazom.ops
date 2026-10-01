@@ -1,0 +1,22 @@
+- op: create  # abee
+  at: '2026-10-01T15:25:40Z'  # abee
+  by: agent  # abee
+  actor: jgstern_agent  # abee
+  clock: 1  # abee
+  nonce: abee  # abee
+  data:  # abee
+    kind: work_item  # abee
+    title: "elixir: use AppWeb, :live_view (the Phoenix web-module dispatcher) declares no behaviour and roots no LiveView callback -- 58 modules on plausible, 80 on livebook"  # abee
+    status: todo_hard  # abee
+    priority: 2  # abee
+    parent:  # abee
+    tags:  # abee
+    - elixir  # abee
+    - analyzer  # abee
+    - linker_gap  # abee
+    isbefore: []  # abee
+    duplicate_of: []  # abee
+    not_duplicate_of: []  # abee
+    pr_ref:  # abee
+    description: "**The Phoenix \"web module\" dispatcher declares nothing on its users.** Found while fixing WI-vitas-bovod-tojos-lukin-kutip-jabah-konuj-fatis (Elixir behaviours), which follows `use M` through M's `defmacro __using__` quote but NOT through this second, very common shape:\n\n    defmodule PlausibleWeb do\n      def live_view do\n        quote do\n          use Phoenix.LiveView\n        end\n      end\n      defmacro __using__(which) when is_atom(which), do: apply(__MODULE__, which, [])\n    end\n\n    defmodule PlausibleWeb.Live.Sites do\n      use PlausibleWeb, :live_view      # <- implements Phoenix.LiveView, at runtime\n      def mount(_, _, socket), do: {:ok, socket}\n    end\n\nMeasured (grep of `use <X>Web, :<kind>` in the corpus, 2026-10-01): plausible 30 `:live_view` + 28 `:live_component`; livebook 14 `:live_view` + 66 `:live_component`. For every one of those modules the elixir analyzer emits:\n1. no `implements` edge to Phoenix.LiveView / Phoenix.LiveComponent (WI-vitas emits one only for `@behaviour X`, `use X` with X in `USE_IMPLIED_BEHAVIOURS`, and `use M` where M's `__using__` quote declares it);\n2. no BEHAVIOUR_CALLBACKS root for mount/render/handle_event, because that table matches only a `use Phoenix.LiveView` written in the module's own body.\n\nSecond, smaller half: the table path attributes a `use Phoenix.LiveView` inside such a `def live_view do quote ...` to the WEB module itself (directive sites: phoenix 9, plausible 5, livebook 3). It emits an edge only if the web module defines a same-named function, so its edge effect is not measured here; the WI-vitas type-relationship path already skips directives inside `quote`.\n\nFix direction (not designed): index quotes inside `def <name>` of a module whose `__using__` does `apply(__MODULE__, which, [])`, keyed `(module, name)`, and read it for `use M, :name` in the same place `_implied_behaviours` reads the `__using__` index; feed the result to BOTH the implements path and the callback table."  # abee
+    fields: {}  # abee
