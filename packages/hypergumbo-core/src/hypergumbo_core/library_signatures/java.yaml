@@ -13,29 +13,38 @@
 # `java.sql.Connection.prepareStatement` / `.prepareCall` are named in WI-lalot's own
 # discussion as two of the nine rows that are INERT in real code until this lands.
 #
-# KEY SHAPE (java.py): a static factory is keyed `Class.method`; the VALUE is the
-# fully-qualified type, because java qualifies its module slot through the declaring
-# file's imports (WI-gajuh).
+# KEY SHAPE (java.py): `<fully.qualified.Owner>.<method>` for a static factory and an
+# instance producer alike, and the VALUE is the fully-qualified type it returns. java
+# asks the registry with the owner path the CALLING file establishes (its import, an
+# inline package path, java.lang, a wildcard disjunct -- `_registry_owner`), so a row
+# keyed by the short owner (`Socket.getOutputStream`) never matches anything and
+# raises nothing (WI-halin found every row keyed that way). The qualified key keeps a
+# project class named `Files` from reaching `java.nio.file.Files` rows, because an
+# in-repo class is keyed bare. The VALUE bypasses `_qualify_receiver_type` (a row has
+# no declaring file), so it must arrive qualified.
 provenance: builtin
 language: java
 module_completeness: partial
 signatures:
-  DriverManager.getConnection: java.sql.Connection
-  Connection.prepareStatement: java.sql.PreparedStatement
-  Connection.prepareCall: java.sql.CallableStatement
-  Connection.createStatement: java.sql.Statement
-  Statement.executeQuery: java.sql.ResultSet
-  PreparedStatement.executeQuery: java.sql.ResultSet
-  Files.newInputStream: java.io.InputStream
-  Files.newOutputStream: java.io.OutputStream
-  Files.newBufferedReader: java.io.BufferedReader
-  Files.newBufferedWriter: java.io.BufferedWriter
-  Runtime.getRuntime: java.lang.Runtime
-  Runtime.exec: java.lang.Process
-  ProcessBuilder.start: java.lang.Process
-  Process.getInputStream: java.io.InputStream
-  Process.getOutputStream: java.io.OutputStream
-  Process.getErrorStream: java.io.InputStream
-  Socket.getInputStream: java.io.InputStream
-  Socket.getOutputStream: java.io.OutputStream
-  ServerSocket.accept: java.net.Socket
+  java.sql.DriverManager.getConnection: java.sql.Connection
+  java.sql.Connection.prepareStatement: java.sql.PreparedStatement
+  java.sql.Connection.prepareCall: java.sql.CallableStatement
+  java.sql.Connection.createStatement: java.sql.Statement
+  java.sql.Statement.executeQuery: java.sql.ResultSet
+  java.sql.PreparedStatement.executeQuery: java.sql.ResultSet
+  java.nio.file.Files.newInputStream: java.io.InputStream
+  java.nio.file.Files.newOutputStream: java.io.OutputStream
+  java.nio.file.Files.newBufferedReader: java.io.BufferedReader
+  java.nio.file.Files.newBufferedWriter: java.io.BufferedWriter
+  java.lang.Runtime.getRuntime: java.lang.Runtime
+  java.lang.Runtime.exec: java.lang.Process
+  java.lang.ProcessBuilder.start: java.lang.Process
+  java.lang.Process.getInputStream: java.io.InputStream
+  java.lang.Process.getOutputStream: java.io.OutputStream
+  java.lang.Process.getErrorStream: java.io.InputStream
+  java.net.Socket.getInputStream: java.io.InputStream
+  java.net.Socket.getOutputStream: java.io.OutputStream
+  java.net.ServerSocket.accept: java.net.Socket
+  # WI-halin: the measured shape `Cipher.getInstance("AES").doFinal(ct)`, and
+  # `var c = Cipher.getInstance(..)`, reach javax.crypto.Cipher.doFinal through it.
+  javax.crypto.Cipher.getInstance: javax.crypto.Cipher
