@@ -2,11 +2,9 @@
 # ADR-0017: Taint-Zone Dataflow Analysis
 
 Date: 2026-03-22
-Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance), ADR-0052 (§3a removal-COVERAGE ambition retired — the removal capability itself stays in force; §7a untouched); core STRUCTURAL taint analysis in force. Per-subsection implementation state, re-measured 2026-08-26 on dev `daafb0abb1` — the single "measured 2026-08-02" verdict this line used to carry had gone stale in five places (INV-lataj), and it collapsed two different failure modes into one phrase: **§3a** DDG walk RUNS and, since 2026-09-02 (WI-kabif, PR #716), ADJUDICATES — it REMOVES a flow whose walk returns `unconfirmed`; the "never decides inclusion" this line carried until 2026-09-09 was stale from that date. **Confirm-only IN PRACTICE** (ADR-0052): removal is implemented but measurement 0007 found the `unconfirmed` population EMPTY on an 11-repo corpus, and growing it is a retired goal; **§3c–3d** mixed-coverage verdicts LIVE; **§4b** declared summaries LIVE (declared terminating entries reach `_use_site_terminates`; no count is pinned here — this catalogue's size moved 33 → 108 → 113 across two edits in two days, and `taint.py`'s own docstring already carries a stale "38" for exactly that reason); **§4a** inferred summaries IMPLEMENTED BUT UNWIRED (`infer_summary`, zero production callers — and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite IMPLEMENTED BUT UNWIRED (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it — those are different jobs, so the two are named separately here. See Phased Implementation for anchor commits
+Status: Partially superseded by ADR-0037 (§3a: the `:unresolved` dst kind token), ADR-0038 (the `dest_access_mode` reliance), ADR-0052 (§3a's removal-COVERAGE ambition; the removal capability stays in force); core STRUCTURAL taint analysis in force. Per-subsection implementation state: **§3a** the DDG walk runs and adjudicates — it removes a flow whose walk returns `unconfirmed` (WI-kabif, PR #716) — and is confirm-only in practice (ADR-0052: measurement 0007 found the `unconfirmed` population empty on an 11-repo corpus); **§3c–3d** mixed-coverage verdicts live; **§4b** declared summaries live (declared terminating entries reach `_use_site_terminates`; the catalogue's size is deliberately not pinned here); **§4a** inferred summaries implemented but unwired (`infer_summary` has zero production callers, and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite implemented but unwired (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it, so the two are named separately. See Phased Implementation for anchor commits
 
-> Amended in place — see the 2026-06-11 amendment banner below and the inline pointer markers in §3a and the "Interaction with ADR-0015 `access_mode` metadata" subsection.
-
-> **Amendment (2026-06-11, per the 2026-06-10 design interview — ADRs 0035–0042, PR #4181):** Two notes. (a) The machinery below keyed to the dst-id string shape `{lang}:external:0-0:{name}:unresolved` — the `_sink_module_compatible` external exemption and the post-DDG refinement pass's module-segment string rewrites of `edge.dst` — is invalidated by ADR-0037: the `unresolved` kind-slot token folds into `external_symbol`, and `dst_ref` becomes unconditionally derived precisely so consumers stop string-parsing `dst`; implementing fixes will re-key sink matching and refinement on `dst_ref`. (b) The §"Interaction with ADR-0015 `access_mode` metadata" subsection's reliance on `dest_access_mode` is superseded by ADR-0038: bridge direction moves to the new `data_direction` meta key, `dest_access_mode` is removed, and taint's trust of `access_mode` is gated on the ADR-0038 rebuild — until taint re-keys to `data_direction`, bridge edges degrade to this ADR's conservative bidirectional fallback.
+> **Two pieces of this ADR are governed elsewhere.** (a) The `:unresolved` kind token in the dst shape §3a's sink matching and refinement pass read (`{lang}:external:0-0:{name}:unresolved`) folds into `external_symbol` on the final graph (ADR-0037 ruling 4); the refinement pass reads the resolution verdict from `Edge.is_resolved`, not from the kind slot. Sink matching still parses the callee name and module from the `dst` string, because `dst_ref` is `None` by construction on resolved edges and on edges whose module is the `"external"` sentinel (ADR-0037; WI-lonad). (b) The §"Interaction with ADR-0015 `access_mode` metadata" subsection's reliance on `dest_access_mode` is superseded by ADR-0038: `dest_access_mode` is removed, and bridge direction is the `data_direction` meta key.
 
 ## Context
 
@@ -563,15 +561,15 @@ transforms:
 > confirm-only: measurement 0007 found ZERO of 153 `ddg_mixed` rows across 11
 > repositories resting on a walk that ran and established no dependence.
 >
-> **PARTIALLY IMPLEMENTED — the walk RUNS, and since 2026-09-02 it ADJUDICATES.**
+> **PARTIALLY IMPLEMENTED — the walk runs and adjudicates.**
 > Stated up front rather than as a trailing note, because a fragment read of the
 > numbered steps below would otherwise be indistinguishable from a description
 > of what the code does.
 >
-> **REMOVAL AUTHORITY IS GRANTED (WI-kabif + WI-joluk, one PR).** The §3a arm no
-> longer collapses `False` into `None`. A walk that seeded on a recorded
+> **REMOVAL AUTHORITY (WI-kabif + WI-joluk).** The §3a arm keeps `False` and
+> `None` apart. A walk that seeded on a recorded
 > definition, followed every route out of it, and ended everywhere ACCOUNTED FOR
-> — a §4 terminating summary or a barrier — without reaching a sink argument now
+> — a §4 terminating summary or a barrier — without reaching a sink argument
 > REMOVES the flow. `escaped` is ignorance and removes nothing; `not_attempted`
 > never ran. WI-joluk's forfeit gate runs first and downgrades any `False` from
 > a function whose CFG missed a call node in its body, so an exhausted walk over
@@ -592,15 +590,14 @@ transforms:
 > publishes `dataflow_coverage.flows_removed_by_walk` every run so the number is
 > never inferred.
 >
-> **What `propagate_taint_ddg` actually does today** (re-measured 2026-08-26 on
-> dev `daafb0abb1`): steps 1–4 run. `_ddg_taint_reaches` *is* this subsection's
-> forward walk and has **two** production call sites — the confirm-only arm
-> (`taint.py:3589`, whose result is collapsed by `adjudicated = walk_result is
-> True`, so a `False` and a `None` are the same event and neither removes
-> anything) and the WI-fasub same-function sanitizer barrier arm
-> (`taint.py:3645`), where since PR #214 a `False` earns `sanitized` and DROPS
-> the flow from a claim's violation set. That second arm is the one where an
-> unearned `False` is a live falsehood.
+> **What `propagate_taint_ddg` does:** steps 1–4 run. `_ddg_taint_reaches` *is*
+> this subsection's forward walk and has **two** production call sites. On the
+> §3a arm its `True` / `False` / `None` result becomes the `confirmed` /
+> `unconfirmed` / `escaped` walk verdict (`walk_verdict_for`), and only
+> `unconfirmed` removes the flow. On the WI-fasub same-function sanitizer
+> barrier arm a `False` earns `sanitized`, which DROPS the flow from a claim's
+> violation set. On both arms an unearned `False` would be a live falsehood,
+> which is why WI-joluk's forfeit gate runs on both.
 >
 > **Step 3 runs for DECLARED summaries only.** §4b is wired; §4a inferred
 > summaries are not, and the `FunctionSummary` dataclass has no
@@ -609,29 +606,17 @@ transforms:
 > **76.3% of all never-ran walks** (measurement 0007, 11 repositories). Lifting
 > that is WI-famig, not more catalogue work.
 >
-> **What it still does NOT do: ADD a flow.** Inclusion remains call-graph BFS —
-> the walk mints nothing, so `inclusion_decided_by` still opens with
-> `call_graph_reachability` and now reads
+> **What it does NOT do: ADD a flow.** Inclusion is call-graph BFS — the walk
+> mints nothing, so `inclusion_decided_by` reads
 > `call_graph_reachability_minus_ddg_refutation`. The walk raises confidence to
 > `precise` where it finds a dependence, and SUBTRACTS where it refutes one.
 > Reading `analysis_method == "ddg"` as "this flow's inclusion was decided by
-> data flow" is therefore still the INV-sadah misreading.
+> data flow" is therefore the INV-sadah misreading.
 >
-> **Two blockers this banner used to name are CLOSED**, recorded rather than
-> deleted because both were load-bearing here for months. (a) The walk keyed on
-> `DdgEdge.def_block`, a function-local basic-block id compared against a
-> *symbol* id — namespaces that never intersect; re-keyed on `symbol_id` in
-> #188 and refined to `(symbol_id, variable, def_line)` in #203. (b) Step 5 was
-> underspecified in the load-bearing way: "if tainted data reaches a sink" must
-> mean *a tainted variable is an argument at the sink call site*, and it is now
-> implemented that way (`taint.py:2048`).
->
-> **Provenance of this correction.** The paragraph above previously described
-> the function as building `ddg_forward` and `tainted_at` and "reading
-> neither". Neither identifier occurs anywhere in `taint.py` any more, so the
-> description was not merely stale but unfalsifiable as written. It carried the
-> date 2026-08-02 and was never revisited after #188, #190, #192 and #197
-> landed in the six days following (INV-lataj).
+> **The walk's keying and sink test.** It keys a definition on
+> `(symbol_id, variable, def_line)` (#188, #203), and "tainted data reaches a
+> sink" means *a tainted variable is an argument at the sink call site*
+> (`taint.py::_ddg_taint_reaches`).
 
 The target design: when a function has been analyzed by the native CFG builder + reaching-def solver (i.e., a def/use extractor exists for its language), taint propagation is a forward graph walk on the computed DDG edges:
 
@@ -641,20 +626,17 @@ The target design: when a function has been analyzed by the native CFG builder +
 4. **At sanitizer calls (§2c), transform the taint label** (e.g., `plaintext` → `ciphertext`).
 5. **If tainted data reaches a sink (§2b), record a taint-flow finding.**
 
-> **[Invalidated by ADR-0037]** The dst-string machinery in this subsection and the next — the `{lang}:external:0-0:{name}:unresolved` dst shape, the `external`/`<external>` exemption in `_sink_module_compatible`, and the post-DDG refinement pass's string rewrites of `edge.dst`'s module segment — is invalidated by ADR-0037: the `unresolved` kind-slot token folds into `external_symbol` and `dst_ref` becomes unconditionally derived so consumers stop string-parsing `dst`. Implementing fixes re-key sink matching and refinement on `dst_ref`. The text below is retained as-is for historical context.
+**Short-name sink-matching disambiguation.** Sinks are declared with a module-qualified name (e.g., `multiprocessing.Queue.get`, `os.environ.get`). Edges, however, are not always resolved to a specific module: when the analyzer can't pin down a callee's origin, it emits a synthetic external dst of shape `{lang}:external:0-0:{name}:unresolved` (its kind token becomes `external_symbol` on the final graph, ADR-0037 ruling 4; the matcher reads the name and module slots, not the kind). A naive "match sinks by callee short-name" rule then fires the sink on every `.get()` call site in the codebase. The propagator picks the catalogue row in `taint._lookup_named_entry`, which applies the row-choice rule it shares with io-boundaries (`io_boundary.named_lookup_arm`, module comparison by `io_boundary._module_matches`):
 
-**Short-name sink-matching disambiguation.** Sinks are declared with a module-qualified name (e.g., `multiprocessing.Queue.get`, `os.environ.get`). Edges, however, are not always resolved to a specific module: when the analyzer can't pin down a callee's origin, it emits a synthetic external dst of shape `{lang}:external:0-0:{name}:unresolved`. A naive "match sinks by callee short-name" rule then fires the sink on every `.get()` call site in the codebase. The propagator applies a module filter inside `taint._lookup_named_entry`, which delegates to `io_boundary._module_matches`:
-
-> **Correction (2026-08-02).** This section previously named `_sink_module_compatible` as the filter. That function was added 2026-05-14 and **never had a production caller** — its only reachability was six unit tests, which is what held it at 100% coverage and hid it. The contract described below was implemented by a different function with different internals, and the two drifted: `_module_matches` was bidirectional *substring* containment until WI-zazul made it component-aware, and it ungated *resolved* first-party edges entirely until WI-damir. `_sink_module_compatible` is retired; its `external`/`<external>` exemption — the one thing it had that the live path lacked — was harvested into `_UNRESOLVED_MODULE_PLACEHOLDERS` first.
-
-- When the edge's dst carries a module hint, the sink's declared module must match that hint by direct equality or by prefix (e.g., callee module `os.environ` is compatible with sink module `os.environ` or with `os`).
-- When the dst hint is `external` or `<external>`, the analyzer didn't recover module information; the filter degrades to short-name matching (legacy behavior). This is the documented overapproximation surface — narrowed by the post-DDG IR refinement pass described below.
+- An entry whose qualified name is the callee wins outright.
+- When the edge's dst carries a module hint, only entries that hint can name are candidates, preferring one whose module is the hint (e.g., callee module `os.environ` is compatible with sink module `os.environ` or with `os`). A present, mismatched module is a refusal, not a fallback.
+- When the hint is absent, `external` or `<external>`, the analyzer didn't recover module information, and the shared kind-aware gate decides (`io_boundary.gate_named_entry`): an untyped method call never matches, and a free-function call may match only a function-kind entry. This is the overapproximation surface the post-DDG IR refinement pass below narrows.
 
 This disambiguation runs at sink-match time and applies to both the DDG path here and the structural fallback in §3b.
 
-**Post-DDG IR refinement pass for unresolved-external dsts.** *(See the [Invalidated by ADR-0037] marker above: the `edge.dst` module-segment rewrites described here are re-keyed onto `dst_ref` under ADR-0037.)* When a function's analyzer cannot type-infer a method-call receiver (e.g., `x = os.environ; x.get(...)`), py.py emits the call as `python:external:0-0:get:unresolved` rather than guessing at the receiver's origin. The refinement pass — a §1c consumer that runs between `solve_reaching_defs` and the propagation step — recovers the module-of-origin when the DDG can prove it: for each `recv.method()` call site whose receiver is a local variable, it walks the DDG backward to the receiver's reaching definition, inspects the assignment's RHS for an import-rooted attribute chain (or a `from`-import alias), and rewrites `edge.dst`'s module segment from `external` to the recovered path (e.g., `python:os.environ:0-0:get:unresolved`). The rewritten dst then participates in `_sink_module_compatible` directly, so the `external` exemption no longer applies to receivers that could be resolved.
+**Post-DDG IR refinement pass for unresolved-external dsts** (`taint_refine.py::refine_external_edges`). When a function's analyzer cannot type-infer a method-call receiver (e.g., `x = os.environ; x.get(...)`), py.py emits the call as `python:external:0-0:get:unresolved` rather than guessing at the receiver's origin. The refinement pass — a §1c consumer that runs between `solve_reaching_defs` and the propagation step — recovers the module-of-origin when the DDG can prove it: for each `recv.method()` call site whose receiver is a local variable, it walks the DDG backward to the receiver's reaching definition, inspects the assignment's RHS for an import-rooted attribute chain (or a `from`-import alias), and rewrites `edge.dst`'s module segment from `external` to the recovered path (e.g., `python:os.environ:0-0:get:unresolved`). The rewritten dst then carries a module hint into `_lookup_named_entry`'s module filter, so the `external` exemption no longer applies to receivers that could be resolved. The pass selects candidate edges by `Edge.is_resolved` (ADR-0037 ruling 4), not by the dst's kind slot.
 
-Scope follows the §1c accretion model: the refinement pass is a §1c-extractor consumer and therefore applies only to languages where a def/use extractor exists (Python today, Rust and TypeScript when their extractors land). Languages without a §1c extractor have no DDG to walk backwards through; their unresolved-external edges remain at the short-name-matching fallback by design, consistent with the ADR's per-language precision framing. Receivers that no DDG-resolution can recover — call-RHS bindings (`x = requests.Session()`), parameter receivers, closure captures — also remain unresolved; the refinement does not invent hints where the DDG cannot supply them, so the `external` exemption still covers those edges to avoid suppressing legitimate findings.
+Scope follows the §1c accretion model: the refinement pass is a §1c-extractor consumer and therefore applies only to languages where a def/use extractor exists (Python today, Rust and TypeScript when their extractors land). Languages without a §1c extractor have no DDG to walk backwards through; their unresolved-external edges remain at the short-name-matching fallback by design, consistent with the ADR's per-language precision framing. Receivers that no DDG-resolution can recover — call-RHS bindings (`x = requests.Session()`), parameter receivers without a supported type annotation (WI-dozon pins annotated ones), closure captures — also remain unresolved; the refinement does not invent hints where the DDG cannot supply them, so the `external` exemption still covers those edges to avoid suppressing legitimate findings.
 
 #### 3b. Structural fallback (no extractor for the language)
 
@@ -954,11 +936,9 @@ Verdicts become more precise:
 
 #### Interaction with ADR-0015 `access_mode` metadata
 
-> **[Superseded by ADR-0038]** This subsection's reliance on `dest_access_mode` (and on `access_mode` for bridge direction generally) is superseded by ADR-0038: bridge direction moves to the new `data_direction` meta key and `dest_access_mode` is removed. Until taint re-keys to `data_direction`, bridge edges are gated to this ADR's conservative bidirectional fallback. The text below is retained as-is for historical context.
-
 ADR-0015's `access_mode` field (read/write/mutate/delete) classifies what an edge *does*. Taint labels classify what data an edge *carries*. These are complementary, not competing:
 
-- **`access_mode` informs taint propagation direction.** A `write` edge from function A to shared state S means A's taint can flow *into* S. A `read` edge from S to function B means S's taint flows *into* B. The taint solver should consult `access_mode` when propagating taint through edges that have it, using the same directional logic as the existing dataflow-aware slicer in `slice.py` (forward: follow write/mutate; reverse: follow read).
+- **`access_mode` can inform taint propagation direction.** A `write` edge from function A to shared state S means A's taint can flow *into* S. A `read` edge from S to function B means S's taint flows *into* B. Taint propagation does not consult it yet: `taint.py` reads neither `access_mode` nor `data_direction`, so every edge it follows gets the conservative treatment below. When it does, it uses the same directional logic as the dataflow-aware slicer in `slice.py` (forward: follow write/mutate; reverse: follow read), and takes an FFI bridge's direction from `data_direction` ([ADR-0038](0038-access-mode-contract.md) ruling 3), not from `access_mode`.
 - **Taint labels are stored in `Edge.meta` alongside `access_mode`.** New keys: `taint_labels` (list of active taint tags on this edge), `taint_sanitized_by` (sanitizer that transformed taint on this edge, if any). These do not conflict with existing `access_mode`, `data_direction`, or `channel` keys (`dest_access_mode` was removed by ADR-0038 ruling 3).
 - **The dataflow-aware slicer (`--dataflow` flag) and taint analysis are complementary.** A future `--taint` slice flag could filter to edges carrying specific taint labels, analogous to how `--dataflow` filters by `access_mode`. This is not in scope for this ADR but is a natural extension.
 - **Edges without `access_mode` are taint-propagated conservatively.** If an edge lacks ADR-0015 metadata (e.g., a plain `calls` edge from a language without dataflow YAML), the taint solver treats it as a potential propagation path in both directions. This matches the existing graceful-degradation behavior in `slice.py`.
@@ -974,7 +954,7 @@ ADR-0015's `access_mode` field (read/write/mutate/delete) classifies what an edg
 | 1b | Precision measurement against synthetic + open-source fixtures (§9) | Carried out; informed Phase 2 prioritization | n/a |
 | 2 | Language-parameterized CFG builder + reaching-def solver + Python / Rust / TypeScript def/use extractors (core patterns) + field-sensitivity lite (§7) | Shipped (CFG builder `6afcd40b03`, solver `7a0728b3c2`, Python `509de245f1`, Rust `b8fc35d173`, TypeScript `7e2ee83a90`) | **Split, and no longer a matter of prose — see §3e.** CFG builder + solver + Python and Go extractors: yes. Rust and TypeScript: **now yes** — WI-tohuk added `atomic_statement` to `rust.yaml` / `typescript.yaml` and force-imported both modules, closing the two independent reasons they emitted zero DDG edges for months while sitting at 100% coverage. **JavaScript: now yes (WI-nonad)** — the TypeScript extractor registered a second time under the `javascript` key, a `*.js` spec, and a `cfg._CFG_MAPPING_ALIASES` entry pointing at `typescript.yaml`, whose header already asserted it covers both grammars. It is the more consequential of that pair: TypeScript has 6 catalogued sources and **zero** sinks, JavaScript has 50 and **83**. All five are covered by a wiring gate over every *registered* extractor rather than a per-language checklist. **Java: now yes (WI-gotun)** — `java_def_use` registered, `atomic_statement` and `call_node_types` added to `cfg_nodes/java.yaml`, and a spec that names callables through `java.py`'s own rule. **C: now yes (WI-himob)** — `c_def_use` registered, a new `cfg_nodes/c.yaml` (conditionals, loops, switch, `call_node_types`, `atomic_statement`), and a spec named through `c.py`'s `_get_function_name`; C++ is not covered. **§7a field-sensitivity: still NO production caller** (`is_field_tainted`). **§3a propagation: confirm-only — it raises confidence and does not decide flow inclusion**; see §3a and the `inclusion_decided_by` constant in §3e. The per-language state above is computed and emitted at runtime by `dataflow_scope`, so this row cannot silently decay the way its predecessor did. |
 | 2b | Rust hard patterns: borrow aliases, `ref`/`ref mut` bindings | Shipped (`03dee372c3`) | No — downstream of the Rust extractor, which has no production caller |
-| 3 | Function summaries (inferred from DDG + YAML-declared) | Shipped (inferred `942100377c`, declared `2df1ec8bf0`) | **Split — and this row said "No" for both until 2026-08-26.** **§4b DECLARED: yes.** `propagate_taint_ddg` calls `load_function_summaries()` (`taint.py:3363`) and its declared terminating entries feed `_use_site_terminates` (#197). **§4a INFERRED: no.** `infer_summary` has zero production callers, and the shipped `FunctionSummary` omits `param_to_calls`, `param_to_param` and `symbol_id` — the first of which is what a cross-function walk needs (WI-famig). `infer_summary` also computes `return_sources` and drops it on the floor: the local is built and the return statement omits it. |
+| 3 | Function summaries (inferred from DDG + YAML-declared) | Shipped (inferred `942100377c`, declared `2df1ec8bf0`) | **Split.** **§4b DECLARED: yes.** `propagate_taint_ddg` calls `load_function_summaries()` (`taint.py:3363`) and its declared terminating entries feed `_use_site_terminates` (#197). **§4a INFERRED: no.** `infer_summary` has zero production callers, and the shipped `FunctionSummary` omits `param_to_calls`, `param_to_param` and `symbol_id` — the first of which is what a cross-function walk needs (WI-famig). `infer_summary` also computes `return_sources` and drops it on the floor: the local is built and the return statement omits it. |
 | 4 | Cross-language taint propagation via existing linkers | Shipped (`749a73b47f`) | **Partly.** The bridge edge-types are admitted to the BFS, which is live. The §5 mechanism that looks up a callee's *summary* is dead with Phase 3. |
 
 The original ordering had Rust first (motivated by PlazaFlow's trust-boundary verification needs) with Python as a fallback if PlazaFlow code was delayed; the actual landing order put Python first via the accepted-ADR revision (see `fad503239213` and the "Python is the first extractor" rationale in Context). Phase 1 and Phase 2 together produce structural and DDG-precise taint analysis; Phase 2b extends Rust precision for borrow-mediated mutation; Phase 3 enables interprocedural taint flow via summaries; Phase 4 extends propagation across language boundaries via the existing linker edge types.
