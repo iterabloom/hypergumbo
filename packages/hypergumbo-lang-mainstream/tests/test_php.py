@@ -1329,6 +1329,168 @@ Route::resource('tags', TagController::class)->name('tags');
         assert len(route_symbols) == 7
 
 
+def _laravel_routes(tmp_path: Path, body: str) -> tuple[list, list]:
+    """Analyze one ``web.php`` and return (usage contexts, route markers)."""
+    from hypergumbo_lang_mainstream.php import analyze_php
+
+    (tmp_path / "web.php").write_text("<?php\n" + body + "\n?>")
+    result = analyze_php(tmp_path)
+    routes = [
+        s for s in result.symbols
+        if (s.meta or {}).get("framework_role") == "route"
+    ]
+    return list(result.usage_contexts), routes
+
+
+def _php_literal(code: str):
+    """Parse ``f(<code>);`` and return ``_php_string_value`` of the argument."""
+    from hypergumbo_core.analyze.base import iter_tree
+    from hypergumbo_lang_mainstream.php import _get_php_parser, _php_string_value
+
+    source = f"<?php\nf({code});\n".encode()
+    tree = _get_php_parser().parse(source)
+    arg = next(n for n in iter_tree(tree.root_node) if n.type == "argument")
+    return _php_string_value(arg.children[0], source)
+
+
+class TestLaravelDoubleQuotedRoutes:
+    """WI-fadip: a double-quoted PHP literal is an ``encapsed_string`` node,
+    a single-quoted one a ``string`` node. The route-path read accepted only
+    ``string``, so every double-quoted Laravel route was silently dropped, for
+    every ``Route::`` verb. An INTERPOLATED double-quoted path must be refused,
+    never truncated to its leading literal prefix.
+    """
+
+    def test_double_quoted_get_route_and_array_action(self, tmp_path: Path) -> None:
+        contexts, routes = _laravel_routes(
+            tmp_path, 'Route::get("/users", [UserController::class, "index"]);',
+        )
+        assert [s.name for s in routes] == ["GET /users"]
+        assert routes[0].meta["controller_action"] == "UserController@index"
+        assert [c.metadata["route_path"] for c in contexts] == ["/users"]
+
+    def test_double_quoted_string_action(self, tmp_path: Path) -> None:
+        _, routes = _laravel_routes(
+            tmp_path, 'Route::post("/login", "AuthController@login");',
+        )
+        assert [s.name for s in routes] == ["POST /login"]
+        assert routes[0].meta["controller_action"] == "AuthController@login"
+
+    def test_double_quoted_match_reads_verbs_and_path(self, tmp_path: Path) -> None:
+        contexts, routes = _laravel_routes(
+            tmp_path,
+            'Route::match(["get", "post"], "/m", [FormController::class, "m"]);',
+        )
+        assert [c.metadata["http_method"] for c in contexts] == ["GET,POST"]
+        assert [s.meta["route_path"] for s in routes] == ["/m"]
+        assert routes[0].meta["controller_action"] == "FormController@m"
+
+    def test_double_quoted_resource_expands(self, tmp_path: Path) -> None:
+        _, routes = _laravel_routes(
+            tmp_path,
+            'Route::resource("photos", PhotoController::class)'
+            '->except(["create"]);',
+        )
+        assert len(routes) == 6
+        assert {s.meta["route_path"] for s in routes} >= {"/photos", "/photos/{id}"}
+
+    def test_route_parameter_braces_are_not_interpolation(
+        self, tmp_path: Path,
+    ) -> None:
+        """``{id}`` with no ``$`` is literal text in a PHP double-quoted
+        string; the grammar keeps it inside ``string_content``."""
+        _, routes = _laravel_routes(
+            tmp_path, 'Route::get("/users/{id}", [UserController::class, "show"]);',
+        )
+        assert [s.name for s in routes] == ["GET /users/{id}"]
+
+    def test_interpolated_paths_are_refused_not_truncated(
+        self, tmp_path: Path,
+    ) -> None:
+        contexts, routes = _laravel_routes(
+            tmp_path,
+            'Route::get("/u/{$x}", [UserController::class, "i"]);\n'
+            'Route::get("/v/$x", [UserController::class, "i"]);\n'
+            'Route::get("/w/{$o->p}/z", [UserController::class, "i"]);\n'
+            "Route::get('/kept', [UserController::class, 'i']);",
+        )
+        assert [s.name for s in routes] == ["GET /kept"]
+        assert [c.metadata["route_path"] for c in contexts] == ["/kept"]
+
+    def test_interpolated_actions_are_refused_not_truncated(
+        self, tmp_path: Path,
+    ) -> None:
+        """``"Ctrl@{$m}"`` would truncate to ``Ctrl@`` and ``"act{$x}"`` to
+        ``act``: both are wrong handlers, so no ``controller_action``."""
+        _, routes = _laravel_routes(
+            tmp_path,
+            'Route::get("/a", "AuthController@{$m}");\n'
+            'Route::get("/b", [UserController::class, "act{$x}"]);',
+        )
+        assert sorted(s.name for s in routes) == ["GET /a", "GET /b"]
+        assert all("controller_action" not in s.meta for s in routes)
+
+    def test_interpolated_modifier_action_is_skipped(self, tmp_path: Path) -> None:
+        """An interpolated ``->except`` element is not the literal action
+        ``show``; it is skipped like any non-literal, so nothing is dropped."""
+        _, routes = _laravel_routes(
+            tmp_path,
+            'Route::resource("photos", PhotoController::class)'
+            '->except(["show{$x}"]);',
+        )
+        assert len(routes) == 7
+
+    def test_interpolated_match_verb_is_skipped(self, tmp_path: Path) -> None:
+        contexts, _ = _laravel_routes(
+            tmp_path,
+            'Route::match(["get", "po{$s}"], "/m", [FormController::class, "m"]);',
+        )
+        assert [c.metadata["http_method"] for c in contexts] == ["GET"]
+
+
+class TestPhpStringValue:
+    """WI-fadip: ``_php_string_value`` is the one literal reader for the
+    Laravel route walk. It decodes the WHOLE literal (not just its first
+    ``string_content`` run) and returns ``None`` for anything that is not a
+    plain literal, so an interpolated string is never read as its prefix."""
+
+    @pytest.mark.parametrize(
+        ("code", "expected"),
+        [
+            ("'/users'", "/users"),
+            ('"/users"', "/users"),
+            ("''", ""),
+            ('""', ""),
+            ("'it\\'s'", "it's"),
+            ("'a\\\\b'", "a\\b"),
+            ("'a\\nb'", "a\\nb"),
+            ('"a\\tb"', "a\tb"),
+            ('"a\\"b\\$c"', 'a"b$c'),
+            ('"\\x41\\102\\u{43}"', "ABC"),
+            ('"\\e\\f\\v\\r\\n\\\\"', "\x1b\x0c\x0b\r\n\\"),
+            ('"a\\qb"', "a\\qb"),
+            ('"/u/{id}"', "/u/{id}"),
+        ],
+    )
+    def test_plain_literals_decode_whole(self, code: str, expected: str) -> None:
+        assert _php_literal(code) == expected
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            '"/u/{$x}"',
+            '"/u/$x"',
+            '"a${x}b"',
+            '"a$o[1]b"',
+            '"\\u{110000}"',
+            "$x",
+            "SOME_CONST",
+        ],
+    )
+    def test_non_literals_are_refused(self, code: str) -> None:
+        assert _php_literal(code) is None
+
+
 class TestPhpInheritanceEdges:
     """Tests for PHP base_classes metadata extraction.
 

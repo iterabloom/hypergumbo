@@ -496,19 +496,76 @@ def normalize_php_signature(
     return normalize_signature_php(signature, type_params)
 
 
+# PHP's simple backslash escapes. A single-quoted literal has only two
+# (backslash-quote and backslash-backslash); the grammar emits an
+# ``escape_sequence`` node only for a sequence the literal's quote style really
+# decodes, so a single-quoted backslash-n stays inside one ``string_content``
+# run and is never decoded here.
+_PHP_SIMPLE_ESCAPES: dict[str, str] = {
+    "\\\\": "\\", "\\'": "'", '\\"': '"', "\\$": "$", "\\n": "\n",
+    "\\t": "\t", "\\r": "\r", "\\v": "\v", "\\e": "\x1b", "\\f": "\f",
+}
+
+# A literal's own delimiter tokens; any other child of an ``encapsed_string``
+# (``variable_name``, ``{``, ``member_access_expression``, ...) is interpolation.
+_PHP_LITERAL_DELIMITERS = frozenset({"'", '"'})
+
+
+def _php_escape_value(text: str) -> str | None:
+    """Decode one ``escape_sequence`` node's text, or ``None`` if invalid.
+
+    Covers the simple escapes, octal ``\\101``, hex ``\\x41`` and Unicode
+    ``\\u{42}``. A codepoint past U+10FFFF is a PHP compile error, so it is
+    refused rather than guessed.
+    """
+    simple = _PHP_SIMPLE_ESCAPES.get(text)
+    if simple is not None:
+        return simple
+    try:
+        if text.startswith("\\u{"):
+            return chr(int(text[3:-1], 16))
+        if text.startswith("\\x"):
+            return chr(int(text[2:], 16))
+        return chr(int(text[1:], 8) & 0xFF)
+    except ValueError:
+        return None
+
+
 def _php_string_value(
     string_node: "tree_sitter.Node", source: bytes
 ) -> str | None:
-    """Return the text inside a PHP ``string`` literal node.
+    """Return the value of a PLAIN PHP string literal, else ``None``.
 
-    Prefers the grammar's ``string_content`` child; falls back to stripping
-    the surrounding quotes when the grammar does not expose one (an empty
-    string literal has no content child).
+    The one literal reader for the Laravel route walk (WI-fadip). A
+    single-quoted literal is a ``string`` node and a double-quoted one an
+    ``encapsed_string`` node; both are accepted, which is the whole point:
+    testing only for ``string`` silently dropped every double-quoted route.
+
+    The value is the WHOLE literal: every ``string_content`` run joined with
+    its decoded ``escape_sequence`` nodes, so ``'it\\'s'`` reads ``it's``
+    rather than its first run ``it``. An empty literal returns ``""``.
+
+    ``None`` means "not a plain literal", never "empty": any other node type
+    (a variable, a constant, a call) and any INTERPOLATED double-quoted
+    string (``"/u/{$x}"``, ``"/u/$x"``). Reading an interpolated string as
+    its leading run would emit the wrong value (the route ``/u/``), so the
+    caller must refuse it instead. Laravel's ``"/u/{id}"`` is not
+    interpolation (no ``$``); the grammar keeps it inside ``string_content``.
     """
+    if string_node.type not in ("string", "encapsed_string"):
+        return None
+    parts: list[str] = []
     for child in string_node.children:
         if child.type == "string_content":
-            return node_text(child, source)
-    return node_text(string_node, source).strip("'\"") or None
+            parts.append(node_text(child, source))
+        elif child.type == "escape_sequence":
+            decoded = _php_escape_value(node_text(child, source))
+            if decoded is None:
+                return None
+            parts.append(decoded)
+        elif child.type not in _PHP_LITERAL_DELIMITERS:
+            return None
+    return "".join(parts)
 
 
 def _laravel_match_methods(
@@ -538,8 +595,8 @@ def _laravel_match_methods(
                 if arr_child.type != "array_element_initializer":
                     continue
                 for element in arr_child.children:
-                    if element.type != "string":
-                        continue
+                    # Either quote style; an interpolated or empty verb
+                    # contributes nothing rather than a wrong verb (WI-fadip).
                     value = _php_string_value(element, source)
                     if value:
                         methods.append(value.strip().upper())
@@ -588,28 +645,18 @@ def _extract_controller_action(
                                         if cc.type == "name":
                                             controller = node_text(cc, source)
                                             break
-                                elif elem.type == "encapsed_string":
-                                    # "action" with double-quoted encapsed_string
-                                    for str_child in elem.children:  # pragma: no cover
-                                        if str_child.type == "string_content":
-                                            action = node_text(str_child, source)
-                                            break
-                                elif elem.type == "string":
-                                    # 'action' with single-quoted string
-                                    for str_child in elem.children:
-                                        if str_child.type == "string_content":
-                                            action = node_text(str_child, source)
-                                            break
+                                elif elem.type in ("string", "encapsed_string"):
+                                    # 'action' or "action"; an interpolated
+                                    # action is refused, not truncated.
+                                    action = _php_string_value(elem, source)
                     if controller and action:
                         return f"{controller}@{action}"
 
                 # String syntax: 'Controller@action'
                 elif arg_child.type in ("string", "encapsed_string"):
-                    for str_child in arg_child.children:
-                        if str_child.type == "string_content":
-                            text = node_text(str_child, source)
-                            if "@" in text:
-                                return text
+                    text = _php_string_value(arg_child, source)
+                    if text and "@" in text:
+                        return text
             break
 
         arg_index += 1  # pragma: no cover - loop breaks at arg_index == 1
@@ -683,9 +730,9 @@ def _laravel_collect_string_args(
         ->except('create', 'edit')                 # variadic strings
         ->except(['create', 'edit'])               # array literal
 
-    Non-string arguments (variables, function calls) are silently skipped —
-    we can't statically resolve them and a partial parse is more useful
-    than refusing to apply any restriction.
+    Non-string arguments (variables, function calls, interpolated strings)
+    are silently skipped — we can't statically resolve them and a partial
+    parse is more useful than refusing to apply any restriction.
     """
     args_node = member_call.child_by_field_name("arguments")
     if args_node is None:  # pragma: no cover - defensive
@@ -712,9 +759,11 @@ def _laravel_extract_strings(
     """
     out: set[str] = set()
     if node.type in ("string", "encapsed_string"):
-        for sc in node.children:
-            if sc.type == "string_content":
-                out.add(node_text(sc, source))
+        # The whole literal, one value; an interpolated one is skipped
+        # rather than read as its leading run (WI-fadip).
+        value = _php_string_value(node, source)
+        if value:
+            out.add(value)
         return out
     if node.type == "array_creation_expression":
         for elem in node.children:
@@ -799,8 +848,12 @@ def _extract_laravel_routes(
                 if child.type != "argument":
                     continue
                 if arg_index == arg_offset:
+                    # Either quote style (WI-fadip: a double-quoted path is an
+                    # `encapsed_string`, and testing only `string` dropped every
+                    # such route). An interpolated path reads as None and the
+                    # route is refused below, never truncated to its prefix.
                     for arg_child in child.children:
-                        if arg_child.type == "string":
+                        if arg_child.type in ("string", "encapsed_string"):
                             route_path = _php_string_value(arg_child, source)
                             break
                     break
