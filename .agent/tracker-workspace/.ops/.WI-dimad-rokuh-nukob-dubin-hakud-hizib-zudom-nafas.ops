@@ -1,0 +1,21 @@
+- op: create  # 0cf9
+  at: '2026-10-01T09:03:42Z'  # 0cf9
+  by: agent  # 0cf9
+  actor: jgstern_agent  # 0cf9
+  clock: 1  # 0cf9
+  nonce: 0cf9  # 0cf9
+  data:  # 0cf9
+    kind: work_item  # 0cf9
+    title: "swift: a subscript x.p[i] / xs[i] parses as call_expression and is emitted as a CALL -- a resolved edge to a field (Response.headers:field) or to an unrelated same-named free function"  # 0cf9
+    status: todo_hard  # 0cf9
+    priority: 2  # 0cf9
+    parent:  # 0cf9
+    tags:  # 0cf9
+    - swift  # 0cf9
+    - analysis_quality  # 0cf9
+    isbefore: []  # 0cf9
+    duplicate_of: []  # 0cf9
+    not_duplicate_of: []  # 0cf9
+    pr_ref:  # 0cf9
+    description: "FILED 2026-10-01 from WI-mofil-tidog-forob-tovah-givud-lijog-vuvug-gutid (found while sizing its 622).\n\nMECHANISM. tree-sitter-swift parses a SUBSCRIPT as a `call_expression` whose `call_suffix` holds `value_arguments` opened by `[` instead of `(`. swift.py's call pass does not look at the bracket, so every subscript read is emitted as a CALL:\n\n    struct Response { var headers: [String: String] = [:] }\n    func f(r: Response) { let x = r.headers[\"age\"] }\n      -> calls  swift:a.swift:1-1:Response.headers:field   (call_construct=function)   -- a call edge to a FIELD\n    func data() -> Int { 1 }\n    func f(xs: [Int], data: [Int]) { let a = xs[0]; let b = data[1] }\n      -> calls  swift:external:0-0:xs:unresolved            -- a call to a parameter\n      -> calls  swift:b.swift:1-1:data:function             -- a RESOLVED phantom call to an unrelated free function\n\nObserved on dev 8cfcab7b07 with analyze_swift on those fixtures (WI-mofil probe3). On corpus: hummingbird Tests/HummingbirdTests/CookiesTests.swift:98 `response.headers[.setCookie]` is an edge to `Response.headers:field`; vapor Tests/VaporTests/MiddlewareTests.swift:184 `result.headers[.age].first` lands in the untyped `call_construct=method` population as a method named `headers`. A subscript named like a catalogued method (`x.data[0]`, `x.read[...]`) can match an io-boundary row by short name -- NOT checked.\n\nNOT SIZED corpus-wide. WI-mofil's causes.py tags a subscript site in the lowercase-hint bucket (\"SUBSCRIPT parsed as a method call\"); its counts are in WI-mofil's report. Sibling grammars (kotlin indexing_expression, others) NOT checked.\n\nDIRECTION. Recognise `value_arguments` opened by `[` at the call pass and emit no call (a subscript is a member access; a user-declared `subscript` is WI-fokag's / WI-kudir's territory -- a call edge to the subscript symbol may be right there). Diff the edge set, not the count: every removed edge should be a subscript site."  # 0cf9
+    fields: {}  # 0cf9
