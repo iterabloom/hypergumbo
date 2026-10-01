@@ -70,7 +70,7 @@ Values that name the relationship the edge expresses between src and dst. Per AD
 - **`extends`** — Class extends a superclass, or an interface / trait / protocol extends its base type.
 - **`implements`** — Class or struct implements an interface / trait / protocol.
 - **`imports`** — Module imports another module or symbol.
-- **`includes`** — File or class includes / sources / mixes-in another unit's content (LaTeX \include, RST .. include::, Meson subdir, Ruby `include`/`extend` mixin — WI-hatip).
+- **`includes`** — File or class includes / sources / mixes-in another unit's content (LaTeX \include, RST .. include::, Meson subdir, Ruby `include`/`extend` mixin — WI-hatip, Dart `with` mixin — WI-lahub).
 - **`inherits`** — Class/contract inherits from a parent (used by languages where 'inherits' reads more naturally than 'extends').
 - **`instantiates`** — Constructor or factory creates an instance.
 - **`links`** — Generic linkage relationship.

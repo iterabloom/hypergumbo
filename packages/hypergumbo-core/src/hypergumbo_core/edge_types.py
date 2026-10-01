@@ -181,7 +181,8 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
         "includes", AXIS_RELATIONSHIP,
         "File or class includes / sources / mixes-in another unit's "
         "content (LaTeX \\include, RST .. include::, Meson subdir, "
-        "Ruby `include`/`extend` mixin — WI-hatip).",
+        "Ruby `include`/`extend` mixin — WI-hatip, Dart `with` mixin — "
+        "WI-lahub).",
     ),
     EdgeTypeSpec(
         "constrains", AXIS_RELATIONSHIP,
@@ -452,6 +453,9 @@ MIXIN_INCLUDE_EVIDENCE_TYPES: Final[frozenset[str]] = frozenset({
 producers emit it and eight of them mean file inclusion (latex, make, meson,
 puppet, requirements, rst, scss, twig); exactly one, the inheritance linker's
 ``_create_includes_edges``, means the Ruby ``include`` / ``extend`` mixin.
+(Since WI-lahub a second mixin producer exists: the Dart analyzer emits
+``includes`` with ``ast_includes`` for a ``with`` clause. The counts above are
+the measurement this split was made on, not a live census.)
 
 Measured on the Rails app *postal*: 41 ``includes`` edges — 39 ``class ->
 module`` mixins from the inheritance linker, and 2 ``file ->
