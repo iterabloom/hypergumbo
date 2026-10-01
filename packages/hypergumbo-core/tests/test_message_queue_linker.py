@@ -821,3 +821,40 @@ class TestTestFileGating:
 
         assert len(result.symbols) == 2
         assert len(result.edges) == 1
+
+
+class TestJsTsPatternLanguageFollowsFileSuffix:
+    """WI-komum: message_queue's ``_detect_language`` mapped ``.ts``/``.tsx`` to
+    ``javascript``, and that value is the minted symbol's id slot and
+    ``discovery_language``. It now follows ``js_ts_language_from_path``."""
+
+    def test_pattern_language_by_suffix(self, tmp_path: Path) -> None:
+        code = "await producer.send({ topic: 'orders', messages: [] });\n"
+        for filename, expected in [
+            ("pub.ts", "typescript"),
+            ("pub.tsx", "typescript"),
+            ("pub.js", "javascript"),
+            ("pub.jsx", "javascript"),
+        ]:
+            file = tmp_path / filename
+            file.write_text(code)
+            patterns = _scan_file(file, code)
+            assert [p.topic for p in patterns] == ["orders"]  # reach
+            assert patterns[0].language == expected, filename
+
+    def test_ts_publisher_symbol_end_to_end(self, tmp_path: Path) -> None:
+        (tmp_path / "pub.ts").write_text(
+            "await producer.send({ topic: 'orders', messages: [] });\n"
+        )
+        (tmp_path / "sub.ts").write_text(
+            "await consumer.subscribe({ topic: 'orders' });\n"
+        )
+        result = link_message_queues(tmp_path)
+        by_name = {Path(s.path).name: s for s in result.symbols}
+        assert set(by_name) == {"pub.ts", "sub.ts"}
+        for sym in by_name.values():
+            assert sym.discovery_language == "typescript"
+            assert sym.id.startswith("typescript:")
+        # Both ends TypeScript: same-language literal match keeps 0.9.
+        assert len(result.edges) == 1
+        assert result.edges[0].confidence == 0.9

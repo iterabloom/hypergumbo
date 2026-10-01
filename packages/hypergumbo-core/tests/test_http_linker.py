@@ -2732,8 +2732,9 @@ class TestJsTemplateLiteralEndToEnd:
         result = link_http(tmp_path, [route])
 
         # ADR-0031: Class B synthetic stand-ins carry language=None;
-        # discovery_language carries the host.
-        ts_syms = [s for s in result.symbols if s.discovery_language == "javascript"]
+        # discovery_language carries the host -- ``typescript`` for ``api.ts``
+        # (WI-komum: this assertion used to pin the ``javascript`` hardcode).
+        ts_syms = [s for s in result.symbols if s.discovery_language == "typescript"]
         assert len(ts_syms) == 1
         assert any(
             e.src == ts_syms[0].id
@@ -2805,3 +2806,96 @@ class TestJsTemplateLiteralEndToEnd:
         assert not any(
             e.edge_type == "calls" and e.meta.get("protocol") == "http" for e in result.edges
         ), "Shallow '/api' prefix should not match any route"
+
+
+class TestJsTsClientLanguageFollowsFileSuffix:
+    """WI-komum: a TypeScript client call carries ``typescript``, not ``javascript``.
+
+    ``_scan_javascript_file`` used to hardcode ``language="javascript"`` at
+    every one of its thirteen ``HttpClientCall`` sites, so a ``fetch`` in
+    ``a.ts`` minted ``javascript:a.ts:...:call_site`` with
+    ``discovery_language="javascript"`` while the JS/TS analyzer tags every
+    other symbol of that file ``typescript``. The language now comes from the
+    file suffix through ``js_ts_language_from_path`` (INV-tofun parity).
+
+    One snippet per scan branch: each case asserts the branch was REACHED (the
+    branch's own URL is among the calls) before asserting the language, so a
+    snippet that stops matching fails loudly instead of passing vacuously.
+    """
+
+    # (snippet, url the branch must produce)
+    _BRANCH_SNIPPETS = (
+        ("fetch(`/api/fetch-template`);", "/api/fetch-template"),
+        ("axios.get(`/api/axios-template`);", "/api/axios-template"),
+        ("fetch('/api/fetch-method', { method: 'POST' });", "/api/fetch-method"),
+        ("fetch('/api/fetch-plain');", "/api/fetch-plain"),
+        ("axios.put('/api/axios-plain');", "/api/axios-plain"),
+        (
+            "__request(OpenAPI, { method: 'GET', url: '/api/openapi' });",
+            "/api/openapi",
+        ),
+        (
+            "__request(OpenAPI, { url: '/api/openapi-alt', method: 'DELETE' });",
+            "/api/openapi-alt",
+        ),
+        ("$http.get('/api/ng-short');", "/api/ng-short"),
+        ("$http({ method: 'GET', url: '/api/ng-config' });", "/api/ng-config"),
+        ("$http({ url: '/api/ng-config-alt', method: 'POST' });", "/api/ng-config-alt"),
+        ("$.get('/api/jq-short');", "/api/jq-short"),
+        ("$.ajax({ url: '/api/jq-ajax', type: 'GET' });", "/api/jq-ajax"),
+        ("$.ajax({ type: 'POST', url: '/api/jq-ajax-alt' });", "/api/jq-ajax-alt"),
+    )
+
+    def test_every_branch_labels_by_suffix(self) -> None:
+        cases = [
+            ("client.ts", "typescript"),
+            ("client.tsx", "typescript"),
+            ("client.js", "javascript"),
+            ("client.jsx", "javascript"),
+        ]
+        for snippet, url in self._BRANCH_SNIPPETS:
+            for filename, expected in cases:
+                calls = _scan_javascript_file(Path(filename), snippet + "\n")
+                # Reach first: the branch under test produced its own URL.
+                assert url in {c.url for c in calls}, (snippet, filename, calls)
+                langs = {c.language for c in calls}
+                assert langs == {expected}, (snippet, filename, langs)
+
+    def test_ts_client_symbol_id_and_discovery_language(self, tmp_path: Path) -> None:
+        """End-to-end through ``link_http``: the minted node's id slot and
+        ``discovery_language`` agree with the ``.ts`` file's language."""
+        (tmp_path / "a.ts").write_text(
+            'export function load() {\n  return fetch("/api/items");\n}\n'
+        )
+        (tmp_path / "b.js").write_text('fetch("/api/items");\n')
+        result = link_http(tmp_path, [])
+        by_path = {Path(s.path).name: s for s in result.symbols if s.kind == "call_site"}
+        assert set(by_path) == {"a.ts", "b.js"}
+        ts_sym = by_path["a.ts"]
+        assert ts_sym.discovery_language == "typescript"
+        assert ts_sym.id.startswith("typescript:a.ts:2-2:")
+        assert ts_sym.language is None  # ADR-0031 Class B stand-in
+        js_sym = by_path["b.js"]
+        assert js_sym.discovery_language == "javascript"
+        assert js_sym.id.startswith("javascript:b.js:")
+
+    def test_ts_client_to_ts_route_is_same_language(self, tmp_path: Path) -> None:
+        """A ``.ts`` client calling a route the analyzer tagged ``typescript``
+        is a same-language match (0.9), not the cross-language 0.8 the old
+        ``javascript`` hardcode produced."""
+        (tmp_path / "client.ts").write_text('fetch("/api/users");\n')
+        route_symbol = Symbol(
+            id="typescript:server.ts:1-1:getUsers:function",
+            name="getUsers",
+            kind="function",
+            path=str(tmp_path / "server.ts"),
+            span=Span(start_line=1, start_col=0, end_line=1, end_col=20),
+            language="typescript",
+            stable_id="sha256:abc123",
+            meta={
+                "concepts": [{"concept": "route", "path": "/api/users", "method": "GET"}]
+            },
+        )
+        result = link_http(tmp_path, [route_symbol])
+        assert len(result.edges) == 1
+        assert result.edges[0].confidence == 0.9

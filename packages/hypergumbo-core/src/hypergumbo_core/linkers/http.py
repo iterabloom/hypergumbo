@@ -118,7 +118,7 @@ from ..url_folding import (
     load_url_folding_registry,
 )
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("http-linker")
 
@@ -702,7 +702,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type=url_type,
             )
         )
@@ -718,7 +718,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type=url_type,
             )
         )
@@ -736,7 +736,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type="literal",
             )
         )
@@ -758,7 +758,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type=url_type,
             )
         )
@@ -776,7 +776,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type=url_type,
             )
         )
@@ -794,7 +794,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type="literal",
             )
         )
@@ -814,7 +814,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type="literal",
             )
         )
@@ -832,7 +832,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type=url_type,
             )
         )
@@ -850,7 +850,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type="literal",
             )
         )
@@ -870,7 +870,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type="literal",
             )
         )
@@ -888,7 +888,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type=url_type,
             )
         )
@@ -906,7 +906,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type="literal",
             )
         )
@@ -926,7 +926,7 @@ def _scan_javascript_file(file_path: Path, content: str) -> list[HttpClientCall]
                 url=url,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
                 url_type="literal",
             )
         )

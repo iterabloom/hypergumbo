@@ -415,6 +415,39 @@ class TestINVRonufNoPhantomFileSymbols:
                 f"expected typescript for {s.path!r}, got {s.language!r}"
             )
 
+    def test_tsx_file_gets_typescript_not_grammar_name(self, tmp_path: Path) -> None:
+        """WI-komum: ``.tsx`` is ``typescript``, the JS/TS analyzer's tag.
+
+        ``_language_for_file`` took ``language_from_path``, which returns the
+        tree-sitter GRAMMAR name, so a ``.tsx`` sender minted the file id
+        ``tsx:App.tsx:1-1:file:file`` -- a shadow of the analyzer's
+        ``typescript:`` file node for the same path (clause 1) and an edge
+        source in a language no analyzer emits.
+        """
+        (tmp_path / "App.tsx").write_text("socket.emit('e', data);")
+        (tmp_path / "server.ts").write_text("socket.on('e', handler);")
+        result = link_websocket(tmp_path)
+        tsx_file_syms = [
+            s for s in result.symbols if s.kind == "file" and s.path.endswith(".tsx")
+        ]
+        assert len(tsx_file_syms) == 1  # reach
+        assert tsx_file_syms[0].language == "typescript"
+        assert tsx_file_syms[0].id.startswith("typescript:")
+        assert result.edges, "fixture must link sender to receiver"
+        for e in result.edges:
+            assert not e.src.startswith("tsx:") and not e.dst.startswith("tsx:"), e
+
+    def test_language_for_file_js_family_uses_analyzer_tag(self) -> None:
+        """WI-komum: every JS/TS suffix maps to the analyzer's tag."""
+        from hypergumbo_core.linkers.websocket import _language_for_file
+
+        assert _language_for_file("a.tsx", "socketio") == "typescript"
+        assert _language_for_file("a.ts", "socketio") == "typescript"
+        assert _language_for_file("a.jsx", "socketio") == "javascript"
+        assert _language_for_file("a.mjs", "ws") == "javascript"
+        assert _language_for_file("a.js", "ws") == "javascript"
+        assert _language_for_file("consumers.py", "django_channels") == "python"
+
     def test_synthesized_file_symbols_have_stable_id(self, tmp_path: Path) -> None:
         """INV-ronuf clause 3: synthesized file Symbols stamp ``stable_id``.
 

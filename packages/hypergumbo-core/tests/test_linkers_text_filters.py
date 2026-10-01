@@ -281,15 +281,21 @@ def test_js_ts_language_from_path_analyzer_parity():
     analyzer assigns to non-linker symbols in the same file.
 
     The analyzer (``hypergumbo_lang_mainstream.js_ts._get_language_for_file``)
-    maps ``.ts``/``.tsx`` to ``typescript`` and everything else to
-    ``javascript``. This helper mirrors that mapping exactly; the values are
-    asserted directly rather than via a cross-package import so the test still
-    passes when hypergumbo-core is exercised in isolation by CI.
+    maps ``.ts``/``.tsx``/``.mts``/``.cts`` to ``typescript`` and everything
+    else to ``javascript``. This helper mirrors that mapping exactly; the
+    values are asserted directly rather than via a cross-package import so the
+    test still passes when hypergumbo-core is exercised in isolation by CI.
+    WI-komum added ``.mts``/``.cts``: the helper said ``javascript`` for them
+    while the analyzer (and INV-tofun's statement) say ``typescript``.
     """
     assert js_ts_language_from_path(Path("events.ts")) == "typescript"
     assert js_ts_language_from_path(Path("events.tsx")) == "typescript"
+    assert js_ts_language_from_path(Path("events.mts")) == "typescript"
+    assert js_ts_language_from_path(Path("events.cts")) == "typescript"
+    assert js_ts_language_from_path(Path("EVENTS.MTS")) == "typescript"
     assert js_ts_language_from_path(Path("events.js")) == "javascript"
     assert js_ts_language_from_path(Path("events.jsx")) == "javascript"
-    # Extensions outside the .ts/.tsx set fall to javascript, matching the
+    # Extensions outside the TypeScript set fall to javascript, matching the
     # analyzer's else-branch (parity over independent "correctness").
     assert js_ts_language_from_path(Path("events.mjs")) == "javascript"
+    assert js_ts_language_from_path(Path("events.cjs")) == "javascript"

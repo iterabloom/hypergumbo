@@ -212,8 +212,8 @@ def js_ts_language_from_path(file_path: Path) -> str:
     """Return the JS/TS analyzer's language tag for ``file_path`` (INV-tofun).
 
     Mirrors ``hypergumbo_lang_mainstream.js_ts._get_language_for_file``:
-    ``.ts``/``.tsx`` are ``typescript``; every other extension is
-    ``javascript``. Linkers that fabricate synthetic stand-ins from JS/TS
+    ``.ts``/``.tsx``/``.mts``/``.cts`` are ``typescript``; every other
+    extension (``.mjs``/``.cjs`` included) is ``javascript``. Linkers that fabricate synthetic stand-ins from JS/TS
     source use this so a stand-in discovered in a ``.ts`` file carries the same
     language the analyzer assigns to real declarations in that file — the value
     feeds ``Symbol.discovery_language`` and the canonical id's first segment.
@@ -224,7 +224,7 @@ def js_ts_language_from_path(file_path: Path) -> str:
     split, because the governing invariant is *consistency with the analyzer's
     tag*, not independent extension correctness.
     """
-    if file_path.suffix.lower() in (".ts", ".tsx"):
+    if file_path.suffix.lower() in (".ts", ".tsx", ".mts", ".cts"):
         return "typescript"
     return "javascript"
 
