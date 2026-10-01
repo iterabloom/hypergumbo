@@ -55,7 +55,7 @@ from ..analyze.base import make_symbol_id, sanitize_id_name_segment
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, LinkerRequirement, register_linker
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("graphql-linker")
 
@@ -198,7 +198,7 @@ def _scan_javascript_graphql(file_path: Path, content: str) -> list[GraphQLClien
                 query_text=query_text,
                 line=line_num,
                 file_path=str(file_path),
-                language="javascript",
+                language=js_ts_language_from_path(file_path),
             )
         )
 

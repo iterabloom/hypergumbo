@@ -92,7 +92,7 @@ from ..analyze.base import (
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("message-queue-linker")
@@ -282,7 +282,7 @@ def _detect_language(file_path: Path) -> str:
     if ext == ".py":
         return "python"
     elif ext in (".js", ".ts", ".jsx", ".tsx"):
-        return "javascript"
+        return js_ts_language_from_path(file_path)  # WI-komum: .ts -> typescript
     elif ext == ".java":
         return "java"
     return "unknown"  # pragma: no cover

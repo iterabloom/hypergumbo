@@ -95,7 +95,7 @@ from ..analyze.base import make_file_id, make_file_stable_id, make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
-from ._text_filters import language_from_path, read_masked_source
+from ._text_filters import js_ts_language_from_path, language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("websocket-linker")
 
@@ -366,9 +366,13 @@ def _language_for_file(file_path: str, pattern_type: str) -> str:
     recorded as ``typescript``, not ``javascript``. Falls back to the
     pattern_type-derived language only when the extension is unknown
     (e.g., Django Channels handler in a path without a recognised
-    extension, or a synthetic test path).
+    extension, or a synthetic test path). A JS/TS extension takes the JS/TS
+    analyzer's tag (WI-komum): ``language_from_path`` names the tree-sitter
+    GRAMMAR, ``tsx`` for ``.tsx``, a language no analyzer emits.
     """
     by_ext = language_from_path(Path(file_path))
+    if by_ext in ("javascript", "typescript", "tsx"):
+        return js_ts_language_from_path(Path(file_path))
     if by_ext is not None:
         return by_ext
     if pattern_type in ("fastapi", "django_channels", "starlette"):
