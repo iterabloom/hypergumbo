@@ -18,3 +18,10 @@
     pr_ref:  # 0b66
     description: "yaml_ansible's find_ansible_files tags any root-level `.yml`/`.yaml` (or any file under roles/tasks/handlers/-named dirs) as `language=ansible` with NO content discrimination. In self-analysis the sole `ansible` node is `.yamllint.yaml` — a yamllint config, not a playbook — so metrics.languages.ansible={nodes:1} falsely reports Ansible content in a repo that has none. Fix: add a content discriminator (hosts:/tasks:/playbook structure) to find_ansible_files before tagging ansible. Surfaced via dogfooding; blinded severity 3/5."  # 0b66
     fields: {}  # 0b66
+- op: discuss  # ed98
+  at: '2026-10-01T00:56:48Z'  # ed98
+  by: agent  # ed98
+  actor: jgstern_agent  # ed98
+  clock: 2  # ed98
+  nonce: ed98  # ed98
+  message: "PREMISE CHECK 2026-09-30 (dev 134a06d505): CURRENT.\n\n- packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/yaml_ansible.py:60\n  find_ansible_files still selects on path alone: suffix .yml/.yaml AND (any part in\n  roles/tasks/handlers/playbooks/vars/defaults/group_vars/host_vars OR parent == root), :85-93.\n  No content check. Commits since filing (2d9040298b, f562635f72 docstrings; 5fb2e5af36, c8c024feb3)\n  do not touch the selection.\n- Repro: fixture dir with a copy of this repo's .yamllint.yaml + one .py file, run_behavior_map ->\n  node \"ansible file .yamllint.yaml\"; metrics.languages.ansible = {edges 0, files 1, nodes 1}.\n- .yamllint.yaml is still the only root-level tracked YAML, and git ls-files shows no YAML under the\n  ansible-named dirs, so the self-analysis claim holds\n  by construction (self-analysis itself not re-run).\nScope note: the directory arm has the same no-content property, measured: a plain config\nweb/vars/app.yaml (port: 8080 / host: x) in a fixture -> node 'ansible file app.yaml'. The content\ndiscriminator should cover both arms, not only the root arm.\nRelated: WI-futin (ansible is one of the no_taxonomy_spec languages)."  # ed98
