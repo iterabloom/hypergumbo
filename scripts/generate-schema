@@ -548,6 +548,8 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                                     "non_null": {"type": "integer"},
                                     "none_cohort": {"type": "integer"},
                                     "none_cohort_pct": {"type": "number"},
+                                    "floor_cohort": {"type": "integer"},
+                                    "floor_abstained": {"type": "integer"},
                                     "collision_groups": {"type": "integer"},
                                     "collided_symbols": {"type": "integer"},
                                     "collision_rate_pct": {"type": "number"},
@@ -564,6 +566,11 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                             "population/collision/None-cohort disclosure over "
                             "an all-Symbols denominator; always present so a "
                             "clean non-null rate can never hide a None-cohort. "
+                            "floor_cohort counts ids equal to their recomputed "
+                            "ADR-0035 §1 backstop floor key and floor_abstained "
+                            "the nulls whose floor key is shared in their file, "
+                            "so none_cohort=0 is not read as every id coming "
+                            "from a producer formula. "
                             "Null on bare build_validation_report calls (unit "
                             "tests)."
                         )

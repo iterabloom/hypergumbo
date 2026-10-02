@@ -121,7 +121,7 @@ from typing import Any, Callable, Iterable, Optional
 
 from .receiver_blind_magnets import find_harmful_magnets
 
-VALIDATION_REPORT_SCHEMA_VERSION = "0.3"  # 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
+VALIDATION_REPORT_SCHEMA_VERSION = "0.4"  # 0.4: WI-motiz added stable_id_stats.floor_cohort / floor_abstained (additive); 0.3: validator:F2 (WI-moriz) added wired_checks disclosure; 0.2: ADR-0035 §5 added stable_id_stats
 
 # Stable enum-like sets. Mirrored in the ADR-0033 §"Output format" table
 # and in `ValidationViolation.severity` / `validator_class` axis annotations.
@@ -1560,19 +1560,48 @@ def compute_stable_id_stats(symbols: Iterable[Any]) -> dict[str, Any]:
     collision rate are ALWAYS visible — independent of whether the collision
     umbrella fired. This is the structural guard against the 2026-06-01
     false all-clear (a hidden None-cohort behind a clean non-null rate).
+
+    WI-motiz adds the ADR-0035 §1 backstop floor beside the None cohort, so
+    ``none_cohort = 0`` is never read as "every id came from a producer
+    formula". Both counts are RECOMPUTED from the emitted records through
+    ``analyze.base.floor_stable_id_key`` (the one definition the backstop
+    stamps with), so a consumer can re-derive them:
+
+    * ``floor_cohort`` — non-null ids equal to their record's floor key (a
+      kind outside the factory table, with a language). A producer that
+      stamps the same formula (graphql_sdl's ``field``) is counted: the stat
+      measures what the id is built from, not who stamped it.
+    * ``floor_abstained`` — null records whose floor key some other record in
+      the same file shares (another null candidate, or a record holding that
+      value): the backstop's abstentions. A lone null floor-eligible record
+      (minted after the backstop ran, e.g. by a linker) is in ``none_cohort``
+      but not here.
     """
+    from .analyze.base import floor_stable_id_key
+
     counter: dict[str, list[Any]] = {}
     by_file_sid: dict[tuple[str, str], int] = {}
+    null_floor: dict[tuple[str, str], int] = {}
     total = 0
     none_cohort = 0
+    floor_cohort = 0
     for sym in symbols:
         sid = getattr(sym, "stable_id", None)
+        path: Any = getattr(sym, "path", None)
+        floor_key = floor_stable_id_key(
+            getattr(sym, "kind", None), getattr(sym, "language", None),
+            path, getattr(sym, "name", None),
+        )
         if sid is None:
             none_cohort += 1
+            if floor_key is not None:
+                null_key = (path, floor_key)
+                null_floor[null_key] = null_floor.get(null_key, 0) + 1
             continue
         total += 1
+        if sid == floor_key:
+            floor_cohort += 1
         counter.setdefault(sid, []).append(sym)
-        path = getattr(sym, "path", None)
         if path:
             key = (path, sid)
             by_file_sid[key] = by_file_sid.get(key, 0) + 1
@@ -1580,6 +1609,10 @@ def compute_stable_id_stats(symbols: Iterable[Any]) -> dict[str, Any]:
     collided = sum(len(g) for g in counter.values() if len(g) > 1)
     collision_groups = sum(1 for g in counter.values() if len(g) > 1)
     per_file_collision_groups = sum(1 for c in by_file_sid.values() if c > 1)
+    floor_abstained = sum(
+        count for file_key, count in null_floor.items()
+        if count + by_file_sid.get(file_key, 0) > 1
+    )
     return {
         "total_symbols": population,
         "non_null": total,
@@ -1587,6 +1620,8 @@ def compute_stable_id_stats(symbols: Iterable[Any]) -> dict[str, Any]:
         "none_cohort_pct": (
             round(100 * none_cohort / population, 2) if population else 0.0
         ),
+        "floor_cohort": floor_cohort,
+        "floor_abstained": floor_abstained,
         "collision_groups": collision_groups,
         "collided_symbols": collided,
         "collision_rate_pct": (
