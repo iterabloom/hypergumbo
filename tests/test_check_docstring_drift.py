@@ -368,6 +368,20 @@ def test_code_is_not_prose():
     assert _hits('LEGACY = "routes_to"  # edges of the old name\n') == []
 
 
+def test_one_name_matched_by_two_contexts_is_one_hit():
+    """'edge type is X' and 'X edges' both reach the same name here."""
+    src = '"""Its edge type is ``routes_to`` edges, not dispatches_to."""\n'
+    assert _flagged(src) == [(1, "routes_to", "edge-type")]
+
+
+def test_an_f_string_message_is_prose():
+    """A user-facing message names vocabulary as surely as a docstring.
+    The interpolation is code, so it stays a barrier."""
+    src = 'msg = f"creates routes_to edges for {name}"\n'
+    assert _flagged(src) == [(1, "routes_to", "edge-type")]
+    assert _hits('msg = f"{routes_to} edges"\n') == []
+
+
 def test_a_retired_symbol_kind_literal_in_prose_is_flagged():
     src = '"""1. Find all route symbols (kind="route")."""\n'
     assert _flagged(src) == [(1, "route", "symbol-kind")]
