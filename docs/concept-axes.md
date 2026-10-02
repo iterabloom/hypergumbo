@@ -67,8 +67,8 @@ Values that name the relationship the edge expresses between src and dst. Per AD
 - **`depends_on_manifest`** — An importing source file RESOLVED to a manifest-declared dependency (the dependency linker's import->declared-dep bridge; evidence_type=import_to_manifest): a resolution edge from the file to the dependency. Distinct from depends_on (the manifest's own declaration) -- see WI-dinih.
 - **`dispatches_to`** — Caller dispatches to callee via runtime indirection (virtual method, function pointer, DI resolution, etc.).
 - **`event_publishes`** — Producer publishes an event/message that the consumer receives via an async channel (event bus, queue, CRDT, etc.).
-- **`extends`** — Class extends a superclass, or an interface / trait / protocol extends its base type.
-- **`implements`** — Class or struct implements an interface / trait / protocol.
+- **`extends`** — Class extends a superclass, an interface / trait / protocol extends its base type, or a Dart mixin names its `on` superclass constraint.
+- **`implements`** — A type implements an interface / trait / protocol (in Dart, any class's implicit interface), or an Elixir module implements a behaviour.
 - **`imports`** — Module imports another module or symbol.
 - **`includes`** — File or class includes / sources / mixes-in another unit's content (LaTeX \include, RST .. include::, Meson subdir, Ruby `include`/`extend` mixin — WI-hatip, Dart `with` mixin — WI-lahub).
 - **`inherits`** — Class/contract inherits from a parent (used by languages where 'inherits' reads more naturally than 'extends').
