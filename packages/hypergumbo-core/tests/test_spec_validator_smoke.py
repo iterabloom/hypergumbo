@@ -1523,6 +1523,53 @@ def test_compute_stable_id_stats_empty_is_zeroed() -> None:
     assert stats["total_symbols"] == 0
     assert stats["none_cohort_pct"] == 0.0
     assert stats["collision_rate_pct"] == 0.0
+    assert stats["floor_cohort"] == 0
+    assert stats["floor_abstained"] == 0
+
+
+def test_compute_stable_id_stats_discloses_floor_cohort_and_abstentions() -> None:
+    """WI-motiz / ADR-0035 §1: ``none_cohort == 0`` must not read as "every id
+    came from an analyzer". ``floor_cohort`` counts ids equal to their
+    recomputed floor key (a kind outside the backstop's factory table, with a
+    language); ``floor_abstained`` counts nulls whose floor key is shared in
+    their file, i.e. the backstop's abstentions. Both are recomputed from the
+    emitted records, so a consumer can re-derive them.
+    """
+    from hypergumbo_core.analyze.base import make_declaration_stable_id
+
+    def sym(idx: int, kind: str, name: str, path: str | None,
+            language: str | None, sid: str | None) -> _FakeSym:
+        return _FakeSym(id=f"{language}:{path}:{idx}-{idx}:{name}:{kind}",
+                        kind=kind, name=name, path=path, language=language,
+                        stable_id=sid)
+
+    floor = make_declaration_stable_id("function", "erlang", "a.erl", "greet/1")
+    held = make_declaration_stable_id("field", "graphql", "s.js", "User.email")
+    syms = [
+        # 1. a floor id (equals its recomputed floor key): floor_cohort
+        sym(1, "function", "greet/1", "a.erl", "erlang", floor),
+        # 2. a producer id on a floor-eligible kind: not floor
+        sym(2, "function", "main/0", "a.erl", "erlang", "sha256:aaaaaaaaaaaaaaaa"),
+        # 3. a factory-table kind whose table formula has the declaration shape:
+        #    a decided key, not the floor
+        sym(3, "class", "W", "w.ts", "typescript",
+            make_declaration_stable_id("class", "typescript", "w.ts", "W")),
+        # 4-5. an ambiguous floor group (same-name elixir clauses): abstained
+        sym(4, "function", "Demo.greet", "a.ex", "elixir", None),
+        sym(5, "function", "Demo.greet", "a.ex", "elixir", None),
+        # 6. a lone null floor-eligible symbol (e.g. minted after the
+        #    backstop ran): in none_cohort, NOT an abstention
+        sym(6, "method", "Get", "a.proto", "proto", None),
+        # 7. a language=None stand-in: none_cohort only
+        sym(7, "function", "x", "a.py", None, None),
+        # 8-9. a null candidate whose key another record in the file holds
+        sym(8, "field", "User.email", "s.js", "graphql", held),
+        sym(9, "field", "User.email", "s.js", "graphql", None),
+    ]
+    stats = compute_stable_id_stats(syms)
+    assert stats["none_cohort"] == 5
+    assert stats["floor_cohort"] == 2  # records 1 and 8
+    assert stats["floor_abstained"] == 3  # records 4, 5 and 9
 
 
 def test_per_file_collision_record_id_is_order_deterministic() -> None:
