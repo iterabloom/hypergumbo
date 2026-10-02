@@ -8,7 +8,7 @@ docstring-staleness audit (see
 It produces a ranked candidate list of files where the module
 docstring is likely to have drifted from the surrounding code.
 
-Three sub-checks are available:
+Four sub-checks are available:
 
 1. **Co-change scan** (default, ``--co-change``). For each ``.py``
    file under ``packages/*/src/``, AST-parse to find the module
@@ -60,17 +60,39 @@ Three sub-checks are available:
    ``FIXME`` / ``XXX``. Intersection with the closed-tracker-ID
    set from check #2 is the highest-signal subset.
 
-``--all`` runs all three. Default scope is ``packages/*/src``; pass
+4. **Registry cross-reference** (``--registry-refs``). The one
+   sub-check that does not key on change. Checks #1-#3 read blame
+   dates, tracker status and marker words, so none of them can see
+   a docstring that never aged relative to its body but names a
+   value the registry retired -- the family that dominated the
+   2026-08-18 audit (63 lines in 19 files, nine of those files
+   unflaggable by co-change, one site published into
+   ``docs/schema.json``). This check reads every comment and every
+   string literal containing whitespace (docstrings at any level,
+   and description strings such as a ``MetaKeySpec``'s), finds the
+   names the prose presents as vocabulary -- ``X edges``,
+   ``edge type is X``, ``kind="X"``, ``evidence_type="X"`` -- and
+   reports each one that no live registry has. Name-exact and
+   registry-derived, through the ``all_*_names()`` resolvers: no
+   blame, no dates, no thresholds, so it cannot decay with the
+   calendar. A hit whose sentence explains a fold is reported under
+   ``fold_explained`` instead of flagged. Reported only: it never
+   changes the exit code (WI-sipuk's first pass; see the playbook
+   for its measured precision and recall before anyone gates on it).
+
+``--all`` runs all four. Default scope is ``packages/*/src``; pass
 positional path arguments to narrow.
 
-The semantic-review step (the fourth pass in the playbook) cannot
+The semantic-review step (a later step in the playbook) cannot
 be a script — it needs LLM judgment per file. This script produces
 the candidate pool the semantic step operates on.
 
 Exit codes
 ----------
 - 0: no candidates flagged
-- 1: candidates flagged (drift suspected, review recommended)
+- 1: co-change or tracker-ref candidates flagged (drift suspected,
+  review recommended). Phase-marker and registry hits are reported
+  but never set it.
 - 2: usage / configuration error
 
 Usage
@@ -79,7 +101,7 @@ Run with no args to do a co-change scan over the default scope::
 
     scripts/check-docstring-drift
 
-Pass ``--all`` to run all three sub-checks, ``--json`` for
+Pass ``--all`` to run all four sub-checks, ``--json`` for
 machine-readable output, ``--window`` / ``--min-delta`` /
 ``--min-body-commits`` to tune co-change thresholds.
 """
@@ -89,12 +111,14 @@ import argparse
 import ast
 import datetime as dt
 import glob
+import io
 import json
 import os
 import pathlib
 import re
 import subprocess
 import sys
+import tokenize
 
 
 # Default co-change thresholds (calibrated against the 2026-05-15
@@ -545,6 +569,278 @@ def phase_marker_grep(scope_dirs: tuple[str, ...]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Registry cross-reference
+# ---------------------------------------------------------------------------
+
+
+# The registries this sub-check reads, named as multi_value_field_axis names
+# them. The first three are the vocabularies the ADR-0023 / ADR-0027 /
+# ADR-0028 folds retired values from. meta-key and io-boundary are there
+# because prose says "io_boundary edges" for edges carrying that meta key
+# (axis_meta_keys.py, published to docs/schema.json); without them a live
+# meta-key name reads as a retired edge type.
+REGISTRY_AXES = ("edge-type", "symbol-kind", "evidence-type", "meta-key",
+                 "io-boundary")
+
+
+def live_vocabulary(repo_root: str) -> dict[str, frozenset[str]]:
+    """Each registry's legal names, read through its ``all_*_names()`` resolver.
+
+    The resolvers, never the spec tuples: ``edge_types.EDGE_TYPES`` is a tuple
+    of ``EdgeTypeSpec`` objects, so ``name in EDGE_TYPES`` is False for every
+    name, and a scan built on it would flag the whole vocabulary. Imported
+    lazily so the three blame/grep sub-checks keep running where the core
+    package cannot be imported.
+    """
+    core_src = os.path.join(repo_root, "packages", "hypergumbo-core", "src")
+    if core_src not in sys.path:
+        sys.path.insert(0, core_src)
+    from hypergumbo_core.axis_meta_keys import all_meta_key_names
+    from hypergumbo_core.edge_types import all_edge_type_names
+    from hypergumbo_core.evidence_types import all_evidence_type_names
+    from hypergumbo_core.io_boundary_types import all_io_boundary_names
+    from hypergumbo_core.symbol_kinds import all_symbol_kind_names
+    return {
+        "edge-type": frozenset(all_edge_type_names()),
+        "symbol-kind": frozenset(all_symbol_kind_names()),
+        "evidence-type": frozenset(all_evidence_type_names()),
+        "meta-key": frozenset(all_meta_key_names()),
+        "io-boundary": frozenset(all_io_boundary_names()),
+    }
+
+
+# A code character in the prose mask. Not whitespace, so no context pattern can
+# reach across code from one comment or string into the next.
+_BARRIER = "\x00"
+_LAYOUT_TOKENS = frozenset({tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
+                            tokenize.DEDENT})
+_STRING_TOKENS = frozenset(
+    t for t in (tokenize.STRING, getattr(tokenize, "FSTRING_MIDDLE", None))
+    if t is not None
+)
+_QUOTE_RE = re.compile(r"[rRbBfFuU]*('''|\"\"\"|'|\")")
+
+
+def prose_mask(src: str) -> str | None:
+    """Return *src* with every character that is not prose replaced.
+
+    Prose is a comment, or a string literal that contains whitespace: module,
+    class and function docstrings, and description strings such as a
+    ``MetaKeySpec`` description (which ``scripts/generate-schema`` publishes
+    into ``docs/schema.json`` -- the 2026-08-18 audit found a retired edge-type
+    pair shipped through exactly that path). A string with no whitespace is a
+    code value (``etype == "routes_to"`` in a back-compat reader), and code is
+    the producer-coherence gates' job, not this scan's.
+
+    Every offset and newline is preserved, so a match's line number is the
+    source line. Comment markers, quotes and string prefixes become spaces, so
+    consecutive comment lines and implicitly concatenated strings read as one
+    run of text and a phrase split across them still matches. Code becomes
+    ``_BARRIER``, which no pattern crosses.
+
+    Returns ``None`` when *src* does not tokenize; the caller reports such
+    files rather than counting them as clean.
+    """
+    try:
+        toks = list(tokenize.generate_tokens(io.StringIO(src).readline))
+    except (tokenize.TokenError, SyntaxError):
+        return None
+    starts = [0]
+    for line in src.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+
+    def off(pos: tuple[int, int]) -> int:
+        return starts[pos[0] - 1] + pos[1]
+
+    out = [c if c in " \t\r\n" else _BARRIER for c in src]
+    for t in toks:
+        a, b = off(t.start), off(t.end)
+        if t.type in _LAYOUT_TOKENS:
+            for i in range(a, b):
+                if out[i] != "\n":
+                    out[i] = " "
+            continue
+        if t.type == tokenize.COMMENT:
+            out[a:b] = " " + t.string[1:]
+            continue
+        if t.type not in _STRING_TOKENS:
+            continue
+        q = _QUOTE_RE.match(t.string)
+        body = t.string[q.end():len(t.string) - len(q.group(1))] if q else t.string
+        if not re.search(r"\s", body):
+            continue
+        out[a:b] = t.string
+        if q:
+            out[a:a + q.end()] = " " * q.end()
+            out[b - len(q.group(1)):b] = " " * len(q.group(1))
+    return "".join(out)
+
+
+# A vocabulary-shaped token. In free prose ("routes_to edges") a name counts
+# only when it is marked as one: ``x``, `x` or **x**, or a bare snake_case word
+# with an underscore. "call edges", "the edges" and scare-quoted "resolved"
+# edges are English. After an explicit anchor (kind=, edge_type=) quotes are
+# syntax, so 'x' and "x" count there too. One-letter names are placeholders
+# (``kind="x"``), never vocabulary. Only the bare form needs a guard after it
+# (so ``routes_to`` is not read out of routes_tox); a quoted form ends at its
+# own closing quote, which may itself sit inside RST backticks, as in
+# ``kind="route"`` -- two of the 63 audit lines had exactly that shape.
+_NAME = r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*"
+_SNAKE = r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+"
+_PRE = r"(?<![\w.`'\"*-])"
+_POST = r"(?![\w`'\"*(-])"
+_FREE_TOKEN = (_PRE + r"(?:``(" + _NAME + r")``|`(" + _NAME + r")`|\*\*("
+               + _NAME + r")\*\*|(" + _SNAKE + r")" + _POST + ")")
+_QUOTED_TOKEN = (_PRE + r"(?:``(" + _NAME + r")``|`(" + _NAME + r")`|'("
+                 + _NAME + r")'|\"(" + _NAME + r")\"|\*\*(" + _NAME
+                 + r")\*\*)")
+_ANCHORED_TOKEN = (_PRE + r"(?:``(" + _NAME + r")``|`(" + _NAME + r")`|'("
+                   + _NAME + r")'|\"(" + _NAME + r")\"|\*\*(" + _NAME
+                   + r")\*\*|(" + _SNAKE + r")" + _POST + ")")
+_LIST_SEP = r"\s*(?:/|,\s*and\b|,\s*or\b|,|\band\b|\bor\b)\s*"
+
+
+def _token_list(token: str, more: str | None = None) -> str:
+    """A capture group holding one token or a /, comma, and/or list of them.
+    Every element must be a token, so a list cannot borrow an English word.
+    *more* restricts the elements after the first: after an anchor the list
+    continues only through QUOTED names, because in ``kind="call",
+    context_name="path"`` and ``kind=="file" and entry_role==...`` the next
+    bare word is a different keyword, not a second value (both measured on
+    the live tree)."""
+    more = more or token
+    return "((?:" + token + ")(?:" + _LIST_SEP + "(?:" + more + "))*)"
+
+
+_ANCHOR_VERB = r"\s*(?:is|was|are|==|=|:)?\s*"
+_ANCHORED_LIST = _token_list(_ANCHORED_TOKEN, _QUOTED_TOKEN)
+
+# (pattern, axis): group 1 is the list of names the prose presents as values
+# of ``axis``. ``axis`` is what the hit reports; membership is tested against
+# every registry (see registry_hits_in_source).
+REGISTRY_CONTEXTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # "creates routes_to edges", "a message_publish / message_subscribe edge"
+    (re.compile(_token_list(_FREE_TOKEN) + r"\s+edges?\b"), "edge-type"),
+    # "the linker's edge type is ``contains_routes``", edge_type="x"
+    (re.compile(r"\bedge[ _]types?" + _ANCHOR_VERB
+                + _ANCHORED_LIST, re.IGNORECASE), "edge-type"),
+    # kind="route", kind == 'route', kind='a' / 'b'
+    (re.compile(r"\bkind\s*(?:==|=)\s*" + _ANCHORED_LIST),
+     "symbol-kind"),
+    # evidence_type="x", "evidence type ``x``"
+    (re.compile(r"\bevidence[ _]types?" + _ANCHOR_VERB
+                + _ANCHORED_LIST, re.IGNORECASE),
+     "evidence-type"),
+)
+_ANCHORED_TOKEN_RE = re.compile(_ANCHORED_TOKEN)
+
+# A sentence that explains a fold names the retired value ON PURPOSE. Such a
+# hit is reported under ``fold_explained``, never dropped, so the suppression
+# itself stays auditable. The first five alternatives are the item's proposal;
+# the history words after them were measured: on the live tree they move six
+# hits ("previously emitted kind='function_call'", "message_receive edges are
+# dropped") from flagged to fold_explained, and on the pre-fold tree they
+# suppress none of the 63 retired-vocabulary lines 22418804f4 removed.
+# The scope is the SENTENCE: a paragraph scope suppressed three of those 63.
+FOLD_EXPLANATION_RE = re.compile(
+    r"fold|retired|deprecated|was .* onto|no longer"
+    r"|previously|formerly|former\b|dropped",
+    re.IGNORECASE,
+)
+# Sentence boundaries in the prose mask: a full stop, a blank line, code, or
+# the start of a list item.
+_SENTENCE_BOUNDARY_RE = re.compile(
+    r"\.\s|\n\s*\n|" + _BARRIER + r"|\n\s*(?:[-*]|\d+\.)\s"
+)
+
+
+def _sentence_around(text: str, a: int, b: int) -> str:
+    """Return the sentence of *text* containing ``text[a:b]``."""
+    start = 0
+    for m in _SENTENCE_BOUNDARY_RE.finditer(text, 0, a):
+        start = m.end()
+    m = _SENTENCE_BOUNDARY_RE.search(text, b)
+    return text[start:m.start() if m else len(text)]
+
+
+def registry_hits_in_source(
+    src: str, path: str, vocab: dict[str, frozenset[str]]
+) -> list[dict] | None:
+    """Every vocabulary-shaped name in *src*'s prose that its registry lacks.
+
+    ``None`` when *src* does not tokenize. Each hit carries ``fold_explained``:
+    whether its sentence is explaining a fold, which is the one legitimate
+    reason prose names a retired value.
+    """
+    text = prose_mask(src)
+    if text is None:
+        return None
+    # The union, as the item specifies and as the evidence requires: prose that
+    # says "``ast_call`` edges" means edges carrying that evidence type, and
+    # message_send is a live evidence type although it is also a retired edge
+    # type. A name live on ANY axis is not retired vocabulary.
+    live = frozenset().union(*vocab.values())
+    hits: list[dict] = []
+    seen: set[tuple[int, str]] = set()
+    for pattern, axis in REGISTRY_CONTEXTS:
+        for m in pattern.finditer(text):
+            for t in _ANCHORED_TOKEN_RE.finditer(m.group(1)):
+                name = next(g for g in t.groups() if g)
+                if name in live or len(name) < 2:
+                    continue
+                a = m.start(1) + t.start()
+                if (a, name) in seen:
+                    continue
+                seen.add((a, name))
+                sentence = _sentence_around(text, a, a + len(t.group(0)))
+                hits.append({
+                    "path": path,
+                    "line": text.count("\n", 0, a) + 1,
+                    "token": name,
+                    "axis": axis,
+                    "fold_explained": bool(FOLD_EXPLANATION_RE.search(sentence)),
+                    "context": " ".join(sentence.split()),
+                })
+    hits.sort(key=lambda h: (h["line"], h["token"]))
+    return hits
+
+
+def registry_cross_reference(
+    scope_dirs: tuple[str, ...], vocab: dict[str, frozenset[str]]
+) -> dict:
+    """Scan every .py file's prose against the live registries.
+
+    Name-exact and registry-derived: no blame, no dates, no thresholds, so it
+    finds the defect the co-change scan structurally cannot -- a docstring that
+    never aged relative to its body but names a value the registry retired.
+    """
+    flagged: list[dict] = []
+    fold_explained: list[dict] = []
+    untokenized: list[str] = []
+    scanned = 0
+    for p in iter_python_files(scope_dirs):
+        try:
+            src = pathlib.Path(p).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            untokenized.append(p)
+            continue
+        hits = registry_hits_in_source(src, p, vocab)
+        if hits is None:
+            untokenized.append(p)
+            continue
+        scanned += 1
+        for h in hits:
+            (fold_explained if h["fold_explained"] else flagged).append(h)
+    return {
+        "scanned": scanned,
+        "axes": list(REGISTRY_AXES),
+        "flagged": flagged,
+        "fold_explained": fold_explained,
+        "untokenized": untokenized,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Report formatting
 # ---------------------------------------------------------------------------
 
@@ -662,6 +958,37 @@ def format_tracker_text(flagged: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def format_registry_text(report: dict) -> str:
+    """Human-readable registry cross-reference report."""
+    flagged = report["flagged"]
+    lines = [
+        f"## Registry cross-reference: {len(flagged)} names in prose that the "
+        f"live registries lack ({report['scanned']} files; axes: "
+        f"{', '.join(report['axes'])})",
+        "",
+    ]
+    for h in flagged:
+        lines.append(f"  {h['path']}:{h['line']}  {h['token']}  [{h['axis']}]")
+        lines.append(f"    {h['context'][:160]}")
+    folds = report["fold_explained"]
+    if folds:
+        lines.append("")
+        lines.append(
+            f"## Fold-explained: {len(folds)} more, not flagged because their "
+            f"sentence explains a fold (verify the sentence says so):"
+        )
+        for h in folds:
+            lines.append(f"  {h['path']}:{h['line']}  {h['token']}  [{h['axis']}]")
+    if report["untokenized"]:
+        lines.append("")
+        lines.append(
+            f"## NOT SCANNED: {len(report['untokenized'])} files did not "
+            f"read or tokenize -- unchecked, not clean:"
+        )
+        lines.extend(f"  {p}" for p in report["untokenized"])
+    return "\n".join(lines)
+
+
 def format_phase_marker_text(hits: list[dict]) -> str:
     """Human-readable phase-marker report (summary only)."""
     lines = [f"## Phase-marker grep: {len(hits)} hits (review against tracker IDs)",
@@ -711,8 +1038,14 @@ def main() -> int:
         help="Grep for phase / pending markers in docstrings + comments.",
     )
     parser.add_argument(
+        "--registry-refs", action="store_true",
+        help="Report names in docstrings, comments and description strings "
+        "that the live edge-type / symbol-kind / evidence-type registries "
+        "lack. Reported only: never changes the exit code.",
+    )
+    parser.add_argument(
         "--all", action="store_true",
-        help="Run all three sub-checks.",
+        help="Run all four sub-checks.",
     )
     parser.add_argument(
         "--window", type=int, default=DEFAULT_BODY_AGE_DAYS,
@@ -742,12 +1075,14 @@ def main() -> int:
     args = parser.parse_args()
 
     # If no mode flag, default to --co-change.
-    if not (args.co_change or args.tracker_refs or args.phase_markers or args.all):
+    if not (args.co_change or args.tracker_refs or args.phase_markers
+            or args.registry_refs or args.all):
         args.co_change = True
     if args.all:
         args.co_change = True
         args.tracker_refs = True
         args.phase_markers = True
+        args.registry_refs = True
 
     repo_root = _repo_root()
     scope: tuple[str, ...]
@@ -782,6 +1117,13 @@ def main() -> int:
             # Don't fail solely on phase markers — too noisy.
             pass
 
+    if args.registry_refs:
+        # Reported, not gated (WI-sipuk): the first pass lands as a report so
+        # its false-positive rate is measured on the live tree before anyone
+        # decides whether it should fail anything.
+        report["registry_refs"] = registry_cross_reference(
+            scope, live_vocabulary(repo_root))
+
     if args.json:
         print(json.dumps(report, indent=2, default=str))
         return exit_code
@@ -793,6 +1135,8 @@ def main() -> int:
         sections.append(format_tracker_text(report["tracker_refs"]))
     if args.phase_markers:
         sections.append(format_phase_marker_text(report["phase_markers"]))
+    if args.registry_refs:
+        sections.append(format_registry_text(report["registry_refs"]))
     print("\n\n".join(sections))
     return exit_code
 

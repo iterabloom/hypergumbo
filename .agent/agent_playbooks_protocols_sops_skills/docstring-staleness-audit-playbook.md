@@ -33,13 +33,14 @@ multi-file PR; mixing it with other work muddies the diff).
 
 ### Step 1 — mechanical grep passes (`scripts/check-docstring-drift`)
 
-The script implements three sub-checks:
+The script implements four sub-checks:
 
 ```bash
 scripts/check-docstring-drift                 # co-change scan (default)
 scripts/check-docstring-drift --tracker-refs  # WI/INV/BUG status cross-ref
 scripts/check-docstring-drift --phase-markers # "not yet", "Slice B", etc.
-scripts/check-docstring-drift --all           # all three
+scripts/check-docstring-drift --registry-refs # names the registries lack
+scripts/check-docstring-drift --all           # all four
 scripts/check-docstring-drift --json          # machine-readable
 ```
 
@@ -76,13 +77,17 @@ What each sub-check produces:
   to", "arrives in", "will ship", "TODO", "FIXME". Highest signal
   when intersected with closed tracker IDs from the previous check.
 
-### What the scan CANNOT see (run this grep too)
+- **Registry cross-reference** (`--registry-refs`). See the next
+  section: it exists because the other three cannot see its defect
+  class. Reported only; it never changes the exit code.
 
-All three sub-checks key on *change* — blame dates, tracker status,
-marker words. None of them reads the vocabulary registries, so none can
-find **a docstring naming an edge type or symbol kind that no longer
-exists**. Such a docstring may never have aged relative to its body, so
-it is invisible to co-change by construction.
+### What change-keyed scans CANNOT see, and the registry cross-reference
+
+Co-change, tracker-refs and phase-markers all key on *change*: blame
+dates, tracker status, marker words. None of them can find **a docstring
+naming an edge type or symbol kind that no longer exists**. Such a
+docstring may never have aged relative to its body, so co-change cannot
+see it by construction.
 
 This is not hypothetical: it is the defect family that dominated the
 2026-08-18 audit. Nine edge types and one symbol kind, retired by the
@@ -92,21 +97,60 @@ JSON consumers were being told about edge types the tool cannot emit.
 Correcting the flagged files surfaced 21 further sites in nine files
 the scan never flagged and cannot flag.
 
-Until `WI-sipuk` lands a registry cross-reference sub-check, do this
-manually as a fourth pass — it is one grep per retired name:
+`--registry-refs` covers this class. It reads every comment and every
+string literal that contains whitespace (docstrings at any level, plus
+description strings such as a `MetaKeySpec`'s, the path that leaked into
+`schema.json`). In that prose it finds names presented as vocabulary:
+`X edges`, `edge type is X`, `kind="X"`, `evidence_type="X"`. It reports
+each name that is in none of the live registries (edge types, symbol
+kinds, evidence types, meta keys, io-boundary kinds, all read through
+their `all_*_names()` resolvers). A hit whose sentence explains a fold
+("folded onto", "retired", "previously", "dropped", ...) is listed under
+**Fold-explained** instead of flagged. Read that list too: the
+suppression is a regex, not a judgement.
+
+**Measured (WI-sipuk, 2026-10-01).** Pre-fold tree (`22418804f4^`,
+the 63 retired-name lines that commit removed, in 19 files): the check
+flags 18 of the 19 files and 36 of the 63 lines. None of the 63 is
+suppressed as fold-explanation. Live tree: 16 flagged in 11 files, of
+which:
+- 7 are real retired-vocabulary drift (`renders`, `enqueues` and
+  `crdt_publishes` named as live edge types).
+- 4 are a real code/registry disagreement: the docstring is right and
+  the linkers emit evidence types the registry lacks.
+- 5 are false positives: a function name before "edge endpoints",
+  two `UsageContext(kind="call")` mentions (a different record's
+  `kind`), a fold explained only in the *next* sentence, and an
+  illustrative placeholder name.
+
+All 24 fold-explained hits on the live tree are genuine fold
+explanations. **Not measured:** precision on any repository other than
+this one, and the 130 pre-fold-tree hits outside the 63 (most name
+values absent from today's registry, but none was adjudicated).
+
+**What it still misses, so keep the grep for these shapes:**
+- Arrow bullets (`- producer.send(...) -> message_publish`). An arrow
+  context added 231 hits on the live tree for 17 more audit lines, all
+  in files already flagged, so it was left out.
+- Definition lists (`- **links_to**: Links from ...`). This is the one
+  audit file it misses.
+- A bare retired name with no underscore and no quoting ("create an
+  enqueues edge").
+- Code. A literal value in code is the producer-coherence gates' job.
 
 ```bash
-# For each name in edge_types.EDGE_TYPES / symbol_kinds that was ever
-# folded or retired, confirm it survives ONLY where prose explains the
-# fold. Anything else is a docstring teaching a vocabulary that is gone.
+# For a name you know was folded or retired, confirm it survives ONLY
+# where prose explains the fold.
 grep -rn '<retired_name>' packages/*/src/
 ```
 
 Verify a hit before rewriting it: check the actual `edge_type=` /
-`kind=` construction site, and check the registry. In that audit every
-consumer already read the new field and only the comments were stale —
-so the fix was documentation, not code. Confirm that each time rather
-than assuming it.
+`kind=` construction site, and check the registry. In the 2026-08-18
+audit every consumer already read the new field and only the comments
+were stale, so the fix was documentation, not code. On 2026-10-01 the
+lua_ffi / napi hits went the other way: the prose was right and the
+registry was missing the values. Confirm which side is wrong each time
+rather than assuming it.
 
 ### Step 2 — git-blame co-change rank (the script's default mode)
 
@@ -349,7 +393,7 @@ files the scan flagged NONE of (the registry pass). Its notebook entry is at
 **A caveat to carry into any future run: the flagged count measures the
 scan, not the tree.** The two most consequential findings of the
 2026-08-18 audit — the `schema.json` leak and the 21-site retired
-vocabulary residue — were invisible to all three sub-checks by
-construction (see "What the scan CANNOT see"). A low flagged count is
+vocabulary residue — were invisible to the three change-keyed sub-checks by
+construction (see "What change-keyed scans CANNOT see"). A low flagged count is
 evidence about co-change drift only. Do not report it as evidence that
 the docstrings are accurate.

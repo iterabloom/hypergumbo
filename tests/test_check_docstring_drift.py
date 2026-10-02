@@ -36,6 +36,9 @@ rather than days and so does not move with the calendar.
 
 import importlib.machinery
 import importlib.util
+import json
+import os
+import sys
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
@@ -216,3 +219,266 @@ def test_default_scope_is_every_package_src():
     scope = cdd.default_scope(str(root))
     assert set(scope) == on_disk
     assert str(root / "packages" / "hypergumbo-lang-scip-python" / "src") in scope
+
+
+# --- registry cross-reference (WI-sipuk) ------------------------------------
+#
+# Blame cannot see a docstring that never aged relative to its body but names a
+# value the registry retired. The 2026-08-18 audit found 63 such lines in 19
+# files, nine of them in files the co-change scan never flagged, and one had
+# shipped into docs/schema.json through a MetaKeySpec description. These tests
+# pin the name-exact replacement: the fixtures are excerpts of those sites as
+# they stood before 22418804f4 cleaned them.
+
+VOCAB = {
+    "edge-type": frozenset({"calls", "contains", "dispatches_to",
+                            "event_publishes", "references"}),
+    "symbol-kind": frozenset({"function", "class", "method", "file"}),
+    "evidence-type": frozenset({"message_send", "ast_call"}),
+}
+
+
+def _hits(src, vocab=VOCAB):
+    return cdd.registry_hits_in_source(src, "m.py", vocab)
+
+
+def _flagged(src, vocab=VOCAB):
+    return [(h["line"], h["token"], h["axis"])
+            for h in _hits(src, vocab) if not h["fold_explained"]]
+
+
+def test_a_retired_edge_type_in_a_module_docstring_is_flagged_with_its_line():
+    src = ('"""Route handler linker.\n\n'
+           'This linker creates routes_to edges from route symbols to their\n'
+           'handler symbols.\n"""\nx = 1\n')
+    assert _flagged(src) == [(3, "routes_to", "edge-type")]
+
+
+def test_a_live_edge_type_in_the_same_shape_is_not_flagged():
+    """CONTROL: the context alone must not flag; membership decides."""
+    src = '"""This linker creates ``dispatches_to`` edges to handlers."""\n'
+    assert _hits(src) == []
+
+
+def test_english_before_edges_is_not_vocabulary():
+    """A bare word with no underscore and no quoting is prose, not a name:
+    'call edges' and 'the edges' must not be read as edge-type claims."""
+    src = '"""Emits call edges and import edges; the edges carry meta."""\n'
+    assert _hits(src) == []
+
+
+def test_a_quoted_bare_word_is_vocabulary():
+    """Quoting is the other signal that a word is a name. ``import`` is not
+    a registered edge type (``imports`` is)."""
+    src = '"""Emits ``import`` edges."""\n'
+    assert _flagged(src) == [(1, "import", "edge-type")]
+
+
+def test_scare_quoted_english_before_edges_is_not_vocabulary():
+    """Measured on the live tree (go.py, linkers/registry.py): "resolved" and
+    "unresolved" edges are concepts in scare quotes. Quotes are syntax only
+    after an explicit anchor such as kind=."""
+    src = '"""Minting a "resolved" edge; analyzers create \'unresolved\' edges."""\n'
+    assert _hits(src) == []
+
+
+def test_a_list_cannot_borrow_an_english_word():
+    """Measured on the live tree: "enters ``node_ids`` and the edge enters"
+    and "with repo_root, symbols, and edges" each read as a name list ending
+    in 'edges'. Every element of the list must itself be a name."""
+    src = ('"""The destination enters ``node_ids`` and the edge enters\n'
+           '``edge_ids``. ctx: LinkerContext with repo_root, symbols, and edges."""\n')
+    assert _hits(src) == []
+
+
+def test_a_name_live_on_any_registry_is_not_retired():
+    """Prose says "``ast_call`` edges" for edges carrying that evidence type.
+    The membership test is the union of the registries, as the item
+    specifies; the hit still names the axis the prose context claims."""
+    assert _hits('"""Pathway label on ``ast_call`` edges."""\n') == []
+    src = '"""message_send and message_receive edges for matching channels."""\n'
+    assert _flagged(src) == [(1, "message_receive", "edge-type")]
+
+
+def test_a_one_letter_kind_is_a_placeholder():
+    src = '"""Ternaries (``kind="a" if cond else "b"``) and kind="x"."""\n'
+    assert _hits(src) == []
+
+
+def test_after_an_anchor_the_list_continues_only_through_quoted_names():
+    """Measured on the live tree (ir.py, noise_filter.py): the bare word after
+    kind="call", is the next keyword argument, not a second kind."""
+    src = ('"""UsageContext(kind="method", context_name="path") and\n'
+           '(``kind=="file" and entry_role=="script"``)."""\n')
+    assert _hits(src) == []
+    src = '"""Previously kind=\'function\' / \'db_query\' / \'abi_call\'."""\n'
+    hits = _hits(src)
+    assert [h["token"] for h in hits] == ["abi_call", "db_query"], "by line, then name"
+    assert all(h["fold_explained"] for h in hits), "'Previously' is history"
+
+
+def test_history_words_mark_a_fold_explanation():
+    src = ('# the converse-direction message_receive edges are dropped -- the\n'
+           '# forward event_publishes edges already capture the link.\n'
+           'x = 1\n')
+    assert [h["fold_explained"] for h in _hits(src)] == [True]
+
+
+def test_a_retired_pair_split_across_concatenated_strings_is_flagged():
+    """The published-to-schema.json case: a MetaKeySpec description built by
+    implicit concatenation. Both names precede 'edge' only once the two
+    literals are read as one run of text."""
+    src = ('SPEC = dict(description=(\n'
+           '    "Message-queue topic a message_publish / "\n'
+           '    "message_subscribe edge targets."\n'
+           '))\n')
+    assert _flagged(src) == [(2, "message_publish", "edge-type"),
+                             (3, "message_subscribe", "edge-type")]
+
+
+def test_function_docstrings_and_comments_are_prose_too():
+    """Most of the 63 lines were not in module docstrings."""
+    src = ('def f():\n'
+           '    """Extract invokes_callback edges from OTP behaviours."""\n'
+           '    # These create invokes_callback edges from controller class\n'
+           '    return 1\n')
+    assert _flagged(src) == [(2, "invokes_callback", "edge-type"),
+                             (3, "invokes_callback", "edge-type")]
+
+
+def test_a_comment_phrase_spanning_two_lines_is_read_whole():
+    src = ('# a phrase that ends with routes_to\n'
+           '# edges on the next line\n'
+           'x = 1\n')
+    assert _flagged(src) == [(1, "routes_to", "edge-type")]
+
+
+def test_code_is_not_prose():
+    """A back-compat reader comparing against a retired literal is code; the
+    producer-coherence gates own code. And a pattern must not reach across
+    code from one comment into the next."""
+    src = ('if etype == "routes_to":  # handles legacy\n'
+           '    pass\n'
+           '# routes_to\n'
+           'y = 2\n'
+           '# edges were here\n')
+    assert _hits(src) == []
+    # A code literal followed by an inline comment: only the whitespace rule
+    # keeps "routes_to" (a value) from joining "edges" (the comment's prose).
+    assert _hits('LEGACY = "routes_to"  # edges of the old name\n') == []
+
+
+def test_a_retired_symbol_kind_literal_in_prose_is_flagged():
+    src = '"""1. Find all route symbols (kind="route")."""\n'
+    assert _flagged(src) == [(1, "route", "symbol-kind")]
+    assert _hits('"""Emits kind="function" symbols."""\n') == []
+
+
+def test_a_kind_literal_inside_rst_backticks_is_flagged():
+    """framework_patterns.py:35 and play_routes.py:17 before 22418804f4: the
+    closing quote is followed by the RST backticks around the literal."""
+    src = '"""3. Creates ``kind="route"`` Symbol objects with meta."""\n'
+    assert _flagged(src) == [(1, "route", "symbol-kind")]
+    assert _hits('"""See x.routes_to edges; set edge_type=pick_type(node)."""\n'
+                 ) == [], "a bare name is not read out of a dotted path or a call"
+
+
+def test_the_edge_type_is_phrasing_is_flagged():
+    src = ('"""Note the controller linker\'s edge type is\n'
+           '``contains_routes``."""\n')
+    assert _flagged(src) == [(2, "contains_routes", "edge-type")]
+
+
+def test_a_retired_evidence_type_is_checked_against_its_own_registry():
+    src = '"""Edges carry evidence_type="regex_match" here."""\n'
+    assert _flagged(src) == [(1, "regex_match", "evidence-type")]
+    assert _hits('"""Edges carry evidence_type="ast_call"."""\n') == []
+
+
+def test_a_live_evidence_type_named_outside_an_edge_context_is_not_flagged():
+    """websocket.py:161 names message_send correctly, as an evidence type.
+    A context-free scan over edge + symbol-kind names would flag it."""
+    src = ("# Socket.io emit patterns (message_send) - matches literals\n"
+           "X = 1\n")
+    assert _hits(src) == []
+
+
+def test_a_fold_explanation_is_reported_but_not_flagged():
+    """The legitimate reason prose names a retired value. Reported under
+    fold_explained so the suppression itself can be audited."""
+    src = ('"""Route handler linker.\n\n'
+           'The bespoke ``routes_to`` edge type was folded onto the\n'
+           'canonical dispatches_to. Creates ``routes_to`` edges.\n"""\n')
+    hits = _hits(src)
+    assert [(h["line"], h["fold_explained"]) for h in hits] == [
+        (3, True), (4, False)], "only the sentence explaining the fold is exempt"
+
+
+def test_an_untokenizable_file_is_none_not_clean():
+    """ABSENT != EMPTY: a file the scan could not read has no verdict."""
+    assert cdd.registry_hits_in_source('"""unterminated\n', "m.py", VOCAB) is None
+    assert cdd.prose_mask("x = (\n") is None
+
+
+def test_the_cross_reference_reports_unscanned_files(tmp_path):
+    (tmp_path / "good.py").write_text('"""Emits ``routes_to`` edges."""\n')
+    (tmp_path / "bad.py").write_text('"""unterminated\n')
+    (tmp_path / "bin.py").write_bytes(b"\xff\xfe\x00")
+    (tmp_path / "fold.py").write_text(
+        '"""``routes_to`` edges were folded onto dispatches_to."""\n')
+    rep = cdd.registry_cross_reference((str(tmp_path),), VOCAB)
+    assert rep["scanned"] == 2
+    assert [h["token"] for h in rep["flagged"]] == ["routes_to"]
+    assert [h["token"] for h in rep["fold_explained"]] == ["routes_to"]
+    assert sorted(os.path.basename(p) for p in rep["untokenized"]) == [
+        "bad.py", "bin.py"]
+    text = cdd.format_registry_text(rep)
+    assert "good.py:1  routes_to  [edge-type]" in text
+    assert "Fold-explained: 1" in text and "NOT SCANNED: 2" in text
+
+
+def test_live_vocabulary_comes_from_the_resolvers():
+    """The item's own correction: EDGE_TYPES is a tuple of specs, so a
+    membership test against it is False for every name. Assert NAMED live
+    entries on each axis, not a count."""
+    vocab = cdd.live_vocabulary(str(SCRIPTS.parent))
+    assert set(vocab) == set(cdd.REGISTRY_AXES)
+    assert "contains" in vocab["edge-type"]
+    assert "dispatches_to" in vocab["edge-type"]
+    assert "routes_to" not in vocab["edge-type"]
+    assert "function" in vocab["symbol-kind"]
+    assert "message_send" in vocab["evidence-type"]
+    assert "io_boundary" in vocab["meta-key"], (
+        "prose says 'io_boundary edges' for edges carrying that meta key")
+    assert "fs_read" in vocab["io-boundary"]
+
+
+def test_the_fold_explanation_sites_on_the_live_tree_are_not_flagged():
+    """The test set the item names: every surviving hit for the retired names
+    under packages/*/src is fold-explanation prose and must not flag."""
+    vocab = cdd.live_vocabulary(str(SCRIPTS.parent))
+    core = SCRIPTS.parent / "packages" / "hypergumbo-core" / "src" / "hypergumbo_core"
+    retired = {"routes_to", "invokes_callback", "contains_routes",
+               "registers_routes", "message_publish", "message_subscribe"}
+    for rel in ("compact.py", "axis_meta_keys.py", "linkers/route_handler.py",
+                "linkers/router_routes.py", "linkers/controller_routes.py",
+                "linkers/message_queue.py"):
+        path = core / rel
+        hits = cdd.registry_hits_in_source(path.read_text(), str(path), vocab)
+        assert hits is not None
+        bad = [h for h in hits if h["token"] in retired and not h["fold_explained"]]
+        assert bad == [], bad
+
+
+def test_registry_refs_is_part_of_all_and_never_sets_the_exit_code(
+        tmp_path, monkeypatch, capsys):
+    (tmp_path / "m.py").write_text('"""Emits ``routes_to`` edges."""\n')
+    monkeypatch.setattr(sys, "argv", ["check-docstring-drift", "--registry-refs",
+                                      "--json", str(tmp_path)])
+    assert cdd.main() == 0, "reported, not gated, on the first pass"
+    out = json.loads(capsys.readouterr().out)
+    assert [h["token"] for h in out["registry_refs"]["flagged"]] == ["routes_to"]
+    monkeypatch.setattr(sys, "argv", ["check-docstring-drift", "--registry-refs",
+                                      str(tmp_path)])
+    assert cdd.main() == 0
+    assert "m.py:1  routes_to  [edge-type]" in capsys.readouterr().out
