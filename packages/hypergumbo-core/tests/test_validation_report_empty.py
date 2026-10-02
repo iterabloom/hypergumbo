@@ -263,6 +263,10 @@ def test_substrate_within_ratchet_baseline(
         f"{actual_none} None-stable_id nodes"
     )
     assert stats["non_null"] == len(nodes) - actual_none
+    # WI-motiz: the floor disclosure sits beside none_cohort, so a 0 there is
+    # never read as "every id came from an analyzer" (ADR-0035 §1 backstop).
+    assert 0 <= stats["floor_abstained"] <= stats["none_cohort"]
+    assert 0 <= stats["floor_cohort"] <= stats["non_null"]
 
     # --- Shrink-only ratchet across both dimensions. ---------------------
     failures: list[str] = []
