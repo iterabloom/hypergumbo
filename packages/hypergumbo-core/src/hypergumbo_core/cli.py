@@ -169,6 +169,7 @@ from .catalog import get_default_catalog, is_available, suggest_passes_for_langu
 from .finalize import FinalizeContext, _relativize_ir_paths, finalize
 from .linkers.registry import LinkerContext, run_all_linkers
 from .pass_metadata import build_pass_metadata
+from .pass_clock import PassClock
 from .safety_zones import (
     cache_mkdir,
     cache_rename,
@@ -12214,11 +12215,16 @@ def run_survey(
             {"pass_id": "route-materializer"}
         ),
     )
+    # WI-nuvam: these two serial post-passes were never timed at all, so their
+    # duration_ms was only ever the INV-gizik 1 ms floor. Each now carries its
+    # measured wall time and its own-thread CPU time (pass_clock).
+    _route_mat_clock = PassClock()
     materialized_routes = materialize_route_symbols(
         all_symbols, origin_run_id=_route_mat_run.execution_id
     )
     if materialized_routes:
         all_symbols.extend(materialized_routes)
+        _route_mat_clock.read().stamp(_route_mat_run)
         _route_mat_run.nodes_emitted = len(materialized_routes)
         analysis_runs.append(_route_mat_run.to_dict())
 
@@ -12232,6 +12238,7 @@ def run_survey(
             {"pass_id": "django-cbv-method-expander"}
         ),
     )
+    _cbv_clock = PassClock()
     cbv_expanded, cbv_removed_ids = expand_class_based_view_routes(
         all_symbols, origin_run_id=_cbv_run.execution_id
     )
@@ -12239,6 +12246,7 @@ def run_survey(
         all_symbols = [s for s in all_symbols if s.id not in cbv_removed_ids]
     if cbv_expanded:
         all_symbols.extend(cbv_expanded)
+        _cbv_clock.read().stamp(_cbv_run)
         _cbv_run.nodes_emitted = len(cbv_expanded)
         analysis_runs.append(_cbv_run.to_dict())
 
@@ -12462,7 +12470,7 @@ def run_survey(
             {"pass_id": "boundary_external_symbol_synthesis"}
         ),
     )
-    _boundary_t0 = time.perf_counter()
+    _boundary_clock = PassClock()
     boundary, id_remap = create_boundary_nodes(
         all_symbols, all_edges, dependency_manifest=dependency_manifest,
         origin_run_id=_boundary_run.execution_id,
@@ -12472,8 +12480,8 @@ def run_survey(
         all_symbols.extend(boundary)
         # INV-gizik: stamp this synthesis pass's duration + node count (it emits
         # external_symbol placeholder Symbols; edge changes are remaps, not new
-        # edges, so edges_emitted stays 0).
-        _boundary_run.duration_ms = int((time.perf_counter() - _boundary_t0) * 1000)
+        # edges, so edges_emitted stays 0). WI-nuvam: plus its own CPU time.
+        _boundary_clock.read().stamp(_boundary_run)
         _boundary_run.nodes_emitted = len(boundary)
         analysis_runs.append(_boundary_run.to_dict())
     if id_remap:

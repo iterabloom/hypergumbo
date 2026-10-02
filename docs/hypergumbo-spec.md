@@ -549,7 +549,10 @@ class AnalysisRun:
     skipped_passes: List[Dict] # legacy per-run mirror (unpopulated); pass-level skips live in limits.skipped_passes
     warnings: List[str]
     started_at: str
-    duration_ms: int
+    duration_ms: int           # WALL time in the pass's worker; overlaps and
+                               # inflates with contention (see below)
+    cpu_ms: Optional[int]      # WI-nuvam: CPU of the thread that ran the pass
+                               # (its own cost); null = not measured
     nodes_emitted: int         # INV-gizik: Symbols this pass contributed
     edges_emitted: int         # INV-gizik: Edges this pass contributed
     silence_reason: str        # INV-bikaj: WHY this pass emitted nothing;
@@ -565,6 +568,8 @@ class AnalysisIR:
 🟪 `AnalysisIR`, `Reference`, `Relationship` are spec names; code uses `AnalysisResult`, `Symbol`, `Edge`.
 
 🟩 The serialized `analysis_runs[]` array is sorted by ascending `started_at`, ties broken by `pass` id (WI-haguz), so within a run consumers see passes in chronological completion order. It is **not** byte-stable across runs: every entry stamps a fresh `execution_id` (a per-run `uuid:` value) plus wall-clock `started_at`/`duration_ms`, and because the sort key is wall-clock, even the pass *ordering* is not reproducible run-to-run (WI-haguz removed the old random dict-order; it did not make the order reproducible). Only the L2 semantic content (nodes, edges, `stable_id`s, `run_signature`) is reproducible — see the `reproducibility_context` block (§ below).
+
+🟩 **Pass timing is two fields, and only one is a cost** (WI-nuvam). Analyzers run in one `ThreadPoolExecutor` and linkers in one pool per priority cohort, so `duration_ms` (wall time measured in the pass's worker) OVERLAPS across passes — card sums exceed the survey's wall time — and INFLATES WITH CONTENTION: a worker waiting on the GIL while a sibling runs Python stays on the wall clock (one measurement: the same 43 bash files billed 2.3 s beside a one-file python analysis and 49.9 s beside a 1121-file one). `cpu_ms` is the CPU time of the thread that ran the pass (`time.thread_time_ns`, read on that thread by `pass_clock.PassClock`), so `duration_ms - cpu_ms` is how long the pass waited. It is stamped at the analyzer pool's worker wrapper, the linker chokepoint `_run_linker_with_cache`, and each serial synthesis pass; it excludes CPU in child processes (the scip-python / rust-analyzer indexers) and in threads a pass starts itself, so for those passes it is a lower bound. It rounds up (a measured pass is ≥ 1); `null` means not measured. Neither field attributes the survey's non-pass phases: `scripts/measure-survey-phase-split.py` remains the instrument for phase cost.
 
 ### Multi-value field axes
 

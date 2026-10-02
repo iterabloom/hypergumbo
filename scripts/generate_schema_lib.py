@@ -904,7 +904,31 @@ def _analysis_run_spec() -> ClassSpec:
                 "format": "date-time",
                 "description": "UTC timestamp when the pass started",
             },
-            "duration_ms": {"description": "Wall-clock duration in milliseconds"},
+            "duration_ms": {
+                "description": (
+                    "Wall-clock duration in milliseconds, measured in the "
+                    "pass's worker. Passes run concurrently (analyzers in "
+                    "one thread pool, linkers in one pool per priority "
+                    "cohort), so durations OVERLAP -- they do not sum to the "
+                    "survey's wall time -- and one INFLATES WITH CONTENTION "
+                    "(a worker waiting on the GIL is still on the wall "
+                    "clock). It is not the pass's cost; cpu_ms is (WI-nuvam)"
+                ),
+            },
+            "cpu_ms": {
+                "description": (
+                    "CPU time, in milliseconds, of the thread that ran this "
+                    "pass (WI-nuvam): the pass's own cost. Waiting on the "
+                    "GIL, I/O or a sleep does not advance it, so "
+                    "duration_ms - cpu_ms is how long the pass waited. "
+                    "Excludes CPU spent in child processes and in threads "
+                    "the pass starts itself (for the external-indexer "
+                    "backends it is a lower bound). Rounded up; a measured "
+                    "pass is >= 1. null = NOT MEASURED, distinct from any "
+                    "number; an absent key means the artifact predates the "
+                    "field"
+                ),
+            },
             "pass_version": {
                 "description": (
                     "Code-hash of the pass module (compute_pass_version); "
