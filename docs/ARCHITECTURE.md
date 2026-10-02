@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **344** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 99 core, 4 CLI, 36 tracker)
-- **50865** symbols (functions, classes, methods)
-- **201123** edges by type:
-  - calls: 114934
-  - contains: 46635
-  - imports: 16520
-  - instantiates: 11989
-  - references: 7754
-  - module_attr_ref: 1702
-  - other: 1589
+- **346** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 101 core, 4 CLI, 36 tracker)
+- **51075** symbols (functions, classes, methods)
+- **201989** edges by type:
+  - calls: 115391
+  - contains: 46823
+  - imports: 16606
+  - instantiates: 12031
+  - references: 7819
+  - module_attr_ref: 1722
+  - other: 1597
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 50865 Symbols + 201123 Edges + UsageContexts           │
+│  Output: 51075 Symbols + 201989 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,21 +279,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9933.7 | ir.py |
-| `len` | external_symbol | 7634.0 | <external> |
-| `write_text` | external_symbol | 6880.0 | <external> |
-| `Span` | class | 6545.8 | ir.py |
-| `LinkerContext` | class | 3573.1 | registry.py |
-| `get` | external_symbol | 3211.0 | <external> |
-| `load_catalog` | function | 3016.8 | io_boundary.py |
+| `Symbol` | class | 9947.6 | ir.py |
+| `len` | external_symbol | 7650.0 | <external> |
+| `write_text` | external_symbol | 6889.0 | <external> |
+| `Span` | class | 6554.7 | ir.py |
+| `LinkerContext` | class | 3581.3 | registry.py |
+| `get` | external_symbol | 3224.0 | <external> |
+| `load_catalog` | function | 3032.8 | io_boundary.py |
 | `Edge.create` | method | 2416.3 | ir.py |
-| `str` | external_symbol | 2254.0 | <external> |
-| `Path` | external_symbol | 2179.0 | <external> |
-| `next` | external_symbol | 2169.0 | <external> |
+| `str` | external_symbol | 2255.0 | <external> |
+| `Path` | external_symbol | 2184.0 | <external> |
+| `next` | external_symbol | 2171.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1702.0 | <external> |
+| `append` | external_symbol | 1710.0 | <external> |
 
 ## Pattern System
 
@@ -600,6 +600,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.behavior_map_io`**: Deprecation shim: ``behavior_map_io`` was renamed to ``survey_io`` ...
 - **`hypergumbo_core.block_hash`**: AST-block hashing: the change unit for coverage-directed test selec...
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
+- **`hypergumbo_core.call_constructs`**: The declared vocabulary of ``Edge.meta["call_construct"]``, and wha...
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes (registry-derived).
 - **`hypergumbo_core.catalogue_home`**: ADR-0047 rulings 3 and 4 — a findable home for the user's catalogue...
 - **`hypergumbo_core.catalogue_inventory`**: WI-vafit — the inventory a USER needs of what this installation knows.
@@ -641,6 +642,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
 - **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
 - **`hypergumbo_core.partial_install_warnings`**: Runtime warnings for partial installations (ADR-0010 Item 8).
+- **`hypergumbo_core.pass_clock`**: Per-pass cost clock: a pass's wall time AND its own-thread CPU time.
 - **`hypergumbo_core.pass_metadata`**: Per-pass metadata lookup for the finalize stage (run-lifecycle:F1 /...
 - **`hypergumbo_core.pass_silence`**: Canonical pass-silence-reason axis (INV-bikaj / INV-hujog, arc T6).
 - **`hypergumbo_core.paths`**: Centralized path handling utilities for hypergumbo.
@@ -949,8 +951,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: fb7baa3ebbcd
-  commit_count: 7915
+  commit: e5b9e11b882c
+  commit_count: 7936
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
