@@ -40,3 +40,19 @@
   clock: 4  # e1ad
   nonce: e1ad  # e1ad
   message: "WORK DONE 2026-10-01 (decontend run): local branch jgstern-agent/fix/pifus, commit f13f35fb0f \"fix(astro): relativize paths against the analysis root, not its parent\". Not pushed, not integrated.\nFix: _AstroFileExtractor now takes the rel_path the TreeSitterAnalyzer base computed (source_file.relative_to(repo_root)) instead of re-deriving a root from the absolute path (the walk started at file_path.parent and counted the filename: one level too high). Removed the now-unused path param threading, the dead _repo_root/_run_id class attrs, and the dead analysis._astro_edges stash. Double extraction per file is NOT changed (docstring now states it).\nFamily sweep (grep \"Path(rel_path).parts\" over packages/*/src): v_lang, tcl, bitbake, janet, prisma, haxe all start at file_path and are correct (bitbake was not in the premise check's list). astro was the only off-by-one in that idiom.\nTests: test_astro.py::TestPathRelativeToAnalysisRoot (3 tests) red before the fix (3 failed: path 'test_symbol_...e0/Page.astro' != 'Page.astro'), green after. Targeted smart-test: 9047 passed, 1 xfailed, changed source at 100% coverage, mypy ratchet clean.\nLive repro after: root astroroot/ -> astro 'src/Page.astro' (was 'astroroot/src/Page.astro'), scss 'src/a.scss'.\nCorpus (nuclear, survey --include-docs, before = dev code, after = branch, fresh caches): astro nodes whose non-<external> path does not resolve under the root 31 -> 6; astro file nodes for the 8 real files now carry 'packages/website/...' (was 'nuclear/packages/website/...'); +12 contains edges (astro file -> frontmatter variable) now join; every non-astro edge identical. The 6 residual unresolved are dangling import targets built from raw relative import strings: noted on WI-modan."  # e1ad
+- op: update  # e8d2
+  at: '2026-10-02T04:15:05Z'  # e8d2
+  by: agent  # e8d2
+  actor: jgstern_agent  # e8d2
+  clock: 5  # e8d2
+  nonce: e8d2  # e8d2
+  set:  # e8d2
+    status: done  # e8d2
+    pr_ref: '#1383'  # e8d2
+- op: discuss  # 5403
+  at: '2026-10-02T04:15:05Z'  # 5403
+  by: agent  # 5403
+  actor: jgstern_agent  # 5403
+  clock: 6  # 5403
+  nonce: '5403'  # 5403
+  message: "DONE: merged in PR #1383. _AstroFileExtractor takes the base class's rel_path instead of rebuilding a root from the absolute path, fixing Symbol.path, the id path slot, edge src and meta.source_path. Behavioural evidence: with root astroroot/ holding src/Page.astro and src/a.scss, analyze_astro returns path='src/Page.astro' and id astro:src/Page.astro:3-3:title:variable (was 'astroroot/src/Page.astro'), and analyze_scss returns 'src/a.scss', so they agree; TestPathRelativeToAnalysisRoot (3) red -> green. survey on nuclear: astro file nodes are root-relative, unresolvable non-external astro paths 31 -> 6 (the 6 are raw relative import targets, WI-modan), 12 file->variable contains edges now join, every non-astro edge identical. Sibling sweep (v_lang, tcl, bitbake, janet, prisma, haxe): all correct. NOT asserted: the D15 centrality consequence, or any repo beyond nuclear.\nFull report (closure evidence, corpus tables, residual list): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/pifus.md"  # 5403

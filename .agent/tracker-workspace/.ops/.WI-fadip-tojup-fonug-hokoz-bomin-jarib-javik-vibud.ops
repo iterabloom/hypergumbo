@@ -42,3 +42,19 @@
   clock: 4  # 378c
   nonce: 378c  # 378c
   message: "WORK DONE 2026-10-01 (decontend run, worktree ~/hg_wt/fadip, LOCAL branch jgstern-agent/fix/fadip, commit 659eac5193; not pushed, status unchanged).\nFix: `_php_string_value` is now the single literal reader for the whole Laravel arg walk (route path, match verbs, array action, 'C@a' action, except/only elements). It accepts `string` AND `encapsed_string`, decodes the WHOLE literal (string_content runs + decoded escape_sequence nodes), returns \"\" for an empty literal, and returns None for any non-literal or INTERPOLATED string. Callers refuse None: an interpolated path drops the route (never its /u/ prefix); an interpolated action leaves controller_action unset.\nTwo extra defects of the same reader fixed on the way (both seen in the live repro): single-quoted escapes truncated the path ('/it\\'s' read as /it), and \"AuthController@{$m}\" read as the action AuthController@.\nLive repro, same 7-line fixture (double-quoted get/match/resource, interpolated path, double-quoted match verbs, escaped path with interpolated action): BEFORE 3 route markers (POST /users; MATCH /n; GET /it with AuthController@). AFTER 12 markers: GET /users, POST /users, GET,POST /m, the 7 photos resource routes, GET,POST /n, GET /it's with no controller_action; \"/u/{$x}\" emits nothing.\nTests: smart-test targeted (283 files) 9096 passed, 1 xfailed, 0 failed; changed source files 100% coverage; mypy ratchet clean.\nCorpus: koel (the only Laravel repo in ~/whole_bunch_of_repos; single quotes only) gives identical 167 route markers and 111 usage contexts before/after (arms confirmed to import different php.py). ZERO measured corpus effect; the gain is shown on fixtures and the repro only.\nResiduals filed: WI-sitag-dadis-homop-jugib-sinul-vudud-lagul-zogut (Route::resource with a STRING controller emits no markers), WI-jodoh-zijih-saboz-fibip-nipuz-panub-mujos-janiz (Route::get('') dropped; Laravel registers it as '/')."  # 378c
+- op: update  # ad82
+  at: '2026-10-02T04:15:04Z'  # ad82
+  by: agent  # ad82
+  actor: jgstern_agent  # ad82
+  clock: 5  # ad82
+  nonce: ad82  # ad82
+  set:  # ad82
+    status: done  # ad82
+    pr_ref: '#1383'  # ad82
+- op: discuss  # 4742
+  at: '2026-10-02T04:15:04Z'  # 4742
+  by: agent  # 4742
+  actor: jgstern_agent  # 4742
+  clock: 6  # 4742
+  nonce: '4742'  # 4742
+  message: "DONE: merged in PR #1383. _php_string_value is the single string reader for the Laravel argument walk: both quote styles, whole-string escape decoding, None for interpolated strings (callers refuse). On the item's fixture: before, only POST /users (+ a MATCH /n aggregate); after, GET /users (UserController@index), GET,POST /m, the 7 photos resource routes and GET,POST /n; \"/u/{$x}\" emits nothing rather than /u/; '/it\\'s' no longer reads as /it. Tests: TestLaravelDoubleQuotedRoutes (9) + TestPhpStringValue (20 cases); the red phase was shown by live repro, not a recorded failing test run. koel (the corpus's only Laravel repo, single-quoted) unchanged: 167 markers / 111 contexts, so measured corpus effect is zero. Residuals: WI-sitag, WI-jodoh (P3).\nFull report (closure evidence, corpus tables, residual list): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/fadip.md"  # 4742

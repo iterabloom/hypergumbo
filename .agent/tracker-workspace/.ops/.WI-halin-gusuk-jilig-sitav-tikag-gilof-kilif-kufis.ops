@@ -58,3 +58,10 @@
   clock: 6  # 897d
   nonce: 897d  # 897d
   message: "DONE: merged in PR #1383 (commits fd75687f03-era fd4d7afd3? see report; batch: run0930 analyzers). The four filed shapes type their receivers on the production path: verify-claims plaintext -> host_fs on the hidar fixtures turns j_chain, j_var and j_fq from inconclusive / confirmed_with_caveats (0 findings) to violated (1 finding), the same as the j_local control; the new FileOutputStream(...).write(pt) sink fixture also reaches violated. Two further root causes fixed: every library_signatures/java.yaml row was keyed by the short owner and never matched; a receiver expression was treated as an implicit this by the current-class and static-import arms. jenkins: catalogued java io edges 1887 -> 1928, none lost. NOT asserted: every java method row reachable for every receiver shape. Residuals: WI-hatov, WI-buhip (P3); casts / array access / literals stay untyped.\nFull report (closure evidence, corpus tables, residual list): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/halin.md"  # 897d
+- op: discuss  # 554e
+  at: '2026-10-02T04:15:16Z'  # 554e
+  by: agent  # 554e
+  actor: jgstern_agent  # 554e
+  clock: 7  # 554e
+  nonce: 554e  # 554e
+  message: "CORRECTION to the closing note above: its commit parenthetical is garbled. The WI-halin commits on dev (via PR #1383) are:\n4779a1a8e7 tracker: 5 files (80 ops) — WI-halin, WI-komum, WI-majov +2 more\ndd9bab9bda docs(changelog): WI-gokop, WI-halin, WI-mofil, WI-dason, WI-surar, WI-bivin, WI-saduj, WI-fadip, WI-jifog, WI-pifus, WI-rovun\n8c1051ecc2 docs(adr-0006): java's chained column states the chain walk and the fully-qualified library keys (WI-halin)\n(the agent branch originals were fd75687f03 and ec0357a01b). Everything else in the note stands."  # 554e
