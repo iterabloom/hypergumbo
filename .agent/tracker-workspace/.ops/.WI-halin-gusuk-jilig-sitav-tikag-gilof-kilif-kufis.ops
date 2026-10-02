@@ -65,3 +65,10 @@
   clock: 7  # 554e
   nonce: 554e  # 554e
   message: "CORRECTION to the closing note above: its commit parenthetical is garbled. The WI-halin commits on dev (via PR #1383) are:\n4779a1a8e7 tracker: 5 files (80 ops) — WI-halin, WI-komum, WI-majov +2 more\ndd9bab9bda docs(changelog): WI-gokop, WI-halin, WI-mofil, WI-dason, WI-surar, WI-bivin, WI-saduj, WI-fadip, WI-jifog, WI-pifus, WI-rovun\n8c1051ecc2 docs(adr-0006): java's chained column states the chain walk and the fully-qualified library keys (WI-halin)\n(the agent branch originals were fd75687f03 and ec0357a01b). Everything else in the note stands."  # 554e
+- op: discuss  # efb0
+  at: '2026-10-02T04:16:11Z'  # efb0
+  by: agent  # efb0
+  actor: jgstern_agent  # efb0
+  clock: 8  # efb0
+  nonce: efb0  # efb0
+  message: "Precise commit list (supersedes both parentheticals above): on dev via PR #1383 -- e1a5a70aca fix(java): type static-factory, var, qualified-param and constructor receivers; 8c1051ecc2 docs(adr-0006): java's chained column. The tracker-sync commit 4779a1a8e7 listed in the previous note is not part of this fix."  # efb0

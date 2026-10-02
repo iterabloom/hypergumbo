@@ -60,3 +60,19 @@
   clock: 6  # bd3e
   nonce: bd3e  # bd3e
   message: "IMPLEMENTED (concurrent run 2026-10-01, local branch jgstern-agent/feat/zimor-edge-confidence-distribution, commit 2eab038864, worktree ~/hg_wt/zimor; not pushed). Status not changed.\nChange: metrics gains edge_confidence = {histogram, median}. histogram = edge count per confidence value at 0.01 resolution, keys \"%.2f\", ascending (bounded to 101 keys on [0,1]; producers that multiply confidences, e.g. haskell/scala 0.85*lookup*penalty, fold into their 0.01 bucket). median = LOWER median, so always a value some edge carries; null (not 0.0) when no edge carries confidence. avg_confidence value unchanged. Its schema description and spec \"metrics\" section now say EDGES ONLY, and that its 0.0 with no edges is a placeholder. Generator scripts/generate-schema; docs/schema.json regenerated; SCHEMA_VERSION NOT bumped (integrator).\nTests: 6 new tests (5 in test_metrics.py, 1 in test_schema.py), red first (6 failed / 54 passed). Targeted smart-test, 481 files: 16,636 passed, 1 failed, 100% coverage on metrics.py. The one failure was test_a_hangup_is_named_too: WI-narum, caused by my nohup launch (see the note there).\nLive repro, coredns (worktree code via slot survey, 27 s): total_edges 21,994, all carrying confidence; nodes with a confidence key: 0. avg_confidence 0.717. edge_confidence.histogram {0.40: 6337, 0.49: 87, 0.50: 769, 0.57: 180, 0.65: 7, 0.70: 157, 0.72: 682, 0.75: 135, 0.80: 1338, 0.85: 6389, 0.90: 2417, 0.95: 3496}, median 0.85. An independent recount from edges[] matches exactly. Bimodal: 0.40 is 28.8% and 0.85 is 29.1% of edges. On coredns the mean (0.717) rounds onto a minor real spike (0.72, 3.1% of edges), so \"the mean sits on no edge\" is a self-map observation, not a general one.\nNOT done: no multimodal flag or mode field (both derivable from the histogram); avg_confidence is still 0.0 with no edges (kept for backward compatibility; the empty histogram and null median disclose it); the self map was not re-surveyed.\nResidual filed: WI-susas-vigov-kurah-pumir-ragit-hatiz-likur-disal. The spec still defines total_files as the profile sum (P3, docs)."  # bd3e
+- op: update  # 12d3
+  at: '2026-10-02T04:42:39Z'  # 12d3
+  by: agent  # 12d3
+  actor: jgstern_agent  # 12d3
+  clock: 7  # 12d3
+  nonce: 12d3  # 12d3
+  set:  # 12d3
+    status: done  # 12d3
+    pr_ref: '#1387'  # 12d3
+- op: discuss  # b392
+  at: '2026-10-02T04:42:39Z'  # b392
+  by: agent  # b392
+  actor: jgstern_agent  # b392
+  clock: 8  # b392
+  nonce: b392  # b392
+  message: "DONE: merged in PR #1387. metrics.edge_confidence = {histogram (0.01 buckets), median (lower median; null when no edge has a confidence)}; avg_confidence's schema/spec text now says it averages edges only and can sit between spikes; schema 0.20.14. Behavioural evidence: live survey of coredns: avg 0.717, median 0.85, 12 histogram keys with modes 0.40 (28.8%) and 0.85 (29.1%); an independent recount from the edges matched exactly. 6 new tests red -> green. Limit stated: on coredns the mean happens to land on a small real spike (0.72, 3.1%), so 'the mean sits on no edge' is a self-map observation, not a general one. Residual: WI-susas (P3, total_files spec vs code). Also diagnosed WI-narum: test_a_hangup_is_named_too fails when the run is launched under nohup.\nFull report (closure evidence, measurements, residuals): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/zimor.md"  # b392

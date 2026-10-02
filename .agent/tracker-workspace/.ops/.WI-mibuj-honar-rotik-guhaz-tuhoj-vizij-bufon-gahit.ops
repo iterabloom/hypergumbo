@@ -53,3 +53,19 @@
   clock: 5  # 3884
   nonce: '3884'  # 3884
   message: "WORK DONE 2026-10-01 (concurrent run, agent mibuj). Local branch jgstern-agent/fix/mibuj in worktree ~/hg_wt/mibuj, commit 282958d48c (not pushed, no PR). Status unchanged.\n\nPremise re-verified: origin/dev af8ff42ad0 slice.py appended file_limit / hub_pruned to limits_hit with no count; fixture repro (target() called from 6 files, `slice --entry target --reverse --max-files 3`) emitted feature keys edge_ids, entry_nodes, id, limits_hit, name, node_depths, node_ids, node_tiers, query -- no magnitude.\n\nChange: SliceResult.limits_detail -- one entry per name in limits_hit (equal key sets; absent when limits_hit is empty) with cap, nodes_omitted, edges_omitted, files_omitted, plus nodes_not_expanded for hop_limit / hub_pruned. All four limits are sized (file_limit, hub_pruned, hop_limit, tier_limit). Hub/hop shortfall is sized by a probe that runs the same per-edge filters (confidence, structural, imports, dataflow, tests, utility, tier) without touching admission_stats. Counts = the frontier the limit refused that is absent from the final slice; a LOWER BOUND (nothing beyond an omitted node was walked). CLI summary prints one magnitude line per limit. Spec features[] + docs/schema.json updated.\n\nEvidence: green targeted smart-test on 282958d48c -- 18941 passed, 0 failed, 100% coverage on the 3 changed sources (576 test files). Red run against origin/dev slice.py/cli.py -- 10/10 new TestLimitsDetail tests + test_cmd_slice_with_limits_hit FAILED. Self-survey of origin/dev af8ff42ad0 (`slice --input self.json --entry Edge.create --reverse`, defaults): limits_hit [file_limit, hub_pruned]; file_limit cap 100: 1315 nodes / 1440 edges / 204 files omitted; hub_pruned cap 50: 2 not expanded, 56 nodes / 153 edges / 7 files omitted. Independent replication from the map + slice output reproduced all 7 counts exactly. Direct-caller metric unchanged from the premise check: 656 direct calls-callers, 340 in slice, 316 dropped; 237 caller files, 99 in slice, 138 dropped.\n\nNOT done: the F79.A1 prevalence census (13/282) was not re-measured. nodes_omitted is not \"direct callers dropped\" -- it includes the deeper frontier and file nodes reached through imports edges (1315 vs 316 here)."  # 3884
+- op: update  # 3e21
+  at: '2026-10-02T04:42:38Z'  # 3e21
+  by: agent  # 3e21
+  actor: jgstern_agent  # 3e21
+  clock: 6  # 3e21
+  nonce: '3e21'  # 3e21
+  set:  # 3e21
+    status: done  # 3e21
+    pr_ref: '#1387'  # 3e21
+- op: discuss  # a136
+  at: '2026-10-02T04:42:38Z'  # a136
+  by: agent  # a136
+  actor: jgstern_agent  # a136
+  clock: 7  # a136
+  nonce: a136  # a136
+  message: "DONE: merged in PR #1387. Each slice feature carries limits_detail, one entry per limit in limits_hit (file_limit, hub_pruned, hop_limit, tier_limit) with cap, nodes_omitted / edges_omitted / files_omitted (a lower bound) and nodes_not_expanded for hop/hub; hub and hop shortfalls use the walk's own per-edge filters (follow() in probe mode); the slice summary prints one line per limit; schema 0.20.14. Behavioural evidence: the fixture repro (slice --entry target --reverse --max-files 3, six caller files) now reports file_limit: cap 3, nodes_omitted 8, edges_omitted 8, files_omitted 4; on dev it reported no count. Self-survey slice --entry Edge.create --reverse: file_limit cap 100 omitted 1315 nodes / 1440 edges / 204 files; hub_pruned cap 50 omitted 56 / 153 / 7, not-expanded 2; an independent recomputation reproduced all seven counts exactly. NOT asserted: nodes_omitted equals direct callers dropped (it includes deeper and file nodes); prevalence census not re-measured.\nFull report (closure evidence, measurements, residuals): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/mibuj.md"  # a136

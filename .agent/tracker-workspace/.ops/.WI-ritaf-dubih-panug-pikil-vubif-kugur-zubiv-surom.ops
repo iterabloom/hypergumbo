@@ -42,3 +42,19 @@
   clock: 4  # e4fb
   nonce: e4fb  # e4fb
   message: "WORK DONE 2026-10-01 (concurrent run, local branch, not pushed): branch jgstern-agent/feat/ritaf-language-test-files, commit c2857680c4 \"feat(profile): per-language test_files in profile.languages\".\nChange: LanguageStats gains test_files (int|None). _detect_languages counts, per language, how many of the enumerated files are test/test-support paths (selection.filters.is_test_path on the REPO-RELATIVE path, the predicate the sketch's \"N non-test + M test\" line already uses). files is NOT reduced (the WI-jadig pre-filter needs it). None = not measured (old cache), omitted from to_dict, never read as 0. docs/schema.json regenerated via scripts/generate-schema; spec profile section documents the field. SCHEMA_VERSION not bumped (left to integration).\nTests: 4 new tests in packages/hypergumbo-core/tests/test_profile.py (fixture-only language reads test_files == files with files unchanged; repo under a tests/ dir is not all-test; bash find_files enumerator path; serialization incl. absent != 0). Board smart-test: 491 test files, 17013 passed, 2 skipped, 3 xfailed, 0 failed; changed source files at 100% coverage.\nMeasurement (self, origin/dev af8ff42ad0 + branch): 23 languages; test_files == files for 12: csharp 2, elixir 1, erlang 1, go 4, java 3, php 1, proto 1, ruby 1, solidity 1, sql 1, swift 3, wgsl 1. xml read 2/1 only because smart-test had written the gitignored .ci/pytest-results.xml into the worktree; its one tracked xml file is a test fixture. python 1520/1106, rust 19/5 (the 14 non-test rust files are the recorded/ fixture crate, filed as WI-fosuk-mudof-fapol-foron-vibif-kalam-gizap-tajov). Corpus control, none fixture-only: fastapi python 1239/556, ripgrep rust 100/16, spring-petclinic java 47/17, robyn python 86/34, gin go 96/42 (proto 1/1).\nNot changed: sketch language line (already has a repo-level test split), metrics.languages (node counts, under INV-nohod's map-completeness ruling)."  # e4fb
+- op: update  # 7973
+  at: '2026-10-02T04:42:39Z'  # 7973
+  by: agent  # 7973
+  actor: jgstern_agent  # 7973
+  clock: 5  # 7973
+  nonce: '7973'  # 7973
+  set:  # 7973
+    status: done  # 7973
+    pr_ref: '#1387'  # 7973
+- op: discuss  # c526
+  at: '2026-10-02T04:42:39Z'  # c526
+  by: agent  # c526
+  actor: jgstern_agent  # c526
+  clock: 6  # c526
+  nonce: c526  # c526
+  message: "DONE: merged in PR #1387. profile.languages[*].test_files counts each language's test/fixture files (repo-relative is_test_path, the sketch's own predicate); files unchanged (WI-jadig relies on it); null-valued (absent) when loaded from an older cache, never 0; schema 0.20.14. Behavioural evidence: scratch repro {python 2/1, go 1/1} on the branch (no test_files attribute on dev), identical for relative, absolute, ..-style and symlinked roots; relative-path control test. Self: 12 of 23 profiled languages have test_files == files (csharp, elixir, erlang, go, java, php, proto, ruby, solidity, sql, swift, wgsl). No red board run was recorded. Residual: WI-fosuk (P3, rust-analyzer recorded/ fixture crate not classified as test).\nFull report (closure evidence, measurements, residuals): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/ritaf.md"  # c526
