@@ -16,7 +16,10 @@ Key IR Classes
   same cache-key question. It also carries per-pass productivity counters
   (``nodes_emitted`` / ``edges_emitted``) and, for a pass that emitted
   nothing, ``silence_reason`` (``unreported`` when the pass did not say why;
-  empty when it emitted output).
+  empty when it emitted output). Its timing is two fields: ``duration_ms``
+  is WALL time, which overlaps and inflates with contention because passes
+  run in thread pools, and ``cpu_ms`` is the CPU of the thread that ran the
+  pass, i.e. its own cost (``None`` when unmeasured; see ``pass_clock``).
 - **Symbol**: Code elements (functions, classes) with location and identity
   hashes (stable_id, shape_id, fingerprint). The ``quality`` field is
   declared-but-empty — it has no producer (INV-nuzal) and is omitted from
@@ -363,7 +366,22 @@ class AnalysisRun:
     failed_files: List[Dict[str, str]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     started_at: str = ""  # axis: free-text — ISO-8601 UTC timestamp; consumers display, never branch on the value.
+    # WALL-clock time of this pass, measured in its worker (WI-nuvam). Passes
+    # run concurrently -- analyzers in one thread pool, linkers in one pool
+    # per priority cohort -- so these figures OVERLAP (they do not sum to the
+    # survey's wall time) and one INFLATES WITH CONTENTION: a worker waiting
+    # on the GIL while a sibling runs is still on the wall clock. It is not
+    # what the pass cost; ``cpu_ms`` is.
     duration_ms: int = 0
+    # CPU time of the thread that ran this pass, in ms (WI-nuvam; see
+    # pass_clock). Waiting on the GIL, I/O or a sleep does not advance it, so
+    # it is the pass's own cost and ``duration_ms - cpu_ms`` is how long it
+    # waited. Excludes child processes and threads the pass starts itself.
+    # ``None`` means NOT MEASURED (serialized null) -- never a 0, which would
+    # read as "cost nothing"; a measured pass is >= 1. Stamped centrally: the
+    # analyzer pool's worker wrapper, the linker chokepoint, and each serial
+    # synthesis pass's own clock.
+    cpu_ms: Optional[int] = None
     # Code-hash of the pass module (via compute_pass_version). Analyzers
     # set it from self.pass_version; linkers are stamped by _stamp_pass_version
     # in run_all_linkers. Distinct from ``version`` (the package version).
@@ -472,6 +490,9 @@ class AnalysisRun:
             "duration_ms": self.duration_ms or (
                 1 if (self.nodes_emitted or self.edges_emitted) else 0
             ),
+            # WI-nuvam: ALWAYS present. null = not measured (the field could
+            # not see); a missing key means the artifact predates the field.
+            "cpu_ms": self.cpu_ms,
             "pass_version": self.pass_version,
             "nodes_emitted": self.nodes_emitted,
             "edges_emitted": self.edges_emitted,
