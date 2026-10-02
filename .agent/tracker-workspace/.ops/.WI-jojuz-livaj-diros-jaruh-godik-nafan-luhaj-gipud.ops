@@ -1,0 +1,21 @@
+- op: create  # fb47
+  at: '2026-10-02T17:48:46Z'  # fb47
+  by: agent  # fb47
+  actor: jgstern_agent  # fb47
+  clock: 1  # fb47
+  nonce: fb47  # fb47
+  data:  # fb47
+    kind: work_item  # fb47
+    title: "The builtin-catalogue scope gate judges stdlib by the RUNNING interpreter: python.yaml's tomllib row fails the nightly Python 3.10 leg"  # fb47
+    status: todo_hard  # fb47
+    priority: 2  # fb47
+    parent:  # fb47
+    tags:  # fb47
+    - ci  # fb47
+    - catalogue  # fb47
+    isbefore: []  # fb47
+    duplicate_of: []  # fb47
+    not_duplicate_of: []  # fb47
+    pr_ref:  # fb47
+    description: "WHAT FAILS. The cron/nightly Python 3.10 leg (pipeline 4138 leg 1, dev cb1d8bd979, 2026-10-02) fails ONE test; legs 2-4 pass:\n\n    FAILED packages/hypergumbo-core/tests/test_catalogue_scope_gates.py::test_a_builtin_file_names_only_the_standard_library[io_primitives/python.yaml]\n    AssertionError: io_primitives/python.yaml declares builtin but names 1 spelling(s) outside the standard-library line: ['python: tomllib']\n    = 1 failed, 30282 passed, 34 skipped, 11 xfailed =\n\nWHY. `_admitted` (test_catalogue_scope_gates.py ~646-661) admits a python spelling when its top-level name is in `sys.stdlib_module_names` of the RUNNING interpreter. `tomllib` joined the standard library in 3.11, so on 3.10 the row is judged third-party. The test's verdict therefore depends on which Python runs it, not on the catalogue. Local runs (3.12) and per-PR CI cannot see it; only the 3.10 nightly leg can.\n\nNOT A run0930 REGRESSION. The test arrived with WI-nopam (9e5409ab68, 2026-09-29); the tomllib row predates it (600767b867, WI-dupok era). Every 3.10 leg run since then should have failed the same way; NOT CHECKED: the nightly verdicts between 09-29 and 10-02.\n\nTHE FAMILY. The same interpreter-dependence admits the other way too: a module REMOVED in 3.12/3.13 (distutils, imp, asynchat; PEP 594's cgi, telnetlib, ...) is admitted on 3.10 but not on 3.13. Today only tomllib trips it (the 3.10 leg names exactly one stray; the 3.12/3.13 legs pass), but the line moves with every supported interpreter. Note python.yaml's own `stdlib_modules` (300 entries) equals `sys.stdlib_module_names` on 3.12 exactly, so it is a 3.12 snapshot, and admitting through it would make the gate circular.\n\nPROPOSED FIX (small). Make the stdlib line version-stable: admit a spelling that is standard library on ANY supported version (3.10+). The test's own HOW TO FIX names the mechanism: a CATALOGUE_SCOPE (python) entry for tomllib with the reason \"standard library since 3.11 (PEP 680); the 3.10 leg's sys.stdlib_module_names lacks it\". Better: a small pinned `STDLIB_ADDED_AFTER_310 = {\"tomllib\": (3, 11)}` beside the sys.stdlib_module_names test, so the reason lives with the version rule. Acceptance: the parametrized case passes under a 3.10 interpreter (the nightly leg) and still fails for a genuine third-party spelling (mutation control)."  # fb47
+    fields: {}  # fb47

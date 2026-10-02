@@ -80,3 +80,10 @@
   clock: 9  # 7209
   nonce: '7209'  # 7209
   message: "FIX MERGED in PR #1377 (commit 195ea3a5d3); status UNCHANGED, because the row's close condition (a walk of the cron history since the fix plus one loaded run) is not yet met. What merged: modal unit tests wait for the dismiss callback (_wait_for_dismissal, asyncio.Event, 30 s bound) instead of reading after one pilot.pause(); the four compile_ops Hypothesis properties run with deadline=None at module level. Deterministic load-model tests pin both (one-tick pause model read 'NOT_SET' 8/8 for the old pattern). TO CLOSE: the run0930 integration full suite (loaded box) with 0 failures in test_tui.py / test_compile_properties.py, plus a cron walk of the scheduled full-suite runs after 31a63b2b65. Residuals: WI-zolin (P3, TrackerApp integration modal tests), WI-lotig (transcript pipeline properties). Report: run_09302026/ruhul.md"  # 7209
+- op: discuss  # f560
+  at: '2026-10-02T05:24:17Z'  # f560
+  by: agent  # f560
+  actor: jgstern_agent  # f560
+  clock: 10  # f560
+  nonce: f560  # f560
+  message: "CLOSE CONDITION, half 1 of 2 MET (2026-10-02): loaded full-suite run on combined dev cb1d8bd979 (all five run0930 batches merged; smart-test --full -n 5 via the board, NOT under nohup): 32357 passed, 8 skipped, 11 xfailed, 0 FAILED/ERROR anywhere -- so 0 failures in packages/hypergumbo-tracker/tests/test_tui.py and test_compile_properties.py. Log: ~/hypergumbo_lab_notebook/decontend/run_09302026/fullsuite/full.pytest.log. Half 2 PENDING: the cron walk. ci-debug runs at 2026-10-02T05:24Z shows only the push run for cb1d8bd9; the first scheduled full-suite firing after the fix (merged in #1377) is 13:00 UTC 2026-10-02. Close on a clean walk of that firing (and later ones if available)."  # f560
