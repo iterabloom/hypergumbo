@@ -1,0 +1,19 @@
+- op: create  # 1bfe
+  at: '2026-10-02T01:00:23Z'  # 1bfe
+  by: agent  # 1bfe
+  actor: jgstern_agent  # 1bfe
+  clock: 1  # 1bfe
+  nonce: 1bfe  # 1bfe
+  data:  # 1bfe
+    kind: work_item  # 1bfe
+    title: "compact's connectivity default admits test-file symbols as bridge picks (express: 225 of 400 emitted nodes at K=400 are test-path)"  # 1bfe
+    status: todo_hard  # 1bfe
+    priority: 2  # 1bfe
+    parent:  # 1bfe
+    tags: []  # 1bfe
+    isbefore: []  # 1bfe
+    duplicate_of: []  # 1bfe
+    not_duplicate_of: []  # 1bfe
+    pr_ref:  # 1bfe
+    description: "Found while measuring WI-fadab-nusol-hutum-susot-vogil-papor-gakop-zajor (branch jgstern-agent/fix/fadab, 2026-10-01).\n\ncompact's DEFAULT (connectivity) path applies neither half of the WI-zulij population policy to its BRIDGE picks: no production_edges (test-sourced edges still count) and no test-path clause. WI-fadab narrowed the SEEDS to key symbols and removed external-boundary nodes; it deliberately left bridges unfiltered because a file node can be the only thing joining two islands. That argument covers non-key KINDS (file, target). It does not obviously cover symbols declared in TEST FILES, which are not bridges of the production graph.\n\nMEASURED (production entry point format_compact_behavior_map(connectivity_aware=True), WI-fadab branch, K=400, the 07-17 bakeoff maps + a self-analysis map): emitted nodes that fail is_key_symbol only because of is_test_path --\n  express          225 of 400\n  spring-petclinic  90 of 336\n  apollo-server     67 of 400\n  self-analysis      9 of 400 (+3 test_ names)\nThe test-path symbols arrive as bridge picks (they are not seeds after WI-fadab). At K=10 the remaining non-key nodes across the 8 bakeoff maps are 9: 5 file bridge picks, 2 function (apollo-server) and 2 method (SwiftyJSON); the function/method ones fail is_key_symbol on a non-kind clause (test path, test_ name or supply-chain tier 4) -- which clause was NOT checked individually.\n\nOPEN QUESTION, needs its own A/B against WI-zulij's numbers (isolated-node rate, components, containment): drop test-path symbols from the connectivity population (and apply production_edges), or only exclude them as bridge picks? Removing them may re-strand seeds whose only in-repo neighbours are tests; WI-fadab's anchor pick would then have no neighbour to take."  # 1bfe
+    fields: {}  # 1bfe
