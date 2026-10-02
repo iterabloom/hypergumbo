@@ -11,6 +11,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 - **The TUI type-checks under mypy strict, save two deliberate exceptions** (INV-zogud). Its screens' key bindings, preference dictionaries, table and tree widgets and screen callbacks now carry their real types; 35 of its 37 strict errors are gone. Left: `action_back` overrides Textual's async method with a sync one, and one guard mypy reads as unreachable; changing either would change behaviour. No behaviour changes.
 
+### Fixed
+
+- **Tracker tests no longer flake under load** (WI-ruhul). Modal unit tests in `test_tui.py` wait for the dismiss callback (`_wait_for_dismissal`) instead of reading the result after one `pilot.pause()`; Textual's idle detection is CPU-time based, so a starved worker read the `'NOT_SET'` sentinel. The four `compile_ops` Hypothesis properties run with `deadline=None` as module-level functions. Deterministic load-model tests pin both.
+
 ## [0.9.0] - 2026-09-25
 
 ### Added
