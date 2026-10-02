@@ -4735,7 +4735,10 @@ class TestConnectivityDefaultPopulation:
     The policy these tests pin: a seed is a key symbol (seeds are not bridges);
     boundary nodes are not in the population at all (they have no source, and a
     shared stdlib callee is not a structural bridge — the tiered view already
-    drops them); a non-key node reached as a real bridge is still admitted.
+    drops them); a non-key node reached as a real bridge is still admitted; and
+    a seed that lands outside every selected component is anchored to its own
+    best neighbour, since nothing glues it on admission once the boundary
+    placeholders are gone.
     """
 
     def _map(self, symbols, eps=()):
@@ -4838,6 +4841,42 @@ class TestConnectivityDefaultPopulation:
         assert kinds[1] == "target", (
             f"the non-key hub must still be admitted as a bridge; got {kinds}"
         )
+
+    def test_seed_outside_the_main_component_is_anchored_to_a_neighbour(self):
+        """A seed admitted into no existing component takes its own best
+        neighbour as the next pick instead of being stranded.
+
+        The scorer's primary key is growth of the LARGEST component, so a lone
+        seed's neighbour scores the minimum and loses to any node touching the
+        main component. With boundary placeholders out of the population nothing
+        glues the seed on admission any more: measured on the self-analysis map,
+        every third emitted node (each a ``scripts/*.py:main`` seed) was isolated
+        at K=100. Here ``ep_z`` is that seed and the ``c*`` fan is the main
+        component's cheaper growth; without the anchor both picks after ``ep_z``
+        go to the fan and ``ep_z`` ends with no edge, though it is not the last
+        emitted node.
+        """
+        ep_a = make_symbol("ep_a", path="src/a.py")
+        ep_z = make_symbol("ep_z", path="src/z.py")
+        z_helper = make_symbol("z_helper", path="src/zh.py")
+        fan = [make_symbol(f"c{i}", path=f"src/c{i}.py") for i in range(6)]
+        symbols = [ep_a, ep_z, z_helper] + fan
+        edges = [make_edge(ep_a.id, c.id, edge_type="references") for c in fan]
+        edges.append(make_edge(ep_z.id, z_helper.id, edge_type="references"))
+        eps = [
+            {"symbol_id": ep_a.id, "confidence": 0.9},
+            {"symbol_id": ep_z.id, "confidence": 0.8},
+        ]
+        result = self._run(symbols, edges, eps, k=6)
+        names = [n["name"] for n in result["nodes"]]
+        assert names.index("ep_z") < len(names) - 1, (
+            f"non-vacuity: ep_z must not be the final emitted node; got {names}"
+        )
+        touched = {e["src"] for e in result["edges"]} | {e["dst"] for e in result["edges"]}
+        assert ep_z.id in touched, (
+            f"seed ep_z was stranded with no induced edge; emitted {names}"
+        )
+        assert names[names.index("ep_z") + 1] == "z_helper", names
 
     def test_select_by_connectivity_seed_eligible_both_policies(self):
         """``seed_eligible`` gates seeds AND the bootstrap, under both the
