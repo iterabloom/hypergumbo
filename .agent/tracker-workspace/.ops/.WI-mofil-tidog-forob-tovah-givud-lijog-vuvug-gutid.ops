@@ -57,3 +57,18 @@
   clock: 6  # 802c
   nonce: 802c  # 802c
   message: "L5 MEASURED (vapor, 2026-10-01 08:16-08:3x, after the board restart killed the first queued before-arm with exit 143 before it started; re-run). Method: `hypergumbo survey` + `io-boundaries --format json` per arm, origin/dev 8cfcab7b07 swift.py (PYTHONPATH pinned to an archive of origin/dev) vs branch a7d20798f2; fresh XDG_CACHE_HOME per arm; arm's swift.py path asserted. Output: ~/hypergumbo_lab_notebook/decontend/run_09302026/mofil/prim/iob.vapor.{before,after}.json; diff: iobdiff.py in the run dir.\n\nRESULT -- CATALOGUED BOUNDARIES UNCHANGED. Per boundary (chains, distinct primitives), identical in both arms: fs_read (4, 3), host_info_read (2, 1), logging (36, 7), net_listen (2, 2), net_send (7, 4), process_send (38, 4) = 89 chains, 21 primitives. total_io_edges 87 -> 87. Primitives reached: ZERO change, in either direction. No catalogued chain lost.\nOnly `external_potential` (uncatalogued external calls) moved: 415 -> 418 chains, 184 -> 185 distinct names. 6 lost / 9 gained, all re-keys at the same sites:\n  EventLoopFuture.{close,configureHTTP2Pipeline,configureHTTP2SecureUpgrade} -> Channel.* (HTTPServer.swift:544-550; the receiver is the closure param `channel`, previously typed from an outer EventLoopFuture<Channel> by name -- the new name is right)\n  _NIOFileSystem.{next,makeAsyncIterator} -> _NIOFileSystem.FileChunks[.AsyncIterator].* (more specific declared type)\n  Substring.flatMap -> String.flatMap (Directive init parameter now scoped to the init)\n  +String.lowercased (HTTPHeaders+Name.swift:16), +UInt8.map (BaseN.swift:129)\n  +C.index (Bytes+SecureCompare.swift:22) -- `C` is a GENERIC PARAMETER in the slot: WI-jofin's leak, not a gain.\n\nWHAT THIS DOES NOT SUPPORT: any recall or precision claim for io-boundaries. Per LIVE rule 10: a correct change with ZERO measured effect on primitives reached on vapor. Not measured: the other four repos at L5, and the taint / sanitizer direction (no verify-claims run). The ManagedAtomic +21 slot gain reaches no catalogue row (ManagedAtomic is not an io type)."  # 802c
+- op: update  # 8a26
+  at: '2026-10-02T04:15:06Z'  # 8a26
+  by: agent  # 8a26
+  actor: jgstern_agent  # 8a26
+  clock: 7  # 8a26
+  nonce: 8a26  # 8a26
+  set:  # 8a26
+    pr_ref: '#1383'  # 8a26
+- op: discuss  # 9dd6
+  at: '2026-10-02T04:15:06Z'  # 9dd6
+  by: agent  # 9dd6
+  actor: jgstern_agent  # 9dd6
+  clock: 8  # 9dd6
+  nonce: 9dd6  # 9dd6
+  message: "FIX MERGED in PR #1383; status UNCHANGED (todo_hard), because the title's condition still largely holds: most of the 622 named-but-untyped receivers have causes this branch did not address. What merged: every let/var clause of if/guard/while binds (if flag, let s = f() no longer stamps f()'s type on flag); generic constructors, identifier initialisers and annotated closure parameters typed; position-aware, per-callable-body scope map. vapor module slot 1038 -> 1068 (4 other repos also up), call edges identical. Acceptance number (io-boundary primitives reached on vapor): UNCHANGED, 89 chains / 21 primitives in both arms -- a correct change with zero measured io effect. The remaining causes are filed: WI-dimad (P2, subscript emitted as a call), WI-zobif (closure params without annotation, the largest bucket), WI-silos, WI-hubik, WI-rajig, WI-jofin (P3). PROPOSAL: re-scope this row to the sizing it now carries, or close it in favour of those six.\nFull report (closure evidence, corpus tables, residual list): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/mofil.md"  # 9dd6
