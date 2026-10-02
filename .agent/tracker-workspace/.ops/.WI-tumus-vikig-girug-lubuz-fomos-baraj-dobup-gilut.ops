@@ -1,0 +1,21 @@
+- op: create  # 7c7d
+  at: '2026-10-02T01:46:14Z'  # 7c7d
+  by: agent  # 7c7d
+  actor: jgstern_agent  # 7c7d
+  clock: 1  # 7c7d
+  nonce: 7c7d  # 7c7d
+  data:  # 7c7d
+    kind: work_item  # 7c7d
+    title: "kind=export producer docs are wrong in three places: base.py make_export_stable_id + split_within_file docstrings, symbol_kinds export description (producers are bash + json_config only)"  # 7c7d
+    status: todo_soft  # 7c7d
+    priority: 3  # 7c7d
+    parent:  # 7c7d
+    tags:  # 7c7d
+    - docs  # 7c7d
+    - docstring_drift  # 7c7d
+    isbefore: []  # 7c7d
+    duplicate_of: []  # 7c7d
+    not_duplicate_of: []  # 7c7d
+    pr_ref:  # 7c7d
+    description: "FOUND 2026-10-01 while working WI-nasil (branch jgstern-agent/fix/nasil). Three texts describe the producers of kind=\"export\" Symbols, and none matches the code (grep of kind\\s*=\\s*[\"']export[\"'] over packages/*/src, dev c05393f974: the only Symbol producers are bash.py and json_config.py; js_ts.py's kind=\"export\" is a UsageContext):\n\n1. analyze/base.py make_export_stable_id docstring: \"Bash function exports, Python __all__ entries, and JS named exports all use this shape.\" -- bash exports are VARIABLES, there is no Python __all__ producer, and JS named exports are not Symbols.\n2. analyze/base.py split_within_file_stable_id_collisions docstring lists \"repeated shell exports\" among within-file SITE collisions. After WI-nasil (one bash export Symbol per variable per file) bash exports no longer collide within a file. (ADR-0035's matching list was already corrected on the WI-nasil branch.)\n3. symbol_kinds.py SymbolKindSpec(\"export\", ...) description: \"Export declaration (JS / TS / TOML / Rust).\" -- the producers are bash and json_config (package.json exports). This description may feed generated docs (docs/concept-axes.md / docs/schema.json): regenerate after editing.\n\nWHY NOT FIXED ON THE WI-nasil BRANCH: base.py is imported by nearly every test, so even a docstring edit there makes smart-test's reverse slice select a near-full suite, which the concurrent run forbids. A ready patch for (1) and (2) is at ~/hypergumbo_lab_notebook/decontend/run_09302026/nasil/base_py_docstring_followup.patch. Docstring-only; base.py's line-pinned citations (signature_axis line=262 / line=300) sit ABOVE both edits, so they do not move."  # 7c7d
+    fields: {}  # 7c7d

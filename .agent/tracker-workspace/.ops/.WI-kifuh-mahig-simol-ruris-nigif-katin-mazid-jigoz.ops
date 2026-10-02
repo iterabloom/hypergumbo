@@ -48,3 +48,19 @@
   clock: 5  # ff57
   nonce: ff57  # ff57
   message: "IMPLEMENTED option (b), local branch jgstern-agent/fix/kifuh in ~/hg_wt/kifuh, commit bd4c17c9e9 (not pushed; integrator merges, owner-approved without --gov).\nWHAT: new _autopr_finish_merged in scripts/auto-pr runs the cleanup (cleanup_local or _autopr_flush_cleanup, each removes .git/PR_PENDING as its first step) and THEN _autopr_append_tracker_discussion, both through the INV-rahib boundary. All three merge sites (do_pr, flush_queue, _autopr_handle_already_merged) call it; it is the helper's only caller. Guard: if the helper is ever reached with PR_PENDING still present it warns (naming WI-kifuh) and runs the discuss with TRACKER_AUTO_SYNC_THRESHOLD=0, so it returns at once instead of waiting 900 s on its own parent. One stdout line now precedes the discuss, since an auto-sync can run there.\nEVIDENCE (tests/test_autopr_tracker_id.py, real extracted functions, real git repo, tracker stub logging PR_PENDING presence + threshold at call time): red before the fix (8 new tests failed, the old-order control passed); green after (targeted smart-test, 83 affected files: 2476 passed, 0 failed). Mutation: swapping the order inside _autopr_finish_merged and removing the guard turned exactly the 4 behavioral tests red (\"held\" where \"released\" was required), then restored.\nNOT DONE: no live auto-pr run against the remote (forbidden in this run); no measurement of how often the 15-min stall recurred since 09-03. The second finding's residuals are filed as WI-zudug-hukal-pihof-popup-tatam-namit-marul-pituv (P3): --squash read -p tty guard, pull-failure hint not naming tracker reconcile, no .ops protection around the post-merge pull."  # ff57
+- op: update  # a6b4
+  at: '2026-10-02T02:46:29Z'  # a6b4
+  by: agent  # a6b4
+  actor: jgstern_agent  # a6b4
+  clock: 6  # a6b4
+  nonce: a6b4  # a6b4
+  set:  # a6b4
+    status: done  # a6b4
+    pr_ref: '#1377'  # a6b4
+- op: discuss  # 33d6
+  at: '2026-10-02T02:46:30Z'  # 33d6
+  by: agent  # 33d6
+  actor: jgstern_agent  # 33d6
+  clock: 7  # 33d6
+  nonce: 33d6  # 33d6
+  message: "DONE: merged in PR #1377 (dev 31a63b2b65; commit 8f3be100ef, from the run0930 concurrent run, owner-approved option (b), merged without --gov). Every auto-pr merge path (normal, flush, already-merged) now goes through _autopr_finish_merged, which removes .git/PR_PENDING BEFORE the --tracker-id discussion write, so the tracker's auto-sync no longer waits 900 s on auto-pr's own gate. Guard: a write reached with the gate up disables auto-sync for it and warns. Evidence: 8 new tests in tests/test_autopr_tracker_id.py red before / green after; a mutation restoring the old order and removing the guard turned exactly the 4 behavioural tests red. Not run live (the run forbade live auto-pr); the tracker is stubbed in the tests. Residuals: WI-zudug (P3, governance: --squash prompt without a tty, pull-failure hint, .ops around the post-merge pull). Report: ~/hypergumbo_lab_notebook/decontend/run_09302026/kifuh.md"  # 33d6
