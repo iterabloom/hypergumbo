@@ -822,3 +822,20 @@ class TestAnsibleParserFailure:
 
         assert result.skipped is True
         assert "not available" in result.skip_reason
+
+
+def test_root_list_with_a_non_mapping_item_is_not_a_playbook(tmp_path: Path) -> None:
+    """A top-level YAML list whose items are not ALL mappings is no play or task
+    list (WI-jifog): ``- hosts: all`` beside a bare scalar item is refused, so a
+    root-level file of that shape is not claimed as Ansible. Covers the
+    not-every-item-is-a-mapping refusal in ``_top_level_shape``."""
+    from hypergumbo_lang_mainstream.yaml_ansible import (
+        _NO_SHAPE,
+        _top_level_shape,
+        find_ansible_files,
+    )
+
+    mixed = tmp_path / "site.yml"
+    mixed.write_text("- hosts: all\n- just-a-string\n")
+    assert _top_level_shape(mixed) == _NO_SHAPE
+    assert find_ansible_files(tmp_path) == []

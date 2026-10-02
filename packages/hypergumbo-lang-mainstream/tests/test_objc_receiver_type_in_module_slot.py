@@ -281,3 +281,18 @@ class TestANullabilityQualifierIsSkippedForTheClassAfterIt:
         e = _send(edges, "frob")
         assert e.dst == "objc:external:0-0:frob:unresolved", e.dst
         assert "receiver_type_hint" not in (e.meta or {})
+
+
+def test_first_descendant_returns_none_when_the_kind_is_absent() -> None:
+    """``_first_descendant`` answers ``None``, not a wrong node, when no
+    descendant has the asked-for kind -- the fallback the qualified-name reader
+    relies on when a declarator holds no identifier."""
+    import tree_sitter
+    import tree_sitter_objc
+
+    from hypergumbo_lang_mainstream.objc import _first_descendant
+
+    parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_objc.language()))
+    root = parser.parse(b"int x;\n").root_node
+    assert _first_descendant(root, "identifier") is not None  # reach: the walk finds real kinds
+    assert _first_descendant(root, "no_such_node_kind") is None
