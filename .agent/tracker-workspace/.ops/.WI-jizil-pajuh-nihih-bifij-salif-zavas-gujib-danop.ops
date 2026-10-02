@@ -53,3 +53,19 @@
   clock: 5  # 6f18
   nonce: 6f18  # 6f18
   message: "DONE ON LOCAL BRANCH (concurrent run 09-30, not pushed): jgstern-agent/fix/jizil-derive-boundary-help, commit 46b6b8e492 \"fix(cli): derive verify-claims --help boundary list from the registry\".\n\nChange: cli.py gains _verify_claims_boundary_vocabulary_help(), which builds the help's boundary enumeration from io_boundary_types.all_io_boundary_names() (the definition of KNOWN_IO_BOUNDARIES, the set load_claims validates against) when the parser is constructed, sorted as the validator's error prints it. The hand-written list in the YAML comment column is gone; the help points to docs/concept-axes.md (generated from the registry) for meanings rather than restating them. No per-value glosses were written, so nothing in the help restates audit 0021's logging/ipc_send split.\n\nTests: test_cli_docs_prose_gate.py gains a 4th check (3 tests): rendered help list == all_io_boundary_names() == KNOWN_IO_BOUNDARIES with navigation_read named; a monkeypatched registry (navigation_read removed, a probe added) changes the rendered help; every listed value loads through load_claims and not_a_real_boundary raises ClaimsFileError.\n- red before fix: 3 failed, 28 passed (heading absent)\n- green: smart-test targeted, 260 files, 7594 passed / 0 failed / 3 skipped / 13 xfailed; changed source files at 100% coverage\n- mutation (old 20-name list restored under the new heading): 2 failed (navigation_read missing; probe missing), 29 passed; restored.\n\nLive repro on the branch: verify-claims --help lists 21 values incl. navigation_read (was 0 occurrences); the help list equals the validator's \"valid boundaries:\" list element for element (21/21, same order); boundary: navigation_read -> confirmed rc 0 on a one-file fixture with a call edge; boundary: not_a_real_boundary -> \"Error: unknown boundary ...\" rc 2.\n\nFamily sweep (cli.py only, io-boundary axis): cmd_io_boundaries docstring lists exactly the 17 counts_in_headline values (accurate); cmd_verify_claims docstring source list matches AUTO_SOURCE_LABEL_MAP keys; --io-boundary / --boundary help and the io-boundaries epilog give examples (\"e.g.\", parenthetical), not closed sets. Not checked: other axes' vocabularies in other help epilogs; README/docs (the spec says \"the io-boundaries vocabulary\" without enumerating)."  # 6f18
+- op: update  # 9b70
+  at: '2026-10-02T04:43:24Z'  # 9b70
+  by: agent  # 9b70
+  actor: jgstern_agent  # 9b70
+  clock: 6  # 9b70
+  nonce: 9b70  # 9b70
+  set:  # 9b70
+    status: done  # 9b70
+    pr_ref: '#1387'  # 9b70
+- op: discuss  # c411
+  at: '2026-10-02T04:43:24Z'  # c411
+  by: agent  # c411
+  actor: jgstern_agent  # c411
+  clock: 7  # c411
+  nonce: c411  # c411
+  message: "DONE: merged in PR #1387. verify-claims --help builds its boundary list from the registry (_verify_claims_boundary_vocabulary_help, the set load_claims validates against), sorted as the validator's error. Behavioural evidence: help lists 21 values incl. navigation_read (dev: 20, 0 occurrences); the help list equals the validator's error list element for element; boundary: navigation_read -> confirmed rc 0; boundary: not_a_real_boundary -> rc 2. test_cli_docs_prose_gate.py fourth check pins equality, derivation (monkeypatched registry changes the help) and load/refuse; restoring the hand-written list reds the equality and derivation tests. NOT asserted: no other help text restates another closed vocabulary (only cli.py boundary lists swept).\nFull report (closure evidence, measurements, residuals): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/jizil.md"  # c411
