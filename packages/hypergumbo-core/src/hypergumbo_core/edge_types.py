@@ -94,12 +94,15 @@ EDGE_TYPES: Final[tuple[EdgeTypeSpec, ...]] = (
     ),
     EdgeTypeSpec(
         "extends", AXIS_RELATIONSHIP,
-        "Class extends a superclass, or an interface / trait / protocol "
-        "extends its base type.",
+        "Class extends a superclass, an interface / trait / protocol "
+        "extends its base type, or a Dart mixin names its `on` superclass "
+        "constraint.",
     ),
     EdgeTypeSpec(
         "implements", AXIS_RELATIONSHIP,
-        "Class or struct implements an interface / trait / protocol.",
+        "A type implements an interface / trait / protocol (in Dart, any "
+        "class's implicit interface), or an Elixir module implements a "
+        "behaviour.",
     ),
     EdgeTypeSpec(
         "contains", AXIS_RELATIONSHIP,
