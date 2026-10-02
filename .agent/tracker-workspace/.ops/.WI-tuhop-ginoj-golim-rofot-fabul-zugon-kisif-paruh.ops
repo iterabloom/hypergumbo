@@ -50,3 +50,19 @@
   clock: 5  # ecf5
   nonce: ecf5  # ecf5
   message: "WORK 2026-10-01 (concurrent run, local branch jgstern-agent/docs/tuhop-adr0048-0006-figure, commit 3b2467ad2c, NOT pushed). Part 1 done; part 2 NOT applied.\n\nPART 1 (in repo). ADR-0048 line 60 now reads 38/112 = 33.9% per situation, the figure after F7's adversarial pass, corrected in place with no history line (owner ruling). The same sentence said \"the 2.8x span is zero by design\". That was a second error. The 2.8x is 0005's ROW-rate span, and equal allocation equalises the SITUATION rate only. Recomputed from 0006's own sample-112.json, ledger-final.json and pass4-summary.json, using the pass-4 uncontested labels:\n  situation: pooled 38/112 = 33.9%; unweighted per-repo mean 33.9%\n  row: pooled 106/336 = 31.5%; unweighted per-repo mean 37.2%\nControl: the pooled figures reproduce 0006's published headline exactly. Pass 3 (44 TP) gives row pooled 114/336 = 33.9% against a mean of 40.0%. The ADR's \"same number by construction\" claim is now scoped to the situation rate, with the row figures beside it. F1 is unchanged. The same claim is qualified in 0012's \"Why n=94\" paragraph, and 0010's account is put in the past tense. Gates: check-measurement-frame OK (22 records declare a full frame, 7 grandfathered); targeted smart-test 287 passed, 0 changed sources.\n\nNOT CHANGED: F8 does not name a row-rate estimator. Every framed record so far prints the pooled row rate without saying so. Adding that requirement is a design change, so it is filed for the owner as WI-gihut-fokuf-hupik-bujil-sujuh-gumuz-hadoh-sonos (P3).\n\nPART 2 (lab notebook, outside the repo): NOT APPLIED, because writing to that directory is outside this run's sanctioned write locations. A ready script, decontend/run_09302026/tuhop/annotate_ledger_final.py, adds top-level keys (stage, pass4_refuted, pass4_contested, headline_uncontested_tp, headline_rule). It leaves final and provenance unchanged (verified on a copy). Readers checked statically: final.py, derive.py, retro.py and measurement_0012's final.py all index [\"final\"], so the new keys cannot change what they read. CAVEAT: tables.py is the file's producer and rewrites it with only final and provenance, so re-running tables.py would drop the annotation. Sweep: the notebook has one other ledger-final.json (measurement_0012_09022026), which IS post-refutation (it carries correct/useful). The trap is unique to 0006's file."  # ecf5
+- op: update  # 0e34
+  at: '2026-10-02T02:47:18Z'  # 0e34
+  by: agent  # 0e34
+  actor: jgstern_agent  # 0e34
+  clock: 6  # 0e34
+  nonce: '0e34'  # 0e34
+  set:  # 0e34
+    status: done  # 0e34
+    pr_ref: '#1377'  # 0e34
+- op: discuss  # f324
+  at: '2026-10-02T02:47:18Z'  # f324
+  by: agent  # f324
+  actor: jgstern_agent  # f324
+  clock: 7  # f324
+  nonce: f324  # f324
+  message: "DONE, both parts. (1) Merged in PR #1377 (commit 6de195bc00): ADR-0048 gives measurement 0006 as 38/112 = 33.9% per situation (was the pass-3 44/112 = 39.3%); its \"2.8x span is zero by design\" is corrected to the SITUATION rate only, with 0006's row rate stated both ways (pooled 31.5%, unweighted per-repo mean 37.2%) per F1; measurements 0010/0012 match. Check: grep \"44/112|39.3\" docs/adr/0048-* returns nothing. (2) Applied 2026-10-01 by the integrator: ~/hypergumbo_lab_notebook/measurement_0006_08252026/ledger-final.json now carries stage / pass4_refuted / pass4_contested / headline_uncontested_tp (38) / headline_rule; `final` and `provenance` byte-identical to the backup ledger-final.json.pre-tuhop-10012026.bak. Caveat: tables.py rewrites the file with only final+provenance. Owner question filed: WI-gihut (P3). Report: run_09302026/tuhop.md"  # f324
