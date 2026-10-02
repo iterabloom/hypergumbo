@@ -50,3 +50,19 @@
   clock: 5  # 73e3
   nonce: '73e3'  # 73e3
   message: "WORK DONE 2026-10-01 (concurrent run; NOT merged, status unchanged). Branch jgstern-agent/fix/binod, commit 1cc2667cbe on dev c930ed9e01. Scope: the row's defects 1 (whole-file double attribution) and 2 (BASH_SOURCE); the block-comment defect stays declined at _COMMENT_OPENERS.\n\n1. DOUBLE ATTRIBUTION. render_packet now lists each sink site once, under the narrowest path symbol whose span contains it (new `innermost_span`). Covers the file-symbol case and nested function spans on one path. The file symbol is printed \"at module level (path 1-N)\" instead of \"in file (...)\". The empty-result scope prints the widened span, not the `1--1` sentinel. LIMIT (pinned by a test): the builder knows only the PATH's spans, so a site in a function the path does not name stays under module level.\n\n2. BASH_SOURCE. `_SHELL_NON_ENV` is gone. shell_env_sites reads bash.py's `_SHELL_STATE_NAMES` and `_HOST_DESCRIPTION_NAMES` (`_bash_parameter_sets`). An environ listing drops every bash-assigned name AND the host-description names bash.py routes to shell.hostinfo ($PWD, $HOSTNAME, ...). SIBLING FIXED IN THE SAME MECHANISM: a `hostinfo` source (production's source_primitive for shell.hostinfo, confirmed live) used to print \"(none found)\", because name matching searched for the token \"hostinfo\". It now lists the host-description expansions.\n\nEVIDENCE. Red: 13 of the new tests fail on origin/dev's script (13 failed, 62 passed). Green: test-small 105 passed (5 selected files incl. test_adjudication_packet.py). Live: collect on a fixture repo, then packet with both builders. The baseline lists `${BASH_SOURCE[0]}` and `$HOSTNAME` under the environ source, double-lists revert_nav's open()/write(), and prints \"(none found; searched scripts/run.sh 1-5)\" for the hostinfo source. The new builder does none of these. Measurement 0012's 26 sampled packets re-rendered with both builders: 141 -> 132 listed site lines, 0 added (6 ArkLib :3/:5 duplicates, cert-manager checkhash.sh:21, shellcheck .multi_arch_docker:70/:72 `$PWD`). No label was re-adjudicated. Record: ~/hypergumbo_lab_notebook/decontend/run_09302026/binod/.\n\nFILED: WI-birus-fulit-sohom-natak-kazum-vukus-bopaj-durib (P3): bash.yaml's shell.SECONDS/EPOCHSECONDS/EPOCHREALTIME rows have no producer. NOTED on WI-tumog: the packet subcommand now imports lang-mainstream through the same sys.path pin."  # 73e3
+- op: update  # 9d9b
+  at: '2026-10-02T02:47:15Z'  # 9d9b
+  by: agent  # 9d9b
+  actor: jgstern_agent  # 9d9b
+  clock: 6  # 9d9b
+  nonce: 9d9b  # 9d9b
+  set:  # 9d9b
+    status: done  # 9d9b
+    pr_ref: '#1377'  # 9d9b
+- op: discuss  # 5b88
+  at: '2026-10-02T02:47:15Z'  # 5b88
+  by: agent  # 5b88
+  actor: jgstern_agent  # 5b88
+  clock: 7  # 5b88
+  nonce: 5b88  # 5b88
+  message: "DONE: merged in PR #1377 (commit 4f594e05a0). Sites listed twice under a whole-file pseudo-symbol: render_packet lists each sink site once under the narrowest path symbol (innermost_span); the file symbol prints as \"at module level\". BASH_SOURCE: shell_env_sites reads bash.py's own _SHELL_STATE_NAMES / _HOST_DESCRIPTION_NAMES; related fix: a hostinfo source lists $HOSTNAME instead of \"(none found)\". Evidence: live fixture repro, old vs new builder (old lists BASH_SOURCE/$HOSTNAME/$SECONDS lines under environ and revert_nav's open()/write() twice; new does neither); re-rendering 0012's 26 packets: 141 -> 132 listed site lines, 0 added (6 ArkLib duplicates, cert-manager checkhash.sh:21, shellcheck .multi_arch_docker:70/:72). Tests: 13 failed on the old script / 105 passed. Block comments stay declined (_COMMENT_OPENERS). Not claimed: sites in functions off the path still list under module level (pinned). Residual: WI-birus (P3). Report: run_09302026/binod.md"  # 5b88

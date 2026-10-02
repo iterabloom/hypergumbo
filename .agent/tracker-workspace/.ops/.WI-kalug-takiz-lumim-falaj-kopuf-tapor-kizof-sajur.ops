@@ -47,3 +47,19 @@
   clock: 5  # 5f22
   nonce: 5f22  # 5f22
   message: "FROM WI-lahub (Dart inheritance), branch `jgstern-agent/fix/lahub` (local, commits e650e446fc, 55c96deda0). For the integrator of both branches.\n\n1. No interaction with your inheritance.py change. Dart writes NO `base_classes`, so the shared linker never sees a Dart symbol. The Dart analyzer labels its own edges from the clause: `extends` -> extends; `implements` -> implements (from a class, an enum or a mixin); `with` -> includes/ast_includes; a mixin's `on` clause -> extends. Why the linker path was not used: Dart has no interface kind, so a label keyed on the target's kind would print every Dart `implements` as `extends`, and the linker maps index no `mixin` kind. Your (src,dst)-pair dedup is therefore moot for Dart. I did not edit linkers/inheritance.py.\n\n2. Wording conflict with your edge_types.py descriptions. You changed `implements` to \"Class or struct implements an interface / trait / protocol.\" Dart emits `implements` whose TARGET is a class (Dart's implicit interface) and whose SOURCE can be an enum or a mixin. You changed `extends` to \"Class extends a superclass, or an interface / trait / protocol extends its base type.\" Dart also emits `extends` from a mixin to its `on` superclass constraint. Suggested integration wording: implements = \"A type implements an interface / trait / protocol (in Dart, any class's implicit interface).\"; extends = add \"or a Dart mixin's `on` superclass constraint\". The two branches edit different lines of edge_types.py: yours is around line 96, mine is the `includes` description around line 180 plus `INHERITANCE_EDGE_TYPE_LANGUAGES` around line 708. Both regenerate docs/concept-axes.md, so regenerate after the merge.\n\n3. signature_axis.py: both branches move a pin. You moved js_ts 5509 -> 5573; I moved dart.py 817 -> 829. The edits are seven lines apart in the same file."  # 5f22
+- op: update  # 40fa
+  at: '2026-10-02T03:03:57Z'  # 40fa
+  by: agent  # 40fa
+  actor: jgstern_agent  # 40fa
+  clock: 6  # 40fa
+  nonce: 40fa  # 40fa
+  set:  # 40fa
+    status: done  # 40fa
+    pr_ref: '#1379'  # 40fa
+- op: discuss  # 5560
+  at: '2026-10-02T03:03:57Z'  # 5560
+  by: agent  # 5560
+  actor: jgstern_agent  # 5560
+  clock: 7  # 5560
+  nonce: '5560'  # 5560
+  message: "DONE: merged in PR #1379 (dev 8723591378; commits 2a35babe9a, a5a2c7a8a9 plus the integration commit b3f53da1ba reconciling the extends/implements descriptions with WI-lahub/WI-vitas). Root cause: TS interface symbols carried no base_classes (the interface_declaration branch never read the extends_type_clause) and js_ts's edge extractor skipped non-class sources; separately the core inheritance linker labelled any interface target `implements` regardless of source. Fix: js_ts extracts interface bases and emits `extends` for every interface-source edge (external import hint kept); the core linker emits `extends` for an interface/trait/protocol source, Kotlin's own emitter corrected the same way; analyzer-edge dedup by (src,dst) pair. Behavioural evidence: a fixture survey emits `Child -extends-> Base` (one edge) and `MyObs -extends-> typescript:rxjs:0-0:Observer` where dev emitted neither; production-path test test_ts_interface_inheritance.py::TestInterfaceInheritancePipeline (run_behavior_map). Not measured on a corpus. NOT asserted: C# interface bases (WI-ruzid), Go interface embedding (WI-gutas), relative-import external base (WI-davih). Report: run_09302026/kalug.md"  # 5560
