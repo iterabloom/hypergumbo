@@ -338,6 +338,20 @@ module_completeness:
     retrieved: "2026-08-16"
     notes: >-
       Text markup; pure.
+  - module: rich.text.Text
+    completeness: complete
+    retrieved: "2026-10-02"
+    notes: >-
+      The class-qualified slot, for the reason the WI-jabus block above gives:
+      exact matching does not carry rich.text down to its class. WI-sugom
+      (f592cb04dc) made the tracker TUI's `from rich.text import Text as
+      RichText` resolve to this class, so RichText.from_markup(...) (tui.py,
+      five sites) and Text.from_markup(...).plain (the clipboard path) became
+      calls into a module the gate had no opinion on, and that one module
+      withheld all eighteen self-claims (fourth instance). from_markup parses a
+      markup string into an in-memory Text and .plain reads it back; output
+      happens only when a Console renders it, through rich.console's rowed
+      methods.
   - module: textual.containers
     completeness: complete
     retrieved: "2026-08-16"
