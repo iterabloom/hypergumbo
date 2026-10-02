@@ -6589,6 +6589,47 @@ def _taint_blind_reason(
     return None, []
 
 
+def _verify_claims_boundary_vocabulary_help() -> str:
+    """The ``boundary:`` vocabulary block of ``verify-claims --help``, DERIVED.
+
+    ONE CLOSED SET, ONE HOME (WI-jizil). The help tells a claim author which
+    ``constraint.boundary`` values are legal and promises that any other value
+    fails with exit 2. ``load_claims`` keeps that promise against
+    ``KNOWN_IO_BOUNDARIES``, which is ``all_io_boundary_names()`` over the
+    io-boundary registry (ADR-0050). The help used to carry a hand-written copy
+    of the same set, and each value the registry gained was missing from it --
+    ``command_launch`` and ``net_listen`` (fixed by hand in PR #776), then
+    ``navigation_read`` (INV-dadu): the validator accepted it, the help did
+    not list it. An author adding a boundary edits the registry and has no
+    reason to suspect prose in cli.py restates it, so a copy drifts by default.
+
+    Built from the registry when the parser is constructed, so the help and the
+    validator cannot name different sets. Sorted, the order the validator's
+    "unknown boundary" error prints. Only the enumeration is derived; the
+    meaning of each value lives with the registry (``docs/concept-axes.md``
+    is generated from it), and the help points there instead of restating it.
+    """
+    import textwrap
+
+    from .io_boundary_types import all_io_boundary_names
+
+    names = textwrap.fill(
+        ", ".join(sorted(all_io_boundary_names())),
+        width=78,
+        initial_indent="  ",
+        subsequent_indent="  ",
+        break_on_hyphens=False,
+        break_long_words=False,
+    )
+    return (
+        "Boundary values -- `boundary:` must be one of:\n"
+        f"{names}\n"
+        "This list is generated from the io-boundary registry (ADR-0050), the\n"
+        "set the validator checks; docs/concept-axes.md gives each value's\n"
+        "meaning.\n"
+    )
+
+
 def cmd_verify_claims(args: argparse.Namespace) -> int:
     """Verify security claims against I/O boundary map and taint flow.
 
@@ -11181,19 +11222,16 @@ Claims file format (YAML):
       text: No network sends      # required: human-readable description
       constraint:                 # one of two constraint shapes:
         # (a) boundary constraint (ADR-0016):
-        boundary: net_send        #   one of: browser_storage_read/write,
-        must_not_exist: true      #   command_launch, db_read, db_write,
-        # max_chains: 5           #   env_read, env_write, external_potential,
-                                  #   fs_read, fs_write, host_info_read,
-                                  #   ipc_recv, ipc_send, logging, net_listen,
-                                  #   db_compose, net_recv, net_send,
-                                  #   process_send, subprocess
+        boundary: net_send        #   a value from the list below
+        must_not_exist: true
+        # max_chains: 5
         # (b) taint-flow constraint (ADR-0017):
         # taint_flow:
         #   source_taint: untrusted_input
         #   prohibited_sink_zone: host_fs
         #   allowed_sanitizers: []
 
+""" + _verify_claims_boundary_vocabulary_help() + """
 A top-level `extra_catalogs:` key may name extra catalogue files --
 `io_primitives`, `sources`, `sinks`, `sanitizers` (see --io-primitives and
 --taint-sources/--taint-sinks/--taint-sanitizers; WI-votan). Your persistent
