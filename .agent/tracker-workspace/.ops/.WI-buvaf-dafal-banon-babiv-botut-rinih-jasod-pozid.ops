@@ -1,0 +1,19 @@
+- op: create  # fd87
+  at: '2026-10-02T01:00:32Z'  # fd87
+  by: agent  # fd87
+  actor: jgstern_agent  # fd87
+  clock: 1  # fd87
+  nonce: fd87  # fd87
+  data:  # fd87
+    kind: work_item  # fd87
+    title: "compact's token-budget and tiered selections (select_by_tokens, format_tiered_behavior_map) still use the is_excluded_kind denylist and ungated tiered seeds, not the key-symbol policy"  # fd87
+    status: todo_hard  # fd87
+    priority: 3  # fd87
+    parent:  # fd87
+    tags: []  # fd87
+    isbefore: []  # fd87
+    duplicate_of: []  # fd87
+    not_duplicate_of: []  # fd87
+    pr_ref:  # fd87
+    description: "Residual of WI-fadab-nusol-hutum-susot-vogil-papor-gakop-zajor (its \"Separately\" question), filed so the parent can close on its filed row.\n\ncompact's selection surfaces still apply three different populations:\n  compact default (connectivity, select_by_connectivity via format_compact_behavior_map) -- after WI-fadab: boundary nodes out, seeds gated by is_key_symbol, bridges unfiltered\n  --no-connectivity (select_by_coverage) -- KEY_SYMBOL_KINDS allowlist via selection.filters.key_symbols + production_edges\n  select_by_tokens and format_tiered_behavior_map -- is_excluded_kind DENYLIST (tiered also drops is_external_boundary); tiered seeds are entrypoints with confidence >= 0.7 plus language-proportional seeds, not gated by is_key_symbol\n\nAllowlist and denylist are not complements: they disagree on `variable` (key for Terraform/HCL, excluded for CSS custom properties) and on every kind in neither set. A denylist-only unification was measured during WI-zulij and rejected (9.4/10 sketch agreement vs 10/10 for the allowlist), so converging on is_excluded_kind is not the direction.\n\nQUESTION: should select_by_tokens and format_tiered_behavior_map move to the key-symbol policy (key_symbols for the ranked population; is_key_symbol as select_by_connectivity's seed_eligible for the tiered seeds, as WI-fadab does for the compact default)? That is a behavior change to the token-budget and tiered views and needs its own measurement (tiered isolated-node rate, token-tier containment -- never measured, see the WI-zulij closing note -- and the tiered views' kind mix). NOT measured by WI-fadab."  # fd87
+    fields: {}  # fd87
