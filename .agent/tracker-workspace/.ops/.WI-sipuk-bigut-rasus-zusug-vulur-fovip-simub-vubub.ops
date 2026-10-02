@@ -62,3 +62,19 @@
   clock: 7  # 1a02
   nonce: 1a02  # 1a02
   message: "CORRECTION to the note above: the branch adds 27 new tests (13 on origin/dev, 40 now), not 25. Counted with grep -c '^def test_'. 18 of them were in the red run; the other 9 were added during refinement and passed in the 208-passed green run."  # 1a02
+- op: update  # a7f8
+  at: '2026-10-02T04:43:23Z'  # a7f8
+  by: agent  # a7f8
+  actor: jgstern_agent  # a7f8
+  clock: 8  # a7f8
+  nonce: a7f8  # a7f8
+  set:  # a7f8
+    status: done  # a7f8
+    pr_ref: '#1387'  # a7f8
+- op: discuss  # 01cc
+  at: '2026-10-02T04:43:23Z'  # 01cc
+  by: agent  # 01cc
+  actor: jgstern_agent  # 01cc
+  clock: 9  # 01cc
+  nonce: 01cc  # 01cc
+  message: "DONE: merged in PR #1387 (also edits the docstring-staleness playbook under .agent/, covered by the owner's standing governance approval). scripts/check-docstring-drift --registry-refs (and in --all): report-only, name-exact registry cross-reference over comments, docstrings and description strings; fold explanations listed separately; unreadable files listed NOT SCANNED; exit code unchanged. Live on the merge tree: 368 files, 16 flagged (7 real drift -> WI-ridan; 4 unregistered evidence types -> WI-pubin P2; 5 false positives), 24 fold explanations (all read, all genuine), 0 unscanned. Old-tree recall (22418804f4^): 18/19 files, 36/63 retired-name lines, 0/63 wrongly suppressed. Not gated (precision). NOT asserted: precision beyond this repo, or recall for arrow bullets, definition lists and bare names. Note: does not catch WI-zogop's defect.\nFull report (closure evidence, measurements, residuals): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/sipuk.md"  # 01cc
