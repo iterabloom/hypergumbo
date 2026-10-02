@@ -183,10 +183,12 @@ def test_deleting_proto_message_and_service_moves_no_id(tmp_path: Path) -> None:
     assert msgs_before[4]["name"] == msgs_before[8]["name"] == "Inner"
     assert rpcs_before[12]["name"] == rpcs_before[15]["name"] == "Get"
     assert set(msgs_after) == {7, 8} and set(rpcs_after) == {15}
-    # Before the edit the pairs abstain; after it the survivors are unique.
+    # The transfer property first (it is what an occurrence split breaks)...
+    _assert_no_id_moved(msgs_before, msgs_after)
+    _assert_no_id_moved(rpcs_before, rpcs_after)
+    # ...then the abstention that guarantees it: the pairs are null before the
+    # edit, and the survivors, unique after it, are filled.
     assert msgs_before[4]["stable_id"] is None and msgs_before[8]["stable_id"] is None
     assert rpcs_before[12]["stable_id"] is None and rpcs_before[15]["stable_id"] is None
     assert msgs_after[8]["stable_id"] is not None
     assert rpcs_after[15]["stable_id"] is not None
-    _assert_no_id_moved(msgs_before, msgs_after)
-    _assert_no_id_moved(rpcs_before, rpcs_after)

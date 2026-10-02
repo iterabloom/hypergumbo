@@ -27,7 +27,7 @@ Superseded by: ADR-0035 (partial — see amendment table)
 | §4 route/entry stable_id formulas | **Carried forward verbatim into ADR-0035 §3's kind→axis table** ("route … unchanged, ADR-0014 §4"; "entry … unchanged") as LOGICAL-axis exemplars. ADR-0035 §3 is the normative forward home. |
 | §5 containing_module recursion + v1→v2 scheme bump | **SUPERSEDED by ADR-0035 §1.** The full scope chain (module/path → classes → enclosing functions → name → kind → occurrence index) subsumes and extends recursive containment, fixing the gap §5 left (WI-gitun: function-locals omit the enclosing function) and unifying py.py's divergent local `_compute_stable_id`. |
 | §5a class_body_sig + `(stable_id, canonical_name)` escape hatch | **SUPERSEDED by ADR-0035 §2:** a class's own name is in its hash, and rename-tracking is fingerprint's job. There is no `(stable_id, canonical_name)` escape hatch: ADR-0032 removed `canonical_name`, and ADR-0035 Alternative 1 rejects rebuilding it. |
-| §5b eight kind-factories + `populate_kind_stable_ids` backstop precedence | **In force, EXCEPT** the `dependency` row, superseded by ADR-0035 §4 (manifest path joins the hash; a package declared in N manifests becomes N nodes). The `module`/`interface`/`type` rows are pending ADR-0035 §4's same-train path-anchoring audit. The `file`/`variable`/`export`/`project` rows and the never-override-non-`None` precedence rule remain fully in force — this is their only decision-document home. |
+| §5b kind-factory table + `populate_kind_stable_ids` backstop precedence | **Fully in force — unique home** for the fifteen-row factory table (path-anchored per ADR-0035 §4) and the never-override-non-`None` precedence rule. The floor for kinds outside the table is ADR-0035 §1. |
 | §6 grammar version stability contract | **Fully in force — unique home.** Untouched by ADRs 0035–0042 (shape_id mechanics ride a trailing event). `docs/grammars/vendor-sync.md` cites §6 as the authority for the SHAPE_ID_SCHEME-bump-on-grammar-change step; the algorithm-version-vs-grammar-version division of labor and the no-cross-version-tests ruling exist nowhere else. |
 | Context, Implementation Order, Consequences, Relationship to Other ADRs, References | **The pre-decision state (February 2026) and the plan made from it.** Not a description of today's code and no live law; ADR-0035's Context is the current account. |
 
@@ -42,9 +42,8 @@ identity-fields blocks at the two delegation sites (spec §6, spec §6);
 §1's within-language-comparison rationale folds into the spec shape_id block
 and the `compute_shape_id` docstring; §3's Option-A rationale folds into
 spec §6; §4's ~25 code/test citations repoint to ADR-0035 §3 (already
-the normative home); §5b's surviving factory rows plus the backstop
-precedence rule fold into the spec identity-fields section or an ADR-0035
-§3/§4 amendment after the path-anchoring audit decides their final formulas;
+the normative home); §5b's factory table plus the backstop
+precedence rule fold into the spec identity-fields section or ADR-0035 §1;
 §6 folds into `docs/grammars/vendor-sync.md` plus the spec's scheme-versioning
 section (spec §16); dead-section history (§2 formula, §5, §5a, the
 v1→v5 bumps) is recorded in the spec's `stable_id_scheme` version history
@@ -205,26 +204,31 @@ SUPERSEDED by ADR-0035 §1 — see amendment table; original: `git show 51635518
 
 ### 5b. Kind-specific stable_id factories + orchestrator backstop (INV-sotiv)
 
-Self-analysis on hypergumbo's own codebase showed that 1,981 of 32,253 Symbols (6.1%) had `stable_id=None`: 100% of `kind="variable"` (1,487), 100% of `kind="module"` (385), 100% of `kind="dependency"` (81), 100% of `kind="export"` (18), 100% of `kind="project"` (7), 100% of `kind="interface"` (2), 100% of `kind="type"` (1), and 99.4% of `kind="file"` (804 of 809). The §5 `_compute_stable_id` formula only covers function / method / class symbols emitted by the Python AST analyzer; module-level constants from the Python AST minimal builder, file-kind Symbols synthesised at the orchestrator and tree-sitter analyzer levels, and module / dependency / export / interface / type Symbols from ~12 analyzers (`xml_config`, `toml_config`, `bash`, `csharp`, `groovy`, `wasm_bindgen`, etc.) all leave the field at the dataclass default of `None`.
+Many producers construct Symbols of declaration-like kinds without computing a `stable_id` (module-level constants from the Python AST minimal builder, orchestrator-synthesised `file` Symbols, manifest `dependency` / `project` Symbols, tree-sitter `class` / `struct` / `enum` / `interface` / `type` declarations, view-template stand-ins). The orchestrator backstop `populate_kind_stable_ids(symbols)` (`hypergumbo_core.analyze.base`) fills them from a kind-specific factory table, `_KIND_STABLE_ID_FACTORIES`:
 
-The fix adds eight kind-specific factory functions in `hypergumbo_core.analyze.base` modelled on the existing `make_route_stable_id` / `make_entry_stable_id` family (§4):
+| Kind | Factory | Formula |
+|---|---|---|
+| `file` | `make_file_stable_id` | `sha256("file:{language}:{path}")[:16]` |
+| `project` | `make_project_stable_id` | `sha256("project:{name}")[:16]` |
+| `module` | `make_module_stable_id` | `sha256("module:{language}:{path}:{name}")[:16]` |
+| `dependency` | `make_dependency_stable_id` | `sha256("dependency:{language}:{path}:{name}")[:16]` (`path` is the declaring manifest, ADR-0035 §4) |
+| `variable` | `make_variable_stable_id` | `sha256("variable:{language}:{path}:{name}")[:16]` |
+| `export` | `make_export_stable_id` | `sha256("export:{language}:{path}:{name}")[:16]` |
+| `interface` | `make_interface_stable_id` | `sha256("interface:{language}:{path}:{name}")[:16]` |
+| `type` | `make_type_stable_id` | `sha256("type:{language}:{path}:{name}")[:16]` |
+| `class` | `make_declaration_stable_id` | `sha256("class:{language}:{path}:{name}")[:16]` |
+| `struct` | `make_declaration_stable_id` | `sha256("struct:{language}:{path}:{name}")[:16]` |
+| `enum` | `make_declaration_stable_id` | `sha256("enum:{language}:{path}:{name}")[:16]` |
+| `trait` | `make_declaration_stable_id` | `sha256("trait:{language}:{path}:{name}")[:16]` |
+| `protocol` | `make_declaration_stable_id` | `sha256("protocol:{language}:{path}:{name}")[:16]` |
+| `contract` | `make_declaration_stable_id` | `sha256("contract:{language}:{path}:{name}")[:16]` |
+| `template` | `make_declaration_stable_id` | `sha256("template:{language}:{path}:{name}")[:16]` |
 
-| Kind | Formula |
-|---|---|
-| `file` | `sha256("file:{language}:{path}")[:16]` |
-| `module` | `sha256("module:{language}:{name}")[:16]` |
-| `dependency` | `sha256("dependency:{language}:{name}")[:16]` |
-| `variable` | `sha256("variable:{language}:{path}:{name}")[:16]` |
-| `export` | `sha256("export:{language}:{path}:{name}")[:16]` |
-| `project` | `sha256("project:{name}")[:16]` |
-| `interface` | `sha256("interface:{language}:{name}")[:16]` |
-| `type` | `sha256("type:{language}:{name}")[:16]` |
+Every row except `file` and `project` is the file-scoped `{kind}:{language}:{path}:{name}` shape: the declaring path keeps same-named declarations in different files apart (ADR-0035 §4), `kind` keeps a `class Widget` and a `struct Widget` in one file apart, and `language` keeps a C# `IRepository` and a TypeScript `IRepository` apart. Files are identified by path, projects by bare name. Two same-kind, same-name rows in one file share a table key; the ADR-0035 §1 occurrence pass (`split_within_file_stable_id_collisions`) splits them.
 
-Each formula is the cheapest expression of identity for the kind: files are path-identified, modules / dependencies / interfaces / types are lang-namespaced-name-identified, variables / exports are file-scoped `(path, name)`-identified, and projects are bare-name-identified. The language namespace separates same-name cross-language symbols (`io` in Python vs Dart, `requests` in Python vs npm).
+The backstop runs in `analyze.all_analyzers` after path normalisation, so `path` is repo-relative. It never overrides a non-`None` value: producer-computed ids (functions / methods / classes via `_compute_stable_id`, routes via `make_route_stable_id`, typed-tier via `make_typed_stable_id`, untyped tier via `compute_stable_id`) keep precedence. A kind with no row here takes the backstop floor, `make_declaration_stable_id` over the same four inputs, with abstention when the floor key is not unique in its file; ADR-0035 §1 is the home of that rule. A new kind gets its own row only when its identity is not the floor shape or when same-name members of the kind in one file are same-scope ties that the occurrence index may order.
 
-The orchestrator pass `populate_kind_stable_ids(symbols)` runs in `analyze.all_analyzers` after path normalisation. It walks every Symbol and, for any Symbol with `stable_id=None` and a kind in the factory table, stamps the kind-specific value. Symbols whose producers already computed a `stable_id` (functions / methods / classes via `_compute_stable_id`, routes via `make_route_stable_id`, typed-tier via `make_typed_stable_id`) keep precedence — the backstop never overrides a non-`None` value. Kinds not in the factory table are left untouched (so the contract degrades gracefully when new kinds are introduced).
-
-**Hash stability impact:** Additive only — no existing `stable_id` value changes. `STABLE_ID_SCHEME` stays at `v3` (the §5a class-body-signature bump). Consumers that were branching on `stable_id is None` for the affected kinds now see deterministic values; that is the intended contract.
+**Hash stability.** A table or floor value fills a null; no existing value changes, so neither carries a `stable_id_scheme` bump. Replacing a floor value with a producer-computed one is a correction, not an algorithm change, and carries no bump either (ADR-0035 §6).
 
 ### 5a. class_body_sig: same-module class identity discrimination (INV-fusus)
 

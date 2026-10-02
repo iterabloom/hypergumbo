@@ -1692,10 +1692,13 @@ def _declaration_kind_stable_id(sym: Symbol) -> str:
 
 
 # Mapping from Symbol.kind to the factory function used by
-# populate_kind_stable_ids. Kinds NOT present here have producers that compute
-# their own stable_id (function, method, route, and Python classes via
-# ``_compute_stable_id``) or are absent from the measured-gap set and remain at
-# None until a future invariant adds them.
+# populate_kind_stable_ids (the table ADR-0014 §5b records). A kind NOT present
+# here falls to the backstop FLOOR (:func:`floor_stable_id_key`, ADR-0035 §1):
+# the same ``{kind}:{language}:{path}:{name}`` shape, but stamped only when the
+# key is unique in its file. A kind earns a row here only when its identity is
+# not the floor shape (``file`` hashes the path alone, ``project`` the name
+# alone) or when same-name members of the kind in one file are same-scope ties
+# that the occurrence pass may order.
 #
 # WI-rihob: the container/declaration kinds (class/struct/enum/trait/protocol/
 # contract) are backstopped here. Despite the earlier assumption that "class
@@ -1726,35 +1729,80 @@ _KIND_STABLE_ID_FACTORIES = {
 }
 
 
+def floor_stable_id_key(
+    kind: Optional[str],
+    language: Optional[str],
+    path: Optional[str],
+    name: Optional[str],
+) -> Optional[str]:
+    """WI-motiz: the backstop FLOOR key for a symbol, or ``None`` when the floor
+    does not apply (ADR-0035 §1).
+
+    The floor is :func:`make_declaration_stable_id` over ``(kind, language,
+    path, name)``. It applies to a symbol that carries a language and whose
+    kind has no entry in ``_KIND_STABLE_ID_FACTORIES``: a ``language=None``
+    stand-in takes its identity from :func:`make_synthetic_symbol_identity`,
+    and a table kind takes its table formula. A missing ``kind``, ``path`` or
+    ``name`` (a partial record) yields ``None``.
+
+    One definition, two readers: :func:`populate_kind_stable_ids` stamps it,
+    and ``spec_validator.compute_stable_id_stats`` recomputes it from the
+    emitted records to disclose ``floor_cohort`` / ``floor_abstained``. Because
+    the key is a pure function of the node's own fields, a consumer can tell a
+    floor value from a producer value without a provenance field.
+    """
+    if kind is None or language is None or path is None or name is None:
+        return None
+    if kind in _KIND_STABLE_ID_FACTORIES:
+        return None
+    return make_declaration_stable_id(kind, language, path, name)
+
+
 def populate_kind_stable_ids(symbols: list[Symbol]) -> None:
     """INV-sotiv backstop: fill missing ``Symbol.stable_id`` by kind.
 
     Runs at the orchestrator chokepoint (``analyze.all_analyzers`` after
-    path normalisation) and mutates ``symbols`` in place. For every
-    Symbol whose ``stable_id`` is still ``None``, dispatches on
-    ``Symbol.kind`` to a kind-specific factory and stamps the result.
-
+    path normalisation, before the linkers) and mutates ``symbols`` in place.
     Producers that already computed a ``stable_id`` (functions and methods
     via ``make_typed_stable_id``; Python functions/methods/classes via
     py.py's ``_compute_stable_id``; routes via ``make_route_stable_id``; etc.)
     keep priority — this backstop never overrides a non-``None`` value.
 
-    Kinds not in ``_KIND_STABLE_ID_FACTORIES`` are left untouched. The map
-    covers the eight INV-sotiv kinds (file / module / dependency / variable /
-    export / project / interface / type) plus the six WI-rihob container/
-    declaration kinds (class / struct / enum / trait / protocol / contract) —
-    the latter because the tree-sitter producers construct them with a
-    ``shape_id=`` but no ``stable_id=`` (unlike Python, whose ``_compute_stable_id``
-    covers classes at the producer). New kinds that surface with ``None`` need
-    their own factory entry here.
+    **Table kinds.** A ``None`` symbol whose kind is in
+    ``_KIND_STABLE_ID_FACTORIES`` (the eight INV-sotiv kinds, the six WI-rihob
+    container kinds, META-nomiz's ``template``; ADR-0014 §5b) takes its table
+    formula. Two same-name members of one table kind in a file share the key
+    and are split later by :func:`split_within_file_stable_id_collisions`.
+
+    **The floor (WI-motiz, ADR-0035 §1).** Every other ``None`` symbol with a
+    language is a floor candidate, keyed by :func:`floor_stable_id_key`. A
+    candidate is stamped with its floor key iff the key is unique among the
+    file's floor candidates and no other symbol in the file already holds it;
+    otherwise it stays ``None``. The occurrence index must never disambiguate a
+    floor key: the key has no scope chain, arity or decorators, so a floor
+    collision (an Elixir clause per arity, all named ``Demo.greet``; proto
+    ``A.Inner`` / ``B.Inner``, both named ``Inner``) is not a same-scope tie,
+    and an emission-order ordinal over it would move an id onto a different
+    symbol when an earlier sibling is deleted. A null means "this run cannot
+    back an identity"; a moved id is a wrong join that no validator can see.
+    Leaving the group ``None`` keeps it out of the split pass by construction
+    (that pass skips ``None``).
     """
+    floor_groups: dict[tuple[str, str], list[Symbol]] = {}
+    held: set[tuple[str, str]] = set()
     for sym in symbols:
-        if sym.stable_id is not None:
-            continue
-        factory = _KIND_STABLE_ID_FACTORIES.get(sym.kind)
-        if factory is None:
-            continue
-        sym.stable_id = factory(sym)
+        if sym.stable_id is None:
+            factory = _KIND_STABLE_ID_FACTORIES.get(sym.kind)
+            if factory is None:
+                key = floor_stable_id_key(sym.kind, sym.language, sym.path, sym.name)
+                if key is not None:
+                    floor_groups.setdefault((sym.path, key), []).append(sym)
+                continue
+            sym.stable_id = factory(sym)
+        held.add((sym.path, sym.stable_id))
+    for file_key, group in floor_groups.items():
+        if len(group) == 1 and file_key not in held:
+            group[0].stable_id = file_key[1]
 
 
 def make_synthetic_symbol_identity(

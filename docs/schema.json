@@ -362,6 +362,12 @@
                 "none_cohort_pct": {
                   "type": "number"
                 },
+                "floor_cohort": {
+                  "type": "integer"
+                },
+                "floor_abstained": {
+                  "type": "integer"
+                },
                 "collision_groups": {
                   "type": "integer"
                 },
@@ -381,7 +387,7 @@
               "type": "null"
             }
           ],
-          "description": "ADR-0035 \u00a75 corpus stable_id population/collision/None-cohort disclosure over an all-Symbols denominator; always present so a clean non-null rate can never hide a None-cohort. Null on bare build_validation_report calls (unit tests)."
+          "description": "ADR-0035 \u00a75 corpus stable_id population/collision/None-cohort disclosure over an all-Symbols denominator; always present so a clean non-null rate can never hide a None-cohort. floor_cohort counts ids equal to their recomputed ADR-0035 \u00a71 backstop floor key and floor_abstained the nulls whose floor key is shared in their file, so none_cohort=0 is not read as every id coming from a producer formula. Null on bare build_validation_report calls (unit tests)."
         }
       }
     },
