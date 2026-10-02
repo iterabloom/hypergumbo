@@ -6,7 +6,7 @@ docs-prose:F2 sweep corrected stale CLI documentation by hand (a removed
 ripgrep reference in ``--debug`` help, a README flag with the wrong
 subcommand scope, …); that drift could accumulate only because *nothing*
 diffed the documentation against the argparse parser. This gate is that
-missing diff. Three standing checks, all reading the live ``build_parser()``:
+missing diff. Four standing checks, all reading the live ``build_parser()``:
 
 1. **Removed-feature denylist.** Names of features/flags that were removed
    must never reappear in the ``--help --all`` output. This is the exact
@@ -30,6 +30,15 @@ missing diff. Three standing checks, all reading the live ``build_parser()``:
 
        HYPERGUMBO_UPDATE_CLI_MATRIX=1 pytest \
          packages/hypergumbo-core/tests/test_cli_docs_prose_gate.py -k flag_matrix
+
+4. **A registry-backed vocabulary restated in help (WI-jizil).** Checks 1-3
+   look at subcommands and flags, never at the VALUES a flag or a claims-file
+   key may take. ``verify-claims --help`` enumerates the legal ``boundary:``
+   values and promises any other fails with exit 2; that enumeration must be
+   the io-boundary registry's set, must CHANGE when the registry does (a
+   monkeypatched registry proves derivation, not today's equality), and every
+   listed value must load through ``load_claims`` while an unlisted one is
+   refused.
 
 Liveness floors (the G2 lesson — a silent zero-case run must be a loud red,
 not a vacuous green): ``test_readme_has_invocations`` guards check 2 against
@@ -336,3 +345,101 @@ def test_config_help_discloses_it_takes_no_substrate_input() -> None:
     help_text = config_parser.format_help().lower()
     assert "--input" in help_text
     assert "does not" in help_text or "neither" in help_text
+
+
+# ─────────────── check 4: a registry-backed vocabulary in help ──────────────
+# ``verify-claims --help`` tells a claim author which ``boundary:`` values are
+# legal and promises that any other value fails with exit 2. The validator
+# checks against the io-boundary registry; until WI-jizil the help carried a
+# hand-written copy of that closed set, and each value the registry gained was
+# missing from it (command_launch, net_listen, then navigation_read). These
+# tests read the RENDERED help, so they pin what a user sees.
+_BOUNDARY_HEADING = "Boundary values"
+
+
+def _verify_claims_help() -> str:
+    return _subcommands(cli.build_parser())["verify-claims"].format_help()
+
+
+def _help_boundary_enumeration(help_text: str) -> set[str]:
+    """The names in the indented block under the ``Boundary values`` heading
+    of ``verify-claims --help``, up to the first line that is not indented."""
+    lines = help_text.splitlines()
+    starts = [i for i, line in enumerate(lines) if line.startswith(_BOUNDARY_HEADING)]
+    assert len(starts) == 1, (
+        f"`verify-claims --help` has {len(starts)} {_BOUNDARY_HEADING!r} "
+        "heading(s), expected exactly 1 -- the derived boundary enumeration is "
+        "missing or duplicated"
+    )
+    names: set[str] = set()
+    for line in lines[starts[0] + 1:]:
+        if not line.startswith("  ") or not line.strip():
+            break
+        names.update(n.strip() for n in line.split(",") if n.strip())
+    return names
+
+
+def test_verify_claims_help_lists_exactly_the_validators_boundaries() -> None:
+    """The help's boundary list IS the set ``load_claims`` validates against:
+    nothing missing (the filed instance was ``navigation_read``), nothing
+    extra."""
+    from hypergumbo_core.io_boundary import KNOWN_IO_BOUNDARIES
+    from hypergumbo_core.io_boundary_types import all_io_boundary_names
+
+    listed = _help_boundary_enumeration(_verify_claims_help())
+    assert "navigation_read" in listed  # the filed instance, named
+    assert listed == set(all_io_boundary_names()) == set(KNOWN_IO_BOUNDARIES), (
+        f"only in help: {sorted(listed - set(KNOWN_IO_BOUNDARIES))}; "
+        f"only in the validator's set: {sorted(set(KNOWN_IO_BOUNDARIES) - listed)}"
+    )
+
+
+def test_verify_claims_help_boundary_list_is_derived_from_the_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The claim made true is "the enumeration is DERIVED", not "it matches
+    today": a value added to or removed from the registry changes the rendered
+    help with no edit to cli.py."""
+    from dataclasses import replace
+
+    from hypergumbo_core import io_boundary_types as ibt
+
+    template = ibt.IO_BOUNDARY_TYPES[0]
+    fake = replace(template, name="zz_gate_probe_boundary")
+    kept = tuple(s for s in ibt.IO_BOUNDARY_TYPES if s.name != "navigation_read")
+    monkeypatch.setattr(ibt, "IO_BOUNDARY_TYPES", kept + (fake,))
+
+    listed = _help_boundary_enumeration(_verify_claims_help())
+    assert "zz_gate_probe_boundary" in listed
+    assert "navigation_read" not in listed
+    assert listed == {s.name for s in kept} | {"zz_gate_probe_boundary"}
+
+
+def test_verify_claims_help_boundaries_are_accepted_and_others_rejected(
+    tmp_path: Path,
+) -> None:
+    """The help's sentence "a boundary value outside the vocabulary above
+    produces a clear error" holds on the production path: every listed value
+    loads, and an unlisted one raises ``ClaimsFileError``."""
+    from hypergumbo_core.verify_claims import ClaimsFileError, load_claims
+
+    listed = sorted(_help_boundary_enumeration(_verify_claims_help()))
+    good = tmp_path / "good.yaml"
+    good.write_text(
+        "claims:\n" + "".join(
+            f"  - id: C-{i}\n    text: t\n    constraint:\n"
+            f"      boundary: {name}\n      must_not_exist: true\n"
+            for i, name in enumerate(listed)
+        ),
+        encoding="utf-8",
+    )
+    assert [c.constraint_boundary for c in load_claims(good)] == listed
+
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "claims:\n  - id: C-x\n    text: t\n    constraint:\n"
+        "      boundary: not_a_real_boundary\n      must_not_exist: true\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ClaimsFileError, match="unknown boundary 'not_a_real_boundary'"):
+        load_claims(bad)
