@@ -50,3 +50,19 @@
   clock: 5  # acc2
   nonce: acc2  # acc2
   message: "WORK DONE 2026-10-01 (concurrent run, agent dason). Branch jgstern-agent/fix/dason in worktree ~/hg_wt/dason, LOCAL only (not pushed), 2 commits on origin/dev 1f2cfda568: 38cce8a737 (one project_classes guard for both module-slot arms; __auto_type/instancetype are not declared classes) and 10b1032185 (skip a misparsed nonnull/null_unspecified/null_resettable qualifier; a message to the caller's OWN class keeps the Site-1 route; measurement addendum in docs/measurements/0027).\n\nBEHAVIOR (fixture, worktree vs dev): [Svc alloc] with Svc a project class -> dev objc:Svc:0-0:alloc:unresolved; branch objc:external:0-0:alloc:unresolved, dst_ref None, receiver_type_hint Svc. __auto_type fm = [NSFileManager defaultManager]; [fm fileExistsAtPath:] -> dev objc:__auto_type:...; branch objc:NSFileManager:... (registry), io boundary tagged. (instancetype)b -> dev objc:instancetype:...; branch external, no hint. (nonnull NSFileManager *)fm -> dev objc:nonnull:...; branch objc:NSFileManager:...\n\nCORPUS A/B (analyze_objc, same instrument as the filing; dev snapshot vs branch, fresh caches): four-repo typed slots 3300 -> 2628, first-party 583 -> 0, keyword 89 -> 0 (the before row reproduces the filing exactly). Seven repos (+ReactiveObjC, SDWebImage, ResearchKit): 14792 -> 11176, first-party 3500 -> 0, keyword 111 -> 0, nonnull 13 -> 0. Site and unresolved counts identical. Survey: resolved-edge set moves by 6 inherited-calls edges on ResearchKit only, read against source: +4 correct, -2 previously wrong. io_boundary/io_primitive edge-meta counts identical on all 7. verify-claims/taint NOT run.\n\nTESTS: targeted smart-test (293 files) 9219 passed, 1 xfailed, 0 failed, changed files at 100% coverage. 12 new tests in packages/hypergumbo-lang-mainstream/tests/test_objc_receiver_type_in_module_slot.py.\n\nResiduals filed: WI-hilam (csharp + ruby: same shape on a static call, unmeasured), WI-juzit (inherited_calls Site 2 same-name guard refuses objc classes with several class symbols; the reason for the own-class carve-out)."  # acc2
+- op: update  # 69e0
+  at: '2026-10-02T04:14:10Z'  # 69e0
+  by: agent  # 69e0
+  actor: jgstern_agent  # 69e0
+  clock: 6  # 69e0
+  nonce: '69e0'  # 69e0
+  set:  # 69e0
+    status: done  # 69e0
+    pr_ref: '#1383'  # 69e0
+- op: discuss  # 3e63
+  at: '2026-10-02T04:14:10Z'  # 3e63
+  by: agent  # 3e63
+  actor: jgstern_agent  # 3e63
+  clock: 7  # 3e63
+  nonce: '3e63'  # 3e63
+  message: "DONE: merged in PR #1383 (owner 10-01: merge as is, no stable_id scheme bump, WI-higob/INV-kotob precedent). A class message to a declared class leaves the module slot empty with receiver_type_hint = the class ([Svc alloc] -> objc:external:0-0:alloc:unresolved, hint Svc); a message to the caller's own class stays on inherited_calls Site 1 (measured: 12 correct resolutions otherwise lost); __auto_type / instancetype / id / Class and nullability qualifiers are not classes. Live before/after fixtures: [Foo alloc] objc:Foo -> external+hint; __auto_type local -> objc:NSFileManager; (nonnull NSString *)p -> objc:NSString. Seven repos: first-party-class slots 3500 -> 0, keyword slots 124 -> 0, call sites (38,293) and unresolved counts identical, io tags identical; 6 resolved-edge changes on ResearchKit read at source (4 correct gained, 2 wrong lost). Residuals: WI-hilam, WI-juzit (P3).\nFull report (closure evidence, corpus tables, residual list): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/dason.md"  # 3e63
