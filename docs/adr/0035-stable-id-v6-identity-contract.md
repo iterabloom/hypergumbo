@@ -141,7 +141,7 @@ collision-free.
 **Producer reconciliation (landed; stays scheme v6 per §6).** The per-file collisions the gate
 surfaced are now driven to zero by two post-linker passes (`analyze/base.py`,
 `split_within_file_stable_id_collisions` + `dedup_logical_synthetic_identities`), run after the
-enclosure post-pass and before `finalize` (R1). SITE families (call-sites, shell `export`s,
+enclosure post-pass and before `finalize` (R1). SITE families (call-sites,
 markdown links, manifest entries, throwaway vars) are occurrence-indexed via a deterministic
 `:occ:<n>` re-hash of the colliding 2nd+ members; the LOGICAL families (message-queue/event
 topics) are deduped to one hub node with all edges rewired onto the survivor. (graphql is

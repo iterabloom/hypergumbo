@@ -11,7 +11,11 @@ skipped result.
 
 Node types handled:
 - function_definition: Both 'function name()' and 'name()' styles
-- declaration_command with 'export': Exported variables
+- declaration_command with 'export': Exported variables -- ONE ``export``
+  Symbol per variable per file, at the first statement that exports it,
+  for every literal operand (``export A=1 B=2``, bare ``export X``);
+  ``export -f`` / ``export -n`` export no variable (WI-nasil, see
+  ``_exported_variable_names``)
 - command with 'alias': Alias definitions
 - command with 'source' or '.': Source/import statements
 - command: Function calls (when command_name matches a known function)
@@ -259,6 +263,61 @@ def _extract_alias_info(node: "tree_sitter.Node", source: bytes) -> str | None:
                 return text  # pragma: no cover - unusual alias format
 
     return None  # pragma: no cover
+
+
+def _exported_variable_names(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[str]:
+    """The variables one ``export`` statement marks for export (WI-nasil).
+
+    ``node`` is a ``declaration_command``; any keyword other than ``export``
+    yields ``[]``. ``declare -x`` / ``typeset -x`` / ``local -x`` also export,
+    but inside a function they make the variable function-LOCAL, which a
+    file-scoped ``(path, name)`` export identity cannot represent, so they are
+    left out deliberately (WI-luzit); ``readonly`` does not export at all.
+
+    Every OPERAND is read, not only the first: ``export A=1 B=2`` exports
+    both, and a bare ``export X`` marks a variable assigned elsewhere. An
+    operand whose name is not a literal (``export "$V"=1``,
+    ``export $(cat .env)``) parses as a concatenation or substitution, not a
+    ``variable_name``, and contributes nothing: the name is not known.
+
+    OPTIONS, read the way bash reads them -- only up to ``--`` or the first
+    operand, so ``export X=1 -n`` still exports X (bash rejects the ``-n``
+    operand as an invalid identifier; verified on GNU bash 5.2.21):
+
+    - ``-f`` exports FUNCTIONS; its operands are not variables -> ``[]``.
+    - ``-n`` REMOVES the export attribute -> ``[]``.
+    - ``-p`` prints the exported set and is otherwise inert: alone it names
+      nothing, and with operands bash still exports them.
+    """
+    if find_child_by_type(node, "export") is None:
+        return []
+    names: list[str] = []
+    options_open = True
+    for child in node.children:
+        if child.type == "word":
+            text = node_text(child, source)
+            if options_open and text == "--":
+                options_open = False
+            elif (options_open and text.startswith("-")
+                  and ("f" in text or "n" in text)):
+                return []
+            continue
+        if child.type == "variable_assignment":
+            name_node = find_child_by_type(child, "variable_name")
+        elif child.type == "variable_name":
+            name_node = child
+        else:
+            # ``export`` itself before the first operand; a dynamic operand
+            # (concatenation / substitution) after it.
+            if child.type != "export":
+                options_open = False
+            continue
+        options_open = False
+        if name_node is not None:
+            names.append(node_text(name_node, source))
+    return names
 
 
 # INV-nular. Variables BASH ITSELF assigns, from the shell manual's "Shell
@@ -917,7 +976,8 @@ class BashAnalyzer(TreeSitterAnalyzer):
         """Extract symbols from a single Bash file.
 
         Detects function definitions (both 'function name()' and 'name()' styles),
-        exported variables (export VAR=value), and alias definitions.
+        exported variables (one Symbol per variable the file exports, however
+        many statements export it -- WI-nasil), and alias definitions.
         """
         analysis = FileAnalysis()
 
@@ -957,6 +1017,9 @@ class BashAnalyzer(TreeSitterAnalyzer):
             meta={"concepts": [{"concept": "shell_script", "framework": "bash"}]},
         )
         analysis.symbols.append(module_symbol)
+
+        # Names this file already has an export Symbol for (WI-nasil).
+        exported_names: set[str] = set()
 
         for node in iter_tree(tree.root_node):
             if node.type == "function_definition":
@@ -1003,33 +1066,39 @@ class BashAnalyzer(TreeSitterAnalyzer):
                     analysis.symbol_by_name[func_name] = symbol
 
             elif node.type == "declaration_command":
-                export_node = find_child_by_type(node, "export")
-                if export_node:
-                    var_node = find_child_by_type(node, "variable_assignment")
-                    if var_node:
-                        name_node = find_child_by_type(var_node, "variable_name")
-                        if name_node:
-                            var_name = node_text(name_node, source)
-                            start_line = node.start_point[0] + 1
-                            symbol_id = make_symbol_id("bash", rel_path, start_line, start_line, var_name, "export")
+                # WI-nasil: ONE export Symbol per exported VARIABLE per file,
+                # at the first statement that exports it. Exporting is an
+                # attribute of the variable: `export X=2` after `export X=1`
+                # re-assigns it and a bare `export X` re-sets the attribute;
+                # neither makes a second exported variable -- and the
+                # kind's identity factory (`make_export_stable_id`) is
+                # `(language, path, name)`. One Symbol per STATEMENT gave a
+                # re-exported name several same-(path, name, kind) nodes that
+                # only the `:occ:<n>` re-hash told apart.
+                for var_name in _exported_variable_names(node, source):
+                    if var_name in exported_names:
+                        continue
+                    exported_names.add(var_name)
+                    start_line = node.start_point[0] + 1
+                    symbol_id = make_symbol_id("bash", rel_path, start_line, start_line, var_name, "export")
 
-                            symbol = Symbol(
-                                id=symbol_id,
-                                name=var_name,
-                                kind="export",
-                                language="bash",
-                                path=rel_path,
-                                span=Span(
-                                    start_line=start_line,
-                                    end_line=start_line,
-                                    start_col=node.start_point[1],
-                                    end_col=node.end_point[1],
-                                ),
-                                origin=PASS_ID,
-                                origin_run_id=run.execution_id,
-                            )
-                            analysis.symbols.append(symbol)
-                            analysis.node_for_symbol[symbol.id] = node
+                    symbol = Symbol(
+                        id=symbol_id,
+                        name=var_name,
+                        kind="export",
+                        language="bash",
+                        path=rel_path,
+                        span=Span(
+                            start_line=start_line,
+                            end_line=start_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                    )
+                    analysis.symbols.append(symbol)
+                    analysis.node_for_symbol[symbol.id] = node
 
             elif node.type == "command":
                 cmd_name_node = find_child_by_type(node, "command_name")
