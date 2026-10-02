@@ -1,0 +1,21 @@
+- op: create  # fb8e
+  at: '2026-10-02T00:46:59Z'  # fb8e
+  by: agent  # fb8e
+  actor: jgstern_agent  # fb8e
+  clock: 1  # fb8e
+  nonce: fb8e  # fb8e
+  data:  # fb8e
+    kind: work_item  # fb8e
+    title: "message-queue linker reads any JS .subscribe(x) (Svelte store, RxJS) as a redis subscriber whose topic is the callback parameter"  # fb8e
+    status: todo_hard  # fb8e
+    priority: 3  # fb8e
+    parent:  # fb8e
+    tags:  # fb8e
+    - protocol_linkers  # fb8e
+    - analysis_quality  # fb8e
+    isbefore: []  # fb8e
+    duplicate_of: []  # fb8e
+    not_duplicate_of: []  # fb8e
+    pr_ref:  # fb8e
+    description: "**Defect.** `linkers/message_queue.py` `REDIS_SUBSCRIBE_JS_PATTERN` is `\\.subscribe\\s*\\(\\s*<topic-arg>` with no receiver constraint, so ANY `.subscribe(x)` call in a JS/TS file -- a Svelte store, an RxJS observable -- becomes a `redis` subscriber stand-in whose \"topic\" is the call's first argument, typically an arrow-function PARAMETER.\n\n**Evidence (WI-misod-toruv-gimip-botuj-kadup-ludon-damib-buguk A/B, 2026-10-01, after arm):** podman-desktop yields 32 message-queue sites, all `unresolved`, e.g. `router.subscribe(navigation => {` (packages/renderer/src/stores/navigation-history.svelte.ts:65), `providerInfos.subscribe(providers => {` (provider-terminal-store.ts:44), `containersInfos.subscribe(containers => {` (container-terminal-store.ts:43). Across 23 corpus repos the message-queue linker produced 193 `unresolved` sites (150 bare lower/camel identifiers, 43 dotted); how many of the 193 are this shape is NOT counted -- the podman-desktop sample read is 3/3 Svelte store subscriptions.\n\n**Consequence.** Phantom `kafka|redis` subscriber symbols (kind=function, framework_role=mq_subscriber) on front-end store code. They rarely produce edges (an identifier join needs a publisher with the same identifier), so the cost is node noise and a false \"this file consumes a queue\" signal, not false edges -- edges not measured beyond: 0 MQ edges on podman-desktop in both arms.\n\n**Fix direction.** Constrain the JS subscribe pattern to a redis-ish receiver (as `REDIS_SUBSCRIBE_PATTERN` does for Python) and/or reject an argument followed by `=>`."  # fb8e
+    fields: {}  # fb8e
