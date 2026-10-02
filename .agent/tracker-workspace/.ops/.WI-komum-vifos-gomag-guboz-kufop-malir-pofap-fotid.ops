@@ -50,3 +50,19 @@
   clock: 5  # 300c
   nonce: 300c  # 300c
   message: "WORK 2026-10-01 (concurrent run; local branch jgstern-agent/fix/komum, commit f0347aa8ea, NOT pushed, status unchanged).\n\nPremise re-verified on dev 4dfb1d645a: http.py 13 literals at 705..929 and graphql.py:201 unchanged; fixture a.ts `fetch(\"/api/items\")` -> `javascript:src/a.ts:2-2:GET /api/items:call_site`, discovery_language=javascript (base survey).\n\nThe four `_detect_language` helpers are NOT one defect: in graphql_resolver/event_sourcing/database_query the value is only a scanner-dispatch key (`elif language == \"javascript\"`) and the minted records already use js_ts_language_from_path (INV-tofun), so those three do not mislabel; left unchanged. message_queue's IS the minted symbol's language -> real mislabel, fixed.\n\nFixed (all via `_text_filters.js_ts_language_from_path`, the analyzer-parity helper, NOT core `language_from_path` as the row proposed: that one returns grammar names, `tsx` for .tsx):\n- http.py 13 sites, graphql.py 1 site, message_queue.py `_detect_language`.\n- js_ts_language_from_path: .mts/.cts -> typescript (it said javascript while claiming to mirror the analyzer; INV-tofun's statement names .mts/.cts; solidity_abi globs .mts).\n- websocket.py `_language_for_file` (the row's cited precedent) minted `tsx:App.tsx:1-1:file:file` for a .tsx file; now typescript.\n\nEvidence: targeted smart-test 5163 passed, 0 failed, changed sources 100% covered. Fixture survey base->after: http call_site on .ts/.tsx javascript->typescript, mq publisher on .ts javascript->typescript, edge sets identical modulo the id slot. Confidence moves: .ts client->typescript route 0.8->0.9; .ts mq publisher->.js subscriber 0.9->0.8 (cross-language penalty now applies to TS<->JS). full-stack-fastapi-template: 23 http call_site nodes relabelled, 0 edges changed (no http edges there before or after). graphql not exercised by survey (linker did not activate on the fixture); covered by link_graphql tests only.\n\n\nResidual items filed: WI-pokij-dizon-bipub-vutiz-dafag-ravid-razog-rikim (annotation_convention grammar-name labels), WI-hizon-matam-gokub-puhab-kabiv-karin-mopot-subat (JS-family linker globs omit .mjs/.cjs/.mts/.cts)."  # 300c
+- op: update  # 49a8
+  at: '2026-10-02T03:21:03Z'  # 49a8
+  by: agent  # 49a8
+  actor: jgstern_agent  # 49a8
+  clock: 6  # 49a8
+  nonce: 49a8  # 49a8
+  set:  # 49a8
+    status: done  # 49a8
+    pr_ref: '#1381'  # 49a8
+- op: discuss  # 95cd
+  at: '2026-10-02T03:21:03Z'  # 95cd
+  by: agent  # 95cd
+  actor: jgstern_agent  # 95cd
+  clock: 7  # 95cd
+  nonce: 95cd  # 95cd
+  message: "DONE: merged in PR #1381 (commit ed76410b51). http.py (13 sites), graphql.py and message_queue.py now take their language from js_ts_language_from_path (the INV-tofun helper matching the analyzer's tags); the helper maps .mts/.cts to typescript (also fixing solidity_abi's .mts scan); websocket.py no longer mints a duplicate `tsx:` file node for a .tsx sender. The row's own suggestion (core language_from_path) would itself have been wrong (.tsx -> tsx, .mts -> None). NOT changed (mispremised part of the row): graphql_resolver / event_sourcing / database_query `_detect_language` only select a scanner; their records already use the helper. Behavioural evidence: direct calls returned javascript for .ts and tsx for .tsx on dev, typescript on the branch; fixture survey: identical 36-edge set apart from the language part of ids; confidence follows (TS->TS 0.8 -> 0.9; TS publisher -> JS subscriber 0.9 -> 0.8). Corpus: full-stack-fastapi-template 23 call-site nodes relabelled, 0 edge changes. Residuals: WI-pokij, WI-hizon (P3). Report: run_09302026/komum.md"  # 95cd

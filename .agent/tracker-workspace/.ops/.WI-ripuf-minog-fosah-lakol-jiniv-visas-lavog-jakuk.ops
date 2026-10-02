@@ -19,3 +19,19 @@
     pr_ref:  # 0c91
     description: "Found 2026-10-01 while working WI-majov (dev af4e16964b). `js_ts_language_from_path` (packages/hypergumbo-core/src/hypergumbo_core/linkers/_text_filters.py ~210) claims to mirror `hypergumbo_lang_mainstream.js_ts._get_language_for_file` exactly (INV-tofun), but it maps only `.ts`/`.tsx` to typescript. The analyzer has mapped `.mts`/`.cts` to typescript too since WI-zavad (8f11136fb9). So for a `.mts`/`.cts` file every linker that uses the helper (tauri_ipc, crypto_flow, yjs_crdt, event_sourcing, database_query, solidity_abi, wasm_bindgen, graphql_resolver, ipc, message_dispatch, grpc) mints `javascript:` stand-ins while the analyzer tags the file's real symbols `typescript:`. That is exactly the disagreement INV-tofun was satisfied for.\n\nThe parity test (packages/hypergumbo-core/tests/test_linkers_text_filters.py::test_js_ts_language_from_path_analyzer_parity) asserts hard-coded values and never checks .mts/.cts, so it cannot catch the drift. Fix: add .mts/.cts to the helper; add a parity test in hypergumbo-lang-mainstream (which can import both) over every suffix in JstsTreeSitterAnalyzer.file_patterns, so the next drift goes red.\n\nNot measured: how many linker stand-ins in the corpus come from .mts/.cts files. WI-majov's html resolution uses js_ts._get_language_for_file directly, so it does not depend on this helper."  # 0c91
     fields: {}  # 0c91
+- op: update  # 580a
+  at: '2026-10-02T03:21:03Z'  # 580a
+  by: agent  # 580a
+  actor: jgstern_agent  # 580a
+  clock: 2  # 580a
+  nonce: 580a  # 580a
+  set:  # 580a
+    status: done  # 580a
+    pr_ref: '#1381'  # 580a
+- op: discuss  # ef23
+  at: '2026-10-02T03:21:03Z'  # ef23
+  by: agent  # ef23
+  actor: jgstern_agent  # ef23
+  clock: 3  # ef23
+  nonce: ef23  # ef23
+  message: "DONE: fixed by WI-komum's commit ed76410b51, merged in PR #1381: linkers/_text_filters.js_ts_language_from_path maps .mts/.cts to typescript, matching the JS/TS analyzer; the parity test was extended to .mts/.cts/.cjs plus a deploy.mts case for solidity_abi. (Filed by WI-majov's agent during the run0930 concurrent run before WI-komum's branch merged.) Report: ~/hypergumbo_lab_notebook/decontend/run_09302026/komum.md"  # ef23
