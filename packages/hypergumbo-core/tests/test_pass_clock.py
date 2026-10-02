@@ -132,18 +132,20 @@ class TestPassClock:
 
 
 class TestPassCostStamp:
-    def test_fills_unset_duration_and_sets_cpu(self) -> None:
+    def test_sets_both_fields(self) -> None:
         run = _run("p")
         PassCost(wall_ms=40, cpu_ms=7).stamp(run)
         assert run.duration_ms == 40
         assert run.cpu_ms == 7
 
-    def test_keeps_a_body_measured_duration(self) -> None:
-        """A pass body that timed itself keeps its own wall figure."""
+    def test_replaces_a_body_timed_duration_so_both_share_one_span(self) -> None:
+        """A body's own timer covers part of the pass; kept beside a CPU
+        figure read over the whole call, the two could not be compared
+        (python measured duration_ms=663 beside cpu_ms=1086)."""
         run = _run("p")
-        run.duration_ms = 999
+        run.duration_ms = 5
         PassCost(wall_ms=40, cpu_ms=7).stamp(run)
-        assert run.duration_ms == 999
+        assert run.duration_ms == 40
         assert run.cpu_ms == 7
 
 
@@ -163,6 +165,25 @@ class TestAnalysisRunSerializesCpuMs:
 
 
 class TestAnalyzerPoolMeasuresOnTheWorkerThread:
+    def test_body_timer_subspan_is_replaced_by_the_whole_call(
+        self, tmp_path: Path, _isolated_registries
+    ) -> None:
+        """An analyzer that stops its own timer early (the python analyzer
+        does, before dependency parsing) gets the whole call's wall time, so
+        cpu_ms can never exceed duration_ms for a single-threaded pass."""
+
+        @register_analyzer("early-stop-an", priority=10, language_state="no_language")
+        def _early_stop(root, **kwargs):
+            run = _run("early-stop-an")
+            run.duration_ms = 1  # the body's timer, stopped before the work
+            _burn_cpu(_BURN_S)
+            return AnalysisResult(run=run)
+
+        (analysis_runs, *_rest) = _all_analyzers.run_all_analyzers(tmp_path)
+        (card,) = [r for r in analysis_runs if r["pass"] == "early-stop-an"]
+        assert card["cpu_ms"] >= int(_BURN_S * 1000)
+        assert card["duration_ms"] >= card["cpu_ms"] - 1  # ceil vs truncation
+
     def test_cpu_is_the_pass_own_and_wall_includes_waiting(
         self, tmp_path: Path, _isolated_registries
     ) -> None:

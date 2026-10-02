@@ -366,7 +366,8 @@ class AnalysisRun:
     failed_files: List[Dict[str, str]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     started_at: str = ""  # axis: free-text — ISO-8601 UTC timestamp; consumers display, never branch on the value.
-    # WALL-clock time of this pass, measured in its worker (WI-nuvam). Passes
+    # WALL-clock time of this pass, measured in its worker (WI-nuvam) over the
+    # same span as ``cpu_ms`` wherever the orchestrator stamps it. Passes
     # run concurrently -- analyzers in one thread pool, linkers in one pool
     # per priority cohort -- so these figures OVERLAP (they do not sum to the
     # survey's wall time) and one INFLATES WITH CONTENTION: a worker waiting

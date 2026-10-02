@@ -907,7 +907,9 @@ def _analysis_run_spec() -> ClassSpec:
             "duration_ms": {
                 "description": (
                     "Wall-clock duration in milliseconds, measured in the "
-                    "pass's worker. Passes run concurrently (analyzers in "
+                    "pass's worker over the same call as cpu_ms (the "
+                    "orchestrator's reading replaces a pass body's own "
+                    "timer). Passes run concurrently (analyzers in "
                     "one thread pool, linkers in one pool per priority "
                     "cohort), so durations OVERLAP -- they do not sum to the "
                     "survey's wall time -- and one INFLATES WITH CONTENTION "

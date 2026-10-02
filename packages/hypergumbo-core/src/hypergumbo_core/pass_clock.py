@@ -39,7 +39,11 @@ return a plausible number that measures nothing, which is worse than an
 error. The orchestrators start the clock inside the worker (the analyzer
 pool's ``_run_costed`` wrapper, the linker chokepoint
 ``_run_linker_with_cache``) and hand the frozen ``PassCost`` back to the
-thread that serializes the run. The serial synthesis passes (file-symbol
+thread that serializes the run. ``PassCost.stamp`` writes BOTH fields, so a
+pass body's own ``duration_ms`` is replaced by the orchestrator's reading of
+the whole call: a body timer covers only part of the pass, and a wall figure
+over a different span from the CPU figure cannot be subtracted from it. The
+serial synthesis passes (file-symbol
 synthesis, producer merge, route materialization, CBV expansion, enclosure,
 boundary synthesis) run on the orchestrating thread with no pool alive, and
 use the same clock directly.
@@ -75,16 +79,19 @@ class PassCost:
     cpu_ms: int
 
     def stamp(self, run: "AnalysisRun") -> None:
-        """Record this cost on ``run``.
+        """Record this cost on ``run``: BOTH fields, from one clock.
 
-        ``duration_ms`` is filled only when the pass body left it unset, so
-        the passes that time themselves keep their own figure (the same guard
-        the linker chokepoint has always applied). ``cpu_ms`` is always set:
-        no pass body measures it, and the orchestrator's reading is the only
-        one there is.
+        ``duration_ms`` is overwritten even when the pass body timed itself.
+        A body's timer covers a SUB-span of the pass (the python analyzer
+        stops its clock before parsing pyproject dependencies, and work done
+        before a body starts its timer is outside it too), so keeping it
+        beside a ``cpu_ms`` read over the whole call made the two disagree
+        about what they measure: measured on this repository, the python
+        card read ``duration_ms=663`` beside ``cpu_ms=1086``, which no single
+        span can produce. With both from one span, ``duration_ms - cpu_ms``
+        is the time the pass waited.
         """
-        if not run.duration_ms:
-            run.duration_ms = self.wall_ms
+        run.duration_ms = self.wall_ms
         run.cpu_ms = self.cpu_ms
 
 

@@ -733,9 +733,11 @@ def _run_linker_with_cache(
     # out-of-order as_completed makes per-linker wall-clock impossible at the
     # post-dispatch sites. Stamp the per-pass productivity counters here too
     # (result.symbols/result.edges are this pass's direct output, before any
-    # accumulation). duration_ms is guarded so the ~40 linker bodies that
-    # self-time keep their value; the counters are derived facts, always set.
-    # WI-nuvam: the same stamp sets cpu_ms, the linker's own-thread CPU time.
+    # accumulation); the counters are derived facts, always set.
+    # WI-nuvam: the stamp sets cpu_ms, the linker's own-thread CPU time, and
+    # duration_ms from the SAME clock. It used to keep a self-timing body's
+    # duration_ms, but a body's timer spans only part of the call, and a wall
+    # figure over a different span from cpu_ms cannot be compared with it.
     # Linkers in one priority cohort share a pool, so the wall figure overlaps
     # its siblings' and inflates while they hold the GIL; cpu_ms does not.
     _cost = _clock.read()
