@@ -1394,13 +1394,17 @@ class TestRunLinkerWithCacheStampsEmissionAndDuration:
         assert run.edges_emitted == 1
         assert run.duration_ms >= 0  # measured (>=0; floored to 1 at to_dict if 0)
 
-    def test_preserves_self_timed_duration(self):
-        """A linker body that already set duration_ms keeps its value."""
+    def test_replaces_self_timed_duration_with_the_whole_call(self):
+        """WI-nuvam: a body's self-timed duration_ms is REPLACED by the
+        wrapper's reading. It used to be kept, but cpu_ms is read over the
+        whole call, and a wall figure over a different span cannot be compared
+        with it. The 999 here is a body figure the call did not take."""
         run = AnalysisRun.create(pass_id="lk", version="1.0.0")
         run.duration_ms = 999
         result = LinkerResult(symbols=[], edges=[object()], run=run)
         _run_linker_with_cache(lambda ctx: result, self._ctx())
-        assert run.duration_ms == 999
+        assert run.duration_ms < 999
+        assert isinstance(run.cpu_ms, int) and run.cpu_ms >= 1
         assert run.edges_emitted == 1
 
     def test_no_run_is_noop(self):
