@@ -49,3 +49,19 @@
   clock: 5  # ac1c
   nonce: ac1c  # ac1c
   message: "WORK 2026-10-01 (concurrent run; local branch, NOT pushed): branch jgstern-agent/feat/vitas-elixir-behaviours in ~/hg_wt/vitas, commit 444fd8af38.\n\nDone in elixir.py:\n- @callback / @macrocallback emit a symbol: kind function / macro, modifiers=[\"abstract\"], with the signature verbatim. The symbol is kept out of call resolution, and the WI-dokib typespec silence is unchanged.\n- @behaviour X emits implements from the module to X: the in-repo module, else elixir:external:0-0:X:unresolved.\n- use X emits implements when X's __using__ sets the behaviour. For libraries this comes from a table read from upstream source (Plug.Builder and Plug.Router imply Plug; Agent, Task and Phoenix.Component imply none). For in-repo X it comes from the @behaviour in its defmacro __using__ quote, followed through nested use.\n- Each callback emits dispatches_to to the implementing module's public clauses of the same name and kind.\n- One shared parse of use / @behaviour; the framework callback table's edges are unchanged.\n\nDone in core:\n- elixir added to INHERITANCE_EDGE_TYPE_LANGUAGES[implements] and to the type-hierarchy-linker depends_on clause.\n\nTests:\n- Red: 14 failed (13 new tests plus parity[elixir]).\n- Green (targeted smart-test, 398 files): 13817 passed, 0 failed, 4 xfailed; changed sources at 100% coverage.\n- The parity column's KNOWN_HOLES entry for elixir is removed and the cell hard-passes.\n\nSurvey diff (before vs after), 0 edges removed on all four repos:\n- phoenix: +60 callback symbols, +95 implements, +146 callback dispatches_to\n- plausible: +40, +59, +108\n- livebook: +3, +50, +12\n- nex-framework: +2, +12, +10\n\nNot done, filed as new items:\n- WI-nunar: use AppWeb, :live_view\n- WI-hidit: Erlang -callback / -behaviour, and Elixir @behaviour :atom\n- WI-forof: defprotocol / defimpl\n\nArity is NOT matched. Full report: ~/hypergumbo_lab_notebook/decontend/run_09302026/vitas.md. Status unchanged."  # ac1c
+- op: update  # 6fbe
+  at: '2026-10-02T03:04:42Z'  # 6fbe
+  by: agent  # 6fbe
+  actor: jgstern_agent  # 6fbe
+  clock: 6  # 6fbe
+  nonce: 6fbe  # 6fbe
+  set:  # 6fbe
+    status: done  # 6fbe
+    pr_ref: '#1379'  # 6fbe
+- op: discuss  # 9e22
+  at: '2026-10-02T03:04:42Z'  # 9e22
+  by: agent  # 9e22
+  actor: jgstern_agent  # 9e22
+  clock: 7  # 9e22
+  nonce: '9e22'  # 9e22
+  message: "DONE: merged in PR #1379 (commit 0df722ce8c; integration resolved the shared depends_on / edge_types / KNOWN_HOLES lines with WI-lahub). @callback / @macrocallback produce abstract symbols on the behaviour module (never call targets); @behaviour X and `use X` where X's __using__ sets the behaviour (library table from upstream sources; in-repo __using__ read, nested use followed, cycles stopped) emit implements to X; each callback dispatches_to the implementing module's public clauses of the same name and kind. Behavioural evidence: the parity fixture through run_behavior_map now gives Square -implements-> Shape and Shape.area -dispatches_to-> Square.area (dev: neither); the elixir KNOWN_HOLES entry is removed and the cell passes. Corpus (no edge removed anywhere; callback symbols equal grep @callback counts): phoenix +60 callbacks / +95 implements / +146 dispatch; plausible 40/59/108; livebook 3/50/12; nex-framework 2/12/10; random sample of 25 added edges all correct. Residuals: WI-nunar (P2, use AppWeb, :live_view), WI-hidit (P2, Erlang -callback), WI-forof (P2, defprotocol/defimpl). Report: run_09302026/vitas.md"  # 9e22

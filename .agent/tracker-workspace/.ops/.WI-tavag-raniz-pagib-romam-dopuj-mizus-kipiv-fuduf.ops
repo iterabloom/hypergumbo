@@ -27,3 +27,19 @@
   clock: 2  # c152
   nonce: c152  # c152
   message: "ADDRESSED ON BRANCH jgstern-agent/fix/sinol (local, not pushed; WI-sinol run 2026-10-01). WI-sinol listed this row as its prerequisite (gating module_exports on is_exported would otherwise drop every CommonJS edge), so the CommonJS half of the JS/TS export scan landed there. Status NOT changed.\n\nWhat the branch does (js_ts.py `_collect_exported_names` -> new `_extract_commonjs_export_names`): top-level assignment statements export a LOCAL binding when the target is `module.exports` (value identifier, or an object literal's shorthand / `key: identifier` / method properties), `exports.k` or `module.exports.k` (value identifier), including chains like express's `exports = module.exports = createApplication`. Bare `exports = f`, `module.exports = require('./x')`, computed `exports[k] = f`, `exports.cfg = { f }` and a guarded (non-top-level) export collect nothing -- each pinned by a test.\n\nShapes from this row's scope list: `module.exports = { f, g }` YES; `module.exports.f = f` YES; `exports.f = f` YES; `module.exports = f` YES; `module.exports = class X {}` NO -- the analyzer emits no symbol for a class expression (filed WI-rabod-rodil-dokok-tagiv-razaz-dilil-salok-havaz); `module.exports = require('./x')` binds no local, nothing to mark.\nResidual export forms (guarded/UMD, Object.assign, Object.defineProperty): WI-kodop-bopup-vutoz-humod-vuzot-zizud-nufut-rikab.\n\nMeasured on sharp (CommonJS): JS functions with is_exported False->True: 29 (lib/is.js 15, lib/libvips.js 12, lib/constructor.js Sharp, test/fixtures getPath), variables 3; 0 True->False. Tests: packages/hypergumbo-lang-mainstream/tests/test_js_ts_export_status.py::TestCommonJsExports."  # c152
+- op: update  # 09cc
+  at: '2026-10-02T03:20:20Z'  # 09cc
+  by: agent  # 09cc
+  actor: jgstern_agent  # 09cc
+  clock: 3  # 09cc
+  nonce: 09cc  # 09cc
+  set:  # 09cc
+    status: done  # 09cc
+    pr_ref: '#1381'  # 09cc
+- op: discuss  # 4297
+  at: '2026-10-02T03:20:21Z'  # 4297
+  by: agent  # 4297
+  actor: jgstern_agent  # 4297
+  clock: 4  # 4297
+  nonce: '4297'  # 4297
+  message: "DONE: fixed by WI-sinol's commit 2bf837be85, merged in PR #1381. CommonJS forms now read as exports: module.exports = f; module.exports = { f, k: g, m() {} }; exports.k = f; module.exports.k = f; chained `exports = module.exports = createApplication`. Evidence: test_js_ts_export_status.py (red on dev, green); on sharp the module_exports set went 169 -> 29, exactly the members of module.exports = {...} in lib/is.js and lib/libvips.js plus Sharp and getPath. Not covered: non-top-level (UMD `if`) or Object.assign/defineProperty exports (WI-kodop), function/class expressions assigned to an export (WI-rabod). Report: ~/hypergumbo_lab_notebook/decontend/run_09302026/sinol.md"  # 4297
