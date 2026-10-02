@@ -55,3 +55,19 @@
   clock: 6  # df15
   nonce: df15  # df15
   message: "FYI from WI-majov (2026-10-01), no action requested on this row: a separate js_module.py defect was filed as WI-babuk-nufoh-rolig-sabus-gobuk-zituh-sofup-holid. The import-target file id takes the importer's language (~805), so a .ts -> .js import emits module_exports from a phantom typescript:<x>.js file node. It is a different site from this row's export-status filter, but the same file; worth knowing if your fixtures mix .ts and .js."  # df15
+- op: update  # 5579
+  at: '2026-10-02T03:20:20Z'  # 5579
+  by: agent  # 5579
+  actor: jgstern_agent  # 5579
+  clock: 7  # 5579
+  nonce: '5579'  # 5579
+  set:  # 5579
+    status: done  # 5579
+    pr_ref: '#1381'  # 5579
+- op: discuss  # 2ca4
+  at: '2026-10-02T03:20:20Z'  # 2ca4
+  by: agent  # 2ca4
+  actor: jgstern_agent  # 2ca4
+  clock: 8  # 2ca4
+  nonce: 2ca4  # 2ca4
+  message: "DONE: merged in PR #1381 (dev 918501fd12; commit 2bf837be85). A module_exports edge now also requires Symbol.is_exported is True (False and None both block); class members still connect through their exported class's contains edges. Prerequisite fixed in the same commit (WI-tavag): js_ts reads CommonJS exports, marks the local of `export { a as b }`, skips `export { x } from`, and recognises export abstract class / interface / enum / type. Behavioural evidence: `hypergumbo survey` on the row's own fixture emits module_exports b.ts->A:class and b.ts->g:function only (A.render, A.x and priv get none); production-path test test_js_ts_export_status.py::TestModuleExportsOnTheProductionPath. Corpus: htrac-frontend 39 -> 8 (exactly the exported functions/classes), koel 2084 -> 94, sharp 169 -> 29. NOT asserted: that every export now gets an edge (WI-rabod, WI-kodop, WI-gafaj). Report: run_09302026/sinol.md"  # 2ca4

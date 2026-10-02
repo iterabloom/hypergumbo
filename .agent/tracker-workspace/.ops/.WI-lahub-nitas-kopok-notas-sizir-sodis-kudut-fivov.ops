@@ -42,3 +42,19 @@
   clock: 4  # d99a
   nonce: d99a  # d99a
   message: "IMPLEMENTED on local branch `jgstern-agent/fix/lahub` (worktree ~/hg_wt/lahub; not pushed). Commits: e650e446fc (fix) and 55c96deda0 (docs). Full report: ~/hypergumbo_lab_notebook/decontend/run_09302026/lahub.md.\n\nThe item's suggested route (dart.py writes meta.base_classes, linkers/inheritance.py builds the edges) was NOT taken. That linker labels an edge by its TARGET's kind, and Dart has no interface kind, so every Dart `implements` would have become `extends`. Its maps also index no `mixin` kind, so `with` would be dropped. Instead, the Dart analyzer records each class/mixin/enum's heritage clauses in Pass 1 (matched to the symbol by position) and resolves them in post_process:\n- `extends` gives extends.\n- `implements` gives implements.\n- `with` gives includes/ast_includes.\n- A mixin's `on` gives extends.\nResolution order: the same-file candidate, else the only candidate, else an INV-zuhub fallback (confidence 0.5 plus the flag). A base with no candidate becomes `dart:external:0-0:<Name>:unresolved`. `dart` was added to type-hierarchy-linker.depends_on and to INHERITANCE_EDGE_TYPE_LANGUAGES. KNOWN_HOLES[\"dart\"] was removed from the parity column. inheritance.py is untouched.\n\nEvidence:\n- New test_dart_inheritance.py (17 tests): red on the unfixed code (13 failed, 3 negative controls passed), green after the fix.\n- Targeted smart-test on HEAD: 14151 passed, 2 skipped, 4 xfailed; 100% coverage on changed files.\n- The parity dart cell is a hard pass, and run_behavior_map gives `Shape.area -dispatches_to-> Square.area`.\n- sherpa-onnx survey: Dart `extends` went 0 -> 105, all to external bases (Struct/Opaque/Flutter). No other edge type changed count, and Dart dispatches_to stayed 0 -> 0 because the repo has no in-tree Dart inheritance.\n\nResiduals filed (P3):\n- WI-riroz-masam-minaf-tivid-foruf-bokih-fudit-zuzuk: Dart MRO walker.\n- WI-volus-hidar-folod-hanoz-kumam-bahik-hogop-josad: mixin application class and extension type emit no symbol.\n- WI-sokin-valik-kahuf-pavub-nukoh-guzov-kakir-fodaz: the grammar swallows classes that have `external` fields.\n- WI-nakur-muhov-nisad-mapol-tunis-zipuh-vabaf-nijik: the producer-set scanner is blind to a non-literal edge_type.\n\nNo status change made."  # d99a
+- op: update  # c680
+  at: '2026-10-02T03:04:41Z'  # c680
+  by: agent  # c680
+  actor: jgstern_agent  # c680
+  clock: 5  # c680
+  nonce: c680  # c680
+  set:  # c680
+    status: done  # c680
+    pr_ref: '#1379'  # c680
+- op: discuss  # 7030
+  at: '2026-10-02T03:04:42Z'  # 7030
+  by: agent  # 7030
+  actor: jgstern_agent  # 7030
+  clock: 6  # 7030
+  nonce: '7030'  # 7030
+  message: "DONE: merged in PR #1379 (commits 2fc2eb0dca, 3e1905bf93). dart.py records each class/mixin/enum's heritage clauses in Pass 1 and resolves them in post_process, labelling by the clause written (extends -> extends; implements -> implements; with -> includes; mixin on -> extends) because Dart has no interface kind and the shared linker labels by the target's kind (it would print every Dart `implements` as `extends` and index no mixin). Resolution: same file, then unique repo-wide, else confidence-0.5 fallback; out-of-repo bases -> dart:external:0-0:<Name>:unresolved. Behavioural evidence: test_dart_inheritance.py (17; 13 red on dev, 3 controls green) and the Dart parity cell now a hard pass (Shape.area -dispatches_to-> Square.area). Corpus: sherpa-onnx (the only Dart repo) Dart extends 0 -> 105, all to external bases; no other edge type moved; in-repo resolution, implements/includes and dispatch are shown on fixtures only. Residuals: WI-riroz, WI-volus, WI-sokin, WI-nakur (P3). Report: run_09302026/lahub.md"  # 7030
