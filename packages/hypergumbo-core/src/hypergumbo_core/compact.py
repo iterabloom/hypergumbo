@@ -751,7 +751,10 @@ def select_by_connectivity(
             final emitted node, a boundary artifact of truncating any stream)
             and 1:3 / 1:4 buy nothing further. Any FIXED ratio preserves
             containment, since the stream stays budget-independent; the ratio is
-            therefore a pure quality knob.
+            therefore a pure quality knob. That tuning was measured with
+            external-boundary placeholders in the population; without them the
+            ratio alone does not prevent stranding, which is what the WI-fadab
+            ANCHOR pick (below) does structurally.
         interleave: When True, alternate seed / greedy-pick instead of
             preloading every seed first, making the emitted list at a smaller
             budget an ordered prefix of the list at a larger one (WI-zulij
@@ -833,17 +836,18 @@ def select_by_connectivity(
                 frontier.add(src)
         frontier.discard(node_id)
 
-    def _best_frontier_node() -> str | None:
-        """Argmax over the frontier by (component_growth, edges_added, centrality).
+    def _best_frontier_node(candidates: "set[str] | None" = None) -> str | None:
+        """Argmax over *candidates* (default: the whole frontier) by
+        (component_growth, edges_added, centrality).
 
-        WI-nivuj: the frontier is iterated in SORTED order with a strict ``>``, so
+        WI-nivuj: candidates are iterated in SORTED order with a strict ``>``, so
         a score tie resolves to the lexicographically-smallest id rather than to
         whatever PYTHONHASHSEED put first. Both halves of that pair are
         load-bearing — keep them together.
         """
         best_node = None
         best_score = (-1, -1, -1.0)
-        for node_id in sorted(frontier):
+        for node_id in sorted(frontier if candidates is None else candidates):
             score = _compute_connectivity_score(
                 node_id, selected_ids, uf, outgoing, incoming, centrality
             )
@@ -883,17 +887,38 @@ def select_by_connectivity(
         seed_cursor = 0
         while len(selected_ids) < max_additional:
             progressed = False
+            just_seeded: str | None = None
             while seed_cursor < len(seed_seq):
                 sid = seed_seq[seed_cursor]
                 seed_cursor += 1
                 if sid in symbol_by_id and sid not in selected_ids:
                     _admit(sid)
+                    just_seeded = sid
                     progressed = True
                     break
             for _ in range(bridges_per_seed):
                 if len(selected_ids) >= max_additional:
                     break
-                best_node = _best_frontier_node()
+                # WI-fadab ANCHOR: a seed admitted into no existing component
+                # spends the first pick on its own best neighbour. The scorer's
+                # primary key is growth of the LARGEST component, so joining a
+                # singleton seed to its neighbour scores the minimum and loses to
+                # any node touching the main component — the seed is stranded.
+                # The 1:2 ratio (above) was tuned on maps where external-boundary
+                # placeholders were in the population and glued every seed to
+                # the main component through a shared stdlib callee on admission;
+                # with those gone, the self-analysis map stranded every third
+                # emitted node at K=100 (isolated 2% -> 21%). The anchor reads
+                # only stream state, never the budget, so containment holds.
+                best_node = None
+                if just_seeded is not None and uf.component_size(just_seeded) == 1:
+                    best_node = _best_frontier_node(
+                        (outgoing.get(just_seeded, set())
+                         | incoming.get(just_seeded, set())) & frontier
+                    )
+                just_seeded = None
+                if best_node is None:
+                    best_node = _best_frontier_node()
                 if best_node is None:
                     break
                 _admit(best_node)
