@@ -2370,9 +2370,10 @@ class FileAnalysis:
     # concrete, CORRECT enclosing_class_id (which the inherited_calls linker uses
     # to resolve a namesake collision precisely instead of biasing to unresolved).
     method_to_enclosing_class_id: dict[str, str] = field(default_factory=dict)
-    # WI-kutal: class Symbol.id -> {method short name -> method Symbol}, from
-    # the class's OWN body (no inherited methods). The table ``self.m()``
-    # resolves against once the class ``self`` denotes is known by position.
+    # WI-kutal: class Symbol.id -> {short name -> Symbol} for the ``def`` and
+    # ``class`` statements of the class's OWN body (no inherited members). The
+    # table ``self.x()`` resolves against once the class ``self`` denotes is
+    # known by position.
     methods_by_class_id: dict[str, dict[str, "Symbol"]] = field(default_factory=dict)
 
 
@@ -3052,10 +3053,13 @@ def _extract_file_analysis(
     # WI-supat (D3): authoritative method Symbol.id -> enclosing class Symbol.id,
     # populated at method creation where both symbols are lexically in hand.
     method_to_enclosing_class_id: dict[str, str] = {}
-    # WI-kutal: class Symbol.id -> {method SHORT name -> method Symbol}, the
-    # class's OWN body only, filled at the same point. ``self.m()`` is answered
-    # from here (via the class ``self`` denotes), never from symbol_by_name.
+    # WI-kutal: class Symbol.id -> {short name -> Symbol} for the ``def`` and
+    # ``class`` statements of the class's OWN body (methods and nested
+    # classes). ``self.x()`` is answered from here (via the class ``self``
+    # denotes), never from symbol_by_name. ``class_symbol_by_node_id`` finds a
+    # nested class's enclosing class by POSITION (its parent AST node).
     methods_by_class_id: dict[str, dict[str, Symbol]] = {}
+    class_symbol_by_node_id: dict[int, Symbol] = {}
 
     def _enclosing_function_chain(node: ast.AST) -> list[str]:
         """Return the names of enclosing FunctionDef ancestors, outermost-first.
@@ -3164,6 +3168,17 @@ def _extract_file_analysis(
             )
             symbols.append(symbol)
             symbol_by_name[node.name] = symbol
+            # WI-kutal: a class nested directly in a class body is that body's
+            # attribute, so ``self.<Nested>()`` reaches it.
+            class_symbol_by_node_id[id(node)] = symbol
+            _parent_class = class_symbol_by_node_id.get(
+                id(parent_map.get(id(node)))
+            )
+            if _parent_class is not None:
+                _put_class_body_def(
+                    methods_by_class_id.setdefault(_parent_class.id, {}),
+                    node.name, symbol,
+                )
 
             # WI-jusus (emission-parity F5): emit kind="field" Symbols for CLASS
             # ATTRIBUTES — class-body Assign / AnnAssign with Name targets (incl.
@@ -3369,11 +3384,10 @@ def _extract_file_analysis(
                     # nested / same-short-name classes where a bare-name
                     # symbol_by_name lookup would clobber.
                     method_to_enclosing_class_id[method_symbol.id] = symbol.id
-                    # WI-kutal: the class's own method table. A later ``def`` of
-                    # the same name in the SAME body replaces the earlier one,
-                    # as it does in the runtime class dict.
-                    methods_by_class_id.setdefault(symbol.id, {})[item.name] = (
-                        method_symbol
+                    # WI-kutal: the class's own body table.
+                    _put_class_body_def(
+                        methods_by_class_id.setdefault(symbol.id, {}),
+                        item.name, method_symbol,
                     )
                     # Track as processed to avoid duplicate extraction
                     processed_functions.add((item.lineno, item.name))
@@ -7219,6 +7233,25 @@ def _build_scope_stack(
         for fid in chain
     ]
     return ScopeStack(frames=frames)
+
+
+def _put_class_body_def(
+    table: dict[str, Symbol], name: str, symbol: Symbol,
+) -> None:
+    """Record ``symbol`` as the class body's binding of ``name`` (WI-kutal).
+
+    The runtime class dict is last-write-wins IN SOURCE ORDER: of two ``def``
+    / ``class`` statements of one name in one body, the later one is the
+    attribute. Methods and nested classes are registered at different points
+    of the extraction walk, so the later SOURCE position decides, not the
+    later write.
+    """
+    def _line(sym: Symbol) -> int:
+        return sym.span.start_line if sym.span is not None else 0
+
+    current = table.get(name)
+    if current is None or _line(symbol) >= _line(current):
+        table[name] = symbol
 
 
 def _self_receiver_class_id(
