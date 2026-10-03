@@ -2125,6 +2125,40 @@ def shipped_non_boundary_sink_zones() -> dict[str, dict[str, tuple[str, ...]]]:
     return zones
 
 
+def shipped_non_boundary_sink_sites() -> dict[str, frozenset[tuple[str, str]]]:
+    """``{language: {(module, function)}}`` that ``taint_sinks/`` ships as BUILT-IN rows.
+
+    INV-dudal. The coverage gate in ``verify_claims`` asks the I/O catalogue
+    whether a call was examined, and ADR-0060's rule is that no I/O row ever
+    names these calls -- so ``eval`` / ``document.write`` read as calls into a
+    module nobody had looked at, and withheld every clean verdict in the repo.
+    This is the second question the gate now asks: is this call EXACTLY one of
+    the shipped non-I/O sinks? Then it was examined -- the catalogue says what
+    it is -- and what stays unseen is what the evaluated code or written markup
+    goes on to do, which the gate reports as an opaque site.
+
+    ONLY ``provenance: builtin`` FILES OF THIS DIRECTORY. An operator's own
+    sinks (``taint_sinks.d/``, ``--taint-sinks``, a claims file) and any
+    community row never reach this answer: ADR-0061 lets a row the tool does
+    not vouch for ADD findings, never make a verdict cleaner, and an exemption
+    from the coverage gate is a step towards a cleaner verdict. The provenance
+    line, not the directory, decides the tier (ADR-0061).
+
+    Pairs, not modules, because the module is NOT what was examined:
+    ``document.getElementById`` is not a sink, and ``window.fetch`` is I/O.
+    """
+    sites: dict[str, set[tuple[str, str]]] = {}
+    for path in sorted(_TAINT_SINKS_DIR.glob("*.yaml")):
+        data = _safe_load_catalog_yaml(path, "sinks", dict)
+        if data.get("provenance") != "builtin":
+            continue
+        for lang, entries in (data.get("sinks") or {}).items():
+            for entry in entries or []:
+                for function in entry.get("functions") or []:
+                    sites.setdefault(lang, set()).add((entry["module"], function))
+    return {lang: frozenset(pairs) for lang, pairs in sites.items()}
+
+
 def _resolve_catalog_paths(paths: list[Path]) -> list[Path]:
     """Resolve project-local taint-catalog path arguments to a file list.
 

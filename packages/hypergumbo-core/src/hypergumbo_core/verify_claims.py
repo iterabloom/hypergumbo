@@ -95,7 +95,9 @@ one unconstanted kind (``deferred_crossing``). The four longest-standing:
   rather than the shipped catalogue. A shipped-catalogue sanitizer earns
   plain ``confirmed``.
 - ``CAVEAT_OPAQUE_BOUNDARY`` — named launch sites whose *launched program*
-  cannot be resolved. The callee is catalogued and resolved; what is opaque
+  cannot be resolved, and named calls to a shipped non-I/O sink (``eval``,
+  ``document.write``) whose evaluated code or written markup cannot be
+  followed (INV-dudal). The callee is catalogued and resolved; what is opaque
   is what it goes on to run. This qualifies the verdict only when opacity is the *sole*
   remaining blocker; beside an uncatalogued module the verdict stays
   ``inconclusive``, because the reader could not tell which gap produced
@@ -436,6 +438,15 @@ CAVEAT_USER_SUPPLIED_SANITIZER = "user_supplied_sanitizer"
 #: anything implying full coverage, because "I saw every call" is not "I saw
 #: every I/O" — INV-vavup measured bash redirection writes emitting no edge at
 #: all.
+#:
+#: SECOND KIND OF SITE, SAME CAVEAT (INV-dudal). A call that is EXACTLY a
+#: shipped non-I/O taint sink (ADR-0060: ``eval``, ``window.eval``,
+#: ``document.write``, ``document.writeln``) in a module no grant enumerates is
+#: an opaque site too: the call is examined, and what the evaluated code or the
+#: written markup goes on to do -- a ``fetch``, an ``<img src>`` request -- is
+#: in no edge. It used to be counted as a module "the I/O catalog could not
+#: classify" and withheld every clean verdict; it now qualifies one, under the
+#: same sole-blocker rule as a launch. The detail sentence names each kind.
 CAVEAT_OPAQUE_BOUNDARY = "opaque_boundary"
 
 #: Caveat kind: a catalogue entry the tool ships was REPLACED by one the
@@ -918,24 +929,68 @@ def _merge_caveat(
 
 
 def _opaque_boundary_caveat(sites: list[str]) -> dict[str, Any]:
-    """The one place the opaque-launch caveat is built, for both claim kinds.
+    """The one place the opaque-site caveat is built, for both claim kinds.
 
     Boundary claims and taint claims reach this from different code paths, and
     two spellings of one disclosure would drift the first time either was
     edited — the failure this module has paid for repeatedly (L53). A parity
     test asserts both paths produce the same ``kind`` and the same site list.
+
+    TWO KINDS OF SITE, ONE KIND OF CAVEAT (INV-dudal). A launch hands control to
+    a program; a shipped non-I/O sink (``eval``, ``document.write``) hands data
+    to the engine as code or markup. Both are examined calls whose continuation
+    is invisible, so they share the kind and the entry list; the sentence names
+    each for what it is, and a launch-only list reads exactly as it always did.
     """
-    shown = ", ".join(sites)
+    evaluated = _evaluation_site_names()
+    evaluations = [s for s in sites if s in evaluated]
+    launches = [s for s in sites if s not in evaluated]
+    parts: list[str] = []
+    if launches:
+        parts.append(
+            f"Control leaves this process at {len(launches)} call site(s) — "
+            f"{', '.join(launches)} — and hypergumbo cannot see inside a "
+            f"launched program, so what those programs do is not covered by "
+            f"this verdict."
+        )
+    if evaluations:
+        parts.append(
+            f"Data is evaluated as code or written into the page as markup at "
+            f"{len(evaluations)} call site(s) — {', '.join(evaluations)} — and "
+            f"hypergumbo cannot see what that code or markup goes on to do, so "
+            f"it is not covered by this verdict."
+        )
     return {
         "kind": CAVEAT_OPAQUE_BOUNDARY,
         "entries": list(sites),
-        "detail": (
-            f"The claim holds everywhere the analysis could see. Control "
-            f"leaves this process at {len(sites)} call site(s) — {shown} — "
-            f"and hypergumbo cannot see inside a launched program, so what "
-            f"those programs do is not covered by this verdict."
+        "detail": " ".join(
+            ["The claim holds everywhere the analysis could see.", *parts],
         ),
     }
+
+
+def _opaque_sites_reason(launches: list[str], evaluations: list[str]) -> str:
+    """The coverage reason's opening clause for named opaque sites (INV-dudal).
+
+    No trailing conclusion: the caller appends "so whether this I/O happens
+    there was never examined", and ``verify_claim`` appends its own. A
+    launch-only list renders exactly the sentence it always did.
+    """
+    parts: list[str] = []
+    if launches:
+        parts.append(
+            f"launches an external program at {len(launches)} call site(s) "
+            f"({_render_capped_names(launches)}) and cannot see what the "
+            f"launched program does"
+        )
+    if evaluations:
+        parts.append(
+            f"evaluates data as code or writes it into the page as markup at "
+            f"{len(evaluations)} call site(s) "
+            f"({_render_capped_names(evaluations)}) and cannot see what that "
+            f"code or markup goes on to do"
+        )
+    return "the analysis " + "; and it ".join(parts)
 
 
 #: How many call sites to spell out in the untyped-receiver caveat before the
@@ -1531,8 +1586,10 @@ class BoundaryCoverage:
     complete: bool
     reason: str = ""
     #: Qualified primitive names where control leaves the process
-    #: (``subprocess.run``, ``os.execv``). Populated only when opacity is what
-    #: made coverage incomplete; empty otherwise.
+    #: (``subprocess.run``, ``os.execv``), followed by the shipped non-I/O sink
+    #: calls whose evaluated code or written markup the analysis cannot follow
+    #: (``eval``, ``document.write`` -- INV-dudal). Populated only when opacity
+    #: is what made coverage incomplete; empty otherwise.
     opaque_sites: list[str] = field(default_factory=list)
     #: True when those launch sites are the SOLE remaining blocker — every
     #: other coverage check passed. This is the difference between a
@@ -3646,7 +3703,7 @@ def _uncatalogued_external_modules(
     # function's residual depends on. Adding a seventh home is how the drift
     # WI-ribuz files gets one entry longer. Imported inside the function because
     # ``taint`` is heavy and only this one path needs it.
-    unknown, _vouched = _adjudicate_external_modules(
+    unknown, _vouched, _evaluations = _adjudicate_external_modules(
         raw_edges, catalogs, first_party_packages,
     )
     return sorted(unknown)
@@ -3665,7 +3722,7 @@ def load_bearing_grants(
     load-bearing and is not listed; a call a row classified was examined by the
     row and is not listed either.
     """
-    _unknown, vouched = _adjudicate_external_modules(
+    _unknown, vouched, _evaluations = _adjudicate_external_modules(
         raw_edges, catalogs, first_party_packages,
     )
     return {lang: sorted(mods) for lang, mods in sorted(vouched.items()) if mods}
@@ -3675,20 +3732,29 @@ def _adjudicate_external_modules(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
     first_party_packages: frozenset[str] = frozenset(),
-) -> tuple[set[str], dict[str, set[str]]]:
-    """``(unknown, vouched)`` over one walk of the external call sites.
+) -> tuple[set[str], dict[str, set[str]], set[str]]:
+    """``(unknown, vouched, evaluations)`` over one walk of the external call sites.
 
     Extracted from :func:`_uncatalogued_external_modules` when WI-lavut needed
     the complementary set: two walks sharing ``classify_call`` but not the
     iteration is INV-motos's shape (two callers, one predicate, different
     populations), so the split point is inside the loop, not beside it.
+
+    ``evaluations`` (INV-dudal) is the third population of the same walk: call
+    sites that are EXACTLY a shipped non-I/O taint sink (``eval``,
+    ``document.write``) in a module no grant enumerates. They are examined --
+    the catalogue says what they are -- and opaque: what the evaluated code or
+    written markup goes on to do is not in the edge set. They come back as site
+    names for the opaque-site channel, never as modules.
     """
-    from .taint import _module_from_symbol_path
+    from .taint import _module_from_symbol_path, shipped_non_boundary_sink_sites
 
     analyzed = _analyzed_modules(raw_edges)
     examined_reads = _classified_scoped_reads(raw_edges, catalogs)
+    sink_sites = shipped_non_boundary_sink_sites()
     unknown: set[str] = set()
     vouched: dict[str, set[str]] = {}
+    evaluations: set[str] = set()
     for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
         module = _module_from_symbol_path(dst)
         if not module:
@@ -3808,6 +3874,34 @@ def _adjudicate_external_modules(
             for spellings in unenumerated:
                 unknown.add(spellings[-1])
             continue
+        # (3) A SHIPPED NON-I/O SINK IS AN EXAMINED CALL, AND AN OPAQUE ONE
+        # (INV-dudal). ``taint_sinks/`` (ADR-0060) rows ``eval``,
+        # ``window.eval``, ``document.write`` and ``document.writeln``, and by
+        # that ADR's own rule no I/O row ever names them -- so step (1) can
+        # never match them and each call made ``eval`` / ``window`` /
+        # ``document`` a module "the I/O catalog could not classify", which
+        # withheld every clean verdict in any repo that calls one.
+        #
+        # NOT AN EXAMINED NEGATIVE. The call crosses no boundary of its own,
+        # but it hands data to the engine as CODE or MARKUP, and what that does
+        # -- a ``fetch`` inside the evaluated string, an ``<img src>`` the
+        # parser requests -- is in no edge. That is a launch's shape: we know
+        # exactly what the call is and cannot see what it starts. So it is
+        # reported the way a launch is, as a NAMED OPAQUE SITE, which
+        # qualifies a clean verdict and never makes one plain.
+        #
+        # EXACT, PER CALL. The (language, module slot, name) must be a shipped
+        # BUILT-IN row; the module is not marked examined (``document.
+        # getElementById`` still withholds, INV-zubuh: row presence is not
+        # enumeration). AFTER the enumeration test, so a module a grant
+        # already covers keeps its grant's answer -- Python's ``builtins.eval``
+        # is enumerated (INV-bofab) and is unchanged by this step. BEFORE the
+        # first-party tests, because an exact row hit is stronger evidence than
+        # a stem collision with a file named ``document.js``.
+        evaluation = _non_boundary_sink_site(edge, dst, sink_sites)
+        if evaluation is not None:
+            evaluations.add(evaluation)
+            continue
         # AN UNRESOLVED FIRST-PARTY CALLEE IS NOT A CATALOG GAP. Its source was
         # read, so whatever I/O it performs was examined on its own edges — it
         # is not a leaf this analysis cannot see past. Counting it would send a
@@ -3847,7 +3941,55 @@ def _adjudicate_external_modules(
         if _is_first_party_package(module, first_party_packages):
             continue
         unknown.add(module)
-    return unknown, vouched
+    return unknown, vouched, evaluations
+
+
+def _non_boundary_sink_site(
+    edge: dict[str, Any],
+    dst: str,
+    sink_sites: Mapping[str, AbstractSet[tuple[str, str]]],
+) -> str | None:
+    """The site name if this CALL is exactly a shipped non-I/O sink, else None.
+
+    Read off ``dst_ref`` first and the id slots second, for the reason
+    :func:`_launch_site_name` gives. A CALL only: an attribute read of
+    ``document.write`` passes the function as a value and evaluates nothing at
+    that site, so it stays with the module question (and its slot spells the
+    name ``document.write`` anyway, which no row matches).
+    """
+    if edge.get("type") not in call_family_edge_types():
+        return None
+    rows = sink_sites.get(dst.split(":", 1)[0])
+    if not rows:
+        return None
+    ref = _edge_dst_ref(edge)
+    if ref is not None:
+        module, name = ref.module_path, ref.name
+    else:
+        module, name = symbol_path_slot(dst), symbol_name_slot(dst)
+    if (module, name) not in rows:
+        return None
+    return _join_site_name(module, name)
+
+
+def _evaluation_site_names() -> frozenset[str]:
+    """Every site name :func:`_non_boundary_sink_site` can return.
+
+    The opaque-site channel carries launches and evaluations in ONE list,
+    because both are total opacity and every consumer of that list (both claim
+    arms, the scoped taint blindness, the caveat merge) already handles it; a
+    second list would be a second plumbing to keep in step. The sentence is
+    the only thing that differs, and this is how the renderer tells them apart.
+    A bash ``eval`` launch spelled the same way is evaluated code too, so the
+    one collision the names allow describes it correctly.
+    """
+    from .taint import shipped_non_boundary_sink_sites
+
+    return frozenset(
+        _join_site_name(module, name)
+        for rows in shipped_non_boundary_sink_sites().values()
+        for module, name in rows
+    )
 
 
 def untyped_receiver_sites(
@@ -4714,15 +4856,22 @@ def _call_production_coverage(
     # launch is categorical — no amount of cataloguing makes the launched
     # program visible. Reporting the fixable blocker first would send a reader
     # on an errand that cannot succeed, then move the goalpost on them.
-    opaque = _opaque_launch_sites(raw_edges, catalogs)
-    unknown = _uncatalogued_external_modules(
+    launches = _opaque_launch_sites(raw_edges, catalogs)
+    # ONE WALK for both answers the gate needs from it (INV-dudal): the modules
+    # no grant examined, and the shipped non-I/O sink sites that are examined
+    # but opaque. ``_uncatalogued_external_modules`` is the same walk keeping
+    # only the first.
+    unknown_set, _vouched, evaluations = _adjudicate_external_modules(
         raw_edges, catalogs, first_party_packages,
     )
+    unknown = sorted(unknown_set)
+    # Launches first, then evaluations: one channel, because both are total
+    # opacity and every consumer of ``opaque_sites`` already handles it.
+    opaque = launches + sorted(evaluations)
     if opaque:
-        # NOT ranked: these are launch SITES (commands and paths), not
+        # NOT ranked: these are SITES (commands, paths, ``eval``), not
         # modules, so `is_stdlib_module` has nothing to say about them and
         # asking would invent an order rather than reveal one.
-        shown = _render_capped_names(opaque)
         # DELIBERATELY NOT the "could not classify" wording used below: the
         # catalogue classified these exactly right, and blaming a missing row
         # would send the reader to add one that already exists. State the
@@ -4750,16 +4899,15 @@ def _call_production_coverage(
                 f"; and it makes calls into {len(unknown)} module(s) that the "
                 f"I/O catalog could not classify "
                 f"({_render_capped_names(_rank_modules_for_disclosure(unknown, catalogs))})"
-                f", which is what withholds the qualified verdict the launches "
+                f", which is what withholds the qualified verdict the "
+                f"{'launches' if not evaluations else 'sites above'} "
                 f"alone would have earned"
             )
         return BoundaryCoverage(
             complete=False,
             reason=(
-                f"the analysis launches an external program at "
-                f"{len(opaque)} call site(s) ({shown}) and cannot see "
-                f"what the launched program does, so whether this I/O happens "
-                f"there was never examined{withheld_by}"
+                f"{_opaque_sites_reason(launches, sorted(evaluations))}, so "
+                f"whether this I/O happens there was never examined{withheld_by}"
             ),
             opaque_sites=opaque,
             # ``not unknown`` is the whole qualification test: every check
@@ -6188,6 +6336,55 @@ def _require_coverage_to_confirm(
     )
 
 
+def _withhold_for_tainted_evaluation(
+    label: str,
+    findings: Sequence[Any],
+    reason: str,
+    opaque: list[str],
+) -> tuple[str, list[str] | None]:
+    """A taint claim may not be QUALIFIED past an evaluation site its own data reaches.
+
+    INV-dudal. An opaque evaluation site (``eval``, ``document.write``) may
+    qualify a clean verdict because, in general, what the evaluated code or the
+    written markup does is merely unseen. That stops being "merely" when the
+    analysis has FOUND an unsanitized flow of this claim's label INTO the site:
+    ``location.hash -> document.write`` under "untrusted input is never
+    evaluated as code" is a DOM-XSS shape, and the markup's ``<script>`` is the
+    very thing the claim forbids -- the flow is just filed under the
+    ``dom_injection`` zone, not the claim's. Qualifying that verdict would put a
+    caveat where a refusal belongs, so the qualification is withdrawn and the
+    verdict stays ``inconclusive``, naming the sites.
+
+    EVERY unsanitized flow of the label counts, including one a claim would
+    exclude as non-production (WI-bifob): this only ever withholds, and a
+    narrower population would be a reason to qualify that nobody checked.
+
+    Matched by SITE NAME against the opaque list's evaluation entries, so a
+    second ``document.write`` the flow does not reach is withheld too -- the
+    withholding direction. Launch sites are deliberately not consulted: their
+    qualification is ADR-0016 §4's, unchanged here.
+
+    Returns the ``(reason, opaque)`` pair for :func:`_require_coverage_to_confirm`;
+    ``opaque`` is ``None`` when the qualification is withdrawn.
+    """
+    evaluations = set(opaque) & _evaluation_site_names()
+    if not evaluations:
+        return reason, opaque
+    reached = sorted({
+        _join_site_name(f.sink_module, f.sink_primitive)
+        for f in findings
+        if f.taint_label == label and not f.sanitized
+    } & evaluations)
+    if not reached:
+        return reason, opaque
+    return (
+        f"{reason}; and {label} data reaches {len(reached)} of those "
+        f"site(s) ({_render_capped_names(reached)}), so what the analysis "
+        f"cannot see there is this claim's own data being evaluated",
+        None,
+    )
+
+
 @dataclass(frozen=True)
 class ScopedBlindness:
     """The taint blindness verdict for one source label, scoped (WI-rusil).
@@ -6293,6 +6490,11 @@ def verify_claims(
         # _require_coverage_to_confirm. Applied here rather than at each
         # branch so a constraint kind added later cannot ship unable to
         # distinguish "looked and found nothing" from "did not look".
+        if claim.constraint_taint_flow is not None and reason and opaque:
+            reason, opaque = _withhold_for_tainted_evaluation(
+                claim.constraint_taint_flow.source_taint, taint_findings or [],
+                reason, opaque,
+            )
         verdict = _require_coverage_to_confirm(verdict, reason, opaque)
         tf = claim.constraint_taint_flow
         if tf is not None and sink_zone_gaps:

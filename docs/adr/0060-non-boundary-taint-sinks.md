@@ -60,6 +60,24 @@ flow of the claim can be in:
   `unreached_sink_shapes`), naming each shape.
 - **A found flow is reported regardless** (`violated`).
 
+**6. A call to one of these sinks is examined, and opaque.** The
+uncatalogued-module coverage gate of `verify-claims` asks the I/O catalogue
+whether a call was examined, and by §1 no I/O row names these calls. So:
+
+- **A call whose language, module and name are exactly a built-in row here is
+  not reported as never examined.** The catalogue says what it is.
+- **It is reported as an opaque site instead**, under the `opaque_boundary`
+  caveat a subprocess launch uses: the call crosses no boundary of its own,
+  but what the evaluated code or the written markup goes on to do (a `fetch`,
+  an `<img src>` request) is in no edge. As the sole blocker it qualifies a
+  clean verdict (`confirmed_with_caveats`); it never makes one plain.
+- **Only the exact call is covered.** The module is not marked examined
+  (`document.getElementById` still withholds), and rows from any tier other
+  than built-in are not read for this.
+- **A module a completeness grant covers keeps the grant's answer.** Python's
+  `builtins` is enumerated, so `eval`/`exec`/`compile` there are examined
+  negatives with no opaque site.
+
 ## Consequences
 
 - **What ships:**
