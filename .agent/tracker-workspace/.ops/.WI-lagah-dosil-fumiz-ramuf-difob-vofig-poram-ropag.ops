@@ -1,0 +1,21 @@
+- op: create  # 3f61
+  at: '2026-10-03T18:43:55Z'  # 3f61
+  by: agent  # 3f61
+  actor: jgstern_agent  # 3f61
+  clock: 1  # 3f61
+  nonce: 3f61  # 3f61
+  data:  # 3f61
+    kind: work_item  # 3f61
+    title: "Opaque-site rules differ by kind after INV-dudal: Python eval/exec/compile stay silent examined negatives, and a launch reached by the claim's own tainted data still qualifies"  # 3f61
+    status: todo_hard  # 3f61
+    priority: 3  # 3f61
+    parent:  # 3f61
+    tags:  # 3f61
+    - verify_claims  # 3f61
+    - taint  # 3f61
+    isbefore: []  # 3f61
+    duplicate_of: []  # 3f61
+    not_duplicate_of: []  # 3f61
+    pr_ref:  # 3f61
+    description: "FOUND 2026-10-03 while fixing INV-dudal-subat-monat-potod-botul-fuzot-jibin-pihus (branch jgstern-agent/fix/dudal-withholding). Two asymmetries the INV-dudal change leaves standing on purpose, because closing either one TIGHTENS verdicts outside that item's measured scope. Owner decision.\n\n1. PYTHON eval/exec/compile ARE SILENT EXAMINED NEGATIVES; JS eval IS NOW A NAMED OPAQUE SITE. INV-bofab's dated `builtins` completeness grant (python.yaml) says \"exec/eval/compile evaluate in-process and cross no boundary of their own\", so the gate vouches for them before the INV-dudal step runs (that step runs only where no grant covers the module, by design, so the grant keeps its answer). Result at the branch tip: Python `exec(code)` under a network or fs claim reads plain `confirmed`; JavaScript `eval(code)` reads `confirmed_with_caveats` naming `eval`. The evaluated code is equally invisible in both. Measured in the shipped tests: lang-mainstream test_injection_zone_coverage _PY_CLEAN (eval('1 + 1')) -> code_execution claim `confirmed`, no opaque caveat. Candidate: ask the opaque-evaluation question BEFORE the enumeration test for rows of taint_sinks/ (moves Python verdicts confirmed -> confirmed_with_caveats wherever builtins eval/exec/compile is called; hypergumbo's own self-claims would need checking first).\n\n2. A LAUNCH REACHED BY THE CLAIM'S OWN TAINTED DATA STILL QUALIFIES; AN EVALUATION SITE NO LONGER DOES. INV-dudal added _withhold_for_tainted_evaluation: a taint claim whose own label reaches eval/document.write by an unsanitized flow stays inconclusive instead of confirmed_with_caveats. Launch sites were deliberately not given the same rule (ADR-0016 §4's qualification is owner-authorized and unchanged): untrusted_input -> subprocess.run([...sh -c s]) under an untrusted_input -> host_fs claim still reads confirmed_with_caveats opaque_boundary, although the shell can write the file with the claim's own data. NOT MEASURED: how many corpus verdicts are in that shape."  # 3f61
+    fields: {}  # 3f61
