@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.producer_coherence import (
     find_edge_type_producer_violations,
     find_emitted_edge_types,
@@ -318,11 +320,14 @@ def test_dict_subscript_with_unresolvable_value_is_silently_skipped(
     assert result.advisory_dynamic_emits == ()
 
 
-def test_tuple_unpack_with_short_value_tuple_is_silently_skipped(
+def test_tuple_unpack_with_short_value_tuple_contributes_nothing(
     tmp_path: Path,
 ):
-    """A dict value tuple shorter than the unpack position cannot be
-    resolved at that index — skip rather than guess."""
+    """A dict value tuple shorter than the unpack position cannot yield a
+    value there (unpacking it raises), so it contributes nothing -- and the
+    well-formed entry's value is still reported. Before ``value_flow`` the
+    short entry poisoned the whole map and the site was silently skipped,
+    which hid ``otp_cast``."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         '_MAP = {"call": ("only_one",), "cast": ("a", "otp_cast")}\n'
@@ -337,7 +342,9 @@ def test_tuple_unpack_with_short_value_tuple_is_silently_skipped(
         keyword_arg="edge_type",
         registry_names=frozenset({"calls"}),
     )
-    assert result.strict_violations == ()
+    assert len(result.strict_violations) == 1
+    assert "'otp_cast'" in result.strict_violations[0]
+    assert "only_one" not in result.strict_violations[0]
     assert result.advisory_dynamic_emits == ()
 
 
@@ -545,10 +552,13 @@ def test_unresolvable_subscript_at_kwarg_site_is_silently_skipped(
     assert result.advisory_dynamic_emits == ()
 
 
-def test_fstring_segment_over_dict_subscript_stays_unexpanded(tmp_path: Path):
-    """Documented boundary: f-string expansion resolves its segments
-    without the module tree, so a segment bound from a dict subscript
-    stays unexpandable (conservative — no candidate is invented)."""
+def test_fstring_segment_over_dict_subscript_expands_through_value_flow(
+    tmp_path: Path,
+):
+    """Formerly a documented boundary (the f-string expander resolved its
+    segments without the module tree, so ``part = _MAP[kind]`` stayed
+    unexpandable). An f-string the named shapes cannot expand now falls back
+    to ``value_flow`` in ``expand`` mode, which resolves the dict."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         '_MAP = {"a": "suffix_one"}\n'
@@ -562,7 +572,7 @@ def test_fstring_segment_over_dict_subscript_stays_unexpanded(tmp_path: Path):
         constructor_names=frozenset({"Edge", "Edge.create"}),
         keyword_arg="edge_type",
     )
-    assert "ast_suffix_one" not in emitted
+    assert "ast_suffix_one" in emitted
 
 
 def test_dict_subscript_values_reach_the_enumerator(tmp_path: Path):
@@ -937,10 +947,27 @@ _SYM = {
 }
 
 
-def test_helper_positional_literal_is_invisible_by_default(tmp_path: Path):
-    """The proto shape: the DEFAULT (non-transitive) linter is blind to a
-    literal routed positionally through a helper. This pins the false
-    RESOLVED that WI-zipis closes."""
+def test_public_helper_positional_literal_is_invisible_by_default(tmp_path: Path):
+    """The proto shape through a PUBLIC helper: the DEFAULT (non-transitive)
+    linter is blind to it, because a public module function's callers may
+    live in other modules, so ``value_flow`` will not enumerate its
+    parameter. WI-zipis's descent is what closes this one."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def make(name, kind):\n'
+        '    return Symbol(id="i", name=name, kind=kind)\n'
+        'make("Svc", "service")\n',
+    )
+    result = find_producer_coherence_violations(tmp_path, **_SYM)
+    assert result.strict_violations == ()
+    deep = find_producer_coherence_violations(tmp_path, descend_helpers=True, **_SYM)
+    assert len(deep.strict_violations) == 1
+
+
+def test_private_helper_positional_literal_is_visible_by_default(tmp_path: Path):
+    """The same shape through a module-PRIVATE helper is visible without
+    descent: ``value_flow`` resolves ``kind`` from every call of ``_make``
+    (WI-nakur). It is reported at the helper's own site."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
         'def _make(name, kind):\n'
@@ -948,7 +975,9 @@ def test_helper_positional_literal_is_invisible_by_default(tmp_path: Path):
         '_make("Svc", "service")\n',
     )
     result = find_producer_coherence_violations(tmp_path, **_SYM)
-    assert result.strict_violations == ()
+    assert len(result.strict_violations) == 1
+    assert "demo.py:2" in result.strict_violations[0]
+    assert "'service'" in result.strict_violations[0]
 
 
 def test_helper_positional_literal_not_in_registry_is_strict(tmp_path: Path):
@@ -1188,9 +1217,9 @@ def test_find_emitted_literal_values_descend_covers_helper(tmp_path: Path):
     literal is enumerated (feeds the ratchet's live set)."""
     _write(
         tmp_path / "packages" / "demo" / "src" / "demo.py",
-        'def _make(name, kind):\n'
+        'def make(name, kind):\n'
         '    return Symbol(id="i", name=name, kind=kind)\n'
-        '_make("Svc", "wonkytype")\n',
+        'make("Svc", "wonkytype")\n',
     )
     ctors = frozenset({"Symbol", "Symbol.create"})
     shallow = find_emitted_literal_values(
@@ -2048,3 +2077,206 @@ class TestEveryProducerNamesItsPathway:
 
         root = self._tree(tmp_path, "def (:\n", relative="packages/p/src/broken.py")
         assert edge_sites_without_evidence_type(root) == ()
+
+
+# --- WI-nakur / INV-dahuh / WI-pubin: values that flow through data ---
+#
+# Every shape below shipped an unregistered value past every gate built on
+# ``_classify_value``, because the value reached the constructor through a
+# loop over tuples, a helper's appended return, a dict of tuples, or a
+# record-class field. ``value_flow`` follows them back; these tests pin that
+# the GATE (not just the resolver) now reports them.
+
+
+_FLOW_SHAPES: dict[str, str] = {
+    # INV-dahuh: scip/edges.py's flag -> edge-type list of tuples.
+    "loop_over_list_of_tuples": (
+        '_MAP: "list[tuple[str, str]]" = [("f", "calls"), ("g", "has_type")]\n'
+        "def emit(rels):\n"
+        "    for rel in rels:\n"
+        "        for flag, edge_type in _MAP:\n"
+        '            Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
+        'evidence_type="ast_call_direct", origin="t", origin_run_id="t")\n'
+    ),
+    # WI-pubin: lua_ffi.py's appended tuples, unpacked by the caller's loop.
+    "tuples_appended_by_a_helper": (
+        "def _scan(p):\n"
+        "    out = []\n"
+        '    out.append((p, "has_type"))\n'
+        "    return out\n"
+        "def emit(paths):\n"
+        "    for p in paths:\n"
+        "        for name, edge_type in _scan(p):\n"
+        '            Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
+        'evidence_type="ast_call_direct", origin="t", origin_run_id="t")\n'
+    ),
+    # WI-pubin: napi.py's dict of tuples, stored then unpacked.
+    "dict_of_tuples": (
+        "def emit(names):\n"
+        "    m = {}\n"
+        "    for n in names:\n"
+        '        m[n] = (n, "has_type")\n'
+        "    for n in names:\n"
+        "        sym, edge_type = m[n]\n"
+        '        Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
+        'evidence_type="ast_call_direct", origin="t", origin_run_id="t")\n'
+    ),
+    # WI-nakur: dart.py's label carried on a dataclass field.
+    "record_field": (
+        "@dataclass(frozen=True)\n"
+        "class _Ref:\n    edge_type: str\n"
+        "def _refs(n):\n"
+        '    return [_Ref("has_type")]\n'
+        "def emit(n):\n"
+        "    for ref in _refs(n):\n"
+        '        Edge.create(src="a", dst="b", edge_type=ref.edge_type, line=1, '
+        'evidence_type="ast_call_direct", origin="t", origin_run_id="t")\n'
+    ),
+    # scip/calls.py: the label is a module-local helper's return value.
+    "helper_return": (
+        "def _edge_type_for(k):\n"
+        '    return "calls" if k else "has_type"\n'
+        "def emit(k):\n"
+        '    Edge.create(src="a", dst="b", edge_type=_edge_type_for(k), line=1, '
+        'evidence_type="ast_call_direct", origin="t", origin_run_id="t")\n'
+    ),
+}
+
+
+class TestValuesCarriedThroughDataReachTheGate:
+    """Each shape: the unregistered ``has_type`` is a strict violation, it is
+    in the enumerator, and the ratchet's ``unregistered_emitted_values``
+    names it. Before ``value_flow`` all three were silent."""
+
+    @staticmethod
+    def _tree(tmp_path: Path, body: str) -> Path:
+        _write(tmp_path / "packages" / "demo" / "src" / "demo.py", body)
+        return tmp_path
+
+    @pytest.mark.parametrize("shape", sorted(_FLOW_SHAPES))
+    def test_strict_violation(self, tmp_path: Path, shape: str) -> None:
+        root = self._tree(tmp_path, _FLOW_SHAPES[shape])
+        result = find_producer_coherence_violations(
+            root,
+            constructor_names=frozenset({"Edge", "Edge.create"}),
+            keyword_arg="edge_type",
+            registry_names=frozenset({"calls"}),
+        )
+        assert any("'has_type'" in v for v in result.strict_violations), result
+
+    @pytest.mark.parametrize("shape", sorted(_FLOW_SHAPES))
+    def test_enumerated_and_unregistered(self, tmp_path: Path, shape: str) -> None:
+        root = self._tree(tmp_path, _FLOW_SHAPES[shape])
+        assert "has_type" in find_emitted_edge_types(root)
+        unregistered = unregistered_emitted_values(
+            root,
+            constructor_names=frozenset({"Edge", "Edge.create"}),
+            keyword_arg="edge_type",
+            registry_names=frozenset({"calls"}),
+        )
+        assert sorted(unregistered) == ["has_type"]
+
+    def test_a_registered_value_through_the_same_shape_stays_clean(
+        self, tmp_path: Path,
+    ) -> None:
+        """The control: the widening reports values, it does not invent them."""
+        root = self._tree(
+            tmp_path, _FLOW_SHAPES["loop_over_list_of_tuples"].replace("has_type", "calls"),
+        )
+        result = find_producer_coherence_violations(
+            root,
+            constructor_names=frozenset({"Edge", "Edge.create"}),
+            keyword_arg="edge_type",
+            registry_names=frozenset({"calls"}),
+        )
+        assert result.strict_violations == ()
+
+    def test_an_escaping_collection_stays_silent(self, tmp_path: Path) -> None:
+        """A list handed to an unknown function may gain values this walk
+        cannot see: the site is NOT enumerated (silent by default), rather
+        than reported with a set that might be incomplete."""
+        root = self._tree(
+            tmp_path,
+            "def emit(names):\n"
+            '    out = [("n", "has_type")]\n'
+            "    fill(out)\n"
+            "    for n, edge_type in out:\n"
+            '        Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
+            'evidence_type="ast_call_direct", origin="t", origin_run_id="t")\n',
+        )
+        assert find_emitted_edge_types(root) == {}
+
+    def test_an_fstring_over_a_parameter_expands_through_its_callers(
+        self, tmp_path: Path,
+    ) -> None:
+        """js_ts.py's ``evidence_type=f"ast_{edge_type}"`` inside a helper
+        whose ``edge_type`` arrives through a splatted tuple."""
+        root = self._tree(
+            tmp_path,
+            "def _pick(c):\n"
+            "    if c:\n"
+            '        return c, "extends"\n'
+            '    return c, "mixes"\n'
+            "def _edge(s, t, edge_type):\n"
+            '    return Edge.create(src="a", dst="b", edge_type="calls", line=1, '
+            'evidence_type=f"ast_{edge_type}", origin="t", origin_run_id="t")\n'
+            "def emit(s, c):\n"
+            "    picked = _pick(c)\n"
+            "    return _edge(s, *picked)\n",
+        )
+        assert sorted(find_emitted_evidence_types(root)) == ["ast_extends", "ast_mixes"]
+        advisory_mode = find_producer_coherence_violations(
+            root,
+            constructor_names=frozenset({"Edge", "Edge.create"}),
+            keyword_arg="evidence_type",
+            registry_names=frozenset({"ast_extends"}),
+            fstring_mode="advisory",
+        )
+        assert advisory_mode.strict_violations == ()
+
+
+class TestScanFileEmits:
+    """The per-file core the depends_on producer-set gate shares (WI-nakur)."""
+
+    def test_values_and_unresolved_sites_are_both_reported(self, tmp_path: Path) -> None:
+        from hypergumbo_core.producer_coherence import scan_file_emits
+
+        path = tmp_path / "m.py"
+        _write(
+            path,
+            "def emit(edge):\n"
+            '    Edge.create(src="a", dst="b", edge_type="calls", line=1)\n'
+            '    Edge.create(src="a", dst="b", edge_type=edge.edge_type, line=2)\n'
+            "    def _h(t):\n"
+            '        Edge.create(src="a", dst="b", edge_type=t, line=3)\n'
+            '    _h("imports")\n'
+            '    _h(other())\n',
+        )
+        emits = scan_file_emits(
+            path,
+            constructor_names=frozenset({"Edge", "Edge.create"}),
+            keyword_arg="edge_type",
+            descend_helpers=True,
+        )
+        assert emits.values == {"calls": (2,), "imports": (6,)}
+        assert sorted(source for _line, source in emits.unresolved) == [
+            "edge.edge_type", "other()", "t",
+        ]
+
+    def test_without_helper_descent_only_direct_sites_count(self, tmp_path: Path) -> None:
+        from hypergumbo_core.producer_coherence import scan_file_emits
+
+        path = tmp_path / "m.py"
+        _write(
+            path,
+            "def _h(t):\n"
+            '    Edge.create(src="a", dst="b", edge_type=t, line=1)\n'
+            '_h(x)\n',
+        )
+        emits = scan_file_emits(
+            path,
+            constructor_names=frozenset({"Edge", "Edge.create"}),
+            keyword_arg="edge_type",
+        )
+        assert emits.values == {}
+        assert [source for _line, source in emits.unresolved] == ["t"]

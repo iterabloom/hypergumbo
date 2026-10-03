@@ -776,10 +776,15 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     # "function"``, never ``"method"``, so the analyzer emits the
     # callback -> implementation ``dispatches_to`` itself. Declared because the
     # clause names who produces the edges indexed here, not who gains from them.
+    #
+    # ``kotlin`` emits both labels itself (``_extract_inheritance_edges``,
+    # from a function-local ``edge_type`` ternary). It was missing because the
+    # producer-set gate counted only a LITERAL ``edge_type=`` keyword; reading
+    # it with the registry gate's classifier found it (WI-nakur).
     depends_on=[
         [
             "inheritance-linker", "blade", "dart", "elixir", "haskell", "java",
-            "javascript", "python", "ruby", "rust", "rust_analyzer",
+            "javascript", "kotlin", "python", "ruby", "rust", "rust_analyzer",
             "scip_python", "twig", "vhdl",
         ],
     ],
