@@ -126,7 +126,17 @@ net_send:
 db_read:
   - module: Ecto.Repo
     functions: [all, one, one!, get, get!, get_by, get_by!, "exists?", aggregate, stream, preload]
-    notes: "Ecto.Repo read operations"
+    notes: >-
+      Ecto.Repo read operations. stream is LAZY: "Returns a lazy enumerable
+      that emits all entries from the data store matching the given query"
+      (elixir-ecto/ecto lib/ecto/repo.ex, master 94d69279), and the read runs
+      when the enumerable is reduced. A deferred crossing by ADR-0049 ruling
+      1 that STAYS db_read (WI-tunog): the enumeration happens in Enum /
+      Stream functions, which no row can carry, so nothing represents the
+      read after a move. Measured on a fixture, the row is also UNREACHED
+      in the idiomatic form -- `Repo.stream(q)` on an application module
+      that does `use Ecto.Repo` arrives as App.Repo.stream (external
+      potential), and so do all/one/get: WI-gabuv.
   # Ecto.Query REMOVED (INV-nular, WI-hikut). The nine combinators built a
   # query struct and ran nothing; the row's own note said so -- "part of
   # the read path" -- and being on the read path is not performing the
