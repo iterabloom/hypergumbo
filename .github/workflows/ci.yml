@@ -647,7 +647,13 @@ jobs:
             echo "=== Validating committed manifest ==="
             # Show header only (not the test list, which is long and confusing when truncated)
             grep "^#" "$MANIFEST" | head -10 || true
-            TEST_COUNT=$(grep -c "^packages/" "$MANIFEST" || echo 0)
+            # WI-kabaf: count the SELECTED_TESTS SECTION -- the same section the
+            # "Run tests with coverage" step reads -- never a path prefix. The
+            # old `grep -c "^packages/"` read 0 for root-level tests/... entries,
+            # also counted CHANGED_SOURCE_FILES lines, and `|| echo 0` after a
+            # grep -c that matched nothing printed "0" twice. `|| true` keeps
+            # an empty selection (a legitimate manifest) from failing the step.
+            TEST_COUNT=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -c . || true)
             echo "# (manifest lists $TEST_COUNT test files)"
 
             # If core infrastructure changed, manifest should indicate full suite
@@ -703,8 +709,7 @@ jobs:
               echo "   Then: git add .ci/affected-tests.txt && git commit --amend"
               echo "use_manifest=false" >> "$GITHUB_OUTPUT"
             else
-              TOTAL_TESTS=$(grep -c "^packages/" "$MANIFEST" 2>/dev/null || echo 0)
-              echo "✅ Manifest validated ($TOTAL_TESTS test files)"
+              echo "✅ Manifest validated ($TEST_COUNT test files)"
               echo "use_manifest=true" >> "$GITHUB_OUTPUT"
             fi
           else
@@ -1046,7 +1051,9 @@ jobs:
 
             echo "=== Validating committed manifest (retry) ==="
             grep "^#" "$MANIFEST" | head -10 || true
-            TEST_COUNT=$(grep -c "^packages/" "$MANIFEST" || echo 0)
+            # WI-kabaf: count the SELECTED_TESTS section, not a path prefix
+            # (see the primary job's validate step).
+            TEST_COUNT=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -c . || true)
             echo "# (manifest lists $TEST_COUNT test files)"
 
             if grep -q "^# Mode: full-suite" "$MANIFEST"; then
