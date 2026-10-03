@@ -384,12 +384,15 @@ export async function fetchUser(id: string) {
                 segs = c.split(":")
                 assert segs[1] == "axios", c
 
-    def test_unresolved_skips_unimported_names(self, tmp_path: Path) -> None:
-        """Calls to unknown bare names without an import do not produce noise.
+    def test_unresolved_unimported_name_gets_no_module(self, tmp_path: Path) -> None:
+        """A call to a bare name nothing binds is recorded (WI-fahod), but
+        never with a module it did not import.
 
-        Only names that appear in the file's named-import map become
-        unresolved edges. This bounds the noise to legitimate import sites
-        and keeps the catalog match precise.
+        This test used to assert the OPPOSITE -- that such a call emitted no
+        edge, to keep the catalogue match precise. Silence was the defect
+        WI-fahod filed: the ADR-0017 walk read the missing ``callees_at``
+        entry as an escape site. The call now lands on the ``external``
+        placeholder, whose module slot names nothing.
         """
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
@@ -402,10 +405,12 @@ function main() {
         result = analyze_javascript(tmp_path)
 
         unresolved = [
-            e for e in result.edges
-            if e.edge_type == "calls" and ":unresolved" in e.dst
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and "somethingNobodyImported" in e.dst
         ]
-        assert all("somethingNobodyImported" not in e.dst for e in unresolved)
+        assert unresolved == [
+            "javascript:external:0-0:somethingNobodyImported:unresolved",
+        ]
 
     def test_unresolved_call_to_global_object_methods(self, tmp_path: Path) -> None:
         """`console.log()` + `localStorage.setItem()` with no imports emit edges.
@@ -7828,9 +7833,11 @@ class TestCrossPackageGuardAllPaths:
             if e.evidence_type == "ast_call_direct"
             and "formatDate" in e.dst
         ]
-        assert len(call_edges) == 0, (
-            f"Direct call fallback should not cross package boundary: {call_edges}"
-        )
+        # The refused cross-package bind is still a CALL (WI-fahod): it lands
+        # on the ``external`` placeholder, never on client/utils.js.
+        assert [e.dst for e in call_edges] == [
+            "javascript:external:0-0:formatDate:unresolved",
+        ], f"Direct call fallback should not cross package boundary: {call_edges}"
 
 
 class TestNormalizeJstsSignature:
