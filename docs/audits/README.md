@@ -83,6 +83,7 @@ write an ADR vs an audit-findings document."
 | [0019](0019-backend-agreement-rust-aardvark-dns.md) | Backend agreement — `rust` (tree-sitter) vs `rust_analyzer` on the recorded aardvark-dns fixture | backend agreement (sibling format, `kind: backend_agreement`) | Measurement (no verdict rows) |
 | [0020](0020-recovery-linker-supersession-precision.md) | Which recovery passes may demote the stub they consumed (ADR-0057 §14.1) | linker supersession grant (sibling format, `kind: linker_supersession_precision`) | GRANTED / REFUSED, per pass |
 | [0021](0021-logging-family.md) | The `logging` family — is a standard-stream write `logging` or `ipc_send`? | io-boundary membership (sibling format, `kind: io_boundary_membership`) | `logging` / `ipc_send` CANONICAL, redefined by medium; 7 rows moved |
+| [0022](0022-inv-nular-remainder-sweep-tranche-3.md) | INV-nular remainder sweep, tranche 3 — catalogue rows checked against source | io-boundary row candidates (sibling format, `kind: io_boundary_row_candidates`) | Candidate list: tranche 3 6 ACCEPT / 3 HOLD; prior backlog 13 ACCEPT / 7 HOLD; no rows moved |
 
 ## Sibling formats
 
@@ -109,6 +110,13 @@ Siblings:
   is a list of row moves, not a per-value lifecycle. The block records each
   value's verdict and its medium definition, the moves, any kept asymmetry,
   and the adjacent defects filed rather than moved. First instance: `0021`.
+
+- **`kind: io_boundary_row_candidates`** — a CANDIDATE LIST from a source
+  check of catalogue rows (WI-vafad's sweep): each candidate carries its rows,
+  the proposed boundary, worker agreement and a verifier verdict (ACCEPT /
+  HOLD), with the rejected flags tabulated. Nothing moves in the document;
+  each ACCEPT becomes its own fix item and pays ADR-0049 ruling 3 there.
+  First instance: `0022`.
 
 ## File format
 
