@@ -1335,11 +1335,12 @@ class IoBoundaryCatalog:
 
         NOR IS IT A SUFFIX, which is the other half of the safety argument.
         :func:`_module_matches` — the boundary TAGGER's rule — matches trailing
-        components, so ``unix`` finds ``golang.org/x/sys/unix``. The two stay
-        separate on purpose: the tagger is permissive because a missed tag
-        loses a finding, while this gate is strict because a wrong permit
-        manufactures a false all-clear. Unifying them toward the tagger would
-        make a cosmetic module-string respell a security-relevant edit.
+        components, so a bare ``unix`` slot finds the ``golang.org/x/sys/unix``
+        row. The two stay separate on purpose: the tagger is permissive
+        because a missed tag loses a finding, while this gate is strict because
+        a wrong permit manufactures a false all-clear. Unifying them toward the
+        tagger would make a cosmetic module-string respell a security-relevant
+        edit.
 
         An empty ``module_completeness`` therefore means "nothing has
         been enumerated", and every module blocks. That is the correct starting
@@ -4801,7 +4802,9 @@ def _extra_component_names_a_type(parent_raw: str, extra_raw: str) -> bool:
     return extra_raw[:1].isupper() != parent_raw[:1].isupper()
 
 
-def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
+def _module_matches(
+    catalog_module: str, edge_module_hint: str, *, hint_is_path: bool = False,
+) -> bool:
     """Check if a catalog entry's module matches the edge's module hint.
 
     Matching is COMPONENT-AWARE, not substring (WI-zazul):
@@ -4817,6 +4820,10 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
       (unqualified reference — a component SUFFIX, not a prefix)
     - Go: catalog has ``net/http``, edge has ``http`` → match (same reason:
       source spells it ``http.Get`` after importing ``net/http``)
+    - Python: catalog has ``csv``, edge has ``mycsvlib.csv`` → no match
+      (the HINT carries the extra leading components: a different owner)
+    - TS: catalog has ``http``, edge has ``@/services/http`` → no match
+      (koel's own tsconfig path alias, not node's ``http``)
     - Swift: catalog has ``Channel``, edge has ``channel`` → match
     - Swift: catalog has ``ChannelHandlerContext``, edge has ``context`` → match
     - Swift: catalog has ``NonBlockingFileIO``, edge has ``fileIO`` → match
@@ -4855,6 +4862,26 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     the HINT. The reverse direction is precisely the bug: ``chaos`` ends with
     ``os``. The suffix must also start on a capital, so it names a whole word
     rather than landing mid-token.
+
+    THE SUFFIX ARM HAS ONE DIRECTION FOR A MODULE SLOT (WI-mujod). Dropped
+    qualification means the HINT is the unqualified tail of the ROW's
+    qualified module, so the row is the longer side. The other direction --
+    the hint carries LEADING components the row does not -- is a
+    MORE-qualified owner path, and under ADR-0051's axiom (the slot names an
+    owner path) that is a different owner: ``mycsvlib.csv.writer`` was stdlib
+    ``csv.writer`` (fs_write) and koel's ``@/services/http`` was node's
+    ``http`` (41 net_send edges on koel). Measured when the item was filed,
+    over 44 surveys, that direction decided 89 tagged edges in 6 repos, and the
+    only TRUE ones were go rows spelled UNDER-qualified (``filepath``,
+    ``grpc``, ``unix``) for an analyzer that stamps the full import path;
+    those rows are now keyed by their import path, so arm 1 matches them.
+
+    ``hint_is_path=True`` RESTORES THE DIRECTION, for exactly one caller:
+    taint's resolved-edge gate, which compares a catalogue module against a
+    module DERIVED FROM A FILE PATH
+    (``packages.hypergumbo-core.src.hypergumbo_core.cli``). There the leading
+    components are checkout directories, not owner identity. The module-slot
+    filter (:func:`named_lookup_arm`) never passes it.
 
     Known tradeoff, stated rather than discovered later: an extra component
     spelled like its parent blocks a match even where it is a parallel API
@@ -4921,15 +4948,22 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     # unqualified class references keep matching — `System` against
     # `java.lang.System`, both capitalised — and INV-januj and INV-hahak both
     # depend on that arm, so breaking it would re-lose java's only ipc_recv
-    # row. Go's `filepath` ← `path/filepath` and `grpc` ←
-    # `google.golang.org/grpc`, which INV-dijor names as true positives at risk
-    # from a naive capitalisation test, are lowercase on both sides and survive.
+    # row. Go's `path/filepath` and `google.golang.org/grpc` rows reached from
+    # a bare `filepath` / `grpc` slot, which INV-dijor names as true positives
+    # at risk from a naive capitalisation test, are lowercase on both sides and
+    # survive.
+    #
+    # AND THE ROW MUST BE THE LONGER SIDE (WI-mujod) unless the hint is a
+    # path-derived module: a slot with MORE leading components than the row
+    # names a different owner (`mycsvlib.csv` is not `csv`). Equal lengths
+    # never reach here -- equal suffixes are equal lists, arm 1.
     #
     # This is EVIDENCE, not the declaration ADR-0051 anticipates: the axiom
     # says the slot names an owner path and that a receiver VARIABLE is the
     # non-conformant notion, and case disagreement is a proxy for that. Arm 2's
     # case-VALUE inference is untouched and remains the residual.
-    if cm_parts[-shared:] == em_parts[-shared:] and all(
+    direction_ok = hint_is_path or len(cm_parts) > len(em_parts)
+    if direction_ok and cm_parts[-shared:] == em_parts[-shared:] and all(
         c[:1].isupper() == e[:1].isupper()
         # strict=True documents the invariant rather than trusting it:
         # ``shared`` is min(len(cm_parts), len(em_parts)) and both slices

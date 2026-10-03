@@ -122,3 +122,121 @@ class TestGoRowsAreKeyedByTheirImportPath:
         assert got["Socket"] == "golang.org/x/sys/unix.Socket"
         assert got["Connect"] == "golang.org/x/sys/unix.Connect"
         assert got["NewClient"] == "google.golang.org/grpc.NewClient"
+
+
+# (catalogue module, edge hint, why) -- the hint carries LEADING components
+# the row does not, so it names a different owner.
+_HINT_LONGER = [
+    ("csv", "mycsvlib.csv", "a third-party package's csv submodule is not stdlib csv"),
+    ("http", "@/services/http", "koel's OWN tsconfig path alias, not node's http"),
+    ("path", "@tauri-apps/api/path", "tauri's path API, not node's path"),
+    ("time", "sys/time", "<sys/time.h> does not declare time(); <time.h> does"),
+    ("filepath", "path/filepath", "an under-qualified row is no longer rescued"),
+    ("unix", "golang.org/x/sys/unix", "an under-qualified row is no longer rescued"),
+]
+
+# (catalogue module, edge hint, why) -- the direction the arm exists for.
+_CATALOGUE_LONGER = [
+    ("java.lang.System", "System", "java unqualified class reference"),
+    ("net/http", "http", "go source spells http.Get after importing net/http"),
+    ("golang.org/x/sys/unix", "unix", "the bare identifier go source writes"),
+    ("google.golang.org/grpc", "grpc", "the bare identifier go source writes"),
+    ("path/filepath", "filepath", "the bare identifier go source writes"),
+]
+
+
+class TestTheModuleSlotRefusesAMoreQualifiedOwner:
+    """Step 2: arm 3 accepts the hint-longer direction only for a PATH-derived hint."""
+
+    @pytest.mark.parametrize("catalog,hint,why", _HINT_LONGER)
+    def test_a_hint_with_more_leading_components_does_not_match(
+        self, catalog: str, hint: str, why: str,
+    ) -> None:
+        assert _module_matches(catalog, hint) is False, why
+
+    @pytest.mark.parametrize("catalog,hint,why", _CATALOGUE_LONGER)
+    def test_the_unqualified_tail_still_matches(
+        self, catalog: str, hint: str, why: str,
+    ) -> None:
+        """Non-vacuity: refusing every suffix would pass the test above."""
+        assert _module_matches(catalog, hint) is True, why
+
+    def test_a_path_derived_hint_keeps_the_direction(self) -> None:
+        """taint's resolved-edge gate: leading components are DIRECTORIES."""
+        path_module = "packages.hypergumbo-core.src.hypergumbo_core.cli"
+        assert _module_matches(
+            "hypergumbo_core.cli", path_module, hint_is_path=True,
+        ) is True
+        # ... and the same pair through the module-slot reading is refused,
+        # so the keyword is what decides it (mutation control).
+        assert _module_matches("hypergumbo_core.cli", path_module) is False
+
+    def test_a_path_derived_hint_still_needs_whole_trailing_components(self) -> None:
+        assert _module_matches(
+            "log/slog", "pkg.logging", hint_is_path=True,
+        ) is False
+
+    @pytest.mark.parametrize("language,name,hint", [
+        ("javascript", "get", "@/services/http"),
+        ("typescript", "get", "@/services/http"),
+        ("python", "writer", "mycsvlib.csv"),
+    ])
+    def test_the_io_row_choice_refuses_it(
+        self, language: str, name: str, hint: str,
+    ) -> None:
+        catalog = load_catalog(language)
+        tail = hint.replace("@", "").replace("/", ".").rsplit(".", 1)[-1]
+        assert catalog.lookup_with_module(name, tail) is not None, (
+            "reach: the row the hint used to reach must exist"
+        )
+        assert catalog.lookup_with_module(name, hint) is None
+
+    @pytest.mark.parametrize("language,name,hint", [
+        ("javascript", "get", "@/services/http"),
+        ("python", "writer", "mycsvlib.csv"),
+    ])
+    def test_the_taint_row_choice_refuses_it_too(
+        self, language: str, name: str, hint: str,
+    ) -> None:
+        """INV-foda: ONE row-choice rule, so taint cannot disagree with io."""
+        from hypergumbo_core.taint import load_builtin_taint_catalog
+
+        taint = load_builtin_taint_catalog()
+        tail = hint.replace("@", "").replace("/", ".").rsplit(".", 1)[-1]
+        assert taint.match_sink(language, name, tail) is not None, "reach"
+        assert taint.match_sink(language, name, hint) is None
+
+    def test_koel_shape_is_no_longer_node_http(self, tmp_path: Path) -> None:
+        """The filed instance, on real analyzer output through the CLI's own path."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "tsconfig.json").write_text(
+            '{"compilerOptions": {"paths": {"@/*": ["./js/*"]}}}\n'
+        )
+        services = tmp_path / "js" / "services"
+        services.mkdir(parents=True)
+        (services / "http.ts").write_text(
+            "export const http = {\n"
+            "  get (url: string) { return url },\n"
+            "}\n"
+        )
+        # koel's own spelling: a generic call, ``http.get<User>(...)``,
+        # which reaches the pipeline as a module_attr_ref on the alias.
+        (services / "authService.ts").write_text(
+            "import { http } from '@/services/http'\n"
+            "\n"
+            "export const authService = {\n"
+            "  me: async () => await http.get<User>('me'),\n"
+            "}\n"
+        )
+        raw = [e.to_dict() for e in analyze_javascript(tmp_path).edges]
+        edges = _rehydrate_io_boundary_edges(raw)
+        reached = [e for e in edges if "@/services/http.get" in e.dst]
+        assert reached, sorted(e.dst for e in edges)  # reach
+        tag_io_boundaries(edges, {
+            "typescript": load_catalog("typescript"),
+            "javascript": load_catalog("javascript"),
+        })
+        assert [(e.meta or {}).get("io_primitive") for e in reached] == (
+            [None] * len(reached)
+        )
