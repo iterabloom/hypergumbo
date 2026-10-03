@@ -66,3 +66,18 @@
   clock: 7  # 9ef1
   nonce: 9ef1  # 9ef1
   message: "RE-VERIFIED + TIGHTENED 2026-10-03 (branch jgstern-agent/fix/dudal-withholding, commit 24235c300c). Not merged, not closed.\n\nFILED INSTANCES ALREADY FIXED at the base 2e21275d0e, measured with the gate's own predicate over a fresh survey: express reports none of .., ../, ../../db, ./post, ./site, ./user, lib/utils (unknown = assert, body-parser, document, mime-types, node:http, node:path, node:querystring, proxy-addr, statuses); bellman reports none of crate.*, super.*, self.*, bellman.* (27 entries, all third-party or std, plus E::Fr/E::G1Affine/E::G2Affine which are a generic parameter's associated types, not a crate). The own-crate-name clause closed with INV-vivok (satisfied).\n\nWHAT THE BRANCH ADDS (the false-clean direction the shipped rule left open): a relative specifier is first-party only if it lands on source the analysis read. A path through node_modules or vendor (both in discovery.DEFAULT_EXCLUDES, never read) and a path that climbs above the analysed root (decided from the importing file, now passed by the gate) are reported again. Found in the corpus: resonance-audio-web-sdk src/listener.js requires '../node_modules/omnitone/build/omnitone.js' -- installed third-party code the shipped rule suppressed as the repo's own; it is now reported. 26-repo A/B: that is the only module this adds; no verdict moved.\n\nHOW THE OWNER'S QUESTIONS ARE ANSWERED: node_modules -> above; package self-reference (require('<own name>/x')) -> INV-vivok's manifest names, read only from in-repo manifests outside DEFAULT_EXCLUDES; Rust path deps -> suppressed only if the dep's own Cargo.toml is inside the repo and outside DEFAULT_EXCLUDES (a path dep outside the repo stays reported). NOT DONE, deliberately: the statement's \"/\" clause -- an absolute specifier is a filesystem path in Node and an origin-root path in a browser, undecidable here, so it stays reported."  # 9ef1
+- op: update  # 61fd
+  at: '2026-10-03T21:18:54Z'  # 61fd
+  by: agent  # 61fd
+  actor: jgstern_agent  # 61fd
+  clock: 8  # 61fd
+  nonce: 61fd  # 61fd
+  set:  # 61fd
+    status: satisfied  # 61fd
+- op: discuss  # 083f
+  at: '2026-10-03T21:18:55Z'  # 083f
+  by: agent  # 083f
+  actor: jgstern_agent  # 083f
+  clock: 9  # 083f
+  nonce: 083f  # 083f
+  message: "Merged in PR #1433 (dev c942a68edc).\n\nThe filed spellings no longer reach the disclosure. Measured at 2e21275d0e and on the branch with the gate predicate over fresh surveys:\n- express reports none of `.., ../, ../../db, ./post, ./site, ./user, lib/utils`;\n- bellman reports none of `crate.*`, `super.*`, `bellman.*` (own name via INV-vivok, satisfied).\n\nFixed in PR #1433 (24235c300c): a relative specifier through node_modules/vendor, or one escaping the analysed root, is reported again. Live: resonance-audio-web-sdk's `../node_modules/omnitone/...` is now listed.\n\nNOT asserted: the statement's \"/\" clause, deliberately not implemented (an absolute path is not decidable as first-party). Residual seen: bellman's `E::Fr` (a generic parameter's associated type), noted on WI-jofin."  # 083f
