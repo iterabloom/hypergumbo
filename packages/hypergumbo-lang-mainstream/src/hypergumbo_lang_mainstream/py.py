@@ -6170,6 +6170,21 @@ def _extract_edges(
                 _assigned,
             )
         _manager_root = _oracle.manager_root if _oracle is not None else None
+        # WI-kutal: the OWN-body method table of the class ``self`` denotes in
+        # this block's caller, for Case 2a -- ``{}`` when it denotes none,
+        # which includes module level (no frame binds ``self``).
+        _self_class_id = (
+            _self_receiver_class_id(
+                stack, _func_symbol_by_id, method_to_enclosing_class_id,
+            )
+            if stack is not None
+            else None
+        )
+        _self_methods = (
+            methods_by_class_id.get(_self_class_id, {})
+            if _self_class_id is not None
+            else {}
+        )
 
         def _emit_orm_evaluation(
             expr: ast.expr,
@@ -6850,16 +6865,6 @@ def _extract_edges(
                 stack = _build_scope_stack(
                     caller_symbol.id, enclosing_func_id, nested_by_parent_id,
                     local_names_by_func_id,
-                )
-                # WI-kutal: the method table of the class ``self`` denotes in
-                # this caller ({} when it denotes none), for Case 2a.
-                _self_class_id = _self_receiver_class_id(
-                    stack, _func_symbol_by_id, method_to_enclosing_class_id,
-                )
-                _self_methods = (
-                    methods_by_class_id.get(_self_class_id, {})
-                    if _self_class_id is not None
-                    else {}
                 )
                 _emit_closure_factory_dispatch(node, caller_symbol, inner_scope)
                 # WI-luhah gap 1c: add the enclosing-scope binding union so a

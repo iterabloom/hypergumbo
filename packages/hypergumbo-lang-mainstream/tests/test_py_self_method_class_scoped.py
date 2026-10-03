@@ -383,3 +383,13 @@ class TestDjangoInstanceWriteAfterClassScoping:
         base_save = _node_id(data, "Base.save")
         assert len(_resolved_calls(data, _node_id(data, "Child.go"), base_save)) == 1
         assert _resolved_calls(data, _node_id(data, "Plain.go"), base_save) == []
+
+
+class TestModuleLevelBlock:
+    def test_file_without_functions_is_analyzed(self, tmp_path: Path) -> None:
+        # The module-level block has no frame binding ``self`` and, in a file
+        # with no function at all, runs before any per-function state exists.
+        # A first cut computed the self-method table in the per-function loop
+        # and crashed the whole Python pass here (NameError) on Django.
+        res = _analyze(tmp_path, "import os\nos.getcwd()\nprint(1)\n")
+        assert [e for e in res.edges if e.edge_type == "calls"]
