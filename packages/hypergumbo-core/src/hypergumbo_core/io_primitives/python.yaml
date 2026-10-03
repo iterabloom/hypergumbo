@@ -826,7 +826,14 @@ logging:
     methods: [print_help, print_usage, error]
     notes: "error prints usage to stderr then raises SystemExit."
   - module: logging
-    functions: [debug, info, warning, error, critical, exception, log, basicConfig, StreamHandler]
+    functions: [debug, info, warning, error, critical, exception, log]
+    notes: >-
+      WI-ragaz (audit-findings 0021 Step 5). basicConfig and StreamHandler were
+      rowed here and write nothing at the call: they construct or configure the
+      facility, and the write happens at a later emitter call -- rowed in this
+      entry, so the crossing stays represented (ADR-0049 ruling 3; erlang.yaml's
+      io_lib deletion is the precedent). They are now examined negatives under
+      the `logging` completeness grant, which says so.
   - module: base64
     functions: [main]
     notes: "The python -m base64 entry point; opens files and writes stdout. The survey probe's catch."
@@ -1904,7 +1911,7 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-15"
     notes: >-
-      Module-level emitters, basicConfig, and the file/stream handler constructors rowed; getLogger/Formatter are pure. Logger METHOD calls ride the untyped-receiver residual, disclosed there.
+      Module-level emitters rowed logging; the FileHandler constructor rowed fs_write (it opens the log file). getLogger, Formatter, basicConfig and StreamHandler are declared NOT I/O: each constructs or configures the facility and writes nothing at the call (WI-ragaz, audit-findings 0021). DISCLOSED RESIDUAL: basicConfig(filename=...) constructs a FileHandler and so opens the file -- 13 of 477 basicConfig calls in the 2026-10-03 corpus pass filename= lexically -- and a name-matched row cannot see the keyword; the log written there is `logging` by audit-findings 0021's configured-destination rule. Logger METHOD calls ride the untyped-receiver residual, disclosed there.
   - module: importlib
     completeness: complete
     retrieved: "2026-08-15"

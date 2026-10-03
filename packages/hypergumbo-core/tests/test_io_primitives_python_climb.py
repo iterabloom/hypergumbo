@@ -186,7 +186,9 @@ class TestThePrinters:
     def test_logging_module_level_emitters(self) -> None:
         assert _boundary("logging", "info") == "logging"
         assert _boundary("logging", "error") == "logging"
-        assert _boundary("logging", "basicConfig") == "logging"
+        # WI-ragaz: basicConfig configures the facility and writes nothing at
+        # the call (audit-findings 0021); test_audit0021_adjacent_rows.py.
+        assert _boundary("logging", "basicConfig") is None
 
 
 class TestArchivesAndImports:
