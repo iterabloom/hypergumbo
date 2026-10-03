@@ -1947,3 +1947,77 @@ class TestModuleExportsNeedAnExport:
         assert [e.edge_type for e in result.edges].count("imports") == 1
         dsts = {e.dst for e in result.edges if e.edge_type == "module_exports"}
         assert dsts == {exported_class.id, exported_fn.id}
+
+
+class TestImportTargetCarriesItsOwnLanguage:
+    """WI-babuk: the import TARGET's file node takes the target's own language
+    (``taxonomy.get_language``), never the importer's.
+
+    Minting it with the importer's language put a phantom
+    ``typescript:src/util.js`` beside the real javascript node, a phantom
+    ``typescript:style.css`` beside the css analyzer's node, and labelled
+    imported images/fonts ``javascript``, which crypto-flow-linker then
+    parsed as JavaScript (WI-kakov: nextjs never finished). A target with no
+    source language (``.png``) is a real file (``kind="file"`` is ADR-0031's
+    Class A exception): ``language=None``, no ``protocol_origin``, and
+    ``discovery_language`` = the importer's language, which the id's language
+    slot carries (ADR-0036: ``discovery_language or language``).
+    """
+
+    @staticmethod
+    def _file(lang: str | None, path: str) -> Symbol:
+        return Symbol(
+            id=f"{lang}:{path}:1-1:file:file", name=Path(path).name,
+            kind="file", language=lang, path=path,
+            span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
+            origin="test", origin_run_id="test-run",
+        )
+
+    def _link(self, tmp_path: Path, extra: list[Symbol]):  # type: ignore[no-untyped-def]
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "main.ts").write_text(
+            'import { u } from "./util.js";\nimport "./style.css";\n'
+            'import logo from "./logo.png";\n'
+        )
+        (src / "util.js").write_text("export function u() { return 1; }\n")
+        (src / "style.css").write_text("a { color: red; }\n")
+        (src / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00")
+        main = self._file("typescript", "src/main.ts")
+        edges = [
+            Edge.create(
+                src=main.id, dst=f"typescript:{spec}:0-0:module:module",
+                edge_type="imports", line=i + 1, origin="test",
+                origin_run_id="test-run", evidence_type="import_static",
+                confidence=0.95,
+            )
+            for i, spec in enumerate(("./util.js", "./style.css", "./logo.png"))
+        ]
+        return link_js_modules(
+            repo_root=tmp_path, symbols=[main, *extra], edges=edges,
+        )
+
+    def test_one_file_node_per_target_path_in_its_own_language(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_core.analyze.base import make_file_id
+
+        css = self._file("css", "src/style.css")
+        result = self._link(tmp_path, [css])
+        minted = {s.path: s for s in result.symbols if s.kind == "file"}
+        # util.js: no existing node, minted in ITS language, not the importer's.
+        assert minted["src/util.js"].language == "javascript"
+        assert minted["src/util.js"].id == make_file_id("javascript", "src/util.js")
+        # style.css: the css analyzer's node is reused; no phantom is minted.
+        assert "src/style.css" not in minted
+        dsts = {e.dst for e in result.edges if e.edge_type == "imports"}
+        assert css.id in dsts
+        # logo.png: a real file with no source language.
+        png = minted["src/logo.png"]
+        assert png.language is None
+        assert png.protocol_origin is None
+        assert png.discovery_language == "typescript"
+        assert png.id == make_file_id("typescript", "src/logo.png")
+        assert png.id in dsts
+        assert "module_system" not in png.meta
+        assert not any(s.path.endswith(".png") and s.language for s in result.symbols)
