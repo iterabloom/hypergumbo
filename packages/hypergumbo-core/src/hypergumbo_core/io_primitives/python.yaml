@@ -532,8 +532,8 @@ db_read:
       ambiguous with socket.socket.connect, disambiguated by the sqlite3
       module hint).
   - module: sqlite3.Connection
-    methods: [iterdump, backup]
-    notes: "Whole-database export / online backup (read path)"
+    methods: [iterdump]
+    notes: "Whole-database export. backup moved to db_write (WI-rivur)."
   - module: sqlite3.Cursor
     methods: [fetchone, fetchmany, fetchall]
     notes: |
@@ -570,6 +570,13 @@ db_write:
   # ---------------------------------------------------------------
   - module: sqlite3.Connection
     methods: [rollback]
+  - module: sqlite3.Connection
+    methods: [backup]
+    notes: >-
+      WI-rivur. Online backup: reads THIS database and WRITES it into the
+      target connection, returning None. It was db_read, which minted an
+      untrusted_input source at a call that hands its caller nothing
+      (ADR-0049 ruling 1); the crossing it performs is the write.
   - module: sqlite3.Connection
     methods: [execute, executemany, executescript, commit]
     notes: |
@@ -1968,7 +1975,7 @@ module_completeness:
     completeness: complete
     retrieved: "2026-08-15"
     notes: >-
-      execute family, commit, rollback, iterdump, backup all rowed; cursor/close are handle management.
+      execute family, commit, rollback, iterdump rowed; backup rowed db_write (it writes the target database, WI-rivur); cursor/close are handle management.
   - module: gzip
     completeness: complete
     retrieved: "2026-08-15"

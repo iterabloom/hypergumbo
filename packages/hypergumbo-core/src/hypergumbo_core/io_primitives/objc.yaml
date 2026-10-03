@@ -296,12 +296,14 @@ ipc_send:
     notes: "Cross-process notification (macOS only)"
 
 ipc_recv:
+  # NOT removeObserver: / removeObserver:name:object: (WI-rivur). They were
+  # here; un-registering an observer receives nothing and crosses nothing --
+  # an arrival is being cancelled, not arranged -- and ipc_recv minted an
+  # untrusted_input source at the call. Deleted, so nothing is relocated.
   - module: NSNotificationCenter
     methods:
       - "addObserverForName:object:queue:usingBlock:"
       - "addObserver:selector:name:object:"
-      - "removeObserver:"
-      - "removeObserver:name:object:"
 
 # ADR-0016 / INV-buzab: a dated, per-module audit that the module's I/O surface
 # is enumerated, so an unrowed call into it is an EXAMINED negative.
