@@ -26,8 +26,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from hypergumbo_lang_mainstream.go import analyze_go
 
 _SOURCE = """package main
@@ -81,14 +79,10 @@ def test_a_receiver_call_stays_a_method(tmp_path: Path) -> None:
     assert got[("recvClose", "Close")] == "method"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN LIMITATION, pinned so it stays visible: var_types is per function, "
-    "not per position, so a local that shadows its import is not told apart "
-    "from the package (the module slot makes the same call, unchanged)."
-))
 def test_a_local_that_shadows_its_import_is_a_receiver(tmp_path: Path) -> None:
     """``url, _ := url.Parse(raw); url.String()``: the second ``url`` is the
-    local, so its call is really a method call."""
+    local, so its call is really a method call (WI-kugap: the import test is
+    asked by position, ``_GoLocalScope``)."""
     got = _constructs(tmp_path)
     assert got[("shadow", "String")] == "method"
 
@@ -96,9 +90,9 @@ def test_a_local_that_shadows_its_import_is_a_receiver(tmp_path: Path) -> None:
 def test_the_call_that_defines_the_shadowing_local_is_a_function(
     tmp_path: Path,
 ) -> None:
-    """Why the limitation is accepted rather than fixed with ``var_types``:
+    """Why ``var_types`` could not answer the shadow: it is per function, so
     consulting it would mark THIS call, which runs before the local exists,
-    as a method call."""
+    as a method call. Position does not."""
     got = _constructs(tmp_path)
     assert got[("shadow", "Parse")] == "function"
 

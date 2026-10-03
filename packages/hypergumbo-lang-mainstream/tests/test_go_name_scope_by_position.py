@@ -213,3 +213,127 @@ def test_a_function_without_a_body_binds_nothing(tmp_path: Path) -> None:
         ),
     })
     assert [_rel(e.dst) for e in _out(r, "After")] == ["w/w.go:open"]
+
+
+# --------------------------------------------------------------------------
+# WI-kugap: an operand that names an import is the package only where no
+# parameter or local shadows it; a receiver call is stamped ``method``.
+# --------------------------------------------------------------------------
+
+_KUGAP = {
+    "k/k.go": (
+        "package k\n\n"
+        'import (\n\t"net/url"\n\t"os"\n)\n\n'
+        "type T struct{}\n\n"
+        "func (t T) Open(p string) {}\n\n"
+        "func ParamShadow(os T, p string) { os.Open(p) }\n\n"
+        "func NoShadow(p string) { os.Open(p) }\n\n"
+        "func LocalShadow(raw string) {\n"
+        "\turl, _ := url.Parse(raw)\n"
+        "\turl.String()\n"
+        "}\n"
+    ),
+}
+
+
+def test_a_parameter_that_shadows_an_import_is_the_receiver(tmp_path: Path) -> None:
+    r = _analyze(tmp_path, _KUGAP)
+    shadow = _out(r, "ParamShadow")
+    assert [(_rel(e.dst), (e.meta or {}).get("call_construct")) for e in shadow] == [
+        ("k/k.go:T.Open", "method"),
+    ], [e.dst for e in shadow]
+    control = _out(r, "NoShadow")
+    assert [(e.dst, (e.meta or {}).get("call_construct")) for e in control] == [
+        ("go:os:0-0:Open:unresolved", "function"),
+    ]
+
+
+def test_a_local_that_shadows_its_import_is_not_the_package(tmp_path: Path) -> None:
+    r = _analyze(tmp_path, _KUGAP)
+    got = {
+        e.dst.split(":")[-2]: (e.dst, (e.meta or {}).get("call_construct"))
+        for e in _out(r, "LocalShadow")
+    }
+    # The defining call runs before the local exists: the package function.
+    assert got["Parse"] == ("go:net/url:0-0:Parse:unresolved", "function")
+    # The later call is on the local: no package slot, a method.
+    dst, construct = got["String"]
+    assert not dst.startswith("go:net/url:0-0:"), dst
+    assert construct == "method"
+
+
+_RESOLVED = {
+    "m/thing.go": (
+        "package m\n\n"
+        "type Thing struct{}\n\n"
+        "func (t Thing) Frob() {}\n\n"
+        "func helper() {}\n\n"
+        "func SameFile(xs map[string]Thing) { xs[\"k\"].Frob(); helper() }\n"
+    ),
+    "m/other.go": (
+        "package m\n\n"
+        "func OtherFile(xs map[string]Thing) { xs[\"k\"].Frob() }\n"
+    ),
+    "n/n.go": (
+        "package n\n\n"
+        'import "example.com/fx/q"\n\n'
+        "func PkgCall() { q.Run() }\n"
+    ),
+    "q/q.go": "package q\n\nfunc Run() {}\n",
+}
+
+
+def test_a_resolved_receiver_call_is_stamped_method(tmp_path: Path) -> None:
+    r = _analyze(tmp_path, _RESOLVED)
+    for caller in ("SameFile", "OtherFile"):
+        frob = [e for e in _out(r, caller) if e.dst.endswith(":Thing.Frob:method")]
+        assert len(frob) == 1, (caller, [e.dst for e in _out(r, caller)])
+        assert (frob[0].meta or {}).get("call_construct") == "method", caller
+    # Controls: a bare call and a package-qualified in-repo call are functions.
+    helper = [e for e in _out(r, "SameFile") if e.dst.endswith(":helper:function")]
+    assert [(e.meta or {}).get("call_construct") for e in helper] == ["function"]
+    run = _out(r, "PkgCall")
+    assert [(_rel(e.dst), (e.meta or {}).get("call_construct")) for e in run] == [
+        ("q/q.go:Run", "function"),
+    ]
+
+
+def test_an_attribute_read_on_a_shadowing_local_is_not_the_package(
+    tmp_path: Path,
+) -> None:
+    """``os.Args`` on a parameter named ``os`` is a field of the parameter;
+    reporting it as the package's argv would invent a taint source."""
+    r = _analyze(tmp_path, {
+        "s/s.go": (
+            "package s\n\n"
+            'import "os"\n\n'
+            "type T struct{ Args []string }\n\n"
+            "func Shadowed(os T) []string { return os.Args }\n\n"
+            "func Plain() []string { return os.Args }\n"
+        ),
+    })
+    assert _out(r, "Shadowed", edge_type="module_attr_ref") == []
+    plain = [e.dst for e in _out(r, "Plain", edge_type="module_attr_ref")]
+    assert plain == ["go:os:0-0:os.Args:attribute"]
+
+
+def test_a_package_variable_receiver_under_a_shadowing_local_is_not_typed(
+    tmp_path: Path,
+) -> None:
+    """``http.DefaultClient.Do`` is ``net/http.Client.Do`` only where ``http``
+    is the package; on a parameter named ``http`` it is a field's method."""
+    r = _analyze(tmp_path, {
+        "v/v.go": (
+            "package v\n\n"
+            'import "net/http"\n\n'
+            "type Cl struct{}\n\n"
+            "func (c *Cl) Do(q *http.Request) {}\n\n"
+            "type Box struct{ DefaultClient *Cl }\n\n"
+            "func Shadowed(http Box, q *http.Request) { http.DefaultClient.Do(q) }\n\n"
+            "func Plain(q *http.Request) { http.DefaultClient.Do(q) }\n"
+        ),
+    })
+    plain = [e.dst for e in _out(r, "Plain")]
+    assert plain == ["go:net/http.Client:0-0:Do:unresolved"], plain
+    shadowed = [_rel(e.dst) for e in _out(r, "Shadowed")]
+    assert shadowed == ["v/v.go:Cl.Do"], shadowed

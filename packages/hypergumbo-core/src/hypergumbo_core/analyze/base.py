@@ -2999,6 +2999,7 @@ def emit_module_attribute_refs(
     carrier_call_kinds: tuple[str, ...] = (),
     carrier_receiver_fields: tuple[str, ...] = (),
     carrier_arguments_field: str = "arguments",
+    is_local_value: "Callable[[tree_sitter.Node], bool] | None" = None,
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
 
@@ -3113,6 +3114,14 @@ def emit_module_attribute_refs(
             uses inside a call -- are unaffected.
         carrier_receiver_fields: see ``carrier_call_kinds``.
         carrier_arguments_field: the call's arguments field name.
+        is_local_value: given the base node of an attribute access whose
+            text names an import, True when a LOCAL binding of that name is
+            in scope there instead -- ``func f(os T) { _ = os.Args }`` reads
+            a field of ``os`` the parameter, not the package. Such a read is
+            skipped. The scope is the caller's (go's ``_GoLocalScope``);
+            None, the default, treats every import-named base as the import,
+            the historical behaviour. Not consulted on ``scoped_path``
+            languages, whose ``::`` paths cannot be shadowed by a value.
         scoped_path: When True, switches the helper to a left-recursive
             path-walk model used by languages whose scoped access is
             not a binary ``object`` / ``property`` pair.  Rust's
@@ -3215,6 +3224,8 @@ def emit_module_attribute_refs(
             real_module = real_leftmost + base_text[len(leftmost_text):]
         else:
             if base_text not in imports:
+                continue
+            if is_local_value is not None and is_local_value(base):
                 continue
             real_module = imports[base_text]
         # The qualified name joins with the SAME separator the module uses, or
