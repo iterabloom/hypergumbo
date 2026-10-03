@@ -926,9 +926,10 @@ class IoBoundaryCatalog:
     # populate ``stdlib_other:`` sections.
     stdlib_other: frozenset[str] = field(default_factory=frozenset)
     # F3 PR-C: enumerated stdlib module names for this language. Populated
-    # from the authoritative interpreter list (``sys.stdlib_module_names``
-    # for Python; equivalent authoritative sources for other languages).
-    # Used as input to :meth:`is_stdlib_module`.
+    # from the authoritative interpreter list (for Python, the union of
+    # ``sys.stdlib_module_names`` over every supported interpreter, WI-gisan;
+    # equivalent authoritative sources for other languages). Used as input to
+    # :meth:`is_stdlib_module`, which answers RECOGNITION only.
     stdlib_modules: frozenset[str] = field(default_factory=frozenset)
     # F3 PR-C: stdlib module name prefixes — useful for languages where
     # stdlib modules live under a hierarchical namespace (e.g. Go's
@@ -2234,10 +2235,12 @@ def load_catalog(
 
     STDLIB MEMBERSHIP IS DELIBERATELY NOT WIDENED. ``load_overlay_catalog``
     drops ``stdlib_modules`` / ``stdlib_prefixes`` from an overlay, so
-    ``is_stdlib_module`` keeps answering about the actual interpreter. A
+    ``is_stdlib_module`` keeps answering about the language runtime (for
+    Python, the union over every supported interpreter; WI-gisan). A
     ``requests`` overlay must not make ``requests`` classify as stdlib — that
-    feeds the dependency classifier and the F3 boundary filter, and relabelling
-    a PyPI package as stdlib is a supply-chain misread, not an I/O one.
+    feeds the ecosystem label and the dependency carve-out (ADR-0041 §3), and
+    relabelling a PyPI package as stdlib is a supply-chain misread, not an I/O
+    one.
     """
     path = _catalog_path_for(language)
     if path is None:

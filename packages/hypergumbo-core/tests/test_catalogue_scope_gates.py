@@ -57,6 +57,11 @@ import yaml
 
 import hypergumbo_core.io_boundary as _iob
 from hypergumbo_core.io_boundary import load_catalog
+from hypergumbo_core.python_stdlib_versions import (
+    PYTHON_STDLIB_VERSION_WINDOWS,
+    SUPPORTED_PYTHONS,
+    in_window,
+)
 from hypergumbo_core.yaml_catalogs import YAML_CATALOGS
 
 _CATALOG_DIR = Path(_iob.__file__).parent / "io_primitives"
@@ -643,34 +648,6 @@ def _candidates(name: str, qualified: bool) -> list[str]:
     return ["".join(parts[:i]) for i in range(len(parts), 0, -2)]
 
 
-#: WI-jojuz. Public top-level CPython modules whose standard-library membership
-#: DIFFERS across the supported interpreters, as ``name: (since, until)``: the
-#: first and last minor version in which the module IS standard library (None
-#: = before 3.10 / still present). Taken from ``Python/stdlib_module_names.h``
-#: on the CPython 3.10, 3.11, 3.12 and 3.13 branches (2026-10-02); private
-#: ``_``-modules omitted. ``test_the_stdlib_windows_match_the_running_interpreter``
-#: re-checks every window on each nightly leg.
-PYTHON_STDLIB_VERSION_WINDOWS: dict[
-    str, tuple[tuple[int, int] | None, tuple[int, int] | None]
-] = {
-    "tomllib": ((3, 11), None),  # PEP 680
-    "binhex": (None, (3, 10)),
-    # Removed in 3.12 (distutils: PEP 632; asynchat/asyncore/smtpd: PEP 594).
-    **dict.fromkeys(
-        ("asynchat", "asyncore", "distutils", "imp", "smtpd"), (None, (3, 11)),
-    ),
-    # Removed in 3.13 (PEP 594, plus lib2to3).
-    **dict.fromkeys(
-        (
-            "aifc", "audioop", "cgi", "cgitb", "chunk", "crypt", "imghdr",
-            "lib2to3", "mailcap", "msilib", "nis", "nntplib", "ossaudiodev",
-            "pipes", "sndhdr", "spwd", "sunau", "telnetlib", "uu", "xdrlib",
-        ),
-        (None, (3, 12)),
-    ),
-}
-
-
 def _admitted(language: str, name: str, qualified: bool) -> bool:
     language = SCOPE_ALIASES.get(language, language)
     scope = CATALOGUE_SCOPE.get(language)
@@ -817,12 +794,9 @@ def test_a_builtin_file_names_only_the_standard_library(
         f"spelling IS the standard library, add it to CATALOGUE_SCOPE (or "
         f"SHORT_SPELLINGS, for an abbreviation) in this file with the reason. "
         f"A Python module that is standard library on only SOME supported "
-        f"interpreters belongs in PYTHON_STDLIB_VERSION_WINDOWS."
+        f"interpreters belongs in PYTHON_STDLIB_VERSION_WINDOWS "
+        f"(hypergumbo_core/python_stdlib_versions.py)."
     )
-
-
-#: The interpreters the nightly matrix runs (.woodpecker/nightly.yml).
-SUPPORTED_PYTHONS: tuple[tuple[int, int], ...] = ((3, 10), (3, 11), (3, 12), (3, 13))
 
 
 def _simulated_stdlib(version: tuple[int, int]) -> frozenset[str]:
@@ -830,9 +804,8 @@ def _simulated_stdlib(version: tuple[int, int]) -> frozenset[str]:
     along the pinned windows."""
     base = set(sys.stdlib_module_names) - set(PYTHON_STDLIB_VERSION_WINDOWS)
     return frozenset(base | {
-        name for name, (since, until) in PYTHON_STDLIB_VERSION_WINDOWS.items()
-        if (since is None or since <= version)
-        and (until is None or version <= until)
+        name for name in PYTHON_STDLIB_VERSION_WINDOWS
+        if in_window(name, version)
     })
 
 
@@ -855,22 +828,6 @@ def test_the_builtin_verdict_does_not_depend_on_the_interpreter(
         if not _admitted(lang, name, qualified)
     })
     assert strays == [], strays
-
-
-def test_the_stdlib_windows_match_the_running_interpreter() -> None:
-    """The pinned windows are a claim about CPython; every nightly leg checks
-    it against the interpreter it runs, so a wrong window fails somewhere."""
-    here = sys.version_info[:2]
-    wrong = sorted(
-        name for name, (since, until) in PYTHON_STDLIB_VERSION_WINDOWS.items()
-        if (name in sys.stdlib_module_names) != (
-            (since is None or since <= here) and (until is None or here <= until)
-        )
-    )
-    assert wrong == [], (
-        f"PYTHON_STDLIB_VERSION_WINDOWS disagrees with Python "
-        f"{here[0]}.{here[1]} for {wrong}"
-    )
 
 
 def test_a_module_outside_every_supported_stdlib_is_still_refused() -> None:
