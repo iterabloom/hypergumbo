@@ -25,11 +25,13 @@ tool.
 
 CORPUS POPULATION: 2114 stream-taking read sites across 67 repositories.
 
-``popen`` IS DELIBERATELY NOT ANSWERED HERE. Its ``FILE*`` is a pipe from a
-child process, which is neither ``host_path`` nor ``std_stream``; naming it
-would need a new ``io_target_kind`` value and the four-step registry chain that
-goes with one. 64 of the 2114 sites (3.0%). Filed separately -- it is also
-WI-kanor's family, a handle-returning launch whose crossing is unrepresented.
+``popen`` IS A ``pipe`` (WI-kanor). Its ``FILE*`` is a pipe from a child
+process, which is neither ``host_path`` nor ``std_stream``, and when this file
+was written naming it needed a new ``io_target_kind``. WI-suhug then added
+``pipe`` for go's ``cmd.StdoutPipe()`` (read -> ``ipc_recv``), so the C pipe
+needs only the producer: a handle-returning launch whose crossing was
+unrepresented now has it at the read that transfers the child's bytes. 64 of
+the 2114 sites (3.0%) when this file was measured.
 """
 from __future__ import annotations
 
@@ -114,17 +116,6 @@ class TestUnprovableOriginsStampNothing:
         assert _kind(tmp_path, '#include <stdio.h>\n'
                      'void f(FILE *h) { char b[8]; fgets(b, 8, h); }\n',
                      "fgets") is None
-
-    def test_a_popen_pipe_stamps_nothing_for_now(self, tmp_path):
-        # DELIBERATE, not an oversight: a child-process pipe is neither a
-        # host path nor a standard stream, and inventing a kind for it here
-        # would put a value in the vocabulary without the registry work.
-        assert _kind(tmp_path, '#include <stdio.h>\n'
-                     'void f(void) {\n'
-                     '    char b[8];\n'
-                     '    FILE *p = popen("ls", "r");\n'
-                     '    fgets(b, 8, p);\n'
-                     '}\n', "fgets") is None
 
     def test_a_stream_from_an_unknown_call_stamps_nothing(self, tmp_path):
         assert _kind(tmp_path, '#include <stdio.h>\n'
@@ -231,3 +222,33 @@ class TestOriginLookupEdgesThatReturnNothing:
             "    fgets(buf, 8, f);\n"
             "}\n"
         ), "fgets") is None
+
+
+class TestAPopenPipeIsAPipe:
+    """WI-kanor: ``popen`` hands back a handle the CHILD fills, and the read
+    through it is where the child's bytes cross (ADR-0049 ruling 1). ``pipe``
+    reads as ``ipc_recv`` (``io_boundary._READ_TARGET_KIND_BOUNDARY``), the
+    channel go's ``cmd.StdoutPipe()`` already takes."""
+
+    def test_a_bound_popen_stream_is_a_pipe(self, tmp_path):
+        assert _kind(tmp_path, '#include <stdio.h>\n'
+                     'void f(void) {\n'
+                     '    char b[8];\n'
+                     '    FILE *p = popen("ls", "r");\n'
+                     '    fgets(b, 8, p);\n'
+                     '}\n', "fgets") == "pipe"
+
+    def test_an_inline_popen_is_a_pipe(self, tmp_path):
+        assert _kind(tmp_path, '#include <stdio.h>\n'
+                     'void f(void) { char b[8];'
+                     ' fread(b, 1, 8, popen("ls", "r")); }\n',
+                     "fread") == "pipe"
+
+    def test_control_a_function_merely_named_like_popen_is_not(self, tmp_path):
+        # The head is matched EXACTLY, as fopen's is: a project helper whose
+        # name contains popen names no child process.
+        assert _kind(tmp_path, '#include <stdio.h>\n'
+                     'FILE *my_popen(const char *c);\n'
+                     'void f(void) { char b[8];'
+                     ' fgets(b, 8, my_popen("ls")); }\n',
+                     "fgets") is None

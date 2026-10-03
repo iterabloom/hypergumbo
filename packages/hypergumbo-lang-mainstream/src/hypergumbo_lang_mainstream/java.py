@@ -1050,12 +1050,110 @@ def _java_last_binding(
     return best
 
 
+#: WI-kanor: the ``java.lang.Process`` accessors whose stream the CHILD fills.
+#: ``getOutputStream`` is absent: it is the write end (the child's stdin), and
+#: this resolver answers READS only.
+_JAVA_PROCESS_READ_STREAMS: frozenset[str] = frozenset({
+    "getInputStream", "getErrorStream",
+})
+
+
+def _java_declared_type_of(
+    node: "tree_sitter.Node", source: bytes, name: str,
+) -> Optional[str]:
+    """Short DECLARED type of *name* in *node*'s enclosing method, or ``None``.
+
+    A parameter or a local declaration at or above *node*'s line, the last one
+    winning (the ``_java_last_binding`` order). Unlike a stream wrapper, whose
+    target is a property of its constructor ARGUMENT, a ``Process`` is a
+    ``Process`` however it was obtained -- so its declared type answers even
+    for a parameter, where the binding walk has nothing to read.
+    """
+    current = node.parent
+    while current is not None and current.type not in _JAVA_CALLABLE_NODES:
+        current = current.parent
+    if current is None:
+        return None
+    use_line = node.start_point[0]
+    best_line = -1
+    best: Optional[str] = None
+    stack = [current]
+    while stack:
+        cur = stack.pop()
+        stack.extend(cur.children)
+        if cur.type == "formal_parameter":
+            names = [cur.child_by_field_name("name")]
+        elif cur.type == "local_variable_declaration":
+            names = [
+                d.child_by_field_name("name")
+                for d in cur.children if d.type == "variable_declarator"
+            ]
+        else:
+            continue
+        if cur.start_point[0] > use_line or cur.start_point[0] < best_line:
+            continue
+        if not any(
+            n is not None and _node_text(n, source) == name for n in names
+        ):
+            continue
+        declared = _declared_type_name(cur.child_by_field_name("type"), source)
+        best_line = cur.start_point[0]
+        best = None if declared is None else declared.rsplit(".", 1)[-1]
+    return best
+
+
+def _java_is_process(
+    node: "tree_sitter.Node", source: bytes, hops: int = 1,
+) -> bool:
+    """True when *node* provably evaluates to a ``java.lang.Process``.
+
+    Three proofs, and nothing else: a name DECLARED ``Process``; the two
+    launches that return one, ``new ProcessBuilder(..).start()`` (or ``.start()``
+    on a name declared ``ProcessBuilder``) and ``Runtime.getRuntime().exec(..)``
+    (or ``.exec(..)`` on a name declared ``Runtime``); and a ``var`` local bound
+    to one of those, one hop back. A ``start()`` / ``exec(..)`` on anything else
+    -- a ``Thread``, a project class -- proves nothing.
+    """
+    if node.type == "identifier":
+        name = _node_text(node, source)
+        if _java_declared_type_of(node, source, name) == "Process":
+            return True
+        if hops <= 0:
+            return False
+        bound = _java_last_binding(node, source, name)
+        return bound is not None and _java_is_process(bound, source, hops - 1)
+    if node.type != "method_invocation":
+        return False
+    method = node.child_by_field_name("name")
+    obj = node.child_by_field_name("object")
+    if method is None or obj is None:
+        return False
+    method_name = _node_text(method, source)
+    if method_name == "start":
+        if obj.type == "object_creation_expression":
+            return _java_object_creation_type(obj, source) == "ProcessBuilder"
+        return obj.type == "identifier" and _java_declared_type_of(
+            obj, source, _node_text(obj, source),
+        ) == "ProcessBuilder"
+    if method_name == "exec":
+        if _node_text(obj, source).replace(" ", "") in (
+            "Runtime.getRuntime()", "java.lang.Runtime.getRuntime()",
+        ):
+            return True
+        return obj.type == "identifier" and _java_declared_type_of(
+            obj, source, _node_text(obj, source),
+        ) == "Runtime"
+    return False
+
+
 def _java_stream_kind_of(
     node: "tree_sitter.Node", source: bytes,
 ) -> Optional[str]:
     """``io_target_kind`` for an expression that PRODUCES a readable stream.
 
-    Unwraps the decorator chain until a constructor NAMES the target. Anything
+    Unwraps the decorator chain until a constructor NAMES the target -- or, for
+    a child process's output, until the chain reaches ``getInputStream()`` /
+    ``getErrorStream()`` on a provable ``Process`` (``pipe``, WI-kanor). Anything
     not provable abstains: INV-zumin's rule is one answer per call site or none,
     and this direction selects a MINTING boundary (``ipc_recv`` over ``fs_read``),
     so abstention is the only safe default.
@@ -1078,6 +1176,21 @@ def _java_stream_kind_of(
             # between the wrapper and the read is not misread as the origin.
             current = _java_last_binding(current, source, text)
             continue
+        if current.type == "method_invocation":
+            # WI-kanor: ``p.getInputStream()`` on a Process is the pipe the
+            # CHILD writes (ADR-0049 ruling 1: the read through it returns
+            # bytes the far side chose). Any other accessor -- a socket's
+            # ``getInputStream`` included -- abstains, as before.
+            accessor = current.child_by_field_name("name")
+            owner = current.child_by_field_name("object")
+            if (
+                accessor is not None
+                and owner is not None
+                and _node_text(accessor, source) in _JAVA_PROCESS_READ_STREAMS
+                and _java_is_process(owner, source)
+            ):
+                return "pipe"
+            return None
         if current.type != "object_creation_expression":
             return None
         type_name = _java_object_creation_type(current, source)

@@ -56,3 +56,6 @@ signatures:
   # which io_primitives rows net_send; this row is what lets `opener =
   # build_opener(); opener.open(url, data)` reach it.
   urllib.request.build_opener: urllib.request.OpenerDirector
+  # WI-kanor: os.popen hands back a pipe to the child, not its output; the
+  # read through it (os._wrap_close.read) is where the child's bytes cross.
+  os.popen: os._wrap_close

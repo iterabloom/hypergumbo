@@ -1078,6 +1078,13 @@ _C_STD_STREAMS: frozenset[str] = frozenset({"stdin", "stdout", "stderr"})
 #: here would assert a filesystem read over a socket.
 _C_PATH_STREAM_PRODUCERS: tuple[str, ...] = ("fopen", "freopen")
 
+#: Calls that produce a ``FILE *`` over a PIPE TO A CHILD PROCESS (WI-kanor).
+#: ``popen`` returns a handle the child fills, and a read through it returns
+#: bytes the far side chose (ADR-0049 ruling 1), so the read -- not the launch --
+#: is where the crossing is represented. ``pipe`` reads as ``ipc_recv``, the kind
+#: go's ``cmd.StdoutPipe()`` already takes (WI-suhug).
+_C_PIPE_STREAM_PRODUCERS: tuple[str, ...] = ("popen",)
+
 
 def _c_declarator_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """The identifier a (possibly pointer/array) declarator declares."""
@@ -1116,6 +1123,8 @@ def _c_classify_stream_text(text: str) -> Optional[str]:
     head = stripped.split("(", 1)[0].strip()
     if head in _C_PATH_STREAM_PRODUCERS and "(" in stripped:
         return "host_path"
+    if head in _C_PIPE_STREAM_PRODUCERS and "(" in stripped:
+        return "pipe"
     return None
 
 
@@ -1174,9 +1183,10 @@ def _c_stream_target_kind(
 ) -> Optional[str]:
     """``io_target_kind`` for a stdio read call, or None to stay silent.
 
-    Returns None for everything not provable -- a parameter, a ``popen`` pipe,
-    a value from a function this file does not bind. INV-zumin's ruling is that
-    a call site gets ONE answer or NONE, and an unstamped edge classifies
+    Returns None for everything not provable -- a parameter, a value from a
+    function this file does not bind. A ``popen`` pipe is provable (``pipe``).
+    INV-zumin's ruling is that a call site gets ONE answer or NONE, and an
+    unstamped edge classifies
     exactly as it did before this existed
     (``read_boundary_for_target_kind`` answers ``known=False``).
     """

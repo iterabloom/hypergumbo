@@ -103,6 +103,9 @@ CONTENT_RETURNING_LAUNCHES: tuple[tuple[str, str, str, str], ...] = (
     ("python", "subprocess", "check_output", "function"),
     ("python", "subprocess", "getoutput", "function"),
     ("python", "subprocess", "getstatusoutput", "function"),
+    # WI-kanor: ``(stdout, stderr)`` -- the child's output, from the handle
+    # Popen returned. The constructor itself stays a contentless launch below.
+    ("python", "subprocess.Popen", "communicate", "method"),
     # ``Output { stdout, stderr, status }`` — the one-shot form of the
     # ``Child.wait_with_output`` this file's docstring cites as precedent.
     ("rust", "std::process::Command", "output", "method"),
