@@ -533,7 +533,22 @@ db_read:
       module hint).
   - module: sqlite3.Connection
     methods: [iterdump]
-    notes: "Whole-database export. backup moved to db_write (WI-rivur)."
+    notes: >-
+      Whole-database export. backup moved to db_write (WI-rivur). iterdump
+      is LAZY: it returns a generator and no SQL runs at the call.
+      Modules/_sqlite/connection.c returns the result of calling
+      sqlite3.dump._iterdump, which is a generator function on 3.10 through
+      3.13 (Lib/sqlite3/dump.py: its first statement, cursor(), runs at the
+      first next()). ADR-0049 ruling 1 therefore calls it a deferred
+      crossing. It STAYS db_read, held by ruling 3 (WI-tunog): the read
+      happens where the generator is iterated, and the analyzer emits no
+      evaluation site for a non-Django iterable (WI-fasap's __iter__ edge is
+      django.db.models only), so nothing would carry the read after a move.
+      The iteration is in the calling scope in every corpus use read
+      (5 of 5: ceph, nova), which is measurement 0010's READ-IN-SCOPE case:
+      the mint is already in the scope of the read. Moving the row to
+      db_compose turned `for line in con.iterdump(): f.write(line)` from
+      violated into confirmed_with_caveats with no flow left.
   - module: sqlite3.Cursor
     methods: [fetchone, fetchmany, fetchall]
     notes: |
