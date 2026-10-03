@@ -2796,6 +2796,33 @@ def _module_key_suffixes(intree_modules: frozenset[str]) -> frozenset[str]:
     return frozenset(out)
 
 
+def _import_target_in_tree(
+    module: str,
+    name: str,
+    intree_modules: frozenset[str],
+    intree_module_suffixes: frozenset[str],
+) -> bool:
+    """True if ANY dotted prefix of ``module.name`` is an in-tree module.
+
+    WI-ratid. An import binding need not name a module: ``from pkg.ser import
+    OrderSerializer`` + ``class Meta(OrderSerializer.Meta)`` qualifies to
+    ``pkg.ser.OrderSerializer.Meta``, whose "module" ``pkg.ser.OrderSerializer``
+    is a CLASS of the in-tree module ``pkg.ser``. Testing only the full module
+    path would declare that nested in-tree class external -- and mint a
+    workspace-prefixed phantom (INV-nuzas). So every prefix is tested with
+    :func:`_base_module_is_in_tree` (each with its following segment), and one
+    hit makes the target in-tree.
+    """
+    parts = module.split(".")
+    for i in range(1, len(parts) + 1):
+        following = parts[i] if i < len(parts) else name
+        if _base_module_is_in_tree(
+            ".".join(parts[:i]), following, intree_modules, intree_module_suffixes,
+        ):
+            return True
+    return False
+
+
 def _import_qualified_base(
     base_name: str,
     imports: dict[str, tuple[str, str]],
@@ -2915,7 +2942,7 @@ def _extract_inheritance_edges(
             imported_base = None if root_shadowed else _import_qualified_base(
                 base_name, child_imports, child_module_imports,
             )
-            if imported_base is not None and not _base_module_is_in_tree(
+            if imported_base is not None and not _import_target_in_tree(
                 imported_base[0], imported_base[1],
                 intree_modules, intree_module_suffixes,
             ):
