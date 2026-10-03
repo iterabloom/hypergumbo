@@ -3785,7 +3785,7 @@ def _adjudicate_external_modules(
         # AND THE UNKNOWN IS REPORTED PER DISJUNCT, not as the joined string.
         # ``string,sys/socket.h,ws2tcpip.h`` names nothing a reader can act on;
         # ``sys/socket`` does.
-        disjuncts = module_hint_disjuncts(module)
+        disjuncts = module_hint_disjuncts(module, catalog.language)
         unenumerated = [
             spellings for spellings in disjuncts
             if not any(
