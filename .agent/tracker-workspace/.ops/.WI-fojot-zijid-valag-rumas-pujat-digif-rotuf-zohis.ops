@@ -1,0 +1,21 @@
+- op: create  # 8b01
+  at: '2026-10-03T01:15:29Z'  # 8b01
+  by: agent  # 8b01
+  actor: jgstern_agent  # 8b01
+  clock: 1  # 8b01
+  nonce: 8b01  # 8b01
+  data:  # 8b01
+    kind: work_item  # 8b01
+    title: "_classify_symbols runs classify_file once PER SYMBOL, re-reading each whole file N times (40x bytes on nestjs; 319 s CPU-bound on flink)"  # 8b01
+    status: todo_hard  # 8b01
+    priority: 3  # 8b01
+    parent:  # 8b01
+    tags:  # 8b01
+    - performance  # 8b01
+    - large_repo  # 8b01
+    isbefore: []  # 8b01
+    duplicate_of: []  # 8b01
+    not_duplicate_of: []  # 8b01
+    pr_ref:  # 8b01
+    description: "_classify_symbols (cli.py:11433) calls supply_chain.classify_file once PER SYMBOL, not per file. Each call stats the file, reads the WHOLE file in is_likely_minified (supply_chain.py:868, `path.read_text()`, no size cap) and opens it again in _has_generated_header. A file with N symbols is therefore read in full N times. Every per-file field it sets (supply_chain_tier/reason, is_test/example/config/generated_file) is a function of the PATH alone. The only per-symbol work in the loop is the is_exported-from-modifiers fold and the dependency-kind branch.\n\nMEASURED (2026-10-02, dev 273034f369; record ~/hypergumbo_lab_notebook/perf_kakov_rukaz_10022026/):\n- nestjs (17 MB), classify_amplification.py over a completed survey: 19,519 path-bearing nodes over 2,061 files. Reading each file once = 3.6 MB; reading it per symbol = 0.14 GB, a **40x byte amplification**. The top file, packages/microservices/external/kafka.interface.ts, has 461 symbols at 34.7 KB. On a 300-path sample, per-symbol classify_file took 0.21 s against 0.03 s per-path (8.2x).\n- flink (325 MB, 317,815 symbols): `_classify_symbols` took **319 s at ~99% CPU** in a cold survey. That is CPU-bound, so the concurrent host backup does not explain it, and it is nearly as long as all analyzers together (362 s).\n- This plausibly explains WI-kakov's vscode observation (rchar 92.9 GB, ~500x the repo size, 1 h 20 min in). rchar is cumulative, and vscode's colorize-results/*.json files carry many symbols each. NOT measured on vscode.\n\nNOT MEASURED: the end-to-end saving of memoizing per path on flink/vscode.\nFIX DIRECTION (not implemented): memoize classify_file by path inside _classify_symbols, keeping the per-symbol is_exported fold and the dependency-kind branch per symbol. Separately, is_likely_minified could read a bounded head and tail instead of the whole file: heuristic 1 needs the average line length, heuristics 2-4 need only the head and tail.\n\nAnalogue to check (rule 3): any other per-symbol loop that calls a per-path function that does I/O."  # 8b01
+    fields: {}  # 8b01
