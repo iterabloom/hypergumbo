@@ -1,0 +1,21 @@
+- op: create  # 0c19
+  at: '2026-10-03T10:06:37Z'  # 0c19
+  by: agent  # 0c19
+  actor: jgstern_agent  # 0c19
+  clock: 1  # 0c19
+  nonce: 0c19  # 0c19
+  data:  # 0c19
+    kind: work_item  # 0c19
+    title: "taint: a collapsed finding takes resource_naming_only from ONE sink, so a content flow collapsed with a resource-naming sink in the same zone is excluded (net.Dial + fmt.Fprintln(conn, secret) -> network confirmed, false all-clear)"  # 0c19
+    status: todo_hard  # 0c19
+    priority: 2  # 0c19
+    parent:  # 0c19
+    tags:  # 0c19
+    - taint  # 0c19
+    - verify_claims  # 0c19
+    isbefore: []  # 0c19
+    duplicate_of: []  # 0c19
+    not_duplicate_of: []  # 0c19
+    pr_ref:  # 0c19
+    description: "FOUND 2026-10-03 by WI-potog (Go unix-socket family stamp), reading back the taint side of its A/B. Reproduced on dev e58250d713 (main checkout sources, fresh XDG_CACHE_HOME).\n\nREPRO. go.mod + one file:\n  func F(a string) { con, _ := net.Dial(\"tcp\", a); fmt.Fprintln(con, os.Getenv(\"API_KEY\")) }\nio-boundaries: fmt.Fprintln is net_send (io_target_kind net_stream). verify-claims, claims host_secret -> {network, ipc, logging, host_fs}: ALL FOUR confirmed; network says \"No unsanitized host_secret data reaches network zone. 1 flow(s) reach that zone but can only NAME the resource the sink acts on\". A FALSE ALL-CLEAR: the secret is the CONTENT argument of Fprintln.\n\nCONTROLS (same dev tree, same claims):\n  (1) func F(con net.Conn) { fmt.Fprintln(con, os.Getenv(\"API_KEY\")) }  -> network VIOLATED, sink Fprintln, resource_naming_flows 0.\n  (2) tls.Dial(\"tcp\", a, nil) in place of net.Dial (tls.Dial's row carries no resource_naming) -> network VIOLATED, ONE finding, sink_primitive Dial, collapsed_flow_count 2, sink_call_sites = [tls.Dial, fmt.Fprintln].\n\nMECHANISM (inferred from the controls, not traced in code): flows from one source function into one zone are collapsed into ONE finding whose sink fields (and resource_naming_only flag) come from one representative sink. When that representative is a class-R resource-naming-only sink (net.Dial's row, WI-bulag), verify_claims (around verify_claims.py:5558, `matching = [f for f in matching if not f.resource_naming_only]`) excludes the whole collapsed finding, and the content flow collapsed into it is counted as \"resource naming\". The invariant violated: a collapsed finding is resource-naming-only only if EVERY collapsed sink is.\n\nSCOPE NOT MEASURED: how many corpus verdicts this flips (any function that both dials/opens a resource-naming sink and writes content to the same zone -- net.Dial + Fprint/Write, os.Chmod-style rows in fs zones). Every language with resource_naming rows is exposed, not just go. WI-potog does NOT fix this; its taint test pins the tcp control as a strict xfail citing this item."  # 0c19
+    fields: {}  # 0c19
