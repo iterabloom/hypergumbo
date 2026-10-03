@@ -1,0 +1,23 @@
+- op: create  # 83cf
+  at: '2026-10-03T17:32:38Z'  # 83cf
+  by: agent  # 83cf
+  actor: jgstern_agent  # 83cf
+  clock: 1  # 83cf
+  nonce: 83cf  # 83cf
+  data:  # 83cf
+    kind: work_item  # 83cf
+    title: "Operations on an ALREADY-RUNNING child: python Popen.terminate/kill/send_signal are rowed subprocess against the dated WI-dupok ruling (signals are ipc_send), and reap/poll is rowed three different ways across c and python"  # 83cf
+    status: todo_hard  # 83cf
+    priority: 3  # 83cf
+    parent:  # 83cf
+    tags:  # 83cf
+    - catalogue  # 83cf
+    - io_boundary  # 83cf
+    - python  # 83cf
+    - c  # 83cf
+    isbefore: []  # 83cf
+    duplicate_of: []  # 83cf
+    not_duplicate_of: []  # 83cf
+    pr_ref:  # 83cf
+    description: "Found by the WI-vafad tranche 3 sweep (docs/audits/0022, candidates T3-A4 and T3-H1). This item covers operations on a child process THAT IS ALREADY RUNNING, which the catalogues row inconsistently.\n\n(A) SIGNALS: python `subprocess.Popen.{terminate, kill, send_signal}` are under subprocess (python.yaml:930-931, the WI-jabus row). The dated WI-dupok ruling puts signalling an already-running child under ipc_send: python's own `multiprocessing.Process.kill / terminate`, \"signals the child; start() is the launch\". rust `Child.kill` is rowed the same way, and INV-babiz moved objc NSTask / swift Process terminate / interrupt from subprocess to ipc_send. The Popen rows are out of parity with their own catalogue. The WI-jabus note argues LAUNCH-ONLY for communicate() and says nothing about signals.\n   PROVENANCE: no blind worker flagged this. Both PY workers AGREED with subprocess, because subprocess's definition says \"launch or COMMUNICATE with a child\" while ipc_send's names \"a signal\". The two definitions overlap on signals, and only the ruling settles it. The orchestrator's R6 parity read found it. Sibling: WI-gurud (elixir Port.command, rowed subprocess but writing to a running program).\n\n(B) REAP / POLL is rowed three ways, which is a design question (HOLD), not a row fix:\n   c `sys/wait.{wait, waitpid}`           subprocess  (no note)\n   python `os.{wait, waitpid, wait3, wait4, waitid}`  ipc_recv (python.yaml:908, \"exit status - data received from another process\")\n   python `subprocess.Popen.{wait, poll}`  subprocess  (python.yaml:931)\n   python `multiprocessing` join / is_alive  deliberately UNROWED (python.yaml:2290, \"a process-state read of a child THIS process launched ... disclosed here\")\n   The c refuter worker proposed NONE for wait/waitpid. The verifier held it because the catalogue has three answers and no ruling picks one.\n\nEFFECT. subprocess is OPAQUE: it withholds a clean verdict on EVERY boundary. A file whose only child-related call is Popen.terminate() therefore loses all its clean verdicts to a launch that never happens there. That is over-withholding, not a false all-clear. Moving the row to ipc_send turns it into a SINK, so ADR-0049 ruling 3 at the finding level applies: both arms cold, read every moved verdict back."  # 83cf
+    fields: {}  # 83cf
