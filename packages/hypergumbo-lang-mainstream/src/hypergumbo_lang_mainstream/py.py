@@ -2740,7 +2740,6 @@ def _base_module_is_in_tree(
     module_path: str,
     submodule_name: str,
     intree_modules: frozenset[str],
-    intree_module_suffixes: frozenset[str] = frozenset(),
 ) -> bool:
     """Return True if ``module_path`` (or ``module_path.submodule_name``) names an
     in-tree module.
@@ -2753,27 +2752,14 @@ def _base_module_is_in_tree(
     The former is a suffix superset of the latter, so a suffix match catches a
     relative-imported in-tree base whose form otherwise would not equal any key.
 
-    ``intree_module_suffixes`` (every dotted suffix of every in-tree key, see
-    :func:`_module_key_suffixes`) adds the REVERSE direction: an import that is
-    a suffix of an in-tree key (``foo.bar`` against a key ``src.foo.bar`` when
-    the source root was not detected) is in-tree too. WI-ratid made this
-    predicate decide whether an import-bound base may bind to an in-repo class
-    at all, so a missed in-tree module now costs a resolved edge, not only a
-    dropped external one.
-
     Biases to True on any suffix hit by design: a false positive merely DROPS an
-    external ``extends`` edge (a small recall loss), or leaves the base to the
-    name-based resolution it had before WI-ratid, whereas a false negative
+    external ``extends`` edge (a small recall loss), whereas a false negative
     would mint a workspace-prefixed phantom ``external_symbol`` — an INV-nuzas
     regression, the failure mode this guard exists to prevent.
     """
     if module_path in intree_modules:
         return True
     if f"{module_path}.{submodule_name}" in intree_modules:
-        return True
-    if module_path in intree_module_suffixes:
-        return True
-    if f"{module_path}.{submodule_name}" in intree_module_suffixes:
         return True
     parts = module_path.split(".")
     for i in range(1, len(parts)):
@@ -2782,45 +2768,38 @@ def _base_module_is_in_tree(
     return False
 
 
-def _module_key_suffixes(intree_modules: frozenset[str]) -> frozenset[str]:
-    """Every dotted suffix of every in-tree module key (the key itself included).
-
-    ``pkg.sub.mod`` contributes ``pkg.sub.mod``, ``sub.mod`` and ``mod``. Feeds
-    the reverse-suffix arm of :func:`_base_module_is_in_tree`.
-    """
-    out: set[str] = set()
-    for key in intree_modules:
-        parts = key.split(".")
-        for i in range(len(parts)):
-            out.add(".".join(parts[i:]))
-    return frozenset(out)
-
-
 def _import_target_in_tree(
     module: str,
     name: str,
     intree_modules: frozenset[str],
-    intree_module_suffixes: frozenset[str],
 ) -> bool:
-    """True if ANY dotted prefix of ``module.name`` is an in-tree module.
+    """True if the import-qualified base ``module.name`` lies in the tree.
 
-    WI-ratid. An import binding need not name a module: ``from pkg.ser import
-    OrderSerializer`` + ``class Meta(OrderSerializer.Meta)`` qualifies to
-    ``pkg.ser.OrderSerializer.Meta``, whose "module" ``pkg.ser.OrderSerializer``
-    is a CLASS of the in-tree module ``pkg.ser``. Testing only the full module
-    path would declare that nested in-tree class external -- and mint a
-    workspace-prefixed phantom (INV-nuzas). So every prefix is tested with
-    :func:`_base_module_is_in_tree` (each with its following segment), and one
-    hit makes the target in-tree.
+    WI-ratid. Two tests, either sufficient:
+
+    * :func:`_base_module_is_in_tree` on the full module path -- the guard the
+      from-imported external base already used (exact key, ``module.name``
+      key, or a suffix of the module path, for the repo-root-relative form of
+      a relative import);
+    * any SHORTER dotted prefix of the module path is exactly an in-tree key.
+      An import need not name a module: ``from pkg.ser import OrderSerializer``
+      + ``class Meta(OrderSerializer.Meta)`` qualifies to
+      ``pkg.ser.OrderSerializer.Meta``, whose "module" part
+      ``pkg.ser.OrderSerializer`` is a CLASS of the in-tree module ``pkg.ser``.
+      Testing the full path alone would declare that nested in-tree class
+      external and mint a workspace-prefixed phantom (INV-nuzas).
+
+    The prefixes are matched EXACTLY, never by suffix: a one-segment prefix
+    such as ``html`` (of ``html.parser``) is a suffix of any in-tree
+    ``*.html`` module (``django.utils.html``), and a suffix match there cost
+    django 14 module-qualified external bases in this item's first A/B.
     """
+    if _base_module_is_in_tree(module, name, intree_modules):
+        return True
     parts = module.split(".")
-    for i in range(1, len(parts) + 1):
-        following = parts[i] if i < len(parts) else name
-        if _base_module_is_in_tree(
-            ".".join(parts[:i]), following, intree_modules, intree_module_suffixes,
-        ):
-            return True
-    return False
+    return any(
+        ".".join(parts[:i]) in intree_modules for i in range(1, len(parts))
+    )
 
 
 def _import_qualified_base(
@@ -2908,7 +2887,6 @@ def _extract_inheritance_edges(
     """
     edges: list[Edge] = []
     intree_modules = frozenset(module_to_file_id)
-    intree_module_suffixes = _module_key_suffixes(intree_modules)
 
     for sym in symbols:
         if sym.kind != "class":
@@ -2943,8 +2921,7 @@ def _extract_inheritance_edges(
                 base_name, child_imports, child_module_imports,
             )
             if imported_base is not None and not _import_target_in_tree(
-                imported_base[0], imported_base[1],
-                intree_modules, intree_module_suffixes,
+                imported_base[0], imported_base[1], intree_modules,
             ):
                 module_path, canonical = imported_base
                 edges.append(Edge.create(
