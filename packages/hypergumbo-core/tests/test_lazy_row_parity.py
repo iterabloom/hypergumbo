@@ -242,3 +242,61 @@ class TestTheIterdumpRow:
             "the dump kept a source after the move, so something now represents "
             "the iteration -- iterdump may have become movable")
         assert moved["verdict"] != "violated", moved["details"]
+
+
+# ---------------------------------------------------------------------------
+# std::net::TcpListener.incoming (rust)
+# ---------------------------------------------------------------------------
+
+#: The std documentation's own accept loop. ``s.read_to_end`` IS rowed
+#: (``std::net::TcpStream``), but ``stream.unwrap()`` leaves ``s`` untyped, so
+#: that row never fires here and the ``incoming`` mint is the only source.
+_INCOMING = """\
+use std::fs;
+use std::io::Read;
+use std::net::TcpListener;
+
+fn serve_incoming() {
+    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+    for stream in listener.incoming() {
+        let mut s = stream.unwrap();
+        let mut buf = Vec::new();
+        s.read_to_end(&mut buf).unwrap();
+        fs::write("/var/tmp/in.bin", &buf).unwrap();
+    }
+}
+
+fn main() {
+    serve_incoming();
+}
+"""
+_INCOMING_MOVED = """\
+language: rust
+status: overlay
+net_listen:
+  - module: std::net::TcpListener
+    methods: [incoming]
+"""
+
+
+class TestTheIncomingRow:
+
+    def test_it_stays_net_recv_beside_accept(self) -> None:
+        rows = _rows("rust", "std::net::TcpListener")
+        assert rows.get("incoming") == "net_recv"
+        assert rows.get("accept") == "net_recv"
+
+    def test_the_connection_read_in_scope_rests_on_the_row_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        files = {"Cargo.toml": '[package]\nname = "srv"\nversion = "0.1.0"\n',
+                 "src/main.rs": _INCOMING}
+        shipped = _verify(tmp_path / "a", files, monkeypatch)
+        assert shipped["verdict"] == "violated", shipped["details"]
+        assert _flows(shipped).get("serve_incoming") == {"std::net::TcpListener.incoming"}  # reach
+
+        moved = _verify(tmp_path / "b", files, monkeypatch, _INCOMING_MOVED)
+        assert "serve_incoming" not in _flows(moved), (
+            "the connection read kept a source after the move, so the yielded "
+            "TcpStream is now typed -- incoming may have become movable")
+        assert moved["verdict"] != "violated", moved["details"]
