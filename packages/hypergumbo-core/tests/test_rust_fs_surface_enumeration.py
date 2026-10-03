@@ -84,8 +84,11 @@ _AUDITED = [
     # -- std::path::Path: two stable predicates missing beside eight present.
     ("std::path::Path", "try_exists", "fs_read", "method"),
     ("std::path::Path", "is_symlink", "fs_read", "method"),
-    # -- std::path itself had no rows at all.
-    ("std::path", "absolute", "fs_read", "function"),
+    # -- std::path itself had no rows at all. absolute() resolves a relative
+    # path against env::current_dir() and touches no file, so it carries
+    # current_dir's boundary, host_info_read since INV-zufiz (python's
+    # pathlib.Path.absolute is host_info_read too).
+    ("std::path", "absolute", "host_info_read", "function"),
 ]
 
 
