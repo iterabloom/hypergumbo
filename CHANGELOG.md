@@ -105,6 +105,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Survey speed on large repositories
 
 - **Supply-chain classification reads each file once, not once per symbol.** The classifier reads the whole file, and a file with N symbols was read N times: 40× the bytes on nestjs, and 319 s of CPU on flink. On a sample of nestjs files, per-path classification is 8.2× faster than per-symbol. The end-to-end saving on flink has not been re-measured.
+- **crypto-flow-linker no longer stalls a survey on JavaScript repositories that import images or fonts.** It parsed every JS/TS/Rust file before checking for a crypto keyword, including binary assets labelled `javascript`, and the comment-masking walk was quadratic in a node's child count. On nextjs it ran for more than an hour (single images took 28 s to over 13 min, against 7.5 s for all 20,000 source files). It now checks the raw text first and walks each node's children in one pass. Findings are unchanged. The end-to-end nextjs survey time has not been re-measured.
 
 #### Tooling and release
 
