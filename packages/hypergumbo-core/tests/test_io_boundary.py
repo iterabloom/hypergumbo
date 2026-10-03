@@ -861,14 +861,23 @@ class TestLoadCatalog:
 
         UAT BUG-09b observed 0 boundaries on plausible. After this PR,
         at minimum fs_read, fs_write, net_send, net_recv, logging,
-        db_read, db_write, subprocess, env_read, and ipc_send are all
+        db_read, db_write, subprocess, env_read, and process_send are all
         covered.
+
+        ``process_send`` replaced ``ipc_send`` here (WI-nuhor, WI-busam):
+        every elixir ``ipc_send`` row was a BEAM message send or Task spawn
+        (GenServer / Process.send / Task) or the community Oban enqueue
+        (WI-logoz, now db_write), none an OS channel. Elixir's real
+        ``ipc_send`` surface -- writing to an open port's external program
+        -- is misfiled or missing: ``Port.command`` is rowed ``subprocess``
+        (a write to a child already running, the INV-babiz shape) and
+        ``erlang:port_command`` has no row. Filed, not moved here.
         """
         catalog = load_catalog("elixir")
         boundaries = {p.boundary for p in catalog.primitives}
         for expected in (
             "fs_read", "fs_write", "net_send", "net_recv", "logging",
-            "db_read", "db_write", "subprocess", "env_read", "ipc_send",
+            "db_read", "db_write", "subprocess", "env_read", "process_send",
         ):
             assert expected in boundaries, (
                 f"Elixir catalog missing boundary kind: {expected}"
