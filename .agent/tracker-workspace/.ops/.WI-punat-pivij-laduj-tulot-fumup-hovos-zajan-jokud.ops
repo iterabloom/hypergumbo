@@ -1,0 +1,21 @@
+- op: create  # 15a1
+  at: '2026-10-03T22:01:18Z'  # 15a1
+  by: agent  # 15a1
+  actor: jgstern_agent  # 15a1
+  clock: 1  # 15a1
+  nonce: 15a1  # 15a1
+  data:  # 15a1
+    kind: work_item  # 15a1
+    title: "go: a typed receiver's method declared on an EMBEDDED INTERFACE, or behind a cross-package type ALIAS, resolves to nothing once Type.Method is taken in the type's own package (WI-kibah residual; prometheus storage.Appender.AppendHistogram)"  # 15a1
+    status: todo_hard  # 15a1
+    priority: 3  # 15a1
+    parent:  # 15a1
+    tags:  # 15a1
+    - go  # 15a1
+    - call_graph  # 15a1
+    isbefore: []  # 15a1
+    duplicate_of: []  # 15a1
+    not_duplicate_of: []  # 15a1
+    pr_ref:  # 15a1
+    description: "FOUND 2026-10-03 while fixing WI-kibah (branch jgstern-agent/fix/kibah, commit 3fb8b84d20, _go_method_of_type). A typed receiver's Type.Method is now taken from the type's own package (a qualified type: its import's package; one level of STRUCT embedding via meta[\"base_classes\"]). Two shapes that the previous first-candidate pick sometimes bound by luck now resolve to nothing:\n\n1. A method declared on an EMBEDDED INTERFACE of an interface type. prometheus `app.AppendHistogram(..)` with `app storage.Appender`: before, bound tsdb/chunkenc Appender.AppendHistogram (a different package's interface: wrong); after, go:external:0-0:AppendHistogram:unresolved. The right target is the storage package's embedded interface method.\n2. A type ALIAS across packages (cert-manager `type Addon = internal.Addon`): the hint names package addon, the method is declared in addon/internal, and _go_in_hinted_package (directory leaf) refuses it.\n\nMeasured (by call site, the kibah branch before vs after the package pick): typed receivers moved to unresolved: alertmanager 33, coredns 0, cert-manager 21, prometheus 63. Sampled: most were wrong-package or FIELD binds (alertmanager's 33 include `alert.Fingerprint()` bound to template.Alert.Fingerprint, a field); prometheus AppendHistogram (shape 1) and one cert-manager Addon.Setup site (shape 2) were the only recall losses seen in the sample. The interface embedding of shape 1 is NOT recorded today (_extract_struct_embeddings reads struct types only).\n\nFIX SHAPE (not built): record interface embeddings beside struct ones and walk them in _go_promoted_method; resolve a type alias to its target before the package test."  # 15a1
+    fields: {}  # 15a1

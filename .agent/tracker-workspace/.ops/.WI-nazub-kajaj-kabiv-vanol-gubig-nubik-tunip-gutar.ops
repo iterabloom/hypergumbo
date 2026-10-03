@@ -1,0 +1,22 @@
+- op: create  # bc42
+  at: '2026-10-03T22:01:08Z'  # bc42
+  by: agent  # bc42
+  actor: jgstern_agent  # bc42
+  clock: 1  # bc42
+  nonce: bc42  # bc42
+  data:  # bc42
+    kind: work_item  # bc42
+    title: "go: _extract_go_var_types is per function and first-binding-wins -- a receiver or method-value operand is typed from the FIRST binding of its name in the function, not the one in scope (h := &A{} in one branch types h := &B{} in the other)"  # bc42
+    status: todo_hard  # bc42
+    priority: 3  # bc42
+    parent:  # bc42
+    tags:  # bc42
+    - go  # bc42
+    - call_graph  # bc42
+    - analysis_quality  # bc42
+    isbefore: []  # bc42
+    duplicate_of: []  # bc42
+    not_duplicate_of: []  # bc42
+    pr_ref:  # bc42
+    description: "FOUND 2026-10-03 while fixing WI-kibah / WI-kugap (branch jgstern-agent/fix/kibah). The same position-blind family as WI-bopiv, in the TYPE half: _extract_go_var_types keys a variable's type by (enclosing function name, variable name) and the FIRST binding wins, so a receiver or a method-value operand is typed from the first binding of its name anywhere in the function, not the one in scope at the use.\n\nLive (kibah branch 5e60e3ea7d; the call arm behaves the same on dev):\n\n    func F(x bool) {\n        if x { h := &A{}; reg(h.Serve); h.Serve() }\n        else { h := &B{}; reg(h.Serve); h.Serve() }\n    }\n\n-> both branches bind A.Serve (function_reference_arg and ast_call); the else branch is B.Serve.\n\nThe scope model that answers \"which binding is in scope here\" now exists: _GoLocalScope (go.py, WI-bopiv) records each local's byte range. FIX SHAPE (not built): key var_types by binding (name + scope range) and look a name up by position, as _GoLocalScope.binds does; _go_last_binding already reads the latest binding at or above a line for the handle-kind readers.\n\nNOT MEASURED: frequency on the corpus (needs a per-site comparison of the first vs the in-scope binding's type)."  # bc42
+    fields: {}  # bc42
