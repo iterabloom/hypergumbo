@@ -79,8 +79,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import contextlib
-import io
 import json
 import pathlib
 import shutil
@@ -89,6 +87,9 @@ import tempfile
 from typing import Any
 
 from hypergumbo_core.io_boundary import load_catalog
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import run_cli_json
 
 # Entries whose idiomatic call site has no import at all, or whose module slot
 # names no importable thing. Enumerated as PREFIXES so the list stays short and
@@ -457,20 +458,9 @@ def _boundaries_for(
     entry point, so no probe function can be credited with them however the
     attribution is written.
     """
-    from hypergumbo_core.cli import main
-
-    argv = sys.argv
-    sys.argv = ["hypergumbo", "io-boundaries", str(root), "--format", "json"]
-    buf = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(buf):
-            with contextlib.suppress(SystemExit):
-                main()
-    finally:
-        sys.argv = argv
-    raw = buf.getvalue()
-    start = raw.find("{")
-    report = json.loads(raw[start:]) if start >= 0 else {}
+    # Raises MemberAbsent when io-boundaries wrote no report (WI-kovoj): an
+    # empty report would otherwise read as "0 of N primitives reach".
+    report = run_cli_json(["hypergumbo", "io-boundaries", str(root), "--format", "json"])
     hits: dict[str, set[str]] = collections.defaultdict(set)
     anchors: collections.Counter = collections.Counter()
     elsewhere: set[str] = set()

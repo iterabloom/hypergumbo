@@ -69,10 +69,16 @@ import ast
 import collections
 import json
 import pathlib
+import sys
 from typing import Any
 
 from hypergumbo_core.io_boundary import load_catalog
 from hypergumbo_core.paths import is_test_file
+
+# The cohort ledger (WI-kovoj): a repo path that is not a directory is FAILED,
+# not a repo with "0 py files", and the run states covered-of-given.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, require_dir
 
 #: HYPOTHESIS UNDER TEST — stdlib callables that RETURN a catalogued receiver
 #: type. Keyed by qualified name; a dotted key whose first segment is a
@@ -319,35 +325,38 @@ def main() -> int:
     ap.add_argument("repos", nargs="+")
     ap.add_argument("--json", dest="out")
     args = ap.parse_args()
+    ledger = CohortLedger(args.repos)
 
     methods = _catalogue_methods()
     ok, detail = _positive_control(methods)
     print(f"POSITIVE CONTROL: {'PASS' if ok else 'FAIL'} — {detail}")
     if not ok:
         print("\nRefusing to report corpus numbers from an unvalidated scanner.")
-        return 2
+        ledger.report()
+        return ledger.exit_code(2)
 
     rows = []
     agg_shape: collections.Counter = collections.Counter()
     agg_type: collections.Counter = collections.Counter()
     agg_test: collections.Counter = collections.Counter()
     agg_mgr = 0
-    for repo_str in args.repos:
-        repo = pathlib.Path(repo_str).resolve()
-        row = _scan_repo(repo, methods)
-        rows.append(row)
-        by_shape = collections.Counter(s["shape"] for s in row["sites"])
-        mgr = sum(row["manager_calls"].values())
-        agg_mgr += mgr
-        for s in row["sites"]:
-            agg_shape[s["shape"]] += 1
-            agg_type[s["type"]] += 1
-            agg_test[(s["shape"], s["is_test"])] += 1
-        print(f"\n=== {repo.name}  ({row['files']} py files) ===")
-        print(f"  catalogued method sites by shape: {dict(by_shape) or '{}'}")
-        print(f"  django MANAGER-shape calls      : {mgr}")
-        if row["tuple_factories"]:
-            print(f"  tuple factories (unbound)       : {row['tuple_factories']}")
+    for repo_str in ledger:
+        with ledger.attempt(repo_str):
+            repo = require_dir(repo_str)
+            row = _scan_repo(repo, methods)
+            rows.append(row)
+            by_shape = collections.Counter(s["shape"] for s in row["sites"])
+            mgr = sum(row["manager_calls"].values())
+            agg_mgr += mgr
+            for s in row["sites"]:
+                agg_shape[s["shape"]] += 1
+                agg_type[s["type"]] += 1
+                agg_test[(s["shape"], s["is_test"])] += 1
+            print(f"\n=== {repo.name}  ({row['files']} py files) ===")
+            print(f"  catalogued method sites by shape: {dict(by_shape) or '{}'}")
+            print(f"  django MANAGER-shape calls      : {mgr}")
+            if row["tuple_factories"]:
+                print(f"  tuple factories (unbound)       : {row['tuple_factories']}")
 
     print("\n=== COHORT TOTALS ===")
     print(f"catalogued method sites by shape : {dict(agg_shape) or '{}'}")
@@ -371,10 +380,13 @@ def main() -> int:
         print("Compare against CTOR-shaped sites above before sizing the fix: "
               "the constructor half already ships and moved 0 real edges.")
 
+    print()
+    ledger.report()
     if args.out:
-        pathlib.Path(args.out).write_text(json.dumps(rows, indent=2))
+        pathlib.Path(args.out).write_text(json.dumps(
+            {"cohort": ledger.claim(), "repos": rows}, indent=2))
         print(f"\nWrote {args.out}")
-    return 0
+    return ledger.exit_code()
 
 
 if __name__ == "__main__":  # pragma: no cover

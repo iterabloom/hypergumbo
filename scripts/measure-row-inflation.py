@@ -46,12 +46,16 @@ and its inflation number is meaningless.
 from __future__ import annotations
 import argparse
 import collections
-import contextlib
-import io
 import json
 import sys
+from pathlib import Path
 from typing import Any
 import hypergumbo_core.taint as taint_mod
+
+# The cohort ledger (WI-kovoj): a member whose verify-claims run wrote no
+# report is FAILED, not "0 findings", and the run states covered-of-given.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, run_cli_json
 
 
 def _run(repo: str, claims: str) -> dict:
@@ -95,16 +99,9 @@ def _run(repo: str, claims: str) -> dict:
     taint_mod._reconstruct_path = path
     taint_mod.TaintFlowFinding = make
     try:
-        from hypergumbo_core.cli import main
-        argv = sys.argv
-        sys.argv = ["hypergumbo", "verify-claims", repo, "--claims", claims, "--json"]
-        buf = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(buf):
-                with contextlib.suppress(SystemExit):
-                    main()
-        finally:
-            sys.argv = argv
+        # Raises MemberAbsent when no report was written: an empty ``recs``
+        # from a run that never happened must not price as zero inflation.
+        run_cli_json(["hypergumbo", "verify-claims", repo, "--claims", claims, "--json"])
     finally:
         taint_mod.propagate_taint_ddg = real_prop
         taint_mod._reconstruct_path = real_path
@@ -168,32 +165,37 @@ ap.add_argument("--json", dest="out")
 args = ap.parse_args()
 
 allout = []
-for repo in args.repos:
-    name = repo.rstrip("/").split("/")[-1]
+ledger = CohortLedger(args.repos, label=lambda r: r.rstrip("/").split("/")[-1])
+for repo in ledger:
+    name = ledger.label(repo)
     print(f"\n=== {name} ===", flush=True)
-    res = _run(repo, args.claims)
-    p = _price(res["recs"])
-    p["repo"] = name
-    p["analyzed_symbols"] = res["analyzed"]
-    if p["xf_findings"] == 0:
-        p["control"] = "EXCLUDED"
-        print(f"  EXCLUDED — 0 cross_function findings "
-              f"({p['findings']} findings)")
-    else:
-        p["control"] = "LIVE"
-        print(f"  findings {p['findings']}  xf {p['xf_findings']}  "
-              f"composable {p['composable']}")
-        print(f"  rows today {p['rows_before']}  "
-              f"(groups {p['groups']} + adjudicated {p['adjudicated_today']})")
-        for r_rate in (1.0, 0.5, 0.25):
-            print(f"    r={r_rate:<5} rows {p[f'rows_after_r{r_rate:g}']:>8}  "
-                  f"delta {p[f'delta_r{r_rate:g}']:>+8}  "
-                  f"x{p[f'inflation_r{r_rate:g}']}")
-        print(f"  groups touched {p['groups_touched']}/{p['groups']}  "
-              f"sizes {sorted(p['touched_group_sizes'].items())[:8]}")
-    allout.append(p)
+    with ledger.attempt(repo):
+        res = _run(repo, args.claims)
+        p = _price(res["recs"])
+        p["repo"] = name
+        p["analyzed_symbols"] = res["analyzed"]
+        if p["xf_findings"] == 0:
+            p["control"] = "EXCLUDED"
+            print(f"  EXCLUDED — 0 cross_function findings "
+                  f"({p['findings']} findings)")
+        else:
+            p["control"] = "LIVE"
+            print(f"  findings {p['findings']}  xf {p['xf_findings']}  "
+                  f"composable {p['composable']}")
+            print(f"  rows today {p['rows_before']}  "
+                  f"(groups {p['groups']} + adjudicated {p['adjudicated_today']})")
+            for r_rate in (1.0, 0.5, 0.25):
+                print(f"    r={r_rate:<5} rows {p[f'rows_after_r{r_rate:g}']:>8}  "
+                      f"delta {p[f'delta_r{r_rate:g}']:>+8}  "
+                      f"x{p[f'inflation_r{r_rate:g}']}")
+            print(f"  groups touched {p['groups_touched']}/{p['groups']}  "
+                  f"sizes {sorted(p['touched_group_sizes'].items())[:8]}")
+        allout.append(p)
 
+print()
+ledger.report()
 if args.out:
-    import pathlib
-    pathlib.Path(args.out).write_text(json.dumps(allout, indent=1))
+    Path(args.out).write_text(json.dumps(
+        {"cohort": ledger.claim(), "repos": allout}, indent=1))
     print(f"\ndetail: {args.out}")
+raise SystemExit(ledger.exit_code())

@@ -57,14 +57,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import contextlib
-import io
 import json
 import pathlib
 import sys
 from typing import Any
 
 import hypergumbo_core.taint as taint_mod
+
+# The cohort ledger (WI-kovoj): a member whose verify-claims run wrote no
+# report is FAILED, not a zero, and the run states covered-of-given.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, run_cli_json
 
 
 class _GateTally:
@@ -132,20 +135,10 @@ def _run_arm(
     taint_mod._register_sanitizer_callers = counting_register
     taint_mod._ddg_taint_reaches = counting_walk
     try:
-        from hypergumbo_core.cli import main
-
-        argv = sys.argv
-        sys.argv = ["hypergumbo", "verify-claims", repo,
-                    "--claims", claims, "--json"]
-        buf = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(buf):
-                with contextlib.suppress(SystemExit):
-                    main()
-        finally:
-            sys.argv = argv
-        raw = buf.getvalue().strip()
-        report = json.loads(raw) if raw.startswith("{") else {}
+        # Raises MemberAbsent when no report was written, so a run that never
+        # happened cannot read as a repo whose gate was never reached.
+        report = run_cli_json(["hypergumbo", "verify-claims", repo,
+                               "--claims", claims, "--json"])
     finally:
         taint_mod._register_sanitizer_callers = real_register
         taint_mod._ddg_taint_reaches = real_walk
@@ -221,6 +214,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    ledger = CohortLedger(args.repos)
     control = _positive_control(args.claims, pathlib.Path(args.workdir))
     print("POSITIVE CONTROL (arms must differ):")
     print(f"  sanitizer_call_sites delta = "
@@ -233,31 +227,36 @@ def main() -> int:
               "be an uncontrolled null. Refusing to report corpus numbers.")
         if args.out:
             pathlib.Path(args.out).write_text(
-                json.dumps({"control": control, "repos": []}, indent=2))
-        return 2
+                json.dumps({"control": control, "cohort": ledger.claim(),
+                            "repos": []}, indent=2))
+        return ledger.exit_code(2)
 
     results = []
-    for repo in args.repos:
+    for repo in ledger:
         print(f"\n=== {repo} ===")
-        row = _compare(repo, args.claims)
-        results.append(row)
-        print(f"  gate reached (A/B): {row['arm_a_no_module_slot']['gate_reached']}"
-              f" / {row['arm_b_module_slot']['gate_reached']}")
-        print(f"  sanitizer call sites (A/B): "
-              f"{row['arm_a_no_module_slot']['sanitizer_call_sites']}"
-              f" / {row['arm_b_module_slot']['sanitizer_call_sites']}")
-        print(f"  barrier walks (A/B): "
-              f"{row['arm_a_no_module_slot']['barrier_walks']}"
-              f" / {row['arm_b_module_slot']['barrier_walks']}")
-        print(f"  evidence (A/B): {row['arm_a_no_module_slot']['evidence']}"
-              f" / {row['arm_b_module_slot']['evidence']}")
-        print(f"  zero reading: {row['zero_reading']}")
+        with ledger.attempt(repo):
+            row = _compare(repo, args.claims)
+            results.append(row)
+            print(f"  gate reached (A/B): {row['arm_a_no_module_slot']['gate_reached']}"
+                  f" / {row['arm_b_module_slot']['gate_reached']}")
+            print(f"  sanitizer call sites (A/B): "
+                  f"{row['arm_a_no_module_slot']['sanitizer_call_sites']}"
+                  f" / {row['arm_b_module_slot']['sanitizer_call_sites']}")
+            print(f"  barrier walks (A/B): "
+                  f"{row['arm_a_no_module_slot']['barrier_walks']}"
+                  f" / {row['arm_b_module_slot']['barrier_walks']}")
+            print(f"  evidence (A/B): {row['arm_a_no_module_slot']['evidence']}"
+                  f" / {row['arm_b_module_slot']['evidence']}")
+            print(f"  zero reading: {row['zero_reading']}")
 
+    print()
+    ledger.report()
     if args.out:
         pathlib.Path(args.out).write_text(
-            json.dumps({"control": control, "repos": results}, indent=2))
+            json.dumps({"control": control, "cohort": ledger.claim(),
+                        "repos": results}, indent=2))
         print(f"\nWrote {args.out}")
-    return 0
+    return ledger.exit_code()
 
 
 if __name__ == "__main__":  # pragma: no cover

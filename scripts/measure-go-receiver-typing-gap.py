@@ -61,6 +61,11 @@ import tree_sitter_go
 
 from hypergumbo_core.io_boundary import load_catalog
 
+# The cohort ledger (WI-kovoj): a repo path that is not a directory is FAILED,
+# not a repo with zero sites, and the run states covered-of-given.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, require_dir
+
 #: ``(package, function)`` -> the catalogue TYPE its result carries.
 #: Hand-built from Go stdlib semantics; see the module docstring's limitation note.
 CONSTRUCTOR_TYPES: dict[tuple[str, str], str] = {
@@ -367,30 +372,47 @@ def main() -> int:
 
     report: dict = {"repos": {}}
     total: Counter = Counter()
-    for repo in args.repos:
-        res = scan_repo(repo, method_rows, ambiguous)
-        name = pathlib.Path(repo).name
-        report["repos"][name] = res
-        total.update(res["counts"])
-        c = res["counts"]
-        print(f"{name:14s} ASSIGNED total={c.get('ASSIGNED_total', 0):5d} "
-              f"blocked={c.get('ASSIGNED_BLOCKED_TODAY', 0):5d} "
-              f"ctor_also_tagged={c.get('ASSIGNED_CTOR_ALSO_TAGGED', 0):5d} "
-              f"| PARAM total={c.get('PARAM_total', 0):6d} "
-              f"blocked={c.get('PARAM_BLOCKED_TODAY', 0):6d}", file=sys.stderr)
-        if args.sites:
-            for site in res["no_boundary_sites"]:
-                print(f"    [{site['root_kind']:9s}] {name}/{site['file']}:"
-                      f"{site['line']} {site['receiver']}.{site['method']}()"
-                      f" -> {site['type']}.{site['method']}"
-                      f"  [root {site['origin']}]", file=sys.stderr)
+    ledger = CohortLedger(args.repos, label=lambda r: pathlib.Path(r).name)
+    for repo in ledger:
+        with ledger.attempt(repo):
+            _scan_one(repo, method_rows, ambiguous, report, total, args.sites)
     report["TOTAL"] = dict(total)
+    report["cohort"] = ledger.claim()
+    ledger.report(sys.stderr)
     text = json.dumps(report, indent=2)
     if args.out:
         pathlib.Path(args.out).write_text(text)
     else:
         print(text)
-    return 0
+    return ledger.exit_code()
+
+
+def _scan_one(
+    repo: str, method_rows: dict[str, set[str]], ambiguous: object,
+    report: dict, total: Counter, sites: bool,
+) -> None:
+    """One cohort member: scan, then fold into ``report`` and ``total``.
+
+    Folding happens only after ``scan_repo`` returns, so a member that fails
+    mid-scan contributes nothing to the totals and is FAILED in the claim.
+    """
+    require_dir(repo)
+    res = scan_repo(repo, method_rows, ambiguous)
+    name = pathlib.Path(repo).name
+    report["repos"][name] = res
+    total.update(res["counts"])
+    c = res["counts"]
+    print(f"{name:14s} ASSIGNED total={c.get('ASSIGNED_total', 0):5d} "
+          f"blocked={c.get('ASSIGNED_BLOCKED_TODAY', 0):5d} "
+          f"ctor_also_tagged={c.get('ASSIGNED_CTOR_ALSO_TAGGED', 0):5d} "
+          f"| PARAM total={c.get('PARAM_total', 0):6d} "
+          f"blocked={c.get('PARAM_BLOCKED_TODAY', 0):6d}", file=sys.stderr)
+    if sites:
+        for site in res["no_boundary_sites"]:
+            print(f"    [{site['root_kind']:9s}] {name}/{site['file']}:"
+                  f"{site['line']} {site['receiver']}.{site['method']}()"
+                  f" -> {site['type']}.{site['method']}"
+                  f"  [root {site['origin']}]", file=sys.stderr)
 
 
 if __name__ == "__main__":
