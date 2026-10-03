@@ -1,0 +1,24 @@
+- op: create  # 3ebc
+  at: '2026-10-03T18:43:42Z'  # 3ebc
+  by: agent  # 3ebc
+  actor: jgstern_agent  # 3ebc
+  clock: 1  # 3ebc
+  nonce: 3ebc  # 3ebc
+  data:  # 3ebc
+    kind: invariant  # 3ebc
+    title: "C: an ambiguous libc call's #include stamp omits quoted and transitive includes, so the ALL-expansion vouches for a real send() as an examined negative (NO-NET-SEND confirmed)"  # 3ebc
+    status: violated  # 3ebc
+    priority: 2  # 3ebc
+    parent:  # 3ebc
+    tags:  # 3ebc
+    - c  # 3ebc
+    - verify_claims  # 3ebc
+    - false_confirm  # 3ebc
+    isbefore: []  # 3ebc
+    duplicate_of: []  # 3ebc
+    not_duplicate_of: []  # 3ebc
+    pr_ref:  # 3ebc
+    description: "FOUND 2026-10-03 while re-verifying INV-dobuh-rinun-mulog-fizos-hamov-bojas-bohil-mobud (branch jgstern-agent/fix/dudal-withholding, base 2e21275d0e). Pre-existing; not caused by that branch.\n\nWHAT. The C analyzer stamps an unresolved ambiguous call (send, recv, read, write, open, close, ...) with the comma-joined list of the file's ANGLE-BRACKET includes only (c.py, WI-lajus: `system_lib_string`). A quoted include is dropped from the stamp, and so is everything any include reaches transitively. The coverage gate's ALL-expansion (INV-zimud) then treats that partial list as the complete set of headers the call could come from. When every listed header carries a module_completeness grant, the call becomes an EXAMINED NEGATIVE although its real home was never listed.\n\nREPRO (shipped CLI at 2e21275d0e; claim boundary net_send must_not_exist):\n  cq1  net.h: #include <sys/socket.h>\n       main.c: #include <errno.h> / #include \"net.h\" / int run(int fd){return (int)send(fd,\"x\",1,0);}\n       edge: c:errno.h:0-0:send:external_symbol\n       -> NO-NET-SEND CONFIRMED rc 0, caveats []   (a real libc send)\n  cq2  same, main.c with only #include \"net.h\"\n       edge: c:external:0-0:send:external_symbol (no stamp: no angle include)\n       -> NO-NET-SEND CONFIRMED rc 0, caveats []   (the placeholder is skipped by the gate, and the hint-less ambiguous `send` is refused by classification)\n  cq3  control, the INV-dobuh shape: #include <errno.h> / #include <proj/net.h> (in-repo, angle) \n       edge: c:errno.h,proj/net.h:0-0:send:external_symbol\n       -> inconclusive (proj/net cannot be enumerated)\n\nSo the withholding INV-dobuh calls noise is, in cq3, the only thing standing between a real send and a false CONFIRMED; and cq1/cq2 show the false CONFIRMED already happens when the project header is included with quotes.\n\nSEEN IN THE WILD (shape, not yet a false clean): torsocks src/lib/sendto.c includes <assert.h>, <common/log.h>, <common/utils.h>, \"torsocks.h\" and calls libc connect() (line 56) and send() (line 59); its stamp is assert.h,common/log.h,common/utils.h, and <sys/socket.h> arrives only through \"torsocks.h\" (src/lib/torsocks.h:47) and common/utils.h -> \"compat.h\" (src/common/compat.h:249). It is withheld today only because assert and the two project headers are unenumerated.\n\nDIRECTION OF A FIX (not designed here): the stamp must name every header the call could come from, i.e. expand in-repo includes (quoted AND angle-resolved-in-repo) to their transitive include sets, so classification can match send via sys/socket and the ALL-expansion asks about the real homes. A file with NO resolvable include set must not reach the gate as the skipped `external` placeholder for an ambiguous libc name. Same question for cpp/objc stamps.\n\nNOT MEASURED: how many corpus C/C++ call sites are examined negatives whose stamp omits the declaring header. Check before sizing."  # 3ebc
+    fields:  # 3ebc
+      statement: "A C call the I/O catalogue cannot classify is an examined negative only if every header it could have come from is enumerated; a header reached through a quoted include, or transitively through any include, is one it could have come from."  # 3ebc
+      root_cause: "c.py (WI-lajus) stamps only the file's angle-bracket includes (system_lib_string) and stamps the skipped 'external' placeholder when there are none; the coverage gate's ALL-expansion (INV-zimud) treats that partial list as the complete set of homes, and classification refuses the call because no listed header names it."  # 3ebc
