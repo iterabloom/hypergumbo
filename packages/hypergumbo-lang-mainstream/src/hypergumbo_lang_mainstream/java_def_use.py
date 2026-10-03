@@ -217,7 +217,6 @@ def _java_callable_kind(node: Any) -> str:
 
 register_ddg_language(LanguageDdgSpec(
     language="java",
-    file_glob="*.java",
     # A record's compact constructor (`public R { ... }`) is a constructor
     # with a body like any other (WI-pidos).
     function_node_types=frozenset({

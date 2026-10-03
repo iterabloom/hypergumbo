@@ -112,6 +112,7 @@ from ..analyze.base import (
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..routes import is_route, method_token, route_of
+from ..taxonomy import JS_TS_LANGUAGES, extension_globs
 from ..url_folding import (
     fold_array_join,
     fold_string_interpolation,
@@ -645,8 +646,10 @@ def _find_source_files(root: Path) -> Iterator[Path]:
     Skips minified files (``*.min.js``, ``*.min.ts``) which can produce
     false-positive HTTP call detections from compressed library code.
     """
+    # JS/TS extensions come from the shared list (WI-hizon); every suffix not
+    # dispatched to another scanner below reaches the JS/TS one.
     patterns = [
-        "**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx",
+        "**/*.py", *extension_globs(*JS_TS_LANGUAGES),
         "**/*.go", "**/*.rb", "**/*.java", "**/*.elm",
     ]
     for path in find_non_test_files(root, patterns):

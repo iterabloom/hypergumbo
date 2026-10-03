@@ -98,6 +98,7 @@ from typing import Iterator
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..taxonomy import JS_TS_LANGUAGES, extension_globs
 from ._text_filters import js_ts_language_from_path, read_source_bytes
 from ._name_args import (
     KIND_LITERAL,
@@ -427,7 +428,7 @@ def detect_ipc_patterns(source: bytes, language: str) -> list[dict]:
 
 def _find_js_files(repo_root: Path) -> Iterator[Path]:
     """Find all JavaScript/TypeScript files in the repository."""
-    yield from find_non_test_files(repo_root, ["*.js", "*.ts", "*.jsx", "*.tsx", "*.mjs"])
+    yield from find_non_test_files(repo_root, extension_globs(*JS_TS_LANGUAGES))  # WI-hizon
 
 
 def _get_language(file_path: Path) -> str:

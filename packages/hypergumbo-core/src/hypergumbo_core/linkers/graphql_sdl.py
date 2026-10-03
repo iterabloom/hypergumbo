@@ -88,6 +88,7 @@ from ..analyze.base import (
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, PASS_VERSION, Span, Symbol, make_pass_id
 from ..pass_silence import silence_reason_for_candidates
+from ..taxonomy import JS_TS_LANGUAGES, extension_globs
 from ._text_filters import read_masked_source
 from .registry import (
     LinkerActivation,
@@ -125,7 +126,7 @@ _SDL_HEAD = re.compile(
 # guessed at.
 _SDL_FIELD = re.compile(r"^[ \t]*([A-Za-z_]\w*)[ \t]*(?:\([^)\n]*\))?[ \t]*:", re.M)
 
-_SOURCE_PATTERNS = ["**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx"]
+_SOURCE_PATTERNS = ["**/*.py", *extension_globs(*JS_TS_LANGUAGES)]  # WI-hizon
 
 
 @dataclass

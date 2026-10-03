@@ -94,6 +94,7 @@ from typing import Iterator
 from ..analyze.base import make_file_id, make_file_stable_id, make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..taxonomy import JS_TS_LANGUAGES, extension_globs
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import js_ts_language_from_path, language_from_path, read_masked_source
 
@@ -293,7 +294,9 @@ DJANGO_CHANNELS_ROUTE = re.compile(
 
 def find_js_ts_files(repo_root: Path) -> Iterator[Path]:
     """Yield all JS/TS files in the repository."""
-    yield from find_non_test_files(repo_root, ["*.js", "*.jsx", "*.ts", "*.tsx", "*.vue", "*.svelte"])
+    yield from find_non_test_files(  # JS/TS from the shared list (WI-hizon)
+        repo_root, [*extension_globs(*JS_TS_LANGUAGES), "*.vue", "*.svelte"],
+    )
 
 
 def find_python_files(repo_root: Path) -> Iterator[Path]:

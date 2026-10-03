@@ -347,7 +347,6 @@ def _go_bound_literal_bodies(node: Any, source: bytes) -> list[Any]:
 
 register_ddg_language(LanguageDdgSpec(
     language="go",
-    file_glob="*.go",
     function_node_types=frozenset({"function_declaration", "method_declaration"}),
     name_for=_go_function_name,
     kind_for=_go_symbol_kind,

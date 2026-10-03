@@ -99,6 +99,7 @@ from ..analyze.base import (
 )
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..taxonomy import JS_TS_LANGUAGES, extension_globs, extension_suffixes
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import js_ts_language_from_path, read_masked_source
 from ._name_args import (
@@ -284,7 +285,7 @@ REDIS_SUBSCRIBE_JS_PATTERN = re.compile(
 
 def _find_source_files(root: Path) -> Iterator[Path]:
     """Find files that might contain message queue patterns."""
-    patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
+    patterns = ["**/*.py", *extension_globs(*JS_TS_LANGUAGES), "**/*.java"]  # WI-hizon
     for path in find_non_test_files(root, patterns):
         yield path
 
@@ -294,7 +295,7 @@ def _detect_language(file_path: Path) -> str:
     ext = file_path.suffix.lower()
     if ext == ".py":
         return "python"
-    elif ext in (".js", ".ts", ".jsx", ".tsx"):
+    elif ext in extension_suffixes(*JS_TS_LANGUAGES):
         return js_ts_language_from_path(file_path)  # WI-komum: .ts -> typescript
     elif ext == ".java":
         return "java"

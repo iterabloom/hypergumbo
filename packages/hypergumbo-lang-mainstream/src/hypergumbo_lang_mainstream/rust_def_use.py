@@ -362,6 +362,5 @@ _HANDLERS: dict[str, Any] = {
 # which reads downstream as "this function has no DDG data".
 register_ddg_language(LanguageDdgSpec(
     language="rust",
-    file_glob="*.rs",
     function_node_types=frozenset({"function_item"}),
 ))
