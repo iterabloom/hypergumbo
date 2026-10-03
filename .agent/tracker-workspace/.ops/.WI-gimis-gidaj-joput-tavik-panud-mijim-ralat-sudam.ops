@@ -1,0 +1,20 @@
+- op: create  # a05b
+  at: '2026-10-03T20:18:29Z'  # a05b
+  by: agent  # a05b
+  actor: jgstern_agent  # a05b
+  clock: 1  # a05b
+  nonce: a05b  # a05b
+  data:  # a05b
+    kind: work_item  # a05b
+    title: "annotation-convention linker scans a file once per path spelling (relative vs absolute Symbol.path) and mints every @hg: directive twice -> duplicate node ids in survey output"  # a05b
+    status: todo_hard  # a05b
+    priority: 3  # a05b
+    parent:  # a05b
+    tags:  # a05b
+    - linker  # a05b
+    isbefore: []  # a05b
+    duplicate_of: []  # a05b
+    not_duplicate_of: []  # a05b
+    pr_ref:  # a05b
+    description: "**Defect (found while measuring WI-pokij on branch jgstern-agent/fix/fovus).** `link_annotations` collects the files to scan from `symbols` and de-duplicates them by the `Symbol.path` STRING. When two symbols spell the same file differently -- a relative `a.js` from the analyzer and an absolute path from an earlier linker's symbol -- the file is scanned twice and every `@hg:` directive in it is minted twice, once with each path in the id. Survey output then normalizes paths, so the two become DUPLICATE node ids.\n\nRepro (function level): `link_annotations(root, [Symbol(path=\"a.js\", ...), Symbol(path=str(root / \"a.js\"), ...)])` over a file holding `// @hg:route GET /x` returns `javascript:a.js:1-1:GET /x:function` AND `javascript:/abs/.../a.js:1-1:GET /x:function`.\n\nObserved end to end: a fixture of 8 JS/TS files with `@hg:` directives plus fetch/db/producer calls (so other linkers mint symbols in the same files) yields 24 duplicated node ids in the survey output after the fovus branch, 12 before it (before, only the `.js`/`.ts`/`.jsx`/`.tsx` files had other linkers' symbols). Corpus incidence not measured (`@hg:` directives are opt-in).\n\nFix direction: de-duplicate on the resolved path (`abs_path`), and mint ids from the repo-relative path, not the symbol's spelling."  # a05b
+    fields: {}  # a05b

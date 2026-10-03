@@ -34,3 +34,10 @@
   clock: 3  # 3d33
   nonce: 3d33  # 3d33
   message: "PYTHON SIBLING FILED as WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin: the core inheritance linker binds Python's dotted external base unittest.TestCase by its last segment to Django's in-tree TestCase, closing an inheritance cycle (TestCase -> TransactionTestCase -> SimpleTestCase -> TestCase) that makes the C3 walker refuse every class under Django's test hierarchy (2098 same-file inherited call sites measured on the django corpus repo). Same mechanism as this item (last segment of a namespaced external name taken as a project class, no import context in the linker); a shared fix in inheritance.py's lookup_names fallback may cover both."  # 3d33
+- op: discuss  # 5cf6
+  at: '2026-10-03T21:17:02Z'  # 5cf6
+  by: agent  # 5cf6
+  actor: jgstern_agent  # 5cf6
+  clock: 4  # 5cf6
+  nonce: 5cf6  # 5cf6
+  message: "Sibling status (from WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin): the Python instance is fixed on branch jgstern-agent/fix/ratid. py.py resolves a base's root through the file's imports and emits an external edge with an ExternalRef for an out-of-tree target; the core inheritance linker now skips any base an analyzer classified that way (analyzer_external_bases in linkers/inheritance.py), so a Ruby fix only has to make ruby.py emit such an edge for an external ActiveRecord::Base-style constant. Ruby itself has no import model, so the external/in-tree decision there needs a different signal (Gemfile / require hints). The same mechanism in Java/Kotlin/js_ts/C#/C++/Go/Groovy/Scala/PHP is filed as WI-pivap-hujij-vakib-hafaz-vuvod-zipin-nalov-dalum."  # 5cf6
