@@ -316,6 +316,33 @@ class TestInTreeControls:
             "python:html.parser:0-0:HTMLParser:external_symbol",
         ]
 
+    def test_import_rooted_below_the_source_root_still_resolves(
+        self, tmp_path: Path,
+    ) -> None:
+        # Django's test suite: ``tests/`` is put on sys.path at run time, so a
+        # test imports ``from admin_scripts.tests import AdminScriptTestCase``
+        # while the module key is ``tests.admin_scripts.tests``. The base is
+        # in-tree and keeps its resolved edge (no phantom external).
+        data = _behavior_map(tmp_path, {
+            "tests/admin_scripts/__init__.py": "",
+            "tests/admin_scripts/tests.py": (
+                "import unittest\n"
+                "class AdminScriptTestCase(unittest.TestCase):\n"
+                "    pass\n"
+            ),
+            "tests/other_app/__init__.py": "",
+            "tests/other_app/tests.py": (
+                "from admin_scripts.tests import AdminScriptTestCase\n"
+                "class X(AdminScriptTestCase):\n"
+                "    pass\n"
+            ),
+        })
+        x = _class_id(data, "X", "tests/other_app/tests.py")
+        base = _class_id(data, "AdminScriptTestCase", "tests/admin_scripts/tests.py")
+        assert [(e["dst"], e["is_resolved"]) for e in _extends_from(data, x)] == [
+            (base, True),
+        ]
+
     def test_builtin_base_unchanged(self, tmp_path: Path) -> None:
         data = _behavior_map(tmp_path, {"m.py": "class E(Exception):\n    pass\n"})
         e_id = _class_id(data, "E", "m.py")
@@ -377,22 +404,67 @@ class TestHelpers:
     """Direct coverage of the WI-ratid helpers' arms the fixtures above do not
     reach."""
 
-    def test_import_target_in_tree_tests_every_prefix(self) -> None:
-        from hypergumbo_lang_mainstream.py import _import_target_in_tree
-        keys = frozenset({"pkg.ser"})
-        # A class of an in-tree module, used as a namespace.
-        assert _import_target_in_tree("pkg.ser.OrderSerializer", "Meta", keys)
-        # The stdlib.
-        assert not _import_target_in_tree("unittest", "TestCase", keys)
+    @staticmethod
+    def _in_tree(module: str, name: str, keys: set[str], cand_paths=()) -> bool:
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_lang_mainstream.py import (
+            _import_target_in_tree,
+            _module_key_suffixes,
+        )
+        frozen = frozenset(keys)
+        cands = [
+            Symbol(
+                id=f"python:{p}:1-2:{name}:class", name=name, kind="class",
+                language="python", path=p,
+                span=Span(start_line=1, end_line=2, start_col=0, end_col=0),
+            )
+            for p in cand_paths
+        ]
+        return _import_target_in_tree(
+            module, name, frozen, _module_key_suffixes(frozen), cands,
+        )
 
-    def test_short_prefix_is_matched_exactly_not_by_suffix(self) -> None:
-        # ``html`` (the first segment of ``html.parser``) is a SUFFIX of the
+    def test_module_key_suffixes_are_two_segments_or_more(self) -> None:
+        from hypergumbo_lang_mainstream.py import _module_key_suffixes
+        assert _module_key_suffixes(frozenset({"tests.admin_scripts.tests", "top"})) == (
+            frozenset({"tests.admin_scripts.tests", "admin_scripts.tests"})
+        )
+
+    def test_stdlib_is_not_in_tree(self) -> None:
+        assert not self._in_tree("unittest", "TestCase", {"pkg.ser"})
+
+    def test_class_of_in_tree_module_used_as_namespace(self) -> None:
+        # ``OrderSerializer.Meta``: a shorter prefix is exactly a key.
+        assert self._in_tree("pkg.ser.OrderSerializer", "Meta", {"pkg.ser"})
+
+    def test_source_root_mismatch_two_segments(self) -> None:
+        # Django's tests: ``from admin_scripts.tests import ...`` while the key
+        # is ``tests.admin_scripts.tests``.
+        assert self._in_tree(
+            "admin_scripts.tests", "AdminScriptTestCase",
+            {"tests.admin_scripts.tests"},
+        )
+
+    def test_one_segment_suffix_is_not_enough(self) -> None:
+        # ``html`` (the first segment of ``html.parser``) is a suffix of the
         # in-tree ``django.utils.html``; it is not an in-tree module.
-        from hypergumbo_lang_mainstream.py import _import_target_in_tree
-        keys = frozenset({"django.utils.html", "html_top"})
-        assert not _import_target_in_tree("html.parser", "HTMLParser", keys)
+        assert not self._in_tree("html.parser", "HTMLParser", {"django.utils.html"})
         # An exact one-segment key is in-tree (a repo-root ``html`` package).
-        assert _import_target_in_tree("html.parser", "HTMLParser", frozenset({"html"}))
+        assert self._in_tree("html.parser", "HTMLParser", {"html"})
+
+    def test_one_segment_module_decided_by_the_class_file(self) -> None:
+        # ``from models import Article`` with ``tests/basic/models.py``.
+        assert self._in_tree(
+            "models", "Article", {"tests.basic.models"}, ["tests/basic/models.py"],
+        )
+        assert self._in_tree(
+            "pkg", "Article", {"x"}, ["src/pkg/__init__.py"],
+        )
+        # A dot boundary is required, and the class must be in that file.
+        assert not self._in_tree(
+            "models", "Article", {"tests.basic.mymodels"}, ["tests/basic/mymodels.py"],
+        )
+        assert not self._in_tree("models", "Article", {"tests.basic.models"}, [])
 
     def test_import_qualified_base_shapes(self) -> None:
         from hypergumbo_lang_mainstream.py import _import_qualified_base
