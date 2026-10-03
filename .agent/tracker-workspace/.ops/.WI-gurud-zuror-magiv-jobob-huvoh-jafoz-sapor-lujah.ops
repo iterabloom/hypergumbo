@@ -1,0 +1,23 @@
+- op: create  # b61b
+  at: '2026-10-03T14:32:25Z'  # b61b
+  by: agent  # b61b
+  actor: jgstern_agent  # b61b
+  clock: 1  # b61b
+  nonce: b61b  # b61b
+  data:  # b61b
+    kind: work_item  # b61b
+    title: "elixir Port.command is rowed subprocess but writes to a program already running (ipc_send, the INV-babiz shape); erlang:port_command has no row -- elixir has no real ipc_send row at all"  # b61b
+    status: todo_hard  # b61b
+    priority: 3  # b61b
+    parent:  # b61b
+    tags:  # b61b
+    - catalogue  # b61b
+    - io_boundary  # b61b
+    - elixir  # b61b
+    - erlang  # b61b
+    isbefore: []  # b61b
+    duplicate_of: []  # b61b
+    not_duplicate_of: []  # b61b
+    pr_ref:  # b61b
+    description: "Found while moving elixir's ipc_send rows (WI-nuhor / WI-busam, branch jgstern-agent/fix/audit0021-rows). After that branch, elixir has NO ipc_send row at all: every one it had was a BEAM send or spawn (now process_send) or the community Oban enqueue (now db_write). The elixir boundary-coverage test (test_io_boundary.py::TestLoadCatalog::test_elixir_catalog_covers_all_expected_boundaries) was asserting ipc_send was present because of those misfiled rows; it now asserts process_send.\n\nElixir's REAL ipc_send surface -- data written to the external program behind an open port, a channel the program set up (audit-findings 0021's definition) -- is misfiled or missing:\n- elixir.yaml `Port: [open, command]` is under `subprocess`. Port.open launches (subprocess is right for it); Port.command(port, data) writes data to the stdin of a program ALREADY running -- the INV-babiz shape (NSTask.terminate / Process.terminate were moved out of subprocess for the same reason). Read at the shipped rows; not measured on a corpus.\n- erlang.yaml has no row for erlang:port_command/2,3 or port_connect; `Port ! {self(), {command, Data}}` is spelled through erlang:send, which is process_send.\n\nEffect: today Port.command is a `subprocess` sink (zone subprocess), so a host_secret -> ipc claim cannot see it, and a must_not_exist subprocess claim reports a launch where none happens. erlang:port_command is invisible.\nFix shape: Port.command -> ipc_send (mirroring python Popen.stdin.write / rust ChildStdin rows), add erlang:port_command, with a reach fixture each; keep Port.open under subprocess. Check whether Port.command should be `simultaneous` with anything before moving (it launches nothing)."  # b61b
+    fields: {}  # b61b

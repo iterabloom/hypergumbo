@@ -1,0 +1,22 @@
+- op: create  # d204
+  at: '2026-10-03T14:32:00Z'  # d204
+  by: agent  # d204
+  actor: jgstern_agent  # d204
+  clock: 1  # d204
+  nonce: d204  # d204
+  data:  # d204
+    kind: work_item  # d204
+    title: "elixir: the elixir spellings of BEAM sends and spawns are unrowed (Kernel.send/spawn incl. the bare forms, Process.spawn/exit/link/monitor/register, GenServer.reply/start/stop, Task.Supervisor.async*) while erlang rows them process_send"  # d204
+    status: todo_hard  # d204
+    priority: 3  # d204
+    parent:  # d204
+    tags:  # d204
+    - catalogue  # d204
+    - io_boundary  # d204
+    - elixir  # d204
+    isbefore: []  # d204
+    duplicate_of: []  # d204
+    not_duplicate_of: []  # d204
+    pr_ref:  # d204
+    description: "Residual of WI-nuhor / WI-busam (branch jgstern-agent/fix/audit0021-rows), found while sweeping the family. NOT fixed there: those items moved the rows that existed; these never existed.\n\nerlang.yaml rows the BEAM process primitives under process_send: erlang:send / ! / send_after / spawn / spawn_link / spawn_monitor / exit / register / monitor / link, gen_server:reply / start / start_link / stop, proc_lib:spawn. elixir.yaml (which inherits erlang's rows for the ATOM spellings, `:erlang.send(...)`) has no row for the ELIXIR spellings of the same calls:\n- Kernel.send/2, Kernel.spawn/1,3, spawn_link, spawn_monitor -- including the BARE forms send(pid, msg) / spawn(fn), which are the commonest elixir message send. Measured on a one-file fixture at dev e8d9e89ca4: `Kernel.send(pid, x)` and `Process.spawn(fn, [])` report external_potential; bare `send(pid, x)` reports NOTHING (no chain of any kind -- a local call with no module slot).\n- Process.spawn / exit / link / monitor / register (only send / send_after are rowed).\n- GenServer.reply / start / start_link / stop (only call / cast / abcast / multi_call are rowed).\n- Task.Supervisor.async / async_nolink (only start_child is rowed, after WI-busam re-homed it).\n\nEffect: a taint flow into an elixir send/spawn has no ipc sink unless spelled through GenServer.call/cast, Process.send or Task.*; erlang's equivalent has one. Recall, not precision. The bare-call form needs an analyzer-side answer (how a Kernel import is slotted), not only rows.\nFix shape: rows under process_send mirroring erlang's, plus a reach test per spelling; the bare form first needs the elixir analyzer to name Kernel as the module of an unqualified Kernel call -- check WI-taluz (four dot-call receiver shapes) for overlap before starting."  # d204
+    fields: {}  # d204

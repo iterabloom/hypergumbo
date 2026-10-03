@@ -1,0 +1,23 @@
+- op: create  # b2bf
+  at: '2026-10-03T14:43:37Z'  # b2bf
+  by: agent  # b2bf
+  actor: jgstern_agent  # b2bf
+  clock: 1  # b2bf
+  nonce: b2bf  # b2bf
+  data:  # b2bf
+    kind: work_item  # b2bf
+    title: "c: printf and putchar (stdout-only writers) are rowed fs_write, but a process's own stdout is logging in every catalogue (audit-findings 0021)"  # b2bf
+    status: todo_hard  # b2bf
+    priority: 3  # b2bf
+    parent:  # b2bf
+    tags:  # b2bf
+    - c  # b2bf
+    - catalogue  # b2bf
+    - io_boundary  # b2bf
+    - taint  # b2bf
+    isbefore: []  # b2bf
+    duplicate_of: []  # b2bf
+    not_duplicate_of: []  # b2bf
+    pr_ref:  # b2bf
+    description: "FOUND 2026-10-03 by WI-hilot (branch jgstern-agent/fix/mujod), which made C++ files that include <cstdio> reach the C stdio rows.\n\nc.yaml rows `printf` and `putchar` under fs_write (stdio row: fopen, fwrite, fputs, fputc, fprintf, putc, putchar, printf, remove, rename, tmpfile, tmpnam, fclose, fflush). Neither takes a stream: both write to the process's own standard output. The spec (taint section) and audit-findings 0021 rule that a process's own stdout/stderr is `logging` in every catalogue (LIVE: \"logging = the process's own stdout/stderr\"), and c.yaml itself rows the stdout/stderr ATTRIBUTES under logging (WI-dutah). So `printf(secret)` is a host_fs sink (fs_write -> zone host_fs) instead of a logging sink: a host-secret-no-host-fs claim reads violated on a terminal write, and a host-secret-no-logging claim misses it.\n\nObserved live: io-boundaries on a C++ fixture (#include <cstdio>; printf(\"%s\\n\", key)) reports `fs_write: stdio.printf` on the WI-hilot branch. Plain C files have had this since the row was written; WI-hilot only extends it to C++ files that spell the header <cstdio>.\n\nNot checked: whether any other catalogue rows a stdout-only writer under fs_write; whether a test pins printf's current boundary. Related but distinct: WI-dohod (puts/vprintf/... are UNROWED; this item is about rows that EXIST with the wrong boundary). The mixed-stream rows (fprintf, fputs, fputc, putc, fwrite) are call-site undecidable (stream argument) and are not what this item is about."  # b2bf
+    fields: {}  # b2bf

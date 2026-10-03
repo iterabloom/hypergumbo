@@ -1,0 +1,24 @@
+- op: create  # 31e2
+  at: '2026-10-03T14:32:19Z'  # 31e2
+  by: agent  # 31e2
+  actor: jgstern_agent  # 31e2
+  clock: 1  # 31e2
+  nonce: '31e2'  # 31e2
+  data:  # 31e2
+    kind: work_item  # 31e2
+    title: "logging-facility configuration no longer a sink after WI-ragaz: basicConfig(filename=...) file creation is an examined negative, and values carried through facility state (Logger.metadata, a format-string literal, slog With) never reach the later emitter's sink"  # 31e2
+    status: todo_hard  # 31e2
+    priority: 3  # 31e2
+    parent:  # 31e2
+    tags:  # 31e2
+    - catalogue  # 31e2
+    - io_boundary  # 31e2
+    - taint  # 31e2
+    - python  # 31e2
+    - elixir  # 31e2
+    isbefore: []  # 31e2
+    duplicate_of: []  # 31e2
+    not_duplicate_of: []  # 31e2
+    pr_ref:  # 31e2
+    description: "Residual of WI-ragaz (branch jgstern-agent/fix/audit0021-rows), disclosed there and not fixed.\n\nWI-ragaz removed the `logging` rows for calls that construct or configure a logging facility (python logging.basicConfig / StreamHandler, go slog.NewTextHandler / NewJSONHandler, elixir Logger.metadata / configure): they write nothing at the call (ADR-0050 axiom; erlang.yaml's io_lib deletion is the precedent). Two things those rows were covering BY ADJACENCY are now uncovered, and neither is a row question:\n\n1. FILE CREATION BY KEYWORD. logging.basicConfig(filename=...) constructs a FileHandler, which opens (creates) the file at the call -- the reason logging.FileHandler is rowed fs_write. A name-matched row cannot see the keyword, and `logging` carries a completeness grant, so basicConfig is now an examined NEGATIVE for fs_write. Measured lexically on the 2026-10-03 corpus: 13 of 477 basicConfig calls pass filename= (2.7%); `**kwargs` spellings are not counted. A host_fs must_not_exist claim on a program whose only file creation is this call can read clean. (The log lines written later go to `logging` under audit-findings 0021's configured-destination rule; only the creation is uncovered.) Needs a keyword-conditioned row (no such mechanism exists: requires_target_kind and io_mode are the nearest).\n\n2. DATA CARRIED THROUGH FACILITY STATE. A value given to the facility and printed by a LATER emitter: elixir Logger.metadata(user: v) (printed when the formatter's metadata list names the key), python basicConfig(format=f\"{v} %(message)s\") (a literal in the format string is printed on every record), go slog.New(h).With(\"k\", v). The taint walk does not follow the process dictionary or a handler's stored format, so the later emitter's sink never sees v. Before WI-ragaz the first two were sink hits at the configuring call -- the right finding at the wrong call; the third (With) was never rowed. Not measured on a corpus.\n\nFix shape (not decided): (1) a keyword-conditioned row mechanism, or a fs_write row gated by a producer stamp for the filename keyword; (2) model facility state as a carried value (a summary from the configuring call to the facility's emitters), or a disclosed caveat on logging claims when such a call is reached."  # 31e2
+    fields: {}  # 31e2
