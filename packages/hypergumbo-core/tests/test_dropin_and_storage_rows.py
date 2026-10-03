@@ -66,7 +66,7 @@ _DEFUSED_FROM = (
     "\n"
     "def export(rows):\n"
     "    w = csv.writer(sys.stdout)\n"
-    "    return w\n"
+    "    w.writerows(rows)\n"
 )
 
 _DEFUSED_IMPORT = (
@@ -75,7 +75,7 @@ _DEFUSED_IMPORT = (
     "\n"
     "\n"
     "def export(rows):\n"
-    "    return defusedcsv.csv.writer(sys.stdout)\n"
+    "    defusedcsv.csv.writer(sys.stdout).writerows(rows)\n"
 )
 
 _STORAGE = (
@@ -109,15 +109,16 @@ _STORAGE = (
 
 #: Each stdlib csv module that carries a row, and the defusedcsv module that
 #: mirrors it. defusedcsv.csv re-exports stdlib csv, defines its own ``writer``
-#: and subclasses ``DictWriter``.
+#: (returning a ``_ProxyWriter`` where stdlib returns a ``_csv.Writer``) and
+#: subclasses ``DictWriter``.
 _CSV_MIRROR = {
-    "csv": "defusedcsv.csv",
+    "_csv.Writer": "defusedcsv.csv._ProxyWriter",
     "csv.DictWriter": "defusedcsv.csv.DictWriter",
 }
 
 
 def _in_stdlib_csv_family(module: str) -> bool:
-    return module == "csv" or module.startswith("csv.")
+    return module.split(".", 1)[0] in ("csv", "_csv")
 
 
 def _tagged(tmp_path: Path, source: str, *, defaults: bool = True) -> dict:
@@ -146,25 +147,42 @@ class TestDefusedcsvHasItsOwnRow:
     @pytest.mark.parametrize("source", [_DEFUSED_FROM, _DEFUSED_IMPORT],
                              ids=["from-import", "dotted-import"])
     def test_the_write_classifies_as_defusedcsv(self, tmp_path, source) -> None:
+        """WI-kozaj: the write is the proxy's ``writerows``, reached through the
+        community signature row ``defusedcsv.csv.writer``; the factory call
+        itself carries no row, exactly as stdlib ``csv.writer`` does not."""
         tagged = _tagged(tmp_path, source)
-        assert ("export", "writer") in tagged, sorted(tagged)  # reach
-        assert tagged[("export", "writer")] == ("fs_write", "defusedcsv.csv.writer")
+        assert ("export", "writerows") in tagged, sorted(tagged)  # reach
+        assert tagged[("export", "writerows")] == (
+            "fs_write", "defusedcsv.csv._ProxyWriter.writerows")
+        assert tagged[("export", "writer")] == (None, None)
 
     def test_the_taint_sink_is_the_defusedcsv_row(self) -> None:
         cat = load_builtin_taint_catalog()
         idx = _build_callee_index(cat.sinks_for_language("python"))
         hit = _match_propagation_entry(
-            idx, "python:defusedcsv.csv:0-0:writer:external_symbol",
+            idx, "python:defusedcsv.csv._ProxyWriter:0-0:writerow:external_symbol",
             cat.ambiguous_names_for_language("python"), is_resolved=False,
         )
         assert hit is not None
-        assert (hit.module, hit.name, hit.zone) == ("defusedcsv.csv", "writer", "host_fs")
+        assert (hit.module, hit.name, hit.zone) == (
+            "defusedcsv.csv._ProxyWriter", "writerow", "host_fs")
+
+    def test_the_factory_return_type_mirrors_the_stdlib_row(self) -> None:
+        from hypergumbo_core.library_signatures import load_library_signatures
+
+        rows = load_library_signatures("python")
+        assert rows["csv.writer"] == "_csv.Writer"
+        assert rows["defusedcsv.csv.writer"] == "defusedcsv.csv._ProxyWriter"
+        assert _CSV_MIRROR[rows["csv.writer"]] == rows["defusedcsv.csv.writer"]
 
     def test_the_rows_mirror_the_stdlib_csv_rows(self) -> None:
         """A drop-in must not carry a row its stdlib twin lacks, nor lack one,
         module for module (WI-kozaj added the DictWriter pair)."""
         prims = load_catalog("python").primitives
         stdlib_family = {p.module for p in prims if _in_stdlib_csv_family(p.module)}
+        assert "csv" not in stdlib_family, (
+            "WI-kozaj: the csv.writer factory carries no row; its write is "
+            "_csv.Writer's")
         assert stdlib_family == set(_CSV_MIRROR), (
             "every stdlib csv module that carries a row needs its drop-in twin")
         for stdlib_module, dropin_module in _CSV_MIRROR.items():
@@ -177,8 +195,9 @@ class TestDefusedcsvHasItsOwnRow:
 
     def test_the_row_is_community(self) -> None:
         rows = [p for p in load_catalog("python").primitives
-                if p.module == "defusedcsv.csv"]
-        assert rows and all(p.unvouched for p in rows)
+                if p.module in _CSV_MIRROR.values()]
+        assert {p.module for p in rows} == set(_CSV_MIRROR.values())
+        assert all(p.unvouched for p in rows)
 
 
 _STORAGE_EXPECTED = {

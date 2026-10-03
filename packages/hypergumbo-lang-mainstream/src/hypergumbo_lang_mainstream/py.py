@@ -7374,6 +7374,15 @@ def _external_constructor_type(
     - ``func`` is ``ast.Attribute`` whose chain roots at a known module import
       (``socket.socket``, ``http.client.HTTPConnection``) → the module the root
       binds to, plus every intervening segment, plus the constructor name.
+      A root a FROM-import binds (``from defusedcsv import csv``) is resolved
+      the same way but admits declared types only (WI-kozaj; see the inline
+      comment).
+
+    WI-kozaj: besides a CONSTRUCTION, a call to a library FACTORY whose
+    ``library_signatures`` row declares its return type is typed too
+    (``csv.writer(f)`` → ``_csv.Writer``); see :func:`_library_producer_type`.
+    The name is kept because every consumer asks the same question of both:
+    "what external type does this call's result have?".
 
     WI-lifol: THE ATTRIBUTE BRANCH USED TO REQUIRE A BARE ``ast.Name`` BASE, which
     made a constructor under a DOTTED module structurally unreachable no matter
@@ -7421,24 +7430,108 @@ def _external_constructor_type(
         claimed = EXTERNAL_CONSTRUCTOR_TYPES.get(func.id)
         bound = _import_binding_for(func.id, imports, module_imports)
         if claimed is None:
-            return _imported_class_instance(bound)
+            return _bound_call_type(bound)
         if bound is None:
             return claimed if func.id in BUILTIN_CONSTRUCTOR_NAMES else None
         # INV-kipor: a table name bound ELSEWHERE is refused the catalogued type;
         # it is still a construction of whatever the import supplied, so
         # ``from decoy import Path`` types a ``decoy.Path`` -- honest, and no row.
-        return claimed if bound == claimed else _imported_class_instance(bound)
+        return claimed if bound == claimed else _bound_call_type(bound)
     if isinstance(func, ast.Attribute):
         chain = _unwind_attribute_chain(func)
         if chain is None:
             return None
         root, attrs = chain
-        if root.id not in module_imports:
-            return None
-        module = ".".join([module_imports[root.id], *attrs[:-1]])
-        qualified = f"{module}.{attrs[-1]}"
-        return EXTERNAL_CONSTRUCTOR_TYPES.get(qualified) or _imported_class_instance(qualified)
+        if root.id in module_imports:
+            qualified = ".".join([module_imports[root.id], *attrs])
+            return EXTERNAL_CONSTRUCTOR_TYPES.get(qualified) or _bound_call_type(qualified)
+        if root.id in imports:
+            # WI-kozaj: a root a FROM-import binds is the OWNER path, as
+            # WI-sugom's emission already treats it: ``from defusedcsv import
+            # csv`` then ``csv.writer(f)`` is ``defusedcsv.csv.writer``, and
+            # ``from urllib import request`` then ``request.build_opener()`` is
+            # ``urllib.request.build_opener``. DECLARED TYPES ONLY here -- the
+            # catalogue's type table and the signature rows -- and not the
+            # PascalCase convention, because a from-imported name is as often a
+            # class or an object as a submodule, and typing ``Model.Field(...)``
+            # by convention would move the module slot of every later call on
+            # its result without a row asking for it.
+            module, original = imports[root.id]
+            qualified = ".".join([module, original, *attrs] if module else [original, *attrs])
+            return EXTERNAL_CONSTRUCTOR_TYPES.get(qualified) or _library_producer_type(
+                qualified,
+            )
+        return None
     return None
+
+
+def _bound_call_type(bound: str | None) -> str | None:
+    """The type a call to the import-resolved callee ``bound`` returns, else ``None``.
+
+    Two routes, in this order, and only these two:
+
+    1. **A library producer row** (:func:`_library_producer_type`): the
+       callee's own qualified name is a key in ``library_signatures/python.yaml``
+       (or a community companion, or the user's channel). A DECLARED fact
+       about what the callee returns, so it is consulted first.
+    2. **The PascalCase construction rule** (:func:`_imported_class_instance`).
+       A convention, so it yields to a declared row.
+
+    A lowercase callee with no row types nothing, which is the safe direction:
+    ``json.dumps`` names a function, not a type (the 7-of-19 measurement in
+    :func:`_call_site_argument_type`).
+    """
+    return _library_producer_type(bound) or _imported_class_instance(bound)
+
+
+def _library_producer_type(qualified: str | None) -> str | None:
+    """WI-kozaj: the type a LIBRARY PRODUCER call returns, read from its signature row.
+
+    THE GAP. A receiver could be typed from an external call only when the call
+    was a CONSTRUCTION: a catalogued type name (:data:`EXTERNAL_CONSTRUCTOR_TYPES`)
+    or a PascalCase import (:func:`_imported_class_instance`). A FACTORY FUNCTION
+    builds an object too, and its name says nothing about the type:
+    ``w = csv.writer(f)`` returns a ``_csv.Writer``, so ``w.writerow(row)`` --
+    the call that actually carries the data into the file -- arrived as
+    ``python:external:0-0:writerow`` and no row could reach it. The catalogue
+    compensated by rowing the FACTORY (``csv.writer`` under ``fs_write``), which
+    credits the write one call early and taints the file argument instead of the
+    row (INV-gujoh's shape); ADR-0049 Ruling 3 forbids moving that row to the
+    executor until the executor is reachable. This is what makes it reachable.
+
+    THE KEY IS THE CALLEE'S IMPORT-RESOLVED QUALIFIED NAME, which is the shape
+    ``library_signatures/python.yaml`` already uses for its member rows
+    (``pathlib.Path.joinpath``): ``import csv; csv.writer(f)``, ``import csv as
+    c; c.writer(f)`` and ``from csv import writer; writer(f)`` all resolve to
+    ``csv.writer``. Keying by the RESOLVED name is the INV-kipor binding check
+    for free: ``from decoy import writer`` resolves to ``decoy.writer`` and
+    matches no row, and an unbound bare ``writer`` (a local def) never reaches
+    here.
+
+    READ AT CALL TIME, NOT FROZEN AT IMPORT. ``load_library_signatures`` is
+    cached, and reading it here rather than into a module constant means a row
+    in the user's ``library_signatures.d`` takes effect in the run that loads
+    it (ADR-0047 ruling 3: a channel nothing reads is a lie).
+
+    HOW A LATER ITEM REUSES IT. Add ``<qualified producer>: <returned type>`` to
+    the signature rows, and row the executor's methods under that type in
+    ``io_primitives``; no analyzer change is needed. WI-dibit's
+    ``opener = urllib.request.build_opener(); opener.open(url, data)`` is
+    ``urllib.request.build_opener: urllib.request.OpenerDirector`` plus an
+    ``OpenerDirector.open`` row. Moving a factory's row to the executor is a
+    Ruling 3 removal and still needs its finding-level A/B.
+
+    WHAT IT DOES NOT DO. A MEMBER row whose return type differs from its owner
+    (``sqlite3.Connection.cursor: sqlite3.Cursor``) types the result of a call
+    ``sqlite3.Connection.cursor(conn)`` written on the class itself, not of
+    ``conn.cursor()`` on a typed receiver: propagation through a receiver is
+    :data:`TYPE_PRESERVING_MEMBERS`'s rule, and it stays type-preserving only.
+    """
+    if qualified is None:
+        return None
+    from hypergumbo_core.library_signatures import load_library_signatures
+
+    return load_library_signatures("python").get(qualified)
 
 
 def _imported_class_instance(bound: str | None) -> str | None:

@@ -73,7 +73,9 @@ _CASES = {
     "cpp getenv under an include list": (
         "cpp", "getenv", "cstdlib,iostream,stdlib.h", None, ("stdlib", "getenv", "function")),
     "a qualified name under a hint the filter rejects": (
-        "python", "csv.writer", "defusedcsv", "method", ("csv", "writer", "function")),
+        # Was ``csv.writer`` under ``defusedcsv`` (pretix), until WI-kozaj moved
+        # that write to the ``_csv.Writer`` executor; the same shape, one row over.
+        "python", "pickle.dump", "defusedcsv", "method", ("pickle", "dump", "function")),
     "the <external> placeholder is no module": (
         "python", "getenv", "<external>", "function", ("os", "getenv", "function")),
 }

@@ -387,8 +387,9 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "subprocess.Popen", "tarfile.TarFile", "typing.TextIO",
             "zipfile.ZipFile",
             # WI-kozaj: the csv write surface. `csv.DictWriter` is a class in
-            # CPython's Lib/csv.py; its module `csv` is admitted above.
-            "csv.DictWriter",
+            # CPython's Lib/csv.py; `_csv.Writer` is the C type csv.writer()
+            # returns (Modules/_csv.c), `_csv` being in sys.stdlib_module_names.
+            "csv.DictWriter", "_csv.Writer",
         }),
     ),
     "rust": Scope(

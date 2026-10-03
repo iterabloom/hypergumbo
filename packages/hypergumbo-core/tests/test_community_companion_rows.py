@@ -152,7 +152,7 @@ class TestLibrarySignatures:
         builtin = ls._rows_from(ls._DIR / "python.yaml")
         assert not any(k.startswith("django.") for k in builtin)
         assert [p.name for p in ls._community_companions("python")] == [
-            "python-django.yaml",
+            "python-django.yaml", "python-stdlib-dropins.yaml",
         ]
         assert ls.load_library_signatures("python")["django.db.models.filter"] \
             == "django.db.models"
