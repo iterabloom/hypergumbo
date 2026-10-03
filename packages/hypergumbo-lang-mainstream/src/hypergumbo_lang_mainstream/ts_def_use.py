@@ -6,7 +6,8 @@ and registers the languages that consume them.
 
 JavaScript is a first-class registration here, not an incidental beneficiary:
 the extractor is registered under both ``typescript`` and ``javascript``, and
-this module registers a ``LanguageDdgSpec`` for each (``*.ts`` and ``*.js``).
+this module registers a ``LanguageDdgSpec`` for each, walking every extension
+``taxonomy.LANGUAGES`` files under that language (WI-fovus).
 Each spec declares the function-node types the DDG walk will enter — currently
 ``function_declaration`` alone, which is the scope limit that decides how much
 of a file the data-dependence graph can see.
@@ -356,23 +357,30 @@ _JSTS_BOUND_CALLABLE_NODE_TYPES = frozenset({
     "arrow_function", "function_expression", "function", "generator_function",
 })
 
+# WI-fovus: neither spec names a glob. Each walks every extension
+# ``taxonomy.LANGUAGES`` files under its language -- javascript ``.js`` /
+# ``.mjs`` / ``.cjs`` / ``.jsx``, typescript ``.ts`` / ``.tsx`` / ``.mts`` /
+# ``.cts`` -- which is the list discovery classifies by and ``js_ts.py``'s
+# ``find_js_ts_files`` reads, so a file the analyzer emitted symbols for is a
+# file the DDG walks. ``.tsx`` (and ``.jsx``) carry JSX, which the ``typescript``
+# grammar cannot parse: ``ddg_build`` parses ``.tsx`` with the ``tsx`` grammar
+# (``taxonomy.grammar_for_path``) while keeping ``language="typescript"``, so
+# the ids still match the analyzer's. JSX needs no ``cfg_nodes`` entry: a JSX
+# element is an EXPRESSION, always inside a statement the mapping already
+# records, and its identifiers reach the def/use extractor through the generic
+# recursion. A name the extractor misses is caught by ``unaccounted_names``,
+# which withholds refutation rather than licensing it.
 register_ddg_language(LanguageDdgSpec(
     language="typescript",
-    file_glob="*.ts",
     function_node_types=_JSTS_FUNCTION_NODE_TYPES,
     name_for=_jsts_callable_name,
     kind_for=_jsts_callable_kind,
     bound_callable_node_types=_JSTS_BOUND_CALLABLE_NODE_TYPES,
 ))
 
-# Same grammar, same function node types, different glob. `*.js` only — `.mjs`
-# / `.cjs` / `.jsx` are deliberately NOT claimed here: each is a separate
-# question about what the discovery layer classifies as `javascript`, and
-# widening the glob on an assumption is how a spec starts lying about its own
-# coverage.
+# Same function node types, the javascript grammar (which parses JSX itself).
 register_ddg_language(LanguageDdgSpec(
     language="javascript",
-    file_glob="*.js",
     function_node_types=_JSTS_FUNCTION_NODE_TYPES,
     name_for=_jsts_callable_name,
     kind_for=_jsts_callable_kind,

@@ -200,9 +200,12 @@ def _c_function_name(node: Any, source: bytes) -> Optional[str]:
     return _get_function_name(node, source)
 
 
+# ``*.c`` only: LANGUAGES also lists ``*.h``, and walking headers' inline
+# functions was not measured when the JS/TS specs moved to the shared list
+# (WI-fovus) -- a declared narrowing, not an oversight.
 register_ddg_language(LanguageDdgSpec(
     language="c",
-    file_glob="*.c",
+    file_globs=("*.c",),
     function_node_types=frozenset({"function_definition"}),
     name_for=_c_function_name,
 ))

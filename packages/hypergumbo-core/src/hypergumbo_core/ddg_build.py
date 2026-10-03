@@ -24,7 +24,11 @@ How It Works
 ------------
 A :class:`LanguageDdgSpec` says how to find functions in one language:
 which files to walk, which AST node types are function definitions, and
-how to name one. Specs are registered into a process-global registry, the
+how to name one. Which files is, by default, every extension
+``taxonomy.LANGUAGES`` declares for the language -- the same list discovery
+classifies by -- and each file is parsed with the grammar
+``taxonomy.grammar_for_path`` names for it, so ``.tsx`` is walked as
+TypeScript but parsed with the JSX-capable ``tsx`` grammar (WI-fovus). Specs are registered into a process-global registry, the
 same idiom ``cfg.register_def_use_extractor`` uses, because naming a Go
 method requires a receiver-type helper that lives in the *language*
 package while this module lives in core. Core defines the registry;
@@ -101,6 +105,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, cast
 
 from .analyze.base import make_symbol_id
+from .taxonomy import extension_globs, grammar_for_path
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +130,6 @@ class LanguageDdgSpec:
             <language>.yaml``) AND the registered def/use extractor, which
             must agree — a spec whose extractor is missing yields CFGs
             with empty defines/uses and therefore zero DDG edges.
-        file_glob: ``rglob`` pattern for source files.
         function_node_types: AST node types that introduce a function
             scope. Each is expected to expose ``name`` and ``body`` fields.
         name_for: Optional callable ``(node, source) -> str | None``
@@ -148,10 +152,15 @@ class LanguageDdgSpec:
         bound_anchor_kinds: Symbol kinds, beyond the callable ones, that the
             analyzer anchors such a binding's calls on (Go: ``variable``).
             Admitted into :func:`analyzer_symbol_index` for this language only.
+        file_globs: ``rglob`` patterns for source files, or ``None`` (the
+            default) for the extensions ``taxonomy.LANGUAGES`` declares for
+            ``language`` -- the list discovery classifies files by and the
+            language's analyzer reads. A spec that sets it is NARROWING its
+            language, and must be able to say why (WI-fovus): a private glob
+            is how the JS/TS specs came to walk ``*.js`` / ``*.ts`` only.
     """
 
     language: str
-    file_glob: str
     function_node_types: frozenset[str]
     name_for: Optional[Callable[[Any, bytes], Optional[str]]] = None
     kind_for: Optional[Callable[[Any], str]] = None
@@ -159,6 +168,13 @@ class LanguageDdgSpec:
     bound_callable_node_types: frozenset[str] = frozenset()
     bound_bodies_for: Optional[Callable[[Any, bytes], list[Any]]] = None
     bound_anchor_kinds: frozenset[str] = frozenset()
+    file_globs: Optional[tuple[str, ...]] = None
+
+    def globs(self) -> tuple[str, ...]:
+        """The ``rglob`` patterns this spec walks (see ``file_globs``)."""
+        if self.file_globs is not None:
+            return self.file_globs
+        return tuple(extension_globs(self.language))
 
 
 _CALLABLE_KINDS = frozenset({"function", "method", "getter", "setter"})
@@ -529,6 +545,7 @@ def build_repo_ddg(
         "unaccounted_names": unaccounted_names,
     }
 
+    parsers = _ParserCache(tree_sitter, get_language)
     for language in languages:
         spec = _DDG_LANGUAGES.get(language)
         if spec is None:
@@ -536,37 +553,73 @@ def build_repo_ddg(
         mapping = load_cfg_mapping(language)
         if mapping is None:  # pragma: no cover - shipped mappings always load
             continue
-        try:
-            # ``get_language``'s stub declares a Literal of every grammar name
-            # the pack ships; ours is a runtime string that already passed the
-            # ``_DDG_LANGUAGES`` registry lookup above. The cast records that
-            # rather than widening the stub. (``fingerprint.py`` has the same
-            # call and carries the same error in the accepted mypy baseline;
-            # it is left alone so this change stays scoped to its own drift.)
-            ts_language = get_language(cast(Any, language))
-        except Exception:  # pragma: no cover - pack always provides these
-            logger.debug("no tree-sitter grammar for %s; skipping", language)
-            continue
-        parser = tree_sitter.Parser(ts_language)
         _walk_language(
-            repo_root, spec, parser, mapping, out, deps, analyzer_symbols or {},
+            repo_root, spec, parsers, mapping, out, deps, analyzer_symbols or {},
         )
 
     return out
 
 
+class _ParserCache:
+    """One tree-sitter parser per GRAMMAR, built on first use.
+
+    A language's files need not share a grammar (WI-fovus): ``.tsx`` is
+    TypeScript to the analyzer -- so its functions are walked under the
+    ``typescript`` spec, mapping and extractor, and keep the analyzer's ids --
+    but the ``typescript`` grammar does not parse JSX. ``taxonomy.grammar_for_path``
+    names the dialect, exactly as the JS/TS analyzer's parser choice does.
+    """
+
+    def __init__(self, tree_sitter: Any, get_language: Callable[[Any], Any]) -> None:
+        self._tree_sitter = tree_sitter
+        self._get_language = get_language
+        self._parsers: dict[str, Any] = {}
+
+    def get(self, grammar: str) -> Any:
+        """The parser for ``grammar``, or ``None`` when the pack lacks it."""
+        if grammar not in self._parsers:
+            try:
+                # ``get_language``'s stub declares a Literal of every grammar
+                # name the pack ships; ours is a runtime string. The cast
+                # records that rather than widening the stub.
+                ts_language = self._get_language(cast(Any, grammar))
+            except Exception:
+                logger.debug("no tree-sitter grammar %s; skipping its files", grammar)
+                self._parsers[grammar] = None
+            else:
+                self._parsers[grammar] = self._tree_sitter.Parser(ts_language)
+        return self._parsers[grammar]
+
+
+def _spec_files(repo_root: Path, spec: LanguageDdgSpec) -> list[Path]:
+    """Every file the spec's globs match, once each, in a stable order.
+
+    Two globs can match one file (``*.ts`` and a caller's ``*.d.ts``), and
+    ``rglob`` order is the filesystem's; sorting makes a walk's output order
+    independent of both.
+    """
+    found: set[Path] = set()
+    for pattern in spec.globs():
+        for path in repo_root.rglob(pattern):
+            if any(part in _SKIP_DIRS for part in path.parts):
+                continue
+            found.add(path)
+    return sorted(found)
+
+
 def _walk_language(
     repo_root: Path,
     spec: LanguageDdgSpec,
-    parser: Any,
+    parsers: _ParserCache,
     mapping: Any,
     out: RepoDdg,
     deps: dict[str, Any],
     analyzer_symbols: AnalyzerSymbolIndex,
 ) -> None:
     """Walk every source file of one language under ``repo_root``."""
-    for path in repo_root.rglob(spec.file_glob):
-        if any(part in _SKIP_DIRS for part in path.parts):
+    for path in _spec_files(repo_root, spec):
+        parser = parsers.get(grammar_for_path(path, spec.language))
+        if parser is None:
             continue
         try:
             source = path.read_bytes()
@@ -687,9 +740,12 @@ def _python_symbol_kind(node: Any) -> str:
     return "method" if scope is not None and scope.type == "class_definition" else "function"
 
 
+# ``*.py`` only: LANGUAGES also lists ``*.pyi``, and whether walking stub files
+# is wanted was not measured when the JS/TS specs moved to the shared list
+# (WI-fovus) -- a declared narrowing, not an oversight.
 register_ddg_language(LanguageDdgSpec(
     language="python",
-    file_glob="*.py",
+    file_globs=("*.py",),
     function_node_types=frozenset({"function_definition"}),
     name_for=_python_function_name,
     kind_for=_python_symbol_kind,

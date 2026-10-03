@@ -46,6 +46,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
+from ..taxonomy import (
+    JS_TS_LANGUAGES,
+    extension_suffixes,
+    grammar_for_path,
+    js_ts_language_for_path,
+)
+
 logger = logging.getLogger(__name__)
 
 # When set, the masker reads/writes parsed trees through this dict instead of
@@ -167,17 +174,20 @@ def read_source_bytes(file_path: Path) -> bytes:
     return file_path.read_bytes()
 
 
-# Extension → tree-sitter-language-pack language name. Covers extensions that
-# appear in the 24 linkers' file-discovery patterns. Unknown extensions return
-# None, in which case the masker falls through and returns content unchanged.
+# Extension → tree-sitter-language-pack GRAMMAR name, for masking doc regions.
+# Unknown extensions return None, in which case the masker falls through and
+# returns content unchanged. The JS/TS rows are DERIVED from taxonomy.LANGUAGES
+# (WI-hizon): a hand-written copy omitted ``.mts`` / ``.cts``, so a linker that
+# read those files got their comments unmasked. A grammar name is not a
+# language label -- ``.tsx`` parses with ``tsx`` but its language is
+# ``typescript`` (WI-pokij); label with ``taxonomy.get_language``.
 _EXTENSION_TO_LANGUAGE: dict[str, str] = {
     ".py": "python",
-    ".js": "javascript",
-    ".mjs": "javascript",
-    ".cjs": "javascript",
-    ".jsx": "javascript",
-    ".ts": "typescript",
-    ".tsx": "tsx",
+    **{
+        suffix: grammar_for_path(Path(f"x{suffix}"), language)
+        for language in JS_TS_LANGUAGES
+        for suffix in sorted(extension_suffixes(language))
+    },
     ".java": "java",
     ".kt": "kotlin",
     ".kts": "kotlin",
@@ -204,29 +214,33 @@ _EXTENSION_TO_LANGUAGE: dict[str, str] = {
 
 
 def language_from_path(file_path: Path) -> Optional[str]:
-    """Return tree-sitter language name for the file extension, or None."""
+    """Return the tree-sitter GRAMMAR name for the file extension, or None.
+
+    A parser choice for masking, not a language label: ``.tsx`` gives ``tsx``,
+    which no analyzer tags a symbol with. A node's language slot comes from
+    ``taxonomy.get_language`` (or :func:`js_ts_language_from_path` in a JS/TS
+    linker) -- WI-pokij.
+    """
     return _EXTENSION_TO_LANGUAGE.get(file_path.suffix.lower())
 
 
 def js_ts_language_from_path(file_path: Path) -> str:
     """Return the JS/TS analyzer's language tag for ``file_path`` (INV-tofun).
 
-    Mirrors ``hypergumbo_lang_mainstream.js_ts._get_language_for_file``:
-    ``.ts``/``.tsx``/``.mts``/``.cts`` are ``typescript``; every other
-    extension (``.mjs``/``.cjs`` included) is ``javascript``. Linkers that fabricate synthetic stand-ins from JS/TS
-    source use this so a stand-in discovered in a ``.ts`` file carries the same
-    language the analyzer assigns to real declarations in that file — the value
-    feeds ``Symbol.discovery_language`` and the canonical id's first segment.
+    The shared :func:`hypergumbo_core.taxonomy.js_ts_language_for_path`, under
+    the name every linker already imports: ``typescript`` for the suffixes
+    ``taxonomy.LANGUAGES`` files under typescript (``.ts``/``.tsx``/``.mts``/
+    ``.cts``), ``javascript`` for every other one. Linkers that fabricate
+    synthetic stand-ins from JS/TS source use this so a stand-in discovered in
+    a ``.ts`` file carries the same language the analyzer assigns to real
+    declarations in that file — the value feeds ``Symbol.discovery_language``
+    and the canonical id's first segment.
 
     Distinct from :func:`language_from_path`, which returns tree-sitter grammar
-    names (``tsx`` for ``.tsx``) and ``None`` for unknown extensions. This
-    helper instead reproduces the analyzer's coarser typescript/javascript
-    split, because the governing invariant is *consistency with the analyzer's
-    tag*, not independent extension correctness.
+    names (``tsx`` for ``.tsx``) and ``None`` for unknown extensions.
     """
-    if file_path.suffix.lower() in (".ts", ".tsx", ".mts", ".cts"):
-        return "typescript"
-    return "javascript"
+    return js_ts_language_for_path(file_path)
+
 
 _DOC_COMMENT_TYPES = frozenset({
     "comment",

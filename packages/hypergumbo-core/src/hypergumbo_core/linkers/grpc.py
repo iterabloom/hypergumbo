@@ -93,6 +93,7 @@ from typing import Iterator
 from ..discovery import find_files, find_non_test_files
 from ..analyze.base import make_route_symbol
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..taxonomy import JS_TS_LANGUAGES, extension_globs, extension_suffixes
 from ._transitive_bases import (
     build_inheritance_edge_index,
     collect_transitive_base_origins,
@@ -218,7 +219,9 @@ TS_CLIENT_PATTERN = re.compile(
 
 def _find_grpc_files(root: Path) -> Iterator[Path]:
     """Find files that might contain gRPC patterns."""
-    patterns = ["**/*.proto", "**/*.py", "**/*.go", "**/*.java", "**/*.ts", "**/*.js"]
+    patterns = [  # JS/TS from the shared list (WI-hizon)
+        "**/*.proto", "**/*.py", "**/*.go", "**/*.java", *extension_globs(*JS_TS_LANGUAGES),
+    ]
     for path in find_non_test_files(root, patterns):
         yield path
 
@@ -721,7 +724,7 @@ def link_grpc(
             all_patterns.extend(_scan_go_file(file_path, content))
         elif file_path.suffix == ".java":
             all_patterns.extend(_scan_java_file(file_path, content))
-        elif file_path.suffix in (".ts", ".js"):
+        elif file_path.suffix.lower() in extension_suffixes(*JS_TS_LANGUAGES):
             all_patterns.extend(_scan_ts_file(file_path, content))
 
     # Create symbols from patterns

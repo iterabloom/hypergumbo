@@ -96,6 +96,7 @@ from typing import Iterator
 from ..analyze.base import make_protocol_stable_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..taxonomy import JS_TS_LANGUAGES, extension_globs, extension_suffixes
 from ._text_filters import js_ts_language_from_path
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
@@ -335,7 +336,9 @@ def _find_source_files(root: Path) -> Iterator[Path]:
     Without this filter, repos like openzeppelin-contracts produce hundreds
     of orphan ``event_publisher`` nodes from test assertions.
     """
-    patterns = ["**/*.py", "**/*.js", "**/*.ts", "**/*.java", "**/*.go"]
+    patterns = [  # JS/TS from the shared list (WI-hizon)
+        "**/*.py", *extension_globs(*JS_TS_LANGUAGES), "**/*.java", "**/*.go",
+    ]
     for path in find_non_test_files(root, patterns):
         if path.stem.endswith(".min"):
             continue
@@ -347,8 +350,8 @@ def _detect_language(file_path: Path) -> str:
     ext = file_path.suffix.lower()
     if ext == ".py":
         return "python"
-    elif ext in (".js", ".ts", ".jsx", ".tsx"):
-        return "javascript"
+    elif ext in extension_suffixes(*JS_TS_LANGUAGES):
+        return "javascript"  # selects the JS/TS scanner; labels come from js_ts_language_from_path
     elif ext == ".java":
         return "java"
     elif ext == ".go":
