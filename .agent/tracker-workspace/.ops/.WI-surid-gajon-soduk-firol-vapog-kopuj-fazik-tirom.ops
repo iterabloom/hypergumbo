@@ -1,0 +1,22 @@
+- op: create  # a717
+  at: '2026-10-03T22:00:45Z'  # a717
+  by: agent  # a717
+  actor: jgstern_agent  # a717
+  clock: 1  # a717
+  nonce: a717  # a717
+  data:  # a717
+    kind: work_item  # a717
+    title: "go: a call on an untyped VALUE receiver (x.F()) binds a repo FUNCTION / struct / type by its short name -- Go reaches only a method or a func-typed field from a value (cert-manager: 306 corev1.SchemeGroupVersion.WithResource -> pkg/logs.WithResource)"  # a717
+    status: todo_hard  # a717
+    priority: 3  # a717
+    parent:  # a717
+    tags:  # a717
+    - go  # a717
+    - call_graph  # a717
+    - analysis_quality  # a717
+    isbefore: []  # a717
+    duplicate_of: []  # a717
+    not_duplicate_of: []  # a717
+    pr_ref:  # a717
+    description: "FOUND 2026-10-03 while fixing WI-kugap (branch jgstern-agent/fix/kibah, commit 0adbd3fa21 restamps the construct of resolved receiver calls).\n\nA call written on a VALUE (x.F(), call_construct=method) whose receiver the analyzer could not type falls through the ambiguity / visibility / stdlib-interface guards to resolver.lookup(callee_name) with no hint, and the sole repo candidate of that short name is bound whatever its KIND. Go cannot reach a free function, a struct or a type from a value's selector (only a method or a func-typed field), so a function / struct / type dst is wrong by construction.\n\nMeasured on the kibah branch (analyze_go, edges with evidence ast_call, call_construct=method, resolved dst):\n- cert-manager: 306 -> kind function, 11 -> struct, 158 -> field. All 306 function binds are one shape: `corev1.SchemeGroupVersion.WithResource(\"secrets\")` (a method on an EXTERNAL package variable, k8s schema.GroupVersion, absent from library_signatures/go.yaml package_variables) bound to the repo function pkg/logs/logs.go:WithResource.\n- prometheus: 6 function, 312 field. alertmanager: 2 function, 2 type, 78 field. coredns: 23 field.\nBefore WI-kugap these same edges were stamped call_construct=function, which hid the contradiction; the edges themselves predate the branch (dev has the same function binds).\n\nFIX SHAPE (not built): on a value receiver, accept a resolved symbol only of kind method (or a func-typed field: see WI-jalal-lijab-podat-bizor-lovul-fijit-rihor-fuhut for the field half); a function / struct / type hit is not the callee and the call stays unresolved.\n\nNOT MEASURED: how many of the field binds are func-typed fields (WI-jalal's split)."  # a717
+    fields: {}  # a717

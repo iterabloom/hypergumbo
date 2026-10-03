@@ -1,0 +1,23 @@
+- op: create  # 4914
+  at: '2026-10-03T21:58:59Z'  # 4914
+  by: agent  # 4914
+  actor: jgstern_agent  # 4914
+  clock: 1  # 4914
+  nonce: '4914'  # 4914
+  data:  # 4914
+    kind: work_item  # 4914
+    title: "javascript/typescript: (0, foo)(x), foo()(x), (await x)(1), (x || y)(1), builtins (parseInt, setTimeout) and new of an unresolved class emit no edge of any type (WI-fahod's shape in other callee spellings)"  # 4914
+    status: todo_hard  # 4914
+    priority: 3  # 4914
+    parent:  # 4914
+    tags:  # 4914
+    - javascript  # 4914
+    - typescript  # 4914
+    - call_graph  # 4914
+    - adr_0017  # 4914
+    isbefore: []  # 4914
+    duplicate_of: []  # 4914
+    not_duplicate_of: []  # 4914
+    pr_ref:  # 4914
+    description: "FOUND 2026-10-03 while fixing WI-fahod / WI-vipos (branch jgstern-agent/fix/sofuh). Measured on a fixture at that branch's tip through production analyze_javascript: each of these call sites emits NO edge of any type, the WI-fahod shape in other spellings:\n\n  (0, foo)(x)          -- the transpiler's indirect-call idiom (Babel/TS emit it for every imported call in CommonJS output)\n  foo()(x)             -- the OUTER call (the inner foo() emits)\n  (await x)(1)\n  (x || y)(1)\n  parseInt(x); setTimeout(cb, 1)  -- JS_BUILTIN_NAMES members: skipped outright, not recorded\n  new Thing(x)         -- a construction of a class no in-repo symbol carries (the new_expression branch emits only on an in-repo hit)\n\nThe callee detection in `_extract_edges` claims identifier, member_expression and (since WI-vipos) subscript_expression callees; every other callee node type falls through with nothing. Builtins are skipped by name before any emission. NOT MEASURED: the population on real repositories; `(0, foo)` is likely dominant in compiled/dist code that the corpus mostly excludes. Direction: a positive record per call site -- the `external` placeholder where nothing can name the callee (with the caution in the gate residual filed beside this), and a module-slot convention for language builtins (python uses `builtins`)."  # 4914
+    fields: {}  # 4914
