@@ -50,6 +50,11 @@ fs_read:
   - module: unix
     functions: [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Fstatat]
     notes: "golang.org/x/sys/unix"
+  - module: golang.org/x/sys/execabs
+    functions: [LookPath]
+    notes: >-
+      Mirrors go.yaml's os/exec.LookPath row (INV-dukam): a PATH search that
+      stats candidates and launches nothing.
 
 fs_write:
   - module: unix
@@ -80,5 +85,5 @@ net_send:
 
 subprocess:
   - module: golang.org/x/sys/execabs
-    functions: [Command, CommandContext, LookPath]
+    functions: [Command, CommandContext]
     notes: "execabs wraps os/exec with PATH-attack prevention"
