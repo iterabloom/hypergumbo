@@ -78,6 +78,23 @@ over reachability pairs**, and links this section. Records 0001, 0003, 0004,
 0005, 0006 and 0012 publish row rates and carry that note. Every row rate in
 the index below is over this population.
 
+## Which tree an arm measures
+
+An A/B arm is the measurement of ONE tree's code, and a wrong arm exits 0 with
+plausible numbers. `scripts/measure-taint-precision.py`,
+`scripts/measure-narrowing-headroom.py` and `scripts/measure-catalogue-exposure.py`
+locate the tree they live in and pin it on `sys.path` (`scripts/measure_code_tree.py`).
+When `PYTHONPATH` supplies an in-scope package (`hypergumbo_core`, and for the
+taint script every `hypergumbo_lang_*`) from a different directory, the script
+REFUSES with exit 2 and names both; set `HG_MEASURE_TREE=script` to measure the
+code beside the script or `HG_MEASURE_TREE=pythonpath` to measure what
+`PYTHONPATH` selects. Every run prints the tree it resolved, and each package's
+directory, before any number (`code under test: ...`), and refuses a MIXED tree
+(packages in scope resolving to more than one tree). Record that line per arm:
+it is the arm's control. It shows a directory, not a commit, so two arms in one
+directory (a checkout switched between runs) still need a blob or edge-count
+control of their own.
+
 ## Index
 
 | ID | Title | Instrument | Result |

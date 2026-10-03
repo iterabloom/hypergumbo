@@ -31,10 +31,20 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 
 import pytest
+from helpers_code_tree import (
+    CHOICE_ENV,
+    FAKE_EXIT,
+    MARKER,
+    analysis_package_names,
+    fake_tree,
+    own_pythonpath,
+    run_script,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "measure-taint-precision.py"
@@ -181,3 +191,136 @@ class TestTheNonProductionSourceArmIsReachable:
             "--include-non-production-sources",
         ])
         assert args.include_non_production_sources is True
+
+
+# --------------------------------------------------------------------------
+# WI-tumog: which tree's analyzer runs is CHOSEN, never inherited silently.
+# --------------------------------------------------------------------------
+def _shell_flows(tmp_path: Path) -> tuple[Path, Path]:
+    """A one-flow ``collect`` output whose packet reaches bash.py's sets.
+
+    A bash ``environ`` source renders through ``shell_env_sites``, which
+    imports ``hypergumbo_lang_mainstream.bash`` (WI-binod) -- so the packet
+    path imports a LANGUAGE package as well as core, the mixed-tree case.
+    """
+    repos = tmp_path / "repos"
+    (repos / "r").mkdir(parents=True)
+    (repos / "r" / "s.sh").write_text(
+        '#!/bin/bash\necho "$HOME"\ncurl "$URL"\n', encoding="utf-8",
+    )
+    flows = tmp_path / "flows"
+    flows.mkdir()
+    flow = {
+        "repo": "r", "flow_id": "f1", "claim_id": "host-secret-no-network",
+        "analysis_method": "structural", "collapsed_flow_count": 1,
+        "source_primitive": "environ", "source_boundary": "env_read",
+        "source_file": "s.sh", "source_lines": [1, 3],
+        "source_symbol": "bash:s.sh:1-3:s.sh:file",
+        "sink_name": "curl", "sink_module": "", "hops": 0,
+        "path": ["bash:s.sh:1-3:s.sh:file"],
+    }
+    (flows / "flows-r.jsonl").write_text(json.dumps(flow) + "\n", encoding="utf-8")
+    return flows, repos
+
+
+class TestTheCodeUnderTestIsChosenNotInherited:
+    """The pretix A/B (WI-valav) ran the subject analyzer in BOTH arms: this
+    script inserted its own tree's packages ahead of PYTHONPATH whenever the
+    copy run was not the editable-install tree, and reported a 0 delta, exit
+    0. A fake package on PYTHONPATH that announces itself and exits 97 makes
+    the imported copy observable; each test pins one replacement for the
+    silent outcome, on ``collect`` AND ``packet`` (WI-binod's import)."""
+
+    @pytest.mark.parametrize("command", ["collect", "packet"])
+    def test_a_foreign_pythonpath_is_refused_not_silently_ignored(
+        self, tmp_path: Path, command: str,
+    ) -> None:
+        fake = fake_tree(tmp_path / "fake", ["hypergumbo_core"])
+        flows, repos = _shell_flows(tmp_path)
+        args = (
+            ["collect", "--repo", str(repos / "r"), "--out", str(tmp_path / "o")]
+            if command == "collect" else
+            ["packet", "--flows", str(flows), "--out", str(tmp_path / "o"),
+             "--repo-root", str(repos)]
+        )
+        proc = run_script(SCRIPT, args, pythonpath=fake)
+        assert proc.returncode == 2, (proc.returncode, proc.stdout[:400])
+        assert CHOICE_ENV in proc.stderr
+        assert fake in proc.stderr
+        assert MARKER not in proc.stderr
+        assert proc.stdout == ""
+        assert not (tmp_path / "o").exists(), "nothing may be written"
+
+    def test_a_pythonpath_arm_that_covers_only_core_is_a_mixed_tree(
+        self, tmp_path: Path,
+    ) -> None:
+        """Choosing PYTHONPATH when it provides core but not the language
+        packages would analyse with one tree's core and another's analyzers.
+        That is neither arm, so it is refused before anything is imported."""
+        fake = fake_tree(tmp_path / "fake", ["hypergumbo_core"])
+        flows, repos = _shell_flows(tmp_path)
+        proc = run_script(
+            SCRIPT,
+            ["packet", "--flows", str(flows), "--out", str(tmp_path / "o"),
+             "--repo-root", str(repos)],
+            pythonpath=fake, choice="pythonpath",
+        )
+        assert proc.returncode == 2, (proc.returncode, proc.stderr[-400:])
+        assert "MIXED" in proc.stderr
+        assert MARKER not in proc.stderr
+
+    def test_choosing_pythonpath_imports_the_pythonpath_copy(
+        self, tmp_path: Path,
+    ) -> None:
+        fake = fake_tree(tmp_path / "fake", analysis_package_names())
+        flows, repos = _shell_flows(tmp_path)
+        proc = run_script(
+            SCRIPT,
+            ["packet", "--flows", str(flows), "--out", str(tmp_path / "o"),
+             "--repo-root", str(repos)],
+            pythonpath=fake, choice="pythonpath",
+        )
+        assert proc.returncode == FAKE_EXIT, (proc.returncode, proc.stderr[-400:])
+        assert MARKER in proc.stderr
+        assert "code under test" in proc.stdout
+        assert fake in proc.stdout.splitlines()[0]
+
+    def test_choosing_script_renders_with_this_tree_and_says_so_first(
+        self, tmp_path: Path,
+    ) -> None:
+        fake = fake_tree(tmp_path / "fake", analysis_package_names())
+        flows, repos = _shell_flows(tmp_path)
+        out = tmp_path / "o"
+        proc = run_script(
+            SCRIPT,
+            ["packet", "--flows", str(flows), "--out", str(out),
+             "--repo-root", str(repos)],
+            pythonpath=fake, choice="script",
+        )
+        assert proc.returncode == 0, proc.stderr[-400:]
+        assert MARKER not in proc.stderr
+        lines = proc.stdout.splitlines()
+        assert "code under test" in lines[0] and str(REPO_ROOT) in lines[0]
+        for name in analysis_package_names():
+            assert any(name in ln and str(REPO_ROOT) in ln for ln in lines), name
+        assert "$HOME" in (out / "r.md").read_text(encoding="utf-8")
+
+    def test_collect_names_the_tree_before_the_positive_control(
+        self, tmp_path: Path,
+    ) -> None:
+        """The board's shape (PYTHONPATH pinned to this tree) is no conflict,
+        and the provenance precedes every number ``collect`` prints."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "a.py").write_text("import os\nprint(os.environ['X'])\n")
+        proc = run_script(
+            SCRIPT,
+            ["collect", "--repo", str(repo), "--out", str(tmp_path / "o")],
+            pythonpath=own_pythonpath(),
+            extra_env={"XDG_CACHE_HOME": str(tmp_path / "xdg")},
+        )
+        assert proc.returncode == 0, proc.stderr[-600:]
+        lines = proc.stdout.splitlines()
+        assert "code under test" in lines[0] and str(REPO_ROOT) in lines[0]
+        control = next(i for i, ln in enumerate(lines) if "POSITIVE CONTROL" in ln)
+        assert control > 0
