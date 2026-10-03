@@ -219,9 +219,10 @@ net_send:
 # Subprocess — System.cmd, System.shell, Port.open
 # ---------------------------------------------------------------------------
 subprocess:
-  - module: System
-    functions: [halt]
-    notes: "Elixir System.halt ends the VM; it launches nothing and returns nothing."
+  # System.halt is NOT rowed (INV-mulul): it ends THIS VM and launches
+  # nothing -- what its own note here used to say while rowing it subprocess,
+  # a taint sink and an opaque launch. rust's std::process::exit / abort
+  # were removed for the same reason.
   - module: System
     functions: [cmd, shell]
     simultaneous: true
@@ -229,8 +230,9 @@ subprocess:
       Elixir System.cmd/System.shell launch external processes AND return
       `{output, exit_status}` -- the output half is the child's bytes, so
       they carry an ipc_recv row too (INV-lozat / ADR-0049 ruling 1).
-      `halt` moved to its own row because `simultaneous` is a property of
-      the primitive and these three did not share it.
+      `halt` was split off this row because `simultaneous` is a property of
+      the primitive and these three did not share it; it is now unrowed
+      (see above).
   - module: Port
     functions: [open, command]
     notes: "Erlang-style external ports (used for subprocess IPC)"

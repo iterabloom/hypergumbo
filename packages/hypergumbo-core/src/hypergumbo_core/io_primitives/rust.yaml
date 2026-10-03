@@ -362,8 +362,17 @@ subprocess:
       crossing that has not happened yet (the ADR-0049 deferred shape).
       Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
       `os.wait`.
-  - module: std::process
-    functions: [exit, abort]
+  # std::process::exit / abort are NOT rowed (INV-mulul): they end the
+  # CALLING process (abort() is crate::sys::abort_internal(), SIGABRT on this
+  # process; exit() runs rt::cleanup() then sys::os::exit) and launch,
+  # signal or talk to no other process. Rowed here they were a subprocess
+  # SINK and an OPAQUE launch, so `process::exit(code)` with `code` read from
+  # the environment violated host_secret -> subprocess. Process control is no
+  # boundary in this vocabulary: javascript.yaml's `process` grant and
+  # haskell.yaml's System.Exit grant (INV-dozuj) say the same. No completeness
+  # grant for std::process here: it also exports id() (the pid), which this
+  # catalogue holds unrowed by python precedent, and a grant would declare it
+  # not-I/O. So an exit call is an UNCLASSIFIED call into std::process.
 
 env_read:
   - module: std::env
