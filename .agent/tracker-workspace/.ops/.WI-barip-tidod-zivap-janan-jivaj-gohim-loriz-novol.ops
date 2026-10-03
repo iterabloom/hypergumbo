@@ -1,0 +1,21 @@
+- op: create  # 0b06
+  at: '2026-10-03T17:06:08Z'  # 0b06
+  by: agent  # 0b06
+  actor: jgstern_agent  # 0b06
+  clock: 1  # 0b06
+  nonce: 0b06  # 0b06
+  data:  # 0b06
+    kind: work_item  # 0b06
+    title: "py.py registers every METHOD under its bare short name in symbol_by_name, so a bare-name call binds a method Python scoping cannot reach (open(...) -> ContentFile.open, list(...) -> ExportersMixin.list; django 56, pretix 28 sites)"  # 0b06
+    status: todo_hard  # 0b06
+    priority: 2  # 0b06
+    parent:  # 0b06
+    tags:  # 0b06
+    - analysis_quality  # 0b06
+    - python  # 0b06
+    isbefore: []  # 0b06
+    duplicate_of: []  # 0b06
+    not_duplicate_of: []  # 0b06
+    pr_ref:  # 0b06
+    description: "Sibling of WI-kutal-malip-parah-bobis-tovaj-todug-lafaf-polop (same mechanism, different consumer). py.py registers every METHOD in the flat, last-write-wins `symbol_by_name` under its BARE short name (`symbol_by_name[item.name] = method_symbol`). Case 1 of `_process_call` (bare-name call `foo()`) reads that table, so a bare call binds a same-file METHOD of that short name -- which Python scoping can never reach from a function body (a class body is not an enclosing scope) -- and the same write can overwrite a module-level function of the same name, so the real target is lost too.\n\nMEASURED on the WI-kutal fix arm (resolved `calls` edges, origin python, dst kind method, source line has `name(` with no receiver): django 56 sites, pretix 28, feast 0. Random samples, all wrong on reading: `open(self.name, ...)` in File.open -> ContentFile.open (a builtin file open bound to an in-repo method, which hides the read from io-boundary/taint); `list(v)` -> ExportersMixin.list; `set(...)` -> SettingsSandbox.set; `now()` -> LazyRuleVars.now; `to_language(language)` (a module function) -> DjangoTranslation.to_language; `authenticate(**creds)` (imported django.contrib.auth.authenticate) -> SkippedBackendWithDecoratedMethod.authenticate.\n\nWHY NOT FIXED WITH WI-kutal: the structural fix is to stop the bare-name method write. WI-kutal removed its main consumer (Case 2a now reads a class-scoped table, FileAnalysis.methods_by_class_id), but at least two other consumers depend on the bare write with a qualified-name check: the property-getter fallback in the getter lookup (`cand = local_symbols.get(attr_name)`, then `cand.name == qualified_name`) and the decorator resolver (`@Registry.register`: `local_symbols.get(attr_name)` then a `Class.attr` name check); the `@decorator` bare-name branch can itself bind a method. Each needs migrating to the class-scoped table (or sym_by_path_name) before the write can go. A `kind == \"method\"` filter in Case 1 alone is not enough: it cannot recover a module function the method write already overwrote."  # 0b06
+    fields: {}  # 0b06
