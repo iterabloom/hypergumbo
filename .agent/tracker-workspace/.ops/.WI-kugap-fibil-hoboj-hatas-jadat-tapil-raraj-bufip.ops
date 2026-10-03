@@ -27,3 +27,10 @@
   clock: 2  # 3b70
   nonce: 3b70  # 3b70
   message: "SIBLING EVIDENCE from INV-dulum-kakum-guhus-podas-mirup-lavut-jamob-kakif (python's file-scoped import map ignoring a shadowing local; fixed on branch jgstern-agent/fix/dulum, Go NOT touched). This item's shape 1 also holds for a PARAMETER, and it reaches the module slot, not only call_construct. Live, dev b7417402dc:\n\n    import \"os\"\n    type T struct{}\n    func (t T) Open(p string) {}\n    func shadow(os T, p string) { os.Open(p) }\n\n  -> calls shadow -> go:os:0-0:Open   (the receiver is a T; this names the os package's Open, an fs_read-shaped row)\n\nSite: go.py:3568 `if alias in import_aliases:` sets package_qualified and the module slot before `elif alias in var_types` (3593); `_go_names_bound_in` / `_bound_names` (go.py:2021 / 3472) exist and gate bare calls (4155-4160) and function-reference arguments (3171) but are never applied to the operand of a `pkg.Func()` selector. The note above that var_types is per-function, not per-position, still applies: a parameter is bound for the whole body, so a parameter-only check would be position-safe; a `:=` local is not. The python fix narrowed the import map once per scope by the scope's VALUE bindings (an import or package clause is never a shadow); the same split may fit here."  # 3b70
+- op: discuss  # e50b
+  at: '2026-10-03T17:32:13Z'  # e50b
+  by: agent  # e50b
+  actor: jgstern_agent  # e50b
+  clock: 3  # e50b
+  nonce: e50b  # e50b
+  message: "Correction to the note above: the var_types branch is go.py:3587 (elif alias in var_types), not 3593. Other citations re-checked at b7417402dc: 3568, 2021, 3472, 4158, 3171."  # e50b

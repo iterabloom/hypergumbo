@@ -1,0 +1,22 @@
+- op: create  # d08f
+  at: '2026-10-03T17:32:27Z'  # d08f
+  by: agent  # d08f
+  actor: jgstern_agent  # d08f
+  clock: 1  # d08f
+  nonce: d08f  # d08f
+  data:  # d08f
+    kind: work_item  # d08f
+    title: "c/cpp stdio fseek / ftell / rewind / ungetc are rowed fs_read but read no data (position and pushback calls); rust and python leave seek/tell unrowed"  # d08f
+    status: todo_hard  # d08f
+    priority: 3  # d08f
+    parent:  # d08f
+    tags:  # d08f
+    - catalogue  # d08f
+    - io_boundary  # d08f
+    - c  # d08f
+    isbefore: []  # d08f
+    duplicate_of: []  # d08f
+    not_duplicate_of: []  # d08f
+    pr_ref:  # d08f
+    description: "Found by the WI-vafad tranche 3 sweep (docs/audits/0022, candidate T3-A1). Both blind workers reached it independently, and the verifier ACCEPTED it against source and parity.\n\nTHE ROWS. c.yaml:39-40 fs_read `stdio: [fopen, fseek, rewind, ungetc, ftell]`. c.yaml is cpp's parent, so cpp inherits the rows. Four of the five names read no data: fseek and rewind move the stream position, ftell reports it, and ungetc pushes one character back into the stream's buffer. Their man pages (fseek(3), ungetc(3)) describe position and buffer operations with no transfer. fopen stays: it is the handle convention the catalogue uses everywhere (open/fopen/os.scandir under fs_read).\n\nPARITY. rust.yaml:70 and :186 leave seek / rewind / seek_relative / stream_position out (\"a syscall, but nothing crosses\"). python.yaml:2062 leaves seek / tell unrowed. The out-of-parity sibling in the other direction is haskell.yaml:133 [hReady, hIsEOF, hSeek, hTell, hFileSize ...] under fs_read: a vouched row outside the sweep's scope, named here so the family is complete.\n\nREPRESENTED CROSSING. The data reads stay rowed at c.yaml:53 [fread, fgets, fgetc, fscanf, getc, getline] (WI-lipis). fs_read mints no taint source, so no taint verdict should move. What moves is io-boundaries counts, and possibly what `examined` covers for a file whose only stdio call is a seek. That is the ADR-0049 ruling-3 check to run at fix time: both arms cold, read every moved verdict back, never pin a removal.\n\nNOT CLAIMED: no corpus measurement was taken; how often these rows fire is unmeasured."  # d08f
+    fields: {}  # d08f

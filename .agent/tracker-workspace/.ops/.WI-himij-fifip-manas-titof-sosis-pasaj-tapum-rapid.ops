@@ -1,0 +1,22 @@
+- op: create  # f208
+  at: '2026-10-03T17:20:08Z'  # f208
+  by: agent  # f208
+  actor: jgstern_agent  # f208
+  clock: 1  # f208
+  nonce: f208  # f208
+  data:  # f208
+    kind: work_item  # f208
+    title: "python stdlib network clients beyond the rowed exact classes read inconclusive on a send: URLopener, SMTP_SSL/LMTP, SMTP.login, FTP_TLS, imaplib, poplib, multiprocessing.connection.Client, SSLContext.wrap_socket result"  # f208
+    status: todo_hard  # f208
+    priority: 3  # f208
+    parent:  # f208
+    tags:  # f208
+    - python  # f208
+    - catalogue  # f208
+    - io_boundary  # f208
+    isbefore: []  # f208
+    duplicate_of: []  # f208
+    not_duplicate_of: []  # f208
+    pr_ref:  # f208
+    description: "FOUND 2026-10-03 by WI-dibit while sweeping \"factories/classes returning a sending object\" in the python stdlib. SAFE DIRECTION (inconclusive, recall loss), listed so the family is enumerated rather than implied closed.\n\nObserved on real verify-claims output, host_secret -> network claim, the secret passed straight into the send; each reads `inconclusive` with \"could not classify (<module>)\":\n- urllib.request.URLopener().open(url, secret)  -> could not classify urllib.request.URLopener (also FancyURLopener; open/retrieve/open_http/... send; deprecated, present 3.10-3.13)\n- smtplib.SMTP_SSL(host).sendmail(..., secret)  -> smtplib, smtplib.SMTP_SSL (the SMTP rows are keyed to the exact class smtplib.SMTP; SMTP_SSL / LMTP inherit the methods but not the slot)\n- smtplib.SMTP(host).login(user, secret)        -> smtplib, smtplib.SMTP (login / starttls / ehlo / docmd / send are unrowed; the constructor connects when given a host)\n- ftplib.FTP_TLS(host).storbinary(...)          -> inconclusive (FTP_TLS slot unrowed; FTP's rows are exact-class)\n- imaplib.IMAP4_SSL(host).login(user, secret)   -> imaplib, imaplib.IMAP4_SSL (no imaplib rows at all)\n- poplib.POP3_SSL(host).pass_(secret)           -> inconclusive (no poplib rows)\n- multiprocessing.connection.Client(addr).send(secret) -> inconclusive (Client is a FUNCTION returning a Connection; the PascalCase rule types it as the function's own name)\n- ssl.SSLContext.wrap_socket(sock).sendall(secret) -> inconclusive (member return SSLSocket not propagated; WI-kozaj's residual)\nNot checked: nntplib, telnetlib, xmlrpc.client.ServerProxy method forms, asyncio.open_connection tuple unpacking. Each class needs its own surface read (CPython source) -- a mechanical copy of the parent's rows is the mistake (LIVE rule 3); subclass-slot inheritance of rows may be the structural answer and should be checked first."  # f208
+    fields: {}  # f208
