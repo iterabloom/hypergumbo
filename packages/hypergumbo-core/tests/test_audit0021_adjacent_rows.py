@@ -443,3 +443,163 @@ class TestWiLogozObanInsertIsADatabaseWrite:
         assert "Ecto.Repo.insert" in chains["db_write"]  # control: reached
         assert {f"{m}.{n}" for m, n in _OBAN} <= chains["db_write"]
         assert "ipc_send" not in chains
+
+
+# ---------------------------------------------------------------------------
+# WI-rivur: rows chosen by what the call is ABOUT, not what it DOES.
+# (Its python os.wait* row is NOT here: it waits on WI-lanos.)
+# ---------------------------------------------------------------------------
+
+_OBJC_OBSERVE = '''#import <Foundation/Foundation.h>
+
+@interface Watcher : NSObject
+- (void)go:(NSString *)s;
+@end
+
+@implementation Watcher
+- (void)go:(NSString *)s {
+    NSNotificationCenter *c = [NSNotificationCenter defaultCenter];
+    [c addObserver:self selector:@selector(go:) name:s object:nil];
+    [c removeObserver:self];
+    [c removeObserver:self name:s object:nil];
+}
+@end
+'''
+
+_SWIFT_OBSERVE = '''import Foundation
+
+func go(c: NotificationCenter, o: Any) {
+    c.addObserver(o, selector: #selector(NSObject.description), name: nil, object: nil)
+    c.removeObserver(o)
+}
+'''
+
+_PY_BACKUP = '''import sqlite3
+
+
+def copy(src: sqlite3.Connection, dst: sqlite3.Connection) -> None:
+    src.backup(dst)
+    src.commit()
+'''
+
+_ERL_INFO = '''-module(tabs).
+-export([go/1]).
+
+go(K) ->
+    ets:info(tab),
+    ets:info(tab, size),
+    mnesia:table_info(tab, size),
+    ets:lookup(tab, K).
+'''
+
+_UNREGISTER = [
+    ("objc", "NSNotificationCenter", "removeObserver:"),
+    ("objc", "NSNotificationCenter", "removeObserver:name:object:"),
+    ("swift", "NotificationCenter", "removeObserver"),
+]
+
+_TABLE_METADATA = [
+    ("erlang", "ets", "info"), ("erlang", "mnesia", "table_info"),
+    ("elixir", "ets", "info"), ("elixir", "mnesia", "table_info"),
+]
+
+
+class TestWiRivurRemoveObserverReceivesNothing:
+    """Un-registering an observer receives nothing and crosses nothing: not
+    even a deferred crossing, since an arrival is being CANCELLED, not
+    arranged. It was ``ipc_recv``, an auto-derived ``untrusted_input`` source.
+    Deleted, so nothing is relocated and ADR-0049 ruling 3 is not engaged.
+    swift's ``NotificationCenter.removeObserver`` is the same API and the same
+    row, swept with it; ``addObserver`` (route-registration shape, ADR-0049)
+    is NOT touched here."""
+
+    @pytest.mark.parametrize(("language", "module", "name"), _UNREGISTER)
+    def test_the_row_is_gone(self, language: str, module: str, name: str) -> None:
+        assert _rows(language, module, name) == set()
+
+    @pytest.mark.parametrize(("language", "module", "name"), _UNREGISTER)
+    def test_no_source_is_derived(
+        self, derived, language: str, module: str, name: str,
+    ) -> None:
+        sources, _snk = derived
+        assert (module, name) not in sources[language]
+
+    @pytest.mark.parametrize(("language", "module", "name"), [
+        ("objc", "NSNotificationCenter", "addObserver:selector:name:object:"),
+        ("swift", "NotificationCenter", "addObserver"),
+    ])
+    def test_control_add_observer_is_untouched(
+        self, language: str, module: str, name: str,
+    ) -> None:
+        assert _rows(language, module, name) == {"ipc_recv"}
+
+    def test_objc_reach(self, tmp_path: Path) -> None:
+        chains = _chains(tmp_path, "Watcher.m", _OBJC_OBSERVE)
+        assert chains["ipc_recv"] == {  # control: reached
+            "NSNotificationCenter.addObserver:selector:name:object:",
+        }
+        assert {
+            "NSNotificationCenter.removeObserver:",
+            "NSNotificationCenter.removeObserver:name:object:",
+        } <= chains["external_potential"]
+
+    def test_swift_reach(self, tmp_path: Path) -> None:
+        chains = _chains(tmp_path, "Watcher.swift", _SWIFT_OBSERVE)
+        assert chains["ipc_recv"] == {"NotificationCenter.addObserver"}
+        assert "NotificationCenter.removeObserver" in chains["external_potential"]
+
+
+class TestWiRivurSqliteBackupWritesTheTarget:
+    """``Connection.backup(target)`` reads this database and WRITES it into
+    ``target``, returning ``None``. It was ``db_read``: an ``untrusted_input``
+    source minted at a call that hands its caller nothing (ADR-0049 ruling 1).
+    The crossing it performs is the write, ``db_write``; the sink that derives
+    sees the call's arguments (the target connection, ``pages``, ``name``)."""
+
+    def test_the_row_is_db_write(self) -> None:
+        assert _rows("python", "sqlite3.Connection", "backup") == {"db_write"}
+
+    def test_the_source_is_gone_and_a_sink_appears(self, derived) -> None:
+        sources, sinks = derived
+        assert ("sqlite3.Connection", "backup") not in sources["python"]
+        assert sinks["python"][("sqlite3.Connection", "backup")] == {"database"}
+
+    def test_the_class_stays_an_enumerated_module(self) -> None:
+        assert load_catalog("python").module_io_is_enumerated("sqlite3.Connection")
+
+    def test_reach(self, tmp_path: Path) -> None:
+        chains = _chains(tmp_path, "copy.py", _PY_BACKUP)
+        assert chains["db_write"] == {  # control (commit) reached
+            "sqlite3.Connection.backup", "sqlite3.Connection.commit",
+        }
+        assert "db_read" not in chains
+
+
+class TestWiRivurTableMetadataIsNotStoredRows:
+    """``ets:info`` and ``mnesia:table_info`` return a table's SHAPE (size,
+    memory, type, owner), computed by the runtime -- not rows anybody stored.
+    As ``db_read`` they minted ``untrusted_input`` from a number the runtime
+    computed. Deleted: there is no crossing to relocate. elixir inherits
+    erlang's rows, so ``:ets.info`` there goes with them."""
+
+    @pytest.mark.parametrize(("language", "module", "name"), _TABLE_METADATA)
+    def test_the_row_is_gone(self, language: str, module: str, name: str) -> None:
+        assert _rows(language, module, name) == set()
+
+    @pytest.mark.parametrize(("language", "module", "name"), _TABLE_METADATA)
+    def test_no_source_is_derived(
+        self, derived, language: str, module: str, name: str,
+    ) -> None:
+        sources, _snk = derived
+        assert (module, name) not in sources[language]
+
+    @pytest.mark.parametrize(("module", "name"), [
+        ("ets", "lookup"), ("ets", "foldl"), ("mnesia", "read"),
+    ])
+    def test_control_row_reads_stay_db_read(self, module: str, name: str) -> None:
+        assert _rows("erlang", module, name) == {"db_read"}
+
+    def test_reach(self, tmp_path: Path) -> None:
+        chains = _chains(tmp_path, "tabs.erl", _ERL_INFO)
+        assert chains["db_read"] == {"ets.lookup"}  # control: reached
+        assert {"ets.info", "mnesia.table_info"} <= chains["external_potential"]

@@ -210,12 +210,16 @@ net_listen:
       and ssl:recv returns the bytes; both stay net_recv.
 
 db_read:
+  # NOT ets:info / mnesia:table_info (WI-rivur). They return a table's SHAPE
+  # -- size, memory, type, owner -- computed by the runtime, not rows anybody
+  # stored, and db_read minted untrusted_input from that number. Deleted:
+  # nothing crosses, so nothing is relocated. elixir inherits this.
   - module: ets
-    functions: [lookup, lookup_element, match, match_object, select, select_reverse, first, next, last, prev, foldl, foldr, tab2list, info, member]
+    functions: [lookup, lookup_element, match, match_object, select, select_reverse, first, next, last, prev, foldl, foldr, tab2list, member]
   - module: dets
     functions: [lookup, match, match_object, select, first, next, foldl, foldr, traverse, open_file]
   - module: mnesia
-    functions: [read, match_object, select, first, next, last, prev, all_keys, table_info, dirty_read, dirty_match_object, dirty_select, dirty_first, dirty_next, dirty_last, dirty_prev, dirty_all_keys]
+    functions: [read, match_object, select, first, next, last, prev, all_keys, dirty_read, dirty_match_object, dirty_select, dirty_first, dirty_next, dirty_last, dirty_prev, dirty_all_keys]
 
 db_write:
   - module: ets

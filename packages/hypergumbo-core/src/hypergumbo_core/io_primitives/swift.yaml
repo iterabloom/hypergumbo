@@ -240,8 +240,10 @@ ipc_recv:
   - module: NotificationCenter
     methods:
       - addObserver
-      - removeObserver
-    notes: "Notification observation"
+    notes: >-
+      Notification observation. NOT removeObserver (WI-rivur, swept with
+      objc.yaml's removeObserver: rows): un-registering receives nothing, and
+      ipc_recv minted an untrusted_input source at the call.
 
 process_send:
   - module: Swift
