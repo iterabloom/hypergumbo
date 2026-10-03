@@ -1,0 +1,22 @@
+- op: create  # 46de
+  at: '2026-10-03T19:40:52Z'  # 46de
+  by: agent  # 46de
+  actor: jgstern_agent  # 46de
+  clock: 1  # 46de
+  nonce: 46de  # 46de
+  data:  # 46de
+    kind: work_item  # 46de
+    title: "Python dotted bases of IN-TREE modules (models.Model) and class-namespace bases (Outer.Meta) are still bound by last segment in the core linker, with a sorted-id fallback (django: 3022 fallback extends edges; a wrong pretix Meta)"  # 46de
+    status: todo_hard  # 46de
+    priority: 3  # 46de
+    parent:  # 46de
+    tags:  # 46de
+    - analysis_quality  # 46de
+    - python  # 46de
+    - dispatch  # 46de
+    isbefore: []  # 46de
+    duplicate_of: []  # 46de
+    not_duplicate_of: []  # 46de
+    pr_ref:  # 46de
+    description: "Residual of WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin (branch jgstern-agent/fix/ratid). WI-ratid makes py.py classify a dotted base whose ROOT is an import of an OUT-OF-TREE module as external. A dotted base of an IN-TREE module (`from django.db import models; class M(models.Model)` inside django itself) and a dotted base whose root is a class used as a namespace (`class Meta(OrderPositionSerializer.Meta)`) are still deferred to the core inheritance linker, which has no import context and binds the LAST segment by name: same-file candidate first, else the lowest sorted symbol id, flagged `disambiguation_fallback` at confidence 0.5 (INV-zuhub).\n\nMeasured on arm A of the WI-ratid A/B (b7417402dc): django has 3022 Python extends edges from inheritance-linker with disambiguation_fallback=True (of 9491 Python extends/implements edges); pretix 2. The 8 django examples printed all landed on the right class (django/... ids sort before tests/... ids: models.Model -> django/db/models/base.py Model, forms.Form -> django/forms/forms.py Form), which is luck of the sort order, not resolution. A pretix example that is WRONG: `class OrganizerOrderPositionSerializer(OrderPositionSerializer): class Meta(OrderPositionSerializer.Meta)` (src/pretix/api/serializers/order.py:643) -> `Meta` of an unrelated model in src/pretix/api/models.py:122 (fallback). Also: when the only same-file candidate is the class itself (a nested `class Meta(Outer.Meta)` whose outer class's Meta is in another file), the linker finds the class itself and emits NO edge (pinned as a pre-existing gap in test_py_imported_external_base.py::TestInTreeControls::test_nested_class_of_imported_in_tree_class_is_not_external).\n\nFix direction: resolve the in-tree import-qualified name through the module it names (py.py has the imports and module_to_file_id): `models.Model` -> module django.db.models -> candidates named Model whose file is that module or a submodule of its package (re-export), unique -> bind; `OrderPositionSerializer.Meta` -> the class OrderPositionSerializer resolved through the import, then its nested Meta. Leave to the linker only what that cannot decide.\n\nNOT MEASURED: how many of django's 3022 fallback edges are wrong; other repos."  # 46de
+    fields: {}  # 46de

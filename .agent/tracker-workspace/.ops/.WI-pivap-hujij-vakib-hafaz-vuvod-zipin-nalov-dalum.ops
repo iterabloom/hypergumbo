@@ -1,0 +1,25 @@
+- op: create  # e7b8
+  at: '2026-10-03T19:40:40Z'  # e7b8
+  by: agent  # e7b8
+  actor: jgstern_agent  # e7b8
+  clock: 1  # e7b8
+  nonce: e7b8  # e7b8
+  data:  # e7b8
+    kind: work_item  # e7b8
+    title: "Java/Kotlin/js_ts analyzers and the core inheritance linker (C#, C++, Go, Groovy, Scala, PHP) bind a base imported from an external package, or written qualified, to an in-repo class of the same simple name (non-Python sibling of WI-ratid)"  # e7b8
+    status: todo_hard  # e7b8
+    priority: 2  # e7b8
+    parent:  # e7b8
+    tags:  # e7b8
+    - analysis_quality  # e7b8
+    - dispatch  # e7b8
+    - java  # e7b8
+    - kotlin  # e7b8
+    - javascript  # e7b8
+    - csharp  # e7b8
+    isbefore: []  # e7b8
+    duplicate_of: []  # e7b8
+    not_duplicate_of: []  # e7b8
+    pr_ref:  # e7b8
+    description: "Sibling-language counterpart of WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin (Python, fixed on branch jgstern-agent/fix/ratid). A base class named through an import of an EXTERNAL package, or written fully qualified, binds to an unrelated in-repo class that shares its simple name. Ruby is filed separately as WI-kazut-zomas-lujoj-balug-puvif-pibum-paluz-sikum.\n\nTwo mechanisms, both by name only:\n(A) ANALYZER: `_resolve_base_class_java` (java.py ~2124), `_resolve_base_class_kotlin` (kotlin.py ~2154), `_resolve_base_class_js` (js_ts.py ~2742) return the ONLY candidate when there is exactly one; the file's imports break ties between 2+ candidates only. So `import junit.framework.TestCase; class T extends TestCase` (Java), `import androidx.lifecycle.ViewModel; class M : ViewModel()` (Kotlin), `import {Component} from 'react'; class A extends Component` and `class A extends React.Component` (js_ts strips to the last segment, js_ts.py ~2893-2907) all get a RESOLVED extends edge to an in-repo `TestCase` / `ViewModel` / `Component`. The core linker then skips the pair (existing_pairs), so fixing only the linker does not help.\n(B) CORE LINKER (`inheritance.py::_create_inheritance_edges`): retries the last segment after `.` / `::` with no import context. Reached for C# (`class E : System.Exception`, and bare `using System; class E : Exception`), C++ (`class E : public std::exception`), Java qualified GENERIC bases (`extends java.util.ArrayList<String>`), Go interface assertions (`var _ io.Writer = &X{}`; Go embeds are already stripped to the last segment in go.py ~1086), and bare imported bases in Groovy / Scala / PHP (`use Illuminate\\...\\Model; class User extends Model`).\n\nEvidence: code reading by a sweep sub-agent on 2026-10-03 (file:line above, grammar AST shape probed for Kotlin/Swift/Java/Groovy/Scala/PHP/C#/C++/ObjC with installed tree-sitter grammars). NOT reproduced end-to-end and NOT measured on any corpus repo. Consequence when it fires: wrong extends edge -> wrong inherited-method resolution in the MRO walkers, and a possible cycle (Java/Ruby/Groovy walkers use visited sets and do not refuse; the Python C3 refusal is WI-ratid's sibling item).\n\nFix direction (Python's, WI-ratid): resolve the base expression's root through the file's imports first; if the import names an out-of-tree package, emit an unresolved external edge with an ExternalRef; the core linker already skips a base an analyzer classified that way (WI-ratid's `analyzer_external_bases`). Languages with no import model (Apex, ObjC, Swift module-wide imports) are out of scope.\n\nSeparate bugs found by the same sweep, NOT this item: Kotlin and Swift keep the FIRST segment of a qualified base (`java.io.Serializable` -> `java`; kotlin.py ~937, swift.py ~231); PHP qualified bases (`\\Foo\\Bar`) are dropped entirely because the linker splits only on `.`/`::` and the external-name guard rejects backslashes (inheritance.py `_CLEAN_IDENT`)."  # e7b8
+    fields: {}  # e7b8
