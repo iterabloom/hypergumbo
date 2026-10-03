@@ -27,3 +27,18 @@
   clock: 2  # b35d
   nonce: b35d  # b35d
   message: "IMPLEMENTED on branch jgstern-agent/fix/audit0021-rows (local, not pushed), commit 1999ccd983. Oban.insert/insert!/insert_all moved ipc_send -> db_write in the community overlay (same spelling as the overlay's Ecto.Repo.insert, pinned as control); rows stay community/unvouched (pinned); overlay's ipc_send section removed; retrieved: floor not moved (Oban upstream not re-checked). Taint: 3 ipc sinks -> 3 database sinks. plausible-analytics A/B: Oban.insert 3 / insert! 7 ipc_send -> db_write; untrusted_input->ipc 8->6 flows and ->database 31->33, the same two flows (Ecto.Repo.all -> Oban.insert! in ScheduleEmailReports weekly/monthly) read back; no verdict changed. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/ragaz.md (OUTCOME, draft CLOSURE NOTE, A/B artifacts in run_10032026/ragaz/). Tests: red then green on the board; branch affected-test run 9955 passed + 8 failed (7 were pins of the old rows, fixed in fdb14eb77e; 1 hypothesis health-check under load), re-run of those files 1138 passed. No status change made."  # b35d
+- op: update  # 3682
+  at: '2026-10-03T17:05:19Z'  # 3682
+  by: agent  # 3682
+  actor: jgstern_agent  # 3682
+  clock: 3  # 3682
+  nonce: '3682'  # 3682
+  set:  # 3682
+    status: done  # 3682
+- op: discuss  # d748
+  at: '2026-10-03T17:05:19Z'  # d748
+  by: agent  # d748
+  actor: jgstern_agent  # d748
+  clock: 4  # d748
+  nonce: d748  # d748
+  message: "Merged in PR #1417 (dev c5249c1aa1).\n\nFixed on branch jgstern-agent/fix/audit0021-rows, commit 1999ccd983. Oban.insert/insert!/insert_all are db_write in the community overlay; the rows stay community/unvouched.\n\nBehavioral evidence: `io-boundaries` on a one-file elixir program reports the three under db_write beside the control Ecto.Repo.insert, and no ipc_send.\n\nplausible-analytics A/B: Oban.insert 3 / insert! 7 moved ipc_send→db_write. The two untrusted_input flows into Oban.insert! (ScheduleEmailReports weekly and monthly) moved from the ipc claim (8→6) to the database claim (31→33), same source and path. No verdict changed."  # d748
