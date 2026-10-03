@@ -1,0 +1,21 @@
+- op: create  # a8d8
+  at: '2026-10-03T10:45:42Z'  # a8d8
+  by: agent  # a8d8
+  actor: jgstern_agent  # a8d8
+  clock: 1  # a8d8
+  nonce: a8d8  # a8d8
+  data:  # a8d8
+    kind: work_item  # a8d8
+    title: "Symbol.meta construction keys are not gated: 137 of the 206 keys passed to Symbol(meta=...) are unregistered (residual of WI-lijaz)"  # a8d8
+    status: todo_hard  # a8d8
+    priority: 3  # a8d8
+    parent:  # a8d8
+    tags:  # a8d8
+    - axis  # a8d8
+    - analysis_quality  # a8d8
+    isbefore: []  # a8d8
+    duplicate_of: []  # a8d8
+    not_duplicate_of: []  # a8d8
+    pr_ref:  # a8d8
+    description: "Residual of WI-lijaz-tazom-guguj-vukas-puzat-sozuh-hupab-pakin (branch jgstern-agent/fix/lijaz, not merged).\n\nWI-lijaz added hypergumbo_core.meta_key_coherence, a registration gate for meta KEYS on the shrink-only ratchet in scripts/check-producer-axis-coherence (axis \"Edge.meta key\"). It checks: every key passed to Edge(...) / Edge.create(meta=...) is registered on edge_meta, and every key written to any .meta after construction is registered on some axis.\n\nNOT gated: keys passed to Symbol(...) / Symbol.create(meta=...). Measured on the branch head (2026-10-03) with the same enumeration (producer_coherence._iter_file_sites with keyword_arg=\"meta\", helper descent on; keys via value_flow resolve(expr, ((\"key\",),), readers=Edge constructors)):\n- 206 distinct keys at Symbol construction sites\n- 137 not registered at all (e.g. arity, artifactId, base_image, framework, is_public, language, module, path, ...)\n- 31 registered only on edge_meta (the cross-axis family, filed separately)\n- 21 construction sites whose keys value_flow cannot enumerate (analyze/base.py:1265, cli.py:8805, cpp.py x2, csharp.py x2, java.py x2, js_ts.py x2, rust.py x4, scala.py x4, ...)\n\nShape of the fix: a symbol arm in meta_key_coherence (constructor names Symbol / Symbol.create, axis symbol_meta), registering the 137 with descriptions read from their producers (the WI-lijaz section of axis_meta_keys.py is the pattern), pinning the unenumerable sites by equality, and a \"Symbol.meta key\" ratchet axis. The 31 cross-axis keys cannot be registered until the one-axis-per-key question is decided."  # a8d8
+    fields: {}  # a8d8

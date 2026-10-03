@@ -1,0 +1,20 @@
+- op: create  # 2dfa
+  at: '2026-10-03T10:46:14Z'  # 2dfa
+  by: agent  # 2dfa
+  actor: jgstern_agent  # 2dfa
+  clock: 1  # 2dfa
+  nonce: 2dfa  # 2dfa
+  data:  # 2dfa
+    kind: work_item  # 2dfa
+    title: "cobol PERFORM/CALL edges replace make_unresolved_edge's meta wholesale, dropping callee_name; INV-hazov rule 3 cannot see a helper construction"  # 2dfa
+    status: todo_hard  # 2dfa
+    priority: 3  # 2dfa
+    parent:  # 2dfa
+    tags:  # 2dfa
+    - analysis_quality  # 2dfa
+    isbefore: []  # 2dfa
+    duplicate_of: []  # 2dfa
+    not_duplicate_of: []  # 2dfa
+    pr_ref:  # 2dfa
+    description: "cobol.py's PERFORM and CALL edges assign edge.meta wholesale after construction ({\"file\": rel_path, \"call_type\": ...}). On the unresolved branch the edge comes from analyze.base.make_unresolved_edge, which stamps callee_name UNCONDITIONALLY (the exact callee name, which the id's name slot may not preserve) and optionally call_construct; the assignment discards both.\n\nLive repro (branch jgstern-agent/fix/lijaz, PYTHONPATH pinned): a 6-line program with CALL \"EXTPROG\" gives\n  calls cobol:external:0-0:EXTPROG:unresolved False {'file': 'prog.cbl', 'call_type': 'call'}\n-- no callee_name.\n\nMechanism: INV-hazov rule 3 (meta_write_discipline) flags a wholesale .meta replacement only after a construction that passes a META_BEARING_KWARGS keyword (meta / access_mode / data_direction / channel). make_unresolved_edge(...) passes none of them at the call site but builds meta inside, so a helper construction is invisible to the rule. Sweep (grep for make_unresolved_edge within 12 lines above a wholesale `x.meta = {...}` in packages/*/src): cobol.py 265->270 (PERFORM, pragma no-cover branch) and 301->306 (CALL, live) are the only two.\n\nFix: merge instead of replace ({**(edge.meta or {}), \"file\": ..., \"call_type\": ...}) or pass the keys through, and teach rule 3 that make_unresolved_edge is meta-bearing."  # 2dfa
+    fields: {}  # 2dfa

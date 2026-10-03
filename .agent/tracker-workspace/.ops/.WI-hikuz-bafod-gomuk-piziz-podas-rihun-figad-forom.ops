@@ -1,0 +1,20 @@
+- op: create  # 0e2d
+  at: '2026-10-03T10:35:14Z'  # 0e2d
+  by: agent  # 0e2d
+  actor: jgstern_agent  # 0e2d
+  clock: 1  # 0e2d
+  nonce: 0e2d  # 0e2d
+  data:  # 0e2d
+    kind: work_item  # 0e2d
+    title: "python: a flow from a method on a Popen object to a later Popen call is lost when the same callee is also the receiver's constructor (Popen.wait -> Popen reports nothing; -> check_call reports)"  # 0e2d
+    status: todo_hard  # 0e2d
+    priority: 3  # 0e2d
+    parent:  # 0e2d
+    tags:  # 0e2d
+    - taint  # 0e2d
+    isbefore: []  # 0e2d
+    duplicate_of: []  # 0e2d
+    not_duplicate_of: []  # 0e2d
+    pr_ref:  # 0e2d
+    description: "FOUND while building WI-lanos's fixtures (2026-10-03, branch jgstern-agent/fix/lanos; the Popen.wait source row is that branch's). Same value, same sink, the flow disappears when the sink's CALLEE is also the constructor of the source's receiver.\n\nREPRO (production CLI, cold cache, claim untrusted-input-no-subprocess, --no-default-overlays):\n  A  child = subprocess.Popen([\"false\"]); rc = child.wait(); subprocess.Popen([\"echo\", str(rc)])\n       -> confirmed_with_caveats, 0 evidence rows, dataflow_coverage.walk_verdicts all 0, flows_removed_by_walk 0\n  B  same, sink subprocess.check_call([\"echo\", str(rc)])\n       -> violated, 1 row, source Popen.wait (ipc_recv)\n  C  child = subprocess.Popen([\"false\"]); _, st = os.waitpid(child.pid, 0); subprocess.Popen([\"echo\", str(st)])\n       -> violated, 1 row (reported in BOTH arms, so this is not the new row)\nThe Popen instantiates edge carries meta.call_lines [5, 7] (both calls), edge.line 5; the source (line 6) is a method on the object line 5 built. A differs from C only in the source being a method on that object, and from B only in the sink callee. Fixtures: ~/hypergumbo_lab_notebook/decontend/run_10032026/lanos/fx/py-popen-wait{,-b}, py-waitpid-sink-also-before.\n\nNOT DIAGNOSED: which gate drops it. Not the one-call gate (_source_and_sink_are_one_call needs source callee == sink callee) and not the walk (walk_verdicts all 0, so no finding reached it). Candidates not checked: the INV-sukoh / INV-hopib carrier subsumption (a value carried through an object a sink call produced), and the DDG pass's handling of a sink edge with two call lines. It is a RECALL loss on a real flow (rc does reach the line-7 Popen's argument), so it is the false-all-clear direction."  # 0e2d
+    fields: {}  # 0e2d
