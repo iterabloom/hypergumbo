@@ -761,6 +761,12 @@ ipc_send:
     methods: [put, put_nowait]
   - module: multiprocessing.Pipe
     methods: [send, send_bytes]
+  - module: os._wrap_close
+    methods: [write, writelines]
+    notes: >-
+      WI-kanor. The object os.popen(cmd, "w") returns (library_signatures row
+      os.popen -> os._wrap_close); a write through it goes to the CHILD's
+      stdin. The read twin is under ipc_recv.
   - module: multiprocessing.Process
     methods: [kill, terminate]
     notes: "2026-09-06 WI-dupok: signals the child (os.kill's row is the module-level form); start() is the launch and sits under subprocess."
@@ -946,6 +952,31 @@ ipc_recv:
     methods: [get, get_nowait]
   - module: multiprocessing.Pipe
     methods: [recv, recv_bytes]
+  - module: subprocess.Popen
+    methods: [communicate]
+    simultaneous: true
+    notes: >-
+      WI-kanor / ADR-0049 ruling 1: `out, err = p.communicate()` returns the
+      CHILD'S stdout and stderr, chosen by a program hypergumbo cannot see, so
+      the call is a transfer as well as the launch-side wait it is rowed as
+      under subprocess. `simultaneous` for the reason the check_output row
+      gives. WI-jabus kept this launch-only because the capture depends on
+      `stdout=PIPE`, an argument on the CONSTRUCTOR; without a PIPE the call
+      returns `(None, None)`, so a flow from it carries nothing a program can
+      act on, and the run() objection (rowing it would mint at every call,
+      most of which capture nothing) does not transfer: `run`'s result is read
+      for its returncode, while communicate's tuple IS the output.
+  - module: os._wrap_close
+    methods: [read, readline, readlines, close]
+    notes: >-
+      WI-kanor. os.popen(cmd) returns an os._wrap_close over the child's
+      stdout (library_signatures row os.popen -> os._wrap_close), so a read
+      through it returns bytes the CHILD chose (ADR-0049 ruling 1) -- the
+      crossing the launch row cannot carry, because the launch returns a
+      handle. close() waits for the child and returns its exit status, which
+      is os.waitpid; os.wait / os.waitpid are rowed here ("Reaping a child
+      collects its exit status"). Iterating the object (`for line in f:`) is
+      no call and is not reached.
 
 subprocess:
   - module: platform
@@ -958,19 +989,24 @@ subprocess:
       and OpenVMS. Simultaneous with the host_info_read row: the launch is how
       the description is read.
   - module: subprocess.Popen
-    methods: [communicate, wait, poll, terminate, kill, send_signal]
+    methods: [communicate]
+    simultaneous: true
     notes: >-
-      WI-jabus. LAUNCH-ONLY, on `run`'s precedent and NOT on check_output's.
-      Whether `communicate()` transfers the child's bytes back depends on
-      `stdout=PIPE`, an argument the catalogue cannot read -- and here that
-      argument is on the CONSTRUCTOR, one hop further away than `run`'s own
-      `capture_output=`. The shipped treatment for exactly that is a
-      launch-only row with the omission DISCLOSED rather than silent, which is
-      what this is. It deliberately does NOT mint untrusted_input: ADR-0049
-      ruling 1 mints only where the far side chose the value, and
-      check_output / getoutput / getstatusoutput already carry that for the
-      case where the capture is unconditional. WI-bimik's premise that
-      subprocess output mints nothing is STALE and recorded so on that item.
+      WI-kanor: also ipc_recv (see that row) -- it returns the child's output.
+      Still a subprocess row: a launch-side call on an opaque child, and the
+      `input=` it sends is a subprocess sink.
+  - module: subprocess.Popen
+    methods: [wait, poll, terminate, kill, send_signal]
+    notes: >-
+      WI-jabus. LAUNCH-ONLY: wait / poll return the exit status (python rows
+      Popen.wait here and os.wait under ipc_recv -- two answers for one reap,
+      recorded rather than reconciled), terminate / kill / send_signal return
+      nothing. `communicate` returns the child's OUTPUT and is rowed above and
+      under ipc_recv. `subprocess.run` stays launch-only for a reason that does
+      NOT transfer to communicate: its CompletedProcess carries the child's
+      bytes only when the caller passed `capture_output=` / `stdout=PIPE`, and
+      a run() result is read for its returncode at most call sites, so rowing
+      it would mint a source at calls that capture nothing.
   - module: multiprocessing.Process
     methods: [start]
     notes: "2026-09-06 WI-dupok: forks or spawns the child (Popen in the spawn context); the launch site of every multiprocessing worker."
@@ -1905,10 +1941,19 @@ module_completeness:
     retrieved: "2026-09-14"
     notes: >-
       The launch surface is rowed above (the constructor is the launch, and
-      the opaque-boundary caveat names it); communicate/wait/poll/terminate/
-      kill/send_signal are rowed launch-only there too. stdin/stdout/stderr are
-      ATTRIBUTES holding file objects -- a read through one is a call on that
-      object, classified where that object's own class is declared, not here.
+      the opaque-boundary caveat names it); wait/poll/terminate/kill/
+      send_signal are rowed launch-only there too, and communicate is rowed
+      both launch and ipc_recv (it returns the child's output, WI-kanor).
+      stdin/stdout/stderr are ATTRIBUTES holding file objects -- a read through
+      one is a call on that object, classified where that object's own class
+      is declared, not here.
+  - module: os._wrap_close
+    completeness: complete
+    retrieved: "2026-10-03"
+    notes: >-
+      WI-kanor. The object os.popen returns: read/readline/readlines/close are
+      rowed ipc_recv and write/writelines ipc_send. The remainder is fileno,
+      the context-manager pair and iteration -- no crossing of their own.
   - module: tarfile.TarFile
     completeness: complete
     retrieved: "2026-09-14"

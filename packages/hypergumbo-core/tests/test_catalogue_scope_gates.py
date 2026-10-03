@@ -398,6 +398,9 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # WI-dibit: the class `urllib.request.build_opener()` returns
             # (CPython's Lib/urllib/request.py); its module is admitted above.
             "urllib.request.OpenerDirector",
+            # WI-kanor: `os._wrap_close` is the class os.popen() returns,
+            # defined in CPython's Lib/os.py.
+            "os._wrap_close",
         }),
     ),
     "rust": Scope(
