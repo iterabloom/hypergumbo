@@ -1,0 +1,24 @@
+- op: create  # 8574
+  at: '2026-10-03T19:26:29Z'  # 8574
+  by: agent  # 8574
+  actor: jgstern_agent  # 8574
+  clock: 1  # 8574
+  nonce: '8574'  # 8574
+  data:  # 8574
+    kind: invariant  # 8574
+    title: "A taint source read inside a helper and RETURNED to its caller is never followed: the caller's sink reads confirmed_with_caveats (python, go), and it is what blocks INV-dukam's exec.Command removal"  # 8574
+    status: violated  # 8574
+    priority: 2  # 8574
+    parent:  # 8574
+    tags:  # 8574
+    - taint  # 8574
+    - analysis_quality  # 8574
+    - adr_0017  # 8574
+    isbefore: []  # 8574
+    duplicate_of: []  # 8574
+    not_duplicate_of: []  # 8574
+    pr_ref:  # 8574
+    description: "FOUND 2026-10-03 by the kanor run (INV-dukam Command half, ADR-0049 ruling-3 proof). Reproduced on dev fe3c32259d with the shipped CLI.\n\nTHE DEFECT. Taint never follows a value from a callee's RETURN back into its caller. A source read inside a helper and sunk by the caller is not reported, and the verdict is a qualified clean, not inconclusive:\n\n    def get_tool():\n        return os.getenv(\"TOOL\")\n    def main():\n        subprocess.run([get_tool(), \"--flag\"])\n\nhost_secret -> subprocess: confirmed_with_caveats (only the opaque_boundary caveat). The same flow written inline (tool = os.environ[\"TOOL\"]; subprocess.run([tool])) is violated, ddg confirmed. Same for Go (func token() string { return os.Getenv(\"TOOL\") } ; exec.Command(token()).Run(): confirmed_with_caveats).\n\nMECHANISM. propagate_taint_structural / propagate_taint_ddg compute reachability FORWARD from the source's caller over call edges (taint.py, \"nodes reachable from the source's caller\"); a sink in a CALLER of the source function is never in that set. ADR-0017 §7b excludes whole-program analysis, but the exclusion is not disclosed on the verdict: nothing marks the source call as returned-to-caller, so the clean verdict carries no caveat naming it.\n\nWHY IT MATTERS BEYOND THE HELPER IDIOM. It is what blocks INV-dukam's Command half: a Go factory that builds and returns *exec.Cmd (beads newBdCmd / RepoContext.GitCmd, containers-storage pkg/reexec.Command, runc Container.newParentProcess) is caught today ONLY because the os/exec.Command row is a sink in the factory's own scope. Moving the crossing to Cmd.Run/Start (ADR-0049 ruling 3) loses those flows; measured on runc: the GOMAXPROCS env value written into cmd.Env in newParentProcess is lost (Start runs on the heap object in another method).\n\nASKED. Either (a) a return-flow summary (a function whose return value is tainted by a source taints its call sites' results -- the ADR-0017 §4 summary shape, param_to_return / source_to_return), or (b) at minimum a caveat on the clean verdict when a source call's value is RETURNED (the DDG sees the return statement use it), so the verdict is not a silent all-clear. Measure first: count source calls whose value reaches a return statement in the corpus.\n\nFixtures: scratchpad kanor/retfx/py_ret_getenv, py_ret, go gofx/h1_retsrc (report ~/hypergumbo_lab_notebook/decontend/run_10032026/kanor.md)."  # 8574
+    fields:  # 8574
+      statement: "A source value that a function returns to its caller, where the caller passes it to a sink, must be reported as a flow, or the clean verdict must carry a caveat naming the returned source."  # 8574
+      root_cause: "propagate_taint_structural / propagate_taint_ddg compute reachability FORWARD from the source's caller over call edges, so a sink in a CALLER of the source function is never in the reachable set, and no caveat discloses the returned source (ADR-0017 7b's whole-program exclusion, silent on the verdict)."  # 8574

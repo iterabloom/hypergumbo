@@ -1,0 +1,22 @@
+- op: create  # 8cb4
+  at: '2026-10-03T19:26:39Z'  # 8cb4
+  by: agent  # 8cb4
+  actor: jgstern_agent  # 8cb4
+  clock: 1  # 8cb4
+  nonce: 8cb4  # 8cb4
+  data:  # 8cb4
+    kind: work_item  # 8cb4
+    title: "def/use records a field store (x.f = v) as a strong definition of x that does not use x (python, go), killing x's earlier taint: a built object loses its constructor-argument taint at its first field assignment"  # 8cb4
+    status: todo_hard  # 8cb4
+    priority: 3  # 8cb4
+    parent:  # 8cb4
+    tags:  # 8cb4
+    - taint  # 8cb4
+    - analysis_quality  # 8cb4
+    - adr_0017  # 8cb4
+    isbefore: []  # 8cb4
+    duplicate_of: []  # 8cb4
+    not_duplicate_of: []  # 8cb4
+    pr_ref:  # 8cb4
+    description: "FOUND 2026-10-03 by the kanor run (INV-dukam Command half). Reproduced on dev fe3c32259d.\n\nTHE DEFECT. The def/use extractors record a FIELD STORE on a variable as a fresh definition of the variable that does not USE it, so the variable's earlier reaching definition is killed. A field write is a weak update: the object keeps everything it held.\n\n    python   o.attr = 1                            -> (line, defines ('o',), uses ())\n    go       cmd.Stdin, cmd.Stdout = os.Stdin, x  -> (line, defines ('cmd','cmd'), uses ('os','x'))\n\nEFFECT, measured (verify-claims, shipped CLI):\n- python: secret -> urllib.request.Request(data=secret) -> req.timeout = 5 -> urlopen(req): urlopen evidence ddg_mixed/escaped; without the field store: ddg CONFIRMED. A precision downgrade, not a loss, on this fixture.\n- go (INV-dukam Command half, rows removed in a probe arm): containers-storage cmd/containers-storage/unshare.go unshareFn -- cmd := exec.Command(args[0], ...); cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, ...; cmd.Run(): the constructor-argument taint dies at the field store, so the relocated finding at Cmd.Run is approximate (escaped) where the constructor row gave it ddg confirmed. Combined with WI-losod (the if-initializer `if err := cmd.Run()` records no use of cmd) the Go executor walk can rarely confirm.\n\nWHY IT MATTERS: the represented-crossing proofs ADR-0049 ruling 3 asks for (constructor builds, executor crosses) run through exactly this shape -- build an object, set fields on it, execute it. NOT CHECKED: whether any walk returns False (a removal) rather than None because of this; the two cases measured returned None.\n\nASKED: record a field store as defines (x) AND uses (x) (weak update), in every DDG language's extractor; measure the precise/approximate split before and after on a cohort."  # 8cb4
+    fields: {}  # 8cb4
