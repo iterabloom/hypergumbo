@@ -68,3 +68,10 @@
   clock: 8  # cc56
   nonce: cc56  # cc56
   message: "FINAL COUNT (supersedes the two notes above): 18 tests = 12 in the first board run (11 red, 1 green control) + 6 added later. Of those 6: 3 red by probe before their change (inherited override not re-keyed; self.<Nested>(); file without functions) and 3 green controls when added (plain-model ORM write; inherited override via linker; source-order nested class vs method)."  # cc56
+- op: discuss  # a8fa
+  at: '2026-10-03T21:17:01Z'  # a8fa
+  by: agent  # a8fa
+  actor: jgstern_agent  # a8fa
+  clock: 9  # a8fa
+  nonce: a8fa  # a8fa
+  message: "From WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin (branch jgstern-agent/fix/ratid, on top of fix/kutal): the django cost recorded here is recovered. A/B b7417402dc vs kutal+ratid (ff18f6ceee), recomputing this item's population with this item's own classify rule over its own artifacts (2098): 1673 resolve again at the same call site to the same ancestor method (inherited-calls-linker); 425 have the same (caller, target) pair resolved on another line of the same caller -- the one-edge-per-pair limit of WI-sodor-muhif-bagit-vivos-kinap-nabig-gapim-hotav; 0 remain unresolved; every caller's C3 linearization succeeds. kutal + ratid together change no site back to arm A's state and add 0 losses beyond kutal's own diff. Details: ~/hypergumbo_lab_notebook/decontend/run_10032026/ratid.md."  # a8fa
