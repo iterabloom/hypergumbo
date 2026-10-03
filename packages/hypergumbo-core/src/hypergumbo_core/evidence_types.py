@@ -62,8 +62,9 @@ Seeding completeness (per the Phase 1 plan file):
 
 - Phase 1 seed: 207 static-literal evidence_type values from
   ``grep packages/*/src``. After the Phase 3 folds and the Phase 4b
-  closure the registry holds 126 values (116 ``inference_pathway``,
-  10 ``pending_classification``).
+  closure the registry held 126 values (116 ``inference_pathway``,
+  10 ``pending_classification``); WI-nakur's discoveries (four values a
+  helper's returned tuples carried) bring it to 130 (116 / 14).
 - 10 enumerable dynamic variants from the f-string emits
   (``{pattern_type}_emit`` / ``{pattern_type}_endpoint``) in
   ``websocket.py`` for the 6 registered ``pattern_type`` literals
@@ -516,6 +517,51 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
                      "At-risk Cluster D call-construct: fold candidate "
                      "to `ast_call_direct` + `meta['call_construct']='namespace'`. "
                      "Pending cluster-D audit."),
+
+    # ----------------------------------------------------------------
+    # WI-nakur discoveries — values carried through data (WI-pubin)
+    # ----------------------------------------------------------------
+    # Surfaced when the L3 producer-coherence linter learned to follow a
+    # value back through a helper that appends tuples to a list and returns
+    # it, and through a dict of tuples (``hypergumbo_core.value_flow``).
+    # Each linker wrote these labels as string literals inside a returned
+    # tuple, so no gate read them. Registered AXIS_PENDING with no
+    # confidence seed -- exactly how the producers already behave (both
+    # pass an explicit ``confidence=``), following the ext A / ext B
+    # discovery precedent above. Each pair is at-risk Cluster C (mechanism
+    # on evidence_type): the fold candidate is one inference pathway per
+    # linker plus a ``meta`` key naming the mechanism.
+    EvidenceTypeSpec("luajit_ffi_c", AXIS_PENDING,
+                     "LuaJIT FFI call through the default C namespace "
+                     "(`ffi.C.<name>(`), matched by name to a C/C++ "
+                     "function (linkers/lua_ffi.py). Sibling of the "
+                     "unresolved-path canonical `luajit_ffi_lookup` and of "
+                     "`luajit_ffi_load`. At-risk Cluster C: fold candidate "
+                     "to `luajit_ffi_lookup` + a meta key naming the "
+                     "namespace. Pending cluster-C audit."),
+    EvidenceTypeSpec("luajit_ffi_load", AXIS_PENDING,
+                     "LuaJIT FFI call through a library handle returned by "
+                     "`ffi.load(...)` (`lib.<name>(`), matched by name to a "
+                     "C/C++ function (linkers/lua_ffi.py). Sibling of "
+                     "`luajit_ffi_c`. At-risk Cluster C: fold candidate to "
+                     "`luajit_ffi_lookup` + a meta key naming the "
+                     "namespace. Pending cluster-C audit."),
+    EvidenceTypeSpec("napi_create_function", AXIS_PENDING,
+                     "N-API C export registration "
+                     "`napi_create_function(env, \"jsName\", ..., CCallback, ...)` "
+                     "pairing a JS call name with its C callback "
+                     "(linkers/napi.py). Sibling of `napi_addon_api`. "
+                     "At-risk Cluster C: fold candidate to one N-API "
+                     "export pathway + a meta key naming the API layer. "
+                     "Pending cluster-C audit."),
+    EvidenceTypeSpec("napi_addon_api", AXIS_PENDING,
+                     "node-addon-api C++ export registration "
+                     "(`exports.Set(\"name\", Napi::Function::New(...))`, "
+                     "`InstanceMethod` / `StaticMethod` / `InstanceAccessor`, "
+                     "plain and template forms) pairing a JS name with its "
+                     "C++ implementation (linkers/napi.py). Sibling of "
+                     "`napi_create_function`. At-risk Cluster C: fold "
+                     "candidate as for its sibling. Pending cluster-C audit."),
 )
 
 

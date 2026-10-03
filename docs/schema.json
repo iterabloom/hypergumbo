@@ -1583,7 +1583,11 @@
                 "ctypes_stdlib_call": "pending_classification",
                 "cffi_stdlib_call": "pending_classification",
                 "qualified_call": "pending_classification",
-                "ast_call_namespace": "pending_classification"
+                "ast_call_namespace": "pending_classification",
+                "luajit_ffi_c": "pending_classification",
+                "luajit_ffi_load": "pending_classification",
+                "napi_create_function": "pending_classification",
+                "napi_addon_api": "pending_classification"
               },
               "x-deprecated": []
             },
