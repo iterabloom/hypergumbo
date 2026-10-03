@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import ast
 import textwrap
-from typing import Optional
+from typing import Callable, Optional
 
 import pytest
 
@@ -103,6 +103,37 @@ CASES: dict[str, tuple[str, Optional[frozenset[str]]]] = {
     "narrow_in_string_is_substring_not_set": (
         'def _f(t):\n    sink(t if t in "abc" else "z")\n_f("ab")',
         F({"ab", "z"}),
+    ),
+    "narrow_comprehension_filter": (
+        'L = ["a", "b"]\nfor x in [k for k in L if k != "a"]:\n    sink(x)',
+        F({"b"}),
+    ),
+    "narrow_comprehension_filters_compose": (
+        'L = ["a", "b", "c"]\n'
+        'for x in [k for k in L if k != "a" if k not in ("b",)]:\n    sink(x)',
+        F({"c"}),
+    ),
+    "narrow_comprehension_dict_key": (
+        'D = {"type": 1, "x": 2}\n'
+        'for x in {k: v for k, v in D.items() if k != "type"}:\n    sink(x)',
+        F({"x"}),
+    ),
+    "narrow_comprehension_opaque_filter_untouched": (
+        'L = ["a", "b"]\nfor x in [k for k in L if f(k)]:\n    sink(x)',
+        F({"a", "b"}),
+    ),
+    "narrow_comprehension_filter_on_another_name_untouched": (
+        'L = ["a", "b"]\nfor x in [k for k in L if q != "a"]:\n    sink(x)',
+        F({"a", "b"}),
+    ),
+    "narrow_comprehension_filter_on_another_target_untouched": (
+        'L = ["a", "b"]\n'
+        'for x in [j for k in L if k != "a" for j in L]:\n    sink(x)',
+        F({"a", "b"}),
+    ),
+    "narrow_comprehension_element_not_an_iteration_variable_untouched": (
+        'L = ["a", "b"]\nc = "a"\nfor x in [c for k in L if c != "a"]:\n    sink(x)',
+        F({"a"}),
     ),
     "narrow_less_than_untouched": (
         'def _f(t):\n    sink(t if t < "m" else "z")\n_f("a")', F({"a", "z"}),
@@ -650,3 +681,198 @@ class TestMemoAndCache:
         replaced = flow_for(second)
         assert replaced is flow_for(second)
         assert replaced is not flow_for(first)
+
+
+def _keys(
+    source: str,
+    readers: frozenset[str] = frozenset(),
+    known_empty: Optional[Callable[[ast.expr], bool]] = None,
+) -> Optional[frozenset[str]]:
+    """The KEYS of the dict passed as ``sink(meta=...)`` (WI-lijaz)."""
+    tree = ast.parse(textwrap.dedent(source))
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "sink"
+        ):
+            value = next(kw.value for kw in node.keywords if kw.arg == "meta")
+            return flow_for(tree).resolve(
+                value, (("key",),), readers=readers, known_empty=known_empty,
+            )
+    raise AssertionError("fixture has no sink(meta=...) call")
+
+
+class TestTheReadBeingAnsweredIsNotAnEscape:
+    """WI-lijaz: a named dict handed to the sink is the value being asked
+    about, so that one use cannot be what makes it unresolvable.
+
+    Before the fix every ``meta=edge_meta`` resolved to ``None``: the walk
+    over ``edge_meta``'s uses met ``Edge.create(meta=edge_meta)`` itself,
+    an opaque call, and refused the dict as escaped. Every OTHER use is
+    still checked, which is what the last two tests pin.
+    """
+
+    def test_a_named_dict_at_the_sink(self) -> None:
+        assert _keys(
+            'D = {"a": 1}\nif c:\n    D["b"] = 2\nsink(meta=D)',
+        ) == F({"a", "b"})
+
+    def test_a_named_dict_or_none_at_the_sink(self) -> None:
+        """``analyze/base.py``'s ``meta=hint_meta or None``."""
+        assert _keys(
+            'def make(x):\n    hint = {"callee_name": x}\n'
+            '    if x:\n        hint["enclosing_class"] = x\n'
+            '    return sink(meta=hint or None)',
+        ) == F({"callee_name", "enclosing_class"})
+
+    def test_a_dict_forwarded_through_a_private_helper(self) -> None:
+        """The helper's own writes to its parameter are still collected."""
+        assert _keys(
+            'def _mk(meta):\n    meta["b"] = 1\n    return sink(meta=meta)\n'
+            'D = {"a": 1}\n_mk(D)',
+        ) == F({"a", "b"})
+
+    def test_another_opaque_use_still_escapes(self) -> None:
+        assert _keys('D = {"a": 1}\nfill(D)\nsink(meta=D)') is None
+
+    def test_a_dict_a_public_helper_receives_is_still_unresolved(self) -> None:
+        assert _keys(
+            'def mk(meta):\n    return sink(meta=meta)\nD = {"a": 1}\nmk(D)',
+        ) is None
+
+
+class TestReaders:
+    """WI-lijaz: callees the ASKER declares read-only for this question.
+
+    ``lua_ffi`` binds ``edge_meta`` twice in one function and hands each to
+    its own ``Edge.create``; ``route_handler`` passes ``handler_meta`` in both
+    arms of a ternary. Each use is the other's opaque escape, so neither
+    resolves -- unless the gate, which scans ``edge.meta[...]`` writes as
+    sites of their own, says that ``Edge.create`` adds no key to what it is
+    given.
+    """
+
+    TWO_SINKS = 'D = {"a": 1}\nsink(meta=D)\nreader(meta=D)\n'
+
+    def test_a_second_use_at_an_undeclared_callee_escapes(self) -> None:
+        assert _keys(self.TWO_SINKS) is None
+
+    def test_a_second_use_at_a_declared_reader_does_not(self) -> None:
+        assert _keys(self.TWO_SINKS, F({"reader"})) == F({"a"})
+
+    def test_a_dotted_reader(self) -> None:
+        assert _keys(
+            'D = {"a": 1}\nsink(meta=D)\nEdge.create(meta=D)\n',
+            F({"Edge.create"}),
+        ) == F({"a"})
+
+    def test_a_positional_argument_to_a_reader(self) -> None:
+        assert _keys(
+            'D = {"a": 1}\nsink(meta=D)\nreader(D)\n', F({"reader"}),
+        ) == F({"a"})
+
+    def test_both_arms_of_a_ternary_at_the_reader(self) -> None:
+        source = (
+            'D = {"a": 1}\nD["b"] = 2\n'
+            'sink(meta={**D, "c": True} if f else D)\n'
+        )
+        assert _keys(source) is None
+        assert _keys(source, F({"sink"})) == F({"a", "b", "c"})
+
+    def test_an_or_at_the_reader(self) -> None:
+        assert _keys(
+            'D = {"a": 1}\nsink(meta=D)\nreader(meta=D or None)\n',
+            F({"reader"}),
+        ) == F({"a"})
+
+    def test_a_reader_that_is_an_attribute_of_an_expression_is_not_matched(
+        self,
+    ) -> None:
+        assert _keys(
+            'D = {"a": 1}\nsink(meta=D)\nmake().create(meta=D)\n',
+            F({"Edge.create"}),
+        ) is None
+
+    def test_a_class_keyword_is_not_a_reader_argument(self) -> None:
+        assert _keys(
+            'D = {"a": 1}\nsink(meta=D)\nclass C(Base, reader=D):\n    pass\n',
+            F({"reader"}),
+        ) is None
+
+    def test_a_class_base_is_not_a_reader_argument(self) -> None:
+        assert _keys(
+            'D = {"a": 1}\nsink(meta=D)\nclass C(D):\n    pass\n',
+            F({"reader"}),
+        ) is None
+
+    def test_answers_are_kept_apart_per_reader_set(self) -> None:
+        tree = ast.parse(self.TWO_SINKS)
+        value = next(
+            kw.value for n in ast.walk(tree) if isinstance(n, ast.Call)
+            for kw in n.keywords if getattr(n.func, "id", "") == "sink"
+        )
+        flow = ModuleValueFlow(tree)
+        key = (("key",),)
+        assert flow.resolve(value, key) is None
+        assert flow.resolve(value, key, readers=F({"reader"})) == F({"a"})
+        assert flow.resolve(value, key) is None
+
+
+def _reads_meta(expr: ast.expr) -> bool:
+    return isinstance(expr, ast.Attribute) and expr.attr == "meta"
+
+
+class TestKnownEmpty:
+    """WI-lijaz: expressions the ASKER vouches add nothing to the answer.
+
+    ``meta = dict(edge.meta or {}); meta["call_arg_shape"] = s; edge.meta =
+    meta`` writes one key. The copy holds only keys some other site already
+    wrote, which the meta-key gate checks there; ``value_flow`` cannot know
+    that, so the gate says it.
+    """
+
+    COPY = 'D = dict(x.meta or {})\nD["k"] = 1\nsink(meta=D)\n'
+
+    def test_unvouched_the_copy_is_unresolvable(self) -> None:
+        assert _keys(self.COPY) is None
+
+    def test_vouched_the_copy_adds_nothing(self) -> None:
+        assert _keys(self.COPY, known_empty=_reads_meta) == F({"k"})
+
+    def test_a_copy_extended_by_update(self) -> None:
+        assert _keys(
+            'D = dict(a.meta or {})\nD.update(b.meta or {})\nsink(meta=D or None)\n',
+            known_empty=_reads_meta,
+        ) == F()
+
+    def test_a_spread_and_a_copy_method(self) -> None:
+        assert _keys(
+            'sink(meta={**(x.meta or {}), "k": 1, **x.meta.copy()})\n',
+            known_empty=_reads_meta,
+        ) == F({"k"})
+
+    def test_answers_are_kept_apart_per_vouch(self) -> None:
+        tree = ast.parse(self.COPY)
+        value = next(
+            kw.value for n in ast.walk(tree) if isinstance(n, ast.Call)
+            for kw in n.keywords if getattr(n.func, "id", "") == "sink"
+        )
+        flow = ModuleValueFlow(tree)
+        key = (("key",),)
+        assert flow.resolve(value, key) is None
+        assert flow.resolve(value, key, known_empty=_reads_meta) == F({"k"})
+        assert flow.resolve(value, key) is None
+
+
+class TestDictOfAMapping:
+    """``dict(m)`` has ``m``'s keys and values (WI-lijaz)."""
+
+    def test_keys(self) -> None:
+        assert _keys('M = {"a": 1}\nsink(meta=dict(M))\n') == F({"a"})
+
+    def test_values(self) -> None:
+        assert _resolve('M = {"k": "v"}\nsink(dict(M)["k"])') == F({"v"})
+
+    def test_two_arguments_refused(self) -> None:
+        assert _keys('M = {"a": 1}\nsink(meta=dict(M, N))\n') is None

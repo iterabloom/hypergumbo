@@ -644,7 +644,8 @@
             "private": "pending_classification",
             "storage": "pending_classification",
             "workgroup": "pending_classification",
-            "operation": "pending_classification"
+            "operation": "pending_classification",
+            "multimethod": "pending_classification"
           },
           "x-deprecated": []
         },

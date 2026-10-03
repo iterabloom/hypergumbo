@@ -715,6 +715,22 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "child). Semantically an anonymous query; pending the "
                    "producer fold to `query` (id-changing, deferred to v6). "
                    "Registered per id-format:F3."),
+
+    # ----------------------------------------------------------------
+    # WI-lijaz discovery -- a value read back through a returned tuple
+    # ----------------------------------------------------------------
+    # clojure.py chooses ``kind`` from ``_is_def_form``'s dict of
+    # ``(kind, visibility)`` tuples and unpacks the returned tuple
+    # (``kind, visibility = def_info``). value_flow refused that unpack as an
+    # escape of ``def_info`` until WI-lijaz stopped counting the read being
+    # answered as one; the value then surfaced. Registered AXIS_PENDING per
+    # the WI-nubuv ext A precedent above, for the per-cluster audit.
+    SymbolKindSpec("multimethod", AXIS_PENDING,
+                   "Clojure ``defmulti``: a multimethod, the dispatch function "
+                   "whose implementations are the ``defmethod`` forms (kind "
+                   "``method``). Pending classification: a language construct "
+                   "on its face; the audit decides whether it stays distinct "
+                   "from ``function``."),
 )
 
 
