@@ -69,14 +69,20 @@ fs_write:
       3.0.0): the package's top level holds only `version`; defusedcsv.csv
       re-exports stdlib csv and defines its own `writer` (a proxy over
       csv.writer) and `DictWriter` (a subclass of csv.DictWriter). This row
-      MIRRORS the stdlib csv rows and nothing else -- stdlib rows `writer` and
-      not `DictWriter`, so the drop-in does too, and the two cannot disagree
-      about one write. Without this row the call was classified as stdlib
-      csv.writer by _module_matches' component-suffix arm alone, which also
+      MIRRORS the stdlib csv rows and nothing else -- module for module, so
+      the drop-in and its stdlib twin cannot disagree about one write.
+      Without this row the call was classified as stdlib csv.writer by
+      _module_matches' component-suffix arm alone, which also
       calls `mycsvlib.csv` stdlib csv. That arm is KEPT (go's under-qualified
       filepath / grpc rows depend on it; measured, WI-mujod); this row is
       what identifies defusedcsv, because prefer_exact_owner picks the row
       whose module IS the call's module over the suffix match.
+  - module: defusedcsv.csv.DictWriter
+    methods: [writerow, writerows, writeheader]
+    notes: >-
+      WI-kozaj, the mirror of stdlib csv.DictWriter. defusedcsv's DictWriter
+      subclasses csv.DictWriter and swaps in its escaping writer, so the write
+      surface is the inherited writerow / writerows / writeheader.
   # WI-nibav. django.core.files.storage.default_storage: a LazyObject over
   # storages['default'], which is FileSystemStorage unless the project's
   # STORAGES setting names another backend (then these calls may cross the

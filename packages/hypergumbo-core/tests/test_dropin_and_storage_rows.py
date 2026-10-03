@@ -20,8 +20,8 @@ TWO GAPS, ONE QUESTION -- which catalogue row is this call?
    SURFACE READ, NOT ASSUMED (github.com/raphaelm/defusedcsv, 3.0.0):
    ``defusedcsv/__init__.py`` holds only ``version``; ``defusedcsv/csv.py``
    re-exports stdlib csv and defines its own ``writer`` (a proxy over stdlib
-   ``csv.writer``) and ``DictWriter`` (a subclass of stdlib's). The row
-   mirrors the stdlib csv rows exactly -- ``writer`` -- and nothing else,
+   ``csv.writer``) and ``DictWriter`` (a subclass of stdlib's). The rows
+   mirror the stdlib csv rows exactly, module for module, and nothing else,
    because a drop-in that gained a row its stdlib twin lacks would make the
    two disagree about one write.
 
@@ -107,6 +107,19 @@ _STORAGE = (
 )
 
 
+#: Each stdlib csv module that carries a row, and the defusedcsv module that
+#: mirrors it. defusedcsv.csv re-exports stdlib csv, defines its own ``writer``
+#: and subclasses ``DictWriter``.
+_CSV_MIRROR = {
+    "csv": "defusedcsv.csv",
+    "csv.DictWriter": "defusedcsv.csv.DictWriter",
+}
+
+
+def _in_stdlib_csv_family(module: str) -> bool:
+    return module == "csv" or module.startswith("csv.")
+
+
 def _tagged(tmp_path: Path, source: str, *, defaults: bool = True) -> dict:
     """``{(caller, callee name): (boundary, primitive)}`` for one file."""
     from hypergumbo_lang_mainstream.py import analyze_python
@@ -147,14 +160,20 @@ class TestDefusedcsvHasItsOwnRow:
         assert hit is not None
         assert (hit.module, hit.name, hit.zone) == ("defusedcsv.csv", "writer", "host_fs")
 
-    def test_the_row_mirrors_the_stdlib_csv_rows(self) -> None:
-        """A drop-in must not carry a row its stdlib twin lacks, nor lack one."""
+    def test_the_rows_mirror_the_stdlib_csv_rows(self) -> None:
+        """A drop-in must not carry a row its stdlib twin lacks, nor lack one,
+        module for module (WI-kozaj added the DictWriter pair)."""
         prims = load_catalog("python").primitives
-        stdlib = {(p.boundary, p.name, p.kind) for p in prims if p.module == "csv"}
-        dropin = {(p.boundary, p.name, p.kind) for p in prims
-                  if p.module == "defusedcsv.csv"}
-        assert stdlib, "control: stdlib csv rows exist"
-        assert dropin == stdlib
+        stdlib_family = {p.module for p in prims if _in_stdlib_csv_family(p.module)}
+        assert stdlib_family == set(_CSV_MIRROR), (
+            "every stdlib csv module that carries a row needs its drop-in twin")
+        for stdlib_module, dropin_module in _CSV_MIRROR.items():
+            stdlib = {(p.boundary, p.name, p.kind) for p in prims
+                      if p.module == stdlib_module}
+            dropin = {(p.boundary, p.name, p.kind) for p in prims
+                      if p.module == dropin_module}
+            assert stdlib, f"control: stdlib {stdlib_module} rows exist"
+            assert dropin == stdlib, (stdlib_module, dropin_module)
 
     def test_the_row_is_community(self) -> None:
         rows = [p for p in load_catalog("python").primitives
