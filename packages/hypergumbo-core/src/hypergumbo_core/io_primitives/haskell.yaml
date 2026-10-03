@@ -140,11 +140,12 @@ fs_read:
       FIRST -- an unstamped call abstains to the first-declared row. Declared
       on both rows because `boundary_ruling` is a property of the primitive.
   - module: System.Directory
-    functions: [listDirectory, getDirectoryContents, doesFileExist, doesDirectoryExist, getPermissions, getFileSize, getModificationTime, getHomeDirectory, getTemporaryDirectory, findFile, findFiles, canonicalizePath]
+    functions: [listDirectory, getDirectoryContents, doesFileExist, doesDirectoryExist, getPermissions, getFileSize, getModificationTime, findFile, findFiles, canonicalizePath]
     notes: >-
-      getCurrentDirectory and makeAbsolute are host_info_read (INV-zufiz): see
-      that section. canonicalizePath stays: it resolves symlinks, which reads
-      the filesystem (python keeps os.path.realpath for the same reason).
+      getCurrentDirectory and makeAbsolute (INV-zufiz) and getHomeDirectory and
+      getTemporaryDirectory (INV-zuhat) are host_info_read: see that section.
+      canonicalizePath stays: it resolves symlinks, which reads the filesystem
+      (python keeps os.path.realpath for the same reason).
   - module: Data.ByteString
     functions: [readFile]
   - module: Data.ByteString.Lazy
@@ -276,6 +277,20 @@ host_info_read:
       base's monotonic clock.
   - module: System.Environment
     functions: [getProgName, getExecutablePath]
+  - module: System.Directory
+    functions: [getHomeDirectory, getTemporaryDirectory]
+    notes: >-
+      INV-zuhat: on POSIX getTemporaryDirectory looks up TMPDIR and falls back
+      to the literal "/tmp"; getHomeDirectory looks up HOME and falls back to
+      getpwuid_r. Neither stats or opens a path. host_info_read and not
+      env_read although both read an environment variable: INV-tutar put host
+      description and user identity here, and every other catalogue rows the
+      same two questions here, several of them reading HOME / TMPDIR the same
+      way (python pathlib.Path.home / os.path.expanduser / tempfile.gettempdir,
+      go os.UserHomeDir, rust std::env::home_dir / temp_dir, javascript
+      os.homedir / os.tmpdir, elixir System.user_home / tmp_dir, scala
+      Properties.userHome / tmpDir). env_read would mint host_secret, and a
+      home directory is not a credential.
   - module: System.Directory
     functions: [getCurrentDirectory, makeAbsolute]
     notes: >-

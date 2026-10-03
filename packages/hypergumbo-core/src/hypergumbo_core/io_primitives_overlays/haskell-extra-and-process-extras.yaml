@@ -40,7 +40,7 @@ retrieved: 2026-09-02
 
 fs_read:
   - module: System.Directory.Extra
-    functions: [listDirectory, getDirectoryContents, doesFileExist, doesDirectoryExist, getPermissions, getFileSize, getModificationTime, getHomeDirectory, getTemporaryDirectory, findFile, findFiles, canonicalizePath, listFiles, listFilesRecursive, listFilesInside, listContents]
+    functions: [listDirectory, getDirectoryContents, doesFileExist, doesDirectoryExist, getPermissions, getFileSize, getModificationTime, findFile, findFiles, canonicalizePath, listFiles, listFilesRecursive, listFilesInside, listContents]
     notes: >-
       Re-exports System.Directory in full (the `extra` package), plus its own
       list* walkers, which read directory contents exactly as listDirectory
@@ -48,10 +48,11 @@ fs_read:
 
 host_info_read:
   - module: System.Directory.Extra
-    functions: [getCurrentDirectory, makeAbsolute]
+    functions: [getCurrentDirectory, makeAbsolute, getHomeDirectory, getTemporaryDirectory]
     notes: >-
-      Mirrors haskell.yaml's System.Directory host_info_read row (INV-zufiz:
-      the working directory is process state, not file content).
+      Mirrors haskell.yaml's System.Directory host_info_read rows (INV-zufiz:
+      the working directory is process state, not file content; INV-zuhat:
+      the home and temporary directories come from HOME / TMPDIR, not disk).
 
 fs_write:
   - module: System.Directory.Extra
