@@ -446,7 +446,7 @@ def test_the_selection_count_reads_root_level_tests(tmp_path: Path) -> None:
 
     `.github/workflows/ci.yml` counted the manifest with `grep -c "^packages/"`,
     which reads 0 for root-level `tests/...` selections (pinned in
-    tests/test_ci_github_manifest_count.py). That file is dormant; this is the
+    tests/test_ci_workflow_manifest_count.py). That file is dormant; this is the
     gate that runs per PR, and its announced count must equal what it hands
     pytest for exactly that shape -- two root-level tests, no package tests.
     """
