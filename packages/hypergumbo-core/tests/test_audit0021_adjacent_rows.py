@@ -390,3 +390,56 @@ class TestWiBusamTaskSpawnsAreProcessSend:
         assert "erlang.spawn" in chains["process_send"]  # control: reached
         assert {f"{m}.{n}" for m, n in _TASK_SPAWNS} <= chains["process_send"]
         assert "ipc_send" not in chains
+
+
+# ---------------------------------------------------------------------------
+# WI-logoz: an Oban job enqueue is a database insert (community tier).
+# ---------------------------------------------------------------------------
+
+_EX_OBAN = '''defmodule Jobs do
+  def go(changeset, changesets) do
+    Oban.insert(changeset)
+    Oban.insert!(changeset)
+    Oban.insert_all(changesets)
+    Ecto.Repo.insert(changeset)
+  end
+end
+'''
+
+_OBAN = [("Oban", "insert"), ("Oban", "insert!"), ("Oban", "insert_all")]
+
+
+class TestWiLogozObanInsertIsADatabaseWrite:
+    """Oban persists a job as a row in its ``oban_jobs`` table through Ecto;
+    the crossing at ``Oban.insert*`` is that insert, which the axis spells
+    ``db_write`` -- the boundary the same overlay gives ``Ecto.Repo.insert``.
+    The rows are COMMUNITY tier (the file's ``provenance:`` line, ADR-0061):
+    they may add findings and never make a verdict cleaner, and moving the
+    zone keeps them on the adding side -- an ``ipc`` sink disappears and a
+    ``database`` sink appears at the same calls."""
+
+    @pytest.mark.parametrize(("module", "name"), _OBAN)
+    def test_the_row_is_db_write(self, module: str, name: str) -> None:
+        assert _rows("elixir", module, name) == {"db_write"}
+
+    @pytest.mark.parametrize(("module", "name"), _OBAN)
+    def test_the_sink_moves_from_ipc_to_database(
+        self, derived, module: str, name: str,
+    ) -> None:
+        _src, sinks = derived
+        assert sinks["elixir"][(module, name)] == {"database"}
+
+    @pytest.mark.parametrize(("module", "name"), _OBAN)
+    def test_the_row_stays_community_tier_and_unvouched(self, module: str, name: str) -> None:
+        (prim,) = [p for p in load_catalog("elixir").primitives
+                   if p.module == module and p.name == name]
+        assert prim.unvouched is True
+
+    def test_control_ecto_repo_insert_is_the_same_shape(self) -> None:
+        assert _rows("elixir", "Ecto.Repo", "insert") == {"db_write"}
+
+    def test_reach(self, tmp_path: Path) -> None:
+        chains = _chains(tmp_path, "jobs.ex", _EX_OBAN)
+        assert "Ecto.Repo.insert" in chains["db_write"]  # control: reached
+        assert {f"{m}.{n}" for m, n in _OBAN} <= chains["db_write"]
+        assert "ipc_send" not in chains
