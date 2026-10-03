@@ -178,17 +178,28 @@ class TestJavascriptRelativeSpecifiers:
     the importing file and never consults ``node_modules``, so it cannot name a
     package the catalogue might have had an opinion about."""
 
-    @pytest.mark.parametrize("dst", [
-        # every one of these is a real express edge
-        "javascript:./post:0-0:./post.list:external_symbol",
-        "javascript:./site:0-0:./site.index:external_symbol",
-        "javascript:./user:0-0:./user.edit:external_symbol",
-        "javascript:../../db:0-0:../../db.pets:external_symbol",
-        "javascript:../:0-0:../.Router:external_symbol",
-        "javascript:..:0-0:json:external_symbol",
+    # Every one of these is a real express edge, WITH THE FILE THAT IMPORTS IT.
+    # The importer is part of the fact since the gate checks that a relative
+    # path stays inside the analysed tree: ``../../db`` from
+    # ``examples/mvc/controllers/pet/index.js`` is ``examples/mvc/db``, while
+    # from a top-level ``lib/`` file it would climb out of the repository.
+    @pytest.mark.parametrize("dst, importer", [
+        ("javascript:./post:0-0:./post.list:external_symbol",
+         "examples/route-separation/index.js"),
+        ("javascript:./site:0-0:./site.index:external_symbol",
+         "examples/route-separation/index.js"),
+        ("javascript:./user:0-0:./user.edit:external_symbol",
+         "examples/route-separation/index.js"),
+        ("javascript:../../db:0-0:../../db.pets:external_symbol",
+         "examples/mvc/controllers/pet/index.js"),
+        ("javascript:../:0-0:../.Router:external_symbol", "test/Router.js"),
+        ("javascript:..:0-0:json:external_symbol", "test/express.json.js"),
     ])
-    def test_a_relative_specifier_is_not_an_unexamined_module(self, dst: str) -> None:
-        coverage = _js_coverage([_js_call(dst)])
+    def test_a_relative_specifier_is_not_an_unexamined_module(
+        self, dst: str, importer: str,
+    ) -> None:
+        src = f"javascript:{importer}:1-5:handle:function"
+        coverage = _js_coverage([_js_call(dst, src=src)])
         assert coverage.complete is True, coverage.reason
 
     def test_an_ABSOLUTE_path_is_still_reported(self) -> None:
@@ -327,7 +338,8 @@ class TestGenuineThirdPartyModulesSurvive:
         coverage = _js_coverage([
             _js_call("javascript:..:0-0:json:external_symbol"),
             _js_call("javascript:../:0-0:../.Router:external_symbol"),
-            _js_call("javascript:../../db:0-0:../../db.pets:external_symbol"),
+            _js_call("javascript:../../db:0-0:../../db.pets:external_symbol",
+                     src="javascript:examples/mvc/controllers/pet/index.js:1-5:show:function"),
             _js_call("javascript:./post:0-0:./post.list:external_symbol"),
             _js_call("javascript:./site:0-0:./site.index:external_symbol"),
             _js_call("javascript:./user:0-0:./user.edit:external_symbol"),
@@ -385,3 +397,73 @@ class TestEveryCataloguedLanguageDeclaresItsGrammar:
         default."""
         assert is_definitionally_first_party("cobol", "crate.Thing") is False
         assert is_definitionally_first_party("cobol", "./local") is False
+
+
+class TestARelativePathIntoCodeTheAnalysisDidNotRead:
+    """A relative specifier is the repository's own code ONLY when it resolves
+    to a file this analysis read (INV-juvul, owner's stage-3 condition 1).
+
+    Two relative spellings name code nobody here examined, and the shipped rule
+    suppressed both:
+
+    * a path THROUGH A DEPENDENCY DIRECTORY -- ``require('../node_modules/
+      axios')`` is the installed third-party package, and ``./vendor/jquery``
+      is a vendored copy of one. Discovery excludes both directories
+      (``discovery.DEFAULT_EXCLUDES``), so their source never reached the
+      analysis;
+    * a path that CLIMBS OUT OF THE ANALYSED ROOT -- ``../../shared/x`` from
+      ``lib/a.js`` resolves outside the tree. Only decidable when the importing
+      file is known; without it the rule cannot tighten and does not guess.
+
+    Both go back to the gate as ordinary unexamined modules. This only ever
+    ADDS a report, so it is the withholding direction."""
+
+    @pytest.mark.parametrize("module", [
+        "../node_modules/axios",
+        "./node_modules/lodash/fp",
+        "../../node_modules/@scope/pkg/lib",
+        "./vendor/jquery",
+        "../vendor/zlib/zlib.h",
+    ])
+    def test_a_path_through_a_dependency_directory_is_not_first_party(
+        self, module: str,
+    ) -> None:
+        for language in ("javascript", "typescript", "c", "python"):
+            assert is_definitionally_first_party(language, module) is False, (
+                language, module)
+
+    @pytest.mark.parametrize("module", ["./post", "../../db", "..", "../", "./lib/vendored"])
+    def test_an_ordinary_relative_path_still_is(self, module: str) -> None:
+        """CONTROL: the component test is whole-component, so ``vendored`` is
+        not ``vendor``."""
+        assert is_definitionally_first_party("javascript", module) is True
+
+    def test_a_path_climbing_out_of_the_tree_is_not_first_party(self) -> None:
+        assert is_definitionally_first_party(
+            "javascript", "../../shared/x", importer="lib/a.js") is False
+        assert is_definitionally_first_party(
+            "javascript", "../x", importer="lib/a.js") is True
+        assert is_definitionally_first_party(
+            "javascript", "./x", importer="a.js") is True
+        # The importer unknown: no tightening, and no guess either way.
+        assert is_definitionally_first_party("javascript", "../../shared/x") is True
+
+    def test_the_gate_reports_them(self) -> None:
+        coverage = _js_coverage([
+            _js_call("javascript:../node_modules/axios:0-0:post:external_symbol"),
+            _js_call("javascript:../../outside:0-0:run:external_symbol",
+                     src="javascript:lib/express.js:1-5:handle:function"),
+            _js_call("javascript:./post:0-0:./post.list:external_symbol"),
+        ])
+        assert coverage.complete is False
+        assert "../node_modules/axios" in coverage.reason
+        assert "../../outside" in coverage.reason
+        assert "./post" not in coverage.reason
+
+    def test_every_dependency_directory_named_is_one_discovery_excludes(self) -> None:
+        """The rule's premise is 'discovery did not read it'; a name discovery
+        DOES read would make the rule a guess."""
+        from hypergumbo_core.discovery import DEFAULT_EXCLUDES
+
+        assert io_boundary.UNREAD_DEPENDENCY_DIRS
+        assert io_boundary.UNREAD_DEPENDENCY_DIRS <= set(DEFAULT_EXCLUDES)

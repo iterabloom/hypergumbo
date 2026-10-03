@@ -3830,7 +3830,12 @@ def _adjudicate_external_modules(
         # Measured 2026-08-24: 5 of bellman's 23 reported modules and 6 of
         # express's 17 are exactly this, and because ``qualifying_only`` is
         # ``not unknown``, those alone withheld every claim on both repos.
-        if is_definitionally_first_party(dst.split(":", 1)[0], module):
+        # The importing file goes with it, so a relative path that climbs out
+        # of the analysed root is not taken for the repo's own (INV-juvul).
+        if is_definitionally_first_party(
+            dst.split(":", 1)[0], module,
+            importer=symbol_path_slot(edge.get("src", "")),
+        ):
             continue
         # A MODULE THIS REPOSITORY PUBLISHES UNDER ITS OWN NAME IS NOT A
         # CATALOGUE GAP EITHER (INV-vivok). Asked last of the three because it
