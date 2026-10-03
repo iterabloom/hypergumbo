@@ -1474,7 +1474,16 @@ def _resolve_site3(
                 ftid, method_short, inheritance_index,
                 method_index, _DEFAULT_DEPTH_CAP,
             )
-            if via is not None:
+            # INV-guviv: the field's TYPE is the walk's start class here, so a
+            # builtin base declared ahead of its in-tree ancestor shadows the
+            # walk's binding exactly as at Site-1 / Site-2 -- skip it.
+            if via is not None and not (
+                src_lang == "python"
+                and _python_stdlib_base_shadows(
+                    ftid, method_short, inheritance_index,
+                    class_symbols, method_index,
+                )
+            ):
                 resolved_target, resolved_field_type_id = via, ftid
                 break
 
