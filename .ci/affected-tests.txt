@@ -403,7 +403,7 @@ tests/test_ci_clone_is_complete.py
 tests/test_ci_debug_cron_status.py
 tests/test_ci_debug_github.py
 tests/test_ci_failover_retired.py
-tests/test_ci_github_manifest_count.py
+tests/test_ci_workflow_manifest_count.py
 tests/test_ci_package_lists.py
 tests/test_ci_pytest_selection_gate.py
 tests/test_ci_self_claims_gate_scope.py
