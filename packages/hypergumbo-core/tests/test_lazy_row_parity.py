@@ -333,3 +333,16 @@ class TestTheClientTaskRows:
         value: ``net_listen`` carries no ``NSURLSession`` / ``URLSession`` row."""
         for language, module in (("objc", "NSURLSession"), ("swift", "URLSession")):
             assert "net_listen" not in set(_rows(language, module).values())
+
+
+# ---------------------------------------------------------------------------
+# Ecto.Repo.stream (elixir, community overlay)
+# ---------------------------------------------------------------------------
+
+
+class TestTheEctoStreamRow:
+
+    def test_it_stays_db_read(self) -> None:
+        """Lazy by Ecto's own documentation, held because the enumeration runs
+        in Enum / Stream functions no row can carry."""
+        assert _rows("elixir", "Ecto.Repo").get("stream") == "db_read"
