@@ -1,0 +1,23 @@
+- op: create  # 1d01
+  at: '2026-10-03T10:55:38Z'  # 1d01
+  by: agent  # 1d01
+  actor: jgstern_agent  # 1d01
+  clock: 1  # 1d01
+  nonce: 1d01  # 1d01
+  data:  # 1d01
+    kind: invariant  # 1d01
+    title: "taint attributes a bare-name haskell call to the COMMUNITY overlay twin ahead of the vouched base row (System.Process.readProcess reported as System.Process.Text.readProcess) while io-boundaries attributes the vouched row"  # 1d01
+    status: violated  # 1d01
+    priority: 3  # 1d01
+    parent:  # 1d01
+    tags:  # 1d01
+    - taint  # 1d01
+    - catalogue  # 1d01
+    isbefore: []  # 1d01
+    duplicate_of: []  # 1d01
+    not_duplicate_of: []  # 1d01
+    pr_ref:  # 1d01
+    description: "Found by the mulul run (branch jgstern-agent/fix/mulul-catalogue-rows) while pinning INV-zufiz's haskell flow.\n\nREPRO on dev e58250d (main checkout code, unmodified): Main.hs = `import System.Process (readProcess)`; `main = do { out <- readProcess \"ls\" [] \"\"; putStrLn out }`; claim untrusted_input -> logging.\n- default run: violated, details \"System.Process.Text.readProcess [haskell:Main.hs:6-8:main:function] -> Prelude.putStrLn\" -- a provenance: community row (process-extras overlay) for a Hackage package the program never imported.\n- --no-default-overlays: violated, details \"System.Process.readProcess ...\".\n- io-boundaries on the same file attributes System.Process.readProcess (the vouched row) -- the two arms disagree about one call.\nOn the mulul branch the same happens to System.Directory.getCurrentDirectory -> System.Directory.Extra.getCurrentDirectory (host_description source).\n\nThe VERDICT did not change in either repro; the attribution did. NOT CHECKED: whether the substitution changes any verdict anywhere (e.g. a base row carrying simultaneous / a different boundary than its overlay twin, the shape test_gate_prefers_vouched_rows was written for), and whether a community-reached disclosure is raised or lost.\n\nSUSPECTED mechanism, NOT verified: io_boundary.gate_named_entry orders hits vouched-first with getattr(h, \"unvouched\", False); TaintSource / TaintSink carry `community`, not `unvouched`, so every taint hit sorts as vouched and the overlay rows (merged IN FRONT of the base) win by declaration order. A second candidate: the hinted path, where _module_matches arm 2 may accept System.Process.Text for hint System.Process. Read both before fixing."  # 1d01
+    fields:  # 1d01
+      statement: "A taint source or sink matched for a call must be the same row io-boundaries attributes, and a vouched row must win over an unvouched community twin (ADR-0047, test_gate_prefers_vouched_rows). VIOLATED on dev e58250d: haskell readProcess -> putStrLn names System.Process.Text.readProcess (process-extras overlay) as the untrusted_input source; with --no-default-overlays it names System.Process.readProcess."  # 1d01
+      root_cause: "NOT VERIFIED. Candidate: gate_named_entry sorts vouched-first on getattr(h, 'unvouched', False), and TaintSource/TaintSink carry 'community' instead, so all taint hits sort as vouched and the overlay rows merged in front of the base win. Second candidate: the hinted path via _module_matches arm 2."  # 1d01
