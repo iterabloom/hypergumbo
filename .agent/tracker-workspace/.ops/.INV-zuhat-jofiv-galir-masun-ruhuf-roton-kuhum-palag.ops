@@ -28,3 +28,18 @@
   clock: 2  # c636
   nonce: c636  # c636
   message: "mulul run 2026-10-03, branch jgstern-agent/fix/mulul-catalogue-rows (local only), commit 649000cd32. getHomeDirectory / getTemporaryDirectory (+ community System.Directory.Extra twins) moved fs_read -> host_info_read -- NOT the env_read this item's root_cause proposed. INV-tutar puts host description / user identity in host_info_read, and every other catalogue rows home and temp dir there, several reading HOME/TMPDIR the same way (python Path.home / os.path.expanduser / tempfile.gettempdir, go os.UserHomeDir, rust home_dir / temp_dir, js os.homedir / os.tmpdir, elixir System.user_home / tmp_dir, scala Properties.userHome / tmpDir); env_read would mint host_secret for a home directory. Repro (haskell fixture printing all four directory reads): \"never reads the filesystem\" violated -> CONFIRMED; host-description-no-logging confirmed -> violated; host-secret-no-logging not violated (pinned). Unrowed siblings (getXdgDirectory etc.) in WI-vaduf-mamav-savit-vokod-jojun-fibur-gilab-tagis. Report: decontend/run_10032026/mulul.md."  # c636
+- op: update  # 60d2
+  at: '2026-10-03T17:04:23Z'  # 60d2
+  by: agent  # 60d2
+  actor: jgstern_agent  # 60d2
+  clock: 3  # 60d2
+  nonce: 60d2  # 60d2
+  set:  # 60d2
+    status: satisfied  # 60d2
+- op: discuss  # 04f5
+  at: '2026-10-03T17:04:23Z'  # 04f5
+  by: agent  # 04f5
+  actor: jgstern_agent  # 04f5
+  clock: 4  # 04f5
+  nonce: 04f5  # 04f5
+  message: "Merged in PR #1417 (dev c5249c1aa1).\n\nFixed on jgstern-agent/fix/mulul-catalogue-rows (649000cd32): haskell System.Directory getHomeDirectory / getTemporaryDirectory (+ community System.Directory.Extra twins) moved fs_read -> host_info_read. host_info_read rather than the env_read this item proposed: INV-tutar's split puts host description / user identity there, and all other catalogues row home and temp dir there (python, go, rust, js, elixir, scala), several reading HOME/TMPDIR the same way; env_read would mint host_secret. Behavioral evidence: a fixture printing getHomeDirectory/getTemporaryDirectory now confirms \"never reads the filesystem\" (before: violated by these two plus the cwd pair), violates host-description-no-logging, and does not violate host-secret-no-logging. Production-path test: test_home_and_temp_dir_reads_are_host_info.py::test_a_program_printing_its_home_directory. Unrowed siblings (getXdgDirectory, getAppUserDataDirectory, getUserDocumentsDirectory): WI-vaduf."  # 04f5

@@ -36,3 +36,18 @@
   clock: 3  # 4a2b
   nonce: 4a2b  # 4a2b
   message: "mulul run 2026-10-03, branch jgstern-agent/fix/mulul-catalogue-rows (local only), commits 58ef2cc636 + 610beef105. rust std::env::current_dir moved fs_read -> host_info_read. Swept by mechanism over every catalogue and default overlay (load_catalog + name enumeration): rust std::path::absolute, haskell System.Directory getCurrentDirectory / makeAbsolute and the community System.Directory.Extra twins moved too; canonicalizePath stays fs_read. Each now derives a host_description source (fs_read derived none). Repro: rust fixture writing current_dir()/absolute() to a TcpStream: host-description-no-network inconclusive -> VIOLATED (3 flows); fs_read must_not_exist violated -> not violated. Haskell fixture printing getCurrentDirectory: host-description-no-logging confirmed -> VIOLATED. New test_cwd_reads_are_host_info.py carries a 15-row cross-catalogue parity table. test_rust_fs_surface_enumeration.py's pinned std::path::absolute row (fs_read, filed only to match current_dir) updated. Found on the way: taint names the source System.Directory.Extra.getCurrentDirectory (community twin) where io-boundaries names System.Directory -- pre-existing on dev, filed INV-tobur-zabil-mofan-zotuv-tobip-gajon-zokak-sazat. Family remainder filed WI-vaduf-mamav-savit-vokod-jojun-fibur-gilab-tagis. Report: decontend/run_10032026/mulul.md."  # 4a2b
+- op: update  # 2752
+  at: '2026-10-03T17:04:22Z'  # 2752
+  by: agent  # 2752
+  actor: jgstern_agent  # 2752
+  clock: 4  # 2752
+  nonce: '2752'  # 2752
+  set:  # 2752
+    status: satisfied  # 2752
+- op: discuss  # 6705
+  at: '2026-10-03T17:04:23Z'  # 6705
+  by: agent  # 6705
+  actor: jgstern_agent  # 6705
+  clock: 5  # 6705
+  nonce: '6705'  # 6705
+  message: "Merged in PR #1417 (dev c5249c1aa1).\n\nFixed on jgstern-agent/fix/mulul-catalogue-rows (58ef2cc636, 610beef105): rust std::env::current_dir moved fs_read -> host_info_read, joining python os.getcwd / Path.cwd, go os.Getwd, c getcwd, js process.cwd, elixir System.cwd and rust's own current_exe/temp_dir/home_dir. Swept by mechanism over every catalogue and default overlay: rust std::path::absolute and haskell System.Directory getCurrentDirectory / makeAbsolute (+ the community System.Directory.Extra twins) moved too. Behavioral evidence: a rust fixture writing current_dir() to a TcpStream now violates host-description-no-network (3 flows; before: inconclusive, the cwd read derived no source), and its fs_read must_not_exist claim is no longer violated; a haskell fixture printing getCurrentDirectory now violates host-description-no-logging (before: confirmed). Production-path tests in test_cwd_reads_are_host_info.py, plus a 15-row cross-catalogue parity table. NOT asserted: the general \"one primitive, one boundary across catalogues\" invariant -- there is still no cross-catalogue equivalence guard; the parity table pins the enumerated members only. Remaining family members (haskell setCurrentDirectory fs_write vs env_write elsewhere; unrowed cwd/home/temp in go, c, cpp, erlang, swift/objc, haskell XDG): WI-vaduf."  # 6705
