@@ -2877,6 +2877,7 @@ def symbols_for_path(
 
 def _innermost_callable_at(
     line: int, symbols: "Sequence[Symbol] | None",
+    owner_kinds: "frozenset[str]" = _ATTR_OWNER_KINDS,
 ) -> "Symbol | None":
     """The narrowest callable whose span contains *line*, or None.
 
@@ -2903,13 +2904,18 @@ def _innermost_callable_at(
     load-bearing: a genuinely module-level read (top-of-file ``process.env``)
     belongs to the file, and the caller keeps its existing pseudo-symbol for
     exactly that case. The fix must not invent a callable that is not there.
+
+    ``owner_kinds`` widens the set for a language whose package-level
+    ``var`` initializer is itself an anchor (go, INV-nopoh / WI-labik): there
+    a read in ``var upper = strings.ToUpper`` belongs to ``upper``, as the
+    calls in such an initializer already do.
     """
     if not symbols:
         return None
     best: "Symbol | None" = None
     best_lo = best_hi = 0
     for sym in symbols:
-        if sym.kind not in _ATTR_OWNER_KINDS:
+        if sym.kind not in owner_kinds:
             continue
         span = getattr(sym, "span", None)
         lo = getattr(span, "start_line", None)
@@ -2999,6 +3005,7 @@ def emit_module_attribute_refs(
     carrier_call_kinds: tuple[str, ...] = (),
     carrier_receiver_fields: tuple[str, ...] = (),
     carrier_arguments_field: str = "arguments",
+    owner_kinds: "frozenset[str]" = _ATTR_OWNER_KINDS,
     is_local_value: "Callable[[tree_sitter.Node], bool] | None" = None,
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
@@ -3114,6 +3121,8 @@ def emit_module_attribute_refs(
             uses inside a call -- are unaffected.
         carrier_receiver_fields: see ``carrier_call_kinds``.
         carrier_arguments_field: the call's arguments field name.
+        owner_kinds: the symbol kinds a read may be anchored on (see
+            :func:`_innermost_callable_at`). Defaults to callables.
         is_local_value: given the base node of an attribute access whose
             text names an import, True when a LOCAL binding of that name is
             in scope there instead -- ``func f(os T) { _ = os.Args }`` reads
@@ -3233,7 +3242,7 @@ def emit_module_attribute_refs(
         sep = "::" if scoped_path else "."
         qname = f"{real_module}{sep}{attr_name}"
         line_no = node.start_point[0] + 1
-        owner = _innermost_callable_at(line_no, enclosing_symbols)
+        owner = _innermost_callable_at(line_no, enclosing_symbols, owner_kinds)
         carrier = _attr_carrier(
             node, source, node_kinds, object_field_names,
             call_function_field_names, carrier_call_kinds,
