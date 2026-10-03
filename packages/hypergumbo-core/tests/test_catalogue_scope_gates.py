@@ -165,12 +165,15 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "elixir.yaml's header justified them by a UAT report that a "
             "Phoenix/Ecto repository returned ZERO boundaries; ADR-0047 "
             "keeps that recall by SHIPPING them as a disclosed overlay "
-            "rather than by asserting they are the standard library."
+            "rather than by asserting they are the standard library. "
+            "`Task.Supervisor` is Elixir's own (lib/elixir/lib/task/"
+            "supervisor.ex); its row was spelled as a function on `Task` "
+            "until WI-busam re-homed it."
         ),
         modules=frozenset({
             "Application", "DateTime", "File", "GenServer", "IO", "Logger",
             "NaiveDateTime", "Path", "Port", "Process", "System", "Task",
-            ":httpc",
+            "Task.Supervisor", ":httpc",
         }),
         inherits=("erlang",),
     ),
