@@ -425,23 +425,19 @@ class TestDatabaseQueryDeclaresOnlyItsDestinationSupplier:
         assert len(clauses) == 1
         assert [c for c in clauses if "python" in c] == []
 
-    def test_the_linker_opens_source_files_itself(self) -> None:
-        """The justification, derived rather than asserted: the module carries
-        its own glob patterns, so the query side arrives from disk and not from
-        a host analyzer's output."""
-        import hypergumbo_core.linkers.database_query as mod
+    def test_the_linker_opens_source_files_itself(self, tmp_path: Path) -> None:
+        """The justification, derived rather than asserted: the linker finds its
+        own files on disk, so the query side arrives from disk and not from a
+        host analyzer's output. Checked by running its finder over files no
+        analyzer has seen -- not by matching its glob literals, which since
+        WI-hizon come from ``taxonomy.extension_globs`` for JS/TS."""
+        from hypergumbo_core.linkers.database_query import _find_source_files
+        from hypergumbo_core.taxonomy import JS_TS_LANGUAGES, extension_suffixes
 
-        assert mod.__file__ is not None
-        with open(mod.__file__) as handle:
-            tree = ast.parse(handle.read())
-        globs = sorted({
-            node.value
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Constant)
-            and isinstance(node.value, str)
-            and node.value.startswith("**/*.")
-        })
-        assert globs == ["**/*.java", "**/*.js", "**/*.py", "**/*.ts"]
+        suffixes = {".py", ".java", *extension_suffixes(*JS_TS_LANGUAGES)}
+        for suffix in suffixes:
+            (tmp_path / f"q{suffix}").write_text("")
+        assert {p.suffix for p in _find_source_files(tmp_path)} == suffixes
 
     def test_sql_still_supplies_the_destination(self) -> None:
         """The control on the removal: dropping the WRONG conjunct would have
