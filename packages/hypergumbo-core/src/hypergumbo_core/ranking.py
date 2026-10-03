@@ -115,7 +115,7 @@ import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, Iterable, List
 
 from .edge_types import (
     IMPORT_EDGE_TYPES,
@@ -1576,8 +1576,9 @@ def compute_symbol_mention_centrality_batch(
 ) -> CentralityResult:
     """Compute symbol mention centrality for multiple files efficiently.
 
-    Uses parallelized Python regex with a combined alternation pattern for
-    O(files) complexity instead of O(files * symbols).
+    Each file is read once and matched by :class:`_NameMatcher`, linear in
+    the file's bytes. A single alternation over every name cost names x bytes
+    and did not finish on flink (WI-rukaz).
 
     Args:
         files: List of file paths to scan.
@@ -1632,30 +1633,90 @@ def compute_symbol_mention_centrality_batch(
     )
 
 
+_WORD_RUN = re.compile(r"\w+")
+
+
+class _NameMatcher:
+    """Which of a fixed set of names occur in a text as whole-word matches.
+
+    WHY NOT ONE ALTERNATION (WI-rukaz). ``\\b(n1|n2|...|nN)\\b`` makes
+    CPython's sre try every branch at every text position, so a scan cost
+    names x bytes. On flink (106,317 eligible names over 18.6 MB of docs)
+    fewer than 100 of 1,775 files were done after 32 minutes, and the
+    thread pool could not help, because ``re`` holds the GIL for a whole
+    ``findall``.
+
+    HOW. A name is reported iff ``\\b<name>\\b`` matches somewhere in the
+    text, decided per name without scanning per name:
+
+    * an IDENTIFIER name (``\\w+``) matches iff it equals a maximal word run,
+      so the text is tokenized once and intersected with the name set;
+    * a COMPOUND name (``Svc.run``, ``a/b-c.ts``, ``@Inject``) can match only
+      if every one of its word segments is a token of the text, so names are
+      indexed by first segment, pruned on the rest, and only the survivors are
+      confirmed with that name's own pattern (compiled lazily, kept in
+      ``compiled``);
+    * a name with no word segment (``+``) is substring-checked, then
+      confirmed the same way.
+
+    Matching each name independently is a deliberate change from the
+    alternation, which CONSUMED text: ``run`` inside a matched ``Svc.run``
+    was never reported. Now every name that occurs counts.
+    """
+
+    def __init__(self, names: Iterable[str]) -> None:
+        self.identifiers: set[str] = set()
+        self.compound_by_first: Dict[str, List[tuple[str, tuple[str, ...]]]] = {}
+        self.segmentless: List[str] = []
+        self.compiled: Dict[str, "re.Pattern[str]"] = {}
+        for name in names:
+            if not name:
+                continue
+            if _WORD_RUN.fullmatch(name):
+                self.identifiers.add(name)
+                continue
+            segments = tuple(_WORD_RUN.findall(name))
+            if segments:
+                self.compound_by_first.setdefault(segments[0], []).append(
+                    (name, segments[1:])
+                )
+            else:
+                self.segmentless.append(name)
+
+    def _occurs(self, name: str, text: str) -> bool:
+        pattern = self.compiled.get(name)
+        if pattern is None:
+            pattern = re.compile(r"\b" + re.escape(name) + r"\b")
+            self.compiled[name] = pattern
+        return pattern.search(text) is not None
+
+    def match(self, text: str) -> set[str]:
+        tokens = set(_WORD_RUN.findall(text))
+        found = tokens & self.identifiers
+        for token in tokens:
+            for name, rest in self.compound_by_first.get(token, ()):
+                if all(seg in tokens for seg in rest) and self._occurs(name, text):
+                    found.add(name)
+        for name in self.segmentless:
+            if name in text and self._occurs(name, text):
+                found.add(name)
+        return found
+
+
 def _compute_centrality_with_python(
     files: List[Path],
     name_to_in_degree: Dict[str, int],
     max_file_size: int,
     progress_callback: Callable[..., Any] | None,
 ) -> CentralityResult:
-    """Compute centrality using Python regex (fallback path).
+    """Compute centrality by scanning each file for the names it mentions.
 
-    Uses a single combined regex pattern for efficiency: O(files) instead of
-    O(files * symbols). The pattern matches all symbol names in one pass.
-
-    Note: ripgrep was tried here but removed due to complexity around regex
-    escaping for symbol names containing special characters. The parallelized
-    Python regex approach is sufficient for practical repo sizes.
+    Each file is read once and matched with :class:`_NameMatcher`, whose cost
+    is linear in the file's bytes rather than names x bytes (WI-rukaz).
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # Build combined pattern ONCE: \b(name1|name2|...)\b
-    # This makes each file search O(1) instead of O(symbols)
-    escaped_names = [re.escape(name) for name in name_to_in_degree.keys()]
-    if escaped_names:
-        combined_pattern = re.compile(r'\b(' + '|'.join(escaped_names) + r')\b')
-    else:  # pragma: no cover - caller already handles empty symbols
-        combined_pattern = None
+    matcher = _NameMatcher(name_to_in_degree.keys())
 
     def _compute_one(f: Path) -> tuple[Path, float, set[str]]:
         """Returns (path, normalized_score, matched_names)."""
@@ -1670,11 +1731,7 @@ def _compute_centrality_with_python(
         if not content:  # pragma: no cover - empty file
             return (f, 0.0, set())
 
-        if combined_pattern is None:  # pragma: no cover - no symbols
-            return (f, 0.0, set())
-
-        # Find all matches in one pass (O(1) regex operation)
-        matched_names = set(combined_pattern.findall(content))
+        matched_names = matcher.match(content)
 
         # Sum in-degrees of matched symbols
         total_in_degree = sum(

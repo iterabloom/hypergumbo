@@ -4,6 +4,8 @@
 This module tests the symbol and file ranking utilities that provide
 thoughtful output ordering across hypergumbo modes.
 """
+import re
+
 import pytest
 
 from hypergumbo_core.ir import Symbol, Edge, Span
@@ -2215,6 +2217,69 @@ class TestComputeCentralityWithPython:
         )
 
         assert len(calls) >= 2  # At least start (0, 1) and end (1, 1)
+
+
+class TestCentralityNameMatchingScales:
+    """WI-rukaz: names are not matched as ONE regex alternation.
+
+    ``\\b(n1|n2|...|nN)\\b`` makes CPython's sre try every branch at every
+    text position, so the scan cost names x bytes: on flink (106,317 eligible
+    names, 18.6 MB of docs) fewer than 100 of 1,775 files were done after
+    32 minutes. Identifier names are now matched by tokenizing each file once;
+    compound names (``Svc.run``, paths, ``@Inject``) are checked only when
+    every word segment occurs in the file, then confirmed by that name's own
+    whole-word pattern.
+    """
+
+    @staticmethod
+    def _scan(tmp_path, text, names):
+        f = tmp_path / "doc.md"
+        f.write_text(text, encoding="utf-8")
+        result = _compute_centrality_with_python(
+            [f], dict.fromkeys(names, 1), max_file_size=100 * 1024,
+            progress_callback=None,
+        )
+        return result.symbols_per_file[f]
+
+    @pytest.mark.parametrize("text", [
+        "foo foobar foo_bar Foo café_x x1 1x _priv",
+        "callFoo(foo); foo.bar = foobar_2;\nfoo\tbar",
+        "élan naïve café δ_1 foo-bar foo/bar",
+        "",
+        "foofoo barfoo foo",
+    ])
+    def test_identifier_names_match_exactly_the_whole_word_regex(
+        self, tmp_path, text,
+    ):
+        names = ["foo", "foobar", "foo_bar", "bar", "café_x", "x1",
+                 "_priv", "δ_1", "naïve", "élan", "missing", "1x"]
+        old = re.compile(
+            r"\b(" + "|".join(re.escape(n) for n in names) + r")\b"
+        )
+        assert self._scan(tmp_path, text, names) == set(old.findall(text))
+
+    def test_compound_names_match_each_by_its_own_whole_word_pattern(
+        self, tmp_path,
+    ):
+        # Order matters for the old alternation: "Svc.run" listed first
+        # consumed the text, so "run" inside it was never reported.
+        names = ["Svc.run", "run", "a/b-c.ts", "@Inj", "+", "Svc.stop",
+                 "x.y.z", "1+2"]
+        text = "call Svc.run here, see a/b-c.ts; x@Inj; 1+2 = 3; x.y"
+        expected = {n for n in names
+                    if re.search(r"\b" + re.escape(n) + r"\b", text)}
+        assert expected == {"Svc.run", "run", "a/b-c.ts", "@Inj", "1+2", "+"}
+        assert self._scan(tmp_path, text, names) == expected
+
+    def test_compound_names_are_pruned_by_their_word_segments(self):
+        from hypergumbo_core.ranking import _NameMatcher
+
+        names = [f"Cls{i}.method{i}" for i in range(30_000)] + ["Cls7.other"]
+        matcher = _NameMatcher(names)
+        text = "Use Cls7.method7 and Cls7.other, not Cls8 alone. " * 50
+        assert matcher.match(text) == {"Cls7.method7", "Cls7.other"}
+        # Only names whose every segment occurs were confirmed by a regex.
+        assert len(matcher.compiled) == 2
 
 
 class TestCentralityResultDeduplication:
