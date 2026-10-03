@@ -296,6 +296,26 @@ class TestInTreeControls:
         ]
         assert not any("pkg" in i for i in ext_ids), ext_ids
 
+    def test_stdlib_package_sharing_an_in_tree_module_suffix_stays_external(
+        self, tmp_path: Path,
+    ) -> None:
+        # django/test/html.py: ``from html.parser import HTMLParser`` in a tree
+        # that also has a ``pkg/html.py``. The base is the stdlib class; the
+        # module-qualified external edge it had before WI-ratid must survive.
+        data = _behavior_map(tmp_path, {
+            "pkg/__init__.py": "",
+            "pkg/html.py": "X = 1\n",
+            "pkg/parse.py": (
+                "from html.parser import HTMLParser\n"
+                "class Parser(HTMLParser):\n"
+                "    pass\n"
+            ),
+        })
+        parser = _class_id(data, "Parser", "pkg/parse.py")
+        assert [e["dst"] for e in _extends_from(data, parser)] == [
+            "python:html.parser:0-0:HTMLParser:external_symbol",
+        ]
+
     def test_builtin_base_unchanged(self, tmp_path: Path) -> None:
         data = _behavior_map(tmp_path, {"m.py": "class E(Exception):\n    pass\n"})
         e_id = _class_id(data, "E", "m.py")
@@ -357,41 +377,22 @@ class TestHelpers:
     """Direct coverage of the WI-ratid helpers' arms the fixtures above do not
     reach."""
 
-    def test_reverse_suffix_module_is_in_tree(self) -> None:
-        # ``foo.bar`` imported where the in-tree key is ``src.foo.bar`` (source
-        # root not detected): a suffix of an in-tree key is in-tree.
-        from hypergumbo_lang_mainstream.py import (
-            _base_module_is_in_tree,
-            _module_key_suffixes,
-        )
-        keys = frozenset({"src.foo.bar"})
-        suffixes = _module_key_suffixes(keys)
-        assert suffixes == frozenset({"src.foo.bar", "foo.bar", "bar"})
-        assert _base_module_is_in_tree("foo.bar", "X", keys, suffixes) is True
-        assert _base_module_is_in_tree("foo.bar", "X", keys) is False
-
-    def test_reverse_suffix_submodule_is_in_tree(self) -> None:
-        # ``from foo import bar`` + ``bar.X`` where the key is ``src.foo.bar``.
-        from hypergumbo_lang_mainstream.py import (
-            _base_module_is_in_tree,
-            _module_key_suffixes,
-        )
-        keys = frozenset({"src.foo.bar"})
-        suffixes = _module_key_suffixes(keys)
-        assert _base_module_is_in_tree("foo", "bar", keys, suffixes) is True
-        assert _base_module_is_in_tree("foo", "bar", keys) is False
-
     def test_import_target_in_tree_tests_every_prefix(self) -> None:
-        from hypergumbo_lang_mainstream.py import (
-            _import_target_in_tree,
-            _module_key_suffixes,
-        )
+        from hypergumbo_lang_mainstream.py import _import_target_in_tree
         keys = frozenset({"pkg.ser"})
-        suffixes = _module_key_suffixes(keys)
         # A class of an in-tree module, used as a namespace.
-        assert _import_target_in_tree("pkg.ser.OrderSerializer", "Meta", keys, suffixes)
+        assert _import_target_in_tree("pkg.ser.OrderSerializer", "Meta", keys)
         # The stdlib.
-        assert not _import_target_in_tree("unittest", "TestCase", keys, suffixes)
+        assert not _import_target_in_tree("unittest", "TestCase", keys)
+
+    def test_short_prefix_is_matched_exactly_not_by_suffix(self) -> None:
+        # ``html`` (the first segment of ``html.parser``) is a SUFFIX of the
+        # in-tree ``django.utils.html``; it is not an in-tree module.
+        from hypergumbo_lang_mainstream.py import _import_target_in_tree
+        keys = frozenset({"django.utils.html", "html_top"})
+        assert not _import_target_in_tree("html.parser", "HTMLParser", keys)
+        # An exact one-segment key is in-tree (a repo-root ``html`` package).
+        assert _import_target_in_tree("html.parser", "HTMLParser", frozenset({"html"}))
 
     def test_import_qualified_base_shapes(self) -> None:
         from hypergumbo_lang_mainstream.py import _import_qualified_base
