@@ -42,3 +42,18 @@
   clock: 4  # 46ff
   nonce: 46ff  # 46ff
   message: "mulul run 2026-10-03, branch jgstern-agent/fix/mulul-catalogue-rows (worktree ~/hg_wt/mulul, local only, not pushed), commit 2a02346d00. rust.yaml std::process [exit, abort] and the same-shape elixir.yaml System.halt removed from subprocess; their 3 HIGH_RISK_EXEMPTIONS_SUBPROCESS entries removed; new reverse guard: every exemption must name a live subprocess row. Repro (one-file rust fixture, env::var -> process::exit): no-subprocess and host_secret->subprocess VIOLATED -> INCONCLUSIVE (\"calls into module(s) the I/O catalog could not classify (std::env, std::process)\"); the \"launches an external program\" sentence is gone. Elixir System.halt fixture: same. Corpus io-boundaries A/B: netavark's 4 std::process.exit subprocess chains -> external_potential, nothing else moved. Tests: red 29 failed / 50 passed on the new files before the fix; full affected selection after: 17897 passed, 1 failed (a pinned audit row for item INV-zufiz, fixed in 610beef105), coverage 100%. NOT done: a std::process completeness grant (would make these CONFIRMED) -- blocked on the pid ruling, filed WI-kizur-jizon-gadov-bomud-sakav-kusog-hazur-bokiz. Residual same-family rows (swift fatalError family under process_send, erlang exit/1): WI-livod-fozoz-vanus-sobas-sudus-radog-rakat-gakuv. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/mulul.md (draft closure note there)."  # 46ff
+- op: update  # 15b0
+  at: '2026-10-03T17:04:22Z'  # 15b0
+  by: agent  # 15b0
+  actor: jgstern_agent  # 15b0
+  clock: 5  # 15b0
+  nonce: 15b0  # 15b0
+  set:  # 15b0
+    status: satisfied  # 15b0
+- op: discuss  # 3161
+  at: '2026-10-03T17:04:22Z'  # 3161
+  by: agent  # 3161
+  actor: jgstern_agent  # 3161
+  clock: 6  # 3161
+  nonce: '3161'  # 3161
+  message: "Merged in PR #1417 (dev c5249c1aa1).\n\nFixed on jgstern-agent/fix/mulul-catalogue-rows (2a02346d00): rust.yaml std::process [exit, abort] and the same-shape elixir.yaml System.halt removed from subprocess; their HIGH_RISK_EXEMPTIONS_SUBPROCESS entries removed; a reverse guard now requires every exemption to name a live subprocess row. Behavioral evidence (one-file rust fixture, env::var -> process::exit): before, \"never launches a subprocess\" and host_secret->subprocess were VIOLATED and other claims were withheld with \"the analysis launches an external program at 2 call site(s) (std::process.abort, std::process.exit)\"; after, both read INCONCLUSIVE (unclassified call into std::process) and no verdict says a program was launched. Production-path test: test_process_exit_is_not_a_subprocess.py::test_an_exit_fed_from_the_environment_is_not_a_launch[rust,elixir]. Corpus: netavark's 4 std::process.exit subprocess chains are gone. NOT asserted: a CONFIRMED verdict over an exit call -- that needs a std::process completeness grant, blocked on the pid ruling (WI-kizur). Same-family residuals: WI-livod (swift fatalError family, erlang exit/1)."  # 3161
