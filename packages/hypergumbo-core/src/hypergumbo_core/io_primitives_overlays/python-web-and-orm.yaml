@@ -61,22 +61,25 @@ fs_write:
       mirrors the catalogued json.dump file-write. orjson is deliberately NOT
       listed beside it -- its API is dumps/loads only, with no dump, so it has
       no file-write surface to catalogue and adding it would match nothing.
-  - module: defusedcsv.csv
-    functions: [writer]
+  - module: defusedcsv.csv._ProxyWriter
+    methods: [writerow, writerows]
     notes: >-
-      WI-nibav. Drop-in for stdlib csv that escapes a leading = + - @ | % against
-      CSV injection (pretix). SURFACE READ, NOT ASSUMED (raphaelm/defusedcsv
-      3.0.0): the package's top level holds only `version`; defusedcsv.csv
-      re-exports stdlib csv and defines its own `writer` (a proxy over
-      csv.writer) and `DictWriter` (a subclass of csv.DictWriter). This row
-      MIRRORS the stdlib csv rows and nothing else -- module for module, so
-      the drop-in and its stdlib twin cannot disagree about one write.
-      Without this row the call was classified as stdlib csv.writer by
-      _module_matches' component-suffix arm alone, which also
-      calls `mycsvlib.csv` stdlib csv. That arm is KEPT (go's under-qualified
-      filepath / grpc rows depend on it; measured, WI-mujod); this row is
-      what identifies defusedcsv, because prefer_exact_owner picks the row
-      whose module IS the call's module over the suffix match.
+      Drop-in for stdlib csv that escapes a leading = + - @ | % against CSV
+      injection (pretix). SURFACE READ, NOT ASSUMED (raphaelm/defusedcsv,
+      defusedcsv/csv.py): the package's top level holds only `version`;
+      defusedcsv.csv re-exports stdlib csv and defines its own `writer`, which
+      returns `_ProxyWriter(csv.writer(f))` (writerow / writerows escape each
+      field and pass it on), and `DictWriter`, a subclass of csv.DictWriter.
+      These rows MIRROR the stdlib csv rows module for module (_csv.Writer,
+      csv.DictWriter), so the drop-in and its stdlib twin cannot disagree
+      about one write. WI-kozaj moved the write off the factory: `writer`
+      carried an fs_write row (WI-nibav) exactly as stdlib csv.writer did, and
+      both moved to the object the factory returns, reached through the
+      community library_signatures row defusedcsv.csv.writer ->
+      defusedcsv.csv._ProxyWriter (python-stdlib-dropins.yaml). WI-nibav's
+      point stands: a defusedcsv call is identified by ITS OWN row, never by
+      _module_matches' component-suffix arm (which also calls `mycsvlib.csv`
+      stdlib csv, and which go's under-qualified rows still need, WI-mujod).
   - module: defusedcsv.csv.DictWriter
     methods: [writerow, writerows, writeheader]
     notes: >-

@@ -7,6 +7,18 @@
 # that home, so the pathlib entries MIGRATE here rather than being duplicated --
 # one fact, one home.
 #
+# KEY SHAPE: the callee's IMPORT-RESOLVED qualified name, the same for a member
+# (`pathlib.Path.joinpath`) and a module-level FACTORY (`csv.writer`):
+# `import csv; csv.writer(f)`, `import csv as c; c.writer(f)` and
+# `from csv import writer; writer(f)` all resolve to `csv.writer`. VALUE: the
+# returned type, spelled as the io_primitives rows spell the module slot.
+# Two consumers in py.py read these rows, and they answer different questions:
+#   * _library_producer_type (WI-kozaj): what does a CALL to this callee
+#     return? Types `w = csv.writer(f)` so `w.writerow(row)` reaches the
+#     _csv.Writer rows. Any row, member or factory.
+#   * TYPE_PRESERVING_MEMBERS: which members keep a typed RECEIVER's type
+#     across a chain? Only rows whose value equals their owner.
+#
 # NOT here: EXTERNAL_CONSTRUCTOR_TYPES, which is catalogue-DERIVED from the
 # io_primitives method rows and answers "what does sqlite3.connect() CONSTRUCT".
 # Deriving beats enumerating; these rows answer a different question.
@@ -33,3 +45,8 @@ signatures:
   sqlite3.Connection.cursor: sqlite3.Cursor
   sqlite3.Connection.execute: sqlite3.Cursor
   sqlite3.Cursor.execute: sqlite3.Cursor
+  # csv (WI-kozaj): csv.writer is a builtin FUNCTION returning a _csv.Writer
+  # (python 3.12: `type(csv.writer(io.StringIO())) is _csv.Writer`). The data
+  # goes in at Writer.writerow / writerows, which io_primitives rows fs_write;
+  # this row is what lets a receiver bound to the factory reach them.
+  csv.writer: _csv.Writer

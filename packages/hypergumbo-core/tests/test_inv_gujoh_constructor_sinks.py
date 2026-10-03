@@ -24,7 +24,11 @@ on rebar3, cowboy, ejabberd, vernemq, plausible and livebook: no verdict moved.
   go      http.NewRequest(.., s) -> Client.Do(req)    violated, now at Client.Do
                                                       (WI-jikik; see below)
 
-The last two each waited on a prerequisite.
+  python  w = csv.writer(f) -> w.writerow([s])     violated, now at
+                                                      _csv.Writer.writerow
+                                                      (WI-kozaj; see below)
+
+The last three each waited on a prerequisite.
 
 go ``net/http.NewRequest`` waited for WI-jikik. With a typed client the flow
 survived at ``Client.Do``, but through ``http.DefaultClient.Do(req)`` the package
@@ -40,6 +44,13 @@ into a module whose I/O surface was not enumerated, and the coverage gate
 withheld every clean verdict for such a program: all 18 of hypergumbo's own
 self-claims went ``inconclusive``. WI-bakik enumerated ``urllib.request`` and
 declared it complete, so the row went with it.
+
+python ``csv.writer`` waited for WI-kozaj. ``w.writerow`` arrived with no
+module, because nothing declared what the factory returns, so the executor
+row could not be reached. The ``library_signatures`` row ``csv.writer:
+_csv.Writer`` types the result (py.py's ``_library_producer_type``), and
+``test_csv_write_surface.py`` pins the finding on real analyzer output,
+through a parameter as well as a local.
 :class:`TestUrllibRequestIsEnumerated` pins that on real analyzer output, with
 a control that removes the completeness entry and watches the gate withhold.
 """
@@ -62,6 +73,8 @@ def _boundaries(language: str, module: str, name: str) -> set[str]:
     ("elixir", "ets", "new", "db_write"),
     ("elixir", "Req", "new", "net_send"),
     ("elixir", "Finch", "build", "net_send"),
+    # WI-kozaj: csv.writer builds a _csv.Writer and writes nothing.
+    ("python", "csv", "writer", "fs_write"),
 ])
 def test_the_constructor_is_not_rowed_under_the_sink(
         language: str, module: str, name: str, boundary: str) -> None:
@@ -79,6 +92,8 @@ def test_the_constructor_is_not_rowed_under_the_sink(
     ("elixir", "Finch", "request", "net_send"),
     ("python", "urllib.request", "urlopen", "net_send"),
     ("go", "net/http.Client", "Do", "net_send"),
+    ("python", "_csv.Writer", "writerow", "fs_write"),
+    ("python", "_csv.Writer", "writerows", "fs_write"),
 ])
 def test_the_executor_still_carries_the_crossing(
         language: str, module: str, name: str, boundary: str) -> None:

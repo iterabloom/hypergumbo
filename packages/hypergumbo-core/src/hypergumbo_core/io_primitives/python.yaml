@@ -450,9 +450,18 @@ fs_write:
     notes: "json.dump writes to a file object; json.dumps returns a string (not I/O)"
   - module: pickle
     functions: [dump]
-  - module: csv
-    functions: [writer]
-    notes: "csv.writer wraps a file object for writing"
+  - module: _csv.Writer
+    methods: [writerow, writerows]
+    notes: >-
+      WI-kozaj. The object csv.writer(f) returns; the row data goes INTO the
+      caller-opened f here (the json.dump precedent). Reached through the
+      library_signatures row csv.writer -> _csv.Writer. csv.writer itself
+      carried this fs_write row until then, the INV-gujoh shape: the factory
+      builds the writer and writes nothing, so the flow was credited one call
+      early and the FILE argument was the tainted one, not the row. Removed
+      under ADR-0049 Ruling 3 with this executor row as the represented
+      crossing; the csv slot's completeness entry keeps the factory call
+      examined.
   - module: csv.DictWriter
     methods: [writerow, writerows, writeheader]
     notes: >-
@@ -1627,13 +1636,14 @@ module_completeness:
     retrieved: "2026-08-15"
     notes: >-
       reader/writer wrap objects the caller opened; csv opens nothing.
-      WI-kozaj enumerated the public surface (python 3.12): writer is rowed
-      fs_write; reader, DictReader (reads of a caller-opened object),
+      WI-kozaj enumerated the public surface (python 3.12): writer builds a
+      _csv.Writer and writes nothing (the write is rowed at that type's
+      writerow / writerows); reader, DictReader (reads of a caller-opened object),
       Sniffer, Dialect, excel / excel_tab / unix_dialect, register_dialect /
       unregister_dialect / get_dialect / list_dialects, field_size_limit and
       Error do no I/O, and the DictWriter constructor stores its arguments.
-      This entry covers the csv SLOT only: the DictWriter write surface lives
-      at its own slot (csv.DictWriter, rowed fs_write).
+      This entry covers the csv SLOT only: the write surfaces live at their
+      own slots (_csv.Writer and csv.DictWriter, rowed fs_write).
   - module: gc
     completeness: complete
     retrieved: "2026-08-15"

@@ -22,6 +22,19 @@ secret visibly reached the file. ``module_io_is_enumerated`` matches the slot
 exactly, so the ``csv: complete`` grant never covered ``csv.DictWriter``; the
 loss was the finding, in the safe direction.
 
+DEFECT 2, THE writer HALF (INV-gujoh's shape). The one row there was sat on
+the FACTORY: ``csv.writer`` under ``fs_write``. ``csv.writer(f)`` builds a
+writer and writes nothing, so the flow was credited one call early and taint
+checked the FILE argument rather than the row data. It was also a false clean:
+``def dump(w): w.writerow([secret])`` with ``w = csv.writer(f)`` in the caller
+read ``confirmed_with_caveats``, because ``w.writerow`` arrived with no module
+and no row could reach it. ADR-0049 Ruling 3 licenses moving the row only
+against a represented crossing, so the executor was made reachable first: the
+``library_signatures`` row ``csv.writer: _csv.Writer`` types the factory's
+result (py.py ``_library_producer_type``), and ``_csv.Writer.writerow`` /
+``writerows`` carry the ``fs_write`` row. The factory call stays examined
+under the ``csv`` slot's completeness entry.
+
 Every assertion here runs on REAL analyzer output and asserts reach first.
 """
 from __future__ import annotations
@@ -162,3 +175,101 @@ class TestTheFindingIsReported:
         source = _DICTWRITER.replace("os.environ['API_KEY']", "'constant'")
         verdict = _verify(tmp_path, source, monkeypatch)
         assert verdict["verdict"].startswith("confirmed"), verdict["details"]
+
+
+_WRITER_SAME = (
+    "import csv\n"
+    "import os\n"
+    "\n"
+    "\n"
+    "def write_plain(f):\n"
+    "    token = os.environ['API_KEY']\n"
+    "    w = csv.writer(f)\n"
+    "    w.writerow([token])\n"
+)
+
+#: The false clean: the writer is built in the caller and written in the callee.
+_WRITER_THROUGH_A_PARAMETER = (
+    "import csv\n"
+    "import os\n"
+    "\n"
+    "\n"
+    "def dump(w):\n"
+    "    token = os.environ['API_KEY']\n"
+    "    w.writerow([token])\n"
+    "\n"
+    "\n"
+    "def main(f):\n"
+    "    w = csv.writer(f)\n"
+    "    dump(w)\n"
+)
+
+_WRITER_FROM_CHAIN = (
+    "import os\n"
+    "from csv import writer\n"
+    "\n"
+    "\n"
+    "def write_plain(f):\n"
+    "    token = os.environ['API_KEY']\n"
+    "    writer(f).writerows([[token]])\n"
+)
+
+
+class TestTheWriterRowIsOnTheExecutor:
+
+    def test_the_factory_carries_no_row(self) -> None:
+        assert "writer" not in _rows("csv")
+
+    def test_the_executor_carries_the_write(self) -> None:
+        rows = _rows("_csv.Writer")
+        assert rows == {"writerow": ("fs_write", "method"),
+                        "writerows": ("fs_write", "method")}, rows
+
+    def test_the_factory_return_type_is_declared(self) -> None:
+        from hypergumbo_core.library_signatures import load_library_signatures
+
+        assert load_library_signatures("python")["csv.writer"] == "_csv.Writer"
+
+    def test_the_declared_type_is_the_real_one(self) -> None:
+        """Checked against the running interpreter, not asserted from a doc."""
+        import _csv
+        import csv
+
+        assert type(csv.writer(io.StringIO())) is _csv.Writer
+
+    def test_the_analyzed_write_classifies_and_the_factory_does_not(
+        self, tmp_path: Path,
+    ) -> None:
+        tagged = _tagged(tmp_path, _WRITER_SAME)
+        assert ("write_plain", "_csv.Writer", "writerow") in tagged, sorted(tagged)
+        assert tagged[("write_plain", "_csv.Writer", "writerow")] == (
+            "fs_write", "_csv.Writer.writerow")
+        assert tagged[("write_plain", "csv", "writer")] == (None, None)
+
+
+class TestTheWriterFindingSurvivesTheMove:
+    """Ruling 3 at the finding level: every shape still reports, at the executor."""
+
+    @pytest.mark.parametrize("source,sink", [
+        (_WRITER_SAME, "_csv.Writer.writerow"),
+        (_WRITER_FROM_CHAIN, "_csv.Writer.writerows"),
+        # Was confirmed_with_caveats: the false clean.
+        (_WRITER_THROUGH_A_PARAMETER, "_csv.Writer.writerow"),
+    ], ids=["same-scope", "from-import-chain", "through-a-parameter"])
+    def test_a_secret_written_through_csv_writer_is_violated(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str, sink: str,
+    ) -> None:
+        verdict = _verify(tmp_path, source, monkeypatch)
+        assert verdict["verdict"] == "violated", verdict["details"]
+        sinks = {p for ev in verdict["evidence"] for p in ev["sink_primitives"]}
+        assert sinks == {sink}, sinks
+
+    def test_control_a_clean_writer_is_confirmed_without_caveats(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Was confirmed_with_caveats (an untyped ``writerow`` receiver): the
+        csv slot's grant still examines the factory call, and the write is now
+        typed and examined too."""
+        source = _WRITER_SAME.replace("os.environ['API_KEY']", "'constant'")
+        verdict = _verify(tmp_path, source, monkeypatch)
+        assert verdict["verdict"] == "confirmed", (verdict["verdict"], verdict["caveats"])
