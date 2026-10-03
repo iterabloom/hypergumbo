@@ -295,8 +295,12 @@ def _collect_mask_ranges(
         if mask_string_literals_too and ntype == "string":
             ranges.append((node.start_byte, node.end_byte))
             continue
-        for i in range(node.child_count):
-            stack.append(node.child(i))
+        # WI-kakov: one ``children`` call per node, never ``child(i)`` in a
+        # loop. tree-sitter's child(i) walks the siblings from the start, so
+        # the indexed loop is O(k^2) in a node's child count, and a binary
+        # file parsed as JavaScript has ERROR nodes wide enough that the walk
+        # never finished on nextjs. Same push order, so the same ranges.
+        stack.extend(node.children)
     return ranges
 
 

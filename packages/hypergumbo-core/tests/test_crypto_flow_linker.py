@@ -132,6 +132,44 @@ class TestScanWebCryptoPatterns:
         assert sites == []
 
 
+class TestBailoutBeforeMasking:
+    """WI-kakov: the keyword bailout runs on the RAW text, before the
+    tree-sitter mask. Masking only removes text, so a keyword absent from the
+    raw file is absent from the masked one: the verdict is unchanged, and the
+    parse is skipped for every file that cannot match (on nextjs: 20,000
+    source files plus binary assets that js-module-linker labels javascript).
+    """
+
+    def test_no_keyword_means_no_parse(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from hypergumbo_core.linkers import _text_filters
+
+        def forbidden(*args: object, **kwargs: object) -> None:
+            raise AssertionError("parsed a file that cannot match")
+
+        monkeypatch.setattr(_text_filters, "_get_parser", forbidden)
+        js = tmp_path / "plain.js"
+        js.write_text("const x = 1;\n")
+        rs = tmp_path / "plain.rs"
+        rs.write_text("fn main() {}\n")
+        png = tmp_path / "logo.png"
+        png.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 64)
+        assert _scan_file_for_crypto_patterns(js, "plain.js", "javascript") == []
+        assert _scan_file_for_crypto_patterns(rs, "plain.rs", "rust") == []
+        assert _scan_file_for_crypto_patterns(png, "logo.png", "javascript") == []
+
+    def test_keyword_only_in_a_comment_still_masked_away(
+        self, tmp_path: Path,
+    ) -> None:
+        f = tmp_path / "doc.ts"
+        f.write_text("// crypto.subtle.encrypt(alg, key, data)\nconst x = 1;\n")
+        assert _scan_file_for_crypto_patterns(f, "doc.ts", "typescript") == []
+        r = tmp_path / "doc.rs"
+        r.write_text("// Hkdf::new(None, ikm)\nfn main() {}\n")
+        assert _scan_file_for_crypto_patterns(r, "doc.rs", "rust") == []
+
+
 class TestScanRustCryptoPatterns:
     """Tests for Rust crypto crate pattern scanning."""
 
