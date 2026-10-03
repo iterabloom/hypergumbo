@@ -546,10 +546,10 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
     # These qualified names appear in io_primitives YAML catalogs with
     # boundary=subprocess (so taint analysis tracks them) but are
     # intentionally NOT high-risk for display purposes: they operate on
-    # an already-launched process (signal, wait, cleanup), terminate the
-    # current process without spawning anything, or perform a PATH
-    # lookup without executing. The WI-sugav Part 2 drift guard
-    # (Tests::TestHighRiskPrimitivesDriftGuard) requires every
+    # an already-launched process (signal, wait, cleanup), or perform a
+    # PATH lookup without executing. (Ending the CURRENT process is not
+    # rowed subprocess at all any more -- INV-mulul.) The WI-sugav Part 2
+    # drift guard (Tests::TestHighRiskPrimitivesDriftGuard) requires every
     # boundary=subprocess catalog entry to land in either
     # HIGH_RISK_PRIMITIVES or this set.
     #
@@ -568,10 +568,10 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
     "os/exec.LookPath", "golang.org/x/sys/execabs.LookPath",
     # C / C++ — wait on an already-launched child (does not spawn).
     "sys/wait.wait", "sys/wait.waitpid",
-    # Rust — terminate the current process (no subprocess spawned).
-    "std::process.abort", "std::process.exit",
-    # Elixir — halts the BEAM VM (current-process exit).
-    "System.halt",
+    # Rust std::process.exit / abort and Elixir System.halt used to be
+    # exempted here as "terminate the current process". INV-mulul removed
+    # the rows themselves: ending this process launches nothing, so it is
+    # not a subprocess boundary to exempt from anything.
     # Swift Foundation.Process / Objective-C NSTask: none. Their signal
     # members are ipc_send and waitUntilExit is not rowed (INV-babiz), so
     # they are no longer boundary=subprocess entries to exempt.
