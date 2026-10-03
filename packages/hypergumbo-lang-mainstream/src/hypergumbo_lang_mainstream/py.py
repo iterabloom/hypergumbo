@@ -2370,6 +2370,10 @@ class FileAnalysis:
     # concrete, CORRECT enclosing_class_id (which the inherited_calls linker uses
     # to resolve a namesake collision precisely instead of biasing to unresolved).
     method_to_enclosing_class_id: dict[str, str] = field(default_factory=dict)
+    # WI-kutal: class Symbol.id -> {method short name -> method Symbol}, from
+    # the class's OWN body (no inherited methods). The table ``self.m()``
+    # resolves against once the class ``self`` denotes is known by position.
+    methods_by_class_id: dict[str, dict[str, "Symbol"]] = field(default_factory=dict)
 
 
 def _detect_source_roots(repo_root: Path) -> list[Path]:
@@ -3048,6 +3052,10 @@ def _extract_file_analysis(
     # WI-supat (D3): authoritative method Symbol.id -> enclosing class Symbol.id,
     # populated at method creation where both symbols are lexically in hand.
     method_to_enclosing_class_id: dict[str, str] = {}
+    # WI-kutal: class Symbol.id -> {method SHORT name -> method Symbol}, the
+    # class's OWN body only, filled at the same point. ``self.m()`` is answered
+    # from here (via the class ``self`` denotes), never from symbol_by_name.
+    methods_by_class_id: dict[str, dict[str, Symbol]] = {}
 
     def _enclosing_function_chain(node: ast.AST) -> list[str]:
         """Return the names of enclosing FunctionDef ancestors, outermost-first.
@@ -3338,7 +3346,10 @@ def _extract_file_analysis(
                         ),
                     )
                     symbols.append(method_symbol)
-                    # Store by short name for self.method() lookups
+                    # The flat bare-name write. It no longer answers
+                    # ``self.method()`` (WI-kutal: Case 2a reads
+                    # ``methods_by_class_id`` below); it is retained for the
+                    # other consumers of symbol_by_name.
                     symbol_by_name[item.name] = method_symbol
                     # WI-jafat CHANGE A: also register the method under its AST
                     # node id (collision-immune, mirroring the FunctionDef path
@@ -3358,6 +3369,12 @@ def _extract_file_analysis(
                     # nested / same-short-name classes where a bare-name
                     # symbol_by_name lookup would clobber.
                     method_to_enclosing_class_id[method_symbol.id] = symbol.id
+                    # WI-kutal: the class's own method table. A later ``def`` of
+                    # the same name in the SAME body replaces the earlier one,
+                    # as it does in the runtime class dict.
+                    methods_by_class_id.setdefault(symbol.id, {})[item.name] = (
+                        method_symbol
+                    )
                     # Track as processed to avoid duplicate extraction
                     processed_functions.add((item.lineno, item.name))
 
@@ -3701,6 +3718,7 @@ def _extract_file_analysis(
         enclosing_func_id=enclosing_func_id,
         local_names_by_func_id=local_names_by_func_id,
         method_to_enclosing_class_id=method_to_enclosing_class_id,
+        methods_by_class_id=methods_by_class_id,
     ), None
 
 
@@ -5497,6 +5515,7 @@ def _extract_edges(
     enclosing_func_id: dict[str, str] | None = None,
     local_names_by_func_id: dict[str, frozenset[str]] | None = None,
     method_to_enclosing_class_id: dict[str, str] | None = None,
+    methods_by_class_id: dict[str, dict[str, Symbol]] | None = None,
     module_to_file_id: dict[str, str] | None = None,
     property_getter_by_path_name: dict[tuple[str, str], Symbol] | None = None,
     interprocedural_param_types: dict[tuple[str, int], str] | None = None,
@@ -5561,6 +5580,13 @@ def _extract_edges(
         local_names_by_func_id = {}
     if method_to_enclosing_class_id is None:  # pragma: no cover
         method_to_enclosing_class_id = {}
+    if methods_by_class_id is None:  # pragma: no cover
+        methods_by_class_id = {}
+    # WI-kutal: the function/method Symbols by id, for the owner of the frame
+    # that binds ``self`` (see :func:`_self_receiver_class_id`).
+    _func_symbol_by_id: dict[str, Symbol] = {
+        s.id: s for s in func_symbol_by_node_id.values()
+    }
     if interprocedural_param_types is None:
         interprocedural_param_types = {}
 
@@ -6421,6 +6447,7 @@ def _extract_edges(
                     function_aliases=function_aliases,
                     own_field_names=_own_field_names,
                     method_to_enclosing_class_id=method_to_enclosing_class_id,
+                    self_methods=_self_methods,
                     class_name_counts=class_name_counts,
                     django_oracle=_oracle,
                 )
@@ -6824,6 +6851,16 @@ def _extract_edges(
                     caller_symbol.id, enclosing_func_id, nested_by_parent_id,
                     local_names_by_func_id,
                 )
+                # WI-kutal: the method table of the class ``self`` denotes in
+                # this caller ({} when it denotes none), for Case 2a.
+                _self_class_id = _self_receiver_class_id(
+                    stack, _func_symbol_by_id, method_to_enclosing_class_id,
+                )
+                _self_methods = (
+                    methods_by_class_id.get(_self_class_id, {})
+                    if _self_class_id is not None
+                    else {}
+                )
                 _emit_closure_factory_dispatch(node, caller_symbol, inner_scope)
                 # WI-luhah gap 1c: add the enclosing-scope binding union so a
                 # closure-captured enclosing param/local shadowing a module alias
@@ -7177,6 +7214,44 @@ def _build_scope_stack(
         for fid in chain
     ]
     return ScopeStack(frames=frames)
+
+
+def _self_receiver_class_id(
+    stack: ScopeStack,
+    func_symbol_by_id: dict[str, Symbol],
+    method_to_enclosing_class_id: dict[str, str],
+) -> str | None:
+    """The id of the class whose instance ``self`` denotes in a caller, or None.
+
+    WI-kutal. Found by POSITION, never by name (LIVE.md §3, INV-mozas /
+    INV-midag): Python resolves ``self`` like any other name, so the frame that
+    owns it is the INNERMOST function frame that BINDS ``self`` (param or
+    assignment). A closure inside a method binds none, so it reads the
+    method's; a nested function that declares its own ``self`` param owns it.
+
+    That owner denotes an instance of a class only when it is a METHOD (its
+    lexical class comes from the authoritative ``method_to_enclosing_class_id``
+    map, WI-supat) and not a ``@staticmethod``, whose ``self`` is whatever
+    argument the caller passes. Every other owner -- a module function with a
+    ``self`` param, a nested function with its own, a staticmethod -- leaves
+    the receiver under-determined, so the answer is None and the call stays
+    unresolved (INV-fahub), mirroring the Site-1 hint's guards.
+    """
+    for frame in reversed(stack.frames):
+        if "self" not in frame.local_names:
+            continue
+        owner = func_symbol_by_id.get(frame.owner_id)
+        if owner is None or owner.kind != "method":
+            return None
+        decorators = {
+            d.get("name")
+            for d in (owner.meta or {}).get("decorators", [])
+            if isinstance(d, dict)
+        }
+        if "staticmethod" in decorators:
+            return None
+        return method_to_enclosing_class_id.get(owner.id)
+    return None
 
 
 def _unwind_attribute_chain(
@@ -8053,10 +8128,32 @@ def _django_orm_attribute_write(
     """
     if oracle is None or func.attr not in DJANGO_ORM_INSTANCE_WRITE_METHODS:
         return None
-    model = oracle.model_instance(func.value)
-    if model is None or oracle.index.defines_on_lineage(model, func.attr):
+    if oracle.model_instance(func.value) is None or _django_lineage_overrides(
+        func.value, func.attr, oracle,
+    ):
         return None
     return ExternalRef(lang="python", module_path=DJANGO_ORM_MODULE, name=func.attr)
+
+
+def _django_lineage_overrides(
+    receiver: ast.expr,
+    method: str,
+    oracle: "_DjangoReceiverOracle | None",
+) -> bool:
+    """True iff ``receiver`` is a Django model instance whose PROJECT lineage
+    (the class or an in-repo base) defines ``method``.
+
+    Then ``<receiver>.<method>()`` reaches the project's override, not
+    Django's own, and the override's ``super()`` call is where the ORM write
+    is typed (WI-sihoh). The one refusal both instance-write re-key sites
+    apply: the attribute receiver (WI-kufok) and the bare ``Name`` receiver,
+    which needed it once Case 2a stopped binding an inherited override by
+    bare name (WI-kutal).
+    """
+    if oracle is None:
+        return False
+    model = oracle.model_instance(receiver)
+    return model is not None and oracle.index.defines_on_lineage(model, method)
 
 
 def _class_directly_extends_django_model(
@@ -8284,6 +8381,7 @@ def _process_call(
     function_aliases: dict[str, Symbol] | None = None,
     own_field_names: frozenset[str] = frozenset(),
     method_to_enclosing_class_id: dict[str, str] | None = None,
+    self_methods: dict[str, Symbol] | None = None,
     class_name_counts: dict[str, int] | None = None,
     django_oracle: "_DjangoReceiverOracle | None" = None,
     imports_by_path: dict[str, dict[str, tuple[str, str]]] | None = None,
@@ -8307,12 +8405,18 @@ def _process_call(
     call's receiver is in this map, the unresolved-edge emit uses a
     module-qualified dst (carrying the inferred module in both the dst id's
     module slot and a structured ``dst_ref``) so io-boundary can classify it.
+
+    ``self_methods`` (WI-kutal) is the OWN-body method table of the class the
+    caller's ``self`` denotes (:func:`_self_receiver_class_id`), ``{}`` when
+    ``self`` denotes no class. ``self.m()`` resolves only through it.
     """
     _edges_before_this_call = len(edges)
     if external_var_types is None:  # pragma: no cover - defensive default
         external_var_types = {}
     if method_to_enclosing_class_id is None:  # pragma: no cover - defensive default
         method_to_enclosing_class_id = {}
+    if self_methods is None:  # pragma: no cover - defensive default
+        self_methods = {}
     if class_name_counts is None:  # pragma: no cover - defensive default
         class_name_counts = {}
 
@@ -8391,9 +8495,17 @@ def _process_call(
         if isinstance(func.value, ast.Name):
             receiver_name = func.value.id
 
-            # Case 2a: self.method()
+            # Case 2a: self.method() -- answered from the OWN body of the
+            # class ``self`` denotes, found by position (WI-kutal). It used to
+            # read ``local_symbols``, the file-wide bare-name table, where the
+            # LAST ``def <attr>`` in the file answered for every class, and a
+            # module-level function answered too. A miss here is an inherited
+            # (or absent) method: it falls to the unresolved edge, whose
+            # Site-1 hint hands it to the inherited_calls MRO walk -- the only
+            # place that sees the bases, including INV-guviv's external-base
+            # gate.
             if receiver_name == "self":
-                callee_symbol = local_symbols.get(attr_name)
+                callee_symbol = self_methods.get(attr_name)
 
             # Case 2b: module.ClassName() or module.func()
             elif receiver_name in module_imports:
@@ -8958,12 +9070,22 @@ def _process_call(
                 # module-qualified dst_ref survives serialization for the
                 # io-boundary CLI consumer (which reparses the dst id).
                 _orm_dst_ref: ExternalRef | None = None
-                if attr_name in DJANGO_ORM_INSTANCE_WRITE_METHODS and (
-                    _is_django_model_instance(
+                # WI-kutal: and NOT when the model's project lineage overrides
+                # the method. Case 2a used to refuse that "for free" by binding
+                # the override by bare name; it now answers only from the
+                # class's own body, so an inherited override reaches this
+                # branch, and re-keying it would count one logical write twice
+                # (the override's own ``super()`` call carries it, WI-sihoh).
+                if (
+                    attr_name in DJANGO_ORM_INSTANCE_WRITE_METHODS
+                    and _is_django_model_instance(
                         func.value,
                         django_oracle,
                         unresolved_meta.get("enclosing_class"),
                         local_symbols,
+                    )
+                    and not _django_lineage_overrides(
+                        func.value, attr_name, django_oracle,
                     )
                 ):
                     dst_id = f"python:{DJANGO_ORM_MODULE}:0-0:{attr_name}:unresolved"
@@ -9418,6 +9540,7 @@ def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None
         enclosing_func_id=file_analysis.enclosing_func_id,
         local_names_by_func_id=file_analysis.local_names_by_func_id,
         method_to_enclosing_class_id=file_analysis.method_to_enclosing_class_id,
+        methods_by_class_id=file_analysis.methods_by_class_id,
         property_getter_by_path_name=_build_property_getter_index(
             file_analysis.symbols
         ),
@@ -9725,6 +9848,7 @@ def analyze_python(
             enclosing_func_id=analysis.enclosing_func_id,
             local_names_by_func_id=analysis.local_names_by_func_id,
             method_to_enclosing_class_id=analysis.method_to_enclosing_class_id,
+            methods_by_class_id=analysis.methods_by_class_id,
             module_to_file_id=module_to_file_id,
             interprocedural_param_types=interprocedural_param_types,
             class_maps=_class_maps_by_file.get(py_file),
