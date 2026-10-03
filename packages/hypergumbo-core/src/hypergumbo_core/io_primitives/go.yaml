@@ -397,10 +397,16 @@ subprocess:
     functions: [Command, CommandContext]
     notes: >-
       LookPath is fs_read (INV-dukam): it launches nothing. Command and
-      CommandContext only BUILD a *Cmd (Start creates the process), but their
-      arguments are the only carrier of the program and argv -- Run / Start
-      take none -- so moving them needs taint represented through the *Cmd
-      receiver first (ADR-0049 ruling 3, WI-kozaj). Left as they are.
+      CommandContext only BUILD a *Cmd (Start creates the process), and they
+      stay rowed because ADR-0049 ruling 3's finding-level proof FAILS for
+      them (INV-dukam, measured 2026-10-03). Unrowed, the DDG carries their
+      arguments into `cmd` and `cmd.Run()` uses it, so a *Cmd executed in the
+      scope that built it is caught at Run / Start / Output. A *Cmd a factory
+      RETURNS, stores for another method to Start, or hands to a library
+      function that runs it is not: taint is forward-only across calls (runc
+      Container.newParentProcess loses its cmd.Env flow, buildah unshareCmd
+      its $SHELL flow into unshare.ExecRunnable). Remove them once that flow
+      is represented.
   - module: os/exec.Cmd
     methods: [Run, Start]
   - module: os/exec.Cmd

@@ -314,6 +314,42 @@ different reason: no disclosure value fits a client request, since
 `net_listen` is the server side (`WI-mapim`). `Ecto.Repo.stream` is held
 because its enumeration runs in `Enum` / `Stream`, which no row can carry. `TypedQuery.getResultStream` was never a member (Ruling 4).
 
+**The process family has its far end, in four languages (WI-kanor).** A
+launch that returns a HANDLE -- `subprocess.Popen`, `os.popen`, `popen(3)`,
+`ProcessBuilder.start` / `Runtime.exec`, `exec.Cmd.StdoutPipe` -- fails
+ruling 1 like `net.Listen` does, so its row stays launch-only; the child's
+bytes are represented at the READ through the handle, which is a transfer.
+Python rows `subprocess.Popen.communicate` under `ipc_recv` (simultaneous with
+its launch row: it returns the child's output) and the reads of
+`os._wrap_close`, the type a library-signature row gives `os.popen`'s result.
+C's stdio reads and java's reader/stream reads select their existing `ipc_recv`
+twins through the `pipe` target kind when the stream came from `popen` or from
+`getInputStream()` / `getErrorStream()` on a provable `Process` -- the kind go's
+`bufio` readers over `StdoutPipe()` already took. Not reached: python
+`p.stdout.read()` (an attribute of a typed receiver is untyped), go
+`io.ReadAll` over a pipe (a fixed `fs_read` row with no stream stamp). Rust
+rows its far end (`ChildStdout.read`, `Child.wait_with_output`), but an
+idiomatic `Command::new(..).spawn().unwrap()` chain leaves the child untyped,
+so those rows were not reached on the one fixture tried.
+
+**Builder constructors are the outbound twin, and their proof fails today
+(INV-dukam).** `exec.Command` / `exec.CommandContext` build a `*Cmd` and launch
+nothing; `Cmd.Run` / `Start` / `Output` cross. Unrowed in a probe arm, the
+represented crossing holds where the `*Cmd` is executed in the scope that
+built it -- the DDG carries the argv into `cmd` and the executor uses `cmd`,
+and the same-scope flow reads `violated` at `Cmd.Run`, ddg-confirmed. Over five
+Go repositories no verdict moved and 15 flows went away, 12 of them a
+command's own output paired with the constructor that ran before it (false
+positives the move rightly removes); one is buildah wiring `os.Stdin` into
+`cmd.Stdin`. The last two are why the rows stay: a `*Cmd` that a factory
+returns or stores for another method to start (runc's
+`Container.newParentProcess`, an environment value written into `cmd.Env`),
+or that a library function executes (buildah's `unshareCmd`, `$SHELL` handed
+to `unshare.ExecRunnable`), never reaches a `Run` the forward-only taint walk
+can see. The rows stay until that return / heap flow is represented; rust's
+`Command::new` and java's `ProcessBuilder.command` are the same shape and were
+not measured.
+
 ## Open work — sequencing and the evidence bar
 
 Filed as tracker items, in order. **No row moves until 1–3 are done.**
