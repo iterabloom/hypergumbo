@@ -54,3 +54,25 @@
   clock: 6  # 644b
   nonce: 644b  # 644b
   message: "Merged as PR #1396, dev SHA c97b21ee5336."  # 644b
+- op: update  # 27b8
+  at: '2026-10-03T04:01:46Z'  # 27b8
+  by: agent  # 27b8
+  actor: jgstern_agent  # 27b8
+  clock: 7  # 27b8
+  nonce: 27b8  # 27b8
+  set:  # 27b8
+    status: done  # 27b8
+- op: discuss  # de19
+  at: '2026-10-03T04:01:46Z'  # de19
+  by: agent  # de19
+  actor: jgstern_agent  # de19
+  clock: 8  # de19
+  nonce: de19  # de19
+  message: "Fixed in PR #1396 (crypto-flow bailout before masking + O(n) mask walk), with PR #1397 (WI-babuk: imported assets no longer labelled javascript). PRs #1395 (WI-fojot) and #1398 (WI-rukaz) also landed before this validation.\nBEHAVIORAL EVIDENCE, the item's own repro re-run on dev 1abb5625c2 (2026-10-02 23:29, fresh XDG_CACHE_HOME, host backup finished, iowait 0): `survey` on nextjs (325 MB) COMPLETES, rc=0, 1,893 s wall, survey written (790 MB JSON). Before: not finished at 26 min, 3 h 05 min, or (this session) 85+ min stuck in crypto-flow.\nPer phase (instrumented probe): crypto-flow-linker 2.9 s total (was >85 min, unfinished); the slowest single file is now a 1.09 MB real bundle at 2.1 s. Centrality scan 0.9 s (1,918 files, 25,198 names). _classify_symbols 31.7 s.\nRESIDUAL (recorded, not filed, not part of this item's mechanism): the remaining big phases are run_all_analyzers 627 s, stamp_symbol_fingerprints 546 s, and run_all_linkers 513 s (no single linker dominates; ~100 s each, overlapping threads). stamp_symbol_fingerprints took 103 s on flink, so 546 s on nextjs is worth a look (WI-jogop is the memory side of that pass, wont_do/someday).\nThe 89-tree-walk detect_profile lead from the premise check is DISSOLVED: 3.6-3.8 s on both repos without the backup. It was the backup's I/O.\nNOT RE-MEASURED: vscode."  # de19
+- op: discuss  # 8521
+  at: '2026-10-03T04:02:03Z'  # 8521
+  by: agent  # 8521
+  actor: jgstern_agent  # 8521
+  clock: 9  # 8521
+  nonce: '8521'  # 8521
+  message: "CORRECTION to the closing note above: WI-rukaz's fix is PR #1399, not #1398. #1396 (this item) and #1397 (WI-babuk) are correct."  # 8521

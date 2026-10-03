@@ -1,0 +1,21 @@
+- op: create  # e888
+  at: '2026-10-03T04:19:18Z'  # e888
+  by: agent  # e888
+  actor: jgstern_agent  # e888
+  clock: 1  # e888
+  nonce: e888  # e888
+  data:  # e888
+    kind: work_item  # e888
+    title: "python.yaml's stdlib_modules is a 3.12 snapshot: distutils/imp/asyncore/smtpd/binhex (stdlib on 3.10/3.11) read as non-stdlib, cgi/telnetlib (gone in 3.13) as stdlib; the safe direction needs an owner ruling"  # e888
+    status: todo_hard  # e888
+    priority: 3  # e888
+    parent:  # e888
+    tags:  # e888
+    - catalogue  # e888
+    - io_boundary  # e888
+    isbefore: []  # e888
+    duplicate_of: []  # e888
+    not_duplicate_of: []  # e888
+    pr_ref:  # e888
+    description: "Found 2026-10-03 while fixing WI-jojuz (the test-side twin of this, now version-stable).\n\nWHAT. io_primitives/python.yaml's `stdlib_modules` (300 entries) is generated from ONE interpreter (`scripts/refresh-stdlib-modules python --version 3.12`), so production's IoBoundaryCatalog.is_stdlib_module answers \"stdlib on 3.12\". Analyzed code targets any Python, and hypergumbo itself supports 3.10+. Measured on dev (load_catalog('python').is_stdlib_module):\n  False: distutils, distutils.spawn, imp, asyncore, smtpd, binhex  (stdlib on 3.10/3.11; removed in 3.11/3.12)\n  True:  tomllib (3.11+), cgi, telnetlib (removed in 3.13; present because the snapshot is 3.12)\nVersion windows from Python/stdlib_module_names.h on the 3.10-3.13 branches; the same table is now pinned in test_catalogue_scope_gates.py as PYTHON_STDLIB_VERSION_WINDOWS.\n\nWHY IT IS NOT A ONE-LINE FIX (needs an owner ruling). Which direction is safe depends on what \"stdlib\" licenses downstream. If stdlib membership feeds a closed-world / examined-negative gate, adding distutils (which does file I/O and spawns processes) with no catalogue rows could turn \"unexamined third-party module -> withheld\" into a clean verdict. That is the false-all-clear direction (LIVE.md §2), and INV-buza (telnetlib) is the precedent for that failure shape. If it only feeds ecosystem labelling (_make_ecosystem_classifier: stdlib vs third_party), widening is safe. NOT CHECKED: every consumer of is_stdlib_module / stdlib_modules and what each does with a True.\n\nOPTIONS (not chosen): (a) generate stdlib_modules as the UNION over the supported versions, and row (or explicitly mark unexamined) the version-variant modules; (b) keep the 3.12 snapshot and have consumers treat the version-variant names as \"stdlib, unexamined\"; (c) record a per-module version window in the catalogue and let a consumer ask about the analyzed repo's target Python.\n\nNOT MEASURED: corpus frequency of distutils/imp/asyncore imports in analyzed repos (distutils is common in pre-3.12 setup.py files)."  # e888
+    fields: {}  # e888

@@ -73,3 +73,32 @@
   clock: 8  # 6cc4
   nonce: 6cc4  # 6cc4
   message: "PREMISE RE-CHECK 2026-10-02 (dev 273034f369; owner-requested staleness/premise audit). Record: ~/hypergumbo_lab_notebook/perf_kakov_rukaz_10022026/ (probe scripts, logs, benches).\n\nCONDITIONS, READ FIRST: one cold survey of flink via a live phase probe (scripts/measure-survey-phase-split.py's target table plus per-phase ENTER/EXIT logging), run through `slot run survey-big`, concurrent with a nextjs survey, WHILE the Proxmox host ran its daily backup (iowait 33-49%). Absolute times for I/O-heavy phases are inflated by an unknown factor. CPU-bound phases (state R, ~100% CPU when sampled) are less affected. Stopped by me before it finished.\n\n1. THE BOTTLENECK IS LOCATED. It is the phase the original report named (sketch_precomputed), but not the mechanism it named, and the 07-21 audit wrongly cleared the phase together with the mechanism. The audit is right that `additional_file_centrality_scores` uses no embedding. But the phase that computes it, ranking.compute_symbol_mention_centrality_batch -> _compute_centrality_with_python, compiles ONE regex `\\b(n1|n2|...|nN)\\b` over every symbol name with in-degree >= 2, and runs it on every candidate doc/config file. CPython's sre engine has no trie for an alternation. It tries the branches at every text position, so the cost is O(names x bytes).\n   On flink: 1,775 candidate files (760 .md, 364 .json, 288 .xml, 246 .html), 18.6 MB scanned, **106,317 eligible names** (from 317,815 symbols). Compiling the pattern alone took 18 s. After 32+ minutes, fewer than 100 of the 1,775 files were done. If those first files are representative, the phase needs **>= 9.5 h**. That is an extrapolation, not a measurement.\n   Mechanism bench (realnames_bench.py): with 50,637 REAL flink declaration names on real flink docs, the cost is ~70 ms per KB (19.1 KB in 1.43 s). With random names it was 20x cheaper, so a synthetic bench understates the cost.\n   The ThreadPoolExecutor(max_workers=8) buys nothing. `re` holds the GIL for a whole findall: per-thread CPU sampling showed 1 thread in state R at 100% and 7 at ~0, each holding an open fd while it waits for the GIL. That is the \"~8 fds open, rotating\" signature WI-kakov recorded on vscode.\n\n2. PHASES BEFORE IT (seconds, under the backup): FileIndex.build 51 | detect_profile 499 (I/O-contended; it does one full tree walk per LANGUAGE_EXTENSIONS entry, 89 in all, which is a lead, not a measured cost) | run_all_analyzers 362 | enrich_symbols 23 | run_all_linkers 204 | stamp_symbol_fingerprints 103 | **_classify_symbols 319, CPU-bound** (classify_file runs once PER SYMBOL and reads the whole file in is_likely_minified: filed as WI-fojot) | rank 12 | finalize 47 | readme 11. Everything up to the centrality scan finished in ~28 min.\n\n3. STALE DETAILS IN THE DESCRIPTION: the cli.py line refs have drifted (the warning is now cli.py:12351; sketch_precomputed is cli.py:12630-12695; the scanner is ranking.py:1569). The dependency-linker warning still reproduces (193,566 Import edges, 0 TOML declarations). `hypergumbo run --path` is still valid. The repo is at both ~/whole_bunch_of_repos/flink and ~/ALL_REPOS/whole_bunch_of_repos/flink. The 06-29 30/60-min timeouts predate this run and were not re-run under `timeout`.\n   Related history: WI-tohod (done 03-19; \"Flink 14K files takes 100+ min\") closed on analyzer speedups without an end-to-end flink re-run.\n\n4. NOT DONE: no fix, no completed flink survey, no measurement of nextjs/vscode centrality (neither run reached that phase). FIX DIRECTION (not implemented, not measured): tokenize each file once (`\\w+`) and intersect the tokens with the name set for identifier-shaped names, handling the rest separately. That makes the scan O(bytes). Verify against the current `\\b...\\b` semantics for names containing non-word characters before relying on it.\n\nRetitled in this update; status and priority unchanged."  # 6cc4
+- op: discuss  # 560c
+  at: '2026-10-03T03:29:34Z'  # 560c
+  by: agent  # 560c
+  actor: jgstern_agent  # 560c
+  clock: 9  # 560c
+  nonce: 560c  # 560c
+  message: "Merged as PR #1399, dev SHA 1abb5625c2e4."  # 560c
+- op: update  # f2ac
+  at: '2026-10-03T04:01:47Z'  # f2ac
+  by: agent  # f2ac
+  actor: jgstern_agent  # f2ac
+  clock: 10  # f2ac
+  nonce: f2ac  # f2ac
+  set:  # f2ac
+    status: done  # f2ac
+- op: discuss  # bc12
+  at: '2026-10-03T04:01:47Z'  # bc12
+  by: agent  # bc12
+  actor: jgstern_agent  # bc12
+  clock: 11  # bc12
+  nonce: bc12  # bc12
+  message: "Fixed in PR #1398 (dev 1abb5625c2). compute_symbol_mention_centrality_batch now matches names with _NameMatcher (one tokenization + set intersection for identifier names; segment-pruned, per-name confirmation for compound names) instead of one names-wide alternation.\nBEHAVIORAL EVIDENCE, the item's repro re-run on dev 1abb5625c2 (2026-10-02 23:29, fresh XDG_CACHE_HOME, iowait 0): `survey` on flink (14.6k Java files) COMPLETES, rc=0, **650.6 s** wall (1.7 GB survey). Before: timeouts at 30 and 60 min (06-29), and in this session <100 of 1,775 centrality files in 32 min (projected >= 9.5 h).\nCentrality scan: 1,775 files, 18.6 MB, 106,319 eligible names in **5.8 s**. Other phases: analyzers 255 s, linkers 107 s, _classify_symbols 16.1 s (was 319 s; WI-fojot), detect_profile 3.8 s.\nEquivalence: on 5 real flink docs with 50,637 real flink names, matched sets identical to the old regex. Deliberate documented change: names match independently (the alternation consumed text). smart-test 3977 passed, changed sources at 100% coverage."  # bc12
+- op: discuss  # 8f1f
+  at: '2026-10-03T04:02:02Z'  # 8f1f
+  by: agent  # 8f1f
+  actor: jgstern_agent  # 8f1f
+  clock: 12  # 8f1f
+  nonce: 8f1f  # 8f1f
+  message: "CORRECTION to the closing note above: the fix merged as PR #1399 (dev 1abb5625c2), NOT #1398. The auto-pr entry above records #1399; I wrote the number in the closing note without checking it."  # 8f1f

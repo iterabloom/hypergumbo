@@ -26,3 +26,17 @@
   clock: 2  # 7434
   nonce: '7434'  # 7434
   message: "CORRECTION to the description: 'Every 3.10 leg run since then should have failed the same way' is a hedge, not a finding. What is checked: the 10-02 3.10 leg (pipeline 4138 leg 1) fails this one test. NOT CHECKED: any nightly 3.10 leg between 09-29 (WI-nopam) and 10-02."  # 7434
+- op: discuss  # 8689
+  at: '2026-10-03T04:25:35Z'  # 8689
+  by: agent  # 8689
+  actor: jgstern_agent  # 8689
+  clock: 3  # 8689
+  nonce: '8689'  # 8689
+  message: "Merged as PR #1400, dev SHA 37b2c2d46362."  # 8689
+- op: discuss  # 31fc
+  at: '2026-10-03T04:26:05Z'  # 31fc
+  by: agent  # 31fc
+  actor: jgstern_agent  # 31fc
+  clock: 4  # 31fc
+  nonce: 31fc  # 31fc
+  message: "Fix merged as PR #1400 (dev 37b2c2d463). LEFT OPEN until the nightly confirms it.\nWhat is verified: test_the_builtin_verdict_does_not_depend_on_the_interpreter[3.10] runs the real gate (_spellings + _admitted over every shipped builtin file) with sys.stdlib_module_names set to the 3.10 list. On the old rule it failed with exactly the nightly's stray, ['python.yaml: python: tomllib']; it now passes for 3.10, 3.11, 3.12 and 3.13. The pinned windows come from Python/stdlib_module_names.h on the four CPython branches. test_the_stdlib_windows_match_the_running_interpreter re-checks them on every leg, and a mutation (binhex until 3.12) turns it red on 3.12. Controls: requests and formatter are still refused.\nNOT YET VERIFIED: a real 3.10 interpreter. No 3.10 is available locally, and docker is not accessible to this user. CLOSE when `ci-debug cron-status` shows a nightly leg 1 (3.10) GREEN at or after 37b2c2d463. If it is still red, re-open the diagnosis with that log.\nProduction-side sibling (python.yaml's stdlib_modules is a 3.12 snapshot) filed as WI-gisan; it needs an owner ruling on the gate direction."  # 31fc
