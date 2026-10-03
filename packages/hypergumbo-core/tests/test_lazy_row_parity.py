@@ -193,3 +193,52 @@ class TestTheJpaRows:
         # Control: the counterfactual moved exactly one row, so the transfer's
         # flow is untouched and the arms differ by the reference alone.
         assert moved.get("OrderService.exportStream") == {_GETRESULTSTREAM}, moved
+
+
+# ---------------------------------------------------------------------------
+# sqlite3.Connection.iterdump (python)
+# ---------------------------------------------------------------------------
+
+#: The Python documentation's own iterdump idiom, with the connection typed by
+#: annotation. The ``con = sqlite3.connect(...)`` spelling does NOT reach the
+#: row -- ``sqlite3.connect`` has no library_signatures return type -- and its
+#: flow rests on the ``sqlite3.connect`` row instead, so it cannot test this one.
+_ITERDUMP = """\
+import sqlite3
+
+
+def export(con: sqlite3.Connection, path):
+    with open(path, "w") as f:
+        for line in con.iterdump():
+            f.write(line)
+"""
+_ITERDUMP_MOVED = """\
+language: python
+status: overlay
+db_compose:
+  - module: sqlite3.Connection
+    methods: [iterdump]
+"""
+
+
+class TestTheIterdumpRow:
+
+    def test_it_stays_db_read(self) -> None:
+        assert _rows("python", "sqlite3.Connection").get("iterdump") == "db_read"
+
+    def test_the_dump_written_in_scope_rests_on_the_row_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The generator is iterated two lines below the call, in the same
+        function: measurement 0010's READ-IN-SCOPE case, where the mint is
+        already in the scope of the read and moving it relocates nothing."""
+        files = {"dump.py": _ITERDUMP}
+        shipped = _verify(tmp_path / "a", files, monkeypatch)
+        assert shipped["verdict"] == "violated", shipped["details"]
+        assert _flows(shipped).get("export") == {"sqlite3.Connection.iterdump"}  # reach
+
+        moved = _verify(tmp_path / "b", files, monkeypatch, _ITERDUMP_MOVED)
+        assert "export" not in _flows(moved), (
+            "the dump kept a source after the move, so something now represents "
+            "the iteration -- iterdump may have become movable")
+        assert moved["verdict"] != "violated", moved["details"]
