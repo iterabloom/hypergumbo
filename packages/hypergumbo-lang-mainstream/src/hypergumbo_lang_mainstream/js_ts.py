@@ -552,12 +552,38 @@ def _normalize_import_module_hint(module: str) -> str:
         ../helpers/git    -> helpers/git
         @scope/pkg        -> @scope/pkg (unchanged)
     """
+    module = _strip_import_scheme(module)
+    while module.startswith("./") or module.startswith("../"):
+        module = module[2:] if module.startswith("./") else module[3:]
+    return module
+
+
+def _strip_import_scheme(module: str) -> str:
+    """Drop an import specifier's URL-style SCHEME, and only that (WI-fiham).
+
+    THE ONE HOME for the scheme half of :func:`_normalize_import_module_hint`,
+    which the CALL path uses. The IMPORT edge and the ``module_attr_ref`` edges
+    read off the same binding used the raw specifier, so one
+    ``require('node:path')`` spelled ``path`` on its calls and ``node:path`` on
+    its import and its attribute reads -- and the coverage gate, which asks
+    ``module_io_is_enumerated`` EXACTLY, reported express's ``node:path`` /
+    ``node:http`` / ``node:querystring`` as modules it could not classify while
+    the ``path`` grant covered the calls.
+
+    ``node:`` names a Node built-in and nothing else, and ``require`` returns a
+    core module ahead of any same-named ``node_modules`` package, so the bare
+    spelling is the same module. The other prefixes go for the reason the call
+    path drops them: their ``:`` would split the five-slot symbol id.
+
+    The RELATIVE leaders (``./``, ``../``) are NOT stripped here. The call path
+    strips them; these edges keep them, because
+    ``io_boundary.is_definitionally_first_party`` reads them as the evidence
+    that a module is the repository's own (INV-juvul).
+    """
     for prefix in ("https://", "http://", "node:", "npm:", "jsr:"):
         if module.startswith(prefix):
             module = module[len(prefix):]
             break
-    while module.startswith("./") or module.startswith("../"):
-        module = module[2:] if module.startswith("./") else module[3:]
     # Any residual ``:`` (URL port, deep deno specifier) would break the
     # colon-delimited symbol-id grammar (lang:module:span:name:kind).
     return module.replace(":", "_")
@@ -5387,7 +5413,9 @@ def _extract_edges(
         if node.type == "import_statement":
             for child in node.children:
                 if child.type == "string":
-                    module_name = _node_text(child, source).strip("'\"")
+                    # WI-fiham: the call path's spelling, scheme dropped.
+                    module_name = _strip_import_scheme(
+                        _node_text(child, source).strip("'\""))
                     file_id = make_file_id(lang, str(file_path))
                     dst_id = f"{lang}:{module_name}:0-0:module:module"
                     edge = Edge.create(
@@ -5472,7 +5500,9 @@ def _extract_edges(
                 if func_name == "require" and args_node:
                     for arg in args_node.children:
                         if arg.type == "string":
-                            module_name = _node_text(arg, source).strip("'\"")
+                            # WI-fiham: the call path's spelling, scheme dropped.
+                            module_name = _strip_import_scheme(
+                                _node_text(arg, source).strip("'\""))
                             file_id = make_file_id(lang, str(file_path))
                             dst_id = f"{lang}:{module_name}:0-0:module:module"
                             edge = Edge.create(
@@ -6842,9 +6872,14 @@ def _analyze_javascript_impl(
         # is not plumbed through the io_boundary pipeline's attribute
         # matching, so the file-level caller matches the Go PR 1
         # convention and is sufficient for the tagging pipeline.
+        # WI-fiham: the binding's module in the CALL path's spelling, scheme
+        # dropped (``node:path`` -> ``path``), so a read and a call through one
+        # require name one module. Relative leaders are kept (INV-juvul).
         combined_imports = {
-            **(pf.namespace_imports or {}),
-            **(pf.named_imports or {}),
+            **{name: _strip_import_scheme(module) for name, module in {
+                **(pf.namespace_imports or {}),
+                **(pf.named_imports or {}),
+            }.items()},
             "process": "process",
             "window": "window",
             "document": "document",
