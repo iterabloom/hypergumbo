@@ -22,3 +22,18 @@
     fields:  # 4b1c
       statement: "A catalogue row must name the boundary its call actually crosses. VIOLATED in go.yaml, three rows, two modules. os/exec [Command, CommandContext, LookPath] is rowed subprocess: LookPath loops PATH calling os.Stat and unix.Eaccess and creates no process, and CommandContext calls Command which calls LookPath and only BUILDS a *Cmd -- the process is created later, by Start(). net/http [Get, Post, PostForm, Head, NewRequest] is rowed net_send: NewRequest wraps NewRequestWithContext, which parses the URL and populates a Request struct in memory; the dial happens later in Client.Do. Two independent workers reached the same conclusion on different chunks."  # 4b1c
       root_cause: "Module-granularity attribution again, and this instance is already NAMED in the codebase: io_boundary.py, in the docstring of the function that computes INV-nular's own count, records that families of rows where the primitive does not perform the declared operation have been swept out of the VOUCHED catalogue, listing \"constructors declared net_send\" explicitly. net/http.NewRequest is that family verbatim. These rows are in the REMAINDER, which the 2026-09-06 ruling left disclosed rather than read -- so this is not a new class, it is evidence that the already-ruled classes survive in the unswept portion. NOTE: the register itself is known to be inaccurate; WI-roluz records that \"seven families\" is short by five."  # 4b1c
+- op: update  # 24c6
+  at: '2026-10-03T06:42:00Z'  # 24c6
+  by: agent  # 24c6
+  actor: jgstern_agent  # 24c6
+  clock: 2  # 24c6
+  nonce: 24c6  # 24c6
+  set:  # 24c6
+    title: "go os/exec LookPath (and x/sys/execabs) is rowed subprocess but launches nothing; Command/CommandContext are launch-deferred constructors needing an ADR-0049 Ruling-3 represented crossing (net/http NewRequest already removed, #1188)"  # 24c6
+- op: discuss  # bbd5
+  at: '2026-10-03T06:42:00Z'  # bbd5
+  by: agent  # bbd5
+  actor: jgstern_agent  # bbd5
+  clock: 3  # bbd5
+  nonce: bbd5  # bbd5
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). PARTLY STALE and too narrow. Title updated.\n- net/http.NewRequest is NO LONGER A ROW: removed by 6b8e27c00f (PR #1188, INV-gujoh family; INV-gujoh satisfied, and its A/B showed the flow still reaches Client.Do). The loader returns [] for NewRequest and NewRequestWithContext.\n- Still rowed subprocess: go.yaml:382-383 os/exec [Command, CommandContext, LookPath], and the overlay io_primitives_overlays/go-x-sys-and-grpc.yaml:83 repeats them for golang.org/x/sys/execabs (not in this item). Repro: os.Getenv feeding exec.LookPath(name) and exec.CommandContext(ctx, name), nothing ever run. Both appear as subprocess; host_secret->subprocess and \"never launches a subprocess\" read violated.\n- SCOPE: CommandContext cannot be decided without Command (CommandContext only calls Command; Command only builds a *Cmd). Same shape: rust Command::new (rust.yaml:342) and java ProcessBuilder.command (java.yaml:186, a setter).\n- FIX SPLITS: LookPath (+execabs) can be deleted on its own; it launches nothing. Command/CommandContext fall under ADR-0049 Ruling 3: the constructor's arguments are the only carrier of the sink data and Cmd.Run/Start take none, so removing them needs a represented crossing (taint through the *Cmd receiver into Run/Start/Output) measured at the finding level, as NewRequest needed WI-jikik first. Tests pinning os/exec.Command as subprocess/high-risk: test_io_boundary.py:507 and :2909. Not the one-line row fix the 10-02 triage called it.\n- NOT CHECKED: whether taint already propagates from a *Cmd receiver into Cmd.Run."  # bbd5

@@ -23,3 +23,10 @@
     fields:  # 503b
       statement: "A call to a function declared in the same file -- including a foreign-block (extern) declaration -- resolves to that declaration, and is classified by the I/O catalogue only if a row names that function; it is never classified by a catalogue row that merely shares its short name."  # 503b
       root_cause: "The rust analyzer extracts no symbol for function declarations inside extern blocks, so calls to them are unresolved with module slot external; the catalogue lookup then matches the bare name (now -> std::time::Instant.now, first of two rows; now is not in rust ambiguous_names). With another same-named symbol in scope, the call instead resolves to that symbol."  # 503b
+- op: discuss  # 50ef
+  at: '2026-10-03T06:42:02Z'  # 50ef
+  by: agent  # 50ef
+  actor: jgstern_agent  # 50ef
+  clock: 2  # 50ef
+  nonce: 50ef  # 50ef
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). CURRENT. rust.py:1614 handles function_signature_item only when _get_trait_owner succeeds, so extern-block declarations are dropped.\n- Repro: extern \"C\" { fn now() -> f64; fn getpid() -> i32; } plus callers gives native -> rust:external:0-0:now and pid -> rust:external:0-0:getpid (unresolved), and io-boundaries reports host_info_read: std::time::Instant.now <- native. With mod helpers { pub fn now() } + use helpers::*, it resolves (0.85).\n- The wasm_bindgen linker maps only #[wasm_bindgen] exports to JS imports and mints nothing for extern-block imports.\n- CHEAP CATALOGUE-SIDE GUARD, independent of the extern-symbol fix: Rust associated functions cannot be imported as bare names, so a bare now() with no module hint can never be Instant::now. This is the reasoning ADR-0059 §3 used to add Java statics to ambiguous_names; now is not in rust.yaml ambiguous_names (rust.yaml:124-151)."  # 50ef

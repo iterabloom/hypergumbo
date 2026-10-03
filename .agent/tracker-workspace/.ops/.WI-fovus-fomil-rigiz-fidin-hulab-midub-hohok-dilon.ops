@@ -27,3 +27,18 @@
   clock: 2  # 08d5
   nonce: 08d5  # 08d5
   message: "2026-09-29 (WI-mufag, PR #1299): measured a sibling of this glob gap -- growthbook's findings stayed 43 structural after the binding-named walk shipped, because its code is mostly .tsx and the typescript DDG spec globs *.ts only. .tsx belongs in the same decision as .mjs/.cjs/.jsx."  # 08d5
+- op: update  # 4168
+  at: '2026-10-03T06:42:05Z'  # 4168
+  by: agent  # 4168
+  actor: jgstern_agent  # 4168
+  clock: 3  # 4168
+  nonce: '4168'  # 4168
+  set:  # 4168
+    title: "JS/TS DDG specs glob only *.js and *.ts, so .mjs/.cjs/.jsx/.tsx/.mts/.cts reach no DDG machinery (.tsx also needs a JSX-capable grammar)"  # 4168
+- op: discuss  # 3f41
+  at: '2026-10-03T06:42:06Z'  # 3f41
+  by: agent  # 3f41
+  actor: jgstern_agent  # 3f41
+  clock: 4  # 3f41
+  nonce: 3f41  # 3f41
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). CURRENT, with additions. Title widened.\n- ts_def_use.py:375 file_glob=\"*.js\" and :361 file_glob=\"*.ts\"; ddg_build.py:568 walks repo_root.rglob(spec.file_glob), a single string (introduced in f93d16b42a, WI-nonad). Repro: one function in 8 files, one per extension; build_repo_ddg(languages=('javascript','typescript')) produces DDG edges only from .js and .ts.\n- STEP 1 ANSWERED: survey classifies .mjs/.cjs/.jsx as javascript and .tsx/.mts/.cts as typescript, and all produce function symbols. Only the DDG specs lag.\n- STEP 2 OPEN: cfg_nodes/typescript.yaml has no jsx entries.\n- NEW: the grammar comes from get_language(spec.language) (ddg_build.py:546), and the typescript grammar does not parse JSX. So .tsx cannot be fixed by widening the TS glob: it needs a per-glob grammar override or a second spec, keeping language=\"typescript\" so symbol ids match.\n- SCOPE: .mts/.cts are also omitted (never named in the item). Related, not duplicates: WI-hizon (linkers' narrow globs), WI-pokij (language_from_path grammar-name labels)."  # 3f41

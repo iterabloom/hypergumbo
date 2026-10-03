@@ -26,3 +26,18 @@
   clock: 2  # 4a7f
   nonce: 4a7f  # 4a7f
   message: "EXPLICITLY NOT COVERED BY THE 2026-08-17 PERF CLOSE. `max_files` is a documented\nuser-facing promise (\"maximum files per language analyzer\") that only python and\njavascript honour — 252 of 1385 files were still analyzed at a cap of 1. A user\nwho sets it to bound a run on a large repo gets a partial bound with no indication\nwhich analyzers ignored it.\n\nThat is a flag that does not do what it says, not a performance opportunity, so it\nis unaffected by the decision to stop optimizing. It also has a measurement\nconsequence worth keeping visible: the non-binding analyzers put a floor under\nevery point of an analyzer-scaling sweep, which is what made a linear fit return\nan impossible negative intercept.\n\nStays todo_soft at P3."  # 4a7f
+- op: update  # 75e3
+  at: '2026-10-03T06:42:08Z'  # 75e3
+  by: agent  # 75e3
+  actor: jgstern_agent  # 75e3
+  clock: 3  # 75e3
+  nonce: '75e3'  # 75e3
+  set:  # 75e3
+    title: "max_files is documented as a per-language-analyzer cap but reaches only the 10 of 119 analyzers registered supports_max_files=True (bash, markdown, json, toml, go, rust, ... ignore it)"  # 75e3
+- op: discuss  # 1f7e
+  at: '2026-10-03T06:42:08Z'  # 1f7e
+  by: agent  # 1f7e
+  actor: jgstern_agent  # 1f7e
+  clock: 4  # 1f7e
+  nonce: 1f7e  # 1f7e
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). PARTLY STALE: defect holds, counts outdated, root cause identified. Title updated.\n- The cap is applied only for analyzers registered supports_max_files=True (all_analyzers.py:441). Registry dump after ensure_discovered(): 10 of 119 opted in (blade, gnuplot, handlebars, html, javascript, jupyter, just, mermaid, python, qml), not \"2 of 21\".\n- Repro: 3 files each of .py/.go/.md/.sh/.rs, run_all_analyzers(..., max_files=1) analyzes python 1, bash 3, go 3, markdown 3, rust 3.\n- ROOT CAUSE is the OPT-IN GATE, not missing per-analyzer checks. The shared tree-sitter base honours the cap (base.py:4408) but defaults supports_max_files=False (base.py:3443); go.py's _analyze_go_impl has its own cap (~5767) but go is not opted in, so the cap never reaches it. Removing the gate is the cheap first step; enforcing in one shared place (discovery.find_files already takes max_files, ~1038) still stands.\n- A THIRD MISLEADING SURFACE: output Limits.max_files_per_analyzer (limits.py:132,272) reports the cap as if every analyzer applied it. CLI help cli.py:9816-9820 and the run_survey docstring (~12066) make the same promise. The spec's --max-files text is the slice limit, a different thing.\n- NOT CHECKED: analyzers that loop over files outside the base class and might ignore max_files even when passed."  # 1f7e

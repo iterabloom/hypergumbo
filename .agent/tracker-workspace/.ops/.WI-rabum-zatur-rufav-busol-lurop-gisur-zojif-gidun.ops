@@ -28,3 +28,10 @@
   clock: 2  # df3a
   nonce: df3a  # df3a
   message: "WI-dorus (PR #1341) typed java's System.out/err receivers as java.io.PrintStream and rowed PrintStream's writers (requires_target_kind: std_stream). kotlin and scala inherit those rows via _CATALOG_PARENTS, but their analyzers neither emit the System.out attribute ref nor type/stamp the receiver, so kotlin/scala stdio writes are still seen by no zone. Either fix (the attribute ref, or porting the java receiver typing + std_stream stamp) now lands on rows that exist."  # df3a
+- op: discuss  # a9b2
+  at: '2026-10-03T06:42:09Z'  # a9b2
+  by: agent  # a9b2
+  actor: jgstern_agent  # a9b2
+  clock: 3  # a9b2
+  nonce: a9b2  # a9b2
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). CURRENT; one consequence corrected.\n- Fixture System.getenv(\"API_KEY\"); System.err.println(k): kotlin and scala emit only `calls <lang>:external:0-0:println`, with no module_attr_ref and no receiver_type_hint. SECRET->LOGGING reads confirmed_with_caveats (rc 3; untyped_receiver, unknown_receiver_scope). Java control: java.io.PrintStream:println (io_target_kind std_stream) plus module_attr_ref java:System:0-0:System.err gives violated, precise. emit_module_attribute_refs is called from cpp, go, java, js_ts and rust, not kotlin or scala.\n- CORRECTION: host_secret->ipc is NOT affected. stdout/stderr are logging only (spec; audit 0021), and Java's own ipc claim reads confirmed. Only the logging zone loses the sink.\n- Related, not a duplicate: WI-jubim (kotlin/scala do not consume library signatures).\n- NOT CHECKED: which fix shape yields a finding. Java's violation came through the typed PrintStream.println call; whether a System.err attribute ref alone creates a sink is untested."  # a9b2

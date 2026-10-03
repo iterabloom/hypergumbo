@@ -22,3 +22,10 @@
     fields:  # e8d3
       statement: "Every edge_type a producer emits is a registered ADR-0023 value; a value reached through a variable or a list-of-tuples is subject to the same rule as a literal."  # e8d3
       root_cause: "scip/edges.py _RELATION_EDGE_TYPES maps SCIP Relationship flags to edge-type strings via a list of tuples; the L3 gate reads literal keyword arguments and the L1 gate reads *EDGE_TYPE*-named sets, so the indirection escaped both, and rust-analyzer emits no relationships so no run ever produced the unregistered values."  # e8d3
+- op: discuss  # 1de5
+  at: '2026-10-03T06:42:03Z'  # 1de5
+  by: agent  # 1de5
+  actor: jgstern_agent  # 1de5
+  clock: 2  # 1de5
+  nonce: 1de5  # 1de5
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). CURRENT; one claim corrected.\n- scip/edges.py:81-86 still maps relationship flags to has_type and defined_by; all_edge_type_names() returns False for both, and there is no registered type-relation edge type to fold into (closest: defines_target, instantiates). Edge.create(edge_type=\"has_type\") succeeds at runtime, and check-producer-axis-coherence reports 0 new leaks, confirming the gates cannot see these values.\n- \"No producer today\" still true for BOTH backends: rust-analyzer's recorded index has 0 relationships; scip-python 0.6.6 (shipped, WI-nanom; it does call scip_index_to_edges) has 0 in its recorded sample, and on a small inheritance fixture it emitted only is_implementation (6 relationships, 4 implements edges).\n- CORRECTION: \"scip-python ... does populate relationships (is_implementation, is_type_definition)\": is_type_definition was not observed.\n- SIDE OBSERVATION, not chased: scip-python reports a concrete subclass (Sq(Base)) and method overrides as is_implementation, so they become implements rather than extends."  # 1de5

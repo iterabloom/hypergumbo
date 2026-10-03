@@ -40,3 +40,18 @@
   clock: 4  # 31fc
   nonce: 31fc  # 31fc
   message: "Fix merged as PR #1400 (dev 37b2c2d463). LEFT OPEN until the nightly confirms it.\nWhat is verified: test_the_builtin_verdict_does_not_depend_on_the_interpreter[3.10] runs the real gate (_spellings + _admitted over every shipped builtin file) with sys.stdlib_module_names set to the 3.10 list. On the old rule it failed with exactly the nightly's stray, ['python.yaml: python: tomllib']; it now passes for 3.10, 3.11, 3.12 and 3.13. The pinned windows come from Python/stdlib_module_names.h on the four CPython branches. test_the_stdlib_windows_match_the_running_interpreter re-checks them on every leg, and a mutation (binhex until 3.12) turns it red on 3.12. Controls: requests and formatter are still refused.\nNOT YET VERIFIED: a real 3.10 interpreter. No 3.10 is available locally, and docker is not accessible to this user. CLOSE when `ci-debug cron-status` shows a nightly leg 1 (3.10) GREEN at or after 37b2c2d463. If it is still red, re-open the diagnosis with that log.\nProduction-side sibling (python.yaml's stdlib_modules is a 3.12 snapshot) filed as WI-gisan; it needs an owner ruling on the gate direction."  # 31fc
+- op: update  # 7116
+  at: '2026-10-03T06:38:38Z'  # 7116
+  by: agent  # 7116
+  actor: jgstern_agent  # 7116
+  clock: 5  # 7116
+  nonce: '7116'  # 7116
+  set:  # 7116
+    status: done  # 7116
+- op: discuss  # 8c70
+  at: '2026-10-03T06:38:38Z'  # 8c70
+  by: agent  # 8c70
+  actor: jgstern_agent  # 8c70
+  clock: 6  # 8c70
+  nonce: 8c70  # 8c70
+  message: "Done. Fixed in PR #1400 (b628405641). CI evidence: the filed failure is reproduced on the same CI leg and now passes.\n- Filed failure: the cron/nightly Python 3.10 leg (pipeline 4138 leg 1, dev cb1d8bd979) failed one test, the built-in catalogue scope gate, on python.yaml's tomllib row.\n- Re-run on the real interpreter: cron/nightly pipeline 4170 at f5d3d934, which contains b628405641 (checked with git merge-base --is-ancestor). Leg 1 (PYTHON_VERSION 3.10, the first entry in the .woodpecker/nightly.yml matrix): test-matrix OK and integration OK. Legs 2 (3.11) and 3 (3.12): success. Leg 4 (3.13) was still running test-matrix at close time.\n- This run does NOT include #1402 (WI-gisan, the union table in python.yaml). The first nightly to run WI-gisan's per-version window check on real 3.10/3.11/3.13 is the 10-04 nightly; that check is tracked on WI-gisan, not here."  # 8c70

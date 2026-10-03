@@ -28,3 +28,10 @@
   clock: 2  # 22cc
   nonce: 22cc  # 22cc
   message: "Filed from the WI-vafad T5 sweep, 2026-09-11. Rows R011/R022. Verified by the orchestrator in rust-src: process.rs:2532 shows abort() as a single call to crate::sys::abort_internal(). Not edited here per rubric R4."  # 22cc
+- op: discuss  # bcd1
+  at: '2026-10-03T06:41:59Z'  # bcd1
+  by: agent  # bcd1
+  actor: jgstern_agent  # bcd1
+  clock: 3  # bcd1
+  nonce: bcd1  # bcd1
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). CURRENT. rust.yaml:365-366 still rows std::process exit/abort as subprocess (unchanged since 9d6f78c409).\n- Precedent for the cure already exists: haskell.yaml:349-357 (INV-dozuj) declares exitWith/exitFailure/exitSuccess NOT I/O (\"process control, no boundary in this vocabulary\"); javascript.yaml:511 does the same for process.exit/reallyExit/abort. Go os.Exit, python sys.exit/os._exit/os.abort and java System.exit have no rows. Rust is the last language with these rows.\n- Repro: let code = env::var(\"X\")...len(); process::exit(code). io-boundaries reports subprocess std::process.exit/abort; host_secret->subprocess reads VIOLATED (ddg walk_verdict confirmed at std::process.exit), and \"never launches a subprocess\" reads violated. The verify-claims details text says \"the analysis launches an external program at 1 call site(s) (std::process.exit)\", a false sentence in user-facing output.\n- Impact is wider than stated: an opaque subprocess row also withholds clean verdicts on other boundaries."  # bcd1
