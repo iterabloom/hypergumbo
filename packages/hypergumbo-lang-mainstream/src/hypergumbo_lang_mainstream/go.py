@@ -141,13 +141,16 @@ receiver could have been typed (WI-fuvaj: alertmanager printed 18.5% untyped
 where the share over receiver calls is about 31%). A debt priced at zero
 expires when a new consumer arrives.
 
-STILL NOT TOLD APART, and pinned by an xfail in
-``test_go_package_qualified_construct.py``: a local that SHADOWS its import
-(``url, _ := url.Parse(raw); url.String()``) is treated as the package, for
-the construct as for the module slot, because ``var_types`` is per function and
-consulting it would also mark the ``url.Parse`` that defines the local as a
-method call. The resolved-lookup emit sites stamp ``function`` without asking
-about a receiver; they were not examined for this change.
+A LOCAL THAT SHADOWS ITS IMPORT IS NOT THE PACKAGE (WI-kugap, 2026-10-03).
+``url, _ := url.Parse(raw); url.String()`` and ``func f(os T) { os.Open(p) }``
+call on the LOCAL, so neither the construct nor the module slot names the
+package. The test is asked by POSITION (see below), which is what
+``var_types`` could not do: it is per function, so it would also have taken
+the ``url.Parse`` that DEFINES the local for a call on it. The same test keeps
+an attribute read on such a local (``os.Args`` on the parameter) out of the
+``module_attr_ref`` edges. Every resolved emit stamps the construct from how
+the call is written -- bare or on a package: ``function``; on a value:
+``method`` -- as the unresolved emit already did.
 
 A BARE IDENTIFIER RESOLVES IN THE CALLER'S OWN PACKAGE (WI-bivin, 2026-09-30).
 Go scoping answers a bare name exactly: a declaration of the caller's own
@@ -188,8 +191,8 @@ right side of ``nodeName, err := nodeName(o)`` calls the package function, a
 name bound in one ``if`` branch is not bound in the other, and a parameter of
 a function TYPE (``cb func(open string)``) binds nothing. The earlier set of
 every name bound anywhere in the declaration withheld all three. Every site
-that asks "is this a local value here" asks it: the bare call and the bare
-function reference.
+that asks "is this a local value here" asks it: the bare call, the bare
+function reference, the operand of ``pkg.F()`` and the attribute-read pass.
 
 Since a bare call resolved in its own package is never a method, INV-fahub's
 bare-method deferral (``defer_bare_method_call``) could no longer fire in Go and
@@ -789,6 +792,7 @@ def _package_variable_import_path(
     operand_node: "tree_sitter.Node",
     source: bytes,
     import_aliases: dict[str, str],
+    bound: Container[str] = frozenset(),
 ) -> Optional[tuple[str, str]]:
     """``(package import path, owner)`` for ``pkg.Var``'s TYPE, when ``pkg.Var`` is
     a catalogued stdlib package variable (WI-jikik); else None.
@@ -804,11 +808,14 @@ def _package_variable_import_path(
     ``package_variables`` holds each variable's type. The key is the package's
     own NAME, the import path's last element, so a renamed import
     (``nethttp "net/http"``) resolves too. The type's package is the variable's
-    own unless the row names another, which the file must then import.
+    own unless the row names another, which the file must then import. A root
+    in ``bound`` is a local in scope at the call (WI-kugap), not the package.
     """
     root = find_child_by_field(operand_node, "operand")
     field = find_child_by_field(operand_node, "field")
     if root is None or field is None or root.type != "identifier":
+        return None
+    if node_text(root, source) in bound:
         return None
     var_path = import_aliases.get(node_text(root, source))
     if var_path is None:
@@ -3782,16 +3789,21 @@ def _extract_edges_from_file(
                         # Check if operand is a package alias
                         if operand_node and operand_node.type == "identifier":
                             alias = node_text(operand_node, source)
-                            if alias in import_aliases:
+                            if (
+                                alias in import_aliases
+                                and alias not in _bound_names(node)
+                            ):
                                 full_import_path = import_aliases[alias]
                                 # SAME TEST AS THE MODULE SLOT, deliberately:
                                 # an alias that names an import is the package
-                                # here, as it already is for the slot. A local
-                                # that shadows the import is not told apart,
-                                # because ``var_types`` is per function, not
-                                # per position, so consulting it would also
-                                # mark the ``url.Parse`` that DEFINES a local
-                                # ``url`` as a method call.
+                                # here, as it already is for the slot -- unless
+                                # a parameter or local of that name is in
+                                # scope at this call (WI-kugap). Asked by
+                                # POSITION (``_GoLocalScope``), not of
+                                # ``var_types``, which is per function: the
+                                # ``url.Parse`` that DEFINES a local ``url``
+                                # runs before the local exists, and is the
+                                # package's.
                                 package_qualified = True
                                 if module_path:
                                     import_path_hint = _strip_module_prefix(
@@ -3898,6 +3910,7 @@ def _extract_edges_from_file(
                             and callee_name
                             and (_pv := _package_variable_import_path(
                                 operand_node, source, import_aliases,
+                                _bound_names(node),
                             )) is not None
                         ):
                             _pv_path, receiver_owner = _pv
@@ -4378,6 +4391,18 @@ def _extract_edges_from_file(
                     ):
                         callee_name = None
 
+                    # WI-kugap: the construct is how the call is WRITTEN
+                    # (ADR-0059): on the package itself, or bare, is a
+                    # function; on a value is a method. The resolved emits
+                    # below stamped ``function`` for every hit, so
+                    # ``xs[k].Frob()`` bound to ``Thing.Frob`` read as a
+                    # function call. The unresolved emit already asked this.
+                    call_construct = (
+                        "function"
+                        if func_node.type == "identifier" or package_qualified
+                        else "method"
+                    )
+
                     if callee_name:
                         # Check local symbols first — but NOT when the call
                         # is package-qualified (import_path_hint set), because
@@ -4403,7 +4428,7 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                meta={"call_construct": "function"},
+                                meta={"call_construct": call_construct},
                             ))
                         # Check global symbols with disambiguation via ListNameResolver
                         else:
@@ -4450,7 +4475,7 @@ def _extract_edges_from_file(
                                     confidence=edge_confidence,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta={"call_construct": "function"},
+                                    meta={"call_construct": call_construct},
                                 ))
                             # Bug #2 fix: Create edge for external/unresolved method calls
                             # This enables linkers to potentially match across languages
@@ -4468,10 +4493,7 @@ def _extract_edges_from_file(
                                     # Fallback: use "external" as the path
                                     dst_id = f"go:external:0-0:{callee_name}:unresolved"
                                 _meta: dict[str, object] = {
-                                    "call_construct": (
-                                        "function" if package_qualified
-                                        else "method"
-                                    ),
+                                    "call_construct": call_construct,
                                 }
                                 # WI-lipis: what this call site actually
                                 # touches, where the catalogue row cannot say.
@@ -4647,6 +4669,8 @@ def _extract_edges_from_file(
             enclosing_symbols=list(local_symbols.values()),
             # INV-hopib: record the call a stream is handed to.
             carrier_call_kinds=("call_expression",),
+            # WI-kugap: ``func f(os T) { _ = os.Args }`` reads the parameter.
+            is_local_value=lambda base: node_text(base, source) in _bound_names(base),
         )
 
     return edges
