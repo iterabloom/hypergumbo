@@ -314,7 +314,7 @@ logging:
 # parent, and those ARE the standard library.
 
 # ---------------------------------------------------------------------------
-# IPC — GenServer, Process, GenStage, Oban (job queues)
+# IPC and BEAM process messaging -- System.cmd output, GenServer, Process, Task
 # ---------------------------------------------------------------------------
 ipc_recv:
   - module: System
@@ -348,8 +348,21 @@ process_send:
   - module: Process
     functions: [send, send_after]
     notes: "Raw process messaging -- erlang:send / send_after, elixir spelling."
-
-ipc_send:
+  # Task spawns (WI-busam, audit-findings 0021 Step 5). They were ipc_send
+  # ("async execution boundary"); a spawn starts a BEAM process inside the same
+  # runtime and copies the closure, with every value it captured, into it --
+  # erlang.yaml's precedent rows erlang:spawn / spawn_link, proc_lib:spawn and
+  # supervisor:start_child under process_send. Same `ipc` taint zone, so a pure
+  # relabel.
+  # async_stream is lazy (its tasks start when the stream is enumerated) and is
+  # kept: the spawn it arranges has no other row, so deleting it would drop the
+  # crossing rather than relocate it (ADR-0049 ruling 3). Task.Supervisor's
+  # start_child was spelled as a FUNCTION named `Supervisor.start_child` on
+  # module `Task`, which no call site produces (the call reported
+  # external_potential); it is re-homed to its module below.
   - module: Task
-    functions: [async, async_stream, start, start_link, Supervisor.start_child]
-    notes: "Task spawns — async execution boundary"
+    functions: [async, async_stream, start, start_link]
+    notes: "Task spawns -- erlang:spawn / spawn_link, elixir spelling."
+  - module: Task.Supervisor
+    functions: [start_child]
+    notes: "Supervised task spawn -- supervisor:start_child, elixir spelling."

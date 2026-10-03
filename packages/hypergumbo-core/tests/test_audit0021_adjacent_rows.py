@@ -330,3 +330,63 @@ class TestWiNuhorBeamSendsAreProcessSend:
         assert "gen_server.call" in chains["process_send"]  # control: reached
         assert {f"{m}.{n}" for m, n in _BEAM_SENDS} <= chains["process_send"]
         assert "ipc_send" not in chains
+
+
+# ---------------------------------------------------------------------------
+# WI-busam: an elixir Task spawn is erlang's spawn, process_send.
+# ---------------------------------------------------------------------------
+
+_EX_TASKS = '''defmodule Spawner do
+  def go(sup, xs, v) do
+    Task.async(fn -> v end)
+    Task.async_stream(xs, fn x -> x end)
+    Task.start(fn -> v end)
+    Task.start_link(fn -> v end)
+    Task.Supervisor.start_child(sup, fn -> v end)
+    :erlang.spawn(fn -> v end)
+  end
+end
+'''
+
+_TASK_SPAWNS = [
+    ("Task", "async"), ("Task", "async_stream"), ("Task", "start"),
+    ("Task", "start_link"), ("Task.Supervisor", "start_child"),
+]
+
+
+class TestWiBusamTaskSpawnsAreProcessSend:
+    """A Task spawn starts a BEAM process and copies the closure -- with every
+    value it captured -- into it. No OS process boundary is crossed, so it is
+    not ``ipc_send``; the precedent is erlang.yaml, which rows ``spawn`` /
+    ``spawn_link`` / ``proc_lib:spawn`` / ``supervisor:start_child``
+    ``process_send``. A pure relabel (same ``ipc`` taint zone).
+
+    ``Task.Supervisor.start_child`` was spelled as a FUNCTION named
+    ``Supervisor.start_child`` on module ``Task``, which no call site can
+    produce: the call reported ``external_potential``. Re-homed to its module.
+    ``Task.async_stream`` is lazy -- the tasks start when the stream is
+    enumerated -- and is kept with its siblings: the spawn it arranges has no
+    other row, so deleting it would drop the crossing rather than relocate it
+    (ADR-0049 ruling 3)."""
+
+    @pytest.mark.parametrize(("module", "name"), _TASK_SPAWNS)
+    def test_the_row_is_process_send(self, module: str, name: str) -> None:
+        assert _rows("elixir", module, name) == {"process_send"}
+
+    @pytest.mark.parametrize(("module", "name"), _TASK_SPAWNS)
+    def test_the_taint_sink_is_unchanged(self, derived, module: str, name: str) -> None:
+        _src, sinks = derived
+        assert sinks["elixir"][(module, name)] == {"ipc"}
+
+    def test_the_unmatchable_spelling_is_gone(self) -> None:
+        assert _rows("elixir", "Task", "Supervisor.start_child") == set()
+
+    @pytest.mark.parametrize("name", ["spawn", "spawn_link"])
+    def test_control_erlang_spawn_is_the_precedent(self, name: str) -> None:
+        assert _rows("erlang", "erlang", name) == {"process_send"}
+
+    def test_reach(self, tmp_path: Path) -> None:
+        chains = _chains(tmp_path, "spawner.ex", _EX_TASKS)
+        assert "erlang.spawn" in chains["process_send"]  # control: reached
+        assert {f"{m}.{n}" for m, n in _TASK_SPAWNS} <= chains["process_send"]
+        assert "ipc_send" not in chains
