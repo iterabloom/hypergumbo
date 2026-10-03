@@ -29,7 +29,11 @@ extract:
   (``{onClick: handleClick}`` and the shorthand ``{handleClick}``), and a
   chain between consecutive route-handler arguments
   (``app.post(p, auth, handler)``) tagged
-  ``meta.framework_dispatch="middleware_chain"``
+  ``meta.framework_dispatch="middleware_chain"``. A function assigned to a
+  property (``obj.h = fn``, ``module.exports = fn``) is an
+  ``object_field_reference`` too, except where the write is a catalogued
+  handler registration (``ws.onmessage = fn``, below), which is a
+  ``callback_argument_reference`` like its ``addEventListener`` twin (WI-vubal)
 - Handler registration by assignment (``ws.onmessage = h``): an unresolved
   ``calls`` edge with ``call_construct="assignment"``, emitted only when the
   receiver has a catalogue module and the property is one of its rows in
@@ -6669,6 +6673,7 @@ def _extract_edges(
         elif node.type in (
             "assignment_expression", "augmented_assignment_expression",
         ):
+            _registered = False
             _lhs = node.child_by_field_name("left")
             _prop_node = (
                 _lhs.child_by_field_name("property")
@@ -6719,6 +6724,54 @@ def _extract_edges(
                             module_hint=_recv_module,
                             receiver_type_hint=_recv_hint,
                             call_construct="assignment",
+                        ))
+                        _registered = True
+
+            # WI-vubal: the FUNCTION handed over by a property write. The row
+            # edge above names the boundary; nothing named the handler, so a
+            # forward slice from ``setup`` never reached ``handle`` and a
+            # reverse slice from ``handle`` never found who registered it.
+            # This is the third spelling of a relationship js_ts already
+            # records for an object-literal value and a callback argument.
+            #
+            # THE EVIDENCE TYPE IS THE TAINT DECISION
+            # (``edge_types.is_callback_registration``). A write the branch
+            # above classified as a catalogued handler registration is the
+            # same act as ``ws.addEventListener('message', handle)`` and
+            # carries that stamp, so the walk enters ``handle``. Every other
+            # write (``obj.h = fn``, ``module.exports = fn``) carries the
+            # object-literal stamp, which is deliberately NOT crossable:
+            # ``module.exports = parse`` must not flow a module-level source
+            # into every exported function.
+            _rhs = node.child_by_field_name("right")
+            if (
+                _lhs is not None
+                and _lhs.type in ("member_expression", "subscript_expression")
+                and _rhs is not None
+                and _rhs.type == "identifier"
+            ):
+                _handler = _resolve_value_ref(_rhs, _node_text(_rhs, source))
+                if (
+                    _handler is not None
+                    and _handler.kind in ("function", "method")
+                    and not _is_cross_package(file_path, _handler.path)
+                ):
+                    _registrar = _get_enclosing_function(
+                        node, source, file_path, global_symbols,
+                        symbol_by_position, line_offset,
+                    ) or module_symbol
+                    if _registrar is not None and _registrar.id != _handler.id:
+                        edges.append(Edge.create(
+                            src=_registrar.id,
+                            dst=_handler.id,
+                            edge_type="references",
+                            line=node.start_point[0] + 1 + line_offset,
+                            origin=PASS_ID,
+                            origin_run_id=run.execution_id,
+                            evidence_type=(
+                                "callback_argument_reference" if _registered
+                                else "object_field_reference"
+                            ),
                         ))
 
         # Object literal function references: {onClick: handleClick}
