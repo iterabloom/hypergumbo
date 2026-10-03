@@ -29,3 +29,18 @@
   clock: 2  # 87f8
   nonce: 87f8  # 87f8
   message: "IMPLEMENTED on branch jgstern-agent/fix/audit0021-rows (local, not pushed), commit 7fa77400a5. Decision: DELETE all six rows (python basicConfig/StreamHandler, go slog.NewTextHandler/NewJSONHandler, elixir Logger.metadata/configure): each writes nothing at the call; the later emitter is rowed, so the crossing stays represented (ADR-0049 ruling 3, erlang io_lib precedent; erlang's logger row already leaves process-metadata setters unrowed). python's logging completeness note rewritten so it stays true (basicConfig/StreamHandler now declared not I/O, examined negatives); go/elixir calls become external_potential. Considered and rejected: basicConfig -> fs_write (only 13 of 477 corpus calls pass filename=). Taint: six logging sinks gone, no source involved. Measured A/B: fastapi-template basicConfig 4->0; Logger.configure/metadata logging->external_potential on phoenix, plausible, livebook, emqx; one host_secret->logging flow lost on phoenix-framework (Application.get_env -> Logger.configure in with_logger_app, a config restore) -- read, false. go rows: no corpus reach (fixture only). Residuals filed: WI-nikir-gamot-ligur-riron-zomad-dutoj-fobut-siror. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/ragaz.md (OUTCOME, draft CLOSURE NOTE, A/B artifacts in run_10032026/ragaz/). Tests: red then green on the board; branch affected-test run 9955 passed + 8 failed (7 were pins of the old rows, fixed in fdb14eb77e; 1 hypothesis health-check under load), re-run of those files 1138 passed. No status change made."  # 87f8
+- op: update  # 529a
+  at: '2026-10-03T17:05:17Z'  # 529a
+  by: agent  # 529a
+  actor: jgstern_agent  # 529a
+  clock: 3  # 529a
+  nonce: 529a  # 529a
+  set:  # 529a
+    status: done  # 529a
+- op: discuss  # dcdb
+  at: '2026-10-03T17:05:17Z'  # dcdb
+  by: agent  # dcdb
+  actor: jgstern_agent  # dcdb
+  clock: 4  # dcdb
+  nonce: dcdb  # dcdb
+  message: "Merged in PR #1417 (dev c5249c1aa1).\n\nFixed on branch jgstern-agent/fix/audit0021-rows, commit 7fa77400a5. The six rows are deleted: python logging.basicConfig/StreamHandler, go log/slog.NewTextHandler/NewJSONHandler, elixir Logger.metadata/configure. Each configures or constructs a facility and writes nothing at the call (ADR-0050 axiom). The later emitter is rowed, so the crossing stays represented (ADR-0049 ruling 3; erlang io_lib precedent).\n\nBehavioral evidence: `io-boundaries` on a one-file program per language. Before: logging = {logging.StreamHandler, logging.basicConfig, logging.info} and {Logger.configure, Logger.info, Logger.metadata}. After: logging = {logging.info} and {Logger.info}, with the controls still reported. The go/elixir calls are now reported as external_potential; python's are examined negatives under the `logging` completeness grant, whose note now says so (test_audit0021_adjacent_rows.py::TestWiRagazConfiguringAFacilityWritesNothing).\n\nCorpus A/B: full-stack-fastapi-template logging.basicConfig 4→0. Logger.configure/metadata moved from logging to external_potential on phoenix-framework, plausible-analytics, livebook and emqx. One host_secret→logging flow was lost on phoenix-framework (Application.get_env → Logger.configure in with_logger_app); it was read and is a config restore, not a log write. No verdict moved toward confirmed.\n\nNOT asserted: any corpus effect of the go rows (0 reach in the cohort). Residuals filed as WI-nikir: basicConfig(filename=...) file creation (13/477 corpus calls), and values carried through facility state."  # dcdb

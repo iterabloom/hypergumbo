@@ -28,3 +28,18 @@
   clock: 2  # b344
   nonce: b344  # b344
   message: "IMPLEMENTED on branch jgstern-agent/fix/audit0021-rows (local, not pushed), commit a05b58014f. Decision: DELETE (no process boundary crossed; no in-process value exists to move to). objc NSNotificationCenter post* (3) and swift NotificationCenter.post removed; Distributed* centers stay ipc_send (pinned). Taint: four ipc sinks gone; calls now external_potential. Removal direction read back on a corpus A/B: every ipc_send chain lost on AFNetworking (8), ResearchKit (7), SDWebImage (5), CocoaLumberjack (3), Kingfisher (3), swift-composable-architecture (2) was an in-process post (arm B has zero ipc_send chains there); NO-IPC-SEND went violated->inconclusive on all six, never confirmed. ipc taint claims were inconclusive in both arms on those repos, so the taint effect is evidenced by the derivation test only. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/ragaz.md (OUTCOME, draft CLOSURE NOTE, A/B artifacts in run_10032026/ragaz/). Tests: red then green on the board; branch affected-test run 9955 passed + 8 failed (7 were pins of the old rows, fixed in fdb14eb77e; 1 hypothesis health-check under load), re-run of those files 1138 passed. No status change made."  # b344
+- op: update  # 3910
+  at: '2026-10-03T17:05:17Z'  # 3910
+  by: agent  # 3910
+  actor: jgstern_agent  # 3910
+  clock: 3  # 3910
+  nonce: '3910'  # 3910
+  set:  # 3910
+    status: done  # 3910
+- op: discuss  # 94dd
+  at: '2026-10-03T17:05:18Z'  # 94dd
+  by: agent  # 94dd
+  actor: jgstern_agent  # 94dd
+  clock: 4  # 94dd
+  nonce: 94dd  # 94dd
+  message: "Merged in PR #1417 (dev c5249c1aa1).\n\nFixed on branch jgstern-agent/fix/audit0021-rows, commit a05b58014f. objc NSNotificationCenter post* (3 rows) and swift NotificationCenter.post are deleted. An in-process post crosses no process boundary, so there is no value to move them to. The Distributed* centers stay ipc_send.\n\nBehavioral evidence: `io-boundaries` on one-file objc and swift programs reports ipc_send = {NSDistributedNotificationCenter.postNotificationName:object:userInfo:deliverImmediately:} and {DistributedNotificationCenter.postNotificationName}. The in-process posts are now external_potential.\n\nRemoval direction read back on a corpus A/B. In verify-claims, every ipc_send chain lost was an in-process post: AFNetworking 8, ResearchKit 7, SDWebImage 5, CocoaLumberjack 3, Kingfisher 3, swift-composable-architecture 2. Arm B has none left, and the only ipc_send primitive that changed is the post. NO-IPC-SEND went violated→inconclusive on all six, never confirmed."  # 94dd

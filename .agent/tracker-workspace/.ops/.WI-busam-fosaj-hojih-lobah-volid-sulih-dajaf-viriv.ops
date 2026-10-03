@@ -27,3 +27,18 @@
   clock: 2  # f2c7
   nonce: f2c7  # f2c7
   message: "IMPLEMENTED on branch jgstern-agent/fix/audit0021-rows (local, not pushed), commits 10f7eb148c + fdb14eb77e. Checked erlang first as asked: erlang rows spawn/spawn_link, proc_lib:spawn, supervisor:start_child as process_send, so Task.async/async_stream/start/start_link moved ipc_send -> process_send (pure relabel, ipc zone pinned). async_stream is lazy but kept (no other row carries the spawn; deleting would drop it, ADR-0049 ruling 3). FOUND: the row's \"Supervisor.start_child\" member was a function name on module Task that no call site produces (Task.Supervisor.start_child reported external_potential on dev); re-homed to module Task.Supervisor (added to CATALOGUE_SCOPE elixir). livebook: Task.Supervisor.start_child external_potential 8 -> process_send 8. CONSEQUENCE: elixir now has no ipc_send row; test_elixir_catalog_covers_all_expected_boundaries was passing on the misfiled rows and now asserts process_send; elixir's real ipc_send gap filed as WI-gurud-zuror-magiv-jobob-huvoh-jafoz-sapor-lujah. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/ragaz.md (OUTCOME, draft CLOSURE NOTE, A/B artifacts in run_10032026/ragaz/). Tests: red then green on the board; branch affected-test run 9955 passed + 8 failed (7 were pins of the old rows, fixed in fdb14eb77e; 1 hypothesis health-check under load), re-run of those files 1138 passed. No status change made."  # f2c7
+- op: update  # 03db
+  at: '2026-10-03T17:05:18Z'  # 03db
+  by: agent  # 03db
+  actor: jgstern_agent  # 03db
+  clock: 3  # 03db
+  nonce: 03db  # 03db
+  set:  # 03db
+    status: done  # 03db
+- op: discuss  # 7085
+  at: '2026-10-03T17:05:19Z'  # 7085
+  by: agent  # 7085
+  actor: jgstern_agent  # 7085
+  clock: 4  # 7085
+  nonce: '7085'  # 7085
+  message: "Merged in PR #1417 (dev c5249c1aa1).\n\nFixed on branch jgstern-agent/fix/audit0021-rows, commits 10f7eb148c and fdb14eb77e. elixir Task.async/async_stream/start/start_link are process_send, following erlang.yaml's spawn / proc_lib:spawn / supervisor:start_child precedent. The dead `Task: Supervisor.start_child` spelling is re-homed to `Task.Supervisor: start_child`.\n\nBehavioral evidence: `io-boundaries` on a one-file elixir program reports all five under process_send beside the control `:erlang.spawn`, and no ipc_send. On livebook, Task.Supervisor.start_child moved from external_potential (8) to process_send (8): before this commit the row could not match.\n\nConsequence: elixir now has no ipc_send row. The coverage test that relied on the misfiled rows asserts process_send instead, and elixir's genuine ipc_send gap (Port.command rowed subprocess; erlang:port_command unrowed) is filed as WI-gurud."  # 7085
