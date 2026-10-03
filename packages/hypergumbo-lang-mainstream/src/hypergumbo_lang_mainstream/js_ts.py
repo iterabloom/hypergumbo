@@ -58,6 +58,17 @@ target.
 
 Call-Site Resolution
 --------------------
+- **Bare identifiers** (``helper()``, ``xs.map(helper)``, ``{onClick: h}``):
+  ``_ScopeBinder`` walks the scopes enclosing the identifier (parameters,
+  ``catch`` and loop bindings, each block's declarations with ``var``
+  hoisted, then the file's module scope and imports) and resolves a
+  declaration by POSITION. A declaration in scope wins outright (0.90); a
+  parameter or local value is a callee nothing can name and emits nothing;
+  only a name no scope in the file binds reaches the import, same-package and
+  repo-wide name lookups (WI-sofuh). A called module binding
+  (``import m from 'x'; m()``) emits ``x``'s ``default``; a name nothing binds
+  and nothing in the repo carries emits the ``external`` placeholder
+  (WI-fahod).
 - **Member-call cascade** (``obj.m()``): ``this.m()`` against the enclosing
   class; a typed ``this.prop`` receiver; a
   namespace-import alias; a variable typed by ``var_types``; a bare
@@ -5031,67 +5042,261 @@ def _mark_exported_symbols(
         sym.is_exported = short in exported_names and "." not in sym.name
 
 
-def _is_shadowed_by_param(node: "tree_sitter.Node", name: str, source: bytes) -> bool:
-    """Check if *name* is shadowed by a parameter of an enclosing function.
+#: WI-sofuh. What a bare identifier is bound to, read off the scopes that
+#: enclose it. ``symbol``: a declaration in this file that minted a Symbol (a
+#: function, class, function-valued declarator or module-level variable).
+#: ``local``: a value bound in scope that has no symbol (a parameter, a local
+#: variable, a destructured name, a ``catch`` or loop binding). ``import``: an
+#: ``import`` or ``require('<literal>')`` binding, which the import maps own.
+_BOUND_SYMBOL = "symbol"
+_BOUND_LOCAL = "local"
+_BOUND_IMPORT = "import"
 
-    Walks up the AST from *node* looking for ``arrow_function``,
-    ``function_declaration``, ``function_expression``, or ``method_definition``
-    ancestors whose ``formal_parameters`` contain an ``identifier`` child
-    matching *name*.
+_JS_FUNCTION_SCOPES: frozenset[str] = frozenset({
+    "function_declaration", "generator_function_declaration",
+    "function_expression", "generator_function", "arrow_function",
+    "method_definition",
+})
 
-    This prevents false cross-file edges when a callback parameter (e.g.,
-    ``resolve`` / ``reject`` inside ``new Promise((resolve, reject) => {...})``)
-    happens to share a name with a globally-defined function.
+#: Nodes whose direct children are statements that declare into the scope.
+_JS_STATEMENT_SCOPES: frozenset[str] = frozenset({
+    "program", "statement_block", "class_static_block", "switch_case",
+    "switch_default",
+})
 
-    Walks through ALL enclosing function boundaries (not just the nearest)
-    because JavaScript has lexical scoping — parameters from outer functions
-    are visible in nested callbacks.  For example::
 
-        new Promise(function(resolve, reject) {
-            doAsync(function(err) {
-                resolve(42);  // resolve is from the OUTER function
-            });
-        });
+def _pattern_binding_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Every name a binding PATTERN introduces (a parameter or a declarator name).
 
-    Stops at ``function_declaration`` boundaries since those represent
-    named top-level functions that form the analysis unit.
+    Reads only binding positions: ``{a, b: c, d = 1}`` binds ``a``, ``c`` and
+    ``d`` -- not ``b`` (a property key) and not anything in a default value.
     """
-    current = node.parent
-    while current is not None:
-        if current.type in (
-            "arrow_function",
-            "function_declaration",
-            "function_expression",
-            "method_definition",
-            # WI-zavad: generator declaration/expression scopes also bind params
-            "generator_function_declaration",
-            "generator_function",
+    t = node.type
+    if t in ("identifier", "shorthand_property_identifier_pattern"):
+        return [_node_text(node, source)]
+    if t in ("object_pattern", "array_pattern", "formal_parameters"):
+        out: list[str] = []
+        for c in node.named_children:
+            out.extend(_pattern_binding_names(c, source))
+        return out
+    if t == "pair_pattern":
+        value = node.child_by_field_name("value")
+        return _pattern_binding_names(value, source) if value is not None else []
+    if t in ("assignment_pattern", "object_assignment_pattern"):
+        left = node.child_by_field_name("left")
+        return _pattern_binding_names(left, source) if left is not None else []
+    if t in ("required_parameter", "optional_parameter"):
+        pattern = node.child_by_field_name("pattern")
+        return _pattern_binding_names(pattern, source) if pattern is not None else []
+    if t == "rest_pattern":
+        out = []
+        for c in node.named_children:
+            out.extend(_pattern_binding_names(c, source))
+        return out
+    return []
+
+
+def _is_require_binding(declarator: "tree_sitter.Node", source: bytes) -> bool:
+    """``require('<literal>')`` is the declarator's value: the import maps own it."""
+    value = declarator.child_by_field_name("value")
+    return (
+        value is not None
+        and value.type == "call_expression"
+        and _require_module_string(value, source) is not None
+    )
+
+
+class _ScopeBinder:
+    """Resolve a bare identifier by the scopes that enclose it (WI-sofuh).
+
+    THE RULE, under every JavaScript module system: the innermost binding wins
+    -- a parameter or local, then each enclosing function's declarations, then
+    the file's module scope (its declarations and imports), then a global. The
+    analyzer resolved a bare name with none of that: named-import
+    disambiguation, then the first same-package candidate, then the repo-wide
+    resolver, so ``helper(p)`` in a file that declares ``helper`` bound to
+    another file's ``helper`` whenever one sorted first.
+
+    A DECLARATION IS FOUND BY POSITION, NEVER BY NAME (INV-mozas, INV-midag).
+    The walk finds the declaring NODE; the symbol is the one of that name
+    whose span lies inside it (outermost first, so a function's own symbol
+    beats a same-named one nested in its body). A declaration that minted no
+    symbol is a value the analyzer cannot name, and is reported as ``local``.
+
+    WHAT IT DOES NOT MODEL: ``with`` blocks, ``eval``-introduced bindings, and
+    sloppy-mode block-function hoisting. ``var`` IS hoisted to the function
+    (or file) it appears in. Per-scope tables are built once per scope node.
+    """
+
+    def __init__(
+        self,
+        source: bytes,
+        file_symbols_by_name: dict[str, list[Symbol]],
+        line_offset: int,
+    ) -> None:
+        self._source = source
+        self._file_symbols_by_name = file_symbols_by_name
+        self._line_offset = line_offset
+        self._tables: dict[int, dict[str, "tree_sitter.Node | str"]] = {}
+
+    def bind(
+        self, ref: "tree_sitter.Node", name: str,
+    ) -> "tuple[str, Symbol | None] | None":
+        """``(kind, symbol)`` for the binding *ref* sees, or None when unbound."""
+        current = ref.parent
+        while current is not None:
+            t = current.type
+            if t in _JS_FUNCTION_SCOPES:
+                params = current.child_by_field_name("parameters")
+                if params is None:
+                    # ``x => ...``: the single parameter is a bare identifier.
+                    params = current.child_by_field_name("parameter")
+                if params is not None and name in _pattern_binding_names(
+                    params, self._source,
+                ):
+                    return _BOUND_LOCAL, None
+                if t in ("function_expression", "generator_function"):
+                    # A named function expression binds its own name inside.
+                    own = current.child_by_field_name("name")
+                    if own is not None and _node_text(own, self._source) == name:
+                        return _BOUND_LOCAL, None
+            elif t == "catch_clause":
+                param = current.child_by_field_name("parameter")
+                if param is not None and name in _pattern_binding_names(
+                    param, self._source,
+                ):
+                    return _BOUND_LOCAL, None
+            elif t in ("for_statement", "for_in_statement"):
+                if name in self._loop_names(current):
+                    return _BOUND_LOCAL, None
+            if t in _JS_STATEMENT_SCOPES:
+                hit = self._table(current).get(name)
+                if hit is not None:
+                    return self._resolve(hit, name)
+            current = current.parent
+        return None
+
+    def _loop_names(self, loop: "tree_sitter.Node") -> list[str]:
+        if loop.type == "for_statement":
+            init = loop.child_by_field_name("initializer")
+            if init is not None and init.type in (
+                "lexical_declaration", "variable_declaration",
+            ):
+                return [
+                    n for d in init.named_children
+                    if d.type == "variable_declarator"
+                    for n in self._declarator_names(d)
+                ]
+            return []
+        # for (const x of xs) / for (let [k, v] in o): ``kind`` marks a
+        # declaration; without it ``left`` is an assignment target, not a binding.
+        if loop.child_by_field_name("kind") is None:
+            return []
+        left = loop.child_by_field_name("left")
+        return _pattern_binding_names(left, self._source) if left is not None else []
+
+    def _declarator_names(self, declarator: "tree_sitter.Node") -> list[str]:
+        name_node = declarator.child_by_field_name("name")
+        if name_node is None:  # pragma: no cover - grammar always sets it
+            return []
+        return _pattern_binding_names(name_node, self._source)
+
+    def _table(self, scope: "tree_sitter.Node") -> dict[str, "tree_sitter.Node | str"]:
+        key = scope.id
+        table = self._tables.get(key)
+        if table is None:
+            table = {}
+            self._fill(scope, table, hoist_var=scope.type == "program" or (
+                scope.parent is not None and scope.parent.type in _JS_FUNCTION_SCOPES
+            ))
+            self._tables[key] = table
+        return table
+
+    def _fill(
+        self,
+        scope: "tree_sitter.Node",
+        table: dict[str, "tree_sitter.Node | str"],
+        hoist_var: bool,
+    ) -> None:
+        for stmt in scope.named_children:
+            self._declare(stmt, table)
+        if hoist_var:
+            # ``var`` anywhere in this function body (outside nested functions)
+            # binds here, not in the block it is written in.
+            stack = [
+                c for s in scope.named_children
+                if s.type not in _JS_FUNCTION_SCOPES
+                for c in s.named_children
+            ]
+            while stack:
+                n = stack.pop()
+                if n.type in _JS_FUNCTION_SCOPES or n.type in (
+                    "class_declaration", "class",
+                ):
+                    continue
+                if n.type == "variable_declaration":
+                    for d in n.named_children:
+                        if d.type == "variable_declarator":
+                            for nm in self._declarator_names(d):
+                                table.setdefault(nm, d)
+                stack.extend(n.named_children)
+
+    def _declare(
+        self, stmt: "tree_sitter.Node", table: dict[str, "tree_sitter.Node | str"],
+    ) -> None:
+        t = stmt.type
+        if t == "export_statement":
+            decl = stmt.child_by_field_name("declaration")
+            if decl is not None:
+                self._declare(decl, table)
+            return
+        if t in (
+            "function_declaration", "generator_function_declaration",
+            "class_declaration", "abstract_class_declaration",
+            "enum_declaration",
         ):
-            for child in current.children:
-                if child.type == "formal_parameters":
-                    for param in child.children:
-                        # JS: direct identifier params
-                        if param.type == "identifier" and _node_text(param, source) == name:
-                            return True
-                        # TS: params wrapped in required_parameter or optional_parameter
-                        if param.type in ("required_parameter", "optional_parameter"):
-                            for pc in param.children:
-                                if pc.type == "identifier" and _node_text(pc, source) == name:
-                                    return True
-                    break
-                # arrow_function with single param (no parens): (x) => ... vs x => ...
-                if current.type == "arrow_function" and child.type == "identifier":
-                    if _node_text(child, source) == name:
-                        return True
-            # Not found in this function's params.  For named function
-            # declarations (top-level), stop — these are analysis units.
-            # For closures (arrow_function, function_expression), continue
-            # walking up since JS lexical scoping makes outer params visible.
-            if current.type in ("function_declaration", "generator_function_declaration"):
-                return False
-            # else: keep walking up through closure scopes
-        current = current.parent
-    return False
+            name_node = stmt.child_by_field_name("name")
+            if name_node is not None:
+                table.setdefault(_node_text(name_node, self._source), stmt)
+        elif t in ("lexical_declaration", "variable_declaration"):
+            for d in stmt.named_children:
+                if d.type != "variable_declarator":
+                    continue
+                bound: "tree_sitter.Node | str" = (
+                    _BOUND_IMPORT if _is_require_binding(d, self._source) else d
+                )
+                for nm in self._declarator_names(d):
+                    table.setdefault(nm, bound)
+        elif t == "import_statement":
+            for n in iter_tree(stmt):
+                if n.type == "identifier" and n.parent is not None and n.parent.type in (
+                    "import_clause", "namespace_import", "import_specifier",
+                    "import_require_clause",
+                ):
+                    # ``import {a as b}``: only the LAST identifier is bound.
+                    if n.parent.type == "import_specifier" and n.next_named_sibling is not None:
+                        continue
+                    table.setdefault(_node_text(n, self._source), _BOUND_IMPORT)
+
+    def _resolve(
+        self, hit: "tree_sitter.Node | str", name: str,
+    ) -> "tuple[str, Symbol | None]":
+        if isinstance(hit, str):
+            return hit, None
+        start = (hit.start_point[0] + 1 + self._line_offset, hit.start_point[1])
+        end = (hit.end_point[0] + 1 + self._line_offset, hit.end_point[1])
+        inside = [
+            ((s.span.start_line, s.span.start_col), i, s)
+            for i, s in enumerate(self._file_symbols_by_name.get(name, ()))
+            if s.span is not None
+            and start <= (s.span.start_line, s.span.start_col)
+            and (s.span.end_line, s.span.end_col) <= end
+        ]
+        if not inside:
+            return _BOUND_LOCAL, None
+        # Outermost first: a function's own symbol beats a same-named one
+        # declared inside its body.
+        return _BOUND_SYMBOL, min(inside)[2]
 
 
 #: WI-punar. Event listeners whose catalogue row matches the method NAME while
@@ -5364,6 +5569,7 @@ def _extract_edges(
     symbols_by_name: dict[str, list[Symbol]] | None = None,
     module_symbol: Symbol | None = None,
     named_import_originals: dict[str, str] | None = None,
+    file_symbols: list[Symbol] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed tree (pass 2).
 
@@ -5400,6 +5606,49 @@ def _extract_edges(
     if class_resolver is None:  # pragma: no cover - defensive
         class_resolver = NameResolver(global_classes)
     _caller_path = str(file_path)
+    # WI-sofuh: this file's own symbols by name, for the scope binder. The
+    # multi-file pass hands them in; a single-file caller's registry IS the file.
+    _file_symbols_by_name: dict[str, list[Symbol]] = {}
+    for _fs in (
+        file_symbols if file_symbols is not None else global_symbols.values()
+    ):
+        if _fs.path == _caller_path:
+            _file_symbols_by_name.setdefault(_fs.name, []).append(_fs)
+    binder = _ScopeBinder(source, _file_symbols_by_name, line_offset)
+
+    def _resolve_value_ref(ref: "tree_sitter.Node", name: str) -> Symbol | None:
+        """The symbol a bare identifier used as a VALUE names (WI-sofuh).
+
+        A function passed (``xs.map(helper)``), stored (``{onClick: h}``,
+        ``obj.h = h``) or written shorthand (``{h}``). The enclosing scopes
+        decide first, exactly as for a direct call; only a name no scope in
+        this file binds falls through to the import, same-package and
+        name-keyed lookups.
+        """
+        binding = binder.bind(ref, name)
+        if binding is not None:
+            if binding[0] == _BOUND_SYMBOL:
+                return binding[1]
+            if binding[0] == _BOUND_LOCAL:
+                return None
+        elif name in JS_BUILTIN_NAMES:
+            return None
+        target: Symbol | None = None
+        import_module = (named_imports or {}).get(name)
+        if import_module and symbols_by_name:
+            target = _disambiguate_by_import(
+                import_module, file_path, name, symbols_by_name,
+            )
+        if target is None and symbols_by_name:
+            target = _same_package_candidate(file_path, name, symbols_by_name)
+        if target is None:
+            target = global_symbols.get(name)
+        if target is None:  # pragma: no cover - defensive resolver fallback
+            lookup_result = resolver.lookup(name, caller_path=_caller_path)
+            if lookup_result.found and lookup_result.symbol is not None:
+                target = lookup_result.symbol
+        return target
+
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
@@ -5536,20 +5785,49 @@ def _extract_edges(
                     # Skip JS built-in names to prevent false edges to
                     # user-defined functions that shadow built-ins
                     # (e.g., Number(x) → React component named Number).
-                    if func_name in JS_BUILTIN_NAMES:
-                        pass  # fall through to callback/middleware handling below
-                    elif _is_shadowed_by_param(node, func_name, source):
-                        pass  # local parameter shadows global — skip resolution
+                    # WI-sofuh: the scopes enclosing the call decide first.
+                    # A parameter or local VALUE (``local``) is a callee the
+                    # analyzer cannot name; python's INV-foluz arm refuses it
+                    # for the same reason, and writing its bare name into a
+                    # placeholder would let the catalogue's short-name gate
+                    # read ``function f(exec) { exec(c) }`` as
+                    # ``child_process.exec``.
+                    _binding = binder.bind(func_node, func_name)
+                    _bound_kind = _binding[0] if _binding is not None else None
+                    # A module object bound by ``import m from 'x'`` /
+                    # ``import * as m`` / ``const m = require('x')`` and then
+                    # CALLED: its callee is that module's default export.
+                    _called_module = (
+                        namespace_imports.get(func_name)
+                        if _bound_kind == _BOUND_IMPORT
+                        and func_name not in (named_imports or {})
+                        else None
+                    )
+                    if _bound_kind == _BOUND_LOCAL:
+                        pass  # a value bound in scope — not resolvable by name
+                    elif _binding is None and func_name in JS_BUILTIN_NAMES:
+                        # Skip JS built-in names to prevent false edges to
+                        # user-defined functions in OTHER files that shadow
+                        # built-ins (e.g., Number(x) → React component named
+                        # Number). A declaration in this file's scope is bound
+                        # above it and resolves normally.
+                        pass
                     elif (current_function := (_get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol)):
-                        # Try import-path disambiguation first (cross-package
-                        # same-name functions, e.g. two packages both export
-                        # ``process()`` but main.js imports from one specific
-                        # module).  Falls back to resolver if no named import
-                        # exists for this function name.
                         callee = None
                         edge_confidence = 0.85
+                        if _binding is not None and _binding[0] == _BOUND_SYMBOL:
+                            # Proven by position: the declaration this call
+                            # site sees. Stronger than every name heuristic
+                            # below, including an explicit-import match.
+                            callee = _binding[1]
+                            edge_confidence = 0.90
+                        # Otherwise: import-path disambiguation first
+                        # (cross-package same-name functions, e.g. two packages
+                        # both export ``process()`` but main.js imports from one
+                        # specific module).  Falls back to resolver if no named
+                        # import exists for this function name.
                         import_module = (named_imports or {}).get(func_name)
-                        if import_module and symbols_by_name:
+                        if callee is None and import_module and symbols_by_name:
                             callee = _disambiguate_by_import(
                                 import_module, file_path, func_name, symbols_by_name,
                             )
@@ -5598,6 +5876,16 @@ def _extract_edges(
                                     else:
                                         callee = _sym
                                         edge_confidence = 0.85 * lookup_result.confidence
+                        if (
+                            callee is not None
+                            and _called_module is not None
+                            and callee.kind == "variable"
+                        ):
+                            # The name lookup found a module-binding VARIABLE
+                            # (``const express = require('express')`` mints one)
+                            # rather than a function: that is the import
+                            # binding itself, not a callee.
+                            callee = None
                         if callee is not None:
                             edge = Edge.create(
                                 src=current_function.id,
@@ -5678,6 +5966,36 @@ def _extract_edges(
                                 ),
                             )
                             edges.append(edge)
+                        elif _called_module is not None:
+                            # WI-fahod: a called module binding emitted nothing.
+                            # ``default`` is the export a call on the binding
+                            # reaches under ES-module semantics (a CommonJS
+                            # ``module.exports`` surfaces as ``default`` there
+                            # too), so ``import exec from 'child_process';
+                            # exec(p)`` names ``child_process.default`` -- which
+                            # no catalogue row is -- not ``child_process.exec``.
+                            edges.append(make_unresolved_edge(
+                                lang, current_function.id, "default",
+                                node.start_point[0] + 1 + line_offset,
+                                PASS_ID, run.execution_id,
+                                module_hint=_normalize_import_module_hint(
+                                    _called_module,
+                                ),
+                            ))
+                        elif _binding is None:
+                            # WI-fahod: a name no scope in this file binds, not
+                            # imported, and carried by no in-repo symbol. It
+                            # emitted NOTHING, so the ADR-0017 walk recorded an
+                            # escape where a call stood (no ``callees_at``
+                            # entry). The ``external`` placeholder is python's
+                            # INV-foluz residual, emitted for the same reason:
+                            # the callee is genuinely unknown, and the call is
+                            # still a call.
+                            edges.append(make_unresolved_edge(
+                                lang, current_function.id, func_name,
+                                node.start_point[0] + 1 + line_offset,
+                                PASS_ID, run.execution_id,
+                            ))
 
                         if callee is not None:
                             # Return type inference: if function has a return
@@ -6075,31 +6393,11 @@ def _extract_edges(
                         if arg.type != "identifier":
                             continue
                         arg_name = _node_text(arg, source)
-                        if arg_name in JS_BUILTIN_NAMES:
-                            continue
-                        # Parameter shadowing: skip if arg name matches a
-                        # param of an enclosing function (e.g., resolve
-                        # passed to forEach inside a Promise callback).
-                        if _is_shadowed_by_param(arg, arg_name, source):
-                            continue
-                        # Same resolution strategy as direct calls:
-                        # import-path first, then same-package, then global
-                        target: Symbol | None = None
-                        import_module = (named_imports or {}).get(arg_name)
-                        if import_module and symbols_by_name:
-                            target = _disambiguate_by_import(
-                                import_module, file_path, arg_name, symbols_by_name,
-                            )
-                        if target is None and symbols_by_name:
-                            target = _same_package_candidate(
-                                file_path, arg_name, symbols_by_name,
-                            )
-                        if target is None:
-                            target = global_symbols.get(arg_name)
-                        if target is None:  # pragma: no cover - defensive resolver fallback
-                            lookup_result = resolver.lookup(arg_name, caller_path=_caller_path)
-                            if lookup_result.found and lookup_result.symbol is not None:
-                                target = lookup_result.symbol
+                        # WI-sofuh: resolved by the enclosing scopes first, so
+                        # a parameter or local (``resolve`` passed to forEach
+                        # inside a Promise callback) names nothing and a
+                        # declaration in this file wins over another file's.
+                        target = _resolve_value_ref(arg, arg_name)
                         # Route symbols can shadow function symbols in
                         # global_symbols (last-one-wins).
                         #
@@ -6384,11 +6682,7 @@ def _extract_edges(
 
             if value_node is not None:
                 ref_name = _node_text(value_node, source)
-                target = global_symbols.get(ref_name)
-                if target is None:  # pragma: no cover - defensive resolver fallback
-                    lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
-                    if lookup_result.found and lookup_result.symbol is not None:
-                        target = lookup_result.symbol
+                target = _resolve_value_ref(value_node, ref_name)
                 # Cross-package guard: object field refs should not
                 # cross npm package boundaries.
                 if (
@@ -6414,11 +6708,7 @@ def _extract_edges(
         # Shorthand property: {handleClick} — equivalent to {handleClick: handleClick}
         elif node.type == "shorthand_property_identifier":
             ref_name = _node_text(node, source)
-            target = global_symbols.get(ref_name)
-            if target is None:  # pragma: no cover - defensive resolver fallback
-                lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
-                if lookup_result.found and lookup_result.symbol is not None:
-                    target = lookup_result.symbol
+            target = _resolve_value_ref(node, ref_name)
             # Cross-package guard: shorthand props should not cross packages
             if (
                 target is not None
@@ -6859,6 +7149,7 @@ def _analyze_javascript_impl(
             symbols_by_name,
             module_symbol=file_mod_sym,
             named_import_originals=pf.named_import_originals or {},
+            file_symbols=symbols_for_path(_symbols_by_path, str(pf.path), pf_name),
         )
         # WI-lozug: emit module_attr_ref edges for attribute reads on
         # imported modules and well-known JS/Node globals (``process``,
