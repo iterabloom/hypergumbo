@@ -55,3 +55,12 @@
   clock: 6  # a821
   nonce: a821  # a821
   message: "Merged in PR #1417 (dev c5249c1aa1).\n\nWI-mujod DONE on jgstern-agent/fix/mujod (17c73ebb84, e4af85ab0e, c07a5ca605). Sequence as the owner set it:\n(1) go's under-qualified rows keyed by import path -- go.yaml `path/filepath`, overlay `golang.org/x/sys/unix`\n(5 rows) and `google.golang.org/grpc`; (2) `_module_matches` arm 3 accepts the hint-longer suffix only with\n`hint_is_path=True`, which only taint's path-derived resolved-edge gate passes; `named_lookup_arm` (io AND\ntaint) refuses it. Behavioural evidence: koel's own tsconfig alias `@/services/http` + `http.get<User>(...)` on\nthe TS analyzer: base `net_send http.get`, branch untagged (test_koel_shape_is_no_longer_node_http);\n`lookup_with_module('writer','mycsvlib.csv')` and `match_sink('python','writer','mycsvlib.csv')` None on the\nbranch. Corpus A/B by call site over 39 repos / 15 languages: koel 41 false net_send removed; go 55 sites in 4\nrepos change primitive NAME only, 0 boundaries lost; powerdns 6 `time()` sites (files including only\n`<sys/time.h>`) become unclassified and withhold (inconclusive), not confirm; 0 diffs elsewhere. NOT asserted:\nbehaviour beyond these 39 repos; taint verdict movement on a real repo (the two verify-claims A/B repos are\nwithheld by the uncatalogued-language gate in both arms)."  # a821
+- op: update  # d1fb
+  at: '2026-10-03T17:07:14Z'  # d1fb
+  by: agent  # d1fb
+  actor: jgstern_agent  # d1fb
+  clock: 7  # d1fb
+  nonce: d1fb  # d1fb
+  set: {}  # d1fb
+  add:  # d1fb
+    tags: [awaits_bakeoff_validation]  # d1fb

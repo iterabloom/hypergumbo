@@ -43,3 +43,12 @@
   clock: 4  # 0afb
   nonce: 0afb  # 0afb
   message: "Merged in PR #1417 (dev c5249c1aa1).\n\nWI-hilot DONE on jgstern-agent/fix/mujod (ad7cde0712). A closed table of C++'s C-library header names\n(_CXX_C_LIBRARY_HEADERS, 28 entries) gives each its C stem as a spelling inside module_hint_disjuncts, the\nexpansion both the row choice (io + taint, named_lookup_arm) and the coverage gate use; scoped to calls in c/cpp.\nBehavioural evidence: fixture with <cstdlib>/<cstring>/<cstdio>/<ctime>/<sys/socket.h>, getenv -> sendto:\nverify-claims host_secret->network inconclusive rc 2 (\"could not classify (cstdio, cstdlib, cstring, ctime,\nsys/socket)\") -> violated rc 1 (stdlib.getenv -> sys/socket.sendto); io-boundaries now reports getenv/fopen/\nprintf/time. Corpus (base vs branch, surveys under both trees): C++ repos gain 223 classified call sites\n(modsecurity 4, whisper.cpp 102, powerdns 44, sherpa-onnx 73); the 6 C repos and every C/C++ survey edge set are\nunchanged. NOT asserted: precision of the C rows themselves in C++ code (printf fs_write -> WI-sofam;\nfprintf(stderr) on fs_write; ADL getline reported as stdio.getline)."  # 0afb
+- op: update  # fd0e
+  at: '2026-10-03T17:07:15Z'  # fd0e
+  by: agent  # fd0e
+  actor: jgstern_agent  # fd0e
+  clock: 5  # fd0e
+  nonce: fd0e  # fd0e
+  set: {}  # fd0e
+  add:  # fd0e
+    tags: [awaits_bakeoff_validation]  # fd0e

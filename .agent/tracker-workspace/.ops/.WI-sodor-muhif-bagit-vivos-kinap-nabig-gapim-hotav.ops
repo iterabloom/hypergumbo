@@ -1,0 +1,21 @@
+- op: create  # 84c0
+  at: '2026-10-03T17:07:08Z'  # 84c0
+  by: agent  # 84c0
+  actor: jgstern_agent  # 84c0
+  clock: 1  # 84c0
+  nonce: 84c0  # 84c0
+  data:  # 84c0
+    kind: work_item  # 84c0
+    title: "inherited_calls emits one edge per (src, dst) with the first line only and no call_lines, so repeated call sites of one inherited method collapse to one"  # 84c0
+    status: todo_hard  # 84c0
+    priority: 3  # 84c0
+    parent:  # 84c0
+    tags:  # 84c0
+    - analysis_quality  # 84c0
+    - dispatch  # 84c0
+    isbefore: []  # 84c0
+    duplicate_of: []  # 84c0
+    not_duplicate_of: []  # 84c0
+    pr_ref:  # 84c0
+    description: "inherited_calls emits ONE resolved edge per (src, dst) pair (it adds each emitted pair to existing_call_pairs) carrying only the FIRST call line, and no `meta.call_lines`. The analyzer's own edges for repeated calls carry `call_lines` (every site). So when a method calls the same inherited method on several lines, only the first site is represented once the linker is the resolver.\n\nMEASURED while diffing WI-kutal-malip-parah-bobis-tovaj-todug-lafaf-polop by call site (expanding call_lines): 102 pretix sites and 13 django sites read as \"lost\" whose (src, dst) pair WAS resolved by the linker on another line. Reachability is unaffected; per-site consumers (line-level evidence, call_lines-based narrowing, a site-keyed diff) see fewer sites. Not checked: whether any shipped consumer reads call_lines on linker edges."  # 84c0
+    fields: {}  # 84c0

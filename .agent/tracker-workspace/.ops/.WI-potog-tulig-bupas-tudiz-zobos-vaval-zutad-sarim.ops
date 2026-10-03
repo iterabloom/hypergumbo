@@ -42,3 +42,12 @@
   clock: 4  # d564
   nonce: d564  # d564
   message: "Merged in PR #1417 (dev c5249c1aa1).\n\nFixed in PR #1417 (commit 09b93f0bb4, go.py only). This reuses WI-baran's mechanism: the socket family fixed at creation decides the stamp, and accept follows the listener one binding back.\n\nBehavioral evidence: on the podman shape (`net.DialTimeout(\"unix\", p, ..)` then `fmt.Fprintln(con, ..)`), io-boundaries moves from net_send to ipc_send, and verify-claims host_secret->ipc moves from confirmed (0 flows) to violated at fmt.Fprintln. The TCP and variable-network controls are unchanged (net_send). On the corpus, podman `pkg/machine/shim/claim_darwin.go` claimDockerSock Fprintln is now ipc_send. Four more rows moved, each read back as a unix socket: containerd, vpnkit, container-libs and linuxkit. Nothing was removed or added across the 21 Go repos run.\n\nA network argument that is not a literal keeps net_stream (pinned).\n\nThis closes the filed instance. NOT asserted: that every unix-socket crossing in Go is now ipc. `net.Conn.Write` / `Read` on a unix connection are still net_* (WI-kalol-vinud-kozog-zakar-kufuh-bunub-lapun-zibap), and the dial/listen call rows themselves are unchanged (C connect precedent)."  # d564
+- op: update  # 2167
+  at: '2026-10-03T17:07:15Z'  # 2167
+  by: agent  # 2167
+  actor: jgstern_agent  # 2167
+  clock: 5  # 2167
+  nonce: '2167'  # 2167
+  set: {}  # 2167
+  add:  # 2167
+    tags: [awaits_bakeoff_validation]  # 2167

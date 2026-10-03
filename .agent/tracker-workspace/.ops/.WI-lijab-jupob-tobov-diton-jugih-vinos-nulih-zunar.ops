@@ -1,0 +1,22 @@
+- op: create  # 1dd0
+  at: '2026-10-03T17:10:05Z'  # 1dd0
+  by: agent  # 1dd0
+  actor: jgstern_agent  # 1dd0
+  clock: 1  # 1dd0
+  nonce: 1dd0  # 1dd0
+  data:  # 1dd0
+    kind: work_item  # 1dd0
+    title: "java (and reportedly kotlin/scala for UNTYPED locals): the file-scoped imports map names the module slot of an unresolved call whose receiver is a LOCAL named like an imported class (MyFiles Files = ...; Files.readAllBytes(p) -> java.nio.file.Files)"  # 1dd0
+    status: todo_hard  # 1dd0
+    priority: 3  # 1dd0
+    parent:  # 1dd0
+    tags:  # 1dd0
+    - java  # 1dd0
+    - analysis_quality  # 1dd0
+    - io_boundary  # 1dd0
+    isbefore: []  # 1dd0
+    duplicate_of: []  # 1dd0
+    not_duplicate_of: []  # 1dd0
+    pr_ref:  # 1dd0
+    description: "FOUND 2026-10-03 while fixing INV-dulum-kakum-guhus-podas-mirup-lavut-jamob-kakif (python's file-scoped import map ignored a shadowing local; branch jgstern-agent/fix/dulum). Same mechanism in the JVM analyzers. Filed, not fixed there.\n\nJAVA (live-verified). java.py's `imports` (`_extract_imports`, java.py:677) is file-scoped. For an unresolved call the module slot is `imports.get(receiver_name, \"external\")` and the `ExternalRef` takes `imports[receiver_name]` whenever `receiver_name in imports` (java.py:3170-3190); the typed-local branch is an `elif` after it, so a LOCAL named like an imported class never reaches it. Only `_java_call_construct` (java.py:2197-2201) checks `var_types`/`type_params`, so the construct says `method` while the module slot still names the import. Repro (dev b7417402dc):\n\n    import java.nio.file.Files;\n    class A { void shadow(Path p) { MyFiles Files = new MyFiles(); Files.readAllBytes(p); } }\n\n  -> calls A.shadow -> java:java.nio.file.Files:0-0:readAllBytes   (the receiver is a MyFiles)\n\nKOTLIN / SCALA (NOT live-verified -- reported by a code read only). kotlin.py's final unresolved emit (kotlin.py:1915-1941) consults `var_types.get(receiver_name)` first and falls to `static_owner_module(receiver_name, imports, ...)` only when that is None, so a TYPED local wins but an UNTYPED local named like an import is said to fall through to the import. scala.py's `receiver_type` (1691-1697) finds the nearest binder and, when the binder's type is unknown, falls back to the file-wide map and then the import (its docstring at 1620-1630 says letting untyped binders shadow was deliberately rejected -- read that before changing it). A Kotlin fixture with a parameter `Files: Any` did NOT reproduce (typed `Any` routes to external); the untyped-local shape was not tried.\n\nDIRECTION: false positive in the module slot (a catalogued class's row for an object that is not one). Java locals are conventionally lowerCamel, so the shape is probably rarer than in Python; NOT MEASURED."  # 1dd0
+    fields: {}  # 1dd0
