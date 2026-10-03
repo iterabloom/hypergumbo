@@ -1,0 +1,21 @@
+- op: create  # f89d
+  at: '2026-10-03T08:02:16Z'  # f89d
+  by: agent  # f89d
+  actor: jgstern_agent  # f89d
+  clock: 1  # f89d
+  nonce: f89d  # f89d
+  data:  # f89d
+    kind: work_item  # f89d
+    title: "Cohort runners outside the cohort ledger (dead-code-prospector-run, bakeoff-broad/deep) do not assert covered-of-given"  # f89d
+    status: todo_hard  # f89d
+    priority: 3  # f89d
+    parent:  # f89d
+    tags:  # f89d
+    - instrument  # f89d
+    - process  # f89d
+    isbefore: []  # f89d
+    duplicate_of: []  # f89d
+    not_duplicate_of: []  # f89d
+    pr_ref:  # f89d
+    description: "Residual of WI-kovoj. Branch jgstern-agent/fix/kovoj makes every scripts/ instrument that takes a POSITIONAL cohort (`repos` / `maps` with nargs) state \"COHORT: covered K of N given\", name each uncovered member, carry the claim under \"cohort\" in its JSON and exit 4 when K != N (scripts/lib/cohort_ledger.py; guard test tests/test_cohort_ledger.py::test_every_cohort_script_states_its_cohort). The guard keys on that positional spelling, so three cohort runners that take their cohort another way are NOT covered:\n\n- scripts/dead-code-prospector-run.py (--repos, comma list): already records repos_requested / repos_analyzed / repos_failed in aggregate.json and prints \"Repos failed: N\", but exits 0 when repos failed, and its per-repo failures (TIMEOUT, FAILED exit N, JSON parse error) go to stderr only. Partially compliant: the JSON is a positive claim; the exit code is not.\n- scripts/bakeoff-broad and scripts/bakeoff-deep (--repos, cohort selection): NOT VERIFIED. Both have many `except (OSError, json.JSONDecodeError)` paths over per-repo artifacts; whether any of them drops a repo from a reported denominator has not been checked.\n- Ad-hoc Agent-tool fan-outs, which were the filed case (INV-busis 73/16 vs 137/68): no script exists to change. Mitigation 1 of WI-kovoj (\"prompt for it explicitly\") lives in playbooks under .agent/, which are governance files; not changed.\n\nAcceptance: each runner either uses CohortLedger (or an equivalent positive given/covered claim in its output and a non-zero exit on K != N), or is shown by a live repro (one missing member + one truncated per-repo artifact) not to shrink; and the guard is widened to the spelling it uses."  # f89d
+    fields: {}  # f89d

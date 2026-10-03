@@ -1,0 +1,21 @@
+- op: create  # 8950
+  at: '2026-10-03T08:02:01Z'  # 8950
+  by: agent  # 8950
+  actor: jgstern_agent  # 8950
+  clock: 1  # 8950
+  nonce: '8950'  # 8950
+  data:  # 8950
+    kind: work_item  # 8950
+    title: "measure-sanitizer-module-slot-ab and measure-ctor-root-typing-ab crash in their positive controls: stale monkeypatch signatures"  # 8950
+    status: todo_hard  # 8950
+    priority: 3  # 8950
+    parent:  # 8950
+    tags:  # 8950
+    - instrument  # 8950
+    - analysis_quality  # 8950
+    isbefore: []  # 8950
+    duplicate_of: []  # 8950
+    not_duplicate_of: []  # 8950
+    pr_ref:  # 8950
+    description: "Two A/B measurement instruments crash in their own positive control on dev 62602239c6, because the production function each one monkeypatches changed signature after the instrument was written. Neither can measure anything today.\n\nLIVE REPRO (worktree ~/hg_wt/kovoj, PYTHONPATH pinned, fixture repo ~/whole_bunch_of_repos/flask-restful):\n\n1. scripts/measure-sanitizer-module-slot-ab.py docs/example-claims/generic-taint-claims.yaml <repo> --workdir <dir>\n   The in-process verify-claims on the positive-control fixture fails with\n     hypergumbo: internal error: TypeError: _register_sanitizer_callers() got an unexpected keyword argument 'ambiguous_names'\n   because the instrument's counting_register(edges, sanitizer_by_callee, sanitizer_callers) does not take the kwarg production now passes. On dev this was HIDDEN: contextlib.suppress(SystemExit) plus report = {} turned the crash into an empty report, and the instrument printed \"INSTRUMENT CANNOT DETECT THE CHANGE ... Refusing to report\" (exit 2), which names the wrong cause. On branch jgstern-agent/fix/kovoj (WI-kovoj) the same run raises MemberAbsent quoting the TypeError (exit 1).\n\n2. scripts/measure-ctor-root-typing-ab.py <repo>\n   The positive control crashes (exit 1, on dev and on the branch alike):\n     TypeError: _arm.<locals>.prefix_receiver_type() takes from 2 to 3 positional arguments but 4 were given\n   at py.py _process_call -> _receiver_type(...). The instrument's wrapper signature (receiver, external_var_types, ctor_type=None) predates a fourth parameter.\n\nMECHANISM (shared): an instrument that wraps a private production function copies that function's signature, and nothing fails when production adds a parameter until someone reruns the instrument. Instruments that spell the wrapper as (*args, **kwargs) and forward everything (measure-escape-shapes.py's _capturing does) do not rot this way.\n\nFIX DIRECTION, not asserted: make each wrapper forward *args/**kwargs; consider a cheap test that imports each scripts/measure-*.py A/B instrument and runs its positive control on its built-in fixture, so rot fails a test instead of a later measurement. Found while verifying WI-kovoj."  # 8950
+    fields: {}  # 8950
