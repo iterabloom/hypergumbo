@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **347** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 102 core, 4 CLI, 36 tracker)
-- **51162** symbols (functions, classes, methods)
-- **202341** edges by type:
-  - calls: 115593
-  - contains: 46894
-  - imports: 16649
-  - instantiates: 12043
-  - references: 7840
-  - module_attr_ref: 1725
+- **51164** symbols (functions, classes, methods)
+- **202370** edges by type:
+  - calls: 115606
+  - contains: 46898
+  - imports: 16655
+  - instantiates: 12044
+  - references: 7841
+  - module_attr_ref: 1729
   - other: 1597
 
 ## Package Architecture
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 51162 Symbols + 202341 Edges + UsageContexts           │
+│  Output: 51164 Symbols + 202370 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -284,11 +284,11 @@ These symbols have the highest bidirectional centrality
 | `write_text` | external_symbol | 6897.0 | <external> |
 | `Span` | class | 6563.5 | ir.py |
 | `LinkerContext` | class | 3581.3 | registry.py |
-| `get` | external_symbol | 3234.0 | <external> |
+| `get` | external_symbol | 3235.0 | <external> |
 | `load_catalog` | function | 3048.7 | io_boundary.py |
 | `Edge.create` | method | 2420.0 | ir.py |
-| `str` | external_symbol | 2256.0 | <external> |
-| `Path` | external_symbol | 2188.0 | <external> |
+| `str` | external_symbol | 2257.0 | <external> |
+| `Path` | external_symbol | 2190.0 | <external> |
 | `next` | external_symbol | 2171.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
@@ -541,6 +541,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-symbol-id-colon-conformance.py` | Count symbol ids whose colon layout makes two parsers disagree (INV-fokik / WI-ribuz). |
 | `measure-taint-arm-census.py` | Census of PRODUCTION ``_ddg_taint_reaches`` calls, by arm, gate and verdict. |
 | `measure-taint-precision.py` | Of the taint flows hypergumbo reports as violations, how many are real? |
+| `measure_code_tree.py` | (no description) |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
 | `regenerate-backend-agreement-table` | Regenerate ``docs/audits/0019-backend-agreement-rust-aardvark-dns.md``. |
@@ -952,8 +953,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 7f08a0979172
-  commit_count: 7971
+  commit: 275c8afcd279
+  commit_count: 7983
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
