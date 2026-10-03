@@ -28,3 +28,18 @@
   clock: 2  # 45b8
   nonce: 45b8  # 45b8
   message: "WORK DONE 2026-10-03 (concurrent run stage 2, same branch as WI-mujod, NOT merged, no status change). Branch jgstern-agent/fix/mujod, commit ad7cde0712. Fixed in io_boundary.module_hint_disjuncts, the one spelling expansion behind the row choice (named_lookup_arm, io + taint) and the coverage gate: a CLOSED table _CXX_C_LIBRARY_HEADERS (28: [headers] cassert..cwctype, the five C++17-deprecated, C++26 cstdbit/cstdckdint) gives a C++ C-library header its C stem as a spelling. No rows duplicated. SCOPED to calls in c/cpp (language threaded through named_lookup_arm / prefer_exact_owner / _module_hint_candidates; io passes the catalogue's language, taint the callee's, the gate catalog.language) because Python's cmath is not math and python declares math complete. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/mujod.md.\nEVIDENCE: filed fixture shape, verify-claims host_secret->network inconclusive rc 2 -> violated rc 1 (stdlib.getenv -> sys/socket.sendto). test_cxx_c_library_header_spelling.py (23 tests; mutating the language scope to `if True` reds the 4 scope tests). Corpus, C/C++ surveyed under both trees: survey edge sets unchanged on all 10 C/C++ repos; tagged call sites +4 modsecurity, +102 whisper.cpp, +44 powerdns, +73 sherpa-onnx, 0 on the 6 C repos. Stated loosening: a C++ disjunct whose C stem is audited complete (errno, stdint, stdbool, stddef, stdarg, limits, float, inttypes, ctype, math) now counts as enumerated. Residuals reached from C++ now, pre-existing in C: printf/putchar fs_write (filed WI-sofam-mazof-havid-bisij-manod-zonak-tozis-tunod), fprintf(stderr) on the fs_write row, ADL getline(ifs, line) reported as stdio.getline (boundary right)."  # 45b8
+- op: update  # 53fa
+  at: '2026-10-03T17:06:05Z'  # 53fa
+  by: agent  # 53fa
+  actor: jgstern_agent  # 53fa
+  clock: 3  # 53fa
+  nonce: 53fa  # 53fa
+  set:  # 53fa
+    status: done  # 53fa
+- op: discuss  # 0afb
+  at: '2026-10-03T17:06:05Z'  # 0afb
+  by: agent  # 0afb
+  actor: jgstern_agent  # 0afb
+  clock: 4  # 0afb
+  nonce: 0afb  # 0afb
+  message: "Merged in PR #1417 (dev c5249c1aa1).\n\nWI-hilot DONE on jgstern-agent/fix/mujod (ad7cde0712). A closed table of C++'s C-library header names\n(_CXX_C_LIBRARY_HEADERS, 28 entries) gives each its C stem as a spelling inside module_hint_disjuncts, the\nexpansion both the row choice (io + taint, named_lookup_arm) and the coverage gate use; scoped to calls in c/cpp.\nBehavioural evidence: fixture with <cstdlib>/<cstring>/<cstdio>/<ctime>/<sys/socket.h>, getenv -> sendto:\nverify-claims host_secret->network inconclusive rc 2 (\"could not classify (cstdio, cstdlib, cstring, ctime,\nsys/socket)\") -> violated rc 1 (stdlib.getenv -> sys/socket.sendto); io-boundaries now reports getenv/fopen/\nprintf/time. Corpus (base vs branch, surveys under both trees): C++ repos gain 223 classified call sites\n(modsecurity 4, whisper.cpp 102, powerdns 44, sherpa-onnx 73); the 6 C repos and every C/C++ survey edge set are\nunchanged. NOT asserted: precision of the C rows themselves in C++ code (printf fs_write -> WI-sofam;\nfprintf(stderr) on fs_write; ADL getline reported as stdio.getline)."  # 0afb
