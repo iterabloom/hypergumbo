@@ -2,10 +2,11 @@
 """Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
 
 Per WI-runod Wave 9 and the four-part axis-declaration template in
-[ADR-0024](../../../../docs/adr/0024-axis-declaration-template.md), every
-*meta key* used by producers / consumers across the codebase is
-declared once here with its axis (``symbol_meta``, ``edge_meta``, or
-``entrypoint_meta``) and a short description of what the key encodes.
+[ADR-0024](../../../../docs/adr/0024-axis-declaration-template.md), a
+*meta key* is declared once here with its axis (``symbol_meta``,
+``edge_meta``, or ``entrypoint_meta``) and a short description of what the
+key encodes. Which writes are CHECKED against this registry, and which are
+not yet, is stated under "Coverage scope" below.
 
 This module is the structural sibling of
 :mod:`hypergumbo_core.symbol_kinds` and
@@ -99,9 +100,10 @@ meta keys are accessed via ``meta["..."]`` *subscripts* and
 ``meta.get("...")`` *method calls*, not declared as set literals
 named ``*KEY*``. :mod:`hypergumbo_core.meta_write_discipline` (driven by
 ``scripts/check-meta-write-discipline``) is a subscript-WRITE linter for
-``write_discipline`` arity; it flags an unregistered key only when two
-writers can reach it, and it does not inspect ``meta.get("...")`` reads, so
-the typo shape in problem 1 above is not caught statically.
+``write_discipline`` arity. :mod:`hypergumbo_core.meta_key_coherence` is the
+registration gate for WRITES (see "Coverage scope"). Neither inspects
+``meta.get("...")`` READS, so a consumer's mistyped key -- problem 1 above
+from the reading side -- is still not caught statically.
 :func:`write_meta_key` raises on an unregistered key at runtime, for writes
 routed through it. The registry remains the canonical vocabulary for
 documentation, ADR cross-references, and the audit / fold trail.
@@ -109,12 +111,25 @@ documentation, ADR cross-references, and the audit / fold trail.
 Coverage scope
 --------------
 
-Registry seeded with every meta key empirically observed in producer
-code across packages/hypergumbo-core/src and the language-analyzer
-packages. New keys added by future producer migrations should be
-registered here in the same PR. ``tests/test_axis_meta_keys.py`` checks the
-registry's own consistency and a fixed list of linker keys; no test scans
-producers for unregistered keys.
+Checked (WI-lijaz): the ``Edge.meta key`` axis of the shrink-only ratchet in
+``scripts/check-producer-axis-coherence`` (and
+``test_producer_coherence.py::test_live_tree_producer_axis_ratchet``), fed by
+:func:`hypergumbo_core.meta_key_coherence.unregistered_edge_meta_keys`:
+
+- every key passed to ``Edge(...)`` / ``Edge.create(meta=...)`` must be
+  registered on ``edge_meta``;
+- every key written to any ``.meta`` after construction must be registered on
+  some axis (the receiver's type is not known statically).
+
+Its baseline holds one key, ``route_path``, written on openapi edges while
+registered on ``symbol_meta``: a key cannot be declared on two axes.
+
+Not checked: keys passed to ``Symbol(...)`` / ``Symbol.create(meta=...)``
+(by the same enumeration on 2026-10-03: 206 keys, 137 of them unregistered
+and 31 registered only on ``edge_meta``), keys passed to an ``Entrypoint``
+constructor, the axis of a post-hoc write, and reads. The writes the gate
+cannot enumerate are pinned by equality in
+``tests/test_meta_key_coherence.py``.
 """
 
 from __future__ import annotations
@@ -1172,15 +1187,6 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "WGSL, 'thread_local' in C++). Distinct from "
                 "``visibility`` (which is access control) and "
                 "``static`` (which is binding-time)."),
-    MetaKeySpec("import_path", AXIS_SYMBOL_META,
-                "Source-language import path on Symbols whose "
-                "primary identifier doesn't match (e.g. "
-                "``from foo.bar import baz`` makes ``baz``'s "
-                "import_path ``foo.bar.baz``)."),
-    MetaKeySpec("symbol_roles", AXIS_SYMBOL_META,
-                "SCIP-style symbol-role bitset for Symbols sourced "
-                "from SCIP indexes (definition / reference / "
-                "import / etc.)."),
     MetaKeySpec("scip_kind", AXIS_SYMBOL_META,
                 "SCIP-native kind label on Symbols sourced from "
                 "SCIP indexes. Kept alongside the canonical "
@@ -1332,6 +1338,300 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "ADR-0057 §14: the origin (pass ids) of the superseding edge "
                 "named in ``superseded_by`` — which producer saw the site as "
                 "first-party. Present only beside ``superseded_by``."),
+    # ------------------------------------------------------------------
+    # WI-lijaz: keys that producers wrote while the registry did not know
+    # them. Found by the meta-key gate (``meta_key_coherence``), which reads
+    # every ``Edge(...)`` / ``Edge.create(meta=...)`` and every post-hoc
+    # ``.meta`` write; the 2026-08-27 survey count (35 keys on 42 surveys) is
+    # a subset of what it enumerates. Registered AS EMITTED: no producer was
+    # changed, and none of these has had the ADR-0024 fold-residue checks
+    # (endpoint-property, axis-leakage, recurrence) applied -- several are
+    # obvious candidates (the ``scip_*`` symbols repeat the endpoints;
+    # ``call_type`` and ``method`` each carry unrelated meanings from
+    # different producers, said below). Each is ``unaudited`` until audited.
+    # ------------------------------------------------------------------
+    # -- the unresolved-call helper and the Python receiver-inference sites
+    MetaKeySpec("enclosing_class", AXIS_EDGE_META,
+                "Short name of the class that lexically owns an unresolved "
+                "call site (Site 1: a bare / ``self`` / ``this`` call; Site 3 "
+                "beside ``inherited_field_receiver``). Written by "
+                "``analyze.base.make_unresolved_edge`` for every language that "
+                "passes it, and by py.py's Site-3 branch; read by the "
+                "``inherited_calls`` linker to walk the ancestor chain and by "
+                "py.py's Django-ORM instance check."),
+    MetaKeySpec("enclosing_class_id", AXIS_EDGE_META,
+                "Symbol id of the class that lexically owns the call site, "
+                "stamped by py.py beside ``enclosing_class`` when the id is "
+                "known (WI-supat D3) so ``inherited_calls`` can start the "
+                "ancestor walk from exactly that class and skip its "
+                "same-short-name ambiguity guard."),
+    MetaKeySpec("inherited_field_receiver", AXIS_EDGE_META,
+                "Name of the field a ``self.<field>.<method>()`` call goes "
+                "through, when the field is not the class's own and so is "
+                "believed inherited (Site 3). Written by "
+                "``analyze.base.make_unresolved_edge`` and py.py; read by "
+                "``inherited_calls``, which resolves the field's type on an "
+                "ancestor."),
+    MetaKeySpec("receiver_type_id", AXIS_EDGE_META,
+                "Symbol id of the inferred receiver type of an unresolved "
+                "method call, stamped by py.py beside ``receiver_type_hint`` "
+                "only when the inference is trustworthy (a file-unique type "
+                "name not shadowed by an import, WI-supat D3); read by "
+                "``inherited_calls``."),
+    MetaKeySpec("binding", AXIS_EDGE_META,
+                "How a bare-name call's target module was bound, on an "
+                "unresolved call edge: 'explicit_import' (elixir, an ``import`` "
+                "directive) or 'dot_import' (go, ``import . \"pkg\"``)."),
+    MetaKeySpec("visibility", AXIS_EDGE_META,
+                "On an unresolved Go method-call edge: 'unexported', stamped "
+                "when a lowercase method on an unknown receiver was left "
+                "unresolved because resolving it by name would cross package "
+                "boundaries. Unrelated to the typed ``Symbol.visibility``."),
+    MetaKeySpec("file", AXIS_EDGE_META,
+                "COBOL ``PERFORM`` / ``CALL`` edge: the repo-relative path of "
+                "the calling file. Assigned wholesale over the edge's meta, "
+                "which also discards what ``make_unresolved_edge`` stamped on "
+                "the unresolved branch."),
+    MetaKeySpec("call_type", AXIS_EDGE_META,
+                "Three producers, three meanings (an ADR-0024 axis-leakage "
+                "candidate): subprocess_cli -- 'literal' or 'variable', how the "
+                "command line was written; otp -- 'call' or 'cast', the "
+                "GenServer message kind; cobol -- 'perform' or 'call', the "
+                "COBOL statement."),
+    # -- SCIP index edges (scip/calls.py, scip/edges.py)
+    MetaKeySpec("scip_src_symbol", AXIS_EDGE_META,
+                "The raw SCIP symbol string of the edge's source (the "
+                "enclosing definition), before ``resolve_symbol`` mapped it to "
+                "a hypergumbo id. Kept for index round-trip fidelity."),
+    MetaKeySpec("scip_dst_symbol", AXIS_EDGE_META,
+                "The raw SCIP symbol string of the edge's target (the "
+                "referenced symbol or the relationship's other end), before "
+                "``resolve_symbol`` mapped it."),
+    MetaKeySpec("scip_relationship_flag", AXIS_EDGE_META,
+                "Which SCIP ``Relationship`` boolean produced a relationship "
+                "edge ('is_implementation', 'is_reference', "
+                "'is_type_definition', 'is_definition'); several flags fold "
+                "onto one edge type, so this keeps the one that named it."),
+    MetaKeySpec("symbol_roles", AXIS_EDGE_META,
+                "The SCIP occurrence ``symbol_roles`` bitset (definition / "
+                "import / write / read ...) of the reference a scip/calls.py "
+                "edge was built from. Written on EDGES only; it was registered "
+                "on symbol_meta, which no producer wrote (WI-lijaz)."),
+    # -- dispatch linkers
+    MetaKeySpec("argparse_kwarg", AXIS_EDGE_META,
+                "The keyword through which an argparse ``set_defaults(<kw>="
+                "<handler>)`` registered the handler (e.g. 'func')."),
+    MetaKeySpec("cobra_field", AXIS_EDGE_META,
+                "The cobra ``Command`` field the handler was assigned to "
+                "(e.g. 'Run', 'RunE', 'PreRunE')."),
+    MetaKeySpec("delegate_method", AXIS_EDGE_META,
+                "Short name of the memberlist ``Delegate`` interface method a "
+                "go_memberlist dispatch edge targets."),
+    MetaKeySpec("model_name", AXIS_EDGE_META,
+                "ORM linker: the model class name an accessor expression "
+                "referred to."),
+    MetaKeySpec("accessor", AXIS_EDGE_META,
+                "ORM linker: the accessor through which the model was reached "
+                "('objects' for Django, 'query' for Flask-SQLAlchemy)."),
+    MetaKeySpec("target", AXIS_EDGE_META,
+                "otp linker: the GenServer target as written at the call "
+                "(a module name, ``__MODULE__`` or a registered name)."),
+    MetaKeySpec("executable", AXIS_EDGE_META,
+                "subprocess_cli: the program a subprocess call runs."),
+    MetaKeySpec("subcommand", AXIS_EDGE_META,
+                "subprocess_cli: the first argument after the executable, when "
+                "the call names one."),
+    MetaKeySpec("is_python_m", AXIS_EDGE_META,
+                "subprocess_cli: True when the command is ``python -m "
+                "<module>``."),
+    # -- route -> handler (route_handler.py copies the route's handler
+    #    reference onto the edge, minus its 'type')
+    MetaKeySpec("controller_action", AXIS_EDGE_META,
+                "Route->handler edge: the Rails ``controller#action`` or "
+                "Laravel ``Controller@action`` string the route named."),
+    MetaKeySpec("controller", AXIS_EDGE_META,
+                "Route->handler edge (Phoenix): the controller module the "
+                "route named."),
+    MetaKeySpec("action", AXIS_EDGE_META,
+                "Route->handler edge (Phoenix): the controller action the "
+                "route named."),
+    MetaKeySpec("live", AXIS_EDGE_META,
+                "Route->handler edge (Phoenix): 'true' when the route is a "
+                "LiveView route."),
+    MetaKeySpec("handler_ref", AXIS_EDGE_META,
+                "Route->handler edge (Express and similar): the short handler "
+                "reference the route named (e.g. 'userController.list')."),
+    MetaKeySpec("handler_id", AXIS_EDGE_META,
+                "Route->handler edge: the handler's full symbol id, when the "
+                "route named one directly instead of a short reference."),
+    MetaKeySpec("view_name", AXIS_EDGE_META,
+                "Route->handler edge (Django): the view the URL pattern named."),
+    MetaKeySpec("role", AXIS_EDGE_META,
+                "React Router route edge: 'loader' or 'action', which data "
+                "function of the route the edge reaches."),
+    MetaKeySpec("loader_ref", AXIS_EDGE_META,
+                "React Router route edge with role 'loader': the loader "
+                "function's name as the route declared it."),
+    MetaKeySpec("action_ref", AXIS_EDGE_META,
+                "React Router route edge with role 'action': the action "
+                "function's name as the route declared it."),
+    # -- protocol linkers
+    MetaKeySpec("url_type", AXIS_EDGE_META,
+                "HTTP client->route edge: 'literal' or 'variable', how the "
+                "client's URL was written (a string literal, or a variable "
+                "the linker folded)."),
+    MetaKeySpec("operation_type", AXIS_EDGE_META,
+                "GraphQL client edge: the operation type ('query', "
+                "'mutation', 'subscription'), or None when the document did "
+                "not say."),
+    MetaKeySpec("operation_name", AXIS_EDGE_META,
+                "GraphQL client edge: the operation's declared name, or None "
+                "for an anonymous operation."),
+    MetaKeySpec("root_field", AXIS_EDGE_META,
+                "GraphQL client edge to a schema field: the first root field "
+                "of the operation's selection set, which the edge joined on."),
+    MetaKeySpec("type_name", AXIS_EDGE_META,
+                "GraphQL resolver edge: the schema type the resolver serves."),
+    MetaKeySpec("field_name", AXIS_EDGE_META,
+                "GraphQL resolver edge: the schema field the resolver serves."),
+    MetaKeySpec("openapi_path", AXIS_EDGE_META,
+                "OpenAPI operation->route edge: the operation's path template "
+                "as the spec wrote it."),
+    MetaKeySpec("method", AXIS_EDGE_META,
+                "Two producers, two meanings (an ADR-0024 axis-leakage "
+                "candidate): openapi -- the operation's HTTP method; ipc -- "
+                "the method name an Electron ``contextBridge`` exposed API "
+                "was called through."),
+    MetaKeySpec("operation_id", AXIS_EDGE_META,
+                "OpenAPI operation->route edge joined by ``operationId``: the "
+                "operationId."),
+    MetaKeySpec("route_name", AXIS_EDGE_META,
+                "OpenAPI operation->route edge joined by ``operationId``: the "
+                "route symbol's name it matched."),
+    MetaKeySpec("namespace", AXIS_EDGE_META,
+                "ipc ``contextBridge`` edge: the namespace the API was exposed "
+                "under (``contextBridge.exposeInMainWorld(<namespace>, ...)``)."),
+    MetaKeySpec("function", AXIS_EDGE_META,
+                "ipc ``contextBridge`` edge: the exposed function's name, for "
+                "an API exposed as a bare function."),
+    MetaKeySpec("channel_type", AXIS_EDGE_META,
+                "ipc event_publishes edge: what the sender/receiver join "
+                "compared (``_name_args`` join kind: 'literal', 'constant', "
+                "'variable' or 'unresolved')."),
+    MetaKeySpec("event", AXIS_EDGE_META,
+                "Event name a websocket or Phoenix Channels event_publishes "
+                "edge carries."),
+    MetaKeySpec("event_type", AXIS_EDGE_META,
+                "websocket event_publishes edge: 'literal' or 'variable', how "
+                "the event name was written at the two ends."),
+    MetaKeySpec("event_name", AXIS_EDGE_META,
+                "event_sourcing event_publishes edge: the event VALUE the "
+                "publisher and subscriber were joined on, or None when only "
+                "identifiers were compared (then see ``event_identifier``)."),
+    MetaKeySpec("publisher_framework", AXIS_EDGE_META,
+                "event_sourcing edge: the framework pattern that matched the "
+                "publish site."),
+    MetaKeySpec("subscriber_framework", AXIS_EDGE_META,
+                "event_sourcing edge: the framework pattern that matched the "
+                "subscribe site."),
+    MetaKeySpec("publisher_event_type", AXIS_EDGE_META,
+                "event_sourcing edge: how the publish site's event name is "
+                "known (``_name_args`` kind: 'literal', 'constant', "
+                "'unresolved', 'variable')."),
+    MetaKeySpec("subscriber_event_type", AXIS_EDGE_META,
+                "event_sourcing edge: the same, for the subscribe site."),
+    # -- component / template / include edges from analyzers
+    MetaKeySpec("import_path", AXIS_EDGE_META,
+                "Component ``imports`` edge (astro / svelte / vue): the import "
+                "path the component tag resolved to, '' when the tag was not "
+                "imported; read by the vue_component linker. Written on EDGES "
+                "only; it was registered on symbol_meta, which no producer "
+                "wrote (WI-lijaz)."),
+    MetaKeySpec("import_name", AXIS_EDGE_META,
+                "Astro frontmatter ``imports`` edge: the default-import name "
+                "bound to the ``.astro`` component."),
+    MetaKeySpec("component_name", AXIS_EDGE_META,
+                "Component ``imports`` edge (astro / svelte / vue): the tag "
+                "name used at the reference site."),
+    MetaKeySpec("source_path", AXIS_EDGE_META,
+                "Component ``imports`` edge (astro / svelte / vue): the "
+                "repo-relative path of the file containing the reference."),
+    MetaKeySpec("client_directive", AXIS_EDGE_META,
+                "Astro component edge: the ``client:*`` hydration directive on "
+                "the tag, '' when none."),
+    MetaKeySpec("attributes", AXIS_EDGE_META,
+                "Astro component edge: the attribute names on the component "
+                "tag."),
+    MetaKeySpec("events", AXIS_EDGE_META,
+                "Svelte component edge: the event names the tag listens to "
+                "(``on:<event>``)."),
+    MetaKeySpec("directives", AXIS_EDGE_META,
+                "Vue component edge: the directive names on the component tag "
+                "(``v-if``, ``v-on:<event>``, ``v-bind:<prop>``, ...)."),
+    MetaKeySpec("has_slot_attr", AXIS_EDGE_META,
+                "Svelte / Vue component edge: True when the tag carries a "
+                "slot attribute."),
+    MetaKeySpec("template", AXIS_EDGE_META,
+                "Blade / Twig extends or includes edge: the template name as "
+                "written."),
+    MetaKeySpec("form", AXIS_EDGE_META,
+                "Twig includes edge: 'function' when the include was the "
+                "``include()`` function rather than the ``{% include %}`` tag."),
+    MetaKeySpec("class_name", AXIS_EDGE_META,
+                "Puppet includes edge: the included class's name."),
+    MetaKeySpec("mixin_name", AXIS_EDGE_META,
+                "SCSS includes edge: the ``@include``d mixin's name."),
+    MetaKeySpec("include_file", AXIS_EDGE_META,
+                "Makefile includes edge: the included file as written."),
+    MetaKeySpec("sourced_path", AXIS_EDGE_META,
+                "Bash sources edge: the path given to ``source`` / ``.`` as "
+                "written (the dst id carries only its basename)."),
+    MetaKeySpec("reference_path", AXIS_EDGE_META,
+                "tsconfig references edge: the ``path`` of the project "
+                "reference as written."),
+    MetaKeySpec("package", AXIS_EDGE_META,
+                "R imports edge: the package name ``library`` / ``require`` "
+                "loaded."),
+    MetaKeySpec("import_form", AXIS_EDGE_META,
+                "R imports edge: the function that loaded the package "
+                "('library' or 'require')."),
+    MetaKeySpec("target_path", AXIS_EDGE_META,
+                "defines_target edge (manifest_targets, toml_config): the file "
+                "path of the build target's entry point; read by the "
+                "build_target linker, which resolves the target by path."),
+    MetaKeySpec("target_function", AXIS_EDGE_META,
+                "defines_target edge: the entry-point function's name, when the "
+                "manifest names one; read by the build_target linker."),
+    MetaKeySpec("field", AXIS_EDGE_META,
+                "C dispatches_to edge from a designated initializer: the "
+                "struct field the function pointer was assigned to "
+                "(``.read = my_read`` gives 'read')."),
+    MetaKeySpec("ref_type", AXIS_EDGE_META,
+                "LaTeX references edge: 'label' (``\\ref``) or 'citation' "
+                "(``\\cite``)."),
+    MetaKeySpec("include_type", AXIS_EDGE_META,
+                "LaTeX includes edge: the tree-sitter node type of the include "
+                "command ('text_include' or 'latex_include')."),
+    MetaKeySpec("import_type", AXIS_EDGE_META,
+                "LaTeX imports edge: 'package' (``\\usepackage``)."),
+    # -- Symbol.meta keys found by the gate's post-hoc arm. The gate does not
+    #    scan Symbol construction (a separate backlog); these are the keys a
+    #    post-hoc ``sym.meta[...] = ...`` / ``sym.meta = {...}`` wrote.
+    MetaKeySpec("build_constraint", AXIS_SYMBOL_META,
+                "Go: the file's build constraint (``//go:build ...``), stamped "
+                "on every symbol of the file (WI-potun)."),
+    MetaKeySpec("field_type_ids", AXIS_SYMBOL_META,
+                "Python class symbol: ``{field: type symbol id}`` for the "
+                "fields whose type inference is trustworthy, beside "
+                "``fields`` (WI-supat D3); read by ``inherited_calls`` Site 3."),
+    MetaKeySpec("is_constructor", AXIS_SYMBOL_META,
+                "Agda: True on a data constructor's symbol."),
+    MetaKeySpec("is_postulate", AXIS_SYMBOL_META,
+                "Agda: True on a symbol declared in a ``postulate`` block."),
+    MetaKeySpec("is_lemma", AXIS_SYMBOL_META,
+                "Lean: True on a ``lemma`` declaration."),
+    MetaKeySpec("is_abbrev", AXIS_SYMBOL_META,
+                "Lean: True on an ``abbrev`` declaration."),
 )
 
 
