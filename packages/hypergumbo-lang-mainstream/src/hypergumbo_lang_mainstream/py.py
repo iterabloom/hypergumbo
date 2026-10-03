@@ -76,6 +76,13 @@ Detected Patterns
   receiver predicate), ``_external_constructor_type`` (binding-checked against
   imports), ``EXTERNAL_CONSTRUCTOR_TYPES`` (derived from the I/O catalogue) and
   ``TYPE_PRESERVING_MEMBERS`` (members whose result keeps the receiver's type)
+- Scope of an import: ``imports`` / ``module_imports`` are file-scoped maps, so
+  each call site reads them narrowed by ``ScopeStack.value_shadowed()`` -- a
+  parameter or local named like an import (``def f(socket): socket.socket(h)``)
+  or like a builtin constructor is a value and types nothing, while a
+  function-local ``import`` stays live (INV-dulum). A lambda or comprehension
+  body extends the caller's frame (``ScopeStack.enter_subscope``), so its
+  parameters shadow builtins like any other binding (WI-safit)
 - Call-edge tags: ``io_mode`` records a literal mode argument (``open(p, "w")``),
   and ``call_arg_shape="literal_only"`` marks calls passing only constants whose
   receiver cannot carry taint (no receiver, or an imported module)
@@ -158,7 +165,7 @@ import hashlib
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Iterator
+from typing import TYPE_CHECKING, Callable, Iterator, NamedTuple, TypeVar
 
 from hypergumbo_core.axis_meta_keys import call_family_edge_types
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
@@ -4365,6 +4372,13 @@ def _collect_class_field_maps(
         if init_method is None:
             continue
         init_param_types = _extract_param_types(init_method)
+        # INV-dulum: ``__init__``'s own value bindings. ``def __init__(self,
+        # socket): self.s = socket.socket()`` must not type the field as the
+        # stdlib socket. One frame: the pre-pass has no enclosing chain, so a
+        # class nested in a function does not see that function's bindings.
+        _init_shadow = _collect_scope_value_names(init_method)
+        _init_imports = _scope_live(imports, _init_shadow)
+        _init_module_imports = _scope_live(module_imports, _init_shadow)
         # THE OWNER IS THE CLASS, NOT ``__init__``, because that is the symbol
         # a caller names: ``Client(sock)`` resolves to the class, so that is the
         # id the call-site index is keyed on. ``position_offset=1`` is the
@@ -4430,7 +4444,8 @@ def _collect_class_field_maps(
                         _ext_hint = init_external_types.get(assign_value.id)
                     if _ext_hint is None and isinstance(assign_value, ast.Call):
                         _ext_hint = _external_constructor_type(
-                            assign_value, imports, module_imports,
+                            assign_value, _init_imports, _init_module_imports,
+                            shadowed=_init_shadow,
                         )
                     if _ext_hint is not None:
                         external_field_types[field_name] = _ext_hint
@@ -4440,8 +4455,8 @@ def _collect_class_field_maps(
                     # self.field = ClassName()
                     elif isinstance(assign_value, ast.Call):
                         assigned_class = _resolve_call_target(
-                            assign_value, local_symbols, imports, global_symbols,
-                            module_imports, resolver
+                            assign_value, local_symbols, _init_imports,
+                            global_symbols, _init_module_imports, resolver
                         )
                         if assigned_class and assigned_class.kind == "class":
                             field_types[field_name] = assigned_class
@@ -5767,6 +5782,9 @@ def _extract_edges(
     # set is a shadow concern local to edge extraction — the LEGB set it sits
     # beside must keep excluding def/class names for the lookup to work.
     _stmt_shadow_by_func_id: dict[str, frozenset[str]] = {}
+    # INV-dulum: each function's VALUE bindings -- the frame half that decides
+    # where an import / builtin meaning is not live. Same walk, same keys.
+    _value_names_by_func_id: dict[str, frozenset[str]] = {}
     if func_symbol_by_node_id:
         for _snode in ast.walk(tree):
             if not isinstance(_snode, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -5775,6 +5793,9 @@ def _extract_edges(
             if _ssym is not None:
                 _stmt_shadow_by_func_id[_ssym.id] = _collect_statement_binding_names(
                     list(ast.iter_child_nodes(_snode)),
+                )
+                _value_names_by_func_id[_ssym.id] = _collect_scope_value_names(
+                    _snode, _stmt_shadow_by_func_id[_ssym.id],
                 )
 
     # WI-supat (D3): per-file class SHORT-NAME multiplicity. A receiver-type id
@@ -6096,6 +6117,7 @@ def _extract_edges(
         block_nodes: list[ast.AST],
         caller_symbol: Symbol,
         local_bindings: frozenset[str] = frozenset(),
+        value_shadowed: frozenset[str] = frozenset(),
     ) -> None:
         """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
 
@@ -6115,6 +6137,15 @@ def _extract_edges(
         (the 52 ``module_attr_ref`` residual of INV-nuzas's acceptance-property
         failure). *local_bindings* carries the caller's own bound names so a
         param/local shadowing the module alias stays phantom (INV-fahub).
+
+        INV-dulum: *value_shadowed* (the caller's
+        :meth:`ScopeStack.value_shadowed`) suppresses the edge ENTIRELY. A
+        parameter named ``os`` is a value, so ``os.environ`` on it is not the
+        module's attribute at all -- the phantom ``module_attr_ref`` this
+        emitted for it matched the catalogue and minted an ``env_read``
+        boundary that does not exist. *local_bindings* cannot do this job: it
+        only gates the in-tree retarget, and it folds enclosing IMPORTS in,
+        which here would drop a real read through a lazily-imported module.
         """
         # Pre-collect Attribute-node ids that are the direct callee of a Call
         # so we can skip them below — `os.getenv("X")` already produces a
@@ -6138,7 +6169,7 @@ def _extract_edges(
             if not isinstance(sub.value, ast.Name):
                 return
             local_name = sub.value.id
-            if local_name not in module_imports:
+            if local_name not in module_imports or local_name in value_shadowed:
                 return
             real_module = module_imports[local_name]
             # WI-huhum retarget: an in-tree module VARIABLE resolves to its
@@ -6222,10 +6253,6 @@ def _extract_edges(
         _walk(list(block_nodes))
 
     # Helper to extract edges from a code block (function body, module level, etc.)
-    def _external_constructor_module(call: ast.Call) -> str | None:
-        """This block's import maps, bound to the module-level resolver."""
-        return _external_constructor_type(call, imports, module_imports)
-
     def _bind_project_class_fields(
         prefix: str,
         cls: "Symbol | None",
@@ -6304,6 +6331,21 @@ def _extract_edges(
             var_types = {}
         if external_var_types is None:
             external_var_types = {}
+
+        # INV-dulum: the names this block's scope binds to a VALUE, nearest
+        # binding first. An import (or builtin) meaning is not live for them,
+        # so every import-map consumer below reads the scope-narrowed maps.
+        _value_shadow = (
+            stack.value_shadowed() if stack is not None else frozenset()
+        )
+
+        def _external_constructor_module(call: ast.Call) -> str | None:
+            """This block's import maps, bound to the module-level resolver --
+            with the block's own scope, so a parameter or local that shadows an
+            imported name (or a builtin constructor) types nothing."""
+            return _external_constructor_type(
+                call, imports, module_imports, shadowed=_value_shadow,
+            )
 
         # WI-hiziz PR-3 (review): the caller method's OWN __init__ field names
         # (from the closure-visible ``class_own_field_names``). The Site-3 emit
@@ -6443,6 +6485,11 @@ def _extract_edges(
                 _pruned_vt, _pruned_ext = _prune_shadowed(
                     var_types, external_var_types, _shadow
                 )
+                # WI-safit: the same names extend the LEGB chain for the
+                # comprehension's own parts (a no-op today -- comprehension
+                # targets already sit in the function's frame -- kept so both
+                # subscope kinds take one path).
+                _sub_stack = stack.enter_subscope(_shadow) if stack else stack
                 # generators[0].iter is eagerly evaluated in the ENCLOSING scope.
                 process_code_block(
                     [node.generators[0].iter], caller_symbol, var_types,
@@ -6462,7 +6509,7 @@ def _extract_edges(
                 for _part in _comprehension_scope_nodes(node):
                     process_code_block(
                         [_part], caller_symbol, _pruned_vt,
-                        stack=stack, external_var_types=_pruned_ext,
+                        stack=_sub_stack, external_var_types=_pruned_ext,
                         assigned_names=_assigned,
                     )
                 continue
@@ -6472,6 +6519,11 @@ def _extract_edges(
                 _pruned_vt, _pruned_ext = _prune_shadowed(
                     var_types, external_var_types, _shadow
                 )
+                # WI-safit: a lambda parameter is a binding like any other. Its
+                # names extend the caller's LEGB frame for the BODY only, so the
+                # bare-name builtin / external arms and the import-map consumers
+                # all see ``lambda x, len=f: len(x)``'s ``len`` as a local.
+                _sub_stack = stack.enter_subscope(_shadow) if stack else stack
                 # default / kw_default exprs are evaluated in the ENCLOSING scope.
                 for _dflt in (
                     *node.args.defaults,
@@ -6484,7 +6536,7 @@ def _extract_edges(
                     )
                 process_code_block(
                     [node.body], caller_symbol, _pruned_vt,
-                    stack=stack, external_var_types=_pruned_ext,
+                    stack=_sub_stack, external_var_types=_pruned_ext,
                     assigned_names=_assigned,
                 )
                 continue
@@ -6536,8 +6588,9 @@ def _extract_edges(
                             external_var_types[target.id] = derived
                     if isinstance(target, ast.Name) and isinstance(node.value, ast.Call):
                         assigned_class = _resolve_call_target(
-                            node.value, local_symbols, imports, global_symbols,
-                            module_imports, resolver,
+                            node.value, local_symbols,
+                            _scope_live(imports, _value_shadow), global_symbols,
+                            _scope_live(module_imports, _value_shadow), resolver,
                             inner_scope=stack.immediate_symbols() if stack else None,
                             sym_by_path_name=_sym_by_path_name,
                             var_types=var_types,
@@ -7034,7 +7087,7 @@ def _extract_edges(
                 inner_scope = nested_by_parent_id.get(caller_symbol.id)
                 stack = _build_scope_stack(
                     caller_symbol.id, enclosing_func_id, nested_by_parent_id,
-                    local_names_by_func_id,
+                    local_names_by_func_id, _value_names_by_func_id,
                 )
                 _emit_closure_factory_dispatch(node, caller_symbol, inner_scope)
                 # WI-luhah gap 1c: add the enclosing-scope binding union so a
@@ -7046,6 +7099,7 @@ def _extract_edges(
                     local_bindings=_collect_local_bindings(
                         node, include_import_aliases=False
                     ) | _enclosing,
+                    value_shadowed=stack.value_shadowed(),
                 )
                 _ext_var_types = _extract_external_param_types(
                     node, param_types, caller_symbol,
@@ -7155,23 +7209,94 @@ def _collect_scope_local_names(
         names.add(func_node.args.vararg.arg)
     if func_node.args.kwarg:
         names.add(func_node.args.kwarg.arg)
-    bound, nonlocals = _collect_bound_names(list(ast.iter_child_nodes(func_node)))
-    names |= bound
-    return frozenset(names - nonlocals)
+    found = _collect_bound_names(list(ast.iter_child_nodes(func_node)))
+    names |= found.bound
+    return frozenset(names - found.nonlocals)
 
 
-def _collect_bound_names(
-    child_nodes: list[ast.AST],
-) -> tuple[set[str], set[str]]:
+def _collect_scope_value_names(
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    statement_names: frozenset[str] | None = None,
+) -> frozenset[str]:
+    """INV-dulum: the names *func_node*'s OWN scope binds to a VALUE.
+
+    Params, assignment / for / with / walrus targets, and the statement-bound
+    forms (``def`` / ``class`` / ``except ... as``, from
+    :func:`_collect_statement_binding_names`; pass them as *statement_names*
+    when the caller already has them) -- minus every name the scope ALSO binds
+    by an ``import``, minus ``nonlocal`` names. Feeds ``Scope.value_names``,
+    which :meth:`ScopeStack.value_shadowed` reads to decide where an import or
+    builtin meaning is not live.
+
+    WHY NOT ``_collect_scope_local_names``. That set folds imports in with
+    assignments, correctly for def-shadowing. Here a local ``import socket``
+    binds ``socket`` TO THE MODULE, so treating it as a shadow would withhold
+    the type on the ordinary lazy-import idiom -- trading INV-dulum's false
+    positive for a false negative. Keep the two apart; they answer different
+    questions.
+
+    WHY AN IMPORT WINS WITHIN ITS FRAME. ``try: import socket / except
+    ImportError: socket = None`` binds both forms, and the import is the only
+    binding a ``socket.socket(...)`` call can actually go through (``None`` has
+    no attributes). A ``global`` declaration alone is not a value either: the
+    name then means the module-level binding, which is the import.
+    """
+    found = _collect_bound_names(list(ast.iter_child_nodes(func_node)))
+    if statement_names is None:
+        statement_names = _collect_statement_binding_names(
+            list(ast.iter_child_nodes(func_node)),
+        )
+    values = _arg_names(func_node.args) | found.stored | statement_names
+    return frozenset(values - found.imported - found.nonlocals)
+
+
+_MapValue = TypeVar("_MapValue")
+
+
+def _scope_live(
+    mapping: dict[str, _MapValue], shadowed: frozenset[str],
+) -> dict[str, _MapValue]:
+    """A file-scoped import map as seen from one scope (INV-dulum).
+
+    ``imports`` and ``module_imports`` are built by an ``ast.walk`` over the
+    whole file. Narrowing them by the scope's value-shadowed names here, once,
+    is what makes every consumer downstream honor the scope without each one
+    growing its own guard -- the per-consumer guard is how this file ended up
+    with one consumer guarded (WI-hotug) and four not. The original map is
+    returned, uncopied, when nothing in it is shadowed: the common case.
+    """
+    if not shadowed or shadowed.isdisjoint(mapping):
+        return mapping
+    return {k: v for k, v in mapping.items() if k not in shadowed}
+
+
+class _BoundNames(NamedTuple):
+    """What one scope's own statements bind, by FORM (see
+    :func:`_collect_bound_names`). ``bound`` is the union the LEGB ``L`` set is
+    built from; ``stored`` and ``imported`` keep apart the two forms INV-dulum
+    must not confuse -- a value binding shadows an import of the same name, an
+    import binding IS that import."""
+
+    bound: set[str]
+    nonlocals: set[str]
+    stored: set[str]
+    imported: set[str]
+
+
+def _collect_bound_names(child_nodes: list[ast.AST]) -> _BoundNames:
     """Walk a scope's direct children, collecting names bound by assignment /
     import / ``global`` and, separately, ``nonlocal`` declarations, skipping
     nested function/class subtrees (their own scopes). Shared by
     ``_collect_scope_local_names`` (function scope, which additionally adds
-    params) and ``_collect_module_local_names`` (module scope). Returns
-    ``(bound, nonlocal)`` so each caller applies its own params/subtraction.
+    params), ``_collect_module_local_names`` (module scope) and
+    ``_collect_scope_value_names`` (INV-dulum). Each caller applies its own
+    params/subtraction; the two that build the LEGB ``L`` set read ``bound``
+    and ``nonlocals``, the value collector reads ``stored`` and ``imported``.
     """
     names: set[str] = set()
     nonlocals: set[str] = set()
+    stored: set[str] = set()
+    imported: set[str] = set()
     scope_boundary = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
     def _walk(nodes: list[ast.AST]) -> None:
@@ -7182,12 +7307,15 @@ def _collect_bound_names(
                 continue
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
                 names.add(node.id)
+                stored.add(node.id)
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     names.add(alias.asname or alias.name.split(".")[0])
+                    imported.add(alias.asname or alias.name.split(".")[0])
             elif isinstance(node, ast.ImportFrom):
                 for alias in node.names:
                     names.add(alias.asname or alias.name)
+                    imported.add(alias.asname or alias.name)
             elif isinstance(node, ast.Global):
                 names.update(node.names)
             elif isinstance(node, ast.Nonlocal):
@@ -7196,7 +7324,7 @@ def _collect_bound_names(
                 _walk([child])
 
     _walk(child_nodes)
-    return names, nonlocals
+    return _BoundNames(names, nonlocals, stored, imported)
 
 
 def _collect_module_local_names(tree: ast.Module) -> frozenset[str]:
@@ -7209,8 +7337,8 @@ def _collect_module_local_names(tree: ast.Module) -> frozenset[str]:
     set is empty; ``def``/``class`` statement names are excluded (they are the
     genuine class/function symbols a hint legitimately points at).
     """
-    bound, nonlocals = _collect_bound_names(list(ast.iter_child_nodes(tree)))
-    return frozenset(bound - nonlocals)
+    found = _collect_bound_names(list(ast.iter_child_nodes(tree)))
+    return frozenset(found.bound - found.nonlocals)
 
 
 def _collect_statement_binding_names(child_nodes: list[ast.AST]) -> frozenset[str]:
@@ -7355,6 +7483,7 @@ def _build_scope_stack(
     enclosing_func_id: dict[str, str],
     nested_by_parent_id: dict[str, dict[str, Symbol]],
     local_names_by_func_id: dict[str, frozenset[str]],
+    value_names_by_func_id: dict[str, frozenset[str]] | None = None,
 ) -> ScopeStack:
     """Materialize the caller's LEGB frame chain (identity:F1/F4a).
 
@@ -7367,7 +7496,12 @@ def _build_scope_stack(
     shadowing). A top-level caller yields a single-frame stack, so
     ``lookup_enclosing`` returns ``None`` for every name and resolution stays
     byte-identical to the pre-rewrite path.
+
+    ``value_names_by_func_id`` (INV-dulum) fills each frame's ``value_names``,
+    the value-binding half :meth:`ScopeStack.value_shadowed` reads.
     """
+    if value_names_by_func_id is None:  # pragma: no cover - defensive default
+        value_names_by_func_id = {}
     chain = [caller_id]
     cur = caller_id
     while True:
@@ -7385,6 +7519,7 @@ def _build_scope_stack(
                 for name, sym in nested_by_parent_id.get(fid, {}).items()
             },
             local_names=local_names_by_func_id.get(fid, frozenset()),
+            value_names=value_names_by_func_id.get(fid, frozenset()),
         )
         for fid in chain
     ]
@@ -7634,6 +7769,8 @@ def _external_constructor_type(
     call: ast.Call,
     imports: dict[str, tuple[str, str]],
     module_imports: dict[str, str],
+    *,
+    shadowed: frozenset[str] = frozenset(),
 ) -> str | None:
     """WI-fuvuj: if ``call`` is a recognized I/O constructor, return the catalog
     module string for the object it constructs; else ``None``.
@@ -7664,13 +7801,15 @@ def _external_constructor_type(
     rule here and not two that can drift. Depth is not special-cased anywhere —
     a five-segment type added to the YAML tomorrow resolves without a code change.
 
-    RESIDUAL, STATED RATHER THAN IMPLIED CLOSED: ``module_imports`` is built by an
-    ``ast.walk`` over the WHOLE FILE, so it is file-scoped and cannot see a local
-    binding that shadows an imported module name. A parameter named ``socket``
-    already mistyped ``socket.socket(h)`` as the stdlib type before this change;
-    unwinding widens that same exposure to depth >= 2 rather than introducing it.
-    Pinned by an ``xfail(strict=True)`` in the receiver-type tests so a scope-aware
-    fix goes RED instead of passing unnoticed.
+    INV-dulum: ``module_imports`` and ``imports`` are built by an ``ast.walk``
+    over the WHOLE FILE, so on their own they cannot see a local binding that
+    shadows an imported name -- a parameter named ``socket`` typed
+    ``socket.socket(h)`` as the stdlib type, at any chain depth, and a parameter
+    named ``open`` typed ``open(p)`` as a file. *shadowed* is the call site's
+    value-shadowed names (:meth:`ScopeStack.value_shadowed`); a ROOT name in it
+    withholds the type on both branches. It is the only thing that can refuse
+    the builtin case, which consults no map. Default empty: a caller with no
+    scope information keeps the file-scoped answer.
 
     INV-kipor: the bare-name branch used to emit the catalogued module with no check
     at all, while the attribute branch beside it verified its base against
@@ -7696,6 +7835,8 @@ def _external_constructor_type(
     """
     func = call.func
     if isinstance(func, ast.Name):
+        if func.id in shadowed:
+            return None
         claimed = EXTERNAL_CONSTRUCTOR_TYPES.get(func.id)
         bound = _import_binding_for(func.id, imports, module_imports)
         if claimed is None:
@@ -7711,6 +7852,8 @@ def _external_constructor_type(
         if chain is None:
             return None
         root, attrs = chain
+        if root.id in shadowed:
+            return None
         if root.id in module_imports:
             qualified = ".".join([module_imports[root.id], *attrs])
             return EXTERNAL_CONSTRUCTOR_TYPES.get(qualified) or _bound_call_type(qualified)
@@ -8613,6 +8756,17 @@ def _process_call(
         self_methods = {}
     if class_name_counts is None:  # pragma: no cover - defensive default
         class_name_counts = {}
+    # INV-dulum: the file-scoped import maps, narrowed ONCE to what is live at
+    # this call site. A parameter or local named like an import (``def
+    # f(socket): socket.socket(h)``) is a value, not the module, and every
+    # consumer below -- the in-repo module-member lookup, the unresolved module
+    # emit, the dotted-chain emit, constructor typing, the literal-argument
+    # receiver test -- reads these names. Distinct from ``_caller_shadow``
+    # below, which folds imports in: that one asks "is this a builtin", this
+    # one asks "is the import the binding here".
+    _value_shadow = stack.value_shadowed() if stack is not None else frozenset()
+    imports = _scope_live(imports, _value_shadow)
+    module_imports = _scope_live(module_imports, _value_shadow)
 
     def _ctor_type_here(call: ast.Call) -> str | None:
         """This call site's import maps, bound to the shared constructor resolver.
@@ -8633,7 +8787,9 @@ def _process_call(
             inner_scope=stack.immediate_symbols() if stack else None,
         ) is not None:
             return None
-        return _external_constructor_type(call, imports, module_imports)
+        return _external_constructor_type(
+            call, imports, module_imports, shadowed=_value_shadow,
+        )
 
     func = call_node.func
     callee_symbol = None

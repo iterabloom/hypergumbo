@@ -332,6 +332,7 @@ def _resolve_ctor(source: str) -> str | None:
     import ast
 
     from hypergumbo_lang_mainstream.py import (
+        _collect_scope_value_names,
         _extract_imports,
         _external_constructor_type,
     )
@@ -343,7 +344,14 @@ def _resolve_ctor(source: str) -> str | None:
         f"fixture must contain exactly one call so the subject is unambiguous; "
         f"found {len(calls)}"
     )
-    return _external_constructor_type(calls[0], imports, module_imports)
+    # INV-dulum: the call's own function scope, from production's collector, so
+    # a parameter or local that shadows an import is seen the way the analyzer
+    # sees it. Fixtures here hold at most one function around the call.
+    funcs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+    shadowed = _collect_scope_value_names(funcs[0]) if funcs else frozenset()
+    return _external_constructor_type(
+        calls[0], imports, module_imports, shadowed=shadowed,
+    )
 
 
 class TestDottedModuleConstructorsResolve:
@@ -451,21 +459,24 @@ class TestDottedModuleConstructorsResolve:
             "def f(h):\n    return mylib.client.HTTPConnection(h)\n"
         ) == "mylib.client.HTTPConnection"
 
-    @pytest.mark.xfail(strict=True, reason=(
-        "KNOWN GAP, PRE-EXISTING AND WIDENED HERE — filed, not fixed in this PR. "
-        "module_imports is built by an ast.walk over the WHOLE FILE, so it is "
-        "file-scoped and knows nothing about a local binding that shadows an "
-        "imported module name. This already mistyped the depth-1 form (a local "
-        "`socket` parameter still resolves `socket.socket(h)` to the stdlib "
-        "type); chain-unwinding extends the same exposure to depth >= 2. Marked "
-        "strict so whoever makes it scope-aware gets a RED test rather than a "
-        "silently-passing one they never notice."
-    ))
     def test_a_local_shadow_should_not_be_typed(self) -> None:
+        """INV-dulum (was a strict xfail): ``module_imports`` is file-scoped, so
+        a ``http`` PARAMETER satisfied the root check and the call was typed as
+        the stdlib class. The scope's value bindings now withhold it."""
         assert _resolve_ctor(
             "import http.client\n\n\n"
             "def f(http, h):\n    return http.client.HTTPConnection(h)\n"
         ) is None
+
+    def test_a_function_local_import_is_still_typed(self) -> None:
+        """THE TRAP the INV-dulum fix had to step around: a function-local
+        ``import`` binds the name TO THE MODULE. It is a local binding, but not
+        a shadow, and refusing it would turn the false positive into a false
+        negative on the ordinary lazy-import idiom."""
+        assert _resolve_ctor(
+            "def f(h):\n    import http.client\n"
+            "    return http.client.HTTPConnection(h)\n"
+        ) == "http.client.HTTPConnection"
 
 
 class TestDottedConstructorsReachTheCatalogue:
