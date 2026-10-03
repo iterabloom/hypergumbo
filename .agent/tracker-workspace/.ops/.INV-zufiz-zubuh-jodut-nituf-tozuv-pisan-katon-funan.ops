@@ -29,3 +29,10 @@
   clock: 2  # 30a9
   nonce: 30a9  # 30a9
   message: "Filed from the WI-vafad T5 sweep, 2026-09-11. Row R076, raised by the worker as a cross-catalog inconsistency and CONFIRMED by the orchestrator by reading all four catalogues plus rust's own std::env block. This is the PARITY TEST shape: 3 against 1, and the outlier also breaks with its own file. Not edited here per rubric R4."  # 30a9
+- op: discuss  # 4a2b
+  at: '2026-10-03T13:18:41Z'  # 4a2b
+  by: agent  # 4a2b
+  actor: jgstern_agent  # 4a2b
+  clock: 3  # 4a2b
+  nonce: 4a2b  # 4a2b
+  message: "mulul run 2026-10-03, branch jgstern-agent/fix/mulul-catalogue-rows (local only), commits 58ef2cc636 + 610beef105. rust std::env::current_dir moved fs_read -> host_info_read. Swept by mechanism over every catalogue and default overlay (load_catalog + name enumeration): rust std::path::absolute, haskell System.Directory getCurrentDirectory / makeAbsolute and the community System.Directory.Extra twins moved too; canonicalizePath stays fs_read. Each now derives a host_description source (fs_read derived none). Repro: rust fixture writing current_dir()/absolute() to a TcpStream: host-description-no-network inconclusive -> VIOLATED (3 flows); fs_read must_not_exist violated -> not violated. Haskell fixture printing getCurrentDirectory: host-description-no-logging confirmed -> VIOLATED. New test_cwd_reads_are_host_info.py carries a 15-row cross-catalogue parity table. test_rust_fs_surface_enumeration.py's pinned std::path::absolute row (fs_read, filed only to match current_dir) updated. Found on the way: taint names the source System.Directory.Extra.getCurrentDirectory (community twin) where io-boundaries names System.Directory -- pre-existing on dev, filed INV-tobur-zabil-mofan-zotuv-tobip-gajon-zokak-sazat. Family remainder filed WI-vaduf-mamav-savit-vokod-jojun-fibur-gilab-tagis. Report: decontend/run_10032026/mulul.md."  # 4a2b

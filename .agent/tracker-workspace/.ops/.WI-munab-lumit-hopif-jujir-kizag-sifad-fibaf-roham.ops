@@ -1,0 +1,19 @@
+- op: create  # df2b
+  at: '2026-10-03T13:18:05Z'  # df2b
+  by: agent  # df2b
+  actor: jgstern_agent  # df2b
+  clock: 1  # df2b
+  nonce: df2b  # df2b
+  data:  # df2b
+    kind: work_item  # df2b
+    title: "python: a write into a caller-supplied object (json.dump, pickle.dump, csv writer methods) is fs_write even when the object is an in-memory io.StringIO; Go's in_memory io_target_kind has no python twin"  # df2b
+    status: todo_hard  # df2b
+    priority: 3  # df2b
+    parent:  # df2b
+    tags: []  # df2b
+    isbefore: []  # df2b
+    duplicate_of: []  # df2b
+    not_duplicate_of: []  # df2b
+    pr_ref:  # df2b
+    description: "FOUND BY WI-kozaj (2026-10-03) while A/B-ing the csv write rows on pretix. NOT introduced by WI-kozaj: the same shape held before it, one call earlier.\n\npython.yaml rows a write INTO a caller-supplied object as fs_write: json.dump, pickle.dump, and (WI-kozaj) _csv.Writer.writerow/writerows and csv.DictWriter.writerow/writerows/writeheader. The row is right when the object is a file the caller opened. It is a vacuous host_fs sink when the object is an in-memory buffer. Observed on real code, analyzer output read back to source: pretix src/pretix/control/views/vouchers.py:116 and src/pretix/control/views/waitinglist.py:322 build `output = io.StringIO()` and then `csv.writer(output, ...)` / `writer.writerow(...)`; both arms of WI-kozaj's A/B classify that write fs_write (arm A at defusedcsv.csv.writer, arm B at defusedcsv.csv._ProxyWriter.writerow). No pretix verdict moved on it (the generic claims found no flow into these sites), so the cost measured so far is zero findings; it is a precision exposure, not a measured false positive.\n\nGo already solves the twin: io_target_kind is stamped from the writer argument's last binding, and an in_memory target (bytes.Buffer, strings.Builder) is refused by the carry gate (WI-suhug, test_sink_match_reads_the_writer.py::test_an_in_memory_writer_is_no_sink). Python has no such stamp. Proposed shape, not decided: resolve the file-object argument (or, for a writer type, the argument its factory was called with) to its binding and stamp in_memory for io.StringIO / io.BytesIO. NOT CHECKED: how many corpus sites write json/pickle/csv into an in-memory buffer; whether any verdict anywhere depends on one."  # df2b
+    fields: {}  # df2b
