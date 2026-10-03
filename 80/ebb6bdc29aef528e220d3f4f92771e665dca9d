@@ -1,0 +1,3 @@
+Original commit body from c1c5de41e38a88b4befd459ae9c215a7946207e1:
+
+_classify_symbols called classify_file once per SYMBOL; classify_file reads the whole file, so a file with N symbols was read N times (40x bytes on nestjs, 319 s CPU on flink). Memoized per path; is_exported fold and dependency-kind branch stay per symbol. Measured: 8.2x per-path vs per-symbol on a 300-path nestjs sample. Not measured: end-to-end flink saving. Tests: smart-test 7773 passed, changed source at 100% coverage. Addresses WI-fojot.
