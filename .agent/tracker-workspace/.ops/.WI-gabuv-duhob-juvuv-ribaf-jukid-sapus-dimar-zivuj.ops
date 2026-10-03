@@ -1,0 +1,23 @@
+- op: create  # 5583
+  at: '2026-10-03T17:41:49Z'  # 5583
+  by: agent  # 5583
+  actor: jgstern_agent  # 5583
+  clock: 1  # 5583
+  nonce: '5583'  # 5583
+  data:  # 5583
+    kind: work_item  # 5583
+    title: "elixir: calls through an application's use-Ecto.Repo module (Repo.all / Repo.stream / Repo.insert) never reach the Ecto.Repo catalogue rows -- they land in external_potential"  # 5583
+    status: todo_hard  # 5583
+    priority: 2  # 5583
+    parent:  # 5583
+    tags:  # 5583
+    - catalogue  # 5583
+    - io_boundary  # 5583
+    - elixir  # 5583
+    - recall  # 5583
+    isbefore: []  # 5583
+    duplicate_of: []  # 5583
+    not_duplicate_of: []  # 5583
+    pr_ref:  # 5583
+    description: "FOUND by WI-tunog (2026-10-03) while checking ADR-0049's `Ecto.Repo.stream` row.\n\nSTATEMENT. In the idiomatic Phoenix/Ecto form -- an application module that does `use Ecto.Repo, otp_app: ..., adapter: ...` and is called as `Repo.all(q)` / `Repo.stream(q)` / `Repo.insert(cs)` -- no call reaches the `Ecto.Repo` rows in `io_primitives_overlays/elixir-web-and-db.yaml`. The calls arrive as `App.Repo.<fn>` and land in `external_potential`.\n\nREPRO (live, worktree ~/hg_wt/tunog at origin/dev fe3c32259d):\n  lib/export.ex:\n    defmodule App.Repo do\n      use Ecto.Repo, otp_app: :app, adapter: Ecto.Adapters.Postgres\n    end\n    defmodule App.Export do\n      alias App.Repo\n      def export(query, path) do\n        Repo.transaction(fn ->\n          rows = query |> Repo.stream() |> Enum.map(&inspect/1)\n          all = Repo.all(query)\n          File.write!(path <> \".all\", inspect(all))\n          File.write!(path, Enum.join(rows, \"\\n\"))\n        end)\n      end\n    end\n  `hypergumbo io-boundaries <dir> --format json` ->\n    boundaries: {external_potential: {App.Repo.all: 1, App.Repo.stream: 1, App.Repo.transaction: 1, Enum.join: 1, Enum.map: 1}, fs_write: {File.write!: 1}}\n  No db_read and no db_write chain. verify-claims reads inconclusive on every claim (\"could not classify (App.Repo, Enum)\").\n\nSCOPE OF THE GAP, AS FAR AS CHECKED: every function on both `Ecto.Repo` rows (db_read: all, one, get, get_by, exists?, aggregate, stream, preload and the bang forms; db_write: insert ... rollback) has the same owner problem, since all are called through the user's module. Checked on the fixture only for all, stream and transaction. NOT measured on a corpus repository; `use Ecto.Repo` appears in plausible (7 modules), phoenix-framework's installer template and nex-framework.\n\nWHAT ALREADY EXISTS: the elixir analyzer parses `use` directives once (`_behaviour_directives` in hypergumbo_lang_common/elixir.py) and indexes `__using__`, so the fact that `App.Repo` uses `Ecto.Repo` is available at analysis time. Not checked: whether any existing mechanism maps a call's owner through a `use` relationship for catalogue lookup.\n\nWHY IT MATTERS: elixir.yaml's header records that UAT-2026-04-13 BUG-09b (0 boundaries on plausible) was \"answered\" by moving these rows to the default-loaded overlay. On this fixture the rows are present and still unreached, so that answer does not hold for the `use Ecto.Repo` spelling. Not re-measured on plausible."  # 5583
+    fields: {}  # 5583
