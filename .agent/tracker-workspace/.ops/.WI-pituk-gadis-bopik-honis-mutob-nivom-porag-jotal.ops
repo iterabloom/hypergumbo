@@ -1,0 +1,22 @@
+- op: create  # b5f4
+  at: '2026-10-03T19:39:35Z'  # b5f4
+  by: agent  # b5f4
+  actor: jgstern_agent  # b5f4
+  clock: 1  # b5f4
+  nonce: b5f4  # b5f4
+  data:  # b5f4
+    kind: work_item  # b5f4
+    title: "inherited_calls C3 walk refuses every class under an inheritance cycle, silently: it over-refuses the MRO prefix the cycle cannot change and records nothing"  # b5f4
+    status: todo_hard  # b5f4
+    priority: 3  # b5f4
+    parent:  # b5f4
+    tags:  # b5f4
+    - analysis_quality  # b5f4
+    - python  # b5f4
+    - dispatch  # b5f4
+    isbefore: []  # b5f4
+    duplicate_of: []  # b5f4
+    not_duplicate_of: []  # b5f4
+    pr_ref:  # b5f4
+    description: "inherited_calls `_linearize_c3` returns None for ANY class whose ancestry reaches an inheritance cycle (`_in_progress` hit), and `_walk_c3` then returns None: the whole subtree under the cycle resolves no inherited method, and nothing records why (no edge meta, no run counter, no diagnostic). Found while fixing WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin, whose wrong base binding closed such a cycle on django (TestCase -> TransactionTestCase -> SimpleTestCase -> TestCase) and silently cost 2098 correct call sites in WI-kutal's A/B.\n\nWHAT IT DOES NOW (packages/hypergumbo-core/src/hypergumbo_core/linkers/inherited_calls.py `_linearize_c3`): a cycle or depth exhaustion returns None and None propagates up through every descendant's merge. The design rationale (docstring) is sound for the cycle's OWN members: a cycle cannot be valid Python, so some extends edge is wrong and any order is a guess.\n\nWHAT IS OVER-REFUSED: the prefix of the MRO that the cycle cannot affect. For C with a single base B, L[C] = [C] + L[B]; along a chain of single-inheritance classes below the cycle, the MRO prefix C, B, ... up to the first multi-base class (inclusive: X is always first in L[X]) or the first cycle member is fixed regardless of what lies above. A method defined on one of those classes is the C3 answer whatever the cycle is. Example: `MyTests(Base)`, `Base(TestCase)` where TestCase is in the cycle: `self.helper()` with `helper` on Base is certain, and is refused today.\n\nPROPOSED (not designed in detail): (1) on a None linearization, walk the determined prefix and return a definer found there; refuse only past it. (2) Make the refusal visible: count cycle refusals on the linker's AnalysisRun (or a meta on the unresolved edge) so a wrong base edge shows up as a number instead of a recall hole. A cycle guard must not HIDE which edge is wrong (the WI-ratid description's point): (2) is the half that exposes it.\n\nNOT MEASURED: how many cycles exist in the corpus once WI-ratid lands (the WI-ratid A/B reports the django population's remaining c3_fail count); other walkers (`_walk_insertion_order`, `_walk_single_then_interfaces`, `_walk_linearization`) use visited sets and do not refuse, so this is Python-only."  # b5f4
+    fields: {}  # b5f4
