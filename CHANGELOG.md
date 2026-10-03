@@ -102,6 +102,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Ansible needs Ansible evidence** (`ansible.cfg`, a playbook or a role entry point): repositories with any Ansible claim fall 180 → 9 on the corpus. Astro paths are relative to the analysis root, and PHP reads double-quoted Laravel route literals and refuses interpolated ones.
 - **A shell script with an appended binary** no longer reports archive fragments as launched programs.
 
+#### Survey speed on large repositories
+
+- **Supply-chain classification reads each file once, not once per symbol.** The classifier reads the whole file, and a file with N symbols was read N times: 40× the bytes on nestjs, and 319 s of CPU on flink. On a sample of nestjs files, per-path classification is 8.2× faster than per-symbol. The end-to-end saving on flink has not been re-measured.
+
 #### Tooling and release
 
 - **`auto-pr --tracker-id` no longer stalls 15 minutes after a merge**: the pending gate is released before the tracker write.
