@@ -323,6 +323,18 @@ net_recv:
     notes: "Resolves a host:port string through the system resolver and yields the addresses it chose (ADR-0049). INERT until WI-tuzaf gives trait methods on untyped receivers a resolvable owner; written, not counted as coverage."
   - module: std::net::TcpListener
     methods: [accept, incoming]
+    notes: >-
+      accept is a transfer (it returns the peer's address, ADR-0049 ruling
+      4). incoming is NOT: library/std/src/net/tcp.rs (rustc 1.94.0) builds
+      `Incoming { listener: self }` and nothing else, and the iterator's
+      next() is `self.listener.accept().map(|p| p.0)`, so no connection is
+      accepted until the loop advances. A deferred crossing by ruling 1 that
+      STAYS net_recv, held by ruling 3 (WI-tunog): the reads of the yielded
+      connections are rowed below but never fire in the std accept loop,
+      because `stream.unwrap()` leaves the receiver untyped, so the incoming
+      mint is the only source of a read in its own scope. A move to
+      net_listen deleted that flow with nothing to relocate it to.
+      Residual: WI-fokup (type the yielded connection).
   - module: std::net::TcpStream
     methods: [read, read_to_end, read_to_string]
   - module: std::net::UdpSocket
