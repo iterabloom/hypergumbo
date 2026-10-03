@@ -221,6 +221,55 @@ class TestClassFoundByPosition:
         assert (e.is_resolved, e.dst) == (True, c_helper.id)
 
 
+class TestNestedClassThroughSelf:
+    def test_self_nested_class_resolves_to_own_nested_class(
+        self, tmp_path: Path
+    ) -> None:
+        # ``self.Result()`` reads the class attribute ``Result`` -- the class
+        # nested in the caller's own class body -- not a same-named class
+        # elsewhere in the file (pre-fix: the LAST ``Result`` in the file).
+        src = (
+            "class Manager:\n"
+            "    class Result:\n"
+            "        pass\n"
+            "    def add(self):\n"
+            "        return self.Result()\n"
+            "class Other:\n"
+            "    class Result:\n"
+            "        pass\n"
+            "    def add(self):\n"
+            "        return self.Result()\n"
+        )
+        res = _analyze(tmp_path, src)
+        r1 = _sym(res, "Result", line=2)
+        r2 = _sym(res, "Result", line=7)
+        e1 = _single(_self_calls_from(res, _sym(res, "Manager.add").id, "Result"))
+        e2 = _single(_self_calls_from(res, _sym(res, "Other.add").id, "Result"))
+        assert (e1.is_resolved, e1.dst) == (True, r1.id)
+        assert (e2.is_resolved, e2.dst) == (True, r2.id)
+
+
+    def test_later_def_in_source_order_wins_over_nested_class(
+        self, tmp_path: Path
+    ) -> None:
+        # Nested class first, method of the same name later: the class dict
+        # holds the METHOD. Methods and nested classes are registered at
+        # different points of the walk, so source order must decide.
+        src = (
+            "class C:\n"
+            "    class Item:\n"
+            "        pass\n"
+            "    def Item(self):\n"
+            "        return 1\n"
+            "    def run(self):\n"
+            "        return self.Item()\n"
+        )
+        res = _analyze(tmp_path, src)
+        method = _sym(res, "C.Item")
+        e = _single(_self_calls_from(res, _sym(res, "C.run").id, "Item"))
+        assert (e.is_resolved, e.dst) == (True, method.id)
+
+
 class TestUnderDeterminedSelf:
     """A ``self`` that does not denote an instance of the enclosing class
     resolves nothing (INV-fahub) -- pre-fix each bound the LAST ``helper`` in
