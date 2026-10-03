@@ -1,0 +1,21 @@
+- op: create  # b132
+  at: '2026-10-03T09:14:09Z'  # b132
+  by: agent  # b132
+  actor: jgstern_agent  # b132
+  clock: 1  # b132
+  nonce: b132  # b132
+  data:  # b132
+    kind: work_item  # b132
+    title: "yaml_ansible emits four unregistered Edge.evidence_type values (include_tasks/import_tasks/include_role/import_role) via evidence_type=key narrowed only by an if-in guard; no gate sees it"  # b132
+    status: todo_hard  # b132
+    priority: 3  # b132
+    parent:  # b132
+    tags:  # b132
+    - axis  # b132
+    - analysis_quality  # b132
+    isbefore: []  # b132
+    duplicate_of: []  # b132
+    not_duplicate_of: []  # b132
+    pr_ref:  # b132
+    description: "FOUND 2026-10-03 while sweeping WI-nakur's family (values that reach a producer keyword through data, not a literal), on branch jgstern-agent/fix/nakur.\n\nyaml_ansible.py (packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/yaml_ansible.py, the include/import edge in process_mapping_pairs) emits\n\n    if key in (\"include_tasks\", \"import_tasks\", \"include_role\", \"import_role\"):\n        ... Edge.create(..., edge_type=\"imports\", evidence_type=key, ...)\n\nso the evidence_type is one of those four YAML keys. None of the four is in the evidence-type registry (evidence_types.all_evidence_type_names()).\n\nLIVE REPRO (worktree ~/hg_wt/nakur, PYTHONPATH pinned): a 3-file playbook with `include_tasks: setup.yml` produced one edge `imports`, meta.evidence_type = \"include_tasks\", find_evidence_type(\"include_tasks\") is None. (`include_role` with a mapping value emitted no edge in that fixture; not chased.)\n\nWHY NO GATE SEES IT: `key` comes from the parsed YAML (a tree-sitter call result), so it is unenumerable; only the STATEMENT-LEVEL guard `if key in (...)` bounds it. hypergumbo_core.value_flow (WI-nakur) narrows an IfExp arm by ==/in tests, not a name used inside an `if` block, so the L3 ratchet stays green. This is the one remaining unresolvable evidence_type site in an analyzer besides re-emission copies.\n\nNOT CHECKED: whether any consumer branches on these values; whether other analyzers use the same \"guard-narrowed key as evidence_type\" shape (value_flow's unresolved list for evidence_type after WI-nakur is: receiver_type_dispatch.py evidence_type, yaml_ansible.py key, yaml_ansible.py edge.evidence_type).\n\nDECISION NEEDED: register the four (axis + no seed, the WI-nubuv/WI-pubin precedent) or fold to one registered pathway (e.g. `include`, already registered) with the directive kept in meta. And either teach value_flow statement-level narrowing (`if x in (lits):` dominating the use, no rebinding in between) or file it as its own residual."  # b132
+    fields: {}  # b132

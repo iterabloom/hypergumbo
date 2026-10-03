@@ -1,0 +1,21 @@
+- op: create  # 605d
+  at: '2026-10-03T08:06:04Z'  # 605d
+  by: agent  # 605d
+  actor: jgstern_agent  # 605d
+  clock: 1  # 605d
+  nonce: 605d  # 605d
+  data:  # 605d
+    kind: work_item  # 605d
+    title: "No live CI enforces per-package coverage isolation: the Woodpecker full-suite runs one union pytest, not the GHA per-package jobs"  # 605d
+    status: todo_hard  # 605d
+    priority: 3  # 605d
+    parent:  # 605d
+    tags:  # 605d
+    - ci_infrastructure  # 605d
+    - testing  # 605d
+    isbefore: []  # 605d
+    duplicate_of: []  # 605d
+    not_duplicate_of: []  # 605d
+    pr_ref:  # 605d
+    description: "INV-hokin premise audit item 2, filed as its own row (2026-10-03). The live cron (.woodpecker/full-suite.yml test-all-packages) runs ONE pytest over packages/*/tests/ with --cov on every package's src and --cov-fail-under=100. The GHA full-suite it replaced ran each package's tests ALONE against that package's src. Under the union a line covered only by ANOTHER package's tests counts toward 100%, so AGENTS.md's \"tests must live in the same package as the code they cover (CI tests packages in isolation)\" is enforced by no live CI; per-PR woodpecker.yml and nightly.yml use the same union. Only local scripts/check-package-coverage checks isolation. It has bitten before (WI-tubuv: core 99% in isolation; WI-dojuh: cli.py uncovered in core isolation).\n\nThe full-suite header claimed \"a 100% union <=> every package at 100%\" as equivalent to the GHA per-package jobs; INV-hokin's branch corrected that comment and tests/test_full_suite_coverage_teeth.py now states the gap. WI-kahar's description says \"the whole-package ISOLATION run is event: cron only\" -- the cron run is NOT an isolation run; noted on WI-kahar.\n\nFIX SHAPE (not designed or measured here): a cron step that runs scripts/check-package-coverage (or the per-package loop) instead of, or beside, the union run. Cost NOT MEASURED in CI; WI-kahar measured pkgcov at 780 s wall on 6 cores locally."  # 605d
+    fields: {}  # 605d
