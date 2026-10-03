@@ -1,0 +1,24 @@
+- op: create  # f967
+  at: '2026-10-03T06:33:17Z'  # f967
+  by: agent  # f967
+  actor: jgstern_agent  # f967
+  clock: 1  # f967
+  nonce: f967  # f967
+  data:  # f967
+    kind: invariant  # f967
+    title: "linker-minted symbols that carry a language get no stable_id from anything: grpc_service nodes are stable_id=null (view-template 'template' nodes have the same mint shape, unreproduced)"  # f967
+    status: violated  # f967
+    priority: 3  # f967
+    parent:  # f967
+    tags:  # f967
+    - schema  # f967
+    - analysis_quality  # f967
+    - protocol_linkers  # f967
+    isbefore: []  # f967
+    duplicate_of: []  # f967
+    not_duplicate_of: []  # f967
+    pr_ref:  # f967
+    description: "FOUND 2026-10-03 by the WI-tusad premise audit; reproduced at dev 3abedae588.\n\nDEFECT. The gRPC linker's `grpc_service` symbols reach the output with stable_id = null. ADR-0035 (backstop floor paragraph): the floor runs in analyze.all_analyzers BEFORE the linkers and covers analyzer-emitted symbols only; \"linker-minted symbols stamp their own identity\". The make_synthetic_symbol_identity chokepoint backstops only Class-B stand-ins (language=None + protocol_origin set). A linker symbol that carries a language and no protocol_origin is covered by neither, so if the linker sets nothing, the null is permanent.\n\nREPRO. svc.proto with `service S { rpc Get ... }` and `service T { rpc Get ...; rpc Put ... }`:\n- `hypergumbo survey` emits `grpc:svc.proto:5-5:S:grpc_service` and `...6-6:T:grpc_service`, both language=proto, protocol_origin=None, stable_id=None (fingerprint present).\n- validation_report.stable_id_stats.none_cohort=4: the two services plus the two proto `Get` methods. The `Get` methods are WI-tusad's floor abstention, not this item.\n\nFAMILY (static sweep of Symbol(...) calls in linkers/ without a stable_id argument and with a non-None language):\n- linkers/grpc.py:770 (reproduced above).\n- linkers/_view_template_core.py:285 (`kind=\"template\"`, language=candidate.language). Not reproduced: a Flask render_template fixture did not reach that linker, so it needs a fixture for a strategy that fires.\nThe other 11 hits are language=None + protocol_origin Class-B stand-ins that the chokepoint stamps.\n\nFIX DIRECTION. Compute the id at mint with the canonical factory for the kind. Filling a null alters no computed value, so no scheme bump is needed: ADR-0035:167 reasons the same way for the floor, and the owner's 10-01 ruling extends it to a producer value replacing a floor value. Add a static guard so a future linker mint of a language-bearing Symbol without stable_id fails a test, to keep this from recurring.\n\nACCEPTANCE. The proto fixture shows non-null, distinct stable_ids on both grpc_service nodes, stable when an rpc is added to the file. Same for the view-template node once a reaching fixture exists.\n\nRELATED: WI-tusad (analyzer-side callables on the floor), WI-sojop (done: the June sweep of non-canonical stable_id producers, which did not cover these two), the grpc id-slot item filed alongside this one."  # f967
+    fields:  # f967
+      statement: "Every symbol a linker mints with a non-None language carries a computed stable_id, because neither the analyzer-side floor nor the Class-B synthetic chokepoint reaches it (ADR-0035)."  # f967
+      root_cause: "linkers/grpc.py:770 and linkers/_view_template_core.py:285 construct Symbol(...) with language set, no protocol_origin and no stable_id; the floor runs before linkers and the chokepoint only stamps language=None stand-ins."  # f967

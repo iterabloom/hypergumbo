@@ -34,3 +34,10 @@
   clock: 3  # 6390
   nonce: '6390'  # 6390
   message: "Fixed in PR #1392 (merged; b1352e7087 is the fix). docs/io-primitives-overlays/hypergumbo-self.yaml now declares `rich.text.Text` completeness: complete, with the reason (from_markup builds an in-memory Text; .plain reads it back; output only through rich.console's rowed methods).\n\nBEHAVIORAL EVIDENCE (the item's own repro, the gate script itself): on the fix branch, cut from origin/dev f2a9d8d94a, with a cold XDG_CACHE_HOME, `scripts/check-self-claims` exits 0 and prints \"check-self-claims-drift: OK — 18 claims unchanged (18 confirmed_with_caveats).\" The same script on dev without the row reported the 18-claim drift whose details name rich.text.Text. Bisect record: ~/hypergumbo_lab_notebook/decontend/selfclaims_10022026/ (per-arm JSON, stderr, drift output).\n\nNo snapshot or SECURITY.md change. NOT YET SEEN: the CI cron's self-claims-gate step on a commit carrying #1392 (next scheduled full-suite run). If it is red, reopen with its log.\nNOT ADDRESSED (stated in the description): the family. Any receiver-typing gain can again turn a class slot into an unknown module and withhold all 18 claims, and the gate is cron-only, so it sat red ~4 days unread."  # 6390
+- op: discuss  # f788
+  at: '2026-10-03T04:26:47Z'  # f788
+  by: agent  # f788
+  actor: jgstern_agent  # f788
+  clock: 4  # f788
+  nonce: f788  # f788
+  message: "CI CONFIRMATION (2026-10-03): ci/woodpecker/cron/full-suite at 273034f3 (2026-10-02T17:38 EDT, pipeline 4150) is GREEN on every step, including self-claims-gate. That is the first full-suite cron after #1392, and it confirms the closure. Source: scripts/ci-debug cron-status."  # f788

@@ -41,3 +41,18 @@
   clock: 4  # 2a47
   nonce: 2a47  # 2a47
   message: "PRIORITY P3 -> P2 by the owner (2026-10-02), on the WI-motiz option-(e) agent's recommendation. Context: since PR #1390 the stable_id floor abstains (null) on every ambiguous same-name group, so this item now owns ALL remaining nulls of unmapped kinds: on phoenix/lib 699 elixir nodes (672 functions, 27 macros) in 250 groups, only 84 of which an arity-from-signature rule resolves; envoy config proto 4. See the re-scope proposal in the discussion above and ~/hypergumbo_lab_notebook/decontend/run_09302026/motiz_e.md."  # 2a47
+- op: update  # ec04
+  at: '2026-10-03T06:41:57Z'  # ec04
+  by: agent  # ec04
+  actor: jgstern_agent  # ec04
+  clock: 5  # ec04
+  nonce: ec04  # ec04
+  set:  # ec04
+    title: "Callable producers in ~31 language families compute no stable_id and ride the WI-motiz backstop floor: same-file same-name callables (overloads) get stable_id=null"  # ec04
+- op: discuss  # 6a2f
+  at: '2026-10-03T06:41:57Z'  # 6a2f
+  by: agent  # 6a2f
+  actor: jgstern_agent  # 6a2f
+  clock: 6  # 6a2f
+  nonce: 6a2f  # 6a2f
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). Premise holds; title, count and mechanism corrected.\n- MECHANISM: the WI-motiz floor (#1390, 79c203145b) assigns a floor id per file ONLY when the floor key is unique and leaves same-name groups NULL (ADR-0035 floor paragraph). Same-file overloads get stable_id=null, not an emission-order ordinal. Seen null: cuda f x2, glsl f x2, julia f(::Int)/f(::String), elixir Demo.greet x3, proto S.Get/T.Get.\n- COUNT: ~31 language families, not ~20. All 22 named still ride the floor. Not named before: capnp method (14 floor / 11 null), tlaplus operator (44/2), proto rpc method (null), commonlisp, fsharp, jupyter functions, dart constructor (dart functions/methods are producer-computed), wgsl function (mixed 3 producer / 3 floor / 2 null), cobol program, fortran program/subroutine. Member kinds still floor: csharp property, swift property, php field, scala object, agda field, zig field.\n- RE-SCOPE PROPOSAL: phoenix/lib re-measured at HEAD = exactly 699 nulls (672 function, 27 macro) of 2,221; the lossy-signature point holds (greet(:a) emits signature \"()\"). Weak spot in step 3: \"floor_abstained = 0 means the floor is exact\" fails as soon as a same-name sibling is added; for overloading languages (cuda, glsl, julia, fortran generics) adding one overload turned 0 into 2 nulls. Acceptance for those needs an add-a-sibling test, not a zero on one sample.\n- Scheme: ADR-0035:167 + owner 10-01: a producer value replacing a floor value is no scheme bump.\n- NOT CHECKED: verilog/systemverilog/vhdl/astro/blade/twig/meson/prisma/sparql callables (fixtures produced none); SQL procedures, Rust/C macros (no symbol emitted).\nTitle updated to match."  # 6a2f

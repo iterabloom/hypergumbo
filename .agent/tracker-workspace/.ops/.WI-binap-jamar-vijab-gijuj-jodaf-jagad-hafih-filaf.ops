@@ -19,3 +19,18 @@
     pr_ref:  # 1feb
     description: "FOUND 2026-09-24 while working WI-tisom (~/hypergumbo_lab_notebook/tisom_09242026/).\n\nTHE DEFECT: the C# analyzer emits NO call edge for a call made inside a property accessor: `get { return Helper(); }`, `set { Helper(); }`, and expression-bodied `public int Twice => Helper() * 2;`. In the same fixture, the same call from a method emits `A.Run -> A.Helper`. The property symbols exist (kind=property, spans cover the bodies); nothing is credited to them and nothing is emitted.\n\nMEASURED: on sherpa-onnx, grpc, rabbitmq and microservices-demo, analyze_csharp emits 201 property symbols, 142 of which span more than one line. There are 0 edges from any of them and 1 edge to one.\n\nWHY IT MATTERS: every call made in a C# getter or setter is missing from the call graph. The callee can read as dead, and a slice through the property is empty. WI-tisom stops the noise filter dropping C# properties, but they will carry no call edges until this is fixed.\n\nASKED: credit accessor calls to the property symbol, with the position-keyed enclosing lookup (INV-midag), and add csharp property accessors to the call-anchor gate fixture."  # 1feb
     fields: {}  # 1feb
+- op: update  # 79a9
+  at: '2026-10-03T06:42:04Z'  # 79a9
+  by: agent  # 79a9
+  actor: jgstern_agent  # 79a9
+  clock: 2  # 79a9
+  nonce: 79a9  # 79a9
+  set:  # 79a9
+    title: "csharp credits a call inside a property accessor (get/set/=>) to the enclosing CLASS, not the property; indexer, operator, destructor and event accessors get no symbol at all"  # 79a9
+- op: discuss  # 36ea
+  at: '2026-10-03T06:42:04Z'  # 36ea
+  by: agent  # 36ea
+  actor: jgstern_agent  # 36ea
+  clock: 3  # 36ea
+  nonce: 36ea  # 36ea
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). PARTLY STALE: the title's \"emits no call edge\" stopped being true on 2026-09-26. Title updated.\n- dbec60fb68 (INV-bamij, \"emit external calls, and anchor a field lambda's calls on its class\") sends any call NOT inside a method to the enclosing type, else the file (csharp.py:1450-1454). _get_enclosing_method (csharp.py:1183) recognises only method_declaration and constructor_declaration, so an accessor's calls are emitted but credited to the CLASS.\n- Repro: properties Getter {get{return Helper();}}, Setter {set{_v=Helper();}}, Twice => Helper()*2, AutoInit {get;} = Helper2(). Result: A(class) -> A.Helper 0.85 and A(class) -> A.Helper2 0.85 (the three accessor calls collapse into one class edge), control A.Run -> A.Helper, and zero edges from any kind=property symbol.\n- WIDER FAMILY: indexers (this[int]), operators, destructors and event add/remove accessors produce NO symbol, and their calls also go to the class. Separately, a local-function call (Loc() inside M) resolves to external_symbol Loc.\n- The call-anchor gate fixture (test_call_anchor_gate.py:45) registers C# only through test_csharp_one_leaf_name_in_two_classes; no property case.\n- The 201/0 figures predate dbec60fb68 and need re-measuring. The ask stands: anchor the call on the property, by position."  # 36ea

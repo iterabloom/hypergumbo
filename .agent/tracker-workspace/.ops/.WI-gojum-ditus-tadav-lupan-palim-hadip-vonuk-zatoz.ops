@@ -79,3 +79,12 @@
   clock: 9  # 9f37
   nonce: 9f37  # 9f37
   message: "SUB-COMPONENT 3 CLOSED (WI-givib, PR #1076): the results cache now keys on the resolved backend set (state segment suffixed -rust_analyzer only when the backend will actually run). Status of this parked host after the owner-authorised sequence so far: sub-1 superseded by ADR-0057 (attribute-level coexistence — landed: §10 hohuh #1066, §12 romuh #1068, §7 gapup #1069 / zapuk #1071, §3 kokiz #1072, §1/§4/§6/§13 binis #1074, §14 lihis #1075); sub-2 = WI-kokiz done; sub-3 = WI-givib done; sub-4 = WI-sobig's question (verify-and-close pending at the end of the sequence). Still parked; the owner unparks."  # 9f37
+- op: update  # 0fe3
+  at: '2026-10-03T06:22:54Z'  # 0fe3
+  by: agent  # 0fe3
+  actor: jgstern_agent  # 0fe3
+  clock: 10  # 0fe3
+  nonce: 0fe3  # 0fe3
+  set: {}  # 0fe3
+  remove:  # 0fe3
+    isbefore: [INV-lodum-sotah-rudis-fivit-dalot-fosug-matuf-gobon]  # 0fe3

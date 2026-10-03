@@ -29,3 +29,18 @@
   clock: 2  # 8e15
   nonce: '8e15'  # 8e15
   message: "UNBLOCKED 2026-09-29: INV-dadu landed (PR #1316), so the page URL is an untrusted_input source. Loosening this gate no longer turns location.hash -> eval into a false confirmed under untrusted_input: on merged dev that claim is VIOLATED (a found flow is reported regardless of the gate). Still true: every clean verdict in a JS repo that calls eval or document.write is withheld."  # 8e15
+- op: update  # d697
+  at: '2026-10-03T06:42:01Z'  # d697
+  by: agent  # d697
+  actor: jgstern_agent  # d697
+  clock: 3  # d697
+  nonce: d697  # d697
+  set:  # d697
+    title: "javascript/typescript: a call to a shipped non-I/O taint sink (eval, window.eval, document.write, document.writeln) counts as a module the I/O catalog could not classify, so every claim in a repo that calls one reads inconclusive"  # d697
+- op: discuss  # ebb8
+  at: '2026-10-03T06:42:01Z'  # ebb8
+  by: agent  # ebb8
+  actor: jgstern_agent  # ebb8
+  clock: 4  # ebb8
+  nonce: ebb8  # ebb8
+  message: "PREMISE AUDIT 2026-10-03 (owner-requested; read-only, reproduced at dev 3abedae588 on small fixtures). CURRENT; root cause traced; scope wider. Title updated.\n- Repro at HEAD: document.write(s) gives host_secret->network INCONCLUSIVE \"could not classify (document)\"; eval(s) gives \"(eval)\"; window.eval(s) gives \"(window)\"; TypeScript document.writeln(s) gives \"(document)\". console.log control: confirmed.\n- ROOT CAUSE: verify_claims._adjudicate_external_modules (~3690) skips an edge only when classify_call(catalogs, ...) on the I/O catalogue hits; next comes the exact module_io_is_enumerated test, then the first-party tests. taint_sinks/ (code_execution.yaml, dom_injection.yaml) is never consulted. Nothing since 2026-09-29 changes this (b2ee3ebd65 is caveat work).\n- SCOPE: JS AND TS, all four shipped rows: eval.eval, window.eval, document.write, document.writeln.\n- Ordering hazard resolved: location.hash -> eval under untrusted_input->code_execution reads violated.\n- FIX CAUTION: skip per call by (module, name) against a taint_sinks row. Do not mark window/document as examined modules: row presence is not enumeration (INV-zubuh), and window.fetch would ride along.\n- NOT CHECKED: whether python builtins.exec/compile stay clean only because builtins is enumerated."  # ebb8

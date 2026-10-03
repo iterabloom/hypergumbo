@@ -1,0 +1,22 @@
+- op: create  # 2a50
+  at: '2026-10-03T06:33:23Z'  # 2a50
+  by: agent  # 2a50
+  actor: jgstern_agent  # 2a50
+  clock: 1  # 2a50
+  nonce: 2a50  # 2a50
+  data:  # 2a50
+    kind: work_item  # 2a50
+    title: "grpc linker mints ids whose kind slot is the framework role 'grpc_service' (node.kind=interface) and whose language slot is 'grpc' (language=proto), breaking ADR-0036 Ruling 2 and the language-slot rule"  # 2a50
+    status: todo_hard  # 2a50
+    priority: 3  # 2a50
+    parent:  # 2a50
+    tags:  # 2a50
+    - analysis_quality  # 2a50
+    - protocol_linkers  # 2a50
+    - schema  # 2a50
+    isbefore: []  # 2a50
+    duplicate_of: []  # 2a50
+    not_duplicate_of: []  # 2a50
+    pr_ref:  # 2a50
+    description: "FOUND 2026-10-03 while reproducing the grpc_service null stable_id; dev 3abedae588.\n\nDEFECT. linkers/grpc.py mints `grpc:<path>:<line>:<Service>:grpc_service` for a node whose fields are kind=interface and language=proto. Two ID-grammar rulings are broken:\n- ADR-0036 Ruling 2 (kind-slot purity): the kind slot must equal node.kind, a registered symbol kind. The slot carries the framework role `grpc_service`, which the ruling names explicitly as forbidden (\"not a framework role\"). The role already lives in meta.framework_role.\n- ADR-0036 (line ~140) id language slot = `discovery_language or language`: the slot says `grpc`, but language=proto and discovery_language=None.\n\nThe validator already reports the first: two id_format warnings per service (\"kind-slot 'grpc_service' does not match Symbol.kind 'interface'\" and \"kind-slot 'grpc_service' is not a registered symbol-kind\"). It does not report the language-slot mismatch, which may be a validator gap; check.\n\nINV-dulah (node.id format escapes documented grammar) is the umbrella. Its current text does not name grpc, and the role-in-kind-slot shape here is the one Ruling 2 drained elsewhere.\n\nFIX DIRECTION. Mint through analyze/base.py::make_symbol_id(lang, path, start_line, end_line, name, kind) with the node's own kind and language. Edges whose src/dst carry the old id (stub->servicer and client->service edges built in the same linker) must use the new id; grep the linker and any consumer that string-matches `:grpc_service`. Decide whether this needs a scheme bump: node.id is location identity (ADR-0036), not stable_id, so the 10-01 floor ruling does NOT cover it.\n\nACCEPTANCE. The proto fixture with services S and T gives 0 id_format violations, and the ids round-trip (slot == kind, slot language == language). grpc linker edges still connect a stub to its servicer on an existing grpc linker test fixture.\n\nRELATED: INV-dulah (umbrella), ADR-0036, the grpc_service null stable_id item filed alongside this one."  # 2a50
+    fields: {}  # 2a50
