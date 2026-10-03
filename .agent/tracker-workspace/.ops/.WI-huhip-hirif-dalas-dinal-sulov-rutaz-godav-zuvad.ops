@@ -1,0 +1,21 @@
+- op: create  # 2ebd
+  at: '2026-10-03T08:02:11Z'  # 2ebd
+  by: agent  # 2ebd
+  actor: jgstern_agent  # 2ebd
+  clock: 1  # 2ebd
+  nonce: 2ebd  # 2ebd
+  data:  # 2ebd
+    kind: work_item  # 2ebd
+    title: "CLI reports a full disk (OSError ENOSPC/EDQUOT) as 'internal error ... This is a bug'"  # 2ebd
+    status: todo_hard  # 2ebd
+    priority: 3  # 2ebd
+    parent:  # 2ebd
+    tags:  # 2ebd
+    - cli  # 2ebd
+    - error_handling  # 2ebd
+    isbefore: []  # 2ebd
+    duplicate_of: []  # 2ebd
+    not_duplicate_of: []  # 2ebd
+    pr_ref:  # 2ebd
+    description: "The CLI's top-level safety net (cli.py main(), WI-himas, `except Exception as exc`) prints any uncaught OSError, including a full disk, as\n\n  hypergumbo: internal error: OSError: [Errno 28] No space left on device\n  This is a bug; re-run with --debug for a full traceback.\n\nand returns 1. LIVE (dev 62602239c6): `python -m hypergumbo_core verify-claims ~/whole_bunch_of_repos/flask-restful --claims docs/example-claims/generic-taint-claims.yaml --json > /dev/full` -> rc=1 with exactly those two lines. The same happens for `survey --out <symlink to /dev/full>`.\n\nA full disk (ENOSPC) or an exceeded quota (EDQUOT) is an ENVIRONMENT condition, not a hypergumbo bug. Telling the reader it is a bug sends them to diagnose code, which is the misdiagnosis WI-kovoj recorded (check-package-coverage exit 1 read as a coverage gap when /tmp was full). Expected: a typed message naming the condition and the path where it is known (e.g. \"hypergumbo: disk full writing <path> (ENOSPC); free space and re-run\"), a distinct non-zero exit, and no \"This is a bug\" line.\n\nSibling conditions to check before fixing (not checked): EACCES / EROFS on --out (observed: survey --out /dev/full -> \"internal error: PermissionError: [Errno 13] Permission denied: '/dev/full.slices'\", also labelled a bug), EPIPE (already handled separately just above the safety net).\n\nInstruments are already covered: scripts/lib/cohort_ledger.py (branch jgstern-agent/fix/kovoj) tees stderr and flags this text as DISK FULL in the cohort claim. This item is about the user-facing CLI."  # 2ebd
+    fields: {}  # 2ebd
