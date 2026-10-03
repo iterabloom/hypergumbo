@@ -19,12 +19,14 @@ WHY fs_read AND NOT A DELETION. It stats files, which is what go.yaml's own
 the only taint consequence is the ``subprocess`` SINK disappearing.
 
 WHAT IS DELIBERATELY NOT CHANGED. ``Command`` / ``CommandContext`` only BUILD
-a ``*Cmd``; the process is created later by ``Start``. But the constructor's
-arguments are the only carrier of the launched program's name and argv --
-``Run`` / ``Start`` take none -- so removing them is an ADR-0049 Ruling-3
-crossing that needs taint represented through the ``*Cmd`` receiver first
-(WI-kozaj). That half of INV-dukam stays open; the control below pins it
-unchanged so this file cannot be read as having decided it.
+a ``*Cmd``; the process is created later by ``Start``. Removing them is an
+ADR-0049 Ruling-3 move, and the finding-level proof was run (2026-10-03) and
+FAILS: taint through the ``*Cmd`` receiver into ``Run`` / ``Start`` / ``Output``
+already works where the ``*Cmd`` is executed in the scope that built it, but a
+``*Cmd`` returned by a factory, stored for another method, or run by a library
+function is lost, because taint is forward-only across calls. That half of INV-dukam stays open; the
+pins at the bottom of this file fail if the rows go before that flow is
+represented.
 """
 
 from __future__ import annotations
@@ -70,7 +72,7 @@ def test_parity_python_which_is_the_same_row() -> None:
 
 @pytest.mark.parametrize("module", ["os/exec", "golang.org/x/sys/execabs"])
 @pytest.mark.parametrize("name", ["Command", "CommandContext"])
-def test_control_the_constructors_are_untouched_pending_wi_kozaj(
+def test_control_the_constructors_stay_until_return_flow_is_represented(
     module: str, name: str,
 ) -> None:
     assert _boundaries(module, name) == {"subprocess"}
@@ -159,3 +161,75 @@ def test_a_program_that_only_looks_a_tool_up_launches_nothing(
         verdict = verdicts[claim_id]
         assert verdict["verdict"] != "violated", verdict["details"]
         assert "launches an external program" not in verdict["details"]
+
+
+# ---------------------------------------------------------------------------
+# INV-dukam, the Command / CommandContext half: WHY THE ROWS STAY.
+#
+# ADR-0049 ruling 3 licenses removing a constructor row only against a
+# represented crossing, tested at the finding level. Measured 2026-10-03 with
+# the two rows removed in a probe arm: the executor DOES carry the flow when
+# the *Cmd is executed in the scope that built it -- the DDG takes the argv into
+# `cmd` (a builder is not an I/O name once unrowed, so INV-fumod's inheritance
+# block no longer applies) and `cmd.Run()` uses `cmd` -- and the same-scope
+# fixture reads violated at os/exec.Cmd.Run, ddg CONFIRMED. It does NOT when a
+# factory RETURNS the *Cmd, or stores it in a struct another method starts:
+# taint is forward-only across calls, so the source in the factory never
+# reaches the caller's Run. On runc that loses a real flow
+# (Container.newParentProcess writes os.Getenv("GOMAXPROCS") into cmd.Env and
+# returns; Start runs elsewhere) and one on buildah (unshareCmd hands a *Cmd
+# built from $SHELL to unshare.ExecRunnable). The pin below fails if the rows
+# are removed before that flow is represented.
+# ---------------------------------------------------------------------------
+
+_FACTORY = '''package main
+
+import (
+	"os"
+	"os/exec"
+)
+
+func build() *exec.Cmd {
+	name := os.Getenv("TOOL")
+	return exec.Command(name, "--flag")
+}
+
+func main() {
+	c := build()
+	c.Run()
+}
+'''
+
+_SECRET_CLAIM = '''claims:
+  - id: SECRET-NO-SUBPROCESS
+    text: No environment value reaches a subprocess.
+    constraint:
+      taint_flow:
+        source_taint: host_secret
+        prohibited_sink_zone: subprocess
+'''
+
+
+def test_a_factory_returned_cmd_is_still_caught_at_its_constructor(
+    tmp_path: Path,
+) -> None:
+    """The load-bearing shape: the ONLY represented crossing is the row."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "go.mod").write_text("module example.com/f\n\ngo 1.21\n")
+    (repo / "main.go").write_text(_FACTORY)
+    (tmp_path / "claims.yaml").write_text(_SECRET_CLAIM)
+    mp = pytest.MonkeyPatch()
+    mp.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf), \
+                contextlib.redirect_stderr(io.StringIO()):
+            main(["verify-claims", str(repo), "--claims",
+                  str(tmp_path / "claims.yaml"), "--format", "json"])
+    finally:
+        mp.undo()
+    (verdict,) = json.loads(buf.getvalue())["verdicts"]
+    assert verdict["verdict"] == "violated", verdict["details"]
+    sinks = {p for e in verdict["evidence"] for p in e["sink_primitives"]}
+    assert "os/exec.Command" in sinks, sinks
