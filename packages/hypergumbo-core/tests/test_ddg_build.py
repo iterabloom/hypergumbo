@@ -56,7 +56,7 @@ class _FakeNode:
 class TestRegistry:
     def test_get_returns_registered_spec(self) -> None:
         spec = LanguageDdgSpec(
-            language="fakelang", file_glob="*.fake",
+            language="fakelang", file_globs=("*.fake",),
             function_node_types=frozenset({"fn"}),
         )
         register_ddg_language(spec)
@@ -75,14 +75,14 @@ class TestRegistry:
 class TestFunctionName:
     def test_uses_the_spec_override_when_present(self) -> None:
         spec = LanguageDdgSpec(
-            language="x", file_glob="*.x", function_node_types=frozenset({"fn"}),
+            language="x", file_globs=("*.x",), function_node_types=frozenset({"fn"}),
             name_for=lambda node, source: "OVERRIDDEN",
         )
         assert _function_name(_FakeNode(), b"", spec) == "OVERRIDDEN"
 
     def test_returns_none_when_the_node_has_no_name(self) -> None:
         spec = LanguageDdgSpec(
-            language="x", file_glob="*.x", function_node_types=frozenset({"fn"}),
+            language="x", file_globs=("*.x",), function_node_types=frozenset({"fn"}),
         )
         assert _function_name(_FakeNode(), b"", spec) is None
 
@@ -101,7 +101,7 @@ class TestSolveOneFunction:
 
         out = RepoDdg()
         spec = LanguageDdgSpec(
-            language="x", file_glob="*.x", function_node_types=frozenset({"fn"}),
+            language="x", file_globs=("*.x",), function_node_types=frozenset({"fn"}),
         )
         deps = {
             "build_function_cfg": lambda *a: object(),
@@ -118,7 +118,7 @@ class TestSolveOneFunction:
 class TestRefineContext:
     def test_no_hook_means_no_context(self) -> None:
         spec = LanguageDdgSpec(
-            language="x", file_glob="*.x", function_node_types=frozenset({"fn"}),
+            language="x", file_globs=("*.x",), function_node_types=frozenset({"fn"}),
         )
         assert _refine_context(spec, None, b"") == {}
 
@@ -150,7 +150,7 @@ class TestBuildRepoDdg:
         """A registered spec whose language the grammar pack cannot supply
         must degrade to 'no DDG for that language', not abort the walk."""
         register_ddg_language(LanguageDdgSpec(
-            language="not-a-real-grammar", file_glob="*.zzz",
+            language="not-a-real-grammar", file_globs=("*.zzz",),
             function_node_types=frozenset({"fn"}),
         ))
         result = build_repo_ddg(tmp_path, ["not-a-real-grammar"])
@@ -203,7 +203,7 @@ class TestBindingNamedCallables:
         if get_def_use_extractor("python") is None:
             importlib.reload(py_mod)
         register_ddg_language(LanguageDdgSpec(
-            language="python", file_glob="*.py",
+            language="python", file_globs=("*.py",),
             function_node_types=frozenset(),
             bound_callable_node_types=frozenset({"function_definition"}),
         ))
@@ -276,7 +276,7 @@ class TestBindingsThatHoldCallables:
         if get_def_use_extractor("python") is None:
             importlib.reload(py_mod)
         register_ddg_language(LanguageDdgSpec(
-            language="python", file_glob="*.py",
+            language="python", file_globs=("*.py",),
             function_node_types=frozenset(),
             bound_callable_node_types=frozenset({node_type}),
             bound_bodies_for=hook,
@@ -347,7 +347,7 @@ class TestBindingsThatHoldCallables:
 
         out = RepoDdg()
         spec = LanguageDdgSpec(
-            language="python", file_glob="*.py",
+            language="python", file_globs=("*.py",),
             function_node_types=frozenset(),
             refine=lambda **kw: {(kw["body_node"], "x"): "T"},
         )
@@ -393,7 +393,7 @@ class TestAnalyzerSymbolIndex:
         from hypergumbo_core.ddg_build import analyzer_symbol_index
 
         register_ddg_language(LanguageDdgSpec(
-            language="fakelang", file_glob="*.f",
+            language="fakelang", file_globs=("*.f",),
             function_node_types=frozenset(),
             bound_anchor_kinds=frozenset({"variable"}),
         ))
@@ -403,3 +403,81 @@ class TestAnalyzerSymbolIndex:
             [fake_var, fake_cls, self._node("jv", kind="variable", line=9)],
         )
         assert index == {("fakelang", "a.js", 1, 4, 3): "fv"}
+
+
+class TestFileGlobsComeFromTheTaxonomy:
+    """WI-fovus: a spec walks its language's taxonomy extensions unless it
+    declares a narrowing, and each file is parsed with its own grammar."""
+
+    def test_default_globs_are_the_languages_taxonomy_extensions(self) -> None:
+        spec = LanguageDdgSpec(language="typescript", function_node_types=frozenset())
+        assert spec.globs() == ("*.ts", "*.tsx", "*.mts", "*.cts")
+
+    def test_declared_globs_win(self) -> None:
+        spec = LanguageDdgSpec(
+            language="python", function_node_types=frozenset(), file_globs=("*.py",),
+        )
+        assert spec.globs() == ("*.py",)
+
+    def test_spec_files_are_deduplicated_sorted_and_skip_vendored(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ddg_build import _spec_files
+
+        (tmp_path / "b.d.ts").write_text("")
+        (tmp_path / "a.ts").write_text("")
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "node_modules" / "c.ts").write_text("")
+        spec = LanguageDdgSpec(
+            language="typescript", function_node_types=frozenset(),
+            file_globs=("*.ts", "*.d.ts"),
+        )
+        assert [p.name for p in _spec_files(tmp_path, spec)] == ["a.ts", "b.d.ts"]
+
+    def test_parser_cache_builds_one_parser_per_grammar(self) -> None:
+        import tree_sitter
+        from tree_sitter_language_pack import get_language
+
+        from hypergumbo_core.ddg_build import _ParserCache
+
+        calls: list[str] = []
+
+        def counting(name: Any) -> Any:
+            calls.append(name)
+            return get_language(name)
+
+        cache = _ParserCache(tree_sitter, counting)
+        assert cache.get("tsx") is cache.get("tsx")
+        assert calls == ["tsx"]
+
+    def test_parser_cache_returns_none_for_a_missing_grammar(self) -> None:
+        import tree_sitter
+
+        from hypergumbo_core.ddg_build import _ParserCache
+
+        def missing(name: Any) -> Any:
+            raise LookupError(name)
+
+        cache = _ParserCache(tree_sitter, missing)
+        assert cache.get("nope") is None
+        assert cache.get("nope") is None  # cached, not retried
+
+    def test_a_file_whose_grammar_is_missing_is_skipped(self, tmp_path: Path) -> None:
+        from hypergumbo_core.ddg_build import _walk_language
+
+        (tmp_path / "a.x").write_text("")
+
+        asked: list[str] = []
+
+        class _NoParsers:
+            def get(self, grammar: str) -> None:
+                asked.append(grammar)
+                return None
+
+        out = RepoDdg()
+        spec = LanguageDdgSpec(
+            language="x", function_node_types=frozenset({"fn"}), file_globs=("*.x",),
+        )
+        # Reached the file (asked for its grammar), then skipped it -- a None
+        # parser would raise on ``.parse`` had the guard been missing.
+        _walk_language(tmp_path, spec, _NoParsers(), None, out, {}, {})  # type: ignore[arg-type]
+        assert asked == ["x"]
+        assert out.ddg_symbols == set()
