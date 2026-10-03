@@ -439,3 +439,29 @@ def test_an_unreadable_committed_blob_falls_back_and_says_so(tmp_path: Path) -> 
     assert "working-tree" in result.stdout, (
         f"the fallback is not declared:\n{result.stdout}"
     )
+
+
+def test_the_selection_count_reads_root_level_tests(tmp_path: Path) -> None:
+    """WI-kabaf control: the LIVE per-PR count is a section count, not a prefix.
+
+    `.github/workflows/ci.yml` counted the manifest with `grep -c "^packages/"`,
+    which reads 0 for root-level `tests/...` selections (pinned in
+    tests/test_ci_github_manifest_count.py). That file is dormant; this is the
+    gate that runs per PR, and its announced count must equal what it hands
+    pytest for exactly that shape -- two root-level tests, no package tests.
+    """
+    manifest = (
+        "# === CHANGED_SOURCE_FILES ===\n"
+        "# === SELECTED_TESTS ===\n"
+        "tests/test_something.py\n"
+        "tests/test_something_else.py\n"
+    )
+    repo, marker = _sandbox(
+        tmp_path,
+        manifest_body=manifest,
+        changed_files=["tests/test_something.py"],
+    )
+    result = _run(_pytest_step_script(), repo, tmp_path / "bin")
+
+    assert marker.exists(), f"pytest never ran:\n{result.stdout}\n{result.stderr}"
+    assert "=== pytest (2 selected files," in result.stdout, result.stdout
