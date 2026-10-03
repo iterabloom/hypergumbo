@@ -1,0 +1,21 @@
+- op: create  # 8959
+  at: '2026-10-03T08:04:59Z'  # 8959
+  by: agent  # 8959
+  actor: jgstern_agent  # 8959
+  clock: 1  # 8959
+  nonce: '8959'  # 8959
+  data:  # 8959
+    kind: work_item  # 8959
+    title: "8 production functions surfaced by the test-only-reachability gate's first live run have no production caller: wire or retire each"  # 8959
+    status: todo_hard  # 8959
+    priority: 2  # 8959
+    parent:  # 8959
+    tags:  # 8959
+    - ci_infrastructure  # 8959
+    - testing  # 8959
+    isbefore: []  # 8959
+    duplicate_of: []  # 8959
+    not_duplicate_of: []  # 8959
+    pr_ref:  # 8959
+    description: "FOUND 2026-10-03 while porting the WI-ratuv gate to the live cron (INV-hokin, branch jgstern-agent/fix/hokin). The first run of scripts/check-test-only-reachability against a current self-map (dev 62602239c6) failed with 21 new keys: drift that accumulated from 09-02 while the gate ran nowhere. INV-hokin's branch adjudicated all 21 and re-froze the baseline (separate commit, owner to ratify); 13 are not dead (6 called from scripts/, see the scripts/ scope item; 7 are test-executed gates or declaration-table queries whose designed consumer is a test). THESE 8 ARE THE ONES THE GATE EXISTS TO CATCH: production functions with no production caller, several with prose naming a consumer that does not call them. Each needs WIRE or RETIRE, then its key removed from .ci/test-only-reachability-baseline.json.\n\n1. arbitration.py::resolve_arbitration_policy (WI-hukuf, d3bed2ee2e, 09-19). Docstring: \"the CLI turns that into exit 2\". The CLI does not call it: cli.py builds the policy with policy_from_config(_load_config_or_exit(repo_root)). A wrapper whose stated consumer uses a different path.\n2. io_boundary.py::write_boundary_for_target_kind (WI-suhug, 76c2dbc33e, 09-03). Its READ twin is wired (taint.py imports read_boundary_for_target_kind); the write twin has no caller. Decide whether taint/io-boundary should consult it for writes (a missing wiring) or retire it.\n3-4. check_id_construction.py::edge_template_problem, ::id_template_problem (WI-vodin, 3f3d684166, 09-11). find_id_construction_drift (the lint scripts/check-id-construction runs) does not call either, so the classifier the tests exercise is not the one the lint uses.\n5. linkers/di_resolution.py::build_interface_impl_map (b45f306c70, 02-26; not in the 09-02 baseline, so something changed since -- NOT CHECKED what). The linker now calls _iter_interface_impls directly; the public wrapper is left for tests.\n6. analyze/registry.py::get_analyzer (01-30; not in the 09-02 baseline; candidate cause 5fb2e5af36 WI-juzig 09-18, NOT CHECKED).\n7. io_primitive_kinds.py::kind_for_yaml_section (ADR-0059, 2a2cf57c2f, 09-23). Docstring: \"Raises on an unknown key, so a new section cannot mint an unregistered kind silently\" -- a guard no production loader calls, so the protection it describes is not in force on the load path. NOT CHECKED whether the loader has an equivalent guard of its own.\n8. python_stdlib_versions.py::in_window (WI-gisan, 1c602cbcf0, 10-03, the newest commit on dev). Only tests call it.\n\nNOT CHECKED: anything beyond a git grep of packages/*/src and scripts/ for each name plus the one-line reading above; each needs its own verification before wiring or deleting (LIVE rule 3)."  # 8959
+    fields: {}  # 8959

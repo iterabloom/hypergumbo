@@ -1,0 +1,21 @@
+- op: create  # 3dc2
+  at: '2026-10-03T08:03:34Z'  # 3dc2
+  by: agent  # 3dc2
+  actor: jgstern_agent  # 3dc2
+  clock: 1  # 3dc2
+  nonce: 3dc2  # 3dc2
+  data:  # 3dc2
+    kind: work_item  # 3dc2
+    title: "generate-schema and regenerate-backend-agreement-table write files in their own tree but import hypergumbo from whatever the interpreter resolves (generate-schema's sys.path pin names a REPO_ROOT/src that no longer exists)"  # 3dc2
+    status: todo_hard  # 3dc2
+    priority: 3  # 3dc2
+    parent:  # 3dc2
+    tags:  # 3dc2
+    - instrument  # 3dc2
+    - generated_files  # 3dc2
+    isbefore: []  # 3dc2
+    duplicate_of: []  # 3dc2
+    not_duplicate_of: []  # 3dc2
+    pr_ref:  # 3dc2
+    description: "FOUND 2026-10-03 by WI-tumog's sweep of scripts/ for the sys.path-insertion mechanism (branch jgstern-agent/fix/tumog). The opposite half of WI-tumog's defect: these scripts READ OR WRITE FILES IN THEIR OWN TREE but take hypergumbo's CODE from whatever the interpreter resolves, so run from a worktree (or clone) without PYTHONPATH they pair the worktree's files with the MAIN checkout's code (the editable install's .pth entries).\n\n1. scripts/generate-schema lines 27-29: `sys.path.insert(0, str(REPO_ROOT / \"src\"))`. REPO_ROOT/src does not exist (the code moved to packages/*/src), so the insert is dead and hypergumbo_core comes from PYTHONPATH or the editable install. It then writes (or, with --check, compares) REPO_ROOT/docs/schema.json. From a worktree with no PYTHONPATH that is the worktree's schema.json generated from the main checkout's dataclasses. The decontend AGENT_PROMPT's \"pin PYTHONPATH before git commit\" instruction is the manual workaround for exactly this.\n2. scripts/regenerate-backend-agreement-table lines 38-50: no pin at all; imports hypergumbo_core.cli from the interpreter, reads fixtures from REPO_ROOT/packages/hypergumbo-lang-rust-analyzer, writes REPO_ROOT/docs/audits/0019-....md.\n\nNOT CHECKED: whether any committed docs/schema.json or 0019 table was ever generated from a mismatched tree; I did not run either script from a worktree. The other sys.path-insert scripts (check-*, generate-concept-axes, generate-catalogues-doc, yaml-catalog-index, coverage-select, compute_probe_embeddings.py, generate-architecture) DO pin their own tree's core first, so they are self-consistent at the script level; their core modules' transitive imports were not audited.\n\nFIX DIRECTION (not built): pin the own tree the way the WI-tumog scripts do (scripts/measure_code_tree.py pin(..., \"core\") + announce), or at minimum replace the dead REPO_ROOT/src with packages/hypergumbo-core/src."  # 3dc2
+    fields: {}  # 3dc2

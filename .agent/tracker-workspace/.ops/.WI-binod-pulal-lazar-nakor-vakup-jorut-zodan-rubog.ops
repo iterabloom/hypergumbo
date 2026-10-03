@@ -66,3 +66,10 @@
   clock: 7  # 5b88
   nonce: 5b88  # 5b88
   message: "DONE: merged in PR #1377 (commit 4f594e05a0). Sites listed twice under a whole-file pseudo-symbol: render_packet lists each sink site once under the narrowest path symbol (innermost_span); the file symbol prints as \"at module level\". BASH_SOURCE: shell_env_sites reads bash.py's own _SHELL_STATE_NAMES / _HOST_DESCRIPTION_NAMES; related fix: a hostinfo source lists $HOSTNAME instead of \"(none found)\". Evidence: live fixture repro, old vs new builder (old lists BASH_SOURCE/$HOSTNAME/$SECONDS lines under environ and revert_nav's open()/write() twice; new does neither); re-rendering 0012's 26 packets: 141 -> 132 listed site lines, 0 added (6 ArkLib duplicates, cert-manager checkhash.sh:21, shellcheck .multi_arch_docker:70/:72). Tests: 13 failed on the old script / 105 passed. Block comments stay declined (_COMMENT_OPENERS). Not claimed: sites in functions off the path still list under module level (pinned). Residual: WI-birus (P3). Report: run_09302026/binod.md"  # 5b88
+- op: discuss  # c34e
+  at: '2026-10-03T08:04:44Z'  # c34e
+  by: agent  # c34e
+  actor: jgstern_agent  # c34e
+  clock: 8  # c34e
+  nonce: c34e  # c34e
+  message: "From WI-tumog-podof-lazik-kumut-binid-popas-nikos-buhid (branch jgstern-agent/fix/tumog, commit 564e2dcdec, not merged). Bears on this item's packet A/B workaround 2 (a lone copy of measure-taint-precision.py with no packages/ sibling).\nAfter that commit lands, the packet subcommand prints \"[packet] code under test: <tree>\" plus each package's directory (including hypergumbo_lang_mainstream, where bash.py lives) before rendering, and refuses with exit 2 when PYTHONPATH names a different tree than the script's unless HG_MEASURE_TREE=script|pythonpath is set. HG_MEASURE_TREE=pythonpath replaces the lone-copy workaround. A lone copy of the NEW script without scripts/measure_code_tree.py beside it fails at import (ModuleNotFoundError, rc 1); with the helper copied beside it, it runs and its first line names the tree it resolved (checked 2026-10-03)."  # c34e
