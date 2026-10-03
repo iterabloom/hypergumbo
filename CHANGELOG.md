@@ -101,6 +101,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`compact`'s default view leads with key symbols**, not file seeds or external placeholders.
 - **Ansible needs Ansible evidence** (`ansible.cfg`, a playbook or a role entry point): repositories with any Ansible claim fall 180 → 9 on the corpus. Astro paths are relative to the analysis root, and PHP reads double-quoted Laravel route literals and refuses interpolated ones.
 - **A shell script with an appended binary** no longer reports archive fragments as launched programs.
+- **An imported file's node carries that file's own language, not the importer's.** A `.ts` file importing `./util.js` or `./style.css` minted a second, `typescript`-labelled node beside the real javascript or css one. Imported images and fonts were labelled `javascript`, and one linker then parsed them as JavaScript. Imported assets are now file nodes with no language (the importer's language is recorded as `discovery_language`), and an existing node for the path is reused whatever its language.
 
 #### Survey speed on large repositories
 
