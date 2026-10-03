@@ -9034,3 +9034,26 @@ def test_run_module_attr_ref_unshadowed_alias_still_retargets(
         "an unshadowed in-tree module alias must still retarget to the real "
         "CONFIG variable — the shadow set must not over-approximate"
     )
+
+
+def test_run_stdlib_removed_after_3_10_is_stamped_ecosystem_stdlib(
+    tmp_path: Path,
+) -> None:
+    """WI-gisan: the stdlib line is the union over every supported Python.
+    ``distutils`` ships with the 3.10/3.11 runtime (removed in 3.12, PEP 632),
+    so a call into it is ``ecosystem=stdlib``, not the ``third_party`` a
+    3.12-only list stamped. Still an external / tier-3 boundary node."""
+    (tmp_path / "setup.py").write_text(
+        "from distutils.spawn import spawn\n"
+        "spawn(['true'])\n"
+    )
+    out_path = tmp_path / "out.json"
+    run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
+    data = json.loads(out_path.read_text())
+    nodes = [
+        n for n in data["nodes"]
+        if n["kind"] == "external_symbol" and "distutils" in n["id"]
+    ]
+    assert nodes, "distutils boundary node missing"
+    assert {(n.get("meta") or {}).get("ecosystem") for n in nodes} == {"stdlib"}
+    assert {n["supply_chain"]["tier_name"] for n in nodes} == {"external_dep"}

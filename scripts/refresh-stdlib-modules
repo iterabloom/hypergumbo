@@ -24,6 +24,16 @@ Scope deliberately narrow:
 Determinism: same script + same interpreter version → byte-identical
 YAML output. Run twice to confirm.
 
+Python: the list is the UNION over every supported interpreter (WI-gisan,
+ADR-0041 §3). ``--version`` names the BASE interpreter whose
+``sys.stdlib_module_names`` is read, and which must be the one running.
+Every module in ``hypergumbo_core.python_stdlib_versions``'s version windows
+is added on top, so a module that is standard library on only SOME supported
+Pythons (``distutils`` on 3.10/3.11, ``tomllib`` on 3.11+) is recognised
+whichever one runs this. ``stdlib_provenance.supported_versions`` must equal
+that table's span, so the YAML cannot claim a range the list was not built
+for.
+
 Usage::
 
     scripts/refresh-stdlib-modules python --version 3.12
@@ -97,7 +107,30 @@ def _refresh_python(yaml_path: Path, requested_version: str) -> int:
         )
         return 1
 
-    modules = sorted(sys.stdlib_module_names)
+    from hypergumbo_core.python_stdlib_versions import (
+        PYTHON_STDLIB_VERSION_WINDOWS,
+        supported_versions_label,
+    )
+
+    expected_span = supported_versions_label()
+    span_match = re.search(
+        r'^\s*supported_versions:\s*"(?P<s>[^"]+)"\s*$', text, re.MULTILINE,
+    )
+    if span_match is None or span_match.group("s") != expected_span:
+        found = span_match.group("s") if span_match else "(missing)"
+        print(
+            f"ERROR: stdlib_provenance.supported_versions is {found!r} in "
+            f"{yaml_path}; the shared table "
+            f"(hypergumbo_core/python_stdlib_versions.py) covers "
+            f"{expected_span!r}. The list is written as the union over "
+            f"exactly those interpreters, so the YAML must declare them.",
+            file=sys.stderr,
+        )
+        return 1
+
+    modules = sorted(
+        set(sys.stdlib_module_names) | set(PYTHON_STDLIB_VERSION_WINDOWS)
+    )
 
     begin = BEGIN_MARKER_FMT.format(language="python")
     end = END_MARKER_FMT
@@ -150,7 +183,7 @@ def _refresh_python(yaml_path: Path, requested_version: str) -> int:
         display_path = yaml_path
     print(
         f"Refreshed {len(modules)} stdlib modules for python "
-        f"{requested_version} in {display_path}.",
+        f"{requested_version} (union over {expected_span}) in {display_path}.",
     )
     return 0
 

@@ -34,21 +34,26 @@ language: python
 # documentation host (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in
 # io_boundary.py).
 #
-# F3 PR-C: ``stdlib_modules`` (below) is populated from
-# ``sys.stdlib_module_names`` of the version pinned here. The
-# operator script ``scripts/refresh-stdlib-modules python --version
-# X.Y`` regenerates it deterministically; the closed-world
-# ``completeness:`` flags inside ``stdlib_modules`` are hand-curated
-# and not touched by the script.
+# F3 PR-C / WI-gisan: ``stdlib_modules`` (below) is the UNION over every
+# supported interpreter (``supported_versions``): ``sys.stdlib_module_names``
+# of the base ``version`` pinned here, plus every module that is standard
+# library on only SOME supported Pythons (distutils on 3.10/3.11, tomllib on
+# 3.11+), from hypergumbo_core/python_stdlib_versions.py. The operator script
+# ``scripts/refresh-stdlib-modules python --version X.Y`` regenerates it
+# deterministically and refuses a ``supported_versions`` that disagrees with
+# that table. The list answers RECOGNITION only (the ecosystem label,
+# ADR-0041 §3); no verdict gate reads it (INV-buzab).
 status: provenance_declared
 stdlib_provenance:
   source_url: https://docs.python.org/3.12/library/index.html
   version: "3.12"
-  retrieved: "2026-05-14"
+  supported_versions: "3.10-3.13"
+  retrieved: "2026-10-03"
   notes: |
     Python stdlib I/O primitives derived from docs.python.org's
     library index for Python 3.12, cross-checked against
-    ``sys.stdlib_module_names``. Non-IO stdlib symbols are not yet
+    ``sys.stdlib_module_names``. The stdlib_modules list covers
+    3.10-3.13 (see supported_versions). Non-IO stdlib symbols are not yet
     enumerated in stdlib_other — populated incrementally as needed
     by the PR C external_potential filter.
 
@@ -1210,12 +1215,15 @@ stdlib_modules:
   - argparse
   - array
   - ast
+  - asynchat
   - asyncio
+  - asyncore
   - atexit
   - audioop
   - base64
   - bdb
   - binascii
+  - binhex
   - bisect
   - builtins
   - bz2
@@ -1248,6 +1256,7 @@ stdlib_modules:
   - decimal
   - difflib
   - dis
+  - distutils
   - doctest
   - email
   - encodings
@@ -1279,6 +1288,7 @@ stdlib_modules:
   - idlelib
   - imaplib
   - imghdr
+  - imp
   - importlib
   - inspect
   - io
@@ -1352,6 +1362,7 @@ stdlib_modules:
   - shutil
   - signal
   - site
+  - smtpd
   - smtplib
   - sndhdr
   - socket
