@@ -337,3 +337,208 @@ def test_a_package_variable_receiver_under_a_shadowing_local_is_not_typed(
     assert plain == ["go:net/http.Client:0-0:Do:unresolved"], plain
     shadowed = [_rel(e.dst) for e in _out(r, "Shadowed")]
     assert shadowed == ["v/v.go:Cl.Do"], shadowed
+
+
+# --------------------------------------------------------------------------
+# WI-kibah: a selector function reference is resolved by its OPERAND.
+# --------------------------------------------------------------------------
+
+_KIBAH = {
+    "a/a.go": "package a\n\nfunc NotFound() {}\n\nfunc Serve() {}\n",
+    "c/c.go": "package c\n\nfunc NotFound() {}\n",
+    "h/h.go": (
+        "package h\n\n"
+        "type Handler struct{}\n\n"
+        "func (h *Handler) Serve() {}\n\n"
+        "type Other struct{}\n\n"
+        "func (o *Other) Serve() {}\n"
+    ),
+    "b/b.go": (
+        "package b\n\n"
+        'import (\n\t"net/http"\n\n\t"example.com/fx/a"\n'
+        '\t"example.com/fx/c"\n\t"example.com/fx/h"\n)\n\n'
+        "type C struct{ H func() }\n\n"
+        "func reg(f func()) {}\n\n"
+        "func External() { reg(http.NotFound) }\n\n"
+        "func ExternalField() C { return C{H: http.NotFound} }\n\n"
+        "func InRepo() { reg(a.NotFound) }\n\n"
+        "func InRepoSecond() C { return C{H: c.NotFound} }\n\n"
+        "func Typed() {\n\tx := &h.Handler{}\n\treg(x.Serve)\n}\n\n"
+        "func TypedField(x *h.Other) C { return C{H: x.Serve} }\n\n"
+        "func ShadowedAlias(a *h.Handler) { reg(a.Serve) }\n"
+    ),
+}
+
+
+def _refs(r, caller: str) -> list[str]:
+    return sorted(
+        _rel(e.dst) for e in _out(r, caller)
+        if e.evidence_type in ("function_reference_arg", "struct_field_reference")
+    )
+
+
+def test_an_external_package_reference_binds_no_repo_function(
+    tmp_path: Path,
+) -> None:
+    r = _analyze(tmp_path, _KIBAH)
+    assert _refs(r, "External") == []
+    assert _refs(r, "ExternalField") == []
+    # The read itself is still recorded, as an attribute of the package.
+    reads = [e.dst for e in _out(r, "External", edge_type="module_attr_ref")]
+    assert reads == ["go:net/http:0-0:net/http.NotFound:attribute"]
+
+
+def test_an_in_repo_package_reference_binds_that_package(tmp_path: Path) -> None:
+    r = _analyze(tmp_path, _KIBAH)
+    # Two packages declare NotFound: each operand picks its own.
+    assert _refs(r, "InRepo") == ["a/a.go:NotFound"]
+    assert _refs(r, "InRepoSecond") == ["c/c.go:NotFound"]
+
+
+def test_a_typed_operand_binds_its_types_method(tmp_path: Path) -> None:
+    r = _analyze(tmp_path, _KIBAH)
+    assert _refs(r, "Typed") == ["h/h.go:Handler.Serve"]
+    assert _refs(r, "TypedField") == ["h/h.go:Other.Serve"]
+
+
+def test_a_parameter_shadowing_an_import_is_the_receiver(tmp_path: Path) -> None:
+    """``a`` is the ``*h.Handler`` parameter here, not package ``a`` (whose
+    ``Serve`` function the name-only lookup would also accept)."""
+    r = _analyze(tmp_path, _KIBAH)
+    assert _refs(r, "ShadowedAlias") == ["h/h.go:Handler.Serve"]
+
+
+def test_a_method_expression_binds_its_types_method(tmp_path: Path) -> None:
+    r = _analyze(tmp_path, {
+        "x/x.go": (
+            "package x\n\n"
+            "type Handler struct{}\n\n"
+            "func (h Handler) Serve() {}\n\n"
+            "func reg(f func(Handler)) {}\n\n"
+            "func regP(f func(*Handler)) {}\n\n"
+            "func UseExpr() {\n"
+            "\tregP((*Handler).Serve)\n\treg(Handler.Serve)\n"
+            "\tregP((*Handler).Missing)\n\treg(Handler.Missing)\n}\n"
+        ),
+    })
+    # Both spellings name the type's method: ``(*Handler).Serve`` on the
+    # pointer type, ``Handler.Serve`` on the value type.
+    assert _refs(r, "UseExpr") == ["x/x.go:Handler.Serve", "x/x.go:Handler.Serve"]
+
+
+def test_a_literal_or_var_initialized_operand_names_its_type(
+    tmp_path: Path,
+) -> None:
+    """``(&T{}).M`` names ``T``'s method by its own literal, and ``var a =
+    &T{}`` types ``a`` as ``a := &T{}`` does; an operand whose type is not
+    known binds nothing, whatever the method's name (no repo-wide pick)."""
+    r = _analyze(tmp_path, {
+        "y/y.go": (
+            "package y\n\n"
+            "type T struct{}\n\n"
+            "func (t *T) Serve() {}\n\n"
+            "type U struct{}\n\n"
+            "func (u U) Only() {}\n\n"
+            "func reg(f func()) {}\n\n"
+            "func mk() interface{ Only() } { return U{} }\n\n"
+            "func Literal() { reg((&T{}).Serve); reg(U{}.Only); reg(T{}.Nope) }\n\n"
+            "func VarInit() {\n\tvar a = &T{}\n\treg(a.Serve)\n}\n\n"
+            "func Unknown() {\n\tv := mk()\n\treg(v.Only)\n\treg(mk().Only)\n}\n"
+        ),
+    })
+    assert _refs(r, "Literal") == ["y/y.go:T.Serve", "y/y.go:U.Only"]
+    assert _refs(r, "VarInit") == ["y/y.go:T.Serve"]
+    assert _refs(r, "Unknown") == []
+
+
+_TYPED_PACKAGES = {
+    "eureka/e.go": "package eureka\n\ntype SDConfig struct{}\n\nfunc (c *SDConfig) Unmarshal() {}\n",
+    "consul/c.go": "package consul\n\ntype SDConfig struct{}\n\nfunc (c *SDConfig) Unmarshal() {}\n",
+    "consul/use.go": (
+        "package consul\n\n"
+        "func reg(f func()) {}\n\n"
+        "func Use() {\n\tvar config SDConfig\n\tconfig.Unmarshal()\n"
+        "\treg(config.Unmarshal)\n}\n"
+    ),
+    "h/h.go": "package h\n\ntype Ghost struct{}\n",
+    "g/g.go": "package g\n\ntype Ghost struct{}\n\nfunc (g *Ghost) Serve() {}\n",
+    "q/q.go": (
+        "package q\n\ntype Engine struct{}\n\ntype Result struct{}\n\n"
+        "func (e *Engine) Query() *Result { return nil }\n\n"
+        "func (r *Result) Rows() {}\n"
+    ),
+    "k/k.go": (
+        "package k\n\n"
+        'import (\n\t"example.com/fx/h"\n\t"example.com/fx/q"\n)\n\n'
+        "func reg(f func()) {}\n\n"
+        "type F struct{}\n\n"
+        "func Wrong(x *h.Ghost) { reg(x.Serve); x.Serve() }\n\n"
+        "func Registry(e *q.Engine) {\n\tr := e.Query()\n\tr.Rows()\n\treg(r.Rows)\n}\n\n"
+        "func Unimported(f F) {\n\tt := f.NewGhost()\n\treg(t.Serve)\n}\n"
+    ),
+    "tu/tu.go": "package tu\n\ntype AT struct{}\n\nfunc (t *AT) Collector() {}\n",
+    "d1/d.go": "package d1\n\ntype Dup struct{}\n\nfunc (Dup) Go() {}\n",
+    "d2/d.go": "package d2\n\ntype Dup struct{}\n\nfunc (Dup) Go() {}\n",
+    "wa/wa.go": (
+        "package wa\n\n"
+        'import (\n\t"example.com/fx/d1"\n\t"example.com/fx/tu"\n)\n\n'
+        "type AT struct{ *tu.AT }\n\n"
+        "type W2 struct{ d1.Dup }\n\n"
+        "func NewAT() *AT { return &AT{} }\n\n"
+        "func NewW2() *W2 { return &W2{} }\n"
+    ),
+    "cc/cc.go": (
+        "package cc\n\n"
+        'import "example.com/fx/wa"\n\n'
+        "func reg(f func()) {}\n\n"
+        "func Promoted() {\n\tat := wa.NewAT()\n\tat.Collector()\n"
+        "\treg(at.Collector)\n\tat.Missing()\n"
+        "\tw2 := wa.NewW2()\n\tw2.Go()\n\treg(w2.Go)\n}\n"
+    ),
+}
+
+
+def test_a_typed_receiver_binds_the_method_of_its_own_package(
+    tmp_path: Path,
+) -> None:
+    """Every package's ``SDConfig.Unmarshal`` shares one symbol key, and the
+    first of them was bound whatever the receiver's package. An unqualified
+    type is the caller's package's; a qualified one (``h.Ghost``) is its
+    import's, and a same-named type elsewhere (``g.Ghost``) is not it."""
+    r = _analyze(tmp_path, _TYPED_PACKAGES)
+    use = sorted((_rel(e.dst), e.evidence_type) for e in _out(r, "Use"))
+    assert use == [
+        ("consul/c.go:SDConfig.Unmarshal", "ast_call"),
+        ("consul/c.go:SDConfig.Unmarshal", "function_reference_arg"),
+        ("consul/use.go:reg", "ast_call"),
+    ], use
+    wrong = sorted(_rel(e.dst) for e in _out(r, "Wrong"))
+    assert wrong == ["go:external:0-0:Serve:unresolved", "k/k.go:reg"], wrong
+    # An unqualified type from the return-type registry is the CALLEE's
+    # package's, so the first candidate still answers when the caller's
+    # package declares none.
+    registry = sorted(
+        (_rel(e.dst), e.evidence_type) for e in _out(r, "Registry")
+        if "Rows" in _rel(e.dst)
+    )
+    assert registry == [
+        ("q/q.go:Result.Rows", "ast_call"),
+        ("q/q.go:Result.Rows", "function_reference_arg"),
+    ], registry
+    # A qualifier that names no import keeps the historical first candidate.
+    assert _refs(r, "Unimported") == ["g/g.go:Ghost.Serve"]
+    # A method promoted by embedding (``struct{ *tu.AT }``) is found through
+    # the embedded type when it is the only one of that name; ``Dup.Go`` is
+    # declared on two embedded-able types and names nothing.
+    promoted = sorted(
+        (_rel(e.dst), e.evidence_type) for e in _out(r, "Promoted")
+        if "wa/wa.go" not in _rel(e.dst)
+    )
+    assert promoted == [
+        ("cc/cc.go:reg", "ast_call"),
+        ("cc/cc.go:reg", "ast_call"),
+        ("go:wa:0-0:Go:unresolved", "ast_call"),
+        ("go:wa:0-0:Missing:unresolved", "ast_call"),
+        ("tu/tu.go:AT.Collector", "ast_call"),
+        ("tu/tu.go:AT.Collector", "function_reference_arg"),
+    ], promoted
