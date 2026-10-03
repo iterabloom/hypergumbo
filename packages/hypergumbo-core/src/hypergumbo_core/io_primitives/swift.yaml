@@ -101,7 +101,14 @@ net_recv:
   - module: URLSession
     methods:
       - downloadTask
-    notes: "URLSession download is primarily receive"
+    notes: >-
+      URLSession download is primarily receive. The task is created
+      suspended and crosses nothing until resume(); the file location
+      arrives in the completion handler or at the delegate (Apple's
+      downloadTask(with:) documentation). A deferred crossing by ADR-0049
+      ruling 1 that STAYS net_recv for the reasons the objc NSURLSession
+      row gives (WI-tunog): net_listen is the server-side value, and the
+      arrival is not represented as a source. Residual: WI-mapim.
 
 # ADR-0049: a call that ARRANGES inbound data to arrive in a scope it does
 # not name is disclosed, never minted. The disclosure boundary is in place,
