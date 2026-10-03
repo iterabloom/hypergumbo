@@ -23,6 +23,7 @@ import pytest
 
 from hypergumbo_core.ir import AnalysisRun, Edge, Span, Symbol
 from hypergumbo_core.linkers.registry import LinkerContext
+from hypergumbo_core.evidence_types import find_evidence_type
 
 
 def _make_lua_symbol(
@@ -345,6 +346,8 @@ class TestLuaFFILinkerEdgeCases:
         )
 
         assert result.edges[0].evidence_type == "luajit_ffi_c"
+        # WI-pubin: the emitted pathway is a registered evidence type.
+        assert find_evidence_type(result.edges[0].evidence_type) is not None
 
     def test_evidence_type_ffi_load(self, tmp_path: Path) -> None:
         """ffi.load calls should have evidence_type 'luajit_ffi_load'."""
@@ -368,6 +371,8 @@ class TestLuaFFILinkerEdgeCases:
         )
 
         assert result.edges[0].evidence_type == "luajit_ffi_load"
+        # WI-pubin: the emitted pathway is a registered evidence type.
+        assert find_evidence_type(result.edges[0].evidence_type) is not None
 
     def test_non_function_c_symbols_ignored(self, tmp_path: Path) -> None:
         """C symbols that aren't functions should not be matched."""
