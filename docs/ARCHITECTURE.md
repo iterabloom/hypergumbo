@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **349** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 104 core, 4 CLI, 36 tracker)
-- **51384** symbols (functions, classes, methods)
-- **203460** edges by type:
-  - calls: 116132
-  - contains: 47104
-  - imports: 16711
-  - instantiates: 12054
-  - references: 7927
-  - module_attr_ref: 1934
-  - other: 1598
+- **51645** symbols (functions, classes, methods)
+- **204271** edges by type:
+  - calls: 116503
+  - contains: 47347
+  - imports: 16815
+  - instantiates: 12070
+  - references: 7993
+  - module_attr_ref: 1943
+  - other: 1600
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 51384 Symbols + 203460 Edges + UsageContexts           │
+│  Output: 51645 Symbols + 204271 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -280,20 +280,20 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 9961.5 | ir.py |
-| `len` | external_symbol | 7671.0 | <external> |
-| `write_text` | external_symbol | 6898.0 | <external> |
+| `len` | external_symbol | 7673.0 | <external> |
+| `write_text` | external_symbol | 6910.0 | <external> |
 | `Span` | class | 6563.5 | ir.py |
 | `LinkerContext` | class | 3581.3 | registry.py |
-| `get` | external_symbol | 3249.0 | <external> |
-| `load_catalog` | function | 3048.7 | io_boundary.py |
+| `get` | external_symbol | 3267.0 | <external> |
+| `load_catalog` | function | 3180.6 | io_boundary.py |
 | `Edge.create` | method | 2420.0 | ir.py |
-| `str` | external_symbol | 2259.0 | <external> |
-| `Path` | external_symbol | 2195.0 | <external> |
+| `str` | external_symbol | 2266.0 | <external> |
+| `Path` | external_symbol | 2210.0 | <external> |
 | `next` | external_symbol | 2177.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1720.0 | <external> |
+| `append` | external_symbol | 1721.0 | <external> |
 
 ## Pattern System
 
@@ -361,7 +361,7 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 180 YAML catalog files across 11 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 181 YAML catalog files across 11 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | User channel | ADR | Loader | Purpose |
 |---|---:|---|---|---|---|
@@ -375,7 +375,7 @@ The `hypergumbo-core` package ships 180 YAML catalog files across 11 directories
 | `taint_sinks/` | 2 | `taint_sinks.d` | ADR-0060 | `hypergumbo_core.taint` | Built-in taint sinks with NO I/O-boundary counterpart (code_execution, dom_injection); every I/O sink is derived from io_primitives instead. |
 | `function_summaries/` | 7 | `function_summaries.d` (gated) | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
 | `url_folding/` | 2 | internal | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
-| `library_signatures/` | 6 | `library_signatures.d` | ADR-0006 | `hypergumbo_core.library_signatures` | Per-language library signatures: the type a producing function returns, so a receiver bound to a LIBRARY call can be typed at all. |
+| `library_signatures/` | 7 | `library_signatures.d` | ADR-0006 | `hypergumbo_core.library_signatures` | Per-language library signatures: the type a producing function returns, so a receiver bound to a LIBRARY call can be typed at all. |
 
 **User channel** (ADR-0047 ruling 7) names where a user's own rows for that family live, under `$XDG_CONFIG_HOME/hypergumbo/` — or `internal` when the family describes the *language's* world rather than the *user's* and takes no user input. The fields are required on `CatalogSpec`, so a new family cannot land without answering.
 
@@ -955,8 +955,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 4b807902758e
-  commit_count: 7996
+  commit: 079655ee0047
+  commit_count: 8025
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
