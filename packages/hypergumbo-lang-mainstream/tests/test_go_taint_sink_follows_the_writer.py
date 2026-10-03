@@ -45,6 +45,14 @@ _CASES = {
         '\tfmt.Fprintln(w, os.Getenv("API_KEY"))\n}\n',
         "ipc_send", "ipc",
     ),
+    # WI-potog: a Unix-domain connection is process-local (WI-baran's rule).
+    # Its TCP control is the strict xfail at the bottom of this file.
+    "unix_dial_fprintln": (
+        'import (\n\t"fmt"\n\t"net"\n\t"os"\n)\n\nfunc F(p string) {\n'
+        '\tcon, _ := net.Dial("unix", p)\n'
+        '\tfmt.Fprintln(con, os.Getenv("API_KEY"))\n}\n',
+        "ipc_send", "ipc",
+    ),
 }
 
 _ZONES = ("logging", "host_fs", "ipc", "network")
@@ -102,3 +110,26 @@ def test_taint_and_io_boundaries_agree(
     repo = _repo(tmp_path, body)
     assert _write_boundaries(tmp_path, repo, monkeypatch) == {boundary}
     assert _writer_zones(tmp_path, repo, monkeypatch) == {zone}
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "WI-gajir-hiral-havip-dosan-fapun-jufuk-mahum-hugih: the content flow "
+        "into fmt.Fprintln is collapsed with net.Dial's resource-naming-only "
+        "flow in the same zone and excluded with it"
+    ),
+)
+def test_a_tcp_dials_print_reaches_the_network_zone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WI-potog's TCP control. io-boundaries already says ``net_send``; taint
+    reports NO flow, because the one collapsed finding for the ``network`` zone
+    is keyed on ``net.Dial``, a class-R row (WI-bulag)."""
+    repo = _repo(tmp_path, (
+        'import (\n\t"fmt"\n\t"net"\n\t"os"\n)\n\nfunc F(a string) {\n'
+        '\tcon, _ := net.Dial("tcp", a)\n'
+        '\tfmt.Fprintln(con, os.Getenv("API_KEY"))\n}\n'
+    ))
+    assert _write_boundaries(tmp_path, repo, monkeypatch) == {"net_send"}
+    assert _writer_zones(tmp_path, repo, monkeypatch) == {"network"}
