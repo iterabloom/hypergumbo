@@ -224,16 +224,8 @@ fs_read:
       requiring a hint would make them unmatchable in practice.
   - module: std::os::windows::fs::FileExt
     methods: [seek_read]
-  - module: std::env
-    functions: [current_dir]
-  - module: std::path
-    functions: [absolute]
-    notes: >-
-      `std::path::absolute` delegates to `env::current_dir()` for a
-      relative path, which is getcwd(2). Catalogued as fs_read to match
-      the boundary already assigned to `std::env::current_dir` directly
-      above — one fact, one kind. `is_separator` performs no I/O and is
-      absent.
+  # std::env::current_dir and std::path::absolute are host_info_read, below
+  # (INV-zufiz): getcwd(2) returns process state and reads no file.
   # Plan C, PR A: tokio::fs (async filesystem) removed under
   # strict-stdlib rule. tokio is ubiquitous but a third-party crate;
   # first-party calls into it surface in external_potential (Plan C, PR C).
@@ -436,6 +428,23 @@ host_info_read:
       tempfile says "gettempdir rowed under env_read" while the row sits
       under host_info_read — the note predates the INV-tutar split and is
       stale. Recorded here rather than chased.
+  - module: std::env
+    functions: [current_dir]
+    notes: >-
+      INV-zufiz: current_dir() is exactly os_imp::getcwd(), the getcwd(2)
+      syscall, which returns process state and reads no file content. Every
+      other catalogue already rows the working directory here: python
+      os.getcwd / pathlib.Path.cwd, go os.Getwd, c unistd.getcwd,
+      javascript process.cwd, elixir System.cwd -- and so do this module's
+      own current_exe / temp_dir / home_dir above. It was fs_read, the one
+      catalogue out of parity.
+  - module: std::path
+    functions: [absolute]
+    notes: >-
+      Delegates to `env::current_dir()` for a relative path and touches no
+      file, so it carries current_dir's boundary -- one fact, one kind.
+      python's spelling, pathlib.Path.absolute, is host_info_read too.
+      `is_separator` performs no I/O and is absent.
   - module: std::env
     attributes: [consts]
     notes: "std::env::consts::OS, ARCH, etc."

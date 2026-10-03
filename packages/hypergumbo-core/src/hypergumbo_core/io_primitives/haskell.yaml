@@ -140,7 +140,11 @@ fs_read:
       FIRST -- an unstamped call abstains to the first-declared row. Declared
       on both rows because `boundary_ruling` is a property of the primitive.
   - module: System.Directory
-    functions: [listDirectory, getDirectoryContents, doesFileExist, doesDirectoryExist, getPermissions, getFileSize, getModificationTime, getCurrentDirectory, getHomeDirectory, getTemporaryDirectory, findFile, findFiles, canonicalizePath, makeAbsolute]
+    functions: [listDirectory, getDirectoryContents, doesFileExist, doesDirectoryExist, getPermissions, getFileSize, getModificationTime, getHomeDirectory, getTemporaryDirectory, findFile, findFiles, canonicalizePath]
+    notes: >-
+      getCurrentDirectory and makeAbsolute are host_info_read (INV-zufiz): see
+      that section. canonicalizePath stays: it resolves symlinks, which reads
+      the filesystem (python keeps os.path.realpath for the same reason).
   - module: Data.ByteString
     functions: [readFile]
   - module: Data.ByteString.Lazy
@@ -272,6 +276,17 @@ host_info_read:
       base's monotonic clock.
   - module: System.Environment
     functions: [getProgName, getExecutablePath]
+  - module: System.Directory
+    functions: [getCurrentDirectory, makeAbsolute]
+    notes: >-
+      INV-zufiz: getCurrentDirectory is getcwd(2) -- process state, no file
+      content -- and makeAbsolute is `fmap normalise . absolutize`, where
+      absolutize prepends getCurrentDirectory to a relative path and touches
+      no file. Every other catalogue rows the working directory here (python
+      os.getcwd / pathlib.Path.cwd / Path.absolute, go os.Getwd, c getcwd,
+      rust std::env::current_dir / std::path::absolute, javascript
+      process.cwd, elixir System.cwd). They sat in the fs_read block of
+      System.Directory, whose other members do stat or list the filesystem.
   # System.Info is NOT rowed (INV-banid): see its module_completeness entry.
 
 env_write:
