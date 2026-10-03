@@ -1,0 +1,33 @@
+- op: create  # f09a
+  at: '2026-10-03T21:57:15Z'  # f09a
+  by: agent  # f09a
+  actor: jgstern_agent  # f09a
+  clock: 1  # f09a
+  nonce: f09a  # f09a
+  data:  # f09a
+    kind: work_item  # f09a
+    title: "javascript/typescript: an unresolved bare-name call carries no 'bound by no import' marker the catalogue gates can read, so the external placeholder short-name-matches function rows (unbound readFileSync(p) tags fs_read) and a call through a parameter or local value is refused outright (no edge)"  # f09a
+    status: todo_hard  # f09a
+    priority: 3  # f09a
+    parent:  # f09a
+    tags:  # f09a
+    - javascript  # f09a
+    - typescript  # f09a
+    - taint  # f09a
+    - io_boundary  # f09a
+    - analysis_quality  # f09a
+    isbefore: []  # f09a
+    duplicate_of: []  # f09a
+    not_duplicate_of: []  # f09a
+    pr_ref:  # f09a
+    description: "FOUND 2026-10-03 while fixing WI-sofuh / WI-fahod (branch jgstern-agent/fix/sofuh, worktree ~/hg_wt/sofuh).\n\nTHE MISSING MECHANISM. An unresolved bare-name call has no way to say \"this name is bound by no import\", so the two placeholders available to js_ts both cost something:\n\n1. A name NOTHING binds (not declared in any enclosing scope, not imported, no in-repo symbol) now emits `javascript:external:0-0:<name>:unresolved` (python's INV-foluz residual shape, no call_construct). The `external` slot sends it to `gate_named_entry`, which matches FUNCTION-kind catalogue rows by short name. Measured on a fixture: an unimported, undeclared `readFileSync(p)` tags fs_read. In JavaScript that is never right: every function-kind JS row is reached through an import (fs, child_process, dns, os, http...) or a named global the analyzer already writes into the module slot (fetch, eval, process, window, Deno...). `exec`/`spawn`/`fork` are in ambiguous_names; `execSync`, `execFileSync`, `spawnSync`, `execFile`, `readFileSync`, `writeFileSync`, `now`, `lookup` are not.\n2. A call through a PARAMETER or LOCAL VALUE (`function f(exec){exec(c)}`, `const readUByte = eg.readUByte.bind(eg); readUByte()`, `const fetch = (await import('node-fetch')).default; fetch(u)`) is REFUSED -- no edge -- for the same reason python refuses it: the same placeholder would let `function f(exec){exec(c)}` read as child_process.exec. That is silence where a call stands (absent != empty), and the ADR-0017 walk sees an escape site there.\n\nMEASURED, NOT A CLEAN LANGUAGE: on hls.js, nest, Tone.js and dash.js (A/B by call site, 2026-10-03) the residual added 0 io-boundary tags; the local refusal removed 1 (hls.js scripts/check-already-published.js:25, the node-fetch `fetch` above, previously tagged net_send by short-name luck). A clean corpus is not a clean language: the gate path exists.\n\nDIRECTION. One positive marker on the edge that both catalogue gates read and refuse on, so a placeholder can be emitted for BOTH shapes without reaching a row. Candidates: the registered `binding` edge-meta key (today 'explicit_import' / 'dot_import', no consumer) with a value for \"bound in scope / by no import\", threaded into gate_named_entry the way call_construct is; or a per-catalogue declaration that the language has no ambient function rows. NOT call_construct (it must not carry resolution status, INV-tadup). Python's residual and its LEGB refusal are the same two halves (py.py INV-foluz arm) and should take the same marker."  # f09a
+    fields: {}  # f09a
+- op: update  # 4638
+  at: '2026-10-03T21:57:42Z'  # 4638
+  by: agent  # 4638
+  actor: jgstern_agent  # 4638
+  clock: 2  # 4638
+  nonce: '4638'  # 4638
+  set: {}  # 4638
+  add:  # 4638
+    not_duplicate_of: [WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral]  # 4638

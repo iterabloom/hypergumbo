@@ -49,3 +49,12 @@
   clock: 5  # 26a1
   nonce: 26a1  # 26a1
   message: "Merged in PR #1433 (dev c942a68edc).\n\nFixed on the filed instance (branch jgstern-agent/fix/dibit, 31d0dc6e09 + ae4ae5cd0b).\n- Part 2: `urllib.request.build_opener: urllib.request.OpenerDirector` in library_signatures. It is consumed by WI-kozaj's producer lookup, with no analyzer change.\n- Part 1: `urllib.request.OpenerDirector` `[open, error]` is rowed net_send, plus a completeness entry for the class.\n- Repro: `opener = urllib.request.build_opener(); opener.open(url, data=secret)` with host_secret -> network went confirmed_with_caveats -> violated at urllib.request.OpenerDirector.open (os.environ source, ddg confirmed). This is the production CLI path in `test_urllib_opener_send_surface.py::TestTheFindingIsReported`, across 6 shapes: module import, from-import, `from urllib import request`, through a parameter, a Request object, and hand-built.\n- Controls:\n  - urlopen is unchanged;\n  - a clean hand-built opener reads confirmed;\n  - a mutation that removes the completeness entry turns that control inconclusive.\n- Corpus A/B on django and superset: 3 verdicts moved inconclusive -> violated, plus 1 flow-count bump. All 6 new flows are at opener.open. 0 of them are new true findings: 2 are WI-patit's receiver env-read question and 4 are approximate cross-function flows that are false by reading.\n- Not asserted: that the receive side is covered (WI-tumol), or that the other stdlib network clients are covered (WI-himij)."  # 26a1
+- op: update  # e4ef
+  at: '2026-10-03T21:19:49Z'  # e4ef
+  by: agent  # e4ef
+  actor: jgstern_agent  # e4ef
+  clock: 6  # e4ef
+  nonce: e4ef  # e4ef
+  set: {}  # e4ef
+  add:  # e4ef
+    tags: [awaits_bakeoff_validation]  # e4ef
