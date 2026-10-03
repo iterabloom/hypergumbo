@@ -179,7 +179,7 @@ class TestTheModuleSlotRefusesAMoreQualifiedOwner:
     @pytest.mark.parametrize("language,name,hint", [
         ("javascript", "get", "@/services/http"),
         ("typescript", "get", "@/services/http"),
-        ("python", "writer", "mycsvlib.csv"),
+        ("python", "dump", "myjsonlib.json"),
     ])
     def test_the_io_row_choice_refuses_it(
         self, language: str, name: str, hint: str,
@@ -193,7 +193,7 @@ class TestTheModuleSlotRefusesAMoreQualifiedOwner:
 
     @pytest.mark.parametrize("language,name,hint", [
         ("javascript", "get", "@/services/http"),
-        ("python", "writer", "mycsvlib.csv"),
+        ("python", "dump", "myjsonlib.json"),
     ])
     def test_the_taint_row_choice_refuses_it_too(
         self, language: str, name: str, hint: str,
