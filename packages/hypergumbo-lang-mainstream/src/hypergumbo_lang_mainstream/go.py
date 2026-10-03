@@ -103,6 +103,12 @@ How It Works
      (``bufio.NewReader(r)``, ``fmt.Fprintf(w, ...)``) and is followed
      through its last binding in the function (``_go_wrapped_handle_kind``,
      ``_go_receiver_handle_kind``). Anything unproven stamps nothing.
+   - A connection's kind is its socket FAMILY (WI-potog, the Go twin of
+     c.py's WI-baran): the network literal of ``net.Dial`` / ``net.Listen``
+     (``"unix*"`` -> ``pipe``, ``"tcp*"`` / ``"udp*"`` / ``"ip*"`` ->
+     ``net_stream``), or the name of ``net.DialUnix`` / ``net.ListenUnix``;
+     ``ln.Accept()`` follows ``ln`` one binding back to its listener. A
+     network that is not a literal keeps today's ``net_stream``.
 
 Why This Design
 ---------------
@@ -2764,11 +2770,44 @@ _GO_PIPE_PRODUCERS: Final[tuple[str, ...]] = (
 )
 
 #: A connection. ``.Accept(`` is INV-bagok's caddy case (``c, _ :=
-#: ln.Accept()``); the dials are the client side.
+#: ln.Accept()``); the dials are the client side. A connection is
+#: ``net_stream`` UNLESS its network says otherwise (WI-potog,
+#: :func:`_go_socket_family_kind`): a Unix-domain one is ``pipe``.
 _GO_NET_STREAM_PRODUCERS: Final[tuple[str, ...]] = (
     "net.Dial(", "net.DialTimeout(", "net.DialTCP(", "net.DialUDP(",
+    "net.DialUnix(",
     "tls.Dial(", "tls.DialWithDialer(", ".Accept(",
 )
+
+#: WI-potog. Go's network NAMES for a socket family -- the strings ``net.Dial``
+#: and ``net.Listen`` take first, where c.py reads ``AF_UNIX`` / ``AF_INET``
+#: (WI-baran). A Unix-domain socket's far end is another process on this host,
+#: so it is ``pipe`` (``ipc_send`` / ``ipc_recv``; audit-findings 0021); the
+#: internet families are ``net_stream``. Anything else decides nothing.
+_GO_LOCAL_NETWORKS: Final[frozenset[str]] = frozenset({
+    "unix", "unixgram", "unixpacket",
+})
+_GO_INTERNET_NETWORKS: Final[frozenset[str]] = frozenset({
+    "tcp", "tcp4", "tcp6", "udp", "udp4", "udp6", "ip", "ip4", "ip6",
+})
+
+#: The ``net`` constructors of a connection or a listener. Anchored so another
+#: package's ``Dial`` (``mynet.Dial``, ``d.Dial``) is not read as ``net``'s.
+_GO_SOCKET_CONSTRUCTOR: Final[re.Pattern[str]] = re.compile(
+    r"(?<![\w.])net\.(DialTimeout|DialUnix|DialTCP|DialUDP|Dial"
+    r"|ListenUnixgram|ListenUnix|ListenTCP|ListenUDP|ListenPacket|Listen)\(",
+)
+
+#: The constructors whose NAME fixes the family; the rest name it in argument 0.
+_GO_FAMILY_IN_THE_NAME: Final[Mapping[str, str]] = {
+    "DialUnix": "pipe", "ListenUnix": "pipe", "ListenUnixgram": "pipe",
+    "DialTCP": "net_stream", "DialUDP": "net_stream",
+    "ListenTCP": "net_stream", "ListenUDP": "net_stream",
+}
+
+#: ``ln.Accept()`` with a bare-identifier receiver: the only shape the
+#: listener hop follows.
+_GO_ACCEPT_CALL: Final[re.Pattern[str]] = re.compile(r"(\w+)\.Accept\(\)")
 
 #: Declared TYPES that decide a target kind when no binding is visible -- a
 #: parameter, a ``var buf bytes.Buffer`` taken by address. Keyed by the
@@ -2776,15 +2815,17 @@ _GO_NET_STREAM_PRODUCERS: Final[tuple[str, ...]] = (
 #: imports so a local package called ``bytes`` is not the stdlib's. The
 #: ABSENCES are the design: ``io.Writer`` and ``*os.File`` abstain (a file may
 #: be stdout, a file or a pipe end), ``bufio.Writer`` / ``tabwriter.Writer``
-#: abstain (the wrapper's target is in the caller's scope), and ``net.UnixConn``
-#: is unmapped because a Unix socket is process-local IPC, not a network
-#: stream -- the same family question WI-baran asks of c's ``send``.
+#: abstain (the wrapper's target is in the caller's scope). ``net.UnixConn``
+#: is a ``pipe``: a Unix-domain socket is process-local IPC, not a network
+#: stream -- WI-baran's answer for c's ``send``, applied by WI-potog. A
+#: ``net.Conn`` of unknown family stays ``net_stream``, today's answer.
 _GO_TYPED_TARGET_KINDS: Final[Mapping[tuple[str, str], str]] = {
     ("bytes", "Buffer"): "in_memory",
     ("strings", "Builder"): "in_memory",
     ("net", "Conn"): "net_stream",
     ("net", "TCPConn"): "net_stream",
     ("net", "UDPConn"): "net_stream",
+    ("net", "UnixConn"): "pipe",
     ("tls", "Conn"): "net_stream",
     ("http", "ResponseWriter"): "net_stream",
 }
@@ -2915,12 +2956,65 @@ def _go_classify_handle_text(text: str) -> Optional[str]:
     if any(p in text for p in _GO_PIPE_PRODUCERS):
         return "pipe"
     if any(n in text for n in _GO_NET_STREAM_PRODUCERS):
-        return "net_stream"
+        return _go_socket_family_kind(text) or "net_stream"
     if any(r in text for r in _GO_IN_MEMORY_PRODUCERS):
         return "in_memory"
     if any(d in text for d in _GO_NULL_DEVICES):
         return "null_device"
     return None
+
+
+def _go_socket_family_kind(text: str) -> Optional[str]:
+    """``pipe`` / ``net_stream`` from the network a socket was CREATED with, or None.
+
+    WI-potog, the Go twin of WI-baran's ``_c_classify_socket_text``: the
+    family is fixed where the connection or listener is made, so the
+    constructor's text answers. ``net.DialUnix`` / ``net.ListenUnix`` /
+    ``net.ListenUnixgram`` (and the TCP / UDP ones) carry the family in their
+    NAME; ``net.Dial`` / ``net.DialTimeout`` / ``net.Listen`` /
+    ``net.ListenPacket`` carry it in their first argument, read only when it
+    is a string literal (``"unix"``, `` `unixgram` ``, ``"ip4:icmp"`` -- the
+    protocol suffix after ``:`` is ignored).
+
+    None means UNDECIDED, never "not a socket": a variable or a constant
+    network, a name Go does not define, another package's ``Dial``. The
+    callers keep what they answered before this reader existed.
+    """
+    match = _GO_SOCKET_CONSTRUCTOR.search(text)
+    if match is None:
+        return None
+    fixed = _GO_FAMILY_IN_THE_NAME.get(match.group(1))
+    if fixed is not None:
+        return fixed
+    network = _go_nth_argument_text(text[match.end():], 0)
+    if network is None or len(network) < 2 or network[0] not in "\"`" or (
+        network[-1] != network[0]
+    ):
+        return None
+    name = network[1:-1].split(":", 1)[0]
+    if name in _GO_LOCAL_NETWORKS:
+        return "pipe"
+    if name in _GO_INTERNET_NETWORKS:
+        return "net_stream"
+    return None
+
+
+def _go_accepted_family(
+    node: "tree_sitter.Node", source: bytes, expr: str, use_line: Optional[int],
+) -> Optional[str]:
+    """The family of the listener a ``ln.Accept()`` connection came from, or None.
+
+    c.py's ``accept(l, ..)`` hop (WI-baran), in Go: ONE binding back from the
+    receiver, to the ``net.Listen*`` call that made it. A listener with no
+    visible binding (a parameter, a field), or one whose binding decides no
+    family (``tls.NewListener(..)``, a variable network), answers None and
+    the caller keeps ``net_stream``.
+    """
+    match = _GO_ACCEPT_CALL.fullmatch(expr)
+    if match is None:
+        return None
+    found = _go_last_binding(node, source, match.group(1), use_line=use_line)
+    return None if found is None else _go_socket_family_kind(found[0])
 
 
 def _go_typed_target_kind(
@@ -3041,6 +3135,8 @@ def _go_target_kind_from_expression(
     """
     expr = expr.strip()
     direct = _go_classify_handle_text(expr)
+    if direct == "net_stream":
+        direct = _go_accepted_family(node, source, expr, use_line) or direct
     if direct is not None:
         return direct
     if hops <= 0:
