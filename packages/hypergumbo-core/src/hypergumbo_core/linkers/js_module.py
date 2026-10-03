@@ -6,8 +6,17 @@ The JS/TS analyzer creates `imports` edges with synthetic dst IDs like
 in the ID string. These edges are orphaned because no symbol has that ID.
 
 This linker resolves those import paths to actual files on disk, reuses the
-canonical `kind="file"` symbol for each resolved target (minting one with the
-`make_file_id` id when none exists), and creates two types of edges:
+canonical `kind="file"` symbol for each resolved target, whatever its language
+(minting one with the `make_file_id` id when none exists), and creates two
+types of edges.
+
+A minted target node carries the TARGET's own language (`taxonomy.get_language`),
+never the importer's (WI-babuk): `.ts` importing `./util.js` mints
+`javascript:src/util.js`, and an imported image or font is a real file with no
+source language, so `language=None` with the importer's language as
+`discovery_language` and in the id's language slot (ADR-0036). Labelled with the
+importer's language, imported binaries were parsed as JavaScript downstream
+(crypto-flow-linker never finished on nextjs). The edges are:
 
 1. `imports` - from the importing file symbol to the target file symbol
    (file-level dependency; ADR-0023 §6 Phase 3 folded the former
@@ -70,6 +79,7 @@ from typing import TYPE_CHECKING
 
 from ..analyze.base import make_dependency_stable_id, make_file_id, make_file_stable_id
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
+from ..taxonomy import get_language
 from ._text_filters import read_source_text
 from .registry import (
     LinkerActivation,
@@ -690,13 +700,16 @@ def link_js_modules(
     # must reuse that id rather than minting a parallel shadow node. The map
     # is keyed on canonical ``make_file_id`` output so the lookup is O(1) and
     # byte-equivalent to what downstream consumers see.
-    existing_file_symbol_by_canonical_id: dict[str, Symbol] = {}
+    #
+    # WI-babuk: keyed by PATH, over file Symbols of EVERY language. Keyed by
+    # ``make_file_id(importer_lang, path)`` and filtered to JS/TS, a .ts
+    # importing ./util.js or ./style.css missed the real javascript / css node
+    # and minted a phantom in the importer's language beside it.
+    existing_file_symbol_by_path: dict[str, Symbol] = {}
     for sym in symbols:
         path_by_id[sym.id] = sym.path
-        if sym.kind == "file" and sym.language in _JS_LANGUAGES:
-            existing_file_symbol_by_canonical_id[
-                make_file_id(sym.language, sym.path)
-            ] = sym
+        if sym.kind == "file":
+            existing_file_symbol_by_path.setdefault(sym.path, sym)
 
     # Build map: normalized_file_path -> list of EXPORTED symbols.
     # WI-sinol: the kind filter alone admitted class members and private
@@ -818,28 +831,37 @@ def link_js_modules(
             # and only annotate the imports edge against the existing id.
             # Mirrors the websocket linker's INV-ronuf/WI-hifol pattern.
             if rel_path not in module_file_cache:
-                sym_id = make_file_id(lang, rel_path)
-                existing = existing_file_symbol_by_canonical_id.get(sym_id)
+                existing = existing_file_symbol_by_path.get(rel_path)
                 if existing is not None:
                     # Reuse the canonical Symbol from upstream producers.
                     module_file_cache[rel_path] = existing
                 else:
-                    ext = resolved.suffix.lower()
-                    if ext == ".cjs":
-                        module_system = "commonjs"
-                    else:
-                        module_system = "esm"
+                    # WI-babuk: the TARGET's own language, from the core
+                    # registry; never the importer's. A target with no source
+                    # language (an image, a font) is still a real file
+                    # (kind="file" is ADR-0031's Class A exception):
+                    # language=None, and the id's language slot carries the
+                    # importer's language as discovery_language (ADR-0036).
+                    target_lang = get_language(resolved)
+                    id_lang = target_lang or lang
+                    meta: dict[str, object] = {}
+                    if target_lang is not None:  # an asset is no module
+                        meta["module_system"] = (
+                            "commonjs" if resolved.suffix.lower() == ".cjs"
+                            else "esm"
+                        )
                     mod_sym = Symbol(
-                        id=sym_id,
-                        stable_id=make_file_stable_id(lang, rel_path),
+                        id=make_file_id(id_lang, rel_path),
+                        stable_id=make_file_stable_id(id_lang, rel_path),
                         name=resolved.stem,
                         kind="file",
-                        language=lang,
+                        language=target_lang,
+                        discovery_language=None if target_lang else lang,
                         path=rel_path,
                         span=Span(start_line=1, end_line=1, start_col=0, end_col=0),
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
-                        meta={"module_system": module_system},
+                        meta=meta,
                     )
                     module_file_cache[rel_path] = mod_sym
                     new_symbols.append(mod_sym)
