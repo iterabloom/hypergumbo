@@ -20,3 +20,10 @@
     pr_ref:  # 884b
     description: "Adjacent finding of audit-findings 0021 (Step 5). Filed, not moved.\nThe community overlay io_primitives_overlays/elixir-web-and-db.yaml rows Oban.insert / insert! / insert_all under ipc_send (\"Oban job queue -- enqueue background jobs\"). Oban persists jobs in a database table (PostgreSQL / SQLite / MySQL via Ecto); the crossing at the call is a database insert, which the axis spells db_write.\nCommunity tier (ADR-0061): the row only ADDS findings, so the defect is the zone (ipc instead of database), not a false all-clear.\nFix shape: re-point to db_write in the overlay; check whether the overlay's other Ecto rows already use db_write for the same shape."  # 884b
     fields: {}  # 884b
+- op: discuss  # b35d
+  at: '2026-10-03T15:03:57Z'  # b35d
+  by: agent  # b35d
+  actor: jgstern_agent  # b35d
+  clock: 2  # b35d
+  nonce: b35d  # b35d
+  message: "IMPLEMENTED on branch jgstern-agent/fix/audit0021-rows (local, not pushed), commit 1999ccd983. Oban.insert/insert!/insert_all moved ipc_send -> db_write in the community overlay (same spelling as the overlay's Ecto.Repo.insert, pinned as control); rows stay community/unvouched (pinned); overlay's ipc_send section removed; retrieved: floor not moved (Oban upstream not re-checked). Taint: 3 ipc sinks -> 3 database sinks. plausible-analytics A/B: Oban.insert 3 / insert! 7 ipc_send -> db_write; untrusted_input->ipc 8->6 flows and ->database 31->33, the same two flows (Ecto.Repo.all -> Oban.insert! in ScheduleEmailReports weekly/monthly) read back; no verdict changed. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/ragaz.md (OUTCOME, draft CLOSURE NOTE, A/B artifacts in run_10032026/ragaz/). Tests: red then green on the board; branch affected-test run 9955 passed + 8 failed (7 were pins of the old rows, fixed in fdb14eb77e; 1 hypothesis health-check under load), re-run of those files 1138 passed. No status change made."  # b35d

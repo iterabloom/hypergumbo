@@ -50,3 +50,10 @@
   clock: 5  # 4405
   nonce: '4405'  # 4405
   message: "DONE: merged in PR #1383. _try_receiver_call uses the constant as written minus a leading :: as the module slot: Net::HTTP.get -> ruby:Net::HTTP:0-0:get with or without require 'net/http'; File.write -> File. Behavioural evidence: verify-claims with an overlay net_recv {module: Net::HTTP, functions: [get]} over Net::HTTP.get: inconclusive on dev, violated on the branch; a Net::HTTP row leaves Faraday::HTTP.get inconclusive, and a namespace-dropping mutant turns that control violated (pinned in test_ruby_constant_receiver.py through verify-claims). Corpus (postal / chatwoot / mastodon, per call site): identical edge and call-site sets; 180 / 322 / 465 slots regained their namespace; 3 mastodon sites lost a wrong paperclip/matchers attribution. NOT asserted: every Ruby module slot is an owner path (Postal::Config = runtime value gets the constant's name). Residuals: WI-gomup, WI-mahik (P2).\nFull report (closure evidence, corpus tables, residual list): /home/jgstern_agent/hypergumbo_lab_notebook/decontend/run_09302026/surar.md"  # 4405
+- op: discuss  # ac95
+  at: '2026-10-03T15:03:59Z'  # ac95
+  by: agent  # ac95
+  actor: jgstern_agent  # ac95
+  clock: 6  # ac95
+  nonce: ac95  # ac95
+  message: "NOTE FROM WI-mujod (branch jgstern-agent/fix/mujod, commit c07a5ca605, NOT merged): one of this item's pins moves. test_ruby_constant_receiver.py pinned that an overlay row spelled `HTTP` reaches `Net::HTTP.get` (verdict violated). WI-mujod refuses _module_matches' hint-longer suffix direction -- a module slot carrying MORE leading components than the row names a different owner -- and `Net::HTTP` vs a row `HTTP` is exactly that shape (`HTTP` is also the http.rb gem's top-level constant). This item's own filing named the hazard (\"HTTP would also match ... Faraday::HTTP, a project Api::HTTP\"). On the branch the `HTTP` case is its own test asserting `inconclusive` (fail-closed: the call is unclassified, the module unenumerated); rows `Net::HTTP` and `net/http` still give `violated`, and the Faraday::HTTP control is unchanged. No status change requested."  # ac95
