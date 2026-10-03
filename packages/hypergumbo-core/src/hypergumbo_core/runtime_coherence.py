@@ -350,3 +350,10 @@ def main(argv: list[str] | None = None) -> int:
     ))
 
     return 1 if remaining else 0
+
+
+# `python -m hypergumbo_core.runtime_coherence` runs the check instead of
+# exiting 0 having done nothing (WI-burol). scripts/check-edge-type-runtime-coherence
+# remains the documented entry point.
+if __name__ == "__main__":  # pragma: no cover - subprocess-only (tests/test_module_main_guard.py)
+    sys.exit(main())

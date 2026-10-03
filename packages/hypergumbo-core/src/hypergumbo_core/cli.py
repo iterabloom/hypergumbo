@@ -13125,3 +13125,25 @@ def main(argv=None) -> int:
         )
         return 1
 
+
+
+def _refuse_module_form() -> int:
+    """Answer ``python -m hypergumbo_core.cli`` with exit 2, not a silent 0.
+
+    WI-burol: without a ``__main__`` block this spelling imported the module,
+    ran no command and exited 0 with empty output, which a JSON-consuming
+    driver reads as "no findings". The module entry point is
+    ``python -m hypergumbo_core`` (``__main__.py``); keeping it the ONLY one,
+    this spelling refuses and names it instead of becoming a second alias.
+    """
+    print(
+        "hypergumbo: `python -m hypergumbo_core.cli` runs no command. "
+        "Use `python -m hypergumbo_core <command> ...` "
+        "(or the `hypergumbo` console script).",
+        file=sys.stderr,
+    )
+    return 2
+
+
+if __name__ == "__main__":  # pragma: no cover - subprocess-only (test_cli_module_form.py)
+    sys.exit(_refuse_module_form())
