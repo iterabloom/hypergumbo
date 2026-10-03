@@ -15,7 +15,9 @@ TWO GAPS, ONE QUESTION -- which catalogue row is this call?
    78 tagged edges in 4 repos, 24 of them go true positives that exist only
    because go.yaml spells ``filepath`` for ``path/filepath`` (WI-mujod). So
    defusedcsv is identified by a ROW, which ``prefer_exact_owner`` picks over
-   the suffix match, and ``mycsvlib.csv`` stays WI-mujod's.
+   the suffix match, and ``mycsvlib.csv`` stays WI-mujod's. (WI-mujod has
+   since refused that direction, so the row is now what classifies the call
+   at all.)
 
    SURFACE READ, NOT ASSUMED (github.com/raphaelm/defusedcsv, 3.0.0):
    ``defusedcsv/__init__.py`` holds only ``version``; ``defusedcsv/csv.py``

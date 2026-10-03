@@ -285,14 +285,26 @@ def _net_verdict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     return verdict["verdict"]
 
 
-@pytest.mark.parametrize("module", ["Net::HTTP", "net/http", "HTTP"])
+@pytest.mark.parametrize("module", ["Net::HTTP", "net/http"])
 def test_an_overlay_row_spelled_as_ruby_writes_it_reaches_the_call(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, module: str,
 ) -> None:
     """The behaviour the item states: ``module: Net::HTTP`` was inconclusive
-    (no row matched ``http``). The require-path and unqualified spellings keep
-    matching."""
+    (no row matched ``http``). The require-path spelling keeps matching."""
     assert _net_verdict(tmp_path, monkeypatch, module, "Net::HTTP") == "violated"
+
+
+def test_an_unqualified_row_does_not_reach_a_namespaced_constant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WI-mujod: a row spelled ``HTTP`` names the top-level ``HTTP`` constant
+    (the http.rb gem's), and ``Net::HTTP`` carries a leading component that row
+    does not -- a different owner, the same reason a ``Net::HTTP`` row does not
+    reach ``Faraday::HTTP`` (below). It used to match through the hint-longer
+    suffix direction, which WI-surar's own filing named as the hazard ("HTTP
+    would also match ... Faraday::HTTP, a project Api::HTTP"). FAIL-CLOSED: the
+    unclassified call withholds a clean verdict rather than confirming it."""
+    assert _net_verdict(tmp_path, monkeypatch, "HTTP", "Net::HTTP") == "inconclusive"
 
 
 def test_the_namespace_tells_two_http_constants_apart(
