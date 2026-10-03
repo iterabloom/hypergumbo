@@ -209,6 +209,12 @@ taken from the TYPE's package (``_go_method_of_type``): symbols are keyed with
 an unqualified type, so every package's ``SDConfig.UnmarshalYAML`` shared one
 key and the first was bound whatever the receiver's package.
 
+A PACKAGE-LEVEL FUNCTION ALIAS CONTINUES (WI-labik, 2026-10-03). ``var
+NewWebhook = testutils.NewWebhook`` gets ``calls`` variable -> function
+(evidence ``function_reference``); an alias of an outside package's function
+keeps its ``module_attr_ref``, now anchored on the variable rather than the
+file (``_emit_go_alias_edges``).
+
 Since a bare call resolved in its own package is never a method, INV-fahub's
 bare-method deferral (``defer_bare_method_call``) could no longer fire in Go and
 is no longer applied: a dot-import lookup accepts only exact / path-hint
@@ -3716,6 +3722,87 @@ def _extract_function_reference_edges(
             ))
 
 
+_GO_NO_LOCALS: Final[frozenset[str]] = frozenset()
+
+#: What an attribute read on an import is anchored on: a callable, or the
+#: package-level variable whose initializer holds it (WI-labik).
+_GO_ATTR_OWNER_KINDS: Final[frozenset[str]] = frozenset({
+    "function", "method", "variable",
+})
+
+
+def _emit_go_alias_edges(
+    spec: "tree_sitter.Node",
+    source: bytes,
+    edges: list[Edge],
+    run: AnalysisRun,
+    *,
+    local_symbols: dict[str, Symbol],
+    own_package: ListNameResolver,
+    import_aliases: dict[str, str],
+    module_path: Optional[str],
+    global_symbols: dict[str, list[Symbol]],
+    resolver: ListNameResolver,
+    caller_dir: str,
+) -> None:
+    """``calls`` alias -> target for each package-level ``var x = <function>``.
+
+    WI-labik, the Go twin of python's WI-gulot. A package-level ``var`` whose
+    initializer is a bare identifier or a selector (not a call: that is
+    INV-nopoh's ``calls`` anchor) and names a function of this repo gets an
+    edge from the variable's own symbol to that function, evidence
+    ``function_reference`` -- resolved as a function value is anywhere else:
+    a bare name in the caller's own package (``_go_bare_reference_target``),
+    a selector by its operand (``_go_selector_reference_target``).
+
+    WHY AN EDGE FROM THE VARIABLE, NOT A CHASE AT THE CALL SITE (python binds
+    the call straight to the target). A Go package-level function variable is
+    THE test seam (``var timeNow = time.Now``, reassigned in tests), so what a
+    call through it reaches is the variable's value, of which the initializer
+    is one; the call binds the variable (INV-nopoh's honest binding) and the
+    variable continues. An alias of an OUTSIDE package's function has no
+    symbol to reach; its read is the ``module_attr_ref`` the attribute pass
+    emits, anchored on this variable (``enclosing_symbols``, below).
+    """
+    names = spec.children_by_field_name("name")
+    value = find_child_by_field(spec, "value")
+    if value is None:  # ``var x T``: no initializer
+        return
+    values = value.named_children
+    if len(values) != len(names):  # ``var a, b = f()``: one call, two names
+        return
+    for name_node, value_node in zip(names, values, strict=True):
+        alias_sym = local_symbols.get(node_text(name_node, source))
+        if alias_sym is None or alias_sym.kind != "variable":
+            continue
+        if value_node.type == "identifier":
+            target = _go_bare_reference_target(
+                node_text(value_node, source), local_symbols, own_package,
+                alias_sym, _GO_NO_LOCALS,
+            )
+        elif value_node.type == "selector_expression":
+            target = _go_selector_reference_target(
+                value_node, source, bound=_GO_NO_LOCALS,
+                import_aliases=import_aliases, var_types={},
+                module_path=module_path, local_symbols=local_symbols,
+                global_symbols=global_symbols, resolver=resolver,
+                caller_dir=caller_dir,
+            )
+        else:
+            continue
+        if target is not None:
+            edges.append(Edge.create(
+                src=alias_sym.id,
+                dst=target[0].id,
+                edge_type="calls",
+                line=value_node.start_point[0] + 1,
+                evidence_type="function_reference",
+                confidence=target[1],
+                origin=PASS_ID,
+                origin_run_id=run.execution_id,
+            ))
+
+
 def _registry_type_key(
     type_name: str,
     field_type_registry: dict[str, dict[str, str]],
@@ -4821,6 +4908,22 @@ def _extract_edges_from_file(
                         caller_dir=caller_dir,
                     )
 
+        # WI-labik: a package-level function ALIAS, ``var NewWebhook =
+        # testutils.NewWebhook`` / ``var run = helper``, continues to what it
+        # holds. A call through it binds the variable (INV-nopoh), and the
+        # variable had no edge onward, so the walk stopped one hop short.
+        elif (
+            node.type == "var_spec"
+            and _go_package_level_var_name(node, source) is not None
+        ):
+            _emit_go_alias_edges(
+                node, source, edges, run,
+                local_symbols=local_symbols, own_package=own_package,
+                import_aliases=import_aliases, module_path=module_path,
+                global_symbols=global_symbols, resolver=resolver,
+                caller_dir=caller_dir,
+            )
+
         # Detect function references in struct literal fields
         # e.g., cobra.Command{RunE: myFunc}, http.ServeMux{Handler: h}
         # AST: keyed_element -> literal_element (key) : literal_element (value)
@@ -4902,8 +5005,11 @@ def _extract_edges_from_file(
             run_id=run.execution_id,
             call_node_kinds=("call_expression",),
             call_function_field_names=("function",),
-            # INV-fafol: anchor each read to the callable that performs it.
+            # INV-fafol: anchor each read to the callable that performs it --
+            # or (WI-labik) to the package-level variable whose initializer
+            # performs it, as INV-nopoh anchors that initializer's calls.
             enclosing_symbols=list(local_symbols.values()),
+            owner_kinds=_GO_ATTR_OWNER_KINDS,
             # INV-hopib: record the call a stream is handed to.
             carrier_call_kinds=("call_expression",),
             # WI-kugap: ``func f(os T) { _ = os.Args }`` reads the parameter.

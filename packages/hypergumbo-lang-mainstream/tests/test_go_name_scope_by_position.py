@@ -542,3 +542,72 @@ def test_a_typed_receiver_binds_the_method_of_its_own_package(
         ("tu/tu.go:AT.Collector", "ast_call"),
         ("tu/tu.go:AT.Collector", "function_reference_arg"),
     ], promoted
+
+
+# --------------------------------------------------------------------------
+# WI-labik: a package-level function alias continues to what it holds.
+# --------------------------------------------------------------------------
+
+_LABIK = {
+    "testutils/t.go": "package testutils\n\nfunc NewWebhook() int { return 1 }\n",
+    "w/w.go": (
+        "package w\n\n"
+        'import (\n\t"strings"\n\n\t"example.com/fx/testutils"\n)\n\n'
+        "func helper() {}\n\n"
+        "func mk() func() { return helper }\n\n"
+        "func mk2() (int, int) { return 1, 2 }\n\n"
+        "var (\n"
+        "\tNewWebhook = testutils.NewWebhook\n"
+        "\tlocalAlias = helper\n"
+        "\tupper      = strings.ToUpper\n"
+        "\tbuilt      = mk()\n"
+        "\tplain      = 3\n"
+        "\ttypedOnly  func()\n"
+        "\tp1, p2     = mk2()\n"
+        "\tq1, q2     = helper, helper\n"
+        ")\n\n"
+        "func Use() { NewWebhook(); localAlias(); upper(\"x\"); built() }\n"
+    ),
+}
+
+
+def test_a_package_level_alias_continues_to_its_target(tmp_path: Path) -> None:
+    r = _analyze(tmp_path, _LABIK)
+    # Reach: the calls bind the alias variables (INV-nopoh).
+    called = sorted(_rel(e.dst) for e in _out(r, "Use"))
+    assert called == [
+        "w/w.go:NewWebhook", "w/w.go:built", "w/w.go:localAlias", "w/w.go:upper",
+    ], called
+    alias = _out(r, "NewWebhook")
+    assert [(_rel(e.dst), e.evidence_type) for e in alias] == [
+        ("testutils/t.go:NewWebhook", "function_reference"),
+    ]
+    local = _out(r, "localAlias")
+    assert [(_rel(e.dst), e.evidence_type) for e in local] == [
+        ("w/w.go:helper", "function_reference"),
+    ]
+
+
+def test_an_external_alias_reads_its_target_from_the_variable(
+    tmp_path: Path,
+) -> None:
+    r = _analyze(tmp_path, _LABIK)
+    reads = [e.dst for e in _out(r, "upper", edge_type="module_attr_ref")]
+    assert reads == ["go:strings:0-0:strings.ToUpper:attribute"]
+
+
+def test_a_call_initializer_and_a_literal_are_not_aliases(tmp_path: Path) -> None:
+    r = _analyze(tmp_path, _LABIK)
+    built = [(_rel(e.dst), e.evidence_type) for e in _out(r, "built")]
+    assert built == [("w/w.go:mk", "ast_call")], built
+    assert _out(r, "plain") == []
+    # ``var typedOnly func()`` has no initializer (and, like every package
+    # var without one, no symbol): nothing is emitted for it.
+    assert not any(":typedOnly:" in e.src for e in r.edges)
+    # Two names from one call: the call is INV-nopoh's, no alias edge.
+    assert [e.evidence_type for e in _out(r, "p1")] == ["ast_call"]
+    # Two aliases in one spec: each name pairs with its own value (only the
+    # first name has a symbol to anchor on, as INV-nopoh's anchor does).
+    assert [(_rel(e.dst), e.evidence_type) for e in _out(r, "q1")] == [
+        ("w/w.go:helper", "function_reference"),
+    ]
