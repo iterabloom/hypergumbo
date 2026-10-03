@@ -177,7 +177,8 @@ def test_a_program_printing_its_home_directory(tmp_path: Path) -> None:
     flows = verdicts["DESCRIPTION-NO-LOGGING"]
     assert flows["verdict"] == "violated", flows["details"]
     # The NAME, not the module: see the note in test_cwd_reads_are_host_info
-    # (the taint arm prefers the community System.Directory.Extra twin).
+    # (the taint arm prefers the community System.Directory.Extra twin,
+    # INV-tobur).
     assert "getHomeDirectory" in flows["details"]
     assert verdicts["SECRET-NO-LOGGING"]["verdict"] != "violated", (
         verdicts["SECRET-NO-LOGGING"]["details"]

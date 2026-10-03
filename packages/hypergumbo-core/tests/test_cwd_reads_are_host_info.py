@@ -224,6 +224,6 @@ def test_haskell_cwd_read_now_starts_a_host_description_flow(
     assert flows["verdict"] == "violated", flows["details"]
     # The NAME, not the module: the taint arm attributes a bare-name haskell
     # call to the community System.Directory.Extra twin ahead of the vouched
-    # System.Directory row (a pre-existing substitution, filed separately;
+    # System.Directory row (a pre-existing substitution, INV-tobur;
     # io-boundaries above attributes it correctly).
     assert "getCurrentDirectory" in flows["details"]
