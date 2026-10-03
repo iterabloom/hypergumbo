@@ -546,9 +546,9 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
     # These qualified names appear in io_primitives YAML catalogs with
     # boundary=subprocess (so taint analysis tracks them) but are
     # intentionally NOT high-risk for display purposes: they operate on
-    # an already-launched process (signal, wait, cleanup), or perform a
-    # PATH lookup without executing. (Ending the CURRENT process is not
-    # rowed subprocess at all any more -- INV-mulul.) The WI-sugav Part 2
+    # an already-launched process (signal, wait, cleanup). (Ending the
+    # CURRENT process -- INV-mulul -- and a PATH lookup -- INV-dukam -- are
+    # not rowed subprocess at all any more.) The WI-sugav Part 2
     # drift guard (Tests::TestHighRiskPrimitivesDriftGuard) requires every
     # boundary=subprocess catalog entry to land in either
     # HIGH_RISK_PRIMITIVES or this set.
@@ -564,8 +564,8 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
     "subprocess.Popen.communicate", "subprocess.Popen.wait",
     "subprocess.Popen.poll", "subprocess.Popen.terminate",
     "subprocess.Popen.kill", "subprocess.Popen.send_signal",
-    # Go — PATH-lookup helpers (string in, string out; no exec).
-    "os/exec.LookPath", "golang.org/x/sys/execabs.LookPath",
+    # Go os/exec.LookPath / execabs.LookPath: fs_read since INV-dukam (a
+    # PATH search that stats candidates and launches nothing).
     # C / C++ — wait on an already-launched child (does not spawn).
     "sys/wait.wait", "sys/wait.waitpid",
     # Rust std::process.exit / abort and Elixir System.halt used to be
