@@ -288,8 +288,19 @@ host_info_read:
 # ---------------------------------------------------------------------------
 logging:
   - module: Logger
-    functions: [debug, info, warn, warning, error, notice, critical, alert, emergency, log, metadata, configure]
-    notes: "Elixir stdlib Logger — unified logging API"
+    functions: [debug, info, warn, warning, error, notice, critical, alert, emergency, log]
+    notes: >-
+      Elixir stdlib Logger -- unified logging API. NOT metadata / configure
+      (WI-ragaz, audit-findings 0021 Step 5): both write nothing at the call.
+      configure sets the facility's options; metadata attaches key/values to
+      the calling process that a LATER emitter may print, if the formatter is
+      configured to print that key. The later emitter is rowed here, so the
+      crossing is represented (ADR-0049 ruling 3; the erlang parent's `logger`
+      row likewise leaves set/update_process_metadata unrowed). What is lost
+      is a value carried through process metadata into a later log line: the
+      taint walk does not follow the process dictionary, which a sink at the
+      attach site was covering by adjacency, not by the call's own effect.
+      Unrowed, both are disclosed as external_potential.
   - module: IO
     functions: [puts, warn, write, binwrite]
     notes: "IO-based ad-hoc logging (puts/write to :stdio; binwrite same but bytes)"

@@ -491,8 +491,13 @@ logging:
     functions: [Print, Println, Printf, Fatal, Fatalln, Fatalf, Panic, Panicln, Panicf]
     notes: "Go stdlib log package — writes to stderr by default"
   - module: log/slog
-    functions: [Debug, Info, Warn, Error, Log, NewTextHandler, NewJSONHandler]
-    notes: "Go stdlib structured logging — writes to stderr by default"
+    functions: [Debug, Info, Warn, Error, Log]
+    notes: >-
+      Go stdlib structured logging -- writes to stderr by default. NOT
+      NewTextHandler / NewJSONHandler (WI-ragaz, audit-findings 0021 Step 5):
+      a handler constructor wraps the writer it is given and writes nothing at
+      the call; the write is at the emitter, rowed here. Unrowed, they are
+      disclosed as external_potential (log/slog carries no completeness grant).
   - module: log/slog.Logger
     methods: [Debug, Info, Warn, Error, Log]
     notes: "slog.Logger instance methods"
