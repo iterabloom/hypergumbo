@@ -94,7 +94,9 @@ GO_DEFERRED_ROWS: frozenset[tuple[str, str]] = frozenset({
     ("net", "Listen"), ("net", "ListenTCP"), ("net", "ListenUDP"),
     ("net", "ListenUnix"), ("net", "ListenPacket"),
     ("syscall", "Socket"), ("syscall", "Bind"), ("syscall", "Listen"),
-    ("unix", "Socket"), ("unix", "Bind"), ("unix", "Listen"),
+    # WI-mujod: keyed by the import path the go analyzer stamps.
+    ("golang.org/x/sys/unix", "Socket"), ("golang.org/x/sys/unix", "Bind"),
+    ("golang.org/x/sys/unix", "Listen"),
     # THE LAUNCH ROWS, moved by measurement 0010 (ADR-0049 open work step 3).
     # Each blocks and serves: the request bytes reach a registered handler, and
     # the only value returned to this caller is an error. Both adjudicated
@@ -142,8 +144,8 @@ GO_TRANSFER_ROWS: frozenset[tuple[str, str]] = frozenset({
     ("net.Listener", "Accept"), ("net.Conn", "Read"),
     ("syscall", "Accept"), ("syscall", "Accept4"),
     ("syscall", "Recvfrom"), ("syscall", "Recvmsg"),
-    ("unix", "Accept"), ("unix", "Accept4"),
-    ("unix", "Recvfrom"), ("unix", "Recvmsg"),
+    ("golang.org/x/sys/unix", "Accept"), ("golang.org/x/sys/unix", "Accept4"),
+    ("golang.org/x/sys/unix", "Recvfrom"), ("golang.org/x/sys/unix", "Recvmsg"),
 })
 
 
