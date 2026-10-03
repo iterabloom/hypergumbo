@@ -395,6 +395,9 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # CPython's Lib/csv.py; `_csv.Writer` is the C type csv.writer()
             # returns (Modules/_csv.c), `_csv` being in sys.stdlib_module_names.
             "csv.DictWriter", "_csv.Writer",
+            # WI-dibit: the class `urllib.request.build_opener()` returns
+            # (CPython's Lib/urllib/request.py); its module is admitted above.
+            "urllib.request.OpenerDirector",
         }),
     ),
     "rust": Scope(

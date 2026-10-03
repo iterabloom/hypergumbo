@@ -278,9 +278,11 @@ classes, 18 functions), then each hit read by hand. A class is judged by its
 
 **What the grant does not cover.** Matching is exact. This covers the
 `urllib.request` slot, which is where module functions and constructors are
-called. An instance's methods live at their own slots:
-`urllib.request.OpenerDirector.open` sends and carries NO row. That slot is not
-declared complete, and this entry does not claim it.
+called. An instance's methods live at their own slots, and this entry does not
+claim them. `urllib.request.OpenerDirector` has its own: `open` and `error`
+are rowed net_send and the class is declared complete (WI-dibit), and
+`build_opener()`'s result reaches it through the library_signatures row
+`urllib.request.build_opener: urllib.request.OpenerDirector`.
 
 **Measured.** `scripts/check-self-claims --minimal` with `Request` deleted and
 the module declared: 18 claims unchanged (`confirmed_with_caveats`). A
