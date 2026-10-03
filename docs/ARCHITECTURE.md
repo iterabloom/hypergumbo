@@ -15,13 +15,13 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **346** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 101 core, 4 CLI, 36 tracker)
-- **51118** symbols (functions, classes, methods)
-- **202152** edges by type:
-  - calls: 115486
-  - contains: 46855
-  - imports: 16627
-  - instantiates: 12034
-  - references: 7831
+- **51121** symbols (functions, classes, methods)
+- **202173** edges by type:
+  - calls: 115499
+  - contains: 46857
+  - imports: 16629
+  - instantiates: 12036
+  - references: 7833
   - module_attr_ref: 1722
   - other: 1597
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 51118 Symbols + 202152 Edges + UsageContexts           │
+│  Output: 51121 Symbols + 202173 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,12 +279,12 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9952.3 | ir.py |
-| `len` | external_symbol | 7653.0 | <external> |
-| `write_text` | external_symbol | 6892.0 | <external> |
-| `Span` | class | 6557.6 | ir.py |
+| `Symbol` | class | 9956.9 | ir.py |
+| `len` | external_symbol | 7654.0 | <external> |
+| `write_text` | external_symbol | 6893.0 | <external> |
+| `Span` | class | 6560.5 | ir.py |
 | `LinkerContext` | class | 3581.3 | registry.py |
-| `get` | external_symbol | 3228.0 | <external> |
+| `get` | external_symbol | 3229.0 | <external> |
 | `load_catalog` | function | 3032.8 | io_boundary.py |
 | `Edge.create` | method | 2416.3 | ir.py |
 | `str` | external_symbol | 2255.0 | <external> |
@@ -293,7 +293,7 @@ These symbols have the highest bidirectional centrality
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1712.0 | <external> |
+| `append` | external_symbol | 1713.0 | <external> |
 
 ## Pattern System
 
@@ -951,8 +951,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 8a517ce232e4
-  commit_count: 7951
+  commit: 4594a3cf6b98
+  commit_count: 7954
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
