@@ -618,6 +618,21 @@ net_send:
       urllib.request's surface was enumerated (module_completeness, WI-bakik),
       because an unrowed call into an unenumerated module withholds every clean
       verdict.
+  - module: urllib.request.OpenerDirector
+    methods: [open, error]
+    notes: >-
+      WI-dibit. `opener.open(url, data)` performs the request: it is the send
+      `urlopen` performs (urlopen ends in `opener.open(url, data,
+      timeout)`), on an opener the program built with `build_opener(...)` or
+      `OpenerDirector()` + `add_handler`. net_send and not net_recv for
+      urlopen's reason: the response is a consequence of the send, and the
+      returned object is read later. `error(proto, *args)` runs the
+      error-handler chain, and the default chain re-sends:
+      HTTPRedirectHandler.http_error_302 calls `self.parent.open(new)`, an
+      auth handler retries with credentials; a call that hits no re-sending
+      handler raises instead, which the row over-approximates. Reached from
+      `build_opener()` through the library_signatures row
+      `urllib.request.build_opener: urllib.request.OpenerDirector`.
   - module: smtplib.SMTP
     methods: [sendmail, send_message]
   - module: xmlrpc.client.ServerProxy
@@ -1628,8 +1643,9 @@ module_completeness:
       parse_keqv_list, request_host, noheaders, ftperrors. urlretrieve also
       writes a local file; it carries its net_send row, not a second one.
       This entry covers the urllib.request SLOT only. An instance's methods
-      live at their own slots (urllib.request.OpenerDirector.open sends and
-      carries no row yet), which this entry does not reach or claim.
+      live at their own slots: urllib.request.OpenerDirector carries its own
+      entry below (WI-dibit), and every other class's instance methods are
+      neither reached nor claimed by this one.
   - module: difflib
     completeness: complete
     retrieved: "2026-08-15"
@@ -1858,6 +1874,17 @@ module_completeness:
       WI-gihif. add_header / add_data / get_full_url mutate an object;
       `urlopen` is what crosses, and it is rowed under net_send at the
       urllib.request slot, which this entry does not reach or claim to.
+  - module: urllib.request.OpenerDirector
+    completeness: complete
+    retrieved: "2026-10-03"
+    notes: >-
+      WI-dibit. The four public methods (python 3.12, introspected: `[n for n
+      in dir(OpenerDirector) if not n.startswith('_')]`). ROWED net_send: open
+      (the request), error (the handler chain, which re-sends on a redirect or
+      an auth retry). NO I/O ON CALL: add_handler (registers a handler on the
+      object), close (a `pass` kept for backwards
+      compatibility, as is BaseHandler.close). `addheaders` is an attribute and is never a call. The
+      constructor is covered by the urllib.request slot's own entry above.
   - module: subprocess.Popen
     completeness: complete
     retrieved: "2026-09-14"

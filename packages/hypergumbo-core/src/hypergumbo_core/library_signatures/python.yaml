@@ -50,3 +50,9 @@ signatures:
   # goes in at Writer.writerow / writerows, which io_primitives rows fs_write;
   # this row is what lets a receiver bound to the factory reach them.
   csv.writer: _csv.Writer
+  # urllib.request (WI-dibit): build_opener is a FUNCTION returning an
+  # OpenerDirector (python 3.12: `type(urllib.request.build_opener()) is
+  # urllib.request.OpenerDirector`). The send happens at OpenerDirector.open,
+  # which io_primitives rows net_send; this row is what lets `opener =
+  # build_opener(); opener.open(url, data)` reach it.
+  urllib.request.build_opener: urllib.request.OpenerDirector
