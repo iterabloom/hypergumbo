@@ -746,6 +746,9 @@
             "block_type": {
               "description": "Block subtype for generic ``block`` Symbols where the construct admits sub-classification (e.g. 'datasource', 'generator' in Prisma). Fold residue per WI-runod Wave 6 PR 4."
             },
+            "build_constraint": {
+              "description": "Go: the file's build constraint (``//go:build ...``), stamped on every symbol of the file (WI-potun)."
+            },
             "component_framework": {
               "description": "Framework on single-file-component symbols (e.g. 'vue', 'svelte', 'astro'). Fold residue for the ``component_file`` \u2192 ``file`` migration per audit-findings 0011."
             },
@@ -791,6 +794,9 @@
             "external_boundary": {
               "description": "True on synthetic boundary Symbols emitted by ``ir._canonical_external_id`` for unresolved-but-referenced names. Read by ``is_external_boundary`` helper."
             },
+            "field_type_ids": {
+              "description": "Python class symbol: ``{field: type symbol id}`` for the fields whose type inference is trustworthy, beside ``fields`` (WI-supat D3); read by ``inherited_calls`` Site 3."
+            },
             "fields": {
               "description": "Declared fields of a class-like symbol, as a mapping of field name to type information. Written by the java and python analyzers on their own class symbols."
             },
@@ -799,9 +805,6 @@
             },
             "http_method": {
               "description": "HTTP method a route marker handles (e.g. 'GET', 'POST', 'ANY'). Older producers also smuggle transport sentinels ('WS', 'LIVE', 'RPC') into this key \u2014 a mechanism-vs-category leak ``routes.route_of`` lifts 'WS' out into ``route_protocol`` and INV-tibap folds LIVE/RPC out of."
-            },
-            "import_path": {
-              "description": "Source-language import path on Symbols whose primary identifier doesn't match (e.g. ``from foo.bar import baz`` makes ``baz``'s import_path ``foo.bar.baz``)."
             },
             "inferred_return_type": {
               "description": "Inferred return type for Symbols whose declared type is missing. Set by the limited type-inference passes (Python ``typing.get_type_hints``, etc.)."
@@ -812,14 +815,26 @@
             "install_source": {
               "description": "Install source on requirement Symbols (e.g. 'url'). Fold residue per audit-findings 0006."
             },
+            "is_abbrev": {
+              "description": "Lean: True on an ``abbrev`` declaration."
+            },
             "is_class_based_view": {
               "description": "Django class-based-view marker on class Symbols. Set by the Django framework-dispatch linker."
+            },
+            "is_constructor": {
+              "description": "Agda: True on a data constructor's symbol."
+            },
+            "is_lemma": {
+              "description": "Lean: True on a ``lemma`` declaration."
             },
             "is_local": {
               "description": "True on locally-scoped Symbols (e.g. nested function definitions). Read by containment / slice filters."
             },
             "is_native": {
               "description": "True on native-bridge declarations (e.g. JNI method, N-API binding). Set by FFI analyzers."
+            },
+            "is_postulate": {
+              "description": "Agda: True on a symbol declared in a ``postulate`` block."
             },
             "is_recursive": {
               "description": "True on recursive function / method Symbols. Detected by call-graph self-loop analysis."
@@ -865,9 +880,6 @@
             },
             "static": {
               "description": "True on static method / field Symbols. Affects method-call resolution (no implicit ``self`` receiver)."
-            },
-            "symbol_roles": {
-              "description": "SCIP-style symbol-role bitset for Symbols sourced from SCIP indexes (definition / reference / import / etc.)."
             },
             "tags": {
               "description": "Free-form tag list for analyzer-specific annotations not (yet) elevated to a named meta key. Use sparingly \u2014 sustained use of a tag is an ADR-0024 promotion signal."
@@ -1290,11 +1302,29 @@
             "access_mode": {
               "description": "The effect the edge's source has on its destination, from the four-cell vocabulary 'read' / 'write' / 'mutate' / 'delete' (ADR-0015 + ADR-0038 ruling 1) \u2014 derived per-edge from AST role at emission (read-evidence \u2192 read; store position \u2192 write; augmented-assignment / receiver-mutating call \u2192 mutate; delete target \u2192 delete), NOT from the line's statement kind. Applicability is per-edge-type (ADR-0038 ruling 2 / INV-tibob): populated on calls / references / module_attr_ref / event_publishes; Declared-N/A on the structural edge types AND on instantiates (a constructor call is not an access). See ``access_mode_applicable_edge_types`` / ``access_mode_na_edge_types``. Set by the ``dataflow`` annotate passes."
             },
+            "accessor": {
+              "description": "ORM linker: the accessor through which the model was reached ('objects' for Django, 'query' for Flask-SQLAlchemy)."
+            },
+            "action": {
+              "description": "Route->handler edge (Phoenix): the controller action the route named."
+            },
+            "action_ref": {
+              "description": "React Router route edge with role 'action': the action function's name as the route declared it."
+            },
+            "argparse_kwarg": {
+              "description": "The keyword through which an argparse ``set_defaults(<kw>=<handler>)`` registered the handler (e.g. 'func')."
+            },
             "attr_carrier": {
               "description": "On a `module_attr_ref` edge: the CALL at whose argument, keyword or receiver position the attribute was used, as `<callee as spelled>@<call line>` -- `print@7` for `print(k, file=sys.stderr)`, `io.WriteString@12` for `io.WriteString(os.Stderr, k)`, `System.out.println@4` for the receiver form. Absent for a use outside any call (`out = sys.stderr`). INV-hopib: a stream-object row's sink was matched wherever the object was used, so one write was two findings and one of them named a sink with no arguments and no receiver. taint drops the stream's sink site when every use is carried by a call that is itself a matched sink in the same zone (`_subsume_sink_sites`), and a surviving stream finding names its carriers (`sink_carriers`). PER CALL SITE: one function writes `sys.stderr` through `print` on one line and `json.dump` on the next, and only the first is a sink; a collapsed edge's `attr_carrier_values` keeps both, with `None` for an uncarried use."
             },
             "attr_carrier_values": {
               "description": "Every distinct ``attr_carrier`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``attr_carrier`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). A site that carried no ``attr_carrier`` is listed as ``null``, sorted first and never capped away, so one site's value cannot read as every site's (INV-rajak). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
+            },
+            "attributes": {
+              "description": "Astro component edge: the attribute names on the component tag."
+            },
+            "binding": {
+              "description": "How a bare-name call's target module was bound, on an unresolved call edge: 'explicit_import' (elixir, an ``import`` directive) or 'dot_import' (go, ``import . \"pkg\"``)."
             },
             "bridge_kind": {
               "description": "FFI / native-bridge mechanism on ``calls`` edges that absorb the bridge family (e.g. 'cgo', 'napi', 'wasm', 'ffi'). Value vocabulary tracked at ``edge_types.BRIDGE_KINDS``."
@@ -1317,6 +1347,9 @@
             "call_locality": {
               "description": "File-locality of a call edge \u2014 whether caller and callee live in the same source file ('same_file') or different files ('cross_file'). A SEPARATE axis from ``call_construct`` (which names the syntactic call shape): INV-vakaf split this out after bash/objc were found smuggling 'cross_file' through ``call_construct``. Sparse by convention: set to 'cross_file' on boundary-crossing calls; ABSENT means same-file (the common case)."
             },
+            "call_type": {
+              "description": "Three producers, three meanings (an ADR-0024 axis-leakage candidate): subprocess_cli -- 'literal' or 'variable', how the command line was written; otp -- 'call' or 'cast', the GenServer message kind; cobol -- 'perform' or 'call', the COBOL statement."
+            },
             "callee_name": {
               "description": "The callee's name at FULL FIDELITY, as the producer saw it at the call site -- the lossless home ADR-0036 Ruling 1 designates. The id's name slot is deliberately LOSSY (names containing ':' fold to '.') because the id is a location-addressed key, not a fidelity surface, and Ruling 1 says in as many words that consumers needing the exact name MUST read it from elsewhere and never re-derive it from the id. Until this key existed there was no elsewhere for an unresolved external: an Objective-C selector (writeToFile:atomically:) ENDS in a colon, so the id's second-to-last token was the EMPTY STRING, the boundary node synthesised from that id had name='', and the selector existed nowhere in the output (INV-divuf / WI-nakut). Stamped on EVERY edge make_unresolved_edge builds, including the cell where WI-huzuv correctly withholds dst_ref because the module is unknown -- carrying the name in dst_ref sometimes and here otherwise would give one fact two homes."
             },
@@ -1329,14 +1362,41 @@
             "channel_kind": {
               "description": "Channel shape on event / message edges (e.g. 'websocket', 'message_queue', 'crdt')."
             },
+            "channel_type": {
+              "description": "ipc event_publishes edge: what the sender/receiver join compared (``_name_args`` join kind: 'literal', 'constant', 'variable' or 'unresolved')."
+            },
+            "class_name": {
+              "description": "Puppet includes edge: the included class's name."
+            },
+            "client_directive": {
+              "description": "Astro component edge: the ``client:*`` hydration directive on the tag, '' when none."
+            },
             "client_framework": {
               "description": "Client-side framework of a WebSocket edge, from the websocket linker's pattern\u2192framework map (e.g. 'socketio', 'ws', 'native_websocket', 'django_channels', 'fastapi', 'starlette')."
+            },
+            "cobra_field": {
+              "description": "The cobra ``Command`` field the handler was assigned to (e.g. 'Run', 'RunE', 'PreRunE')."
+            },
+            "component_name": {
+              "description": "Component ``imports`` edge (astro / svelte / vue): the tag name used at the reference site."
+            },
+            "controller": {
+              "description": "Route->handler edge (Phoenix): the controller module the route named."
+            },
+            "controller_action": {
+              "description": "Route->handler edge: the Rails ``controller#action`` or Laravel ``Controller@action`` string the route named."
             },
             "data_direction": {
               "description": "Dataflow DIRECTION across a cross-boundary edge \u2014 the way data moves between src and dst, from the closed vocabulary 'src_to_dst' / 'dst_to_src' / 'bidirectional' (``ir.VALID_DATA_DIRECTIONS``). ADR-0038 ruling 3: the post-eviction home of the FFI-bridge / protocol-linker direction semantic that ``access_mode='write'`` + ``dest_access_mode='read'`` used to smuggle (the cgo docstring said it outright \u2014 'Go caller passes data to C'). DIRECTION, not ACCESS \u2014 a SEPARATE axis from ``access_mode`` (ADR-0038 ruling 1). ``dest_access_mode`` is removed entirely (it was observed zero-entropy \u2014 'read' on every populated record). ``event_publishes`` edges do NOT carry this key: publishing IS a genuine write, so they keep ``access_mode='write'`` (ADR-0038 \u00a7Neutral/acknowledged)."
             },
+            "delegate_method": {
+              "description": "Short name of the memberlist ``Delegate`` interface method a go_memberlist dispatch edge targets."
+            },
             "detection_pattern": {
               "description": "Pattern-shape inference heuristic that produced this edge (e.g. 'abi_name_match', 'jni_naming', 'implicit_convention') \u2014 names HOW the edge was string/name/URL/regex-matched. Distinct from 'framework_dispatch' (which dispatch convention produced the edge, not how it was matched). Fold residue per audit-findings 0014 \u00a7'detection_pattern partition'."
+            },
+            "directives": {
+              "description": "Vue component edge: the directive names on the component tag (``v-if``, ``v-on:<event>``, ``v-bind:<prop>``, ...)."
             },
             "disambiguation_fallback": {
               "description": "True when the edge's destination was resolved by simple-name fallback (no fully-qualified module / namespace / kind disambiguator available). Carries with it the contract that ``confidence <= 0.5`` on the same edge \u2014 see INV-zuhub. Consumers filter the fallback population from the precision-resolved one by checking this flag. Currently set by ``linkers/inheritance.py``; per-linker conformance for the four remaining edge-type families (calls / dispatches_to / references / module_exports) tracked under INV-zuhub items 1-3."
@@ -1344,23 +1404,89 @@
             "dispatch_kind": {
               "description": "Dispatch shape on ``dispatches_to`` edges (e.g. 'route', 'di_register', 'di_resolve', 'annotated'). Fold residue from ADR-0023 Phase 4b dispatch / publish family."
             },
+            "enclosing_class": {
+              "description": "Short name of the class that lexically owns an unresolved call site (Site 1: a bare / ``self`` / ``this`` call; Site 3 beside ``inherited_field_receiver``). Written by ``analyze.base.make_unresolved_edge`` for every language that passes it, and by py.py's Site-3 branch; read by the ``inherited_calls`` linker to walk the ancestor chain and by py.py's Django-ORM instance check."
+            },
+            "enclosing_class_id": {
+              "description": "Symbol id of the class that lexically owns the call site, stamped by py.py beside ``enclosing_class`` when the id is known (WI-supat D3) so ``inherited_calls`` can start the ancestor walk from exactly that class and skip its same-short-name ambiguity guard."
+            },
             "env_var": {
               "description": "The variable name behind a synthesized environment read \u2014 the `API_KEY` in `$API_KEY`. Carried for the READER rather than for matching: bash's env_read catalogue is ONE row on the os.environ precedent, so the name never participates in the lookup. PER CALL SITE (INV-vukiv): `$HOME` then `$API_KEY` in one function collapsed to `env_var='HOME'`, which named the harmless read and dropped the secret one."
             },
             "env_var_values": {
               "description": "Every distinct ``env_var`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``env_var`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). A site that carried no ``env_var`` is listed as ``null``, sorted first and never capped away, so one site's value cannot read as every site's (INV-rajak). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
             },
+            "event": {
+              "description": "Event name a websocket or Phoenix Channels event_publishes edge carries."
+            },
             "event_identifier": {
               "description": "Event-sourcing-linker analogue of ``topic_identifier``: the identifier a publish / subscribe site wrote in place of an event-name string, or the identifier an identifier-join compared. ``event_name`` then holds the event VALUE, or ``None`` when the identifier could not be resolved (WI-misod)."
+            },
+            "event_name": {
+              "description": "event_sourcing event_publishes edge: the event VALUE the publisher and subscriber were joined on, or None when only identifiers were compared (then see ``event_identifier``)."
+            },
+            "event_type": {
+              "description": "websocket event_publishes edge: 'literal' or 'variable', how the event name was written at the two ends."
+            },
+            "events": {
+              "description": "Svelte component edge: the event names the tag listens to (``on:<event>``)."
+            },
+            "executable": {
+              "description": "subprocess_cli: the program a subprocess call runs."
             },
             "ffi_mechanism": {
               "description": "FFI mechanism for cross-language bridges where ``bridge_kind`` is too coarse (e.g. specific JNI / WASM-bindgen / luajit-ffi variants)."
             },
+            "field": {
+              "description": "C dispatches_to edge from a designated initializer: the struct field the function pointer was assigned to (``.read = my_read`` gives 'read')."
+            },
+            "field_name": {
+              "description": "GraphQL resolver edge: the schema field the resolver serves."
+            },
+            "file": {
+              "description": "COBOL ``PERFORM`` / ``CALL`` edge: the repo-relative path of the calling file. Assigned wholesale over the edge's meta, which also discards what ``make_unresolved_edge`` stamped on the unresolved branch."
+            },
+            "form": {
+              "description": "Twig includes edge: 'function' when the include was the ``include()`` function rather than the ``{% include %}`` tag."
+            },
             "framework_dispatch": {
               "description": "The framework-or-generic dispatch convention that produced this edge \u2014 ONE coherent axis ('which dispatch convention recovered this edge'), per ADR-0028 Cluster 28C ('framework-dispatch convention') and spec \u00a79. Values are convention identifiers: framework-specific compounds ('django_orm', 'kafka_streams', 'vue_component', 'tauri_invoke') AND framework-agnostic dispatch mechanisms ('registry_dispatch', 'middleware_chain', 'npm_package'). NOT a bare-framework-name axis \u2014 that reading misreads audit-findings 0014's '<framework_name>' shorthand (INV-junid). Distinct from 'detection_pattern' (pattern-shape match heuristics \u2014 HOW an edge was string/name/URL-matched, not which convention dispatches it). Pure provenance: zero production consumers read this key; promote to a typed Edge.framework field ONLY if a consumer materializes (ADR-0028 OQ2, declined 2026-07-05; ADR-0024 rule 3 threshold = \u22653 distinct values OR \u22652 producers). Fold residue per audit-findings 0014 / WI-kagik Wave 5."
             },
+            "function": {
+              "description": "ipc ``contextBridge`` edge: the exposed function's name, for an API exposed as a bare function."
+            },
+            "handler_id": {
+              "description": "Route->handler edge: the handler's full symbol id, when the route named one directly instead of a short reference."
+            },
             "handler_name": {
               "description": "Handler function name a route/command edge dispatches to (route_handler and go_cobra linkers) \u2014 the callable servicing the route or CLI subcommand."
+            },
+            "handler_ref": {
+              "description": "Route->handler edge (Express and similar): the short handler reference the route named (e.g. 'userController.list')."
+            },
+            "has_slot_attr": {
+              "description": "Svelte / Vue component edge: True when the tag carries a slot attribute."
+            },
+            "import_form": {
+              "description": "R imports edge: the function that loaded the package ('library' or 'require')."
+            },
+            "import_name": {
+              "description": "Astro frontmatter ``imports`` edge: the default-import name bound to the ``.astro`` component."
+            },
+            "import_path": {
+              "description": "Component ``imports`` edge (astro / svelte / vue): the import path the component tag resolved to, '' when the tag was not imported; read by the vue_component linker. Written on EDGES only; it was registered on symbol_meta, which no producer wrote (WI-lijaz)."
+            },
+            "import_type": {
+              "description": "LaTeX imports edge: 'package' (``\\usepackage``)."
+            },
+            "include_file": {
+              "description": "Makefile includes edge: the included file as written."
+            },
+            "include_type": {
+              "description": "LaTeX includes edge: the tree-sitter node type of the include command ('text_include' or 'latex_include')."
+            },
+            "inherited_field_receiver": {
+              "description": "Name of the field a ``self.<field>.<method>()`` call goes through, when the field is not the class's own and so is believed inherited (Site 3). Written by ``analyze.base.make_unresolved_edge`` and py.py; read by ``inherited_calls``, which resolves the field's type on an ancestor."
             },
             "io_boundaries": {
               "description": "The FULL set of boundaries a single call crosses, for primitives that cross more than one simultaneously (``simultaneous: true`` in the io_primitives YAML \u2014 e.g. scala's ``Process.run``, which spawns AND pipes). The scalar ``io_boundary`` names one of them; this names all of them. Written by ``io_boundary.tag_io_boundaries``."
@@ -1383,11 +1509,53 @@
             "io_target_kind_values": {
               "description": "Every distinct ``io_target_kind`` among the call sites that collapsed into this edge, sorted, capped at ``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` ONLY when the sites disagreed, in which case the singular ``io_target_kind`` is removed \u2014 its presence would state one site's value of the whole relationship (INV-vukiv). A site that carried no ``io_target_kind`` is listed as ``null``, sorted first and never capped away, so one site's value cannot read as every site's (INV-rajak). Absence of this key therefore means every collapsed site agreed, exactly as absence of ``call_lines`` means there was one site."
             },
+            "is_python_m": {
+              "description": "subprocess_cli: True when the command is ``python -m <module>``."
+            },
+            "live": {
+              "description": "Route->handler edge (Phoenix): 'true' when the route is a LiveView route."
+            },
+            "loader_ref": {
+              "description": "React Router route edge with role 'loader': the loader function's name as the route declared it."
+            },
             "mechanism": {
               "description": "Dispatch/call mechanism on a ``dispatches_to`` or ``calls`` edge \u2014 names HOW the dispatch/call is wired when the canonical ``edge_type`` alone is too coarse. Current value space: 'otp_call' / 'otp_cast' (Elixir/Erlang GenServer synchronous call vs asynchronous cast, folded from the former otp_call/otp_cast edge_types per WI-rorul); 'callback' (Elixir/Erlang behaviour + Rails callbacks, folded from ``invokes_callback`` per audit-findings 0017); 'kernel_launch' (CUDA kernel launch, folded from ``kernel_launch``); 'template' (Vue template\u2192method call, folded from ``template_calls``). Distinct from ``framework_dispatch`` (framework name, e.g. 'otp_genserver') and ``call_construct`` (call-edge syntactic shape)."
             },
+            "method": {
+              "description": "Two producers, two meanings (an ADR-0024 axis-leakage candidate): openapi -- the operation's HTTP method; ipc -- the method name an Electron ``contextBridge`` exposed API was called through."
+            },
+            "mixin_name": {
+              "description": "SCSS includes edge: the ``@include``d mixin's name."
+            },
+            "model_name": {
+              "description": "ORM linker: the model class name an accessor expression referred to."
+            },
+            "namespace": {
+              "description": "ipc ``contextBridge`` edge: the namespace the API was exposed under (``contextBridge.exposeInMainWorld(<namespace>, ...)``)."
+            },
+            "openapi_path": {
+              "description": "OpenAPI operation->route edge: the operation's path template as the spec wrote it."
+            },
+            "operation_id": {
+              "description": "OpenAPI operation->route edge joined by ``operationId``: the operationId."
+            },
+            "operation_name": {
+              "description": "GraphQL client edge: the operation's declared name, or None for an anonymous operation."
+            },
+            "operation_type": {
+              "description": "GraphQL client edge: the operation type ('query', 'mutation', 'subscription'), or None when the document did not say."
+            },
+            "package": {
+              "description": "R imports edge: the package name ``library`` / ``require`` loaded."
+            },
             "protocol": {
               "description": "Wire-level protocol on ``calls`` edges that absorb the IPC family (e.g. 'abi', 'ipc', 'ipc_event'), and on ``implements`` edges for protocol-contract implementations folded from the resolver/OpenAPI/RPC family (audit-findings 0016, WI-sumik): a GraphQL resolver satisfying a schema field carries 'graphql'; a Go method satisfying a proto RPC carries 'grpc'. Value vocabulary tracked at ``edge_types.PROTOCOL_KINDS``; per ADR-0023 Phase 4b precedent."
+            },
+            "publisher_event_type": {
+              "description": "event_sourcing edge: how the publish site's event name is known (``_name_args`` kind: 'literal', 'constant', 'unresolved', 'variable')."
+            },
+            "publisher_framework": {
+              "description": "event_sourcing edge: the framework pattern that matched the publish site."
             },
             "query_type": {
               "description": "SQL operation of a database-query edge: 'SELECT', 'INSERT', 'UPDATE', or 'DELETE' (database_query linker)."
@@ -1400,6 +1568,9 @@
             },
             "receiver_type_hint": {
               "description": "Inferred type of a call edge's receiver, stamped by the analyzer receiver-type inference to aid cross-file method resolution (e.g. an external constructor's return type)."
+            },
+            "receiver_type_id": {
+              "description": "Symbol id of the inferred receiver type of an unresolved method call, stamped by py.py beside ``receiver_type_hint`` only when the inference is trustworthy (a file-unique type name not shadowed by an import, WI-supat D3); read by ``inherited_calls``."
             },
             "redirect_origin_names": {
               "description": "The externally-derived variable names that can reach what the SHELL ITSELF contributes at a redirect \u2014 its target operand, a heredoc body the shell expands, and every producing stage's arguments. WI-zovuz: bash carries no dataflow, so a redirect-sink taint finding rested on reachability alone ('this file reads the environment somewhere AND reaches a function that writes somewhere'). Measured over 15 cohort repos, 28 of the 186 environment names read in the 69 files that also carry a write redirect can reach one; 48 of those files have none. An EMPTY list is a PROOF that no value this program holds crossed here, and `_sink_call_can_carry_taint` consumes it as such \u2014 an ABSENT key keeps the finding, because absence is the state of every map written before this key existed. PER CALL SITE for the same reason `redirect_target` is (INV-vukiv): two redirects in one function reach different names."
@@ -1422,6 +1593,12 @@
             "ref_construct": {
               "description": "Source-language construct on a reference-FAMILY (non-call) edge (``references`` / ``includes`` / ``extends`` / ``depends_on`` / ``contains`` / ``data_flows_to``) where the canonical ``edge_type`` alone is too coarse. Value space: 'jsx' (JSX render), 'script_src' (HTML ``<script src=...>``), 'websocket_endpoint' (WebSocket endpoint connectivity), 'event_emit' (Solidity event emission), 'dispatch_table' (C/C++ dispatch-table reference); and \u2014 from the ADR-0023 endpoint_shape fold-tail (audit-findings 0017, WI-pumav) \u2014 'markdown_link', 'rdf_vocabulary', 'association' (Ruby ActiveRecord), 'build_tag_alternative' (Go build tags), 'view_render' (controller\u2192template), 'template' (Twig/Blade extends/includes), 'puppet_class', 'sass_mixin', 'dockerfile_stage' (Docker FROM..AS), 'puppet_require', 'puppet_notify', 'crypto' (crypto write\u2192read on ``data_flows_to``); and \u2014 from the resolver/OpenAPI/RPC family fold (audit-findings 0016, WI-sumik) \u2014 'graphql_resolver_type' (a GraphQL ``@Resolver(() => Type)`` declaration-time association) and 'openapi_operation' (an OpenAPI spec operation referencing its realizing route handler, direction-preserving); and -- per WI-diruk -- 'method_group' (a C# method group, ``Action h = Handle;`` or ``items.ForEach(Process)``, which REFERENCES a method without invoking it; it was emitted on ``call_construct`` until the concept audit found it on ``references`` edges, where a call construct cannot belong). Renamed from ``construct`` per INV-lajov to disambiguate from the sibling ``call_construct`` (which names the call SHAPE on the CALL family -- ``calls`` and ``instantiates``, see that key's ``applicable_edge_types``): distinct vocabularies, distinct edge families. INV-lajov originally wrote 'zero overlap' here on the strength of a corpus measurement in which every observed ``call_construct`` sat on a ``calls`` edge; that described the sample rather than the field, and was already false by five ``constructor``-on-``instantiates`` sites (WI-toruz)."
             },
+            "ref_type": {
+              "description": "LaTeX references edge: 'label' (``\\ref``) or 'citation' (``\\cite``)."
+            },
+            "reference_path": {
+              "description": "tsconfig references edge: the ``path`` of the project reference as written."
+            },
             "referring_paths": {
               "description": "The list of source file paths that referred to a deduplicated edge \u2014 the only list-of-paths meta value, minted at the edge-dedup merge in ir.py so one canonical edge retains every referring site."
             },
@@ -1431,8 +1608,41 @@
             "resolution_quality": {
               "description": "Pathway-quality label on ``ast_call`` edges (e.g. 'recovery', 'ambiguous'), ORTHOGONAL to ``Edge.is_resolved``. It names uncertainty in the resolution *pathway* (heuristic line-proximity vs. direct binding), NOT target locality \u2014 in-repo-ness lives on ``is_resolved`` (ADR-0037 ruling 1/3), and resolution certainty proper lives in ``confidence`` / ``evidence_type`` (ADR-0028). A recovery edge to a real in-repo method is correctly ``is_resolved=True`` with ``resolution_quality='recovery'``. INV-tadup added 'chained_return_type' (Go: the receiver's type came from a chained call's return type) \u2014 it named a resolution MECHANISM and was being smuggled through ``call_construct``, which is the syntactic-construct axis. INV-mumov added 'accessor_name' (Python/Django: the module slot was filled from a relation- accessor NAME or manager-returning property NAME (WI-valav) the project's models declare, with NOTHING known about the root) for the same reason \u2014 it was shipping as 'type_inferred', indistinguishable from a receiver typed off a resolved class, and the difference is load-bearing: ``verify_claims.accessor_name_receiver_sites`` reads it back so a CLEAN security verdict stays qualified instead of going silent about calls whose typing rests on a name."
             },
+            "role": {
+              "description": "React Router route edge: 'loader' or 'action', which data function of the route the edge reaches."
+            },
+            "root_field": {
+              "description": "GraphQL client edge to a schema field: the first root field of the operation's selection set, which the edge joined on."
+            },
+            "route_name": {
+              "description": "OpenAPI operation->route edge joined by ``operationId``: the route symbol's name it matched."
+            },
+            "scip_dst_symbol": {
+              "description": "The raw SCIP symbol string of the edge's target (the referenced symbol or the relationship's other end), before ``resolve_symbol`` mapped it."
+            },
+            "scip_relationship_flag": {
+              "description": "Which SCIP ``Relationship`` boolean produced a relationship edge ('is_implementation', 'is_reference', 'is_type_definition', 'is_definition'); several flags fold onto one edge type, so this keeps the one that named it."
+            },
+            "scip_src_symbol": {
+              "description": "The raw SCIP symbol string of the edge's source (the enclosing definition), before ``resolve_symbol`` mapped it to a hypergumbo id. Kept for index round-trip fidelity."
+            },
             "server_framework": {
               "description": "Server-side framework of a WebSocket edge \u2014 same vocabulary as ``client_framework``, naming the endpoint that accepts the connection."
+            },
+            "source_path": {
+              "description": "Component ``imports`` edge (astro / svelte / vue): the repo-relative path of the file containing the reference."
+            },
+            "sourced_path": {
+              "description": "Bash sources edge: the path given to ``source`` / ``.`` as written (the dst id carries only its basename)."
+            },
+            "subcommand": {
+              "description": "subprocess_cli: the first argument after the executable, when the call names one."
+            },
+            "subscriber_event_type": {
+              "description": "event_sourcing edge: the same, for the subscribe site."
+            },
+            "subscriber_framework": {
+              "description": "event_sourcing edge: the framework pattern that matched the subscribe site."
             },
             "superseded_by": {
               "description": "ADR-0057 \u00a714 (WI-lihis): the id of the RESOLVED edge that superseded this unresolved edge to an external stub \u2014 same src, a shared call line, the same edge type and the same declared callee name, from a producer this edge's origin lacks. Stamped by finalize sub-step 7a when it multiplies this edge's rank_score by SUPERSEDED_STUB_RANK_FACTOR, so the low rank is a stated fact rather than an unexplained number. Present only on a superseded edge; confidence is untouched and the edge is never deleted."
@@ -1440,8 +1650,23 @@
             "superseded_by_origin": {
               "description": "ADR-0057 \u00a714: the origin (pass ids) of the superseding edge named in ``superseded_by`` \u2014 which producer saw the site as first-party. Present only beside ``superseded_by``."
             },
+            "symbol_roles": {
+              "description": "The SCIP occurrence ``symbol_roles`` bitset (definition / import / write / read ...) of the reference a scip/calls.py edge was built from. Written on EDGES only; it was registered on symbol_meta, which no producer wrote (WI-lijaz)."
+            },
             "table_name": {
               "description": "Database table a database-query edge reads or writes, extracted from the query by the database_query linker."
+            },
+            "target": {
+              "description": "otp linker: the GenServer target as written at the call (a module name, ``__MODULE__`` or a registered name)."
+            },
+            "target_function": {
+              "description": "defines_target edge: the entry-point function's name, when the manifest names one; read by the build_target linker."
+            },
+            "target_path": {
+              "description": "defines_target edge (manifest_targets, toml_config): the file path of the build target's entry point; read by the build_target linker, which resolves the target by path."
+            },
+            "template": {
+              "description": "Blade / Twig extends or includes edge: the template name as written."
             },
             "topic": {
               "description": "Message-queue / pub-sub topic (or channel) an event_publishes edge with meta['channel_kind']='queue' targets \u2014 the topic STRING: written as a literal, or the value of a same-file string constant the call site names. ``None`` when the site names an identifier that could not be resolved (WI-misod); the identifier is then on ``topic_identifier``, never here."
@@ -1452,8 +1677,20 @@
             "topic_type": {
               "description": "How the message-queue ``topic`` is known (``_name_args`` kinds): 'literal' (a string at the site), 'constant' (an identifier resolved to a same-file string constant) or 'unresolved' (an identifier whose value is not known). On a symbol it describes the SITE; on an edge it describes the JOIN ('literal' only when both ends are literal; 'unresolved' when the ends were joined on an equal identifier)."
             },
+            "type_name": {
+              "description": "GraphQL resolver edge: the schema type the resolver serves."
+            },
             "url_path": {
               "description": "URL / route path on a protocol-boundary edge (e.g. a WebSocket endpoint path, or a cross-language WS client\u2192server route). Distinct from ``channel`` (the dataflow conduit/topic) per WI-pozom."
+            },
+            "url_type": {
+              "description": "HTTP client->route edge: 'literal' or 'variable', how the client's URL was written (a string literal, or a variable the linker folded)."
+            },
+            "view_name": {
+              "description": "Route->handler edge (Django): the view the URL pattern named."
+            },
+            "visibility": {
+              "description": "On an unresolved Go method-call edge: 'unexported', stamped when a lowercase method on an unknown receiver was left unresolved because resolving it by name would cross package boundaries. Unrelated to the typed ``Symbol.visibility``."
             },
             "evidence_type": {
               "type": "string",

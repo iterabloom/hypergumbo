@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.meta_key_coherence import unregistered_edge_meta_keys
 from hypergumbo_core.producer_coherence import (
     find_edge_type_producer_violations,
     find_emitted_edge_types,
@@ -1276,6 +1277,8 @@ def test_live_tree_producer_axis_ratchet():
         ("Symbol.kind", unregistered_symbol_kinds),
         ("Edge.evidence_type", unregistered_evidence_types),
         ("Edge.edge_type", unregistered_edge_types),
+        # WI-lijaz: the meta KEY axis (hypergumbo_core.meta_key_coherence).
+        ("Edge.meta key", unregistered_edge_meta_keys),
     ):
         live = set(finder(REPO_ROOT))
         new_leaks, stale = ratchet_diff(live, set(baseline.get(axis, [])))
