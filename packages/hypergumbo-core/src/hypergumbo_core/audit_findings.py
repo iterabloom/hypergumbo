@@ -442,13 +442,14 @@ def find_zero_producer_violations(
     DEPRECATE-NO-FOLD without updating the verdict, this function returns
     a violation entry naming the file:line emit sites.
 
-    The producer enumeration covers the literal-kwarg + assignment-form-to-
-    Name shapes (Step 4.5 shapes #1 and #3). The remaining shapes — helper-
-    call indirection (#2), f-string interpolation (#4), and dict-subscript-
-    target assignment (#5) — are not enumerated here; the playbook's
-    per-value manual grep at audit-write time is the compensating control
-    for those, with WI-nubuv ext B / ext C planned as the structural
-    backstops.
+    The producer enumeration is ``producer_coherence``'s, without helper
+    descent: literal kwargs, assignment-form names, expandable f-strings,
+    dict-subscript targets, and the data-flow shapes ``value_flow`` follows
+    (loops over tuples, appended / stored elements, local returns, private-
+    function parameters, record fields). A value routed through a PUBLIC
+    module helper, another module, or ``self`` state is not enumerated; the
+    playbook's per-value manual grep at audit-write time is the
+    compensating control for those.
 
     Returns a list of human-readable error strings (one entry per
     DEPRECATE-NO-FOLD value that has at least one producer emit site).

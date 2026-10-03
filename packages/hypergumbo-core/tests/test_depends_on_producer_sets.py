@@ -26,7 +26,10 @@ So these tests derive the producer set rather than restating it. Two gates:
   keyword-argument names both count, because a hint key reaches ``Edge.meta``
   either as a dict key or as a kwarg to the shared ``make_unresolved_edge``
   helper; comments and prose do not count, which is why this is an AST walk and
-  not a grep.
+  not a grep. Emitted EDGE TYPES are read with the L3 registry gate's own
+  classifier (``producer_coherence.scan_file_emits``), which follows a label
+  chosen from data back to its literals (WI-nakur); the sites it cannot follow
+  are listed, with a reason each, in ``_UNENUMERABLE_EDGE_TYPE_SITES``.
 
 Each gate is one-directional: it asserts the declaration COVERS the enumerated
 producers. A clause may name more (a producer that exists but is not yet
@@ -38,21 +41,23 @@ from __future__ import annotations
 import ast
 import importlib
 from functools import lru_cache
+from pathlib import Path
 from typing import Iterable
 
 import hypergumbo_core.cli  # linkers register by import side-effect
 from hypergumbo_core.analyze.all_analyzers import get_analyzers
 from hypergumbo_core.catalog import get_default_catalog
 from hypergumbo_core.linkers.inherited_calls import _MRO_WALKERS
+from hypergumbo_core.producer_coherence import FileEmits, scan_file_emits
 
 
 @lru_cache(maxsize=1)
-def _analyzer_sources() -> tuple[tuple[str, tuple[str, ...]], ...]:
-    """(module source, pass ids) for every registered analyzer.
+def _analyzer_modules() -> tuple[tuple[Path, str, tuple[str, ...]], ...]:
+    """(module path, module source, pass ids) for every registered analyzer.
 
     One module may register under several pass ids, and one pass id may be
     served by a module registering several analyzers, so this is a list of
-    pairs rather than either direction of a dict.
+    triples rather than either direction of a dict.
     """
     by_file: dict[str, list[str]] = {}
     for analyzer in get_analyzers():
@@ -63,8 +68,13 @@ def _analyzer_sources() -> tuple[tuple[str, tuple[str, ...]], ...]:
     out = []
     for path, names in sorted(by_file.items()):
         with open(path, encoding="utf-8") as handle:
-            out.append((handle.read(), tuple(sorted(names))))
+            out.append((Path(path), handle.read(), tuple(sorted(names))))
     return tuple(out)
+
+
+def _analyzer_sources() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """(module source, pass ids) for every registered analyzer."""
+    return tuple((source, names) for _path, source, names in _analyzer_modules())
 
 
 def _pass_ids_writing(*tokens: str) -> set[str]:
@@ -90,26 +100,40 @@ def _pass_ids_writing(*tokens: str) -> set[str]:
     return found
 
 
+@lru_cache(maxsize=None)
+def _edge_type_emits(path: Path) -> FileEmits:
+    """What one analyzer module's ``Edge`` sites emit as ``edge_type``.
+
+    The SAME classifier the L3 registry gate uses
+    (:func:`~hypergumbo_core.producer_coherence.scan_file_emits`), not a
+    private scan. WI-nakur: this helper used to count only a LITERAL
+    ``edge_type="extends"`` keyword, so an analyzer choosing the label from
+    data -- Dart's ``edge_type=ref.edge_type`` (the clause a base is written
+    in, carried through a dataclass), js_ts's ``edge_type=edge_type`` (a
+    ternary, and a tuple splatted into a helper) -- was invisible, and
+    deleting it from a clause left this gate green.
+    """
+    return scan_file_emits(
+        path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        descend_helpers=True,
+    )
+
+
 def _pass_ids_emitting_edge_type(*edge_types: str) -> set[str]:
-    """Analyzer pass ids with a literal ``edge_type=`` argument in ``edge_types``.
+    """Analyzer pass ids with a producer site whose ``edge_type`` can be one of ``edge_types``.
 
     Narrower than :func:`_pass_ids_writing` on purpose: ``"extends"`` and
     ``"implements"`` are ordinary English words that appear in prose and in
-    unrelated identifiers, so only a keyword argument position counts.
+    unrelated identifiers, so only a value that reaches ``Edge(edge_type=)``
+    counts -- whether written there or carried there.
     """
     wanted = set(edge_types)
     found: set[str] = set()
-    for source, names in _analyzer_sources():
-        for node in ast.walk(ast.parse(source)):
-            if not isinstance(node, ast.Call):
-                continue
-            for keyword in node.keywords:
-                if (
-                    keyword.arg == "edge_type"
-                    and isinstance(keyword.value, ast.Constant)
-                    and keyword.value.value in wanted
-                ):
-                    found.update(names)
+    for path, _source, names in _analyzer_modules():
+        if wanted & set(_edge_type_emits(path).values):
+            found.update(names)
     return found
 
 
@@ -144,6 +168,54 @@ class TestTheScannerCanReturnBothAnswers:
         emitters = _pass_ids_emitting_edge_type("includes")
         assert emitters
         assert "python" not in emitters
+
+    def test_edge_type_scan_sees_a_label_chosen_from_data(self) -> None:
+        """WI-nakur: neither analyzer writes ``edge_type="extends"``.
+
+        Dart picks extends / implements / includes from the clause a base is
+        written in and emits ``edge_type=ref.edge_type`` off a dataclass;
+        js_ts emits ``edge_type=edge_type`` from a ternary and from a tuple a
+        helper returns and the caller splats. The literal-only scan found
+        neither, so deleting either from type-hierarchy-linker's clause left
+        ``test_every_direct_analyzer_emitter_is_declared`` green.
+        """
+        emitters = _pass_ids_emitting_edge_type("extends", "implements")
+        assert "dart" in emitters
+        assert "javascript" in emitters
+
+    def test_a_data_driven_scan_still_answers_no(self) -> None:
+        """The control on the widening: a value no producer can carry is
+        still absent, so the scan did not become "every analyzer"."""
+        assert _pass_ids_emitting_edge_type("wi_nakur_no_such_edge_type") == set()
+        assert "dart" not in _pass_ids_emitting_edge_type("defines_target")
+
+
+# Analyzer ``Edge`` sites whose ``edge_type`` the shared classifier cannot
+# enumerate, each with the reason it cannot introduce a value of its own.
+# Keyed by (module file name, value source) so line drift does not break it.
+# The test below asserts EQUALITY: a new unenumerable site fails until it is
+# either made enumerable or justified here, and a justified site that became
+# enumerable must be removed. Without it the producer-set gates above are
+# vacuously green for exactly the producers they cannot read (WI-nakur).
+_UNENUMERABLE_EDGE_TYPE_SITES: dict[tuple[str, str], str] = {
+    ("yaml_ansible.py", "edge.edge_type"): (
+        "Jinja fan-out copies an edge this analyzer already emitted; the loop "
+        "skips every edge whose type is not \"imports\" first, so the copy is "
+        "always \"imports\". Statement-level narrowing is not modelled."
+    ),
+}
+
+
+class TestEveryAnalyzerEdgeTypeSiteIsEnumerable:
+    """The producer-set scan must say where it is blind, not be silent there."""
+
+    def test_unenumerable_sites_are_exactly_the_acknowledged_ones(self) -> None:
+        found = {
+            (path.name, source)
+            for path, _source, _names in _analyzer_modules()
+            for _line, source in _edge_type_emits(path).unresolved
+        }
+        assert found == set(_UNENUMERABLE_EDGE_TYPE_SITES)
 
 
 class TestInheritedCallsDeclaresItsWalkers:
@@ -233,9 +305,15 @@ class TestTypeHierarchyDeclaresItsEdgeSources:
     def test_the_clause_is_exactly_this(self) -> None:
         assert _clause_containing("type-hierarchy-linker", "inheritance-linker") == [
             "inheritance-linker", "blade", "dart", "elixir", "haskell", "java",
-            "javascript", "python", "ruby", "rust", "rust_analyzer",
+            "javascript", "kotlin", "python", "ruby", "rust", "rust_analyzer",
             "scip_python", "twig", "vhdl",
         ]
+
+    def test_kotlin_is_declared_because_it_emits_both_labels(self) -> None:
+        """WI-nakur's first catch: ``kotlin`` writes ``edge_type`` from a
+        function-local ternary, which the literal-only scan never counted."""
+        assert "kotlin" in _pass_ids_emitting_edge_type("extends")
+        assert "kotlin" in _pass_ids_emitting_edge_type("implements")
 
 
 class TestBuildTargetDeclaresItsManifestProducers:
