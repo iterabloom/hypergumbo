@@ -169,6 +169,21 @@ net_recv:
       - "downloadTaskWithRequest:completionHandler:"
       - "downloadTaskWithRequest:"
       - "downloadTaskWithResumeData:completionHandler:"
+    notes: >-
+      These factories cross NOTHING at the call. Apple's documentation for
+      each: "After you create the task, you must start it by calling its
+      resume() method", and URLSessionTask.resume: "Newly-initialized tasks
+      begin in a suspended state"; the response then arrives "inside the
+      completion handler" or at the session delegate
+      (developer.apple.com, foundation/urlsession). ADR-0049 ruling 1 makes
+      them deferred crossings -- the Lazy and the Callback-delivered shape at
+      once. They STAY net_recv (WI-tunog), for two reasons. No disclosure
+      value fits: net_listen means bind or accept, the server side, and
+      putting a client request under it gives one value two readings, the
+      error ruling 4 forbids. And no arrival is represented: neither the
+      completion block's parameters nor URLSession:dataTask:didReceiveData:
+      is a taint source, so a move leaves the response with no source
+      anywhere. Residual: WI-mapim (a client-side disclosure value).
   - module: NSURLConnection
     simultaneous: true
     methods:

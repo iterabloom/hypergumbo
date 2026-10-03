@@ -300,3 +300,36 @@ class TestTheIncomingRow:
             "the connection read kept a source after the move, so the yielded "
             "TcpStream is now typed -- incoming may have become movable")
         assert moved["verdict"] != "violated", moved["details"]
+
+
+# ---------------------------------------------------------------------------
+# NSURLSession / URLSession task factories (objc, swift)
+# ---------------------------------------------------------------------------
+
+#: Held for a reason the end-to-end arms above cannot express: there is no
+#: disclosure value to move them TO. ``net_listen`` is the server side (bind,
+#: accept); a client task's response arriving in a completion handler is
+#: neither, and filing it there gives one value two readings.
+_OBJC_TASK_RECV_ROWS: frozenset[str] = frozenset({
+    "dataTaskWithURL:completionHandler:", "dataTaskWithURL:",
+    "downloadTaskWithURL:completionHandler:", "downloadTaskWithURL:",
+    "downloadTaskWithRequest:completionHandler:", "downloadTaskWithRequest:",
+    "downloadTaskWithResumeData:completionHandler:",
+})
+
+
+class TestTheClientTaskRows:
+
+    def test_the_objc_task_factories_stay_net_recv(self) -> None:
+        rows = _rows("objc", "NSURLSession")
+        assert {n: rows.get(n) for n in _OBJC_TASK_RECV_ROWS} == dict.fromkeys(
+            _OBJC_TASK_RECV_ROWS, "net_recv")
+
+    def test_the_swift_download_task_stays_net_recv(self) -> None:
+        assert _rows("swift", "URLSession").get("downloadTask") == "net_recv"
+
+    def test_no_client_task_was_filed_under_the_server_side_value(self) -> None:
+        """The pin that matters if someone reaches for the nearest deferred
+        value: ``net_listen`` carries no ``NSURLSession`` / ``URLSession`` row."""
+        for language, module in (("objc", "NSURLSession"), ("swift", "URLSession")):
+            assert "net_listen" not in set(_rows(language, module).values())
