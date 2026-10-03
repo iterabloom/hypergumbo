@@ -1,0 +1,23 @@
+- op: create  # 73f2
+  at: '2026-10-03T19:40:46Z'  # 73f2
+  by: agent  # 73f2
+  actor: jgstern_agent  # 73f2
+  clock: 1  # 73f2
+  nonce: 73f2  # 73f2
+  data:  # 73f2
+    kind: work_item  # 73f2
+    title: "Kotlin and Swift record the FIRST segment of a qualified base class (java.io.Serializable -> java, Outer.Inner -> Outer); PHP qualified bases (\\Foo\\Bar) are dropped with no edge"  # 73f2
+    status: todo_hard  # 73f2
+    priority: 3  # 73f2
+    parent:  # 73f2
+    tags:  # 73f2
+    - analysis_quality  # 73f2
+    - kotlin  # 73f2
+    - swift  # 73f2
+    - php  # 73f2
+    isbefore: []  # 73f2
+    duplicate_of: []  # 73f2
+    not_duplicate_of: []  # 73f2
+    pr_ref:  # 73f2
+    description: "Kotlin and Swift record the FIRST segment of a qualified base class in base_classes, not the last: Kotlin `class A : RecyclerView.Adapter<VH>()` -> base \"RecyclerView\", `class A : java.io.Serializable` -> \"java\"; Swift `class X: Foundation.NSObject` -> \"Foundation\" (kotlin.py ~937-939, swift.py ~231-236; confirmed with the installed tree-sitter grammars by a sweep sub-agent on 2026-10-03, while working WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin). The inheritance linker then binds the QUALIFIER: an in-repo `class Outer` receives an extends edge from `class X : Outer.Inner()`, and an in-repo class named like a package root (rare) receives one too. Separately, PHP qualified bases (`class U extends \\Foo\\Bar`, `extends Foo\\Bar`) are dropped with no edge at all: the core linker splits only on `.` and `::`, so the in-tree lookup misses, and `_external_base_edge` rejects the name because `_CLEAN_IDENT` does not match a backslash path (inheritance.py ~346); in-repo qualified PHP bases are lost the same way. NOT reproduced end-to-end, NOT measured on a corpus."  # 73f2
+    fields: {}  # 73f2
