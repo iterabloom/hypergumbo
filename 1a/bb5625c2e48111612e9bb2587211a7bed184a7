@@ -1,0 +1,3 @@
+Original commit body from 9b2570ba7d0fee5ee5cd48161edc329ed04241d9:
+
+compute_symbol_mention_centrality_batch ran ONE \b(n1|...|nN)\b alternation over every eligible name on every doc file: cost names x bytes; flink (106,317 names) did <100/1,775 files in 32 min. _NameMatcher: identifier names via one tokenization + set intersection; compound names pruned by word segments then confirmed with their own whole-word pattern; segmentless names substring-checked. Deliberate change: names match independently (alternation consumed text). Measured: identical sets on 5 real flink docs w/ 50,637 real names; 19 KB 5.66 s -> 0.6 ms. smart-test 3977 passed, changed sources 100% coverage. Addresses WI-rukaz.
