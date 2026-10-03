@@ -1188,6 +1188,7 @@ class IoBoundaryCatalog:
         arm, hits = named_lookup_arm(
             self._qualified_rows(name), self._by_short.get(name) or [],
             module_hint, call_construct=call_construct,
+            language=self.language,
         )
         if arm != NAMED_ARM_GATE:
             if not hits:
@@ -4240,14 +4241,54 @@ def compute_leaf_rollups(
 
 # C and C++ spell a header three ways for one module: the catalogue declares
 # the STEM (``stdio``), the source writes the FILENAME (``stdio.h``), and C++
-# adds a third (``<cstdio>``). Only the first two are handled here; the
-# ``cstdio`` convention is deliberately NOT carried, because stripping a
-# leading ``c`` from an arbitrary module slot would maul ``crypto``, ``cmath``
-# and every other module that legitimately starts with one.
+# adds a third (``<cstdio>``). The filename suffix is stripped by rule. The
+# C++ spelling is NOT -- stripping a leading ``c`` from an arbitrary module
+# slot would maul ``crypto``, ``cmark`` and every other module that
+# legitimately starts with one -- so it is carried by the CLOSED table below.
 _HEADER_SUFFIXES = (".hpp", ".hxx", ".hh", ".h")
 
+#: WI-hilot. The C++ standard library's own name for each C library header,
+#: mapped to the C header STEM ``c.yaml`` keys its rows under. A CLOSED list,
+#: which is what the leading-``c`` objection says an open rule cannot be:
+#: ISO C++ [headers] "C++ headers for C library facilities" (cassert ...
+#: cwctype), the five C++17-deprecated / C++20-removed ones toolchains still
+#: ship (ccomplex, ciso646, cstdalign, cstdbool, ctgmath), and C++26's two
+#: C23 additions (cstdbit, cstdckdint, P3370). [support.c.headers] makes
+#: ``<cX>`` declare what ``<X.h>`` declares, in namespace ``std`` (and in
+#: practice the global one too), so ``getenv`` after ``#include <cstdlib>`` IS
+#: ``stdlib.getenv``.
+#:
+#: Before this, a C++ file spelling its C headers the C++ way lost the C half
+#: of its catalogue: the slot ``cstdlib,cstring,sys/socket.h`` named no C row,
+#: and because a non-sentinel slot suppresses the short-name fallback,
+#: ``getenv`` / ``fopen`` / ``printf`` there classified as NOTHING.
+_CXX_C_LIBRARY_HEADERS: Final[Mapping[str, str]] = {
+    "cassert": "assert", "cctype": "ctype", "cerrno": "errno",
+    "cfenv": "fenv", "cfloat": "float", "cinttypes": "inttypes",
+    "climits": "limits", "clocale": "locale", "cmath": "math",
+    "csetjmp": "setjmp", "csignal": "signal", "cstdarg": "stdarg",
+    "cstddef": "stddef", "cstdint": "stdint", "cstdio": "stdio",
+    "cstdlib": "stdlib", "cstring": "string", "ctime": "time",
+    "cuchar": "uchar", "cwchar": "wchar", "cwctype": "wctype",
+    "ccomplex": "complex", "ciso646": "iso646", "cstdalign": "stdalign",
+    "cstdbool": "stdbool", "ctgmath": "tgmath",
+    "cstdbit": "stdbit", "cstdckdint": "stdckdint",
+}
 
-def prefer_exact_owner(rows: Sequence[Any], module_hint: str) -> list[Any]:
+#: The languages whose module slot carries ``#include`` names, the only ones
+#: :data:`_CXX_C_LIBRARY_HEADERS` applies to. SCOPED BY LANGUAGE, NOT BY
+#: SPELLING, because one key is a real module elsewhere: Python's ``cmath``
+#: (complex math) is not its ``math``, and ``math`` is a declared
+#: ``module_completeness`` entry there, so an unscoped table would let the
+#: coverage gate vouch for ``cmath`` on the strength of an audit of ``math``.
+#: ``c`` is included because a header the C analyzer parses can be C++
+#: (a ``.h`` holding C++); a C translation unit cannot include ``<cstdio>``.
+_INCLUDE_SLOT_LANGUAGES: Final = frozenset({"c", "cpp"})
+
+
+def prefer_exact_owner(
+    rows: Sequence[Any], module_hint: str, language: str | None = None,
+) -> list[Any]:
     """The rows whose module IS what the slot names, else every row (INV-vusum).
 
     The module filter admits a row whenever ``_module_matches`` relates its
@@ -4272,7 +4313,7 @@ def prefer_exact_owner(rows: Sequence[Any], module_hint: str) -> list[Any]:
     """
     wanted = {
         normalize_module_separators(c).casefold()
-        for c in _module_hint_candidates(module_hint)
+        for c in _module_hint_candidates(module_hint, language)
     }
     exact = [
         r for r in rows
@@ -4293,6 +4334,7 @@ def named_lookup_arm(
     module_hint: str | None,
     *,
     call_construct: str | None = None,
+    language: str | None = None,
 ) -> tuple[str, list[Any]]:
     """Which arm decides a named catalogue lookup, and the rows it may pick from.
 
@@ -4327,6 +4369,12 @@ def named_lookup_arm(
     A refusal is the silent direction: a missed row reads ``confirmed``, a
     spurious one reads ``violated``.
 
+    ``language`` is the language of the CALL (the catalogue's, for io; the
+    callee's, for taint). It decides only which spellings a slot may take
+    (:func:`module_hint_disjuncts`: C++'s ``<cstdlib>`` is C's ``stdlib``
+    in c/cpp and nowhere else, WI-hilot), so both consumers must pass it or
+    they would disagree about a ``cstdlib`` slot.
+
     Returns ``(arm, rows)``; ``rows`` is empty only on a refusal or when there
     was nothing to choose from. Duck-typed: each row exposes ``.module`` and
     ``.kind``.
@@ -4336,7 +4384,7 @@ def named_lookup_arm(
     if not short_rows:
         return NAMED_ARM_MODULE, []
     if module_hint and module_hint not in _UNRESOLVED_MODULE_PLACEHOLDERS_IO:
-        candidates = _module_hint_candidates(module_hint)
+        candidates = _module_hint_candidates(module_hint, language)
         filtered = [
             p for p in short_rows
             if any(_module_matches(p.module, c) for c in candidates)
@@ -4378,7 +4426,8 @@ def named_lookup_arm(
                 and not slot_names_one_owner(module_hint)):
             filtered = [p for p in filtered if not called_on_a_named_owner(p.kind)]
         return NAMED_ARM_MODULE, (
-            prefer_exact_owner(filtered, module_hint) if filtered else []
+            prefer_exact_owner(filtered, module_hint, language)
+            if filtered else []
         )
     return NAMED_ARM_GATE, list(short_rows)
 
@@ -4426,7 +4475,9 @@ def declared_by_an_included_header(
     ) is not None
 
 
-def _module_hint_candidates(module_hint: str) -> list[str]:
+def _module_hint_candidates(
+    module_hint: str, language: str | None = None,
+) -> list[str]:
     """Expand a module slot into the spellings it may legitimately stand for.
 
     INV-funuf. ``cpp.py`` sets an unresolved call's module slot to the
@@ -4475,13 +4526,15 @@ def _module_hint_candidates(module_hint: str) -> list[str]:
             out.append(value)
 
     add(module_hint)
-    for spellings in module_hint_disjuncts(module_hint):
+    for spellings in module_hint_disjuncts(module_hint, language):
         for spelling in spellings:
             add(spelling)
     return out
 
 
-def module_hint_disjuncts(module_hint: str) -> list[list[str]]:
+def module_hint_disjuncts(
+    module_hint: str, language: str | None = None,
+) -> list[list[str]]:
     """The slot's disjuncts, each with the spellings it may legitimately take.
 
     THE SAME EXPANSION AS :func:`_module_hint_candidates`, GROUPED. That function
@@ -4501,6 +4554,12 @@ def module_hint_disjuncts(module_hint: str) -> list[list[str]]:
     ``[["stdio.h", "stdio"]]`` for a single-module slot, so a language emitting
     one module per slot collapses to a single disjunct and the ALL question
     becomes the same question the gate asked before.
+
+    A disjunct's spellings are: itself; its STEM when it ends in a header
+    suffix; and, when ``language`` is c or cpp, the C stem of a C++ C-library
+    header (``["cstdlib", "stdlib"]``, :data:`_CXX_C_LIBRARY_HEADERS`,
+    WI-hilot). The last spelling is the catalogue's key, which is what the
+    coverage gate reports for an unenumerated disjunct.
     """
     groups: list[list[str]] = []
     for raw in module_hint.split(","):
@@ -4512,6 +4571,10 @@ def module_hint_disjuncts(module_hint: str) -> list[list[str]]:
             if part.endswith(suffix):
                 spellings.append(part[: -len(suffix)])
                 break
+        if language in _INCLUDE_SLOT_LANGUAGES:
+            c_stem = _CXX_C_LIBRARY_HEADERS.get(part)
+            if c_stem is not None:
+                spellings.append(c_stem)
         groups.append(spellings)
     return groups
 

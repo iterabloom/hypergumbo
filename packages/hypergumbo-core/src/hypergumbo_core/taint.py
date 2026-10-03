@@ -952,6 +952,7 @@ def _lookup_named_entry(
     module_hint: str | None,
     ambiguous_names: frozenset[str],
     call_construct: str | None = None,
+    language: str | None = None,
 ):
     """Pick the matching catalog entry from ``hits`` by the rule
     :meth:`io_boundary.IoBoundaryCatalog.lookup_with_module` uses (WI-razol).
@@ -982,6 +983,11 @@ def _lookup_named_entry(
 
     Mode and target-kind narrowing happen in the caller, before this, as the
     io consumer narrows after it; the ROW CHOICE is the shared part.
+
+    ``language`` is the CALL's language, handed to ``named_lookup_arm`` for
+    the same reason ``lookup_with_module`` hands it the catalogue's: which
+    spellings a module slot may take is language-scoped (C++'s
+    ``<cstdlib>`` is C's ``stdlib`` only in c/cpp, WI-hilot).
     """
     if not hits:
         return None
@@ -998,6 +1004,7 @@ def _lookup_named_entry(
     ]
     arm, rows = named_lookup_arm(
         qualified, hits, module_hint, call_construct=call_construct,
+        language=language,
     )
     if arm == NAMED_ARM_GATE:
         return gate_named_entry(
@@ -1275,6 +1282,7 @@ def _match_propagation_entry(
     return _lookup_named_entry(
         hits, callee_name, _extract_callee_module(edge_dst), ambiguous_names,
         call_construct=call_construct,
+        language=_extract_callee_language(edge_dst),
     )
 
 
@@ -1448,7 +1456,7 @@ class TaintCatalog:
         return _lookup_named_entry(
             idx.get(callee_name), callee_name, module_hint,
             self._ambiguous_names.get(language, frozenset()),
-            call_construct=call_construct,
+            call_construct=call_construct, language=language,
         )
 
     def match_sink(
@@ -1472,7 +1480,7 @@ class TaintCatalog:
         return _lookup_named_entry(
             idx.get(callee_name), callee_name, module_hint,
             self._ambiguous_names.get(language, frozenset()),
-            call_construct=call_construct,
+            call_construct=call_construct, language=language,
         )
 
     def match_sanitizer(
