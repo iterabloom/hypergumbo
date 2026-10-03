@@ -83,6 +83,7 @@ add new languages or community-contributed corrections.
 """
 from __future__ import annotations
 
+import posixpath
 import urllib.parse
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
@@ -4797,7 +4798,40 @@ FIRST_PARTY_MODULE_GRAMMARS: dict[str, FirstPartyModuleGrammar] = {
 }
 
 
-def is_definitionally_first_party(language: str, module: str) -> bool:
+#: Directory names whose contents are OTHER PEOPLE'S CODE and which discovery
+#: never reads (both are in ``discovery.DEFAULT_EXCLUDES``, pinned by
+#: ``test_first_party_module_grammar.py``). A relative specifier that passes
+#: through one -- ``require('../node_modules/axios')``, ``./vendor/jquery`` --
+#: is a path, but a path to source this analysis did not examine, so it is not
+#: first-party in the only sense the coverage gate cares about (INV-juvul).
+#: Build outputs (``dist``, ``build``) are deliberately NOT here: they are the
+#: repository's own source, compiled, and the source itself was read.
+UNREAD_DEPENDENCY_DIRS: frozenset[str] = frozenset({"node_modules", "vendor"})
+
+
+def _relative_path_reaches_unread_code(module: str, importer: str | None) -> bool:
+    """Does this relative specifier name code the analysis cannot have read?
+
+    Two exact cases. A component that is a dependency directory (whole
+    component: ``vendored`` is not ``vendor``). Or, when the importing file is
+    known, a path that resolves ABOVE the analysed root -- ``../../shared/x``
+    from ``lib/a.js``. With no importer the second question cannot be asked,
+    and it is not guessed.
+    """
+    if any(part in UNREAD_DEPENDENCY_DIRS for part in module.split("/")):
+        return True
+    if importer:
+        resolved = posixpath.normpath(
+            posixpath.join(posixpath.dirname(importer), module),
+        )
+        if resolved == ".." or resolved.startswith("../"):
+            return True
+    return False
+
+
+def is_definitionally_first_party(
+    language: str, module: str, importer: str | None = None,
+) -> bool:
     """Whether ``language``'s own rules make ``module`` a reference into this repo.
 
     FAILS OPEN, and that is the opposite of :mod:`analyzer_disclosure`'s direction
@@ -4811,6 +4845,13 @@ def is_definitionally_first_party(language: str, module: str) -> bool:
     ``module`` is the RAW module slot, not a normalised one — ``../`` must be read as a
     relative specifier before ``/`` is folded into ``.``, which would otherwise spell it
     ``...``.
+
+    A RELATIVE SPECIFIER IS A PATH, NOT A VERDICT (INV-juvul). It names the
+    repository's own code only when the path lands on source this analysis read:
+    one through ``node_modules`` / ``vendor`` lands on installed or vendored
+    third-party code discovery skips, and one climbing above the analysed root
+    (decidable only given ``importer``, the importing file's repo-relative path)
+    lands outside the tree. Both stay reported. That only ever adds a report.
     """
     grammar = FIRST_PARTY_MODULE_GRAMMARS.get(language)
     if grammar is None:
@@ -4820,7 +4861,9 @@ def is_definitionally_first_party(language: str, module: str) -> bool:
         # analysing machine's filesystem — a system header, a vendored checkout
         # outside the repo — which this analysis did not read.
         head = module.split("/", 1)[0]
-        if head in (".", ".."):
+        if head in (".", "..") and not _relative_path_reaches_unread_code(
+            module, importer,
+        ):
             return True
     if grammar.self_reference_components:
         first = normalize_module_separators(module).split(".", 1)[0]
