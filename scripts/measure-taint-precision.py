@@ -95,9 +95,19 @@ from pathlib import Path
 from typing import Any, Iterable
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-for _pkg in sorted((_REPO_ROOT / "packages").glob("*/src")):
-    if str(_pkg) not in sys.path:
-        sys.path.insert(0, str(_pkg))
+
+# WHICH TREE'S ANALYZER RUNS IS CHOSEN, NEVER INHERITED (WI-tumog). This used
+# to insert this tree's packages ahead of PYTHONPATH whenever the copy run was
+# not the editable install's tree, so a PYTHONPATH-selected baseline arm ran
+# the subject's code and reported a 0 delta, exit 0 (WI-valav, pretix).
+# ``measure_code_tree`` refuses when the two signals disagree, and ``collect``
+# and ``packet`` print the resolved tree before any output. Appended, not
+# inserted: the helper must never shadow anything.
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.append(str(Path(__file__).resolve().parent))
+import measure_code_tree  # noqa: E402
+
+_PIN = measure_code_tree.pin(__file__, "analysis")
 
 #: Effective evidence ceiling for this instrument's in-process runs. Large
 #: enough that no real claim reaches it, and PRINTED so that a run which does
@@ -301,6 +311,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
     label = args.label or repo.name
     claims = Path(args.claims).resolve()
     out_dir = Path(args.out).resolve()
+    measure_code_tree.announce(_PIN, "[collect]")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"[collect] repo={label} path={repo}")
@@ -1262,7 +1273,13 @@ def render_packet(flow: dict[str, Any], repo_root: Path) -> str:
 
 
 def cmd_packet(args: argparse.Namespace) -> int:
-    """Render one packet per collected flow, grouped by repository."""
+    """Render one packet per collected flow, grouped by repository.
+
+    The packet imports analyzer code too (``parse_symbol_id`` from core,
+    ``_bash_parameter_sets`` from bash.py), so it names its tree first, the
+    same as ``collect`` (WI-tumog, WI-binod).
+    """
+    measure_code_tree.announce(_PIN, "[packet]")
     flows = load_flows(Path(args.flows))
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)

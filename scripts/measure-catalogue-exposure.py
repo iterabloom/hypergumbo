@@ -64,9 +64,18 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(_REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
+# WHICH TREE'S CATALOGUES ARE COUNTED IS CHOSEN, NEVER INHERITED (WI-tumog).
+# This used to insert this tree's core at sys.path[0] unconditionally, so a
+# PYTHONPATH naming another tree was ignored. ``measure_code_tree`` refuses
+# when the two disagree, and ``main`` names the tree before the table.
+# Appended: the helper shadows nothing.
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.append(str(Path(__file__).resolve().parent))
+import measure_code_tree
 
+_PIN = measure_code_tree.pin(__file__, "core")
+
+from hypergumbo_core import io_boundary  # noqa: E402
 from hypergumbo_core.io_boundary import load_catalog  # noqa: E402
 
 
@@ -101,15 +110,14 @@ class Exposure:
 
 
 def catalogue_dir() -> Path:
-    """Where the shipped ``io_primitives`` YAMLs live."""
-    return (
-        _REPO_ROOT
-        / "packages"
-        / "hypergumbo-core"
-        / "src"
-        / "hypergumbo_core"
-        / "io_primitives"
-    )
+    """Where the shipped ``io_primitives`` YAMLs live: ``load_catalog``'s own.
+
+    Read from the IMPORTED ``io_boundary``, not from beside this script. The
+    two were the same directory only while the script's tree was the one
+    imported; under a PYTHONPATH arm the census listed one tree's languages
+    and loaded the other's rows (WI-tumog).
+    """
+    return Path(io_boundary._CATALOG_DIR)
 
 
 def shipped_languages() -> list[str]:
@@ -187,6 +195,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    measure_code_tree.announce(_PIN, "[exposure]")
     rows = census()
     print(render(rows))
     if args.out:
