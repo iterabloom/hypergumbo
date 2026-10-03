@@ -44,7 +44,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ._text_filters import js_ts_language_from_path, read_masked_source
+from ._text_filters import (
+    js_ts_language_from_path,
+    mask_doc_regions,
+    read_source_text,
+)
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -140,14 +144,27 @@ def _scan_file_for_crypto_patterns(
     in .rs files. Returns CryptoSite objects for each detected pattern.
     """
     try:
-        content = read_masked_source(file_path, errors="replace", language=language)
+        raw = read_source_text(file_path, errors="replace")
     except OSError:  # pragma: no cover
         return []
 
     is_js_ts = language in ("javascript", "typescript")
     is_rust = language == "rust"
 
-    # Quick bailout
+    # Quick bailout, on the RAW text and BEFORE the tree-sitter mask
+    # (WI-kakov). Masking only removes text, so a keyword absent from the raw
+    # file is absent from the masked one and the verdict is unchanged; the
+    # parse is skipped for every file that cannot match. Masking first cost
+    # a full parse + walk of every JS/TS/Rust file, including binary assets
+    # js-module-linker labels javascript, and never finished on nextjs.
+    if is_js_ts and not any(kw in raw for kw in _BAILOUT_JS):
+        return []
+    if is_rust and not any(kw in raw for kw in _BAILOUT_RUST):
+        return []
+    content = mask_doc_regions(
+        raw, language, cache_key=(str(file_path), language),
+    )
+    # A keyword seen only in a comment or docstring is masked away here.
     if is_js_ts and not any(kw in content for kw in _BAILOUT_JS):
         return []
     if is_rust and not any(kw in content for kw in _BAILOUT_RUST):

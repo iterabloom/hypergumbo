@@ -299,3 +299,45 @@ def test_js_ts_language_from_path_analyzer_parity():
     # analyzer's else-branch (parity over independent "correctness").
     assert js_ts_language_from_path(Path("events.mjs")) == "javascript"
     assert js_ts_language_from_path(Path("events.cjs")) == "javascript"
+
+
+class _IndexedChildForbidden:
+    """A node stand-in whose ``child(i)`` is forbidden.
+
+    WI-kakov: tree-sitter's ``Node.child(i)`` walks the siblings from the
+    start, so ``for i in range(child_count): child(i)`` is O(k^2) in a node's
+    child count. A binary file parsed as JavaScript yields ERROR nodes wide
+    enough that crypto-flow-linker never finished on nextjs (py-spy: 98% of
+    its samples in tree-sitter's sibling iteration). The walk must take each
+    node's children in one ``children`` call.
+    """
+
+    def __init__(self, ntype: str, start: int, end: int, children=()) -> None:
+        self.type = ntype
+        self.start_byte = start
+        self.end_byte = end
+        self.children = list(children)
+        self.child_count = len(self.children)
+        self.parent = None
+
+    def child(self, i: int):  # pragma: no cover - reaching it is the failure
+        raise AssertionError("O(i) indexed child access in the mask walk")
+
+
+def test_mask_walk_takes_children_in_one_call_not_by_index():
+    from hypergumbo_core.linkers._text_filters import _collect_mask_ranges
+
+    root = _IndexedChildForbidden("program", 0, 40, [
+        _IndexedChildForbidden("comment", 0, 5),
+        _IndexedChildForbidden("expression_statement", 6, 30, [
+            _IndexedChildForbidden("identifier", 6, 9),
+            _IndexedChildForbidden("comment", 10, 20),
+        ]),
+        _IndexedChildForbidden("string", 31, 40),
+    ])
+    assert sorted(_collect_mask_ranges(root, "javascript", False)) == [
+        (0, 5), (10, 20),
+    ]
+    assert sorted(_collect_mask_ranges(root, "javascript", True)) == [
+        (0, 5), (10, 20), (31, 40),
+    ]
