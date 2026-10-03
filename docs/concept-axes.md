@@ -263,6 +263,7 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`example`** — Cargo `[[example]]` target kind. Pending cluster-G audit.
 - **`handler`** — Ansible playbook handler. Pending cluster-G audit.
 - **`helper`** — Handlebars block helper (non-builtin). Pending cluster-H audit.
+- **`multimethod`** — Clojure ``defmulti``: a multimethod, the dispatch function whose implementations are the ``defmethod`` forms (kind ``method``). Pending classification: a language construct on its face; the audit decides whether it stays distinct from ``function``.
 - **`operation`** — Anonymous GraphQL operation fallback (graphql.py op_type default when an operation_definition has no operation_type child). Semantically an anonymous query; pending the producer fold to `query` (id-changing, deferred to v6). Registered per id-format:F3.
 - **`pattern_rule`** — Make pattern-rule target. Pending cluster-G audit.
 - **`private`** — WGSL `var<private>` address space. Pending cluster-H audit.

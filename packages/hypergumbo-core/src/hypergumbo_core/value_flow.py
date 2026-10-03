@@ -86,7 +86,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from itertools import pairwise
-from typing import Final, Iterator, Optional
+from typing import Callable, Final, Iterator, Optional
 
 Step = tuple[object, ...]
 """One projection: ``("pos", i)``, ``("elem",)``, ``("key",)``, ``("val",)``,
@@ -178,6 +178,15 @@ def _callee_name(node: ast.expr) -> Optional[str]:
         return target.id
     if isinstance(target, ast.Attribute):
         return target.attr
+    return None
+
+
+def _dotted_name(node: ast.expr) -> Optional[str]:
+    """``f`` -> ``"f"``, ``Mod.f`` -> ``"Mod.f"``; anything else -> None."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        return f"{node.value.id}.{node.attr}"
     return None
 
 
@@ -296,7 +305,13 @@ class ModuleValueFlow:
                     if isinstance(child, ast.AST):
                         self._parent[id(child)] = node
                         self._field[id(child)] = field_name
+        self._memos: dict[
+            tuple[frozenset[str], Optional[Callable[[ast.expr], bool]]],
+            dict[tuple[int, Path], Optional[frozenset[str]]],
+        ] = {}
         self._memo: dict[tuple[int, Path], Optional[frozenset[str]]] = {}
+        self._readers: frozenset[str] = frozenset()
+        self._known_empty: Optional[Callable[[ast.expr], bool]] = None
         self._active: set[tuple[int, Path]] = set()
         self._depth = 0
         self._cycles = 0
@@ -309,12 +324,36 @@ class ModuleValueFlow:
     # public API
     # ------------------------------------------------------------------
 
-    def resolve(self, expr: ast.expr, path: Path = ()) -> Optional[frozenset[str]]:
+    def resolve(
+        self,
+        expr: ast.expr,
+        path: Path = (),
+        *,
+        readers: frozenset[str] = frozenset(),
+        known_empty: Optional[Callable[[ast.expr], bool]] = None,
+    ) -> Optional[frozenset[str]]:
         """The string literals *expr* (projected through *path*) can be.
 
         ``None`` when any producing route is outside what this module models.
+
+        *readers* names callees (``f`` or ``Mod.f``, as written at the call)
+        that the ASKER vouches add nothing to a collection passed to them as
+        an argument, directly or as an arm of ``or`` / ``a if t else b``.
+        Such a use is then not an escape. It is the asker's claim, not this
+        module's: the meta-key gate makes it for ``Edge.create`` because it
+        scans every ``edge.meta[...]`` write as a site of its own (WI-lijaz).
+        *known_empty* is the same kind of claim about expressions: one it
+        accepts contributes nothing to the answer. The meta-key gate passes
+        "reads some record's ``.meta``" for a post-hoc write, because a copy
+        of an existing meta dict holds only keys whose own writers it checks.
+
+        Answers are kept per ``(readers, known_empty)``, never shared across
+        them.
         """
         self._depth = 0
+        self._readers = readers
+        self._known_empty = known_empty
+        self._memo = self._memos.setdefault((readers, known_empty), {})
         try:
             return self._resolve(expr, path)
         except _Unresolvable:
@@ -585,6 +624,12 @@ class ModuleValueFlow:
         return False
 
     def _dispatch(self, expr: ast.AST, path: Path) -> frozenset[str]:
+        if (
+            self._known_empty is not None
+            and isinstance(expr, ast.expr)
+            and self._known_empty(expr)
+        ):
+            return frozenset()
         if isinstance(expr, ast.Constant):
             if isinstance(expr.value, str):
                 if path:
@@ -639,42 +684,12 @@ class ModuleValueFlow:
         ``"dependency" if dep_type == "devDependency" else dep_type`` can never
         yield ``"devDependency"`` from its else-arm, and resolving that arm
         without the test says it can. Only the arm that IS the tested name is
-        narrowed, and only by ``==`` / ``!=`` / ``in`` / ``not in`` against
-        string literals -- the shapes whose meaning is a set of strings.
+        narrowed (see :func:`_narrow`).
         """
         values = self._resolve(branch, path)
         if path or not isinstance(branch, ast.Name):
             return values
-        positive = truth
-        if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
-            test, positive = test.operand, not truth
-        if not (isinstance(test, ast.Compare) and len(test.ops) == 1):
-            return values
-        left, op, right = test.left, test.ops[0], test.comparators[0]
-        if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(right, ast.Name):
-            left, right = right, left  # ``"lit" == x``
-        if not (isinstance(left, ast.Name) and left.id == branch.id):
-            return values
-        literals: frozenset[str]
-        if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(right, ast.Constant) and (
-            isinstance(right.value, str)
-        ):
-            literals = frozenset({right.value})
-        elif (
-            isinstance(op, (ast.In, ast.NotIn))
-            and isinstance(right, (ast.Tuple, ast.List, ast.Set))
-            and all(isinstance(e, ast.Constant) and isinstance(e.value, str)
-                    for e in right.elts)
-        ):
-            literals = frozenset(
-                e.value for e in right.elts
-                if isinstance(e, ast.Constant) and isinstance(e.value, str)
-            )
-        else:
-            return values
-        if isinstance(op, (ast.NotEq, ast.NotIn)):
-            positive = not positive
-        return values & literals if positive else values - literals
+        return _narrow(values, branch.id, test, truth)
 
     def _fstring(self, expr: ast.JoinedStr) -> frozenset[str]:
         candidates: set[str] = {""}
@@ -732,11 +747,39 @@ class ModuleValueFlow:
         if not path or path[0][0] == "attr":
             raise _Unresolvable
         head, rest = path[0], path[1:]
+        produced: ast.expr
         if isinstance(expr, ast.DictComp):
             if head[0] in ("val", "sub"):
-                return self._element(expr.value, rest)
-            return self._resolve(expr.key, rest)
-        return self._element(expr.elt, rest)  # type: ignore[attr-defined]
+                produced = expr.value
+                values = self._element(produced, rest)
+            else:
+                produced = expr.key
+                values = self._resolve(produced, rest)
+        else:
+            produced = expr.elt  # type: ignore[attr-defined]
+            values = self._element(produced, rest)
+        return self._filtered(expr, produced, values, rest)
+
+    @staticmethod
+    def _filtered(
+        expr: ast.AST, produced: ast.expr, values: frozenset[str], rest: Path,
+    ) -> frozenset[str]:
+        """Narrow a comprehension's produced name by its ``if`` filters.
+
+        ``{k: v for k, v in ref.items() if k != "type"}`` never has the key
+        ``"type"`` (``route_handler``'s ``handler_meta``, WI-lijaz). Only an
+        ITERATION variable is narrowed: the walrus cannot rebind one, so no
+        later filter or the element itself can change it after the test.
+        """
+        if rest or not isinstance(produced, ast.Name):
+            return values
+        generators: list[ast.comprehension] = expr.generators  # type: ignore[attr-defined]
+        if not any(_mentions(gen.target, produced.id) for gen in generators):
+            return values
+        for gen in generators:
+            for test in gen.ifs:
+                values = _narrow(values, produced.id, test, True)
+        return values
 
     # -- names ---------------------------------------------------------
 
@@ -744,9 +787,12 @@ class ModuleValueFlow:
         scope = self._binding_scope(expr, expr.id)
         if scope is None:
             raise _Unresolvable
-        return self._binding_values(scope, expr.id, path)
+        return self._binding_values(scope, expr.id, path, answering=expr)
 
-    def _binding_values(self, scope: ast.AST, name: str, path: Path) -> frozenset[str]:
+    def _binding_values(
+        self, scope: ast.AST, name: str, path: Path,
+        answering: Optional[ast.Name] = None,
+    ) -> frozenset[str]:
         bindings = self._bindings(scope, name)
         out: frozenset[str] = frozenset()
         for binding in bindings:
@@ -769,7 +815,7 @@ class ModuleValueFlow:
                 assert binding.func is not None
                 out |= self._param(binding.func, name, path)
         if path and path[0][0] in _COLLECTION_HEADS and not self._all_tuples(bindings):
-            out |= self._mutations(scope, name, bindings, path)
+            out |= self._mutations(scope, name, bindings, path, answering)
         return out
 
     def _all_tuples(self, bindings: list[_Binding]) -> bool:
@@ -793,12 +839,22 @@ class ModuleValueFlow:
 
     def _mutations(
         self, scope: ast.AST, name: str, bindings: list[_Binding], path: Path,
+        answering: Optional[ast.Name] = None,
     ) -> frozenset[str]:
-        """Elements added to *name*'s collection after binding; raise if it escapes."""
+        """Elements added to *name*'s collection after binding; raise if it escapes.
+
+        *answering* is the use whose value is being asked for. It is not
+        checked for an escape: it IS the read, and where it goes next is the
+        asker's business, not a route by which it gains elements (WI-lijaz --
+        ``Edge.create(meta=edge_meta)`` otherwise refuses ``edge_meta``
+        because of the very call that asked). Every other use still is.
+        """
         head, rest = path[0], path[1:]
         dict_like = self._is_dict_like(bindings)
         out: frozenset[str] = frozenset()
         for use in self._uses(scope, name):
+            if use is answering:
+                continue
             parent = self._parent_of(use)
             field_name = self._field.get(id(use))
             if isinstance(parent, ast.Attribute) and field_name == "value":
@@ -883,6 +939,8 @@ class ModuleValueFlow:
         self, use: ast.Name, parent: Optional[ast.AST], field_name: Optional[str],
     ) -> bool:
         """A load of a collection that cannot add an element to it."""
+        if self._readers and self._passed_to_reader(use):
+            return True
         if isinstance(parent, (ast.For, ast.AsyncFor, ast.comprehension)):
             return field_name == "iter"
         if isinstance(parent, (ast.Compare, ast.Return, ast.Yield, ast.YieldFrom,
@@ -917,6 +975,22 @@ class ModuleValueFlow:
                 return True
             return self._is_safe_callee(parent)
         return False
+
+    def _passed_to_reader(self, use: ast.Name) -> bool:
+        """True when *use* is an argument of a declared reader (see :meth:`resolve`)."""
+        node: ast.AST = use
+        parent = self._parent_of(node)
+        while isinstance(parent, ast.BoolOp) or (
+            isinstance(parent, ast.IfExp) and self._field.get(id(node)) != "test"
+        ):
+            node, parent = parent, self._parent_of(parent)
+        if isinstance(parent, ast.keyword):
+            node, parent = parent, self._parent_of(parent)
+        elif self._field.get(id(node)) != "args":
+            return False
+        if not isinstance(parent, ast.Call):
+            return False  # ``class C(metaclass=M)``: a keyword of a ClassDef
+        return _dotted_name(parent.func) in self._readers
 
     def _is_safe_callee(self, call: ast.Call) -> bool:
         func = call.func
@@ -1131,6 +1205,11 @@ class ModuleValueFlow:
             raise _Unresolvable
         if expr.keywords and name != "sorted":
             raise _Unresolvable
+        if (
+            name == "dict" and len(expr.args) == 1 and path
+            and path[0][0] in ("key", "val", "sub")
+        ):
+            return self._resolve(expr.args[0], path)  # a copy of a mapping
         if not path or path[0][0] not in ("elem", "pos", "sub"):
             raise _Unresolvable
         rest = path[1:]
@@ -1284,6 +1363,48 @@ _MUTABLE_FACTORIES: Final[frozenset[str]] = frozenset(
     {"list", "dict", "set", "defaultdict", "OrderedDict", "deque"},
 )
 _DICT_FACTORIES: Final[frozenset[str]] = frozenset({"dict", "defaultdict", "OrderedDict"})
+
+
+def _narrow(
+    values: frozenset[str], name: str, test: ast.expr, truth: bool,
+) -> frozenset[str]:
+    """*values* of the name *name*, restricted by *test* having been *truth*.
+
+    Only ``==`` / ``!=`` / ``in`` / ``not in`` against string literals (and
+    their ``not``) narrow -- the shapes whose meaning is a set of strings.
+    Any other test leaves *values* as they are, which over-approximates and
+    so stays sound.
+    """
+    positive = truth
+    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+        test, positive = test.operand, not truth
+    if not (isinstance(test, ast.Compare) and len(test.ops) == 1):
+        return values
+    left, op, right = test.left, test.ops[0], test.comparators[0]
+    if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(right, ast.Name):
+        left, right = right, left  # ``"lit" == x``
+    if not (isinstance(left, ast.Name) and left.id == name):
+        return values
+    literals: frozenset[str]
+    if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(right, ast.Constant) and (
+        isinstance(right.value, str)
+    ):
+        literals = frozenset({right.value})
+    elif (
+        isinstance(op, (ast.In, ast.NotIn))
+        and isinstance(right, (ast.Tuple, ast.List, ast.Set))
+        and all(isinstance(e, ast.Constant) and isinstance(e.value, str)
+                for e in right.elts)
+    ):
+        literals = frozenset(
+            e.value for e in right.elts
+            if isinstance(e, ast.Constant) and isinstance(e.value, str)
+        )
+    else:
+        return values
+    if isinstance(op, (ast.NotEq, ast.NotIn)):
+        positive = not positive
+    return values & literals if positive else values - literals
 
 
 def _transparent(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
