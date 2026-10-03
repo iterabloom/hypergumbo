@@ -1222,7 +1222,12 @@ def _match_propagation_entry(
         # component-aware predicate's SUFFIX arm is what makes that work —
         # a catalog module of `hypergumbo_core.cli` matches a path of
         # `packages/…/hypergumbo_core/cli.py` because the trailing components
-        # agree, while `log/slog` does not match `logging.go`.
+        # agree, while `log/slog` does not match `logging.go`. The PATH is the
+        # longer side there, and its leading components are checkout
+        # directories rather than owner identity, so this caller -- and only
+        # this one -- asks for the hint-longer direction (`hint_is_path`); a
+        # module SLOT with extra leading components names a different owner
+        # and is refused (WI-mujod).
         path_module = _module_from_symbol_path(edge_dst)
         if not path_module:
             # INV-fazim. There is no path evidence to judge on — the dst is
@@ -1263,7 +1268,7 @@ def _match_propagation_entry(
             # An entry that declares no module carries no evidence to
             # contradict the match; legacy behaviour is preserved for it.
             if not getattr(h, "module", None) or _module_matches(
-                h.module, path_module,
+                h.module, path_module, hint_is_path=True,
             ):
                 return h
         return None
