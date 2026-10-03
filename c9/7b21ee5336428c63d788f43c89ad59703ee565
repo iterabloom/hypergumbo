@@ -1,0 +1,3 @@
+Original commit body from 7bf2e6437a0c9abfc25ae14408e9a78bfa5cb94f:
+
+nextjs survey never finished: crypto-flow-linker tree-sitter-masked every JS/TS/Rust file BEFORE its keyword bailout, incl. binary assets js-module-linker labels javascript; _collect_mask_ranges' child(i) loop is O(k^2) (py-spy native: 98% in ts sibling iteration). Fix: bailout on raw text first (counted read; verdict unchanged since masking only removes text), and node.children in one call. Tests red on old code for the right reasons; smart-test 5156 passed, changed sources 100% coverage. Not yet measured: end-to-end nextjs survey (planned on the combined tree). Addresses WI-kakov.
