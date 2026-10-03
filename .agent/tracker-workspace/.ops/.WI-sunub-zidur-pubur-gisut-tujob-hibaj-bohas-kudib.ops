@@ -1,0 +1,22 @@
+- op: create  # b53f
+  at: '2026-10-03T20:17:29Z'  # b53f
+  by: agent  # b53f
+  actor: jgstern_agent  # b53f
+  clock: 1  # b53f
+  nonce: b53f  # b53f
+  data:  # b53f
+    kind: work_item  # b53f
+    title: "Core non-linker modules carry private JS/TS extension lists missing .mjs/.cjs/.jsx/.mts/.cts (cli staleness check, cli _EXT_TO_LANG, supply_chain, repo_fingerprint, sketch) -- residual of WI-fovus/WI-hizon"  # b53f
+    status: todo_hard  # b53f
+    priority: 3  # b53f
+    parent:  # b53f
+    tags:  # b53f
+    - taxonomy  # b53f
+    - javascript  # b53f
+    - structural  # b53f
+    isbefore: []  # b53f
+    duplicate_of: []  # b53f
+    not_duplicate_of: []  # b53f
+    pr_ref:  # b53f
+    description: "**Residual of WI-fovus / WI-hizon (branch jgstern-agent/fix/fovus), outside the linker/DDG scope that branch fixed.** Core modules that are neither linkers nor DDG specs still carry private JS/TS extension lists narrower than `taxonomy.extension_suffixes(\"javascript\", \"typescript\")` (`.js .mjs .cjs .jsx .ts .tsx .mts .cts`). Read from the code at the branch head; behaviour per row NOT verified:\n\n- `cli.py` ~1046, results-staleness check: rglobs `*.py *.js *.ts *.tsx *.go *.rs *.java`, so an edit to a `.mjs`/`.cjs`/`.jsx`/`.mts`/`.cts` file does not mark `--input` results stale.\n- `cli.py` ~8312, `_EXT_TO_LANG` (cross-language hit grouping): no `.cjs`, `.mts`, `.cts`.\n- `supply_chain.py` ~572 `_CONTENT_SCAN_EXTS`: no `.mts`/`.cts` (content-marker scan).\n- `supply_chain.py` ~861 `_MINIFIABLE_WEB_EXTENSIONS`: no `.mts`/`.cts`.\n- `repo_fingerprint.py` ~123 `_SOURCE_EXTENSIONS`: no `.mjs`/`.cjs`/`.mts`/`.cts` (its comment says changing it is a cache-semantics change).\n- `sketch.py` ~4216 fallback patterns, ~1344 and `sketch_embeddings.py` ~639 extension->language maps.\n- lang-mainstream `html.py` ~123: complete today, but a literal.\n\nWhat to do: route each through `taxonomy.extension_globs/extension_suffixes/get_language`, each with its own check of what the consumer does with the extra files (the repo_fingerprint and minifiable rows change behaviour, not just reach), and extend the gate's scanned-module set accordingly."  # b53f
+    fields: {}  # b53f
