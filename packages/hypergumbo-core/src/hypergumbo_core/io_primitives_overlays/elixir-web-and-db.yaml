@@ -167,8 +167,12 @@ db_write:
     functions: [transaction]
   - module: MyXQL
     functions: [transaction]
-
-ipc_send:
   - module: Oban
     functions: [insert, insert!, insert_all]
-    notes: "Oban job queue — enqueue background jobs"
+    notes: >-
+      Oban job queue -- enqueueing a job inserts a row into Oban's jobs table
+      through Ecto, the same crossing as Ecto.Repo.insert above. Was ipc_send
+      (WI-logoz, audit-findings 0021 Step 5): the job is not sent to another
+      process at the call; a worker reads it from the database later.
+      Oban.insert/3,4 into an Ecto.Multi composes and runs at
+      Repo.transaction -- the Ecto.Multi rows' shape, rowed the same way.
