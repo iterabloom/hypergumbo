@@ -1,0 +1,23 @@
+- op: create  # e288
+  at: '2026-10-03T17:11:19Z'  # e288
+  by: agent  # e288
+  actor: jgstern_agent  # e288
+  clock: 1  # e288
+  nonce: e288  # e288
+  data:  # e288
+    kind: work_item  # e288
+    title: "python: the import maps are still built FILE-scoped, so a function-local import leaks to every function (def g(): import mysock as socket retypes f's socket.socket(h) as mysock) -- plus the consumers INV-dulum's scope narrowing did not reach"  # e288
+    status: todo_hard  # e288
+    priority: 3  # e288
+    parent:  # e288
+    tags:  # e288
+    - python  # e288
+    - analysis_quality  # e288
+    - io_boundary  # e288
+    - taint  # e288
+    isbefore: []  # e288
+    duplicate_of: []  # e288
+    not_duplicate_of: []  # e288
+    pr_ref:  # e288
+    description: "RESIDUALS of INV-dulum-kakum-guhus-podas-mirup-lavut-jamob-kakif / WI-safit-komul-rabuh-hunos-zapoz-sadis-raloh-japov (branch jgstern-agent/fix/dulum), recorded so they are not rediscovered. That branch narrows the file-scoped `imports` / `module_imports` by the call site's VALUE bindings (`ScopeStack.value_shadowed()`) inside `_process_call`, `process_code_block` (constructor typing + assignment resolution), the `__init__` field pre-pass and `_emit_module_attr_refs`. What it does NOT cover:\n\n1. THE MAP ITSELF IS STILL FILE-SCOPED, so a function-local import LEAKS to every other function. LIVE (on the fixed branch):\n\n       import socket\n       def g():\n           import mysock as socket\n       def f(h):\n           s = socket.socket(h); s.send(b\"x\")\n\n   -> calls f -> python:mysock:0-0:socket   (f's `socket` is the module-level stdlib import; `_extract_imports` is an ast.walk, BFS, so the deeper `import mysock as socket` overwrites the module-level entry for the WHOLE FILE, module scope included). Django's tests/wsgi/tests.py:102 has the benign half of this shape (a function-local `from .wsgi import application` resolving sibling functions' `application`). THE STRUCTURAL FIX is the fold `_pyscope.py` already anticipates: carry function-local imports as `ModuleImport` / `NamedImport` frame bindings and keep only module-level imports in the file map. Not done in that branch: it changes the import model and every one of its consumers.\n\n2. CONSUMERS NOT NARROWED (no scope at hand): `_collect_call_site_param_types` (INV-fibis, `_call_site_argument_type` -> `_external_constructor_type` / `_binding_checked_type_hint` with the file maps); `_emit_function_ref` / `_emit_variable_refs` (references edges through `imports`); `_extract_param_types` annotation lookups (correct as they are: annotations evaluate in the enclosing scope). A fixture for the INV-fibis path (`def caller(socket, h): helper(socket.socket(h))`) did NOT reproduce a typed parameter, so that one is unverified either way.\n\n3. LAMBDA PARAMETERS IN `_emit_module_attr_refs` and `_emit_variable_refs`: those walkers take no ScopeStack, so `lambda os: os.environ` still emits the module_attr_ref. Not reproduced live; read from the code.\n\n4. The `__init__` pre-pass uses ONE frame, so a class nested in a function does not see the enclosing function's parameters. Module-scope rebinding after an import (`socket = wrap(socket)` at module level) is unchanged: the module frame's value set is left empty on purpose (flow-sensitive question).\n\n5. Comprehension targets sit in the enclosing function's value set (as they already sat in its LEGB set), so `[s for socket in socks]` withholds `socket.socket()` typing in the rest of that function too -- an over-approximation in the false-negative direction. Not measured."  # e288
+    fields: {}  # e288

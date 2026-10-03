@@ -1,0 +1,23 @@
+- op: create  # 7130
+  at: '2026-10-03T17:18:59Z'  # 7130
+  by: agent  # 7130
+  actor: jgstern_agent  # 7130
+  clock: 1  # 7130
+  nonce: '7130'  # 7130
+  data:  # 7130
+    kind: work_item  # 7130
+    title: "python: an HTTP response or a factory-returned socket mints no untrusted_input -- urlopen(url).read(), opener.open(url).read(), socket.create_connection(...).recv() into a shell read confirmed_with_caveats (false clean)"  # 7130
+    status: todo_hard  # 7130
+    priority: 2  # 7130
+    parent:  # 7130
+    tags:  # 7130
+    - python  # 7130
+    - taint  # 7130
+    - catalogue  # 7130
+    - io_boundary  # 7130
+    isbefore: []  # 7130
+    duplicate_of: []  # 7130
+    not_duplicate_of: []  # 7130
+    pr_ref:  # 7130
+    description: "FOUND 2026-10-03 by WI-dibit while sweeping the build_opener shape (the receive half; WI-dibit fixed only the send half).\n\nPython mints NO untrusted_input from an HTTP response or from a socket a factory returned. Observed on real verify-claims output (claim: source_taint untrusted_input, prohibited_sink_zone subprocess), each reads confirmed_with_caveats -- a FALSE CLEAN, the network body visibly reaches a shell:\n\n    body = urllib.request.urlopen(url).read();             subprocess.run(body, shell=True)\n    body = urllib.request.build_opener().open(url).read(); subprocess.run(body, shell=True)\n    s = socket.create_connection((h, 80)); body = s.recv(1024); subprocess.run(body, shell=True)\n\n(The caveat is the generic untyped-receiver disclosure; the verdict is still a clean.)\n\nWHY. urlopen / OpenerDirector.open / http.client.HTTPConnection.request are net_send only, deliberately (python-http-clients.yaml: \"the response is a consequence of the send\"), and the returned object is a handle (ADR-0049 Ruling 4). The far-side bytes arrive at the response's read / readline / readlines / read1 / readinto / iteration, and nothing rows them: http.client.HTTPResponse carries no row, and urlopen's result is not typed (no library_signatures row; its type is scheme-dependent: http.client.HTTPResponse for http(s), urllib.response.addinfourl for file:/ftp:/data:). `HTTPConnection.getresponse()` is a MEMBER whose return type differs from its owner, and member return rows are not consumed through a typed receiver (WI-kozaj's stated residual; TYPE_PRESERVING_MEMBERS only). For the socket case one row would do it: `socket.create_connection: socket.socket` in library_signatures/python.yaml (socket.socket.recv is already net_recv), and the send side gains precision too (today `s.sendall(secret)` is found only through an escaped walk at create_connection).\n\nFIX SHAPE (to verify, not asserted): net_recv rows on http.client.HTTPResponse [read, read1, readinto, readline, readlines, peek?] and urllib.response.addinfourl; producer typing for urlopen / OpenerDirector.open (one type or a union -- decide) and HTTPConnection.getresponse (needs member-return propagation on a typed receiver, or a narrower rule); `socket.create_connection: socket.socket`. A new SOURCE moves untrusted-input verdicts toward violated: corpus A/B required."  # 7130
+    fields: {}  # 7130

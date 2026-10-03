@@ -1,0 +1,22 @@
+- op: create  # 3221
+  at: '2026-10-03T17:18:38Z'  # 3221
+  by: agent  # 3221
+  actor: jgstern_agent  # 3221
+  clock: 1  # 3221
+  nonce: '3221'  # 3221
+  data:  # 3221
+    kind: work_item  # 3221
+    title: "python: build_opener's own env_read (default ProxyHandler) taints the opener as a RECEIVER, so every opener.open is a host_secret->network flow once OpenerDirector.open is a sink; urlopen(url) does the same read and is clean -- needs a Handle-constructor ruling"  # 3221
+    status: todo_hard  # 3221
+    priority: 3  # 3221
+    parent:  # 3221
+    tags:  # 3221
+    - python  # 3221
+    - taint  # 3221
+    - catalogue  # 3221
+    isbefore: []  # 3221
+    duplicate_of: []  # 3221
+    not_duplicate_of: []  # 3221
+    pr_ref:  # 3221
+    description: "FOUND 2026-10-03 by WI-dibit (branch jgstern-agent/fix/dibit, not merged). Needs a RULING, not a code change first.\n\nWI-bakik rowed `urllib.request.build_opener` under env_read (it always installs a default ProxyHandler, whose __init__ calls getproxies(), reading the *_proxy variables). WI-dibit rows `urllib.request.OpenerDirector.open` / `error` net_send and types `build_opener()`'s result as `urllib.request.OpenerDirector` (library_signatures). Taint models the RECEIVER of a sink as a carrier (axis_meta_keys call_arg_shape: \"the tainted value being an argument to the sink call or its receiver\"). Consequence, observed on real verify-claims output: a program with NO secret in any argument,\n\n    opener = urllib.request.build_opener()\n    opener.open(\"https://example.com/status\")\n\nreads `violated` on host_secret -> network, with one flow: source urllib.request.build_opener -> sink urllib.request.OpenerDirector.open, ddg walk confirmed. Every program that builds an opener and sends through it now carries this flow.\n\nThe flow is literally true: ProxyHandler.proxy_open sends `user:password@` from an env proxy URL as Proxy-Authorization, and WI-bakik counted the getproxies() -> urlopen twin as a real finding (docs/surveys/python-stdlib-module-io-enumeration.md, \"A proxy mapping from getproxies() sent with urlopen goes inconclusive -> violated\"). But urlopen(url) performs the SAME internal env read and is not a source, so the two spellings of one send now disagree: `urlopen(url)` clean, `build_opener().open(url)` violated.\n\nQUESTION FOR THE OWNER: is build_opener (and ProxyHandler(), URLopener, FancyURLopener) an ADR-0049 Ruling 4 \"Handle constructor\" -- returns a handle whose env-derived content the caller never receives as data -- so its env_read should not taint the handle as a receiver? Or does the receiver-carrier model stand, making the urlopen spelling the false negative? Options: (a) keep (pinned today by test_urllib_opener_send_surface.py::TestTheFindingIsReported::test_build_openers_own_env_read_reaches_the_send); (b) retag build_opener/ProxyHandler off env_read into a disclosure boundary per Ruling 2; (c) a sink-side rule that a receiver tainted only by its own constructor's env read is not the claim's secret. Measure the effect on the corpus either way (django templates.py:316, superset utils/csv.py:89 are the build_opener sites found)."  # 3221
+    fields: {}  # 3221
