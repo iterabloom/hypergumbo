@@ -166,11 +166,9 @@ file's directory AND its ``package`` clause, so the external test package
 ``x_test`` is a different scope from ``x`` in the same directory -- and each
 file's bare identifiers are looked up in its own package's scope only, less
 the package's ``_test.go`` files when the caller is not one (``go build``
-never compiles them). A name bound in the enclosing declaration (a closure, a
+never compiles them). A name with a local binding in scope (a closure, a
 parameter) is checked FIRST and resolves to nothing, as Go's function scope
-precedes the package's; the check over-approximates (``_go_names_bound_in``
-counts the whole declaration), so ``names := names(x)``, whose right side
-still means the package function, stays silent. Methods
+precedes the package's. Methods
 and fields are left out: a bare identifier cannot name one, even though the
 file's ``symbol_by_name`` lists a method under its bare name too. Several
 same-package candidates are build-constraint variants of one declaration
@@ -180,6 +178,18 @@ right package. The dot-import fallback still uses the repo-wide resolver with
 the dot-imported path as its hint, the one way a bare name reaches another
 package. Directory, not go.mod-relative import path, is the identity: one
 directory is one package (plus its ``_test`` twin) in every module layout.
+
+A NAME IS LOCAL ONLY WHERE ITS BINDING IS IN SCOPE (WI-bopiv, 2026-10-03).
+``_GoLocalScope`` records, per top-level declaration, the byte ranges over
+which each parameter and local is visible under Go's rules: a parameter for
+its function's body, ``x := ...`` / ``var x`` / ``const x`` from the END of
+the declaring statement to the end of the innermost block or clause. So the
+right side of ``nodeName, err := nodeName(o)`` calls the package function, a
+name bound in one ``if`` branch is not bound in the other, and a parameter of
+a function TYPE (``cb func(open string)``) binds nothing. The earlier set of
+every name bound anywhere in the declaration withheld all three. Every site
+that asks "is this a local value here" asks it: the bare call and the bare
+function reference.
 
 Since a bare call resolved in its own package is never a method, INV-fahub's
 bare-method deferral (``defer_bare_method_call``) could no longer fire in Go and
@@ -201,7 +211,7 @@ from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Mapping, Optional
+from typing import TYPE_CHECKING, ClassVar, Container, Final, Iterator, Mapping, Optional
 
 if TYPE_CHECKING:
     from hypergumbo_core.supply_chain import DependencyManifest
@@ -2010,48 +2020,165 @@ def _extract_symbols_from_file(
     return analysis
 
 
-#: Node types that BIND names inside a Go declaration, with the fields that
-#: hold the bound identifiers (read from tree-sitter-go, 2026-09-26).
-_GO_BINDING_FIELDS: dict[str, tuple[str, ...]] = {
-    "parameter_declaration": ("name",),
-    "variadic_parameter_declaration": ("name",),
-    "short_var_declaration": ("left",),
-    "var_spec": ("name",),
-    "const_spec": ("name",),
-    "range_clause": ("left",),
-    "receive_statement": ("left",),
-    "type_switch_statement": ("alias",),
+#: The nodes whose body a parameter is in scope for.
+_GO_FUNCTION_NODES: Final[tuple[str, ...]] = (
+    "function_declaration", "method_declaration", "func_literal",
+)
+#: Every node that owns a parameter list. A ``parameter_declaration`` whose
+#: nearest owner is a function TYPE (``cb func(open string)``) or an interface
+#: method names a parameter of a signature, which binds nothing anywhere.
+_GO_SIGNATURE_NODES: Final[tuple[str, ...]] = _GO_FUNCTION_NODES + (
+    "function_type", "method_elem", "method_spec",
+)
+#: The nodes that END a local's scope (Go spec, "Declarations and scope": "the
+#: innermost containing block"). Besides a braced ``block``, each ``if`` /
+#: ``for`` / ``switch`` / ``select`` statement is an implicit block holding its
+#: initializer, and each case clause is an implicit block of its own.
+_GO_BLOCK_SCOPE_NODES: Final[frozenset[str]] = frozenset({
+    "block", "if_statement", "for_statement", "expression_switch_statement",
+    "type_switch_statement", "select_statement", "expression_case",
+    "default_case", "type_case", "communication_case",
+})
+#: Statements that declare locals, with the field that holds the names.
+_GO_LOCAL_DECLARATION_FIELDS: Final[dict[str, str]] = {
+    "short_var_declaration": "left",
+    "var_spec": "name",
+    "const_spec": "name",
+    "range_clause": "left",
+    "receive_statement": "left",
 }
+#: Of those, the ones that DECLARE only when written with ``:=``
+#: (``for k = range m`` and ``case v = <-ch`` assign an existing name).
+_GO_DECLARE_ONLY_WITH_DEFINE: Final[frozenset[str]] = frozenset({
+    "range_clause", "receive_statement",
+})
 
 
-def _go_names_bound_in(decl: "tree_sitter.Node", source: bytes) -> frozenset[str]:
-    """Every name bound anywhere inside ``decl`` (INV-guzuj).
+def _go_nearest(
+    node: "tree_sitter.Node", kinds: "tuple[str, ...] | frozenset[str]",
+) -> "Optional[tree_sitter.Node]":
+    """The nearest proper ancestor of ``node`` whose type is in ``kinds``."""
+    cur = node.parent
+    while cur is not None and cur.type not in kinds:
+        cur = cur.parent
+    return cur
 
-    A bare call on one of these is a call on a VALUE the function produced (a
-    closure, a function-typed parameter, a range variable), so no module slot
-    describes its callee; INV-foluz's Python arm refuses the same case.
 
-    THE WHOLE DECLARATION, NOT THE CALL'S OWN SCOPE. A Go closure captures its
-    enclosing function's locals, and a name bound in a sibling block is counted
-    too. That over-approximates the bound set, which can only withhold an edge,
-    never invent one: the direction that keeps a local value out of the
-    ``external`` slot.
+def _go_identifiers(nodes: "list[tree_sitter.Node]", source: bytes) -> list[str]:
+    """The identifiers in a binding field (an identifier or an expression list)."""
+    names: list[str] = []
+    for child in nodes:
+        parts = [child] if child.type == "identifier" else child.named_children
+        names.extend(
+            node_text(c, source) for c in parts
+            if c.type == "identifier" and node_text(c, source) != "_"
+        )
+    return names
+
+
+class _GoLocalScope:
+    """Where each LOCAL name of one top-level declaration is in scope.
+
+    Go answers "what does this identifier name here" by position (spec,
+    "Declarations and scope"), so this records, per name, the byte ranges
+    over which a local binding of it is visible:
+
+    - a parameter, receiver or named result: the function's (or function
+      literal's) body;
+    - ``x := ...``, ``var x``, ``const x``: from the END of the declaring
+      statement to the end of the innermost enclosing block -- so the right
+      side of ``nodeName, err := nodeName(o)`` still sees the package
+      function, and a name bound in one ``if`` branch is not bound in the
+      other;
+    - ``for k, v := range xs`` and ``case v := <-ch``: from the end of the
+      clause to the end of the loop / case (``=`` forms assign, and bind
+      nothing new);
+    - ``switch t := x.(type)``: from the end of ``x`` to the end of the switch.
+
+    A package-level ``var`` / ``const`` is not local (it is in the package
+    scope, which the resolver answers), and a parameter of a function TYPE or
+    an interface method binds nothing. Labels, type parameters and local type
+    declarations are not recorded.
+
+    WHY ONE MODEL FOR EVERY QUESTION. Each site that asks whether a name is
+    a local value -- a bare call (WI-bivin, WI-bopiv), a function passed as an
+    argument or a struct-field value (WI-kibah), the operand of ``pkg.F()``
+    (WI-kugap), an attribute read on an import (INV-dulum's Go twin) -- asks
+    it at a POSITION. The earlier answer, every name bound anywhere in the
+    declaration, withheld correct edges (the right side of a shadowing
+    declaration, a sibling branch) and could not be applied to an import
+    operand at all, since it would have taken the ``url.Parse`` that defines a
+    local ``url`` for a call on that local.
     """
-    names: set[str] = set()
-    stack = [decl]
-    while stack:
-        n = stack.pop()
-        for field_name in _GO_BINDING_FIELDS.get(n.type, ()):
-            for child in n.children_by_field_name(field_name):
-                if child.type == "identifier":
-                    names.add(node_text(child, source))
-                else:
-                    names.update(
-                        node_text(c, source) for c in child.children
-                        if c.type == "identifier"
-                    )
-        stack.extend(n.children)
-    return frozenset(names)
+
+    __slots__ = ("_regions",)
+
+    def __init__(self, decl: "tree_sitter.Node", source: bytes) -> None:
+        regions: dict[str, list[tuple[int, int]]] = {}
+        for n in iter_tree(decl):
+            span = self._binding_span(n)
+            if span is None:
+                continue
+            names_nodes, lo, hi = span
+            for name in _go_identifiers(names_nodes, source):
+                regions.setdefault(name, []).append((lo, hi))
+        self._regions = regions
+
+    @staticmethod
+    def _binding_span(
+        n: "tree_sitter.Node",
+    ) -> "Optional[tuple[list[tree_sitter.Node], int, int]]":
+        """``(name nodes, scope start, scope end)`` when ``n`` binds locals."""
+        if n.type in ("parameter_declaration", "variadic_parameter_declaration"):
+            owner = _go_nearest(n, _GO_SIGNATURE_NODES)
+            body = (
+                find_child_by_field(owner, "body")
+                if owner is not None and owner.type in _GO_FUNCTION_NODES
+                else None
+            )
+            if body is None:
+                return None
+            return n.children_by_field_name("name"), body.start_byte, body.end_byte
+        if n.type == "type_switch_statement":
+            alias = n.children_by_field_name("alias")
+            if not alias:  # ``switch x.(type)`` binds nothing
+                return None
+            value = find_child_by_field(n, "value")
+            if value is None:  # pragma: no cover - the grammar requires one
+                return None
+            return alias, value.end_byte, n.end_byte
+        field = _GO_LOCAL_DECLARATION_FIELDS.get(n.type)
+        if field is None:
+            return None
+        if n.type in _GO_DECLARE_ONLY_WITH_DEFINE and not any(
+            c.type == ":=" for c in n.children
+        ):
+            return None
+        scope = _go_nearest(n, _GO_BLOCK_SCOPE_NODES)
+        if scope is None:  # package level: not a local
+            return None
+        return n.children_by_field_name(field), n.end_byte, scope.end_byte
+
+    def binds(self, name: str, pos: int) -> bool:
+        """Whether a local binding of ``name`` is in scope at byte ``pos``."""
+        return any(lo <= pos < hi for lo, hi in self._regions.get(name, ()))
+
+    def at(self, node: "tree_sitter.Node") -> "_GoNamesInScope":
+        """The local names in scope where ``node`` starts."""
+        return _GoNamesInScope(self, node.start_byte)
+
+
+class _GoNamesInScope:
+    """The local names in scope at one position; supports ``name in``."""
+
+    __slots__ = ("_pos", "_scope")
+
+    def __init__(self, scope: _GoLocalScope, pos: int) -> None:
+        self._scope = scope
+        self._pos = pos
+
+    def __contains__(self, name: object) -> bool:
+        return self._scope.binds(str(name), self._pos)
 
 
 def _outermost_declaration(node: "tree_sitter.Node") -> "tree_sitter.Node":
@@ -3249,7 +3376,7 @@ def _go_bare_reference_target(
     local_symbols: dict[str, Symbol],
     own_package: ListNameResolver,
     current_function: Symbol,
-    bound_names: frozenset[str],
+    bound_names: Container[str],
 ) -> tuple[Symbol, Optional[float]] | None:
     """The function a BARE identifier in value position names, if any (WI-bivin).
 
@@ -3261,8 +3388,8 @@ def _go_bare_reference_target(
     0.49. A method or field the file lists under its bare name is skipped, as
     a bare identifier cannot name one. A non-function hit (a variable, a type)
     and a self-reference name nothing, as before; so does a name in
-    ``bound_names`` (bound in the enclosing declaration: a local value, which
-    Go finds before any package-level declaration).
+    ``bound_names`` (a local binding in scope at the reference, which Go finds
+    before any package-level declaration: ``_GoLocalScope``).
     """
     if ref_name in bound_names:
         return None
@@ -3290,7 +3417,7 @@ def _extract_function_reference_edges(
     scoped_vars: dict[str, str] | None = None,
     *,
     own_package: ListNameResolver,
-    bound_names: frozenset[str],
+    bound_names: Container[str],
 ) -> None:
     """Detect function identifiers passed as arguments and create call edges.
 
@@ -3305,24 +3432,16 @@ def _extract_function_reference_edges(
     - ``identifier``: simple function reference like ``handler``
     - ``selector_expression``: qualified reference like ``h.GetAPI``
 
-    The ``scoped_vars`` parameter (from ``_extract_go_var_types``) maps
-    local variable names to their types within the enclosing function.
-    Identifiers found in ``scoped_vars`` are skipped to avoid false
-    positives where a local variable shares a name with a function
-    (e.g., ``start := time.Now()`` vs ``func start()``).
-
     A bare ``identifier`` resolves in the caller's own package
-    (``own_package``, WI-bivin; ``_go_bare_reference_target``), unless it is in
-    ``bound_names`` (a local value of the enclosing declaration). The selector
+    (``own_package``, WI-bivin; ``_go_bare_reference_target``), unless a local
+    binding of it is in scope at the call (``bound_names``, WI-bopiv): that
+    test replaces the old skip of every name in ``scoped_vars``, which was
+    blind to position and withheld ``h := wrap(h)``'s argument. The selector
     form still asks the repo-wide ``resolver`` by its field name alone.
     """
-    _scoped = scoped_vars or {}
     for arg in args_node.children:
         if arg.type == "identifier":
             ref_name = node_text(arg, source)
-            # Skip identifiers that are local variables in the current scope
-            if ref_name in _scoped:
-                continue
             target = _go_bare_reference_target(
                 ref_name, local_symbols, own_package, current_function,
                 bound_names,
@@ -3561,16 +3680,18 @@ def _extract_edges_from_file(
         method_return_type_registry=method_return_type_registry,
     )
 
-    # INV-guzuj: names bound per top-level declaration, computed once per
-    # declaration rather than once per bare call.
-    _bound_by_decl: dict[tuple[int, int], frozenset[str]] = {}
+    # INV-guzuj / WI-bopiv: the local scopes of each top-level declaration,
+    # built once per declaration rather than once per site, and asked BY
+    # POSITION (``_GoLocalScope``).
+    _scope_by_decl: dict[tuple[int, int], _GoLocalScope] = {}
 
-    def _bound_names(call_node: "tree_sitter.Node") -> frozenset[str]:
-        decl = _outermost_declaration(call_node)
+    def _bound_names(site: "tree_sitter.Node") -> _GoNamesInScope:
+        decl = _outermost_declaration(site)
         key = (decl.start_byte, decl.end_byte)
-        if key not in _bound_by_decl:
-            _bound_by_decl[key] = _go_names_bound_in(decl, source)
-        return _bound_by_decl[key]
+        scope = _scope_by_decl.get(key)
+        if scope is None:
+            scope = _scope_by_decl[key] = _GoLocalScope(decl, source)
+        return scope.at(site)
 
     for node in iter_tree(tree.root_node):
         # Detect import statements
@@ -4241,13 +4362,15 @@ def _extract_edges_from_file(
                             ))
                             callee_name = None  # Already handled
 
-                    # WI-bivin: a BARE name bound in the enclosing declaration
+                    # WI-bivin: a BARE name with a local binding in scope here
                     # (a closure, a parameter, a range variable) is that local
                     # value -- Go looks in the function's own scope before the
                     # package's -- so it resolves to no declaration at all and
-                    # stays silent, by INV-foluz's rule (``_go_names_bound_in``).
-                    # Checked FIRST: a local ``open`` or ``wrapper`` used to bind
-                    # to the package (or the repo) declaration of that name.
+                    # stays silent, by INV-foluz's rule. Checked FIRST: a local
+                    # ``open`` or ``wrapper`` used to bind to the package (or
+                    # the repo) declaration of that name. In scope is asked by
+                    # POSITION (WI-bopiv, ``_GoLocalScope``): the right side of
+                    # ``nodeName, err := nodeName(o)`` is the package function.
                     if (
                         callee_name
                         and func_node.type == "identifier"
