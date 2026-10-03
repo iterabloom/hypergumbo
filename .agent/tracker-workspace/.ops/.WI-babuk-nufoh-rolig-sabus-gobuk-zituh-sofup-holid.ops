@@ -19,3 +19,46 @@
     pr_ref:  # e250
     description: "Found 2026-10-01 while working WI-majov (dev af4e16964b). The js-module-linker mints the import TARGET's file id with the IMPORTER's language, so a TypeScript file importing a JavaScript file gets a second, wrong-language file node for the target.\n\nRepro: src/main.ts = `import { u } from \"./util.js\"; console.log(u());`, src/util.js = `export function u() { return 1; }`; `hypergumbo run` on that dir. Output has BOTH `javascript:src/util.js:1-1:file:file` (the JS/TS analyzer's node) AND `typescript:src/util.js:1-1:file:file` (origin js-module-linker). The edges `typescript:src/main.ts:1-1:file:file imports typescript:src/util.js:1-1:file:file` and `typescript:src/util.js:1-1:file:file module_exports javascript:src/util.js:1-1:u:function` both hang off the phantom, so the real util.js file node has no inbound import.\n\nSite: packages/hypergumbo-core/src/hypergumbo_core/linkers/js_module.py ~805, `sym_id = make_file_id(lang, rel_path)` where `lang` is the language parsed from the IMPORTER's id (~728). The existing-symbol dedup map (~688) is keyed on the canonical id, so a language mismatch misses it and a new Symbol is minted (~815). Fix: take the target's language from the resolved target path with the analyzer's rule (js_ts._get_language_for_file; core's js_ts_language_from_path once its .mts/.cts drift is fixed). Violates INV-movor's statement (one file-kind Symbol per path across all producers); INV-movor's fix covered the absolute-path shape, not this one.\n\nNot measured: corpus frequency (mixed .ts -> .js imports). WI-sinol is also working in js_module.py (module_exports export status); different lines."  # e250
     fields: {}  # e250
+- op: discuss  # fae7
+  at: '2026-10-03T01:17:21Z'  # fae7
+  by: agent  # fae7
+  actor: jgstern_agent  # fae7
+  clock: 2  # fae7
+  nonce: fae7  # fae7
+  message: "SAME MECHANISM, NON-CODE TARGETS, WITH A PERFORMANCE CONSEQUENCE (2026-10-02, dev 273034f369, found under WI-kakov).\n\njs-module-linker also mints `kind=file` nodes for imported ASSETS (images, fonts, svg), with the importer's language. A copy of nextjs's test/integration/image-optimizer/app yields 15 nodes such as `file javascript ['js-module-linker'] public/animated2.png`; a TS importer gives `typescript` (examples/with-sfcc/public/hero.jpg). crypto-flow-linker selects files by `sym.language`, so it parses those binaries with the JS grammar. On nextjs that is what keeps the survey from finishing (details on WI-kakov).\n\nTHE PRESCRIBED FIX DOES NOT COVER THIS CASE. \"Take the target's language from the resolved target path with js_ts._get_language_for_file\" would still stamp a .png `javascript`, because that function returns \"javascript\" for every suffix outside .ts/.tsx/.mts/.cts. A non-JS/TS target needs no language at all (or its own, from the profile's extension map), never a JS/TS one. Not checked: whether a `kind=file` node for an asset is wanted at all, and what consumes it."  # fae7
+- op: discuss  # 0342
+  at: '2026-10-03T01:27:35Z'  # 0342
+  by: agent  # 0342
+  actor: jgstern_agent  # 0342
+  clock: 3  # 0342
+  nonce: '0342'  # 0342
+  message: "DESIGN FOR A CORRECT FIX (2026-10-02, owner asked for it; builds on ADR-0031 / ADR-0036, no new ruling).\n\nWhy the prescribed fix is insufficient: both helpers it names answer \"which JS grammar parses this file\", not \"what language is this file\", and both fall back to javascript:\n  target   js_ts._get_language_for_file   js_ts_language_from_path   taxonomy.get_language\n  x.png    javascript                     javascript                 None\n  x.svg    javascript                     javascript                 None\n  x.css    javascript                     javascript                 css\n  x.tsx    typescript                     typescript                 typescript\n\n1. TARGET LANGUAGE from the core registry: `taxonomy.get_language(resolved)`, never the importer's language and never a JS/TS helper. .js -> javascript, .ts -> typescript, .css -> css, .json -> json; None for anything with no source language (images, fonts, .wasm, .mdx).\n2. REUSE ANY EXISTING FILE NODE for the path, whatever its language. The dedup map (js_module.py ~693-699) indexes only file symbols whose language is in _JS_LANGUAGES, so `import \"./style.css\"` mints a phantom `typescript:style.css` beside the css analyzer's node. Index every kind==\"file\" symbol (INV-movor: one file-kind Symbol per path across producers).\n3. A TARGET WITH NO SOURCE LANGUAGE is an ADR-0031 Class B stand-in: language=None, discovery_language=<importer language>, protocol_origin=\"js_module\" (already registered; npm_package uses it). Id lang slot = `discovery_language or language` (ADR-0036), so the id prefix stays the importer's language. That is the ruled convention; consumers read the FIELD. stable_id via the make_synthetic_symbol_identity chokepoint. crypto-flow selects by sym.language, so it would no longer see such files.\n   Alternative (NOT chosen): mint nothing for asset imports. Rejected without a consumer audit, because it deletes the imports edge.\n\nRED TEST: main.ts imports ./util.js, ./style.css, ./logo.png -> one file node per path; util.js language javascript; style.css reuses the css analyzer node; logo.png language None, discovery_language typescript; crypto-flow opens no .png."  # 0342
+- op: discuss  # f707
+  at: '2026-10-03T02:14:34Z'  # f707
+  by: agent  # f707
+  actor: jgstern_agent  # f707
+  clock: 4  # f707
+  nonce: f707  # f707
+  message: "CORRECTION TO THE DESIGN ABOVE, point 3 (found while implementing; rule 1: read the definition). spec_validator's ADR-0031 coherence check says \"File Symbols are an explicit Class A exception per the ADR's per-linker producer policy\". A kind=\"file\" node is a real file, not a protocol stand-in. Class B (protocol_origin set) would also have made _classify_symbols SKIP it (it skips every node with protocol_origin), so an imported asset would lose its path-based supply-chain tier.\nImplemented shape for a target with no source language: kind=\"file\", language=None, protocol_origin=None, discovery_language=<importer language>, id and stable_id language slot = discovery_language (ADR-0036 \"discovery_language or language\"). meta.module_system is set for every target WITH a language (.js/.ts/.vue/.css as before) and omitted only for language-less assets. Points 1 and 2 are implemented as written."  # f707
+- op: discuss  # e5e0
+  at: '2026-10-03T03:11:58Z'  # e5e0
+  by: agent  # e5e0
+  actor: jgstern_agent  # e5e0
+  clock: 5  # e5e0
+  nonce: e5e0  # e5e0
+  message: "Merged as PR #1397, dev SHA 69a06a23fd7c."  # e5e0
+- op: update  # 8fe8
+  at: '2026-10-03T03:16:34Z'  # 8fe8
+  by: agent  # 8fe8
+  actor: jgstern_agent  # 8fe8
+  clock: 6  # 8fe8
+  nonce: 8fe8  # 8fe8
+  set:  # 8fe8
+    status: done  # 8fe8
+- op: discuss  # f27a
+  at: '2026-10-03T03:16:34Z'  # f27a
+  by: agent  # f27a
+  actor: jgstern_agent  # f27a
+  clock: 7  # f27a
+  nonce: f27a  # f27a
+  message: "Fixed in the PR cited above (merged; dev 69a06a23fd). Behavioral evidence, re-running the item's own filed repro on dev (src/main.ts = `import { u } from \"./util.js\"`, src/util.js = `export function u()`; `hypergumbo run`): exactly ONE util.js file node, `javascript:src/util.js:1-1:file:file`. No `typescript:src/util.js` phantom. `imports typescript:src/main.ts -> javascript:src/util.js` and `module_exports javascript:src/util.js -> ...:u:function` both hang off the real node.\nAsset case (copy of nextjs test/integration/image-optimizer/app): 15 image file nodes, all language=None, discovery_language=javascript (before the fix: language=javascript).\nProduction-path test TestImportTargetCarriesItsOwnLanguage: util.js minted as javascript, style.css reuses the css analyzer node, logo.png has language None / discovery typescript. It was red on the old code (typescript != javascript). smart-test: 3485 passed, changed sources at 100% coverage.\nAnalogue sweep over make_file_id callers: no other producer mints a target in the importer's language (vue_component mints only .vue as vue; lean only .lean; html script_src was fixed by WI-majov).\nNOT EXAMINED: the repro output still carries the analyzer's unresolved edge `imports typescript:src/main.ts -> typescript:./util.js:0-0:module:external_symbol` beside the resolved one. I did not check whether that predates this change or whether it is intended."  # f27a
