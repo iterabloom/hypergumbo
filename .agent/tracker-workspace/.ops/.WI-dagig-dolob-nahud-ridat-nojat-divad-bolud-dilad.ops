@@ -1,0 +1,23 @@
+- op: create  # a1bd
+  at: '2026-10-03T17:09:44Z'  # a1bd
+  by: agent  # a1bd
+  actor: jgstern_agent  # a1bd
+  clock: 1  # a1bd
+  nonce: a1bd  # a1bd
+  data:  # a1bd
+    kind: work_item  # a1bd
+    title: "javascript/typescript: namespace_imports is file-scoped, so a parameter or local that shadows an imported module name still qualifies the call as that module's (function f(cp){cp.exec(c)} over require('child_process') -> a fabricated HIGH RISK subprocess boundary)"  # a1bd
+    status: todo_hard  # a1bd
+    priority: 3  # a1bd
+    parent:  # a1bd
+    tags:  # a1bd
+    - javascript  # a1bd
+    - analysis_quality  # a1bd
+    - io_boundary  # a1bd
+    - taint  # a1bd
+    isbefore: []  # a1bd
+    duplicate_of: []  # a1bd
+    not_duplicate_of: []  # a1bd
+    pr_ref:  # a1bd
+    description: "FOUND 2026-10-03 while fixing INV-dulum-kakum-guhus-podas-mirup-lavut-jamob-kakif (python's file-scoped import map ignored a shadowing local; branch jgstern-agent/fix/dulum). Same mechanism, JS/TS analyzer. Filed, not fixed there (owner: list sibling languages as residuals).\n\nTHE FACT. js_ts.py builds `namespace_imports` (`_extract_namespace_imports`: `import * as`, default imports, `const x = require('x')`) by walking the whole tree, so it is FILE-SCOPED -- even a `require` inside one function lands in it. Case 2 of the member-call resolver (js_ts.py:5754, `elif obj_name and obj_name in namespace_imports:`) then qualifies `obj.method()` with the import's module whenever the receiver ROOT name matches, with no check that a parameter or local of the same name shadows the import at the call site. The same unguarded root check is at js_ts.py:3645 (`new ns.C().m()`) and 6201 (`new ns.Class()`). A shadow helper exists -- `_is_shadowed_by_param` (js_ts.py:5008) -- but it is consulted only for bare calls (5511) and callback arguments (6053). Case 2 also runs BEFORE the typed-local Case 3 (`obj_name in var_types`), so the import wins even over a typed local.\n\nLIVE REPRO (dev b7417402dc, `hypergumbo io-boundaries .`):\n\n    import fs from 'fs';\n    const cp = require('child_process');\n    function shadow(fs, p) { return fs.readFileSync(p); }\n    function shadow2(cp, cmd) { cp.exec(cmd); }\n\n  -> calls shadow  -> javascript:fs:0-0:readFileSync\n  -> calls shadow2 -> javascript:child_process:0-0:exec\n  -> io-boundaries: `subprocess: child_process.exec *** HIGH RISK *** <- shadow2` -- a fabricated high-risk boundary for a callable the caller handed in.\n\nDIRECTION: false positive (fabricated boundary + taint sink), the expensive direction. NOT MEASURED: how often real JS/TS code names a parameter or local after an imported module. The python measurement on the same shape (ast scan, 45,702 .py files) found 231 function scopes, 70 of them in production code.\n\nFIX SHAPE (python's, for reference): narrow the file-scoped import map by the call site's VALUE bindings once per scope, rather than adding a guard per consumer -- python had one guarded consumer and four unguarded ones. An import binding inside the function is NOT a shadow (a lazy `require` IS the module)."  # a1bd
+    fields: {}  # a1bd

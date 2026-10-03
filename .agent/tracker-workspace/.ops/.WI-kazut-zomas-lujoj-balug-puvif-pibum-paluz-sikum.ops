@@ -27,3 +27,10 @@
   clock: 2  # 016a
   nonce: 016a  # 016a
   message: "BEARING from WI-surar (branch jgstern-agent/fix/surar, local commit d5e987abce, not merged): the ruby constant-external fallback now spells the module slot as the receiver constant AS WRITTEN (Prometheus::Client::Counter, not counter). So once this item routes a namespaced external constant whose last segment names a project class away from the project-owner path, the fallback will carry the full Prometheus::Client... owner path with no further change. Measured on postal with the branch: Prometheus::Client::Counter.new -> slot Prometheus::Client::Counter. This item's own defect (short-name capture by a project class) is NOT changed by WI-surar: the project_owners check in _try_receiver_call still includes the short name for a scope_resolution receiver."  # 016a
+- op: discuss  # 3d33
+  at: '2026-10-03T17:07:51Z'  # 3d33
+  by: agent  # 3d33
+  actor: jgstern_agent  # 3d33
+  clock: 3  # 3d33
+  nonce: 3d33  # 3d33
+  message: "PYTHON SIBLING FILED as WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin: the core inheritance linker binds Python's dotted external base unittest.TestCase by its last segment to Django's in-tree TestCase, closing an inheritance cycle (TestCase -> TransactionTestCase -> SimpleTestCase -> TestCase) that makes the C3 walker refuse every class under Django's test hierarchy (2098 same-file inherited call sites measured on the django corpus repo). Same mechanism as this item (last segment of a namespaced external name taken as a project class, no import context in the linker); a shared fix in inheritance.py's lookup_names fallback may cover both."  # 3d33
