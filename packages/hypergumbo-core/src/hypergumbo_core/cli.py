@@ -273,6 +273,7 @@ from .selection.filters import is_excluded_kind
 from .limits import Limits
 from .supply_chain import (
     DERIVED_PATH_PATTERNS,
+    FileClassification,
     _normalize_pep503,
     classify_file,
     collect_first_party_package_names,
@@ -11439,7 +11440,10 @@ def _classify_symbols(
     """Apply supply chain classification to symbols in-place.
 
     Classifies each symbol's file path and updates supply_chain_tier
-    and supply_chain_reason fields.  Symbols that already have a tier
+    and supply_chain_reason fields.  The classification is computed once
+    per PATH and shared by every symbol in that file (WI-fojot): it reads
+    the whole file, so per-symbol calls re-read a file once per symbol
+    (40x the bytes on nestjs, 319 s of CPU on flink).  Symbols that already have a tier
     set by a linker (e.g. npm_package with tier=3) are not reclassified
     — the linker's tier takes precedence.
 
@@ -11460,6 +11464,7 @@ def _classify_symbols(
     declared this field but no producer ever wrote to it.
     """
     seen_failures: set[str] = set()
+    classification_by_path: dict[str, FileClassification] = {}
     # INV-nuzas / ADR-0041 D8a: recognize in-repo workspace-sibling package
     # names so a sibling declared as a dependency is tiered workspace-internal
     # (tier 2), not external (tier 3). Empty set on a non-Python repo → the
@@ -11492,8 +11497,15 @@ def _classify_symbols(
                 symbol.supply_chain_tier = 3
                 symbol.supply_chain_reason = "dependency declaration (external)"
             continue
-        file_path = repo_root / symbol.path
-        classification = classify_file(file_path, repo_root, package_roots)
+        # WI-fojot: classify_file is a function of the PATH (it stats and
+        # reads the whole file), so it runs once per path, not once per
+        # symbol: a file with N symbols was read N times.
+        classification = classification_by_path.get(symbol.path)
+        if classification is None:
+            classification = classify_file(
+                repo_root / symbol.path, repo_root, package_roots,
+            )
+            classification_by_path[symbol.path] = classification
         symbol.supply_chain_tier = classification.tier.value
         symbol.supply_chain_reason = classification.reason
         symbol.is_test_file = classification.is_test

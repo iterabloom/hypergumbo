@@ -1936,6 +1936,58 @@ class TestClassifySymbolsRecordsClassificationFailures:
         assert sym.supply_chain_reason
 
 
+class TestClassifySymbolsOncePerPath:
+    """WI-fojot: ``classify_file`` is a function of the PATH, so it runs once
+    per path, not once per symbol.
+
+    Per symbol it stats the file and reads the WHOLE file
+    (``is_likely_minified``): a file with N symbols was read N times (40x the
+    bytes on nestjs; 319 s of CPU on flink).
+    """
+
+    def test_one_classify_call_per_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import hypergumbo_core.cli as cli
+        from hypergumbo_core.ir import Symbol, Span
+
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "a.py").write_text("def f(): pass\n")
+        (tmp_path / "src" / "b_test.py").write_text("def t(): pass\n")
+        calls: list[Path] = []
+        real = cli.classify_file
+
+        def counting(path, repo_root, package_roots):  # type: ignore[no-untyped-def]
+            calls.append(path)
+            return real(path, repo_root, package_roots)
+
+        monkeypatch.setattr(cli, "classify_file", counting)
+        syms = [
+            Symbol(
+                id=f"python:{p}:{i}-{i}:s{i}:function", name=f"s{i}",
+                kind="function", language="python", path=p,
+                span=Span(i, i, 0, 0),
+                modifiers=["public"] if i == 2 else [],
+            )
+            for p in ("src/a.py", "src/b_test.py") for i in (1, 2, 3)
+        ]
+        cli._classify_symbols(syms, tmp_path, set())
+
+        assert sorted(calls) == [tmp_path / "src/a.py", tmp_path / "src/b_test.py"]
+        # Every symbol still carries its file's classification ...
+        by_path: dict[str, set] = {}
+        for s in syms:
+            by_path.setdefault(s.path, set()).add(
+                (s.supply_chain_tier, s.supply_chain_reason, s.is_test_file)
+            )
+        assert all(len(v) == 1 for v in by_path.values())
+        assert {s.is_test_file for s in syms if s.path == "src/b_test.py"} == {True}
+        # ... and the export fold stays per SYMBOL, not per path.
+        assert [s.is_exported for s in syms if s.path == "src/a.py"] == [
+            None, True, None,
+        ]
+
+
 class TestClassifySymbolsPreservesTier:
     """_classify_symbols skips symbols that already have a linker-set tier."""
 
