@@ -70,8 +70,15 @@ fs_read:
   - module: io/ioutil
     functions: [ReadFile, ReadDir, ReadAll]
     notes: "Deprecated in Go 1.16 but still widely used"
-  - module: filepath
+  - module: path/filepath
     functions: [Walk, WalkDir, Glob]
+    notes: >-
+      WI-mujod: keyed by the IMPORT PATH, which is what the go analyzer
+      stamps in the module slot (ADR-0051). Spelled `filepath` it was
+      reachable only through _module_matches' hint-longer suffix
+      direction, which is refused because a slot carrying MORE leading
+      components than the row names a different owner. A bare `filepath`
+      slot still reaches this row (catalogue-longer direction).
   - module: bufio
     functions: [NewScanner, NewReader]
     boundary_ruling: call_site_undecidable
