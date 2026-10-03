@@ -334,13 +334,22 @@ ipc_recv:
       Elixir inherits erlang's rows (`_CATALOG_PARENTS`), so `os:cmd` arrives
       from there; these two are Elixir's own.
 
-ipc_send:
+# BEAM message sends are process_send, not ipc_send (WI-nuhor, audit-findings
+# 0021 Step 5): the far side is a peer process inside the same runtime, which
+# is exactly process_send's registry description, and erlang.yaml -- this
+# catalogue's parent -- rows `erlang:send` / `!` and `gen_server:call` / `cast`
+# / `abcast` / `multi_call` there. One act had two boundaries depending on the
+# spelling. Both boundaries map to the `ipc` taint zone, so the move changes
+# the headline label and no taint sink.
+process_send:
   - module: GenServer
     functions: [call, cast, abcast, multi_call]
-    notes: "GenServer message passing"
+    notes: "GenServer message passing -- erlang's gen_server rows, elixir spelling."
   - module: Process
     functions: [send, send_after]
-    notes: "Raw process messaging"
+    notes: "Raw process messaging -- erlang:send / send_after, elixir spelling."
+
+ipc_send:
   - module: Task
     functions: [async, async_stream, start, start_link, Supervisor.start_child]
     notes: "Task spawns — async execution boundary"

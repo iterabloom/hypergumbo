@@ -279,3 +279,54 @@ class TestWiPovomInProcessPubSubIsNotIpc:
         chains = _chains(tmp_path, "Poster.swift", _SWIFT_NOTIFY)
         assert chains["ipc_send"] == {"DistributedNotificationCenter.postNotificationName"}
         assert "NotificationCenter.post" in chains["external_potential"]
+
+
+# ---------------------------------------------------------------------------
+# WI-nuhor: an elixir BEAM message send is erlang's process_send.
+# ---------------------------------------------------------------------------
+
+_EX_SENDS = '''defmodule Sender do
+  def go(pid, msg) do
+    GenServer.call(pid, msg)
+    GenServer.cast(pid, msg)
+    GenServer.abcast(:srv, msg)
+    GenServer.multi_call(:srv, msg)
+    Process.send(pid, msg, [])
+    Process.send_after(pid, msg, 100)
+    :gen_server.call(pid, msg)
+  end
+end
+'''
+
+_BEAM_SENDS = [
+    ("GenServer", "call"), ("GenServer", "cast"), ("GenServer", "abcast"),
+    ("GenServer", "multi_call"), ("Process", "send"), ("Process", "send_after"),
+]
+
+
+class TestWiNuhorBeamSendsAreProcessSend:
+    """erlang.yaml rows ``erlang:send`` / ``!`` and ``gen_server:call`` /
+    ``cast`` / ``abcast`` / ``multi_call`` ``process_send``, whose registry
+    description is exactly this case ("the far side is a peer inside the same
+    runtime, not an OS pipe"). elixir.yaml rowed the elixir spellings of the
+    same sends ``ipc_send``. A PURE RELABEL: both boundaries map to the ``ipc``
+    taint zone, so the derived sink is pinned unchanged."""
+
+    @pytest.mark.parametrize(("module", "name"), _BEAM_SENDS)
+    def test_the_row_is_process_send(self, module: str, name: str) -> None:
+        assert _rows("elixir", module, name) == {"process_send"}
+
+    @pytest.mark.parametrize(("module", "name"), _BEAM_SENDS)
+    def test_the_taint_sink_is_unchanged(self, derived, module: str, name: str) -> None:
+        _src, sinks = derived
+        assert sinks["elixir"][(module, name)] == {"ipc"}
+
+    @pytest.mark.parametrize("name", ["call", "cast", "abcast", "multi_call"])
+    def test_control_erlang_gen_server_is_the_precedent(self, name: str) -> None:
+        assert _rows("erlang", "gen_server", name) == {"process_send"}
+
+    def test_reach(self, tmp_path: Path) -> None:
+        chains = _chains(tmp_path, "sender.ex", _EX_SENDS)
+        assert "gen_server.call" in chains["process_send"]  # control: reached
+        assert {f"{m}.{n}" for m, n in _BEAM_SENDS} <= chains["process_send"]
+        assert "ipc_send" not in chains
