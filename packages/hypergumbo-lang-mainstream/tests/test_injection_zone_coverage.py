@@ -139,3 +139,63 @@ def test_a_label_declared_only_in_python_does_not_count_go(
                        "code_execution", label="build_input",
                        extra_args=("--taint-sources", str(sources)))
     assert verdict["verdict"] in ("confirmed", "confirmed_with_caveats"), verdict["details"]
+
+
+# INV-dudal: a call to one of these sinks is EXAMINED, and OPAQUE. Before this,
+# each call made ``eval`` / ``window`` / ``document`` a module "the I/O catalog
+# could not classify", and every claim in the repository read inconclusive.
+
+_CONST_EVAL = "function run() {\n  return eval('1 + 1');\n}\nmodule.exports = { run };\n"
+_CONST_WRITE = ("function run() {\n  document.write('<p>hi</p>');\n}\n"
+                "module.exports = { run };\n")
+
+
+@pytest.mark.parametrize("src, site", [
+    (_CONST_EVAL, "eval"),
+    (_CONST_WRITE, "document.write"),
+])
+def test_a_sink_call_qualifies_an_unrelated_claim_and_names_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, src: str, site: str,
+) -> None:
+    verdict = _verdict(tmp_path, monkeypatch, {"a.js": src}, "network")
+    assert verdict["verdict"] == "confirmed_with_caveats", verdict["details"]
+    (caveat,) = [c for c in verdict["caveats"] if c["kind"] == "opaque_boundary"]
+    assert caveat["entries"] == [site]
+    assert "could not classify" not in verdict["details"]
+
+
+def test_a_flow_of_the_claims_own_label_into_the_site_withholds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``location.hash -> document.write`` under a code-execution claim: the
+    markup's script is what the claim forbids, so no caveat stands in for it."""
+    src = ("function run() {\n  const s = document.location.hash;\n"
+           "  document.write(s);\n}\nmodule.exports = { run };\n")
+    verdict = _verdict(tmp_path, monkeypatch, {"a.js": src}, "code_execution",
+                       label="untrusted_input")
+    assert verdict["verdict"] == "inconclusive", verdict
+    assert "untrusted_input data reaches 1 of those site(s) (document.write)" \
+        in verdict["details"]
+
+
+def test_a_flow_into_eval_under_its_own_zone_is_still_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CONTROL: the release is a coverage change; a found flow is untouched."""
+    src = ("function run() {\n  const s = document.location.hash;\n"
+           "  eval(s);\n}\nmodule.exports = { run };\n")
+    verdict = _verdict(tmp_path, monkeypatch, {"a.js": src}, "code_execution",
+                       label="untrusted_input")
+    assert verdict["verdict"] == "violated", verdict
+
+
+def test_another_call_into_the_module_still_withholds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``document`` is not marked examined: only the exact sink call is."""
+    src = ("function run() {\n  document.write('<p>hi</p>');\n"
+           "  return document.getElementById('x');\n}\nmodule.exports = { run };\n")
+    verdict = _verdict(tmp_path, monkeypatch, {"a.js": src}, "network")
+    assert verdict["verdict"] == "inconclusive", verdict
+    assert "could not classify" in verdict["details"]
+    assert "(document)" in verdict["details"]
