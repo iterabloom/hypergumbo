@@ -1,0 +1,23 @@
+- op: create  # 1259
+  at: '2026-10-03T17:36:37Z'  # 1259
+  by: agent  # 1259
+  actor: jgstern_agent  # 1259
+  clock: 1  # 1259
+  nonce: '1259'  # 1259
+  data:  # 1259
+    kind: work_item  # 1259
+    title: "INV-nular F4 (close declared as a transfer) recurs: python asyncio.StreamWriter.close and go net/smtp.Client.Close are rowed net_send but send no payload"  # 1259
+    status: todo_hard  # 1259
+    priority: 3  # 1259
+    parent:  # 1259
+    tags:  # 1259
+    - catalogue  # 1259
+    - io_boundary  # 1259
+    - python  # 1259
+    - go  # 1259
+    isbefore: []  # 1259
+    duplicate_of: []  # 1259
+    not_duplicate_of: []  # 1259
+    pr_ref:  # 1259
+    description: "Prior-tranche flags from WI-vafad (tranche 1 / tranche 2), never filed, re-verified ACCEPT at dev fe3c32259d (docs/audits/0022, prior-backlog section). INV-nular's swept family \"lifecycle callbacks and close calls declared as transfers\" (F4, PR #606: Network.Socket.close removed, \"a FIN is not a payload any line of the program produced\") turns up again in two languages the 08-28 sweep did not reach:\n\n  python  asyncio.StreamWriter.close  net_send -> NONE   `return self._transport.close()` (streams.py:357-358). The selector transport's close only marks the transport closing and schedules connection_lost (selector_events.py:867-875), and flushes nothing itself.\n  go      net/smtp.Client.Close       net_send -> NONE   c.Text.Close() -> c.conn.Close() (smtp.go:77-78). It sends no SMTP payload; QUIT is Client.Quit (:415-421).\n\nnet_send is a SINK, so each row today accepts a tainted value as \"sent\" at a call that transmits nothing the program produced. Egress stays represented: asyncio StreamWriter.write / drain, go smtp NewClient / Dial / SendMail / Mail / Rcpt / Data (go.yaml:292-296).\n\nFIX OBLIGATION: removing a net_send row removes a sink. ADR-0049 ruling 3 per language: both arms cold, read every moved verdict back, never pin a removal."  # 1259
+    fields: {}  # 1259

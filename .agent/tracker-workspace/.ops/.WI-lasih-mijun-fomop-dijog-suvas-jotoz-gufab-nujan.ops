@@ -1,0 +1,23 @@
+- op: create  # d4cb
+  at: '2026-10-03T17:36:31Z'  # d4cb
+  by: agent  # d4cb
+  actor: jgstern_agent  # d4cb
+  clock: 1  # d4cb
+  nonce: d4cb  # d4cb
+  data:  # d4cb
+    kind: work_item  # d4cb
+    title: "Rows naming calls that return an in-memory value: python tempfile.gettempprefix (host_info_read), inspect.getfile (fs_read), java Path.toFile (fs_read) cross nothing"  # d4cb
+    status: todo_hard  # d4cb
+    priority: 3  # d4cb
+    parent:  # d4cb
+    tags:  # d4cb
+    - catalogue  # d4cb
+    - io_boundary  # d4cb
+    - python  # d4cb
+    - java  # d4cb
+    isbefore: []  # d4cb
+    duplicate_of: []  # d4cb
+    not_duplicate_of: []  # d4cb
+    pr_ref:  # d4cb
+    description: "Prior-tranche flags from WI-vafad (tranche 1, 2026-09-11, and tranche 2, 2026-09-13). They were never filed. They were re-verified against source at dev fe3c32259d by the tranche-3 verifier and are ACCEPTED (docs/audits/0022, prior-backlog section). All three are rows that name a call returning an in-memory value and crossing no boundary:\n\n  python  tempfile.gettempprefix  host_info_read -> NONE   returns _os.fsdecode(template), where template = \"tmp\" is a module literal (tempfile.py:208, :430). The value is the same on every host, so it describes no host.\n  python  inspect.getfile         fs_read        -> NONE   returns the __file__ / co_filename attributes already in memory (inspect.py:904-930). The source READS stay rowed on getsource* / getsourcelines. This contradicts the inspect completeness note, which groups getfile with the source readers.\n  java    java.nio.file.Path.toFile  fs_read     -> NONE   `new File(toString())` (Path.java:833-836), and touches no filesystem. Inherited by kotlin and scala (3 rows). The later reads stay rowed on java.io.File and the kotlin Path extension rows.\n\nThe verifier also noticed a stale tempfile completeness note that still says \"rowed under env_read\". Fix it in the same pass.\n\nFIX OBLIGATION: all three are removals. host_info_read and fs_read: host_info_read is low-discrimination, fs_read is quiet as a source. Run ADR-0049 ruling 3 per language at the finding level, both arms cold, and never pin a removal. These are distinct languages, so the proof runs per language."  # d4cb
+    fields: {}  # d4cb

@@ -1,0 +1,22 @@
+- op: create  # ec2e
+  at: '2026-10-03T17:36:49Z'  # ec2e
+  by: agent  # ec2e
+  actor: jgstern_agent  # ec2e
+  clock: 1  # ec2e
+  nonce: ec2e  # ec2e
+  data:  # ec2e
+    kind: work_item  # ec2e
+    title: "python asyncio.StreamReader.read / readuntil are rowed net_recv only, but the same reader is fed by subprocess pipes and AF_UNIX sockets -- needs an ipc_recv call_site_undecidable twin"  # ec2e
+    status: todo_hard  # ec2e
+    priority: 3  # ec2e
+    parent:  # ec2e
+    tags:  # ec2e
+    - catalogue  # ec2e
+    - io_boundary  # ec2e
+    - python  # ec2e
+    isbefore: []  # ec2e
+    duplicate_of: []  # ec2e
+    not_duplicate_of: []  # ec2e
+    pr_ref:  # ec2e
+    description: "Prior-tranche flag from WI-vafad (tranche 1, 2026-09-11), never filed, re-verified ACCEPT at dev fe3c32259d (docs/audits/0022, prior-backlog section).\n\npython asyncio.StreamReader.read and .readuntil are rowed net_recv only. The same StreamReader class is fed by subprocess pipe transports (asyncio/subprocess.py:45-54; asyncio.create_subprocess_exec is rowed subprocess, python.yaml:976-978) and by AF_UNIX sockets (open_unix_connection, streams.py:90-95), not only by TCP. read() drains self._buffer from whatever transport set_transport attached (streams.py:671). Whether the bytes came from the network or from another local process is a property of how the reader was created, which is a call-site question.\n\nFIX SHAPE (verifier's): an ipc_recv twin under call_site_undecidable beside the net_recv row (abstains_to net_recv, so nothing moves without a stamp), the shape typing.TextIO's read rows already use. ipc_recv and net_recv both derive untrusted_input, so no taint verdict should change. What changes is WHICH claim (network vs ipc) a subprocess-pipe read violates. Selecting the twin needs a receiver stamp from the create_subprocess_* / open_unix_connection binding. Pay ADR-0049 ruling 3."  # ec2e
+    fields: {}  # ec2e
