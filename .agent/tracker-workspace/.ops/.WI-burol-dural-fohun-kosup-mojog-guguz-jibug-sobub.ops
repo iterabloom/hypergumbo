@@ -34,3 +34,18 @@
   clock: 3  # a182
   nonce: a182  # a182
   message: "WORK DONE 2026-10-03 (decontend run, stage 1). Branch jgstern-agent/fix/burol (local, unpushed), commit 117cf4df7b on origin/dev 62602239c6.\nBEFORE (worktree, PYTHONPATH pinned): python -m hypergumbo_core.cli --help -> rc=0, stdout 0 B, stderr 0 B.\nFIX: cli.py gets a __main__ block calling _refuse_module_form(): stderr \"hypergumbo: `python -m hypergumbo_core.cli` runs no command. Use `python -m hypergumbo_core <command> ...` (or the `hypergumbo` console script).\" and exit 2 (option b). runtime_coherence.py (same mechanism, found by sweep) gets a __main__ block delegating to main() (option a; it has no package-level module form).\nAFTER: python -m hypergumbo_core.cli --help -> rc=2, stdout 0 B, stderr 145 B (message above); python -m hypergumbo_core.cli verify-claims . --format json -> rc=2, same; python -m hypergumbo_core --help -> rc=0, 5774 B usage (unchanged); python -m hypergumbo_core.runtime_coherence --help -> rc=0, 867 B usage; ... /nonexistent.json -> rc=2 with read error.\nSWEEP (AST, packages/*/src/**/*.py; top-level def main OR [project.scripts] target, __main__.py excluded): 4 modules. No guard before: hypergumbo_core.cli, hypergumbo_core.runtime_coherence. Guarded already: hypergumbo_core.test_masking, hypergumbo_tracker.cli. Broader scan (any *main* def, sys.argv, .parse_args) added only string/catalogue mentions (io_boundary, taint, py.py, json_config, entrypoints) -- not entry points. NOT covered: library modules with no main; every importable module exits 0 under -m by Python design, and no reader has reason to run them.\nGATE: tests/test_module_main_guard.py enumerates the family, asserts reach (hypergumbo_core.cli present), checks guard presence AND behavior (python -m <mod> --help is not rc0+empty+empty). Red before fix: 6 failed / 5 passed (both new test files). Green: smart-test 276 affected files, 7928 passed, 3 skipped, 10 xfailed, 0 failed; changed source files at 100% coverage."  # a182
+- op: update  # 41e4
+  at: '2026-10-03T09:40:25Z'  # 41e4
+  by: agent  # 41e4
+  actor: jgstern_agent  # 41e4
+  clock: 4  # 41e4
+  nonce: '41e4'  # 41e4
+  set:  # 41e4
+    status: done  # 41e4
+- op: discuss  # ed01
+  at: '2026-10-03T09:40:26Z'  # ed01
+  by: agent  # ed01
+  actor: jgstern_agent  # ed01
+  clock: 5  # ed01
+  nonce: ed01  # ed01
+  message: "Fixed in PR #1408. Behavioral evidence: before, `python -m hypergumbo_core.cli --help` gave rc=0 with 0 B stdout and 0 B stderr. After, it gives rc=2 with 0 B stdout and a stderr message naming `python -m hypergumbo_core <command>`. `verify-claims . --format json` behaves the same way. `python -m hypergumbo_core --help` is unchanged (rc 0, usage). The production-path test is `packages/hypergumbo-core/tests/test_cli_module_form.py::test_python_dash_m_cli_refuses_with_exit_2`, which runs a subprocess. The family sweep found one more instance, `hypergumbo_core.runtime_coherence`, which now runs `main()` under `-m`. `tests/test_module_main_guard.py` locks the property for every module that defines `main` or is a console-script target, by checking both guard presence and that `-m <mod> --help` is not a silent 0. Not asserted: anything about library modules that define no entry point."  # ed01
