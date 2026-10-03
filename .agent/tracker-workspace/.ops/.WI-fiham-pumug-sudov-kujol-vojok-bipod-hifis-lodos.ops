@@ -27,3 +27,27 @@
   clock: 2  # ceb9
   nonce: ceb9  # ceb9
   message: "FIXED ON BRANCH 2026-10-03 (jgstern-agent/fix/dudal-withholding, commit 55be90619b). Not merged, not closed.\n\nCORRECTION TO THE MECHANISM AS FILED: the gate does not walk imports (_CALL_SITE_EDGE_TYPES excludes them). What reached it were the module_attr_ref edges read off the same binding (express: node:path 11, node:http 2, node:querystring 1), which used the raw specifier too. Both are fixed: the scheme half of _normalize_import_module_hint is now _strip_import_scheme (one home), applied to the import-statement and require edges and to the binding map feeding emit_module_attribute_refs. Relative leaders are NOT stripped there (INV-juvul reads them).\n\nREPRO: base: a file whose only external use is require('node:path') + path.sep -> NO-FSWRITE inconclusive \"could not classify (node:path)\"; branch: confirmed (path carries a completeness grant; node:path IS path). Control: node:querystring + qs.escape stays inconclusive, now \"(querystring)\".\n\nA/B, 26 repos: node:-spelled import/module_attr_ref edges go to 0 in every repo (express 86+14 -> 0, vite 419+63 -> 0, rollup 862+43 -> 0, sharp 152+4 -> 0). Unknown lists: express drops node:http/node:path/node:querystring and adds http/querystring (net 9 -> 8, as this item predicted); knex drops node:path; vite drops node:crypto/node:fs/node:http/node:path; rollup node:path/node:process; sharp node:events/node:fs/node:stream (adds events/stream). Verdicts: 312/312 values identical. One evidence change: vite host-secret-no-host-fs violated 9 -> 10 -- packages/vite/src/node/server/pluginContainer.ts reads fsp.appendFile/... (import fsp from 'node:fs/promises', lines 729-741) and now matches the fs.promises sink rows, as a bare 'fs/promises' import already did; it is a file-anchored structural pairing with the module-level process.env read at line 111. Side effect named: the colon sanitisation the call path applies now also applies to these edges (vite 'virtual:/bar.json' -> 'virtual_/bar.json', a rollup test's 'C:\\File\\Path'), a respelling of unknown entries only.\n\nNOT HANDLED: node:-only built-ins (node:test, node:sqlite, node:sea) collapse onto a bare name an npm package may also own; no grant or row names those bare names today, so no gate release or classification follows from it."  # ceb9
+- op: update  # 70e3
+  at: '2026-10-03T21:18:56Z'  # 70e3
+  by: agent  # 70e3
+  actor: jgstern_agent  # 70e3
+  clock: 3  # 70e3
+  nonce: '70e3'  # 70e3
+  set:  # 70e3
+    status: done  # 70e3
+- op: discuss  # e68f
+  at: '2026-10-03T21:18:57Z'  # e68f
+  by: agent  # e68f
+  actor: jgstern_agent  # e68f
+  clock: 4  # e68f
+  nonce: e68f  # e68f
+  message: "Merged in PR #1433 (dev c942a68edc).\n\nFixed in PR #1433 (55be90619b): import and module_attr_ref edges now spell a `node:` specifier as the call edges do.\n- **Behavioural evidence (shipped CLI, re-run before closing):** a repo whose only external use is `require('node:path')` + `path.sep` reads NO-FSWRITE inconclusive \"(node:path)\" at the base and confirmed on the merged tree. `node:querystring` + `qs.escape` stays inconclusive \"(querystring)\".\n- **Corpus:** node:-spelled import/module_attr_ref edges went to 0 on 26 repos. express's disclosure lost node:http/node:path/node:querystring."  # e68f
+- op: update  # f7cd
+  at: '2026-10-03T21:19:01Z'  # f7cd
+  by: agent  # f7cd
+  actor: jgstern_agent  # f7cd
+  clock: 5  # f7cd
+  nonce: f7cd  # f7cd
+  set: {}  # f7cd
+  add:  # f7cd
+    tags: [awaits_bakeoff_validation]  # f7cd
