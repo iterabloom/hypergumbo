@@ -200,11 +200,13 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "EXCLUDED: `golang.org/x/...` is maintained by the Go team but "
             "is NOT the standard library — it is a separately versioned "
             "module, which is the whole distinction — so `golang.org/x/sys/"
-            "execabs` and its bare-identifier sibling `unix` go out, as does "
-            "`grpc`."
+            "execabs` and `golang.org/x/sys/unix` go out, as does "
+            "`google.golang.org/grpc`."
         ),
         modules=frozenset({
-            "bufio", "crypto/tls", "filepath", "fmt", "io", "io/ioutil",
+            # WI-mujod: `path/filepath` is spelled as its import path, which is
+            # what the go analyzer stamps; the row was `filepath` before.
+            "bufio", "crypto/tls", "path/filepath", "fmt", "io", "io/ioutil",
             "log", "log/slog", "net", "net/http", "net/smtp", "os",
             "os/exec", "runtime", "syscall", "testing", "time",
             # 2026-09-08 WI-dozul: the receiver-qualified rows for net's own

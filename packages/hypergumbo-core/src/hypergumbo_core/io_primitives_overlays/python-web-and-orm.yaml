@@ -78,8 +78,10 @@ fs_write:
       community library_signatures row defusedcsv.csv.writer ->
       defusedcsv.csv._ProxyWriter (python-stdlib-dropins.yaml). WI-nibav's
       point stands: a defusedcsv call is identified by ITS OWN row, never by
-      _module_matches' component-suffix arm (which also calls `mycsvlib.csv`
-      stdlib csv, and which go's under-qualified rows still need, WI-mujod).
+      _module_matches' component-suffix arm, which WI-mujod has since refused
+      in that direction (a slot with MORE leading components than the row
+      names a different owner), so these rows are the only thing that
+      classifies defusedcsv's writes.
   - module: defusedcsv.csv.DictWriter
     methods: [writerow, writerows, writeheader]
     notes: >-
