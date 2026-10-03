@@ -1,0 +1,22 @@
+- op: create  # 3106
+  at: '2026-10-03T17:33:37Z'  # 3106
+  by: agent  # 3106
+  actor: jgstern_agent  # 3106
+  clock: 1  # 3106
+  nonce: '3106'  # 3106
+  data:  # 3106
+    kind: work_item  # 3106
+    title: "scala Process.apply / Process is rowed fs_write (simultaneous) but only RETURNS a ProcessBuilder -- and io_boundary.py's IoPrimitive docstring uses this row as its canonical example of a simultaneous crossing"  # 3106
+    status: todo_hard  # 3106
+    priority: 3  # 3106
+    parent:  # 3106
+    tags:  # 3106
+    - catalogue  # 3106
+    - io_boundary  # 3106
+    - scala  # 3106
+    isbefore: []  # 3106
+    duplicate_of: []  # 3106
+    not_duplicate_of: []  # 3106
+    pr_ref:  # 3106
+    description: "Found by the WI-vafad tranche 3 sweep (docs/audits/0022, candidate T3-A2). Both blind MIX2 workers reached it independently, and the verifier verified it in source.\n\nTHE ROW. scala.yaml:157-170 declares `scala.sys.process.Process` [apply, Process] (+ methods [run]) under fs_write with `simultaneous: true`, note \"Scala process execution (can write to filesystem via shell commands)\". Every `apply` overload RETURNS A ProcessBuilder (Process.scala:57-102: \"Returns a [[scala.sys.process.ProcessBuilder]] ...\"), and nothing launches until run / ! / !!. The call writes no file. Even after a launch, files the child writes fall under the subprocess boundary's OPACITY (subprocess withholds a clean verdict on every boundary); they are not an fs_write crossing at this call site.\n\nALSO WRONG, AND MORE VISIBLE: io_boundary.py's IoPrimitive docstring (the `simultaneous` attribute) uses this exact row as its CANONICAL EXAMPLE of SIMULTANEOUSLY TRUE: \"scala.sys.process.Process.apply both launches a program and (through it) writes files\". The example's premise is false on both counts, since apply neither launches nor writes. The docstring needs a true example; scala.yaml's own ProcessBuilder.lineStream / lazyLines (launch + transfer, INV-lozat) is one.\n\nNOT IN THIS ITEM: the subprocess half of the same row. A builder rowed subprocess is INV-dukam's Command half in scala. go.yaml:396-403 keeps os/exec Command under subprocess because its arguments are the only carrier of argv, so moving it needs taint through the builder receiver first (ADR-0049 ruling 3, WI-kozaj). That note is on INV-dukam.\n\nFIX OBLIGATION: removing an fs_write row removes a SINK. Run ADR-0049 ruling 3 at the finding level, both arms cold. An fs claim currently VIOLATED through Process(...) should become WITHHELD by subprocess opacity, NOT confirmed. Measure that, do not assume it. Never pin a removal."  # 3106
+    fields: {}  # 3106
