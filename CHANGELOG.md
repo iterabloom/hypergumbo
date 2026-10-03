@@ -111,6 +111,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Tooling and release
 
+- **The catalogue scope gate gives the same verdict on every supported Python.** It judged "standard library" by the interpreter running the test, so python.yaml's `tomllib` row (standard library since 3.11) failed the nightly 3.10 leg. A module now passes if it is standard library on any of 3.10–3.13, from a pinned table that each nightly leg checks against its own interpreter.
 - **`auto-pr --tracker-id` no longer stalls 15 minutes after a merge**: the pending gate is released before the tracker write.
 - **The mypy strict surface shrinks 666 → 503**, with no behaviour change.
 - **`measure-taint-precision.py packet` lists each sink site once**, and its bash listings follow `bash.py`.

@@ -643,6 +643,34 @@ def _candidates(name: str, qualified: bool) -> list[str]:
     return ["".join(parts[:i]) for i in range(len(parts), 0, -2)]
 
 
+#: WI-jojuz. Public top-level CPython modules whose standard-library membership
+#: DIFFERS across the supported interpreters, as ``name: (since, until)``: the
+#: first and last minor version in which the module IS standard library (None
+#: = before 3.10 / still present). Taken from ``Python/stdlib_module_names.h``
+#: on the CPython 3.10, 3.11, 3.12 and 3.13 branches (2026-10-02); private
+#: ``_``-modules omitted. ``test_the_stdlib_windows_match_the_running_interpreter``
+#: re-checks every window on each nightly leg.
+PYTHON_STDLIB_VERSION_WINDOWS: dict[
+    str, tuple[tuple[int, int] | None, tuple[int, int] | None]
+] = {
+    "tomllib": ((3, 11), None),  # PEP 680
+    "binhex": (None, (3, 10)),
+    # Removed in 3.12 (distutils: PEP 632; asynchat/asyncore/smtpd: PEP 594).
+    **dict.fromkeys(
+        ("asynchat", "asyncore", "distutils", "imp", "smtpd"), (None, (3, 11)),
+    ),
+    # Removed in 3.13 (PEP 594, plus lib2to3).
+    **dict.fromkeys(
+        (
+            "aifc", "audioop", "cgi", "cgitb", "chunk", "crypt", "imghdr",
+            "lib2to3", "mailcap", "msilib", "nis", "nntplib", "ossaudiodev",
+            "pipes", "sndhdr", "spwd", "sunau", "telnetlib", "uu", "xdrlib",
+        ),
+        (None, (3, 12)),
+    ),
+}
+
+
 def _admitted(language: str, name: str, qualified: bool) -> bool:
     language = SCOPE_ALIASES.get(language, language)
     scope = CATALOGUE_SCOPE.get(language)
@@ -654,9 +682,14 @@ def _admitted(language: str, name: str, qualified: bool) -> bool:
             if scope is not None and scope.admits(spelling, CATALOGUE_SCOPE):
                 return True
             # CPython answers this one itself: the interpreter's own list of
-            # its standard-library top-level modules.
-            if language == "python" and spelling.split(".")[0] in \
-                    sys.stdlib_module_names:
+            # its standard-library top-level modules, widened to every
+            # SUPPORTED interpreter (WI-jojuz). The running one alone made the
+            # verdict depend on which Python ran the test.
+            top = spelling.split(".")[0]
+            if language == "python" and (
+                top in sys.stdlib_module_names
+                or top in PYTHON_STDLIB_VERSION_WINDOWS
+            ):
                 return True
     return False
 
@@ -782,8 +815,70 @@ def test_a_builtin_file_names_only_the_standard_library(
         f"{strays}\n\nHOW TO FIX. Move third-party rows to a file declaring "
         f"`provenance: community` with a `retrieved:` date (ADR-0061). If a "
         f"spelling IS the standard library, add it to CATALOGUE_SCOPE (or "
-        f"SHORT_SPELLINGS, for an abbreviation) in this file with the reason."
+        f"SHORT_SPELLINGS, for an abbreviation) in this file with the reason. "
+        f"A Python module that is standard library on only SOME supported "
+        f"interpreters belongs in PYTHON_STDLIB_VERSION_WINDOWS."
     )
+
+
+#: The interpreters the nightly matrix runs (.woodpecker/nightly.yml).
+SUPPORTED_PYTHONS: tuple[tuple[int, int], ...] = ((3, 10), (3, 11), (3, 12), (3, 13))
+
+
+def _simulated_stdlib(version: tuple[int, int]) -> frozenset[str]:
+    """The running interpreter's top-level stdlib list, moved to ``version``
+    along the pinned windows."""
+    base = set(sys.stdlib_module_names) - set(PYTHON_STDLIB_VERSION_WINDOWS)
+    return frozenset(base | {
+        name for name, (since, until) in PYTHON_STDLIB_VERSION_WINDOWS.items()
+        if (since is None or since <= version)
+        and (until is None or version <= until)
+    })
+
+
+@pytest.mark.parametrize(
+    "version", SUPPORTED_PYTHONS, ids=lambda v: f"{v[0]}.{v[1]}",
+)
+def test_the_builtin_verdict_does_not_depend_on_the_interpreter(
+    version: tuple[int, int], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WI-jojuz: the standard-library line is the one hypergumbo SUPPORTS, not
+    the one the test happens to run under. Judged by the running interpreter
+    alone, python.yaml's ``tomllib`` row (stdlib since 3.11) failed the nightly
+    3.10 leg, and a module removed in 3.12/3.13 would fail the later legs."""
+    monkeypatch.setattr(sys, "stdlib_module_names", _simulated_stdlib(version))
+    strays = sorted({
+        f"{path.name}: {lang}: {name}"
+        for family, path in SHIPPED_FILES
+        if family != "frameworks" and _data(path).get("provenance") == "builtin"
+        for lang, name, qualified in _spellings(family, path)
+        if not _admitted(lang, name, qualified)
+    })
+    assert strays == [], strays
+
+
+def test_the_stdlib_windows_match_the_running_interpreter() -> None:
+    """The pinned windows are a claim about CPython; every nightly leg checks
+    it against the interpreter it runs, so a wrong window fails somewhere."""
+    here = sys.version_info[:2]
+    wrong = sorted(
+        name for name, (since, until) in PYTHON_STDLIB_VERSION_WINDOWS.items()
+        if (name in sys.stdlib_module_names) != (
+            (since is None or since <= here) and (until is None or here <= until)
+        )
+    )
+    assert wrong == [], (
+        f"PYTHON_STDLIB_VERSION_WINDOWS disagrees with Python "
+        f"{here[0]}.{here[1]} for {wrong}"
+    )
+
+
+def test_a_module_outside_every_supported_stdlib_is_still_refused() -> None:
+    """Controls: a third-party module, and one removed BEFORE 3.10."""
+    assert not _admitted("python", "requests.get", True)
+    assert not _admitted("python", "formatter.AbstractFormatter", True)
+    assert _admitted("python", "tomllib.load", True)
+    assert _admitted("python", "distutils.spawn.spawn", True)
 
 
 def test_every_builtin_framework_entry_names_a_builtin_file() -> None:
