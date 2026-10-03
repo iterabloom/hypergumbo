@@ -18,6 +18,11 @@ This test greps every workflow for a shell line that starts with the bare
 ``hypergumbo`` command (e.g. ``hypergumbo run .``) and fails if any exist, so
 the class of regression cannot silently reappear in a periodic-only job that
 push CI never exercises.
+
+It scans BOTH the live pipelines (``.woodpecker/``) and the dormant GitHub
+workflows. Until INV-hokin it scanned only ``.github/workflows/`` while its
+``covers:`` line named ``.woodpecker/*.yml``, and its positive lock read the
+dormant GitHub full-suite: the live self-tree step was pinned by nothing.
 """
 
 # covers: .woodpecker/*.yml, .github/workflows/*.yml
@@ -27,26 +32,40 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
+WOODPECKER_DIR = REPO_ROOT / ".woodpecker"
 
 # A shell command line whose FIRST token is the bare `hypergumbo` console
-# command followed by a subcommand/flag. `^\s*hypergumbo\s+\S` matches
-# `hypergumbo run .` but NOT:
+# command followed by a subcommand/flag, optionally as a YAML list item
+# (`- hypergumbo run .`: the form every Woodpecker `commands:` entry takes; a
+# pattern without the `- ` arm reads every one of them as clean). It matches
+# `hypergumbo run .` and `- hypergumbo run .` but NOT:
 #   - `python -m hypergumbo_core run .`  (line starts with `python`)
 #   - `hypergumbo-core` / `hypergumbo_core`  (no whitespace after `hypergumbo`)
 #   - `# runs hypergumbo against …`  (comment line starts with `#`)
 #   - `pip install -e packages/hypergumbo`  (line starts with `pip`)
-_BARE_HYPERGUMBO_CMD = re.compile(r"^\s*hypergumbo\s+\S", re.MULTILINE)
+_BARE_HYPERGUMBO_CMD = re.compile(r"^\s*(?:-\s+)?hypergumbo\s+\S", re.MULTILINE)
 
 
 def _workflow_files() -> list[Path]:
-    return sorted(WORKFLOWS_DIR.glob("*.yml")) + sorted(WORKFLOWS_DIR.glob("*.yaml"))
+    return [
+        f for d in (WOODPECKER_DIR, WORKFLOWS_DIR)
+        for f in sorted(d.glob("*.yml")) + sorted(d.glob("*.yaml"))
+    ]
 
 
 def test_workflows_dir_exists_and_nonempty() -> None:
-    """Sanity: the guard has workflows to scan."""
-    assert _workflow_files(), f"no workflow files under {WORKFLOWS_DIR}"
+    """Sanity: the guard has workflows to scan -- the LIVE ones included."""
+    files = _workflow_files()
+    assert WOODPECKER_DIR / "full-suite.yml" in files, (
+        f"the live cron pipeline is not among the scanned files: {files}"
+    )
+    assert any(f.parent == WORKFLOWS_DIR for f in files), (
+        f"no workflow files under {WORKFLOWS_DIR}"
+    )
 
 
 def test_no_workflow_invokes_bare_hypergumbo_command() -> None:
@@ -57,7 +76,7 @@ def test_no_workflow_invokes_bare_hypergumbo_command() -> None:
         for m in _BARE_HYPERGUMBO_CMD.finditer(text):
             line = text[m.start():text.find("\n", m.start())].strip()
             line_no = text.count("\n", 0, m.start()) + 1
-            offenders.append(f"{wf.name}:{line_no}: {line}")
+            offenders.append(f"{wf.relative_to(REPO_ROOT)}:{line_no}: {line}")
     assert not offenders, (
         "CI jobs must invoke the CLI via `python -m hypergumbo_core` (the bare "
         "`hypergumbo` console script is unavailable — the meta-package is never "
@@ -66,11 +85,15 @@ def test_no_workflow_invokes_bare_hypergumbo_command() -> None:
 
 
 def test_self_tree_validation_uses_module_invocation() -> None:
-    """Positive lock: the WI-jigup self-tree job uses `python -m hypergumbo_core`."""
-    full_suite = WORKFLOWS_DIR / "full-suite.yml"
-    text = full_suite.read_text()
-    assert "Self-tree validation ratchet" in text, "WI-jigup job missing"
-    assert "python -m hypergumbo_core run ." in text, (
+    """Positive lock: the LIVE WI-jigup self-tree step uses
+    `python -m hypergumbo_core` (its install set has no meta-package)."""
+    steps = {
+        s["name"]: s
+        for s in yaml.safe_load((WOODPECKER_DIR / "full-suite.yml").read_text())["steps"]
+    }
+    assert "self-tree-validation" in steps, "WI-jigup step missing from the live cron"
+    commands = steps["self-tree-validation"].get("commands") or []
+    assert any(c.startswith("python -m hypergumbo_core run .") for c in commands), (
         "self-tree-validation must generate its behavior map via "
-        "`python -m hypergumbo_core run .`"
+        f"`python -m hypergumbo_core run .`; commands: {commands}"
     )
