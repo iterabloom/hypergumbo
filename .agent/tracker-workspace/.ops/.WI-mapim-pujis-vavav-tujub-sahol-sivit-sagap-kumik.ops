@@ -1,0 +1,24 @@
+- op: create  # cd4e
+  at: '2026-10-03T17:42:02Z'  # cd4e
+  by: agent  # cd4e
+  actor: jgstern_agent  # cd4e
+  clock: 1  # cd4e
+  nonce: cd4e  # cd4e
+  data:  # cd4e
+    kind: work_item  # cd4e
+    title: "ADR-0049 has no disclosure value for a client-initiated, callback-delivered receive: the NSURLSession / URLSession task factories are deferred crossings held under net_recv"  # cd4e
+    status: todo_hard  # cd4e
+    priority: 3  # cd4e
+    parent:  # cd4e
+    tags:  # cd4e
+    - adr_0049  # cd4e
+    - catalogue  # cd4e
+    - io_boundary  # cd4e
+    - objc  # cd4e
+    - swift  # cd4e
+    isbefore: []  # cd4e
+    duplicate_of: []  # cd4e
+    not_duplicate_of: []  # cd4e
+    pr_ref:  # cd4e
+    description: "FOUND by WI-tunog (2026-10-03), the ADR-0049 Lazy-row parity sweep.\n\nSTATEMENT. The NSURLSession task factories (objc `dataTaskWithURL:[completionHandler:]`, `downloadTaskWithURL:...`, `downloadTaskWithRequest:...`, `downloadTaskWithResumeData:completionHandler:`; swift `URLSession.downloadTask`) are deferred crossings under ADR-0049 ruling 1 and are held under `net_recv` because ADR-0049 has no disclosure value for them.\n\nPRIMARY SOURCE (developer.apple.com, foundation/urlsession, each task method's page): \"After you create the task, you must start it by calling its resume() method\"; URLSessionTask.resume: \"Newly-initialized tasks begin in a suspended state\"; with a completion handler \"the task bypasses calls to delegate methods for response and data delivery, and instead provides any resulting NSData, URLResponse, and NSError objects inside the completion handler\". So the call crosses nothing and the response arrives in a block or a delegate method: the Lazy and the Callback-delivered shape at once.\n\nWHY NOT net_listen: its declared meaning (io_boundary_types.py) is \"Bind or accept\", the server side. Filing a client request there gives one value two readings, the error ruling 4 warns against (INV-tutar's env_read split). db_compose is the database twin. No third value exists.\n\nWHY NOT MINT AT THE ARRIVAL: neither the completion block's parameters nor `URLSession:dataTask:didReceiveData:` / `URLSession:downloadTask:didFinishDownloadingToURL:` is a taint source. ADR-0049 Consequences says arrival-scope seeding is a code change it does not authorise.\n\nMEASURED (WI-tunog, two arms, the second a counterfactual overlay moving the seven objc rows to net_listen):\n  * fixture (objc, completion-handler and delegate forms): rows fire (3 net_recv chains); no taint finding rests on them in either arm, because the data is a block parameter the task's return value never reaches. All claims inconclusive in both arms (NSURLSessionDataTask.resume unclassified).\n  * AFNetworking: arm A net_recv 2 chains (dataTaskWithURL:, downloadTaskWithRequest:), total_io_edges 27; arm B net_recv 0, net_listen 2, total_io_edges 25. All 7 generic claims inconclusive in both arms; 0 evidence rows in either. So the move changes no verdict here and relabels an HTTP client as a listener.\n\nALSO OBSERVED, NOT ADJUDICATED: the send/receive split across these factories follows the selector, not the mechanism -- objc `dataTaskWithURL:*` is net_recv only, `dataTaskWithRequest:*` is net_send only (its note says \"Dual-classified with net_recv\", but no net_recv row exists for it); swift `dataTask` is net_send only, `downloadTask` net_recv only. The send also happens at resume, not at the factory.\n\nDECISION NEEDED: a disclosure value for a client-initiated, callback-delivered receive (or arrival seeding at the completion handler), before these rows can move under ruling 3."  # cd4e
+    fields: {}  # cd4e

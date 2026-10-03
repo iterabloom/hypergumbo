@@ -1,0 +1,22 @@
+- op: create  # 61df
+  at: '2026-10-03T17:42:08Z'  # 61df
+  by: agent  # 61df
+  actor: jgstern_agent  # 61df
+  clock: 1  # 61df
+  nonce: 61df  # 61df
+  data:  # 61df
+    kind: work_item  # 61df
+    title: "rust: the loop variable over TcpListener.incoming() is typed TcpStream, not io::Result<TcpStream>, so stream.unwrap() leaves the connection untyped and TcpStream.read* never fires in the std accept loop"  # 61df
+    status: todo_hard  # 61df
+    priority: 3  # 61df
+    parent:  # 61df
+    tags:  # 61df
+    - adr_0049  # 61df
+    - rust  # 61df
+    - receiver_typing  # 61df
+    isbefore: []  # 61df
+    duplicate_of: []  # 61df
+    not_duplicate_of: []  # 61df
+    pr_ref:  # 61df
+    description: "FOUND by WI-tunog (2026-10-03), the ADR-0049 Lazy-row parity sweep.\n\nSTATEMENT. In the std accept loop `for stream in listener.incoming() { let mut s = stream.unwrap(); s.read_to_end(&mut buf) }`, the read of the yielded connection never reaches the `std::net::TcpStream` net_recv rows: the loop variable is typed `std::net::TcpStream` (the Incoming iterator's Item is `io::Result<TcpStream>`), so `.unwrap()` is attributed to `std::net::TcpStream.unwrap` (external_potential), and `s` is then untyped.\n\nREPRO (live, origin/dev fe3c32259d, tree-sitter backend): the fixture in packages/hypergumbo-core/tests/test_lazy_row_parity.py (`_INCOMING`). io-boundaries: external_potential {std::net::TcpListener.bind: 1, std::net::TcpStream.unwrap: 1}; net_recv {std::net::TcpListener.incoming: 1}; no TcpStream.read_to_end chain.\n\nWHY IT MATTERS FOR ADR-0049: `incoming` is a deferred crossing (std/src/net/tcp.rs: `Incoming { listener: self }`; next() is `self.listener.accept().map(|p| p.0)`). Ruling 3 holds it under net_recv because the incoming mint is the only source of the in-scope read; with the yielded connection typed through `unwrap()` / `?`, the executing read (TcpStream.read*) would carry it and `incoming` could move to net_listen. test_lazy_row_parity.py::TestTheIncomingRow pins this and goes red when that happens.\n\nNOT CHECKED: the rust-analyzer backend (installed on this host, not used by default); `?` instead of `unwrap()`; `match stream { Ok(s) => ... }`."  # 61df
+    fields: {}  # 61df
