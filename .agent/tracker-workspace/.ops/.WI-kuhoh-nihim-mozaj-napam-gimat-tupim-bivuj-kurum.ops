@@ -1,0 +1,21 @@
+- op: create  # f82b
+  at: '2026-10-03T10:46:01Z'  # f82b
+  by: agent  # f82b
+  actor: jgstern_agent  # f82b
+  clock: 1  # f82b
+  nonce: f82b  # f82b
+  data:  # f82b
+    kind: work_item  # f82b
+    title: "One axis per meta key, but 32 keys are written on both Symbol.meta and Edge.meta (route_path baselined), and call_type / method carry unrelated meanings per producer"  # f82b
+    status: todo_hard  # f82b
+    priority: 3  # f82b
+    parent:  # f82b
+    tags:  # f82b
+    - axis  # f82b
+    - analysis_quality  # f82b
+    isbefore: []  # f82b
+    duplicate_of: []  # f82b
+    not_duplicate_of: []  # f82b
+    pr_ref:  # f82b
+    description: "Found by WI-lijaz-tazom-guguj-vukas-puzat-sozuh-hupab-pakin (branch jgstern-agent/fix/lijaz). MetaKeySpec carries ONE axis per key name and axis_meta_keys says \"the registry therefore declares each key on exactly one axis\", but producers write the same key name on both records:\n\n- 31 keys passed to Symbol(meta=...) are registered only on edge_meta: binding, call_kind, call_type, channel, channel_identifier, channel_type, event, event_identifier, event_name, event_type, executable, field_name, handler_ref, import_type, is_python_m, namespace, operation_id, operation_name, operation_type, package, query_type, queue_type, subcommand, target_path, topic, topic_identifier, topic_type, type_name, url_path, url_type, visibility. Many are linker site symbols carrying the same fact the linker later puts on the edge.\n- On the Edge side, route_path (openapi.py) is registered on symbol_meta and is the one key in the \"Edge.meta key\" ratchet baseline (.ci/producer-axis-coherence-baseline.json). http_method is written on http edges (http.py, post-hoc) and registered on symbol_meta; the gate's post-hoc arm only requires SOME axis, so it does not flag it.\n- Two keys carry unrelated meanings from different producers (ADR-0024 axis-leakage): call_type (subprocess_cli literal|variable, otp call|cast, cobol perform|call) and method (openapi HTTP verb, ipc contextBridge method name). Both registered with descriptions that say so.\n\nDecision needed (owner / ADR-0024): key the registry by (name, axis) so a key may be declared on both records with a description each; or rename one side; or treat the symbol-side copy as an endpoint property (ADR-0024 fold-residue rule 1) and drop it from the edge. Until decided, route_path stays baselined and the Symbol.meta gate (separate residual) cannot register these 31."  # f82b
+    fields: {}  # f82b
