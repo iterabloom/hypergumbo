@@ -114,11 +114,16 @@ class TestTheBindingIsChecked:
 
 class TestAnyRowWorksNotOnlyCsv:
     """The mechanism is the row, not the call: a user row for a producer this
-    file names nowhere else types its receiver, and removing it untypes it."""
+    file names nowhere else types its receiver, and removing it untypes it.
+
+    The producer is a name NO shipped row will ever carry. It used to be
+    ``urllib.request.build_opener``, until WI-dibit shipped that row built-in
+    and the control below went red: a control keyed to a real library name
+    tests the catalogue's contents, not the user channel."""
 
     _SOURCE = (
-        "import urllib.request\n\n\ndef f(url, data):\n"
-        "    opener = urllib.request.build_opener()\n"
+        "import acme_unrowed.net\n\n\ndef f(url, data):\n"
+        "    opener = acme_unrowed.net.make_opener()\n"
         "    opener.open(url, data)\n"
     )
 
@@ -137,9 +142,9 @@ class TestAnyRowWorksNotOnlyCsv:
         slots = self._with_user_row(
             tmp_path, monkeypatch,
             "language: python\nsignatures:\n"
-            "  urllib.request.build_opener: urllib.request.OpenerDirector\n",
+            "  acme_unrowed.net.make_opener: acme_unrowed.net.Opener\n",
         )
-        assert slots == {"urllib.request.OpenerDirector"}, slots
+        assert slots == {"acme_unrowed.net.Opener"}, slots
 
     def test_control_without_the_row_the_receiver_is_untyped(
         self, tmp_path, monkeypatch,
@@ -148,7 +153,7 @@ class TestAnyRowWorksNotOnlyCsv:
             tmp_path, monkeypatch, "language: python\nsignatures:\n  x.y: x.Z\n",
         )
         assert slots, "reach"
-        assert "urllib.request.OpenerDirector" not in slots, slots
+        assert "acme_unrowed.net.Opener" not in slots, slots
 
     def test_a_member_row_types_a_call_written_on_the_class(
         self, tmp_path: Path,
