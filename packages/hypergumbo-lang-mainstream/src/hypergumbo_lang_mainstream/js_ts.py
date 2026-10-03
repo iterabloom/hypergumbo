@@ -79,7 +79,9 @@ Call-Site Resolution
   catalogue); a ``<mod>.promises`` chain; an inline ``new X().m()``; then a
   low-confidence method-name match. A non-``this`` receiver none of these
   type still gets an unresolved edge to the ``external`` placeholder with
-  ``call_construct="method"``.
+  ``call_construct="method"``. A computed key spelled by a literal
+  (``ws['send'](x)``) runs the same cascade; any other key (``obj[k](x)``)
+  emits that placeholder named ``<computed>`` (WI-vipos).
 - **INV-fahub deferral** (``defer_bare_method_call``): a bare ``foo()`` or
   untyped ``obj.m()`` whose only match is a weak short-name hit on a
   DIFFERENT class's method is not bound; an unresolved edge stamped with the
@@ -5042,6 +5044,36 @@ def _mark_exported_symbols(
         sym.is_exported = short in exported_names and "." not in sym.name
 
 
+_JS_IDENTIFIER_RE = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
+
+#: WI-vipos. The name slot of a call through a computed property whose key no
+#: literal spells (``obj[k](x)``). Never a valid identifier, so it can never
+#: collide with a real method name.
+JS_COMPUTED_CALLEE = "<computed>"
+
+
+def _literal_property_key(
+    index: "tree_sitter.Node | None", source: bytes,
+) -> str | None:
+    """The property a computed member names, when a LITERAL spells it.
+
+    WI-vipos. ``ws['send']`` / ``ws["send"]`` / ``ws[`send`]`` name ``send``
+    exactly as ``ws.send`` does. A key built at run time (``ws[k]``,
+    ``ws['se' + k]``, a template with a substitution) names nothing, and
+    neither does a literal that is not an identifier (``o['a-b']``): such a
+    key cannot be a catalogue row, and a ``:`` in it would corrupt the
+    colon-delimited edge id.
+    """
+    if index is None:  # pragma: no cover - the grammar always sets ``index``
+        return None
+    if index.type not in ("string", "template_string"):
+        return None
+    if any(c.type == "template_substitution" for c in index.named_children):
+        return None
+    key = _node_text(index, source)[1:-1]
+    return key if _JS_IDENTIFIER_RE.match(key) else None
+
+
 #: WI-sofuh. What a bare identifier is bound to, read off the scopes that
 #: enclose it. ``symbol``: a declaration in this file that minted a Symbol (a
 #: function, class, function-valued declarator or module-level variable).
@@ -5700,7 +5732,8 @@ def _extract_edges(
             for child in node.children:
                 if child.type == "identifier":
                     func_node = child
-                elif child.type == "member_expression":
+                elif child.type in ("member_expression", "subscript_expression"):
+                    # WI-vipos: ``obj['m'](x)`` is a member call too.
                     func_node = child
                 elif child.type == "arguments":
                     args_node = child
@@ -6013,13 +6046,16 @@ def _extract_edges(
                                                 var_types[_node_text(pc, source)] = ret_name
                                                 break
 
-            # Method calls: obj.method()
-            if func_node and func_node.type == "member_expression":
+            # Method calls: obj.method(), and obj['method']() (WI-vipos)
+            if func_node and func_node.type in (
+                "member_expression", "subscript_expression",
+            ):
                 current_function = _get_enclosing_function(node, source, file_path, global_symbols, symbol_by_position, line_offset) or module_symbol
                 if current_function:
                     method_name = None
                     obj_node = None
-                    for child in func_node.children:
+                    _computed = func_node.type == "subscript_expression"
+                    for child in () if _computed else func_node.children:
                         if child.type == "property_identifier":
                             method_name = _node_text(child, source)
                         elif child.is_named and child.type not in (
@@ -6033,6 +6069,25 @@ def _extract_edges(
                             # the branches below type what they can and the
                             # terminal placeholder emits for the rest.
                             obj_node = child
+                    if _computed:
+                        # WI-vipos: a computed-property call emitted NOTHING --
+                        # this cascade keyed on ``member_expression`` alone. A
+                        # literal key IS the dotted call and runs the same
+                        # cascade; any other key still records the call, on
+                        # the ``external`` placeholder with the method
+                        # construct, which both catalogue gates refuse
+                        # without a module.
+                        obj_node = func_node.child_by_field_name("object")
+                        method_name = _literal_property_key(
+                            func_node.child_by_field_name("index"), source,
+                        )
+                        if method_name is None:
+                            edges.append(make_unresolved_edge(
+                                lang, current_function.id, JS_COMPUTED_CALLEE,
+                                node.start_point[0] + 1 + line_offset,
+                                PASS_ID, run.execution_id,
+                                call_construct="method",
+                            ))
 
                     if method_name:
                         is_this_call = obj_node and obj_node.type == "this"
