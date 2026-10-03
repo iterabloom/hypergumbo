@@ -453,6 +453,15 @@ fs_write:
   - module: csv
     functions: [writer]
     notes: "csv.writer wraps a file object for writing"
+  - module: csv.DictWriter
+    methods: [writerow, writerows, writeheader]
+    notes: >-
+      WI-kozaj. Writes INTO a file object the caller opened (the json.dump
+      precedent): writerow / writerows carry the row data, writeheader the
+      field names. Called on an instance, so methods (ADR-0059). The instance
+      is typed by the PascalCase construction itself, so no signature row is
+      needed. DictReader / reader read a caller-opened object and stay
+      unrowed (tomllib's rule).
   - module: file
     methods: [write, writelines]
     notes: |
@@ -1616,7 +1625,15 @@ module_completeness:
   - module: csv
     completeness: complete
     retrieved: "2026-08-15"
-    notes: reader/writer wrap objects the caller opened; csv opens nothing.
+    notes: >-
+      reader/writer wrap objects the caller opened; csv opens nothing.
+      WI-kozaj enumerated the public surface (python 3.12): writer is rowed
+      fs_write; reader, DictReader (reads of a caller-opened object),
+      Sniffer, Dialect, excel / excel_tab / unix_dialect, register_dialect /
+      unregister_dialect / get_dialect / list_dialects, field_size_limit and
+      Error do no I/O, and the DictWriter constructor stores its arguments.
+      This entry covers the csv SLOT only: the DictWriter write surface lives
+      at its own slot (csv.DictWriter, rowed fs_write).
   - module: gc
     completeness: complete
     retrieved: "2026-08-15"

@@ -386,6 +386,9 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             # disagree with the predicate it exists to police.
             "subprocess.Popen", "tarfile.TarFile", "typing.TextIO",
             "zipfile.ZipFile",
+            # WI-kozaj: the csv write surface. `csv.DictWriter` is a class in
+            # CPython's Lib/csv.py; its module `csv` is admitted above.
+            "csv.DictWriter",
         }),
     ),
     "rust": Scope(
