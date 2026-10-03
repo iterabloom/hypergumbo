@@ -27,6 +27,11 @@ How It Works
    (``{lang}:external:0-0:{name}:unresolved``), which is INV-nuzas-safe by
    construction. A name-based dedup lets this coexist with the per-analyzer
    fallbacks without double-emitting. See ``_external_base_edge``.
+   A base an analyzer already classified as external THROUGH THE FILE'S
+   IMPORTS (an unresolved edge with an ``ExternalRef``) is not looked up in
+   the tree at all: this linker has no import context, and retrying such a
+   base's last segment bound Python's ``unittest.TestCase`` to Django's own
+   ``TestCase`` (WI-ratid).
 5. Also emits ``includes`` edges (evidence_type=ast_includes) from
    ``included_modules`` metadata for Ruby mixins (WI-hatip), resolving module
    names via a dedicated module-name map
@@ -293,6 +298,18 @@ def _edge_target_base_name(edge: Edge, symbol_by_id: dict[str, Symbol]) -> str |
     return None
 
 
+def _canonical_base_name(base_name: str) -> tuple[str, bool]:
+    """``(last segment, is_qualified)`` of a raw ``base_classes`` entry.
+
+    Strips generics of both grammars (``Foo<T>`` and Python ``Foo[T]``), then
+    takes the last dotted/scoped segment: ``unittest.TestCase`` ->
+    ``("TestCase", True)``, ``Generic[T]`` -> ``("Generic", False)``.
+    """
+    stripped = base_name.split("<")[0].split("[")[0]
+    is_qualified = ("." in stripped) or ("::" in stripped)
+    return re.split(r"::|\.", stripped)[-1], is_qualified
+
+
 def _external_base_edge(
     sym: Symbol,
     base_name: str,
@@ -337,11 +354,7 @@ def _external_base_edge(
     implements-vs-extends without a resolved target, so they default to
     ``extends`` (matching the merged py.py fallback).
     """
-    # Strip generics of both grammars (``Foo<T>`` and Python ``Foo[T]``), then
-    # take the last dotted/scoped segment as the canonical name.
-    stripped = base_name.split("<")[0].split("[")[0]
-    is_qualified = ("." in stripped) or ("::" in stripped)
-    canonical = re.split(r"::|\.", stripped)[-1]
+    canonical, is_qualified = _canonical_base_name(base_name)
 
     if not _CLEAN_IDENT.fullmatch(canonical):
         return None
@@ -388,6 +401,9 @@ def _create_inheritance_edges(
       ``_external_base_edge`` for the guards
     - If an analyzer already connected the pair (extends OR implements) ->
       skip: one relation, one edge
+    - If an analyzer already classified the base as external through the
+      file's imports (an unresolved edge with an ``ExternalRef`` of the same
+      name) -> skip: no in-tree lookup by name (WI-ratid)
 
     Uses ``resolve_target_symbol`` to disambiguate when multiple classes or
     interfaces share the same name.
@@ -427,6 +443,16 @@ def _create_inheritance_edges(
     # bases to that analyzer (which resolves aliases the chokepoint can't) and
     # only adds the dotted/qualified bases the analyzer left behind.
     srcs_with_analyzer_external: set[str] = set()
+    # WI-ratid: (source, base name) pairs an analyzer already classified as an
+    # EXTERNAL base THROUGH THE FILE'S IMPORTS -- an unresolved edge carrying an
+    # ``ExternalRef``. This linker has no import context, so it must not then
+    # bind that base to an in-tree class that merely shares its last segment:
+    # py.py classifies ``unittest.TestCase`` as external, and binding it to
+    # Django's own ``TestCase`` closed an inheritance cycle that disabled every
+    # MRO walk under Django's test hierarchy. js_ts emits such an edge only
+    # after its own name lookup found no in-tree class or interface, so this
+    # lookup would find none either (read in js_ts.py, not measured).
+    analyzer_external_bases: set[tuple[str, str]] = set()
     for e in existing_edges:
         if e.edge_type in ("extends", "implements"):
             name = _edge_target_base_name(e, symbol_by_id)
@@ -434,6 +460,8 @@ def _create_inheritance_edges(
                 seen_base_names_by_src.setdefault(e.src, set()).add(name)
             if not e.is_resolved:
                 srcs_with_analyzer_external.add(e.src)
+                if e.dst_ref is not None:
+                    analyzer_external_bases.add((e.src, e.dst_ref.name))
 
     edges: list[Edge] = []
     # WI-kalug: an abstract type inherits from an abstract base; it does not
@@ -449,6 +477,11 @@ def _create_inheritance_edges(
             continue
 
         for base_class_name in base_classes:
+            if (
+                sym.id, _canonical_base_name(base_class_name)[0],
+            ) in analyzer_external_bases:
+                continue  # WI-ratid: the analyzer classified it, with imports.
+
             # Handle various naming patterns:
             # - Generic: List<int> -> List
             # - Qualified: Foo.Bar -> try Bar first, then Foo.Bar

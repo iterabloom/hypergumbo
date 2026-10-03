@@ -52,7 +52,10 @@ Detected Patterns
 - Function calls: helper(), module.func()
 - Method calls: self.method(), obj.method(), self.field.method()
 - Class instantiation: ClassName()
-- Inheritance: ``extends`` edges from a class to its bases
+- Inheritance: ``extends`` edges from a class to its bases. A base named
+  through an import of an out-of-tree module (``unittest.TestCase``, or a
+  bare ``TestCase`` from ``from unittest import TestCase``) is external,
+  never bound to an in-repo class sharing its last segment (WI-ratid)
 - Decorators: ``decorated_by`` edges from the decorated symbol to the decorator
 - Framework dispatch: ``dispatches_to`` edges for returned closures
   (``dispatch_kind="closure_factory"``) and Django ``@receiver`` signals
@@ -2737,6 +2740,7 @@ def _base_module_is_in_tree(
     module_path: str,
     submodule_name: str,
     intree_modules: frozenset[str],
+    intree_module_suffixes: frozenset[str] = frozenset(),
 ) -> bool:
     """Return True if ``module_path`` (or ``module_path.submodule_name``) names an
     in-tree module.
@@ -2749,14 +2753,27 @@ def _base_module_is_in_tree(
     The former is a suffix superset of the latter, so a suffix match catches a
     relative-imported in-tree base whose form otherwise would not equal any key.
 
+    ``intree_module_suffixes`` (every dotted suffix of every in-tree key, see
+    :func:`_module_key_suffixes`) adds the REVERSE direction: an import that is
+    a suffix of an in-tree key (``foo.bar`` against a key ``src.foo.bar`` when
+    the source root was not detected) is in-tree too. WI-ratid made this
+    predicate decide whether an import-bound base may bind to an in-repo class
+    at all, so a missed in-tree module now costs a resolved edge, not only a
+    dropped external one.
+
     Biases to True on any suffix hit by design: a false positive merely DROPS an
-    external ``extends`` edge (a small recall loss), whereas a false negative
+    external ``extends`` edge (a small recall loss), or leaves the base to the
+    name-based resolution it had before WI-ratid, whereas a false negative
     would mint a workspace-prefixed phantom ``external_symbol`` — an INV-nuzas
     regression, the failure mode this guard exists to prevent.
     """
     if module_path in intree_modules:
         return True
     if f"{module_path}.{submodule_name}" in intree_modules:
+        return True
+    if module_path in intree_module_suffixes:
+        return True
+    if f"{module_path}.{submodule_name}" in intree_module_suffixes:
         return True
     parts = module_path.split(".")
     for i in range(1, len(parts)):
@@ -2765,12 +2782,61 @@ def _base_module_is_in_tree(
     return False
 
 
+def _module_key_suffixes(intree_modules: frozenset[str]) -> frozenset[str]:
+    """Every dotted suffix of every in-tree module key (the key itself included).
+
+    ``pkg.sub.mod`` contributes ``pkg.sub.mod``, ``sub.mod`` and ``mod``. Feeds
+    the reverse-suffix arm of :func:`_base_module_is_in_tree`.
+    """
+    out: set[str] = set()
+    for key in intree_modules:
+        parts = key.split(".")
+        for i in range(len(parts)):
+            out.add(".".join(parts[i:]))
+    return frozenset(out)
+
+
+def _import_qualified_base(
+    base_name: str,
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+) -> tuple[str, str] | None:
+    """The ``(module, class name)`` a base expression names THROUGH AN IMPORT.
+
+    WI-ratid. The base expression's ROOT (``unittest`` in ``unittest.TestCase``,
+    ``TestCase`` in a bare ``TestCase``) is looked up in this file's import
+    bindings via :func:`_import_binding_for`; the rest of the dotted path is
+    appended to what it is bound to. So:
+
+    * ``import unittest`` + ``unittest.TestCase`` -> ``("unittest", "TestCase")``
+    * ``import unittest as ut`` + ``ut.TestCase`` -> ``("unittest", "TestCase")``
+    * ``from django.db import models`` + ``models.Model`` ->
+      ``("django.db.models", "Model")``
+    * ``from unittest import TestCase as UTC`` + ``UTC`` ->
+      ``("unittest", "TestCase")``
+
+    Returns ``None`` when the root is not import-bound (a builtin, a class of
+    this file, ``Outer.Inner``) or when the binding names a bare module with
+    no class segment (``import abc`` + ``class C(abc)``).
+    """
+    root, _, rest = base_name.partition(".")
+    bound = _import_binding_for(root, imports, module_imports)
+    if bound is None:
+        return None
+    qualified = f"{bound}.{rest}" if rest else bound
+    module, _, name = qualified.rpartition(".")
+    if not module:
+        return None
+    return module, name
+
+
 def _extract_inheritance_edges(
     symbols: list[Symbol],
     class_by_name: dict[str, list[Symbol]],
     sym_file_imports: dict[str, dict[str, tuple[str, str]]],
     run: AnalysisRun,
     module_to_file_id: dict[str, str],
+    sym_file_module_imports: dict[str, dict[str, str]],
 ) -> list[Edge]:
     """Extract extends edges from class inheritance.
 
@@ -2788,6 +2854,15 @@ def _extract_inheritance_edges(
     where 238 test stubs are named 'Model'), uses import-aware disambiguation
     via ``_resolve_base_class()`` to find the correct target.
 
+    A base named THROUGH AN IMPORT (bare ``TestCase`` from ``from unittest
+    import TestCase``, or dotted ``unittest.TestCase`` / ``models.Model``) is
+    first resolved through the file's import bindings
+    (``_import_qualified_base``). If the module it names is not in the tree, the
+    base is external -- a module-qualified unresolved edge with an
+    ``ExternalRef`` -- and is never bound to an in-repo class that merely shares
+    its last name segment (WI-ratid). The core inheritance linker does not
+    re-resolve a base this function classified that way.
+
     Args:
         symbols: All extracted symbols
         class_by_name: Multi-value lookup: class name -> list of Symbol candidates
@@ -2797,12 +2872,16 @@ def _extract_inheritance_edges(
         module_to_file_id: in-tree dotted module name -> file-anchor id; used to
             guard the external fallback so a not-yet-extracted IN-TREE base is
             dropped rather than minted as a workspace-prefixed phantom (INV-nuzas).
+        sym_file_module_imports: Maps symbol ID -> file-level ``import X [as Y]``
+            bindings (local alias -> module name); with ``sym_file_imports`` it
+            names the module a base expression's root is bound to.
 
     Returns:
         List of extends edges for inheritance relationships
     """
     edges: list[Edge] = []
     intree_modules = frozenset(module_to_file_id)
+    intree_module_suffixes = _module_key_suffixes(intree_modules)
 
     for sym in symbols:
         if sym.kind != "class":
@@ -2813,9 +2892,48 @@ def _extract_inheritance_edges(
             continue
 
         child_imports = sym_file_imports.get(sym.id, {})
+        child_module_imports = sym_file_module_imports.get(sym.id, {})
         for base_class_name in base_classes:
             # Strip generics from base class name (e.g., "Generic[T]" -> "Generic")
             base_name = base_class_name.split("[")[0]
+
+            # WI-ratid: a base named THROUGH AN IMPORT of an out-of-tree module
+            # is external, whatever in-repo class shares its last segment. The
+            # import is consulted FIRST: before this, a dotted base
+            # (``unittest.TestCase``) was deferred to the core linker, which
+            # bound its last segment to Django's own ``TestCase`` (an
+            # inheritance cycle that made the C3 walk refuse every Django test
+            # class), and a bare imported base bound the only in-repo class of
+            # that name because the import broke ties only. A root shadowed by
+            # another class of THIS file keeps the name-based resolution below
+            # (conservative: the shadow's position is not compared).
+            root_name = base_name.split(".", 1)[0]
+            root_shadowed = any(
+                c.path == sym.path and c.id != sym.id
+                for c in class_by_name.get(root_name, ())
+            )
+            imported_base = None if root_shadowed else _import_qualified_base(
+                base_name, child_imports, child_module_imports,
+            )
+            if imported_base is not None and not _base_module_is_in_tree(
+                imported_base[0], imported_base[1],
+                intree_modules, intree_module_suffixes,
+            ):
+                module_path, canonical = imported_base
+                edges.append(Edge.create(
+                    src=sym.id,
+                    dst=f"python:{module_path}:0-0:{canonical}:unresolved",
+                    edge_type="extends",
+                    line=sym.span.start_line if sym.span else 0,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_extends",
+                    is_resolved=False,
+                    dst_ref=ExternalRef(
+                        lang="python", module_path=module_path, name=canonical,
+                    ),
+                ))
+                continue
 
             # Resolve to the correct base class, handling name collisions
             base_sym = _resolve_base_class(
@@ -2843,18 +2961,19 @@ def _extract_inheritance_edges(
             # represented rather than dropped. Confidence stays EVIDENCE-DERIVED
             # (ADR-0039): the extends DETECTION is AST-certain (0.95, same as a
             # resolved extends); ``is_resolved=False`` carries the unresolved
-            # TARGET. Dotted/qualified bases (``argparse.RawDescriptionHelpFormatter``)
-            # need module_imports to name their module and are deferred to the
-            # Approach-C core-linker chokepoint — keep the current drop for them.
+            # TARGET. An import-bound OUT-OF-TREE base was emitted above
+            # (WI-ratid). What reaches here is in-tree or not import-bound.
             if "." in base_name:
+                # A dotted base of an in-tree module (``pkg.mod.Base``) or with
+                # a root no import binds (``Outer.Inner``): the core linker's
+                # chokepoint resolves or externalizes it.
                 continue
 
-            imported = child_imports.get(base_name)
-            if imported is not None:
-                module_path, original_name = imported
+            if imported_base is not None:
+                # Import-bound to an IN-TREE module but not resolved by name.
                 # Aliased import (``from x import Base as B``): re-resolve on the
-                # ORIGINAL name so an aliased IN-TREE base binds to its real class
-                # instead of being declared external.
+                # ORIGINAL name so an aliased IN-TREE base binds to its real class.
+                _module_path, original_name = imported_base
                 if original_name != base_name:
                     re_sym = _resolve_base_class(
                         original_name, sym, class_by_name, sym_file_imports
@@ -2874,31 +2993,18 @@ def _extract_inheritance_edges(
                 # that was simply not extracted as a class (a module-level
                 # variable, a failed-parse file) must be DROPPED, not minted as a
                 # workspace-prefixed phantom external.
-                if _base_module_is_in_tree(
-                    module_path, original_name, intree_modules
-                ):
-                    continue
-                module_hint = module_path
-                canonical = original_name
-                dst_ref: ExternalRef | None = ExternalRef(
-                    lang="python", module_path=module_hint, name=canonical
-                )
-            else:
-                # Not imported: a builtin base (Exception, str, ValueError, ...).
-                module_hint = "external"
-                canonical = base_name
-                dst_ref = None
+                continue
 
+            # Not imported: a builtin base (Exception, str, ValueError, ...).
             edges.append(Edge.create(
                 src=sym.id,
-                dst=f"python:{module_hint}:0-0:{canonical}:unresolved",
+                dst=f"python:external:0-0:{base_name}:unresolved",
                 edge_type="extends",
                 line=sym.span.start_line if sym.span else 0,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
                 evidence_type="ast_extends",
                 is_resolved=False,
-                dst_ref=dst_ref,
             ))
 
     return edges
@@ -9929,13 +10035,16 @@ def analyze_python(
 
     # Build symbol ID -> file-level imports mapping for disambiguation
     sym_file_imports: dict[str, dict[str, tuple[str, str]]] = {}
+    sym_file_module_imports: dict[str, dict[str, str]] = {}
     for _py_file, analysis in file_analyses.items():
         for sym in analysis.symbols:
             sym_file_imports[sym.id] = analysis.imports
+            sym_file_module_imports[sym.id] = analysis.module_imports
 
     # Create extends edges with import-aware disambiguation
     inheritance_edges = _extract_inheritance_edges(
-        all_symbols, class_by_name, sym_file_imports, run, module_to_file_id
+        all_symbols, class_by_name, sym_file_imports, run, module_to_file_id,
+        sym_file_module_imports,
     )
     all_edges.extend(inheritance_edges)
 
