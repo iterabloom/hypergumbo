@@ -2271,6 +2271,12 @@ class TestCentralityNameMatchingScales:
         assert expected == {"Svc.run", "run", "a/b-c.ts", "@Inj", "1+2", "+"}
         assert self._scan(tmp_path, text, names) == expected
 
+    def test_an_empty_name_is_never_reported(self):
+        # The alternation's empty branch matched at every word boundary.
+        from hypergumbo_core.ranking import _NameMatcher
+
+        assert _NameMatcher(["", "foo"]).match("a foo b") == {"foo"}
+
     def test_compound_names_are_pruned_by_their_word_segments(self):
         from hypergumbo_core.ranking import _NameMatcher
 
