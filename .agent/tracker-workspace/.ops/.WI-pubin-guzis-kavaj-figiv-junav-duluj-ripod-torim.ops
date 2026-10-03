@@ -25,3 +25,18 @@
   clock: 2  # 48fa
   nonce: 48fa  # 48fa
   message: "WORK DONE 2026-10-03 (concurrent run, not merged): branch jgstern-agent/fix/nakur, commit 067fec6689 (on top of WI-nakur a56cc21c1b and INV-dahuh e489b683da).\n\n- RED first: with WI-nakur's value_flow in place, test_live_tree_producer_axis_ratchet failed \"NEW unregistered producer value(s) ['luajit_ffi_c', 'luajit_ffi_load', 'napi_addon_api', 'napi_create_function']\", test_no_strict_producer_violations_for_evidence_type named the same four at lua_ffi.py:238 and napi.py:306, and check-producer-axis-coherence exited 1.\n- Fix: registered all four AXIS_PENDING with no confidence seed (the WI-nubuv ext A/B discovery precedent). No output change: both linkers pass an explicit confidence=, and derive_confidence returns None for an unseeded pathway exactly as for an unregistered one. Fold candidates (one pathway per linker + a meta key for the mechanism) recorded in the descriptions for the cluster-C audit; not decided here.\n- The linkers' own value-pinning tests now also assert find_evidence_type(...) is not None. docs/schema.json and docs/concept-axes.md regenerated (130 pathways, 49 unseeded).\n- \"Extend producer-coherence to the tuple-return flow\": DONE by WI-nakur's value_flow (appended tuples in a returned list, a dict of tuples, loop unpack). Sweep: after it, the remaining unresolvable evidence_type sites are receiver_type_dispatch.py (setdefault-append nested lists, refused), yaml_ansible.py `key` (statement-level guard; filed WI-janon-kifav-ritob-niduk-buduk-kapak-dunos-fudul, four MORE unregistered values, one live-reproduced) and yaml_ansible.py's edge.evidence_type copy.\n- NOT checked: the runtime validation_report path on a real lua/napi repo."  # 48fa
+- op: update  # 4707
+  at: '2026-10-03T15:23:30Z'  # 4707
+  by: agent  # 4707
+  actor: jgstern_agent  # 4707
+  clock: 3  # 4707
+  nonce: '4707'  # 4707
+  set:  # 4707
+    status: done  # 4707
+- op: discuss  # 05c6
+  at: '2026-10-03T15:23:30Z'  # 05c6
+  by: agent  # 05c6
+  actor: jgstern_agent  # 05c6
+  clock: 4  # 05c6
+  nonce: 05c6  # 05c6
+  message: "Merged in PR #1415 (dev 1a7fcbff88). Integration: commits reordered pubin -> dahuh -> nakur so every commit is green; CI needed a schema-coverage baseline entry for the five values registered as pending (corpus has no LuaJIT FFI / N-API / Clojure multimethod code).\n\nFixed on jgstern-agent/fix/nakur (067fec6689).\n\n- **Before** (with a56cc21c1b's gate): `test_live_tree_producer_axis_ratchet` failed on the four values, and `check-producer-axis-coherence` exited 1.\n- **Fix:** all four registered AXIS_PENDING with no confidence seed, which leaves emitted confidence unchanged (both linkers pass explicit confidence). The fold to one pathway per linker plus a meta key is left to the cluster-C audit. The linkers' own tests now assert each value is registered. The tuple-return flow is followed by `value_flow`.\n- **After:** ratchet \"0 new leaks\".\n- **The sweep found** one more instance of the family (yaml_ansible `evidence_type=key`, four values, live-reproduced), filed as WI-janon-kifav-ritob-niduk-buduk-kapak-dunos-fudul.\n\n---"  # 05c6

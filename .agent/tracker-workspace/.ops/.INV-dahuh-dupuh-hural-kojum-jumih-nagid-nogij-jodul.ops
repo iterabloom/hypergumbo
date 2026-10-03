@@ -36,3 +36,18 @@
   clock: 3  # 62e6
   nonce: '62e6'  # 62e6
   message: "WORK DONE 2026-10-03 (concurrent run, not merged): branch jgstern-agent/fix/nakur, commit e489b683da (on top of WI-nakur's a56cc21c1b).\n\n- RED first: with WI-nakur's value_flow in place, test_live_tree_producer_axis_ratchet and test_no_strict_producer_violations_for_edge_type failed naming has_type and defined_by at scip/edges.py:133, and scripts/check-producer-axis-coherence exited 1 with the same two values. Before WI-nakur both gates were green with these values in the tree.\n- Fix: FOLD both onto `references` (is_type_definition, is_definition), flag kept on meta[\"scip_relationship_flag\"]; one edge per DISTINCT type per relationship (three flags now share `references`, and a second edge would repeat the id). Precedent: the TS analyzer carries a type reference as references + ast_type_ref. The description's \"drop is_definition, it duplicates the Symbol itself\" was not followed: SCIP relates a symbol to a different one there (from upstream scip.proto comments as recalled; only scip_pb2 is vendored, so not re-read).\n- Conformance gates (test_scip_edges.py::TestRelationMapConformance): every mapped value registered; map total over Relationship's bool fields; positive control rejects the pre-fix map.\n- GREEN after: ratchet + strict tests pass; check-producer-axis-coherence \"0 new leaks\".\n- ZERO MEASURED OUTPUT EFFECT: no recorded run produces either flag (premise audit 2026-10-03). The general statement (a value through a variable or list-of-tuples is subject to the registry) is held by the L3 ratchet only for the shapes value_flow follows; its refusals are listed on WI-gajoz-fasad-vojih-gomup-domar-zivis-durok-rudin."  # 62e6
+- op: update  # b953
+  at: '2026-10-03T15:23:30Z'  # b953
+  by: agent  # b953
+  actor: jgstern_agent  # b953
+  clock: 4  # b953
+  nonce: b953  # b953
+  set:  # b953
+    status: satisfied  # b953
+- op: discuss  # 6439
+  at: '2026-10-03T15:23:30Z'  # 6439
+  by: agent  # 6439
+  actor: jgstern_agent  # 6439
+  clock: 5  # 6439
+  nonce: '6439'  # 6439
+  message: "Merged in PR #1415 (dev 1a7fcbff88). Integration: commits reordered pubin -> dahuh -> nakur so every commit is green; CI needed a schema-coverage baseline entry for the five values registered as pending (corpus has no LuaJIT FFI / N-API / Clojure multimethod code).\n\nFixed on jgstern-agent/fix/nakur (e489b683da).\n\n- **Before** (with a56cc21c1b's gate): `test_no_strict_producer_violations_for_edge_type` and `check-producer-axis-coherence` (exit 1) both named has_type / defined_by at scip/edges.py:133. Before a56cc21c1b, no gate could see them.\n- **Fix:** `is_type_definition` and `is_definition` fold onto the registered `references`, with the flag kept in `meta[\"scip_relationship_flag\"]` and one edge per distinct type per relationship. New conformance tests (`TestRelationMapConformance`) check registration and totality, with a control that rejects the old map.\n- **After:** ratchet \"0 new leaks\".\n- **No measured output change:** neither flag appears in any recorded index.\n- **The general claim is held** by the L3 ratchet for the shapes value_flow follows. Its refusals are on WI-gajoz-fasad-vojih-gomup-domar-zivis-durok-rudin. NOT asserted beyond that.\n\n---"  # 6439

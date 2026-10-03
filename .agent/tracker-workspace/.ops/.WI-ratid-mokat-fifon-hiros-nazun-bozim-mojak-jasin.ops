@@ -1,0 +1,22 @@
+- op: create  # 919e
+  at: '2026-10-03T17:03:32Z'  # 919e
+  by: agent  # 919e
+  actor: jgstern_agent  # 919e
+  clock: 1  # 919e
+  nonce: 919e  # 919e
+  data:  # 919e
+    kind: work_item  # 919e
+    title: "inheritance linker binds a dotted external Python base by its last segment (unittest.TestCase -> Django's own TestCase), closing an inheritance cycle that disables every MRO walk under Django's test hierarchy"  # 919e
+    status: todo_hard  # 919e
+    priority: 2  # 919e
+    parent:  # 919e
+    tags:  # 919e
+    - analysis_quality  # 919e
+    - python  # 919e
+    - dispatch  # 919e
+    isbefore: []  # 919e
+    duplicate_of: []  # 919e
+    not_duplicate_of: []  # 919e
+    pr_ref:  # 919e
+    description: "The core inheritance linker binds a DOTTED external Python base by its LAST SEGMENT to an in-tree class of that name, with no import context. On Django (corpus repo `django`), `class SimpleTestCase(unittest.TestCase)` (django/test/testcases.py) gets a resolved `extends` edge (origin inheritance-linker, conf 0.95, not flagged as fallback because there is only one in-tree `TestCase`) to django's OWN `TestCase` in the same file. That closes a cycle: TestCase -> TransactionTestCase -> SimpleTestCase -> TestCase.\n\nCOST. `inherited_calls`' Python C3 walker returns None on a cycle (biases to unresolved), so NO inherited method can be resolved for any class whose ancestry reaches SimpleTestCase -- i.e. every Django test class. Measured while landing WI-kutal-malip-parah-bobis-tovaj-todug-lafaf-polop (branch jgstern-agent/fix/kutal): once py.py stopped binding same-file inherited `self.m()` calls by bare name, 2098 Django call sites whose OLD target was a genuine same-file ANCESTOR method (e.g. AutodetectorTests.test_* -> BaseAutodetectorTests.get_changes, tests/migrations/test_autodetector.py) went unresolved, every one with a failing C3 linearization of the caller's class. The cross-file population (test classes inheriting SimpleTestCase's own helpers such as assertContains from another file) was ALREADY unresolved before that change for the same reason; not counted.\n\nREPRO: survey django; edges with src `python:django/test/testcases.py:195-1100:SimpleTestCase:class`, type extends -> dst `...:1375-1537:TestCase:class`, origin inheritance-linker. Linearize with inherited_calls._linearize_c3 from AutodetectorTests: None.\n\nROOT CAUSE: inheritance.py `_create_inheritance_edges` tries `[base_name, base_name.split('.')[-1]]` against the in-tree class map; for Python the qualifier (`unittest`) is an import of a module that is not the in-tree module defining the matched class, which only py.py can see (module_imports). Ruby analogue: WI-kazut-zomas-lujoj-balug-puvif-pibum-paluz-sikum. Fix direction (not designed): py.py resolves a dotted base's root through the file's imports and emits/records the external base itself, and the chokepoint does not re-resolve a base the analyzer already classified as external. A cycle guard alone would hide which edge is wrong.\n\nNOT MEASURED: other repos (pretix: 6 c3-failing sites in the same diff, cause not traced; feast: 0); how many repos define an in-tree class sharing a dotted external base's last segment."  # 919e
+    fields: {}  # 919e
