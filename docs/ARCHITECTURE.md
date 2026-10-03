@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **347** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 102 core, 4 CLI, 36 tracker)
-- **51164** symbols (functions, classes, methods)
-- **202370** edges by type:
-  - calls: 115606
-  - contains: 46898
-  - imports: 16655
-  - instantiates: 12044
-  - references: 7841
-  - module_attr_ref: 1729
-  - other: 1597
+- **349** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 104 core, 4 CLI, 36 tracker)
+- **51384** symbols (functions, classes, methods)
+- **203460** edges by type:
+  - calls: 116132
+  - contains: 47104
+  - imports: 16711
+  - instantiates: 12054
+  - references: 7927
+  - module_attr_ref: 1934
+  - other: 1598
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 51164 Symbols + 202370 Edges + UsageContexts           │
+│  Output: 51384 Symbols + 203460 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -280,20 +280,20 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 9961.5 | ir.py |
-| `len` | external_symbol | 7656.0 | <external> |
-| `write_text` | external_symbol | 6897.0 | <external> |
+| `len` | external_symbol | 7671.0 | <external> |
+| `write_text` | external_symbol | 6898.0 | <external> |
 | `Span` | class | 6563.5 | ir.py |
 | `LinkerContext` | class | 3581.3 | registry.py |
-| `get` | external_symbol | 3235.0 | <external> |
+| `get` | external_symbol | 3249.0 | <external> |
 | `load_catalog` | function | 3048.7 | io_boundary.py |
 | `Edge.create` | method | 2420.0 | ir.py |
-| `str` | external_symbol | 2257.0 | <external> |
-| `Path` | external_symbol | 2190.0 | <external> |
-| `next` | external_symbol | 2171.0 | <external> |
+| `str` | external_symbol | 2259.0 | <external> |
+| `Path` | external_symbol | 2195.0 | <external> |
+| `next` | external_symbol | 2177.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1714.0 | <external> |
+| `append` | external_symbol | 1720.0 | <external> |
 
 ## Pattern System
 
@@ -636,6 +636,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
 - **`hypergumbo_core.member_names`**: Single home for the owner/member separator vocabulary in ``Symbol.n...
+- **`hypergumbo_core.meta_key_coherence`**: Producer-side registry gate for ``Edge.meta`` keys (WI-lijaz).
 - **`hypergumbo_core.meta_write_discipline`**: INV-hazov: static enforcement of ``MetaKeySpec.write_discipline``.
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
 - **`hypergumbo_core.module_key_axis`**: The module-key axis: what may occupy a module slot (ADR-0051).
@@ -688,6 +689,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.test_only_reachability`**: WI-ratuv: a production function whose only callers live in test mod...
 - **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3).
 - **`hypergumbo_core.validation_ratchet`**: Shrink-only ratchet comparison for validation-report violation matr...
+- **`hypergumbo_core.value_flow`**: Static string-value flow inside one module, for the registry gates.
 - **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary and taint-flow ana...
 - **`hypergumbo_core.visibility`**: Canonical visibility axis (INV-jusot).
 - **`hypergumbo_core.yaml_catalogs`**: Canonical registry of YAML catalog directories shipped under hyperg...
@@ -953,8 +955,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 275c8afcd279
-  commit_count: 7983
+  commit: 4b807902758e
+  commit_count: 7996
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
