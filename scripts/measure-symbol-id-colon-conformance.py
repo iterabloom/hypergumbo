@@ -46,6 +46,12 @@ import pathlib
 import sys
 from collections import Counter
 
+# The cohort ledger (WI-kovoj): a map that is missing, empty or cut off
+# mid-write is FAILED and named, not skipped with a stderr line while TOTAL
+# sums the rest, and the run states covered-of-given.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, read_json_member
+
 
 def right_anchored_path(symbol_id: str) -> str | None:
     """ADR-0036's parse: everything between lang and the trailing span/name/kind."""
@@ -132,42 +138,42 @@ def main() -> int:
 
     report: dict = {"maps": {}}
     grand: Counter = Counter()
-    for raw in args.maps:
-        path = pathlib.Path(raw)
-        try:
-            doc = json.loads(path.read_text())
-        except Exception as exc:
-            print(f"{path.name}: UNREADABLE ({exc})", file=sys.stderr)
-            continue
-        counts: Counter = Counter()
-        examples: dict[str, list[str]] = {}
-        for _slot, sid in ids_in_map(doc):
-            verdict = classify(sid)
-            counts[verdict] += 1
-            if verdict not in ("conformant",):
-                bucket = examples.setdefault(verdict, [])
-                if len(bucket) < args.examples and sid not in bucket:
-                    bucket.append(sid)
-        report["maps"][path.name] = {
-            "counts": dict(counts), "examples": examples,
-        }
-        grand.update(counts)
-        total = sum(counts.values())
-        print(
-            f"{path.name:34s} total={total:8d} "
-            f"conformant={counts.get('conformant', 0):8d} "
-            f"LEFT_WRONG={counts.get('path_has_colon_LEFT_WRONG', 0):6d} "
-            f"NAME_colon={counts.get('name_has_colon', 0):6d} "
-            f"unparseable={counts.get('unparseable', 0):6d}",
-            file=sys.stderr,
-        )
+    ledger = CohortLedger(args.maps, unit="map", label=lambda m: pathlib.Path(m).name)
+    for raw in ledger:
+        with ledger.attempt(raw):
+            path = pathlib.Path(raw)
+            doc = read_json_member(path)
+            counts: Counter = Counter()
+            examples: dict[str, list[str]] = {}
+            for _slot, sid in ids_in_map(doc):
+                verdict = classify(sid)
+                counts[verdict] += 1
+                if verdict not in ("conformant",):
+                    bucket = examples.setdefault(verdict, [])
+                    if len(bucket) < args.examples and sid not in bucket:
+                        bucket.append(sid)
+            report["maps"][path.name] = {
+                "counts": dict(counts), "examples": examples,
+            }
+            grand.update(counts)
+            total = sum(counts.values())
+            print(
+                f"{path.name:34s} total={total:8d} "
+                f"conformant={counts.get('conformant', 0):8d} "
+                f"LEFT_WRONG={counts.get('path_has_colon_LEFT_WRONG', 0):6d} "
+                f"NAME_colon={counts.get('name_has_colon', 0):6d} "
+                f"unparseable={counts.get('unparseable', 0):6d}",
+                file=sys.stderr,
+            )
     report["TOTAL"] = dict(grand)
+    report["cohort"] = ledger.claim()
+    ledger.report(sys.stderr)
     text = json.dumps(report, indent=2)
     if args.out:
         pathlib.Path(args.out).write_text(text)
     else:  # pragma: no cover - interactive
         print(text)
-    return 0
+    return ledger.exit_code()
 
 
 if __name__ == "__main__":

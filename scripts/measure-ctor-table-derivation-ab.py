@@ -37,9 +37,15 @@ import contextlib
 import io
 import json
 import pathlib
+import sys
 from typing import Any
 
 import hypergumbo_lang_mainstream.py as py_mod
+
+# The cohort ledger (WI-kovoj): a repo path that is not a directory is FAILED,
+# not "NO PYTHON CALL EDGES — excluded", and the run states covered-of-given.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, require_dir
 
 #: The table exactly as it was hand-curated, so arm A reproduces the old binary.
 _LEGACY_TABLE = {
@@ -87,6 +93,7 @@ def main() -> int:
     ap.add_argument("repos", nargs="+")
     ap.add_argument("--json", dest="out")
     args = ap.parse_args()
+    ledger = CohortLedger(args.repos)
 
     derived_types = set(py_mod.EXTERNAL_CONSTRUCTOR_TYPES.values())
     legacy_types = set(_LEGACY_TABLE.values())
@@ -97,48 +104,52 @@ def main() -> int:
     print(f"  newly mintable                 : {len(newly)}")
     if not newly:
         print("\nARMS ARE IDENTICAL. Nothing below is measured. Refusing to report.")
-        return 2
+        ledger.report()
+        return ledger.exit_code(2)
 
     rows: list[dict[str, Any]] = []
-    for repo_str in args.repos:
-        repo = pathlib.Path(repo_str).resolve()
-        print(f"\n=== {repo} ===", flush=True)
-        before = _run_arm(repo, derived=False)
-        after = _run_arm(repo, derived=True)
-        if not before and not after:
-            print("  NO PYTHON CALL EDGES — excluded from the denominator, not "
-                  "counted as a zero.")
-            continue
-        gained = after - before
-        lost = before - after
-        attributable = sum(
-            n for (mod, _), n in gained.items() if mod in set(newly)
-        )
-        row = {
-            "repo": str(repo),
-            "edges_before": sum(before.values()),
-            "edges_after": sum(after.values()),
-            "gained": sum(gained.values()),
-            "lost": sum(lost.values()),
-            "gained_attributable_to_new_types": attributable,
-            "gained_top": {f"{m}.{n}": c for (m, n), c in gained.most_common(12)},
-            "lost_top": {f"{m}.{n}": c for (m, n), c in lost.most_common(12)},
-        }
-        rows.append(row)
-        print(f"  call edges before/after : {row['edges_before']} / "
-              f"{row['edges_after']}")
-        print(f"  GAINED                  : {row['gained']}  "
-              f"({attributable} onto a newly mintable receiver type)")
-        print(f"  LOST                    : {row['lost']}")
-        if row["gained_top"]:
-            print(f"  gained top              : {row['gained_top']}")
-        if row["lost_top"]:
-            print(f"  LOST top                : {row['lost_top']}")
+    for repo_str in ledger:
+        print(f"\n=== {repo_str} ===", flush=True)
+        with ledger.attempt(repo_str):
+            repo = require_dir(repo_str)
+            before = _run_arm(repo, derived=False)
+            after = _run_arm(repo, derived=True)
+            if not before and not after:
+                print("  NO PYTHON CALL EDGES — excluded from the denominator, not "
+                      "counted as a zero.")
+                continue
+            gained = after - before
+            lost = before - after
+            attributable = sum(
+                n for (mod, _), n in gained.items() if mod in set(newly)
+            )
+            row = {
+                "repo": str(repo),
+                "edges_before": sum(before.values()),
+                "edges_after": sum(after.values()),
+                "gained": sum(gained.values()),
+                "lost": sum(lost.values()),
+                "gained_attributable_to_new_types": attributable,
+                "gained_top": {f"{m}.{n}": c for (m, n), c in gained.most_common(12)},
+                "lost_top": {f"{m}.{n}": c for (m, n), c in lost.most_common(12)},
+            }
+            rows.append(row)
+            print(f"  call edges before/after : {row['edges_before']} / "
+                  f"{row['edges_after']}")
+            print(f"  GAINED                  : {row['gained']}  "
+                  f"({attributable} onto a newly mintable receiver type)")
+            print(f"  LOST                    : {row['lost']}")
+            if row["gained_top"]:
+                print(f"  gained top              : {row['gained_top']}")
+            if row["lost_top"]:
+                print(f"  LOST top                : {row['lost_top']}")
 
     print("\n=== VERDICT ===")
     if not rows:
         print("NO REPO YIELDED PYTHON CALL EDGES. Nothing measured.")
-        return 2
+        print()
+        ledger.report()
+        return ledger.exit_code(2)
     tg = sum(r["gained"] for r in rows)
     tl = sum(r["lost"] for r in rows)
     ta = sum(r["gained_attributable_to_new_types"] for r in rows)
@@ -155,11 +166,13 @@ def main() -> int:
               "cohort, not evidence the change is inert: the reach probe already "
               "showed the shape resolves.")
 
+    print()
+    ledger.report()
     if args.out:
         pathlib.Path(args.out).write_text(json.dumps(
-            {"newly_mintable": newly, "repos": rows}, indent=2))
+            {"newly_mintable": newly, "cohort": ledger.claim(), "repos": rows}, indent=2))
         print(f"\nWrote {args.out}")
-    return 0
+    return ledger.exit_code()
 
 
 if __name__ == "__main__":  # pragma: no cover

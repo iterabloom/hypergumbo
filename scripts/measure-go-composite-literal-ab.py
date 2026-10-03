@@ -50,6 +50,11 @@ from collections import Counter
 from hypergumbo_core.io_boundary import load_catalog, tag_io_boundaries
 from hypergumbo_lang_mainstream.go import analyze_go
 
+# The cohort ledger (WI-kovoj): a repo path that is not a directory is FAILED,
+# not a repo with zero call edges, and the run states covered-of-given.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+from cohort_ledger import CohortLedger, require_dir
+
 _CONTROL = '''\
 package main
 
@@ -154,23 +159,27 @@ def main() -> int:
 
     report: dict = {"control": control, "repos": {}}
     total: Counter = Counter()
-    for raw in args.repos:
-        repo = pathlib.Path(raw)
-        res = _measure(repo)
-        report["repos"][repo.name] = res
-        total.update(res.get("counts", {}))
-        c = res.get("counts", {})
-        print(
-            f"{repo.name:16s} calls={c.get('call_edges', 0):6d} "
-            f"external_slot={c.get('dst_external_placeholder', 0):6d} "
-            f"resolved={c.get('is_resolved_true', 0):6d} "
-            f"intra_repo={c.get('dst_intra_repo', 0):6d} "
-            f"tagged={c.get('io_boundaries_tagged', 0):5d}",
-            file=sys.stderr,
-        )
+    ledger = CohortLedger(args.repos)
+    covered: list[str] = []
+    for raw in ledger:
+        with ledger.attempt(raw):
+            repo = require_dir(raw)
+            res = _measure(repo)
+            report["repos"][repo.name] = res
+            total.update(res.get("counts", {}))
+            covered.append(raw)
+            c = res.get("counts", {})
+            print(
+                f"{repo.name:16s} calls={c.get('call_edges', 0):6d} "
+                f"external_slot={c.get('dst_external_placeholder', 0):6d} "
+                f"resolved={c.get('is_resolved_true', 0):6d} "
+                f"intra_repo={c.get('dst_intra_repo', 0):6d} "
+                f"tagged={c.get('io_boundaries_tagged', 0):5d}",
+                file=sys.stderr,
+            )
     if args.dump:
         lines = []
-        for raw in args.repos:
+        for raw in covered:
             repo = pathlib.Path(raw)
             analysis = analyze_go(repo)
             for e in analysis.edges:
@@ -178,13 +187,15 @@ def main() -> int:
                     lines.append(f"{repo.name}\t{e.src}\t{e.dst}")
         pathlib.Path(args.dump).write_text("\n".join(sorted(lines)))
     report["TOTAL"] = dict(total)
+    report["cohort"] = ledger.claim()
+    ledger.report(sys.stderr)
 
     text = json.dumps(report, indent=2)
     if args.out:
         pathlib.Path(args.out).write_text(text)
     else:  # pragma: no cover - interactive use
         print(text)
-    return 0
+    return ledger.exit_code()
 
 
 if __name__ == "__main__":
