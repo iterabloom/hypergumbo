@@ -12,10 +12,11 @@ lives in a later slice / separate linker.
 Behavioural contract pinned here:
 
 * Each ``Relationship`` on a ``SymbolInformation`` fans out to one edge
-  per boolean flag that is set — ``is_implementation`` → ``implements``,
-  ``is_type_definition`` → ``has_type``, ``is_reference`` → ``references``,
-  ``is_definition`` → ``defined_by``. Multiple flags on the same
-  ``Relationship`` row produce multiple Edges.
+  per DISTINCT edge type its set flags map to — ``is_implementation`` →
+  ``implements``; ``is_reference``, ``is_type_definition`` and
+  ``is_definition`` → ``references``, the flag kept on
+  ``meta["scip_relationship_flag"]`` (INV-dahuh: the last two used to mint
+  the unregistered ``has_type`` / ``defined_by``).
 * ``src`` is the ``SymbolInformation.symbol`` that carries the
   relationship; ``dst`` is ``Relationship.symbol``. This direction is
   intuitive: "X implements Y" reads as edge ``X --implements--> Y``.
@@ -34,9 +35,10 @@ Behavioural contract pinned here:
 """
 from __future__ import annotations
 
+from hypergumbo_core.edge_types import all_edge_type_names
 from hypergumbo_core.ir import Edge
 from hypergumbo_core.scip._generated import scip_pb2
-from hypergumbo_core.scip.edges import scip_index_to_edges
+from hypergumbo_core.scip.edges import _RELATION_EDGE_TYPES, scip_index_to_edges
 
 
 def _sym(name: str) -> str:
@@ -90,12 +92,14 @@ def test_is_implementation_produces_implements_edge() -> None:
     assert e.origin == ["scip"]
 
 
-def test_is_type_definition_produces_has_type_edge() -> None:
+def test_is_type_definition_produces_references_edge() -> None:
     src = _sym("x")
     dst = _sym("int")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_type_definition=True)
     [e] = scip_index_to_edges(idx, run_id="test")
-    assert e.edge_type == "has_type"
+    assert e.edge_type == "references"
+    assert e.meta is not None
+    assert e.meta["scip_relationship_flag"] == "is_type_definition"
 
 
 def test_is_reference_produces_references_edge() -> None:
@@ -106,12 +110,14 @@ def test_is_reference_produces_references_edge() -> None:
     assert e.edge_type == "references"
 
 
-def test_is_definition_produces_defined_by_edge() -> None:
+def test_is_definition_produces_references_edge() -> None:
     src = _sym("alias")
     dst = _sym("canonical")
     idx = _idx_with_relationship(src_symbol=src, rel_symbol=dst, is_definition=True)
     [e] = scip_index_to_edges(idx, run_id="test")
-    assert e.edge_type == "defined_by"
+    assert e.edge_type == "references"
+    assert e.meta is not None
+    assert e.meta["scip_relationship_flag"] == "is_definition"
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +135,21 @@ def test_multiple_flags_on_one_relationship_fan_out() -> None:
     )
     result = scip_index_to_edges(idx, run_id="test")
     edge_types = sorted(e.edge_type for e in result)
-    assert edge_types == ["has_type", "implements"]
+    assert edge_types == ["implements", "references"]
+
+
+def test_flags_sharing_an_edge_type_emit_it_once() -> None:
+    """``is_reference`` + ``is_type_definition`` + ``is_definition`` all map
+    to ``references``; three edges would share one id (src, dst, type,
+    line), so the first flag in map order names the one edge."""
+    idx = _idx_with_relationship(
+        src_symbol=_sym("Foo"), rel_symbol=_sym("Bar"),
+        is_type_definition=True, is_reference=True, is_definition=True,
+    )
+    [e] = scip_index_to_edges(idx, run_id="test")
+    assert e.edge_type == "references"
+    assert e.meta is not None
+    assert e.meta["scip_relationship_flag"] == "is_reference"
 
 
 def test_multiple_relationships_each_emit_edges() -> None:
@@ -183,7 +203,7 @@ def test_multiple_documents_each_contribute() -> None:
     result = scip_index_to_edges(idx, run_id="test")
     assert len(result) == 2
     types = {e.edge_type for e in result}
-    assert types == {"implements", "has_type"}
+    assert types == {"implements", "references"}
 
 
 # ---------------------------------------------------------------------------
@@ -278,3 +298,38 @@ def test_relationship_touching_a_local_binding_emits_no_edge() -> None:
         src_symbol="local 3", rel_symbol=_sym("f"), is_reference=True,
     )
     assert scip_index_to_edges(from_local, run_id="test") == []
+
+
+# ---------------------------------------------------------------------------
+# INV-dahuh: the relationship map stays on the edge-type axis
+# ---------------------------------------------------------------------------
+
+
+class TestRelationMapConformance:
+    """``_RELATION_EDGE_TYPES`` is a list of tuples, which no edge-type gate
+    could read until the producer gates learned to follow a loop over one
+    (WI-nakur). These are the direct gates the list never had."""
+
+    def test_every_mapped_value_is_a_registered_edge_type(self) -> None:
+        known = all_edge_type_names()
+        offenders = sorted({t for _flag, t in _RELATION_EDGE_TYPES} - known)
+        assert offenders == [], (
+            f"_RELATION_EDGE_TYPES mints edge types absent from the ADR-0023 "
+            f"registry: {offenders}. Register them or fold the flag onto a "
+            f"registered type."
+        )
+
+    def test_every_relationship_flag_is_mapped(self) -> None:
+        """Totality over the wire format, so a flag cannot be dropped by
+        omission: every boolean field of ``Relationship`` has an entry."""
+        flags = {
+            f.name for f in scip_pb2.Relationship.DESCRIPTOR.fields
+            if f.type == f.TYPE_BOOL
+        }
+        assert flags == {flag for flag, _type in _RELATION_EDGE_TYPES}
+
+    def test_the_gate_can_fail(self) -> None:
+        """Positive control: the pre-fix map is rejected."""
+        known = all_edge_type_names()
+        pre_fix = [("is_type_definition", "has_type"), ("is_definition", "defined_by")]
+        assert sorted({t for _f, t in pre_fix} - known) == ["defined_by", "has_type"]

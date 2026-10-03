@@ -44,13 +44,32 @@ matching how most hypergumbo linkers emit ``dispatches_to`` /
 SCIP ``Relationship`` → edge type map:
 
 * ``is_implementation=True`` → ``implements``
-* ``is_type_definition=True`` → ``has_type``
 * ``is_reference=True`` → ``references``
-* ``is_definition=True`` → ``defined_by``
+* ``is_type_definition=True`` → ``references``
+* ``is_definition=True`` → ``references``
 
-Multiple flags on the same Relationship entry fan out to multiple
-Edges. A Relationship with no flag set produces nothing (legal but
-uninformative per the SCIP spec). Self-relationships (``src == dst``)
+Every value is a registered ADR-0023 edge type (INV-dahuh). The two
+navigation flags SCIP adds beside ``is_reference`` -- "go to type
+definition" (X's type is Y) and "go to definition" (Y is where X is
+defined: SCIP relates a symbol with no definition of its own to the one
+that has it, never to itself) -- are both a symbol referring to another by
+name without invoking it, which is what ``references`` names; it is also
+how the TypeScript analyzer already carries a type reference
+(``references`` + ``ast_type_ref``). The flag that produced an edge stays
+on ``meta["scip_relationship_flag"]``, so the distinction is kept where
+ADR-0023 puts endpoint-independent detail. They were ``has_type`` and
+``defined_by``, which no registry declared and no consumer had a case
+for; the list-of-tuples indirection hid them from every gate until the
+producer gates learned to follow it (WI-nakur). No measured run has ever
+produced either flag: rust-analyzer leaves ``relationships`` empty and
+scip-python's observed relationships are ``is_implementation`` only.
+
+Flags on the same Relationship entry fan out to one Edge per DISTINCT
+edge type, in the order of :data:`_RELATION_EDGE_TYPES`: a relationship
+with both ``is_reference`` and ``is_type_definition`` set yields one
+``references`` edge (flag ``is_reference``), since a second would repeat
+its id (src, dst, type, line). A Relationship with no flag set produces
+nothing (legal but uninformative per the SCIP spec). Self-relationships (``src == dst``)
 are dropped because downstream rank / slice code treats them as noise.
 A Relationship touching a local symbol (``local <id>``) at either end
 produces nothing (WI-jikok / INV-kukiz): :mod:`.index` does not mint
@@ -80,9 +99,9 @@ from .descriptor import is_local_symbol
 
 _RELATION_EDGE_TYPES: "list[tuple[str, str]]" = [
     ("is_implementation", "implements"),
-    ("is_type_definition", "has_type"),
     ("is_reference", "references"),
-    ("is_definition", "defined_by"),
+    ("is_type_definition", "references"),
+    ("is_definition", "references"),
 ]
 
 _SCIP_EVIDENCE_TYPE = "scip_relationship"
@@ -127,9 +146,11 @@ def scip_index_to_edges(
                 dst_resolved = _resolve(dst_raw, resolve_symbol)
                 if dst_resolved is None:
                     continue
+                emitted: set[str] = set()
                 for flag_name, edge_type in _RELATION_EDGE_TYPES:
-                    if not getattr(rel, flag_name, False):
+                    if not getattr(rel, flag_name, False) or edge_type in emitted:
                         continue
+                    emitted.add(edge_type)
                     out.append(Edge.create(
                         src=src_resolved,
                         dst=dst_resolved,
