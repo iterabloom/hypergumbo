@@ -1,0 +1,36 @@
+- op: create  # 314d
+  at: '2026-10-02T18:08:28Z'  # 314d
+  by: agent  # 314d
+  actor: jgstern_agent  # 314d
+  clock: 1  # 314d
+  nonce: 314d  # 314d
+  data:  # 314d
+    kind: work_item  # 314d
+    title: "Self-claims gate red since WI-sugom (09-28): rich.text.Text, a class slot the self overlay does not name, withholds all 18 self-claims"  # 314d
+    status: todo_hard  # 314d
+    priority: 2  # 314d
+    parent:  # 314d
+    tags:  # 314d
+    - ci  # 314d
+    - catalogue  # 314d
+    isbefore: []  # 314d
+    duplicate_of: []  # 314d
+    not_duplicate_of: []  # 314d
+    pr_ref:  # 314d
+    description: "WHAT FAILS. The full-suite cron's `self-claims-gate` step (pipeline 4141, dev cc4ab781, 2026-10-02) reports SELF-CLAIM DRIFT on all 18 self-claims: verdict confirmed_with_caveats -> inconclusive, caveat opaque_boundary dropped. Every claim's details name the blocker: \"it makes calls into 1 module(s) that the I/O catalog could not classify (rich.text.Text), which is what withholds the qualified verdict the launches alone would have earned.\"\n\nCAUSE, bisected locally (verify-claims --json --minimal, each arm cold on its own XDG_CACHE_HOME, compared with that arm's snapshot by scripts/check-self-claims-drift):\n    a92e231a93 (parent of WI-sugom)  OK, 18 claims unchanged\n    f592cb04dc (WI-sugom, 09-28)     18 claims drifted (36 changed lines)\n    8cfcab7b07 (pre-run0930), 31a63b2b65, e3a3c7a809, c8754df23d: all drifted identically\nWI-sugom made a from-imported owner resolve to its module, so tracker/tui.py's `from rich.text import Text as RichText` types RichText.from_markup(...) (5 sites) and Text.from_markup(...).plain as calls into the CLASS rich.text.Text. docs/io-primitives-overlays/hypergumbo-self.yaml declares the module rich.text only; completeness matching is exact; `qualifying_only = not unknown`, so one unclassified class withholds every qualified verdict. The analyzer change is correct (ADR-0059: a call on the type itself); the overlay is what lagged.\n\nThis is the FOURTH instance of the WI-jabus shape (uvicorn, then the WI-jabus class-qualified receivers, now this). Not a run0930 regression.\n\nFIX: add `rich.text.Text` (completeness: complete, with the reason) to the self overlay. No snapshot or SECURITY.md change: the verdicts return to what both already say.\n\nNOT ADDRESSED HERE (the family): any receiver-typing gain can turn a class slot under a declared module into an unknown module and withhold all 18 claims. The gate is cron-only by design (woodpecker.yml ~324-358), so detection is up to ~12 h after merge, and this one sat red for ~4 days (09-28 -> 10-02) without anyone reading `ci-debug cron-status`."  # 314d
+    fields: {}  # 314d
+- op: update  # 2edd
+  at: '2026-10-02T18:15:46Z'  # 2edd
+  by: agent  # 2edd
+  actor: jgstern_agent  # 2edd
+  clock: 2  # 2edd
+  nonce: 2edd  # 2edd
+  set:  # 2edd
+    status: done  # 2edd
+- op: discuss  # 6390
+  at: '2026-10-02T18:15:46Z'  # 6390
+  by: agent  # 6390
+  actor: jgstern_agent  # 6390
+  clock: 3  # 6390
+  nonce: '6390'  # 6390
+  message: "Fixed in PR #1392 (merged; b1352e7087 is the fix). docs/io-primitives-overlays/hypergumbo-self.yaml now declares `rich.text.Text` completeness: complete, with the reason (from_markup builds an in-memory Text; .plain reads it back; output only through rich.console's rowed methods).\n\nBEHAVIORAL EVIDENCE (the item's own repro, the gate script itself): on the fix branch, cut from origin/dev f2a9d8d94a, with a cold XDG_CACHE_HOME, `scripts/check-self-claims` exits 0 and prints \"check-self-claims-drift: OK — 18 claims unchanged (18 confirmed_with_caveats).\" The same script on dev without the row reported the 18-claim drift whose details name rich.text.Text. Bisect record: ~/hypergumbo_lab_notebook/decontend/selfclaims_10022026/ (per-arm JSON, stderr, drift output).\n\nNo snapshot or SECURITY.md change. NOT YET SEEN: the CI cron's self-claims-gate step on a commit carrying #1392 (next scheduled full-suite run). If it is red, reopen with its log.\nNOT ADDRESSED (stated in the description): the family. Any receiver-typing gain can again turn a class slot into an unknown module and withhold all 18 claims, and the gate is cron-only, so it sat red ~4 days unread."  # 6390

@@ -87,3 +87,18 @@
   clock: 10  # f560
   nonce: f560  # f560
   message: "CLOSE CONDITION, half 1 of 2 MET (2026-10-02): loaded full-suite run on combined dev cb1d8bd979 (all five run0930 batches merged; smart-test --full -n 5 via the board, NOT under nohup): 32357 passed, 8 skipped, 11 xfailed, 0 FAILED/ERROR anywhere -- so 0 failures in packages/hypergumbo-tracker/tests/test_tui.py and test_compile_properties.py. Log: ~/hypergumbo_lab_notebook/decontend/run_09302026/fullsuite/full.pytest.log. Half 2 PENDING: the cron walk. ci-debug runs at 2026-10-02T05:24Z shows only the push run for cb1d8bd9; the first scheduled full-suite firing after the fix (merged in #1377) is 13:00 UTC 2026-10-02. Close on a clean walk of that firing (and later ones if available)."  # f560
+- op: update  # 9ff0
+  at: '2026-10-02T21:28:53Z'  # 9ff0
+  by: agent  # 9ff0
+  actor: jgstern_agent  # 9ff0
+  clock: 11  # 9ff0
+  nonce: 9ff0  # 9ff0
+  set:  # 9ff0
+    status: done  # 9ff0
+- op: discuss  # 4280
+  at: '2026-10-02T21:28:53Z'  # 4280
+  by: agent  # 4280
+  actor: jgstern_agent  # 4280
+  clock: 12  # 4280
+  nonce: '4280'  # 4280
+  message: "CLOSE CONDITION MET (both halves); closing done.\n\nHALF 2, the cron walk (2026-10-02T21:3xZ). Walked every first-parent dev commit from 31a63b2b65 (the #1377 tip carrying the fix 195ea3a5d3) to origin/dev with `ci-debug status`. Exactly ONE scheduled full-suite firing lands after the fix: pipeline 4141 on cc4ab78144. It is the 13:00Z 2026-10-02 firing: cc4ab78144 did not exist before ~07:06Z, and the next dev commit (f2a9d8d94a, tracker sync PR #1391) landed ~17:45Z, so the 01:00Z firing predates it and no later firing has run yet. Its step test-all-packages is OK; fetched log (`ci-debug logs test-all-packages cc4ab78144`) ends \"30300 passed, 34 skipped, 11 xfailed, 555 warnings in 1049.43s\" with 0 FAILED/ERROR, so 0 failures in packages/hypergumbo-tracker/tests/test_tui.py and test_compile_properties.py. (The same pipeline's aggregate is red on self-claims-gate, an unrelated step, fixed by WI-pafuf / PR #1392.)\n\nHALF 1 (recorded 10-02 05:24Z): loaded local full suite on cb1d8bd979, 32357 passed, 0 failed.\n\nLIMITS. One post-fix cron firing plus one loaded local run is the evidence: two loaded runs, not a rate. A flake at about 1 in 10 firings would pass both. The randomly seed cannot be recorded: pytest-randomly is not installed locally, and the CI log never mentions it (NOT CHECKED: the CI image's plugin list). If test_cancel_returns_none or a compile_ops property fails under load again, reopen with that log: the harness now names what it waited for. Residuals stay on WI-zolin (TrackerApp integration modal tests) and WI-lotig."  # 4280
