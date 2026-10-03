@@ -260,6 +260,42 @@ class TestInTreeControls:
         edges = _extends_from(data, local)
         assert [(e["dst"], e["is_resolved"]) for e in edges] == [(local_tc, True)]
 
+    def test_nested_class_of_imported_in_tree_class_is_not_external(
+        self, tmp_path: Path,
+    ) -> None:
+        # ``OrderSerializer.Meta``: the import binds a CLASS of an in-tree
+        # module, so the qualified name's "module" is not a module at all.
+        # Declaring it external would mint a workspace-prefixed phantom
+        # (INV-nuzas). It keeps the previous resolution, the linker's last
+        # segment, which on this fixture finds the class itself and emits
+        # nothing (a pre-existing gap of in-tree dotted bases, not this rule).
+        data = _behavior_map(tmp_path, {
+            "pkg/__init__.py": "",
+            "pkg/ser.py": (
+                "class OrderSerializer:\n"
+                "    class Meta:\n"
+                "        fields = 1\n"
+            ),
+            "pkg/sub.py": (
+                "from pkg.ser import OrderSerializer\n"
+                "class SubSerializer(OrderSerializer):\n"
+                "    class Meta(OrderSerializer.Meta):\n"
+                "        pass\n"
+            ),
+        })
+        sub_meta = [
+            n["id"] for n in data["nodes"]
+            if n.get("kind") == "class" and n.get("path", "").endswith("pkg/sub.py")
+            and n.get("name", "").endswith("Meta")
+        ]
+        assert len(sub_meta) == 1, sub_meta
+        edges = _extends_from(data, sub_meta[0])
+        assert [e for e in edges if not e["is_resolved"]] == [], edges
+        ext_ids = [
+            n["id"] for n in data["nodes"] if n.get("kind") == "external_symbol"
+        ]
+        assert not any("pkg" in i for i in ext_ids), ext_ids
+
     def test_builtin_base_unchanged(self, tmp_path: Path) -> None:
         data = _behavior_map(tmp_path, {"m.py": "class E(Exception):\n    pass\n"})
         e_id = _class_id(data, "E", "m.py")
@@ -315,3 +351,65 @@ class TestAnalyzerAloneEmitsTheExternalEdge:
         assert (edges[0].dst_ref.module_path, edges[0].dst_ref.name) == (
             "unittest", "TestCase",
         )
+
+
+class TestHelpers:
+    """Direct coverage of the WI-ratid helpers' arms the fixtures above do not
+    reach."""
+
+    def test_reverse_suffix_module_is_in_tree(self) -> None:
+        # ``foo.bar`` imported where the in-tree key is ``src.foo.bar`` (source
+        # root not detected): a suffix of an in-tree key is in-tree.
+        from hypergumbo_lang_mainstream.py import (
+            _base_module_is_in_tree,
+            _module_key_suffixes,
+        )
+        keys = frozenset({"src.foo.bar"})
+        suffixes = _module_key_suffixes(keys)
+        assert suffixes == frozenset({"src.foo.bar", "foo.bar", "bar"})
+        assert _base_module_is_in_tree("foo.bar", "X", keys, suffixes) is True
+        assert _base_module_is_in_tree("foo.bar", "X", keys) is False
+
+    def test_reverse_suffix_submodule_is_in_tree(self) -> None:
+        # ``from foo import bar`` + ``bar.X`` where the key is ``src.foo.bar``.
+        from hypergumbo_lang_mainstream.py import (
+            _base_module_is_in_tree,
+            _module_key_suffixes,
+        )
+        keys = frozenset({"src.foo.bar"})
+        suffixes = _module_key_suffixes(keys)
+        assert _base_module_is_in_tree("foo", "bar", keys, suffixes) is True
+        assert _base_module_is_in_tree("foo", "bar", keys) is False
+
+    def test_import_target_in_tree_tests_every_prefix(self) -> None:
+        from hypergumbo_lang_mainstream.py import (
+            _import_target_in_tree,
+            _module_key_suffixes,
+        )
+        keys = frozenset({"pkg.ser"})
+        suffixes = _module_key_suffixes(keys)
+        # A class of an in-tree module, used as a namespace.
+        assert _import_target_in_tree("pkg.ser.OrderSerializer", "Meta", keys, suffixes)
+        # The stdlib.
+        assert not _import_target_in_tree("unittest", "TestCase", keys, suffixes)
+
+    def test_import_qualified_base_shapes(self) -> None:
+        from hypergumbo_lang_mainstream.py import _import_qualified_base
+        imports = {"UTC": ("unittest", "TestCase"), "models": ("django.db", "models")}
+        module_imports = {"unittest": "unittest", "ut": "unittest", "abc": "abc"}
+        assert _import_qualified_base("unittest.TestCase", imports, module_imports) == (
+            "unittest", "TestCase",
+        )
+        assert _import_qualified_base("ut.TestCase", imports, module_imports) == (
+            "unittest", "TestCase",
+        )
+        assert _import_qualified_base("UTC", imports, module_imports) == (
+            "unittest", "TestCase",
+        )
+        assert _import_qualified_base("models.Model", imports, module_imports) == (
+            "django.db.models", "Model",
+        )
+        # Not import-bound.
+        assert _import_qualified_base("Outer.Inner", imports, module_imports) is None
+        # A bare MODULE as the base: no class segment to name.
+        assert _import_qualified_base("abc", imports, module_imports) is None
