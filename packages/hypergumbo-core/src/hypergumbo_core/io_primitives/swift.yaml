@@ -225,10 +225,12 @@ ipc_send:
       resume SIGSTOP / SIGCONT). python.yaml's multiprocessing.Process kill/terminate
       and rust.yaml's Child.kill are rowed here under the dated WI-dupok ruling;
       these were under subprocess.
-  - module: NotificationCenter
-    methods:
-      - post
-    notes: "In-process pub/sub notification posting"
+  # NotificationCenter.post is NOT rowed (WI-povom, audit-findings 0021 Step 5):
+  # in-process pub/sub delivers to observers in the SAME process, and ipc_send
+  # is data sent to ANOTHER process. Deleted rather than moved -- no process
+  # boundary is crossed -- and disclosed as external_potential. objc.yaml's
+  # NSNotificationCenter post* rows went the same way; the cross-process center
+  # below stays.
   - module: DistributedNotificationCenter
     methods:
       - postNotificationName

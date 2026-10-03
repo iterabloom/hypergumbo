@@ -193,3 +193,89 @@ class TestWiRagazConfiguringAFacilityWritesNothing:
         chains = _chains(tmp_path, "app.ex", _EX_LOGGER)
         assert chains["logging"] == {"Logger.info"}  # control: reached
         assert {"Logger.metadata", "Logger.configure"} <= chains["external_potential"]
+
+
+# ---------------------------------------------------------------------------
+# WI-povom: in-process pub/sub is not inter-process communication.
+# ---------------------------------------------------------------------------
+
+_OBJC_NOTIFY = '''#import <Foundation/Foundation.h>
+
+@interface Poster : NSObject
+- (void)go:(NSString *)s;
+@end
+
+@implementation Poster
+- (void)go:(NSString *)s {
+    NSNotificationCenter *c = [NSNotificationCenter defaultCenter];
+    [c postNotificationName:s object:nil];
+    [c postNotificationName:s object:nil userInfo:nil];
+    [c postNotification:nil];
+    NSDistributedNotificationCenter *d = [NSDistributedNotificationCenter defaultCenter];
+    [d postNotificationName:s object:nil userInfo:nil deliverImmediately:YES];
+}
+@end
+'''
+
+_SWIFT_NOTIFY = '''import Foundation
+
+func go(s: String, c: NotificationCenter, d: DistributedNotificationCenter) {
+    c.post(name: Notification.Name(s), object: nil)
+    d.postNotificationName(NSNotification.Name(s), object: nil)
+}
+'''
+
+_IN_PROCESS_POSTS = [
+    ("objc", "NSNotificationCenter", "postNotificationName:object:"),
+    ("objc", "NSNotificationCenter", "postNotificationName:object:userInfo:"),
+    ("objc", "NSNotificationCenter", "postNotification:"),
+    ("swift", "NotificationCenter", "post"),
+]
+
+
+class TestWiPovomInProcessPubSubIsNotIpc:
+    """``ipc_send`` is data sent to ANOTHER process over a channel the program
+    set up (audit-findings 0021). A notification posted to the default
+    ``NSNotificationCenter`` / ``NotificationCenter`` is delivered to observers
+    in the SAME process; no process boundary is crossed, so there is no
+    data-crossing value it could take and the row is deleted rather than
+    moved. The cross-process siblings stay ``ipc_send``."""
+
+    @pytest.mark.parametrize(("language", "module", "name"), _IN_PROCESS_POSTS)
+    def test_the_row_is_gone(self, language: str, module: str, name: str) -> None:
+        assert _rows(language, module, name) == set()
+
+    @pytest.mark.parametrize(("language", "module", "name"), _IN_PROCESS_POSTS)
+    def test_no_ipc_sink_is_derived(
+        self, derived, language: str, module: str, name: str,
+    ) -> None:
+        _src, sinks = derived
+        assert (module, name) not in sinks[language]
+
+    @pytest.mark.parametrize(("language", "module", "name"), [
+        ("objc", "NSDistributedNotificationCenter",
+         "postNotificationName:object:userInfo:deliverImmediately:"),
+        ("swift", "DistributedNotificationCenter", "postNotificationName"),
+    ])
+    def test_control_the_cross_process_center_stays_ipc_send(
+        self, derived, language: str, module: str, name: str,
+    ) -> None:
+        assert _rows(language, module, name) == {"ipc_send"}
+        _src, sinks = derived
+        assert sinks[language][(module, name)] == {"ipc"}
+
+    def test_objc_reach(self, tmp_path: Path) -> None:
+        chains = _chains(tmp_path, "Poster.m", _OBJC_NOTIFY)
+        assert chains["ipc_send"] == {  # control: reached
+            "NSDistributedNotificationCenter.postNotificationName:object:userInfo:deliverImmediately:",
+        }
+        assert {
+            "NSNotificationCenter.postNotificationName:object:",
+            "NSNotificationCenter.postNotificationName:object:userInfo:",
+            "NSNotificationCenter.postNotification:",
+        } <= chains["external_potential"]
+
+    def test_swift_reach(self, tmp_path: Path) -> None:
+        chains = _chains(tmp_path, "Poster.swift", _SWIFT_NOTIFY)
+        assert chains["ipc_send"] == {"DistributedNotificationCenter.postNotificationName"}
+        assert "NotificationCenter.post" in chains["external_potential"]
