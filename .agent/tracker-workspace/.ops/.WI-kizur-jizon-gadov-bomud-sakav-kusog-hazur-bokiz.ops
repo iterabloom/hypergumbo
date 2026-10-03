@@ -1,0 +1,20 @@
+- op: create  # 2b71
+  at: '2026-10-03T10:56:20Z'  # 2b71
+  by: agent  # 2b71
+  actor: jgstern_agent  # 2b71
+  clock: 1  # 2b71
+  nonce: 2b71  # 2b71
+  data:  # 2b71
+    kind: work_item  # 2b71
+    title: "rust std::process cannot be granted module_completeness until a pid read is ruled (std::process::id unrowed by python precedent, host_info_read in c/js), so an exit call after INV-mulul is an unclassified call and reads inconclusive"  # 2b71
+    status: todo_hard  # 2b71
+    priority: 3  # 2b71
+    parent:  # 2b71
+    tags:  # 2b71
+    - catalogue  # 2b71
+    isbefore: []  # 2b71
+    duplicate_of: []  # 2b71
+    not_duplicate_of: []  # 2b71
+    pr_ref:  # 2b71
+    description: "Filed by the mulul run as a REFUSAL, recorded as a decision (LIVE rule: a refusal files as one).\n\nINV-mulul removed rust std::process [exit, abort] from subprocess. The haskell (System.Exit, INV-dozuj) and javascript (process) precedents ALSO add a module_completeness grant so the now-unrowed call is an EXAMINED negative. For rust that was not done: std::process (exact-match module) also exports id() -- the pid -- which rust.yaml holds UNROWED and test_rust_process_env_surface.py::test_a_pid_is_not_rowed_by_python_precedent pins unrowed (\"python deliberately holds os.getpid out\"), while c rows unistd.getpid and javascript rows process.pid as host_info_read, and python.yaml's own os note says the reason for holding getpid out \"IS GONE (INV-tutar)\" and that adding it would be an ordinary row. A completeness grant with id unrowed would declare the pid not-I/O.\n\nCONSEQUENCE, measured on a one-file fixture (env::var -> process::exit): \"never launches a subprocess\" and host_secret -> subprocess are now INCONCLUSIVE (\"calls into module(s) the I/O catalog could not classify (std::env, std::process)\"), not confirmed. Same for elixir System.halt (module System).\n\nDECISION NEEDED: row a pid read (rust std::process::id, python os.getpid / getppid) as host_info_read across catalogues (the c / javascript reading), then grant std::process complete with exit/abort declared not-I/O. Not done on the mulul branch because it is an ADDITION across languages and reverses a pinned test."  # 2b71
+    fields: {}  # 2b71
