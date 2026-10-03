@@ -14,12 +14,12 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **346** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 101 core, 4 CLI, 36 tracker)
-- **51151** symbols (functions, classes, methods)
-- **202300** edges by type:
-  - calls: 115574
-  - contains: 46885
-  - imports: 16636
+- **347** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 102 core, 4 CLI, 36 tracker)
+- **51162** symbols (functions, classes, methods)
+- **202341** edges by type:
+  - calls: 115593
+  - contains: 46894
+  - imports: 16649
   - instantiates: 12043
   - references: 7840
   - module_attr_ref: 1725
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 51151 Symbols + 202300 Edges + UsageContexts           │
+│  Output: 51162 Symbols + 202341 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -281,11 +281,11 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9961.5 | ir.py |
 | `len` | external_symbol | 7656.0 | <external> |
-| `write_text` | external_symbol | 6896.0 | <external> |
+| `write_text` | external_symbol | 6897.0 | <external> |
 | `Span` | class | 6563.5 | ir.py |
 | `LinkerContext` | class | 3581.3 | registry.py |
-| `get` | external_symbol | 3232.0 | <external> |
-| `load_catalog` | function | 3032.8 | io_boundary.py |
+| `get` | external_symbol | 3234.0 | <external> |
+| `load_catalog` | function | 3048.7 | io_boundary.py |
 | `Edge.create` | method | 2420.0 | ir.py |
 | `str` | external_symbol | 2256.0 | <external> |
 | `Path` | external_symbol | 2188.0 | <external> |
@@ -649,6 +649,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
 - **`hypergumbo_core.protocol_origins`**: Canonical registry of ``Symbol.protocol_origin`` values (ADR-0031).
+- **`hypergumbo_core.python_stdlib_versions`**: Which top-level modules are Python standard library on SOME supported
 - **`hypergumbo_core.qualified_name_axis`**: Per-language separator policy for ``Symbol.qualified_name`` (ADR-00...
 - **`hypergumbo_core.ranking`**: Symbol and file ranking utilities for hypergumbo output.
 - **`hypergumbo_core.receiver_blind_magnets`**: INV-fahub receiver-blind method-magnet detector (language-agnostic).
@@ -951,8 +952,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 38cb77ed8c5b
-  commit_count: 7968
+  commit: 7f08a0979172
+  commit_count: 7971
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
