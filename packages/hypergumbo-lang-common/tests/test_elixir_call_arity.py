@@ -177,6 +177,7 @@ defmodule S do
   def a, do: 1
   def b(x, y \\\\ 2) when is_integer(x), do: x + y
   defmacro c(%{key: v} = m), do: {v, m}
+  def d(%{"type" => "message", "payload" => payload} = msg), do: {payload, msg}
 end
 """)
     params = {
@@ -189,3 +190,8 @@ end
         {"name": "y", "type": None, "default": True},
     ]
     assert params["S.c"] == [{"name": "%{key: v} = m", "type": None, "default": False}]
+    # A long pattern is recorded by its first 37 characters and an ellipsis.
+    assert params["S.d"] == [{
+        "name": '%{"type" => "message", "payload" => p...',
+        "type": None, "default": False,
+    }]

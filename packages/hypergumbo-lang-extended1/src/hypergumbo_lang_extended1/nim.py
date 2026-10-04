@@ -750,7 +750,9 @@ class _ProcTypes:
             "proc_declaration", "func_declaration", "method_declaration",
         ):
             proc = proc.parent
-        if proc is None:
+        if proc is None:  # pragma: no cover - defensive
+            # Pass 2 asks only for a call whose caller ``_find_enclosing_proc_nim``
+            # found, which walks to the same three declaration types.
             return None
         if proc.id not in self._cache:
             self._cache[proc.id] = self._declared(proc)
@@ -792,11 +794,14 @@ class _ProcTypes:
             type_node = find_child_by_type(decl, "type_expression")
             declared = node_text(type_node, src) if type_node is not None else None
             for sym_decl in names.named_children:
-                ident = find_child_by_type(sym_decl, "identifier")
-                if ident is not None:
-                    out.setdefault(node_text(ident, src), []).append(
-                        (decl.start_point[0], declared),
-                    )
+                # ``let (a, b) = ..`` declares each name with no stated type.
+                tuple_names = sym_decl.type == "tuple_deconstruct_declaration"
+                for one in (sym_decl.named_children if tuple_names else [sym_decl]):
+                    ident = find_child_by_type(one, "identifier")
+                    if ident is not None:
+                        out.setdefault(node_text(ident, src), []).append(
+                            (decl.start_point[0], None if tuple_names else declared),
+                        )
         return out
 
 

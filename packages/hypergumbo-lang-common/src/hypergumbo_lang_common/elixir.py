@@ -886,8 +886,12 @@ def _def_head_arguments(
             return []
         if head.type == "call":
             inner = find_child_by_type(head, "arguments")
-            if inner is None:
-                return None  # ``def unquote(name)(arg)``-shaped: not a plain head
+            if inner is None:  # pragma: no cover - defensive, see below
+                # Only a head ``_get_function_name`` named reaches here (no
+                # name, no symbol: ``def unquote(name)(arg)`` gets neither),
+                # and tree-sitter-elixir gives such a call an ``arguments``
+                # node; kept so a grammar change reads as unknown, not as [].
+                return None
             return [c for c in inner.named_children if c.type != "comment"]
     return None  # pragma: no cover - every named def has a head
 
@@ -902,7 +906,7 @@ def _elixir_parameters(
     40 characters). ``b \\\\ 1`` is a defaulted parameter named ``b``.
     """
     params = _def_head_arguments(node)
-    if params is None:
+    if params is None:  # pragma: no cover - only via the defensive returns above
         return None
     entries: list[dict[str, Any]] = []
     for param in params:
@@ -995,8 +999,12 @@ def _reachable_clauses(
     lowest: dict[tuple[str, int], int] = {}
     for clause in clauses:
         bounds = arity_bounds(clause)
-        if bounds is None or bounds.maximum is None:
-            shapes.append(None)  # unknown arity (no Elixir clause is variadic)
+        if bounds is None or bounds.maximum is None:  # pragma: no cover - defensive
+            # Every def/defmacro clause records its parameters, and the other
+            # symbols in the multi-clause index (modules, by their capitalised
+            # short name) cannot be named by a bare lowercase call. Kept so an
+            # unrecorded clause is never EXCLUDED, only kept.
+            shapes.append(None)
             continue
         shapes.append((clause.name, bounds.required, bounds.maximum))
         key = (clause.name, bounds.maximum)
