@@ -259,3 +259,32 @@ end.
     srcs = {(e.src.split(":")[1], e.line): e.src for e in result.edges if e.edge_type == "calls"}
     assert srcs[("frag.pas", 3)].endswith(":1-1:file:file"), srcs
     assert srcs[("lib.pas", 5)].endswith(":1-1:file:file"), srcs
+
+
+def test_a_call_shape_in_a_declaration_is_not_a_call(tmp_path: Path) -> None:
+    """A constant initialiser, an array bound, a typed-var initialiser and a
+    local ``const`` hold constant expressions: ``TFlags($01)`` is a typecast,
+    not a call. Only the procedure body's ``Q(1)`` is a call."""
+    (tmp_path / "u.pas").write_text("""\
+unit U;
+interface
+const
+  F1 = TFlags($01);
+type
+  TArr = array[0..Ord(High(Byte))] of Byte;
+var
+  G: Integer = Integer(3);
+implementation
+procedure P;
+const L = TFlags(2);
+begin
+  Q(1);
+end;
+initialization
+  Q(2);
+end.
+""")
+    result = analyze_pascal(tmp_path)
+    calls = _calls(result)
+    assert sorted(calls) == [13, 16]
+    assert calls[13][0] == "P" and calls[16][0] == "U"
