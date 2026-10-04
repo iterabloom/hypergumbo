@@ -55,6 +55,17 @@ How It Works
      a library row. A receiver that is a catalogued stdlib package variable
      (``http.DefaultClient.Do``) is typed from the library's
      ``package_variables`` (``_package_variable_import_path``).
+   - A method called on a call's RESULT (``slog.New(h).Error``,
+     ``json.NewEncoder(w).Encode``) takes the result's type by the same rule
+     a binding does (``_go_call_result_type``: convention, then registry);
+     a type outside the module fills the slot as a typed local's does. A
+     receiver whose type is known to be outside the module -- that result, a
+     stdlib package variable, a struct field -- is never looked up in-repo,
+     where a same-named method under a ``json`` / ``http`` directory took the
+     call (WI-vinuh).
+   - An explicitly instantiated generic callee (``Map[int](x)``,
+     ``pkg.Zero[int]()``) is read as its plain spelling
+     (``_go_instantiated_callee``, WI-nulig).
 6. Ambiguous method call guard:
    - When a method call ``x.Method()`` has no inferred receiver type and the
      method name has 2+ candidates in global symbols, creates an unresolved
@@ -885,14 +896,27 @@ def _external_package_for_type(
     if "." not in type_name:
         return None
     full_import_path = import_aliases.get(type_name.split(".")[0])
-    if full_import_path is None or not module_path:
+    if full_import_path is None:
         return None
-    if (
-        full_import_path == module_path
-        or full_import_path.startswith(module_path + "/")
-    ):
-        return None
-    return full_import_path
+    return (
+        full_import_path
+        if _go_path_outside_module(full_import_path, module_path) else None
+    )
+
+
+def _go_path_outside_module(import_path: str, module_path: Optional[str]) -> bool:
+    """True when ``import_path`` is provably outside this go.mod's module.
+
+    The discriminator :func:`_external_package_for_type` documents: an import
+    path inside the module is a prefix match on the module path. With no module
+    path known the answer is False -- in-repo and external are indistinguishable
+    there, and the callers keep their pre-go.mod behaviour (a disclosed gap).
+    """
+    if not module_path:
+        return False
+    return not (
+        import_path == module_path or import_path.startswith(module_path + "/")
+    )
 
 
 def _count_go_method_arity(
@@ -2412,56 +2436,9 @@ def _extract_go_var_types(
                 and _rhs_expr is not None
                 and _rhs_expr.type == "call_expression"
             ):
-                call_func = find_child_by_field(_rhs_expr, "function")
-                if call_func is not None and call_func.type == "selector_expression":
-                    operand = find_child_by_field(call_func, "operand")
-                    field_node = find_child_by_field(call_func, "field")
-                    if operand is not None and field_node is not None:
-                        recv_name = node_text(operand, source)
-                        method_name = node_text(field_node, source)
-                        recv_type = func_vars.get(recv_name, "")
-                        if recv_type:
-                            # Fold: registry keys carry a BARE receiver, values
-                            # are qualified (WI-doluf).
-                            qualified = (
-                                f"{_bare_go_type(recv_type)}.{method_name}"
-                            )
-                            type_name = method_return_type_registry.get(
-                                qualified
-                            )
-                        else:
-                            # WI-lalot: a PACKAGE-qualified producer --
-                            # ``net.Listen(...)``, ``exec.Command(...)``. ``net``
-                            # is a package, not a variable, so the receiver-type
-                            # lookup above finds nothing and this shape never
-                            # reached the registry at all: the merge alone left
-                            # `ln.Accept()` and `c.Start()` on the `external`
-                            # sentinel, which is exactly the inertness WI-lalot
-                            # was filed for.
-                            #
-                            # The registry itself is the gate. An ANALYSED go key
-                            # is either a bare function name or `Receiver.Method`
-                            # with a bare -- conventionally capitalised -- Go type
-                            # as the receiver, so a hit on a lowercase
-                            # `package.Func` key can only come from a library row.
-                            type_name = method_return_type_registry.get(
-                                f"{recv_name}.{method_name}"
-                            )
-                elif call_func is not None and call_func.type == "identifier":
-                    # WI-doluf: a PLAIN function call -- ``conn := makeConn()``.
-                    # This branch did not exist, so the registry was populated
-                    # for standalone functions (``analysis.method_return_types
-                    # [func_name]``) and consulted only for method calls. Every
-                    # factory function in every Go repo fell through to an
-                    # untyped variable, in-repo return types included: the
-                    # control fixture ``res := makeResult(); res.Rows()``
-                    # resolved to ``go:external:0-0:Rows`` before this branch.
-                    fn_name = node_text(call_func, source)
-                    if (
-                        fn_name not in _GO_BUILTIN_TYPES
-                        and fn_name not in _GO_BUILTIN_FUNCS
-                    ):
-                        type_name = method_return_type_registry.get(fn_name)
+                type_name = _go_registry_call_type(
+                    _rhs_expr, source, func_vars, method_return_type_registry,
+                )
 
             if type_name and type_name not in _GO_BUILTINS:
                 func_vars[var_name] = type_name
@@ -2750,6 +2727,75 @@ def _type_from_constructor_call(
                 return None
 
     return None
+
+
+def _go_registry_call_type(
+    call_node: "tree_sitter.Node",
+    source: bytes,
+    var_types: Mapping[str, str],
+    registry: Mapping[str, str],
+) -> str | None:
+    """The return-type registry's answer for what ``call_node`` returns, or None.
+
+    Three call shapes, each keyed as the registry is (library_signatures/go.yaml
+    states the key shape):
+
+    - ``e.Query()`` on a TYPED receiver -> ``Engine.Query`` (WI-kuroj). Keys
+      carry a BARE receiver, values are qualified (WI-doluf), hence the fold.
+    - ``net.Listen(...)``, a PACKAGE-qualified producer -> ``net.Listen``
+      (WI-lalot). ``net`` is a package, not a variable, so the receiver-type
+      lookup finds nothing and this shape never reached the registry before
+      WI-lalot: ``ln.Accept()`` and ``c.Start()`` stayed on the ``external``
+      sentinel. The registry itself is the gate: an ANALYSED go key is a bare
+      function name or ``Receiver.Method`` with a capitalised Go type, so a hit
+      on a lowercase ``package.Func`` key can only come from a library row. The
+      key is the package's name AS THIS FILE SPELLS IT, so a renamed import
+      (``l "log/slog"``) misses -- a disclosed gap, not a guess.
+    - ``makeConn()``, a PLAIN function call -> ``makeConn`` (WI-doluf: the
+      registry held standalone functions and was consulted only for methods,
+      so ``res := makeResult(); res.Rows()`` went to ``go:external``).
+
+    Shared by the binding typer (``x := f()``) and the chained-call branch
+    (``f().M()``, WI-vinuh) so the two cannot answer differently.
+    """
+    call_func = find_child_by_field(call_node, "function")
+    if call_func is not None and call_func.type == "selector_expression":
+        operand = find_child_by_field(call_func, "operand")
+        field_node = find_child_by_field(call_func, "field")
+        if operand is None or field_node is None:
+            return None  # pragma: no cover - a parsed selector has both fields
+        recv_name = node_text(operand, source)
+        method_name = node_text(field_node, source)
+        recv_type = var_types.get(recv_name, "")
+        if recv_type:
+            return registry.get(f"{_bare_go_type(recv_type)}.{method_name}")
+        return registry.get(f"{recv_name}.{method_name}")
+    if call_func is not None and call_func.type == "identifier":
+        fn_name = node_text(call_func, source)
+        if fn_name not in _GO_BUILTIN_TYPES and fn_name not in _GO_BUILTIN_FUNCS:
+            return registry.get(fn_name)
+    return None
+
+
+def _go_call_result_type(
+    call_node: "tree_sitter.Node",
+    source: bytes,
+    var_types: Mapping[str, str],
+    registry: Mapping[str, str],
+) -> str | None:
+    """The type ``call_node`` returns, as the binding typer would infer it.
+
+    THE ORDER IS THE BINDING TYPER'S: the ``NewXxx`` constructor convention
+    (:func:`_type_from_constructor_call`) first, then the return-type registry
+    (:func:`_go_registry_call_type`). ``x := f()`` answers through
+    :func:`_type_from_rhs` and then the registry in exactly that order; the
+    chained-call branch asks this function, so ``f().M()`` and
+    ``x := f(); x.M()`` type their receiver identically (WI-vinuh).
+    """
+    return (
+        _type_from_constructor_call(call_node, source)
+        or _go_registry_call_type(call_node, source, var_types, registry)
+    )
 
 
 def _type_identifier_from_node(
@@ -3895,6 +3941,87 @@ def _resolve_field_chain(
     return current_type
 
 
+#: How the call arm reads a callee node, by node type (WI-nulig). An explicitly
+#: instantiated generic callee is spelled as a TYPE when the call parses as a
+#: conversion (``Map[int](x)``: ``type_identifier`` / ``qualified_type``), and is
+#: read exactly as the expression spelling of the same name.
+_GO_CALLEE_SHAPES: Final[Mapping[str, str]] = {
+    "identifier": "identifier",
+    "type_identifier": "identifier",
+    "selector_expression": "selector_expression",
+    "qualified_type": "selector_expression",
+}
+
+#: What a Go generic instantiation can name: a package-level function or type.
+_GO_INSTANTIABLE_KINDS: Final[frozenset[str]] = frozenset(
+    {"function", "struct", "interface", "type"})
+
+
+def _go_selector_parts(
+    node: "tree_sitter.Node",
+) -> "tuple[Optional[tree_sitter.Node], Optional[tree_sitter.Node]]":
+    """``(operand, field)`` of a selector callee, in either spelling.
+
+    ``pkg.Func`` is a ``selector_expression`` (``operand`` / ``field``) in
+    expression position and a ``qualified_type`` (``package`` / ``name``) when
+    an instantiated call parses as a conversion (WI-nulig).
+    """
+    if node.type == "qualified_type":
+        return find_child_by_field(node, "package"), find_child_by_field(node, "name")
+    return find_child_by_field(node, "operand"), find_child_by_field(node, "field")
+
+
+def _go_instantiated_callee(
+    node: "tree_sitter.Node",
+    source: bytes,
+    import_aliases: Mapping[str, str],
+) -> "Optional[tree_sitter.Node]":
+    """The node naming an explicitly instantiated generic callee, or None (WI-nulig).
+
+    tree-sitter-go spells ``F[T](args)`` in two shapes that the call arm, keyed
+    on ``call_expression.function`` being an identifier or a selector, never
+    read -- so the call site vanished from the graph:
+
+    - ONE argument: ``type_conversion_expression`` whose ``type`` is a
+      ``generic_type`` (``Map[int](x)``, ``pkg.Map[int](x)``), because
+      ``T[int](x)`` is also how a generic TYPE is converted.
+    - zero or several arguments: ``call_expression`` whose ``function`` is an
+      ``index_expression`` (``Zero[int]()``, ``pkg.Zero[int]()``).
+
+    (A type argument that can only be a type, ``F[[]int](x, y)``, or several
+    type arguments with several arguments, parse as a plain call_expression
+    with a ``type_arguments`` field and were always read.)
+
+    BOTH SHAPES ALSO SPELL A CALL THROUGH A COLLECTION ELEMENT,
+    ``handlers[k](x)``. Go instantiates only package-level functions and types,
+    so the operand must be a bare name or a selector ON AN IMPORTED PACKAGE; a
+    selector on a value (``s.fs[0](x)``) is refused here, a locally bound name
+    by the call arm's bound-names rule, and a package VARIABLE by the arm's
+    :data:`_GO_INSTANTIABLE_KINDS` check once the name resolves.
+    """
+    if node.type == "type_conversion_expression":
+        generic = find_child_by_field(node, "type")
+        if generic is None or generic.type != "generic_type":
+            return None
+        callee = find_child_by_field(generic, "type")
+    elif node.type == "call_expression":
+        index = find_child_by_field(node, "function")
+        if index is None or index.type != "index_expression":
+            return None
+        callee = find_child_by_field(index, "operand")
+    else:
+        return None  # pragma: no cover - the call arm passes only the two above
+    if callee is None or callee.type not in _GO_CALLEE_SHAPES:
+        return None
+    if _GO_CALLEE_SHAPES[callee.type] == "selector_expression":
+        package, _ = _go_selector_parts(callee)
+        if package is None or package.type not in ("identifier", "package_identifier"):
+            return None
+        if node_text(package, source) not in import_aliases:
+            return None
+    return callee
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -4041,7 +4168,12 @@ def _extract_edges_from_file(
                                 ))
 
         # Detect function calls
-        elif node.type == "call_expression":
+        # WI-nulig: ``Map[int](x)`` parses as a generic TYPE conversion; it is
+        # read here when it can name an instantiated callee.
+        elif node.type == "call_expression" or (
+            node.type == "type_conversion_expression"
+            and _go_instantiated_callee(node, source, import_aliases) is not None
+        ):
             current_function = _get_enclosing_function(
                 node, source, local_symbols, file_symbol=file_pseudo_symbol,
                 decl_index=decl_index,
@@ -4050,7 +4182,14 @@ def _extract_edges_from_file(
                 # Get var_types scoped to the current enclosing function
                 var_types = scoped_var_types.get(current_function.name, {})
 
-                func_node = find_child_by_field(node, "function")
+                # WI-nulig: an explicitly instantiated callee (``Map[int]``,
+                # ``pkg.Map[int]``) is read as its plain spelling.
+                instantiated = _go_instantiated_callee(node, source, import_aliases)
+                func_node = (
+                    instantiated if instantiated is not None
+                    else find_child_by_field(node, "function")
+                )
+                callee_shape = _GO_CALLEE_SHAPES.get(func_node.type) if func_node else None
                 if func_node:
                     callee_name = None
                     import_path_hint = None
@@ -4073,27 +4212,33 @@ def _extract_edges_from_file(
                     # WI-nunab: the target kind a PACKAGE-VARIABLE receiver
                     # names by itself (``os.Stdout.Write`` -> ``std_stream``).
                     receiver_handle_kind: Optional[str] = None
+                    # WI-vinuh: the receiver's type is known and OUTSIDE this
+                    # module (a call's result, a stdlib package variable, a
+                    # struct field), so no in-repo symbol can be the callee --
+                    # the rule the typed-local guard (WI-jopar) already keeps.
+                    receiver_type_is_external = False
                     full_import_path = None
                     # INV-tanom: the operand is an imported PACKAGE, not a value.
                     # Such a call is a function call (ADR-0059: called on the
                     # module itself), and the construct stamp says so below.
                     package_qualified = False
 
-                    if func_node.type == "identifier":
+                    if callee_shape == "identifier":
                         # Simple call: helper()
                         raw_name = node_text(func_node, source)
                         # Skip Go builtin type conversions (string(x),
                         # int(x)) and builtin functions (len, cap, make)
                         if raw_name not in _GO_BUILTIN_TYPES and raw_name not in _GO_BUILTIN_FUNCS:
                             callee_name = raw_name
-                    elif func_node.type == "selector_expression":
+                    elif callee_shape == "selector_expression":
                         # Method call: obj.Method() or pkg.Func()
-                        operand_node = find_child_by_field(func_node, "operand")
-                        field_node = find_child_by_field(func_node, "field")
+                        operand_node, field_node = _go_selector_parts(func_node)
                         if field_node:
                             callee_name = node_text(field_node, source)
                         # Check if operand is a package alias
-                        if operand_node and operand_node.type == "identifier":
+                        if operand_node and operand_node.type in (
+                            "identifier", "package_identifier",
+                        ):
                             alias = node_text(operand_node, source)
                             if (
                                 alias in import_aliases
@@ -4229,6 +4374,9 @@ def _extract_edges_from_file(
                             )) is not None
                         ):
                             _pv_path, receiver_owner = _pv
+                            receiver_type_is_external = _go_path_outside_module(
+                                _pv_path, module_path,
+                            )
                             receiver_handle_kind = _go_classify_handle_text(
                                 node_text(operand_node, source),
                             )
@@ -4296,6 +4444,7 @@ def _extract_edges_from_file(
                                             resolved_type, import_aliases, module_path,
                                         )
                                         if _field_ext is not None:
+                                            receiver_type_is_external = True
                                             receiver_owner = (
                                                 f"{_field_ext}."
                                                 f"{resolved_type.rsplit('.', 1)[-1]}"
@@ -4309,10 +4458,38 @@ def _extract_edges_from_file(
                                             )
                                         else:
                                             import_path_hint = full_import_path
-                        # Chained call: pkg.Func(args).Method()
-                        # e.g. json.NewEncoder(w).Encode(data) — propagate
-                        # the import path from the inner call's package prefix
-                        # so .Encode() doesn't falsely resolve to a local
+                        # Chained call: f(args).Method(). WI-vinuh: the
+                        # receiver is the inner call's RESULT, typed by the
+                        # binding typer's own rule (_go_call_result_type), so
+                        # ``slog.New(h).Error`` takes ``log/slog.Logger``'s
+                        # slot as ``l := slog.New(h); l.Error`` does, and not
+                        # the bare package, where the package FUNCTION
+                        # ``Error`` won by declaration order (INV-vusum).
+                        # A type from outside the module cannot be defined
+                        # here, so no in-repo symbol is looked up for it
+                        # (``receiver_type_is_external``): ``internal/json``'s
+                        # ``Encode`` took ``json.NewEncoder(w).Encode`` through
+                        # the path hint's last component.
+                        elif (
+                            operand_node
+                            and operand_node.type == "call_expression"
+                            and (_result_type := _go_call_result_type(
+                                operand_node, source, var_types,
+                                method_return_type_registry,
+                            ))
+                            and (_result_pkg := _external_package_for_type(
+                                _result_type, import_aliases, module_path,
+                            )) is not None
+                        ):
+                            full_import_path = _result_pkg
+                            import_path_hint = _result_pkg
+                            receiver_owner = (
+                                f"{_result_pkg}.{_bare_go_type(_result_type)}"
+                            )
+                            receiver_type_is_external = True
+                        # Otherwise only the inner call's PACKAGE is known
+                        # (``pkg.Func(args).Method()``): propagate its import
+                        # path so .Method() doesn't falsely resolve to a local
                         # method with the same name.
                         elif operand_node and operand_node.type == "call_expression":
                             inner_func = find_child_by_field(
@@ -4633,7 +4810,7 @@ def _extract_edges_from_file(
                         if (
                             callee_name
                             and import_path_hint is None
-                            and func_node.type == "selector_expression"
+                            and callee_shape == "selector_expression"
                             and callee_name[0].islower()
                         ):
                             dst_id = f"go:external:0-0:{callee_name}:unresolved"
@@ -4668,7 +4845,7 @@ def _extract_edges_from_file(
                         if (
                             callee_name
                             and import_path_hint is None
-                            and func_node.type == "selector_expression"
+                            and callee_shape == "selector_expression"
                             and callee_name in _GO_STDLIB_INTERFACE_METHODS
                         ):
                             dst_id = f"go:external:0-0:{callee_name}:unresolved"
@@ -4701,10 +4878,23 @@ def _extract_edges_from_file(
                     # ``nodeName, err := nodeName(o)`` is the package function.
                     if (
                         callee_name
-                        and func_node.type == "identifier"
+                        and callee_shape == "identifier"
                         and callee_name in _bound_names(node)
                     ):
                         callee_name = None
+
+                    # WI-nulig: ``handlers[k](x)`` on a package VARIABLE calls an
+                    # element, not ``handlers``; only a function or a type can be
+                    # instantiated. Resolved as the binding below would resolve it,
+                    # and silent when it names a value -- as before.
+                    if callee_name and instantiated is not None:
+                        _named = (
+                            own_package.lookup(callee_name)
+                            if callee_shape == "identifier"
+                            else resolver.lookup(callee_name, path_hint=import_path_hint)
+                        ).symbol
+                        if _named is not None and _named.kind not in _GO_INSTANTIABLE_KINDS:
+                            callee_name = None
 
                     # WI-kugap: the construct is how the call is WRITTEN
                     # (ADR-0059): on the package itself, or bare, is a
@@ -4714,7 +4904,7 @@ def _extract_edges_from_file(
                     # function call. The unresolved emit already asked this.
                     call_construct = (
                         "function"
-                        if func_node.type == "identifier" or package_qualified
+                        if callee_shape == "identifier" or package_qualified
                         else "method"
                     )
 
@@ -4730,7 +4920,7 @@ def _extract_edges_from_file(
                             callee_name in local_symbols
                             and import_path_hint is None
                             and not (
-                                func_node.type == "identifier"
+                                callee_shape == "identifier"
                                 and local_symbols[callee_name].kind in _GO_MEMBER_KINDS
                             )
                         ):
@@ -4751,14 +4941,16 @@ def _extract_edges_from_file(
                             # package and nowhere else (bar the dot-import
                             # fallback below); only a selector asks repo-wide.
                             lookup_result = (
-                                own_package.lookup(callee_name)
-                                if func_node.type == "identifier"
+                                LookupResult(symbol=None)
+                                if receiver_type_is_external
+                                else own_package.lookup(callee_name)
+                                if callee_shape == "identifier"
                                 else resolver.lookup(callee_name, path_hint=import_path_hint)
                             )
                             if (
                                 not lookup_result.found
                                 and import_path_hint is None
-                                and func_node.type == "identifier"
+                                and callee_shape == "identifier"
                                 and dot_imports
                             ):
                                 # A bare name the ambiguity guard withheld, in a
@@ -4804,7 +4996,7 @@ def _extract_edges_from_file(
                                 ))
                             # Bug #2 fix: Create edge for external/unresolved method calls
                             # This enables linkers to potentially match across languages
-                            elif func_node.type == "selector_expression":
+                            elif callee_shape == "selector_expression":
                                 # For s.Method() where Method is external, create unresolved edge
                                 # Use the FULL import path (not stripped) to keep the ID meaningful
                                 unresolved_path = full_import_path if full_import_path else import_path_hint
@@ -4845,9 +5037,12 @@ def _extract_edges_from_file(
                                 ))
                                 # WI-ninuz: ``os.OpenFile``'s flags decide
                                 # read vs write, as ``open``'s mode string does.
-                                stamp_io_mode_from_call(
-                                    edges, _first_new, node, source, "go",
-                                )
+                                # A conversion-spelled instantiation (WI-nulig)
+                                # has no ``function`` / ``arguments`` fields.
+                                if node.type == "call_expression":
+                                    stamp_io_mode_from_call(
+                                        edges, _first_new, node, source, "go",
+                                    )
                             # WI-vovum / WI-mafik: bare-identifier call whose
                             # name was dot-imported (``import . "strings"`` +
                             # ``Contains(...)``). Attribute it to the first
@@ -4855,7 +5050,7 @@ def _extract_edges_from_file(
                             # specific package exported the symbol, but
                             # surfacing one of the dot-import paths gives
                             # downstream linkers the right place to look.
-                            elif func_node.type == "identifier" and dot_imports:
+                            elif callee_shape == "identifier" and dot_imports:
                                 source_pkg = dot_imports[0]
                                 ref = ExternalRef(
                                     lang="go",
@@ -4883,7 +5078,7 @@ def _extract_edges_from_file(
                             # mints the ``external`` placeholder here, as Python
                             # has since INV-foluz. (A name bound in the enclosing
                             # declaration never gets here: see WI-bivin above.)
-                            # ``func_node`` is an ``identifier`` on this arm.
+                            # ``callee_shape`` is ``identifier`` on this arm.
                             else:
                                 edges.append(make_unresolved_edge(
                                     "go", current_function.id, callee_name,
@@ -4894,7 +5089,13 @@ def _extract_edges_from_file(
 
                 # Detect function references passed as arguments
                 # e.g., register(handler), r.Get("/path", ViewIssue)
-                args_node = find_child_by_field(node, "arguments")
+                # WI-nulig: a conversion-spelled call's one argument is a
+                # direct child (its ``operand``); the node holds no other
+                # identifier or selector child to misread as an argument.
+                args_node = (
+                    node if node.type == "type_conversion_expression"
+                    else find_child_by_field(node, "arguments")
+                )
                 if args_node and current_function is not None:
                     _extract_function_reference_edges(
                         args_node, source, current_function,

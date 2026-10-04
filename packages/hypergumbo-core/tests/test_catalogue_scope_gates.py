@@ -586,6 +586,8 @@ SHORT_SPELLINGS: dict[str, dict[str, str]] = {
     "go": {
         "exec": "os/exec", "http": "net/http",
         "Listener": "net.Listener", "Cmd": "os/exec.Cmd",
+        # WI-vinuh: library_signatures/go.yaml's slog.New / Default / With rows.
+        "slog": "log/slog",
     },
     # Java code names a class by its simple name once imported.
     "java": {
