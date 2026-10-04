@@ -5175,6 +5175,44 @@ def is_first_party_callable_dst(edge_dst: str) -> bool:
     return symbol_path_slot(edge_dst).startswith(("/", "\\"))
 
 
+def short_name_fallback_withheld(
+    edge_dst: str, meta: Optional[Mapping[str, Any]],
+) -> bool:
+    """Is this call BOUND to an in-repo symbol, so no row may claim it by short name?
+
+    THE ROW-CHOICE HALF OF "A BOUND CALL IS NOT A LIBRARY CALL", asked by both
+    catalogue consumers (``classify_call_in_catalog`` for io-boundaries, taint's
+    ``_match_propagation_entry``; INV-foda). A ``True`` withholds ONLY the gate
+    arm of :func:`named_lookup_arm` -- the bare-short-name fallback. A qualified
+    name or a module the edge states still decides, exactly as
+    :func:`is_first_party_callable_dst` already arranged for a dst that resolved
+    to a first-party callable.
+
+    TWO WAYS A CALL IS BOUND, ONE ANSWER:
+
+    * the dst IS a first-party callable (:func:`is_first_party_callable_dst`);
+    * the edge is an unresolved stub that a resolved edge to an in-repo symbol
+      SUPERSEDED (``meta.superseded_by``, ADR-0057 §14). The stub is demoted,
+      never deleted, so it stays in the graph beside its resolution -- and its
+      ``external`` slot sent it to the short-name gate as if nothing had bound
+      it. WI-vidof measured the cost on gatling: a subclass's bare ``readInt()``
+      that the inherited-calls linker resolved to the superclass's own
+      ``readInt`` still classified as ``scala.io.StdIn.readInt``, 11 false
+      ``ipc_recv`` edges. A bare call with NO superseder
+      (``import scala.io.StdIn._; readInt()``) is unaffected; ``ambiguous_names``
+      could not have told the two apart.
+
+    WHY THE STAMP AND NOT A RE-DERIVATION. ``superseded_by`` is the producer's
+    own positive statement, written once by finalize and read here; a second
+    same-site match in this module would be the "two homes for one fact" shape
+    INV-foda retired. Its absence asserts nothing (absent != empty): a stub with
+    no superseder keeps today's classification.
+    """
+    if is_first_party_callable_dst(edge_dst):
+        return True
+    return bool((meta or {}).get("superseded_by"))
+
+
 def _extract_module_hint(edge_dst: str) -> str | None:
     """Extract the module hint from an edge destination symbol ID.
 
@@ -5413,7 +5451,9 @@ def classify_call_in_catalog(
             call_construct=edge_meta.get("call_construct"),
             io_modes=call_site_modes(edge_meta),
             io_target_kinds=call_site_target_kinds(edge_meta),
-            allow_short_name_fallback=not is_first_party_callable_dst(dst),
+            allow_short_name_fallback=not short_name_fallback_withheld(
+                dst, edge_meta,
+            ),
         )
 
     hit = _lookup(callee) if callee else None
