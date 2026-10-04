@@ -31,7 +31,13 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    the files ``include`` joins to it, then exported declarations of the
    modules it imports (narrowed by ``from`` / ``except``, extended through
    ``export``) -- never a private proc of another module, which the flat
-   one-declaration-per-name registry had allowed
+   one-declaration-per-name registry had allowed. Among those it can see, the
+   overloads are narrowed by ARITY (each proc records ``meta["parameters"]``;
+   a UFCS receiver is the first argument) and by the DECLARED type of the
+   first argument -- a parameter, ``result``, or a typed ``var`` / ``let`` --
+   where it provably cannot bind a candidate's first parameter (``_NimTypes``,
+   WI-bivab). What survives several-fold is an ambiguous choice; nothing
+   surviving is a library call, left unresolved
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Nim-specific extraction
@@ -48,6 +54,7 @@ Why This Design
 from __future__ import annotations
 
 import posixpath
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, ClassVar, Iterator, Optional
@@ -69,7 +76,10 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
-from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, choose_overload, parameter_entry,
+)
+from hypergumbo_core.symbol_resolution import LookupResult
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -165,6 +175,64 @@ def _make_symbol(
     )
 
 
+def _nim_parameters(
+    params: Optional["tree_sitter.Node"], source: bytes,
+) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` of a proc/func/method (WI-bivab, ADR-0058).
+
+    One ``parameter_declaration`` may name several parameters sharing a type
+    (``a, b: int``); each is an entry. ``c = 3`` is defaulted, and a
+    ``varargs[T]`` parameter takes any number of arguments. A declaration
+    with no parameter list (``proc tick = ...``) takes none: ``[]``.
+    """
+    entries: list[dict[str, Any]] = []
+    if params is None:
+        return entries
+    for decl in params.named_children:
+        if decl.type != "parameter_declaration":
+            continue
+        type_node = find_child_by_type(decl, "type_expression")
+        type_text = node_text(type_node, source) if type_node is not None else None
+        default = any(c.type == "=" for c in decl.children)
+        variadic = type_text is not None and type_text.startswith("varargs[")
+        names = find_child_by_type(decl, "symbol_declaration_list")
+        for sym_decl in (names.named_children if names is not None else ()):
+            ident = find_child_by_type(sym_decl, "identifier")
+            entries.append(parameter_entry(
+                node_text(ident if ident is not None else sym_decl, source),
+                type_text, default=default, variadic=variadic,
+            ))
+    return entries
+
+
+def _nim_call_arity(node: "tree_sitter.Node") -> tuple[int, bool]:
+    """``(argument count, dotted)`` of a call node.
+
+    A trailing ``: block`` or ``do`` block is one more argument (the grammar
+    puts it inside the argument list). ``dotted`` is the method-call form
+    ``x.f(..)``: unless ``x`` names a module, ``x`` is the first argument
+    (UFCS), which the lookup decides.
+    """
+    args = find_child_by_type(node, "argument_list")
+    count = (
+        sum(1 for c in args.named_children if c.type != "comment")
+        if args is not None else 0
+    )
+    dotted = bool(node.children) and node.children[0].type == "dot_expression"
+    return count, dotted
+
+
+def _first_argument_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The first argument of ``f(x, ..)`` when it is a bare name, else None."""
+    args = find_child_by_type(node, "argument_list")
+    first = next(
+        (c for c in args.named_children if c.type != "comment"), None,
+    ) if args is not None else None
+    if first is None or first.type != "identifier":
+        return None
+    return node_text(first, source)
+
+
 def _process_proc_declaration(
     analyzer: "NimAnalyzer", source: bytes, rel_path: str, run_id: str, node: "tree_sitter.Node",
 ) -> Optional[Symbol]:
@@ -176,8 +244,9 @@ def _process_proc_declaration(
     proc_name = node_text(name_node, source)
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
+    meta = {PARAMETERS_KEY: _nim_parameters(params, source)}
 
-    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "function", source, signature=signature, is_exported=is_exported)
+    return _make_symbol(analyzer, rel_path, run_id, node, proc_name, "function", source, signature=signature, meta=meta, is_exported=is_exported)
 
 
 def _process_func_declaration(
@@ -191,8 +260,9 @@ def _process_func_declaration(
     func_name = node_text(name_node, source)
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
+    meta = {PARAMETERS_KEY: _nim_parameters(params, source)}
 
-    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature, is_exported=is_exported)
+    return _make_symbol(analyzer, rel_path, run_id, node, func_name, "function", source, signature=signature, meta=meta, is_exported=is_exported)
 
 
 def _process_method_declaration(
@@ -206,8 +276,9 @@ def _process_method_declaration(
     method_name = node_text(name_node, source)
     params = find_child_by_type(node, "parameter_declaration_list")
     signature = node_text(params, source) if params else "()"
+    meta = {PARAMETERS_KEY: _nim_parameters(params, source)}
 
-    return _make_symbol(analyzer, rel_path, run_id, node, method_name, "method", source, signature=signature, is_exported=is_exported)
+    return _make_symbol(analyzer, rel_path, run_id, node, method_name, "method", source, signature=signature, meta=meta, is_exported=is_exported)
 
 
 def _process_type_declaration(
@@ -503,6 +574,233 @@ def _get_call_target_name_nim(
 
 
 # ---------------------------------------------------------------------------
+# First-argument types: which overloads a call CANNOT take (WI-bivab)
+# ---------------------------------------------------------------------------
+
+#: Built-in scalar types by conversion family. Within a family Nim converts
+#: implicitly often enough (``int8`` widens to ``int``, ``string`` passes as
+#: ``cstring``) that two members are never PROVED incompatible; across
+#: families a value never binds without a converter.
+_NIM_SCALAR_FAMILY: dict[str, str] = {
+    **dict.fromkeys(("string", "cstring"), "text"),
+    "char": "char",
+    "bool": "bool",
+    **dict.fromkeys((
+        "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16",
+        "uint32", "uint64", "float", "float32", "float64", "byte", "Natural",
+        "Positive", "BiggestInt", "BiggestFloat",
+    ), "number"),
+}
+
+#: Built-in generic containers. Distinct heads never bind to each other, and
+#: Nim generics are invariant: ``seq[A]`` takes no ``seq[B]`` unless A and B
+#: are the same type. ``tuple`` stands for every tuple shape. NOT here, so
+#: never proved incompatible: the type classes a parameter uses to accept
+#: many types (``openArray``, ``varargs``, ``auto``, ``typed``, generics).
+_NIM_CONTAINERS: frozenset[str] = frozenset({
+    "seq", "set", "array", "tuple", "Table", "TableRef", "OrderedTable",
+    "OrderedTableRef", "CountTable", "HashSet", "OrderedSet", "Option", "Deque",
+})
+
+
+def _split_nim_type(text: str) -> tuple[str, list[str]]:
+    """``seq[Table[string, int]]`` -> ``("seq", ["Table[string, int]"])``.
+
+    Parameter modifiers (``var``, ``sink``, ``lent``) are dropped -- they do
+    not change which values bind. A ``(a, b)`` tuple is head ``tuple``.
+    """
+    t = " ".join(text.split())
+    for prefix in ("var ", "sink ", "lent "):
+        while t.startswith(prefix):
+            t = t[len(prefix):]
+    if t.startswith("("):
+        head, inner = "tuple", t[1:t.rfind(")")] if ")" in t else t[1:]
+    elif "[" in t and t.endswith("]"):
+        head, inner = t[:t.index("[")], t[t.index("[") + 1:-1]
+    else:
+        return t, []
+    args: list[str] = []
+    depth, start = 0, 0
+    for i, ch in enumerate(inner):
+        if ch in "[(":
+            depth += 1
+        elif ch in "])":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            args.append(inner[start:i].strip())
+            start = i + 1
+    if inner.strip():
+        args.append(inner[start:].strip())
+    return head, args
+
+
+class _NimTypes:
+    """The repository's type declarations, for :meth:`incompatible`.
+
+    A NOMINAL type (``object``, ``enum``, ``distinct``, ``ref object``) is a
+    type of its own; an ALIAS (``Tweets* = seq[Tweet]``) is the type it names.
+    A name declared both ways, in two modules, is neither: unknown.
+    """
+
+    def __init__(self) -> None:
+        self.nominal: set[str] = set()
+        self.aliases: dict[str, str] = {}
+        self._conflicted: set[str] = set()
+
+    def record(self, name: str, rhs: "tree_sitter.Node", source: bytes) -> None:
+        """Record one ``type_declaration`` by its right-hand side."""
+        if rhs.type == "type_expression":
+            text = " ".join(node_text(rhs, source).split())
+            if self.aliases.get(name, text) != text or name in self.nominal:
+                self._conflicted.add(name)
+            self.aliases[name] = text
+        elif rhs.type in ("object_declaration", "enum_declaration", "distinct_type") or (
+            rhs.type == "ref_type"
+            and find_child_by_type(rhs, "object_declaration") is not None
+        ):
+            if name in self.aliases:
+                self._conflicted.add(name)
+            self.nominal.add(name)
+
+    def _expand(self, text: str, unknown: frozenset[str]) -> str:
+        """Follow aliases from the head of ``text`` (bounded: a cycle stops).
+        A name in ``unknown`` (a generic parameter) is never expanded."""
+        for _ in range(8):
+            head, args = _split_nim_type(text)
+            if (
+                args or head in self._conflicted or head in unknown
+                or head not in self.aliases
+            ):
+                return text
+            text = self.aliases[head]
+        return text  # pragma: no cover - an alias cycle is not valid Nim
+
+    def _kind(self, head: str, unknown: frozenset[str]) -> Optional[str]:
+        if head in self._conflicted or head in unknown:
+            return None
+        if head in _NIM_SCALAR_FAMILY:
+            return "scalar:" + _NIM_SCALAR_FAMILY[head]
+        if head in _NIM_CONTAINERS:
+            return "container"
+        if head in self.nominal:
+            return "nominal"
+        return None
+
+    def incompatible(
+        self, value: str, param: str,
+        generics: frozenset[str] = frozenset(), invariant: bool = False,
+    ) -> bool:
+        """True only when a ``value``-typed argument PROVABLY cannot bind to a
+        ``param``-typed parameter. Anything unknown -- one of the callee's
+        ``generics`` (``proc f[K, V](t: Table[K, V])``, whose ``V`` may share
+        a name with a repository type), a library type, a type class -- is
+        compatible, because the check exists to exclude, and a wrong
+        exclusion loses a true edge.
+
+        Two different nominal types are compatible at the top level (an
+        ``object of Base`` passes as a ``Base``) but not inside a container,
+        where Nim generics are invariant. One generic type applied to two
+        argument lists (``PackageTerm[string, R]`` and ``PackageTerm[P, VS]``)
+        is compared argument by argument, as a container is.
+        """
+        v_head, v_args = _split_nim_type(self._expand(value, frozenset()))
+        p_head, p_args = _split_nim_type(self._expand(param, generics))
+        if (v_head, v_args) == (p_head, p_args):
+            return False
+        v_kind = self._kind(v_head, frozenset())
+        p_kind = self._kind(p_head, generics)
+        if v_kind is None or p_kind is None:
+            return False
+        if v_kind != p_kind:
+            return True
+        if v_kind.startswith("scalar"):
+            return False  # same scalar family
+        if v_head != p_head:
+            return v_kind == "container" or invariant
+        if v_head == "array" or len(v_args) != len(p_args):
+            return False  # an array's first argument is its size
+        return any(
+            self.incompatible(a, b, generics, invariant=True)
+            for a, b in zip(v_args, p_args, strict=True)
+        )
+
+
+def _first_parameter_type(sym: Symbol) -> Optional[str]:
+    """The declared type of a callable's first parameter, if it has one."""
+    entries = (sym.meta or {}).get(PARAMETERS_KEY) or []
+    return entries[0].get("type") if entries else None
+
+
+_TYPE_WORD = re.compile(r"\w+")
+
+
+class _ProcTypes:
+    """Declared types of the names a proc body can use, for a call's FIRST
+    ARGUMENT (WI-bivab): its parameters, ``result`` (the return type), and
+    each ``var`` / ``let`` / ``const`` written WITH a type before the call.
+    Nothing is inferred: ``var x = newSeq[int]()`` gives ``x`` no type."""
+
+    def __init__(self, source: bytes) -> None:
+        self._source = source
+        self._cache: dict[int, dict[str, list[tuple[int, Optional[str]]]]] = {}
+
+    def type_of(self, name: str, call: "tree_sitter.Node") -> Optional[str]:
+        proc = call.parent
+        while proc is not None and proc.type not in (
+            "proc_declaration", "func_declaration", "method_declaration",
+        ):
+            proc = proc.parent
+        if proc is None:
+            return None
+        if proc.id not in self._cache:
+            self._cache[proc.id] = self._declared(proc)
+        line = call.start_point[0]
+        seen = [t for at, t in self._cache[proc.id].get(name, ()) if at <= line]
+        declared = seen[-1] if seen else None
+        if declared is not None and not self._generics(proc).isdisjoint(
+            _TYPE_WORD.findall(declared),
+        ):
+            return None  # ``seq[T]`` in ``proc f[T]``: T is any type
+        return declared
+
+    def _generics(self, proc: "tree_sitter.Node") -> frozenset[str]:
+        return _names_in(find_child_by_type(proc, "generic_parameter_list"), self._source)
+
+    def _declared(
+        self, proc: "tree_sitter.Node",
+    ) -> dict[str, list[tuple[int, Optional[str]]]]:
+        out: dict[str, list[tuple[int, Optional[str]]]] = {}
+        src = self._source
+        ret = next(
+            (c for c in proc.children if c.type == "type_expression"), None,
+        )
+        if ret is not None:
+            out["result"] = [(proc.start_point[0], node_text(ret, src))]
+        decls: list["tree_sitter.Node"] = []
+        params = find_child_by_type(proc, "parameter_declaration_list")
+        if params is not None:
+            decls.extend(params.named_children)
+        body = find_child_by_type(proc, "statement_list")
+        if body is not None:
+            decls.extend(n for n in iter_tree(body) if n.type == "variable_declaration")
+        for decl in decls:
+            names = find_child_by_type(decl, "symbol_declaration_list")
+            if names is None:
+                continue
+            # An untyped ``let x = ..`` still SHADOWS an outer ``x``: recorded
+            # as unknown, so the outer declared type is not used past it.
+            type_node = find_child_by_type(decl, "type_expression")
+            declared = node_text(type_node, src) if type_node is not None else None
+            for sym_decl in names.named_children:
+                ident = find_child_by_type(sym_decl, "identifier")
+                if ident is not None:
+                    out.setdefault(node_text(ident, src), []).append(
+                        (decl.start_point[0], declared),
+                    )
+        return out
+
+
+# ---------------------------------------------------------------------------
 # Module scope: which declarations a call can see (WI-giloh)
 # ---------------------------------------------------------------------------
 
@@ -638,9 +936,12 @@ class _NimScope:
     The flat name registry keeps ONE symbol per name, the last registered, so
     the lookup it replaced bound calls to a private proc in a module the caller
     never imported: 1,555 edges on four repositories, 96 into one private
-    ``proc get`` on nitter. Overloads still resolve by name only (Nim picks by
-    argument types, which the analyzer does not know): two visible candidates
-    go through ``ListNameResolver``, whose confidence says it guessed.
+    ``proc get`` on nitter. Overloads are chosen by ARITY (WI-bivab): a tier
+    counts only when one of its declarations can take the call's argument
+    count, the receiver of a UFCS call included. Nim picks among the rest by
+    argument types, which the analyzer does not know: two that both fit are
+    an ambiguous choice, at ``ListNameResolver``'s ``1/sqrt(N)`` confidence
+    and stamped ``resolution_quality="ambiguous"``.
 
     Module paths resolve as the compiler searches them: relative to the
     importing file, then the search path, approximated by any repository file
@@ -656,6 +957,9 @@ class _NimScope:
         self._files_by_stem: Optional[dict[str, list[str]]] = None
         self._grants: dict[frozenset[str], list[_Grant]] = {}
         self._include_links: Optional[dict[str, set[str]]] = None
+        self.types = _NimTypes()
+        #: Each generic callable's type parameters (``proc f[K, V]``), by id.
+        self.generics: dict[str, frozenset[str]] = {}
 
     def add_symbol(self, symbol: Symbol) -> None:
         self.by_name.setdefault(symbol.name, []).append(symbol)
@@ -771,33 +1075,81 @@ class _NimScope:
             grants.extend(self._import_grants(imp, caller))
         return grants
 
-    def lookup(self, name: str, caller: str, receiver: Optional[str]) -> LookupResult:
+    def lookup(
+        self, name: str, caller: str, receiver: Optional[str],
+        args: Optional[int] = None, dotted: bool = False,
+        first_type: Optional[str] = None,
+    ) -> LookupResult:
+        """The declaration a call binds, among those ``caller`` can see.
+
+        ``args`` is the call's argument count and ``dotted`` its ``x.f(..)``
+        form (``_nim_call_arity``); None leaves arity out of it. A qualified
+        call ``m.f(a)`` passes ``args`` arguments; a UFCS call ``x.f(a)``
+        passes ``x`` too. The first tier with a declaration that can take
+        that many arguments decides (WI-bivab), so a nearer overload of
+        another arity no longer hides a farther one that fits; when none
+        anywhere can, the call is not a project call (``system.add`` and its
+        kin) and is left unresolved.
+
+        ``first_type`` is the DECLARED type of the unqualified call's first
+        argument (the UFCS receiver), when the caller knows it: a declaration
+        whose first parameter that type provably cannot bind to
+        (:meth:`_NimTypes.incompatible`) is no candidate. nitter's
+        ``result.add photo`` in a proc returning ``seq[GalleryPhoto]`` is
+        system's ``add``, not ``types.add*(timeline: var seq[Tweets]; ..)``.
+        """
         candidates = self.by_name.get(name, [])
         grants = self.module_named(receiver, caller) if receiver else None
         if grants == []:
             return LookupResult(symbol=None)  # a library module's qualified call
         if grants:
             visible = [c for c in candidates if any(g.admits(c) for g in grants)]
-            if visible:
-                return ListNameResolver({name: visible}).lookup(name)
-            # The module declares no such name, so the receiver is a value that
-            # shadows the module's name (nitter's ``query.getTabClass`` with a
-            # ``query`` parameter and a ``query`` module): a UFCS call.
-            grants = None
-        if grants is None:
-            # Nearest first: the caller's file, then the files ``include`` joins
-            # to it (platform alternatives under ``when`` each declare the same
-            # API), then other modules.
-            module = self.module_of(caller)
-            for tier in ({caller}, module):
-                own = [c for c in candidates if c.path in tier]
-                if own:
-                    return ListNameResolver({name: own}).lookup(name)
-            grants = self.grants_for(module)
-        visible = [c for c in candidates if any(g.admits(c) for g in grants)]
-        if not visible:
+            qualified = self._choose([visible], args)
+            if qualified.found:
+                return qualified
+            # The module declares no such name -- or none that takes this many
+            # arguments -- so the receiver is a value that shadows the module's
+            # name (nitter's ``query.getTabClass`` with a ``query`` parameter
+            # and a ``query`` module): a UFCS call, receiver included.
+        if args is not None and dotted:
+            args += 1
+        # Nearest first: the caller's file, then the files ``include`` joins
+        # to it (platform alternatives under ``when`` each declare the same
+        # API), then other modules.
+        module = self.module_of(caller)
+        tiers = [
+            [c for c in candidates if c.path in tier] for tier in ({caller}, module)
+        ]
+        grants = self.grants_for(module)
+        tiers.append([c for c in candidates if any(g.admits(c) for g in grants)])
+        if first_type is not None:
+            tiers = [
+                [c for c in tier if not self._refuses(first_type, c)]
+                for tier in tiers
+            ]
+        return self._choose(tiers, args)
+
+    def _refuses(self, first_type: str, candidate: Symbol) -> bool:
+        """The candidate's first parameter cannot take a ``first_type`` value."""
+        param = _first_parameter_type(candidate)
+        return param is not None and self.types.incompatible(
+            first_type, param, self.generics.get(candidate.id, frozenset()),
+        )
+
+    @staticmethod
+    def _choose(tiers: list[list[Symbol]], args: Optional[int]) -> LookupResult:
+        """``choose_overload`` as a ``LookupResult``: an ambiguous choice keeps
+        the ``1/sqrt(N)`` confidence ``ListNameResolver`` gave a guess, and
+        says ``ambiguous``."""
+        choice = choose_overload(tiers, args)
+        if choice.symbol is None:
             return LookupResult(symbol=None)
-        return ListNameResolver({name: visible}).lookup(name)
+        return LookupResult(
+            symbol=choice.symbol,
+            confidence=choice.confidence,
+            match_type="ambiguous" if choice.ambiguous else "exact",
+            candidates=list(choice.admitted),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -862,6 +1214,9 @@ class NimAnalyzer(TreeSitterAnalyzer):
                 sym = _process_type_declaration(self, source, rel_path, run.execution_id, node)
                 if sym:
                     pairs.append((sym, node))
+                    rhs = node.named_children[-1]
+                    if self._scope is not None and rhs.type != "type_symbol_declaration":
+                        self._scope.types.record(sym.name, rhs, source)
             elif node.type == "field_declaration":
                 pairs.extend(_process_field_declaration(self, source, rel_path, run.execution_id, node))
             elif node.type == "enum_field_declaration":
@@ -874,6 +1229,9 @@ class NimAnalyzer(TreeSitterAnalyzer):
             for sym, sym_node in pairs:
                 analysis.symbols.append(sym)
                 analysis.node_for_symbol[sym.id] = sym_node
+                generic = find_child_by_type(sym_node, "generic_parameter_list")
+                if generic is not None and self._scope is not None:
+                    self._scope.generics[sym.id] = _names_in(generic, source)
                 if sym.kind in ("function", "method"):
                     analysis.symbol_by_name[sym.name] = sym
 
@@ -921,6 +1279,7 @@ class NimAnalyzer(TreeSitterAnalyzer):
         edges: list[Edge] = []
         file_stable_id = f"nim:{rel_path}:file:"
         decl_index = symbols_at(self.file_symbols(local_symbols))
+        proc_types = _ProcTypes(source)
 
         for node in iter_tree(tree.root_node):
             if node.type == "import_statement":
@@ -933,7 +1292,14 @@ class NimAnalyzer(TreeSitterAnalyzer):
                 if target_name:
                     caller = _find_enclosing_proc_nim(node, decl_index)
                     if caller:
-                        lookup_result = scope.lookup(target_name, rel_path, receiver)
+                        args, dotted = _nim_call_arity(node)
+                        first = receiver if dotted else _first_argument_name(node, source)
+                        lookup_result = scope.lookup(
+                            target_name, rel_path, receiver, args, dotted,
+                            first_type=(
+                                proc_types.type_of(first, node) if first else None
+                            ),
+                        )
                         if lookup_result.found and lookup_result.symbol:
                             edges.append(Edge.create(
                                 src=caller.id,
@@ -944,6 +1310,11 @@ class NimAnalyzer(TreeSitterAnalyzer):
                                 confidence=0.85 * lookup_result.confidence,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
+                                meta=(
+                                    {"resolution_quality": "ambiguous"}
+                                    if lookup_result.match_type == "ambiguous"
+                                    else None
+                                ),
                             ))
                         else:
                             edges.append(make_unresolved_edge(

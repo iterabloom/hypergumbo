@@ -351,7 +351,9 @@ class TestQualifiedAndAmbiguous:
         """Two imported modules both export ``helper``: Nim picks by argument
         types, which the analyzer does not know, so the edge says it guessed."""
         _write(tmp_path, {
-            "c.nim": "import a, b\nproc f() =\n  helper()\nproc g() =\n  only()\n",
+            # ``helper(1)``: both overloads take one argument, so arity cannot
+            # decide either (WI-bivab); ``helper()`` would now bind neither.
+            "c.nim": "import a, b\nproc f() =\n  helper(1)\nproc g() =\n  only()\n",
             "a.nim": "proc helper*(x: int) = discard\nproc only*() = discard\n",
             "b.nim": "proc helper*(s: string) = discard\n",
         })
