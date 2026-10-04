@@ -75,3 +75,18 @@
   clock: 9  # a8fa
   nonce: a8fa  # a8fa
   message: "From WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin (branch jgstern-agent/fix/ratid, on top of fix/kutal): the django cost recorded here is recovered. A/B b7417402dc vs kutal+ratid (ff18f6ceee), recomputing this item's population with this item's own classify rule over its own artifacts (2098): 1673 resolve again at the same call site to the same ancestor method (inherited-calls-linker); 425 have the same (caller, target) pair resolved on another line of the same caller -- the one-edge-per-pair limit of WI-sodor-muhif-bagit-vivos-kinap-nabig-gapim-hotav; 0 remain unresolved; every caller's C3 linearization succeeds. kutal + ratid together change no site back to arm A's state and add 0 losses beyond kutal's own diff. Details: ~/hypergumbo_lab_notebook/decontend/run_10032026/ratid.md."  # a8fa
+- op: update  # f906
+  at: '2026-10-04T01:26:41Z'  # f906
+  by: agent  # f906
+  actor: jgstern_agent  # f906
+  clock: 10  # f906
+  nonce: f906  # f906
+  set:  # f906
+    status: done  # f906
+- op: discuss  # 0f3f
+  at: '2026-10-04T01:26:42Z'  # 0f3f
+  by: agent  # 0f3f
+  actor: jgstern_agent  # 0f3f
+  clock: 11  # 0f3f
+  nonce: 0f3f  # 0f3f
+  message: "Merged in PR #1438 (dev 81caa3999d). Integrated together: WI-kutal + WI-ratid (which restores the 2098 django edges kutal alone would have lost) + INV-dulum/WI-safit.\n\nFixed in PR #1438 (2258c16112, 7419c6e16c, 6fc02d8d7f). py.py Case 2a resolves `self.<x>()` only through the OWN-body table (defs and nested classes, source-order last wins) of the class `self` denotes. That class is found by POSITION: the innermost frame binding `self`, a non-static method, and its lexical class from `method_to_enclosing_class_id`. Never by bare name. A miss goes to the Site-1 hint and the inherited_calls MRO walk.\n\nBehavioural evidence:\n- Production `analyze_python` on the item's fixture now gives `Order.finish -> Order.save` (was `Fee.save`) and `Direct.go -> unresolved` with `enclosing_class=Direct` (was `Fee.save`).\n- pretix call-site diff: `ReauthView.post:170 -> ReauthView.get` (was `StopStaffSession.get`), `CartPosition.update_listed_price_and_voucher:3277 -> CartPosition.save` (was `PrintLog.save`), `Order.gracefully_delete:388 -> django.db.models delete` (was `PrintLog.delete`).\n- Tests: test_py_self_method_class_scoped.py (18).\n\nCloses the filed row only. The general claim \"no Python call resolves through the bare-name table\" is NOT asserted: Case 1 bare calls still do (WI-barip-tidod-zivap-janan-jivaj-gohim-loriz-novol).\n\nCorpus cost: django loses 2098 correct same-file inherited edges to the pre-existing inheritance cycle WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin. On pretix and feast, 0 correct edges were lost.\n\nPer AGENTS.md this carries a quantitative bakeoff claim, so tag `awaits_bakeoff_validation`."  # 0f3f
