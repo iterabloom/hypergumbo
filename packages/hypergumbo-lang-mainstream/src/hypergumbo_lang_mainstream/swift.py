@@ -38,12 +38,19 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    decides. A declaration no reader can type -- an unannotated closure
    parameter, a loop variable, a ``catch`` / ``case let`` / tuple name, a local
    whose initialiser nothing types -- still SHADOWS and answers "unknown",
-   never the outer name's type (WI-silos). File-level declarations stay
-   shared, typed-only and position-free. Call results and chained, cast or
-   force-unwrapped receivers are typed through the return-type registry
-   (``_swift_receiver_expr_type``), and implicit-``self`` properties through
-   the field-type registry, walking base classes; a binding's initialiser is
-   typed by the same walker, field resolver included.
+   never the outer name's type (WI-silos). A declaration in no scope is a
+   type's MEMBER, recorded under its owning type, or a true global; a bare
+   name not bound locally resolves to the enclosing type's members (through
+   its bases) before the file's globals, so one type's property never types
+   another type's receiver (WI-tagir). Every expression -- a receiver and a
+   binding's initialiser alike -- is typed by one walker
+   (``_swift_receiver_expr_type``) by what it EVALUATES to: a call result
+   through the return-type registry, walking the owner's bases (a method
+   inherited from a test base, XCTest's ``expectation``); a member chain
+   (``config.fileManager``) through the head's type and that type's declared
+   member; a literal by its default type; ``??`` and ``?:`` by the type every
+   operand agrees on; a cast, a force unwrap or a constructor (``_T()``,
+   ``Self()``, ``T.init()``) by the type it names (WI-hojib).
    - A ``Type.method`` bind is refused when the call supplies a label no
      overload declares (``_swift_labels_admit_call``, INV-fatap), or when a
      ``static`` / ``class`` member is called on an instance
@@ -90,7 +97,7 @@ from __future__ import annotations
 import re
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, NamedTuple, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id
@@ -432,9 +439,47 @@ def _swift_bare_type(text: str) -> str | None:
     t = text.strip().rstrip("?!").strip()
     if "<" in t:
         t = t.split("<", 1)[0]
-    if not t or not t[:1].isupper() or any(c in t for c in "[]()-> ,"):
+    if not t or not _swift_is_type_spelling(t) or any(c in t for c in "[]()-> ,"):
         return None
     return t
+
+
+def _swift_is_type_spelling(name: str) -> bool:
+    """Is ``name`` spelled like a TYPE (``FileManager``, ``_URLEncodedFormDecoder``)?
+
+    WI-hojib. Swift spells types capitalised and values lowercase, and a leading
+    underscore marks an implementation-private name of EITHER kind: hummingbird's
+    ``_URLEncodedFormDecoder`` is a type, Kingfisher's ``_config`` a value. Reading
+    the first character alone made every underscored name neither -- a
+    constructor ``_URLEncodedFormDecoder(...)`` typed nothing, and a value head
+    ``_storage.p.m()`` was not recognised as a value chain. This is the one rule;
+    :func:`_swift_is_value_spelling` is its counterpart.
+    """
+    return name.lstrip("_")[:1].isupper()
+
+
+def _swift_is_value_spelling(name: str) -> bool:
+    """Is ``name`` spelled like a VALUE (``session``, ``_config``)? See
+    :func:`_swift_is_type_spelling`."""
+    return name.lstrip("_")[:1].islower()
+
+
+#: WI-hojib: a literal's DEFAULT type -- what it evaluates to with no contextual
+#: type, which is the case for an unannotated binding (``var rfc1123 = ""``) and
+#: for a literal receiver (``"x".write(toFile:...)``). A collection literal is not
+#: here: ``_swift_bare_type`` refuses collections as receiver types, and ``nil``
+#: and a regex literal name no catalogue receiver.
+_SWIFT_LITERAL_TYPES: dict[str, str] = {
+    "line_string_literal": "String",
+    "multi_line_string_literal": "String",
+    "raw_string_literal": "String",
+    "integer_literal": "Int",
+    "hex_literal": "Int",
+    "oct_literal": "Int",
+    "bin_literal": "Int",
+    "real_literal": "Double",
+    "boolean_literal": "Bool",
+}
 
 
 def _swift_type_parameter_names(
@@ -492,33 +537,73 @@ def _swift_return_type_name(node: "tree_sitter.Node", source: bytes) -> str | No
             return name
     return None
 
+def _swift_member_declaration(node: "tree_sitter.Node") -> "tree_sitter.Node | None":
+    """The type declaration ``node`` is a MEMBER of, or ``None``.
+
+    The first ``class_declaration`` (class / struct / enum / actor / extension)
+    or ``protocol_declaration`` up the parent chain, provided no callable body
+    (``_SWIFT_SCOPE_NODES``) and no ERROR node comes first. WI-tagir: the walk
+    used to stop only at ``function_declaration``, so a ``let`` inside an
+    ``init``, a closure or an accessor registered as a FIELD of the enclosing
+    type; error recovery re-parents declarations arbitrarily (INV-bisok), so a
+    chain through an ERROR is not trusted either.
+    """
+    cur = node.parent
+    while cur is not None:
+        if cur.type in _SWIFT_SCOPE_NODES or cur.type == "ERROR":
+            return None
+        if cur.type in ("class_declaration", "protocol_declaration"):
+            return cur
+        cur = cur.parent
+    return None
+
+
+def _swift_member_type(
+    node: "tree_sitter.Node", source: bytes, vtype: str | None,
+) -> str | None:
+    """A member's type as a TYPE, or ``None`` when it is a generic parameter.
+
+    WI-hojib. ``class Box<T> { var value: T }`` declares ``value`` of whatever
+    ``T`` is bound to at the use; ``T`` names no type, and registering it put
+    ``T`` in the module slot once a member chain (``box.value.m()``) read the
+    member. The same refusal ``_swift_return_type_name`` makes for a return
+    type. A parameter of an EXTERNAL generic type an extension adds members to
+    (``extension Result { var success: Success? }``) is not declared in the
+    file and is not caught here.
+    """
+    if vtype is None:
+        return None
+    bare = vtype.split("<", 1)[0].rstrip("?!")
+    return None if bare in _swift_type_parameter_names(node, source) else vtype
+
+
 def _register_swift_field_type(
     node: "tree_sitter.Node", source: bytes, analysis: FileAnalysis,
 ) -> None:
-    """Record a CLASS-LEVEL typed property in ``analysis.class_field_types``.
+    """Record a typed MEMBER property in ``analysis.class_field_types``.
 
-    WI-higob. A ``property_declaration`` whose parent chain reaches a
-    ``class_declaration`` (class / struct / enum / extension) before any
-    ``function_declaration`` is a member; its declared, constructed or
-    singleton type (``_extract_var_type``) is registered under the type's
-    name so a method in ANOTHER file -- an extension, a subclass -- can type
-    a bare ``session`` receiver through the base aggregation
-    (``_field_type_registry``). A chain that hits an ERROR node first is
-    not trusted (error recovery re-parents declarations arbitrarily).
+    WI-higob. A ``property_declaration`` that is a member of a
+    ``class_declaration`` (class / struct / enum / extension) is registered
+    with its declared, constructed or singleton type (``_extract_var_type``)
+    under the type's name, so a method in ANOTHER file -- an extension, a
+    subclass -- can type a bare ``session`` receiver through the base
+    aggregation (``_field_type_registry``). Membership is
+    :func:`_swift_member_declaration`'s.
+
+    WI-tagir: a protocol's property requirement (``protocol_property_declaration``,
+    ``var identifier: String { get }``) is a member of the protocol, and so of
+    every conformer through the base walk -- a protocol extension's bare
+    ``identifier`` is that requirement, never a same-named property of some
+    other type in the file. WI-hojib: a generic parameter is not a type
+    (:func:`_swift_member_type`).
     """
-    cur = node.parent
-    owner: str | None = None
-    while cur is not None:
-        if cur.type in ("function_declaration", "ERROR"):
-            return
-        if cur.type == "class_declaration":
-            name_node = cur.child_by_field_name("name")
-            owner = node_text(name_node, source) if name_node else None
-            break
-        cur = cur.parent
-    if owner is None:
+    decl = _swift_member_declaration(node)
+    name_node = decl.child_by_field_name("name") if decl is not None else None
+    if name_node is None:
         return
+    owner = node_text(name_node, source)
     vname, vtype = _extract_var_type(node, source)
+    vtype = _swift_member_type(node, source, vtype)
     if vname and vtype:
         analysis.class_field_types.setdefault(owner, {}).setdefault(vname, vtype)
 
@@ -703,7 +788,7 @@ def _extract_symbols_from_file(
         # WI-higob: a class-level property's type joins the repo-wide
         # field-type registry (a separate ``if`` so the kind chain below
         # is untouched).
-        if node.type == "property_declaration":
+        if node.type in ("property_declaration", "protocol_property_declaration"):
             _register_swift_field_type(node, source, analysis)
         # Function declaration
         if node.type == "function_declaration":
@@ -1238,7 +1323,7 @@ def _static_member_on_instance(
     """
     if not any(m in ("static", "class") for m in (callee.modifiers or [])):
         return False
-    return receiver_hint in declared_names or receiver_hint[:1].islower()
+    return receiver_hint in declared_names or _swift_is_value_spelling(receiver_hint)
 
 
 def _swift_call_is_value_chain(call_node: "tree_sitter.Node", source: bytes) -> bool:
@@ -1259,7 +1344,7 @@ def _swift_call_is_value_chain(call_node: "tree_sitter.Node", source: bytes) -> 
     if depth < 2 or node is None or node.type != "simple_identifier":
         return False
     head = node_text(node, source)
-    return head != "self" and head[:1].islower()
+    return head != "self" and _swift_is_value_spelling(head)
 
 
 def _extract_call_target(
@@ -1365,12 +1450,34 @@ def _swift_nav_receiver(
     )
 
 
+class _SwiftTyping(NamedTuple):
+    """What the expression walker may ask about names, bound to ONE position.
+
+    WI-hojib. The walker used to take a name resolver, the return-type registry
+    and a field resolver separately, and could therefore answer only what those
+    three could: it typed a bare name, ``self.<property>`` and ``<owner>.<method>``
+    on the enclosing type, and nothing reached through a base class or a second
+    hop. The four lookups below are the whole of what an expression's type
+    depends on, each walking base classes:
+
+    * ``name``: a bare name -- the innermost visible binding, then the enclosing
+      type's members, then the file's globals (``_type_of``);
+    * ``field``: a member of the enclosing type (``self.<property>``);
+    * ``member``: ``(type, name)`` -- the declared type of that type's member;
+    * ``returns``: ``(type, method)`` -- what that type's method returns, and with
+      type ``None`` what a free function of that name returns.
+    """
+
+    name: Callable[[str], "str | None"]
+    field: Callable[[str], "str | None"]
+    member: Callable[[str, str], "str | None"]
+    returns: Callable[["str | None", str], "str | None"]
+
+
 def _swift_receiver_expr_type(
     node: "tree_sitter.Node | None",
     source: bytes,
-    type_of: "Callable[[str], str | None]",
-    registry: dict[str, str],
-    field_of: "Callable[[str], str | None] | None" = None,
+    env: _SwiftTyping,
 ) -> str | None:
     """The TYPE an expression evaluates to, or ``None`` when nothing names it.
 
@@ -1392,14 +1499,27 @@ def _swift_receiver_expr_type(
     destroyed the hint for the IDENTICAL call (``db.write(x)`` typed,
     ``self.db.write(x)`` not). 393 of 1,913 classified untyped vapor sites.
 
-    ``field_of`` and NOT ``type_of`` for that case, and the distinction is
-    load-bearing: ``_type_of`` consults scoped locals and ``var_types`` BEFORE
-    falling through to ``_inherited_field_type``, but ``self.db`` means the
-    FIELD whatever a local happens to be called. Resolving it through
-    ``type_of`` would stamp a confidently wrong type on a shadowed name -- and
-    ``method_call_recovery`` step 3a treats a stamped ``receiver_type_hint`` as
-    grounds to REFUTE a class hint, so a wrong stamp does not merely fail to
-    help, it DELETES a correct recovery.
+    ``env.field`` and NOT ``env.name`` for that case, and the distinction
+    is load-bearing: ``name`` consults scoped locals BEFORE the enclosing type's
+    members, but ``self.db`` means the FIELD whatever a local happens to be
+    called. Resolving it through ``name`` would stamp a confidently wrong type on
+    a shadowed name -- and ``method_call_recovery`` step 3a treats a stamped
+    ``receiver_type_hint`` as grounds to REFUTE a class hint, so a wrong stamp
+    does not merely fail to help, it DELETES a correct recovery.
+
+    WI-hojib types the rest by what each expression evaluates to:
+
+    * a member chain on a value (``config.fileManager``, ``self.inner.session``)
+      is the head's type, then that type's DECLARED member (``env.member``,
+      through its bases). A member the head's type does not declare, or a head
+      that is a TYPE (``FileManager.default``, a static member), names nothing.
+      An optional chain (``a?.b``) parses as the same node and evaluates to the
+      wrapped type, which is what an optional's reader already strips to;
+    * a literal is its default type (``_SWIFT_LITERAL_TYPES``);
+    * ``a ?? b`` and ``c ? a : b`` are the type EVERY operand agrees on. One
+      known operand does not decide: a literal's type is contextual (``""`` is
+      a Substring beside a Substring), and an upcast to a protocol is invisible
+      from the operand that is not upcast.
     """
     while node is not None:
         if node.type in ("try_expression", "await_expression", "tuple_expression"):
@@ -1438,29 +1558,36 @@ def _swift_receiver_expr_type(
                 _swift_bare_type(node_text(built, source))
                 if built is not None else None
             )
+        if node.type in _SWIFT_LITERAL_TYPES:
+            return _SWIFT_LITERAL_TYPES[node.type]
+        if node.type in ("nil_coalescing_expression", "ternary_expression"):
+            operands = node.named_children
+            if node.type == "ternary_expression":
+                operands = operands[1:]  # the condition is not a value of the result
+            types = [_swift_receiver_expr_type(o, source, env) for o in operands]
+            if types and types[0] is not None and all(t == types[0] for t in types):
+                return types[0]
+            return None
         if node.type == "simple_identifier":
             # WI-mofil: a bare NAME (``let t = s``, ``guard let fm = maybe``)
             # evaluates to whatever the scope map says that name is.
-            return type_of(node_text(node, source))
+            return env.name(node_text(node, source))
         if node.type == "call_expression":
-            return _swift_call_type(node, source, type_of, registry, field_of)
+            return _swift_call_type(node, source, env)
         if node.type == "navigation_expression":
             head = node.children[0] if node.children else None
-            if (
-                field_of is not None
-                and head is not None
-                and head.type == "self_expression"
-            ):
-                suffix = find_child_by_type(node, "navigation_suffix")
-                ident = (
-                    find_child_by_type(suffix, "simple_identifier")
-                    if suffix is not None else None
-                )
-                if ident is not None:
-                    return field_of(node_text(ident, source))
-            # A non-self head, or a deeper chain, names no type here. Silence
-            # rather than a guess: an unearned stamp is ACTED ON downstream.
-            return None
+            suffix = find_child_by_type(node, "navigation_suffix")
+            ident = (
+                find_child_by_type(suffix, "simple_identifier")
+                if suffix is not None else None
+            )
+            if head is None or ident is None:
+                return None
+            member = node_text(ident, source)
+            if head.type == "self_expression":
+                return env.field(member)
+            owner = _swift_receiver_expr_type(head, source, env)
+            return env.member(owner, member) if owner is not None else None
         return None
     return None
 
@@ -1468,9 +1595,7 @@ def _swift_receiver_expr_type(
 def _swift_call_type(
     call: "tree_sitter.Node",
     source: bytes,
-    type_of: "Callable[[str], str | None]",
-    registry: dict[str, str],
-    field_of: "Callable[[str], str | None] | None" = None,
+    env: _SwiftTyping,
 ) -> str | None:
     """The TYPE a ``call_expression`` evaluates to, or ``None``.
 
@@ -1479,48 +1604,59 @@ def _swift_call_type(
     ``<owner>.<method>``, where the owner is the receiver's type -- from the
     scope map for a named receiver, from the head itself for a capitalised one,
     and from :func:`_swift_receiver_expr_type` when the receiver is an
-    expression. A bare lowercase callee is looked up under the enclosing type
+    expression. A bare lowercase callee is looked up on the enclosing type
     and then as a free function. Recursion terminates on the AST: each step
     descends into a strictly smaller subtree.
+
+    WI-hojib. ``env.returns`` walks the owner's BASES: Alamofire's test
+    subclasses call ``stored(Session())``, declared on ``BaseTestCase``, and
+    XCTest's ``expectation(description:)`` is declared on ``XCTestCase`` (a
+    library row), so the enclosing type's own key missed both. A ``self``
+    receiver is the implicit self -- ``self.m()`` is the call ``m()`` -- and
+    ``init`` constructs its owner (``self.init()`` in a static method,
+    ``T.init(...)``). A constructor spelled ``_T(...)`` is a constructor
+    (``_swift_is_type_spelling``), and ``Self(...)`` constructs the enclosing
+    type, as a ``-> Self`` return type does.
     """
     callee_name, receiver_hint, has_receiver = _extract_call_target(call, source)
     if not callee_name:  # pragma: no cover - defensive, mirrors the gate
         return None
-    keys: list[str] = []
     if has_receiver:
-        owner = type_of(receiver_hint) if receiver_hint else None
-        if owner is None and receiver_hint is not None and receiver_hint[:1].isupper():
+        owner = env.name(receiver_hint) if receiver_hint else None
+        if owner is None and receiver_hint is not None and _swift_is_type_spelling(receiver_hint):
             owner = receiver_hint
         if owner is None and receiver_hint is None:
-            owner = _swift_receiver_expr_type(
-                _swift_nav_receiver(call, source), source, type_of, registry,
-                field_of,
-            )
+            receiver = _swift_nav_receiver(call, source)
+            if receiver is not None and receiver.type == "self_expression":
+                owner = _get_enclosing_type(call, source)
+            else:
+                owner = _swift_receiver_expr_type(receiver, source, env)
+        if owner == "Self":
+            # ``Self.init(...)`` / ``Self.make()``: the enclosing type, as a
+            # ``-> Self`` return type names it -- never a type called ``Self``.
+            owner = _get_enclosing_type(call, source)
         if owner is None:
             return None
         # Generics are stripped the same way the module slot strips them:
         # the registry is keyed by the bare owner name.
-        keys.append(f"{owner.split('<', 1)[0]}.{callee_name}")
-    else:
-        if callee_name[:1].isupper():
-            return callee_name  # a constructor evaluates to its own type
-        enclosing = _get_enclosing_type(call, source)
-        if enclosing:
-            keys.append(f"{enclosing}.{callee_name}")
-        keys.append(callee_name)
-    for key in keys:
-        if key in registry:
-            return registry[key]
-    return None
+        owner = owner.split("<", 1)[0]
+        if callee_name == "init":
+            return owner
+        return env.returns(owner, callee_name)
+    if callee_name == "Self":
+        return _get_enclosing_type(call, source)
+    if _swift_is_type_spelling(callee_name):
+        return callee_name  # a constructor evaluates to its own type
+    enclosing = _get_enclosing_type(call, source)
+    found = env.returns(enclosing, callee_name) if enclosing else None
+    return found if found is not None else env.returns(None, callee_name)
 
 
 def _swift_call_result_type(
     node: "tree_sitter.Node",
     source: bytes,
-    type_of: "Callable[[str], str | None]",
-    registry: dict[str, str],
+    env: _SwiftTyping,
     children: "list[tree_sitter.Node] | None" = None,
-    field_of: "Callable[[str], str | None] | None" = None,
 ) -> str | None:
     """The type of the expression a ``property_declaration`` is initialised with.
 
@@ -1536,15 +1672,16 @@ def _swift_call_result_type(
     unknown result means.
 
     ``children`` (WI-silos) restricts the read to one clause of a
-    multi-binding declaration (``_swift_declaration_clauses``). ``field_of``
-    (WI-silos) types a ``self.<property>`` initialiser the way the emit site
-    types a ``self.<property>`` receiver: one walker, one answer.
+    multi-binding declaration (``_swift_declaration_clauses``). The walker's
+    field resolver (WI-silos) types a ``self.<property>`` initialiser the way
+    the emit site types a ``self.<property>`` receiver: one walker, one answer.
     """
     for child in node.children if children is None else children:
-        vtype = _swift_receiver_expr_type(child, source, type_of, registry, field_of)
+        vtype = _swift_receiver_expr_type(child, source, env)
         if vtype is not None:
             return vtype
     return None
+
 
 def _swift_condition_bindings(
     node: "tree_sitter.Node",
@@ -1719,8 +1856,13 @@ def _extract_var_type(
             id_node = find_child_by_type(child, "simple_identifier")
             if id_node:
                 ctor_name = node_text(id_node, source)
-                # Constructor calls start with uppercase
-                if ctor_name and ctor_name[0].isupper():
+                # Constructor calls start with uppercase (WI-hojib: after any
+                # leading ``_`` -- ``_URLEncodedFormDecoder(...)``).
+                if ctor_name == "Self":
+                    # WI-hojib: ``Self(...)`` constructs the enclosing type,
+                    # as a ``-> Self`` return type names it.
+                    type_name = _get_enclosing_type(node, source)
+                elif ctor_name and _swift_is_type_spelling(ctor_name):
                     type_name = ctor_name
         elif child.type == "navigation_expression" and type_name is None:
             # INV-kotob: ``Type.member`` with a capitalised head and a
@@ -1733,7 +1875,10 @@ def _extract_var_type(
             member = find_child_by_type(suffix, "simple_identifier") if suffix else None
             if head is not None and member is not None:
                 head_text = node_text(head, source)
-                if head_text[:1].isupper() and node_text(member, source)[:1].islower():
+                if (
+                    _swift_is_type_spelling(head_text)
+                    and _swift_is_value_spelling(node_text(member, source))
+                ):
                     type_name = head_text
 
     return (var_name, type_name)
@@ -1761,8 +1906,9 @@ def _extract_edges_from_file(
     bound to a call result so ``let s = store.session()`` types ``s``.
     ``field_type_registry`` (WI-higob): ``<Type>`` -> ``{property: type}`` for
     every class-level property in the repo, read for a bare receiver inside
-    a type's method that no scope or file-level declaration types, through
-    the enclosing type and its base classes.
+    a type's method that no scope types -- BEFORE the file's globals
+    (WI-tagir) -- and for a member chain's member (WI-hojib), through the
+    owning type and its base classes, after this file's own members.
     """
     # Every declaration of this file, by position (INV-midag): ``local_symbols``
     # keeps ONE symbol per qualified name, and overloads share one.
@@ -1816,6 +1962,11 @@ def _extract_edges_from_file(
     # share a span, and a closure called as a block's first statement shares
     # its start.
     _scoped_types: dict[_ScopeKey, dict[str, list[tuple[int, int, str | None]]]] = {}
+    # WI-tagir: this file's type MEMBERS, by owning type: ``{owner: {name: type
+    # | None}}``. ``var_types`` holds true globals only.
+    _file_members: dict[str, dict[str, str | None]] = {}
+    # ... and by the DECLARATION that holds them, for the lookup from inside it.
+    _decl_members: dict[_ScopeKey, dict[str, str | None]] = {}
     _forever = len(source) + 1
 
     def _is_scope(n: "tree_sitter.Node") -> bool:
@@ -1858,59 +2009,107 @@ def _extract_edges_from_file(
         n: "tree_sitter.Node", name: str, vtype: str | None, visible_from: int,
         visible_to: int = _forever,
     ) -> None:
-        # The binding lands in the innermost scope enclosing ``n``. A FILE-level
-        # declaration (a global, or a type's property) stays typed-only and
-        # position-free: ``var_types`` is one name-keyed map for the whole
-        # file, so a tombstone there would also hide a same-named field of
-        # every OTHER type in the file.
+        # The binding lands in the innermost scope enclosing ``n``.
+        # WI-tagir: a declaration in no scope is a type's MEMBER or a true
+        # global, and the two no longer share one map. A member is recorded
+        # under its declaration (``_decl_members``) and its owner's name
+        # (``_file_members``), typed or not -- an untyped member is still that
+        # type's member and shadows a same-named global inside it -- first
+        # writer winning by name, as in Pass 1's registry. A global stays
+        # typed-only and position-free.
         chain = _function_ancestors(n, through_errors=False)
         if not chain:
-            if vtype is not None:
-                var_types[name] = vtype
+            decl = _swift_member_declaration(n)
+            name_node = decl.child_by_field_name("name") if decl is not None else None
+            if decl is None or name_node is None:
+                if vtype is not None:
+                    var_types[name] = vtype
+                return
+            vtype = _swift_member_type(n, source, vtype)
+            _decl_members.setdefault(
+                (decl.type, decl.start_byte, decl.end_byte), {},
+            ).setdefault(name, vtype)
+            _file_members.setdefault(node_text(name_node, source), {}).setdefault(name, vtype)
             return
         _scoped_types.setdefault(chain[0], {}).setdefault(name, []).append(
             (visible_from, visible_to, vtype),
         )
 
-    def _inherited_field_type(name: str, n: "tree_sitter.Node") -> str | None:
-        # WI-higob: implicit-self access to a property the enclosing type or
-        # one of its bases declares -- in this file or another. Breadth-first
-        # over ``base_classes`` (class symbols carry it), bounded and cycle-safe.
-        owner = _get_enclosing_type(n, source)
-        if owner is None or not field_type_registry:
+    def _enclosing_decl(n: "tree_sitter.Node") -> "tuple[str, _ScopeKey] | None":
+        # The innermost type declaration around a USE: its name, and its key in
+        # ``_decl_members``. Through ERROR nodes, as ``_get_enclosing_type``.
+        cur = n.parent
+        while cur is not None and cur.type not in ("class_declaration", "protocol_declaration"):
+            cur = cur.parent
+        name_node = cur.child_by_field_name("name") if cur is not None else None
+        if cur is None or name_node is None:
             return None
-        queue = [owner]
+        return node_text(name_node, source), (cur.type, cur.start_byte, cur.end_byte)
+
+    def _mro(owner: str) -> Iterator[str]:
+        # WI-higob: a type, then its bases breadth-first (class symbols carry
+        # ``base_classes``), bounded and cycle-safe. An EXTERNAL base
+        # (``XCTestCase``) is yielded by name -- its library rows are keyed by
+        # it -- but has no symbol, so the walk stops there. WI-tagir: a dotted
+        # spelling (``extension OfflineRetrier.State``, an annotation
+        # ``URLEncodedFormEncoder.NilEncoding``) is the nested type declared by
+        # its last segment, which is the name its declaration registers under.
+        queue = [owner.split("<", 1)[0]]
         seen: set[str] = set()
         while queue and len(seen) < 32:
             cls = queue.pop(0)
             if cls in seen:
                 continue
             seen.add(cls)
-            hit = field_type_registry.get(cls, {}).get(name)
-            if hit is not None:
-                return hit
+            yield cls
+            if "." in cls:
+                queue.insert(0, cls.rsplit(".", 1)[1])
             sym = global_symbols.get(cls) or local_symbols.get(cls)
             for base in ((sym.meta or {}).get("base_classes", []) if sym is not None else []):
                 if base not in seen:
                     queue.append(base)
+
+    def _member_lookup(
+        owner: str, name: str, decl: "_ScopeKey | None" = None,
+    ) -> tuple[bool, str | None]:
+        # WI-tagir: is ``name`` a member of ``owner`` (or a base), and of what
+        # type? The enclosing DECLARATION's own members first -- three nested
+        # ``Inner`` classes in one file (Alamofire Combine.swift) each have
+        # their own ``request`` -- then this file's members by type name (the
+        # binding pass types a call-result initialiser, which Pass 1 cannot),
+        # then the repo-wide field registry. ``(True, None)`` is a member
+        # nothing types.
+        if decl is not None and name in _decl_members.get(decl, {}):
+            return True, _decl_members[decl][name]
+        for cls in _mro(owner):
+            mine = _file_members.get(cls)
+            if mine is not None and name in mine:
+                return True, mine[name]
+            hit = field_type_registry.get(cls, {}).get(name)
+            if hit is not None:
+                return True, hit
+        return False, None
+
+    def _member_type(owner: str, name: str) -> str | None:
+        return _member_lookup(owner, name)[1]
+
+    def _returns(owner: str | None, callee: str) -> str | None:
+        # WI-hojib: what ``<owner>.<callee>`` returns, through the owner's bases
+        # (``stored`` on ``BaseTestCase``, ``expectation`` on ``XCTestCase``);
+        # with no owner, what the free function ``callee`` returns.
+        if owner is None:
+            return method_return_type_registry.get(callee)
+        for cls in _mro(owner):
+            hit = method_return_type_registry.get(f"{cls}.{callee}")
+            if hit is not None:
+                return hit
         return None
 
-    def _type_lookup_at(decl: "tree_sitter.Node") -> "Callable[[str], str | None]":
-        # A per-declaration lookup bound to that node (a closure, so the
-        # registry resolver never sees a loop variable).
-        def _lookup(nm: str) -> str | None:
-            return _type_of(nm, decl)
-        return _lookup
-
-    def _field_lookup_at(decl: "tree_sitter.Node") -> "Callable[[str], str | None]":
-        # WI-dodop. The FIELD resolver, deliberately NOT ``_type_lookup_at``:
-        # ``self.db`` names the enclosing type's property whatever a local in
-        # scope is called, and ``_type_of`` would answer with the local.
-        def _lookup(nm: str) -> str | None:
-            return _inherited_field_type(nm, decl)
-        return _lookup
-
     def _type_of(name: str, n: "tree_sitter.Node") -> str | None:
+        # Swift's unqualified lookup order: the innermost visible local, then
+        # the enclosing type's members (and its bases'), then the file's
+        # globals. WI-tagir: the globals used to come SECOND, from a map that
+        # also held every type's properties, so type A's ``store`` typed B's.
         at = n.start_byte
         for key in _function_ancestors(n, through_errors=True):
             visible = [
@@ -1921,9 +2120,28 @@ def _extract_edges_from_file(
                 # WI-silos: the innermost visible binding DECIDES, and an
                 # untyped one answers "unknown" -- never the outer name's type.
                 return max(visible, key=lambda b: b[0])[2]
-        if name in var_types:
-            return var_types[name]
-        return _inherited_field_type(name, n)
+        enclosing = _enclosing_decl(n)
+        if enclosing is not None:
+            found, vtype = _member_lookup(enclosing[0], name, enclosing[1])
+            if found:
+                return vtype
+        return var_types.get(name)
+
+    def _typing_at(at: "tree_sitter.Node") -> _SwiftTyping:
+        # The walker's lookups, bound to one position. ``field`` is
+        # deliberately NOT ``name`` (WI-dodop): ``self.db`` names the enclosing
+        # type's member whatever a local in scope is called.
+        enclosing = _enclosing_decl(at)
+
+        def _name(nm: str) -> str | None:
+            return _type_of(nm, at)
+
+        def _field(nm: str) -> str | None:
+            if enclosing is None:
+                return None
+            return _member_lookup(enclosing[0], nm, enclosing[1])[1]
+
+        return _SwiftTyping(_name, _field, _member_type, _returns)
 
     # INV-kotob: every declared NAME, typed or not, so a capitalised variable
     # (``let AF = Session.default``) is never mistaken for a type reference.
@@ -1951,11 +2169,9 @@ def _extract_edges_from_file(
                 declared_names.add(vname)
                 if vtype is None:
                     # WI-higob: a call RESULT takes the callee's declared return
-                    # type from the registry (in-repo now; library rows later).
+                    # type from the registry (in-repo and library rows).
                     vtype = _swift_call_result_type(
-                        node, source, _type_lookup_at(node),
-                        method_return_type_registry, clause,
-                        _field_lookup_at(node),
+                        node, source, _typing_at(node), clause,
                     )
                 _bind(node, vname, vtype, clause[-1].end_byte)
         elif node.type in ("if_statement", "guard_statement", "while_statement"):
@@ -1987,10 +2203,7 @@ def _extract_edges_from_file(
                 if _bt is None and _rhs is not None:
                     # WI-silos: with the field resolver, as at the emit
                     # site -- `if let body = self.body` is the field's type.
-                    _bt = _swift_receiver_expr_type(
-                        _rhs, source, _type_lookup_at(_rhs),
-                        method_return_type_registry, _field_lookup_at(_rhs),
-                    )
+                    _bt = _swift_receiver_expr_type(_rhs, source, _typing_at(_rhs))
                 _bind(_name, _bound, _bt, (_rhs or _ann or _name).end_byte, _until)
             for _nm in _swift_condition_case_names(node):
                 _declare(_nm, _nm, _nm.end_byte, _until)
@@ -2163,7 +2376,7 @@ def _extract_edges_from_file(
                         if (
                             receiver_type is None
                             and receiver_hint
-                            and receiver_hint[:1].isupper()
+                            and _swift_is_type_spelling(receiver_hint)
                             and receiver_hint not in declared_names
                         ):
                             receiver_type = receiver_hint
@@ -2182,8 +2395,7 @@ def _extract_edges_from_file(
                         if receiver_type is None and receiver_hint is None:
                             receiver_type = _swift_receiver_expr_type(
                                 _swift_nav_receiver(node, source), source,
-                                _type_lookup_at(node), method_return_type_registry,
-                                _field_lookup_at(node),
+                                _typing_at(node),
                             )
                         if receiver_type:
                             gate_meta["receiver_type_hint"] = receiver_type
