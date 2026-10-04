@@ -269,17 +269,22 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
         line=1161,
         anchor='MetaKeySpec("parameters"',
         home='Symbol.meta["parameters"] / Symbol.meta["params"]',
-        populated_by=("15 analyzers, including py.py",),
+        populated_by=("18 analyzers, including py.py, cpp, elixir and nim",),
         note=(
             "A structured list has a length; a rendered string has to be "
             "re-parsed to get one, and the two consumers that count "
             "parameters do exactly that. 'params' is the name-only short "
             "form for analyzers that do not extract types. This is the "
-            "best-supplied of the three homes -- 15 analyzers populate it "
-            "(apex, fennel, fortran, hack, janet, jsonnet, luau, odin, "
-            "pony, puppet, py, scala, scss, thrift, zig), so unlike the "
-            "return-type and field-type registries, PYTHON ALREADY WRITES "
-            "HERE. The arity parsers are csharp and jackson_dispatch."
+            "best-supplied of the three homes -- 18 analyzers populate it "
+            "(apex, cpp, elixir, fennel, fortran, hack, janet, jsonnet, "
+            "luau, nim, odin, pony, puppet, py, scala, scss, thrift, zig), "
+            "so unlike the return-type and field-type registries, PYTHON "
+            "ALREADY WRITES HERE. The arity parsers are csharp and "
+            "jackson_dispatch. The consumer that reads the HOME is "
+            "hypergumbo_core.overload_arity (cpp, elixir and nim overload "
+            "selection, WI-hilum / WI-rodiz / WI-bivab), whose "
+            "parameter_entry fixes the shape: name, type, default, and "
+            "variadic when true."
         ),
     ),
     "value_type": FactHome(
