@@ -154,20 +154,28 @@ class TestItStaysSilentWhenItDoesNotKnow:
         """`self.a.b.method()` — the receiver is `self.a.b`, not `self.<prop>`.
 
         112 of the 1,913 classified vapor sites are a chain off a
-        navigation_expression. Resolving one needs the type of `self.a` first
-        and then a member lookup on THAT type, which this slice does not do.
-        The honest answer is no stamp: `method_call_recovery` step 3a treats a
-        stamped `receiver_type_hint` as grounds to REFUTE a class hint, so a
-        guess here would delete a correct recovery somewhere else.
+        navigation_expression. This slice did not resolve one, and the reason
+        still binds: `method_call_recovery` step 3a treats a stamped
+        `receiver_type_hint` as grounds to REFUTE a class hint, so a GUESS here
+        would delete a correct recovery somewhere else. WI-hojib added the
+        member lookup it needed -- the type of `self.a`, then `b` as DECLARED on
+        that type (test_swift_initialiser_shapes) -- so the declared chain is
+        typed, and what stays pinned here is the no-guess half: a member the
+        intermediate type does not declare names nothing.
         """
         edges = _edges(tmp_path, (
             "import Foundation\n"
             "class Inner { let session: URLSession = URLSession.shared }\n"
             "class Outer {\n"
             "    let inner: Inner = Inner()\n"
-            "    func go() { self.inner.session.invalidateAndCancel() }\n"
+            "    func go() {\n"
+            "        self.inner.session.invalidateAndCancel()\n"
+            "        self.inner.undeclared.finishTasksAndInvalidate()\n"
+            "    }\n"
             "}\n"
         ))
-        e = _call(edges, "invalidateAndCancel")
+        typed = _call(edges, "invalidateAndCancel")
+        assert typed.dst.startswith("swift:URLSession:"), typed.dst
+        e = _call(edges, "finishTasksAndInvalidate")
         assert e.dst.startswith("swift:external:"), e.dst
         assert (e.meta or {}).get("receiver_type_hint") is None
