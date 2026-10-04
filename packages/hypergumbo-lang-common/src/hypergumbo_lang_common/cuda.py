@@ -18,6 +18,19 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract all function symbols
 2. Pass 2: Detect kernel launches and create edges
 
+A definition's name is read at any declarator depth by the C-family walk
+shared with c.py / cpp.py (``hypergumbo_core.analyze.c_family``): a function
+returning a pointer (``float **f()``), a member, qualified (``A::run``),
+operator or destructor leaf, and an explicit specialisation (named by its
+template) each get a symbol. Before WI-fohuh only a ``function_declarator``
+directly under the definition was read, so all of them got none and every
+call in them was dropped. A call's caller is the enclosing definition found
+by POSITION (INV-midag), not by name. A call inside a definition with no
+honest name (``PFX(f)(args)``, a macro tree-sitter cannot expand) is drawn
+from the nearest enclosing definition that has a symbol, else the file
+anchor, and carries ``meta["src_stands_in_for"] = "unnamed_definition"``
+(WI-tikop). A call in no definition at all is not emitted.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the CUDA-specific
 extraction logic.
@@ -55,11 +68,15 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
+    file_anchor_symbol,
     find_child_by_type,
     iter_tree,
     make_symbol_id,
     node_text,
+    symbols_at,
 )
+from hypergumbo_core.analyze.c_family import c_family_declarator
+from hypergumbo_core.analyze.edge_source import anchor_in_definitions, mark_stand_in
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 
@@ -82,31 +99,52 @@ def _make_edge_id(src: str, dst: str, edge_type: str) -> str:
     return f"edge:sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
 
 
+#: The name leaves a CUDA (C++) definition's declarator chain can end in, other
+#: than ``template_function`` (read up to its ``<``).
+_NAME_LEAVES = frozenset({
+    "identifier", "field_identifier", "qualified_identifier",
+    "operator_name", "destructor_name",
+})
+
+
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
-    """Extract function name from a function_definition or function_declarator."""
-    # Look for function_declarator
-    declarator = find_child_by_type(node, "function_declarator")
-    if declarator:
-        # The first identifier child of function_declarator is the name
-        for child in declarator.children:
-            if child.type == "identifier":
-                return node_text(child, source)
-    return None  # pragma: no cover
+    """The name a ``function_definition`` defines, at any declarator depth.
+
+    The shared C-family walk (``c_family_declarator``, WI-fohuh): ``float *f()``
+    and ``float **f()`` put the ``function_declarator`` under one or two
+    ``pointer_declarator`` s, and the reader that looked for it as a DIRECT child
+    gave every pointer-returning function no symbol. The leaf decides the name:
+    a plain, member (``field_identifier``) or qualified (``A::run``) identifier,
+    an operator or destructor as written, and an explicit specialisation by its
+    template's name. A macro-call-shaped declarator (``PFX(x)(args)``) and a
+    definition with no function declarator name nothing.
+    """
+    shape = c_family_declarator(node)
+    leaf = shape.name
+    if shape.function_declarator is None or leaf is None:
+        return None
+    if leaf.type in _NAME_LEAVES:
+        return node_text(leaf, source)
+    if leaf.type == "template_function":
+        return node_text(leaf, source).split("<", 1)[0].strip()
+    return None  # pragma: no cover - no other name leaf in tree-sitter-cuda
 
 
 def _extract_cuda_signature(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Extract function signature from a CUDA function definition.
 
     CUDA uses C/C++ syntax: return_type function_name(type1 param1, type2 param2)
-    Returns signature like "(int x, float* data) int".
+    Returns signature like "(int x, float* data) int"; a pointer return carries
+    one ``*`` per level (``float **f()`` -> ``float**``), and a function returning
+    a function pointer renders no return type rather than a false one.
     """
     params: list[str] = []
     return_type: Optional[str] = None
+    shape = c_family_declarator(node)
 
-    # Find function_declarator for parameters
-    declarator = find_child_by_type(node, "function_declarator")
+    # The function's own declarator, at any depth, holds its parameters.
+    declarator = shape.function_declarator
     if declarator:
-        # Find parameter_list within declarator
         for child in declarator.children:
             if child.type == "parameter_list":
                 for param_child in child.children:
@@ -115,13 +153,16 @@ def _extract_cuda_signature(node: "tree_sitter.Node", source: bytes) -> Optional
                         if param_text:
                             params.append(param_text)
 
+    sig = "(" + ", ".join(params) + ")"
+    if shape.returns_function:
+        return sig
+
     # Find return type (primitive_type, type_identifier, etc.)
     for child in node.children:
         if child.type in ("primitive_type", "type_identifier", "sized_type_specifier"):
-            return_type = node_text(child, source).strip()
+            return_type = node_text(child, source).strip() + "*" * shape.pointer_depth
             break
 
-    sig = "(" + ", ".join(params) + ")"
     if return_type and return_type != "void":
         sig += f" {return_type}"
     return sig
@@ -175,24 +216,6 @@ def _determine_function_kind(
         return "function", "host"  # pragma: no cover - __host__ alone is rare
     else:
         return "function", None  # No CUDA attributes = regular function
-
-
-def _get_enclosing_cuda_function(
-    node: "tree_sitter.Node",
-    source: bytes,
-    local_symbols: dict[str, Symbol],
-) -> Optional[Symbol]:
-    """Walk up to find the enclosing function definition's Symbol."""
-    current = node.parent
-    while current is not None:
-        if current.type == "function_definition":
-            func_name = _get_function_name(current, source)
-            if func_name:
-                sym = local_symbols.get(func_name.lower())
-                if sym:
-                    return sym
-        current = current.parent
-    return None  # pragma: no cover - defensive
 
 
 def _extract_cuda_symbols(
@@ -275,26 +298,42 @@ def _extract_cuda_symbols(
                 symbol_registry[func_name.lower()] = sym
 
 
+#: The declaration a CUDA call is drawn from.
+_DEFINITIONS = frozenset({"function_definition"})
+
+
 def _extract_cuda_edges(
     root_node: "tree_sitter.Node",
     source: bytes,
     edges: list[Edge],
-    local_symbols: dict[str, Symbol],
+    file_symbols: list[Symbol],
     resolver: NameResolver,
     *,
     run_id: str,
+    file_anchor: Symbol,
 ) -> None:
     """Extract edges from CUDA AST tree (pass 2).
 
     Uses NameResolver for callee resolution to enable cross-file symbol lookup.
+    The caller is the enclosing ``function_definition``'s symbol, found by its
+    POSITION in ``file_symbols`` (INV-midag): the name-keyed lookup this replaced
+    drew every call in one of two same-named definitions (an ``#ifdef`` pair, a
+    method name in two structs) from the other. A call inside a definition with
+    no symbol -- one named by a macro tree-sitter cannot expand -- is drawn from
+    the nearest enclosing definition that has one, else the file anchor, and
+    says so (``anchor_in_definitions`` / ``mark_stand_in``, WI-tikop). A call in
+    no definition at all is not emitted.
 
     Args:
         root_node: Root tree-sitter node to process
         source: Source file bytes
         edges: List to append edges to
-        local_symbols: Local symbol registry for finding enclosing functions
+        file_symbols: Every symbol of this file (``file_symbols()``)
         resolver: NameResolver for callee resolution
+        run_id: The run's execution id
+        file_anchor: The file's anchor symbol (``file_anchor_symbol``)
     """
+    index = symbols_at(file_symbols)
     for node in iter_tree(root_node):
         if node.type == "call_expression":
             # Check for kernel launch syntax <<<...>>> (parsed as kernel_call_syntax)
@@ -312,13 +351,17 @@ def _extract_cuda_edges(
                             func_node = child  # pragma: no cover
                             break  # pragma: no cover
 
-            caller = _get_enclosing_cuda_function(node, source, local_symbols)
+            caller, stands_in = anchor_in_definitions(
+                node, index, _DEFINITIONS, top_level=None, fallback=file_anchor,
+            )
+            edges_before = len(edges)
             if func_node and caller:
                 called_name = node_text(func_node, source)
                 # ADR-0023 fold: a CUDA kernel launch IS a call; the launch
                 # mechanism moves to meta['mechanism']='kernel_launch' (set on
                 # the is_kernel_launch branch below) rather than the edge_type.
-                edge_type = "calls"
+                # Spelled as a literal so the call-anchor gate enumerates this
+                # module (test_call_anchor_gate_common::_CALLS).
                 start_line = node.start_point[0] + 1
 
                 # Use resolver for callee resolution
@@ -335,7 +378,7 @@ def _extract_cuda_edges(
                     edge = Edge.create(
                         src=caller.id,
                         dst=dst_id,
-                        edge_type=edge_type,
+                        edge_type="calls",
                         line=start_line,
                         confidence=confidence,
                         origin=PASS_ID,
@@ -350,7 +393,7 @@ def _extract_cuda_edges(
                     edge = Edge.create(
                         src=caller.id,
                         dst=dst_id,
-                        edge_type=edge_type,
+                        edge_type="calls",
                         line=start_line,
                         confidence=confidence,
                         origin=PASS_ID,
@@ -358,6 +401,8 @@ def _extract_cuda_edges(
                         origin_run_id=run_id,
                     )
                 edges.append(edge)
+                if stands_in:
+                    mark_stand_in(edges, edges_before, caller.id)
 
 
 class CudaAnalyzer(TreeSitterAnalyzer):
@@ -400,7 +445,11 @@ class CudaAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract call and kernel launch edges from a CUDA file."""
         edges: list[Edge] = []
-        _extract_cuda_edges(tree.root_node, source, edges, local_symbols, resolver, run_id=run.execution_id)
+        _extract_cuda_edges(
+            tree.root_node, source, edges, self.file_symbols(local_symbols),
+            resolver, run_id=run.execution_id,
+            file_anchor=file_anchor_symbol("cuda", rel_path, PASS_ID, run.execution_id),
+        )
         return edges
 
 
