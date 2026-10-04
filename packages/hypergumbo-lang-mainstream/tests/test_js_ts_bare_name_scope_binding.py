@@ -31,6 +31,7 @@ short-name gate match it (``function f(exec) { exec(c) }`` would read as
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -318,3 +319,66 @@ class TestUnboundNamesAreRecorded:
         _write(tmp_path, {"a.js": _HELPER_A})
         result = analyze_javascript(tmp_path)
         assert _unresolved_from(result.edges, result.symbols, "f") == []
+
+
+class TestBindingForms:
+    """Each binding form the scope walk reads, against a same-name function in
+    ANOTHER file: a binding in scope must win over it (no edge to b.js), and a
+    position that is NOT a binding must leave the old lookup in charge."""
+
+    _OTHER: ClassVar[dict[str, str]] = {"b.js": "function helper(p) { return p; }\n"}
+
+    def _bound_to_other(
+        self, tmp_path: Path, a_js: str, caller: str,
+    ) -> list[tuple[str, str]]:
+        _write(tmp_path, {"a.js": a_js, **self._OTHER})
+        result = analyze_javascript(tmp_path)
+        return _calls_from(result.edges, result.symbols, caller, "a.js")
+
+    @pytest.mark.parametrize("a_js", [
+        "function f(helper = null) { return helper(1); }\n",
+        "function f(...helper) { return helper(1); }\n",
+        "function f({ k: [helper] }) { return helper(1); }\n",
+        "function f() { for (let helper = mk(); ; ) { return helper(1); } }\n",
+        "function f() { let /* note */ helper = mk(); return helper(1); }\n",
+    ])
+    def test_a_local_binding_wins(self, tmp_path: Path, a_js: str) -> None:
+        assert self._bound_to_other(tmp_path, a_js, "f") == []
+
+    def test_a_named_function_expression_binds_its_own_name(
+        self, tmp_path: Path,
+    ) -> None:
+        a_js = "const f = function helper(n) { return n ? helper(n - 1) : 0; };\n"
+        assert self._bound_to_other(tmp_path, a_js, "f") == []
+
+    @pytest.mark.parametrize("a_js", [
+        # A loop with no declaration: ``helper`` is an assignment target.
+        "function f(xs) { for (helper of xs) { helper(1); } }\n",
+        "function f() { for (;;) { return helper(1); } }\n",
+    ])
+    def test_a_non_binding_position_keeps_the_lookup(
+        self, tmp_path: Path, a_js: str,
+    ) -> None:
+        assert self._bound_to_other(tmp_path, a_js, "f") == [("b.js", "helper")]
+
+    def test_an_aliased_import_binds_the_alias_not_the_original(
+        self, tmp_path: Path,
+    ) -> None:
+        """``import { helper as h }`` binds ``h``; a call to ``helper`` in the
+        same file is not that import and falls through to the lookup."""
+        _write(tmp_path, {
+            "a.js": (
+                "import { helper as h } from './b';\n"
+                "function f(x) { return h(x) + helper(x); }\n"
+            ),
+            **self._OTHER,
+        })
+        result = analyze_javascript(tmp_path)
+        assert _calls_from(result.edges, result.symbols, "f", "a.js") == [
+            ("b.js", "helper"),
+        ]
+        # ``h`` is the import (its own, pre-existing named-import arm), not a
+        # local and not the bare ``helper`` lookup.
+        assert _unresolved_from(result.edges, result.symbols, "f") == [
+            "javascript:b:0-0:helper:unresolved",
+        ]
