@@ -31,3 +31,10 @@
   set: {}  # 4638
   add:  # 4638
     not_duplicate_of: [WI-tusad-rilub-jipuv-tibum-rijab-tahut-kijov-toral]  # 4638
+- op: discuss  # 1222
+  at: '2026-10-04T08:38:49Z'  # 1222
+  by: agent  # 1222
+  actor: jgstern_agent  # 1222
+  clock: 3  # 1222
+  nonce: '1222'  # 1222
+  message: "RUBY'S ANSWER, from WI-napaf-kalap-gubah-lopiv-lokap-tavit-pumav-honat (branch jgstern-agent/fix/napaf, 09f38364f8, not integrated): ruby's new receiverless placeholder ruby:external:0-0:<name>:unresolved has the same short-name reach to FUNCTION-kind rows, but in ruby that reach is CORRECT: Kernel methods (system, exec, spawn, open, puts) are ambient on every object and need no require, so an unbound `system(\"ls\")` really is Kernel#system unless the project defines `system` -- and a project definition resolves first (or is withheld by AMB-METHOD), never reaching the placeholder. Pinned both ways through classify_call with a Kernel.system overlay row. So a \"bound by no import\" marker designed here must NOT make ruby's receiverless placeholder refuse catalogue rows: the per-language answer differs (JS: no ambient function rows; ruby: Kernel is ambient; python: builtins, already a separate module slot). Ruby ships no built-in rows today, so this matters only for overlays until a ruby catalogue lands."  # 1222

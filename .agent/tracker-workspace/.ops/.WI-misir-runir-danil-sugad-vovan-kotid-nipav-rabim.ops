@@ -1,0 +1,22 @@
+- op: create  # a5a4
+  at: '2026-10-04T08:37:23Z'  # a5a4
+  by: agent  # a5a4
+  actor: jgstern_agent  # a5a4
+  clock: 1  # a5a4
+  nonce: a5a4  # a5a4
+  data:  # a5a4
+    kind: work_item  # a5a4
+    title: "ruby: the call shapes WI-napaf left silent -- an untyped variable receiver (obj.write), a no-argument implicit-self call (params, current_user, puts), an AMB-METHOD name (load(ext) with 6 project defs), super(...) and direct recursion emit no edge of any type"  # a5a4
+    status: todo_hard  # a5a4
+    priority: 2  # a5a4
+    parent:  # a5a4
+    tags:  # a5a4
+    - ruby  # a5a4
+    - call_graph  # a5a4
+    - analysis_quality  # a5a4
+    isbefore: []  # a5a4
+    duplicate_of: []  # a5a4
+    not_duplicate_of: []  # a5a4
+    pr_ref:  # a5a4
+    description: "FOUND 2026-10-04 while fixing WI-napaf-kalap-gubah-lopiv-lokap-tavit-pumav-honat (branch jgstern-agent/fix/napaf, worktree ~/hg_wt/napaf, commit 09f38364f8). WI-napaf made a receiverless `call` node that resolves nowhere emit `ruby:external:0-0:<name>:unresolved`. These sibling call shapes in the same analyzer (ruby.py `_extract_edges_from_file`) STILL emit no edge of any type, measured on a fixture through production analyze_ruby on that branch:\n\n    class K < Base\n      def go(obj, a)\n        obj.write(a)        # 1. variable receiver, type unknown -> no edge\n        current_user.name   # 2. implicit-self call used as a receiver -> no edge for current_user, none for .name\n        params[:id]         # 3. bare identifier that is a method (implicit self) -> no edge\n        puts                # 4. bare identifier, no args -> no edge\n        run(1)              # 5. AMB-METHOD: 3+ project classes define run -> no edge (INV-loha forbids a RESOLVED edge; it does not ask for silence)\n        super(1)            # 6. super call -> no edge\n      end\n      def foo(n); foo(n - 1); end  # 7. direct recursion -> no self edge (callee.id == current_method.id skip)\n    end\n\nWhy each is silent, read in code:\n1. the `elif receiver_node is not None` arm emits only when `var_types` types the receiver (\"variable receiver with unknown type -- no edge\"). javascript's WI-nasuf and python/java/go/rust/scala/swift emit the `external` placeholder with `call_construct: method` here (WI-sajis's parity family); ruby does not.\n2/3/4. tree-sitter-ruby gives a variable read and a no-argument implicit-self call the SAME node type (`identifier`). The bare-identifier arm resolves project methods and otherwise emits nothing. Telling `params` (a method) from `x` (a local) needs ruby's own rule, which is lexical and static: an identifier is a local iff a parameter, block parameter or an assignment to it appears earlier in the same scope. Without that walk, a placeholder here would record every local-variable read as a call. On a Rails app this is likely the largest of these shapes (params, current_user, request, render, head ...); NOT MEASURED.\n5. AMB-METHOD `pass`. CORPUS INSTANCE (mastodon, frozen copy, both arms): lib/rails/engine_extensions.rb:8 `load(ext)` is Kernel#load, and mastodon declares `load` in 6 unrelated classes (premailer_bundled_asset_strategy, trends/query, admin/metrics x3, user_settings_serializer), so the site has NO edge at all. A placeholder with enclosing_class (the inherited_calls linker's input) would record the call without binding it; the `external` slot would be FALSE here (the name is the project's) and would short-name-match a Kernel catalogue row of the same name.\n6. `super` is excluded by node type in WI-napaf's arm (it is the keyword, not a method named super). The right record is the enclosing method's own name with enclosing_class for the inherited_calls linker; compare WI-hatov (java super.m()).\n7. the `callee.id != current_method.id` guards drop direct recursion. NOT CHECKED: whether other analyzers emit a direct-recursion self edge (elixir's WI-pisuv removed SPURIOUS self edges at def heads, a different thing).\n\nNOT MEASURED: frequency of each shape on a corpus. WI-napaf's corpus A/B (postal, chatwoot, mastodon) measured only the receiverless-call shape it fixed (+2,330 / +6,442 / +20,520 call sites). Fix directions per shape differ (a placeholder with call_construct=method for 1; a lexical local-variable walk for 2-4; an enclosing_class placeholder for 5 and 6), so this may split when worked."  # a5a4
+    fields: {}  # a5a4
