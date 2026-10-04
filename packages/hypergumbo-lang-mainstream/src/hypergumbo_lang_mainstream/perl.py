@@ -32,10 +32,36 @@ Perl-Specific Considerations
 - ``require 'file.pl'`` imports at runtime
 - Method calls can be ``$obj->method()`` or ``ClassName->method()``
 - Perl has complex calling conventions that can be hard to statically analyze
+
+Class-method calls (WI-mahik)
+-----------------------------
+``Pkg->m(...)`` names its owner: Perl searches ``Pkg``'s method table, so the
+call is resolved by the invocant, never by the short name ``m`` across
+packages. A bareword invocant (``Pkg``, ``Pkg::``, ``::Pkg``) or
+``__PACKAGE__`` (the enclosing package) is looked up as ``Pkg::m`` exactly
+(``main`` names the unqualified subs). A miss emits the external edge the
+function-call arm already emits for ``LWP::Simple::get()``:
+``perl:<Pkg>:0-0:<m>:unresolved`` with ``Pkg`` as written in the module slot
+(ADR-0051's owner path), so a catalogue or overlay row for ``HTTP::Tiny`` /
+``IO::File`` can classify it. That holds for a package the repository DOES
+declare but whose sub ``m`` it does not: the method may be inherited or
+AUTOLOADed, and some other package's ``m`` is not it (the analyzer records
+no perl inheritance to walk). Both edges carry ``call_construct="function"``:
+the call is made on the module itself (ADR-0059). Like the function-call
+arm, a class-method call outside any sub is attributed to the file.
+
+Before this, the arm looked ``m`` up by short name: an undeclared ``m``
+emitted no edge at all (``File::Spec->catfile``), and a declared one bound
+whatever package declared it (git: ``SVN::Pool->new`` -> ``Git::new``;
+postgresql: ``IO::Socket::INET->new`` -> ``LdapServer::new``). An invocant
+that is an expression (``$ua->get``, ``shift->m``, ``Pkg->new->get``) still
+takes that short-name lookup: its package is the value's type, which this
+analyzer does not infer.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -142,6 +168,56 @@ def _find_enclosing_function_perl(
                 return sym
         current = current.parent
     return None  # pragma: no cover - defensive
+
+
+# A method name the class-method path resolves: a plain identifier. A
+# dynamic name (``Pkg->$m``) names no sub; a qualified one (``Pkg->Other::m``,
+# ``SUPER::m``) starts the search in another package and keeps the
+# short-name path.
+_PERL_METHOD_IDENTIFIER = re.compile(r"[A-Za-z_]\w*")
+
+
+def _invocant_package(
+    call: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """The package a ``->`` call is made on, or None when the invocant is an expression.
+
+    A bareword invocant is the package as written, minus a root ``::`` and the
+    trailing ``::`` Perl allows to force a package reading (``Foo::->new``).
+    ``__PACKAGE__`` is the enclosing package.
+    """
+    invocant = call.children[0]
+    if invocant.type == "bareword":
+        return node_text(invocant, source).strip(":") or None
+    if (
+        invocant.type == "func0op_call_expression"
+        and node_text(invocant, source) == "__PACKAGE__"
+    ):
+        return _get_current_package(call, source)
+    return None
+
+
+def _package_unresolved_edge(
+    caller_id: str,
+    package: str,
+    name: str,
+    line: int,
+    run_id: str,
+    *,
+    call_construct: Optional[str] = None,
+) -> Edge:
+    """The unresolved edge for ``name`` in ``package``, the package as written.
+
+    Shared by ``Pkg::name()`` and ``Pkg->name()``: one spelling,
+    ``perl:<Pkg>:0-0:<name>:unresolved``, with a structured ``dst_ref`` keyed
+    by the package (WI-nigah, ADR-0051's owner path).
+    """
+    return make_unresolved_edge(
+        "perl", caller_id, name, line, PASS_ID, run_id,
+        module_hint=package,
+        dst_ref=ExternalRef(lang="perl", module_path=package, name=name),
+        call_construct=call_construct,
+    )
 
 
 # Builtins to skip when resolving function calls
@@ -419,15 +495,9 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                                 # no module signal — dst_ref stays None.
                                 if "::" in func_name:
                                     pkg, _, bare = func_name.rpartition("::")
-                                    edges.append(make_unresolved_edge(
-                                        "perl", caller.id, bare,
-                                        node.start_point[0] + 1, PASS_ID, run_id,
-                                        module_hint=pkg,
-                                        dst_ref=ExternalRef(
-                                            lang="perl",
-                                            module_path=pkg,
-                                            name=bare,
-                                        ),
+                                    edges.append(_package_unresolved_edge(
+                                        caller.id, pkg, bare,
+                                        node.start_point[0] + 1, run_id,
                                     ))
                                 else:
                                     edges.append(make_unresolved_edge(
@@ -438,8 +508,23 @@ class PerlAnalyzer(TreeSitterAnalyzer):
             # Handle method calls (arrow operator)
             elif node.type == "method_call_expression":
                 method_node = find_child_by_type(node, "method")
-                if method_node:
-                    method_name = node_text(method_node, source)
+                if method_node is None:  # pragma: no cover - grammar always has one
+                    continue
+                method_name = node_text(method_node, source)
+                package = _invocant_package(node, source)
+                if package is not None and _PERL_METHOD_IDENTIFIER.fullmatch(
+                    method_name,
+                ):
+                    # WI-mahik: the invocant names the owner (module docstring).
+                    caller = _find_enclosing_function_perl(
+                        node, decl_index,
+                    ) or module_symbol
+                    if caller:
+                        edges.append(self._class_method_edge(
+                            caller.id, package, method_name,
+                            node.start_point[0] + 1, global_symbols, run_id,
+                        ))
+                else:
                     caller = _find_enclosing_function_perl(
                         node, decl_index,
                     )
@@ -462,6 +547,42 @@ class PerlAnalyzer(TreeSitterAnalyzer):
                             edges.append(edge)
 
         return edges
+
+    @staticmethod
+    def _class_method_edge(
+        caller_id: str,
+        package: str,
+        method_name: str,
+        line: int,
+        global_symbols: dict[str, Symbol],
+        run_id: str,
+    ) -> Edge:
+        """The edge for ``package->method_name``: ``package``'s own sub, or its external edge.
+
+        The registry is keyed by qualified name (``register_symbol``), and a
+        ``main`` sub by its bare name, so the exact key is the whole lookup:
+        no suffix match, which is the short-name binding this path replaces.
+        """
+        qualified = (
+            method_name if package == "main" else f"{package}::{method_name}"
+        )
+        callee = global_symbols.get(qualified)
+        if callee is not None and callee.kind == "function":
+            return Edge.create(
+                src=caller_id,
+                dst=callee.id,
+                edge_type="calls",
+                line=line,
+                origin=PASS_ID,
+                origin_run_id=run_id,
+                evidence_type="ast_call",
+                confidence=0.85,
+                meta={"call_construct": "function"},
+            )
+        return _package_unresolved_edge(
+            caller_id, package, method_name, line, run_id,
+            call_construct="function",
+        )
 
 
 _analyzer = PerlAnalyzer()
