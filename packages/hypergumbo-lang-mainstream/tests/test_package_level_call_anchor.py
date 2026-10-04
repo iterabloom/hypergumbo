@@ -241,18 +241,23 @@ def test_cpp_an_extern_declaration_at_file_scope_is_not_a_construction(tmp_path:
     ]
 
 
-def test_c_a_call_in_a_function_with_no_symbol_is_not_moved_to_the_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_c_a_call_in_a_function_with_no_symbol_stands_in_on_the_file(tmp_path: Path) -> None:
     """The file anchor is for code in NO function. A call inside a function the
-    analyzer failed to name stays unemitted rather than being attributed to the
-    file, which would hide that defect behind a plausible edge."""
-    import hypergumbo_lang_mainstream.c as c_mod
+    analyzer could not name (a macro-named definition, WI-tikop) is drawn from the
+    file too -- dropping it said there was no call -- but never as a plausible
+    file-scope edge: it carries ``src_stands_in_for``, so the defect stays
+    visible on the edge instead of hidden behind it."""
+    from hypergumbo_core.analyze.edge_source import SRC_STANDS_IN_FOR, UNNAMED_DEFINITION
+    from hypergumbo_lang_mainstream.c import analyze_c
 
-    monkeypatch.setattr(c_mod, "symbol_declared_by", lambda node, index: None)
-    (tmp_path / "m.c").write_text('#include <stdio.h>\nvoid f(void) { fopen("z", "r"); }\n')
-    calls = [e for e in c_mod.analyze_c(tmp_path).edges if e.edge_type == "calls"]
-    assert calls == [], [(e.src, e.dst) for e in calls]
+    (tmp_path / "m.c").write_text(
+        '#include <stdio.h>\nint PFX(f)(void) { fopen("z", "r"); return 0; }\n'
+    )
+    calls = [e for e in analyze_c(tmp_path).edges if e.edge_type == "calls"]
+    assert [
+        (e.src.endswith(":1-1:file:file"), (e.meta or {}).get(SRC_STANDS_IN_FOR))
+        for e in calls
+    ] == [(True, UNNAMED_DEFINITION)], [(e.src, e.meta) for e in calls]
 
 
 @pytest.mark.parametrize("name", ["m.c", "m.cpp"])

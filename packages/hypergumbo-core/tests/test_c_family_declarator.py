@@ -38,7 +38,9 @@ int (*getfn(void))(int) { return 0; }
 """)
     shapes = [c_family_declarator(d) for d in defs]
     assert [_text(s.name) for s in shapes] == ["plain", "two", "paren", "getfn"]
-    assert [s.pointer_depth for s in shapes] == [0, 2, 0, 0]
+    # ``getfn``'s one level is the RETURNED pointer's ``*``; a caller renders no
+    # return type when ``returns_function`` is set, so the count is never shown.
+    assert [s.pointer_depth for s in shapes] == [0, 2, 0, 1]
     assert [s.returns_function for s in shapes] == [False, False, False, True]
     # The function's OWN declarator holds its parameters, not the returned
     # pointer's: ``getfn(void)``, not ``(int)``.
