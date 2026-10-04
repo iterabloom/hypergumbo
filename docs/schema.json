@@ -794,6 +794,9 @@
             "external_boundary": {
               "description": "True on synthetic boundary Symbols emitted by ``ir._canonical_external_id`` for unresolved-but-referenced names. Read by ``is_external_boundary`` helper."
             },
+            "ffi_import": {
+              "description": "INV-lopus: on a function DECLARED in a foreign (``extern``) block, what it binds to as the source states it -- a map with ``abi`` (the block's ABI string, ``C`` when unwritten) and, only when written, ``js_namespace`` / ``js_module`` / ``foreign_name`` (wasm_bindgen ``js_namespace`` / ``module`` / ``js_name``, or ``#[link_name]``) and ``link`` (``#[link(name)]``). Emitted by the Rust analyzer. Records the binding; it does not classify the call."
+            },
             "field_type_ids": {
               "description": "Python class symbol: ``{field: type symbol id}`` for the fields whose type inference is trustworthy, beside ``fields`` (WI-supat D3); read by ``inherited_calls`` Site 3."
             },
