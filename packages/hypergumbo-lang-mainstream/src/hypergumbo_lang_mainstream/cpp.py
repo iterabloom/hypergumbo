@@ -53,6 +53,18 @@ Call-edge details:
   when the call names ``std::`` or the file has ``using namespace std``
   (``_CPP_CATALOGUE_NAMESPACES``); otherwise the ``external`` sentinel.
   Member calls carry ``call_construct="method"``.
+- **Overloads** (WI-hilum): every definition records its parameters in
+  ``meta["parameters"]`` (``hypergumbo_core.overload_arity``), with a
+  default written only on a separate prototype merged in at registration
+  (``_merge_prototype_defaults``). The callee the name gives is then
+  re-chosen among its same-named definitions by the call's argument count
+  (``overload_choice``): its own file first, the run's others only when
+  none there can take the call. Several that can is an ambiguous record
+  (``meta.resolution_quality="ambiguous"``, confidence ``1/sqrt(N)``),
+  except ``#if`` alternatives with one signature; none that can keeps the
+  name's pick. A call on an explicit receiver other than ``this`` is not
+  re-chosen: with no receiver type the overload set is a guess, and in the
+  pimpl idiom its arity match is the caller itself.
 - **Callbacks**: a bare identifier argument that resolves to a function
   becomes a ``calls`` edge with ``evidence_type="function_pointer_arg"``.
 - **I/O stamps**: ``stamp_io_mode_from_call`` records a literal mode
@@ -89,11 +101,15 @@ Why This Design
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, Span, Symbol, make_pass_id,
+)
+from hypergumbo_core.confidence import derive_confidence
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, OverloadChoice, choose_overload, parameter_entry,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_lang_mainstream.c import c_family_declarator, c_family_is_not_a_call
@@ -369,6 +385,162 @@ def _extract_field_types_cpp(
     return fields
 
 
+def _cpp_parameter_list(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The ``parameter_list`` of a function definition or prototype, or None.
+
+    The function's own declarator, at any depth (``c_family_declarator``). A
+    conversion operator (``operator bool() const``) has none: its parameter
+    list sits in the ``operator_cast``'s abstract declarator.
+    """
+    shape = c_family_declarator(node)
+    declarator = shape.function_declarator
+    if declarator is None and shape.name is not None:
+        declarator = next(
+            (n for n in iter_tree(shape.name) if n.type == "abstract_function_declarator"),
+            None,
+        )
+    if declarator is None:
+        return None
+    return _find_child_by_type(declarator, "parameter_list")
+
+
+def _cpp_parameter_name(param: "tree_sitter.Node", source: bytes) -> str:
+    """The declared name of one parameter (``*&x`` -> ``x``), "" if unnamed."""
+    current = param.child_by_field_name("declarator")
+    while current is not None and current.type not in ("identifier", "field_identifier"):
+        inner = current.child_by_field_name("declarator")
+        if inner is None:
+            inner = next(
+                (c for c in current.named_children
+                 if c.type.endswith("declarator") or c.type == "identifier"),
+                None,
+            )
+        current = inner
+    return _node_text(current, source) if current is not None else ""
+
+
+def _cpp_parameters(
+    param_list: "tree_sitter.Node", source: bytes,
+) -> list[dict[str, Any]]:
+    """``meta["parameters"]`` for a C++ parameter list (WI-hilum, ADR-0058).
+
+    ``f(void)`` declares no parameter. ``int y = 2`` is an
+    ``optional_parameter_declaration`` (``default``); C's ``...`` token and a
+    pack ``Args&&... args`` (``variadic_parameter_declaration``) take any number
+    of arguments (``variadic``). A default written only on a separate
+    declaration is merged in later (``CppAnalyzer.register_symbol``).
+    """
+    entries: list[dict[str, Any]] = []
+    for child in param_list.children:
+        if child.type == "...":
+            entries.append(parameter_entry("...", variadic=True))
+            continue
+        if child.type not in (
+            "parameter_declaration", "optional_parameter_declaration",
+            "variadic_parameter_declaration",
+        ):
+            continue
+        # The type as written before the declarator, qualifiers included
+        # (``const char``); the ``*`` / ``&`` belong to the declarator.
+        declarator = child.child_by_field_name("declarator")
+        end = declarator.start_byte if declarator is not None else (
+            child.child_by_field_name("type") or child
+        ).end_byte
+        type_text = " ".join(
+            source[child.start_byte:end].decode("utf-8", errors="replace").split()
+        ) or None
+        name = _cpp_parameter_name(child, source)
+        if child.type == "parameter_declaration" and not name and type_text == "void":
+            continue  # ``f(void)``: the C spelling of an empty list
+        entries.append(parameter_entry(
+            name, type_text,
+            default=child.type == "optional_parameter_declaration",
+            variadic=child.type == "variadic_parameter_declaration",
+        ))
+    return entries
+
+
+def _cpp_call_arity(call_node: "tree_sitter.Node") -> Optional[int]:
+    """How many arguments a call passes; None when it cannot be counted.
+
+    A pack expansion (``f(args...)``) passes an unknown number. A comment
+    between arguments is a named node and is not an argument.
+    """
+    args = call_node.child_by_field_name("arguments")
+    if args is None:
+        return None  # pragma: no cover - every call_expression has an argument_list
+    count = 0
+    for child in args.named_children:
+        if child.type == "comment":
+            continue
+        if child.type == "parameter_pack_expansion":
+            return None
+        count += 1
+    return count
+
+
+#: The confidence a certain local ``ast_call`` bind derives (ADR-0039); an
+#: ambiguous overload choice scales it rather than restating a constant.
+_AST_CALL_CONFIDENCE: float = derive_confidence("ast_call", is_resolved=True) or 0.85
+
+#: Where a function prototype can stand: file and namespace scope, a class
+#: body, a template. A declaration in a function body declares a local.
+_CPP_PROTOTYPE_SCOPES = frozenset({
+    "translation_unit", "declaration_list", "field_declaration_list",
+    "template_declaration",
+})
+
+
+def _explicit_receiver(call_node: "tree_sitter.Node") -> bool:
+    """True for ``obj.f()`` / ``ptr->f()``: a member call on a receiver other
+    than ``this``, whose class the analyzer does not know."""
+    function = call_node.child_by_field_name("function")
+    if function is None or function.type != "field_expression":
+        return False
+    receiver = function.child_by_field_name("argument")
+    return receiver is None or receiver.type != "this"
+
+
+def _alternatives_of_one_function(candidates: tuple[Symbol, ...]) -> bool:
+    """Same file, same parameter types: ``#if`` / ``#else`` definitions of one
+    function, not overloads (WI-hilum)."""
+    shapes: set[tuple[str, tuple[Any, ...]]] = set()
+    for c in candidates:
+        entries = (c.meta or {}).get(PARAMETERS_KEY)
+        if entries is None:
+            return False  # an unknown signature is not known to be identical
+        shapes.add((c.path, tuple(e.get("type") for e in entries)))
+    return len(shapes) == 1
+
+
+def _record_cpp_prototype(
+    node: "tree_sitter.Node",
+    source: bytes,
+    prototypes: dict[str, list[list[dict[str, Any]]]],
+) -> None:
+    """Record a function PROTOTYPE's parameters by qualified name.
+
+    C++ writes a default argument on the declaration a call sees, which for an
+    out-of-line definition is NOT the definition: ``void g(int a, int b = 0);``
+    in the class, ``void T::g(int a, int b) {..}`` in the .cpp. The
+    definition's own list says ``g`` needs two arguments; the call ``g(1)`` is
+    legal. Prototypes are therefore collected here and their defaults merged
+    into the matching definition when the run's symbols are registered.
+    """
+    param_list = _cpp_parameter_list(node)
+    if param_list is None:
+        return
+    shape = c_family_declarator(node)
+    if shape.name is None:
+        return  # pragma: no cover - a function_declarator always names something
+    name = _node_text(shape.name, source)
+    if "::" not in name:
+        owner = _get_enclosing_class(node, source)
+        if owner:
+            name = f"{owner}::{name}"
+    prototypes.setdefault(name, []).append(_cpp_parameters(param_list, source))
+
+
 def _extract_cpp_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -379,23 +551,10 @@ def _extract_cpp_signature(
     if node.type not in ("function_definition", "declaration"):
         return None  # pragma: no cover
 
-    # The function's own declarator, at any depth (``c_family_declarator``). A
-    # conversion operator (``operator bool() const``) has none: its parameter
-    # list sits in the ``operator_cast``'s abstract declarator.
     shape = c_family_declarator(node)
-    declarator = shape.function_declarator
-    if declarator is None and shape.name is not None:
-        declarator = next(
-            (n for n in iter_tree(shape.name) if n.type == "abstract_function_declarator"),
-            None,
-        )
-    if declarator is None:
-        return None  # pragma: no cover - every definition shape names its parameters
-
-    # Find parameter_list
-    param_list = _find_child_by_type(declarator, "parameter_list")
+    param_list = _cpp_parameter_list(node)
     if not param_list:
-        return None  # pragma: no cover
+        return None  # pragma: no cover - every definition shape names its parameters
 
     # Extract parameters
     param_strs: list[str] = []
@@ -684,8 +843,13 @@ def _extract_symbols_from_tree(
     file_path: Path,
     rel_path: str,
     run: AnalysisRun,
+    prototypes: Optional[dict[str, list[list[dict[str, Any]]]]] = None,
 ) -> FileAnalysis:
-    """Extract symbols from a single C++ file."""
+    """Extract symbols from a single C++ file.
+
+    ``prototypes``, when given, collects every function prototype's parameters
+    by qualified name (``_record_cpp_prototype``, WI-hilum).
+    """
     analysis = FileAnalysis()
 
     # WI-bokab (v7): file-identity anchor for this file's symbols. ``rel_path`` is
@@ -702,6 +866,14 @@ def _extract_symbols_from_tree(
 
     # Use iterative traversal to avoid RecursionError on deeply nested code
     for node in iter_tree(tree.root_node):
+        if (
+            prototypes is not None
+            and node.type in ("declaration", "field_declaration")
+            and node.parent is not None
+            and node.parent.type in _CPP_PROTOTYPE_SCOPES
+        ):
+            _record_cpp_prototype(node, source, prototypes)
+
         # Class declaration
         if node.type == "class_specifier":
             name_node = _find_child_by_type(node, "type_identifier")
@@ -912,6 +1084,14 @@ def _extract_symbols_from_tree(
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
                 signature = _extract_cpp_signature(node, source)
+                # WI-hilum: the arity fact's declared home (ADR-0058), read by
+                # overload selection in Pass 2. Written for every definition,
+                # ``[]`` included: absent would mean UNKNOWN.
+                param_list = _cpp_parameter_list(node)
+                fn_meta = (
+                    {PARAMETERS_KEY: _cpp_parameters(param_list, source)}
+                    if param_list is not None else None
+                )
 
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, kind),
@@ -928,6 +1108,7 @@ def _extract_symbols_from_tree(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     signature=signature,
+                    meta=fn_meta,
                     # INV-loguk: analytical fields for C++ functions/methods.
                     line_span=end_line - start_line + 1,
                     cyclomatic_complexity=compute_cyclomatic_complexity(
@@ -1322,6 +1503,7 @@ def _extract_edges_from_tree(
     field_type_registry: dict[str, dict[str, str]] | None = None,
     *,
     file_symbols: list[Symbol],
+    callables_by_name: Optional[dict[str, list[Symbol]]] = None,
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a parsed tree.
 
@@ -1335,6 +1517,10 @@ def _extract_edges_from_tree(
             (INV-midag, WI-saduj); ``local_symbols`` keeps one symbol per name,
             so of ``P::run``/``Q::run`` or two overloads it drew every edge
             from the last. Required, so no caller can fall back to that view.
+        callables_by_name: Every callable definition of the run by name
+            (``CppAnalyzer._callables_by_name``), the overload set a call's
+            name-picked callee is re-chosen from by arity (WI-hilum). Without it
+            -- a direct call -- this file's definitions are the set.
     """
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
@@ -1373,6 +1559,52 @@ def _extract_edges_from_tree(
                 _ident = _find_child_by_type(_n, "identifier")
                 if _ident is not None:
                     using_namespaces.append(_node_text(_ident, source))
+
+    def overload_choice(pick: Symbol, call: "tree_sitter.Node") -> Optional[OverloadChoice]:
+        """Re-choose ``pick`` among its same-named definitions by the call's
+        arity (WI-hilum); None leaves the name's pick as it was.
+
+        The pick's own file is the first tier, so a choice the name lookup
+        made by proximity or class survives whenever an overload there can
+        take the call; the run's other same-named definitions are consulted
+        only when none can (overloads split across translation units). When
+        no definition anywhere can take the argument count, the arity model
+        has failed (a default only a header outside the repo declares, a
+        macro-built argument list) and the pick stands.
+
+        NOT re-chosen: a pick that is not a callable (a struct named by its
+        constructor call), and a call on an explicit receiver other than
+        ``this`` (``impl_->Generate(..)``). Overloads are chosen within the
+        RIGHT overload set, and with no receiver type the name lookup picked
+        a class by name alone: in the pimpl idiom, ``X::Generate(a, b)``
+        forwarding to ``impl_->Generate(a, b)``, the arity-matching overload
+        of the wrongly picked class IS the caller, so choosing by arity there
+        turned a wrong edge into a false self-call (13 sites on sherpa-onnx).
+
+        Identical parameter types in ONE file are not overloads -- C++ cannot
+        overload on an identical signature -- but ``#if`` alternatives of one
+        function; the choice among them is not ambiguous.
+        """
+        if pick.kind not in ("function", "method") or _explicit_receiver(call):
+            return None
+        if callables_by_name is not None:
+            group = callables_by_name.get(pick.name, [])
+        else:
+            group = [
+                s for s in file_symbols
+                if s.name == pick.name and s.kind in ("function", "method")
+            ]
+        if len(group) < 2:
+            return None
+        same_file = [s for s in group if s.path == pick.path]
+        choice = choose_overload(
+            [same_file, group], _cpp_call_arity(call), preferred=pick,
+        )
+        if choice.symbol is None:
+            return None
+        if choice.ambiguous and _alternatives_of_one_function(choice.admitted):
+            return OverloadChoice(choice.symbol, 1.0, False, choice.admitted)
+        return choice
 
     def get_callee_name(node: "tree_sitter.Node") -> Optional[str]:
         """Extract the function name being called from a call_expression.
@@ -1564,15 +1796,26 @@ def _extract_edges_from_tree(
                             _local_callee = local_symbols[short_name]
                     if _local_callee is not None:
                         callee = _local_callee
+                        _local_meta = {"call_construct": "function"}
+                        _local_conf: Optional[float] = None  # derived (ast_call)
+                        _choice = overload_choice(callee, node)
+                        if _choice is not None:
+                            callee = _choice.symbol or callee
+                            if _choice.ambiguous:
+                                _local_meta["resolution_quality"] = "ambiguous"
+                                _local_conf = (
+                                    _AST_CALL_CONFIDENCE * _choice.confidence
+                                )
                         edges.append(Edge.create(
                             src=current_function.id,
                             dst=callee.id,
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
+                            confidence=_local_conf,
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            meta={"call_construct": "function"},
+                            meta=_local_meta,
                         ))
                     # Check global symbols via resolver
                     elif not chain_resolved:
@@ -1610,6 +1853,15 @@ def _extract_edges_from_tree(
                         # means unknown, which is what this branch actually has.
                         _unresolved_construct = "method" if is_member_call else None
                         _sym = lookup_result.symbol
+                        _arity_factor = 1.0
+                        _arity_meta: dict[str, str] = {}
+                        if _sym is not None:
+                            _choice = overload_choice(_sym, node)
+                            if _choice is not None:
+                                _sym = _choice.symbol
+                                _arity_factor = _choice.confidence
+                                if _choice.ambiguous:
+                                    _arity_meta["resolution_quality"] = "ambiguous"
                         _defer = _sym is not None and defer_bare_method_call(
                             _sym.kind, _sym.name,
                             lookup_result.match_type, _enclosing_type,
@@ -1638,10 +1890,12 @@ def _extract_edges_from_tree(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
-                                confidence=0.80 * lookup_result.confidence,
+                                confidence=(
+                                    0.80 * lookup_result.confidence * _arity_factor
+                                ),
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                meta={"call_construct": "function"},
+                                meta={"call_construct": "function", **_arity_meta},
                             ))
                         else:
                             # WI-rupik / WI-mafik: associate the unresolved
@@ -2090,6 +2344,27 @@ def _extract_edges_from_tree(
     return edges
 
 
+def _merge_prototype_defaults(
+    symbol: Symbol, prototypes: dict[str, list[list[dict[str, Any]]]],
+) -> None:
+    """Mark a definition's parameters defaulted where a prototype defaults them.
+
+    A prototype matches when it has the definition's qualified name and the
+    same parameter count (a different count is another overload). Several
+    matching prototypes contribute the UNION of their defaults: a looser bound
+    can only keep a candidate, never exclude one.
+    """
+    entries = (symbol.meta or {}).get(PARAMETERS_KEY)
+    if not entries:
+        return
+    for proto in prototypes.get(symbol.name, ()):
+        if len(proto) != len(entries):
+            continue
+        for i, p_entry in enumerate(proto):
+            if p_entry.get("default") and not entries[i].get("default"):
+                entries[i] = {**entries[i], "default": True}
+
+
 class CppAnalyzer(TreeSitterAnalyzer):
     """Tree-sitter-based C++ analyzer.
 
@@ -2104,6 +2379,25 @@ class CppAnalyzer(TreeSitterAnalyzer):
     grammar_module = "tree_sitter_cpp"
     self_keywords: ClassVar[frozenset[str]] = frozenset({"this"})
 
+    #: WI-hilum, live only inside ``analyze()``. Every prototype's parameters
+    #: by qualified name (Pass 1), merged into the matching definitions'
+    #: defaults at registration; and every callable definition by its name, so
+    #: Pass 2 sees an overload set where ``global_symbols`` keeps one per name.
+    _prototypes: Optional[dict[str, list[list[dict[str, Any]]]]] = None
+    _callables_by_name: Optional[dict[str, list[Symbol]]] = None
+
+    def analyze(
+        self, repo_root: Path, max_files: Optional[int] = None,
+    ) -> AnalysisResult:
+        """Run the base two-pass analysis with fresh overload indexes."""
+        self._prototypes = {}
+        self._callables_by_name = {}
+        try:
+            return super().analyze(repo_root, max_files)
+        finally:
+            self._prototypes = None
+            self._callables_by_name = None
+
     def _find_source_files(self, repo_root: Path) -> Iterator[Path]:
         """Yield C++ files (headers before sources for declaration ordering)."""
         yield from find_cpp_files(repo_root)
@@ -2116,7 +2410,9 @@ class CppAnalyzer(TreeSitterAnalyzer):
         rel_path: str,
         run: AnalysisRun,
     ) -> FileAnalysis:
-        return _extract_symbols_from_tree(tree, source, file_path, rel_path, run)
+        return _extract_symbols_from_tree(
+            tree, source, file_path, rel_path, run, prototypes=self._prototypes,
+        )
 
     def register_symbol(
         self,
@@ -2140,6 +2436,10 @@ class CppAnalyzer(TreeSitterAnalyzer):
         """
         if symbol.kind in ("field", "variable"):
             return
+        if symbol.kind in ("function", "method"):
+            _merge_prototype_defaults(symbol, self._prototypes or {})
+            if self._callables_by_name is not None:
+                self._callables_by_name.setdefault(symbol.name, []).append(symbol)
         existing = global_symbols.get(symbol.name)
         if existing is None:
             global_symbols[symbol.name] = symbol
@@ -2171,6 +2471,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
             namespace_aliases=import_aliases,
             field_type_registry=getattr(self, "_field_type_registry", None),
             file_symbols=self.file_symbols(local_symbols),
+            callables_by_name=self._callables_by_name,
         )
 
     def get_import_aliases(
