@@ -110,7 +110,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from itertools import groupby
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Collection, Iterator
 
 from ..pass_clock import PassClock
 
@@ -260,18 +260,36 @@ class LinkerContext:
         assert self._symbol_by_id is not None  # for type checker
         return self._symbol_by_id.get(symbol_id)
 
-    def find_symbols_by_name(self, name: str) -> list["Symbol"]:
-        """Find all symbols matching a name.
+    def find_symbols_by_name(
+        self, name: str, languages: Collection[str] | None = None,
+    ) -> list["Symbol"]:
+        """Find all symbols matching a name, optionally within a language set.
+
+        A name a linker reads out of source can denote only a symbol in a
+        language its mechanism reaches: ``set_defaults(func=X)`` names a
+        Python callable, a cobra ``RunE: X`` field a Go func value. An
+        unscoped lookup makes every same-named symbol in ANY language a
+        candidate, which costs twice (WI-gopok): a lone foreign namesake
+        becomes a confident wrong edge, and one beside the right symbol
+        inflates the INV-zuhub candidate count, demoting a precise edge to a
+        0.5 ``disambiguation_fallback`` pair. Pass ``languages`` for such a
+        lookup; leave it ``None`` only when the mechanism genuinely crosses
+        languages.
 
         Args:
             name: The symbol name to search for (matches short name)
+            languages: When given, keep only symbols whose ``language`` is in
+                this set. ``None`` keeps every language.
 
         Returns:
             List of matching symbols (may be empty).
         """
         self._ensure_indexes()
         assert self._symbols_by_name is not None  # for type checker
-        return self._symbols_by_name.get(name, [])
+        found = self._symbols_by_name.get(name, [])
+        if languages is None:
+            return found
+        return [s for s in found if s.language in languages]
 
     def find_enclosing_symbol(
         self,

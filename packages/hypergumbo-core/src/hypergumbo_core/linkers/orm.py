@@ -28,6 +28,18 @@ the same-file candidates when there are several, else from all of them),
 and the edge gets confidence 0.5 and ``meta.disambiguation_fallback=True``
 so consumers can filter guessed edges.
 
+Language Scope (WI-gopok)
+-------------------------
+An accessor ``User.objects`` / ``User.query`` in a ``.py`` file reads an
+attribute of a name bound in the running Python process, so the model it
+denotes is a Python class. The ``concept=model`` tag, though, is written by
+the framework YAML of Rails, Phoenix, Laravel, GORM, Spring and others too,
+so the model lookup admits only Python symbols (``_MODEL_LANGUAGES``; both
+Python producers stamp ``language="python"``). Without that, a lone
+same-named Ruby / Elixir / PHP / Go model became a confident wrong edge,
+and one beside the Python model inflated the INV-zuhub candidate count,
+demoting the correct edge to a 0.5 fallback.
+
 Why This Design
 ---------------
 Django/Flask-SQLAlchemy ORM calls use attribute chains (e.g., User.objects.filter())
@@ -64,6 +76,9 @@ from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("orm-linker")
 
+# Languages a Python ORM accessor can denote (WI-gopok): see "Language Scope".
+_MODEL_LANGUAGES = frozenset({"python"})
+
 
 @dataclass
 class OrmReference:
@@ -86,8 +101,10 @@ class OrmLinkResult:
 def _build_model_lookup(symbols: list[Symbol]) -> dict[str, list[Symbol]]:
     """Build a lookup from model class name to candidate Symbols.
 
-    Finds all symbols with concept "model" in their metadata (set by YAML
-    framework patterns for Django, Flask-SQLAlchemy, etc.). When multiple
+    Finds all PYTHON symbols with concept "model" in their metadata (set by
+    YAML framework patterns for Django, Flask-SQLAlchemy, etc.); a model in
+    another language cannot be what a Python accessor names (WI-gopok,
+    module docstring "Language Scope"). When multiple
     symbols share the same short name (cross-package collision), all
     candidates are returned in insertion order; :func:`_resolve_model_with_fallback`
     applies the INV-zuhub same-file-preferred / deterministic-fallback
@@ -101,7 +118,7 @@ def _build_model_lookup(symbols: list[Symbol]) -> dict[str, list[Symbol]]:
     """
     lookup: dict[str, list[Symbol]] = {}
     for sym in symbols:
-        if not has_concept(sym, "model"):
+        if sym.language not in _MODEL_LANGUAGES or not has_concept(sym, "model"):
             continue
         # Use short name (last component after any dots)
         short_name = sym.name.split(".")[-1] if "." in sym.name else sym.name

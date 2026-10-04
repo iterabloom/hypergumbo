@@ -31,7 +31,9 @@ Matching strategy
    with ``func`` are ignored — those are inline function literals,
    already reachable via containment.
 3. For each captured ``(field, identifier)`` pair, resolve
-   ``identifier`` to a Symbol via ``ctx.find_symbols_by_name`` and emit
+   ``identifier`` to a GO Symbol via ``ctx.find_symbols_by_name`` (the
+   field holds a Go func value, so a same-named Python / JS symbol is a
+   name coincidence, WI-gopok) and emit
    a ``dispatches_to`` edge from the enclosing function to the handler.
    When the cobra.Command literal is at package level (inside a
    ``var … = &cobra.Command{…}`` declaration), the linker falls back
@@ -92,6 +94,10 @@ _HANDLER_FIELDS = (
     "PersistentPostRun",
     "PersistentPostRunE",
 )
+
+# Languages a cobra handler field can denote (WI-gopok): ``RunE: runCmd``
+# assigns a Go func value, so only a Go symbol can be the handler.
+_HANDLER_LANGUAGES = frozenset({"go"})
 
 # Anchor: match both ``cobra.Command{`` and ``&cobra.Command{``.
 # Used only to decide whether a file is a cobra client; the handler
@@ -217,10 +223,13 @@ def go_cobra_linker(ctx: LinkerContext) -> LinkerResult:
             # Resolve handler. Try the bare name first; if the
             # analyzer records receiver-qualified method names
             # (``Type.Method``), strip the package prefix and retry.
-            candidates = ctx.find_symbols_by_name(handler_name)
+            candidates = ctx.find_symbols_by_name(
+                handler_name, languages=_HANDLER_LANGUAGES,
+            )
             if not candidates and "." in handler_name:
                 candidates = ctx.find_symbols_by_name(
                     handler_name.split(".", 1)[-1],
+                    languages=_HANDLER_LANGUAGES,
                 )
             if not candidates:
                 continue

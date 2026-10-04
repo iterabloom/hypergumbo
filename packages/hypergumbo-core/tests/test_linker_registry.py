@@ -144,6 +144,27 @@ class TestLinkerContextSymbolLookup:
         assert len(result) == 1
         assert result[0].name == "MyClass.method"
 
+    def test_find_symbols_by_name_language_scoped(self):
+        """WI-gopok: ``languages=`` keeps only candidates in that set.
+
+        A name a mechanism resolves can only denote a symbol in the languages
+        that mechanism reaches; the unscoped call keeps every language.
+        """
+        go_sym = self._make_symbol("RegisterUserServer")
+        py_sym = self._make_symbol("RegisterUserServer", lang="python")
+        ctx = LinkerContext(repo_root=Path("/test"), symbols=[go_sym, py_sym])
+
+        assert ctx.find_symbols_by_name("RegisterUserServer") == [go_sym, py_sym]
+        assert ctx.find_symbols_by_name(
+            "RegisterUserServer", languages={"python"},
+        ) == [py_sym]
+        assert ctx.find_symbols_by_name(
+            "RegisterUserServer", languages=frozenset({"go", "python"}),
+        ) == [go_sym, py_sym]
+        assert ctx.find_symbols_by_name(
+            "RegisterUserServer", languages={"ruby"},
+        ) == []
+
     def test_indexes_built_lazily(self):
         """Symbol indexes are built lazily on first lookup."""
         sym = self._make_symbol("foo")
