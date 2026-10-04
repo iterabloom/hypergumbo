@@ -656,7 +656,11 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "edges from the receiver's binding (WI-tusav), and "
                     "'std_stream' on a PrintStream method call whose receiver "
                     "is System.out / System.err (WI-dorus) -- java edges, and "
-                    "no edge is both a read and a write."
+                    "no edge is both a read and a write. kotlin.py and "
+                    "scala.py stamp the same 'std_stream' on the same "
+                    "PrintStream calls in their own languages (WI-rabum, the "
+                    "rule shared through jvm_implicit_imports) -- kotlin and "
+                    "scala edges, disjoint from every writer above."
                 )),
     MetaKeySpec("attr_carrier", AXIS_EDGE_META,
                 "On a `module_attr_ref` edge: the CALL at whose argument, "
@@ -683,7 +687,8 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "shape: py.py's module-attribute pass stamps python "
                     "edges, and base.emit_module_attribute_refs stamps the "
                     "tree-sitter languages that pass it carrier node kinds "
-                    "(go, java, javascript). No edge is emitted by both."
+                    "(go, java, javascript, kotlin, scala). No edge is "
+                    "emitted by both."
                 )),
     MetaKeySpec("redirect_target", AXIS_EDGE_META,
                 "The path (or `<unresolved>`) a shell redirection writes to "

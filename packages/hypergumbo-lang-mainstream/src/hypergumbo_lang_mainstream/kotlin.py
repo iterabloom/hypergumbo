@@ -80,6 +80,17 @@ that type. ``super.m()`` resolves through the enclosing class's
 ``base_classes`` (``_emit_super_call``); an external base leaves an
 unresolved edge whose ``receiver_type_hint`` names it.
 
+The process's own standard streams (WI-rabum). ``System.err.println(k)`` is
+a call on the ``java.io.PrintStream`` the field declares, emitted with that
+type in the module slot and ``io_target_kind: std_stream``, which java.yaml's
+PrintStream rows require (``requires_target_kind``). ``System.out`` /
+``.err`` / ``.in`` read as values become ``module_attr_ref`` edges through the
+shared ``emit_module_attribute_refs``, matching ``java.lang.System``'s
+attribute rows (logging; ipc_recv) and naming the call that uses the stream
+(``attr_carrier``). Both follow java's WI-dorus rule through
+``jvm_implicit_imports``: a bare ``System`` counts only when no import, project
+type or local renames it.
+
 Explicit imports outrank the resolver (WI-tipoh). When the file's import of
 a name contradicts the symbol the name-keyed resolver returns,
 ``_kt_import_target`` rebinds the call to the project symbol at the imported
@@ -120,6 +131,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     file_anchor_symbol,
+    emit_module_attribute_refs,
     enclosing_declared_symbol,
     make_file_id,
     record_partial_parse,
@@ -135,9 +147,15 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
+    JAVA_LANG_SYSTEM_FIELDS,
     KOTLIN_SHADOWED_JAVA_LANG,
+    PRINT_STREAM_TYPE,
+    STD_STREAM_TARGET_KIND,
+    bare_system_is_java_lang,
     imported_elsewhere,
     inline_qualified_owner,
+    is_std_output_receiver,
+    java_lang_system_aliases,
     kotlin_import_path,
     static_owner_module,
 )
@@ -1403,9 +1421,10 @@ def _extract_edges_from_file(
         extension_index = {}
     # Every declaration of this file, by position (INV-midag). ``local_symbols``
     # keeps ONE symbol per name, so it cannot tell two ``parse`` methods apart.
-    decl_index = symbols_at(
+    decl_symbols = (
         file_symbols if file_symbols is not None
         else list({s.id: s for s in local_symbols.values()}.values()))
+    decl_index = symbols_at(decl_symbols)
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -1465,6 +1484,13 @@ def _extract_edges_from_file(
             name not in imports
             or not imported_elsewhere(class_symbols[name].qualified_name, imports[name])
             or _kt_names_project_path(imports[name], project_by_qualified)
+        )
+
+    def _bare_system_here() -> bool:
+        """Whether a bare ``System`` is java.lang's at this point of the walk."""
+        return bare_system_is_java_lang(
+            imports, is_project_type=_is_project_receiver("System"),
+            is_local="System" in var_types,
         )
 
     #: java.yaml's rows, read through ``ROW_PARENTS`` (WI-jubim): kotlin has
@@ -1553,6 +1579,23 @@ def _extract_edges_from_file(
                 receiver_type_hint=_kt_project_type_key(recv_type),
                 call_construct="method",
             ))
+            return
+        # WI-rabum, java's WI-dorus: ``System.err.println(k)`` is a call on the
+        # PrintStream the field declares, writing the process's own stream --
+        # what java.yaml's ``requires_target_kind: std_stream`` rows wait for.
+        if is_std_output_receiver(
+            node_text(receiver, source),
+            bare_system_is_java_lang=_bare_system_here(),
+        ):
+            stdio_call = make_unresolved_edge(
+                "kotlin", current_function.id, method_name, line, PASS_ID,
+                run.execution_id, module_hint=PRINT_STREAM_TYPE,
+                receiver_type_hint=PRINT_STREAM_TYPE, call_construct="method",
+            )
+            stdio_call.meta = {
+                **(stdio_call.meta or {}), "io_target_kind": STD_STREAM_TARGET_KIND,
+            }
+            edges.append(stdio_call)
             return
         path = _kt_inline_path(receiver, source)
         if path is not None:
@@ -2203,6 +2246,32 @@ def _extract_edges_from_file(
                             evidence_type="callable_reference",
                         ))
 
+    # WI-rabum: ``System.out`` / ``.err`` / ``.in`` READ as values, through the
+    # shared emitter java uses (WI-lozug). java.yaml's ``java.lang.System``
+    # attribute rows (logging; ipc_recv) reach kotlin through _CATALOG_PARENTS
+    # and had no edge to match. tree-sitter-kotlin declares no fields, so the
+    # parts are named by position (``@first`` / ``@last``) and an argument sits
+    # in a ``value_argument`` wrapper. A local ``System`` is not considered
+    # here: the walk is over, and no scope is open to ask.
+    emit_module_attribute_refs(
+        tree.root_node, source,
+        java_lang_system_aliases(bare_system_is_java_lang=bare_system_is_java_lang(
+            imports, is_project_type=_is_project_receiver("System"), is_local=False,
+        )),
+        file_anchor, "kotlin", edges,
+        node_kinds=("navigation_expression",),
+        object_field_names=("@first",),
+        property_field_names=("@last",),
+        pass_id=PASS_ID,
+        run_id=run.execution_id,
+        call_node_kinds=("call_expression",),
+        call_function_field_names=("@first",),
+        carrier_call_kinds=("call_expression",),
+        carrier_arguments_field="@value_arguments",
+        carrier_argument_wrapper_kinds=("value_argument",),
+        attribute_names=JAVA_LANG_SYSTEM_FIELDS,
+        enclosing_symbols=decl_symbols,
+    )
     return edges
 
 

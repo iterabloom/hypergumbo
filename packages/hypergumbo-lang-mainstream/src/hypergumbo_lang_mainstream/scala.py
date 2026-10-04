@@ -65,6 +65,13 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      resolves when the method is inherited (INV-fahub).
    - A call in no function is anchored on the class/object/trait/enum whose
      body holds it (``_TYPE_BODY_NODES``), else on the file (INV-bamij).
+   - ``System.err.println(k)`` is a call on ``java.io.PrintStream`` stamped
+     ``io_target_kind: std_stream`` (java.yaml's PrintStream rows require
+     it), and ``System.out`` / ``.err`` / ``.in`` read as values become
+     ``module_attr_ref`` edges through the shared
+     ``emit_module_attribute_refs`` (WI-rabum, java's WI-dorus / WI-lozug).
+     Only ``java.lang.System``'s three FIELDS are attributes: scala writes
+     ``System.currentTimeMillis`` without parentheses, and that is a call.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides the Scala-specific extraction
@@ -94,6 +101,7 @@ from hypergumbo_core.analyze.base import (
     SymbolsAt,
     TreeSitterAnalyzer,
     defer_bare_method_call,
+    emit_module_attribute_refs,
     find_child_by_type,
     iter_tree,
     file_anchor_symbol,
@@ -113,8 +121,14 @@ from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
+    JAVA_LANG_SYSTEM_FIELDS,
+    PRINT_STREAM_TYPE,
     SCALA_SHADOWED_JAVA_LANG,
+    STD_STREAM_TARGET_KIND,
+    bare_system_is_java_lang,
     inline_qualified_owner,
+    is_std_output_receiver,
+    java_lang_system_aliases,
     static_owner_module,
 )
 
@@ -2173,9 +2187,10 @@ def _extract_edges_from_file(
     _caller_path = str(file_path)
     # Every declaration of this file, by position (INV-midag): ``local_symbols``
     # keeps ONE symbol per name.
-    decl_index = symbols_at(
+    decl_symbols = (
         file_symbols if file_symbols is not None
         else list({s.id: s for s in local_symbols.values()}.values()))
+    decl_index = symbols_at(decl_symbols)
     edges: list[Edge] = []
     file_id = make_file_id("scala", str(file_path))
     file_anchor = file_anchor_symbol("scala", str(file_path), PASS_ID, run_id)
@@ -2192,6 +2207,17 @@ def _extract_edges_from_file(
         and after it."""
         spans = _scoped_imports.get(name)
         return spans is None or any(lo <= at.start_byte < hi for lo, hi in spans)
+
+    def _bare_system_at(at: "tree_sitter.Node", *, is_local: bool) -> bool:
+        """Whether a bare ``System`` at ``at`` is java.lang's (WI-rabum)."""
+        return bare_system_is_java_lang(
+            import_aliases,
+            is_project_type=_is_project_type(
+                "System", global_symbols,
+                import_aliases if _applies("System", at) else None,
+                file_packages, project_packages),
+            is_local=is_local,
+        )
 
     for node in iter_tree(tree.root_node):
         if node.type == "import_declaration":
@@ -2281,6 +2307,10 @@ def _extract_edges_from_file(
                 has_receiver = False
                 inline_path: "str | None" = None
                 receiver_type: "str | None" = None
+                # WI-rabum, java's WI-dorus: ``System.err.println(k)`` is a
+                # call on the PrintStream the field declares, writing the
+                # process's own stream (``requires_target_kind: std_stream``).
+                stdio_receiver = False
                 if not callee_node:
                     field_node = find_child_by_type(node, "field_expression")
                     if field_node:
@@ -2298,7 +2328,14 @@ def _extract_edges_from_file(
                             # every complex-receiver call in Scala.
                             callee_node = ids[0]
                             _value = field_node.child_by_field_name("value")
-                            if _value is not None:
+                            if _value is not None and is_std_output_receiver(
+                                node_text(_value, source),
+                                bare_system_is_java_lang=_bare_system_at(
+                                    node, is_local="System" in var_types),
+                            ):
+                                receiver_type = PRINT_STREAM_TYPE
+                                stdio_receiver = True
+                            elif _value is not None:
                                 inline_path = _inline_path(_value, source)
                                 # WI-gokop: a call result, a member, a cast.
                                 receiver_type = typer.expr_type(_value)
@@ -2308,7 +2345,9 @@ def _extract_edges_from_file(
 
                     # Type-qualified resolution: receiver.method() → Type.method
                     edge_added = False
-                    if receiver_type:
+                    # A stdio receiver's type is the JDK's, never a project
+                    # type's that happens to share its simple name.
+                    if receiver_type and not stdio_receiver:
                         # WI-gokop: a QUALIFIED project type (from the registry,
                         # or written inline) looks its member up by the simple
                         # name, and the qualified path must not contradict the
@@ -2375,7 +2414,10 @@ def _extract_edges_from_file(
                         # less: ``new Untyped(x).createNewFile()`` cannot be a
                         # call on the enclosing class under any reading.
                         gate_meta: dict = {"call_construct": "method"}
-                        if receiver_type:
+                        if stdio_receiver:
+                            gate_meta["receiver_type_hint"] = PRINT_STREAM_TYPE
+                            gate_meta["io_target_kind"] = STD_STREAM_TARGET_KIND
+                        elif receiver_type:
                             gate_meta["receiver_type_hint"] = typer.symbol_type_name(receiver_type)
                         # WI-sigog / INV-linub L3: the receiver TYPE this branch
                         # has just inferred must also reach the MODULE SLOT, not
@@ -2612,6 +2654,27 @@ def _extract_edges_from_file(
                             origin_run_id=run_id,
                         ))
 
+    # WI-rabum: ``System.out`` / ``.err`` / ``.in`` READ as values, through the
+    # shared emitter java uses (WI-lozug). java.yaml's ``java.lang.System``
+    # attribute rows (logging; ipc_recv) reach scala through _CATALOG_PARENTS
+    # and had no edge to match. ``attribute_names`` keeps a parameterless CALL
+    # (``System.currentTimeMillis``) from being recorded as a field read.
+    emit_module_attribute_refs(
+        tree.root_node, source,
+        java_lang_system_aliases(
+            bare_system_is_java_lang=_bare_system_at(tree.root_node, is_local=False)),
+        file_anchor, "scala", edges,
+        node_kinds=("field_expression",),
+        object_field_names=("value",),
+        property_field_names=("field",),
+        pass_id=PASS_ID,
+        run_id=run_id,
+        call_node_kinds=("call_expression",),
+        call_function_field_names=("function",),
+        carrier_call_kinds=("call_expression", "instance_expression"),
+        attribute_names=JAVA_LANG_SYSTEM_FIELDS,
+        enclosing_symbols=decl_symbols,
+    )
     return edges
 
 
