@@ -9,6 +9,10 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - Method declarations (inside classes/structs)
 - Constructor declarations
 - Property declarations
+- Indexers (``subscript``, named ``Type.this[]``), operators and conversion
+  operators (``method``, ``Type.operator+`` / ``Type.operator int``),
+  destructors (``method``, ``Type.~Type``) and events declared with
+  ``add`` / ``remove`` accessors (``event``) (WI-binap)
 - Field declarations, one ``field`` symbol per declarator (WI-jusus)
 - Enum members, each a ``field`` symbol named ``Enum.Member`` (WI-duguk)
 - Function call relationships (including chained field type resolution)
@@ -38,8 +42,16 @@ How It Works
      - A bare call that resolves only to a DIFFERENT class's method on
        short-name evidence is deferred with ``enclosing_class`` for the
        ``inherited_calls`` linker (INV-fahub).
-     - A call in no method is anchored on its enclosing type
-       (``_CSHARP_TYPE_BODY_NODES``), else on the file (INV-bamij).
+     - A call, object creation or method-group reference is credited to the
+       member whose declaration contains it, found by POSITION
+       (``_CSHARP_MEMBER_BODY_NODES``, INV-midag): a method, constructor,
+       property (its accessors and its initialiser), indexer, operator,
+       destructor or event. A local function or lambda has no symbol and is
+       walked past (WI-binap).
+     - A call in no member (a field initialiser's lambda) is anchored on its
+       enclosing type (``_CSHARP_TYPE_BODY_NODES``), else on the file
+       (INV-bamij). An object creation or method-group reference there is
+       still dropped.
 4. Detect using directives and object creations
 
 Why This Design
@@ -83,7 +95,6 @@ from hypergumbo_core.analyze.base import (
     populate_docstrings_from_tree,
     visibility_from_modifiers,
     SymbolsAt,
-    symbol_declared_by,
     symbols_at,
 )
 from hypergumbo_core.paths import normalize_path
@@ -233,6 +244,14 @@ def _find_children_by_type(node: "tree_sitter.Node", type_name: str) -> list["tr
     return [child for child in node.children if child.type == type_name]
 
 
+#: The node types that spell a type when it is not a bare ``identifier`` (a
+#: user type): a parameter's type, a method's return type.
+_CSHARP_SIGNATURE_TYPE_NODES: tuple[str, ...] = (
+    "predefined_type", "generic_name", "array_type",
+    "nullable_type", "qualified_name", "ref_type", "pointer_type",
+)
+
+
 def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract type text from a type node."""
     return node_text(node, source)
@@ -241,7 +260,8 @@ def _extract_type_text(node: "tree_sitter.Node", source: bytes) -> str:
 def _extract_param_types(
     node: "tree_sitter.Node", source: bytes
 ) -> dict[str, str]:
-    """Extract parameter name -> type mapping from a method/constructor declaration.
+    """Extract parameter name -> type mapping from a member declaration (a
+    method, constructor, operator or indexer; ``_CSHARP_MEMBER_BODY_NODES``).
 
     This enables type inference for method calls on parameters, e.g.:
         void Process(Database db) {
@@ -253,14 +273,11 @@ def _extract_param_types(
     """
     param_types: dict[str, str] = {}
 
-    # Type node types in C#
-    type_node_types = ("predefined_type", "generic_name", "array_type",
-                       "nullable_type", "qualified_name", "ref_type", "pointer_type")
-
-    # Find parameter_list node
-    params_node = find_child_by_type(node, "parameter_list")
+    # The parameter list: a ``parameter_list``, or an indexer's
+    # ``bracketed_parameter_list``; a property and an event have none.
+    params_node = node.child_by_field_name("parameters")
     if params_node is None:
-        return param_types  # pragma: no cover - no params in method
+        return param_types
 
     # Extract parameter types
     for child in params_node.children:
@@ -269,7 +286,7 @@ def _extract_param_types(
             param_name = None
             for subchild in child.children:
                 # Type nodes
-                if subchild.type in type_node_types:
+                if subchild.type in _CSHARP_SIGNATURE_TYPE_NODES:
                     param_type = _extract_type_text(subchild, source)
                     # Strip generic parameters: List<T> -> List
                     if "<" in param_type:
@@ -317,8 +334,6 @@ def _extract_csharp_signature(
     # Find parameter_list and return type
     # The return type is a type node (predefined_type, generic_name, etc.)
     # NOT a plain identifier (that's the method name)
-    type_node_types = ("predefined_type", "generic_name", "array_type",
-                       "nullable_type", "qualified_name", "ref_type", "pointer_type")
 
     # Collect identifiers before parameter_list to distinguish return type
     # from method name.  In C# method_declaration children:
@@ -332,7 +347,7 @@ def _extract_csharp_signature(
         if child.type == "parameter_list":
             params_node = child
         # Return type is a type node, not identifier
-        elif child.type in type_node_types:
+        elif child.type in _CSHARP_SIGNATURE_TYPE_NODES:
             return_type = _extract_type_text(child, source)
         # Track identifiers before parameter_list for custom return type detection
         elif child.type == "identifier" and params_node is None:
@@ -346,7 +361,18 @@ def _extract_csharp_signature(
     if params_node is None:
         return None  # pragma: no cover
 
-    # Extract parameters
+    signature = _format_csharp_params(params_node, source)
+
+    # Add return type for methods (not constructors), but omit void
+    if not is_constructor and return_type and return_type != "void":
+        signature += f" {return_type}"
+
+    return signature
+
+
+def _format_csharp_params(params_node: "tree_sitter.Node", source: bytes) -> str:
+    """``(int x, Foo y)`` for a ``parameter_list`` or an indexer's
+    ``bracketed_parameter_list``: each parameter as ``type name``."""
     params: list[str] = []
     for child in params_node.children:
         if child.type == "parameter":
@@ -354,7 +380,7 @@ def _extract_csharp_signature(
             param_name = None
             for subchild in child.children:
                 # Type nodes (not plain identifier for type - those are param names)
-                if subchild.type in type_node_types:
+                if subchild.type in _CSHARP_SIGNATURE_TYPE_NODES:
                     param_type = _extract_type_text(subchild, source)
                 # For custom types, identifier IS the type if param_type not set
                 elif subchild.type == "identifier":
@@ -364,15 +390,71 @@ def _extract_csharp_signature(
                         param_name = node_text(subchild, source)
             if param_type and param_name:
                 params.append(f"{param_type} {param_name}")
+    return f"({', '.join(params)})"
 
-    params_str = ", ".join(params)
-    signature = f"({params_str})"
 
-    # Add return type for methods (not constructors), but omit void
-    if not is_constructor and return_type and return_type != "void":
-        signature += f" {return_type}"
+#: WI-binap: member declarations with a body that holds calls, beyond the
+#: method and the constructor, and the registry kind each is emitted as. An
+#: indexer is Swift's ``subscript``; an operator and a destructor are methods,
+#: as C++ emits ``operator==`` and ``~S``.
+_CSHARP_BODY_MEMBER_DECLS: dict[str, str] = {
+    "indexer_declaration": "subscript",
+    "operator_declaration": "method",
+    "conversion_operator_declaration": "method",
+    "destructor_declaration": "method",
+    "event_declaration": "event",
+}
 
-    return signature
+#: INV-midag / WI-binap: every declaration whose BODY makes it the enclosing
+#: member of a call in it, found by POSITION. A property owns its accessors and
+#: its initialiser. A local function or a lambda has no symbol and is walked
+#: past to the member that declares it.
+_CSHARP_MEMBER_BODY_NODES: frozenset[str] = frozenset({
+    "method_declaration", "constructor_declaration", "property_declaration",
+    *_CSHARP_BODY_MEMBER_DECLS,
+})
+
+
+def _csharp_body_member(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[tuple[str, str, str]]:
+    """``(kind, name, signature)`` for a ``_CSHARP_BODY_MEMBER_DECLS`` node.
+
+    Names follow the source spelling: ``this[]``, ``operator+``,
+    ``operator int`` (a conversion operator, named by its target type, since
+    C# forbids an implicit and an explicit one to the same type), ``~A`` and
+    the event's own name. Signatures are a method's: ``(int i) int``; an
+    event's is its delegate type, as a field's is its type.
+    """
+    kind = _CSHARP_BODY_MEMBER_DECLS[node.type]
+    type_node = node.child_by_field_name("type")
+    type_text = node_text(type_node, source) if type_node is not None else None
+    if node.type == "event_declaration":
+        name_node = node.child_by_field_name("name")
+        if name_node is None or type_text is None:
+            return None  # pragma: no cover - the grammar requires both
+        return kind, node_text(name_node, source), type_text
+    if node.type == "destructor_declaration":
+        name_node = node.child_by_field_name("name")
+        if name_node is None:
+            return None  # pragma: no cover - the grammar requires it
+        name = f"~{node_text(name_node, source)}"
+    elif node.type == "indexer_declaration":
+        name = "this[]"
+    elif node.type == "operator_declaration":
+        op_node = node.child_by_field_name("operator")
+        if op_node is None:
+            return None  # pragma: no cover - the grammar requires it
+        name = f"operator{node_text(op_node, source)}"
+    else:  # conversion_operator_declaration: named by its target type
+        name = f"operator {type_text}"
+    params_node = node.child_by_field_name("parameters")
+    if params_node is None:
+        return None  # pragma: no cover - every form here declares parameters
+    signature = _format_csharp_params(params_node, source)
+    if type_text and type_text != "void":
+        signature += f" {type_text}"
+    return kind, name, signature
 
 
 def normalize_csharp_signature(
@@ -1088,6 +1170,65 @@ def _extract_symbols_from_file(
                 analysis.symbol_by_name[name] = symbol
                 analysis.symbol_by_name[full_name] = symbol
 
+        # WI-binap: indexer / operator / conversion operator / destructor / event
+        # with accessors -- the member forms with a body that had no symbol, so
+        # their calls went to the class.
+        elif node.type in _CSHARP_BODY_MEMBER_DECLS:
+            body_member = _csharp_body_member(node, source)
+            if body_member is not None:
+                m_kind, m_name, m_signature = body_member
+                current_class = _get_enclosing_class(node, source)
+                full_name = f"{current_class}.{m_name}" if current_class else m_name
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                modifiers = _extract_modifiers(node)
+                annotations = _extract_annotations(node, source)
+                ns_name = _get_csharp_enclosing_namespace(node, source)
+                cls_ancestors = _get_csharp_class_ancestors(node, source)
+                # The event's "signature" is its delegate type (a field's is its
+                # type); the others' parameter lists normalise like a method's.
+                norm_sig = (
+                    m_signature if m_kind == "event"
+                    else normalize_csharp_signature(m_signature) or m_signature
+                )
+                symbol = Symbol(
+                    id=make_symbol_id("csharp", str(file_path), start_line, end_line, full_name, m_kind),
+                    name=full_name,
+                    kind=m_kind,
+                    language="csharp",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    meta={"annotations": annotations} if annotations else None,
+                    stable_id=make_typed_stable_id(
+                        m_kind, norm_sig, visibility_from_modifiers(modifiers),
+                        name=m_name, qualified_name=full_name,
+                        file_stable_id=file_stable_id,
+                    ),
+                    signature=m_signature,
+                    docstring=extract_preceding_doc_comment(node, source, "csharp"),
+                    modifiers=modifiers,
+                    line_span=end_line - start_line + 1,
+                    is_exported="public" in modifiers,
+                    qualified_name=_make_csharp_qualified_name(ns_name, cls_ancestors, m_name),
+                    cyclomatic_complexity=(
+                        None if m_kind == "event"
+                        else compute_cyclomatic_complexity(node, "csharp")
+                    ),
+                )
+                analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
+                # Only the qualified name: none of these is called by a bare name
+                # (``this[]``, ``operator+``, ``~A``), and an event with accessors
+                # cannot be invoked at all (CS0079).
+                analysis.symbol_by_name[full_name] = symbol
+
         # Field declarations — WI-jusus (emission-parity F5): emit a kind="field"
         # Symbol per declarator AND populate class_field_types for chained-call
         # resolution. C# field attributes ([Inject] DI, EF [Column]/[Key] ORM)
@@ -1180,27 +1321,17 @@ def _extract_symbols_from_file(
     return analysis
 
 
-def _get_enclosing_method(
-    node: "tree_sitter.Node",
-    source: bytes,
-    decl_index: SymbolsAt,
-) -> Optional[Symbol]:
-    """The method or constructor whose declaration contains ``node``.
+def _enclosing_member(node: "tree_sitter.Node", decl_index: SymbolsAt) -> Optional[Symbol]:
+    """The member whose declaration contains ``node``: a method, constructor,
+    property, indexer, operator, destructor or event (``_CSHARP_MEMBER_BODY_NODES``).
 
     Keyed by the declaration's POSITION, not its name (INV-midag). The short
-    name is shared by overloads, and by one method name in two classes of one
-    file: livebook's ElixirKit.cs defines ``Stop`` / ``Subscribe`` in both
-    ``API`` and ``Release`` / ``Client``. The name lookup returned whichever
-    registered last.
+    name is shared by overloads, by two indexers (both ``this[]``), and by one
+    method name in two classes of one file: livebook's ElixirKit.cs defines
+    ``Stop`` / ``Subscribe`` in both ``API`` and ``Release`` / ``Client``. The
+    name lookup returned whichever registered last.
     """
-    current = node.parent
-    while current is not None:
-        if current.type in ("method_declaration", "constructor_declaration"):
-            sym = symbol_declared_by(current, decl_index)
-            if sym is not None:
-                return sym
-        current = current.parent
-    return None
+    return enclosing_declared_symbol(node, decl_index, _CSHARP_MEMBER_BODY_NODES)
 
 
 #: INV-bamij: type declarations whose BODY anchors a call in no method (a
@@ -1412,8 +1543,9 @@ def _extract_edges_from_file(
                     origin_run_id=run.execution_id,
                 ))
 
-        # Method/constructor declarations - extract parameter types for type inference
-        elif node.type in ("method_declaration", "constructor_declaration"):
+        # Member declarations - extract parameter types for type inference
+        # (a method's, a constructor's, an operator's or an indexer's)
+        elif node.type in _CSHARP_MEMBER_BODY_NODES:
             param_types = _extract_param_types(node, source)
             # Add parameter types to var_types for method call resolution
             for param_name, param_type in param_types.items():
@@ -1449,7 +1581,7 @@ def _extract_edges_from_file(
         elif node.type == "invocation_expression":
             # INV-bamij: a call in no method is anchored on its type, else file.
             current_function = (
-                _get_enclosing_method(node, source, decl_index)
+                _enclosing_member(node, decl_index)
                 or enclosing_declared_symbol(node, decl_index, _CSHARP_TYPE_BODY_NODES)
                 or file_anchor
             )
@@ -1700,7 +1832,7 @@ def _extract_edges_from_file(
 
         # Object creation expression (new ClassName())
         elif node.type == "object_creation_expression":
-            current_function = _get_enclosing_method(node, source, decl_index)
+            current_function = _enclosing_member(node, decl_index)
             type_node = find_child_by_type(node, "identifier")
             type_name = node_text(type_node, source) if type_node else None
 
@@ -1812,9 +1944,7 @@ def _extract_edges_from_file(
                     if lookup.found and lookup.symbol is not None:
                         target = lookup.symbol
                 if target is not None and target.kind in ("function", "method"):
-                    current_function = _get_enclosing_method(
-                        node, source, decl_index,
-                    )
+                    current_function = _enclosing_member(node, decl_index)
                     if current_function is not None and target.id != current_function.id:
                         edges.append(Edge.create(
                             src=current_function.id,
@@ -1843,9 +1973,7 @@ def _extract_edges_from_file(
                         if lookup.found and lookup.symbol is not None:
                             target = lookup.symbol
                     if target is not None and target.kind in ("function", "method"):
-                        current_function = _get_enclosing_method(
-                            node, source, decl_index,
-                        )
+                        current_function = _enclosing_member(node, decl_index)
                         if (
                             current_function is not None
                             and target.id != current_function.id
