@@ -38,7 +38,9 @@ symbol under its lowercased name. Calls to names in ``_PASCAL_BUILTINS``
 (``writeln``, ``inc``, ``length``, ``inttostr``, ...) emit no edge; unmatched
 calls become unresolved edges via ``make_unresolved_edge``. A call on a
 receiver (``A.Run()``, ``Self.Get``) is not read: ``_get_call_name`` takes a
-bare identifier only.
+bare identifier only. A call shape in a declaration (a ``const`` initialiser,
+an array bound, a default parameter value) is a typecast or an intrinsic, not
+a call, and emits nothing (``_in_a_declaration``).
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Pascal-specific extraction
@@ -212,6 +214,27 @@ def _find_caller(
     for proc in _proc_ancestors(node):
         return symbol_declared_by(proc, index)
     return enclosing_declared_symbol(node, index, _MODULE_NODES) or file_anchor
+
+
+def _in_a_declaration(node: "tree_sitter.Node") -> bool:
+    """Whether a call-shaped node sits in a declaration, not in code.
+
+    A ``const`` / typed-``var`` initialiser, an array bound, a default
+    parameter value: Pascal requires a constant expression there, so
+    ``TFlags($01)`` or ``Ord(High(Byte))`` is a typecast or an intrinsic, never
+    a call. A procedure's local ``const`` emitted one as a call before; with
+    code outside every procedure now anchored on its program / unit, a unit's
+    interface constants would have too (21 on sherpa-onnx's portaudio.pas).
+    The nearest ``block`` (code) or ``decl*`` node (a declaration) decides.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "block":
+            return False
+        if current.type.startswith("decl"):
+            return True
+        current = current.parent
+    return False
 
 
 #: The compilation units Pass 1 emits a symbol for.
@@ -479,6 +502,8 @@ class PascalAnalyzer(TreeSitterAnalyzer):
                     call_name = _get_node_text(children[0])
                     call_node = children[0]
             if not call_name or call_name.lower() in _PASCAL_BUILTINS:
+                continue
+            if _in_a_declaration(node):
                 continue
             caller = _find_caller(node, index, file_anchor)
             if caller is None:  # pragma: no cover - every named defProc is a symbol
