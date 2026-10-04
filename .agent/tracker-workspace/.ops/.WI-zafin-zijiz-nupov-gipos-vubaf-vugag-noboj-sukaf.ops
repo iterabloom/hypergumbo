@@ -1,0 +1,20 @@
+- op: create  # 7161
+  at: '2026-10-04T05:43:10Z'  # 7161
+  by: agent  # 7161
+  actor: jgstern_agent  # 7161
+  clock: 1  # 7161
+  nonce: '7161'  # 7161
+  data:  # 7161
+    kind: work_item  # 7161
+    title: "argparse-dispatch binds a value-prefixed dotted handler (set_defaults(func=sub.func)) to every same-named function in the repo: all 58 airflow edges are wrong"  # 7161
+    status: todo_hard  # 7161
+    priority: 3  # 7161
+    parent:  # 7161
+    tags:  # 7161
+    - analysis_quality  # 7161
+    isbefore: []  # 7161
+    duplicate_of: []  # 7161
+    not_duplicate_of: []  # 7161
+    pr_ref:  # 7161
+    description: "Found while measuring WI-gopok-zanij-zafib-ralaj-fukaz-gavol-purib-poliv on airflow (corpus ~/whole_bunch_of_repos/airflow, survey on branch jgstern-agent/fix/gopok, which does not change this behavior).\n\nargparse_dispatch.py resolves a DOTTED handler (set_defaults(func=a.b)) by retrying the LAST component alone over every symbol in the repo (ctx.find_symbols_by_name(handler_name.rsplit('.', 1)[-1])). That retry is right when the prefix is a module alias (import handlers; set_defaults(func=handlers.do_run)), and wrong when the prefix is a VALUE: airflow's two CLI parsers do\n\n    def _add_action_command(sub: ActionCommand, sub_proc: argparse.ArgumentParser) -> None:\n        sub_proc.set_defaults(func=sub.func)\n\n(airflow-core/src/airflow/cli/cli_parser.py:272, airflow-ctl/src/airflowctl/ctl/cli_parser.py:162). sub is a parameter; sub.func is a dataclass field holding the real handler, unknowable from this site. The linker binds the bare name func to every function named func in the repo: 58 dispatches_to edges (29 per parser), all at 0.5 with disambiguation_fallback, every one of them to a test-local nested function (e.g. providers/google/tests/.../test_dataproc.py async_get_cluster.func, providers/standard/tests/.../test_python.py test_conflicting_kwargs.func). Sampled 5 of 58 by hand: 5 wrong. They are ALL the argparse-dispatch edges airflow gets, so on this repo the linker's whole output is wrong.\n\nMeasured: airflow only. Not measured: how common a value-prefixed dotted handler is elsewhere.\n\nFix direction (not decided): retry the last component only when the dotted prefix's root is bound by an import in the registering file (the WI-ratid shape: resolve the expression's ROOT through the file's import bindings first); otherwise emit nothing. The existing test test_dotted_handler_resolves_by_last_component pins the module-alias case and must stay green."  # 7161
+    fields: {}  # 7161

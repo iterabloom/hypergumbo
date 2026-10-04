@@ -33,3 +33,10 @@
   set: {}  # bcae
   add:  # bcae
     not_duplicate_of: [INV-dulum-kakum-guhus-podas-mirup-lavut-jamob-kakif]  # bcae
+- op: discuss  # 37fc
+  at: '2026-10-04T06:10:02Z'  # 37fc
+  by: agent  # 37fc
+  actor: jgstern_agent  # 37fc
+  clock: 3  # 37fc
+  nonce: 37fc  # 37fc
+  message: "From WI-silos (branch jgstern-agent/fix/silos, commit 41fd9834a6, not yet merged): WI-silos teaches the receiver walker that `x!` has x's type, which exposes this item's mechanism at 2 more sites: Kingfisher Tests/KingfisherTests/KingfisherTestHelper.swift:214-215 `context!.setFillColor` / `context!.fill` are now stamped `UIGraphicsGetCurrentContext` (a C function read as a constructor) where before they carried no type."  # 37fc

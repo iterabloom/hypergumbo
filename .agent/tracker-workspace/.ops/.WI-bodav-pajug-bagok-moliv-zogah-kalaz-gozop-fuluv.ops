@@ -27,3 +27,10 @@
   clock: 2  # 2749
   nonce: '2749'  # 2749
   message: "From WI-mofil (local branch jgstern-agent/fix/mofil-swift-named-receiver-binding-forms, a7d20798f2, not merged): a closure (`lambda_literal`) is now a receiver-typing SCOPE of its own and an ANNOTATED closure parameter binds into it (`_bind(node, name, type, visible_from)`). So the forEach/map arm this item needs is a `_bind` of the element type into the closure's scope -- no new scoping work. Unannotated closure parameters in general (not only iteration) are filed as WI-zobif-bajak-duziv-folan-gurom-paput-tolij-situb; iteration stays here. WI-mofil counted for-in loop variables at vapor 7, hummingbird 8, Kingfisher 4, Alamofire 7, swift-argument-parser 5 (lowercase-hint untyped sites, same-file)."  # 2749
+- op: discuss  # 9466
+  at: '2026-10-04T06:10:01Z'  # 9466
+  by: agent  # 9466
+  actor: jgstern_agent  # 9466
+  clock: 3  # 9466
+  nonce: '9466'  # 9466
+  message: "From WI-silos (branch jgstern-agent/fix/silos, commit 41fd9834a6, not yet merged): a for-in loop variable is now a declaration in the for_statement's scope, visible over its `where` clause and body and NOT over the sequence expression, recorded untyped (it shadows). Typing it only needs the element type at the `_declare(_pat, _nm, _seq_end)` call in the binding pass's for_statement arm. A/B read-back: 4 of 5 sampled loop-variable stamps removed by WI-silos were WRONG (e.g. Alamofire Tests/SessionTests.swift:1698 `for request in requests` was stamped Endpoint from an outer name)."  # 9466
