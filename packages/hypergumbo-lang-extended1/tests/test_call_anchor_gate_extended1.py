@@ -36,6 +36,7 @@ CLASSIFIED: dict[str, tuple[str, str]] = {
     "nim": ("verified", "test_call_anchor_gate_extended1::test_nim_same_named_callables"),
     "odin": ("verified", "test_call_anchor_gate_extended1::test_odin_same_named_callables"),
     "pascal": ("verified", "test_call_anchor_gate_extended1::test_pascal_same_named_callables"),
+    "pony": ("verified", "test_call_anchor_gate_extended1::test_pony_same_named_callables"),
     "solidity": ("verified", "test_call_anchor_gate_extended1::test_solidity_same_named_callables"),
     "v_lang": ("verified", "test_call_anchor_gate_extended1::test_v_lang_same_named_callables"),
     "ada": ("unverified", "WI-tosum"),
@@ -46,7 +47,6 @@ CLASSIFIED: dict[str, tuple[str, str]] = {
     "haxe": ("unverified", "WI-tosum"),
     "jsonnet": ("unverified", "WI-tosum"),
     "luau": ("unverified", "WI-tosum"),
-    "pony": ("unverified", "WI-tosum"),
     "tcl": ("unverified", "WI-tosum"),
     "wolfram": ("unverified", "WI-tosum"),
     "zig": ("unverified", "WI-tosum"),
@@ -385,3 +385,47 @@ fn (b B) run() {
 }
 """)
     _assert_contained(analyze_v(tmp_path), [10, 14])
+
+
+def test_pony_same_named_callables(tmp_path: Path) -> None:
+    """Same-named shape: one behaviour name on two actors of one file, and
+    ``actor Main`` / ``new create`` declared in two files (every Pony program has
+    them). The lookup was by name in the repository-wide registry, so a second
+    file's ``Main.create`` calls went to the first's (WI-rokus)."""
+    from hypergumbo_lang_extended1.pony import analyze_pony
+
+    (tmp_path / "a.pony").write_text("""\
+actor Main
+  new create(env: Env) =>
+    None
+
+  be run() =>
+    one()
+
+  fun one() => None
+
+actor Other
+  be run() =>
+    two()
+
+  fun two() => None
+""")
+    (tmp_path / "b.pony").write_text("""\
+actor Main
+  new create(env: Env) =>
+    one()
+    one()
+    one()
+    one()
+    one()
+    one()
+
+  fun one() => None
+""")
+    result = analyze_pony(tmp_path)
+    _assert_contained(result, [3, 4, 5, 6, 7, 8, 6, 12])
+    by_id = {s.id: s for s in result.symbols}
+    # Containment cannot see a cross-FILE swap whose spans overlap: the paths can.
+    for e in result.edges:
+        if e.edge_type == "calls":
+            assert by_id[e.src].path == by_id[e.dst].path, e

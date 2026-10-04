@@ -818,6 +818,9 @@
             "is_abbrev": {
               "description": "Lean: True on an ``abbrev`` declaration."
             },
+            "is_behaviour": {
+              "description": "Pony: True on a behaviour (``be``), an actor's asynchronous message handler, emitted as kind=method (WI-rokus)."
+            },
             "is_class_based_view": {
               "description": "Django class-based-view marker on class Symbols. Set by the Django framework-dispatch linker."
             },
