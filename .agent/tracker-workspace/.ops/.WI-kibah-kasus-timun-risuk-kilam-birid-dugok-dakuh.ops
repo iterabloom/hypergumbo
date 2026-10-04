@@ -41,3 +41,18 @@
   clock: 4  # 2c2c
   nonce: 2c2c  # 2c2c
   message: "INTEGRATION NOTE from WI-vinuh / WI-nulig (branch jgstern-agent/fix/vinuh, commit 8da3b291eb, not pushed). That branch edits go.py's call arm in _extract_edges_from_file, which a go name-resolution branch is likely to touch too:\n- the arm's entry is now `node.type == \"call_expression\" or (type_conversion_expression and _go_instantiated_callee(...))`; func_node may be a type_identifier / qualified_type, so every `func_node.type == \"identifier\"` / `\"selector_expression\"` test in the arm became `callee_shape == ...`, and the selector branch reads `_go_selector_parts(func_node)` (accepting a package_identifier operand);\n- a new pre-check after the bound-names guard drops an instantiated callee that resolves to a non-function/type;\n- the chained-call branch gained a result-typing arm, and a `receiver_type_is_external` flag (set by the chained, package-variable and field-chain branches) replaces the final resolver lookup with an empty LookupResult;\n- `args_node` for a conversion-spelled call is the node itself, so _extract_function_reference_edges sees its operand (that function itself is unchanged).\nA rebase over a branch that also edits these lines needs the callee_shape rename carried into any new `func_node.type` test."  # 2c2c
+- op: update  # 4c41
+  at: '2026-10-04T02:53:37Z'  # 4c41
+  by: agent  # 4c41
+  actor: jgstern_agent  # 4c41
+  clock: 5  # 4c41
+  nonce: 4c41  # 4c41
+  set:  # 4c41
+    status: done  # 4c41
+- op: discuss  # dc9e
+  at: '2026-10-04T02:53:37Z'  # dc9e
+  by: agent  # dc9e
+  actor: jgstern_agent  # dc9e
+  clock: 6  # dc9e
+  nonce: dc9e  # dc9e
+  message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed in PR #1441 (commit 3fb8b84d20). A selector function reference is resolved by its operand: an import (that package only, nothing for an external one), a typed operand or composite literal (that type's method), or a method expression. No repo-wide short-name pick remains, in either the argument arm or the struct-field arm.\n\nLive, the filed repro: `reg(http.NotFound)` / `C{H: http.NotFound}` with a repo `func NotFound()` emit no calls edge (dev: a/NotFound at 0.70 twice). `reg(a.NotFound)` / `C{H: c.NotFound}` each bind their own package.\n\nThe same commit refuses resolver hits outside a hinted package on the call arm: `http.Get` with two repo `Get`s is now `go:net/http:0-0:Get:unresolved`. It also takes typed `Type.Method` in the type's own package (+1 level of struct embedding).\n\nCorpus by site: selector refs -41/+7, -65/+39, -124/+46, -58/+170 (alertmanager, coredns, cert-manager, prometheus); call sites refused outside the hint 403 / 53 / 49 / 150. Residual: WI-punat-pivij-laduj-tulot-fumup-hovos-zajan-jokud (interface embedding, type aliases)."  # dc9e

@@ -27,3 +27,18 @@
   clock: 2  # 5df3
   nonce: 5df3  # 5df3
   message: "WORK DONE on branch jgstern-agent/fix/kibah (worktree ~/hg_wt/kibah, from origin/dev 604c91e3f2, not merged), commit 92379e2067 (with WI-kugap / WI-kibah / WI-labik in 0adbd3fa21, 3fb8b84d20, 5e60e3ea7d; one family, one scope model).\n\nFix: _go_names_bound_in (every name bound anywhere in the top-level declaration) is replaced by _GoLocalScope, which records per local the byte range where Go makes it visible: parameter -> its function's body; `x :=` / `var x` / `const x` -> from the END of the statement to the end of the innermost block or case clause; `for k := range` / `case v := <-ch` -> that loop / case (the `=` forms bind nothing); `switch t := x.(type)` -> from the end of x. A function-TYPE parameter (`cb func(open string)`) binds nothing. _bound_names(site) asks it at the site's position, for the bare call and the bare function reference (whose separate position-blind skip of every var_types name is gone). The item's NOT CHECKED sibling-block case is covered by the same model.\n\nBehavioural evidence (tests in packages/hypergumbo-lang-mainstream/tests/test_go_name_scope_by_position.py, RED on dev for these reasons, GREEN on HEAD): `nodeName, err := nodeName(o)` -> calls p.go:nodeName (dev: no edge); a call in the else branch to a name bound in the if branch -> package function; a closure written before the local -> package function; `h := wrap(h)` -> function_reference_arg to the package handler.\n\nMeasured by call site (analyze_go, frozen origin/dev copy vs frozen branch copy, own XDG caches): same-statement shape regained alertmanager 1, coredns 3, cert-manager 9, prometheus 7 (the filing counted 1/1/9/7 on 4 of these repos); prometheus also regains sibling-scope sites (`histogramSample := func(..) { return histogramSample(..) }`, `runTest(t, acceptHeader(..))` where a closure parameter named acceptHeader used to withhold the whole function).\n\nTargeted smart-test on HEAD 5e60e3ea7d: 15728 passed, 5 xfailed, all changed files 100% covered. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/kibah.md."  # 5df3
+- op: update  # a0c7
+  at: '2026-10-04T02:53:38Z'  # a0c7
+  by: agent  # a0c7
+  actor: jgstern_agent  # a0c7
+  clock: 3  # a0c7
+  nonce: a0c7  # a0c7
+  set:  # a0c7
+    status: done  # a0c7
+- op: discuss  # 68a5
+  at: '2026-10-04T02:53:38Z'  # 68a5
+  by: agent  # 68a5
+  actor: jgstern_agent  # 68a5
+  clock: 4  # 68a5
+  nonce: 68a5  # 68a5
+  message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed in PR #1441 (commit 92379e2067). `_go_names_bound_in`, the decl-wide set, is replaced by `_GoLocalScope`. It records each local's Go scope range (parameter: body; `:=`/`var`/`const`: from the end of the statement to the end of the innermost block or clause; range / receive / type-switch forms likewise). It is asked at the site's position for bare calls and bare function references.\n\nBehavioural evidence, re-running the filed shape: `nodeName, err := nodeName(o)` now emits `calls -> <pkg>:nodeName` (dev: no edge). The NOT CHECKED sibling-block case is fixed too: a name bound in the if-branch no longer silences the else-branch call. Tests: `test_go_name_scope_by_position.py` (bopiv section).\n\nCorpus by site: same-statement sites regained alertmanager 1, coredns 3, cert-manager 9, prometheus 7."  # 68a5
