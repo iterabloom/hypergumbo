@@ -1503,7 +1503,7 @@ def _extract_edges_from_tree(
     field_type_registry: dict[str, dict[str, str]] | None = None,
     *,
     file_symbols: list[Symbol],
-    callables_by_name: Optional[dict[str, list[Symbol]]] = None,
+    callables_by_name: dict[str, list[Symbol]],
 ) -> list[Edge]:
     """Extract include, call, and instantiation edges from a parsed tree.
 
@@ -1519,8 +1519,9 @@ def _extract_edges_from_tree(
             from the last. Required, so no caller can fall back to that view.
         callables_by_name: Every callable definition of the run by name
             (``CppAnalyzer._callables_by_name``), the overload set a call's
-            name-picked callee is re-chosen from by arity (WI-hilum). Without it
-            -- a direct call -- this file's definitions are the set.
+            name-picked callee is re-chosen from by arity (WI-hilum). Required;
+            outside ``analyze()`` there is no run index and the caller passes
+            ``{}``, which leaves every name's pick as it is.
     """
     if namespace_aliases is None:
         namespace_aliases = {}  # pragma: no cover - always passed by caller
@@ -1587,13 +1588,7 @@ def _extract_edges_from_tree(
         """
         if pick.kind not in ("function", "method") or _explicit_receiver(call):
             return None
-        if callables_by_name is not None:
-            group = callables_by_name.get(pick.name, [])
-        else:
-            group = [
-                s for s in file_symbols
-                if s.name == pick.name and s.kind in ("function", "method")
-            ]
+        group = callables_by_name.get(pick.name, [])
         if len(group) < 2:
             return None
         same_file = [s for s in group if s.path == pick.path]
@@ -2471,7 +2466,7 @@ class CppAnalyzer(TreeSitterAnalyzer):
             namespace_aliases=import_aliases,
             field_type_registry=getattr(self, "_field_type_registry", None),
             file_symbols=self.file_symbols(local_symbols),
-            callables_by_name=self._callables_by_name,
+            callables_by_name=self._callables_by_name or {},
         )
 
     def get_import_aliases(

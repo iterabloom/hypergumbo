@@ -291,3 +291,53 @@ void run(void *p) {
     calls = _calls_at(analyze_cpp(tmp_path), 8)
     assert len(calls) == 1 and calls[0][2] is None and calls[0][1] in (2, 4), calls
     assert calls[0][3] == 0.85, calls
+
+
+def test_a_comment_between_arguments_is_not_an_argument(tmp_path: Path) -> None:
+    (tmp_path / "a.cpp").write_text("""\
+void f(int a) { }
+void f(int a, int b) { }
+void run() {
+  f(1, /* the second */ 2);
+}
+""")
+    calls = _calls_at(analyze_cpp(tmp_path), 4)
+    assert [(n, s, q) for n, s, q, _ in calls] == [("f", 2, None)], calls
+
+
+def test_an_unknown_signature_is_not_an_if_alternative(tmp_path: Path) -> None:
+    """A pure virtual records no parameters (unknown arity), so it is admitted
+    beside a same-named overload and the two are NOT taken for ``#if``
+    alternatives of one function: the choice stays ambiguous."""
+    (tmp_path / "a.hpp").write_text("""\
+class Base {
+ public:
+  virtual void run(int a) = 0;
+  void run(double x) { }
+  void go() {
+    run(1);
+  }
+};
+""")
+    (tmp_path / "main.cpp").write_text("int main() { return 0; }\n")
+    calls = _calls_at(analyze_cpp(tmp_path), 6)
+    assert len(calls) == 1 and calls[0][2] == "ambiguous", calls
+
+
+def test_an_ambiguous_choice_through_the_resolver_says_so(tmp_path: Path) -> None:
+    """Overloads defined in ANOTHER file are reached through the global
+    resolver, whose edge carries the same ambiguous record."""
+    (tmp_path / "put.cpp").write_text("""\
+void put(int x) { }
+void put(double x) { }
+""")
+    (tmp_path / "use.cpp").write_text("""\
+void run() {
+  put(1);
+}
+""")
+    calls = _calls_at(analyze_cpp(tmp_path), 2)
+    assert len(calls) == 1, calls  # reach
+    name, start, quality, confidence = calls[0]
+    assert (name, start, quality) == ("put", 1, "ambiguous"), calls
+    assert abs(confidence - 0.80 / math.sqrt(2)) < 1e-6, calls

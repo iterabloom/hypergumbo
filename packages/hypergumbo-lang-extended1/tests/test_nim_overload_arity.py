@@ -254,6 +254,17 @@ def test_a_name_declared_two_ways_is_unknown(tmp_path: Path) -> None:
     cases = {
         "once": {},
         "alias_and_object": {"b.nim": "type Box* = object\n"},
+        # File discovery order is not source order, so the two branches of
+        # the conflict check (object after alias, alias after object) are
+        # pinned within ONE file, in both orders: ``when`` alternatives.
+        "when_alias_then_object": {"b.nim": (
+            "when defined(js):\n  type Box* = seq[int]\n"
+            "else:\n  type Box* = object\n"
+        )},
+        "when_object_then_alias": {"b.nim": (
+            "when defined(js):\n  type Box* = object\n"
+            "else:\n  type Box* = seq[int]\n"
+        )},
         "two_aliases": {"b.nim": "type Box* = seq[float]\n"},
     }
     got = {}
@@ -262,7 +273,9 @@ def test_a_name_declared_two_ways_is_unknown(tmp_path: Path) -> None:
         _write(root, {"a.nim": put, "p.nim": caller, **extra})
         got[name] = _calls(root, "p.nim")[3][0]
     assert got == {
-        "once": UNRESOLVED, "alias_and_object": "a.nim:2", "two_aliases": "a.nim:2",
+        "once": UNRESOLVED, "alias_and_object": "a.nim:2",
+        "when_alias_then_object": "a.nim:2", "when_object_then_alias": "a.nim:2",
+        "two_aliases": "a.nim:2",
     }, got
 
 
@@ -304,3 +317,31 @@ def test_what_the_check_cannot_prove_it_does_not_exclude(tmp_path: Path) -> None
     assert calls[5][0] == "lib.nim:7", calls
     assert calls[8][0] == "lib.nim:8", calls
     assert calls[10][0] == "lib.nim:8", calls
+
+
+def test_a_comment_or_a_tuple_in_a_proc_does_not_confuse_the_types(
+    tmp_path: Path,
+) -> None:
+    """A comment inside a parameter list is neither a parameter nor a typed
+    name; ``let (x, y) = ..`` declares x with NO stated type, so it shadows
+    the typed parameter x and the call is not excluded on x's old type."""
+    _write(tmp_path, {"a.nim": (
+        "type Box = object\n"
+        "proc wrap(b: Box) = discard\n"
+        "proc f(x: string, # the label\n"
+        "       n: int) =\n"
+        "  let (x, y) = (Box(), 2)\n"
+        "  x.wrap()\n"
+        "proc g(s: string, # the label\n"
+        "       n: int) =\n"
+        "  s.wrap()\n"
+    )})
+    result = analyze_nim(tmp_path)
+    params = {
+        s.name: (s.meta or {}).get("parameters")
+        for s in result.symbols if s.kind == "function"
+    }
+    assert [p["name"] for p in params["f"]] == ["x", "n"]
+    calls = _calls(tmp_path, "a.nim")
+    assert calls[6][0] == "a.nim:2", calls  # shadowed: x's type unknown
+    assert calls[9][0] == UNRESOLVED, calls  # s: string cannot be a Box
