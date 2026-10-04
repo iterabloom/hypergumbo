@@ -42,3 +42,12 @@
   clock: 4  # 0d28
   nonce: 0d28  # 0d28
   message: "Merged in PR #1438 (dev 81caa3999d). Integrated together: WI-kutal + WI-ratid (which restores the 2098 django edges kutal alone would have lost) + INV-dulum/WI-safit.\n\nFixed in PR #1438 (2ad81bff5a, d65dbb9d74, 85f3dfbbc4, ff18f6ceee; on top of fix/kutal).\n- py.py resolves a base expression's root through the file's imports before any name lookup. A base whose import names an out-of-tree module is external: `python:<module>:0-0:<Name>` with an ExternalRef.\n- The core inheritance linker no longer looks such a base up in the tree.\n\nBehavioural evidence:\n- Live: `class SimpleTestCase(unittest.TestCase)` beside an in-repo `TestCase` now gives `SimpleTestCase -> python:unittest:0-0:TestCase` (was: the in-repo `TestCase`, inheritance-linker, 0.95). `MyTests.test_a -> Base.helper` and `-> SimpleTestCase.assertThing` resolve (inherited-calls-linker, 0.9); before, the cycle left both unresolved.\n- Django A/B (b7417402dc vs kutal+ratid, frozen copies, separate caches): of the 2098 sites kutal lost to the cycle, 1673 resolve again at the same site and 425 have the same (caller, target) pair resolved on another line (WI-sodor). All callers linearize. 5338 further sites gain an inherited resolution (SimpleTestCase/TransactionTestCase helpers), and there are 0 new losses. 123 wrong in-tree base binds became module-qualified externals (108 `unittest.TestCase`).\n- Pretix: call sites identical to the kutal arm; 46 wrong base binds removed (`TeamCreateView -> django.views.generic.CreateView`, `U2FDevice -> django_otp.models.Device`).\n\nNot asserted:\n- In-tree dotted bases are still resolved by last segment (WI-vipir).\n- Other languages (WI-pivap, WI-jipij; Ruby WI-kazut).\n- The C3 walk's whole-subtree refusal on a cycle (WI-pituk).\n\nCarries quantitative bakeoff claims, so tag `awaits_bakeoff_validation`."  # 0d28
+- op: update  # 10e7
+  at: '2026-10-04T01:27:30Z'  # 10e7
+  by: agent  # 10e7
+  actor: jgstern_agent  # 10e7
+  clock: 5  # 10e7
+  nonce: '10e7'  # 10e7
+  set: {}  # 10e7
+  add:  # 10e7
+    tags: [awaits_bakeoff_validation]  # 10e7
