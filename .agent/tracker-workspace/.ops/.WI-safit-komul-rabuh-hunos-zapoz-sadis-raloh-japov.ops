@@ -27,3 +27,18 @@
   clock: 2  # 3696
   nonce: '3696'  # 3696
   message: "FIXED ON A LOCAL BRANCH, NOT MERGED (decontend run 10-03, together with INV-dulum-kakum-guhus-podas-mirup-lavut-jamob-kakif -- the same mistake): branch jgstern-agent/fix/dulum, commit 431c198905. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/dulum.md.\n\nFIX SHAPE TAKEN: the item's preferred one, in _pyscope, not a call-site union. ScopeStack.enter_subscope(names) returns a copy-on-write stack whose caller frame is extended with the lambda's (or comprehension's) names as locals and values; process_code_block passes it for the BODY only (defaults and a comprehension's first iterable stay in the enclosing scope). It is a frame EXTENSION, not a pushed frame, deliberately: a lambda contributes no Symbol, its calls are attributed to the enclosing caller, and frames[-1] is the caller's frame by contract (_caller_locals and the immediate lookups read it). Every LEGB-chain consumer -- the builtins arm, the external arm, the ORM-evaluating-builtin guard, lookup_enclosing, and now the import-map narrowing -- sees lambda parameters with no per-site code.\n\nBEHAVIOURAL EVIDENCE (live, analyze_python): sorted(xs, key=lambda x, len=my_len: len(x)) emitted python:builtins:0-0:len before, nothing after (sorted still emitted); (lambda c, _o=orig: _o(c))(ctx) -- the filed test_finalize.py shape -- emitted python:external:0-0:_o before, nothing after; lambda len: (lambda x: len(x)) (nested) refused; lambda len=len(xs): len still emits the REAL builtins len for the default (enclosing scope); lambda x: len(x) still emits builtins len (control). Tests: test_py_binding_scope_shadow.py::TestLambdaParametersShadow (RED 3 of 5 before the fix, the 2 controls green before and after); TestScopeStackEnterSubscope in test_pyscope.py.\n\nMEASURED: ast scan of 45,702 .py files: 0 lambdas call a parameter named like a builtin (the fabricated-builtin shape the title names); 51 lambdas call a non-builtin parameter (22 production) -- the python:external:0-0:<param> shape. django A/B: one such edge removed (tests/backends/base/test_base.py:168, a lambda's execute parameter)."  # 3696
+- op: update  # 21ac
+  at: '2026-10-04T01:27:29Z'  # 21ac
+  by: agent  # 21ac
+  actor: jgstern_agent  # 21ac
+  clock: 3  # 21ac
+  nonce: 21ac  # 21ac
+  set:  # 21ac
+    status: done  # 21ac
+- op: discuss  # 8edc
+  at: '2026-10-04T01:27:29Z'  # 8edc
+  by: agent  # 8edc
+  actor: jgstern_agent  # 8edc
+  clock: 4  # 8edc
+  nonce: 8edc  # 8edc
+  message: "Merged in PR #1438 (dev 81caa3999d). Integrated together: WI-kutal + WI-ratid (which restores the 2098 django edges kutal alone would have lost) + INV-dulum/WI-safit.\n\nFixed in PR #1438 (commit 431c198905), with INV-dulum (the same mistake). It takes the item's preferred shape, in _pyscope rather than a call-site union: ScopeStack.enter_subscope() extends a copy of the caller frame with a lambda's (and a comprehension's) names, for its BODY only. Every LEGB-chain consumer sees them. Behavioural evidence (analyze_python):\n- `sorted(xs, key=lambda x, len=my_len: len(x))` no longer emits python:builtins:0-0:len; sorted is still emitted.\n- The filed `(lambda c, _o=orig: _o(c))(ctx)` no longer emits python:external:0-0:_o.\n- A nested `lambda len: (lambda x: len(x))` is refused.\n- Controls hold: `lambda len=len(xs): len` still emits the real builtins len for the default, and `lambda x: len(x)` still emits it.\n\nCorpus scan: 0 lambdas in 45,702 files call a builtin-named parameter, and 51 call some other parameter. The shape the title fears is absent from this corpus; the external-placeholder shape is present."  # 8edc

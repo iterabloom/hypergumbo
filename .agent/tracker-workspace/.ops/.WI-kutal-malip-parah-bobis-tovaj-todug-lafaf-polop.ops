@@ -90,3 +90,12 @@
   clock: 11  # 0f3f
   nonce: 0f3f  # 0f3f
   message: "Merged in PR #1438 (dev 81caa3999d). Integrated together: WI-kutal + WI-ratid (which restores the 2098 django edges kutal alone would have lost) + INV-dulum/WI-safit.\n\nFixed in PR #1438 (2258c16112, 7419c6e16c, 6fc02d8d7f). py.py Case 2a resolves `self.<x>()` only through the OWN-body table (defs and nested classes, source-order last wins) of the class `self` denotes. That class is found by POSITION: the innermost frame binding `self`, a non-static method, and its lexical class from `method_to_enclosing_class_id`. Never by bare name. A miss goes to the Site-1 hint and the inherited_calls MRO walk.\n\nBehavioural evidence:\n- Production `analyze_python` on the item's fixture now gives `Order.finish -> Order.save` (was `Fee.save`) and `Direct.go -> unresolved` with `enclosing_class=Direct` (was `Fee.save`).\n- pretix call-site diff: `ReauthView.post:170 -> ReauthView.get` (was `StopStaffSession.get`), `CartPosition.update_listed_price_and_voucher:3277 -> CartPosition.save` (was `PrintLog.save`), `Order.gracefully_delete:388 -> django.db.models delete` (was `PrintLog.delete`).\n- Tests: test_py_self_method_class_scoped.py (18).\n\nCloses the filed row only. The general claim \"no Python call resolves through the bare-name table\" is NOT asserted: Case 1 bare calls still do (WI-barip-tidod-zivap-janan-jivaj-gohim-loriz-novol).\n\nCorpus cost: django loses 2098 correct same-file inherited edges to the pre-existing inheritance cycle WI-ratid-mokat-fifon-hiros-nazun-bozim-mojak-jasin. On pretix and feast, 0 correct edges were lost.\n\nPer AGENTS.md this carries a quantitative bakeoff claim, so tag `awaits_bakeoff_validation`."  # 0f3f
+- op: update  # aa89
+  at: '2026-10-04T01:27:30Z'  # aa89
+  by: agent  # aa89
+  actor: jgstern_agent  # aa89
+  clock: 12  # aa89
+  nonce: aa89  # aa89
+  set: {}  # aa89
+  add:  # aa89
+    tags: [awaits_bakeoff_validation]  # aa89
