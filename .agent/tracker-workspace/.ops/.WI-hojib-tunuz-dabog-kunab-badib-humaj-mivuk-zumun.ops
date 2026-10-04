@@ -1,0 +1,22 @@
+- op: create  # d7d6
+  at: '2026-10-04T06:09:27Z'  # d7d6
+  by: agent  # d7d6
+  actor: jgstern_agent  # d7d6
+  clock: 1  # d7d6
+  nonce: d7d6  # d7d6
+  data:  # d7d6
+    kind: work_item  # d7d6
+    title: "swift: initialisers the binding pass cannot type (generic identity stored(Session()), XCTest expectation(), string literals, non-self member chains, ??) -- since WI-silos an untyped local shadows, these are measured recall losses (Kingfisher: 3 catalogued FileManager fs chains)"  # d7d6
+    status: todo_hard  # d7d6
+    priority: 3  # d7d6
+    parent:  # d7d6
+    tags:  # d7d6
+    - swift  # d7d6
+    - analysis_quality  # d7d6
+    - io_boundary  # d7d6
+    isbefore: []  # d7d6
+    duplicate_of: []  # d7d6
+    not_duplicate_of: []  # d7d6
+    pr_ref:  # d7d6
+    description: "FILED 2026-10-04 from WI-silos-mufon-mular-gavik-hihip-mibuj-mihov-julim (branch jgstern-agent/fix/silos).\n\nWI-silos made a declaration the binding pass cannot type SHADOW (it answers \"unknown\" instead of falling through to an outer name, the file level or the field). The A/B on frozen copies of vapor/hummingbird/Kingfisher/Alamofire changed 375 call sites, and most removed stamps were RIGHT by coincidence: a local named like a field usually has the field's type. Those losses are not caused by shadowing; they are initialisers the binding pass does not type. Sized by the shadowing declaration's initialiser (local let/var bucket, 187 sites; heuristic classifier `classify.py` in ~/hypergumbo_lab_notebook/decontend/run_10032026/silos/):\n\n  61 + ~40 cascaded  `stored(Session())` -- a GENERIC IDENTITY helper (Alamofire Tests: `func stored<T>(_:) -> T`); the return type is the argument's type. Every `session.request(...)`, `.download`, `.streamRequest`, `request.streamTask()` after it cascades.\n  21  `expectation(description:)` -- XCTest library return type (XCTestExpectation), no library row.\n  18  string literals (`var rfc1123 = \"\"`) -- a literal's default type is String.\n   5+ non-self member chains (`config.fileManager`, `self.cache.cachePath`) -- needs a member lookup on the head's type; WI-sizas's deeper-chain half. Kingfisher DiskStorage's three CATALOGUED FileManager fs chains (fs_read enumerator, fs_read fileExists, fs_write createDirectory) are lost through exactly this shape: total_io_edges 63 -> 60.\n   3+ nil-coalescing `a ?? b` (`options.downloader ?? self.downloader`).\n   1   `_URLEncodedFormDecoder(...)` -- a constructor whose name starts with `_` fails the capitalisation test.\n\nWI-silos did fix two shapes in the same walker: `self.<property>` initialisers (the binding pass now passes the field resolver the emit site uses) and force-unwrap `x!`. The list above is what remains; each needs its own verification (a literal arm, for instance, stamps String on sites that were untyped before, not only on shadowed ones)."  # d7d6
+    fields: {}  # d7d6
