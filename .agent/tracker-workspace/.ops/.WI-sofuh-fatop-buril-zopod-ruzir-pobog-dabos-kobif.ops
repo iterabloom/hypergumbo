@@ -28,3 +28,27 @@
   clock: 2  # 4122
   nonce: '4122'  # 4122
   message: "BRANCH WORK 2026-10-03 (not integrated, no status change): branch jgstern-agent/fix/sofuh, worktree ~/hg_wt/sofuh, commits 4b50aaba1a f09e820bf8 6eae9b63d6 76bd663bfd 5328479c58. smart-test (326 affected files): 10340 passed, 0 failed, 2 xfailed, mypy ratchet clean, changed sources at 100% coverage. Full report: ~/hypergumbo_lab_notebook/decontend/run_10032026/sofuh.md.\nFix (4b50aaba1a): _ScopeBinder resolves a bare identifier by its enclosing scopes, position-based (INV-mozas); a declaration in scope binds at 0.90, a parameter/local value emits nothing, only an unbound name reaches the old lookups. Also serves callback args, object-literal values, shorthand. Filed repro re-run: a.js:f -> a.js:helper and b.js:g -> b.js:helper at 0.90 with and without package.json; six-extension fixture each own file. Corpus A/B by call site (hls.js/nest/Tone.js/dash.js): 2240/178/38/2567 sites rebound, every sampled production rebind to the caller's own declaration; dash.js loses 6166 edges whose samples were locals/params bound to unrelated same-name symbols. Residual sweep sites (new Foo(), middleware chain) filed as WI-lijin-kozid-lakut-dobif-gutos-goniv-sukav-fuviz."  # 4122
+- op: update  # 0d26
+  at: '2026-10-04T03:45:20Z'  # 0d26
+  by: agent  # 0d26
+  actor: jgstern_agent  # 0d26
+  clock: 3  # 0d26
+  nonce: 0d26  # 0d26
+  set:  # 0d26
+    status: done  # 0d26
+- op: discuss  # 4718
+  at: '2026-10-04T03:45:20Z'  # 4718
+  by: agent  # 4718
+  actor: jgstern_agent  # 4718
+  clock: 4  # 4718
+  nonce: '4718'  # 4718
+  message: "Merged in PR #1445 (dev 65b9729da7).\n\nFixed in PR #1445 (4b50aaba1a). A bare identifier is now resolved by the scopes enclosing it (`_ScopeBinder`, position-based, INV-mozas). Behavioral evidence, the filed repro re-run on the branch: two files each declaring `helper` plus a caller give `a.js:f -> a.js:helper` and `b.js:g -> b.js:helper` at 0.90, with and without package.json (was: one caller cross-bound at 0.85 either way). The six-extension fixture binds every caller to its own file. Production-path tests: test_js_ts_bare_name_scope_binding.py. Corpus A/B by call site on hls.js / nest / Tone.js / dash.js: 2240 / 178 / 38 / 2567 sites rebound; every sampled production rebind went to the caller's own declaration (e.g. hls.js adts.ts isHeader -> isHeaderPattern, was mpegaudio.ts). 6166 dash.js false references from locals and parameters to unrelated same-name symbols are removed. A caller whose file does not declare the name keeps the old lookup (a test pins it). The same resolution now serves callback arguments, object-literal values and shorthand properties. NOT changed: `new Foo()` and the middleware chain (WI-lijin). The general claim \"every JS bare identifier is resolved by scope\" is NOT asserted.\n\n---"  # 4718
+- op: update  # de70
+  at: '2026-10-04T03:45:22Z'  # de70
+  by: agent  # de70
+  actor: jgstern_agent  # de70
+  clock: 5  # de70
+  nonce: de70  # de70
+  set: {}  # de70
+  add:  # de70
+    tags: [awaits_bakeoff_validation]  # de70

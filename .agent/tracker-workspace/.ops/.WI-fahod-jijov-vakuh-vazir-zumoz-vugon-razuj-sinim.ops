@@ -43,3 +43,18 @@
   clock: 4  # 1be5
   nonce: 1be5  # 1be5
   message: "BRANCH WORK 2026-10-03 (not integrated, no status change): branch jgstern-agent/fix/sofuh, worktree ~/hg_wt/sofuh, commits 4b50aaba1a f09e820bf8 6eae9b63d6 76bd663bfd 5328479c58. smart-test (326 affected files): 10340 passed, 0 failed, 2 xfailed, mypy ratchet clean, changed sources at 100% coverage. Full report: ~/hypergumbo_lab_notebook/decontend/run_10032026/sofuh.md.\nFix (4b50aaba1a, same arm as WI-sofuh): an unbound, unimported, repo-absent bare name emits javascript:external:0-0:<name>:unresolved; a called module binding emits <module>:0-0:default (import exec from 'child_process'; exec(p) names child_process.default, deliberately not .exec -- a TypeError in Node, not a recall instance). Calls through a parameter/local value stay refused (python's LEGB rule). Findings A/B, generic taint claims on hls.js/nest/Tone.js/dash.js: 28/28 verdicts and all flow sets unchanged, 0 sanitized both arms, 0 io tags added. Hazard measured on a fixture only: the external slot short-name-matches function rows (unimported readFileSync tags fs_read) -- filed WI-javaf-nisih-zijif-marug-gorul-niduf-momos-rajuk. Other silent callee shapes: WI-gutup-mizoj-gatap-vizij-vofip-dogum-gunat-noluh."  # 1be5
+- op: update  # a1c5
+  at: '2026-10-04T03:45:21Z'  # a1c5
+  by: agent  # a1c5
+  actor: jgstern_agent  # a1c5
+  clock: 5  # a1c5
+  nonce: a1c5  # a1c5
+  set:  # a1c5
+    status: done  # a1c5
+- op: discuss  # 2dc6
+  at: '2026-10-04T03:45:21Z'  # 2dc6
+  by: agent  # 2dc6
+  actor: jgstern_agent  # 2dc6
+  clock: 6  # 2dc6
+  nonce: 2dc6  # 2dc6
+  message: "Merged in PR #1445 (dev 65b9729da7).\n\nFixed in PR #1445 (4b50aaba1a), in the same bare-identifier arm as WI-sofuh. Behavioral evidence, the filed repro re-run on the branch: `function bareUnresolvedNames(p){ join(p,'x'); readFileSync(p); normalize(p) }` now emits `javascript:external:0-0:{join,readFileSync,normalize}:unresolved` in .js/.mjs/.cjs/.jsx/.ts/.tsx (was: zero edges). A called module binding emits its default export (`import def from 'lib'; def(p)` -> `javascript:lib:0-0:default:unresolved`; `import exec from 'child_process'` -> `child_process.default`, deliberately NOT child_process.exec). Production-path tests: TestUnboundNamesAreRecorded. Findings A/B (generic taint claims, hls.js / nest / Tone.js / dash.js): 28 of 28 verdicts and every flow set unchanged, 0 sanitized in both arms, 0 io tags added. STILL REFUSED: a call through a parameter or local value (python's LEGB rule). The residual's short-name catalogue reach (an unimported `readFileSync` tags fs_read on a fixture) is filed as WI-javaf. Other silent callee shapes are filed as WI-gutup.\n\n---"  # 2dc6

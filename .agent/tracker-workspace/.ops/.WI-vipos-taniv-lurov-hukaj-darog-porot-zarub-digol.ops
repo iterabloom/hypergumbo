@@ -26,3 +26,18 @@
   clock: 2  # 74a1
   nonce: 74a1  # 74a1
   message: "BRANCH WORK 2026-10-03 (not integrated, no status change): branch jgstern-agent/fix/sofuh, worktree ~/hg_wt/sofuh, commits 4b50aaba1a f09e820bf8 6eae9b63d6 76bd663bfd 5328479c58. smart-test (326 affected files): 10340 passed, 0 failed, 2 xfailed, mypy ratchet clean, changed sources at 100% coverage. Full report: ~/hypergumbo_lab_notebook/decontend/run_10032026/sofuh.md.\nFix (f09e820bf8): subscript_expression callees enter the member cascade. Literal identifier key = the dotted call: ws['send'](x) -> javascript:WebSocket:0-0:send:unresolved, method construct, tags net_send (base: zero edges for that and 8 sibling spellings incl. this['m']()). Non-literal key -> external placeholder named <computed>, method construct, never a row (pinned even on a typed receiver). Corpus: +1/+20/+5/+105 <computed> edges; no io tag changed."  # 74a1
+- op: update  # 7d15
+  at: '2026-10-04T03:45:21Z'  # 7d15
+  by: agent  # 7d15
+  actor: jgstern_agent  # 7d15
+  clock: 3  # 7d15
+  nonce: 7d15  # 7d15
+  set:  # 7d15
+    status: done  # 7d15
+- op: discuss  # bb72
+  at: '2026-10-04T03:45:21Z'  # bb72
+  by: agent  # bb72
+  actor: jgstern_agent  # bb72
+  clock: 4  # bb72
+  nonce: bb72  # bb72
+  message: "Merged in PR #1445 (dev 65b9729da7).\n\nFixed in PR #1445 (f09e820bf8). Behavioral evidence, the filed repro re-run: `const ws = new WebSocket(u); ws['send'](x)` emits `javascript:WebSocket:0-0:send:unresolved` with call_construct=method and tags net_send, identical to `ws.send(x)` (was: no edge). `ws?.['send']` and ``ws[`send`]`` do the same. A non-literal key (`obj[k](x)`, `obj['a'+k](x)`, `obj[0](x)`) emits the `external` placeholder named `<computed>` with call_construct=method and never reaches a row, even on a typed receiver (test pins tag count 0). Tests: test_js_ts_computed_property_call.py. The handler-assignment test docstring that cited this item as a known gap is updated.\n\n---"  # bb72
