@@ -19,3 +19,10 @@
     pr_ref:  # a577
     description: "FILED 2026-10-01 from WI-mofil-tidog-forob-tovah-givud-lijog-vuvug-gutid's A/B read-back.\n\nMECHANISM. The swift return-type registry is keyed `<Owner>.<method>` with no argument labels, so OVERLOADS collapse to whichever row is registered last. hummingbird's Parser declares `read(_ char:) -> Bool`, `read(_ characterSet:) -> Bool`, `read(_ string:) -> Bool`, `read(count:) -> Parser`, `read(until:) -> Parser`, ... (Sources/HummingbirdCore/Utils/HBParser.swift:94-277). `let key = try query.read(until: \"=\")` is typed Bool, and `key.string` is stamped `swift:Bool:0-0:string` (URI.swift:51 and :54) -- a confidently WRONG type in the module slot.\n\nExposed (not caused) by WI-mofil: the identifier-initialiser arm typed `var query = query`, so `query.read(until:)` now reaches the registry. Before, `key` was untyped there.\n\nThe labels are already extracted per declaration (`meta[\"arg_labels\"]`, `_swift_call_argument_labels`, INV-fatap's `_swift_labels_admit_call`). DIRECTION: key rows by owner+method+label set, or store every overload's (labels, return) and pick by the call's labels; refuse (None) when the call's labels admit overloads with DIFFERENT return types. Sibling languages with overloading and a name-keyed return registry (kotlin, scala, java, csharp, cpp) were NOT checked."  # a577
     fields: {}  # a577
+- op: discuss  # 894b
+  at: '2026-10-04T22:15:02Z'  # 894b
+  by: agent  # 894b
+  actor: jgstern_agent  # 894b
+  clock: 2  # 894b
+  nonce: 894b  # 894b
+  message: "From WI-hojib (branch jgstern-agent/fix/hojib, not merged): member chains are now typed, so this item's overload collision is reached more often. One instance was read: vapor Tests/VaporTests/PasswordTests.swift:55 and :62, `app.password.async(...).hash(\"vapor\").wait()`.\n\n`AsyncPasswordHasher.hash` has overloads returning `EventLoopFuture<[UInt8]>`, `EventLoopFuture<String>` and (in another file) `String`. The name-keyed registry holds `AsyncPasswordHasher.hash -> String` (first writer), so `.wait()` is stamped `swift:String`; the receiver is an EventLoopFuture.\n\nOther instances were not counted."  # 894b

@@ -27,3 +27,10 @@
   clock: 2  # eecf
   nonce: eecf  # eecf
   message: "From WI-mofil (local branch jgstern-agent/fix/mofil-swift-named-receiver-binding-forms, a7d20798f2, not merged): that branch adds two more places that read a declared type -- an if/guard/while-let clause annotation (`if let m: FileManager = ...`, read through _swift_bare_type) and an annotated closure parameter (`{ (ch: Channel) in }`, read through _swift_param_name_and_type). Both inherit the same `any P` blindness this item describes (_swift_bare_type refuses the space in `any Channel`; the parameter reader finds no user_type under existential_type). A fix at those two shared readers covers the new sites too. WI-mofil's sizing counted `existential_type` annotations at 4 (hummingbird locals) + 3 (Kingfisher fields) + 11 (Alamofire fields) lowercase-hint untyped sites, same-file only."  # eecf
+- op: discuss  # ec83
+  at: '2026-10-04T22:15:04Z'  # ec83
+  by: agent  # ec83
+  actor: jgstern_agent  # ec83
+  clock: 3  # ec83
+  nonce: ec83  # ec83
+  message: "From WI-hojib/WI-tagir (branch jgstern-agent/fix/hojib, not merged): a corpus instance where the existential gap now costs a right stamp. Kingfisher Sources/Views/AnimatedImageView.swift:820/838 `frameSource.duration(at:)` / `frameSource.frame(at:maxSize:)`, inside `Animator`, whose member is `private let frameSource: any ImageFrameSource`.\n\nOn origin/dev these RESOLVED to `CGImageFrameSource.duration` / `.frame` through the pooled file-level var_types. That was right only by coincidence: CGImageFrameSource is the only conformer. With members scoped to their type, the member is `any ImageFrameSource`, which nothing reads as a type, so both calls are now untyped. Reading `any P` as P would type them `ImageFrameSource`. 2 sites."  # ec83

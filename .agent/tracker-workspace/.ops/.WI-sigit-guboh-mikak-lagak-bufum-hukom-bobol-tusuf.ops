@@ -27,3 +27,10 @@
   set: {}  # e5a3
   add:  # e5a3
     not_duplicate_of: [WI-hukoh-bakob-gidij-nibag-puvaz-fadil-kizor-kitan, WI-zohuk-lagol-gupuk-mivil-hukiz-zomag-kogib-nujof]  # e5a3
+- op: discuss  # 0c7d
+  at: '2026-10-04T22:59:13Z'  # 0c7d
+  by: agent  # 0c7d
+  actor: jgstern_agent  # 0c7d
+  clock: 3  # 0c7d
+  nonce: 0c7d  # 0c7d
+  message: "Branch jgstern-agent/fix/darik, commit 97cd5f2a8c (with darik's). NOT merged, no status change.\n\nWhat changed: a nested defProc is a symbol (kind=function, meta.is_local=True, stable id folds in the parent's name). It is not registered run-wide (only in scope inside its parent); a bare call resolves to a nested procedure of an enclosing routine first, by its node's position. Calls in a program's main block and a unit's initialization/finalization are drawn from the program/unit symbol; a library or fragment's block from the file anchor.\n\nGate (asked for, none existed at the producer): hypergumbo_core.analyze.edge_source.unemitted_edge_sources -- edges whose src is neither an emitted symbol nor a make_file_id anchor. spec_validator's WI-mujor check runs AFTER ir.create_boundary_nodes turns a dangling src into an external_symbol, so it could not see this. The gate is asserted in test_pascal_declaration_symbols and in all three call-anchor gate files' _assert_contained (every VERIFIED analyzer's fixture, 40 analyzers): all pass.\n\nLive repro (the filed one): before -- Inner(8-11) -> Helper src_exists=False; Outer -> Inner:unresolved; no main-program edge. After -- symbols include Inner (4-4, is_local); 4 Inner -> Helper, 5 Outer -> Inner (resolved), 6 P -> Outer; every src resolves.\n\nCorpus: sherpa-onnx has no nested procedures, so the nested half is measured on fixtures only. Main-block calls: 1,442 call sites outside every procedure on sherpa-onnx (1,420 in program main blocks); 476 now have an edge (the rest are builtins, receiver calls or unreadable shapes -- not split)."  # 0c7d
