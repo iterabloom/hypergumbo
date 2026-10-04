@@ -1,0 +1,21 @@
+- op: create  # 24b0
+  at: '2026-10-04T21:45:43Z'  # 24b0
+  by: agent  # 24b0
+  actor: jgstern_agent  # 24b0
+  clock: 1  # 24b0
+  nonce: 24b0  # 24b0
+  data:  # 24b0
+    kind: work_item  # 24b0
+    title: "cpp: class EXPORT_MACRO X : public B {..} misparses as a function definition, so the class and all its methods get no symbol; its stand-in call edges are parse artifacts (sherpa-onnx 3 of 3)"  # 24b0
+    status: todo_hard  # 24b0
+    priority: 3  # 24b0
+    parent:  # 24b0
+    tags:  # 24b0
+    - cpp  # 24b0
+    - analysis_quality  # 24b0
+    isbefore: []  # 24b0
+    duplicate_of: []  # 24b0
+    not_duplicate_of: []  # 24b0
+    pr_ref:  # 24b0
+    description: "FOUND 2026-10-01 (WI-tikop's description) and re-checked 2026-10-04 on branch jgstern-agent/fix/darik. class SHERPA_ONNX_API X : public MoveOnly<X, Y> { ... } -- an export macro tree-sitter-cpp cannot expand between class and the name -- parses as a function_definition whose declarator is the template MoveOnly<..> with an ERROR node for \"X : public\"; the class body becomes a compound_statement, so the class and EVERY method in it get no symbol (sherpa-onnx/c-api/cxx-api.h).\n\nWI-tikop's branch draws calls inside such a definition from the file and marks them src_stands_in_for, rather than dropping them. On sherpa-onnx that is 3 edges, and all 3 are misparse artifacts, not calls: \"if (p_ == nullptr)\" read as a call to if (cxx-api.h:159), \"LinearResampler() = default;\" (807) and \"MoveOnly() = default;\" (126). The marker says the src stands in; it cannot say the call itself is a parse artifact.\n\nThe cure is the parse, not a name: strip or tolerate the argument-less export macro before the class name (cf. WI-gafip for objc's attribute macros), after which the class and its methods are ordinary symbols. Not measured beyond sherpa-onnx (the measured C++ repos x265, falco, bento4, modsecurity had 0 such definitions)."  # 24b0
+    fields: {}  # 24b0
