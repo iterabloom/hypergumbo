@@ -32,12 +32,18 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    A receiver is typed before resolution: locals, parameters (a closure's
    annotated ones too) and every ``let`` / ``var`` clause of an ``if`` /
    ``guard`` / ``while`` condition from a scope map per callable body --
-   function, closure, initialiser, subscript, accessor -- in which a binding
-   is visible only from the end of its declaration (file-level declarations
-   shared and position-free), call results and
-   chained or cast receivers through the return-type registry
+   function, closure, initialiser, subscript, accessor, protocol requirement
+   -- and per block (``_SWIFT_BLOCK_NODES``), in which a binding is visible
+   only from the end of its declaration and the innermost visible binding
+   decides. A declaration no reader can type -- an unannotated closure
+   parameter, a loop variable, a ``catch`` / ``case let`` / tuple name, a local
+   whose initialiser nothing types -- still SHADOWS and answers "unknown",
+   never the outer name's type (WI-silos). File-level declarations stay
+   shared, typed-only and position-free. Call results and chained, cast or
+   force-unwrapped receivers are typed through the return-type registry
    (``_swift_receiver_expr_type``), and implicit-``self`` properties through
-   the field-type registry, walking base classes.
+   the field-type registry, walking base classes; a binding's initialiser is
+   typed by the same walker, field resolver included.
    - A ``Type.method`` bind is refused when the call supplies a label no
      overload declares (``_swift_labels_admit_call``, INV-fatap), or when a
      ``static`` / ``class`` member is called on an instance
@@ -133,11 +139,33 @@ _TYPE_BODY_NODES: frozenset[str] = frozenset({"class_declaration", "protocol_dec
 #: an initialiser / deinitialiser, a subscript, and each property accessor
 #: (``computed_property`` is the shorthand getter's body and holds ``get`` /
 #: ``set``; ``willSet`` / ``didSet`` are clauses of their own).
+#: WI-silos: a ``protocol_function_declaration`` too -- it has no body, but its
+#: parameters reached the FILE-level map without one and typed a same-named
+#: receiver in every function of the file.
 _SWIFT_SCOPE_NODES: frozenset[str] = frozenset({
     "function_declaration", "lambda_literal", "init_declaration",
     "deinit_declaration", "subscript_declaration", "computed_property",
     "computed_getter", "computed_setter", "willset_clause", "didset_clause",
+    "protocol_function_declaration",
 })
+
+#: WI-silos: the BLOCK scopes inside a callable body. A ``statements`` node is
+#: every brace-delimited body (``if`` / ``else`` / ``for`` / ``while`` / ``do`` /
+#: ``catch`` / ``repeat`` / ``switch`` case / ``guard``'s ``else``), so a local
+#: declared in one ends with it. The four constructs that bind a name OUTSIDE
+#: their body are scopes too, so the name covers what Swift lets it cover: an
+#: ``if`` / ``while`` condition clause binds the rest of the condition and the
+#: body (an ``if``'s ``else`` is excluded by position, see ``_bind``); a ``for``
+#: loop variable binds its ``where`` clause and body, not the sequence; a
+#: ``catch`` / ``case`` pattern binds its body. ``guard`` is deliberately NOT
+#: here: its clauses bind the rest of the ENCLOSING block.
+_SWIFT_BLOCK_NODES: frozenset[str] = frozenset({
+    "statements", "if_statement", "while_statement", "for_statement",
+    "catch_block", "switch_entry",
+})
+
+#: A scope's key in the receiver-typing map: ``(node type, start byte, end byte)``.
+_ScopeKey = tuple[str, int, int]
 
 
 def find_swift_files(repo_root: Path) -> Iterator[Path]:
@@ -1383,6 +1411,16 @@ def _swift_receiver_expr_type(
             ]
             node = inner[0] if len(inner) == 1 else None
             continue
+        if node.type == "postfix_expression" and any(
+            c.type == "bang" for c in node.children
+        ):
+            # WI-silos: a force unwrap ``x!`` evaluates to ``x``'s type, which
+            # an optional's reader already strips to the wrapped type
+            # (``let m = self.manager!``). Only ``!``: another postfix
+            # operator (``a...``, a partial range) changes the type.
+            inner = [c for c in node.children if c.is_named and c.type != "bang"]
+            node = inner[0] if len(inner) == 1 else None
+            continue
         if node.type == "as_expression":
             cast_to = find_child_by_type(node, "user_type")
             return (
@@ -1481,6 +1519,8 @@ def _swift_call_result_type(
     source: bytes,
     type_of: "Callable[[str], str | None]",
     registry: dict[str, str],
+    children: "list[tree_sitter.Node] | None" = None,
+    field_of: "Callable[[str], str | None] | None" = None,
 ) -> str | None:
     """The type of the expression a ``property_declaration`` is initialised with.
 
@@ -1494,9 +1534,14 @@ def _swift_call_result_type(
     by the same rule that types a chained RECEIVER. Anything the registry does
     not hold yields ``None`` -- the local stays untyped, which is what an
     unknown result means.
+
+    ``children`` (WI-silos) restricts the read to one clause of a
+    multi-binding declaration (``_swift_declaration_clauses``). ``field_of``
+    (WI-silos) types a ``self.<property>`` initialiser the way the emit site
+    types a ``self.<property>`` receiver: one walker, one answer.
     """
-    for child in node.children:
-        vtype = _swift_receiver_expr_type(child, source, type_of, registry)
+    for child in node.children if children is None else children:
+        vtype = _swift_receiver_expr_type(child, source, type_of, registry, field_of)
         if vtype is not None:
             return vtype
     return None
@@ -1548,18 +1593,105 @@ def _swift_condition_bindings(
     return out
 
 
-def _extract_var_type(node: "tree_sitter.Node", source: bytes) -> tuple[str | None, str | None]:
+def _swift_pattern_names(
+    pattern: "tree_sitter.Node", *, binding: bool,
+) -> list["tree_sitter.Node"]:
+    """The ``simple_identifier`` nodes a ``pattern`` BINDS (WI-silos).
+
+    ``binding`` says whether the context already binds a bare name -- a
+    declaration's pattern, a ``for`` loop variable -- or whether a ``let`` /
+    ``var`` must say so, as in a ``case`` pattern, where a bare name is an
+    EXPRESSION pattern that reads the outer name (``case .third(g)``). A
+    ``value_binding_pattern`` child turns binding on for its pattern and every
+    pattern nested in it (``case let .other(w, k)``). A name is bound only when
+    it is its pattern's whole content: a pattern that also holds a ``.`` or a
+    type is an enum-case or type pattern, and its identifier is the CASE name
+    (``.some``), never a variable.
+    """
+    binding = binding or any(c.type == "value_binding_pattern" for c in pattern.children)
+    named = [c for c in pattern.named_children if c.type != "value_binding_pattern"]
+    if (
+        binding
+        and len(named) == 1
+        and named[0].type == "simple_identifier"
+        and not any(c.type == "." for c in pattern.children)
+    ):
+        return [named[0]]
+    out: list["tree_sitter.Node"] = []
+    for c in named:
+        if c.type == "pattern":
+            out.extend(_swift_pattern_names(c, binding=binding))
+    return out
+
+
+def _swift_condition_case_names(node: "tree_sitter.Node") -> list["tree_sitter.Node"]:
+    """Every name a ``case`` clause of an ``if`` / ``guard`` / ``while`` condition binds.
+
+    WI-silos. The grammar lays a case clause out FLAT, like the rest of the
+    condition: ``if case let .some(x) = y`` is ``case``, a
+    ``value_binding_pattern``, ``.``, the case name, then ``pattern`` (``x``);
+    ``guard case .a(let p, var q) = r`` puts each ``let`` inside its own
+    ``pattern``. A clause runs from ``case`` to its ``=``; a ``let`` / ``var``
+    between them makes every pattern after it binding. The commas inside a
+    payload are top-level tokens here, which is why this does not reuse
+    ``_swift_condition_bindings``' comma split.
+    """
+    out: list["tree_sitter.Node"] = []
+    in_case = False
+    case_let = False
+    for child in node.children:
+        if child.type in ("statements", "{", "else"):
+            break
+        if child.type == "case":
+            in_case, case_let = True, False
+        elif child.type == "=":
+            in_case = False
+        elif in_case and child.type == "value_binding_pattern":
+            case_let = True
+        elif in_case and child.type == "pattern":
+            out.extend(_swift_pattern_names(child, binding=case_let))
+    return out
+
+
+def _swift_declaration_clauses(node: "tree_sitter.Node") -> list[list["tree_sitter.Node"]]:
+    """A ``property_declaration``'s children, split into one list per declared clause.
+
+    WI-silos. ``let a = FileManager(), b = bar()`` is ONE declaration node whose
+    children run ``pattern = expr , pattern = expr``. Read whole, the
+    declaration reader took the LAST pattern's name and the FIRST constructor's
+    type, stamping ``FileManager`` on ``b`` and leaving ``a`` unbound. A comma
+    inside an initialiser is nested in its expression, so a top-level ``,``
+    separates clauses. A single-clause declaration yields its children
+    unchanged.
+    """
+    clauses: list[list["tree_sitter.Node"]] = [[]]
+    for child in node.children:
+        if child.type == ",":
+            clauses.append([])
+        else:
+            clauses[-1].append(child)
+    return clauses
+
+
+def _extract_var_type(
+    node: "tree_sitter.Node",
+    source: bytes,
+    children: "list[tree_sitter.Node] | None" = None,
+) -> tuple[str | None, str | None]:
     """Extract variable name and type from a property_declaration node.
 
     Returns (var_name, type_name). Type is inferred from:
     1. Explicit type annotation: ``let x: Store = ...`` → ("x", "Store")
     2. Constructor call: ``let x = Store()`` → ("x", "Store")
     3. No type available: ``let x = compute()`` → ("x", None)
+
+    ``children`` (WI-silos) restricts the read to one clause of a
+    multi-binding declaration (``_swift_declaration_clauses``).
     """
     var_name: str | None = None
     type_name: str | None = None
 
-    for child in node.children:
+    for child in node.children if children is None else children:
         if child.type == "pattern":
             # The pattern contains the variable name
             id_node = find_child_by_type(child, "simple_identifier")
@@ -1672,9 +1804,31 @@ def _extract_edges_from_file(
     # the field ``container`` two lines above it (hummingbird), and ``let s =
     # s.session()`` read its own initialiser's ``s`` as the local. File-level
     # declarations stay position-free: a global is visible throughout.
-    _scoped_types: dict[int, dict[str, list[tuple[int, str]]]] = {}
+    # WI-silos: a binding is ``(visible_from, visible_to, type)`` and its TYPE
+    # MAY BE ``None``. A declaration the pass cannot type -- an unannotated
+    # closure parameter, a local no registry types, a loop variable, a
+    # ``catch`` / ``case let`` / tuple name -- is still a declaration: it
+    # SHADOWS, and the innermost visible binding answers, typed or not. Recorded
+    # only when typed, it left no entry, and the lookup fell THROUGH it to the
+    # outer binding or the field and stamped that type on a different variable.
+    # ``visible_to`` closes an ``if`` clause's binding at the ``else``. Keys are
+    # ``(type, start, end)``: a block and the ``if`` that is its only statement
+    # share a span, and a closure called as a block's first statement shares
+    # its start.
+    _scoped_types: dict[_ScopeKey, dict[str, list[tuple[int, int, str | None]]]] = {}
+    _forever = len(source) + 1
 
-    def _function_ancestors(n: "tree_sitter.Node", *, through_errors: bool) -> list[int]:
+    def _is_scope(n: "tree_sitter.Node") -> bool:
+        if n.type in _SWIFT_SCOPE_NODES:
+            return True
+        # WI-silos: a block is a scope, but not one error recovery built: a
+        # ``statements`` directly under an ERROR is not a body the source
+        # wrote, and the ERROR rule below applies to it instead.
+        return n.type in _SWIFT_BLOCK_NODES and not (
+            n.type == "statements" and n.parent is not None and n.parent.type == "ERROR"
+        )
+
+    def _function_ancestors(n: "tree_sitter.Node", *, through_errors: bool) -> list[_ScopeKey]:
         # ERROR nodes cut both ways. A DECLARATION under one is file-level:
         # error recovery cannot be trusted to have attached it to the right
         # function (Session.swift's `rootQueue` sat under two ERRORs inside a
@@ -1682,7 +1836,7 @@ def _extract_edges_from_file(
         # them: a call inside an error-recovered body still belongs to the
         # function that encloses it, and stopping early lost that function's
         # own parameters (Vernissage's `request.logger.info`).
-        chain: list[int] = []
+        chain: list[_ScopeKey] = []
         cur = n.parent
         while cur is not None:
             # WI-mofil: every callable BODY is a scope -- its parameters and
@@ -1690,8 +1844,9 @@ def _extract_edges_from_file(
             # was one: a closure-local ``let`` landed in the enclosing
             # function's map, and an init / subscript / accessor body's
             # landed in the FILE-level map, typing that name in every method.
-            if cur.type in _SWIFT_SCOPE_NODES:
-                chain.append(cur.start_byte)
+            # WI-silos: and every BLOCK (``_SWIFT_BLOCK_NODES``).
+            if _is_scope(cur):
+                chain.append((cur.type, cur.start_byte, cur.end_byte))
             elif cur.type in ("class_declaration", "protocol_declaration"):
                 break
             elif cur.type == "ERROR" and not through_errors:
@@ -1699,13 +1854,22 @@ def _extract_edges_from_file(
             cur = cur.parent
         return chain
 
-    def _bind(n: "tree_sitter.Node", name: str, vtype: str, visible_from: int) -> None:
+    def _bind(
+        n: "tree_sitter.Node", name: str, vtype: str | None, visible_from: int,
+        visible_to: int = _forever,
+    ) -> None:
+        # The binding lands in the innermost scope enclosing ``n``. A FILE-level
+        # declaration (a global, or a type's property) stays typed-only and
+        # position-free: ``var_types`` is one name-keyed map for the whole
+        # file, so a tombstone there would also hide a same-named field of
+        # every OTHER type in the file.
         chain = _function_ancestors(n, through_errors=False)
         if not chain:
-            var_types[name] = vtype
+            if vtype is not None:
+                var_types[name] = vtype
             return
         _scoped_types.setdefault(chain[0], {}).setdefault(name, []).append(
-            (visible_from, vtype),
+            (visible_from, visible_to, vtype),
         )
 
     def _inherited_field_type(name: str, n: "tree_sitter.Node") -> str | None:
@@ -1750,10 +1914,13 @@ def _extract_edges_from_file(
         at = n.start_byte
         for key in _function_ancestors(n, through_errors=True):
             visible = [
-                b for b in _scoped_types.get(key, {}).get(name, ()) if b[0] <= at
+                b for b in _scoped_types.get(key, {}).get(name, ())
+                if b[0] <= at < b[1]
             ]
             if visible:
-                return max(visible, key=lambda b: b[0])[1]
+                # WI-silos: the innermost visible binding DECIDES, and an
+                # untyped one answers "unknown" -- never the outer name's type.
+                return max(visible, key=lambda b: b[0])[2]
         if name in var_types:
             return var_types[name]
         return _inherited_field_type(name, n)
@@ -1761,54 +1928,109 @@ def _extract_edges_from_file(
     # INV-kotob: every declared NAME, typed or not, so a capitalised variable
     # (``let AF = Session.default``) is never mistaken for a type reference.
     declared_names: set[str] = set()
+
+    def _declare(at: "tree_sitter.Node", name_node: "tree_sitter.Node", visible_from: int,
+                 visible_to: int = _forever) -> None:
+        # WI-silos: a name no reader types, bound as what it is -- unknown.
+        name = node_text(name_node, source)
+        declared_names.add(name)
+        _bind(at, name, None, visible_from, visible_to)
+
     for node in iter_tree(tree.root_node):
         if node.type == "property_declaration":
-            vname, vtype = _extract_var_type(node, source)
-            if vname:
+            # WI-silos: one clause at a time (``let a = X(), b = y()``), and a
+            # clause whose pattern the reader does not name (a tuple) still
+            # declares every name in it.
+            for clause in _swift_declaration_clauses(node):
+                vname, vtype = _extract_var_type(node, source, clause)
+                if vname is None:
+                    for pat in (c for c in clause if c.type == "pattern"):
+                        for nm in _swift_pattern_names(pat, binding=True):
+                            _declare(node, nm, clause[-1].end_byte)
+                    continue
                 declared_names.add(vname)
-            if vname and vtype is None:
-                # WI-higob: a call RESULT takes the callee's declared return
-                # type from the registry (in-repo now; library rows later).
-                vtype = _swift_call_result_type(
-                    node, source, _type_lookup_at(node),
-                    method_return_type_registry,
-                )
-            if vname and vtype:
-                _bind(node, vname, vtype, node.end_byte)
+                if vtype is None:
+                    # WI-higob: a call RESULT takes the callee's declared return
+                    # type from the registry (in-repo now; library rows later).
+                    vtype = _swift_call_result_type(
+                        node, source, _type_lookup_at(node),
+                        method_return_type_registry, clause,
+                        _field_lookup_at(node),
+                    )
+                _bind(node, vname, vtype, clause[-1].end_byte)
         elif node.type in ("if_statement", "guard_statement", "while_statement"):
             # WI-higob: `if let x = <expr>` / `guard let x = <expr>` bind a name
             # to an expression whose type slice 2's walker already computes.
             # WI-mofil: EVERY `let`/`var` clause binds, a clause annotation
             # names the type outright, and `while let` binds the same way. A
             # shorthand clause (`if let s`) has no RHS and re-binds `s` to
-            # itself, which the outer declaration already types.
+            # itself, which the outer declaration already types -- so it binds
+            # nothing, and the outer binding answers.
+            # WI-silos: the name binds where its NAME node sits: an `if` /
+            # `while` clause into that statement's scope (the rest of the
+            # condition and the body), a `guard` clause into the enclosing
+            # block. An `if` clause's binding ends at the `else`.
+            _else = next((c for c in node.children if c.type == "else"), None)
+            _until = (
+                _else.start_byte
+                if _else is not None and node.type == "if_statement" else _forever
+            )
             for _name, _ann, _rhs in _swift_condition_bindings(node):
                 _bound = node_text(_name, source)
                 declared_names.add(_bound)
+                if _ann is None and _rhs is None:
+                    continue
                 _bt = (
                     _swift_bare_type(node_text(_ann, source).lstrip(":"))
                     if _ann is not None else None
                 )
                 if _bt is None and _rhs is not None:
+                    # WI-silos: with the field resolver, as at the emit
+                    # site -- `if let body = self.body` is the field's type.
                     _bt = _swift_receiver_expr_type(
                         _rhs, source, _type_lookup_at(_rhs),
-                        method_return_type_registry,
+                        method_return_type_registry, _field_lookup_at(_rhs),
                     )
-                if _bt:
-                    _bind(node, _bound, _bt, (_rhs or _ann or _name).end_byte)
+                _bind(_name, _bound, _bt, (_rhs or _ann or _name).end_byte, _until)
+            for _nm in _swift_condition_case_names(node):
+                _declare(_nm, _nm, _nm.end_byte, _until)
+        elif node.type == "for_statement":
+            # WI-silos: the loop variable binds the `where` clause and the body,
+            # NOT the sequence after `in` (`for s in s.tasks` reads the outer
+            # `s`). Its element type is WI-bodav's; here it only shadows.
+            _kids = node.children
+            _in = next((i for i, c in enumerate(_kids) if c.type == "in"), None)
+            _pat = next((c for c in _kids if c.type == "pattern"), None)
+            if _in is not None and _pat is not None and _in + 1 < len(_kids):
+                _seq_end = _kids[_in + 1].end_byte
+                _loop_binds = not any(c.type == "case" for c in _pat.children)
+                for _nm in _swift_pattern_names(_pat, binding=_loop_binds):
+                    _declare(_pat, _nm, _seq_end)
+        elif node.type == "catch_block":
+            # WI-silos: `catch let e` / `catch E.bad(let m)` bind the body.
+            for _pat in (c for c in node.children if c.type == "pattern"):
+                for _nm in _swift_pattern_names(_pat, binding=False):
+                    _declare(_pat, _nm, _pat.end_byte)
+        elif node.type == "switch_pattern":
+            # WI-silos: a `case` payload bound by `let` / `var` binds its body.
+            for _pat in (c for c in node.children if c.type == "pattern"):
+                for _nm in _swift_pattern_names(_pat, binding=False):
+                    _declare(node, _nm, node.end_byte)
         elif node.type in ("parameter", "lambda_parameter"):
             # WI-mofil: an ANNOTATED closure parameter (`{ (fm: FileManager)
             # in ... }`) has the parameter's layout and binds the same way,
-            # into the closure's own scope. An unannotated one yields no type.
+            # into the closure's own scope.
             # INV-fahub / WI-votar recall recovery: thread function/method
             # parameter types (previously dropped) into the receiver map so a
             # param-typed receiver (`func handle(client: Client)` → its
             # ``client.foo()`` calls) resolves via the type-qualified path
             # instead of misbinding to an arbitrary same-named def below.
+            # WI-silos: an UNANNOTATED closure parameter, or a parameter whose
+            # type the reader does not extract (`[String]`, a function type),
+            # binds too, untyped: it is not the outer name it shadows.
             pname, ptype = _swift_param_name_and_type(node, source)
             if pname:
                 declared_names.add(pname)
-            if pname and ptype:
                 _bind(node, pname, ptype, node.end_byte)
 
     for node in iter_tree(tree.root_node):
