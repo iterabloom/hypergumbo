@@ -33,7 +33,9 @@ def _sym(name: str, line: int, col: int = 0, end_line: int | None = None) -> Sym
 
 
 def _edge(src: str, dst: str = "c:external:0-0:g:unresolved") -> Edge:
-    return Edge.create(src=src, dst=dst, edge_type="calls", line=1, origin="c-v1")
+    return Edge.create(
+        src=src, dst=dst, edge_type="calls", line=1, origin="c-v1", origin_run_id="run",
+    )
 
 
 def test_unemitted_edge_sources_keeps_symbol_and_file_srcs_and_reports_the_rest() -> None:
