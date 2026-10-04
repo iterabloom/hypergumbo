@@ -47,7 +47,12 @@ How It Works
      yields an unresolved ``calls`` edge with
      ``meta["receiver"] = "constant_external"`` and an ``ExternalRef`` whose
      module is the constant as written, less a root ``::`` (``Net::HTTP``,
-     the owner path ADR-0051 asks for; WI-surar).
+     the owner path ADR-0051 asks for; WI-surar). A receiverless call
+     (``puts "x"``, ``has_many :posts``) to a name no project symbol
+     carries yields ``ruby:external:0-0:<name>:unresolved`` (WI-napaf,
+     python's INV-foluz residual shape); a bare ``identifier`` stays
+     unrecorded, since without a local-variable scope walk it cannot be
+     told from a variable read.
    - Passes 2b / 2c / 2d and 3, plus a post-pass inheritance sweep
 4. Detect method calls and require statements
 5. Track variable types from constructor/factory calls (``var = Class.new``)
@@ -2827,6 +2832,47 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     meta={"call_construct": "method"},
+                                ))
+                            elif method_node.type in ("identifier", "constant"):
+                                # WI-napaf: a receiverless call to a name no
+                                # project symbol carries -- ``puts``, ``raise``,
+                                # ``system``, ``include``, every Rails class-body
+                                # DSL (``has_many``, ``validates``,
+                                # ``before_action``) -- emitted NOTHING, so the
+                                # method read as calling nothing and the ADR-0017
+                                # walk saw an escape where a call stood. It is
+                                # INV-foluz's shape (python's residual arm) and
+                                # WI-fahod's (javascript), and takes their
+                                # ``external`` placeholder: the owner is genuinely
+                                # unknown (Kernel, or an ancestor a gem supplies).
+                                #
+                                # NO LOCAL-BINDING REFUSAL, unlike python's LEGB
+                                # check: ruby's syntax already made the choice. A
+                                # receiverless ``call`` node has arguments,
+                                # parentheses or a block, and that form is a send
+                                # to ``self`` even when a local of the name is in
+                                # scope (``x = 1; x(2)`` raises NoMethodError).
+                                # The ambiguous form, a bare ``identifier``, is
+                                # the arm below and is unchanged.
+                                #
+                                # THE CATALOGUE REACH IS WANTED HERE (WI-javaf's
+                                # hazard does not transfer): ``external`` lets a
+                                # FUNCTION-kind row match by short name, and the
+                                # Kernel methods (``system``, ``exec``, ``open``)
+                                # are ambient in ruby, needing no require. A
+                                # project method SHADOWING one never gets here --
+                                # it resolved above, or the AMB-METHOD guard
+                                # withheld it as the project's own name.
+                                #
+                                # ``super(...)`` is excluded by node type: it is
+                                # the keyword, not a method named ``super``.
+                                edges.append(make_unresolved_edge(
+                                    lang="ruby",
+                                    src_id=current_method.id,
+                                    callee_name=callee_name,
+                                    line=node.start_point[0] + 1,
+                                    pass_id=PASS_ID,
+                                    run_id=run_id,
                                 ))
 
         # Detect bare method calls (identifier nodes that are method names)
