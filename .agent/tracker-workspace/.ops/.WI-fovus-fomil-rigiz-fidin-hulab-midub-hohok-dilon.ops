@@ -49,3 +49,18 @@
   clock: 5  # a334
   nonce: a334  # a334
   message: "2026-10-03 stage 6 (fovus+hizon+pokij), branch jgstern-agent/fix/fovus (base 604c91e3f2): commits 66db748de9 (red tests), b3d079d9f0 (fix), 11ccccc953 (test made behavioural). One shared source: taxonomy.extension_globs / extension_suffixes / js_ts_language_for_path / grammar_for_path over LANGUAGES; DDG specs default to their language's taxonomy extensions (python *.py, c *.c declared narrowings), .tsx parsed with the tsx grammar; 12 JS/TS linkers read the shared list; annotation_convention labels via taxonomy.get_language. Gates: test_js_ts_extension_single_source.py (no private JS/TS list in linkers/ddg_build; language_from_path callers shrink-only) and test_js_ts_ddg_extension_reach.py (no undeclared DDG spec narrowing; js_ts.py parity). Board smart-test: 9011 passed, 0 failed, changed sources at 100% coverage; red run on the tests-only commit 39 failed / 2 errors. Corpus: growthbook .tsx functions with DDG edges 0->2090 of 6204 (ddg_edges 35552->61430); apollo-server +14 linker nodes / +11 edges in .mjs/.cjs/.mts/.cts (1 FP, pre-existing scanner defect WI-fihah); growthbook +4 nodes / +18 edges in .tsx (1 template-literal FP, noted on WI-filup). Taint-verdict A/B NOT run. Residuals filed: WI-midik (other languages), WI-zahom (phoenix_ipc/openapi grammar labels), WI-sunub (non-linker core lists), WI-gimis (annotation duplicate ids), WI-fihah (Query.if). Full report: ~/hypergumbo_lab_notebook/decontend/run_10032026/fovus.md"  # a334
+- op: update  # babb
+  at: '2026-10-04T02:53:34Z'  # babb
+  by: agent  # babb
+  actor: jgstern_agent  # babb
+  clock: 6  # babb
+  nonce: babb  # babb
+  set:  # babb
+    status: done  # babb
+- op: discuss  # ffd3
+  at: '2026-10-04T02:53:34Z'  # ffd3
+  by: agent  # ffd3
+  actor: jgstern_agent  # ffd3
+  clock: 7  # ffd3
+  nonce: ffd3  # ffd3
+  message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed in PR #1441 (b3d079d9f0). The JS/TS DDG specs no longer name a glob. `LanguageDdgSpec.file_globs=None` means `taxonomy.extension_globs(language)` (`.js .mjs .cjs .jsx` / `.ts .tsx .mts .cts`), and `ddg_build` parses each file with `taxonomy.grammar_for_path`, so `.tsx` uses the `tsx` grammar under `language=\"typescript\"` and the ids match the analyzer's.\n- Behaviour: `build_repo_ddg` over one function per extension stored DDG symbols for `.js`/`.ts` only before, and for all 8 after. `test_ddg_jsts_symbol_keys` now runs 8 arms: DDG keys equal analyzer ids for every extension. Those arms were red on origin/dev for all 6 new extensions.\n- JSX: a value used in a JSX attribute is a DDG use (`x 2→3`), with no forfeit and no unaccounted names.\n- Corpus: growthbook `.tsx` functions with DDG edges went 0→2090 (of 6204); `.mjs` 0→6. apollo-server `.cjs/.mts/.cts` went 0→1 each and `.mjs` 0→0 (module-scope code). This needs WI-tizig, not this glob.\n- Gate: `test_js_ts_ddg_extension_reach.py` (no spec narrows without a declared reason; python `*.py` and c `*.c` are declared, and filed as WI-midik).\n- NOT asserted: any taint-verdict change. The WI-nonad A/B was not re-run."  # ffd3

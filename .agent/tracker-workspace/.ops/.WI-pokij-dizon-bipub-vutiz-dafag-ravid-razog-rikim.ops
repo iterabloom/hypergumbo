@@ -25,3 +25,18 @@
   clock: 2  # 6914
   nonce: '6914'  # 6914
   message: "2026-10-03 stage 6 (fovus+hizon+pokij), branch jgstern-agent/fix/fovus (base 604c91e3f2): commits 66db748de9 (red tests), b3d079d9f0 (fix), 11ccccc953 (test made behavioural). One shared source: taxonomy.extension_globs / extension_suffixes / js_ts_language_for_path / grammar_for_path over LANGUAGES; DDG specs default to their language's taxonomy extensions (python *.py, c *.c declared narrowings), .tsx parsed with the tsx grammar; 12 JS/TS linkers read the shared list; annotation_convention labels via taxonomy.get_language. Gates: test_js_ts_extension_single_source.py (no private JS/TS list in linkers/ddg_build; language_from_path callers shrink-only) and test_js_ts_ddg_extension_reach.py (no undeclared DDG spec narrowing; js_ts.py parity). Board smart-test: 9011 passed, 0 failed, changed sources at 100% coverage; red run on the tests-only commit 39 failed / 2 errors. Corpus: growthbook .tsx functions with DDG edges 0->2090 of 6204 (ddg_edges 35552->61430); apollo-server +14 linker nodes / +11 edges in .mjs/.cjs/.mts/.cts (1 FP, pre-existing scanner defect WI-fihah); growthbook +4 nodes / +18 edges in .tsx (1 template-literal FP, noted on WI-filup). Taint-verdict A/B NOT run. Residuals filed: WI-midik (other languages), WI-zahom (phoenix_ipc/openapi grammar labels), WI-sunub (non-linker core lists), WI-gimis (annotation duplicate ids), WI-fihah (Query.if). Full report: ~/hypergumbo_lab_notebook/decontend/run_10032026/fovus.md"  # 6914
+- op: update  # fcfd
+  at: '2026-10-04T02:53:35Z'  # fcfd
+  by: agent  # fcfd
+  actor: jgstern_agent  # fcfd
+  clock: 3  # fcfd
+  nonce: fcfd  # fcfd
+  set:  # fcfd
+    status: done  # fcfd
+- op: discuss  # 78e2
+  at: '2026-10-04T02:53:36Z'  # 78e2
+  by: agent  # 78e2
+  actor: jgstern_agent  # 78e2
+  clock: 4  # 78e2
+  nonce: '78e2'  # 78e2
+  message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed in PR #1441. annotation_convention labels the id slot and `discovery_language` with `taxonomy.get_language`.\n- Behaviour: the fixture survey before gave `tsx:m5.tsx:…` (discovery_language `tsx`) and `unknown:m6.mts:…` / `unknown:m7.cts:…` (None). After, all three read `typescript`. The test asserts every directive kind (route, publisher, subscriber, dispatcher) in all 8 extensions carries the analyzer's tag.\n- Gate: `language_from_path` callers are pinned and shrink-only, with annotation_convention excluded.\n- Residual label users (phoenix_ipc `.ex` → None, openapi spec files → None) are filed as WI-zahom.\n- No corpus incidence: `@hg:` is opt-in, and there were 0 directives in the 2 measured repos."  # 78e2

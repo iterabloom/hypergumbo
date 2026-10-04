@@ -26,3 +26,18 @@
   clock: 2  # 88c7
   nonce: 88c7  # 88c7
   message: "2026-10-03 stage 6 (fovus+hizon+pokij), branch jgstern-agent/fix/fovus (base 604c91e3f2): commits 66db748de9 (red tests), b3d079d9f0 (fix), 11ccccc953 (test made behavioural). One shared source: taxonomy.extension_globs / extension_suffixes / js_ts_language_for_path / grammar_for_path over LANGUAGES; DDG specs default to their language's taxonomy extensions (python *.py, c *.c declared narrowings), .tsx parsed with the tsx grammar; 12 JS/TS linkers read the shared list; annotation_convention labels via taxonomy.get_language. Gates: test_js_ts_extension_single_source.py (no private JS/TS list in linkers/ddg_build; language_from_path callers shrink-only) and test_js_ts_ddg_extension_reach.py (no undeclared DDG spec narrowing; js_ts.py parity). Board smart-test: 9011 passed, 0 failed, changed sources at 100% coverage; red run on the tests-only commit 39 failed / 2 errors. Corpus: growthbook .tsx functions with DDG edges 0->2090 of 6204 (ddg_edges 35552->61430); apollo-server +14 linker nodes / +11 edges in .mjs/.cjs/.mts/.cts (1 FP, pre-existing scanner defect WI-fihah); growthbook +4 nodes / +18 edges in .tsx (1 template-literal FP, noted on WI-filup). Taint-verdict A/B NOT run. Residuals filed: WI-midik (other languages), WI-zahom (phoenix_ipc/openapi grammar labels), WI-sunub (non-linker core lists), WI-gimis (annotation duplicate ids), WI-fihah (Query.if). Full report: ~/hypergumbo_lab_notebook/decontend/run_10032026/fovus.md"  # 88c7
+- op: update  # 49dc
+  at: '2026-10-04T02:53:35Z'  # 49dc
+  by: agent  # 49dc
+  actor: jgstern_agent  # 49dc
+  clock: 3  # 49dc
+  nonce: 49dc  # 49dc
+  set:  # 49dc
+    status: done  # 49dc
+- op: discuss  # 5386
+  at: '2026-10-04T02:53:35Z'  # 5386
+  by: agent  # 5386
+  actor: jgstern_agent  # 5386
+  clock: 4  # 5386
+  nonce: '5386'  # 5386
+  message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed in PR #1441. http, graphql, graphql_sdl, graphql_resolver, database_query, event_sourcing, message_queue, grpc, ipc, websocket, solidity_abi and di_resolution read `taxonomy.extension_globs/extension_suffixes(*JS_TS_LANGUAGES)` (di_resolution reads `\"typescript\"`), and each one's dispatch accepts every suffix.\n- Behaviour, per extension (`test_js_ts_extension_single_source.py`): every finder discovers all 8 suffixes. `link_message_queues`, `link_http` and `link_grpc` mint a node per suffix carrying the analyzer's tag. solidity_abi scans all 8. di_resolution binds in `.ts/.tsx/.mts/.cts`. `.mts/.cts` comments are now masked.\n- Fixture survey: database-query, event-sourcing and message-queue nodes went from `.js/.ts` only to all 8 extensions; http from 4 to 8.\n- Corpus: apollo-server +14 nodes / +11 edges, all in smoke-test `.mjs/.cjs/.mts/.cts` (13 real, 1 false positive filed as WI-fihah). growthbook +4 nodes / +18 edges in `.tsx` (17 real, 1 template-literal false positive noted on WI-filup).\n- Gate: no linker module may hold a private JS/TS extension list (AST scan with a mutation control).\n- Other languages' private lists are filed as WI-midik; non-linker core lists as WI-sunub."  # 5386
