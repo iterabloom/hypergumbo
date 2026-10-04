@@ -1,0 +1,22 @@
+- op: create  # 8177
+  at: '2026-10-04T21:44:50Z'  # 8177
+  by: agent  # 8177
+  actor: jgstern_agent  # 8177
+  clock: 1  # 8177
+  nonce: '8177'  # 8177
+  data:  # 8177
+    kind: work_item  # 8177
+    title: "cuda: file-scope calls and member / qualified / template callees emit no edge (pytorch: 1,223 file-scope sites; 26,903 in-definition sites vs 17,695 edges) -- residual of WI-fohuh"  # 8177
+    status: todo_hard  # 8177
+    priority: 3  # 8177
+    parent:  # 8177
+    tags:  # 8177
+    - cuda  # 8177
+    - call_graph  # 8177
+    - analysis_quality  # 8177
+    isbefore: []  # 8177
+    duplicate_of: []  # 8177
+    not_duplicate_of: []  # 8177
+    pr_ref:  # 8177
+    description: "FOUND 2026-10-04 measuring WI-fohuh on whisper.cpp, pytorch (aten .cu/.cuh), ffmpeg, vmaf, branch jgstern-agent/fix/darik. After that branch every CUDA definition with a nameable declarator is a symbol, calls are drawn from it by position, and a macro-named one (TORCH_IMPL_FUNC(x)(args): 960 sites on pytorch) is stood in for (src_stands_in_for). What cuda.py still does NOT emit:\n\n1. File-scope calls (a global initialiser, a static member init): left unemitted, unlike c/cpp, which anchor them on the file (INV-bamij). Call sites outside every definition: pytorch 1,223, whisper.cpp 469, ffmpeg 54, vmaf 12 (instrument: sites.top in ~/hypergumbo_lab_notebook/decontend/run_10032026/darik/after*.cuda.*.json). Not all are calls (macro-shaped declarations parse as call_expression too); not split.\n2. Calls whose callee is not a bare identifier: a member call (obj.f(), p->f()), a qualified call (ns::f()), a template call (f<T>(x)). The field_expression branch of _extract_cuda_edges is marked pragma: no cover but is reachable; qualified and template callees are not read at all. Gap measured, not split by shape: pytorch 26,903 call sites inside named definitions vs 17,695 call edges recovered on their lines; whisper.cpp 5,743 vs 4,784.\n\ncpp.py reads all three callee shapes; reusing its call-name reader (or moving it beside hypergumbo_core.analyze.c_family) is the likely cure."  # 8177
+    fields: {}  # 8177

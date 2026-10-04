@@ -1,0 +1,22 @@
+- op: create  # eed9
+  at: '2026-10-04T21:44:32Z'  # eed9
+  by: agent  # eed9
+  actor: jgstern_agent  # eed9
+  clock: 1  # eed9
+  nonce: eed9  # eed9
+  data:  # eed9
+    kind: work_item  # eed9
+    title: "c: a dispatch table's VARIABLE is never emitted, so every dispatches_to edge from it has a dangling src (crun 94, redis 505, tmate 129) -- masked downstream as external_symbol"  # eed9
+    status: todo_hard  # eed9
+    priority: 2  # eed9
+    parent:  # eed9
+    tags:  # eed9
+    - c  # eed9
+    - call_graph  # eed9
+    - analysis_quality  # eed9
+    isbefore: []  # eed9
+    duplicate_of: []  # eed9
+    not_duplicate_of: []  # eed9
+    pr_ref:  # eed9
+    description: "FOUND 2026-10-04 building WI-darik's dangling-src gate (hypergumbo_core.analyze.edge_source.unemitted_edge_sources) on branch jgstern-agent/fix/darik.\n\nc.py mints the src of every dispatches_to edge as make_symbol_id(..., <table name>, \"variable\") -- for a static-array dispatch table (static int tbl[] = { f }) and for a designated-initializer ops struct (static struct ops o = { .f = f }) -- but c.py emits NO variable symbol, so the src names no node. The dispatch_table references edge drawn from the function that uses the table has the same id as its DST, also dangling. Downstream, ir.create_boundary_nodes turns each into an external_symbol, so a first-party table reaches the output as a library boundary, and spec_validator's endpoint check (WI-mujor) runs after that synthesis and cannot see it.\n\nMeasured on the analyzer result (instrument ~/hypergumbo_lab_notebook/decontend/run_10032026/darik/ *.json, key dangling_src_by_type; identical before and after the darik branch): crun 94, redis 505, tmate 129 dispatches_to edges with a dangling src. cpp: 0 on sherpa-onnx, x265, falco, bento4, modsecurity.\n\nSeen on a fixture, NOT measured: cpp emits no dispatches_to at all for an array of function pointers declared static int (*tbl[])(int) = { f } (the detector wants an array_declarator directly under the init_declarator; c has the same restriction), nor for a C++ designated initializer.\n\nPinned by equality in test_c_call_anchor::test_a_call_in_an_unnamed_definition_stands_in ({(\"dispatches_to\", 17)}), so the fix has to update that line.\n\nFix direction: emit a kind=variable symbol for a file-scope declaration the dispatch detector turns into a table (cpp already emits namespace-scope variables, WI-jusus), with the same id the edges use, or draw the edges from whatever symbol does exist. Then the gate can assert [] on every c fixture."  # eed9
+    fields: {}  # eed9
