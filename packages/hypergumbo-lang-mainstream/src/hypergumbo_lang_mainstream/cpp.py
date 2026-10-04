@@ -29,14 +29,18 @@ Call-edge details:
 
 - **Anchor**: a call in no function (a global initialiser) is anchored on
   the file's anchor symbol (``file_anchor_symbol``), except for
-  ``c_family_is_not_a_call`` shapes; a call inside a function the analyzer
-  cannot name is not emitted. The enclosing definition is found by its
+  ``c_family_is_not_a_call`` shapes. Every edge inside a definition the
+  analyzer cannot honestly name (``PFX(f)(args)``, the export-macro class
+  misparse ``class API X : public MoveOnly<X, Y> {..}``) is drawn from the
+  enclosing context -- an outer function, or the file anchor -- and carries
+  ``meta["src_stands_in_for"] = "unnamed_definition"`` (WI-tikop); before,
+  it was not emitted. The enclosing definition is found by its
   POSITION (``symbols_at`` / ``symbol_declared_by`` over ``file_symbols()``),
   never its short name: the name-keyed view keeps one symbol per name, so of
   ``P::run``/``Q::run`` or two overloads every call, ``new``, dispatch-table
   use and ``std::cout`` read was drawn from the last (WI-saduj).
 - **Definition names**: found at any declarator depth by the shared
-  ``c_family_declarator`` walk (``char **f()``, ``int *&f()``, a function
+  ``c_family_declarator`` walk (``hypergumbo_core.analyze.c_family``) (``char **f()``, ``int *&f()``, a function
   returning a function pointer), and for every leaf tree-sitter-cpp gives a
   definition: qualified and plain identifiers, an explicit specialisation
   (``template <> void f<int>(int)``, named ``f``), ``operator==``, a
@@ -112,7 +116,9 @@ from hypergumbo_core.overload_arity import (
     PARAMETERS_KEY, OverloadChoice, choose_overload, parameter_entry,
 )
 from hypergumbo_core.symbol_resolution import NameResolver
-from hypergumbo_lang_mainstream.c import c_family_declarator, c_family_is_not_a_call
+from hypergumbo_core.analyze.c_family import c_family_declarator
+from hypergumbo_core.analyze.edge_source import mark_stand_in
+from hypergumbo_lang_mainstream.c import c_family_is_not_a_call
 from hypergumbo_lang_mainstream.header_owner import headers_owned_by
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -1654,23 +1660,33 @@ def _extract_edges_from_tree(
         return None  # pragma: no cover - defensive
 
     # Stack entries: (node, current_function_context)
-    stack: list[tuple["tree_sitter.Node", Optional[Symbol]]] = [
-        (tree.root_node, file_anchor)
+    # Stack entries: (node, the symbol its edges are drawn from, whether that
+    # symbol STANDS IN for a definition with no symbol of its own).
+    stack: list[tuple["tree_sitter.Node", Optional[Symbol], bool]] = [
+        (tree.root_node, file_anchor, False)
     ]
 
     while stack:
-        node, current_function = stack.pop()
+        node, current_function, stands_in = stack.pop()
+        edges_before_node = len(edges)
 
         new_function = current_function
+        new_stands_in = stands_in
 
         # Track current function for call edges
         if node.type == "function_definition":
-            # INV-bamij: entering a function the analyzer cannot name must NOT
-            # inherit the file anchor from the walk's root. A call inside it is
-            # left unemitted, as before, rather than attributed to the file:
-            # the file anchor is for code that is in no function at all.
             # WI-saduj: found by the definition's POSITION, never its short name.
-            new_function = symbol_declared_by(node, decl_index)
+            own = symbol_declared_by(node, decl_index)
+            if own is not None:
+                new_function, new_stands_in = own, False
+            else:
+                # WI-tikop: a definition named by a macro tree-sitter cannot
+                # expand (``PFX(f)(args)``, the export-macro class misparse)
+                # has no symbol and no honest name. Its edges are drawn from
+                # the enclosing context -- an outer function, or the file
+                # anchor -- and marked as standing in, rather than dropped
+                # (which said there was no call) or named after the macro.
+                new_stands_in = True
 
         # Include directive
         elif node.type == "preproc_include":
@@ -2127,9 +2143,12 @@ def _extract_edges_from_tree(
                                 origin_run_id=run.execution_id,
                             ))
 
+        if stands_in and current_function is not None:
+            mark_stand_in(edges, edges_before_node, current_function.id)
+
         # Add children to stack with updated context
         for child in reversed(node.children):
-            stack.append((child, new_function))
+            stack.append((child, new_function, new_stands_in))
 
     # Dispatch table detection: function pointers in static array initializers.
     # Pattern: static struct Foo table[] = { { "name", func_ptr }, ... };

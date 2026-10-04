@@ -32,6 +32,8 @@ from pathlib import Path
 
 import pytest
 
+from hypergumbo_core.analyze.edge_source import unemitted_edge_sources
+
 _SRC = Path(__file__).resolve().parents[1] / "src" / "hypergumbo_lang_mainstream"
 _LOOKUP = re.compile(r"^def _(?:get|find)_enclosing_(?:function|method|callable)\w*\(", re.M)
 #: A module that emits a ``calls`` edge anchors it somewhere, whatever its lookup
@@ -149,7 +151,12 @@ def test_go_without_an_index_falls_back_to_the_qualified_name(tmp_path: Path) ->
 
 def _assert_contained(result, calls: list[int]) -> None:
     """Reach first: a call edge credited to a callable (not the file) at every
-    expected line. Then containment: every call edge's src span holds its line."""
+    expected line. Then containment: every call edge's src span holds its line.
+    And no edge's src dangles: it is an emitted symbol or the file anchor
+    (``unemitted_edge_sources``, WI-sigit), so an edge drawn from a declaration
+    the analyzer never emitted cannot pass the containment check by being
+    skipped."""
+    assert unemitted_edge_sources(result.symbols, result.edges) == []
     by_id = {s.id: s for s in result.symbols}
     anchors = [
         (by_id[e.src].name, by_id[e.src].span.start_line, by_id[e.src].span.end_line, e.line)
