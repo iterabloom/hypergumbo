@@ -224,3 +224,26 @@ def test_a_local_of_an_initialiser_is_not_a_field(tmp_path: Path) -> None:
     assert _hint(edges, "zip") == "FileManager"
     assert _hint(edges, "zap") is None
     assert _hint(edges, "zop") == "URLSession"
+
+
+def test_a_requirement_of_an_associated_type_names_no_type(tmp_path: Path) -> None:
+    """hummingbird Application.swift: ``associatedtype Responder: HTTPResponder``
+    then ``var responder: Responder { get async throws }``. ``Responder`` is
+    whatever a conformer binds, a generic parameter of the protocol, not a type
+    called ``Responder``; the concrete requirement beside it is typed."""
+    edges = _edges(tmp_path, (
+        "import Foundation\n"
+        "protocol ApplicationProtocol {\n"
+        "    associatedtype Responder: HTTPResponder\n"
+        "    var responder: Responder { get }\n"
+        "    var files: FileManager { get }\n"
+        "}\n"
+        "extension ApplicationProtocol {\n"
+        "    func run() {\n"
+        "        responder.respond()\n"
+        "        files.fileExists(atPath: \"x\")\n"
+        "    }\n"
+        "}\n"
+    ))
+    assert _hint(edges, "respond") is None
+    assert _hint(edges, "fileExists") == "FileManager"
