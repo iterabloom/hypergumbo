@@ -42,3 +42,12 @@
   clock: 4  # 6e82
   nonce: '6e82'  # 6e82
   message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed on the filed instance (branch jgstern-agent/fix/vinuh, 8da3b291eb). Premise correction: one argument parses as a type_conversion_expression over a generic_type (not a call_expression), and zero or several arguments parse as a call over an index_expression. `_go_instantiated_callee` reads both as the plain spelling, so `Map[int](1)` and `a.Map[int](3)` emit the same `calls` edge as `Map(2)` / `a.Map(4)` (call_construct function, resolved). Further results:\n- `slices.Sort[[]int](s)` -> `go:slices:0-0:Sort:unresolved`, like `slices.Sort(s)`;\n- an unknown bare `Nope[int](1)` -> INV-guzuj's `go:external:0-0:Nope` placeholder (a positive record);\n- element calls (`handlers[\"k\"](1)` on a package variable, `fs[0](1)`, `s.fs[0](1)`) stay silent, as before.\nTests: test_go_generic_instantiation_call.py; red was 17 failed / 8 passed (the controls) on dev. Corpus: 94 new call sites (prometheus 10, otel-collector 84, alertmanager 0), samples read and correct, 0 sites lost.\nResiduals (WI-moloj): a generic function used as a value (`register(Map[int])`, `Handler: Map[int]`) and a chain on a conversion-spelled instantiation. The census found 2 value sites in otel-collector and 11 candidate sites in istio, so the volume is low."  # 6e82
+- op: update  # c4cf
+  at: '2026-10-04T02:55:16Z'  # c4cf
+  by: agent  # c4cf
+  actor: jgstern_agent  # c4cf
+  clock: 5  # c4cf
+  nonce: c4cf  # c4cf
+  set: {}  # c4cf
+  add:  # c4cf
+    tags: [awaits_bakeoff_validation]  # c4cf

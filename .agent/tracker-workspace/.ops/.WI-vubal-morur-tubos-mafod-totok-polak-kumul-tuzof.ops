@@ -32,3 +32,18 @@
   clock: 3  # af01
   nonce: af01  # af01
   message: "BRANCH WORK 2026-10-03 (not integrated, no status change): branch jgstern-agent/fix/sofuh, worktree ~/hg_wt/sofuh, commits 4b50aaba1a f09e820bf8 6eae9b63d6 76bd663bfd 5328479c58. smart-test (326 affected files): 10340 passed, 0 failed, 2 xfailed, mypy ratchet clean, changed sources at 100% coverage. Full report: ~/hypergumbo_lab_notebook/decontend/run_10032026/sofuh.md.\nFix (6eae9b63d6): a member/computed-member write whose RHS identifier resolves to a function emits references from the writer. callback_argument_reference only when the WI-dosuh branch classified the write as a catalogued registration (ws.onmessage = handle); every other write (obj.h = fn, module.exports = fn, ...) object_field_reference, not crossable. NOTE: the 09-15 note says the pair branch uses callback_argument_reference -- it uses object_field_reference. Behavioral: verify-claims on dosuh_family_09102026/named_check moves untrusted-input-no-subprocess confirmed_with_caveats -> violated (WebSocket.onmessage [setup] -> child_process.exec [handle]), the true finding WI-nisud predicted."  # af01
+- op: update  # 1f8b
+  at: '2026-10-04T03:45:22Z'  # 1f8b
+  by: agent  # 1f8b
+  actor: jgstern_agent  # 1f8b
+  clock: 4  # 1f8b
+  nonce: 1f8b  # 1f8b
+  set:  # 1f8b
+    status: done  # 1f8b
+- op: discuss  # 8522
+  at: '2026-10-04T03:45:22Z'  # 8522
+  by: agent  # 8522
+  actor: jgstern_agent  # 8522
+  clock: 5  # 8522
+  nonce: '8522'  # 8522
+  message: "Merged in PR #1445 (dev 65b9729da7).\n\nFixed in PR #1445 (6eae9b63d6). Behavioral evidence, the filed repro re-run: `ws.onmessage = handle` inside `setup` now emits `setup -> handle` (references, evidence callback_argument_reference), so is_callback_registration admits it. verify-claims on the item's own fixture (dosuh_family_09102026/named_check) moves `untrusted-input-no-subprocess` from confirmed_with_caveats to violated, with the flow WebSocket.onmessage [setup] -> child_process.exec [handle]: the true finding WI-nisud's note predicted. Every other property write of a function identifier (obj.h = fn, el.onclick = fn, module.exports = fn, table['k'] = fn) emits object_field_reference, which is not crossable, so module.exports cannot flow a module source into exported functions. Tests: test_js_ts_property_assigned_function.py. Not done: a function or arrow EXPRESSION on the right-hand side (no symbol; WI-rabod covers CommonJS export expressions).\n\n---"  # 8522
