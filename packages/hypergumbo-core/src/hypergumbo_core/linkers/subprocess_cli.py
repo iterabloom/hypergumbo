@@ -34,6 +34,27 @@ Matching Strategy
 3. Match subcommand to CLI command symbols (concept="command")
 4. Create subprocess_calls edges linking caller to command handler
 
+Language Scope (WI-gopok)
+-------------------------
+Every command source is restricted to Python symbols (``_COMMAND_LANGUAGES``;
+both Python producers, ``python`` and ``scip_python``, stamp
+``language="python"``). The executable is matched ONLY against names read
+from Python packaging metadata: a ``[project.scripts]`` / ``console_scripts``
+entry names a Python callable, and ``[project.name]`` names the Python
+distribution. Every subcommand->handler key the linker models is a Python
+dispatch convention: a Click/Typer command function named like the
+subcommand, an argparse ``add_parser``/``set_defaults(func=...)`` pair, a
+``fire.Fire(Class)`` public method. A Go cobra / Ruby Thor / Rust clap / JS
+commander ``concept=command`` symbol that shares the subcommand string is a
+name coincidence, not that executable's handler.
+
+The one cross-language case Python metadata can name is a maturin project
+whose ``[project.name]`` ships a Rust binary (``bindings = "bin"``). It is
+excluded on purpose: a clap subcommand is selected by a kebab-cased enum
+VARIANT (or a ``Command::new("serve")`` string), neither of which is a Symbol
+name this linker joins on, so a same-named Rust symbol would still be a
+coincidence. No maturin-bin repository was found in the corpus to measure.
+
 Confidence Scores
 -----------------
 - 0.85: Literal command list with matching project CLI and subcommand
@@ -65,6 +86,10 @@ from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_l
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("subprocess-linker")
+
+# Languages a subcommand handler of a Python-packaged executable can be
+# written in (WI-gopok): see "Language Scope" above.
+_COMMAND_LANGUAGES = frozenset({"python"})
 
 
 @dataclass
@@ -653,6 +678,11 @@ def _scan_argparse_commands(
         # placeholder, and the placeholder won.
         if sym.kind == "external_symbol":
             continue
+        # WI-gopok: ``set_defaults(func=X)`` binds X in a Python module's
+        # scope; the name-only fallback below must not reach a same-named
+        # symbol in another language.
+        if sym.language not in _COMMAND_LANGUAGES:
+            continue
         symbols_by_name.setdefault(sym.name, []).append(sym)
         symbols_by_path_name.setdefault((sym.path, sym.name), []).append(sym)
 
@@ -804,7 +834,7 @@ def link_subprocess(
     # dict silently overwrote — see WI-jifiv (BUG-04/05 shape).
     command_by_name: dict[str, list[Symbol]] = {}
     for sym in cli_symbols:
-        if _has_command_concept(sym):
+        if _is_python_command(sym):
             command_by_name.setdefault(sym.name, []).append(sym)
 
     # WI-lubap: argparse CLIs expose commands as add_parser / set_defaults call
@@ -923,9 +953,15 @@ def link_subprocess(
 # =============================================================================
 
 
+def _is_python_command(sym: Symbol) -> bool:
+    """A ``concept=command`` symbol this linker can join: a Python one
+    (WI-gopok, module docstring "Language Scope")."""
+    return sym.language in _COMMAND_LANGUAGES and _has_command_concept(sym)
+
+
 def _get_cli_command_symbols(ctx: LinkerContext) -> list[Symbol]:
-    """Extract CLI command symbols from context."""
-    return [s for s in ctx.symbols if _has_command_concept(s)]
+    """Extract the joinable CLI command symbols (Python ``concept=command``)."""
+    return [s for s in ctx.symbols if _is_python_command(s)]
 
 
 def _count_cli_command_symbols(ctx: LinkerContext) -> int:
