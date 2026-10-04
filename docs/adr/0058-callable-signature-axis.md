@@ -84,7 +84,7 @@ nine parsers go after is already declared somewhere that ships:
 |---|---|---|
 | return type | `FileAnalysis.method_return_types` → `_method_return_type_registry` | go, rust, swift, objc |
 | return type (per-Symbol) | `meta["return_type"]` / `meta["inferred_return_type"]` | java, luau, apex |
-| parameter arity | `meta["parameters"]` / `meta["params"]` | 15 analyzers, **including `py.py`** |
+| parameter arity | `meta["parameters"]` / `meta["params"]` | 18 analyzers, **including `py.py`**; cpp, elixir and nim read it for overload selection (`hypergumbo_core.overload_arity`) |
 | field / variable type | `FileAnalysis.class_field_types` → `_field_type_registry` | csharp, cpp |
 
 `inferred_return_type`'s own registry description names Python as an intended

@@ -615,7 +615,7 @@ A consumer needing one of these reads its home. The nine that parse the string i
 | Fact | Declared home | Populated by |
 | --- | --- | --- |
 | `return_type` | `FileAnalysis.method_return_types` | go, rust, swift, objc |
-| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 15 analyzers, including py.py |
+| `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 18 analyzers, including py.py, cpp, elixir and nim |
 | `value_type` | `FileAnalysis.class_field_types` | csharp, cpp |
 
 **Closed parser set.** 8 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on any site not among them. Adding one is a decision, and that gate is where it gets made. The count may only go DOWN — it was 9 at declaration and each drop is one language reading its declared home instead.
