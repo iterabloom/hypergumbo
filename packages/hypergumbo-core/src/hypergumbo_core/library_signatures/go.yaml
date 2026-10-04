@@ -41,6 +41,15 @@ signatures:
   bufio.NewScanner: bufio.Scanner
   bufio.NewReader: bufio.Reader
   bufio.NewWriter: bufio.Writer
+  # log/slog: WI-vinuh. `slog.New(h).Error(msg)` and `l := slog.New(h)` then
+  # `l.Error(msg)` -- New is not a NewXxx constructor, so nothing typed the
+  # result: the chain took the package FUNCTION row log/slog.Error and the
+  # binding fell to the `external` slot, where no row is reached at all. All
+  # three return *Logger (go1.21 log/slog: func New(h Handler) *Logger,
+  # func Default() *Logger, func With(args ...any) *Logger).
+  slog.New: slog.Logger
+  slog.Default: slog.Logger
+  slog.With: slog.Logger
 
 # WI-jikik: stdlib PACKAGE VARIABLES, and the type each holds. A method called on
 # one (`http.DefaultClient.Do(req)`) has no local variable to type, so the call
