@@ -953,6 +953,8 @@ def _lookup_named_entry(
     ambiguous_names: frozenset[str],
     call_construct: str | None = None,
     language: str | None = None,
+    *,
+    allow_short_name_fallback: bool = True,
 ):
     """Pick the matching catalog entry from ``hits`` by the rule
     :meth:`io_boundary.IoBoundaryCatalog.lookup_with_module` uses (WI-razol).
@@ -984,6 +986,12 @@ def _lookup_named_entry(
     Mode and target-kind narrowing happen in the caller, before this, as the
     io consumer narrows after it; the ROW CHOICE is the shared part.
 
+    ``allow_short_name_fallback=False`` withholds the gate arm alone, as
+    ``lookup_with_module``'s parameter of the same name does: the caller found
+    the call BOUND to an in-repo symbol
+    (:func:`io_boundary.short_name_fallback_withheld`, WI-vidof), so no row may
+    claim it by its bare name.
+
     ``language`` is the CALL's language, handed to ``named_lookup_arm`` for
     the same reason ``lookup_with_module`` hands it the catalogue's: which
     spellings a module slot may take is language-scoped (C++'s
@@ -1007,6 +1015,8 @@ def _lookup_named_entry(
         language=language,
     )
     if arm == NAMED_ARM_GATE:
+        if not allow_short_name_fallback:
+            return None
         return gate_named_entry(
             rows, callee_name, module_hint, ambiguous_names,
             call_construct=call_construct,
@@ -1089,6 +1099,7 @@ def _match_propagation_entry(
     language: str = "",
     io_modes: "Sequence[Optional[str]] | None" = None,
     io_target_kinds: "Sequence[Optional[str]] | None" = None,
+    edge_meta: "Mapping[str, Any] | None" = None,
 ):
     """Match an edge's callee against a propagation source/sink ``index``.
 
@@ -1125,6 +1136,11 @@ def _match_propagation_entry(
     a module-mismatched hint, is not falsely matched (WI-razol), and an untyped
     *method* call (``call_construct``, threaded from the edge's ``meta``) never
     matches a method-kind sink/source (io-boundary:F3, INV-tapat/INV-maluk).
+
+    ``edge_meta`` is the edge's ``meta``. An unresolved stub whose meta names a
+    superseding resolution (``superseded_by``) is BOUND to an in-repo symbol and
+    is withheld the short-name arm (WI-vidof), by the predicate io-boundaries
+    asks (:func:`io_boundary.short_name_fallback_withheld`).
 
     ADR-0037 ruling 4: the resolution verdict is read from ``Edge.is_resolved``,
     NOT from the ``:unresolved`` dst-string suffix. That suffix is a producer
@@ -1279,10 +1295,17 @@ def _match_propagation_entry(
             ):
                 return h
         return None
+    # WI-vidof: an unresolved stub a resolution SUPERSEDED is bound to an
+    # in-repo symbol, so it takes no row by short name -- the io consumer's
+    # rule, asked through the one predicate both consumers share (INV-foda).
+    from .io_boundary import short_name_fallback_withheld
     return _lookup_named_entry(
         hits, callee_name, _extract_callee_module(edge_dst), ambiguous_names,
         call_construct=call_construct,
         language=_extract_callee_language(edge_dst),
+        allow_short_name_fallback=not short_name_fallback_withheld(
+            edge_dst, edge_meta,
+        ),
     )
 
 
@@ -3436,6 +3459,7 @@ def find_source_callers(
             by_callee, edge["dst"], ambiguous_names,
             call_construct=call_construct, is_resolved=is_resolved,
             language=language, io_modes=io_modes, io_target_kinds=io_target_kinds,
+            edge_meta=edge.get("meta"),
         )
         if not matched:
             continue
@@ -3447,6 +3471,7 @@ def find_source_callers(
                 call_construct=call_construct, is_resolved=is_resolved,
                 language=language, io_modes=io_modes,
                 io_target_kinds=io_target_kinds,
+                edge_meta=edge.get("meta"),
             )
             if sibling and sibling.taint_label != matched.taint_label:
                 callers.append((edge["src"], edge["dst"], sibling))
@@ -3749,6 +3774,7 @@ def propagate_taint_structural(
             # always matched its abstention fallback, while io-boundaries
             # selected the row by the stamp: one call site, two zones.
             io_target_kinds=call_site_target_kinds(edge.get("meta")),
+            edge_meta=edge.get("meta"),
         )
         if matched and _sink_call_can_carry_taint(edge):
             site = (edge["dst"], matched)
@@ -4936,6 +4962,7 @@ def propagate_taint_ddg(
             # always matched its abstention fallback, while io-boundaries
             # selected the row by the stamp: one call site, two zones.
             io_target_kinds=call_site_target_kinds(edge.get("meta")),
+            edge_meta=edge.get("meta"),
         )
         if matched:
             # ``sink_site``, not ``site``: the call-line loop above binds
