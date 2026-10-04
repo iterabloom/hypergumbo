@@ -12,18 +12,33 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Collect programs (kind ``program``), units (kind ``module``) and
-   non-nested procedures/functions (kind ``function``, meta ``proc_kind``);
-   descent stops at each procedure, so nested procedures are not symbols
-   (WI-sigit)
+   every procedure/function, meta ``proc_kind`` (``function`` /
+   ``procedure`` / ``constructor`` / ``destructor`` / ``operator``). A
+   method implementation ``procedure TA.Run`` is kind ``method`` named
+   ``TA.Run`` (WI-darik). A procedure nested in another is kind
+   ``function`` with ``meta["is_local"]`` (WI-sigit).
 2. Pass 2: Extract call edges from exprCall and identifier-statement patterns
 
-Name resolution is case-insensitive, matching Pascal itself:
-``PascalAnalyzer.register_symbol`` stores every symbol under its lowercased
-name and call names are lowercased before lookup. Calls to names in
-``_PASCAL_BUILTINS`` (``writeln``, ``inc``, ``length``, ``inttostr``, ...)
-emit no edge; calls with no enclosing procedure/function (e.g. in a
-program's main block) are dropped; unmatched calls become unresolved edges
-via ``make_unresolved_edge``.
+Every call edge is drawn from the declaration that holds it, found by its
+node's POSITION (``symbols_at`` over ``file_symbols()``): the innermost
+procedure; outside every procedure, the ``program`` or ``unit`` whose main
+block or ``initialization`` / ``finalization`` section holds the call, else
+the file anchor (a ``library`` and a fragment emit no symbol of their own).
+Before WI-darik / WI-sigit a method body's calls were lost, a nested
+procedure's calls carried a src id no symbol had, and main-block calls were
+dropped.
+
+Name resolution follows Pascal's lookup order and is case-insensitive, like
+Pascal itself (``_resolve_callee``): a procedure nested in an enclosing
+routine first (found by position; a local procedure is never registered
+run-wide), then a member of the enclosing method's class (inside ``TA.Run``
+a bare ``Get`` is ``Self.Get``, registered as ``ta.get``), then the run's
+routine of that name. ``PascalAnalyzer.register_symbol`` stores every other
+symbol under its lowercased name. Calls to names in ``_PASCAL_BUILTINS``
+(``writeln``, ``inc``, ``length``, ``inttostr``, ...) emit no edge; unmatched
+calls become unresolved edges via ``make_unresolved_edge``. A call on a
+receiver (``A.Run()``, ``Self.Get``) is not read: ``_get_call_name`` takes a
+bare identifier only.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Pascal-specific extraction
@@ -31,9 +46,11 @@ logic.
 
 Key constructs extracted:
 - program ... - main program definition
-- unit ... - module/library definition
+- unit ... - module definition (kind ``module``)
 - function name(args): type - function definitions
 - procedure name(args) - procedure definitions
+- procedure TA.Run / constructor TA.Create ... - method implementations
+- a procedure declared inside another - a local function
 - name(args) - procedure/function calls
 """
 from __future__ import annotations
@@ -46,9 +63,15 @@ from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
+    enclosing_declared_symbol,
+    file_anchor_symbol,
+    iter_tree,
     make_symbol_id,
     make_unresolved_edge,
+    symbol_declared_by,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -86,22 +109,46 @@ def _get_identifier(node: "tree_sitter.Node") -> Optional[str]:
 
 
 def _get_proc_name(node: "tree_sitter.Node") -> Optional[str]:
-    """Get the name of a procedure/function from a defProc node."""
+    """Get the name of a procedure/function from a defProc node.
+
+    A method implementation names itself with a ``genericDot``
+    (``procedure TA.Run``): its name is the whole dotted text, ``TA.Run``
+    (WI-darik). A plain one with a bare ``identifier``.
+    """
     for child in node.children:
         if child.type == "declProc":
+            for sub in child.children:
+                if sub.type == "genericDot":
+                    return "".join(_get_node_text(sub).split())
             return _get_identifier(child)
     return None  # pragma: no cover
 
 
+def _proc_owner(name: str) -> Optional[str]:
+    """The class a qualified procedure name belongs to: ``TA`` for ``TA.Run``,
+    ``TA.TInner`` for ``TA.TInner.Run``; None for an unqualified name."""
+    owner, dot, _ = name.rpartition(".")
+    return owner if dot else None
+
+
+#: The routine keyword of a ``declProc`` -> ``meta["proc_kind"]``.
+_PROC_KEYWORDS = {
+    "kFunction": "function",
+    "kProcedure": "procedure",
+    "kConstructor": "constructor",
+    "kDestructor": "destructor",
+    "kOperator": "operator",
+}
+
+
 def _get_proc_kind(node: "tree_sitter.Node") -> str:
-    """Get whether this is a function or procedure."""
+    """Which routine keyword a defProc uses (``function``, ``procedure``,
+    ``constructor``, ``destructor`` or ``operator``)."""
     for child in node.children:
         if child.type == "declProc":
             for subchild in child.children:
-                if subchild.type == "kFunction":
-                    return "function"
-                elif subchild.type == "kProcedure":
-                    return "procedure"
+                if subchild.type in _PROC_KEYWORDS:
+                    return _PROC_KEYWORDS[subchild.type]
     return "procedure"  # default  # pragma: no cover
 
 
@@ -141,27 +188,63 @@ def _get_call_name(node: "tree_sitter.Node") -> Optional[str]:
     return None  # pragma: no cover
 
 
-def _find_enclosing_function(
-    node: "tree_sitter.Node", rel_path: str,
-) -> Optional[str]:
-    """Find the enclosing function/procedure for a node.
-
-    Returns the symbol ID (make_symbol_id format) of the nearest defProc
-    ancestor, or None if the node is at module level.
-    """
+def _proc_ancestors(node: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
+    """The ``defProc`` nodes enclosing ``node``, innermost first."""
     current = node.parent
     while current is not None:
         if current.type == "defProc":
-            name = _get_proc_name(current)
-            if name:
-                return make_symbol_id(
-                    "pascal", rel_path,
-                    current.start_point[0] + 1,
-                    current.end_point[0] + 1,
-                    name, "function",
-                )
+            yield current
         current = current.parent
-    return None  # pragma: no cover
+
+
+def _find_caller(
+    node: "tree_sitter.Node", index: SymbolsAt, file_anchor: Symbol,
+) -> Optional[Symbol]:
+    """The symbol a call at ``node`` is drawn from, found by POSITION.
+
+    The innermost enclosing ``defProc`` -- Pass 1 emits a symbol for every one,
+    nested and qualified included, so the id is never minted for a declaration
+    that has no node (WI-sigit). Outside every ``defProc``: the ``program`` or
+    ``unit`` whose main block / ``initialization`` / ``finalization`` holds the
+    call, else the file anchor (a ``library`` or a fragment emits no symbol of
+    its own).
+    """
+    for proc in _proc_ancestors(node):
+        return symbol_declared_by(proc, index)
+    return enclosing_declared_symbol(node, index, _MODULE_NODES) or file_anchor
+
+
+#: The compilation units Pass 1 emits a symbol for.
+_MODULE_NODES = frozenset({"program", "unit"})
+
+
+def _resolve_callee(
+    node: "tree_sitter.Node", call_name: str, index: SymbolsAt,
+    global_symbols: dict[str, Symbol],
+) -> Optional[Symbol]:
+    """The routine a bare call names, in Pascal's lookup order.
+
+    1. A procedure nested in an enclosing routine (innermost first): it is
+       visible only there, so it is never registered globally and is found by
+       its declaration node's POSITION.
+    2. A member of the enclosing method's class: inside ``TA.Run`` a bare
+       ``Get`` is ``Self.Get`` (registered as ``ta.get``).
+    3. The run's routine of that name.
+    """
+    key = call_name.lower()
+    owner: Optional[str] = None
+    for proc in _proc_ancestors(node):
+        for child in proc.children:
+            if child.type == "defProc" and (_get_proc_name(child) or "").lower() == key:
+                return symbol_declared_by(child, index)
+        if owner is None:
+            owner = _proc_owner(_get_proc_name(proc) or "")
+    if owner is not None:
+        member = global_symbols.get(f"{owner}.{key}".lower())
+        if isinstance(member, Symbol):
+            return member
+    found = global_symbols.get(key)
+    return found if isinstance(found, Symbol) else None
 
 
 # Pascal builtins to skip during edge extraction
@@ -221,9 +304,10 @@ class PascalAnalyzer(TreeSitterAnalyzer):
 
     def _extract_symbols_recursive(
         self, node: "tree_sitter.Node", rel_path: str, analysis: FileAnalysis,
-        file_anchor: str,
+        file_anchor: str, enclosing: Optional[str] = None,
     ) -> None:
-        """Recursively extract symbols, stopping descent into defProc bodies."""
+        """Recursively extract symbols. ``enclosing`` is the name of the routine
+        whose declarations are being walked (None at unit / program level)."""
         if node.type == "program":
             name = _get_identifier(node)
             if name is None:
@@ -296,53 +380,81 @@ class PascalAnalyzer(TreeSitterAnalyzer):
         elif node.type == "defProc":
             name = _get_proc_name(node)
             if name:
-                kind = _get_proc_kind(node)
-                params = _get_proc_params(node)
-                return_type = _get_return_type(node)
-
-                if kind == "function":
-                    signature = f"function {name}({', '.join(params)}): {return_type or 'unknown'}"
-                else:
-                    signature = f"procedure {name}({', '.join(params)})"
-
-                sym_id = make_symbol_id(
-                    "pascal", rel_path,
-                    node.start_point[0] + 1, node.end_point[0] + 1,
-                    name, "function",
-                )
-                sym = Symbol(
-                    id=sym_id,
-                    stable_id=self.compute_stable_id(
-                        node, kind="function", name=name,
-                        file_stable_id=file_anchor,
-                    ),
-                    name=name,
-                    kind="function",
-                    language="pascal",
-                    path=rel_path,
-                    span=Span(
-                        start_line=node.start_point[0] + 1,
-                        end_line=node.end_point[0] + 1,
-                        start_col=node.start_point[1],
-                        end_col=node.end_point[1],
-                    ),
-                    origin=PASS_ID,
-                    signature=signature,
-                    meta={"param_count": len(params), "proc_kind": kind},
-                    cyclomatic_complexity=compute_cyclomatic_complexity(node, "pascal"),
-                    line_span=node.end_point[0] - node.start_point[0] + 1,
-                )
-                analysis.symbols.append(sym)
-                analysis.symbol_by_name[name] = sym
-                analysis.node_for_symbol[sym.id] = node
-            return  # Don't recurse into function bodies for symbol extraction
+                self._emit_proc(node, name, rel_path, analysis, file_anchor, enclosing)
+                enclosing = name
+            # A nested procedure is a declaration of its own (WI-sigit): descend
+            # with this one as its parent, so it is emitted as a local symbol.
 
         # Recursively process children
         for child in node.children:
-            self._extract_symbols_recursive(child, rel_path, analysis, file_anchor)
+            self._extract_symbols_recursive(
+                child, rel_path, analysis, file_anchor, enclosing,
+            )
+
+    def _emit_proc(
+        self, node: "tree_sitter.Node", name: str, rel_path: str,
+        analysis: FileAnalysis, file_anchor: str, enclosing: Optional[str],
+    ) -> None:
+        """Emit the symbol for one ``defProc``.
+
+        A qualified name (``TA.Run``) is a method of ``TA`` (WI-darik). A
+        procedure nested in another is a ``function`` with ``meta["is_local"]``:
+        it is visible only inside its parent, so it is not registered for
+        run-wide lookup (``register_symbol``) and its stable id folds in the
+        parent's name, so ``Inner`` in ``A`` and ``Inner`` in ``B`` hash apart.
+        """
+        proc_kind = _get_proc_kind(node)
+        params = _get_proc_params(node)
+        return_type = _get_return_type(node)
+        if proc_kind == "function":
+            signature = f"function {name}({', '.join(params)}): {return_type or 'unknown'}"
+        else:
+            signature = f"{proc_kind} {name}({', '.join(params)})"
+        kind = "method" if _proc_owner(name) else "function"
+        meta: dict[str, object] = {"param_count": len(params), "proc_kind": proc_kind}
+        if enclosing is not None:
+            meta["is_local"] = True
+        sym = Symbol(
+            id=make_symbol_id(
+                "pascal", rel_path,
+                node.start_point[0] + 1, node.end_point[0] + 1,
+                name, kind,
+            ),
+            stable_id=self.compute_stable_id(
+                node, kind=kind, name=name,
+                qualified_name=f"{enclosing}.{name}" if enclosing else "",
+                file_stable_id=file_anchor,
+            ),
+            name=name,
+            kind=kind,
+            language="pascal",
+            path=rel_path,
+            span=Span(
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_col=node.start_point[1],
+                end_col=node.end_point[1],
+            ),
+            origin=PASS_ID,
+            signature=signature,
+            meta=meta,
+            cyclomatic_complexity=compute_cyclomatic_complexity(node, "pascal"),
+            line_span=node.end_point[0] - node.start_point[0] + 1,
+        )
+        analysis.symbols.append(sym)
+        if enclosing is None:
+            analysis.symbol_by_name[name] = sym
+        analysis.node_for_symbol[sym.id] = node
 
     def register_symbol(self, symbol: Symbol, global_symbols: dict[str, Symbol]) -> None:
-        """Register symbols with lowercase names for case-insensitive matching."""
+        """Register symbols with lowercase names for case-insensitive matching.
+
+        A nested procedure is not registered: it is in scope only inside its
+        parent, where ``_resolve_callee`` finds it by position. Registered, a
+        local ``Inner`` would capture every unit-level call to ``Inner``.
+        """
+        if (symbol.meta or {}).get("is_local"):
+            return
         global_symbols[symbol.name.lower()] = symbol
 
     def extract_edges_from_file(
@@ -354,54 +466,42 @@ class PascalAnalyzer(TreeSitterAnalyzer):
     ) -> list[Edge]:
         """Extract call edges from Pascal exprCall and statement nodes."""
         edges: list[Edge] = []
-        self._extract_edges_recursive(
-            tree.root_node, rel_path, run.execution_id, global_symbols, edges,
-        )
+        index = symbols_at(self.file_symbols(local_symbols))
+        file_anchor = file_anchor_symbol("pascal", rel_path, PASS_ID, run.execution_id)
+        for node in iter_tree(tree.root_node):
+            call_name = None
+            call_node = node
+            if node.type == "exprCall":
+                call_name = _get_call_name(node)
+            elif node.type == "statement":
+                children = [c for c in node.children if c.type not in (";",)]
+                if len(children) == 1 and children[0].type == "identifier":
+                    call_name = _get_node_text(children[0])
+                    call_node = children[0]
+            if not call_name or call_name.lower() in _PASCAL_BUILTINS:
+                continue
+            caller = _find_caller(node, index, file_anchor)
+            if caller is None:  # pragma: no cover - every named defProc is a symbol
+                continue
+            callee = _resolve_callee(node, call_name, index, global_symbols)
+            if callee is not None:
+                edges.append(Edge.create(
+                    src=caller.id,
+                    dst=callee.id,
+                    edge_type="calls",
+                    line=call_node.start_point[0] + 1,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="ast_call_direct",
+                    evidence_lang="pascal",
+                ))
+            else:
+                edges.append(make_unresolved_edge(
+                    "pascal", caller.id, call_name,
+                    call_node.start_point[0] + 1,
+                    PASS_ID, run.execution_id,
+                ))
         return edges
-
-    def _extract_edges_recursive(
-        self, node: "tree_sitter.Node", rel_path: str, run_id: str,
-        global_symbols: dict[str, Symbol], edges: list[Edge],
-    ) -> None:
-        """Recursively extract call edges."""
-        call_name = None
-        call_node = node
-
-        if node.type == "exprCall":
-            call_name = _get_call_name(node)
-        elif node.type == "statement":
-            children = [c for c in node.children if c.type not in (";",)]
-            if len(children) == 1 and children[0].type == "identifier":
-                call_name = _get_node_text(children[0])
-                call_node = children[0]
-
-        if call_name:
-            if call_name.lower() not in _PASCAL_BUILTINS:
-                caller_id = _find_enclosing_function(node, rel_path)
-                if caller_id:
-                    callee_sym = global_symbols.get(call_name.lower())
-                    if isinstance(callee_sym, Symbol):
-                        edge = Edge.create(
-                            src=caller_id,
-                            dst=callee_sym.id,
-                            edge_type="calls",
-                            line=call_node.start_point[0] + 1,
-                            origin=PASS_ID,
-                            origin_run_id=run_id,
-                            evidence_type="ast_call_direct",
-                            evidence_lang="pascal",
-                        )
-                    else:
-                        edge = make_unresolved_edge(
-                            "pascal", caller_id, call_name,
-                            call_node.start_point[0] + 1,
-                            PASS_ID, run_id,
-                        )
-                    edges.append(edge)
-
-        # Recursively process children
-        for child in node.children:
-            self._extract_edges_recursive(child, rel_path, run_id, global_symbols, edges)
 
 
 _analyzer = PascalAnalyzer()
