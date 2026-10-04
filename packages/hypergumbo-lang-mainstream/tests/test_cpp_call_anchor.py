@@ -19,6 +19,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from hypergumbo_core.analyze.edge_source import (
+    SRC_STANDS_IN_FOR,
+    UNNAMED_DEFINITION,
+    unemitted_edge_sources,
+)
 from hypergumbo_lang_mainstream.cpp import analyze_cpp
 
 
@@ -49,7 +54,9 @@ void over(double) { sink(4); }
 struct S { void run() { sink(5); } };
 struct T { void run() { sink(6); } };
 """)
-    calls = _contained(analyze_cpp(tmp_path), "calls")
+    result = analyze_cpp(tmp_path)
+    assert unemitted_edge_sources(result.symbols, result.edges) == []
+    calls = _contained(result, "calls")
     assert set(calls) >= {4, 5, 6, 7, 8, 9}, calls  # reach
     assert calls[4][0] == "P::run" and calls[5][0] == "Q::run", calls
     assert calls[8][0] == "S::run" and calls[9][0] == "T::run", calls
@@ -158,3 +165,45 @@ void ok() { g(); }
     assert "ok" in names, names  # reach
     assert not names & {"MoveOnly", "PFX", "cpu_test", "Stream"}, names
     assert 8 in _contained(result, "calls")
+    # WI-tikop: the calls in the two unnamed definitions are drawn from the file
+    # and SAY they stand in, rather than being dropped.
+    assert unemitted_edge_sources(result.symbols, result.edges) == []
+    standing = {
+        e.line for e in result.edges
+        if e.edge_type == "calls" and e.src.endswith(":1-1:file:file")
+        and (e.meta or {}).get(SRC_STANDS_IN_FOR) == UNNAMED_DEFINITION
+    }
+    assert standing == {5, 7}, standing
+
+
+def test_a_definition_in_an_unnamed_one_is_still_its_own_caller(tmp_path: Path) -> None:
+    """WI-tikop. Inside a macro-named definition the walk's context stands in;
+    a NAMED definition nested in it (a local class's method) is its own
+    caller again, and a macro-named definition inside a named function stands in
+    on that function."""
+    (tmp_path / "m.cpp").write_text("""\
+void g();
+int PFX(outer)(void) {
+  g();
+  struct L { void m() { g(); } };
+  return 0;
+}
+void named() {
+  int MAC(inner)(void) { g(); return 0; }
+  g();
+}
+""")
+    result = analyze_cpp(tmp_path)
+    assert unemitted_edge_sources(result.symbols, result.edges) == []
+    by_id = {s.id: s for s in result.symbols}
+    got = {
+        e.line: (by_id[e.src].name if e.src in by_id else "file",
+                 (e.meta or {}).get(SRC_STANDS_IN_FOR))
+        for e in result.edges if e.edge_type == "calls"
+    }
+    assert got == {
+        3: ("file", UNNAMED_DEFINITION),
+        4: ("L::m", None),
+        8: ("named", UNNAMED_DEFINITION),
+        9: ("named", None),
+    }, got

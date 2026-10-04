@@ -34,11 +34,22 @@ Call-edge details:
   ``symbol_declared_by`` on the ``function_definition`` node), not by name,
   so ``#ifdef`` / ``#else`` definitions of one name in one file anchor to the
   right alternative. The dispatch-table body scan uses the same lookup.
-- **Function names at any declarator depth**: ``c_family_declarator`` walks
+- **Function names at any declarator depth**: ``c_family_declarator``
+  (``hypergumbo_core.analyze.c_family``, shared with cpp.py and cuda.py) walks
   the whole declarator chain (``char **f()``, ``int (f)(int)``, a function
   returning a function pointer), so no definition is left without a symbol
   and its calls unemitted because its name sat under a second
-  ``pointer_declarator`` (WI-saduj). cpp.py shares the walk.
+  ``pointer_declarator`` (WI-saduj).
+- **A definition with no honest name** (WI-tikop): one named by a macro
+  tree-sitter cannot expand -- ``TEST_BEGIN(test_x) {..}``, ``PFX(f)(args)``,
+  ``LUALIB_API int (f)(args)`` -- gets no symbol (a name read off the macro
+  would be invented). Every edge drawn from inside it (calls, callback
+  arguments, ``&f``, a dispatch-table use) comes from the nearest enclosing
+  definition that has a symbol, else the file anchor, and carries
+  ``meta["src_stands_in_for"] = "unnamed_definition"``
+  (``hypergumbo_core.analyze.edge_source``). Before, they were left
+  unemitted -- 2,823 call sites on redis -- or, inside a named outer
+  definition, drawn from it with nothing to say so.
 
 If tree-sitter-c is not installed, the analyzer warns and returns a
 skipped result.
@@ -75,7 +86,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, NamedTuple, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
@@ -94,10 +105,11 @@ from hypergumbo_core.analyze.base import (
     node_text,
     populate_docstrings_from_tree,
     stamp_io_mode_from_call,
-    symbol_declared_by,
     symbols_at,
     SymbolsAt,
 )
+from hypergumbo_core.analyze.c_family import c_family_declarator
+from hypergumbo_core.analyze.edge_source import anchor_in_definitions, mark_stand_in
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 from hypergumbo_lang_mainstream.header_owner import headers_owned_by
@@ -146,94 +158,6 @@ def _find_identifier_in_children(node: "tree_sitter.Node", source: bytes) -> Opt
         if child.type in ("identifier", "type_identifier"):
             return node_text(child, source)
     return None
-
-
-class CFamilyDeclarator(NamedTuple):
-    """What a C/C++ definition's declarator chain says about the function.
-
-    ``function_declarator`` holds the function's OWN parameter list; ``name`` is
-    the leaf naming it (``identifier``, and in C++ also ``qualified_identifier``,
-    ``field_identifier``, ``operator_name``, ``destructor_name``,
-    ``template_function`` or ``operator_cast``); ``returns_function`` is True when
-    a second, OUTER ``function_declarator`` wraps it, i.e. the function returns a
-    function pointer; ``pointer_depth`` counts the ``pointer_declarator`` levels
-    of the return type. Both nodes are None for a macro-call-shaped declarator,
-    which names no function (:func:`c_family_declarator`).
-    """
-
-    function_declarator: Optional["tree_sitter.Node"]
-    name: Optional["tree_sitter.Node"]
-    returns_function: bool
-    pointer_depth: int
-
-
-def _is_declarator_or_name(node_type: str) -> bool:
-    """A node a declarator wrapper can hold as its inner declarator. The rest of
-    its named children are modifiers (``ms_call_modifier``, attributes)."""
-    return node_type.endswith(("declarator", "identifier")) or node_type in (
-        "operator_name", "destructor_name", "template_function", "operator_cast",
-    )
-
-
-def _is_macro_call_name(function_declarator: "tree_sitter.Node") -> bool:
-    """Whether a ``function_declarator`` directly wraps another (see
-    :func:`c_family_declarator`): the outer one is a macro call's argument list."""
-    inner = function_declarator.child_by_field_name("declarator")
-    return inner is not None and inner.type == "function_declarator"
-
-
-def c_family_declarator(node: "tree_sitter.Node") -> CFamilyDeclarator:
-    """Walk a ``function_definition``'s declarator chain down to the name.
-
-    WI-saduj. The name of a C or C++ function can sit at any depth: ``char **f()``
-    nests two ``pointer_declarator`` s, ``int *&f()`` (C++) a pointer and a
-    ``reference_declarator``, ``int (f)(int)`` a ``parenthesized_declarator``, and
-    a function returning a function pointer, ``int (*f(void))(int)``, puts its own
-    ``function_declarator`` INSIDE the declarator of the pointer it returns, under
-    an outer one holding the returned pointer's parameters. The previous readers
-    descended exactly one ``pointer_declarator``, so every deeper shape got no
-    symbol and every call in it was left unemitted (crun's ``char
-    **read_dir_entries``). This walk follows the ``declarator`` field, and the
-    unnamed inner declarator of the wrappers that have no such field
-    (``parenthesized_declarator``, C++'s ``reference_declarator``), until a node
-    that is not a declarator: the name. The INNERMOST ``function_declarator`` on
-    the way is the function's own.
-
-    A ``function_declarator`` whose declarator is DIRECTLY another one names no
-    function: C has no function returning a function, so a real nested one
-    always has a ``parenthesized_declarator`` between. That shape is a macro
-    tree-sitter cannot expand -- ``int PFX(cpu_test)(void)`` (x265),
-    ``LUALIB_API int (luaL_loadstring) (...)`` read as a function named ``int``
-    -- and the walk returns no declarator for it rather than mint a symbol
-    named after the macro.
-    """
-    function_declarator = None
-    outer_functions = 0
-    pointers = 0
-    pointers_at_function = 0
-    current = node.child_by_field_name("declarator")
-    while current is not None and current.type.endswith("_declarator"):
-        if current.type == "function_declarator":
-            if _is_macro_call_name(current):
-                return CFamilyDeclarator(None, None, False, 0)
-            if function_declarator is not None:
-                outer_functions += 1
-            function_declarator = current
-            pointers_at_function = pointers
-        elif current.type == "pointer_declarator":
-            pointers += 1
-        inner = current.child_by_field_name("declarator")
-        if inner is None:
-            inner = next(
-                (c for c in current.named_children if _is_declarator_or_name(c.type)),
-                None,
-            )
-        current = inner
-    if function_declarator is None:
-        return CFamilyDeclarator(None, current, False, 0)
-    return CFamilyDeclarator(
-        function_declarator, current, outer_functions > 0, pointers_at_function,
-    )
 
 
 def _get_function_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -531,11 +455,16 @@ def _extract_symbols(
     return symbols
 
 
+#: The declaration a C call is drawn from.
+_C_DEFINITIONS = frozenset({"function_definition"})
+
+
 def _get_enclosing_function(
     node: "tree_sitter.Node",
     decl_index: SymbolsAt,
-) -> Optional[Symbol]:
-    """The function definition that contains ``node``.
+    file_anchor: Symbol,
+) -> tuple[Optional[Symbol], bool]:
+    """The symbol an edge at ``node`` is drawn from, and whether it stands in.
 
     Keyed by the declaration's POSITION, not its name (INV-midag). The name
     lookup had two defects. Across files, it was fixed by preferring the
@@ -544,15 +473,18 @@ def _get_enclosing_function(
     twice (tmux's compat/closefrom.c), and ``local_symbols`` keeps one of them,
     so 35 of 11,011 c call edges on a 26-repo run were anchored to the other
     alternative. The ``function_definition`` node IS the symbol's node.
+
+    The innermost definition decides (``anchor_in_definitions``). Outside every
+    definition: ``file_anchor``. Inside a definition with no symbol -- its name comes from a macro
+    tree-sitter cannot expand, ``TEST_BEGIN(test_x) {..}`` or ``PFX(f)(args)``
+    -- the nearest enclosing definition that has one, else the file anchor,
+    with ``True`` so the caller marks the edges as standing in (WI-tikop).
+    Before, those calls were left unemitted (redis: 2,823 call sites) or, inside
+    a named outer definition, drawn from it with nothing to say so.
     """
-    current = node.parent
-    while current is not None:
-        if current.type == "function_definition":
-            sym = symbol_declared_by(current, decl_index)
-            if sym is not None:
-                return sym
-        current = current.parent
-    return None
+    return anchor_in_definitions(
+        node, decl_index, _C_DEFINITIONS, top_level=file_anchor, fallback=file_anchor,
+    )
 
 
 def c_family_is_not_a_call(node: "tree_sitter.Node") -> bool:
@@ -575,16 +507,6 @@ def c_family_is_not_a_call(node: "tree_sitter.Node") -> bool:
             if parent.child_by_field_name("condition") == current:
                 return True
         current = parent
-    return False
-
-
-def _inside_function_definition(node: "tree_sitter.Node") -> bool:
-    """Is ``node`` inside any ``function_definition``, named or not?"""
-    current = node.parent
-    while current is not None:
-        if current.type == "function_definition":
-            return True
-        current = current.parent
     return False
 
 
@@ -695,14 +617,14 @@ def _extract_edges(
     for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
         if node.type == "call_expression":
-            # INV-bamij: the file anchor is for a call in no function at all.
-            # A call inside a function the analyzer could not name stays
-            # unemitted rather than attributed to the file.
-            current_function = _get_enclosing_function(node, decl_index) or (
-                None
-                if _inside_function_definition(node) or c_family_is_not_a_call(node)
-                else file_anchor
+            # INV-bamij: the file anchor is for a call in no function at all,
+            # or one standing in for a definition the analyzer could not name
+            # (WI-tikop); never for syntax that calls nothing.
+            current_function, _stands_in = _get_enclosing_function(
+                node, decl_index, file_anchor,
             )
+            if current_function is file_anchor and c_family_is_not_a_call(node):
+                current_function = None
             # INV-kaduh. Recorded before the branch and applied after it, so
             # every edge this ONE call produces carries the mode — rather than
             # at each Edge.create inside, which is the shape that drifts.
@@ -806,6 +728,8 @@ def _extract_edges(
                 for _edge in edges[_edges_before_call:]:
                     _edge.meta = dict(_edge.meta or {})
                     _edge.meta["io_target_kind"] = _kind
+            if _stands_in and current_function is not None:
+                mark_stand_in(edges, _edges_before_call, current_function.id)
 
         # Explicit function pointer: &process
         elif node.type == "pointer_expression":
@@ -816,7 +740,12 @@ def _extract_edges(
                 )
                 if ident:
                     ref_name = node_text(ident, source)
-                    current_function = _get_enclosing_function(node, decl_index)
+                    # A file-scope ``&f`` emits nothing; one in a definition the
+                    # analyzer could not name is stood in for, as a call is.
+                    current_function, _stands_in = anchor_in_definitions(
+                        node, decl_index, _C_DEFINITIONS,
+                        top_level=None, fallback=file_anchor,
+                    )
                     if current_function:
                         lookup_result = resolver.lookup(ref_name, caller_path=_caller_path)
                         if (
@@ -835,6 +764,8 @@ def _extract_edges(
                                 origin_run_id=run.execution_id,
                                 evidence_type="function_pointer",
                             ))
+                            if _stands_in:
+                                mark_stand_in(edges, len(edges) - 1, current_function.id)
 
     # Dispatch table detection: function pointers in static array initializers.
     # Pattern: static struct Foo table[] = { { "name", func_ptr }, ... };
@@ -971,16 +902,18 @@ def _extract_edges(
         for node in iter_tree(tree.root_node):
             if node.type != "function_definition":
                 continue
-            # The referring function, by the definition's POSITION (INV-midag):
-            # by name, of two ``#ifdef`` alternatives the reference in the first
-            # was attributed to the second (WI-saduj).
-            func_sym = symbol_declared_by(node, decl_index)
-            if func_sym is None:
-                continue  # pragma: no cover - a definition the symbol pass could not name (malformed)
             # Scan function body for dispatch table variable references
             body = node.child_by_field_name("body")
             if body is None:
                 continue  # pragma: no cover - defensive
+            # The referring function, by the definition's POSITION (INV-midag):
+            # by name, of two ``#ifdef`` alternatives the reference in the first
+            # was attributed to the second (WI-saduj). A definition with no
+            # symbol is stood in for, as a call in it is (WI-tikop).
+            func_sym, _stands_in = _get_enclosing_function(body, decl_index, file_anchor)
+            if func_sym is None:  # pragma: no cover - the fallback is the file anchor
+                continue
+            _edges_before_scan = len(edges)
             seen_tables: set[str] = set()
             for inner in iter_tree(body):
                 if inner.type != "identifier":
@@ -1002,6 +935,8 @@ def _extract_edges(
                         evidence_type="dispatch_table_reference",
                         meta={"ref_construct": "dispatch_table"},
                     ))
+            if _stands_in:
+                mark_stand_in(edges, _edges_before_scan, func_sym.id)
 
     return edges
 

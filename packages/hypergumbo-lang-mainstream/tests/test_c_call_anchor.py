@@ -9,6 +9,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from hypergumbo_core.analyze.edge_source import (
+    SRC_STANDS_IN_FOR,
+    UNNAMED_DEFINITION,
+    unemitted_edge_sources,
+)
 from hypergumbo_lang_mainstream.c import analyze_c
 
 
@@ -30,6 +35,7 @@ void closefrom(int lowfd)
 #endif
 """)
     result = analyze_c(tmp_path)
+    assert unemitted_edge_sources(result.symbols, result.edges) == []
     by_id = {s.id: s for s in result.symbols}
     anchors = [
         (by_id[e.src].name, by_id[e.src].span.start_line, by_id[e.src].span.end_line, e.line)
@@ -117,7 +123,8 @@ def test_a_macro_named_definition_mints_no_symbol(tmp_path: Path) -> None:
     could not expand (x265's ``PFX(name)(args)``, lua's ``LUALIB_API int (f)
     (args)`` read as a function named ``int``). Naming the inner one would mint a
     symbol called ``PFX`` or ``int`` and anchor real calls on it; the definition
-    stays unnamed, as it was. (Its calls stay unemitted: a residual, not pinned.)"""
+    stays unnamed, and its calls are drawn from the file, marked as standing in
+    (WI-tikop; ``test_a_call_in_an_unnamed_definition_stands_in``)."""
     (tmp_path / "m.c").write_text("""\
 void foo(void);
 int PFX(cpu_test)(void) { foo(); return 0; }
@@ -129,3 +136,76 @@ int ok(void) { foo(); return 0; }
     assert "ok" in names, names  # reach: the plain definition is named
     assert not names & {"PFX", "int", "cpu_test", "luaL_loadstring"}, names
     assert 4 in {a[3] for a in _anchors(result)}, _anchors(result)
+    standing = {
+        e.line for e in result.edges
+        if e.edge_type == "calls" and e.src.endswith(":1-1:file:file")
+        and (e.meta or {}).get(SRC_STANDS_IN_FOR) == UNNAMED_DEFINITION
+    }
+    assert standing == {2, 3}, standing
+
+
+def test_a_call_in_an_unnamed_definition_stands_in(tmp_path: Path) -> None:
+    """WI-tikop. A definition whose name comes from a macro tree-sitter cannot
+    expand -- jemalloc's ``TEST_BEGIN(test_x) {..}`` (2,598 redis call sites),
+    ``PFX(f)(args)`` -- has no symbol and no honest name. Every edge drawn from
+    inside it -- a call, a callback argument, ``&f``, a dispatch-table use --
+    comes from the nearest enclosing record that has a symbol (an outer
+    definition, else the file) and carries ``src_stands_in_for``. Before, all of
+    them were left unemitted, except inside a named outer definition, where they
+    were drawn from it with nothing to say so."""
+    (tmp_path / "t.c").write_text("""\
+#include <pthread.h>
+int helper(int x) { return x; }
+static int (*cmds[])(int) = { helper };
+int lookup(int i);
+TEST_BEGIN(test_x) {
+  helper(1);
+  int (*f)(int) = &helper;
+  pthread_create(0, 0, helper, 0);
+  return cmds[0](1);
+}
+TEST_END
+int outer(void) {
+  int MAC(inner)(void) { return helper(2); }
+  return helper(3);
+}
+int plain(void) { return helper(4); }
+static int tbl[] = { helper };
+int MAC2(user)(int i) { return tbl[i]; }
+""")
+    result = analyze_c(tmp_path)
+    # The one dangling src is the dispatch-table VARIABLE (``tbl``), which c.py
+    # does not emit as a symbol: a residual of its own (see the report), pinned
+    # by equality so the fix has to update this line.
+    assert {
+        (e.edge_type, e.line) for e in unemitted_edge_sources(result.symbols, result.edges)
+    } == {("dispatches_to", 17)}
+    names = {s.name for s in result.symbols if s.kind == "function"}
+    assert not names & {"TEST_BEGIN", "test_x", "MAC", "inner", "MAC2", "user"}, names
+    by_id = {s.id: s for s in result.symbols}
+
+    def src(e) -> str:
+        return by_id[e.src].name if e.src in by_id else "file"
+
+    got = {
+        (e.edge_type, e.line, src(e), (e.meta or {}).get(SRC_STANDS_IN_FOR))
+        for e in result.edges
+        if e.edge_type in ("calls", "references") and e.line
+        and e.dst.split(":")[-2] in ("helper", "pthread_create", "tbl")
+    }
+    assert got >= {
+        ("calls", 6, "file", UNNAMED_DEFINITION),
+        ("references", 7, "file", UNNAMED_DEFINITION),
+        ("calls", 8, "file", UNNAMED_DEFINITION),
+        ("calls", 13, "outer", UNNAMED_DEFINITION),
+        ("calls", 14, "outer", None),
+        ("calls", 16, "plain", None),
+    }, sorted(got, key=str)
+    # The dispatch-table use inside a macro-named definition stands in too.
+    table_refs = [
+        (e.line, src(e), (e.meta or {}).get(SRC_STANDS_IN_FOR))
+        for e in result.edges
+        if e.edge_type == "references"
+        and (e.meta or {}).get("ref_construct") == "dispatch_table"
+    ]
+    assert (18, "file", UNNAMED_DEFINITION) in table_refs, table_refs
