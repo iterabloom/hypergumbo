@@ -40,3 +40,10 @@
   nonce: 5b12  # 5b12
   set:  # 5b12
     parent: INV-jahom-fusal-lupit-kobaf-zizos-pogon-lubun-hunop  # 5b12
+- op: discuss  # dd19
+  at: '2026-10-04T08:25:25Z'  # dd19
+  by: agent  # dd19
+  actor: jgstern_agent  # dd19
+  clock: 5  # dd19
+  nonce: dd19  # dd19
+  message: "FOUND 2026-10-04 (WI-mahik-hafah-pupil-kumon-nohoz-jofut-girag-fimok, branch jgstern-agent/fix/mahik, NOT merged): this item's perl fix covered the FUNCTION-call arm only. perl.py's method_call_expression arm had no file-level caller fallback, so every perl `->` call outside a sub emitted nothing. On the perl files of postgresql that is 7931 scalar-invocant sites plus 399 class-method sites (TAP tests are top-level scripts); git 51 + 27, virtualbox 1132 + 83.\nThe WI-mahik branch adds the fallback for CLASS-method calls only (Pkg->m, __PACKAGE__->m), whose resolution is now package-scoped. Expression-invocant calls ($obj->m) at top level still emit nothing, deliberately: their lookup is receiver-blind, so a fallback would mostly add wrong edges. Filed as WI-mugir-tupuj-tiras-diror-kutis-dusup-tatuv-rikat. The spec sentence citing this item (\"php/bash/perl/powershell (WI-jadaf) already anchor it\") is corrected on the branch. No status change proposed here."  # dd19

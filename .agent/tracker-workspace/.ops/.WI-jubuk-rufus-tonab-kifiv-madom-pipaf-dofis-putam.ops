@@ -1,0 +1,22 @@
+- op: create  # 9ce1
+  at: '2026-10-04T08:15:23Z'  # 9ce1
+  by: agent  # 9ce1
+  actor: jgstern_agent  # 9ce1
+  clock: 1  # 9ce1
+  nonce: 9ce1  # 9ce1
+  data:  # 9ce1
+    kind: work_item  # 9ce1
+    title: "perl: the analyzer records no inheritance (use parent / use base / @ISA), so Kid->m cannot reach an in-repo Base::m; it stays perl:Kid:0-0:m:unresolved"  # 9ce1
+    status: todo_hard  # 9ce1
+    priority: 3  # 9ce1
+    parent:  # 9ce1
+    tags:  # 9ce1
+    - perl  # 9ce1
+    - call_graph  # 9ce1
+    - analysis_quality  # 9ce1
+    isbefore: []  # 9ce1
+    duplicate_of: []  # 9ce1
+    not_duplicate_of: []  # 9ce1
+    pr_ref:  # 9ce1
+    description: "FOUND 2026-10-04 while fixing WI-mahik-hafah-pupil-kumon-nohoz-jofut-girag-fimok (branch jgstern-agent/fix/mahik).\n\nThe perl analyzer records no inheritance: use parent / use base / our @ISA = (...) / push @ISA produce no extends edges, and linkers/inherited_calls.py registers no perl MRO walker. So a class-method call Kid->m where Kid is a repo package that inherits m from an in-repo Base cannot reach Base::m.\n\nBefore WI-mahik such a call bound SOME package's m by short name (receiver-blind; right only by accident). After WI-mahik it emits perl:Kid:0-0:m:unresolved (call_construct=function), naming the package as written. Measured on git / postgresql / virtualbox perl files: 3 call sites in that situation lost an in-repo binding, and all 3 base bindings were wrong (Error::subs->import bound Git::LoadCPAN::import; openssl's platform->shlibextsimple / platform->export2internal bound AIX / cppbuilder subs; `platform` sets @ISA at run time). So no CORRECT binding was lost on that corpus, but a real inherited call (Catalyst/DBIx::Class/Moose-style codebases: __PACKAGE__->load_components, My::Kid->new from a base) now stays unresolved.\n\nFIX SHAPE (not built): emit extends edges from use parent/base (string list, -norequire) and literal @ISA assignments, register a perl walker (Perl's default MRO is DFS; mro 'c3' is opt-in), and let the unresolved Kid->m edge carry receiver_type_hint=Kid so inherited_calls walks it. External bases (use parent 'LWP::UserAgent') should rewrite the module slot to the base that declares nothing in-repo only if that can be decided; otherwise leave Kid."  # 9ce1
+    fields: {}  # 9ce1
