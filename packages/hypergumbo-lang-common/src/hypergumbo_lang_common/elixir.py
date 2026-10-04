@@ -94,6 +94,17 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    ``@type`` / ``@callback`` are types and emit nothing (``_inside_typespec``).
    A ``def`` / ``defmacro`` / ``defstruct`` inside ``quote`` is a template
    for the module that runs ``use`` and emits no symbol (INV-sinah).
+   A bare call reaches the clauses of the function its ARITY names
+   (WI-rodiz): Elixir identifies a function by name and arity, and a clause
+   symbol's name carries no arity, so each clause records its parameters in
+   ``meta["parameters"]`` (a ``\\\\`` default marked) and the call's argument
+   count -- one more for a ``|>`` left side, one more for a ``do`` block a
+   keyword list does not absorb -- selects among them
+   (``_reachable_clauses``). Clauses of the admitted arity are one function
+   and are all reached; a bodiless head's defaults count for every clause of
+   its arity. A call no local clause can take falls through to the import,
+   Kernel and cross-file resolutions; ``unquote_splicing`` makes the count
+   unknown and excludes nothing.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Elixir-specific
@@ -133,6 +144,9 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.overload_arity import (
+    PARAMETERS_KEY, arity_bounds, parameter_entry,
+)
 
 # Phoenix HTTP method macros for route detection
 PHOENIX_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
@@ -852,6 +866,146 @@ def _extract_elixir_signature(
             return "()"
 
     return "()"  # pragma: no cover - defensive
+
+
+def _def_head_arguments(
+    node: "tree_sitter.Node",
+) -> Optional[list["tree_sitter.Node"]]:
+    """The parameter nodes of a def/defp/defmacro call's head.
+
+    ``def foo(a, b)`` -> ``[a, b]``; ``def foo, do: ..`` -> ``[]``; a guard
+    (``def foo(a) when ..``) is unwrapped. None when the head is not a name
+    (``def unquote(name)(arg)``) -- unknown, not empty.
+    """
+    args = find_child_by_type(node, "arguments")
+    if args is None:  # pragma: no cover - a def call always has arguments
+        return None
+    for child in args.children:
+        head = _unwrap_guard(child)
+        if head.type == "identifier":
+            return []
+        if head.type == "call":
+            inner = find_child_by_type(head, "arguments")
+            if inner is None:
+                return None  # ``def unquote(name)(arg)``-shaped: not a plain head
+            return [c for c in inner.named_children if c.type != "comment"]
+    return None  # pragma: no cover - every named def has a head
+
+
+def _elixir_parameters(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[list[dict[str, Any]]]:
+    """``meta["parameters"]`` of one def clause (WI-rodiz, ADR-0058).
+
+    A parameter is a PATTERN, not a name: an identifier is its own name, and
+    any other pattern is recorded by its text (whitespace collapsed, at most
+    40 characters). ``b \\\\ 1`` is a defaulted parameter named ``b``.
+    """
+    params = _def_head_arguments(node)
+    if params is None:
+        return None
+    entries: list[dict[str, Any]] = []
+    for param in params:
+        default = (
+            param.type == "binary_operator"
+            and len(param.children) >= 3
+            and param.children[1].type == "\\\\"
+        )
+        target = param.children[0] if default else param
+        text = " ".join(node_text(target, source).split())
+        if len(text) > 40:
+            text = text[:37] + "..."
+        entries.append(parameter_entry(text, default=default))
+    return entries
+
+
+def _parameters_meta(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[dict[str, Any]]:
+    """A def clause's ``meta``: its parameters, or None when the head is not
+    a plain name (the arity is then unknown, never zero)."""
+    entries = _elixir_parameters(node, source)
+    return None if entries is None else {PARAMETERS_KEY: entries}
+
+
+def _is_pipe_rhs(node: "tree_sitter.Node", source: bytes) -> bool:
+    """True when ``node`` is the right operand of ``|>``: it gets the left
+    side as its first argument.
+
+    Read by FIELD, not position: a comment line between pipe stages is a
+    child of the ``binary_operator`` too, so ``children[1]`` is not always
+    the operator (livebook's data.ex pipes are commented mid-chain).
+    """
+    parent = node.parent
+    if parent is None or parent.type != "binary_operator":
+        return False
+    operator = parent.child_by_field_name("operator")
+    right = parent.child_by_field_name("right")
+    return (
+        operator is not None and node_text(operator, source) == "|>"
+        and right is not None and right.id == node.id
+    )
+
+
+def _elixir_call_arity(node: "tree_sitter.Node", source: bytes) -> Optional[int]:
+    """The arity a bare call ``f(..)`` / ``f a, b`` invokes; None if unknown.
+
+    One more for a pipe's left side. A ``do`` block is the keyword argument
+    ``do:``, so it adds one -- unless the call's last argument is already a
+    keyword list, which the ``do:`` joins (``f a, k: 1 do .. end`` is
+    ``f(a, [k: 1, do: ..])``). ``unquote_splicing`` passes a list of
+    unknown length.
+    """
+    args = find_child_by_type(node, "arguments")
+    actual = (
+        [c for c in args.named_children if c.type != "comment"]
+        if args is not None else []
+    )
+    for arg in actual:
+        if arg.type == "call":
+            callee = find_child_by_type(arg, "identifier")
+            if callee is not None and node_text(callee, source) == "unquote_splicing":
+                return None
+    count = len(actual)
+    if find_child_by_type(node, "do_block") is not None and not (
+        actual and actual[-1].type == "keywords"
+    ):
+        count += 1
+    if _is_pipe_rhs(node, source):
+        count += 1
+    return count
+
+
+def _reachable_clauses(
+    clauses: list[Symbol], arg_count: Optional[int],
+) -> list[Symbol]:
+    """The clauses a call passing ``arg_count`` arguments reaches (WI-rodiz).
+
+    Clauses are grouped into FUNCTIONS by qualified name and total parameter
+    count -- Elixir's name/arity. A function's lowest arity is the fewest
+    required parameters over its clauses, because a bodiless head's defaults
+    (``def f(a, b \\\\ 1)``) apply to every clause after it. Every clause of
+    each function that admits the count is reached; a clause with no
+    recorded parameters (unknown arity) is never excluded, and neither is
+    anything when the count is unknown.
+    """
+    if arg_count is None:
+        return clauses
+    shapes: list[Optional[tuple[str, int, int]]] = []
+    lowest: dict[tuple[str, int], int] = {}
+    for clause in clauses:
+        bounds = arity_bounds(clause)
+        if bounds is None or bounds.maximum is None:
+            shapes.append(None)  # unknown arity (no Elixir clause is variadic)
+            continue
+        shapes.append((clause.name, bounds.required, bounds.maximum))
+        key = (clause.name, bounds.maximum)
+        lowest[key] = min(lowest.get(key, bounds.required), bounds.required)
+    return [
+        clause for clause, shape in zip(clauses, shapes, strict=True)
+        if shape is None
+        or lowest[(shape[0], shape[2])] <= arg_count <= shape[2]
+    ]
 
 
 def _extract_phoenix_routes(
@@ -1579,6 +1733,7 @@ def _extract_symbols_from_tree(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             signature=_extract_elixir_signature(node, source),
+                            meta=_parameters_meta(node, source),
                             modifiers=modifiers,
                             # INV-loguk: homoiconic head-symbol CC; LOC from span.
                             # The analyzer emits one Symbol per def clause, so the
@@ -1625,6 +1780,7 @@ def _extract_symbols_from_tree(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             signature=_extract_elixir_signature(node, source),
+                            meta=_parameters_meta(node, source),
                             modifiers=modifiers,
                             # INV-loguk: homoiconic head-symbol CC; LOC from span.
                             cyclomatic_complexity=compute_cyclomatic_complexity(
@@ -1783,8 +1939,16 @@ def _extract_edges_from_tree(
                         node, source, symbols_at,
                     ) or _caller_outside_def(node, source, symbols_at, file_anchor)
                     if current_function is not None:
-                        # Multi-clause: check local file for all clauses with this name
-                        local_multi = local_symbols_multi.get(target_name) if local_symbols_multi else None
+                        # Multi-clause: check local file for all clauses with this
+                        # name, then keep the ones the call's arity reaches
+                        # (WI-rodiz). A name defined locally at another arity only
+                        # is not a local call: it falls through below.
+                        call_arity = _elixir_call_arity(node, source)
+                        named_multi = local_symbols_multi.get(target_name) if local_symbols_multi else None
+                        local_multi = (
+                            _reachable_clauses(named_multi, call_arity)
+                            if named_multi else None
+                        )
                         if local_multi:
                             for callee in local_multi:
                                 edges.append(Edge.create(
@@ -1798,7 +1962,7 @@ def _extract_edges_from_tree(
                                     meta={"call_construct": "function"},
                                 ))
                         # Fallback: single-match local lookup (modules, macros)
-                        elif target_name in local_symbols:  # pragma: no cover — defensive; multi index covers all symbols
+                        elif not named_multi and target_name in local_symbols:  # pragma: no cover — defensive; multi index covers all symbols
                             callee = local_symbols[target_name]
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -1871,6 +2035,9 @@ def _extract_edges_from_tree(
                                         s for s in global_multi
                                         if _symbol_module(s.name) in imported_modules
                                     ]
+                                global_multi = _reachable_clauses(
+                                    global_multi, call_arity,
+                                )
                                 for callee in global_multi:
                                     edges.append(Edge.create(
                                         src=current_function.id,
@@ -1925,7 +2092,10 @@ def _extract_edges_from_tree(
                         node, source, symbols_at,
                     ) or _caller_outside_def(node, source, symbols_at, file_anchor)
                     if current_function is not None:
+                        # ``data |> func``: a call of func/1 (WI-rodiz).
                         local_multi = local_symbols_multi.get(func_name) if local_symbols_multi else None
+                        if local_multi:
+                            local_multi = _reachable_clauses(local_multi, 1)
                         if local_multi:
                             for callee in local_multi:
                                 edges.append(Edge.create(
@@ -1946,7 +2116,7 @@ def _extract_edges_from_tree(
                                         s for s in global_multi
                                         if _symbol_module(s.name) in imported_modules
                                     ]
-                                for callee in global_multi:
+                                for callee in _reachable_clauses(global_multi, 1):
                                     edges.append(Edge.create(
                                         src=current_function.id,
                                         dst=callee.id,
