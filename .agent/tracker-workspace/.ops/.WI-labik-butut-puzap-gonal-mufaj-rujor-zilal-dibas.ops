@@ -26,3 +26,18 @@
   clock: 2  # 8829
   nonce: '8829'  # 8829
   message: "WORK DONE on branch jgstern-agent/fix/kibah (not merged), commit 5e60e3ea7d.\n\nPremise correction: python's WI-gulot did NOT choose an edge; it chases the alias at the CALL site (function_aliases consumed by _process_call). This branch takes the item's own first design instead (an edge from the variable), because a Go package-level func var is the test seam: what a call reaches is the variable, and its initializer is one value of it. Calls keep binding the variable (INV-nopoh).\n\n_emit_go_alias_edges: for each package-level `var x = <identifier | selector>` naming a repo function, `calls` variable -> target, evidence function_reference (bare names in the caller's package, selectors by operand as WI-kibah resolves them). A call initializer stays INV-nopoh's anchor; a literal or a typed-only var emits nothing. An alias of an OUTSIDE function keeps its module_attr_ref, now anchored on the variable (new `owner_kinds` parameter on core emit_module_attribute_refs / _innermost_callable_at, default unchanged for other languages).\n\nBehavioural evidence: alertmanager test/with_api_v2/mock.go and test/cli/mock.go now emit NewWebhook/Alert/At/Between -> test/testutils functions (8 edges) plus 2 CompareCollectors; cert-manager 2; coredns and prometheus 0. io-boundaries on `var readFile = os.ReadFile; func viaAlias(p string) { readFile(p) }; func main() { viaAlias(\"a\") }`: dev reports the fs_read `<- main.go (main.go:1)` with no entry point; branch `<- readFile (main.go:5)`, reachable from main. module_attr_ref anchors moved file -> variable on 63 / 539 / 253 / 690 sites (alertmanager / coredns / cert-manager / prometheus; includes WI-kugap's shadow drops).\n\nTargeted smart-test on HEAD 5e60e3ea7d: 15728 passed, 5 xfailed, 100% coverage on changed files."  # 8829
+- op: update  # 0618
+  at: '2026-10-04T02:54:22Z'  # 0618
+  by: agent  # 0618
+  actor: jgstern_agent  # 0618
+  clock: 3  # 0618
+  nonce: '0618'  # 0618
+  set:  # 0618
+    status: done  # 0618
+- op: discuss  # 5d54
+  at: '2026-10-04T02:54:22Z'  # 5d54
+  by: agent  # 5d54
+  actor: jgstern_agent  # 5d54
+  clock: 4  # 5d54
+  nonce: 5d54  # 5d54
+  message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed in PR #1441 (commit 5e60e3ea7d). A package-level `var x = <identifier|selector>` naming a repo function emits `calls` variable → function (evidence `function_reference`). An alias of an outside function keeps its `module_attr_ref`, now anchored on the variable (new core `owner_kinds`).\n\nLive: alertmanager's `var ( NewWebhook = testutils.NewWebhook ... )` in test/cli and test/with_api_v2 now continue to test/testutils (8 edges, +2 CompareCollectors). io-boundaries on `var readFile = os.ReadFile`, called through `viaAlias` from `main`: the fs_read was `<- main.go (main.go:1)`, reached from nothing; it is now `<- readFile (main.go:5)`, reachable from main.\n\nPremise note: python's WI-gulot chases the alias at the call site and emits no edge. Go keeps INV-nopoh's binding to the variable on purpose, because a package-level func var is a reassignable test seam."  # 5d54
