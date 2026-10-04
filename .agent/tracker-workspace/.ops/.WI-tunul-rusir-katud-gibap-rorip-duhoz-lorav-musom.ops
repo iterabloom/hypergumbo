@@ -1,0 +1,23 @@
+- op: create  # 4e34
+  at: '2026-10-04T20:51:08Z'  # 4e34
+  by: agent  # 4e34
+  actor: jgstern_agent  # 4e34
+  clock: 1  # 4e34
+  nonce: '4e34'  # 4e34
+  data:  # 4e34
+    kind: work_item  # 4e34
+    title: "scala: Predef println/print/printf and scala.Console writes have no row, so a bare println(secret) -- the commonest stdout write in scala -- reads confirmed with NO caveat against a never-logs-a-secret claim"  # 4e34
+    status: todo_hard  # 4e34
+    priority: 2  # 4e34
+    parent:  # 4e34
+    tags:  # 4e34
+    - scala  # 4e34
+    - io_boundary  # 4e34
+    - taint  # 4e34
+    - analysis_quality  # 4e34
+    isbefore: []  # 4e34
+    duplicate_of: []  # 4e34
+    not_duplicate_of: []  # 4e34
+    pr_ref:  # 4e34
+    description: "Found while doing WI-rabum-zatur-rufav-busol-lurop-gisur-zojif-gidun (branch jgstern-agent/fix/rabum, local). Measured with one-file fixtures and verify-claims (a never-logs-a-secret taint claim, source_taint host_secret, prohibited_sink_zone logging, plus a logging must_not_exist claim), code at the rabum branch tip:\n\n- scala `val k = System.getenv(\"API_KEY\"); println(k)` -> both claims `confirmed`, NO caveat. A false all-clear: Predef.println writes the process's own stdout (logging per audit-findings 0021).\n- scala `Console.err.println(k)` -> `confirmed_with_caveats` (untyped_receiver, unknown_receiver_scope): honest, but no sink either.\n- Controls: kotlin `println(k)` -> `violated` (kotlin.yaml rows kotlin.io.ConsoleKt println/print); scala and kotlin `System.err.println(k)` -> `violated` since WI-rabum.\n\nMechanism: scala.yaml has no logging section at all (WI-dutah's closing note: \"scala has no stdio entries\"), so the bare Predef call and scala.Console's writers match no row; the bare call carries no receiver, so no untyped-receiver caveat is raised either -- which is why the verdict is a clean `confirmed`.\n\nFix shape (not checked): rows for scala.Predef print/println/printf and scala.Console (print/println/printf; Console.out/err as values, which would need the WI-rabum attribute path with module scala.Console), plus whatever the scala analyzer must emit for a bare `println` to reach a scala.Predef row (it is an implicit import, like java.lang -- see jvm_implicit_imports). Measure on sbt / gatling: logging findings should only be ADDED."  # 4e34
+    fields: {}  # 4e34
