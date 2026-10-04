@@ -1635,6 +1635,26 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     MetaKeySpec("is_behaviour", AXIS_SYMBOL_META,
                 "Pony: True on a behaviour (``be``), an actor's asynchronous "
                 "message handler, emitted as kind=method (WI-rokus)."),
+    MetaKeySpec("src_stands_in_for", AXIS_EDGE_META,
+                "The edge's ``src`` is NOT the caller: the call sits in a "
+                "declaration the analyzer emits no symbol for, so it is drawn "
+                "from the nearest enclosing record that has one (an outer "
+                "definition, or the file anchor). One value: "
+                "'unnamed_definition' -- a C / C++ / CUDA definition whose "
+                "name comes from a macro tree-sitter cannot expand "
+                "(``TEST_BEGIN(x) {..}``, ``PFX(x)(args)``, an export-macro "
+                "class misparse; WI-tikop). ABSENT means the src IS the "
+                "declaration that contains the call. Written by "
+                "``analyze.edge_source.mark_stand_in``. Per call site: one "
+                "edge can collapse a stand-in site with a real file-scope "
+                "call to the same callee.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: hypergumbo_core.analyze.edge_source."
+                    "mark_stand_in, called by the c, cpp and cuda analyzers "
+                    "over the edges one call site produced."
+                )),
 )
 
 
