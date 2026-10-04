@@ -1632,6 +1632,9 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Lean: True on a ``lemma`` declaration."),
     MetaKeySpec("is_abbrev", AXIS_SYMBOL_META,
                 "Lean: True on an ``abbrev`` declaration."),
+    MetaKeySpec("is_behaviour", AXIS_SYMBOL_META,
+                "Pony: True on a behaviour (``be``), an actor's asynchronous "
+                "message handler, emitted as kind=method (WI-rokus)."),
 )
 
 

@@ -8,8 +8,14 @@ collector pause. It runs on the LLVM backend.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Pass 1: Extract actors, classes, interfaces, traits, primitives, methods, constructors
-2. Pass 2: Extract call edges with registry lookup for resolution
+1. Pass 1: Extract actors, classes, interfaces, traits, primitives, methods,
+   behaviours, constructors
+2. Pass 2: Extract call edges with registry lookup for resolution. A call's
+   source is the constructor / method / behaviour whose declaration contains
+   it, else its type, found by POSITION in the file (INV-midag): every Pony
+   program declares ``actor Main`` with ``new create``, so a name lookup in the
+   repository-wide registry credited one program's calls to another's. A bare
+   callee resolves to this file's declaration before the registry's.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Pony-specific extraction
@@ -24,6 +30,9 @@ Symbols Extracted
 - **Primitives**: Singleton value types
 - **Constructors**: new constructors within types
 - **Methods**: fun methods within types
+- **Behaviours**: ``be`` declarations, an actor's asynchronous message
+  handlers, as ``kind="method"`` with ``meta["is_behaviour"] = True`` and a
+  ``be name(params)`` signature (WI-rokus; the registry has no behaviour kind)
 - **Fields**: var/let field definitions whose name does not start with ``_``
 
 Edges Extracted
@@ -32,9 +41,11 @@ Edges Extracted
 
 Why This Design
 ---------------
-- Pony's actor model makes understanding message passing important, but
-  behaviours (``be``) are NOT extracted yet (WI-rokus), so asynchronous
-  message handlers are missing from the graph
+- Pony's actor model makes message passing important: a behaviour is a
+  symbol, and the calls in its body are its own. A message SEND
+  (``worker.ping()``) is a call edge like any other; it resolves only when the
+  receiver's spelling names the target (``Worker.ping``), since receivers are
+  not typed
 - Reference capabilities (iso, trn, ref, val, box, tag) are captured only for
   method (``fun``) receivers, as meta ``capability``
 - Interface/trait relationships (``is`` clauses) are NOT emitted as edges;
@@ -51,9 +62,12 @@ from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
+    SymbolsAt,
     TreeSitterAnalyzer,
+    enclosing_declared_symbol,
     make_doc_symbol_ids,
     make_unresolved_edge,
+    symbols_at,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
@@ -160,7 +174,15 @@ def _extract_constructor(
 def _extract_method(
     node: "tree_sitter.Node", rel_path: str, current_type: Optional[str],
 ) -> Optional[Symbol]:
-    """Extract a method (fun)."""
+    """Extract a method (``fun``) or a behaviour (``be``, a ``behavior`` node).
+
+    A behaviour is the method an actor runs asynchronously when it receives
+    the message of that name. The registry has no behaviour kind, so it is a
+    ``method`` with ``meta["is_behaviour"] = True`` and a ``be`` signature
+    (WI-rokus). It takes no receiver capability: a behaviour's is always
+    ``tag``, implicitly.
+    """
+    is_behaviour = node.type == "behavior"
     name = None
     params: list[str] = []
     capability = ""
@@ -196,11 +218,14 @@ def _extract_method(
     )
 
     cap_str = f" {capability}" if capability else ""
-    signature = f"fun{cap_str} {name}({', '.join(params)})"
+    keyword = "be" if is_behaviour else "fun"
+    signature = f"{keyword}{cap_str} {name}({', '.join(params)})"
 
     meta: dict[str, Any] = {"params": params, "parent_type": current_type}
     if capability:
         meta["capability"] = capability
+    if is_behaviour:
+        meta["is_behaviour"] = True
 
     return Symbol(
         id=symbol_id,
@@ -272,7 +297,7 @@ def _extract_members(
     node: "tree_sitter.Node", rel_path: str, current_type: str,
     analysis: FileAnalysis, symbol_registry: dict[str, str],
 ) -> None:
-    """Extract members (constructors, methods, fields) from a type."""
+    """Extract members (constructors, methods, behaviours, fields) from a type."""
     for child in node.children:
         if child.type == "constructor":
             sym = _extract_constructor(child, rel_path, current_type)
@@ -280,7 +305,7 @@ def _extract_members(
                 analysis.symbols.append(sym)
                 symbol_registry[sym.name] = sym.id
                 analysis.symbol_by_name[sym.name] = sym
-        elif child.type == "method":
+        elif child.type in ("method", "behavior"):
             sym = _extract_method(child, rel_path, current_type)
             if sym:
                 analysis.symbols.append(sym)
@@ -324,6 +349,7 @@ def _extract_type_definition(
 
     # Count members
     method_count = 0
+    behaviour_count = 0
     constructor_count = 0
     field_count = 0
     for child in node.children:
@@ -331,6 +357,8 @@ def _extract_type_definition(
             for member in child.children:
                 if member.type == "method":
                     method_count += 1
+                elif member.type == "behavior":
+                    behaviour_count += 1
                 elif member.type == "constructor":
                     constructor_count += 1
                 elif member.type == "field":
@@ -338,6 +366,7 @@ def _extract_type_definition(
 
     meta = {
         "method_count": method_count,
+        "behaviour_count": behaviour_count,
         "constructor_count": constructor_count,
         "field_count": field_count,
     }
@@ -394,11 +423,36 @@ def _collect_member_parts(node: "tree_sitter.Node", parts: list[str]) -> None:
             _collect_member_parts(child, parts)
 
 
+#: The type declarations: a call in one of them but in no member falls back to it.
+_PONY_TYPE_NODES: frozenset[str] = frozenset({
+    "actor_definition", "class_definition", "interface_definition",
+    "trait_definition", "primitive_definition",
+})
+
+#: The members whose body is a call's enclosing callable (WI-rokus adds ``be``).
+_PONY_CALLABLE_NODES: frozenset[str] = frozenset({"constructor", "method", "behavior"})
+
+
+def _resolve_callee(
+    name: str, file_table: dict[str, Symbol], symbol_registry: dict[str, str],
+) -> Optional[str]:
+    """This file's declaration of ``name`` first, then the repository's.
+
+    The registry keeps ONE symbol per name, and every Pony program declares
+    ``actor Main`` with ``new create``, so a bare ``helper()`` in one program
+    resolved into another's ``Main.helper`` when the registry kept that one.
+    """
+    local = file_table.get(name)
+    if local is not None:
+        return local.id
+    return symbol_registry.get(name)
+
+
 def _extract_call_edge(
     node: "tree_sitter.Node", rel_path: str, run_id: str,
     symbol_registry: dict[str, str],
-    current_method_id: Optional[str],
-    current_type_id: Optional[str],
+    file_table: dict[str, Symbol],
+    decl_index: SymbolsAt,
     current_type: Optional[str],
 ) -> Optional[Edge]:
     """Extract a call edge from a call expression."""
@@ -422,18 +476,27 @@ def _extract_call_edge(
     if method_name in PONY_BUILTINS or type_name in PONY_BUILTINS:
         return None
 
-    # Determine source
-    src = current_method_id or current_type_id or f"pony:{rel_path}"
+    # The source: the member whose declaration CONTAINS the call, else its type,
+    # found by POSITION in this file (INV-midag), never by name.
+    enclosing = (
+        enclosing_declared_symbol(node, decl_index, _PONY_CALLABLE_NODES)
+        or enclosing_declared_symbol(node, decl_index, _PONY_TYPE_NODES)
+    )
+    src = enclosing.id if enclosing is not None else f"pony:{rel_path}"
 
     # Try to resolve the target
-    resolved_id = symbol_registry.get(callee_name)
+    resolved_id = _resolve_callee(callee_name, file_table, symbol_registry)
 
     # Also try type.method format if we have a type
     if not resolved_id and len(parts) == 2:
         pass  # Already in type.method format
     elif not resolved_id and current_type:
-        local_name = f"{current_type}.{callee_name}"
-        resolved_id = symbol_registry.get(local_name)
+        # A member of the enclosing type. A Pony type is declared in ONE file,
+        # so this file's table is the only place its members can be: the
+        # registry's same-named entry is ANOTHER program's type (every program
+        # declares ``actor Main``), never this one's.
+        own = file_table.get(f"{current_type}.{callee_name}")
+        resolved_id = own.id if own is not None else None
 
     if resolved_id:
         return Edge.create(
@@ -457,59 +520,35 @@ def _extract_call_edge(
 def _extract_pony_edges(
     node: "tree_sitter.Node", rel_path: str, run_id: str,
     symbol_registry: dict[str, str],
+    file_table: dict[str, Symbol],
+    decl_index: SymbolsAt,
     current_type: Optional[str],
-    current_type_id: Optional[str],
-    current_method: Optional[str],
-    current_method_id: Optional[str],
     edges_out: list[Edge],
 ) -> None:
-    """Extract call edges from the syntax tree."""
-    # Track current context
-    if node.type in ("actor_definition", "class_definition", "interface_definition",
-                     "trait_definition", "primitive_definition"):
-        name = None
-        for child in node.children:
-            if child.type == "identifier":
-                name = _get_node_text(child)
-                break
-        new_type = name
-        new_type_id = symbol_registry.get(name) if name else None
-        for child in node.children:
-            _extract_pony_edges(
-                child, rel_path, run_id, symbol_registry,
-                new_type, new_type_id, None, None, edges_out,
-            )
-        return
+    """Extract call edges from the syntax tree.
 
-    if node.type in ("constructor", "method"):
-        name = None
+    ``current_type`` (the enclosing type's name) only qualifies a bare callee
+    (``helper()`` -> ``Main.helper``); the edge's source is found by position.
+    """
+    if node.type in _PONY_TYPE_NODES:
+        current_type = None
         for child in node.children:
             if child.type == "identifier":
-                name = _get_node_text(child)
+                current_type = _get_node_text(child)
                 break
-        full_name = f"{current_type}.{name}" if current_type and name else name
-        new_method_id = symbol_registry.get(full_name) if full_name else None
-        for child in node.children:
-            _extract_pony_edges(
-                child, rel_path, run_id, symbol_registry,
-                current_type, current_type_id,
-                full_name, new_method_id, edges_out,
-            )
-        return
 
     if node.type == "call_expression":
         edge = _extract_call_edge(
-            node, rel_path, run_id, symbol_registry,
-            current_method_id, current_type_id, current_type,
+            node, rel_path, run_id, symbol_registry, file_table,
+            decl_index, current_type,
         )
         if edge:
             edges_out.append(edge)
 
     for child in node.children:
         _extract_pony_edges(
-            child, rel_path, run_id, symbol_registry,
-            current_type, current_type_id,
-            current_method, current_method_id, edges_out,
+            child, rel_path, run_id, symbol_registry, file_table,
+            decl_index, current_type, edges_out,
         )
 
 
@@ -556,9 +595,14 @@ class PonyAnalyzer(TreeSitterAnalyzer):
             if isinstance(sym, Symbol):
                 symbol_registry[name] = sym.id
 
+        # This file's declarations by name: EVERY symbol (fields included, as
+        # the registry holds them), where ``local_symbols`` keeps only the
+        # callables and types.
+        file_syms = self.file_symbols(local_symbols)
+        file_table = {s.name: s for s in file_syms}
         _extract_pony_edges(
             tree.root_node, rel_path, run.execution_id,
-            symbol_registry, None, None, None, None, edges,
+            symbol_registry, file_table, symbols_at(file_syms), None, edges,
         )
         return edges
 
