@@ -1158,6 +1158,15 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "annotations on a Symbol. Distinct from "
                 "``decorators`` (Python-style) where the syntax "
                 "carries different semantics."),
+    MetaKeySpec("ffi_import", AXIS_SYMBOL_META,
+                "INV-lopus: on a function DECLARED in a foreign (``extern``) "
+                "block, what it binds to as the source states it -- a map "
+                "with ``abi`` (the block's ABI string, ``C`` when unwritten) "
+                "and, only when written, ``js_namespace`` / ``js_module`` / "
+                "``foreign_name`` (wasm_bindgen ``js_namespace`` / ``module`` "
+                "/ ``js_name``, or ``#[link_name]``) and ``link`` "
+                "(``#[link(name)]``). Emitted by the Rust analyzer. Records "
+                "the binding; it does not classify the call."),
     MetaKeySpec("parameters", AXIS_SYMBOL_META,
                 "Structured parameter list on function / method "
                 "Symbols (name + type + default). Used by "

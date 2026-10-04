@@ -10,8 +10,9 @@ How It Works
 ------------
 Given a source blob and the 1-based line range of a function definition, parse
 the source with tree-sitter-rust, locate the unique ``function_item`` or
-``function_signature_item`` (trait method declarations, WI-duguk) whose line
-span matches, and feed the same inputs rust.py uses into
+``function_signature_item`` (trait method declarations, WI-duguk; foreign
+``extern``-block declarations, INV-lopus, which own no type and so take the
+``function`` kind) whose line span matches, and feed the same inputs rust.py uses into
 ``make_typed_stable_id`` — kind, normalized signature and visibility, plus
 ``name``, ``qualified_name`` (mandatory since v5 / ADR-0035 §1) and
 ``file_stable_id`` (v7). The output is byte-for-byte identical to the
