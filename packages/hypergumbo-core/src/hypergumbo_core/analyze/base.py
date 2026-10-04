@@ -126,7 +126,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections.abc import Sequence
+from collections.abc import Container, Sequence
 from typing import TYPE_CHECKING, AbstractSet, Any, Callable, ClassVar, Dict, Iterator, Optional
 
 from ..library_signatures import load_library_signatures
@@ -3007,6 +3007,8 @@ def emit_module_attribute_refs(
     carrier_arguments_field: str = "arguments",
     owner_kinds: "frozenset[str]" = _ATTR_OWNER_KINDS,
     is_local_value: "Callable[[tree_sitter.Node], bool] | None" = None,
+    carrier_argument_wrapper_kinds: tuple[str, ...] = (),
+    attribute_names: "Container[str] | None" = None,
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
 
@@ -3121,6 +3123,26 @@ def emit_module_attribute_refs(
             uses inside a call -- are unaffected.
         carrier_receiver_fields: see ``carrier_call_kinds``.
         carrier_arguments_field: the call's arguments field name.
+        carrier_argument_wrapper_kinds: node types a grammar puts BETWEEN an
+            argument and the arguments node (tree-sitter-kotlin's
+            ``value_argument``); a use inside one is still handed to the call.
+            Empty (the default) changes nothing.
+        attribute_names: when given, only an access whose attribute is one of
+            these is a read. For a language that calls a parameterless method
+            without parentheses (scala's ``System.currentTimeMillis``), an
+            access on the module is not necessarily a FIELD read, and the
+            caller names the fields (WI-rabum). None, the default, keeps every
+            attribute.
+
+    FIELD NAMES MAY NAME A CHILD BY POSITION OR TYPE. Every ``*_field_names`` /
+    ``*_fields`` / ``*_field`` argument goes through :func:`_child_by_fields`,
+    where a name beginning ``@`` selects a NAMED child instead of a field:
+    ``@first``, ``@last``, or ``@<node type>``. tree-sitter-kotlin declares no
+    fields on ``navigation_expression`` or ``call_expression``, so kotlin
+    passes ``@first`` / ``@last`` / ``@value_arguments`` (WI-rabum).
+
+    A BACKTICK-QUOTED attribute names the member it quotes: kotlin writes
+    ``System.`in``` because ``in`` is a keyword there.
         owner_kinds: the symbol kinds a read may be anchored on (see
             :func:`_innermost_callable_at`). Defaults to callables.
         is_local_value: given the base node of an attribute access whose
@@ -3153,11 +3175,7 @@ def emit_module_attribute_refs(
     for node in iter_tree(root):
         if node.type not in call_node_kinds:
             continue
-        callee = None
-        for fname in call_function_field_names:
-            callee = node.child_by_field_name(fname)
-            if callee is not None:
-                break
+        callee = _child_by_fields(node, call_function_field_names)
         if callee is None:
             continue
         if callee.type in node_kinds:
@@ -3174,20 +3192,16 @@ def emit_module_attribute_refs(
         if skip_ancestor_kinds and _has_ancestor_of_kind(
                 node, skip_ancestor_kinds):
             continue
-        base = None
-        for fname in object_field_names:
-            base = node.child_by_field_name(fname)
-            if base is not None:
-                break
-        prop = None
-        for fname in property_field_names:
-            prop = node.child_by_field_name(fname)
-            if prop is not None:
-                break
+        base = _child_by_fields(node, object_field_names)
+        prop = _child_by_fields(node, property_field_names)
         if base is None or prop is None:
             continue
         base_text = node_text(base, source)
         attr_name = node_text(prop, source)
+        if len(attr_name) > 2 and attr_name[0] == attr_name[-1] == "`":
+            attr_name = attr_name[1:-1]
+        if attribute_names is not None and attr_name not in attribute_names:
+            continue
         if scoped_path:
             # Left-recursive walk: the base may itself be a scoped_identifier
             # (``std::env`` inside ``std::env::consts``).  Walk left via the
@@ -3195,11 +3209,7 @@ def emit_module_attribute_refs(
             # identifier — that's the alias we check against imports.
             leftmost = base
             while leftmost.type in node_kinds:
-                inner = None
-                for fname in object_field_names:
-                    inner = leftmost.child_by_field_name(fname)
-                    if inner is not None:
-                        break
+                inner = _child_by_fields(leftmost, object_field_names)
                 if inner is None:  # pragma: no cover
                     # Grammar variation guard: a node whose type is in
                     # node_kinds but whose ``object_field_names`` resolve
@@ -3247,6 +3257,7 @@ def emit_module_attribute_refs(
             node, source, node_kinds, object_field_names,
             call_function_field_names, carrier_call_kinds,
             carrier_receiver_fields, carrier_arguments_field,
+            carrier_argument_wrapper_kinds,
         )
         edges_out.append(Edge.create(
             src=(owner.id if owner is not None else caller_symbol.id),
@@ -3260,6 +3271,34 @@ def emit_module_attribute_refs(
         ))
 
 
+def _child_by_fields(
+    node: "tree_sitter.Node", names: tuple[str, ...],
+) -> "tree_sitter.Node | None":
+    """The first child one of ``names`` selects, trying them in order.
+
+    A plain name is a tree-sitter FIELD. A name beginning ``@`` selects a NAMED
+    child instead -- ``@first``, ``@last``, or ``@<node type>`` (the first named
+    child of that type) -- for a grammar that declares no fields on the node
+    (tree-sitter-kotlin's ``navigation_expression`` and ``call_expression``,
+    WI-rabum). One resolver for every field argument of
+    :func:`emit_module_attribute_refs`, so the attribute walk and the carrier
+    walk cannot read a node's parts two different ways.
+    """
+    for name in names:
+        if not name.startswith("@"):
+            child = node.child_by_field_name(name)
+        elif name == "@first":
+            child = node.named_children[0] if node.named_child_count else None
+        elif name == "@last":
+            child = node.named_children[-1] if node.named_child_count else None
+        else:
+            child = next(
+                (c for c in node.named_children if c.type == name[1:]), None)
+        if child is not None:
+            return child
+    return None
+
+
 def _attr_carrier(
     node: "tree_sitter.Node",
     source: bytes,
@@ -3269,25 +3308,32 @@ def _attr_carrier(
     call_kinds: tuple[str, ...],
     receiver_fields: tuple[str, ...],
     arguments_field: str,
+    argument_wrapper_kinds: tuple[str, ...] = (),
 ) -> Optional[str]:
     """``<callee>@<line>`` of the call that USES ``node``, or None (INV-hopib).
 
     See ``carrier_call_kinds`` on :func:`emit_module_attribute_refs`. Node
     identity is compared by ``.id``: tree-sitter returns a fresh wrapper per
-    accessor call.
+    accessor call. An argument wrapper (``argument_wrapper_kinds``) is stepped
+    over before asking whether the use is an argument; the receiver and callee
+    tests are about the node itself and never step.
     """
     parent = node.parent
     if not call_kinds or parent is None:
         return None
+    holder = parent
+    while holder.type in argument_wrapper_kinds and holder.parent is not None:
+        holder = holder.parent
     grand = parent.parent
     call = None
-    if grand is not None and grand.type in call_kinds:
-        args = grand.child_by_field_name(arguments_field)
-        if args is not None and args.id == parent.id:
-            call = grand
+    holder_parent = holder.parent
+    if holder_parent is not None and holder_parent.type in call_kinds:
+        args = _child_by_fields(holder_parent, (arguments_field,))
+        if args is not None and args.id == holder.id:
+            call = holder_parent
     if call is None and parent.type in call_kinds:
         if any(
-            (r := parent.child_by_field_name(f)) is not None and r.id == node.id
+            (r := _child_by_fields(parent, (f,))) is not None and r.id == node.id
             for f in receiver_fields
         ):
             call = parent
@@ -3296,19 +3342,15 @@ def _attr_carrier(
         and parent.type in node_kinds
         and grand is not None
         and grand.type in call_kinds
-        and any(
-            (o := parent.child_by_field_name(f)) is not None and o.id == node.id
-            for f in object_field_names
-        )
-        and any(
-            (c := grand.child_by_field_name(f)) is not None and c.id == parent.id
-            for f in call_function_field_names
-        )
+        and (o := _child_by_fields(parent, object_field_names)) is not None
+        and o.id == node.id
+        and (c := _child_by_fields(grand, call_function_field_names)) is not None
+        and c.id == parent.id
     ):
         call = grand
     if call is None:
         return None
-    args = call.child_by_field_name(arguments_field)
+    args = _child_by_fields(call, (arguments_field,))
     end = args.start_byte if args is not None else call.end_byte
     callee = source[call.start_byte:end].decode("utf-8", "replace").strip()
     return f"{callee}@{call.start_point[0] + 1}"

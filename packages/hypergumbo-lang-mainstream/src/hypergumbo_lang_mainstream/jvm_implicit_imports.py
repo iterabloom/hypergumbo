@@ -71,6 +71,17 @@ when its qualified name IS the import, or lies under it (``Issue.Entity`` under
 ``dev.acme.api.Issue``). A symbol with no qualified name is kept. That is the
 old behaviour, and nothing can be decided without the name. scala applies a
 looser rule of its own (see ``scala._import_names_elsewhere``).
+
+THE PROCESS'S OWN STANDARD STREAMS ARE THE SECOND THING THE THREE SHARE
+(WI-rabum). ``System.out`` / ``System.err`` are ``java.io.PrintStream`` fields,
+and java.yaml rows both the fields (``attributes: [out, err]``, logging) and
+PrintStream's writers, the latter only where the call is stamped
+``io_target_kind: std_stream``. java typed and stamped them (WI-dorus); kotlin
+and scala inherited the rows through ``_CATALOG_PARENTS`` and emitted neither
+record. The spellings, the type, the stamp, the shadow rule
+(:func:`bare_system_is_java_lang`) and the attribute map the shared
+``emit_module_attribute_refs`` is handed (:func:`java_lang_system_aliases`)
+live here, so the three analyzers cannot drift apart on them.
 """
 from __future__ import annotations
 
@@ -233,3 +244,82 @@ def inline_qualified_owner(
     if callee_name[:1].isupper() and all(s[:1].islower() for s in segments):
         return f"{path}.{callee_name}"
     return path
+
+
+# ---------------------------------------------------------------------------
+# The process's own standard streams (WI-dorus in java; WI-rabum for kotlin
+# and scala). ONE HOME for the three JVM analyzers, so the spelling that types
+# a ``System.out`` receiver cannot differ between them.
+# ---------------------------------------------------------------------------
+
+#: ``java.lang.System``, which java.yaml's ``attributes: [in]`` (ipc_recv) and
+#: ``attributes: [out, err]`` (logging) rows key on.
+JAVA_LANG_SYSTEM: Final[str] = f"{IMPLICIT_IMPORT_PACKAGE}.System"
+
+#: The FIELDS of ``java.lang.System`` (JDK 17: ``in``, ``out``, ``err``; every
+#: other member is a method). scala calls a parameterless method without
+#: parentheses, so ``System.currentTimeMillis`` parses as the same access as
+#: ``System.out``; only these names are attribute reads.
+JAVA_LANG_SYSTEM_FIELDS: Final[frozenset[str]] = frozenset({"in", "out", "err"})
+
+#: The type ``System.out`` and ``System.err`` declare.
+PRINT_STREAM_TYPE: Final[str] = "java.io.PrintStream"
+
+#: The ``io_target_kind`` a write to the process's own stdout / stderr carries:
+#: java.yaml's PrintStream rows apply only where it is stamped
+#: (``requires_target_kind: std_stream``).
+STD_STREAM_TARGET_KIND: Final[str] = "std_stream"
+
+#: The receiver spellings that are ``System.out`` / ``System.err``, bare and
+#: fully qualified.
+STD_OUTPUT_RECEIVERS: Final[frozenset[str]] = frozenset({
+    "System.out", "System.err",
+    f"{JAVA_LANG_SYSTEM}.out", f"{JAVA_LANG_SYSTEM}.err",
+})
+
+
+def bare_system_is_java_lang(
+    imports: dict[str, str],
+    *,
+    is_project_type: bool,
+    is_local: bool,
+) -> bool:
+    """Whether a bare ``System`` in this scope is ``java.lang.System``.
+
+    Not when a local or a project type is named ``System``, or the file imports
+    some other ``System``: the same three shadows java's WI-dorus check names.
+    ``System`` is in no language's shadow list, so ``shadowed`` is empty here.
+    """
+    return not is_local and static_owner_module(
+        "System", imports, shadowed=frozenset(), is_project_type=is_project_type,
+    ) == JAVA_LANG_SYSTEM
+
+
+def is_std_output_receiver(receiver_text: str, *, bare_system_is_java_lang: bool) -> bool:
+    """Whether a call's receiver, as spelled, is the process's ``System.out`` /
+    ``System.err``.
+
+    The bare spelling counts only when ``System`` is java.lang's in that scope
+    (:func:`bare_system_is_java_lang`). The fully-qualified one names it outright.
+    Whitespace inside the spelling (a chain split over lines) is ignored.
+    """
+    spelled = "".join(receiver_text.split())
+    if spelled not in STD_OUTPUT_RECEIVERS:
+        return False
+    return bare_system_is_java_lang or spelled.startswith(f"{JAVA_LANG_SYSTEM}.")
+
+
+def java_lang_system_aliases(*, bare_system_is_java_lang: bool) -> dict[str, str]:
+    """The ``imports`` map kotlin and scala hand ``emit_module_attribute_refs``.
+
+    WI-rabum. ONLY ``java.lang.System``: its three fields are the only JVM
+    attributes any catalogue rows, and an access on any other imported name
+    would put modules with no rows in front of the uncatalogued-module gate --
+    an unmeasured change java's broader map (every import) was not asked to make
+    here. The fully-qualified spelling always maps; the bare one only where
+    ``System`` is java.lang's.
+    """
+    aliases = {JAVA_LANG_SYSTEM: JAVA_LANG_SYSTEM}
+    if bare_system_is_java_lang:
+        aliases["System"] = JAVA_LANG_SYSTEM
+    return aliases

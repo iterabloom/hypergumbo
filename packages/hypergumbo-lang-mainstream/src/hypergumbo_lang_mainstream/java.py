@@ -161,6 +161,10 @@ from hypergumbo_core.paths import normalize_path
 from hypergumbo_lang_mainstream.jvm_implicit_imports import (
     IMPLICIT_IMPORT_PACKAGE,
     JAVA_LANG_TYPES,
+    PRINT_STREAM_TYPE,
+    STD_STREAM_TARGET_KIND,
+    bare_system_is_java_lang,
+    is_std_output_receiver,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -888,14 +892,10 @@ _JAVA_STD_STREAM_EXPRS: frozenset[str] = frozenset({
     "System.in", "java.lang.System.in",
 })
 
-#: WI-dorus: the receiver spellings whose static type the FIELD fixes --
-#: ``java.lang.System.out`` and ``.err`` are declared ``java.io.PrintStream``.
-_JAVA_STD_OUTPUT_RECEIVERS: frozenset[str] = frozenset({
-    "System.out", "System.err", "java.lang.System.out", "java.lang.System.err",
-})
-
-#: The type those fields declare.
-_JAVA_PRINT_STREAM = "java.io.PrintStream"
+#: WI-dorus: ``java.lang.System.out`` and ``.err`` are declared
+#: ``java.io.PrintStream``. The spellings and the type live in
+#: :mod:`jvm_implicit_imports`, shared with kotlin and scala (WI-rabum).
+_JAVA_PRINT_STREAM = PRINT_STREAM_TYPE
 
 
 def _java_std_output_receiver(
@@ -913,15 +913,17 @@ def _java_std_output_receiver(
     ``unknown_receiver_scope`` caveat. Worse, the cascade took the FIELD NAME
     (``out``) as the receiver, so a local named ``out`` lent ``System.out`` its
     own type. A bare ``System`` counts only when nothing in scope shadows it: a
-    local, a project class, or an import of some other ``System``.
+    local, a project class, or an import of some other ``System``; the
+    fully-qualified spelling names java.lang's outright.
     """
-    if _node_text(object_node, source).replace(" ", "") not in _JAVA_STD_OUTPUT_RECEIVERS:
-        return False
-    return (
-        "System" not in var_types
-        and "System" not in class_symbols
-        and "System" not in project_class_names
-        and imports.get("System", "java.lang.System") == "java.lang.System"
+    return is_std_output_receiver(
+        _node_text(object_node, source),
+        bare_system_is_java_lang=bare_system_is_java_lang(
+            imports,
+            is_project_type=(
+                "System" in class_symbols or "System" in project_class_names),
+            is_local="System" in var_types,
+        ),
     )
 
 
@@ -3527,7 +3529,7 @@ def _extract_edges(
                         if stdio_receiver:
                             _unresolved_edge.meta = {
                                 **(_unresolved_edge.meta or {}),
-                                "io_target_kind": "std_stream",
+                                "io_target_kind": STD_STREAM_TARGET_KIND,
                             }
                         edges.append(_unresolved_edge)
 
