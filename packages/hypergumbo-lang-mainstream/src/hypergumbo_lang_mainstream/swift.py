@@ -506,6 +506,16 @@ def _swift_type_parameter_names(
                     ident = find_child_by_type(tp, "type_identifier")
                     if ident is not None:
                         names.add(node_text(ident, source))
+        if cur.type == "protocol_declaration":
+            # WI-hojib: a protocol's ``associatedtype`` is its generic parameter
+            # (hummingbird's ``associatedtype Responder: HTTPResponder`` then
+            # ``var responder: Responder { get }``): a conformer binds it.
+            body = find_child_by_type(cur, "protocol_body")
+            for decl in (body.children if body is not None else []):
+                if decl.type == "associatedtype_declaration":
+                    ident = find_child_by_type(decl, "type_identifier")
+                    if ident is not None:
+                        names.add(node_text(ident, source))
         cur = cur.parent
     return names
 
