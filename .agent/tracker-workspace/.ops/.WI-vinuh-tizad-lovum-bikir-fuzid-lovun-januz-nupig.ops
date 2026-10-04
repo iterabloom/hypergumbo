@@ -34,3 +34,18 @@
   clock: 3  # 8a0a
   nonce: 8a0a  # 8a0a
   message: "WORK DONE 2026-10-03 (decontend stage 7), branch jgstern-agent/fix/vinuh, commit 8da3b291eb (local, not pushed; shared with WI-nulig-gipot-samir-movik-latuj-tizin-vagig-lorup). Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/vinuh.md.\n\nMechanism: the chained-call branch now types the receiver with _go_call_result_type (the binding typer's own rule, NewXxx convention then return-type registry, extracted into _go_registry_call_type and shared), and an out-of-module result type fills the slot as a typed local's does. library_signatures/go.yaml: slog.New / slog.Default / slog.With -> slog.Logger. Also: a receiver whose type is known to be outside the module (a call result, a stdlib package variable, a struct field) is no longer looked up in-repo (receiver_type_is_external) -- an internal/http X.Do took http.DefaultClient.Do and an internal/json Enc.Encode took json.NewEncoder(w).Encode.\n\nLive: slog.New(h).Error -> go:log/slog.Logger:0-0:Error (io: logging log/slog.Logger.Error, was log/slog.Error); l := slog.New(h); l.Error -> same (was go:external, unclassified); json.NewEncoder(w).Encode -> go:encoding/json.Encoder:0-0:Encode (= the bound form). Corpus A/B by call site (alertmanager, prometheus, otel-collector; frozen copies, own XDG caches): 0 sites lost; changed 54/97/96; io-boundaries: no classified boundary lost; prometheus scrape.go:1394 (the filed instance) now log/slog.Logger.Error. Targeted smart-test: 13005 passed, 0 failed, changed sources at 100%."  # 8a0a
+- op: update  # ea7f
+  at: '2026-10-04T02:54:24Z'  # ea7f
+  by: agent  # ea7f
+  actor: jgstern_agent  # ea7f
+  clock: 4  # ea7f
+  nonce: ea7f  # ea7f
+  set:  # ea7f
+    status: done  # ea7f
+- op: discuss  # 8219
+  at: '2026-10-04T02:54:24Z'  # 8219
+  by: agent  # 8219
+  actor: jgstern_agent  # 8219
+  clock: 5  # 8219
+  nonce: '8219'  # 8219
+  message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed on the filed instance (branch jgstern-agent/fix/vinuh, 8da3b291eb). go.py's chained-call branch now types its receiver with `_go_call_result_type`, the binding typer's own rule (NewXxx convention, then the return-type registry, now one shared helper), and an out-of-module result type fills the slot as a typed local's does. library_signatures/go.yaml adds slog.New / Default / With -> slog.Logger.\nBehavioral evidence (io-boundaries, production CLI path, fixture with go.mod):\n- `slog.New(h).Error(...)`: logging `log/slog.Error` -> logging `log/slog.Logger.Error`;\n- `l := slog.New(h); l.Error(...)`: unclassified (`go:external`) -> logging `log/slog.Logger.Error`;\n- `json.NewEncoder(w).Encode(v)`: `encoding/json.Encode` -> `encoding/json.Encoder.Encode` (the same primitive as the bound form).\nPrometheus scrape.go:1394 (the measured case) is now on the `log/slog.Logger.Error` edge. Tests: test_go_chained_result_receiver.py.\nSame-mechanism sweep: a receiver whose type is known to be outside the module (a call result, a stdlib package variable, a struct field) is no longer looked up in-repo. `http.DefaultClient.Do(req)` beside an `internal/http` `X.Do` went from an in-repo call (no net_send) to net_send `net/http.Client.Do`.\nCorpus A/B on alertmanager / prometheus / otel-collector: 0 call sites lost, 247 relabelled, all sampled B answers correct, no classified boundary lost.\nNot asserted: renamed stdlib imports (`l \"log/slog\"`) still miss producer rows (0 such imports measured); trees without go.mod keep the old behaviour; the NewXxx-on-a-value misfire is WI-garol."  # 8219

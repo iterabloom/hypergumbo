@@ -56,3 +56,12 @@
   clock: 6  # dc9e
   nonce: dc9e  # dc9e
   message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed in PR #1441 (commit 3fb8b84d20). A selector function reference is resolved by its operand: an import (that package only, nothing for an external one), a typed operand or composite literal (that type's method), or a method expression. No repo-wide short-name pick remains, in either the argument arm or the struct-field arm.\n\nLive, the filed repro: `reg(http.NotFound)` / `C{H: http.NotFound}` with a repo `func NotFound()` emit no calls edge (dev: a/NotFound at 0.70 twice). `reg(a.NotFound)` / `C{H: c.NotFound}` each bind their own package.\n\nThe same commit refuses resolver hits outside a hinted package on the call arm: `http.Get` with two repo `Get`s is now `go:net/http:0-0:Get:unresolved`. It also takes typed `Type.Method` in the type's own package (+1 level of struct embedding).\n\nCorpus by site: selector refs -41/+7, -65/+39, -124/+46, -58/+170 (alertmanager, coredns, cert-manager, prometheus); call sites refused outside the hint 403 / 53 / 49 / 150. Residual: WI-punat-pivij-laduj-tulot-fumup-hovos-zajan-jokud (interface embedding, type aliases)."  # dc9e
+- op: update  # d229
+  at: '2026-10-04T02:54:28Z'  # d229
+  by: agent  # d229
+  actor: jgstern_agent  # d229
+  clock: 7  # d229
+  nonce: d229  # d229
+  set: {}  # d229
+  add:  # d229
+    tags: [awaits_bakeoff_validation]  # d229

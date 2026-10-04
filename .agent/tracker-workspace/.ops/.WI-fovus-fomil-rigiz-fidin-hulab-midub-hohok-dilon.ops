@@ -64,3 +64,12 @@
   clock: 7  # ffd3
   nonce: ffd3  # ffd3
   message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed in PR #1441 (b3d079d9f0). The JS/TS DDG specs no longer name a glob. `LanguageDdgSpec.file_globs=None` means `taxonomy.extension_globs(language)` (`.js .mjs .cjs .jsx` / `.ts .tsx .mts .cts`), and `ddg_build` parses each file with `taxonomy.grammar_for_path`, so `.tsx` uses the `tsx` grammar under `language=\"typescript\"` and the ids match the analyzer's.\n- Behaviour: `build_repo_ddg` over one function per extension stored DDG symbols for `.js`/`.ts` only before, and for all 8 after. `test_ddg_jsts_symbol_keys` now runs 8 arms: DDG keys equal analyzer ids for every extension. Those arms were red on origin/dev for all 6 new extensions.\n- JSX: a value used in a JSX attribute is a DDG use (`x 2→3`), with no forfeit and no unaccounted names.\n- Corpus: growthbook `.tsx` functions with DDG edges went 0→2090 (of 6204); `.mjs` 0→6. apollo-server `.cjs/.mts/.cts` went 0→1 each and `.mjs` 0→0 (module-scope code). This needs WI-tizig, not this glob.\n- Gate: `test_js_ts_ddg_extension_reach.py` (no spec narrows without a declared reason; python `*.py` and c `*.c` are declared, and filed as WI-midik).\n- NOT asserted: any taint-verdict change. The WI-nonad A/B was not re-run."  # ffd3
+- op: update  # 1f4d
+  at: '2026-10-04T02:54:26Z'  # 1f4d
+  by: agent  # 1f4d
+  actor: jgstern_agent  # 1f4d
+  clock: 8  # 1f4d
+  nonce: 1f4d  # 1f4d
+  set: {}  # 1f4d
+  add:  # 1f4d
+    tags: [awaits_bakeoff_validation]  # 1f4d

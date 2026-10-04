@@ -42,3 +42,12 @@
   clock: 4  # 68a5
   nonce: 68a5  # 68a5
   message: "Merged in PR #1441 (dev b130f1c054).\n\nFixed in PR #1441 (commit 92379e2067). `_go_names_bound_in`, the decl-wide set, is replaced by `_GoLocalScope`. It records each local's Go scope range (parameter: body; `:=`/`var`/`const`: from the end of the statement to the end of the innermost block or clause; range / receive / type-switch forms likewise). It is asked at the site's position for bare calls and bare function references.\n\nBehavioural evidence, re-running the filed shape: `nodeName, err := nodeName(o)` now emits `calls -> <pkg>:nodeName` (dev: no edge). The NOT CHECKED sibling-block case is fixed too: a name bound in the if-branch no longer silences the else-branch call. Tests: `test_go_name_scope_by_position.py` (bopiv section).\n\nCorpus by site: same-statement sites regained alertmanager 1, coredns 3, cert-manager 9, prometheus 7."  # 68a5
+- op: update  # 553e
+  at: '2026-10-04T02:54:29Z'  # 553e
+  by: agent  # 553e
+  actor: jgstern_agent  # 553e
+  clock: 5  # 553e
+  nonce: 553e  # 553e
+  set: {}  # 553e
+  add:  # 553e
+    tags: [awaits_bakeoff_validation]  # 553e
