@@ -347,3 +347,66 @@ class TestPackageVariables:
                 load_library_package_variables("go")
         finally:
             load_library_package_variables.cache_clear()
+
+
+class TestAJvmLanguageReadsTheJavaRows:
+    """WI-jubim: kotlin and scala call the JDK directly, so they read java's rows.
+
+    ``Runtime.getRuntime()`` returns a ``java.lang.Runtime`` whichever JVM
+    language calls it. Copying java.yaml's rows into a kotlin.yaml and a
+    scala.yaml would be three files that must agree and can drift; the parent
+    table states the fact once. A child reads the PARENT'S key shape too, which
+    is what makes sharing the rows safe: kotlin and scala name a JDK owner by the
+    same fully-qualified path java does.
+    """
+
+    def test_kotlin_and_scala_carry_the_java_rows(self) -> None:
+        java = load_library_signatures("java")
+        assert java["java.lang.Runtime.getRuntime"] == "java.lang.Runtime"  # reach
+        for lang in ("kotlin", "scala"):
+            rows = load_library_signatures(lang)
+            assert rows["java.lang.Runtime.getRuntime"] == "java.lang.Runtime", lang
+            assert rows["java.lang.Runtime.exec"] == "java.lang.Process", lang
+
+    def test_a_language_with_no_parent_is_unchanged(self) -> None:
+        assert "java.lang.Runtime.getRuntime" not in load_library_signatures("go")
+        assert "java.lang.Runtime.getRuntime" not in load_library_signatures("python")
+
+    def test_the_parents_agree_with_the_io_catalogue_family(self) -> None:
+        """The same inheritance io_primitives declares (kotlin and scala programs
+        call the JDK); a library-signature parent no io parent backs would be a
+        second, unstated family table."""
+        from hypergumbo_core.io_boundary import _CATALOG_PARENTS
+        from hypergumbo_core.library_signatures import ROW_PARENTS
+
+        assert ROW_PARENTS == {"kotlin": "java", "scala": "java"}
+        for child, parent in ROW_PARENTS.items():
+            assert _CATALOG_PARENTS[child] == parent
+
+    def _channel(self, tmp_path: Path, name: str, body: str) -> None:
+        d = tmp_path / "hypergumbo" / "library_signatures.d"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / name).write_text(body)
+
+    def test_a_user_java_row_reaches_the_children_and_a_child_row_wins(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        self._channel(tmp_path, "java.yaml", (
+            "language: java\nsignatures:\n"
+            "  com.acme.Pool.take: com.acme.Conn\n"
+            "  java.lang.Runtime.getRuntime: com.acme.Runtime\n"))
+        self._channel(tmp_path, "kotlin.yaml", (
+            "language: kotlin\nsignatures:\n"
+            "  java.lang.Runtime.getRuntime: java.lang.Runtime\n"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        load_library_signatures.cache_clear()
+        try:
+            kotlin = load_library_signatures("kotlin")
+            scala = load_library_signatures("scala")
+            assert kotlin["com.acme.Pool.take"] == "com.acme.Conn"
+            assert scala["com.acme.Pool.take"] == "com.acme.Conn"
+            # the child's own row beats the parent's, for the child only
+            assert kotlin["java.lang.Runtime.getRuntime"] == "java.lang.Runtime"
+            assert scala["java.lang.Runtime.getRuntime"] == "com.acme.Runtime"
+        finally:
+            load_library_signatures.cache_clear()

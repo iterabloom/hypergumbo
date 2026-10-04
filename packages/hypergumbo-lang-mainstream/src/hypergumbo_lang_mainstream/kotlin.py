@@ -56,6 +56,17 @@ must name the static owner path and never the variable. Function-scoped
 across scopes — for declared and constructor bindings; a binding from a
 resolved call's return type is written file-wide, outside that scoping.
 
+Library return types (WI-jubim). A receiver that is the VALUE a library
+call returns -- ``Runtime.getRuntime().exec(c)``, or ``val r =
+Runtime.getRuntime()`` then ``r.exec(c)`` -- is typed by
+``_library_call_type``, which folds a call chain over the library-signature
+rows: java.yaml's, which kotlin reads through
+``library_signatures.ROW_PARENTS``. The chain's root is a typed local, a type
+named by the file's import or java.lang, an inline JDK path, or a
+constructor; each row's fully-qualified answer is the owner of the next link,
+and the first link no row answers ends the walk untyped. A local bound to
+such a chain takes the row's answer ahead of the chain-root constructor.
+
 Other receiver shapes. An untyped receiver spelled as a TYPE
 (``System.getenv(k)``, ``Files.readAllBytes(p)``) is a static call whose
 module slot is the owner that ``jvm_implicit_imports.static_owner_module``
@@ -96,6 +107,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Optional
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.paths import normalize_path
 from hypergumbo_core.qualified_name_axis import separator_for_language
@@ -1442,6 +1454,80 @@ def _extract_edges_from_file(
         if s.kind in ("class", "object", "interface")
     }
 
+    def _is_project_receiver(name: str) -> bool:
+        """Whether a receiver spelled as a TYPE names a PROJECT type here.
+
+        WI-tipoh: an explicit import of a path OUTSIDE the project outranks a
+        same-named project type. An import of a project path keeps the
+        placeholder the Tier-2 linkers resolve from (WI-kilap).
+        """
+        return name in class_symbols and (
+            name not in imports
+            or not imported_elsewhere(class_symbols[name].qualified_name, imports[name])
+            or _kt_names_project_path(imports[name], project_by_qualified)
+        )
+
+    #: java.yaml's rows, read through ``ROW_PARENTS`` (WI-jubim): kotlin has
+    #: no row file of its own and calls the JDK directly.
+    library_returns = load_library_signatures("kotlin")
+
+    def _library_call_type(call: "tree_sitter.Node") -> str | None:
+        """What a call CHAIN returns, per the library-signature rows, or ``None``.
+
+        WI-jubim, java's ``_call_return_type`` in kotlin's tree:
+        ``Runtime.getRuntime().exec(c)`` calls ``exec`` on the VALUE
+        ``getRuntime`` returns, and only a row says what that is. The chain is
+        rooted at a receiver whose type the file establishes -- a typed local,
+        a type the call is made on (its import or java.lang), an inline JDK
+        path, or a constructor -- and each link's answer, a fully-qualified
+        type, is the owner the next link is looked up on. The first link no
+        row answers ends the walk with ``None``, so a project method in the
+        chain (which has no row) never lets a later link be guessed.
+        """
+        links: list[str] = []
+        node = call
+        while node.type == "call_expression":
+            callee = node.children[0]
+            if callee.type != "navigation_expression":
+                break
+            named = [c for c in callee.children if c.is_named]
+            # The grammar's navigation_expression is one receiver and one
+            # suffix (``_kt_inline_path`` guards the same shape).
+            if len(named) != 2 or named[1].type != "identifier":  # pragma: no cover - grammar guard
+                return None
+            links.append(node_text(named[1], source))
+            node = named[0]
+        if not links:
+            return None
+        owner: str | None
+        if node.type == "identifier":
+            name = node_text(node, source)
+            owner = (
+                _kt_receiver_module(var_types[name], imports) if name in var_types
+                else static_owner_module(
+                    name, imports, shadowed=KOTLIN_SHADOWED_JAVA_LANG,
+                    is_project_type=_is_project_receiver(name),
+                )
+            )
+        elif node.type == "navigation_expression":
+            path = _kt_inline_path(node, source)
+            owner = None if path is None else inline_qualified_owner(
+                path, links[-1], set(var_types) | set(imports),
+                roots=_KOTLIN_INLINE_QUALIFIED_ROOTS,
+            )
+        elif node.type == "call_expression":
+            created = next(
+                (c for c in node.children if c.type == "identifier"), None)
+            created_type = None if created is None else _kt_constructor_type(created, source)
+            owner = None if created_type is None else _kt_receiver_module(created_type, imports)
+        else:
+            owner = None
+        for link in reversed(links):
+            if owner is None:
+                return None
+            owner = library_returns.get(f"{owner}.{link}")
+        return owner
+
     def _emit_navigation_receiver_call(
         receiver: "tree_sitter.Node", method_name: str, line: int,
         *, this_property: str | None,
@@ -1584,7 +1670,13 @@ def _extract_edges_from_file(
                 if declared is not None:
                     _bind_local_type(node_text(var_name_node, source), declared)
             if var_decl and call_expr and var_name_node:
-                _ctor_type: str | None = _kt_chain_root_constructor(call_expr, source)
+                # WI-jubim: a row's answer for the whole chain
+                # (``val r = Runtime.getRuntime()``) first; it is a stated
+                # return type, where the chain root is a builder heuristic.
+                _ctor_type: str | None = (
+                    _library_call_type(call_expr)
+                    or _kt_chain_root_constructor(call_expr, source)
+                )
                 if _ctor_type:
                     _bind_local_type(node_text(var_name_node, source), _ctor_type)
 
@@ -1737,6 +1829,10 @@ def _extract_edges_from_file(
                             ) or find_child_by_type(receiver_node, "navigation_expression")
                             if _inner_callee is not None:
                                 chained_type = _kt_constructor_type(_inner_callee, source)
+                            # WI-jubim: ``Runtime.getRuntime().exec(c)`` -- the
+                            # receiver is what a library call returns.
+                            if chained_type is None:
+                                chained_type = _library_call_type(receiver_node)
 
                         resolved_nav_sym = None
 
@@ -1933,18 +2029,7 @@ def _extract_edges_from_file(
                                     # project type. An import of a project path
                                     # keeps the placeholder the Tier-2 linkers
                                     # resolve from (WI-kilap).
-                                    is_project_type=(
-                                        receiver_name in class_symbols
-                                        and (
-                                            receiver_name not in imports
-                                            or not imported_elsewhere(
-                                                class_symbols[receiver_name].qualified_name,
-                                                imports[receiver_name],
-                                            )
-                                            or _kt_names_project_path(
-                                                imports[receiver_name], project_by_qualified)
-                                        )
-                                    ),
+                                    is_project_type=_is_project_receiver(receiver_name),
                                 )
                             )
                             edges.append(make_unresolved_edge(

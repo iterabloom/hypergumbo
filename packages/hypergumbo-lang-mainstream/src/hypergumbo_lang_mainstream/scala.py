@@ -43,7 +43,12 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
      typed through the registry, and a ``for`` generator, a one-parameter
      lambda / ``case`` / ``_`` of an element-passing call and a ``.get`` /
      ``.head`` projection through the element registry. A qualified project
-     type binds only where its path allows (the import check below).
+     type binds only where its path allows (the import check below). The
+     registry also carries java.yaml's library-signature rows, read through
+     ``library_signatures.ROW_PARENTS`` and keyed by the owner's qualified
+     path, so a LIBRARY owner (its import, an inline path, or java.lang) is
+     asked under that path first: ``Runtime.getRuntime().exec(c)`` reaches
+     the ``subprocess`` row (WI-jubim).
    - An explicit import outranks a same-named project symbol in another
      package: the bind is refused when no reading of the import (absolute
      or relative to a package or object in scope) can name that symbol.
@@ -2056,7 +2061,21 @@ class _ScalaReceiverTyper:
         return owners
 
     def _member(self, owner: str, member: str, registry: "dict[str, str]") -> "str | None":
-        """``owner.member``'s registered entry, through ``owner``'s base classes."""
+        """``owner.member``'s registered entry, through ``owner``'s base classes.
+
+        A LIBRARY owner is asked first under its qualified path (WI-jubim): the
+        registry carries java.yaml's rows (``library_signatures.ROW_PARENTS``)
+        keyed the way java keys them, ``java.lang.Runtime.getRuntime``, so
+        ``Runtime.getRuntime().exec(c)`` reaches the ``subprocess`` row. The path
+        is the one the module slot gets -- the file's import, an inline path, or
+        java.lang's closed list -- and a project type has none, so an analysed
+        row is never displaced by a library one.
+        """
+        library = self._library_owner(owner)
+        if library is not None:
+            found = registry.get(f"{library}.{member}")
+            if found is not None:
+                return found
         queue = [owner.rsplit(".", 1)[-1]]
         seen: set[str] = set()
         while queue and len(seen) < 32:
@@ -2070,6 +2089,17 @@ class _ScalaReceiverTyper:
             sym = self._global_symbols.get(cls)
             queue.extend((sym.meta or {}).get("base_classes", []) if sym is not None else [])
         return None
+
+    def _library_owner(self, owner: str) -> "str | None":
+        """The qualified path a library row would key ``owner`` under, or ``None``."""
+        if "." in owner:
+            return owner
+        return static_owner_module(
+            owner, self._import_aliases, shadowed=SCALA_SHADOWED_JAVA_LANG,
+            is_project_type=_is_project_type(
+                owner, self._global_symbols, self._import_aliases,
+                self._file_packages, self._project_packages),
+        )
 
     def symbol_type_name(self, type_name: str) -> str:
         """The name a type's MEMBERS are registered and resolved under: a
