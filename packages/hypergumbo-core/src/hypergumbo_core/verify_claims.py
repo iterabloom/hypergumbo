@@ -918,6 +918,10 @@ def _merge_caveat(
             rebuilt = _untyped_receiver_caveat(
                 cav.get("boundary", ""), merged_entries,
                 arm=cav.get("arm", _ARM_BOUNDARY),
+                collisions=(
+                    set(cav.get("known_collisions") or ())
+                    | set(new.get("known_collisions") or ())
+                ),
             )
         elif new.get("kind") == "deferred_crossing":
             rebuilt = _deferred_crossing_caveat(
@@ -1093,6 +1097,7 @@ def _deferred_crossing_caveat(
 
 def _untyped_receiver_caveat(
     boundary: str, sites: list[str], *, arm: str = _ARM_BOUNDARY,
+    collisions: AbstractSet[str] = frozenset(),
 ) -> dict[str, Any]:
     """The one place the untyped-receiver disclosure is built.
 
@@ -1106,9 +1111,24 @@ def _untyped_receiver_caveat(
     THE SENTENCE SAYS WHAT IS UNKNOWN AND WHAT IS NOT. The receiver's TYPE is
     the unknown; the call site is known exactly, which is why the entries are
     checkable locations rather than a count.
+
+    KNOWN COLLISIONS LAST (WI-jiful). ``collisions`` is the subset of ``sites``
+    whose method name the catalogue lists in ``ambiguous_names`` -- the
+    short-name collision set the row choice itself consults
+    (:func:`untyped_receiver_known_collisions`). On hypergumbo's own tree 63 of
+    119 sites were ``.replace()``, mostly ``str.replace``, burying the 19
+    ``mkdir`` and 12 ``write_text`` a reader can act on. They are still
+    DISCLOSED (``pathlib.Path.replace`` is a real sink an untyped receiver could
+    be), and ``entries`` is unchanged; they are listed after the others, named
+    in a clause of their own, and carried in ``known_collisions`` so a merge
+    re-renders the same sentence. With no collision the caveat is byte-identical
+    to what it was.
     """
+    marked = sorted(s for s in sites if s in collisions)
+    marked_set = set(marked)
+    plain = [s for s in sites if s not in marked_set]
     if len(sites) <= _MAX_REPORTED_UNTYPED_SITES:
-        where = ", ".join(sites)
+        where = ", ".join(plain + marked)
     else:
         # AT SCALE THE SITES ARE NOT THE FACT; THE METHOD NAMES ARE. Measured on
         # poetry: 306 fs_read sites are 16 distinct names (``read`` 95,
@@ -1121,7 +1141,10 @@ def _untyped_receiver_caveat(
         # surface; this only bounds the sentence a human reads, the same trade
         # ``_MAX_REPORTED_UNCATALOGUED_MODULES`` and ``_MAX_EVIDENCE_ROWS``
         # already make.
-        names = sorted({_site_method(s) for s in sites})
+        colliding_names = sorted({_site_method(s) for s in marked})
+        names = sorted(
+            {_site_method(s) for s in plain} - set(colliding_names),
+        ) + colliding_names
         more = len(names) - _MAX_REPORTED_UNTYPED_SITES
         suffix = f" (+{more} more)" if more > 0 else ""
         shown = ", ".join(names[:_MAX_REPORTED_UNTYPED_SITES])
@@ -1129,7 +1152,15 @@ def _untyped_receiver_caveat(
             f"{len(names)} distinct method(s): {shown}{suffix}; "
             f"the full site list is in this caveat's `entries`"
         )
-    return {
+    collision_clause = ""
+    if marked:
+        collision_names = ", ".join(sorted({_site_method(s) for s in marked}))
+        collision_clause = (
+            f" {len(marked)} of them call a name the catalogue lists as a "
+            f"known short-name collision with a common non-I/O method "
+            f"({collision_names}); they are listed last."
+        )
+    caveat: dict[str, Any] = {
         "kind": CAVEAT_UNTYPED_RECEIVER,
         # CARRIED, NOT RE-DERIVED. ``_merge_caveat`` re-renders a widened entry
         # list so the prose cannot quote a stale count, and it can only do that
@@ -1146,9 +1177,14 @@ def _untyped_receiver_caveat(
             f"{len(sites)} call site(s) — {where} — a method the {boundary} "
             f"{_UNTYPED_SCOPE_NOUN[arm]} declares is called on a receiver "
             f"whose type could not be determined, "
-            f"{_UNTYPED_CONSEQUENCE[arm]}."
+            f"{_UNTYPED_CONSEQUENCE[arm]}.{collision_clause}"
         ),
     }
+    if marked:
+        # CARRIED, NOT RE-DERIVED, like ``boundary`` and ``arm``: the merge
+        # re-renders from the caveat alone and has no catalogue to ask.
+        caveat["known_collisions"] = marked
+    return caveat
 
 
 def _accessor_name_receiver_caveat(
@@ -1613,6 +1649,11 @@ class BoundaryCoverage:
     #: forgetting to apply it; see :func:`untyped_receiver_sites` for why the
     #: unscoped version of this signal was measured and refused.
     untyped_receiver_sites: dict[str, list[str]] = field(default_factory=dict)
+    #: The untyped-receiver call sites (labels, across every boundary and both
+    #: arms) whose method name the catalogue lists in ``ambiguous_names``
+    #: (WI-jiful). Read by the caveat to list those sites last and name them,
+    #: never to drop one. Populated on EVERY coverage result, like its sibling.
+    untyped_receiver_collisions: frozenset[str] = frozenset()
     #: SHADOWED boundary -> the deferred-crossing call sites that put it in
     #: shadow (ADR-0049 ruling 2 clause 3). Populated on EVERY coverage result,
     #: like :attr:`untyped_receiver_sites` and for the same reason.
@@ -4047,6 +4088,34 @@ def untyped_receiver_sites(
     return {b: sorted(sites) for b, sites in sorted(grouped.items())}
 
 
+def untyped_receiver_known_collisions(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> frozenset[str]:
+    """The untyped-receiver call sites whose method name is a KNOWN COLLISION.
+
+    WI-jiful. "Known" is the catalogue's own ``ambiguous_names`` -- the
+    hand-maintained list of short names that collide with common non-I/O
+    methods (``str.replace``, ``dict.get``). It is the SAME set the row choice
+    consults: io-boundaries hands ``catalog.ambiguous_names`` to
+    :func:`io_boundary.gate_named_entry`, and taint carries the same per-language
+    set onto its catalogue (WI-razol). Asked of the catalogue the site's own
+    language loaded, through the ONE walk both arms share
+    (:func:`_untyped_receiver_call_sites`), so the marked set is always a subset
+    of the sites either arm discloses.
+
+    Labels, not names: ``write`` can be a collision in one language's catalogue
+    and not in another's, and a site label belongs to exactly one language.
+    """
+    return frozenset(
+        site
+        for _lang, name, site, catalog in _untyped_receiver_call_sites(
+            raw_edges, catalogs,
+        )
+        if name in catalog.ambiguous_names
+    )
+
+
 def _untyped_receiver_call_sites(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
@@ -4588,6 +4657,9 @@ def compute_boundary_coverage(
         frozenset(first_party_packages or ()),
     )
     coverage.untyped_receiver_sites = untyped_receiver_sites(raw_edges, catalogs)
+    coverage.untyped_receiver_collisions = untyped_receiver_known_collisions(
+        raw_edges, catalogs,
+    )
     coverage.accessor_name_receiver_sites = accessor_name_receiver_sites(
         raw_edges, catalogs,
     )
@@ -5072,7 +5144,10 @@ def _verify_claim_uncredited(
         if untyped:
             out = _merge_caveat(
                 out,
-                _untyped_receiver_caveat(claim.constraint_boundary, untyped),
+                _untyped_receiver_caveat(
+                    claim.constraint_boundary, untyped,
+                    collisions=coverage.untyped_receiver_collisions,
+                ),
             )
         if accessor_named:
             # IMMEDIATELY AFTER ITS COMPLEMENT. A site moves from that list to
@@ -5951,6 +6026,7 @@ def _verify_taint_claim_uncredited(
             if zone_sites:
                 caveats = _merge_caveat(caveats, _untyped_receiver_caveat(
                     tf.prohibited_sink_zone, zone_sites, arm=_ARM_TAINT,
+                    collisions=coverage.untyped_receiver_collisions,
                 ))
             # The UNSCOPED half, unchanged from the boundary arm and reusing its
             # already-computed numbers rather than recounting. Reuse is the
