@@ -1,0 +1,21 @@
+- op: create  # 91cc
+  at: '2026-10-04T10:34:50Z'  # 91cc
+  by: agent  # 91cc
+  actor: jgstern_agent  # 91cc
+  clock: 1  # 91cc
+  nonce: 91cc  # 91cc
+  data:  # 91cc
+    kind: work_item  # 91cc
+    title: "csharp: record / record struct declarations emit no symbol, so their members are named without the type and a call in a record body anchors on the file"  # 91cc
+    status: todo_hard  # 91cc
+    priority: 3  # 91cc
+    parent:  # 91cc
+    tags:  # 91cc
+    - csharp  # 91cc
+    - analysis_quality  # 91cc
+    isbefore: []  # 91cc
+    duplicate_of: []  # 91cc
+    not_duplicate_of: []  # 91cc
+    pr_ref:  # 91cc
+    description: "FOUND 2026-10-04 while working WI-binap.\n\nTHE DEFECT: C# `record` / `record struct` declarations emit NO symbol, and their members are named without the type. Reproduced on analyze_csharp (base 2a98abb55d):\n\n    public record R(int X) {\n        public int P => Helper();          // line 2\n        public void M() { ... }\n        static int Helper() { return 1; }\n    }\n\n    symbols: P (property), M (method), Helper (method) -- no R; names carry no \"R.\"\n    calls:   csharp:R.cs:1-1:file:file -> Helper  line 2   (anchored on the FILE: there is no record symbol to fall back to)\n\nMECHANISM: _extract_symbols_from_file has branches for class/interface/struct/enum declarations only; record_declaration (and record struct) has none. _get_enclosing_class walks class/interface/struct only, so a member's full_name has no type prefix (and name-keyed lookups then collide across records). _get_csharp_class_ancestors and _CSHARP_TYPE_BODY_NODES already list record_declaration, so the qualified_name is right and the type-body fallback is wired, but finds no symbol.\n\nWHY IT MATTERS: records are the idiomatic C# 9+ data type (DTOs, messages, events). Every record and its members are missing or misnamed in the graph; the positional record's primary-constructor parameters are also not extracted.\n\nASK: emit records (kind: check the registry -- `record` is registered, ADR-0027) with base_classes, and make _get_enclosing_class see record_declaration. Measure on the C# corpus (sherpa-onnx, grpc, rabbitmq, microservices-demo, livebook, qemu-u-boot); a record count of 0 on that corpus is not a clean language.\n\nNOT MEASURED: how many records the corpus holds."  # 91cc
+    fields: {}  # 91cc
