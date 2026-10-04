@@ -27,3 +27,10 @@
   clock: 2  # d437
   nonce: d437  # d437
   message: "CORPUS INSTANCES (WI-dibit's A/B, branch jgstern-agent/fix/dibit): exactly this flow appears at both corpus build_opener sites measured. django django/core/management/templates.py TemplateCommand.download (`opener = build_opener(); with opener.open(url) as source`): host-secret-no-network inconclusive(0) -> violated(1), the only flow being urllib.request.build_opener -> urllib.request.OpenerDirector.open (ddg_mixed, not_attempted). superset superset/utils/csv.py get_chart_csv_data: one added flow, build_opener -> OpenerDirector.open, ddg confirmed precise (claim already violated through 4 other flows). Neither site passes an environment value to open(); the cookie header superset sends comes from a machine-auth provider, not the environment."  # d437
+- op: discuss  # e1d8
+  at: '2026-10-04T04:27:21Z'  # e1d8
+  by: agent  # e1d8
+  actor: jgstern_agent  # e1d8
+  clock: 3  # e1d8
+  nonce: e1d8  # e1d8
+  message: "OWNER RULING 2026-10-04: OPENER SENDS STAY CLEAN. A handle constructor's own configuration read (build_opener's proxy-environment read) is not data sent through the handle. The receiver must not carry it into OpenerDirector.open/error (ADR-0049 Ruling 4 shape), matching plain urlopen(url), which does the same proxy read and stays clean. The current behaviour (every opener send carries an environment->network flow; pinned by a test from WI-dibit, PR #1433) is to be changed and its pin test updated. Corpus instances: django and superset (see WI-dibit's note)."  # e1d8

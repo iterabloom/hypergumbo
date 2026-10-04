@@ -35,3 +35,18 @@
   clock: 3  # 43d6
   nonce: 43d6  # 43d6
   message: "Merged in PR #1433 (dev c942a68edc).\n\nNot closable as fixed. Re-scope or `wont_do` on the owner's call: the statement is false as written. An in-repo header is a route to system headers, and removing it from the stamp turns cq3 (`errno` + `<proj/net.h>` + `send`) from inconclusive into a false CONFIRMED (cq1's edge). The correct direction — expand in-repo headers to their transitive includes — is INV-zikul-kikov-nikig-dovig-naros-sagik-bufil-punub, which subsumes this item."  # 43d6
+- op: discuss  # 973e
+  at: '2026-10-04T04:27:36Z'  # 973e
+  by: agent  # 973e
+  actor: jgstern_agent  # 973e
+  clock: 4  # 973e
+  nonce: 973e  # 973e
+  message: "OWNER DECISION 2026-10-04: wont_do (status pending: the tracker rejects wont_do for an invariant). The statement is false as written. An in-repo header is a route to the system headers, and dropping it from the C include stamp turns a real send() into a false CONFIRMED (torsocks src/lib/sendto.c:59 reaches <sys/socket.h> only through a project header; fixture cq3 errno + <proj/net.h> + send goes inconclusive -> confirmed). The withholding this item called noise is correct. The real fix is the opposite direction: expand in-repo headers to their transitive includes. That is INV-zikul-kikov-nikig-dovig-naros-sagik-bufil-punub (P2), which subsumes this item and is scheduled in stage 9. Evidence: ~/hypergumbo_lab_notebook/decontend/run_10032026/dudal.md."  # 973e
+- op: update  # 7bca
+  at: '2026-10-04T04:35:50Z'  # 7bca
+  by: human  # 7bca
+  actor: jgstern  # 7bca
+  clock: 5  # 7bca
+  nonce: 7bca  # 7bca
+  set:  # 7bca
+    status: deleted  # 7bca

@@ -40,3 +40,18 @@
   clock: 4  # 4819
   nonce: '4819'  # 4819
   message: "Instruments half of WI-kovoj landed in PR #1408. Every scripts/ instrument taking a positional cohort (12 scripts) now states `COHORT: covered K of N given`, names each uncovered member, writes the claim under \"cohort\" in its JSON and exits 4 when K != N, via scripts/lib/cohort_ledger.py.\n\nBehavioral evidence, same inputs:\n- `measure-row-inflation.py CLAIMS flask-restful /nonexistent/kserve` used to print \"kserve ... EXCLUDED — 0 cross_function findings (0 findings)\" and exit 0. It now prints \"COHORT: covered 1 of 2 given repo(s) -- INCOMPLETE\", names kserve as FAILED, and exits 4.\n- `measure-symbol-id-colon-conformance.py` over [map, truncated map, missing map] used to exit 0 with TOTAL computed over 1 map. It now reports covered 1 of 3 with both losses named, and exits 4.\n- A survey writing to /dev/full inside a ledger is reported FAILED with DISK FULL.\n\nGuarded by tests/test_cohort_ledger.py::test_every_cohort_script_states_its_cohort.\n\nNOT asserted: the title's general claim about ad-hoc parallel Agent fan-outs. Those have no script, and mitigation 1's prompt text belongs in .agent/ playbooks (governance). Residuals: WI-vivof (prospector and bakeoff cohort runners), WI-huhip (CLI calls ENOSPC \"a bug\"), WI-bomos (two A/B instruments crash on stale patches).\n\n\n\n\nSTATUS LEFT OPEN (integrator, 2026-10-03): the instruments half merged in PR #1408; the title's condition (ad-hoc parallel measurement agents silently truncating their cohort on ENOSPC) still holds, so done would be a false claim. Re-scope proposal for the owner: narrow this item to the ad-hoc fan-out case (prompt rule / orchestrator-side covered-of-given check), with the script instruments recorded as done here."  # 4819
+- op: update  # 19ad
+  at: '2026-10-04T04:27:21Z'  # 19ad
+  by: agent  # 19ad
+  actor: jgstern_agent  # 19ad
+  clock: 5  # 19ad
+  nonce: 19ad  # 19ad
+  set:  # 19ad
+    title: "Ad-hoc parallel measurement agent fan-outs can silently truncate their cohort (e.g. on ENOSPC): the orchestrator does not state covered-of-given before aggregating"  # 19ad
+- op: discuss  # cfa9
+  at: '2026-10-04T04:27:21Z'  # cfa9
+  by: agent  # cfa9
+  actor: jgstern_agent  # cfa9
+  clock: 6  # cfa9
+  nonce: cfa9  # cfa9
+  message: "OWNER DECISION 2026-10-04: RE-SCOPED to the ad-hoc parallel measurement fan-out case. The script half is DONE (PR #1408): the 12 scripts/measure-* cohort instruments state \"COHORT: covered K of N given\", name each uncovered member (DISK FULL included) and exit 4 when K != N, through scripts/lib/cohort_ledger.py, with a guard test. What remains is the orchestrator side: a parallel agent fan-out must state covered-of-given (members assigned vs results returned, with each missing member named) before any aggregate is reported. That means an orchestrator-side check, a prompt rule, or both. Residual script runners are tracked separately: WI-vivof (prospector/bakeoff), WI-huhip (CLI calls ENOSPC \"a bug\"), WI-bomos."  # cfa9
