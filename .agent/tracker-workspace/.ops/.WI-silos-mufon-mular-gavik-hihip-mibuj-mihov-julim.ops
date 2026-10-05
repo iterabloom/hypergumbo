@@ -48,3 +48,12 @@
   clock: 5  # 9f24
   nonce: 9f24  # 9f24
   message: "Merged in PR #1459 (dev ecbb226a0d).\n\nWI-silos is fixed on branch `jgstern-agent/fix/silos`, commit 41fd9834a6.\n\nThe swift binding pass now records every declaration, typed or not, in its scope, and the innermost visible binding decides. if/while/for/catch/switch-case and every `statements` block are scopes.\n\nBehavioral evidence (tests in `test_swift_untyped_binding_shadows.py`, red on dev 385ec63be1):\n- The item's fixture `func go(s: FileManager...) { let s = s.makeSession(store); s.dataTask(with: u) }`:\n  - dev: `swift:FileManager:0-0:dataTask:unresolved`\n  - branch: `swift:external:0-0:dataTask:unresolved`, receiver_type_hint None\n  - the initialiser's `s.makeSession` stays FileManager.\n- The hummingbird URI.swift:46-47 shape: the unannotated closure parameter `query` no longer takes the outer `guard var query`'s type.\n- A binding inside an if/for/do/switch body no longer types a same-named receiver after the block or in the `else`.\n\nMeasured A/B on 4 frozen repos: calls totals unchanged; 375 sites change, almost all stamp removals. Read-back shows most removed stamps were right only by name coincidence, so this is a recall loss. Kingfisher loses 3 catalogued FileManager fs chains (63→60 io edges) through `config.fileManager` (WI-hojib, WI-sizas). Wrong stamps removed concentrate in closure parameters, `[T]` parameters and loop variables.\n\nThe general claim (every Swift receiver name resolves at its position) is NOT asserted. Residuals: WI-tagir (the file-level map pools every type's properties), WI-sajol (capture lists), implicit newValue/oldValue/error (WI-rajig)."  # 9f24
+- op: update  # fbf0
+  at: '2026-10-05T04:43:25Z'  # fbf0
+  by: agent  # fbf0
+  actor: jgstern_agent  # fbf0
+  clock: 6  # fbf0
+  nonce: fbf0  # fbf0
+  set: {}  # fbf0
+  add:  # fbf0
+    tags: [awaits_bakeoff_validation]  # fbf0

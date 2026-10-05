@@ -40,3 +40,12 @@
   clock: 4  # e1d3
   nonce: e1d3  # e1d3
   message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459, commit 829ef03b24. Behavioral evidence: on the item's own repro (`actor Main; new create; be ping() => helper(); fun helper()`), analyze_pony emits `Main.ping` (kind=method, meta.is_behaviour=True, signature `be ping()`) and `Main.ping -> Main.helper`; before, there was no `Main.ping` and the edge was `Main(actor) -> Main.helper`. Production-path tests: `test_pony_behaviours.py` (6) and `test_call_anchor_gate_extended1.py::test_pony_same_named_callables` (pony is now VERIFIED). Both were red on 2a98abb55d and green after. The enclosing lookup was also name-keyed across the repository. It is now by position, which takes ponyc's containment violations from 4,420 to 0; 1,422 single-call sites moved onto a behaviour; 687 behaviour symbols (shallow ponyc clone 44f94baea5, the only Pony corpus available). NOT asserted: message sends on a typed receiver (`w.ping()` stays unresolved, since receivers are not typed); a call on a call result losing its receiver (WI-bifat)."  # e1d3
+- op: update  # fbb6
+  at: '2026-10-05T04:43:26Z'  # fbb6
+  by: agent  # fbb6
+  actor: jgstern_agent  # fbb6
+  clock: 5  # fbb6
+  nonce: fbb6  # fbb6
+  set: {}  # fbb6
+  add:  # fbb6
+    tags: [awaits_bakeoff_validation]  # fbb6

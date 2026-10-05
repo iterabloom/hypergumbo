@@ -57,3 +57,12 @@
   clock: 6  # bec2
   nonce: bec2  # bec2
   message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459 (branch jgstern-agent/fix/rabum, commit b1c8437332). Kotlin and scala now emit java's two records for System.out and System.err. The println/print/... call is typed java.io.PrintStream and stamped io_target_kind std_stream, which the requires_target_kind PrintStream rows need. System.in/out/err reads become module_attr_ref edges through the shared emit_module_attribute_refs, carrying attr_carrier. jvm_implicit_imports holds the spellings and the shadow rule for all three JVM analyzers. **Behavioral evidence:** verify-claims on kotlin and scala fixtures that read System.getenv(\"API_KEY\") and write it with System.err.println / System.out.print. The host_secret→logging taint claim went confirmed_with_caveats (untyped_receiver) → violated, with one finding, and the logging must_not_exist claim went confirmed_with_caveats → violated. Java's verdict is unchanged. Controls (a user object named out, a local named out, a project System, an imported acme System) emit no PrintStream type and no java.lang.System attribute ref. Pinned by test_jvm_stdio_writes.py::test_a_secret_written_to_stderr_is_logged[kotlin|scala|java] and the control tests in the same file. **Corpus:** io-boundaries chains on okhttp +31, detekt +8, sbt +96, gatling +4, none removed, java chains unchanged. 14 sampled additions were read against source and all are real. **Not asserted:** that every stdio write in scala is seen. A bare scala println(secret) still reads confirmed with no caveat (WI-tunul-rusir-katud-gibap-rorip-duhoz-lorav-musom). A stream held in a local gets only the attribute ref."  # bec2
+- op: update  # a0e6
+  at: '2026-10-05T04:43:29Z'  # a0e6
+  by: agent  # a0e6
+  actor: jgstern_agent  # a0e6
+  clock: 7  # a0e6
+  nonce: a0e6  # a0e6
+  set: {}  # a0e6
+  add:  # a0e6
+    tags: [awaits_bakeoff_validation]  # a0e6
