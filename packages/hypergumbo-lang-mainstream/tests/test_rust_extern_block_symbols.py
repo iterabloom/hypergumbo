@@ -110,15 +110,30 @@ class TestForeignDeclarationIsASymbol:
             "js_namespace": "window.performance",
         }
 
+    def test_a_rust_2024_unsafe_extern_block_declares_its_functions(
+        self, tmp_path: Path,
+    ) -> None:
+        """Rust 2024's ``unsafe extern "C" { pub safe fn ... }``. tree-sitter-rust
+        0.24.0 could not parse it (a top-level ``function_signature_item`` under
+        an ERROR, so nothing was emitted); 0.24.2, the floor since, parses it as a
+        ``foreign_mod_item`` -- only the ``safe`` qualifier is an ERROR leaf -- so
+        the function is a foreign symbol like any other (WI-kipun's gap closes
+        with the grammar)."""
+        source = 'unsafe extern "C" { pub safe fn getpid() -> i32; }\n'
+        result = analyze_rust(_repo(tmp_path, source))
+        (sym,) = _by_name(result, "getpid")
+        assert sym.kind == "function"
+        assert sym.meta["ffi_import"] == {"abi": "C"}
+
     def test_a_signature_outside_any_block_is_no_foreign_symbol(
         self, tmp_path: Path,
     ) -> None:
-        """Rust 2024's ``unsafe extern "C" { ... }`` is not in this grammar: it
-        parses as an ERROR plus a top-level ``function_signature_item``. No block
-        declares it, so nothing is emitted for it (a stated gap, not a guess)."""
-        source = 'unsafe extern "C" { pub safe fn getpid() -> i32; }\n'
-        result = analyze_rust(_repo(tmp_path, source))
-        assert not _by_name(result, "getpid")
+        """A bare ``fn f();`` at top level is a ``function_signature_item`` that
+        no extern block declares, so it is no foreign symbol."""
+        result = analyze_rust(_repo(tmp_path, "fn getpid() -> i32;\n"))
+        assert not any(
+            "ffi_import" in (s.meta or {}) for s in _by_name(result, "getpid")
+        )
 
     def test_a_trait_signature_is_still_a_trait_method(self, tmp_path: Path) -> None:
         """The foreign arm must not capture the WI-duguk trait-contract arm."""
