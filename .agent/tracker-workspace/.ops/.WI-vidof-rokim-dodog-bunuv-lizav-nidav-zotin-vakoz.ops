@@ -42,3 +42,12 @@
   clock: 4  # 8e54
   nonce: '8e54'  # 8e54
   message: "Merged in PR #1459 (dev ecbb226a0d).\n\nClosing on the filed gatling instance. Branch jgstern-agent/fix/lopus, commit 57d10d835f. A stub whose call a resolution to an in-repo symbol superseded (`meta.superseded_by`) no longer takes a catalogue row by short name, in io-boundaries or in taint (`io_boundary.short_name_fallback_withheld`, one predicate for both).\n\nBehavioural evidence: through io-boundaries, a subclass's bare `readInt()` that the inherited-calls linker resolved to the superclass method no longer reports `ipc_recv scala.io.StdIn.readInt`, while `import scala.io.StdIn._; readInt()` still does (`test_io_boundaries_keeps_the_stdin_read_and_drops_the_inherited_call`).\n\ngatling A/B: 3712 → 3697 chains, and the 15 removed are every StdIn chain, all LogFileReader.scala subclass calls. sbt, http4s and pekko are unchanged, and pekko's genuine StdIn.readLine reads are kept.\n\nNOT asserted: the general claim in the title. pekko `GzipDecompressor.scala:47` (`import reader._; readByte()`, an in-repo class's method) still reads as StdIn.readByte, because nothing binds it in-repo: WI-nusol-rohih-zurus-votul-korus-zupoj-zutav-vunor."  # 8e54
+- op: update  # c532
+  at: '2026-10-05T04:43:29Z'  # c532
+  by: agent  # c532
+  actor: jgstern_agent  # c532
+  clock: 5  # c532
+  nonce: c532  # c532
+  set: {}  # c532
+  add:  # c532
+    tags: [awaits_bakeoff_validation]  # c532

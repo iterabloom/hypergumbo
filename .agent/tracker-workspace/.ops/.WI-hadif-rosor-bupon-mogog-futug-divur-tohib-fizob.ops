@@ -1,0 +1,22 @@
+- op: create  # 3ac9
+  at: '2026-10-05T04:51:15Z'  # 3ac9
+  by: agent  # 3ac9
+  actor: jgstern_agent  # 3ac9
+  clock: 1  # 3ac9
+  nonce: 3ac9  # 3ac9
+  data:  # 3ac9
+    kind: work_item  # 3ac9
+    title: "python: socket.socket has no module_completeness entry, so a typed socket calling settimeout/close/setsockopt withholds every clean verdict; WI-tumol's create_connection typing extends it to create_connection sockets"  # 3ac9
+    status: todo_hard  # 3ac9
+    priority: 3  # 3ac9
+    parent:  # 3ac9
+    tags:  # 3ac9
+    - python  # 3ac9
+    - catalogue  # 3ac9
+    - io_boundary  # 3ac9
+    isbefore: []  # 3ac9
+    duplicate_of: []  # 3ac9
+    not_duplicate_of: []  # 3ac9
+    pr_ref:  # 3ac9
+    description: "FOUND 2026-10-04 by WI-tumol (branch jgstern-agent/fix/tumol). SAFE DIRECTION (inconclusive), but a decisiveness cost that WI-tumol widened.\n\nsocket.socket carries rows (recv/recvfrom/recv_into/recvmsg/accept net_recv; send/sendto/sendall/sendmsg/connect/connect_ex net_send) and NO module_completeness entry. So a typed socket that calls any unrowed method -- settimeout, setsockopt, setblocking, close, shutdown, getpeername, fileno, makefile, ... -- reads \"could not classify (socket.socket)\" and withholds every clean verdict in the file.\n\nObserved (verify-claims, host_secret -> network, JSON parsed), program: s = socket.socket(); s.settimeout(3); s.connect((h, 80)); n = len(s.recv(1024)); s.close(); subprocess.run([\"true\"])  ->  inconclusive, \"calls into 1 module(s) that the I/O catalog could not classify (socket.socket)\". Same on the base tree; it predates WI-tumol.\n\nWI-tumol added `socket.create_connection: socket.socket` (library_signatures), so a create_connection socket now gets the same treatment: s = socket.create_connection((h, 80)); s.settimeout(3); body = s.recv(1024); s.close() read confirmed_with_caveats (untyped receiver) on host_secret -> network and reads inconclusive with the row.\n\nFIX SHAPE (to verify): a per-method adjudication of socket.socket's public surface (python 3.10-3.13), CPython Lib/socket.py + Modules/socketmodule.c, then a completeness entry. Members that need a real decision, not a mechanical \"no I/O\": sendfile (sends a file: net_send), recvmsg_into / recvfrom_into (net_recv), makefile (returns a file over the socket; see the makefile item), bind / listen (net_listen per ADR-0049 Ruling 4 Setup), shutdown, setsockopt. LIVE rule 3: each member needs its own reading."  # 3ac9
+    fields: {}  # 3ac9

@@ -42,3 +42,12 @@
   clock: 4  # ae50
   nonce: ae50  # ae50
   message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459 (80ecd183ca moves the C-family declarator walk to hypergumbo_core.analyze.c_family, shared by c/cpp/cuda; 3b1313e103 changes cuda). A CUDA definition is named at any declarator depth and for every C++ leaf, and calls are drawn from it by position. Re-ran the filed repro: before, symbols helper/plain with 1 edge; after, one_ptr and two_ptr are symbols and lines 3 and 4 have edges, src resolving. Pinned by test_cuda_declaration_symbols (analyze_cuda_files). pytorch: unnamed definitions 594 -> 77 (macro-named, now stood in), call edges 15,866 -> 18,292; whisper.cpp: 134 -> 0, 4,635 -> 4,784. NOT asserted: file-scope calls and member/qualified/template callees in cuda; these are filed as WI-fidih-salal-pipoj-tasuh-diguf-jarit-sijuf-vutum."  # ae50
+- op: update  # f740
+  at: '2026-10-05T04:43:28Z'  # f740
+  by: agent  # f740
+  actor: jgstern_agent  # f740
+  clock: 5  # f740
+  nonce: f740  # f740
+  set: {}  # f740
+  add:  # f740
+    tags: [awaits_bakeoff_validation]  # f740

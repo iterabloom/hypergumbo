@@ -42,3 +42,12 @@
   clock: 4  # 2019
   nonce: '2019'  # 2019
   message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459 (commits 952164dd8c, ef734925a8, eabbd346cd, on top of WI-silos 41fd9834a6).\n\nPremise correction: Alamofire's `stored` is `func stored(_ session: Session) -> Session` on BaseTestCase, not a generic identity. The gap was the missing BASE-CLASS walk for an implicit-self call. That walk is fixed, and it also types XCTest's `expectation` (new community row file swift-xctest.yaml).\n\nEach filed shape is now typed by what it evaluates to:\n- the inherited call result;\n- a literal's default type;\n- a member chain through the head's declared member;\n- `??` / `?:` when every operand agrees;\n- a `_T(...)` constructor, `Self(...)`, `self.init(...)` and `T.init(...)`.\n\nBehavioral evidence: test_swift_initialiser_shapes.py was red on the silos tree (21 failed / 1 control passed), is green on the branch, and each mechanism was mutation-checked.\n\nAcceptance A/B (4 frozen repos, origin/dev vs silos+this branch):\n- Of 272 call sites where silos removed a stamp, 141 come back. A read of 20 found 20 right.\n- Kingfisher's 3 catalogued FileManager chains (enumerator, fileExists, createDirectory) return, plus 5 further `config.fileManager` chains. total_io_edges goes 63 -> 60 (silos) -> 68.\n- vapor gains 19 catalogued logging/fs chains; nothing catalogued is lost on any of the 4 repos.\n\nNOT asserted:\n- Right stamps silos removed that still need closure-parameter, case-payload, tuple, closure-result or collection-element typing: about 11 in a 30-site sample of the 121 kept (WI-zobif / WI-rajig / WI-bodav).\n- Generic-identity functions (vapor `get<T>(_:default:) -> T`): not built; no measured site needs one."  # 2019
+- op: update  # 9e2f
+  at: '2026-10-05T04:43:26Z'  # 9e2f
+  by: agent  # 9e2f
+  actor: jgstern_agent  # 9e2f
+  clock: 5  # 9e2f
+  nonce: 9e2f  # 9e2f
+  set: {}  # 9e2f
+  add:  # 9e2f
+    tags: [awaits_bakeoff_validation]  # 9e2f

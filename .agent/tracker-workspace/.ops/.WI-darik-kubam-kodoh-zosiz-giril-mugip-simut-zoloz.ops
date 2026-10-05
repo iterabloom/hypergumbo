@@ -41,3 +41,12 @@
   clock: 4  # dc29
   nonce: dc29  # dc29
   message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459 (97cd5f2a8c, 5aa2eb9066). A qualified defProc (procedure TA.Run and the constructor/destructor/class-function/class-operator forms) is now a kind=method symbol named TA.Run, and every call edge is drawn from the innermost defProc by position. Re-ran the filed repro: before, symbols P/One with no edge; after, TA.Run and TA.Get are methods, with edges 12 TA.Run->One and 17 TA.Get->One, src resolving. Pinned by test_pascal_declaration_symbols::test_a_method_implementation_is_a_symbol_and_its_calls_are_drawn_from_it (production path, analyze_pascal). sherpa-onnx: 119 unnamed definitions -> 0, call edges 163 -> 810. NOT asserted: receiver calls (A.Run(), Self.Get), external FFI routines and class types; these are filed as WI-gufip-suviv-tufil-sarun-huhif-vituv-hatub-zovor."  # dc29
+- op: update  # 89cf
+  at: '2026-10-05T04:43:27Z'  # 89cf
+  by: agent  # 89cf
+  actor: jgstern_agent  # 89cf
+  clock: 5  # 89cf
+  nonce: 89cf  # 89cf
+  set: {}  # 89cf
+  add:  # 89cf
+    tags: [awaits_bakeoff_validation]  # 89cf
