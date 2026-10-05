@@ -1,0 +1,21 @@
+- op: create  # 4ef4
+  at: '2026-10-05T05:03:33Z'  # 4ef4
+  by: agent  # 4ef4
+  actor: jgstern_agent  # 4ef4
+  clock: 1  # 4ef4
+  nonce: 4ef4  # 4ef4
+  data:  # 4ef4
+    kind: work_item  # 4ef4
+    title: "A call through a local variable holding a function is not a use of that variable (go/ts/rust extractors skip the callee name): h := func(){..v..}; sink(h()) escapes"  # 4ef4
+    status: todo_hard  # 4ef4
+    priority: 3  # 4ef4
+    parent:  # 4ef4
+    tags:  # 4ef4
+    - adr_0017  # 4ef4
+    - taint  # 4ef4
+    isbefore: []  # 4ef4
+    duplicate_of: []  # 4ef4
+    not_duplicate_of: []  # 4ef4
+    pr_ref:  # 4ef4
+    description: "FOUND 2026-10-04 while fixing WI-faful (branch jgstern-agent/fix/losod). With the declaration now defining its variable, `h := func() string { ... return v ... }` then `os.WriteFile(\"o.txt\", []byte(h()), 0o600)` still reads ddg_mixed / escaped, before and after the fix. Cause: the Go, TypeScript and Rust def/use extractors do not count the CALLEE of a plain call as a use (`foo(a)` uses a, not foo -- right for a declared function, wrong for a LOCAL variable holding a function). So `h` is defined at the declaration, never used, and unaccounted_names reports it (the walk escapes; it does not refute).\n\nRepro fixtures (verify-claims, claim host_secret -> host_fs): ~/hypergumbo_lab_notebook/decontend/run_10032026/losod/fx/go_func_literal, rs_closure, ts_arrow_decl -- all three read escaped in both arms. Java is not affected: `s.get()` reads `s` as a receiver.\n\nShape of a fix: a callee identifier that the SAME function defines as a local is a use. The extractors do not know the function's locals per statement, so this likely belongs in populate_def_use_for_cfg or in a per-function pass rather than per statement. Volume unmeasured."  # 4ef4
+    fields: {}  # 4ef4

@@ -1,0 +1,22 @@
+- op: create  # 8da8
+  at: '2026-10-05T04:57:20Z'  # 8da8
+  by: agent  # 8da8
+  actor: jgstern_agent  # 8da8
+  clock: 1  # 8da8
+  nonce: 8da8  # 8da8
+  data:  # 8da8
+    kind: work_item  # 8da8
+    title: "Rust def/use: an assignment inside a block expression (let y = { x = g(n); x + 1 }; h({ x = g(n); x })) is read as a use of x, never a definition"  # 8da8
+    status: todo_hard  # 8da8
+    priority: 3  # 8da8
+    parent:  # 8da8
+    tags:  # 8da8
+    - taint  # 8da8
+    - adr_0017  # 8da8
+    - rust  # 8da8
+    isbefore: []  # 8da8
+    duplicate_of: []  # 8da8
+    not_duplicate_of: []  # 8da8
+    pr_ref:  # 8da8
+    description: "FOUND 2026-10-04 by WI-tozar. The tozar item stated Rust is unaffected by nested assignments because assignment yields (). A BLOCK EXPRESSION nests a whole assignment statement inside an expression, and the Rust def/use extractor does not see it:\n\n  fn f(n: i32) { let mut x = 0; let y = { x = g(n); x + 1 }; h({ x = g(n); x }); s(x, y); }\n  -> L3 let_declaration def=[y] use=[x, n, x]   (x is not defined)\n  -> L4 expression_statement def=[] use=[x, n, x]\n\n(probe: cfg.build_function_cfg + populate_def_use_for_cfg, tree c1dd831558). `let z = if c { x = g(n); 1 } else { 2 };` is decomposed by the builder instead and loses z (WI-faful's shape).\n\nNot checked: frequency in the corpus; verdict effect."  # 8da8
+    fields: {}  # 8da8

@@ -1,0 +1,23 @@
+- op: create  # 88af
+  at: '2026-10-05T04:57:14Z'  # 88af
+  by: agent  # 88af
+  actor: jgstern_agent  # 88af
+  clock: 1  # 88af
+  nonce: 88af  # 88af
+  data:  # 88af
+    kind: work_item  # 88af
+    title: "Java/C def/use: a nested assignment under && / || / ?: strong-kills, one whose value escapes into a call still defines, and field-write strength differs by language (siblings of WI-tozar's refinements)"  # 88af
+    status: todo_hard  # 88af
+    priority: 3  # 88af
+    parent:  # 88af
+    tags:  # 88af
+    - taint  # 88af
+    - adr_0017  # 88af
+    - java  # 88af
+    - c  # 88af
+    isbefore: []  # 88af
+    duplicate_of: []  # 88af
+    not_duplicate_of: []  # 88af
+    pr_ref:  # 88af
+    description: "FOUND 2026-10-04 by WI-tozar, which taught the Python and JS/TS def/use extractors the Java/C rule (a nested assignment defines its target) WITH three refinements Java/C do not have. The sibling extractors still lack them. Def/use probes (cfg.build_function_cfg + populate_def_use_for_cfg, tree c1dd831558):\n\n1. SHORT-CIRCUIT / TERNARY = STRONG KILL in Java and C.\n   Java `if (flag && (v = g(n)) != null)` -> def=[v] use=[flag, n]; `h(flag ? (v = g(n)) : n)` -> def=[v]. C `if (flag && (v = g(n)) > 0)` -> def=[v] use=[flag, n].\n   When flag is false the earlier value of v survives, but the reaching-def solver kills it. Python/JS now record such a binding as define AND use (weak, like x += e).\n2. A BINDING WHOSE VALUE ESCAPES INTO A CALL DEFINES in Java and C: Java `acc.add(v = g(n))` -> def=[v]; C `h(v = g(n))` -> def=[v]. In JS the same shape turned a reported leak into a removal (acc.push(k = process.env.K); console.log(k.length); fetch(url + acc[0]) went violated -> confirmed_with_caveats) because the s3a walk never examines the source's own line (filed separately). The Java fixture of that shape read inconclusive (sink_before_source) before and after, so a Java verdict change is NOT demonstrated; the def/use shape is.\n3. STATEMENT-LEVEL FIELD WRITE STRENGTH differs by language: Java `a.f = v` reads a (weak); TS `this.a = v` and Python `self.a = v` define the receiver WITHOUT reading it (strong kill of every earlier value of this/self). WI-tozar made the NESTED link (`x = this.b = v`) weak and left the statement level unchanged.\n\nNot checked: Rust (handler-based; see the Rust block-expression item), Go (no assignment expressions)."  # 88af
+    fields: {}  # 88af
