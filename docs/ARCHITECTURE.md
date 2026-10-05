@@ -14,14 +14,14 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **350** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 105 core, 4 CLI, 36 tracker)
-- **52495** symbols (functions, classes, methods)
-- **207566** edges by type:
-  - calls: 118314
-  - contains: 48146
-  - imports: 17119
-  - instantiates: 12189
-  - references: 8233
+- **352** Python modules (145 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 105 core, 4 CLI, 36 tracker)
+- **52805** symbols (functions, classes, methods)
+- **208759** edges by type:
+  - calls: 118978
+  - contains: 48431
+  - imports: 17273
+  - instantiates: 12204
+  - references: 8308
   - module_attr_ref: 1962
   - other: 1603
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 52495 Symbols + 207566 Edges + UsageContexts           │
+│  Output: 52805 Symbols + 208759 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,20 +279,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10049.6 | ir.py |
-| `len` | external_symbol | 7718.0 | <external> |
-| `write_text` | external_symbol | 6982.0 | <external> |
-| `Span` | class | 6610.6 | ir.py |
+| `Symbol` | class | 10077.5 | ir.py |
+| `len` | external_symbol | 7734.0 | <external> |
+| `write_text` | external_symbol | 7011.0 | <external> |
+| `Span` | class | 6625.4 | ir.py |
 | `LinkerContext` | class | 3614.4 | registry.py |
-| `get` | external_symbol | 3342.0 | <external> |
-| `load_catalog` | function | 3244.5 | io_boundary.py |
-| `Edge.create` | method | 2430.9 | ir.py |
-| `str` | external_symbol | 2283.0 | <external> |
-| `Path` | external_symbol | 2256.0 | <external> |
-| `next` | external_symbol | 2185.0 | <external> |
+| `get` | external_symbol | 3366.0 | <external> |
+| `load_catalog` | function | 3260.5 | io_boundary.py |
+| `Edge.create` | method | 2434.5 | ir.py |
+| `str` | external_symbol | 2287.0 | <external> |
+| `Path` | external_symbol | 2266.0 | <external> |
+| `next` | external_symbol | 2188.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `append` | external_symbol | 1745.0 | <external> |
+| `append` | external_symbol | 1752.0 | <external> |
 | `main` | function | 1723.8 | cli.py |
 
 ## Pattern System
@@ -361,7 +361,7 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 181 YAML catalog files across 11 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 182 YAML catalog files across 11 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | User channel | ADR | Loader | Purpose |
 |---|---:|---|---|---|---|
@@ -375,7 +375,7 @@ The `hypergumbo-core` package ships 181 YAML catalog files across 11 directories
 | `taint_sinks/` | 2 | `taint_sinks.d` | ADR-0060 | `hypergumbo_core.taint` | Built-in taint sinks with NO I/O-boundary counterpart (code_execution, dom_injection); every I/O sink is derived from io_primitives instead. |
 | `function_summaries/` | 7 | `function_summaries.d` (gated) | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
 | `url_folding/` | 2 | internal | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
-| `library_signatures/` | 7 | `library_signatures.d` | ADR-0006 | `hypergumbo_core.library_signatures` | Per-language library signatures: the type a producing function returns, so a receiver bound to a LIBRARY call can be typed at all. |
+| `library_signatures/` | 8 | `library_signatures.d` | ADR-0006 | `hypergumbo_core.library_signatures` | Per-language library signatures: the type a producing function returns, so a receiver bound to a LIBRARY call can be typed at all. |
 
 **User channel** (ADR-0047 ruling 7) names where a user's own rows for that family live, under `$XDG_CONFIG_HOME/hypergumbo/` — or `internal` when the family describes the *language's* world rather than the *user's* and takes no user input. The fields are required on `CatalogSpec`, so a new family cannot land without answering.
 
@@ -699,7 +699,9 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 - **`hypergumbo_core.analyze.all_analyzers`**: Analyzer orchestration + the stable analyzer-dispatch import points.
 - **`hypergumbo_core.analyze.base`**: Base classes and utilities for language analyzers.
+- **`hypergumbo_core.analyze.c_family`**: The C-family declarator walk: where a C, C++ or CUDA definition nam...
 - **`hypergumbo_core.analyze.cyclomatic`**: Grammar-agnostic McCabe cyclomatic-complexity walker + decision-poi...
+- **`hypergumbo_core.analyze.edge_source`**: Where an edge comes FROM: the src of every edge is an emitted symbo...
 - **`hypergumbo_core.analyze.merge_producers`**: The merge pass: two producers' records for one declaration become one
 - **`hypergumbo_core.analyze.registry`**: Analyzer registry for decorator-based dynamic dispatch.
 - **`hypergumbo_lang_mainstream.bash`**: Bash/shell script analyzer using tree-sitter.
@@ -956,8 +958,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 9a2987a5da7b
-  commit_count: 8113
+  commit: 5b140e7d069a
+  commit_count: 8142
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
