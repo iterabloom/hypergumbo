@@ -45,8 +45,30 @@ How It Works
    - ``deferred``: Statement body executes at function exit, after all
      subsequent statements (Go ``defer``).
 
+   A loop's, conditional's or switch's HEADER is statements too (WI-losod):
+   ``initializer_child``, ``update_child``, ``header_child`` and
+   ``header_is_node`` name the parts that bind a variable before the body
+   reads it (``if err := do(); ...``, ``for i := 0; ...; i++``, ``for v in
+   xs``), and each is recorded as a statement of its own.
+
+   ``nested_function`` lists the node types that are FUNCTIONS nested in the
+   one being built (WI-faful): a lambda, closure, arrow function, function
+   literal or nested declaration. It is not a control-flow category. The
+   statement holding one stays ONE statement, and the nested body becomes a
+   region that may run, hung off that statement, instead of being inlined
+   as though it ran in sequence (``CfgBuilder._attach_nested_function``).
+
 4. **Unmapped node types** are treated as sequential statements (safe
    overapproximation). A warning is logged at DEBUG level listing unmapped types.
+
+5. **Atomic statements** (``atomic_statement``) are recorded as ONE statement
+   so a def/use extractor is handed the whole node. When one holds control
+   flow in a VALUE (``let x = if c { a } else { b };``, ``int r = switch
+   (n) {...};``, ``let k = f()?;``) the control flow is processed first and
+   the statement recorded after it, so it still defines its target (WI-faful);
+   when the statement is nothing but the control flow (Rust's
+   ``expression_statement > if_expression``) the control flow is processed
+   alone.
 
 Architecture
 ------------
@@ -85,7 +107,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Optional, Protocol, runtime_checkable
+from typing import Any, Iterable, Literal, Optional, Protocol, runtime_checkable
 
 import yaml
 
@@ -221,6 +243,16 @@ class CfgStatement:
     #: ``__exit__``). Read by :func:`statement_match_key`, which both the
     #: def/use pass and the coverage gate use (WI-simiv).
     ast_node_type: Optional[str] = None
+    #: Where this statement's COVERAGE of its AST node ends, as a byte offset,
+    #: when it covers only a prefix of the node. ``None`` means the whole node.
+    #: Set for a loop whose header has no node of its own (Python ``for v in
+    #: xs:``, Java ``for (T v : xs)``): the statement is recorded AT the loop
+    #: node, so the def/use extractor is handed that node, but it stands for
+    #: the header alone. Without the cut-off the coverage gates would read the
+    #: loop BODY as covered by the header statement, which fails open
+    #: (WI-losod). Read by :func:`uncovered_semantic_lines` and
+    #: :func:`unaccounted_names`.
+    extent_end_byte: Optional[int] = None
 
 
 def statement_match_key(stmt: "CfgStatement") -> tuple[int, int, str]:
@@ -282,22 +314,53 @@ class FunctionCfg:
 
 @dataclass
 class ConditionalMapping:
-    """Maps a tree-sitter node type to an if/else-style conditional."""
+    """Maps a tree-sitter node type to an if/else-style conditional.
+
+    ``initializer_child`` names a statement the header runs BEFORE the
+    condition (Go ``if err := do(); err != nil``). It is recorded as its own
+    statement ahead of the condition, so the variable it binds is DEFINED
+    where the branch can read it (WI-losod).
+    """
 
     node_type: str
     condition_child: str
     true_child: str
     false_child: Optional[str] = None
+    initializer_child: Optional[str] = None
 
 
 @dataclass
 class LoopMapping:
-    """Maps a tree-sitter node type to a loop construct."""
+    """Maps a tree-sitter node type to a loop construct.
+
+    The header is modelled as statements that DEFINE their bindings before the
+    body reads them (WI-losod). Which parts a loop has is per grammar, so each
+    is an optional child reference:
+
+    - ``initializer_child``: runs ONCE, before the first test (``for (i = 0;
+      ...)``, Go ``for i := 0; ...``). Every match is recorded (Java allows
+      ``for (i = 0, j = 0; ...)`` as two ``init`` fields).
+    - ``condition_child``: evaluated each iteration, in the header block.
+    - ``update_child``: runs after the body and after a ``continue``, before
+      the next test (``i++``).
+    - ``header_child``: a node that BINDS each iteration's value and has a
+      node of its own (Go ``range_clause``), recorded in the header block.
+    - ``header_is_node``: the binding has NO node of its own (Python ``for v
+      in xs``, Rust ``for v in xs``, TypeScript ``for (const v of xs)``, Java
+      ``for (T v : xs)``), so the header statement is recorded AT the loop
+      node, with :attr:`CfgStatement.extent_end_byte` cut at the body so it
+      does not claim to cover the body. The language's def/use extractor
+      must read only the header when handed the loop node.
+    """
 
     node_type: str
     body_child: str
     condition_child: Optional[str] = None
     infinite: bool = False
+    initializer_child: Optional[str] = None
+    update_child: Optional[str] = None
+    header_child: Optional[str] = None
+    header_is_node: bool = False
 
 
 @dataclass
@@ -344,13 +407,53 @@ class SwitchMapping:
     """Maps a tree-sitter node type to a switch/match construct.
 
     If ``arms_child`` is None, case/arm nodes are direct children of the
-    switch node itself (e.g., Go ``expression_switch_statement``).
+    switch node itself (e.g., Go ``expression_switch_statement``); the
+    scrutinee and initializer are then skipped, not mistaken for arms.
+
+    ``arm_type`` is one node type or a list of them: Java spells a classic
+    ``case X:`` group and an arrow ``case X ->`` rule as two types, and an
+    arm of a type the mapping does not name is not an arm at all.
+
+    ``initializer_child`` names a statement the header runs before the
+    scrutinee (Go ``switch x := f(); x {``), recorded ahead of it (WI-losod).
     """
 
     node_type: str
     scrutinee_child: str
     arms_child: Optional[str] = None
-    arm_type: Optional[str] = None
+    arm_type: Optional[str | list[str]] = None
+    initializer_child: Optional[str] = None
+
+    def arm_types(self) -> Optional[frozenset[str]]:
+        """``arm_type`` as a set, or None when every named child is an arm."""
+        if self.arm_type is None:
+            return None
+        if isinstance(self.arm_type, str):
+            return frozenset({self.arm_type})
+        return frozenset(self.arm_type)
+
+
+@dataclass
+class NestedFunctionMapping:
+    """A node type that is a FUNCTION nested in the one being built (WI-faful).
+
+    A lambda, closure, arrow function, function literal or nested declaration
+    does not run where it is written: it runs when it is called, which may be
+    never, once, many times, or after the enclosing statement has finished.
+    Inlining its body as though it ran in sequence (what the builder did before
+    this mapping existed) makes its bindings DEFINE and KILL the enclosing
+    function's variables -- a closure's ``t := "x"`` shadowing an outer ``t``
+    hid the outer value from every later use.
+
+    ``body_child`` names the body. The builder records the statement holding
+    the function as ONE statement and builds the body as its own CFG region
+    (its own exit, loop stack and deferred list) that MAY run: entered from
+    that statement, able to repeat, and rejoining after it -- see
+    :meth:`CfgBuilder._attach_nested_function`.
+    """
+
+    node_type: str
+    body_child: str
 
 
 @dataclass
@@ -392,6 +495,19 @@ class CfgNodeMapping:
     #: case is enumerated, so an unconfigured language fails CLOSED.
     call_node_types: list[str] = field(default_factory=list)
     atomic_statements: list[str] = field(default_factory=list)
+    #: Functions nested in a function body (WI-faful); see
+    #: :class:`NestedFunctionMapping`. Deliberately NOT a ``classify()``
+    #: category: a nested function is not control flow of the function being
+    #: built, and the atomic-statement rule must not decompose a statement
+    #: just because a lambda inside it contains a branch.
+    nested_functions: list[NestedFunctionMapping] = field(default_factory=list)
+
+    def get_nested_function(self, node_type: str) -> Optional[NestedFunctionMapping]:
+        """Return the nested-function mapping for a node type, if any."""
+        for nf in self.nested_functions:
+            if nf.node_type == node_type:
+                return nf
+        return None
 
     def classify(self, node_type: str) -> Optional[str]:
         """Return the control-flow category for a tree-sitter node type.
@@ -557,6 +673,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
             condition_child=c["condition_child"],
             true_child=c["true_child"],
             false_child=c.get("false_child"),
+            initializer_child=c.get("initializer_child"),
         )
         for c in data.get("conditional", [])
     ]
@@ -567,6 +684,10 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
             body_child=lo["body_child"],
             condition_child=lo.get("condition_child"),
             infinite=lo.get("infinite", False),
+            initializer_child=lo.get("initializer_child"),
+            update_child=lo.get("update_child"),
+            header_child=lo.get("header_child"),
+            header_is_node=lo.get("header_is_node", False),
         )
         for lo in data.get("loop", [])
     ]
@@ -616,8 +737,14 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
             scrutinee_child=s["scrutinee_child"],
             arms_child=s.get("arms_child"),
             arm_type=s.get("arm_type"),
+            initializer_child=s.get("initializer_child"),
         )
         for s in data.get("switch", [])
+    ]
+
+    nested_functions = [
+        NestedFunctionMapping(node_type=nf["node_type"], body_child=nf["body_child"])
+        for nf in data.get("nested_function", [])
     ]
 
     return CfgNodeMapping(
@@ -635,6 +762,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         switch=switch,
         call_node_types=data.get("call_node_types", []),
         atomic_statements=data.get("atomic_statement", []),
+        nested_functions=nested_functions,
     )
 
 
@@ -778,8 +906,70 @@ class CfgBuilder:
         References use a prefix to specify the lookup strategy:
         - ``field:name`` → ``node.child_by_field_name("name")``
         - ``type:name`` → first child with ``.type == "name"``
+        - ``unfielded`` → first named child that carries no field name;
+          ``unfielded:except=a,b`` skips children of types ``a`` and ``b``.
+          Go's ``for x < n {}`` gives its bare condition no field.
         - bare ``name`` (no prefix) → field lookup first, then type fallback
+
+        Two combinators, so a grammar that nests a header one level down can
+        still be mapped in YAML (WI-losod):
+        - ``a/b`` resolves ``b`` against the node ``a`` found (Go's
+          ``type:for_clause/field:initializer``)
+        - ``a|b`` is the first of the alternatives that resolves
         """
+        found = CfgBuilder._find_children(node, ref, first_only=True)
+        return found[0] if found else None
+
+    @staticmethod
+    def _find_children(node: Any, ref: str, first_only: bool = False) -> list[Any]:
+        """Every node a child reference resolves to, in source order.
+
+        A ``field:`` reference in the LAST path step yields every child under
+        that field (Java's ``for (i = 0, j = 0; ...)`` repeats ``init``); every
+        other form yields at most one. ``first_only`` is what
+        :meth:`_find_child` asks for.
+        """
+        for alternative in ref.split("|"):
+            current = [node]
+            steps = alternative.split("/")
+            for i, step in enumerate(steps):
+                last = i == len(steps) - 1
+                found: list[Any] = []
+                for parent in current:
+                    found.extend(CfgBuilder._resolve_step(
+                        parent, step, every=last and not first_only,
+                    ))
+                current = found[:1] if not last else found
+                if not current:
+                    break
+            if current:
+                return current
+        return []
+
+    @staticmethod
+    def _resolve_step(node: Any, ref: str, every: bool) -> list[Any]:
+        """One path step of a child reference (see :meth:`_find_child`)."""
+        if ref.startswith("field:") and every:
+            return list(node.children_by_field_name(ref[6:]))
+        if ref.startswith("unfielded"):
+            excluded = frozenset(
+                ref.partition("except=")[2].split(",")
+            ) if "except=" in ref else frozenset()
+            for i, child in enumerate(node.children):
+                if (
+                    child.is_named
+                    and not child.is_extra
+                    and node.field_name_for_child(i) is None
+                    and child.type not in excluded
+                ):
+                    return [child]
+            return []
+        single = CfgBuilder._find_single(node, ref)
+        return [] if single is None else [single]
+
+    @staticmethod
+    def _find_single(node: Any, ref: str) -> Optional[Any]:
+        """A ``field:`` / ``type:`` / bare reference, resolved to one child."""
         if ref.startswith("field:"):
             field_name = ref[6:]
             return node.child_by_field_name(field_name)
@@ -809,10 +999,22 @@ class CfgBuilder:
         This is the sequential composition rule: connect each child's fringe
         to the next child's entry.
         """
+        return self._sequence(
+            self._process_node(child, source) for child in parent_node.children
+        )
+
+    def _sequence(
+        self, partials: Iterable[Optional[_PartialCfg]],
+    ) -> Optional[_PartialCfg]:
+        """Compose partial CFGs in order: each one's fringe flows to the next.
+
+        ``None`` entries (a node that produced nothing) are skipped. The one
+        composition rule, shared by :meth:`_process_children` and the
+        atomic-statement path, so the two cannot wire sequence differently.
+        """
         result: Optional[_PartialCfg] = None
 
-        for child in parent_node.children:
-            child_partial = self._process_node(child, source)
+        for child_partial in partials:
             if child_partial is None:
                 continue
 
@@ -830,29 +1032,45 @@ class CfgBuilder:
 
         return result
 
-    def _contains_classified_descendant(self, node: Any) -> bool:
-        """Does this subtree hold a node the mapping treats as control flow?
+    def _embedded_regions(self, node: Any) -> tuple[list[Any], list[Any]]:
+        """The control flow and the nested functions a statement holds.
 
-        Used to decide whether an ``atomic_statement`` declaration may be
-        honoured for a particular occurrence. ``atomic_statement`` exists so a
-        def/use extractor receives whole statements instead of decomposed
-        leaves, and that is safe exactly when the statement is straight-line.
-        In an expression-oriented grammar the same node type is sometimes
-        straight-line and sometimes a branch in disguise — Rust's
-        ``expression_statement`` wraps a bare call in one function and an
-        ``if_expression`` in the next — so the decision cannot be made from the
-        node *type* alone, which is all a YAML mapping can express.
+        Returns ``(control_flow, functions)``: the OUTERMOST descendants the
+        mapping classifies as control flow, and the outermost nested functions
+        that sit outside every one of those, both in source order.
+
+        The walk does not enter a nested function (WI-faful). A branch inside a
+        lambda is the LAMBDA's control flow, not this statement's: counting it
+        was what made ``Runnable q = () -> { if (x > 0) go(); };`` decompose
+        into leaves, so ``q`` was read as a use and never defined. Nor does it
+        enter a control-flow node, whose own handler owns everything inside it.
 
         Only named children are walked: anonymous nodes are punctuation and
-        keywords, which no mapping classifies. The walk runs only for a node
-        already known to be atomic, so it is not on the common path.
+        keywords, which no mapping classifies. Iterative, for the reason every
+        AST walk in this module is (INV-gotir).
         """
-        for child in node.named_children:
-            if self._mapping.classify(child.type) is not None:
-                return True
-            if self._contains_classified_descendant(child):
-                return True
-        return False
+        control_flow: list[Any] = []
+        functions: list[Any] = []
+        stack = list(reversed(node.named_children))
+        while stack:
+            child = stack.pop()
+            if self._mapping.get_nested_function(child.type) is not None:
+                functions.append(child)
+            elif self._mapping.classify(child.type) is not None:
+                control_flow.append(child)
+            else:
+                stack.extend(reversed(child.named_children))
+        return control_flow, functions
+
+    @staticmethod
+    def _sole_inner(node: Any) -> Any:
+        """Follow single-named-child wrappers down from ``node``.
+
+        ``expression_statement > if_expression``: the wrapper IS the branch.
+        """
+        while node.named_child_count == 1:
+            node = node.named_children[0]
+        return node
 
     def _process_node(self, node: Any, source: bytes) -> Optional[_PartialCfg]:
         """Process a single AST node and return its partial CFG.
@@ -860,6 +1078,9 @@ class CfgBuilder:
         Dispatches to category-specific handlers based on the YAML mapping.
         Unmapped node types are treated as sequential statements.
         """
+        if self._mapping.get_nested_function(node.type) is not None:
+            return self._statement_with_functions(node, [node], source)
+
         category = self._mapping.classify(node.type)
 
         if category == "conditional":
@@ -899,34 +1120,14 @@ class CfgBuilder:
         if node.is_named is False and node.child_count == 0:
             return None
 
+        if node.named_child_count > 0 and node.type in self._mapping.atomic_statements:
+            return self._process_atomic(node, source)
+
         # If this node has named children, it may be a compound statement we
         # don't recognize. Recurse into its children to capture any control
-        # flow hidden inside. EXCEPT: when the YAML mapping declares this
-        # node type as an atomic statement, treat it as a single block —
-        # def/use extractors operate at the statement level and want the
-        # full expression/assignment node, not its decomposed leaves.
-        #
-        # ...UNLESS the atomic node CONTAINS control flow, which is why the
-        # descendant check is here rather than in each mapping. In a
-        # statement-oriented grammar (Go, Python) an atomic type never wraps a
-        # branch: `if_statement` is its own statement. In an EXPRESSION-oriented
-        # grammar it routinely does — Rust parses `if c { } else { }` as
-        # `expression_statement > if_expression` and `let x = f()?;` as
-        # `let_declaration > try_expression`. Declaring the wrapper atomic
-        # there stops the descent before the branch is ever classified, so the
-        # CFG silently loses its true/false edges while every def/use test
-        # still passes, because def/use is exactly what the wrapper was
-        # declared for. Keeping the rule per-mapping would make each new
-        # expression-oriented language rediscover that; making it a property of
-        # the builder closes it once.
-        if (
-            node.named_child_count > 0
-            and self._mapping.classify(node.type) is None
-            and (
-                node.type not in self._mapping.atomic_statements
-                or self._contains_classified_descendant(node)
-            )
-        ):
+        # flow hidden inside. A type the mapping declares atomic never gets
+        # here: see :meth:`_process_atomic`.
+        if node.named_child_count > 0:
             # Track unmapped compound types
             if node.type not in _SKIP_UNMAPPED_TYPES:
                 self._unmapped_types.add(node.type)
@@ -936,19 +1137,155 @@ class CfgBuilder:
             # Fall through to create a single-statement block if children
             # produced nothing
 
+        return self._statement_with_functions(node, [], source)
+
+    def _process_atomic(self, node: Any, source: bytes) -> Optional[_PartialCfg]:
+        """An ``atomic_statement`` node: ONE statement, whatever it contains.
+
+        ``atomic_statement`` exists so a def/use extractor receives whole
+        statements instead of decomposed leaves. Three shapes:
+
+        1. STRAIGHT-LINE (the common case): one statement.
+        2. THE WRAPPER IS THE BRANCH. Rust parses ``if c { } else { }`` as
+           ``expression_statement > if_expression``; the statement is nothing
+           but the control flow, which is processed as such. Declaring the
+           wrapper atomic must not stop the descent before the branch is
+           classified, or the CFG silently loses its true/false edges while
+           every def/use test still passes.
+        3. CONTROL FLOW INSIDE A VALUE (WI-faful): ``let x = if c { a } else {
+           b };``, ``int r = switch (n) { ... };``, ``let k = env::var("K")?;``.
+           The control flow runs first and is processed as control flow; THEN
+           the statement is recorded, once, after it -- so it DEFINES its
+           target where later code can read it. Decomposing it instead (the
+           builder's rule until WI-faful) recorded the target as a bare
+           identifier USE and never defined it.
+
+        A nested function anywhere outside that control flow (a lambda, a
+        closure, a callback argument) is not control flow of this function:
+        the statement stays one statement and the function's body becomes a
+        region that may run (:meth:`_attach_nested_function`).
+        """
+        control_flow, functions = self._embedded_regions(node)
+        if not control_flow:
+            return self._statement_with_functions(node, functions, source)
+        inner = self._sole_inner(node)
+        if len(control_flow) == 1 and inner == control_flow[0]:
+            return self._process_node(inner, source)
+        return self._sequence([
+            *(self._process_node(cf, source) for cf in control_flow),
+            self._statement_with_functions(node, functions, source),
+        ])
+
+    def _statement_with_functions(
+        self, node: Any, functions: list[Any], source: bytes,
+    ) -> _PartialCfg:
+        """One statement for ``node``, plus a may-run region per nested function."""
         block = self._new_block()
-        stmt = CfgStatement(
+        block.statements.append(self._statement_for(node, source))
+        fringe = [_FringeEdge(source_block=block.id, edge_type="always")]
+        for function in functions:
+            fringe.extend(self._attach_nested_function(block, function, source))
+        return _PartialCfg(
+            entry_block=block.id,
+            fringe=fringe,
+            blocks={block.id: block},
+        )
+
+    def _statement_for(
+        self, node: Any, source: bytes, extent_end_byte: Optional[int] = None,
+    ) -> CfgStatement:
+        """The statement recorded for ``node``, keyed to it for the def/use pass."""
+        return CfgStatement(
             line=node.start_point[0] + 1,
             col=node.start_point[1],
             node_type=node.type,
             code_snippet=self._node_text(node, source),
+            extent_end_byte=extent_end_byte,
         )
-        block.statements.append(stmt)
-        return _PartialCfg(
-            entry_block=block.id,
-            fringe=[_FringeEdge(source_block=block.id, edge_type="always")],
-            blocks={block.id: block},
-        )
+
+    def _process_body(self, body: Any, source: bytes) -> Optional[_PartialCfg]:
+        """A nested function's body: its statements, in sequence.
+
+        A block body is a sequence, processed as :meth:`build` processes a
+        function body, so an EMPTY one yields nothing rather than a statement
+        for the bare ``{}``. A body that is itself a construct the mapping
+        names -- an atomic statement, control flow, another nested function
+        (Rust's ``|x| if x { .. } else { .. }``) -- is processed as that
+        construct; any other expression body (Java's ``x -> f(x)``) as its
+        parts, as the builder treats an unmapped compound node anywhere.
+        """
+        if (
+            body.type in self._mapping.atomic_statements
+            or self._mapping.classify(body.type) is not None
+            or self._mapping.get_nested_function(body.type) is not None
+        ):
+            return self._process_node(body, source)
+        return self._process_children(body, source)
+
+    def _attach_nested_function(
+        self, holder: BasicBlock, function: Any, source: bytes,
+    ) -> list[_FringeEdge]:
+        """Build a nested function's body as a region that MAY run (WI-faful).
+
+        The body is the nested function's own CFG: built with its own exit
+        block, its own (empty) loop stack and its own deferred list, so a
+        ``return`` inside it ends the CLOSURE rather than the enclosing
+        function, a ``break`` cannot bind to an enclosing loop, and a Go
+        ``defer`` inside it runs at the closure's exit.
+
+        It is wired as an optional, repeatable detour from ``holder``, the
+        statement that creates or passes the function: ``holder`` -> body ->
+        region exit -> (body again | on to whatever follows ``holder``), while
+        ``holder``'s own fringe still reaches what follows directly. Read as
+        reaching definitions, that is ADR-0017's conservative treatment of a
+        closure, stated as a CFG:
+
+        - the body sees every value that reaches the statement creating it, so
+          a captured tainted value is used at its own line inside the body
+          (where a sink call in a callback is);
+        - a binding inside the body MAY reach code after the statement (a
+          closure can assign a captured variable) but can never KILL an outer
+          definition, because the skip edge keeps the outer one alive. The
+          inlined body this replaces killed it: a closure's ``t := "x"`` hid
+          the outer ``t`` from every later use;
+        - the repeat edge lets a binding made late in the body reach a use
+          early in it, as a callback invoked twice does.
+
+        What it does not model: a closure that runs only AFTER a later
+        statement redefines a captured variable sees only the value at its
+        creation. Returns the region's fringe (empty when the body is empty or
+        absent, in which case nothing is attached).
+        """
+        mapping = self._mapping.get_nested_function(function.type)
+        body = self._find_child(function, mapping.body_child) if mapping else None
+        if body is None:
+            return []
+
+        saved = (self._exit_block_id, self._loop_stack, self._deferred_nodes)
+        region_exit = self._new_block()
+        self._exit_block_id = region_exit.id
+        self._loop_stack = []
+        self._deferred_nodes = []
+        try:
+            partial = self._process_body(body, source)
+            if partial is not None and partial.entry_block is not None:
+                self._connect_fringe(partial.fringe, region_exit.id)
+                if self._deferred_nodes:
+                    self._insert_deferred(region_exit, source)
+        finally:
+            self._exit_block_id, self._loop_stack, self._deferred_nodes = saved
+
+        if partial is None or partial.entry_block is None:
+            # Nothing in the body becomes a statement: no region to attach.
+            del self._blocks[region_exit.id]
+            return []
+        holder.successors.append(CfgEdge(
+            target_block=partial.entry_block, edge_type="always",
+        ))
+        region_exit.successors.append(CfgEdge(
+            target_block=partial.entry_block, edge_type="always",
+        ))
+        return [_FringeEdge(source_block=region_exit.id, edge_type="always")]
 
     def _process_conditional(self, node: Any, source: bytes) -> Optional[_PartialCfg]:
         """Process an if/else-style conditional.
@@ -960,8 +1297,11 @@ class CfgBuilder:
         if mapping is None:
             return self._process_sequential(node, source)  # pragma: no cover
 
-        # Create condition block
+        # Create condition block. A header initializer runs first, in the same
+        # block, so the binding it makes reaches the condition and both
+        # branches (WI-losod).
         cond_block = self._new_block()
+        self._record_header(cond_block, node, mapping.initializer_child, source)
         cond_node = self._find_child(node, mapping.condition_child)
         if cond_node:
             cond_block.statements.append(CfgStatement(
@@ -1010,18 +1350,60 @@ class CfgBuilder:
             blocks={cond_block.id: cond_block},
         )
 
+    def _record_header(
+        self, block: BasicBlock, node: Any, ref: Optional[str], source: bytes,
+    ) -> None:
+        """Append one statement per node ``ref`` names under ``node``.
+
+        A header part (an initializer, an update, a range clause) is ONE
+        statement, recorded at its own node whatever its type, so the def/use
+        extractor is handed it whole (WI-losod). It is not routed through
+        :meth:`_process_node`: a C ``for (i = 0; ...)`` initializer is a bare
+        ``assignment_expression``, which no ``atomic_statement`` list names and
+        which would otherwise be decomposed into leaves.
+        """
+        if ref is None:
+            return
+        for part in self._find_children(node, ref):
+            block.statements.append(self._statement_for(part, source))
+
     def _process_loop(self, node: Any, source: bytes) -> Optional[_PartialCfg]:
         """Process a loop construct (while/for/loop).
 
-        Creates a header block (condition for while, iterator for for,
-        empty for infinite loop), a body, and back-edge from body to header.
-        Break edges go to fringe; continue edges go to header.
+        The header DEFINES its bindings before the body reads them (WI-losod):
+
+        - an initializer runs once, in its own block ahead of the header;
+        - the header block holds, in order, the per-iteration binding (a
+          ``header_child`` node, or the loop node itself when the binding has
+          no node of its own) and the condition;
+        - an update runs in its own block after the body, which is also where
+          a ``continue`` goes, and flows back to the header.
+
+        An infinite loop's header is empty. Break edges go to the fringe.
+        Until WI-losod the header held the condition alone, so ``for v in
+        os.environ:``, Go's ``for _, e := range os.Environ()`` and every
+        classic ``for`` initializer defined nothing.
         """
         mapping = self._mapping.get_loop(node.type)
         if mapping is None:
             return self._process_sequential(node, source)  # pragma: no cover
 
+        body_node = self._find_child(node, mapping.body_child)
+
+        init_block: Optional[BasicBlock] = None
+        if mapping.initializer_child and self._find_children(
+            node, mapping.initializer_child,
+        ):
+            init_block = self._new_block()
+            self._record_header(init_block, node, mapping.initializer_child, source)
+
         header_block = self._new_block()
+        self._record_header(header_block, node, mapping.header_child, source)
+        if mapping.header_is_node:
+            header_block.statements.append(self._statement_for(
+                node, source,
+                extent_end_byte=body_node.start_byte if body_node else None,
+            ))
 
         # Condition (for while loops)
         cond_node = (
@@ -1037,12 +1419,22 @@ class CfgBuilder:
                 code_snippet=self._node_text(cond_node, source),
             ))
 
+        update_block: Optional[BasicBlock] = None
+        if mapping.update_child and self._find_children(node, mapping.update_child):
+            update_block = self._new_block()
+            self._record_header(update_block, node, mapping.update_child, source)
+            update_block.successors.append(CfgEdge(
+                target_block=header_block.id, edge_type="always",
+            ))
+        # Where the body's end and a ``continue`` go: the update when there is
+        # one, else straight back to the test.
+        back_target = update_block.id if update_block else header_block.id
+
         # Push loop context for break/continue resolution
         loop_ctx = _LoopContext(header_block_id=header_block.id)
         self._loop_stack.append(loop_ctx)
 
         # Process body
-        body_node = self._find_child(node, mapping.body_child)
         body_partial: Optional[_PartialCfg] = None
         if body_node:
             body_partial = self._process_children(body_node, source)
@@ -1066,22 +1458,38 @@ class CfgBuilder:
                 ))
                 fringe.append(_FringeEdge(source_block=header_block.id, edge_type="false"))
 
-            # Back-edge: body's fringe → header
-            self._connect_fringe(body_partial.fringe, header_block.id)
+            # Back-edge: body's fringe → update (or header)
+            self._connect_fringe(body_partial.fringe, back_target)
         else:
             if not mapping.infinite:
                 fringe.append(_FringeEdge(source_block=header_block.id, edge_type="false"))
+            if update_block is not None:
+                # An empty body still runs the update every iteration.
+                header_block.successors.append(CfgEdge(
+                    target_block=update_block.id, edge_type="true",
+                ))
 
-        # Continue edges → header (back-edge)
-        self._connect_fringe(loop_ctx.continue_edges, header_block.id)
+        # Continue edges → update (or header)
+        self._connect_fringe(loop_ctx.continue_edges, back_target)
 
         # Break edges → fringe (exit loop)
         fringe.extend(loop_ctx.break_edges)
 
+        blocks = {header_block.id: header_block}
+        entry = header_block.id
+        if init_block is not None:
+            init_block.successors.append(CfgEdge(
+                target_block=header_block.id, edge_type="always",
+            ))
+            blocks[init_block.id] = init_block
+            entry = init_block.id
+        if update_block is not None:
+            blocks[update_block.id] = update_block
+
         return _PartialCfg(
-            entry_block=header_block.id,
+            entry_block=entry,
             fringe=fringe,
-            blocks={header_block.id: header_block},
+            blocks=blocks,
         )
 
     def _process_break(self, node: Any, source: bytes) -> Optional[_PartialCfg]:
@@ -1393,8 +1801,9 @@ class CfgBuilder:
         if mapping is None:
             return self._process_sequential(node, source)  # pragma: no cover
 
-        # Scrutinee block
+        # Scrutinee block. A header initializer runs first (WI-losod).
         scrutinee_block = self._new_block()
+        self._record_header(scrutinee_block, node, mapping.initializer_child, source)
         scrutinee_node = self._find_child(node, mapping.scrutinee_child)
         if scrutinee_node:
             scrutinee_block.statements.append(CfgStatement(
@@ -1411,12 +1820,28 @@ class CfgBuilder:
         arms_container = (
             self._find_child(node, mapping.arms_child) if mapping.arms_child else node
         )
+        arm_types = mapping.arm_types()
+        # The header's own parts are children of the switch node when the arms
+        # are too (Go): recorded above, they are not arms.
+        header_parts = {
+            (n.start_byte, n.end_byte)
+            for n in [
+                scrutinee_node,
+                *(
+                    self._find_children(node, mapping.initializer_child)
+                    if mapping.initializer_child else []
+                ),
+            ]
+            if n is not None
+        }
         if arms_container:
             for child in arms_container.children:
-                if mapping.arm_type and child.type != mapping.arm_type:
+                if arm_types is not None and child.type not in arm_types:
                     continue
                 # Skip non-named children (punctuation)
                 if not child.is_named:
+                    continue
+                if (child.start_byte, child.end_byte) in header_parts:
                     continue
 
                 arm_partial = self._process_children(child, source)
@@ -1426,6 +1851,14 @@ class CfgBuilder:
                         edge_type="case",
                     ))
                     fringe.extend(arm_partial.fringe)
+
+        if not scrutinee_block.successors:
+            # No arm the mapping recognises produced a statement. Control still
+            # leaves the switch: without this edge the fringe was EMPTY and
+            # every statement after the switch was unreachable from the entry
+            # -- what a Java arrow-form ``switch`` did before ``switch_rule``
+            # was mapped (WI-faful).
+            fringe.append(_FringeEdge(source_block=scrutinee_block.id, edge_type="always"))
 
         return _PartialCfg(
             entry_block=scrutinee_block.id,
@@ -1555,11 +1988,12 @@ def uncovered_semantic_lines(
 
     WHY "CALL NODE" WAS TOO NARROW (WI-mugop). The omission that motivates this
     gate is not a call. Go's ``for _, c := range v`` binds ``c`` from ``v`` in a
-    range clause the loop hook never records, and the clause contains no call at
-    all — so the original predicate returned an EMPTY set for a function whose
-    taint chain the extractor had demonstrably not followed, and the walk was
-    free to refute. Measured on that exact shape: calls-only reported
-    ``frozenset()``, the widened predicate reports the clause's line.
+    range clause the loop hook did not record until WI-losod, and the clause
+    contains no call at all — so the original predicate returned an EMPTY set
+    for a function whose taint chain the extractor had demonstrably not
+    followed, and the walk was free to refute. Measured on that exact shape:
+    calls-only reported ``frozenset()``, the widened predicate reported the
+    clause's line.
 
     WHY A STRUCTURAL PREDICATE AND NOT A DECLARED VOCABULARY. The considered
     alternative was a per-language list of node types that bind or use a
@@ -1578,13 +2012,15 @@ def uncovered_semantic_lines(
     so refutation stays viable on the remainder" as the condition; it is met.
 
     WHY BYTE EXTENTS AND NOT LINES. A line test cannot see the motivating case.
-    ``CfgBuilder._process_conditional`` records ONLY the condition child of an
-    ``if`` — for Go's ``if err := do(); err != nil`` that is ``err != nil``, and
-    the initializer ``err := do()`` becomes no statement at all. Both are on the
-    same line, so line-matching reports the call as covered and the gate is
-    vacuous exactly where ``cfg_nodes/go.yaml`` self-documents the gap. The
-    recorded statement's byte range does not contain the initializer's, so an
-    extent test catches it.
+    Until WI-losod ``CfgBuilder._process_conditional`` recorded ONLY the
+    condition child of an ``if`` — for Go's ``if err := do(); err != nil`` that
+    was ``err != nil``, and the initializer ``err := do()`` became no statement
+    at all. Both are on the same line, so line-matching reported the call as
+    covered and the gate was vacuous exactly where the gap was. The recorded
+    statement's byte range did not contain the initializer's, so an extent test
+    caught it. The same reasoning is why a loop header recorded AT its loop
+    node carries :attr:`CfgStatement.extent_end_byte`: its extent stops at the
+    body.
 
     RETURNS ``None`` — NOT AN EMPTY SET — when the language declares no
     ``call_node_types``. Those are different facts: an empty set means "checked,
@@ -1609,10 +2045,13 @@ def uncovered_semantic_lines(
 
     # Same key as populate_def_use_for_cfg builds — matching AST nodes to CFG
     # statements is one fact, so it gets one spelling.
-    recorded: set[tuple[int, int, str]] = set()
+    # Each key maps to where that statement's coverage ends (None: the whole
+    # node). A loop header recorded AT the loop node covers only the header,
+    # never the body (WI-losod), or the gate would fail open on every body.
+    recorded: dict[tuple[int, int, str], Optional[int]] = {}
     for block in cfg.blocks.values():
         for stmt in block.statements:
-            recorded.add(statement_match_key(stmt))
+            recorded[statement_match_key(stmt)] = stmt.extent_end_byte
 
     call_types = frozenset(mapping.call_node_types)
     extents: list[tuple[int, int]] = []
@@ -1628,7 +2067,11 @@ def uncovered_semantic_lines(
         node = stack.pop()
         key = (node.start_point[0] + 1, node.start_point[1], node.type)
         if key in recorded:
-            extents.append((node.start_byte, node.end_byte))
+            cut = recorded[key]
+            extents.append((
+                node.start_byte,
+                node.end_byte if cut is None else min(node.end_byte, cut),
+            ))
         # UNION, never a replacement. A call node is not a leaf, so the leaf
         # predicate does not subsume the call one (``f()()`` has no identifier
         # of its own to catch). Keeping both can only widen, and widening is
@@ -1787,11 +2230,17 @@ def unaccounted_names(
         covering = recorded.get(
             (node.start_point[0] + 1, node.start_point[1], node.type)
         )
+        # What a child past a header-only statement's cut inherits: the state
+        # from OUTSIDE that statement, since the statement does not cover it
+        # (WI-losod: a loop header recorded at the loop node, body excluded).
+        outer = (accounted, inside)
+        cut: Optional[int] = None
         if covering is not None:
             accounted = (
                 accounted | frozenset(covering.defines) | frozenset(covering.uses)
             )
             inside = True
+            cut = covering.extent_end_byte
         if inside and _is_semantic_leaf(node):
             name = source[node.start_byte:node.end_byte].decode(
                 "utf-8", errors="replace"
@@ -1799,7 +2248,10 @@ def unaccounted_names(
             if name in tracked and name not in accounted:
                 out.add(name)
         for child in node.children:
-            stack.append((child, accounted, inside))
+            if cut is not None and child.start_byte >= cut:
+                stack.append((child, *outer))
+            else:
+                stack.append((child, accounted, inside))
 
     return frozenset(out)
 

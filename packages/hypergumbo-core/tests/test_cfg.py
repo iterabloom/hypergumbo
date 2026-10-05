@@ -2489,13 +2489,19 @@ class TestUncoveredCallLines:
     def test_go_if_initializer_call_is_uncovered(self) -> None:
         """The motivating case, and the reason the test is on BYTE EXTENTS.
 
-        ``CfgBuilder._process_conditional`` records only the condition child of
-        an ``if``. For ``if n := sink(v); n > 0`` that is ``n > 0``; the
-        initializer becomes no CfgStatement at all. Both sit on the SAME LINE,
-        so a line-based coverage test reports the call as covered and the gate
-        is vacuous precisely where ``cfg_nodes/go.yaml`` self-documents the gap
-        (700 of caddy's 6,596 ``if`` statements carry a call there).
+        Until WI-losod ``CfgBuilder._process_conditional`` recorded only the
+        condition child of an ``if``. For ``if n := sink(v); n > 0`` that was
+        ``n > 0``; the initializer became no CfgStatement at all. Both sit on
+        the SAME LINE, so a line-based coverage test reports the call as
+        covered and the gate was vacuous precisely where the gap was (700 of
+        caddy's 6,596 ``if`` statements carried a call there).
+
+        go.yaml now records the initializer, so the unrecorded shape is
+        reproduced with a mapping that lacks ``initializer_child``; the real
+        mapping is the control.
         """
+        import dataclasses
+
         tree, src = _parse_go(
             "package main\n"
             "func f() {\n"
@@ -2508,8 +2514,14 @@ class TestUncoveredCallLines:
         )
         body = _get_go_function_body(tree)
         mapping = load_cfg_mapping("go")
+        without_init = dataclasses.replace(mapping, conditionals=[
+            dataclasses.replace(c, initializer_child=None)
+            for c in mapping.conditionals
+        ])
+        cfg = build_function_cfg(body, src, without_init, "go:x.go:2-8:f:function")
+        assert uncovered_semantic_lines(cfg, body, src, without_init) == frozenset({5})
         cfg = build_function_cfg(body, src, mapping, "go:x.go:2-8:f:function")
-        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset({5})
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
     def test_fully_covered_function_reports_empty(self) -> None:
         """The negative half: a function with no unmodelled construct forfeits
@@ -2532,14 +2544,21 @@ class TestUncoveredCallLines:
     def test_go_range_clause_binding_is_uncovered(self) -> None:
         """WI-mugop: THE SHAPE THE CALLS-ONLY PREDICATE COULD NOT SEE.
 
-        ``for _, c := range v`` binds ``c`` from ``v`` in a range clause the
-        loop hook never records, and the clause contains NO CALL — so the
-        original predicate returned an empty frozenset for a function whose
-        taint chain the extractor demonstrably had not followed, leaving the
-        §3a walk free to exhaust and refute. This is INV-lupav's live route,
-        not a hypothetical: measured on this exact source, calls-only reports
-        ``frozenset()`` and the widened predicate reports line 4.
+        ``for _, c := range v`` binds ``c`` from ``v`` in a range clause, and
+        the clause contains NO CALL. While the loop hook did not record it
+        (until WI-losod), the original predicate returned an empty frozenset
+        for a function whose taint chain the extractor demonstrably had not
+        followed, leaving the §3a walk free to exhaust and refute; measured on
+        this exact source, calls-only reported ``frozenset()`` and the widened
+        predicate reported line 4.
+
+        go.yaml now records the clause, so the shape is reproduced with a
+        mapping that lacks the ``header_child`` key: the predicate must still
+        see an unrecorded binding that holds no call. The real mapping is the
+        control.
         """
+        import dataclasses
+
         tree, src = _parse_go(
             "package main\n"
             "func f() {\n"
@@ -2551,8 +2570,13 @@ class TestUncoveredCallLines:
         )
         body = _get_go_function_body(tree)
         mapping = load_cfg_mapping("go")
+        without_header = dataclasses.replace(mapping, loops=[
+            dataclasses.replace(lo, header_child=None) for lo in mapping.loops
+        ])
+        cfg = build_function_cfg(body, src, without_header, "go:x.go:2-7:f:function")
+        assert uncovered_semantic_lines(cfg, body, src, without_header) == frozenset({4})
         cfg = build_function_cfg(body, src, mapping, "go:x.go:2-7:f:function")
-        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset({4})
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
     def test_a_covered_function_with_literals_still_reports_empty(self) -> None:
         """THE FLOOR, and it is the assertion that makes the class above mean

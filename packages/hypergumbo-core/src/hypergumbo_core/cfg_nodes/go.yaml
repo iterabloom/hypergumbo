@@ -14,12 +14,25 @@ grammar: tree-sitter-go
 
 conditional:
   - node_type: if_statement
+    # `if err := do(a); err != nil`: the initializer is a statement of its
+    # own, recorded ahead of the condition (WI-losod).
+    initializer_child: "field:initializer"
     condition_child: "field:condition"
     true_child: "field:consequence"
     false_child: "field:alternative"
 
 loop:
+  # One node type, four header shapes. `for i := 0; i < n; i++` keeps its
+  # parts one level down, in a `for_clause`; `for k, v := range xs` binds in a
+  # `range_clause`; `for x < n` gives its bare condition NO field (hence the
+  # `unfielded` alternative, which must skip the two clause types); `for {}`
+  # has no header at all and is an ordinary conditional loop with an empty
+  # header (WI-losod).
   - node_type: for_statement
+    initializer_child: "type:for_clause/field:initializer"
+    condition_child: "type:for_clause/field:condition|unfielded:except=for_clause,range_clause"
+    update_child: "type:for_clause/field:update"
+    header_child: "type:range_clause"
     body_child: "field:body"
 
 break_statement: [break_statement]
@@ -32,6 +45,7 @@ deferred:
 
 switch:
   - node_type: expression_switch_statement
+    initializer_child: "field:initializer"
     scrutinee_child: "field:value"
     # Cases are direct children of the switch node (no wrapper)
 
@@ -51,11 +65,12 @@ try_catch: []
 # return_statement (return), defer_statement (deferred), if_statement /
 # for_statement / expression_switch_statement.
 #
-# Known gap, disclosed: the `initializer` of an if_statement
-# (`if err := do(); err != nil`) and of a for_clause (`for i := 0; ...`)
-# is not reached by the conditional/loop hooks, which name only
-# condition/body/consequence/alternative children. Those bindings are
-# therefore still invisible to def/use. Tracked separately.
+# Header bindings (`if err := do(); err != nil`, `for i := 0; ...`,
+# `for k, v := range xs`, `switch x := f(); x`) are recorded by the
+# conditional/loop/switch hooks' `initializer_child` / `header_child` /
+# `update_child` keys, not here (WI-losod). NOT reached: a `type_switch_statement`
+# (`switch v := x.(type)`) and a `select_statement`, which this file does not map
+# at all, so their cases are walked as straight-line code.
 # Node types that ARE a call in this grammar (WI-joluk). Consumed by
 # cfg.uncovered_call_lines to ask whether the CFG's recorded statement
 # extents cover every call site in a function body; a call outside every
@@ -75,3 +90,11 @@ atomic_statement:
   - dec_statement
   - send_statement
   - go_statement
+
+# Functions nested in a function body (WI-faful). A function literal's body is
+# built as its own CFG region that MAY run, hung off the statement that creates
+# it, rather than inlined as though it ran in sequence: an inlined
+# `t := "x"` inside a literal killed the enclosing function's `t`.
+nested_function:
+  - node_type: func_literal
+    body_child: "field:body"
