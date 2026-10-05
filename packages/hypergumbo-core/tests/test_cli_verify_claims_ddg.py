@@ -178,8 +178,8 @@ def test_forfeit_set_is_actually_populated(tmp_path: Path) -> None:
         "        v = v + os.sep\n"
         "    return v\n"
     )
-    _edges, symbols, _hints, _stmts, forfeits, _unacc = _build_ddg_for_verify_claims(
-        tmp_path,
+    _edges, symbols, _hints, _stmts, forfeits, _unacc, _rets = (
+        _build_ddg_for_verify_claims(tmp_path)
     )
     assert symbols, "fixture produced no DDG symbols — nothing to forfeit"
     assert forfeits, (
@@ -231,7 +231,7 @@ def test_unaccounted_names_reaches_the_walk_through_the_repo_ddg(
         "    c = key\n"
         "    return c\n"
     )
-    _edges, symbols, _hints, _stmts, _forfeits, unaccounted = (
+    _edges, symbols, _hints, _stmts, _forfeits, unaccounted, _rets = (
         _build_ddg_for_verify_claims(tmp_path)
     )
     assert symbols, "fixture produced no DDG symbols — nothing could escape"
