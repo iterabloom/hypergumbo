@@ -27,3 +27,18 @@
   clock: 2  # 8514
   nonce: '8514'  # 8514
   message: "BRANCH WORK 2026-10-04 (not integrated, no status change): branch jgstern-agent/fix/napaf, worktree ~/hg_wt/napaf, commit 09f38364f8. Full report: ~/hypergumbo_lab_notebook/decontend/run_10032026/napaf.md.\nFix: the receiverless branch of ruby.py's call arm now ends in make_unresolved_edge(\"ruby\", ...) -> ruby:external:0-0:<name>:unresolved (python's INV-foluz residual / WI-fahod shape, no call_construct) when local symbols and the resolver miss. No local-binding refusal is needed: a receiverless tree-sitter `call` has args, parens or a block, and in ruby that is a send to self even with a same-named local (x = 1; x(2) is NoMethodError). super(...) is excluded by node type.\nTests: test_ruby_receiverless_unresolved.py, 3 red before / 6 green after; board smart-test (296 affected files): 9759 passed, 0 failed, 2 xfailed, ruby.py 100% coverage, mypy ratchet clean.\nCorpus A/B by call site (survey, frozen copies, own XDG, code-under-test printed per arm): postal +2,330, chatwoot +6,442, mastodon +20,520 sites, all ruby:external; 0 removed, 0 other changes; 55-69% in spec/ (RSpec DSL). 0 io tags in either arm (ruby ships no catalogue). Compact-view node selection shifts slightly via centrality (postal 64k 7/12 swapped, mastodon 64k 15/15); not judged.\nWI-javaf hazard: in ruby the short-name reach of `external` to a function-kind Kernel row is the WANTED outcome (Kernel is ambient); a shadowing project method resolves first. Both pinned via classify_call with a Kernel.system overlay row.\nResidual silent shapes (bare identifier calls, untyped variable receiver, AMB-METHOD, super, recursion) filed as WI-misir-runir-danil-sugad-vovan-kotid-nipav-rabim."  # 8514
+- op: update  # e31d
+  at: '2026-10-05T00:29:35Z'  # e31d
+  by: agent  # e31d
+  actor: jgstern_agent  # e31d
+  clock: 3  # e31d
+  nonce: e31d  # e31d
+  set:  # e31d
+    status: done  # e31d
+- op: discuss  # 7976
+  at: '2026-10-05T00:29:35Z'  # 7976
+  by: agent  # 7976
+  actor: jgstern_agent  # 7976
+  clock: 4  # 7976
+  nonce: '7976'  # 7976
+  message: "Merged in PR #1456 (dev 05fefe416b).\n\nFixed in PR #1456 (commit 09f38364f8). A receiverless ruby `call` whose name no project symbol carries now emits `ruby:external:0-0:<name>:unresolved` (python's INV-foluz residual shape, javascript's WI-fahod), in method bodies, class bodies and at file level.\n\nBehavioural evidence, the filed repro re-run on the branch: `class App; def boot; puts \"x\"; has_many :y; end; end` emitted no calls edge at either line. It now emits `App#boot -> ruby:external:0-0:puts:unresolved` (line 3) and `-> ...:has_many:unresolved` (line 4). Production-path tests are in test_ruby_receiverless_unresolved.py (3 red before, 6 green after).\n\nThere is no local-binding refusal: a receiverless `call` node is always a send to self in Ruby. `super(...)`, bare identifiers (`puts` with no args, `params`), AMB-METHOD names, untyped variable receivers and recursion stay silent and are filed as WI-misir-runir-danil-sugad-vovan-kotid-nipav-rabim.\n\nCorpus A/B by call site:\n- postal +2,330, chatwoot +6,442, mastodon +20,520 call sites;\n- 0 removed and 0 non-placeholder changes;\n- 0 io tags in either arm (ruby ships no catalogue).\n\nWI-javaf's short-name hazard: in Ruby the reach is the wanted one (Kernel methods are ambient). A shadowing project method resolves first, which is pinned through classify_call with a Kernel overlay row. The general claim \"every ruby call site emits an edge\" is NOT asserted."  # 7976

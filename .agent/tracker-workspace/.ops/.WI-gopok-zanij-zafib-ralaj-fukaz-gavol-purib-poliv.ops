@@ -25,3 +25,18 @@
   clock: 2  # 79ee
   nonce: 79ee  # 79ee
   message: "WORK DONE 2026-10-04 (concurrent run, stage 8). Branch jgstern-agent/fix/gopok, commit 647fc319cc (local, not pushed). Status unchanged.\n\nPremise re-verified in code and by live repro. Synthetic polyglot repo (Rails User model, Python User.objects.count(), pyproject script myapp with argparse set_defaults(func=runServe), Go cobra runServe, cobra RunE: runStatus beside a Python runStatus), survey before the fix: 4 cross-language edges at 0.85 -- orm python->ruby User, argparse-dispatch python->go runServe, subprocess call_site->go runServe, go-cobra go->python runStatus. After: 0; the Go->Go cobra edge stays.\n\nFix: orm model lookup and subprocess command sources (concept=command, argparse name-only fallback, requirement count) admit language python only (both Python producers stamp python). Sweep found the same unscoped lookup in argparse_dispatch and go_cobra through the shared LinkerContext.find_symbols_by_name, which gained languages=; they now pass python / go. Maturin Rust binaries are excluded on purpose: clap selects a subcommand by enum variant or Command::new string, not by a symbol name this linker joins on (no maturin-bin repo found in the corpus).\n\nTests: 18 new two-sided tests (lone foreign namesake -> no edge; namesake beside the right symbol -> one 0.85 edge, no fallback flag); 17 were run red before the fix. smart-test on the branch: 7804 passed, 2 xfailed, changed files at 100%.\n\nCorpus edge diff (sherpa-onnx, kserve, feast, django, airflow): 0 edges added, removed or changed. These linkers emitted 0/1/0/38/58 edges there, none cross-language, so the measured corpus effect is ZERO; django (38 orm) and airflow (58 argparse) are the no-regression controls. Airflow's 58 argparse edges are all wrong on another axis: filed WI-zafin-zijiz-nupov-gipos-vubaf-vugag-noboj-sukaf. Sweep residuals in other code paths: filed WI-vuzon-putoz-lazus-tolad-ramot-vizij-tijor-taram."  # 79ee
+- op: update  # 169c
+  at: '2026-10-05T00:29:35Z'  # 169c
+  by: agent  # 169c
+  actor: jgstern_agent  # 169c
+  clock: 3  # 169c
+  nonce: 169c  # 169c
+  set:  # 169c
+    status: done  # 169c
+- op: discuss  # d4f1
+  at: '2026-10-05T00:29:36Z'  # d4f1
+  by: agent  # d4f1
+  actor: jgstern_agent  # d4f1
+  clock: 4  # d4f1
+  nonce: d4f1  # d4f1
+  message: "Merged in PR #1456 (dev 05fefe416b).\n\nBehavioral evidence: a survey of a synthetic polyglot repo emitted 4 cross-language 0.85 edges before the fix and 0 after:\n- orm: Python `User.objects` -> Ruby `User`\n- argparse: Python -> Go `runServe`\n- subprocess: `myapp serve` -> Go `runServe`\n- cobra: Go -> Python `runStatus`\n\nThe Go-to-Go cobra edge is kept. 17 new two-sided tests were red before the fix and are green after; an 18th (the requirement count) was added after the fix.\n\nNot asserted:\n- any corpus effect: the edge diff on sherpa-onnx, kserve, feast, django and airflow is 0 changed edges\n- the maturin Rust-binary case, which is excluded by design and was not measured\n- the residual unscoped lookups in other linkers (WI-vuzon-putoz-lazus-tolad-ramot-vizij-tijor-taram)"  # d4f1
