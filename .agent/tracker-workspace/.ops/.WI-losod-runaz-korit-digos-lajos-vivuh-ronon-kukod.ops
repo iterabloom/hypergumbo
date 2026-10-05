@@ -55,3 +55,27 @@
   clock: 6  # 5e19
   nonce: '5e19'  # 5e19
   message: "Bears on INV-dukam (kanor run 2026-10-03): with exec.Command unrowed in a probe arm, the relocated finding at cmd.Run() could only be confirmed when the use of `cmd` is recorded; the idiomatic `if err := cmd.Run(); err != nil` records no use of cmd (this item), so on containers-storage unshareFn the flow fell from precise to approximate. Together with WI-jahip (a field store kills the receiver's reaching definition) these two gaps decide whether executor relocation can be precise in Go."  # 5e19
+- op: discuss  # a520
+  at: '2026-10-05T09:15:00Z'  # a520
+  by: agent  # a520
+  actor: jgstern_agent  # a520
+  clock: 7  # a520
+  nonce: a520  # a520
+  message: "Fixed on branch jgstern-agent/fix/losod (worktree ~/hg_wt/losod, based on c1dd831558; commits 11a10f98b0, 445768867b, a9e3a869f4, 2c26be3459; not pushed). This is one statement-model fix in the shared CfgBuilder, done together with WI-faful. New cfg_nodes keys: initializer_child (conditional, loop, switch), and update_child, header_child and header_is_node (loop). Header parts become statements that define their bindings before the body. A for-each binding with no node of its own is recorded at the loop node, with CfgStatement.extent_end_byte cut at the body so the coverage gates do not count the body. Child references gain three forms: a/b, a|b and unfielded[:except=..]. Extractors: a go range_clause handler, a java enhanced-for header handler, and rust let_condition/let_chain handlers.\nBehavioral evidence: verify-claims with host_secret -> host_fs/network, base c1dd831558 vs branch. Go if-init sink: structural -> ddg/confirmed. Go if-init source: structural -> ddg/confirmed. Go range over os.Environ() (caddy shape): structural -> ddg/confirmed. Go for-clause: structural -> ddg/confirmed. Python for over os.environ.values(): not_attempted -> ddg/confirmed. Rust for over env::vars(): structural -> ddg/confirmed. TS for-of and classic for: structural -> ddg/confirmed. Java enhanced-for and classic for: not_attempted -> ddg/confirmed. C classic for with getenv: structural -> ddg/confirmed. Controls (Go and Python, source in the header, sink fed a constant) read ddg_mixed/escaped, not confirmed. Corpus, 6 repos, no verdict moved: containers-storage unshareFn's `if err := cmd.Run(); err != nil` now confirms os.Stdin -> Cmd.Run.\nsmart-test, BASE_BRANCH=c1dd831558, 422 affected test files: 12856 passed, with \"All changed source files are at 100% coverage\". Four unrelated failures were deselected: the rust extern-block test after the grammar upgrade, the auto-pr test that BASE_BRANCH leaks into, and two watcher-lifecycle timing tests. The hypothesis flake was also deselected. The caddy repo is not in the corpus, so the reference case was reproduced as a fixture only. Residual binding constructs are filed as WI-nohuv-tujuk-humal-numuh-posip-fonun-butir-kuroz. Full report: ~/hypergumbo_lab_notebook/decontend/run_10032026/losod.md"  # a520
+- op: update  # ea16
+  at: '2026-10-05T11:47:38Z'  # ea16
+  by: agent  # ea16
+  actor: jgstern_agent  # ea16
+  clock: 8  # ea16
+  nonce: ea16  # ea16
+  set:  # ea16
+    status: done  # ea16
+  add:  # ea16
+    tags: [awaits_bakeoff_validation]  # ea16
+- op: discuss  # 10ba
+  at: '2026-10-05T11:47:39Z'  # 10ba
+  by: agent  # 10ba
+  actor: jgstern_agent  # 10ba
+  clock: 9  # 10ba
+  nonce: 10ba  # 10ba
+  message: "Fixed in PR #1469 (stage 9a), together with WI-faful. Loop headers (for-each variable, classic for init/update, Go range clause) and if/switch initializers (incl. Go 'if err := cmd.Run(); err != nil') are now CFG statements that define their bindings before the body, in all six DDG languages. Behavioural evidence (verify-claims fixtures, losod.md): Go if-initializer, Go range over os.Environ(), Go for-clause, Rust for, TS for-of/for, C for: structural -> ddg/confirmed; Python for and Java for-each/for: not_attempted -> ddg/confirmed; controls (header source, constant-fed sink) read escaped. Mutations (drop Go range header, drop body cut-off) revert them. Six-repo A/B: 2 evidence rows moved to ddg/confirmed, no verdict moved (branch run, not re-measured on dev): tagged awaits_bakeoff_validation. Residuals filed: WI-nohuv (except-as, match-case, type switch, select, catch), WI-sozob (switch without default), WI-nogil (C bare declaration)."  # 10ba
