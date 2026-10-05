@@ -37,6 +37,7 @@ from hypergumbo_core.cli import main
 from hypergumbo_core.taint import (
     TaintFlowFinding,
     TaintSource,
+    _adjacency_past_the_returning_call,
     _lift_returned_sources,
     collapse_unadjudicated_flows,
 )
@@ -255,6 +256,34 @@ class TestControlsStayClean:
             '\t\treturn os.Getenv("TOOL")\n\t}\n\t_ = f\n\treturn "ls"\n}\n\n'
             "func main() {\n\tname := get()\n\texec.Command(name).Run()\n}\n")})
         assert verdict["verdict"] != "violated", verdict["details"]
+
+
+class TestTheCallTheValueCameOutOfIsNotARouteForIt:
+    """A lifted seed does not re-report the helper's own sinks under the
+    caller: the helper's own read already reports them, and the value the
+    call returned cannot be that same call's argument (INV-lozat's rule)."""
+
+    def test_the_helpers_own_sink_is_reported_once(self, tmp_path: Path) -> None:
+        verdict = _verdict(tmp_path, {"app.py": _PY_HEAD + (
+            "def get_tool():\n    value = os.getenv(\"TOOL\")\n"
+            "    subprocess.run([value])\n    return value\n\n\n"
+            "def main():\n    tool = get_tool()\n    print(tool)\n")})
+        assert verdict["verdict"] == "violated"  # reach: the helper's own row
+        assert _returned_by(verdict) == set(), verdict["evidence"]
+
+    def test_the_edge_goes_only_for_exactly_one_call(self) -> None:
+        adj = {"g": {"f", "h"}, "f": {"sink"}}
+        one = _adjacency_past_the_returning_call(
+            adj, "g", "f", ("f",), {("g", "f"): [7]})
+        assert set(one["g"]) == {"h"}
+        assert one["f"] == {"sink"}
+        assert adj["g"] == {"f", "h"}  # overlaid, not mutated
+        two = _adjacency_past_the_returning_call(
+            adj, "g", "f", ("f",), {("g", "f"): [7, 9]})
+        assert two is adj
+        direct = _adjacency_past_the_returning_call(
+            adj, "g", "f", (), {("g", "f"): [7]})
+        assert direct is adj
 
 
 # ---------------------------------------------------------------------------
