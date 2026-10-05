@@ -16,6 +16,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **The aardvark-dns test fixture's `Cargo.lock`**: never built, it drew five Dependabot alerts. Its README pins the upstream copy for re-recording.
 
+### Fixed
+
+#### Taint analysis
+
+- **A Python walrus or JS/TS nested assignment defines its variable**, so `if (t := os.environ["K"])` and `while ((m = re.exec(s)) !== null)` are walked precisely.
+
 ## [9.2.0] - 2026-10-20
 
 ### Added
