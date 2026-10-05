@@ -1,0 +1,24 @@
+- op: create  # c419
+  at: '2026-10-05T03:55:24Z'  # c419
+  by: agent  # c419
+  actor: jgstern_agent  # c419
+  clock: 1  # c419
+  nonce: c419  # c419
+  data:  # c419
+    kind: invariant  # c419
+    title: "C: an ambiguous libc call in a file with no #include (a unity-build fragment, -include, implicit declaration) keeps the external placeholder the coverage gate skips, so a real send() reads NO-NET-SEND confirmed"  # c419
+    status: violated  # c419
+    priority: 3  # c419
+    parent:  # c419
+    tags:  # c419
+    - c  # c419
+    - verify_claims  # c419
+    - false_confirm  # c419
+    isbefore: []  # c419
+    duplicate_of: []  # c419
+    not_duplicate_of: []  # c419
+    pr_ref:  # c419
+    description: "FOUND 2026-10-04 while fixing INV-zikul-kikov-nikig-dovig-naros-sagik-bufil-punub (branch jgstern-agent/fix/zikul). Residual of that item, not fixed there.\n\nWHAT. A C file with no #include line that names a header (none at all, or only #include MACRO) still stamps an ambiguous libc call with the `external` placeholder, which the coverage gate skips as the disclosed untyped-receiver residual, and classification refuses the hint-less ambiguous name. So a real send() reads as nothing at all.\n\nREPRO (on the INV-zikul branch, and on c1dd831558): main.c is only\n  int run(int fd) { return (int)send(fd, \"x\", 1, 0); }\n  -> edge c:external:0-0:send:external_symbol; NO-NET-SEND (net_send must_not_exist) CONFIRMED, caveats []; SECRET-NO-NET confirmed.\n\nWhere this happens for real: unity-build fragments (a .c file #included by another .c, whose headers come from the includer), files compiled with -include, and code relying on implicit declarations. NOT MEASURED: how many corpus call sites have this shape.\n\nDirection (not designed): an ambiguous libc name with no include evidence at all is an unexamined call; the gate should count it (or a caveat should name it) rather than skip it with the Python untyped-receiver population. For a unity fragment, the includer's stamp is the right one."  # c419
+    fields:  # c419
+      statement: "An ambiguous libc call with no include evidence at all is unexamined: it must withhold or qualify a clean boundary verdict, not vanish."  # c419
+      root_cause: "c.py stamps an ambiguous call with its include closure only when the file has an #include naming a header; otherwise the slot is the external placeholder, which _adjudicate_external_modules skips as the disclosed untyped-receiver residual, and gate_named_entry refuses the hint-less ambiguous name, so the call is neither classified nor counted."  # c419
