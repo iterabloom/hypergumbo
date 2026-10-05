@@ -24,6 +24,11 @@ The extractor handles Python-specific patterns:
 - Comprehension: ``for x in items`` → defines [x], uses [items]
 - Return/yield: ``return expr`` → uses from expr
 - Delete: ``del x`` → defines [x] (treated as killing the definition)
+- Nested binding: a walrus (``if (m := g()):``) or a chained target
+  (``x = y = e``) defines its name when its value stays CONTAINED in the
+  statement -- weakly (define + use) where it may not run, not at all where
+  its value escapes into a call, a receiver, a container or a return. The
+  rule and its reasons are on :class:`_Collector` (WI-tozar).
 
 Scope Tracking
 --------------
@@ -34,7 +39,7 @@ the reaching-def solver handles aliasing through gen/kill sets.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from hypergumbo_core.cfg import DefUseResult, register_def_use_extractor
 
@@ -50,45 +55,229 @@ def _collect_identifiers(node: Any, source: bytes) -> list[str]:
     Used for the 'uses' side — collects all variable references in an
     expression tree (right side of assignment, function args, etc.).
     Skips function/method names in call expressions to avoid treating
-    the callee as a 'use' of a variable.
+    the callee as a 'use' of a variable. The bindings nested in the
+    subtree are dropped here; :func:`_reads` keeps them.
     """
-    result: list[str] = []
-    _collect_identifiers_recursive(node, source, result, in_call_func=False)
-    return result
+    collector = _Collector(source)
+    collector.walk(node)
+    return collector.uses
 
 
-def _collect_identifiers_recursive(
-    node: Any, source: bytes, result: list[str], in_call_func: bool,
-) -> None:
-    """Recursive helper for identifier collection."""
-    if node.type == "identifier":
-        name = _node_text(node, source)
-        # Skip common built-in names that aren't user variables
-        if name not in _BUILTIN_NAMES:
-            result.append(name)
-        return
+def _reads(node: Any, source: bytes) -> DefUseResult:
+    """The uses of an expression subtree AND the bindings nested inside it."""
+    collector = _Collector(source)
+    collector.walk(node)
+    return DefUseResult(defines=collector.defines, uses=collector.uses)
 
-    if node.type == "call":
-        # The function part of a call is not a 'use' of a variable
-        # (unless it's a variable holding a callable)
-        func_node = node.child_by_field_name("function")
-        args_node = node.child_by_field_name("arguments")
-        if func_node:
-            # For simple identifiers like foo(), skip them (they're callees)
-            # For attribute access like obj.method(), collect 'obj' as a use
-            if func_node.type == "attribute":
-                obj = func_node.child_by_field_name("object")
-                if obj:
-                    _collect_identifiers_recursive(obj, source, result, in_call_func=False)
-            elif func_node.type != "identifier":
-                _collect_identifiers_recursive(func_node, source, result, in_call_func=True)
-        if args_node:
-            _collect_identifiers_recursive(args_node, source, result, in_call_func=False)
-        return
 
-    for child in node.children:
-        if child.is_named:
-            _collect_identifiers_recursive(child, source, result, in_call_func=in_call_func)
+#: Expressions that evaluate their inner operands zero or more times, so a
+#: walrus inside may not run. A comprehension's own walrus binds in the
+#: ENCLOSING function (PEP 572), which is why it is a binding here at all;
+#: PEP 572 forbids one in the comprehension's first iterable, the only part
+#: that always runs.
+_COMPREHENSION_TYPES = frozenset({
+    "list_comprehension", "set_comprehension", "dictionary_comprehension",
+    "generator_expression",
+})
+
+#: Bodies whose bindings belong to another scope: a walrus in a lambda binds
+#: the lambda's local. Walked for uses only (what they capture is read).
+_CLOSURE_TYPES = frozenset({"lambda", "function_definition", "class_definition"})
+
+#: Expressions that hand their operands' value on to their OWN consumer and
+#: nowhere else: ``(m := g()) > 0`` is compared, ``(m := g()) + 1`` feeds
+#: whatever consumes the sum. A binding under these is as contained as its
+#: parent is (see "Contained" in :class:`_Collector`).
+_TRANSPARENT_TYPES = frozenset({
+    "parenthesized_expression", "comparison_operator", "boolean_operator",
+    "not_operator", "binary_operator", "unary_operator",
+})
+
+
+class _Collector:
+    """One expression's uses and nested bindings, in evaluation order.
+
+    THE JAVA/C RULE (WI-tozar): a binding nested inside an expression -- a
+    walrus in a condition or on a right-hand side, the inner target of
+    ``x = y = e`` -- DEFINES its target. Before this the walk below read a
+    walrus target as a use, so ``if (t := src()): sink(t)`` had no definition
+    of ``t`` and the walk fell back to ``ddg_mixed`` / ``not_attempted``.
+
+    Three refinements Java's walker does not make:
+
+    - CONTAINED ONLY. The binding defines its target only when its value goes
+      nowhere but a TEST (an ``if`` / ``while`` condition, a comprehension
+      filter) or ANOTHER BINDING on the same statement (``x = y = e``,
+      ``y = (z := e) + 1``), through operators that pass a value on and
+      nothing else. Passed as a call argument (``h(w := src())``), used as a
+      receiver (``(t := src()).encode()``), returned, or put in a container,
+      the value also goes somewhere the walk does not follow: when a line
+      both defines an heir and hands the value to a call, the §3a walk
+      follows the heir and does not ask where the call took the value.
+      Defining the binding there gives the walk a seed it can exhaust, and
+      turns a reported flow into a removal. WI-jusoj closed that for the
+      SOURCE's own line, but not for a later use line: with escaping bindings
+      defined, ``t = process.env.K; acc.push(k = t); console.log(k.length);
+      fetch(url + acc[0])`` went ``violated`` -> ``confirmed_with_caveats``
+      (measured 2026-10-20). The plain ``n = acc.push(t)`` reads the same
+      false clean with no nested binding at all; that hole is the walk's
+      (WI-tinav). Until it is closed, such a binding stays a USE.
+    - CONDITIONAL = a WEAK update. A binding that may not execute (the right
+      operand of ``and`` / ``or``, a branch of ``a if c else b``, anything in
+      a comprehension) is recorded as a define AND a use of the name, the way
+      ``x += e`` is: the value bound before the statement still reaches what
+      follows when the binding is skipped. A plain define would KILL that
+      value on every path, and the walk could then refute a flow that runs
+      whenever the branch is not taken.
+    - A binding inside a closure stays a USE, as the whole subtree was before:
+      it is the closure's local, not this statement's.
+    """
+
+    def __init__(self, source: bytes) -> None:
+        self.source = source
+        self.defines: list[str] = []
+        self.uses: list[str] = []
+
+    def bind(self, names: list[str], scope: "_Scope") -> None:
+        """Record ``names`` as bound by this statement (see the class docstring)."""
+        if scope.binds:
+            self.defines.extend(names)
+        if not scope.binds or scope.conditional:
+            self.uses.extend(names)
+
+    def walk(self, node: Any, scope: Optional["_Scope"] = None) -> None:
+        """Collect uses from ``node`` and the bindings nested in it.
+
+        ``scope`` describes where ``node``'s VALUE goes; the default is a
+        statement root, whose value is a test or is discarded.
+        """
+        here = scope or _ROOT
+        kind = node.type
+        if kind == "identifier":
+            name = _node_text(node, self.source)
+            # Skip common built-in names that aren't user variables
+            if name not in _BUILTIN_NAMES:
+                self.uses.append(name)
+            return
+
+        if kind == "call":
+            # The function part of a call is not a 'use' of a variable
+            # (unless it's a variable holding a callable). Everything a call
+            # receives -- receiver and arguments -- leaves the statement.
+            func_node = node.child_by_field_name("function")
+            args_node = node.child_by_field_name("arguments")
+            if func_node:
+                # For simple identifiers like foo(), skip them (they're callees)
+                # For attribute access like obj.method(), collect 'obj' as a use
+                if func_node.type == "attribute":
+                    obj = func_node.child_by_field_name("object")
+                    if obj:
+                        self.walk(obj, here.escaping())
+                elif func_node.type != "identifier":
+                    self.walk(func_node, here.escaping())
+            if args_node:
+                self.walk(args_node, here.escaping())
+            return
+
+        if kind == "named_expression":
+            # ``(name := value)``: the value is evaluated, then bound, and it
+            # also goes wherever the walrus's own value goes.
+            self.walk(node.child_by_field_name("value"), here)
+            name = node.child_by_field_name("name")
+            self.bind([_node_text(name, self.source)], here)
+            return
+
+        if kind == "assignment":
+            # A statement root, or the inner link of a chain: ``x = y = e``.
+            right = node.child_by_field_name("right")
+            if right is not None:
+                self.walk(right, here)
+            left = node.child_by_field_name("left")
+            names = _collect_pattern_names(left, self.source)
+            if scope is not None and left.type in ("attribute", "subscript"):
+                # A nested ``x = self.a = v`` / ``y = d[k] = v`` link mutates
+                # the object rather than replacing it, so it reads the object
+                # (and index), as Java models every field write and as this
+                # subtree read before it was a binding. (A statement-level
+                # ``self.a = v`` keeps its older, strong reading.)
+                self.walk(left, here.escaping())
+                if here.binds:
+                    self.defines.extend(names)
+            else:
+                self.bind(names, here)
+            return
+
+        if kind == "boolean_operator":
+            # ``a and b`` / ``a or b``: ``b`` runs only when ``a`` does not decide.
+            self.walk(node.child_by_field_name("left"), here)
+            self.walk(node.child_by_field_name("right"), here.maybe())
+            return
+
+        if kind == "conditional_expression":
+            # ``body if test else alternative``: only the test always runs, and
+            # its value is consumed by the choice. The grammar names none of
+            # the three, so position decides.
+            seen_if = seen_else = False
+            for child in node.children:
+                if child.type == "if":
+                    seen_if = True
+                elif child.type == "else":
+                    seen_else = True
+                elif child.is_named:
+                    is_test = seen_if and not seen_else
+                    self.walk(child, here.tested() if is_test else here.maybe())
+            return
+
+        if kind == "if_clause":
+            # A comprehension filter: its value is a test.
+            for child in node.named_children:
+                self.walk(child, here.tested())
+            return
+
+        if kind in _CLOSURE_TYPES:
+            inner = here.closure()
+        elif kind in _COMPREHENSION_TYPES:
+            inner = here.escaping().maybe()
+        elif kind in _TRANSPARENT_TYPES:
+            inner = here
+        else:
+            inner = here.escaping()
+        for child in node.children:
+            if child.is_named:
+                self.walk(child, inner)
+
+
+class _Scope:
+    """Where a subexpression's value goes, as far as a nested binding cares.
+
+    ``binds``: a binding here defines its target (False once the value
+    escapes the statement, or inside a closure). ``conditional``: it may not
+    execute. Immutable; each narrowing returns a new scope.
+    """
+
+    __slots__ = ("binds", "conditional", "in_closure")
+
+    def __init__(self, binds: bool, conditional: bool, in_closure: bool) -> None:
+        self.binds = binds
+        self.conditional = conditional
+        self.in_closure = in_closure
+
+    def escaping(self) -> "_Scope":
+        return _Scope(False, self.conditional, self.in_closure)
+
+    def maybe(self) -> "_Scope":
+        return _Scope(self.binds, True, self.in_closure)
+
+    def tested(self) -> "_Scope":
+        """A value consumed by a test: contained again, unless in a closure."""
+        return _Scope(not self.in_closure, self.conditional, self.in_closure)
+
+    def closure(self) -> "_Scope":
+        return _Scope(False, self.conditional, True)
+
+
+_ROOT = _Scope(binds=True, conditional=False, in_closure=False)
+_RETURNED = _ROOT.escaping()
 
 
 def _collect_pattern_names(node: Any, source: bytes) -> list[str]:
@@ -159,8 +348,9 @@ class PythonDefUseExtractor:
         handler = _HANDLERS.get(node.type)
         if handler:
             return handler(node, source)
-        # Default: collect all identifiers as uses (no defines)
-        return DefUseResult(uses=_collect_identifiers(node, source))
+        # Default: every identifier is a use, and a binding nested anywhere
+        # in the node (a walrus in a condition or an argument) a define.
+        return _reads(node, source)
 
 
 # ---------------------------------------------------------------------------
@@ -169,12 +359,12 @@ class PythonDefUseExtractor:
 
 
 def _handle_assignment(node: Any, source: bytes) -> DefUseResult:
-    """Handle simple assignment: x = expr, a, b = expr."""
-    left = node.child_by_field_name("left")
-    right = node.child_by_field_name("right")
-    defines = _collect_pattern_names(left, source) if left else []
-    uses = _collect_identifiers(right, source) if right else []
-    return DefUseResult(defines=defines, uses=uses)
+    """Handle simple assignment: x = expr, a, b = expr, x = y = expr.
+
+    The collector owns the rule (right side first, then the targets), so the
+    statement and a chain's nested inner link cannot disagree.
+    """
+    return _reads(node, source)
 
 
 def _handle_augmented_assignment(node: Any, source: bytes) -> DefUseResult:
@@ -182,19 +372,21 @@ def _handle_augmented_assignment(node: Any, source: bytes) -> DefUseResult:
     left = node.child_by_field_name("left")
     right = node.child_by_field_name("right")
     left_names = _collect_pattern_names(left, source) if left else []
-    uses = list(left_names)  # x is used (read) before being modified
+    collector = _Collector(source)
+    collector.uses.extend(left_names)  # x is used (read) before being modified
     if right:
-        uses.extend(_collect_identifiers(right, source))
-    return DefUseResult(defines=left_names, uses=uses)
+        collector.walk(right)
+    collector.defines.extend(left_names)
+    return DefUseResult(defines=collector.defines, uses=collector.uses)
 
 
 def _handle_return(node: Any, source: bytes) -> DefUseResult:
-    """Handle return statement: return expr."""
-    uses: list[str] = []
+    """Handle return statement: return expr (the value leaves the function)."""
+    collector = _Collector(source)
     for child in node.children:
         if child.is_named:
-            uses.extend(_collect_identifiers(child, source))
-    return DefUseResult(uses=uses)
+            collector.walk(child, _RETURNED)
+    return DefUseResult(defines=collector.defines, uses=collector.uses)
 
 
 def _handle_delete(node: Any, source: bytes) -> DefUseResult:
@@ -208,20 +400,21 @@ def _handle_delete(node: Any, source: bytes) -> DefUseResult:
 
 def _handle_for(node: Any, source: bytes) -> DefUseResult:
     """Handle for loop header: for i in items."""
-    left = node.child_by_field_name("left")
-    right = node.child_by_field_name("right")
-    defines = _collect_pattern_names(left, source) if left else []
-    uses = _collect_identifiers(right, source) if right else []
-    return DefUseResult(defines=defines, uses=uses)
+    return _for_header(node, source)
 
 
 def _handle_for_in_clause(node: Any, source: bytes) -> DefUseResult:
     """Handle comprehension for clause: for x in items."""
+    return _for_header(node, source)
+
+
+def _for_header(node: Any, source: bytes) -> DefUseResult:
+    """The iterable is read (with any binding nested in it), then the target bound."""
     left = node.child_by_field_name("left")
     right = node.child_by_field_name("right")
-    defines = _collect_pattern_names(left, source) if left else []
-    uses = _collect_identifiers(right, source) if right else []
-    return DefUseResult(defines=defines, uses=uses)
+    reads = _reads(right, source) if right else DefUseResult()
+    defines = reads.defines + (_collect_pattern_names(left, source) if left else [])
+    return DefUseResult(defines=defines, uses=reads.uses)
 
 
 def _with_target_names(node: Any, source: bytes) -> list[str]:
@@ -247,8 +440,7 @@ def _handle_with_clause(node: Any, source: bytes) -> DefUseResult:
     uncovered code that forfeited its function's refutation. Both are needed
     before a ``with``-written sink can be adjudicated.
     """
-    defines: list[str] = []
-    uses: list[str] = []
+    collector = _Collector(source)
     for item in node.children:
         if item.type != "with_item":
             continue
@@ -259,14 +451,14 @@ def _handle_with_clause(node: Any, source: bytes) -> DefUseResult:
             target = value.child_by_field_name("alias")
             expr = next((c for c in value.children if c.is_named), None)
             if expr is not None and expr is not target:
-                uses.extend(_collect_identifiers(expr, source))
+                collector.walk(expr)
             if target is not None:
                 for child in target.children:
                     if child.is_named:
-                        defines.extend(_with_target_names(child, source))
+                        collector.defines.extend(_with_target_names(child, source))
         else:
-            uses.extend(_collect_identifiers(value, source))
-    return DefUseResult(defines=defines, uses=uses)
+            collector.walk(value)
+    return DefUseResult(defines=collector.defines, uses=collector.uses)
 
 
 # Map node types to handler functions
