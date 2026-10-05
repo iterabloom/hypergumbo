@@ -3883,10 +3883,10 @@ def _lift_returned_sources(
             continue
         lifted_chain = tuple(sorted(set(chain) | {fn}))
         for caller in sorted(callers_of.get(fn, ())):
-            key = (caller, fn, id(src))
-            if key in seen:
+            visit = (caller, fn, id(src))
+            if visit in seen:
                 continue
-            seen.add(key)
+            seen.add(visit)
             entry = (caller, fn, src, lifted_chain)
             entries.append(entry)
             queue.append(entry)
@@ -3894,7 +3894,7 @@ def _lift_returned_sources(
 
 
 def _adjacency_past_the_returning_call(
-    forward_adj: Mapping[str, AbstractSet[str]],
+    forward_adj: dict[str, set[str]],
     caller: str,
     callee: str,
     returned_by: tuple[str, ...],
