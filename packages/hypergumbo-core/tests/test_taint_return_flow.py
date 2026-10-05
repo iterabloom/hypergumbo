@@ -58,7 +58,7 @@ _GO_MOD = "module example.com/rf\n\ngo 1.21\n"
 def _verdict(tmp_path: Path, files: dict[str, str]) -> dict[str, Any]:
     """Run the shipped CLI and return the SECRET-NO-SUBPROCESS verdict."""
     repo = tmp_path / "repo"
-    repo.mkdir()
+    repo.mkdir(parents=True)
     for name, text in files.items():
         (repo / name).write_text(text)
     claims = tmp_path / "claims.yaml"

@@ -540,7 +540,10 @@ def return_statement_spans(
     statement is not descended into: a closure inside ``return func() {..}``
     returns from the closure.
     """
-    return_types = frozenset(mapping.return_statements)
+    # ``getattr``: a function solved without a CFG mapping has no return
+    # statement this walk can recognise (``_solve_one_function``'s own unit
+    # tests drive it that way); production always passes the language's.
+    return_types = frozenset(getattr(mapping, "return_statements", None) or ())
     if not return_types:
         return []
     scopes = (

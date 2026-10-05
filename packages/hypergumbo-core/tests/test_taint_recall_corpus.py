@@ -213,27 +213,18 @@ def test_python_source_without_any_sink_confirms(
     assert verdict["evidence_count"] == 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Source-side propagation is unimplemented: the BFS seeds at the "
-        "source's caller and walks forward only, so a caller that invokes the "
-        "source and the sink as siblings is never connected. reverse_adj is "
-        "built in propagate_taint_structural and never read. Remove this "
-        "marker when source-side propagation lands (WI-sirod)."
-    ),
-)
 def test_python_sibling_calls_under_one_caller_are_connected(
     tmp_path: Path, capsys,
 ) -> None:
-    """A real flow the forward-only walk cannot see, recorded as a ratchet hole.
+    """A real flow the forward-only walk could not see, now followed.
 
     ``handle`` calls the source and then calls the writer; the tainted value
-    genuinely reaches the filesystem. Because neither callee calls the other,
-    the forward walk from the source's caller never reaches the sink's caller.
-    An imperative ``pytest.xfail()`` here could never XPASS and would silently
-    disable the very signal this test exists to carry (L19), so the marker is
-    declarative and strict.
+    genuinely reaches the filesystem. Neither callee calls the other, so the
+    forward walk from the source's caller (``obtain``) never reached the
+    sink's caller. ``obtain`` RETURNS the received bytes, and since INV-komoj
+    a source a function returns is lifted into its callers' call sites, so
+    ``handle`` is a source caller and the walk from it reaches ``persist``.
+    This was a strict xfail naming WI-sirod until that landed.
     """
     src = tmp_path / "src"
     src.mkdir()
