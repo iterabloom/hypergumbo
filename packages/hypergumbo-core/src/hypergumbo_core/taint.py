@@ -81,7 +81,7 @@ user row replaced.
 """
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import ChainMap, defaultdict, deque
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -3893,6 +3893,36 @@ def _lift_returned_sources(
     return entries
 
 
+def _adjacency_past_the_returning_call(
+    forward_adj: Mapping[str, AbstractSet[str]],
+    caller: str,
+    callee: str,
+    returned_by: tuple[str, ...],
+    call_lines: Mapping[tuple[str, str], Sequence[int]],
+) -> Mapping[str, AbstractSet[str]]:
+    """The call graph a LIFTED source's BFS walks: minus the call it came out of.
+
+    INV-komoj, and :func:`_source_and_sink_are_one_call`'s argument pointed at
+    the lift: a value a call RETURNS cannot be an argument to that same call.
+    A lifted entry seeds at the caller G of the function F that returned the
+    value, and G's edge to F leads only to F's own sinks -- which F's own
+    entry already reports, from the read itself. Walking it again restated
+    each of them under G (measured on podman-compose: ``PodmanCompose.run``
+    re-reported ``_parse_args``' ``print_help`` row with a path through
+    ``_parse_args``), a second situation row for no new fact.
+
+    The same positive evidence that gate requires: EXACTLY ONE call line. Two
+    calls from G to F can hand the first call's result to the second, so the
+    edge stays. The graph is overlaid, not copied -- one lifted entry per
+    caller would otherwise copy the whole adjacency each time.
+    """
+    if not returned_by or len(set(call_lines.get((caller, callee), ()))) != 1:
+        return forward_adj
+    return ChainMap(
+        {caller: set(forward_adj.get(caller, set())) - {callee}}, forward_adj,
+    )
+
+
 def _io_primitive_names(language: str, include_community: bool) -> frozenset[str]:
     """Every catalogued I/O primitive of *language*, as ``module.name``.
 
@@ -4077,7 +4107,12 @@ def propagate_taint_structural(
             reachable, parent, sanitized_reachable, sanitized_parent,
             barrier_sanitizers,
         ) = _reachability_past_sanitizers(
-            seed_id, taint_label, forward_adj, sanitizer_callers,
+            seed_id, taint_label,
+            _adjacency_past_the_returning_call(
+                forward_adj, caller_id, source_callee_id, returned_by,
+                call_lines_by_pair,
+            ),
+            sanitizer_callers,
         )
 
         # Phase 2: Check if any sink caller or sink callee is reachable
@@ -4160,7 +4195,7 @@ def propagate_taint_structural(
 def _reachability_past_sanitizers(
     seed_id: str,
     taint_label: str,
-    forward_adj: dict[str, set[str]],
+    forward_adj: Mapping[str, AbstractSet[str]],
     sanitizer_callers: dict[str, dict[str, list["TaintSanitizer"]]],
 ) -> tuple[
     set[str], dict[str, str | None], set[str], dict[str, str | None],
@@ -5292,7 +5327,12 @@ def propagate_taint_ddg(
             reachable, parent, sanitized_reachable, sanitized_parent,
             barrier_sanitizers,
         ) = _reachability_past_sanitizers(
-            seed_id, taint_label, forward_adj, sanitizer_callers,
+            seed_id, taint_label,
+            _adjacency_past_the_returning_call(
+                forward_adj, caller_id, source_callee_id, returned_by,
+                call_lines,
+            ),
+            sanitizer_callers,
         )
 
         # Check sinks
