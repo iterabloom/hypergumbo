@@ -6167,6 +6167,7 @@ def _build_ddg_for_verify_claims(
     dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]],
     set[str],
     dict[str, frozenset[str]],
+    dict[str, list[tuple[int, int]]],
 ]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
@@ -6193,7 +6194,12 @@ def _build_ddg_for_verify_claims(
     line inherited a tainted one, and when a line defines two the walk needs
     to know. The CFG already carries it.
 
-    Returns ``([], set(), {}, {}, set(), {})`` if tree-sitter isn't
+    The seventh is each function's own return-statement spans (INV-komoj),
+    which both propagators read to follow a returned source into its callers.
+    It is filled with or without DDG edges, so a repository whose functions
+    define nothing still gets it on the structural arm.
+
+    Returns ``([], set(), {}, {}, set(), {}, {})`` if tree-sitter isn't
     available — the caller falls back to the structural pass in that case.
     """
     from .dataflow_scope import ensure_def_use_extractors_registered
@@ -6219,7 +6225,7 @@ def _build_ddg_for_verify_claims(
         # The fail-closed default lives at the point of USE (a function absent
         # from the set only qualifies because it was checked and covered), not
         # here, where the whole analysis is absent rather than incomplete.
-        return [], set(), {}, {}, set(), {}
+        return [], set(), {}, {}, set(), {}, {}
 
     available = registered_ddg_languages()
     if candidate_languages is None:
@@ -6239,6 +6245,7 @@ def _build_ddg_for_verify_claims(
         result.stmt_defuse,
         result.forfeit_refutation,
         result.unaccounted_names,
+        result.return_spans,
     )
 
 
@@ -7079,7 +7086,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             # languages that have a registered DDG spec.
             (
                 ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse,
-                ddg_forfeits, ddg_unaccounted,
+                ddg_forfeits, ddg_unaccounted, ddg_returns,
             ) = _build_ddg_for_verify_claims(
                 repo_root, sorted(per_lang_sinks), behavior_map.get("nodes", []),
             )
@@ -7192,12 +7199,21 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         refuted_flows=refuted_flows,
                         include_community=not getattr(
                             args, "no_default_overlays", False),
+                        # INV-komoj: a source a helper RETURNS is lifted into
+                        # the helper's callers.
+                        return_spans=ddg_returns,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
                         lang_edges, lang_sources, lang_sinks, lang_sans,
                         ambiguous_names=lang_ambiguous,
                         language=lang,
+                        # INV-komoj, on this arm too: the filed python helper
+                        # defines nothing, so a repository made of such
+                        # functions has no DDG edge and lands HERE.
+                        return_spans=ddg_returns,
+                        include_community=not getattr(
+                            args, "no_default_overlays", False),
                     ))
             from .function_summaries import load_function_summaries
             from .taint import withheld_community_summaries
