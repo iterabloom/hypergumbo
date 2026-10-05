@@ -90,6 +90,20 @@ available in both cases: a dependence the walk FINDS is real.
 A plain data variable (``var logger = log.New(...)``) is indexed but holds no
 body, so it is never walked: the index admits the kind, the hook decides.
 
+Return Statements (INV-komoj)
+-----------------------------
+Taint follows a value a function RETURNS into that function's callers, and
+deciding "this return carries the source's value" needs two facts per
+function: where its return statements are, and how far each extends. The CFG
+already records return statements, but it is the wrong place to read them:
+the builder descends into a nested ``def`` / func literal / closure, so a
+closure's ``return`` sits in its enclosing function's CFG, and a statement
+carries only its start line. :func:`return_statement_spans` therefore reads the
+AST, stopping at every node that opens a callable scope of its own, and
+records ``(start line, end line)``. It runs for EVERY walked function, with or
+without DDG edges: ``def get(): return os.getenv("K")`` defines nothing, has
+no edges, and is the filed instance.
+
 Refinement Hook
 ---------------
 The WI-dilih receiver-hint refinement is genuinely Python-specific — it
@@ -269,6 +283,13 @@ class RepoDdg:
     #:
     #: Populated alongside ``stmt_defuse``, for functions WITH edges only.
     unaccounted_names: dict[str, frozenset[str]] = field(default_factory=dict)
+    #: ``symbol_id -> [(start_line, end_line), ...]`` of the function's OWN
+    #: return statements (INV-komoj); see "Return Statements". Populated for
+    #: every walked function that has one, edges or not. A function with no
+    #: entry has no return statement this walk recognises -- which for an
+    #: expression-bodied callable (a Rust tail expression, a JS arrow
+    #: ``() => x``) is NOT the same as returning nothing.
+    return_spans: dict[str, list[tuple[int, int]]] = field(default_factory=dict)
 
 
 _DDG_LANGUAGES: dict[str, LanguageDdgSpec] = {}
@@ -438,6 +459,59 @@ def _binding_walk_incomplete(node: Any, bodies: list[Any], mapping: Any) -> bool
     return False
 
 
+#: AST node types that open a callable scope of their own, across the grammars
+#: with a registered DDG spec: a ``return`` under one of them returns from IT,
+#: not from the function being walked. Each spec's own ``function_node_types``
+#: and ``bound_callable_node_types`` are added at the call, so this set holds
+#: the scopes no spec names -- anonymous callables and class bodies.
+_NESTED_SCOPE_NODE_TYPES = frozenset({
+    # python
+    "function_definition", "lambda", "class_definition",
+    # go
+    "func_literal",
+    # rust
+    "closure_expression", "function_item", "impl_item", "trait_item",
+    # javascript / typescript
+    "arrow_function", "function_expression", "function", "generator_function",
+    "function_declaration", "generator_function_declaration",
+    "method_definition", "class", "class_declaration",
+    # java
+    "lambda_expression", "class_body", "method_declaration",
+    "constructor_declaration",
+})
+
+
+def return_statement_spans(
+    body_node: Any, mapping: Any, spec: LanguageDdgSpec,
+) -> list[tuple[int, int]]:
+    """``(start_line, end_line)`` of every return statement in THIS body.
+
+    See "Return Statements" for why this reads the AST rather than the CFG.
+    Iterative for the reason :func:`_walk_functions` is (INV-gotir). A return
+    statement is not descended into: a closure inside ``return func() {..}``
+    returns from the closure.
+    """
+    return_types = frozenset(mapping.return_statements)
+    if not return_types:
+        return []
+    scopes = (
+        _NESTED_SCOPE_NODE_TYPES
+        | spec.function_node_types
+        | spec.bound_callable_node_types
+    )
+    spans: list[tuple[int, int]] = []
+    stack = list(reversed(body_node.children))
+    while stack:
+        node = stack.pop()
+        if node.type in return_types:
+            spans.append((node.start_point[0] + 1, node.end_point[0] + 1))
+            continue
+        if node.type in scopes:
+            continue
+        stack.extend(reversed(node.children))
+    return spans
+
+
 def _solve_one_function(
     node: Any,
     body_node: Any,
@@ -450,6 +524,11 @@ def _solve_one_function(
     refine_ctx: dict[str, Any],
 ) -> None:
     """Build one function's CFG, solve reaching defs, record the result."""
+    # INV-komoj: before the solve, and whatever it yields -- the filed helper
+    # has no definitions, so no edges, and is still what returns the value.
+    spans = return_statement_spans(body_node, mapping, spec)
+    if spans:
+        out.return_spans.setdefault(sym_id, []).extend(spans)
     try:
         cfg = deps["build_function_cfg"](body_node, source, mapping, sym_id)
         deps["populate_def_use_for_cfg"](cfg, body_node, source, spec.language)

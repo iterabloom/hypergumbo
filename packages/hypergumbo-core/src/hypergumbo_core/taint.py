@@ -35,6 +35,16 @@ handed to the optional ``refuted_flows`` out-param instead. So do NOT
 assume every finding carries ``analysis_method="structural"`` — see the
 field's own docs below for what each value licenses.
 
+Both propagators follow a source a function RETURNS into its callers
+(INV-komoj, :func:`_lift_returned_sources`). The BFS above runs FORWARD from the
+function that reads the source, so a sink in a CALLER of that function was never
+reachable and ``def get(): return os.getenv("K")`` / ``send(get())`` read as a
+qualified clean. The lift turns each caller's call to such a function into one
+more source call site, and the forward BFS, the §3a walk in the caller and the
+collapse below then decide it exactly as they decide a direct read. The
+finding's ``source_returned_by`` names the functions the value came back
+through.
+
 Both propagators return through :func:`collapse_unadjudicated_flows`
 (INV-karud): every ``structural`` / ``ddg_mixed`` finding is grouped one per
 situation — ``(taint_label, source_symbol, sink_zone, sanitized,
@@ -74,7 +84,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from typing import (
     TYPE_CHECKING,
@@ -685,6 +695,15 @@ class TaintFlowFinding:
     #: was outside a call. A stream carried ONLY by calls that are themselves
     #: sinks in the same zone is not a finding at all (``_subsume_sink_sites``).
     sink_carriers: tuple[str, ...] = ()
+    #: INV-komoj: the functions whose RETURN VALUE carried the source's value
+    #: to ``source_symbol``, sorted. Empty when ``source_symbol`` reads the
+    #: source itself. Non-empty means ``source_symbol`` CALLS one of these and
+    #: the value came back out of the call -- :func:`_lift_returned_sources`
+    #: made that call site a source -- so a reader looking for the read of
+    #: ``source_primitives`` in ``source_symbol``'s body will not find it there.
+    #: A set, not a route: a collapsed row unions its members' sets, and one
+    #: chain's order would claim a single route the group does not have.
+    source_returned_by: tuple[str, ...] = ()
     #: How many (source call site, sink call site) pairs this finding stands
     #: for. 1 for an uncollapsed or adjudicated finding. Kept so the pair count
     #: stays available to a consumer that wants it rather than being traded
@@ -789,6 +808,8 @@ class TaintFlowFinding:
             "sink_call_sites": [list(site) for site in self.sink_call_sites],
             "sink_carriers": list(self.sink_carriers),
             "collapsed_flow_count": self.collapsed_flow_count,
+            # INV-komoj: the value reached ``source_symbol`` by return.
+            "source_returned_by": list(self.source_returned_by),
         }
 
 
@@ -944,6 +965,12 @@ def collapse_unadjudicated_flows(
             )),
             walk_blocked_by_values=tuple(sorted(
                 {v for m in grp for v in m.walk_blocked_by_values}
+            )),
+            # INV-komoj: a group mixing a direct read with a returned one is
+            # one situation ("S reads P and reaches Z"); the union keeps every
+            # function the value came back through nameable.
+            source_returned_by=tuple(sorted(
+                {fn for m in grp for fn in m.source_returned_by}
             )),
         )
     return [s for s in slots if s is not None]
@@ -3721,6 +3748,169 @@ def _name_withheld(
     return out
 
 
+#: ``(function, source call lines, return lines, barrier lines, taint label)
+#: -> bool``: does the value a source call defines reach one of the return
+#: lines without passing a barrier. The DDG arm answers with the §3a walk; the
+#: structural arm has no answer and passes ``None``.
+ReachesReturn = Callable[[str, list[int], list[int], list[int], str], bool]
+
+#: One source call site the propagators seed at, with the functions its value
+#: came back through on the way (INV-komoj). ``()`` for a direct read.
+SourceEntry = tuple[str, str, "TaintSource", tuple[str, ...]]
+
+
+def _lift_returned_sources(
+    source_callers: Sequence[tuple[str, str, "TaintSource"]],
+    edges: Sequence[dict[str, Any]],
+    return_spans: Mapping[str, Sequence[tuple[int, int]]],
+    *,
+    io_names: AbstractSet[str],
+    sanitizer_lines: Mapping[tuple[str, str], Sequence[int]],
+    reaches_return: Optional[ReachesReturn],
+) -> list[SourceEntry]:
+    """Lift a source a function RETURNS into a source call site in its callers.
+
+    INV-komoj. Both propagators seed a call-graph BFS at the function that
+    reads a source and look FORWARD, so a sink in a CALLER of that function
+    was never reachable: ``def get(): return os.getenv("K")`` with
+    ``send(get())`` read ``confirmed_with_caveats`` while the same flow
+    written inline read ``violated``.
+
+    THE LIFT. When function F's return statement carries the value a source
+    call in F defines, each call G makes to F is the point where that value
+    enters G -- which is exactly what a source call site is. So ``(G, F,
+    source)`` is appended to the propagators' source call sites, and from
+    there the existing forward BFS, the §3a walk in G (seeded on what G's call
+    to F defines), the sanitizer barrier and the INV-karud collapse decide the
+    flow as they decide a direct read. Nothing downstream knows the entry was
+    lifted except ``source_returned_by``, which says so on the finding. G may
+    itself return the value; the lift repeats from G.
+
+    "F'S RETURN CARRIES THE VALUE" is asked two ways, and only positively:
+
+    * the source call sits INSIDE a return statement (``return
+      os.getenv("K")``) -- this needs no reaching-def data, so the structural
+      arm can ask it too, and it is the filed instance, whose helper defines
+      nothing and so has no DDG edge at all; or
+    * the ADR-0017 §3a walk over F, with F's return lines as its targets,
+      returns ``True`` -- the same walk, with the same INV-fumod inheritance
+      rule, that decides whether a value reaches a sink argument.
+
+    An ``escaped`` walk (``None``) lifts nothing. That is the false-all-clear
+    direction left open, and it is left open deliberately: lifting on
+    ignorance would seed every caller of every function a source value merely
+    passed through.
+
+    WHAT IS NOT A RETURN OF THE VALUE, each the existing rule restated:
+
+    * A return statement that also calls an I/O primitive other than the
+      source being lifted (``return os.path.exists(os.getenv("P"))``): the
+      result comes from the far side of a boundary, which is INV-fumod's rule
+      for a definition, and the walk would not let a definition there inherit
+      the value either.
+    * A return statement that calls a sanitizer for the label, and a walk
+      route through one: the value that comes back carries the sanitizer's
+      output label, not this one (the barrier lines are the walk's own).
+    * A source whose catalogue entry says its RETURN is not its value
+      (``return_tainted: false``), and a callee-seeded source (``start_at:
+      callee``), which names an entry point rather than a value.
+    * A ``return`` inside a nested callable: the spans come from
+      ``ddg_build.return_statement_spans``, which stops at every scope.
+
+    LIMITS, the BFS's own. Callers are the edges the forward BFS walks
+    (:func:`_is_taint_call_edge`), so a dispatch or bridge edge carries a
+    return exactly as it carries an argument. There is no depth bound -- the
+    forward BFS has none -- and recursion terminates on a visited set: each
+    ``(caller, callee, source)`` is lifted once, by the shortest chain.
+    """
+    entries: list[SourceEntry] = [
+        (caller, callee, src, ()) for caller, callee, src in source_callers
+    ]
+    if not return_spans:
+        return entries
+
+    call_lines: dict[tuple[str, str], list[int]] = defaultdict(list)
+    callers_of: dict[str, set[str]] = defaultdict(set)
+    io_at: dict[tuple[str, int], set[str]] = defaultdict(set)
+    for edge in edges:
+        if not _is_taint_call_edge(edge):
+            continue
+        src_id, dst_id = edge.get("src", ""), edge.get("dst", "")
+        sites = _edge_call_sites(edge)
+        call_lines[(src_id, dst_id)].extend(sites)
+        callers_of[dst_id].add(src_id)
+        key = _catalogue_key_for_edge(edge)
+        if key is not None and key in io_names:
+            for site in sites:
+                io_at[(src_id, site)].add(key)
+    # A function's own source reads are I/O primitives too (every source is,
+    # bar a project-declared one), and must not block their own return.
+    own_sources: dict[str, set[str]] = defaultdict(set)
+    for caller, callee, _src in source_callers:
+        own_sources[caller].add(_qualified_callee(callee))
+
+    def returns_value(fn: str, lines: list[int], label: str) -> bool:
+        barriers = sorted(set(sanitizer_lines.get((fn, label), ())))
+        open_spans = [
+            (start, end) for start, end in return_spans.get(fn, ())
+            if not any(
+                (io_at.get((fn, line), set()) - own_sources[fn])
+                or line in barriers
+                for line in range(start, end + 1)
+            )
+        ]
+        if not open_spans:
+            return False
+        if any(start <= line <= end
+               for line in lines for start, end in open_spans):
+            return True
+        if reaches_return is None:
+            return False
+        return reaches_return(
+            fn, lines, sorted({start for start, _ in open_spans}), barriers,
+            label,
+        )
+
+    seen: set[tuple[str, str, int]] = set()
+    queue: deque[SourceEntry] = deque(
+        entry for entry in entries
+        if _seeds_at_caller(entry[2]) and entry[2].return_tainted
+    )
+    while queue:
+        fn, callee, src, chain = queue.popleft()
+        lines = sorted(set(call_lines.get((fn, callee), ())))
+        if not lines or not returns_value(fn, lines, src.taint_label):
+            continue
+        lifted_chain = tuple(sorted(set(chain) | {fn}))
+        for caller in sorted(callers_of.get(fn, ())):
+            key = (caller, fn, id(src))
+            if key in seen:
+                continue
+            seen.add(key)
+            entry = (caller, fn, src, lifted_chain)
+            entries.append(entry)
+            queue.append(entry)
+    return entries
+
+
+def _io_primitive_names(language: str, include_community: bool) -> frozenset[str]:
+    """Every catalogued I/O primitive of *language*, as ``module.name``.
+
+    The set INV-fumod's inheritance rule and the return lift both test a
+    callee against: one derivation, so the two cannot disagree about what is
+    an I/O boundary.
+    """
+    if not language:
+        return frozenset()
+    from .io_boundary import load_catalog
+    return frozenset(
+        f"{p.module}.{p.name}" if p.module else p.name
+        for p in load_catalog(
+            language, include_defaults=include_community,
+        ).primitives
+    )
+
+
 def propagate_taint_structural(
     edges: list[dict[str, Any]],
     sources: list[TaintSource],
@@ -3728,6 +3918,8 @@ def propagate_taint_structural(
     sanitizers: list[TaintSanitizer],
     ambiguous_names: frozenset[str] = frozenset(),
     language: str = "",
+    return_spans: Mapping[str, Sequence[tuple[int, int]]] | None = None,
+    include_community: bool = True,
 ) -> list[TaintFlowFinding]:
     """Structural taint-flow propagation via call-graph BFS.
 
@@ -3748,6 +3940,13 @@ def propagate_taint_structural(
         ambiguous_names: Short names the catalog flags as ambiguous (e.g.
             ``replace`` / ``write`` / ``get``); a bare ambiguous callee with
             no usable module hint is not matched to a source/sink (WI-razol).
+        return_spans: Each function's own return-statement line spans
+            (``ddg_build.RepoDdg.return_spans``). With them a source called
+            ON a return statement is lifted into the function's callers
+            (:func:`_lift_returned_sources`); without reaching-def data this
+            arm cannot see a value returned through a local.
+        include_community: Whether community I/O rows count as I/O primitives
+            for the lift's INV-fumod test, as on the DDG arm.
 
     Returns:
         List of TaintFlowFinding for each source→sink violation.
@@ -3834,15 +4033,28 @@ def propagate_taint_structural(
     sanitizer_callers: dict[str, dict[str, list[TaintSanitizer]]] = (
         defaultdict(dict)
     )
+    sanitizer_lines: dict[tuple[str, str], list[int]] = {}
     _register_sanitizer_callers(
         edges, sanitizer_by_callee, sanitizer_callers,
+        sanitizer_lines=sanitizer_lines,
+    )
+
+    # INV-komoj: a source a function returns is a source in its callers. No
+    # walk on this arm, so only a source called ON a return statement lifts.
+    source_entries = _lift_returned_sources(
+        source_callers, edges, return_spans or {},
+        io_names=(
+            _io_primitive_names(language, include_community)
+            if return_spans else frozenset()
+        ),
+        sanitizer_lines=sanitizer_lines, reaches_return=None,
     )
 
     # Step 4: For each source, BFS forward to find reachable sinks
     # without passing through sanitizers.
     findings: list[TaintFlowFinding] = []
 
-    for caller_id, source_callee_id, taint_source in source_callers:
+    for caller_id, source_callee_id, taint_source, returned_by in source_entries:
         taint_label = taint_source.taint_label
 
         # Choose BFS seed by source's start_at field. "caller" (default)
@@ -3924,6 +4136,7 @@ def propagate_taint_structural(
                 sanitized_by_user_supplied=sanitized_by_user,
                 confidence="approximate",
                 analysis_method="structural",
+                source_returned_by=returned_by,
                 # INV-zidur. This is the STRUCTURAL propagator: it is selected
                 # when the repo produced no DDG edges at all, so no walk was
                 # possible for any flow here. Stamped rather than left blank
@@ -4771,6 +4984,7 @@ def propagate_taint_ddg(
     refuted_flows: list["TaintFlowFinding"] | None = None,
     unaccounted_names: Mapping[str, AbstractSet[str]] | None = None,
     include_community: bool = True,
+    return_spans: Mapping[str, Sequence[tuple[int, int]]] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -4805,6 +5019,11 @@ def propagate_taint_ddg(
         ambiguous_names: Short names the catalog flags as ambiguous; a bare
             ambiguous callee with no usable module hint is not matched to a
             source/sink (WI-razol).
+        return_spans: Each function's own return-statement line spans. With
+            them a source whose value a function returns -- called on a
+            return statement, or reaching one by the §3a walk -- is lifted
+            into that function's callers (INV-komoj,
+            :func:`_lift_returned_sources`).
 
     Returns:
         List of TaintFlowFinding objects.
@@ -4906,15 +5125,7 @@ def propagate_taint_ddg(
     # `resp = requests.get(url)` stops inheriting `url`'s label and instead
     # carries `untrusted_input` from the net_recv row, which is the more
     # accurate statement of what `resp` holds.
-    _io_names: frozenset[str] = frozenset()
-    if language:
-        from .io_boundary import load_catalog
-        _io_names = frozenset(
-            f"{p.module}.{p.name}" if p.module else p.name
-            for p in load_catalog(
-                language, include_defaults=include_community,
-            ).primitives
-        )
+    _io_names = _io_primitive_names(language, include_community)
     inherits: dict[tuple[str, int, str], set[str]] = defaultdict(set)
     for sym_id, statements in (stmt_defuse or {}).items():
         for line, defines, uses in statements:
@@ -5031,9 +5242,33 @@ def propagate_taint_ddg(
         sanitizer_lines=sanitizer_lines,
     )
 
+    # INV-komoj: a source a function returns is a source in its callers. "The
+    # return carries it" is asked of THE §3a WALK, with the function's return
+    # lines as targets and its sanitizer lines as barriers; only ``True``
+    # lifts. Forfeiture is not passed: it withholds ``False`` alone, and
+    # ``False`` lifts nothing here.
+    def _walk_reaches_return(
+        fn: str, lines: list[int], targets: list[int], barriers: list[int],
+        _label: str,
+    ) -> bool:
+        if fn not in analyzed:
+            return False
+        return _ddg_taint_reaches(
+            fn, lines, targets, ddg_uses, callee_names, summaries,
+            defs_at=defs_at, inherits=inherits,
+            barrier_lines=frozenset(barriers),
+            unaccounted=(unaccounted_names or {}).get(fn),
+        ) is True
+
+    source_entries = _lift_returned_sources(
+        source_callers, call_edges, return_spans or {},
+        io_names=_io_names, sanitizer_lines=sanitizer_lines,
+        reaches_return=_walk_reaches_return,
+    )
+
     findings: list[TaintFlowFinding] = []
 
-    for caller_id, source_callee_id, taint_source in source_callers:
+    for caller_id, source_callee_id, taint_source, returned_by in source_entries:
         taint_label = taint_source.taint_label
         # Seed selection mirrors the structural pass — see propagate_taint_structural.
         seed_id = (
@@ -5408,6 +5643,7 @@ def propagate_taint_ddg(
                         analysis_method=method,
                         walk_verdict=verdict,
                         path=path,
+                        source_returned_by=returned_by,
                     ))
                 continue
 
@@ -5439,6 +5675,7 @@ def propagate_taint_ddg(
                     if verdict == WALK_VERDICT_NOT_ATTEMPTED else ""
                 ),
                 path=path,
+                source_returned_by=returned_by,
             ))
 
     # INV-karud. This arm emits all three methods, and the collapse is

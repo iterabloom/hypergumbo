@@ -5385,6 +5385,12 @@ def _render_flow(v: "TaintFlowFinding") -> str:
     # path = [source, ...intermediate..., sink]; hops are the interior nodes.
     if len(v.path) > 2:
         row += f" via {len(v.path) - 2} hop(s)"
+    # INV-komoj: the read is not in ``source_symbol``'s body; say where it is.
+    if v.source_returned_by:
+        row += (
+            f", the value returned to it by {len(v.source_returned_by)} "
+            "function(s)"
+        )
     return row
 
 
@@ -5464,6 +5470,11 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         # ADR-0061 ruling 2 (WI-dikit): community sanitizers this route crosses
         # that were NOT credited -- vouched for, they would have cleared it.
         "withheld_sanitizers": list(v.withheld_sanitizers),
+        # INV-komoj: the functions whose RETURN carried the value to
+        # ``source_symbol``. Non-empty means the read is not in
+        # ``source_symbol``'s own body, so a reader checking the row against
+        # the code must look in these.
+        "source_returned_by": list(v.source_returned_by),
     }
 
 

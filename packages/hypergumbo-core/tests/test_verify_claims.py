@@ -1087,6 +1087,10 @@ class TestViolatedFlowEvidence:
                 # ADR-0061 ruling 2 (WI-dikit): community sanitizers the route
                 # crossed and that were not credited. Empty here: none on it.
                 "withheld_sanitizers": [],
+                # INV-komoj: the functions whose return carried the value to
+                # the source symbol. Empty here: the fixture's source symbol
+                # reads the source itself.
+                "source_returned_by": [],
             }
         ]
 
