@@ -218,9 +218,10 @@ class TestEmittedShape:
     def test_dict_states_what_capability_does_NOT_claim(self) -> None:
         """Capability is per language; it is not per-function coverage.
 
-        ``cfg_nodes/go.yaml`` self-documents that ``if err := do(); err != nil``
-        initializers are invisible to def/use, so Go reads ``dataflow_capable``
-        while holding functions the walk cannot see into. A reader who took the
+        Go's ``if err := do(); err != nil`` initializers were invisible to
+        def/use until WI-losod, and constructs the CFG still does not record
+        keep it true: Go reads ``dataflow_capable`` while holding functions
+        the walk cannot see into. A reader who took the
         bit for coverage would be making exactly the assumption clause (a3)
         forbids, so the granularity is emitted rather than left implicit.
 
