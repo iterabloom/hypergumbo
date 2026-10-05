@@ -104,6 +104,14 @@ records ``(start line, end line)``. It runs for EVERY walked function, with or
 without DDG edges: ``def get(): return os.getenv("K")`` defines nothing, has
 no edges, and is the filed instance.
 
+It also records the identifiers in each RESULT POSITION (``return v, nil`` ->
+``({"v"}, {})``). A caller's ``name, err := get()`` defines one variable per
+position, in order (``stmt_defuse`` keeps that order), so the lift can seed
+the caller on ``name`` alone. Without it every variable a multi-value call
+defines is seeded, and a Go caller that propagates the helper's ``err``
+"returns the value" -- which, lifted again, climbs every error chain above a
+source.
+
 Refinement Hook
 ---------------
 The WI-dilih receiver-hint refinement is genuinely Python-specific — it
@@ -116,7 +124,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, cast
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional, Sequence, cast
 
 from .analyze.base import make_symbol_id
 from .taxonomy import extension_globs, grammar_for_path
@@ -289,7 +297,7 @@ class RepoDdg:
     #: entry has no return statement this walk recognises -- which for an
     #: expression-bodied callable (a Rust tail expression, a JS arrow
     #: ``() => x``) is NOT the same as returning nothing.
-    return_spans: dict[str, list[tuple[int, int]]] = field(default_factory=dict)
+    return_spans: dict[str, list["ReturnStatement"]] = field(default_factory=dict)
 
 
 _DDG_LANGUAGES: dict[str, LanguageDdgSpec] = {}
@@ -481,10 +489,51 @@ _NESTED_SCOPE_NODE_TYPES = frozenset({
 })
 
 
+class ReturnStatement(NamedTuple):
+    """One return statement of one function (INV-komoj).
+
+    ``results`` holds, per result position, the identifiers its expression
+    mentions: ``return v, nil`` is ``(frozenset({"v"}), frozenset())`` and a
+    single-valued ``return f(x)`` is ``(frozenset({"f", "x"}),)``. A bare
+    ``return`` has none.
+    """
+
+    start: int
+    end: int
+    results: tuple[frozenset[str], ...]
+
+
+#: Node types that hold a return statement's results as a LIST of positions:
+#: go's ``expression_list`` (always, even for one result) and python's bare
+#: ``return a, b`` (``expression_list``) or parenthesised ``return (a, b)``
+#: (``tuple``), both of which a caller unpacks positionally.
+_RESULT_LIST_NODE_TYPES = frozenset({"expression_list", "tuple"})
+
+
+def _identifiers_in(node: Any, source: bytes) -> frozenset[str]:
+    names: set[str] = set()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type == "identifier":
+            names.add(source[current.start_byte:current.end_byte].decode(
+                "utf-8", errors="replace"))
+        stack.extend(current.children)
+    return frozenset(names)
+
+
+def _return_results(node: Any, source: bytes) -> tuple[frozenset[str], ...]:
+    """The identifiers in each result position of return statement *node*."""
+    values = [c for c in node.named_children if c.type != "comment"]
+    if len(values) == 1 and values[0].type in _RESULT_LIST_NODE_TYPES:
+        values = [c for c in values[0].named_children if c.type != "comment"]
+    return tuple(_identifiers_in(v, source) for v in values)
+
+
 def return_statement_spans(
-    body_node: Any, mapping: Any, spec: LanguageDdgSpec,
-) -> list[tuple[int, int]]:
-    """``(start_line, end_line)`` of every return statement in THIS body.
+    body_node: Any, mapping: Any, spec: LanguageDdgSpec, source: bytes,
+) -> list[ReturnStatement]:
+    """Every return statement in THIS body, with its extent and results.
 
     See "Return Statements" for why this reads the AST rather than the CFG.
     Iterative for the reason :func:`_walk_functions` is (INV-gotir). A return
@@ -499,12 +548,15 @@ def return_statement_spans(
         | spec.function_node_types
         | spec.bound_callable_node_types
     )
-    spans: list[tuple[int, int]] = []
+    spans: list[ReturnStatement] = []
     stack = list(reversed(body_node.children))
     while stack:
         node = stack.pop()
         if node.type in return_types:
-            spans.append((node.start_point[0] + 1, node.end_point[0] + 1))
+            spans.append(ReturnStatement(
+                node.start_point[0] + 1, node.end_point[0] + 1,
+                _return_results(node, source),
+            ))
             continue
         if node.type in scopes:
             continue
@@ -526,7 +578,7 @@ def _solve_one_function(
     """Build one function's CFG, solve reaching defs, record the result."""
     # INV-komoj: before the solve, and whatever it yields -- the filed helper
     # has no definitions, so no edges, and is still what returns the value.
-    spans = return_statement_spans(body_node, mapping, spec)
+    spans = return_statement_spans(body_node, mapping, spec, source)
     if spans:
         out.return_spans.setdefault(sym_id, []).extend(spans)
     try:

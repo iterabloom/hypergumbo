@@ -335,6 +335,7 @@ from .partial_install_warnings import check_partial_install_warnings
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .cfg import DdgEdge
     from .dataflow_scope import LanguageDataflowScope, SanitizerScope
+    from .ddg_build import ReturnStatement
     from .io_boundary import IoChain
     from .taint import TaintSanitizer, TaintSink, TaintSource
 
@@ -6167,7 +6168,7 @@ def _build_ddg_for_verify_claims(
     dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]],
     set[str],
     dict[str, frozenset[str]],
-    dict[str, list[tuple[int, int]]],
+    dict[str, list["ReturnStatement"]],
 ]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
@@ -6194,7 +6195,7 @@ def _build_ddg_for_verify_claims(
     line inherited a tainted one, and when a line defines two the walk needs
     to know. The CFG already carries it.
 
-    The seventh is each function's own return-statement spans (INV-komoj),
+    The seventh is each function's own return statements (INV-komoj),
     which both propagators read to follow a returned source into its callers.
     It is filled with or without DDG edges, so a repository whose functions
     define nothing still gets it on the structural arm.
