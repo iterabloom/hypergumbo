@@ -79,3 +79,10 @@
   clock: 9  # 8c5b
   nonce: 8c5b  # 8c5b
   message: "Merged in PR #1441 (dev b130f1c054).\n\nThis is a note, not a closure. The title condition still holds.\n\nCommand half measured 2026-10-03 (jgstern-agent/fix/kanor a8e8fd09fd): the ADR-0049 ruling-3 proof FAILS; the rows stay. The asked propagation exists (unrowed, same-scope cmd.Run() reads violated, ddg confirmed). Lost when unrowed: factory-returned *Cmd, struct-stored *Cmd, execabs (fixtures violated -> inconclusive); corpus: runc newParentProcess and buildah unshareCmd lose real flows, while 12 of 15 removed flows were self-pair false positives (0 verdicts moved, 5 Go repos). Blockers: INV-komoj (return flow), WI-jahip (field store kills reaching def), an execabs library signature, the os/exec completeness decision, a Cmd run by a library function. Not measured: rust Command::new, java ProcessBuilder.command."  # 8c5b
+- op: discuss  # 0af2
+  at: '2026-10-05T05:05:14Z'  # 0af2
+  by: agent  # 0af2
+  actor: jgstern_agent  # 0af2
+  clock: 10  # 0af2
+  nonce: 0af2  # 0af2
+  message: "From WI-losod (branch jgstern-agent/fix/losod, not merged): the Go `if err := cmd.Run(); err != nil` initializer is now a recorded statement, so its use of `cmd` is in the DDG. Measured with dev catalogue rows (exec.Command still rowed), containers-storage, claim untrusted-input-no-subprocess, source os.Stdin in unshareFn (cmd/containers-storage/unshare.go:12-27): base c1dd831558 gave one collapsed row ddg_mixed / not_attempted / source_not_tracked for sinks {Cmd.Run, exec.Command}; the losod branch gives Cmd.Run ddg / confirmed (line 23) and exec.Command ddg_mixed / not_attempted / sink_before_source (line 21, before the source at line 22). The Stdin field store did not block it here (WI-jahip's kill applies to a store that REDEFINES the receiver before a tainted use; here the tainted value enters via the store). I did not re-run INV-dukam's probe arm with exec.Command unrowed."  # 0af2

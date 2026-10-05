@@ -1,0 +1,21 @@
+- op: create  # 7d66
+  at: '2026-10-05T05:04:35Z'  # 7d66
+  by: agent  # 7d66
+  actor: jgstern_agent  # 7d66
+  clock: 1  # 7d66
+  nonce: 7d66  # 7d66
+  data:  # 7d66
+    kind: work_item  # 7d66
+    title: "CfgBuilder switch/match has no 'no case matched' edge: in a switch without a default a definition killed in every arm does not reach code after it (removes reaching defs -- the False-producing direction)"  # 7d66
+    status: todo_hard  # 7d66
+    priority: 2  # 7d66
+    parent:  # 7d66
+    tags:  # 7d66
+    - adr_0017  # 7d66
+    - taint  # 7d66
+    isbefore: []  # 7d66
+    duplicate_of: []  # 7d66
+    not_duplicate_of: []  # 7d66
+    pr_ref:  # 7d66
+    description: "FOUND 2026-10-04 while fixing WI-faful (branch jgstern-agent/fix/losod), reproduced on the base c1dd831558 too. CfgBuilder._process_switch adds no edge for \"no case matched\": the scrutinee block's only successors are the arms, so in a switch with no default arm a definition killed in every arm does not reach the code after the switch.\n\nRepro (Go; Python `match` behaves the same):\n    t := source()\n    switch x {\n    case 1:\n        t = \"c\"\n    }\n    sink(t)\nreaching definitions give only (\"t\", 6, 8): the source's t (line 3) never reaches sink(t) (line 8), though it does whenever x != 1.\n\nDIRECTION: the missing path REMOVES reaching definitions, which is the direction that can manufacture a walk False (removal since WI-kabif). Here the source_tracked guard happens to stop the walk (t at line 3 has no uses at all, so not_attempted); with any other use of t before the switch the walk would run, exhaust and refute a real flow. Not measured on a corpus.\n\nFix shape: a fall-through fringe edge from the scrutinee when no arm is a default. Which arm is a default is per grammar (Go default_case, Java/TS/C `default`, Python `case _`), and Rust match / Java switch expressions are exhaustive, so an always-on fall-through edge is the conservative choice (adds paths, so it can only produce FEWER Falses); WI-faful added the edge only for a switch with no recognised arm at all."  # 7d66
+    fields: {}  # 7d66
