@@ -28,10 +28,10 @@ EXISTING mechanism for "a read's boundary is its handle's origin":
 
 WHAT IS NOT: python's ``p.stdout.read()`` (an attribute of a typed receiver is
 not typed, so the read is ``external``), go's ``io.ReadAll(cmd.StdoutPipe())``
-(``io.ReadAll`` is a fixed ``fs_read`` row with no stream stamp), and every
-flow whose source is read inside a helper and returned to its caller (taint is
-forward-only across calls). Each is pinned below as a control, so a later fix
-turns it red rather than passing unnoticed.
+(``io.ReadAll`` is a fixed ``fs_read`` row with no stream stamp). Each is
+pinned below as a control, so a later fix turns it red rather than passing
+unnoticed. (A source read inside a helper and returned to its caller is
+followed since INV-komoj; ``test_taint_return_flow.py`` pins it.)
 """
 from __future__ import annotations
 
