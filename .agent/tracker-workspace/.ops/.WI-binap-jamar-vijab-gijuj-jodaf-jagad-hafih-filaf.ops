@@ -41,3 +41,18 @@
   clock: 4  # 5650
   nonce: '5650'  # 5650
   message: "WORK DONE 2026-10-04 (stage 8b agent). Branch jgstern-agent/fix/binap (worktree ~/hg_wt/binap, based on stage-8 integration 2a98abb55d, NOT pushed), commit 5940353412. Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/binap.md.\n\nPremise re-verified at 2a98abb55d (live repro, analyze_csharp): every accessor call (get / set / => / initialiser) went to the CLASS; indexer, operator, conversion operator, destructor and event-with-accessors had no symbol; new B() in a getter emitted NO instantiates edge.\n\nFix: one set _CSHARP_MEMBER_BODY_NODES (method, constructor, property, indexer, operator, conversion operator, destructor, event) read by core enclosing_declared_symbol, by POSITION (INV-midag); _get_enclosing_method deleted. New symbols: indexer kind=subscript (Type.this[]), operator / conversion operator / destructor kind=method (Type.operator+, Type.operator int, Type.~Type), event-with-accessors kind=event. A property owns its initialiser; a FIELD initialiser stays on the class (INV-bamij). Call-anchor gate gains test_csharp_member_bodies_are_anchored_on_their_member.\n\nTests: red 12 failed / 17 passed on the base sources, then green; affected run (616 files) 21,389 passed + 1 failed (spec symbol_meta count, fixed in the pony commit), scoped coverage 100%; final targeted run 333 passed.\n\nA/B by call site on the 8 C# corpus repos: 73 call sites moved class -> containing member (54 property, 18 destructor, 1 operator==), +1 instantiates from a getter, 0 lost, containment violations 0 both arms; property-sourced edges 0 -> 55. No event-with-accessors or conversion operator occurs in the corpus (fixture-only).\n\nResiduals filed: WI-sisuv (field-initialiser object creation dropped, local-function call external, field-like event no symbol), WI-kajoh (records emit no symbol), WI-rokir (kotlin accessors, same family). Swift deinit/observers noted on WI-sogof."  # 5650
+- op: update  # 4dbd
+  at: '2026-10-05T04:41:43Z'  # 4dbd
+  by: agent  # 4dbd
+  actor: jgstern_agent  # 4dbd
+  clock: 5  # 4dbd
+  nonce: 4dbd  # 4dbd
+  set:  # 4dbd
+    status: done  # 4dbd
+- op: discuss  # 93bb
+  at: '2026-10-05T04:41:43Z'  # 93bb
+  by: agent  # 93bb
+  actor: jgstern_agent  # 93bb
+  clock: 6  # 93bb
+  nonce: 93bb  # 93bb
+  message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459, commit 5940353412. Behavioral evidence: on the item's own repro (getter, setter, `=>` body, auto-property initialiser, indexer, operator, conversion operator, destructor, event add/remove), analyze_csharp emits `A.Getter/A.Setter/A.Twice/A.AutoInit (property) -> A.Helper/Helper2`, `A.this[] (subscript)`, `A.operator+`, `A.operator int`, `A.~A` (method) and `A.Changed (event)` as the sources, and none from the class. `new B()` in a getter now emits `A.Made -instantiates-> B.B`; before, nothing was emitted. Production-path tests: `test_csharp_member_bodies.py` (7) and `test_ruby_csharp_call_anchor.py::test_csharp_member_bodies_are_anchored_on_their_member`. Both were red on 2a98abb55d and green after. A/B on the 8 C# corpus repos: 73 call sites re-anchored from class to member (54 property, 18 destructor, 1 operator==), +1 instantiates, 0 lost, containment violations 0 in both arms, property-sourced edges 0 -> 55. NOT asserted: field-initialiser object creation/method groups, local-function call resolution and field-like events (WI-sisuv); records (WI-kajoh); the Kotlin sibling (WI-rokir)."  # 93bb

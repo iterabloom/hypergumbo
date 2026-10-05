@@ -26,3 +26,18 @@
   clock: 2  # f328
   nonce: f328  # f328
   message: "Branch jgstern-agent/fix/darik (worktree ~/hg_wt/darik, based on the stage-8 integration branch 2a98abb55d). Commits 80ecd183ca (core: edge_source + shared c_family walk), 97cd5f2a8c (pascal methods + nested procedures), 5aa2eb9066 (pascal: a call shape in a declaration is a typecast). NOT merged, no status change.\n\nWhat changed: a qualified defProc (procedure TA.Run, constructor/destructor/class function/class operator TA.X) is kind=method named TA.Run; every call edge is drawn from the innermost defProc found by POSITION (symbols_at over file_symbols()), else the program/unit, else the file anchor. A bare call inside a method reaches its own class first (ta.get), as Pascal's Self lookup does.\n\nLive repro (the filed one): before -- symbols P, One only, no edge. After -- symbols P, One, TA.Run (method), TA.Get; calls 12 TA.Run -> One and 17 TA.Get -> One, src resolves.\n\nMeasured on sherpa-onnx's Pascal API (62 files; ~/hypergumbo_lab_notebook/decontend/run_10032026/darik/{base,after2}.pascal.sherpa-onnx.json): symbols 135 -> 254 (134 methods), definitions with no symbol 119 -> 0, call edges 163 -> 810, dangling src 0 -> 0. 342 call sites sat in method bodies.\n\nResiduals filed: WI-gufip-suviv-tufil-sarun-huhif-vituv-hatub-zovor (receiver calls, external FFI routines, class types, typecasts in code)."  # f328
+- op: update  # 4463
+  at: '2026-10-05T04:41:45Z'  # 4463
+  by: agent  # 4463
+  actor: jgstern_agent  # 4463
+  clock: 3  # 4463
+  nonce: '4463'  # 4463
+  set:  # 4463
+    status: done  # 4463
+- op: discuss  # dc29
+  at: '2026-10-05T04:41:45Z'  # dc29
+  by: agent  # dc29
+  actor: jgstern_agent  # dc29
+  clock: 4  # dc29
+  nonce: dc29  # dc29
+  message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459 (97cd5f2a8c, 5aa2eb9066). A qualified defProc (procedure TA.Run and the constructor/destructor/class-function/class-operator forms) is now a kind=method symbol named TA.Run, and every call edge is drawn from the innermost defProc by position. Re-ran the filed repro: before, symbols P/One with no edge; after, TA.Run and TA.Get are methods, with edges 12 TA.Run->One and 17 TA.Get->One, src resolving. Pinned by test_pascal_declaration_symbols::test_a_method_implementation_is_a_symbol_and_its_calls_are_drawn_from_it (production path, analyze_pascal). sherpa-onnx: 119 unnamed definitions -> 0, call edges 163 -> 810. NOT asserted: receiver calls (A.Run(), Self.Get), external FFI routines and class types; these are filed as WI-gufip-suviv-tufil-sarun-huhif-vituv-hatub-zovor."  # dc29
