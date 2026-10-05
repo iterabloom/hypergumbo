@@ -32,6 +32,10 @@ loop:
     body_child: "field:body"
   - node_type: for_expression
     body_child: "field:body"
+    # `for v in xs` binds `v` with no node of its own: recorded at the loop
+    # node, which rust_def_use's for_expression handler reads as the header
+    # only (WI-losod).
+    header_is_node: true
 
 break_statement: [break_expression]
 continue_statement: [continue_expression]
@@ -69,11 +73,9 @@ try_catch: []
 # That example predates the convention above and would shadow the return hook;
 # go.yaml documents the rule and this mapping follows it.
 #
-# Known gap, disclosed: `closure_expression` is a _HANDLERS key but is NOT
-# atomic — a closure body carries its own control flow, so making it atomic
-# would collapse it into one statement. Closure-captured definitions therefore
-# remain invisible to def/use, matching the conservative overapproximation
-# ADR-0017 §7b already declares for capture-mediated flow.
+# A `closure_expression` is not atomic and not control flow: it is a
+# `nested_function` (below), so the statement holding it stays ONE statement
+# and its body is built as a region that may run (WI-faful).
 # Node types that ARE a call in this grammar (WI-joluk). Consumed by
 # cfg.uncovered_call_lines to ask whether the CFG's recorded statement
 # extents cover every call site in a function body; a call outside every
@@ -90,3 +92,14 @@ atomic_statement:
   - assignment_expression
   - compound_assignment_expr
   - expression_statement
+
+# Functions nested in a function body (WI-faful): a closure or a nested `fn`
+# runs when it is called, not where it is written. Its body is built as its own
+# CFG region that MAY run, hung off the statement that holds it, rather than
+# inlined in sequence. `let h = |y| { if y { .. } };` used to decompose into
+# leaves, so `h` was a use that was never defined.
+nested_function:
+  - node_type: closure_expression
+    body_child: "field:body"
+  - node_type: function_item
+    body_child: "field:body"

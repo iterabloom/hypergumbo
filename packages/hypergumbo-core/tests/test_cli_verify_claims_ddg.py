@@ -146,10 +146,12 @@ def test_forfeit_set_is_actually_populated(tmp_path: Path) -> None:
     disabling the gate, and the failure would be invisible: no error, no
     changed verdict, just a guard that never fires.
 
-    The fixture uses the shape that ACTUALLY forfeits in Python, established by
-    reading real forfeiting functions rather than assumed: the call in a ``for``
-    loop's iterable expression, and in a ``with`` statement's context-manager
-    expression. Neither is covered by a recorded statement extent.
+    The fixture uses a shape that forfeits in Python: a ``for`` loop's
+    ``else:`` clause, which the loop hook does not process, so no statement
+    covers it. The shapes this fixture first used no longer forfeit, and each
+    was closed by recording it: a ``with`` statement's context-manager
+    expression (WI-simiv) and a ``for`` loop's iterable, now part of the header
+    statement (WI-losod).
 
     An earlier draft of this test used a call inside an ``if`` test, reasoning
     by analogy from Go's ``if err := do(); err != nil``. That fixture forfeits
@@ -172,6 +174,8 @@ def test_forfeit_set_is_actually_populated(tmp_path: Path) -> None:
         "    v = os.getenv('X')\n"
         "    for item in os.listdir(p):\n"
         "        v = v + item\n"
+        "    else:\n"
+        "        v = v + os.sep\n"
         "    return v\n"
     )
     _edges, symbols, _hints, _stmts, forfeits, _unacc = _build_ddg_for_verify_claims(

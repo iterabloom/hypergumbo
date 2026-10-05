@@ -23,10 +23,18 @@ loop:
     condition_child: "field:condition"
     body_child: "field:body"
   - node_type: for_statement
+    # `for (let k = 0; k < n; k++)` (WI-losod). This grammar calls the update
+    # `increment`.
+    initializer_child: "field:initializer"
     condition_child: "field:condition"
+    update_child: "field:increment"
     body_child: "field:body"
   - node_type: for_in_statement
     body_child: "field:body"
+    # `for (const v of xs)` / `for (k in o)`: the binding has no node of its
+    # own, so it is recorded at the loop node, which ts_def_use's
+    # for_in_statement handler reads as the header only (WI-losod).
+    header_is_node: true
 
 break_statement: [break_statement]
 continue_statement: [continue_statement]
@@ -54,10 +62,9 @@ switch:
 # These are exactly the keys of ts_def_use._HANDLERS that classify() does not
 # already own. Deliberately EXCLUDED because listing a type in both would make
 # the atomic check shadow its control-flow role: return_statement (return) and
-# for_in_statement (loop). Both remain _HANDLERS keys, so those handlers fire
-# only if the corresponding control-flow hook surfaces the node to the
-# extractor — a narrower path than the atomic one, and not one this mapping
-# can widen.
+# for_in_statement (loop). Both remain _HANDLERS keys and both fire: the return
+# hook records its node, and the loop hook records a for_in_statement as its
+# own header (`header_is_node`, WI-losod).
 # Node types that ARE a call in this grammar (WI-joluk). Consumed by
 # cfg.uncovered_call_lines to ask whether the CFG's recorded statement
 # extents cover every call site in a function body; a call outside every
@@ -74,3 +81,26 @@ atomic_statement:
   - assignment_expression
   - augmented_assignment_expression
   - expression_statement
+
+# Functions nested in a function body (WI-faful): an arrow function, function
+# expression or nested declaration runs when it is called, not where it is
+# written. Its body is built as its own CFG region that MAY run, hung off the
+# statement that holds it, rather than inlined in sequence; the statement
+# itself stays ONE statement (`const g = () => { if (c) .. }` defines `g`).
+# `function` is the older tree-sitter-javascript spelling of
+# `function_expression`.
+nested_function:
+  - node_type: arrow_function
+    body_child: "field:body"
+  - node_type: function_expression
+    body_child: "field:body"
+  - node_type: function
+    body_child: "field:body"
+  - node_type: generator_function
+    body_child: "field:body"
+  - node_type: function_declaration
+    body_child: "field:body"
+  - node_type: generator_function_declaration
+    body_child: "field:body"
+  - node_type: method_definition
+    body_child: "field:body"

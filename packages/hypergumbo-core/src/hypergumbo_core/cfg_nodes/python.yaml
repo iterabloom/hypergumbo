@@ -23,7 +23,12 @@ loop:
     body_child: "field:body"
   - node_type: for_statement
     body_child: "field:body"
-    # for loops iterate over 'right'; condition is implicit (iterator exhaustion)
+    # `for v in xs:` binds `v` from `xs` each iteration, and the binding has
+    # no node of its own: the header statement is recorded AT the loop node
+    # (py_def_use's for_statement handler reads only left/right), cut at the
+    # body for the coverage gates (WI-losod). The `else:` clause is not
+    # processed by this hook.
+    header_is_node: true
 
 break_statement: [break_statement]
 continue_statement: [continue_statement]
@@ -77,3 +82,12 @@ atomic_statement:
   - future_import_statement
   - pass_statement
   - call
+
+# Functions nested in a function body (WI-faful): a nested `def` runs when it
+# is called, not where it is written. Its body is built as its own CFG region
+# that MAY run, hung off the def statement, rather than inlined in sequence,
+# where its assignments killed the enclosing function's variables of the same
+# name. A `lambda` holds one expression and no statement, so it needs no entry.
+nested_function:
+  - node_type: function_definition
+    body_child: "field:body"

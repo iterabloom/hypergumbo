@@ -24,7 +24,11 @@ loop:
     condition_child: "field:condition"
     body_child: "field:body"
   - node_type: for_statement
+    # `for (i = 0; i < n; i++)`: the initializer runs once ahead of the test,
+    # the update after the body and after a `continue` (WI-losod).
+    initializer_child: "field:initializer"
     condition_child: "field:condition"
+    update_child: "field:update"
     body_child: "field:body"
 
 break_statement: [break_statement]
