@@ -1,0 +1,21 @@
+- op: create  # 11e3
+  at: '2026-10-05T04:52:16Z'  # 11e3
+  by: agent  # 11e3
+  actor: jgstern_agent  # 11e3
+  clock: 1  # 11e3
+  nonce: '11e3'  # 11e3
+  data:  # 11e3
+    kind: work_item  # 11e3
+    title: "python: an HTTP response's attribute reads (resp.headers[...], resp.status) and iteration (for line in resp) reach no row, so header/body bytes into a shell read clean (WI-tumol residual)"  # 11e3
+    status: todo_hard  # 11e3
+    priority: 3  # 11e3
+    parent:  # 11e3
+    tags:  # 11e3
+    - python  # 11e3
+    - taint  # 11e3
+    isbefore: []  # 11e3
+    duplicate_of: []  # 11e3
+    not_duplicate_of: []  # 11e3
+    pr_ref:  # 11e3
+    description: "FOUND 2026-10-04 by WI-tumol (branch jgstern-agent/fix/tumol). Residual of the HTTP-response receive surface.\n\nWI-tumol rows http.client.HTTPResponse's CALLS (read family, getheader/getheaders/info/geturl/getcode/begin) net_recv. Three ways a program reads the far side's content through a response reach no row:\n- attribute reads: `resp.headers[\"X-Cmd\"]`, `resp.headers.get(...)`, `resp.status`, `resp.reason`, `resp.msg`, `resp.url` -- python emits module_attr_ref edges for a MODULE's attributes (os.environ), not an instance's, so no row can carry them;\n- iteration: `for line in resp:` is no call (the os._wrap_close note records the same gap);\n- `resp.headers.get_all(...)` etc. -- a call on the http.client.HTTPMessage the attribute returns, which is untyped.\nObserved on the WI-tumol branch (verify-claims, untrusted_input -> subprocess, JSON parsed): `resp = urlopen(url); subprocess.run(resp.headers[\"X-Cmd\"], shell=True)` and `for line in resp: subprocess.run(line, shell=True)` each read confirmed_with_caveats (false clean). Not measured on the corpus. FIX SHAPE open: an instance-attribute read edge for typed receivers, or typing `HTTPResponse.headers` as http.client.HTTPMessage with rows there."  # 11e3
+    fields: {}  # 11e3

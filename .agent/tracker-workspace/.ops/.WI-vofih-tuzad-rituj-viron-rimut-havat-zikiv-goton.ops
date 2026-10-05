@@ -1,0 +1,23 @@
+- op: create  # bcef
+  at: '2026-10-05T04:56:23Z'  # bcef
+  by: agent  # bcef
+  actor: jgstern_agent  # bcef
+  clock: 1  # bcef
+  nonce: bcef  # bcef
+  data:  # bcef
+    kind: work_item  # bcef
+    title: "JS/TS def/use drops every identifier inside a template literal substitution: fetch(`...${k}`) does not read k"  # bcef
+    status: todo_hard  # bcef
+    priority: 3  # bcef
+    parent:  # bcef
+    tags:  # bcef
+    - taint  # bcef
+    - adr_0017  # bcef
+    - javascript  # bcef
+    - typescript  # bcef
+    isbefore: []  # bcef
+    duplicate_of: []  # bcef
+    not_duplicate_of: []  # bcef
+    pr_ref:  # bcef
+    description: "FOUND 2026-10-04 by WI-tozar. ts_def_use.py lists `template_string` among the node types that carry no variable reference, so every identifier inside a `${...}` substitution is dropped from uses.\n\nREPRO (cfg.build_function_cfg + populate_def_use_for_cfg, tree c1dd831558):\n  function f(n) { const k = g(n); fetch(`https://x/?k=${k}`); }\n  -> line 3 expression_statement def=[] use=[]   (k is not read)\nverify-claims, host_secret -> network, `const k = process.env.API_KEY; return fetch(`https://x.example/?k=${k}`);` -> violated with analysis_method structural / walk unavailable, where the string-concatenation form reads ddg / confirmed.\n\nCOST: precision, not soundness as far as checked: unaccounted_names / the coverage gate catch the unread k and the walk does not refute. Template literals are the idiomatic way to build URLs and log lines in JS/TS, so the precise walk is lost on the most common sink-argument shape. Not checked: how many corpus findings this affects.\n\nFIX DIRECTION: walk `template_substitution` children (a `string_fragment` is not an identifier), keeping the rest of the template a non-use. Tagged templates (`tag`...``) need the tag treated like a callee."  # bcef
+    fields: {}  # bcef

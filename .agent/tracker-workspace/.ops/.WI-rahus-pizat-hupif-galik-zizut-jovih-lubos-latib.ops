@@ -1,0 +1,22 @@
+- op: create  # 7765
+  at: '2026-10-05T04:52:11Z'  # 7765
+  by: agent  # 7765
+  actor: jgstern_agent  # 7765
+  clock: 1  # 7765
+  nonce: '7765'  # 7765
+  data:  # 7765
+    kind: work_item  # 7765
+    title: "python: a read through socket.socket.makefile() mints no untrusted_input; its library_signatures row types io.BufferedRWPair (right only for mode rwb) and WI-tumol's member-return propagation now makes that wrong type live"  # 7765
+    status: todo_hard  # 7765
+    priority: 3  # 7765
+    parent:  # 7765
+    tags:  # 7765
+    - python  # 7765
+    - taint  # 7765
+    - catalogue  # 7765
+    isbefore: []  # 7765
+    duplicate_of: []  # 7765
+    not_duplicate_of: []  # 7765
+    pr_ref:  # 7765
+    description: "FOUND 2026-10-04 by WI-tumol (branch jgstern-agent/fix/tumol). The receive-half sibling of WI-tumol, through a different object.\n\n`f = sock.makefile(); line = f.readline()` reads the far side's bytes, and nothing mints untrusted_input there. library_signatures/python.yaml declares `socket.socket.makefile: io.BufferedRWPair`, which is the right type only for mode \"rwb\"/\"rw\" with buffering; the default mode \"r\" returns an io.TextIOWrapper and \"rb\" an io.BufferedReader (CPython Lib/socket.py makefile). No io_primitives row exists under any of those types for a socket-backed file, and io.TextIOWrapper/BufferedReader are also the types of ordinary files.\n\nUntil WI-tumol the row was unconsumed (member rows did not type a typed receiver's result). WI-tumol's member-return propagation makes it live: on a typed socket, `f.readline()` now arrives at `python:io.BufferedRWPair:0-0:readline` (unclassified) instead of `python:external:0-0:readline` (untyped receiver). Verdicts on the fixture did not move (the socket.socket.makefile call itself is already unclassified, so the file was already inconclusive), but the row now types a wrong class.\n\nFIX SHAPE (to verify, not asserted): decide what a socket-backed file is (a synthetic module slot like the `file` one py.py uses for open(), stamped from makefile's mode argument?), row its reads net_recv and its writes net_send, and correct or remove the BufferedRWPair row. Needs its own A/B."  # 7765
+    fields: {}  # 7765
