@@ -5395,7 +5395,8 @@ def propagate_taint_ddg(
     # return carries it" is asked of THE §3a WALK, with the function's return
     # lines as targets and its sanitizer lines as barriers; only ``True``
     # lifts. Forfeiture is not passed: it withholds ``False`` alone, and
-    # ``False`` lifts nothing here.
+    # ``False`` lifts nothing here -- the call is spelled ``... is True`` so
+    # the INV-lupav contract guard sees the collapse.
     # The ordered defines per (function, line), for the received-position
     # seeds (INV-komoj, "WHICH RESULT CARRIES IT").
     defines_at: dict[tuple[str, int], list[tuple[str, ...]]] = defaultdict(list)
@@ -5411,15 +5412,16 @@ def propagate_taint_ddg(
         if fn not in analyzed:
             return None
         reached: list[tuple[str, int]] = []
-        found = _ddg_taint_reaches(
+        if _ddg_taint_reaches(
             fn, lines, targets, ddg_uses, callee_names, summaries,
             defs_at=defs_at, inherits=inherits,
             barrier_lines=frozenset(barriers),
             unaccounted=(unaccounted_names or {}).get(fn),
             seed_variables=_received_seeds(fn, lines, received, defines_at),
             reached=reached,
-        )
-        return reached[0] if found is True else None
+        ) is True:
+            return reached[0]
+        return None
 
     source_entries = _lift_returned_sources(
         source_callers, call_edges, return_spans or {},
