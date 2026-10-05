@@ -46,3 +46,34 @@ class Headers {
     assert {a[3] for a in anchors} >= {6, 10, 14}, anchors  # reach: all three calls
     for name, start, end, line in anchors:
         assert start <= line <= end, (name, start, end, line)
+
+
+def test_initialiser_deinitialiser_and_observer_bodies(tmp_path: Path) -> None:
+    """WI-sogof: these bodies had no symbol and anchored on the class."""
+    anchors = _anchors(tmp_path, """\
+func one() -> Int { return 1 }
+
+class Box {
+    init(a: Int) {
+        _ = one()
+    }
+
+    init(b: String) {
+        _ = one()
+    }
+
+    deinit {
+        _ = one()
+    }
+
+    var v: Int = 0 {
+        didSet { _ = one() }
+    }
+}
+""")
+    got = sorted((a[3], a[0], a[1]) for a in anchors)
+    assert got == [
+        (5, "Box.init", 4), (9, "Box.init", 8), (13, "Box.deinit", 12), (17, "Box.v", 16),
+    ], got
+    for name, start, end, line in anchors:
+        assert start <= line <= end, (name, start, end, line)
