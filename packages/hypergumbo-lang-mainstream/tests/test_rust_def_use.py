@@ -245,7 +245,12 @@ class TestRustDefUseExtractor:
         assert "items" in result.uses
 
     def test_closure_handler_direct(self) -> None:
-        """Call closure handler directly on a closure node."""
+        """Call closure handler directly on a closure node.
+
+        A closure's parameters are ITS bindings, not the enclosing function's:
+        neither defined nor used here (WI-faful). They were once returned as
+        definitions, harmless only while no CFG statement reached this handler.
+        """
         from hypergumbo_lang_mainstream.rust_def_use import _handle_closure_expression
         tree, src = _parse("fn f() { let c = |x, y| x + y; }")
         body = tree.root_node.children[0].child_by_field_name("body")
@@ -255,7 +260,8 @@ class TestRustDefUseExtractor:
                 value = stmt.child_by_field_name("value")
                 if value and value.type == "closure_expression":
                     result = _handle_closure_expression(value, src)
-                    assert set(result.defines) == {"x", "y"}
+                    assert result.defines == []
+                    assert result.uses == []
                     return
         raise AssertionError("No closure found")
 

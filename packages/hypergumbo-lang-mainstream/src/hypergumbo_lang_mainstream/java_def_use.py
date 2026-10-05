@@ -52,20 +52,17 @@ function.
 
 Scope, stated rather than implied
 ---------------------------------
-Intraprocedural and statement-level, like the other four extractors. The CFG
-hooks name only a loop's condition and body, so these bindings are never
-handed to the walker, and ``uncovered_semantic_lines`` reports their lines
-(which forfeits refutation for the function rather than letting the walk
-claim to have seen them):
-
-- the enhanced-for variable (``for (T s : xs)``)
-- a classic for's ``init`` and ``update``
+Intraprocedural and statement-level, like the other four extractors. Loop
+headers reach the walker as statements of their own (WI-losod): a classic
+for's every ``init`` and ``update`` at its own node, and the enhanced-for
+header AT the loop node, which ``extract`` reads as ``for (T v : xs)`` --
+defines ``v``, reads ``xs`` -- without walking the body.
 
 ``if (o instanceof String s)`` binds ``s`` inside a condition. That is read
 as a use of ``o`` only; ``s`` stays undefined. A declaration whose initializer
-contains control flow (a ``switch`` expression, or a lambda whose block holds
-an ``if``) is decomposed by the builder, as it is for TypeScript and Rust, so
-its variable is never defined either.
+holds a ``switch`` expression is recorded AFTER the switch's arms, and one
+holding a lambda stays one statement with the lambda body a separate region,
+so both define their variable (WI-faful).
 """
 from __future__ import annotations
 
@@ -94,7 +91,13 @@ _NON_USE_TYPES = frozenset({
 })
 
 #: Bodies whose bindings belong to another function (see "Closures" above).
-_CLOSURE_TYPES = frozenset({"lambda_expression", "class_body"})
+_CLOSURE_TYPES = frozenset({
+    "lambda_expression", "class_body",
+    # Handed over DIRECTLY when the CFG records a local class's method as a
+    # statement of the enclosing method (cfg_nodes/java.yaml
+    # ``nested_function``, WI-faful): its locals are not this method's.
+    "method_declaration", "constructor_declaration",
+})
 
 
 def _node_text(node: Any, source: bytes) -> str:
@@ -191,7 +194,16 @@ class JavaDefUseExtractor:
     def extract(self, node: Any, source: bytes) -> DefUseResult:
         """Return variables defined and used by this AST node."""
         collector = _Collector(source)
-        collector.walk(node)
+        if node.type == "enhanced_for_statement":
+            # The loop node stands for its HEADER here (cfg_nodes/java.yaml
+            # ``header_is_node``, WI-losod): ``for (T v : xs)`` defines ``v``
+            # and reads ``xs`` each iteration. The body is the CFG's, not this
+            # statement's, so it is not walked.
+            collector.walk(node.child_by_field_name("value"))
+            name = node.child_by_field_name("name")
+            collector.define(_node_text(name, source), False)
+        else:
+            collector.walk(node)
         return DefUseResult(defines=collector.defines, uses=collector.uses)
 
 
