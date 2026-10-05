@@ -50,3 +50,10 @@
   clock: 5  # 9235
   nonce: '9235'  # 9235
   message: "Merged in PR #1456 (dev 05fefe416b)."  # 9235
+- op: discuss  # 2167
+  at: '2026-10-05T00:31:41Z'  # 2167
+  by: agent  # 2167
+  actor: jgstern_agent  # 2167
+  clock: 6  # 2167
+  nonce: '2167'  # 2167
+  message: "Closure note (the previous entry posted an empty body by an extraction error):\n\nFixed in PR #1456 . Kotlin and scala now read java.yaml's library-signature rows through `library_signatures.ROW_PARENTS`; no row is copied. Kotlin folds a call chain over those rows (`_library_call_type`) for both the chained and the bound form. Scala's receiver typer looks up a library owner under its qualified path. **Behavioral evidence:** `verify-claims` on kotlin and scala fixtures that read `System.getenv(\"CMD\")` and pass it to `Runtime.getRuntime().exec(cmd)`, chained and via `val r = Runtime.getRuntime(); r.exec(cmd)`: taint claim host_secret→subprocess went inconclusive → violated, and subprocess must_not_exist went inconclusive → violated. In the control (constant command, secret in another function) the taint claim stays not-violated. Pinned by `test_jvm_library_signature_chains.py::test_a_secret_piped_into_exec_is_violated` and `test_a_launch_the_secret_never_reaches_is_not_a_flow`. The item's own fxkt and fxsc repro now emits `<lang>:java.lang.Runtime:0-0:exec`. **Corpus:** 7 of 7 kotlin/scala `Runtime.exec` sites found by grep (scala3 and spark test directories) now classify subprocess. The general claim, that every JDK no-argument read is reachable, is NOT asserted: scala parameterless calls and kotlin synthetic getters emit no edge at all (WI-bojud-sator-tutad-sohut-fojis-lukuv-hogif-kamuz)."  # 2167

@@ -1,0 +1,25 @@
+- op: create  # 1878
+  at: '2026-10-05T03:55:18Z'  # 1878
+  by: agent  # 1878
+  actor: jgstern_agent  # 1878
+  clock: 1  # 1878
+  nonce: '1878'  # 1878
+  data:  # 1878
+    kind: invariant  # 1878
+    title: "C taint: a source a callee copies into a global config struct, later sent through a function pointer, is never followed (torsocks SOCKS5 password and getpid/time username); host-secret-no-network reads confirmed_with_caveats once INV-zikul classifies every call"  # 1878
+    status: violated  # 1878
+    priority: 2  # 1878
+    parent:  # 1878
+    tags:  # 1878
+    - c  # 1878
+    - taint  # 1878
+    - verify_claims  # 1878
+    - false_confirm  # 1878
+    isbefore: []  # 1878
+    duplicate_of: []  # 1878
+    not_duplicate_of: []  # 1878
+    pr_ref:  # 1878
+    description: "FOUND 2026-10-04 in the INV-zikul-kikov-nikig-dovig-naros-sagik-bufil-punub A/B (branch jgstern-agent/fix/zikul). Pre-existing taint gap; the INV-zikul fix UNMASKS it on torsocks, it does not cause it.\n\nWHAT. torsocks sends a host secret and a host description over the network, and C taint does not follow either flow:\n  - host_secret: src/lib/torsocks.c:125 password = getenv(DEFAULT_SOCKS5_PASS_ENV) -> conf_file_set_socks5_pass(password, &tsocks_config) copies it into the GLOBAL tsocks_config.conf_file.socks5_password -> a different function later passes the global's fields to socks5_send_user_pass_request (src/common/socks5.c:284) -> memcpy into buffer -> send_data(conn->fd, buffer, data_len) at :325, where send_data is a FUNCTION POINTER (socks5.c:146) to send_data_impl -> send(). The same function also logs the password: DBG(\"Socks5 username %s and password %s sent successfully\", user, pass) (:333), and DBG is a macro over log_print, emitted as the unresolved call c:external:0-0:DBG.\n  - host_description: src/common/config-file.c:528-534 pid = getpid(); now = time(NULL); snprintf(config->conf_file.socks5_username, ..., \"torsocks-%ld:%lld\", pid, now) -> the same SOCKS5 send.\nSo host-secret-no-network, host-description-no-network and host-secret-no-logging are false.\n\nWHY IT SURFACES NOW. On the base (c1dd831558) these torsocks verdicts were inconclusive ONLY because the coverage gate listed 6 unclassifiable modules (arpa/inet, assert, common/log, common/utils, lib/torsocks, +1): those came from the incomplete C include stamp on connect/send/close. With the stamp fixed every call classifies, nothing withholds, and the verdicts read confirmed_with_caveats (launch caveat only: autoreconf, mkdir). Verdicts that move this way on torsocks: host-secret-no-network, host-description-no-network, host-secret-no-logging (false by reading the code above), untrusted-input-no-host-fs (a received SOCKS5 reply byte is logged through DBG to the log file when TORSOCKS_LOG_FILE_PATH is set: a flow, if a thin one), untrusted-input-no-subprocess and untrusted-input-no-database (no flow found by reading; torsocks' C code launches nothing and has no database).\n\nThe withholding that hid this was claiming something false (\"calls the catalogue could not classify\") once the stamp is right, so restoring it is not the fix. The fix is in taint (a source stored into a global/struct by a callee and read by another function; calls through a function pointer; macro-wrapped logging), or a disclosure that withholds a taint clean when the flow-relevant constructs are present. Related but distinct: INV-komoj (a source RETURNED from a helper)."  # 1878
+    fields:  # 1878
+      statement: "A taint claim reads clean only if every flow from a catalogued source to a catalogued sink of its zone is either reported or disclosed as unfollowed; a source stored into a global or a struct field by a callee and read by another function, and a sink reached through a function pointer or a logging macro, are flows."  # 1878
+      root_cause: "Not diagnosed. Candidates seen in torsocks: the def/use model does not carry taint through a global struct field written by a callee (conf_file_set_socks5_pass(password, &tsocks_config)); the call graph does not follow the send_data function pointer to send_data_impl; DBG(...) is an unexpanded macro, emitted as c:external:0-0:DBG. Until INV-zikul the coverage gate withheld these verdicts for an unrelated reason (incomplete include stamps), which hid the gap."  # 1878

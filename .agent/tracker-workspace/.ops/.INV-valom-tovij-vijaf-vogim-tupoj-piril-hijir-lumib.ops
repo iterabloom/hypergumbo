@@ -1,0 +1,24 @@
+- op: create  # c062
+  at: '2026-10-05T03:55:02Z'  # c062
+  by: agent  # c062
+  actor: jgstern_agent  # c062
+  clock: 1  # c062
+  nonce: c062  # c062
+  data:  # c062
+    kind: invariant  # c062
+    title: "C++: the unresolved-call #include stamp lists only the file's angle includes, so a call whose header arrives through a quoted or transitive include is an examined negative (fopen(p,\"w\") reads NO-FSWRITE confirmed)"  # c062
+    status: violated  # c062
+    priority: 2  # c062
+    parent:  # c062
+    tags:  # c062
+    - cpp  # c062
+    - verify_claims  # c062
+    - false_confirm  # c062
+    isbefore: []  # c062
+    duplicate_of: []  # c062
+    not_duplicate_of: []  # c062
+    pr_ref:  # c062
+    description: "FOUND 2026-10-04 while fixing INV-zikul-kikov-nikig-dovig-naros-sagik-bufil-punub (branch jgstern-agent/fix/zikul, base c1dd831558). The C half is fixed on that branch (new module hypergumbo_lang_mainstream/include_closure.py); cpp.py was deliberately left unchanged and is this item.\n\nWHAT. cpp.py stamps EVERY unresolved call (not only ambiguous names, as C does) with the comma-joined list of the file's ANGLE includes only (the system_includes loop near the top of _extract_edges_from_tree). A header reached through a quoted include, or transitively, is left out. The coverage gate's ALL-expansion (INV-zimud) reads the stamp as the complete set of homes, and the module filter REFUSES a row whose header is not in the stamp. So when every angle include is granted, a real catalogued call becomes an examined negative.\n\nREPRO (shipped CLI at c1dd831558):\n  pq4  util.h: #include <cstdio>\n       main.cpp: #include <cstdint> / #include \"util.h\" / void save(const char *p){ FILE *f = fopen(p, \"w\"); fputs(\"x\", f); }\n       edge cpp:cstdint:0-0:fopen:external_symbol  ->  NO-FSWRITE (fs_write must_not_exist) CONFIRMED, caveats []\n       fopen is NOT an ambiguous name, so C never had this half: C keeps the external sentinel for it and the short-name fallback matches.\n  pq2  net.h: #include <sys/socket.h>;  main.cpp: #include \"net.h\" + send(fd,\"x\",1,0)\n       edge cpp:external:0-0:send  ->  NO-NET-SEND CONFIRMED (the placeholder is skipped, send is ambiguous in cpp too)\n\nA PROTOTYPE EXISTS AND WAS MEASURED (patch: ~/hypergumbo_lab_notebook/decontend/run_10032026/zikul/cpp_prototype.patch, tests: cpp_prototype_test_cpp_include_closure.py). It feeds cpp the same IncludeClosure stamp. Fixtures: pq2, pq4 -> violated. Corpus A/B (frozen copies, own caches, code under test printed; results in .../zikul/armB_cpp_prototype, ab_*_cpp_prototype.txt):\n  - verdicts: every move was toward MORE findings (modsecurity NO-FSWRITE 19->25 chains, NO-SUBPROC 2->3; whisper.cpp NO-FSWRITE 204->282, host-secret-no-host-fs 13->24 flows, host-secret-no-logging 14->20, untrusted-input-no-host-fs 2->3). No verdict moved toward clean on modsecurity or whisper.cpp.\n  - COST 1, SIZE: survey.json modsecurity 15.4 MB -> 39.3 MB (x2.55; mean module slot 51 -> 2196 chars, max 8722), whisper.cpp 136.5 -> 151.3 MB (x1.11), redis x1.03. Every unresolved C++ call carries the whole closure, and modsecurity's median translation unit sees 58 headers (max 324).\n  - COST 2, LINKER: 4 resolved method edges lost (modsecurity src/debug_log/debug_log.cc:78,87 DebugLogWriter::write_log; whisper.cpp examples/wchess/libwchess/test-chessboard.cpp:17,87). method-call-recovery-linker resolves only calls whose slot is the `external` placeholder, and files with only quoted includes now carry a stamp (3502 placeholder->stamped sites on whisper.cpp, 81 on modsecurity, 665 on redis's jemalloc headers).\n\nDESIGN QUESTIONS for whoever picks this up: (a) size -- e.g. drop TRANSITIVELY reached in-repo names (they change neither question when a direct in-repo include is already in the stamp; only a libc-name collision would differ), or stamp ambiguous names only as C does (but pq4 is a non-ambiguous name, so that alone does not fix it); (b) method-call-recovery-linker keyed on the placeholder: let it read a stamped member call too, or keep the placeholder for call_construct=method."  # c062
+    fields:  # c062
+      statement: "A C++ call the I/O catalogue cannot classify is an examined negative only if every header it could have come from is enumerated; a header reached through a quoted include, or transitively through any include, is one it could have come from."  # c062
+      root_cause: "cpp.py stamps every unresolved call with the file's angle-bracket includes only (WI-rupik); the module filter refuses a row whose header is not in that list, and the coverage gate's ALL-expansion (INV-zimud) treats the partial list as the complete set of homes. INV-zikul fixed the same mechanism in c.py only."  # c062

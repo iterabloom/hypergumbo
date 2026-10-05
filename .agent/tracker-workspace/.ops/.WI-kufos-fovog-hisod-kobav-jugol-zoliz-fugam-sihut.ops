@@ -1,0 +1,21 @@
+- op: create  # 72c4
+  at: '2026-10-05T03:08:54Z'  # 72c4
+  by: agent  # 72c4
+  actor: jgstern_agent  # 72c4
+  clock: 1  # 72c4
+  nonce: 72c4  # 72c4
+  data:  # 72c4
+    kind: work_item  # 72c4
+    title: "taint: two verify-claims consumers read a collapsed row's WITNESS scalar instead of its group (INV-dudal evaluation-site withdrawal can keep a qualification it must withdraw; choice-shaped caveat reads one source)"  # 72c4
+    status: todo_hard  # 72c4
+    priority: 3  # 72c4
+    parent:  # 72c4
+    tags:  # 72c4
+    - taint  # 72c4
+    - verify_claims  # 72c4
+    isbefore: []  # 72c4
+    duplicate_of: []  # 72c4
+    not_duplicate_of: []  # 72c4
+    pr_ref:  # 72c4
+    description: "FOUND 2026-10-04 by WI-gajir's sweep (LIVE rule 3) of every per-finding value a collapsed taint row takes from grp[0]. WI-gajir fixed the two consumer EXCLUSION flags (resource_naming_only, trusted_sink: now in the collapse key). Two consumers in verify_claims.py still read a WITNESS SCALAR of a collapsed row where the question is about the whole group:\n\n(1) _withhold_for_tainted_evaluation (INV-dudal; verify_claims.py ~6450) builds `reached` from `_join_site_name(f.sink_module, f.sink_primitive)`, the representative's sink only. A group in dom_injection / code_execution whose representative is NOT an evaluation site but which also stands for document.write / eval keeps the qualification it must withdraw: confirmed_with_caveats where INV-dudal requires inconclusive (the false-clean direction of a withholding gate). Unit-level demonstration on the WI-gajir worktree (fdeb4d5bca): two structural findings, untrusted_input -> dom_injection, sinks myHtml.myHtml and document.write. Raw list -> withdrawn (None). Collapsed with myHtml first -> qualification kept (['document.write']). Collapsed with document.write first -> withdrawn. EXPOSURE: built-in rows in those two zones are ALL evaluation sites, so this needs a project/user/community sink declared in dom_injection or code_execution AND an unadjudicated flow. Not reproduced end-to-end (a quick JS fixture with location.hash produced no source flow at all; not investigated). Fix shape: read the group's sinks, not the witness. Note sink_primitives holds `_qualify(module, name)` (\"eval.eval\") while the evaluation-site set uses `_join_site_name` (\"eval\"), so the union needs the same spelling or a per-member (module, name) tuple.\n\n(2) The choice-shaped-source caveat (WI-jivih; verify_claims.py ~6241) tests `is_choice_shaped_source(v.source_primitive)`, the witness source. A group whose source_primitives include a choice-shaped source but whose witness is not one gets no caveat; a group whose witness is choice-shaped but which also reads authored sources is described as \"rooted at\" a choice-shaped source. Disclosure only: the verdict value and evidence_count are untouched. Not measured on any corpus.\n\nChecked and NOT affected (by code reading on fdeb4d5bca): sanitized (in the key), sanitized_by / sanitized_by_user_supplied / withheld_sanitizers / sink_carriers / walk_*_values (unioned), confidence (a function of the walk verdict, constant inside one analysis_method group), walk_verdict removal (WI-kabif, applied per member before the collapse), source_symbol / source_boundary / analysis_method / sink_zone / taint_label (in the key)."  # 72c4
+    fields: {}  # 72c4
