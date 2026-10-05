@@ -26,3 +26,18 @@
   clock: 2  # 3dae
   nonce: 3dae  # 3dae
   message: "FIXED ON A LOCAL BRANCH, NOT INTEGRATED (2026-10-04). Branch jgstern-agent/fix/lopus (worktree ~/hg_wt/lopus), based on stage-8 2a98abb55d. Commits 9952d96590 (code), b0a42e613d (spec + VERIFY-CLAIMS-SCOPE.md). Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/lopus.md.\n\nWHAT: verify_claims.untyped_receiver_known_collisions() = the untyped-receiver site labels whose method name is in that language's catalogue ambiguous_names (the set gate_named_entry consults; taint carries the same per-language set), asked through the shared _untyped_receiver_call_sites walk. Stored on BoundaryCoverage.untyped_receiver_collisions; both arms pass it to _untyped_receiver_caveat, which lists those sites/names LAST, adds one clause naming them, and carries them in `known_collisions` so _merge_caveat re-renders the same sentence. `entries` unchanged; nothing suppressed; with no collision the caveat is byte-identical.\n\nEVIDENCE (verify-claims on an export of 2a98abb55d with docs/hypergumbo.claims.yaml, arm A = base code, arm B = branch): 18/18 confirmed_with_caveats in both; every untyped_receiver caveat has identical `entries`. host_fs (6 claims, taint arm): 141 sites, 93 marked (replace 78, write 10, rename 3, extract/extractall). Shown names went from \"chmod(), extract(), extractall(), mkdir(), rename() (+5 more)\" to \"chmod(), mkdir(), truncate(), unlink(), write_text() (+5 more)\" plus \"93 of them call a name the catalogue lists as a known short-name collision ... (extract(), extractall(), rename(), replace(), write()); they are listed last.\" network: 1059 sites, 1058 marked (get 1040), send_json() now shown first. subprocess: 69 of 69 marked (start).\n\nNOTE: python's ambiguous_names includes write and rename, so those are marked too; the item's \"write 11\" remainder is therefore in the marked group. Marking reads the set; it does not grow or shrink it.\n\nMEASURED, NOT CHANGED: superseded stubs (WI-vidof's population) still enter the untyped-receiver population: 9 of 462 sites on gatling, 9 of 1699 on sbt, 0 of 409 on http4s."  # 3dae
+- op: update  # ab08
+  at: '2026-10-05T04:42:38Z'  # ab08
+  by: agent  # ab08
+  actor: jgstern_agent  # ab08
+  clock: 3  # ab08
+  nonce: ab08  # ab08
+  set:  # ab08
+    status: done  # ab08
+- op: discuss  # bfa2
+  at: '2026-10-05T04:42:38Z'  # bfa2
+  by: agent  # bfa2
+  actor: jgstern_agent  # bfa2
+  clock: 4  # bfa2
+  nonce: bfa2  # bfa2
+  message: "Merged in PR #1459 (dev ecbb226a0d).\n\nDone. Branch jgstern-agent/fix/lopus, commits 9952d96590 and b0a42e613d. The untyped_receiver caveat now consults the catalogue's `ambiguous_names` (the row choice's collision set): colliding sites are listed last, named in their own clause, and carried in `known_collisions`. Nothing is suppressed.\n\nBehavioural evidence: verify-claims on hypergumbo's own tree with the shipped claims. Every host_fs caveat now leads with `chmod(), mkdir(), truncate(), unlink(), write_text()` and says \"93 of them call a name the catalogue lists as a known short-name collision … (extract(), extractall(), rename(), replace(), write()); they are listed last.\" Verdicts and entries are unchanged (18/18 confirmed_with_caveats). Pinned by `test_untyped_receiver_known_collisions.py`, including the end-to-end `test_the_verdict_carries_the_marked_caveat`.\n\n---"  # bfa2

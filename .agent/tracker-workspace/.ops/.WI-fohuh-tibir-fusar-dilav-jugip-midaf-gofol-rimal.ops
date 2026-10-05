@@ -27,3 +27,18 @@
   clock: 2  # 6a40
   nonce: 6a40  # 6a40
   message: "Branch jgstern-agent/fix/darik, commits 80ecd183ca (the declarator walk moved from c.py to hypergumbo_core.analyze.c_family, shared by c, cpp and cuda -- it was NOT shared before; lang-common cannot import lang-mainstream) and 3b1313e103 (cuda). NOT merged, no status change.\n\nWhat changed in cuda.py: names come from the shared walk at any declarator depth (pointer, reference, parenthesised) and for every C++ leaf (field_identifier, qualified A::run, operator, destructor, template specialisation); the signature carries one * per pointer level. The caller is found by POSITION (was by name: of two same-named definitions every call went to the last). A macro-named definition (PFX(f)(args)) is stood in for (WI-tikop's rule). cuda now spells edge_type=\"calls\" literally, so test_call_anchor_gate_common enumerates it; it is classified VERIFIED.\n\nLive repro (the filed one): before -- symbols helper, plain; one edge (line 2). After -- helper, plain, one_ptr, two_ptr; edges at lines 2, 3, 4, each src resolves.\n\nMeasured (~/hypergumbo_lab_notebook/decontend/run_10032026/darik/*.cuda.*.json): pytorch .cu/.cuh (414 files) definitions without a symbol 594 -> 77 (the 77 are macro-named, now stood in), call edges 15,866 -> 18,292; whisper.cpp 134 -> 0, 4,635 -> 4,784; ffmpeg 2 -> 0, 409 -> 417; vmaf unchanged (124). The filed shape alone (pointer return) held 81 call sites on pytorch and 73 on whisper.cpp; reference returns held 1,371 on pytorch; the rest were C++ leaves. glsl.py / hlsl.py read a direct-child function_declarator; neither language has pointer or reference declarators -- read, not measured.\n\nResidual filed: WI-fidih-salal-pipoj-tasuh-diguf-jarit-sijuf-vutum (file-scope calls; member/qualified/template callees)."  # 6a40
+- op: update  # 9435
+  at: '2026-10-05T04:42:34Z'  # 9435
+  by: agent  # 9435
+  actor: jgstern_agent  # 9435
+  clock: 3  # 9435
+  nonce: '9435'  # 9435
+  set:  # 9435
+    status: done  # 9435
+- op: discuss  # ae50
+  at: '2026-10-05T04:42:35Z'  # ae50
+  by: agent  # ae50
+  actor: jgstern_agent  # ae50
+  clock: 4  # ae50
+  nonce: ae50  # ae50
+  message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459 (80ecd183ca moves the C-family declarator walk to hypergumbo_core.analyze.c_family, shared by c/cpp/cuda; 3b1313e103 changes cuda). A CUDA definition is named at any declarator depth and for every C++ leaf, and calls are drawn from it by position. Re-ran the filed repro: before, symbols helper/plain with 1 edge; after, one_ptr and two_ptr are symbols and lines 3 and 4 have edges, src resolving. Pinned by test_cuda_declaration_symbols (analyze_cuda_files). pytorch: unnamed definitions 594 -> 77 (macro-named, now stood in), call edges 15,866 -> 18,292; whisper.cpp: 134 -> 0, 4,635 -> 4,784. NOT asserted: file-scope calls and member/qualified/template callees in cuda; these are filed as WI-fidih-salal-pipoj-tasuh-diguf-jarit-sijuf-vutum."  # ae50
