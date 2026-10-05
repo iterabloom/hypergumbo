@@ -433,6 +433,28 @@ class TestTheLift:
                           callers=[("f", "c:read", entry)])
         assert lifted == {("f", "c:read")}
 
+    @pytest.mark.parametrize("edge", [
+        {"type": "dispatches_to"},
+        {"type": "calls", "meta": {"protocol": "http"}},
+    ], ids=["framework_dispatch", "protocol_call"])
+    def test_only_an_invocation_hands_the_return_back(
+        self, edge: dict[str, Any],
+    ) -> None:
+        # A registrant receives nothing from the handler it registers, and a
+        # protocol client's read of the response is a source of its own.
+        edges = [_call("f", _GETENV, 2, resolved=False),
+                 {**_call("g", "f", 7), **edge},
+                 _call("h", "f", 9)]
+        lifted, _ = _lift(edges, {"f": [(2, 2)]})
+        assert ("h", "f") in lifted  # reach: a plain call does lift
+        assert ("g", "f") not in lifted
+
+    def test_a_constructor_call_is_an_invocation(self) -> None:
+        edges = [_call("f", _GETENV, 2, resolved=False),
+                 {**_call("g", "f", 7), "type": "instantiates"}]
+        lifted, _ = _lift(edges, {"f": [(2, 2)]})
+        assert ("g", "f") in lifted
+
     def test_a_callee_seeded_source_is_not_a_value(self) -> None:
         entry = TaintSource(
             name="cmd_run", module="", kind="function",
