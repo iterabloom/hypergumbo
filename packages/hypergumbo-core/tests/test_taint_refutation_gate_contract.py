@@ -132,7 +132,7 @@ def test_live_tree_passes() -> None:
     assert _audit(_TAINT.read_text(encoding="utf-8")) == []
 
 
-def test_both_walk_sites_are_still_found() -> None:
+def test_every_walk_site_is_still_found() -> None:
     """The guard is anchored to real call sites, not matching nothing.
 
     Without this, deleting or renaming the walk would leave ``_audit``
@@ -146,11 +146,21 @@ def test_both_walk_sites_are_still_found() -> None:
         if isinstance(n, ast.Call)
         and isinstance(n.func, ast.Name) and n.func.id == _WALK
     ]
-    assert len(sites) == 2, (
-        f"expected the §3a and barrier arms, found {len(sites)} call sites"
+    assert len(sites) == 3, (
+        f"expected the §3a arm, the barrier arm and INV-komoj's return lift, "
+        f"found {len(sites)} call sites"
     )
-    gated = [s for s in sites if _BARRIER in {kw.arg for kw in s.keywords}]
-    assert len(gated) == 1, "exactly one arm passes barrier_lines"
+    # The return lift passes barrier_lines too, but collapses ``is True``:
+    # only the barrier ARM both passes barriers and consumes the False.
+    collapsed = _collapsed_calls(tree)
+    gated = [
+        s for s in sites
+        if _BARRIER in {kw.arg for kw in s.keywords} and id(s) not in collapsed
+    ]
+    assert len(gated) == 1, "exactly one consuming arm passes barrier_lines"
+    assert len([s for s in sites if id(s) in collapsed]) == 1, (
+        "the return lift collapses its walk ``is True``"
+    )
 
 
 def test_guard_fires_when_section_3a_gains_removal_authority() -> None:
