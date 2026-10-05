@@ -47,10 +47,13 @@ _CLAIMS = '''claims:
 '''
 
 
-def _verdict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, trust: str | None) -> dict:
+def _verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, trust: str | None,
+    app: str = _APP,
+) -> dict:
     repo = tmp_path / "repo"
     repo.mkdir()
-    (repo / "app.py").write_text(_APP)
+    (repo / "app.py").write_text(app)
     claims = tmp_path / "claims.yaml"
     claims.write_text(_CLAIMS)
     argv = ["verify-claims", str(repo), "--claims", str(claims), "--format", "json"]
@@ -87,3 +90,33 @@ def test_any_other_level_is_unchanged(
     assert verdict["verdict"] == "violated"
     assert verdict["evidence_count"] == 1
     assert verdict["trusted_sink_flows"] == 0
+
+
+_TWO_LAUNCHES = '''import os
+import subprocess
+
+
+def launch(cmd):
+    subprocess.run(["true"])
+    subprocess.Popen(cmd, shell=True)
+
+
+def go():
+    launch(os.environ["CMD"])
+'''
+
+
+def test_a_trusted_sink_does_not_clear_an_untrusted_one_beside_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WI-gajir. ``go`` reads the secret and reaches TWO launchers, only one
+    of them declared trusted. Both flows are call-reachability-only, so they
+    collapse into one situation; before the fix the group took
+    ``trusted_sink`` from its first member (``subprocess.run``) and the claim
+    read ``confirmed_with_caveats`` with 0 evidence, although the secret
+    reaches ``subprocess.Popen``, which nobody vouched for."""
+    verdict = _verdict(tmp_path, monkeypatch, "trusted", app=_TWO_LAUNCHES)
+    assert verdict["verdict"] == "violated"
+    assert verdict["evidence_count"] == 1
+    assert verdict["evidence"][0]["sink_primitives"] == ["subprocess.Popen"]
+    assert verdict["trusted_sink_flows"] == 1
