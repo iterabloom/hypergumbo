@@ -808,9 +808,10 @@ Not a return of the value:
 
 The lifted seed's BFS omits the call the value came out of, when G calls F on exactly one line. A value a call returns cannot be that call's argument (`_source_and_sink_are_one_call`'s rule, INV-lozat), and that edge leads only to F's own sinks, which F's own read already reports.
 
+Only a caller that receives the return is lifted into: an invocation edge (the call family, `calls` / `instantiates`). The forward BFS also walks a framework dispatch, a callback registration and a protocol call, because each hands the callee data the caller controls. None of them hands the callee's return back to the edge's source; a protocol client's read of the response is a `net_recv` source of its own.
+
 The machinery's existing limits apply unchanged:
 
-- Callers are the edges the forward BFS walks (`_is_taint_call_edge`).
 - There is no depth bound, because the BFS has none.
 - Recursion ends on a visited set: each `(caller, callee, source)` is lifted once, by the shortest chain.
 

@@ -3817,11 +3817,18 @@ def _lift_returned_sources(
     * A ``return`` inside a nested callable: the spans come from
       ``ddg_build.return_statement_spans``, which stops at every scope.
 
-    LIMITS, the BFS's own. Callers are the edges the forward BFS walks
-    (:func:`_is_taint_call_edge`), so a dispatch or bridge edge carries a
-    return exactly as it carries an argument. There is no depth bound -- the
-    forward BFS has none -- and recursion terminates on a visited set: each
-    ``(caller, callee, source)`` is lifted once, by the shortest chain.
+    WHO RECEIVES THE RETURN: only a caller whose edge is an invocation
+    (:func:`_returns_to_caller`). The forward BFS also walks a framework
+    dispatch, a callback registration and a protocol call, because each hands
+    the callee data the caller controls -- but none hands the callee's RETURN
+    back to the edge's source. Measured on meson: ``p.set_defaults(
+    wrap_func=msubprojects.run)`` is a ``dispatches_to`` edge, and lifting
+    across it made ``add_arguments`` -- which receives nothing -- a source
+    for every ``run`` the dispatch bound.
+
+    LIMITS, the BFS's own. There is no depth bound -- the forward BFS has
+    none -- and recursion terminates on a visited set: each ``(caller,
+    callee, source)`` is lifted once, by the shortest chain.
     """
     entries: list[SourceEntry] = [
         (caller, callee, src, ()) for caller, callee, src in source_callers
@@ -3838,7 +3845,8 @@ def _lift_returned_sources(
         src_id, dst_id = edge.get("src", ""), edge.get("dst", "")
         sites = _edge_call_sites(edge)
         call_lines[(src_id, dst_id)].extend(sites)
-        callers_of[dst_id].add(src_id)
+        if _returns_to_caller(edge):
+            callers_of[dst_id].add(src_id)
         key = _catalogue_key_for_edge(edge)
         if key is not None and key in io_names:
             for site in sites:
@@ -3891,6 +3899,23 @@ def _lift_returned_sources(
             entries.append(entry)
             queue.append(entry)
     return entries
+
+
+def _returns_to_caller(edge: dict[str, Any]) -> bool:
+    """Does the edge's source RECEIVE the value its destination returns?
+
+    An invocation does: a member of the call family (``calls``,
+    ``instantiates``). A ``dispatches_to`` edge, a ``module_attr_ref`` and a
+    callback ``references`` are in :data:`TAINT_CALL_EDGE_TYPES` for the
+    ARGUMENT direction -- the framework hands the handler data -- and return
+    nothing to the registrant. A protocol call (``meta.protocol``: HTTP, gRPC,
+    GraphQL) does return the handler's response, but over the wire: the
+    client's read of it is a ``net_recv`` source of its own, so lifting the
+    server's return as well would report one crossing twice.
+    """
+    if edge.get("type", "") not in call_family_edge_types():
+        return False
+    return not (edge.get("meta") or {}).get("protocol")
 
 
 def _adjacency_past_the_returning_call(
