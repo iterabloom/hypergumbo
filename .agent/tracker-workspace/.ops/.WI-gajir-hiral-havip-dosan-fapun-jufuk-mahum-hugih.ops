@@ -26,3 +26,20 @@
   clock: 2  # 6437
   nonce: '6437'  # 6437
   message: "WI-gajir work (agent, 2026-10-05). Branch jgstern-agent/fix/gajir (worktree ~/hg_wt/gajir, base c1dd831558, not rebased), commit fdeb4d5bca. NOT pushed, no status change.\n\nMECHANISM (traced in code, matches the filed inference): collapse_unadjudicated_flows keyed groups on (taint_label, source_symbol, sink_zone, sanitized, source_boundary, analysis_method) and took every other scalar from grp[0]. verify_taint_claim EXCLUDES on two per-sink flags that were not in the key: resource_naming_only (WI-bulag) and trusted_sink (WI-lukoz). FIX: both flags joined the key, so a group carries a flag only when EVERY member does, and every consumer filter again tests a key field (the docstring's \"does not change any verdict\" premise).\n\nBEHAVIOR: filed repro net.Dial(\"tcp\", a) + fmt.Fprintln(con, os.Getenv(\"API_KEY\")), host_secret->network: before confirmed with 0 flows (\"1 flow(s) ... can only NAME the resource\"); after violated, evidence_count 1, sink_primitives [fmt.Fprintln], resource_naming_flows 1. Sibling found by the sweep (same mechanism): a trusted subprocess.run beside an untrusted subprocess.Popen in one function went from confirmed_with_caveats (0 evidence) to violated at Popen. Controls: pure net.Dial on the secret stays excluded (evidence 0, resource_naming_flows 1). WI-potog's strict xfail is now a passing test.\n\nTESTS (board, smart-test BASE_BRANCH=c1dd831558): red run had the 10 new tests failing as targeted. Final run 6635 passed, 0 failed; \"All changed source files are at 100% coverage\". (An earlier green run failed only test_rust_extern_block_symbols, which is grammar-stale under tree-sitter-rust 0.24.2 and fixed on dev by 5493072f42; the final run carried that test hunk uncommitted.)\n\nA/B verify-claims (git-archive arms, own caches, 18 claims, 6 of 6 repos covered: alertmanager, ingress-nginx, spire, container-libs, redis, podman-compose): 8 claim rows moved, none to a cleaner verdict. container-libs host_secret->network and untrusted_input->network went inconclusive -> violated (deep ddg_mixed rows to net/http.Client.Do). ingress-nginx untrusted_input->network 1 -> 3 rows: TCPProxy.Handle Fprint (unadjudicated, likely not a real data dependence) plus setupSSLProxy -> Handle's clientConn.Write (a real proxy forward). redis (fflush) and spire (net.Dial): same counts, the naming sink left counted rows and is now disclosed. Details in ~/hypergumbo_lab_notebook/decontend/run_10032026/gajir.md.\n\nRESIDUAL filed: WI-kufos-fovog-hisod-kobav-jugol-zoliz-fugam-sihut (two consumers read a collapsed row's witness scalar: INV-dudal evaluation-site withdrawal and the choice-shaped caveat)."  # 6437
+- op: update  # f3fb
+  at: '2026-10-05T11:47:37Z'  # f3fb
+  by: agent  # f3fb
+  actor: jgstern_agent  # f3fb
+  clock: 3  # f3fb
+  nonce: f3fb  # f3fb
+  set:  # f3fb
+    status: done  # f3fb
+  add:  # f3fb
+    tags: [awaits_bakeoff_validation]  # f3fb
+- op: discuss  # 846d
+  at: '2026-10-05T11:47:38Z'  # 846d
+  by: agent  # 846d
+  actor: jgstern_agent  # 846d
+  clock: 4  # 846d
+  nonce: 846d  # 846d
+  message: "Fixed in PR #1469 (stage 9a). Root cause: the per-situation collapse took resource_naming_only and trusted_sink from its first member. Both flags are now in the grouping key. Behavioural evidence (live verify-claims repro, gajir.md): Go net.Dial + fmt.Fprintln(conn, os.Getenv(\"API_KEY\")), claim host_secret->network: before confirmed with 0 evidence; after violated, 1 evidence row at fmt.Fprintln. Python trusted subprocess.run + untrusted Popen in one helper: before confirmed_with_caveats, after violated at subprocess.Popen. Merged tree: 22975 passed, 0 failed, scoped coverage 100%. Corpus claim (2 container-libs claims inconclusive->violated) is from the branch A/B, not re-measured on dev: tagged awaits_bakeoff_validation."  # 846d
