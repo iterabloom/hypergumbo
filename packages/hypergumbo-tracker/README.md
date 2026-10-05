@@ -114,6 +114,7 @@ htrac ready                    # What should I work on?
 htrac check-messages           # Any unread human messages?
 htrac clusters                 # Predicted clusters of the open items (TF-IDF kNN)
 htrac priority-trend --since 2026-06-01   # SVG scatterplot: open items' mean priority per day
+htrac priority-trend --csv > trend.csv    # the same series as CSV (day,open,mean_priority)
 htrac update :1 --status in_progress   # Claim the top item
 htrac add --kind work_item --title "Add Dart analyzer" --priority 1
 htrac update INV-lusab --status done --note "Fixed in PR #42"

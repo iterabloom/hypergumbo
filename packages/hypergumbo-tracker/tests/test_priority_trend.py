@@ -22,6 +22,7 @@ from hypergumbo_tracker.priority_trend import (
     _y_ticks,
     item_timeline,
     priority_trend,
+    render_csv,
     render_svg,
 )
 from hypergumbo_tracker.store import Store
@@ -190,6 +191,15 @@ class TestRenderSvg:
             assert "no open items" in svg
 
 
+class TestRenderCsv:
+    def test_a_header_then_one_row_per_day_with_an_empty_mean_when_nothing_is_open(self) -> None:
+        points = [TrendPoint(D(2026, 3, 1), 3, 2 / 3), TrendPoint(D(2026, 3, 2), 0, None)]
+        assert render_csv(points) == "day,open,mean_priority\n2026-03-01,3,0.6667\n2026-03-02,0,\n"
+
+    def test_no_points_is_just_the_header(self) -> None:
+        assert render_csv([]) == "day,open,mean_priority\n"
+
+
 # ---------------------------------------------------------------------------
 # Store.item_ops
 # ---------------------------------------------------------------------------
@@ -312,6 +322,38 @@ class TestPriorityTrendCommand:
             main(["--tracker-root", str(root), "--json", "priority-trend", "--out", str(out)])
         assert json.loads(capsys.readouterr().out)["svg"] == str(out)
         assert len(_circles(out.read_text())) == 3
+
+    def test_csv_prints_the_series_and_writes_svg_only_when_asked(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], mock_agent_uid: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        root = _setup_tracker(tmp_path)
+        _populate(root)
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(root), "priority-trend", "--csv"])
+        assert exc.value.code == EXIT_SUCCESS
+        assert capsys.readouterr().out == (
+            "day,open,mean_priority\n2026-03-01,1,2.0\n2026-03-02,3,2.0\n2026-03-03,2,2.0\n"
+        )
+        assert list(tmp_path.glob("*.svg")) == []
+        out = tmp_path / "x.svg"
+        with pytest.raises(SystemExit):
+            main(["--tracker-root", str(root), "priority-trend", "--csv", "--out", str(out)])
+        assert capsys.readouterr().out.startswith("day,open,mean_priority\n")
+        assert len(_circles(out.read_text())) == 3
+
+    def test_csv_and_json_together_is_a_user_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], mock_agent_uid: None,
+    ) -> None:
+        root = _setup_tracker(tmp_path)
+        _populate(root)
+        with pytest.raises(SystemExit) as exc:
+            main(["--tracker-root", str(root), "--json", "priority-trend", "--csv"])
+        assert exc.value.code == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "--csv" in captured.err and "--json" in captured.err
 
     def test_default_out_is_a_file_in_the_working_directory(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str], mock_agent_uid: None,

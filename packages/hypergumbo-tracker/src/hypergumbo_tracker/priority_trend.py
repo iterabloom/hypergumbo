@@ -32,6 +32,9 @@ Replaying compiles each item once per active day, which is quadratic in one
 item's op count. On this repository's tracker (2663 items, 14691 ops, at most
 91 per item) the whole replay takes 0.7 s.
 
+The series is also available as JSON or CSV (``render_csv``); both report the
+mean to four decimals (``rounded_mean``).
+
 The plot is a hand-written SVG. The tracker prefers the standard library and
 has no plotting dependency, and a scatter with axes needs only circles, lines
 and text. Each point carries a ``<title>`` that shows its date, mean and
@@ -40,8 +43,10 @@ open-item count on hover.
 
 from __future__ import annotations
 
+import csv
 import datetime
 import html
+import io
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -63,6 +68,22 @@ class TrendPoint:
     day: datetime.date
     open_count: int
     mean_priority: float | None
+
+
+def rounded_mean(point: TrendPoint) -> float | None:
+    """The point's mean priority to four decimals, as the JSON and CSV outputs report it."""
+    return None if point.mean_priority is None else round(point.mean_priority, 4)
+
+
+def render_csv(points: Sequence[TrendPoint]) -> str:
+    """The series as CSV: ``day,open,mean_priority``; the mean is empty when nothing was open."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(["day", "open", "mean_priority"])
+    for p in points:
+        mean = rounded_mean(p)
+        writer.writerow([p.day.isoformat(), p.open_count, "" if mean is None else mean])
+    return buf.getvalue()
 
 
 def _op_day(op: dict[str, Any]) -> datetime.date | None:
