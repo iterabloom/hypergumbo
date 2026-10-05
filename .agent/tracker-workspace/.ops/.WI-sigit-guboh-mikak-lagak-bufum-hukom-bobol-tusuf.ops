@@ -34,3 +34,18 @@
   clock: 3  # 0c7d
   nonce: 0c7d  # 0c7d
   message: "Branch jgstern-agent/fix/darik, commit 97cd5f2a8c (with darik's). NOT merged, no status change.\n\nWhat changed: a nested defProc is a symbol (kind=function, meta.is_local=True, stable id folds in the parent's name). It is not registered run-wide (only in scope inside its parent); a bare call resolves to a nested procedure of an enclosing routine first, by its node's position. Calls in a program's main block and a unit's initialization/finalization are drawn from the program/unit symbol; a library or fragment's block from the file anchor.\n\nGate (asked for, none existed at the producer): hypergumbo_core.analyze.edge_source.unemitted_edge_sources -- edges whose src is neither an emitted symbol nor a make_file_id anchor. spec_validator's WI-mujor check runs AFTER ir.create_boundary_nodes turns a dangling src into an external_symbol, so it could not see this. The gate is asserted in test_pascal_declaration_symbols and in all three call-anchor gate files' _assert_contained (every VERIFIED analyzer's fixture, 40 analyzers): all pass.\n\nLive repro (the filed one): before -- Inner(8-11) -> Helper src_exists=False; Outer -> Inner:unresolved; no main-program edge. After -- symbols include Inner (4-4, is_local); 4 Inner -> Helper, 5 Outer -> Inner (resolved), 6 P -> Outer; every src resolves.\n\nCorpus: sherpa-onnx has no nested procedures, so the nested half is measured on fixtures only. Main-block calls: 1,442 call sites outside every procedure on sherpa-onnx (1,420 in program main blocks); 476 now have an edge (the rest are builtins, receiver calls or unreadable shapes -- not split)."  # 0c7d
+- op: update  # 3770
+  at: '2026-10-05T04:41:46Z'  # 3770
+  by: agent  # 3770
+  actor: jgstern_agent  # 3770
+  clock: 4  # 3770
+  nonce: '3770'  # 3770
+  set:  # 3770
+    status: done  # 3770
+- op: discuss  # 20ad
+  at: '2026-10-05T04:41:47Z'  # 20ad
+  by: agent  # 20ad
+  actor: jgstern_agent  # 20ad
+  clock: 5  # 20ad
+  nonce: 20ad  # 20ad
+  message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459 (97cd5f2a8c). A nested procedure is now a local symbol (kind=function, meta.is_local; not registered run-wide, resolved by position from inside its parents), and main-block / initialization / finalization calls are drawn from the program / unit. Re-ran the filed repro: before, Inner->Helper had src_exists=False, Outer->Inner was unresolved, and there was no main-program edge; after, 4 Inner->Helper, 5 Outer->Inner (resolved) and 6 P->Outer, with every src a symbol. The producer-level gate hypergumbo_core.analyze.edge_source.unemitted_edge_sources is new (none existed: spec_validator's WI-mujor check runs after boundary synthesis masks a dangling src) and is asserted on every VERIFIED analyzer's call-anchor fixture (40, all clean). NOT asserted: analyzers on WI-tosum's UNVERIFIED list; no corpus repo has a nested Pascal procedure."  # 20ad
