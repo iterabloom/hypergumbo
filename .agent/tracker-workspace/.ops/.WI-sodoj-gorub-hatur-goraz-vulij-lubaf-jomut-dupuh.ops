@@ -1,0 +1,22 @@
+- op: create  # d83a
+  at: '2026-10-05T05:54:45Z'  # d83a
+  by: agent  # d83a
+  actor: jgstern_agent  # d83a
+  clock: 1  # d83a
+  nonce: d83a  # d83a
+  data:  # d83a
+    kind: work_item  # d83a
+    title: "taint return lift: an expression-bodied callable returns its value with no return statement, so a rust tail expression / JS-TS arrow body helper is still a false all-clear (INV-komoj residual)"  # d83a
+    status: todo_hard  # d83a
+    priority: 2  # d83a
+    parent:  # d83a
+    tags:  # d83a
+    - taint  # d83a
+    - analysis_quality  # d83a
+    - adr_0017  # d83a
+    isbefore: []  # d83a
+    duplicate_of: []  # d83a
+    not_duplicate_of: []  # d83a
+    pr_ref:  # d83a
+    description: "FOUND 2026-10-04 by INV-komoj (branch jgstern-agent/fix/komoj). The return lift (ADR-0017 §4c, taint._lift_returned_sources) decides \"this function returns the source's value\" from the function's own RETURN STATEMENTS (ddg_build.return_statement_spans). A callable with no return statement returns its value anyway when its body is an expression, and there the lift sees nothing, so the false all-clear INV-komoj fixed persists:\n\n- rust tail expression: fn get() -> String { env::var(\"TOOL\").unwrap() } with Command::new(get()) -> confirmed_with_caveats (the explicit `return env::var(..).unwrap();` twin reads violated, ddg confirmed). Rust's idiomatic return form, so this is most Rust helpers.\n- javascript/typescript arrow expression body: const get = () => process.env.TOOL; cp.exec(get()) -> confirmed_with_caveats (the `function get() { return process.env.TOOL; }` twin reads violated).\n- python lambda (not measured).\n\nA SECOND, distinct shape the lift also leaves open: a value the §3a walk loses before the return (escaped: `d = {}; d[\"k\"] = os.getenv(\"K\"); return d`) lifts nothing, by design (lifting on ignorance would seed every caller of every pass-through function). Not measured on the corpus.\n\nFixtures: scratchpad komoj/lx/{rs_tail,rs_return,js_arrow,js_return}. Per-language work: rust needs the body's trailing expression (block's last child without `;`) treated as a return span; js/ts need an arrow_function whose body is not a statement_block treated as one return span. Both are ddg_build.return_statement_spans changes."  # d83a
+    fields: {}  # d83a
