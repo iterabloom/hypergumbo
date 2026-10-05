@@ -388,6 +388,14 @@ class TestTheLift:
         lifted, _ = _lift(edges, {"f": [(2, 3)], "g": [(7, 7)]})
         assert lifted == {("f", _GETENV), ("f", "f"), ("g", "f"), ("f", "g")}
 
+    def test_a_source_edge_with_no_call_line_lifts_nothing(self) -> None:
+        # No recorded line, so no source call site can be placed in a return.
+        edges = [{"src": "f", "dst": _GETENV, "type": "calls",
+                  "is_resolved": False},
+                 _call("g", "f", 7)]
+        lifted, _ = _lift(edges, {"f": [(1, 9)]})
+        assert lifted == {("f", _GETENV)}
+
     def test_no_return_span_no_lift(self) -> None:
         edges = [_call("f", _GETENV, 2, resolved=False), _call("g", "f", 7)]
         lifted, chains = _lift(edges, {})
