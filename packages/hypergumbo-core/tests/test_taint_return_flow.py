@@ -39,6 +39,7 @@ from hypergumbo_core.taint import (
     TaintSource,
     _adjacency_past_the_returning_call,
     _lift_returned_sources,
+    _received_seeds,
     collapse_unadjudicated_flows,
 )
 
@@ -215,6 +216,45 @@ class TestAChainOfReturnsIsFollowed:
         assert _returned_by(verdict) == {"read", "get"}
 
 
+_GO_ERR_CHAIN = _GO_HEAD + (
+    'func get() (string, error) {\n\tv := os.Getenv("TOOL")\n'
+    "\treturn v, nil\n}\n\n"
+    "func wrap() (string, error) {\n\tvalue, err := get()\n"
+    '\tif err != nil {\n\t\treturn "", err\n\t}\n'
+    "\t{RETURN}\n}\n\n"
+    "func main() {\n\tname, err := wrap()\n\tif err != nil {\n"
+    "\t\treturn\n\t}\n\texec.Command(name).Run()\n}\n")
+
+
+class TestTheValueComesBackInItsOwnResultPosition:
+    """``value, err := get()`` receives the value in ``value`` only, so a
+    caller that hands back ``err`` does not return it (the error chain the
+    lift would otherwise climb), and one that hands back ``value`` does."""
+
+    def test_go_returning_the_error_does_not_return_the_value(
+        self, tmp_path: Path,
+    ) -> None:
+        verdict = _verdict(tmp_path, {"go.mod": _GO_MOD, "main.go": (
+            _GO_ERR_CHAIN.replace("{RETURN}", '_ = value\n\treturn "ls", nil'))})
+        assert verdict["verdict"] != "violated", verdict["evidence"]
+
+    def test_go_returning_the_value_does(self, tmp_path: Path) -> None:
+        verdict = _verdict(tmp_path, {"go.mod": _GO_MOD, "main.go": (
+            _GO_ERR_CHAIN.replace("{RETURN}", "return value, nil"))})
+        assert verdict["verdict"] == "violated", verdict["details"]
+        assert _returned_by(verdict) == {"get", "wrap"}
+
+    def test_python_returning_the_other_element_does_not(
+        self, tmp_path: Path,
+    ) -> None:
+        verdict = _verdict(tmp_path, {"app.py": _PY_HEAD + (
+            "def get():\n    v = os.getenv(\"TOOL\")\n    return v, 0\n\n\n"
+            "def wrap():\n    value, code = get()\n    print(value)\n"
+            "    return code\n\n\n"
+            "def main():\n    subprocess.run([\"ls\", str(wrap())])\n")})
+        assert verdict["verdict"] != "violated", verdict["evidence"]
+
+
 class TestControlsStayClean:
     """Each control names a reason the value does NOT come back, and must not
     read violated. Reach first: every one of them reads the source."""
@@ -305,21 +345,24 @@ _GETENV = "python:os:0-0:getenv:external_symbol"
 
 def _lift(
     edges: list[dict[str, Any]],
-    spans: dict[str, list[tuple[int, int]]],
+    spans: dict[str, list[Any]],
     *,
     callers: list[tuple[str, str, TaintSource]] | None = None,
     reaches: Any = None,
     io_names: frozenset[str] = frozenset({"os.getenv"}),
     sanitizer_lines: dict[tuple[str, str], list[int]] | None = None,
 ) -> tuple[set[tuple[str, str]], dict[tuple[str, str], tuple[str, ...]]]:
+    # A bare (start, end) span is a single-valued return of nothing named.
+    full = {fn: [s if len(s) == 3 else (s[0], s[1], (frozenset(),))
+                 for s in rows] for fn, rows in spans.items()}
     entries = _lift_returned_sources(
         callers if callers is not None else [("f", _GETENV, _ENV)],
-        edges, spans, io_names=io_names,
+        edges, full, io_names=io_names,
         sanitizer_lines=sanitizer_lines or {}, reaches_return=reaches,
     )
     return (
-        {(c, callee) for c, callee, _src, _chain in entries},
-        {(c, callee): chain for c, callee, _src, chain in entries if chain},
+        {(c, callee) for c, callee, _src, _chain, _rcv in entries},
+        {(c, callee): chain for c, callee, _src, chain, _rcv in entries if chain},
     )
 
 
@@ -356,9 +399,10 @@ class TestTheLift:
         asked: list[tuple[str, list[int], list[int], str]] = []
 
         def reaches(fn: str, lines: list[int], targets: list[int],
-                    barriers: list[int], label: str) -> bool:
+                    barriers: list[int], label: str,
+                    received: Any) -> tuple[str, int] | None:
             asked.append((fn, lines, targets, label))
-            return fn == "f"
+            return ("v", 4) if fn == "f" else None
 
         lifted, _ = _lift(edges, {"f": [(4, 4)]}, reaches=reaches)
         assert ("g", "f") in lifted
@@ -368,7 +412,7 @@ class TestTheLift:
         edges = [_call("f", _GETENV, 2, resolved=False), _call("g", "f", 7)]
         lifted, _ = _lift(
             edges, {"f": [(4, 4)]},
-            reaches=lambda *a: False,
+            reaches=lambda *a: None,
         )
         assert lifted == {("f", _GETENV)}
 
@@ -410,9 +454,10 @@ class TestTheLift:
         seen: list[list[int]] = []
 
         def reaches(fn: str, lines: list[int], targets: list[int],
-                    barriers: list[int], label: str) -> bool:
+                    barriers: list[int], label: str,
+                    received: Any) -> tuple[str, int] | None:
             seen.append(barriers)
-            return True
+            return ("v", 5)
 
         _lift(edges, {"f": [(5, 5)]}, reaches=reaches,
               sanitizer_lines={("f", "host_secret"): [3]})
@@ -454,6 +499,54 @@ class TestTheLift:
                  {**_call("g", "f", 7), "type": "instantiates"}]
         lifted, _ = _lift(edges, {"f": [(2, 2)]})
         assert ("g", "f") in lifted
+
+    def test_the_result_positions_the_value_occupies_are_recorded(
+        self,
+    ) -> None:
+        edges = [_call("f", _GETENV, 2, resolved=False), _call("g", "f", 7)]
+        entries = _lift_returned_sources(
+            [("f", _GETENV, _ENV)], edges,
+            {"f": [(4, 4, (frozenset({"v"}), frozenset()))]},
+            io_names=frozenset(), sanitizer_lines={},
+            reaches_return=lambda *a: ("v", 4),
+        )
+        assert [e[4] for e in entries if e[0] == "g"] == [(2, frozenset({0}))]
+
+    def test_a_tail_call_passes_the_positions_through(self) -> None:
+        edges = [_call("f", _GETENV, 2, resolved=False), _call("g", "f", 7),
+                 _call("h", "g", 12)]
+        entries = _lift_returned_sources(
+            [("f", _GETENV, _ENV)], edges,
+            {"f": [(4, 4, (frozenset({"v"}), frozenset()))],
+             "g": [(7, 7, (frozenset({"f"}),))]},
+            io_names=frozenset(), sanitizer_lines={},
+            reaches_return=lambda fn, *a: ("v", 4) if fn == "f" else None,
+        )
+        assert [e[4] for e in entries if e[0] == "h"] == [(2, frozenset({0}))]
+
+    @pytest.mark.parametrize("results", [
+        (frozenset({"v"}),),  # single-valued: the whole result
+        (frozenset({"w"}), frozenset()),  # the value is in no position
+    ], ids=["single_valued", "unplaced"])
+    def test_unreadable_positions_fall_back_to_every_variable(
+        self, results: tuple[frozenset[str], ...],
+    ) -> None:
+        edges = [_call("f", _GETENV, 2, resolved=False), _call("g", "f", 7)]
+        entries = _lift_returned_sources(
+            [("f", _GETENV, _ENV)], edges, {"f": [(4, 4, results)]},
+            io_names=frozenset(), sanitizer_lines={},
+            reaches_return=lambda *a: ("v", 4),
+        )
+        assert [e[4] for e in entries if e[0] == "g"] == [None]
+
+    def test_received_seeds_pick_the_defines_at_those_positions(self) -> None:
+        defines = {("g", 7): [("name", "err")]}
+        assert _received_seeds("g", [7], (2, frozenset({0})), defines) == {
+            "name"}
+        # ``_, err := get()``: the blank is not a define, so the arity does
+        # not match and every variable is seeded, as before.
+        assert _received_seeds("g", [7], (3, frozenset({0})), defines) is None
+        assert _received_seeds("g", [7], None, defines) is None
 
     def test_a_callee_seeded_source_is_not_a_value(self) -> None:
         entry = TaintSource(
@@ -516,7 +609,7 @@ class TestReturnSpansAreTheFunctionsOwn:
     their full line extent, and NOT those of a callable nested inside it."""
 
     @staticmethod
-    def _spans(root: Path, language: str) -> dict[str, list[tuple[int, int]]]:
+    def _spans(root: Path, language: str) -> dict[str, list[Any]]:
         from hypergumbo_core.dataflow_scope import (
             ensure_def_use_extractors_registered,
         )
@@ -524,7 +617,7 @@ class TestReturnSpansAreTheFunctionsOwn:
 
         ensure_def_use_extractors_registered()
         result = build_repo_ddg(root, (language,))
-        return {sym.split(":")[-2]: spans
+        return {sym.split(":")[-2]: [tuple(s) for s in spans]
                 for sym, spans in result.return_spans.items()}
 
     def test_python(self, tmp_path: Path) -> None:
@@ -533,8 +626,9 @@ class TestReturnSpansAreTheFunctionsOwn:
             "    return (\n        2\n    )\n\n\n"
             "def no_return():\n    x = 1\n    print(x)\n")
         spans = self._spans(tmp_path, "python")
-        assert spans["outer"] == [(4, 6)]
-        assert [(3, 3)] in [v for k, v in spans.items() if k.endswith("inner")]
+        assert spans["outer"] == [(4, 6, (frozenset(),))]
+        assert [(3, 3, (frozenset(),))] in [
+            v for k, v in spans.items() if k.endswith("inner")]
         assert not any(k.endswith("no_return") for k in spans)
 
     def test_go(self, tmp_path: Path) -> None:
@@ -542,4 +636,23 @@ class TestReturnSpansAreTheFunctionsOwn:
         (tmp_path / "main.go").write_text(
             "package main\n\nfunc get() string {\n\tf := func() string {\n"
             "\t\treturn \"x\"\n\t}\n\t_ = f\n\treturn \"ls\"\n}\n")
-        assert self._spans(tmp_path, "go")["get"] == [(8, 8)]
+        assert self._spans(tmp_path, "go")["get"] == [(8, 8, (frozenset(),))]
+
+    def test_result_positions_name_their_identifiers(
+        self, tmp_path: Path,
+    ) -> None:
+        (tmp_path / "a.py").write_text(
+            "def get(v):\n    return v, 1\n\n\n"
+            "def get2(v):\n    return (v.strip(), v)\n")
+        spans = self._spans(tmp_path, "python")
+        assert spans["get"] == [(2, 2, (frozenset({"v"}), frozenset()))]
+        assert spans["get2"] == [
+            (6, 6, (frozenset({"v", "strip"}), frozenset({"v"})))]
+        go = tmp_path / "go"
+        go.mkdir()
+        (go / "go.mod").write_text(_GO_MOD)
+        (go / "main.go").write_text(
+            "package main\n\nfunc get(v string) (string, error) {\n"
+            "\treturn v, nil\n}\n")
+        assert self._spans(go, "go")["get"] == [
+            (4, 4, (frozenset({"v"}), frozenset()))]

@@ -3748,21 +3748,35 @@ def _name_withheld(
     return out
 
 
-#: ``(function, source call lines, return lines, barrier lines, taint label)
-#: -> bool``: does the value a source call defines reach one of the return
-#: lines without passing a barrier. The DDG arm answers with the §3a walk; the
-#: structural arm has no answer and passes ``None``.
-ReachesReturn = Callable[[str, list[int], list[int], list[int], str], bool]
+#: One return statement as ``ddg_build.ReturnStatement`` records it:
+#: ``(start_line, end_line, identifiers per result position)``.
+ReturnSpan = tuple[int, int, tuple[frozenset[str], ...]]
+
+#: Which of a callee's RESULT POSITIONS carry the value, as ``(arity,
+#: positions)``; ``None`` when that is not known, which seeds every variable
+#: the call defines (INV-komoj).
+Received = Optional[tuple[int, frozenset[int]]]
+
+#: ``(function, source call lines, return lines, barrier lines, taint label,
+#: received) -> (variable, line) | None``: the variable a source call defines
+#: (restricted to the received positions) that reaches one of the return lines
+#: without passing a barrier, and the line it reached. The DDG arm answers with
+#: the §3a walk; the structural arm has no answer and passes ``None``.
+ReachesReturn = Callable[
+    [str, list[int], list[int], list[int], str, Received],
+    Optional[tuple[str, int]],
+]
 
 #: One source call site the propagators seed at, with the functions its value
-#: came back through on the way (INV-komoj). ``()`` for a direct read.
-SourceEntry = tuple[str, str, "TaintSource", tuple[str, ...]]
+#: came back through on the way and the result positions it arrived in
+#: (INV-komoj). ``()`` / ``None`` for a direct read.
+SourceEntry = tuple[str, str, "TaintSource", tuple[str, ...], Received]
 
 
 def _lift_returned_sources(
     source_callers: Sequence[tuple[str, str, "TaintSource"]],
     edges: Sequence[dict[str, Any]],
-    return_spans: Mapping[str, Sequence[tuple[int, int]]],
+    return_spans: Mapping[str, Sequence[ReturnSpan]],
     *,
     io_names: AbstractSet[str],
     sanitizer_lines: Mapping[tuple[str, str], Sequence[int]],
@@ -3795,6 +3809,18 @@ def _lift_returned_sources(
     * the ADR-0017 §3a walk over F, with F's return lines as its targets,
       returns ``True`` -- the same walk, with the same INV-fumod inheritance
       rule, that decides whether a value reaches a sink argument.
+
+    WHICH RESULT CARRIES IT. A multi-value return hands the caller one
+    variable per position (``name, err := get()``), and seeding the caller on
+    all of them taints ``err`` -- after which every Go caller that propagates
+    the helper's error "returns the value", and the lift climbs every error
+    chain above a source (runc: 13 of 39 walk-based lifts, measured with
+    ``err`` dropped). So the entry records the positions the value occupied in
+    the return statement the walk reached (``Received``), and the caller is
+    seeded on the variables its call defines at exactly those positions. A
+    tail call (``return get()``) passes the positions through; anything the
+    position rule cannot read (arity mismatch, a value nowhere in the result
+    list) falls back to every variable, as before.
 
     An ``escaped`` walk (``None``) lifts nothing. That is the false-all-clear
     direction left open, and it is left open deliberately: lifting on
@@ -3831,7 +3857,7 @@ def _lift_returned_sources(
     callee, source)`` is lifted once, by the shortest chain.
     """
     entries: list[SourceEntry] = [
-        (caller, callee, src, ()) for caller, callee, src in source_callers
+        (caller, callee, src, (), None) for caller, callee, src in source_callers
     ]
     if not return_spans:
         return entries
@@ -3857,27 +3883,45 @@ def _lift_returned_sources(
     for caller, callee, _src in source_callers:
         own_sources[caller].add(_qualified_callee(callee))
 
-    def returns_value(fn: str, lines: list[int], label: str) -> bool:
+    def returns_value(
+        fn: str, lines: list[int], label: str, received: Received,
+    ) -> tuple[bool, Received]:
+        """Whether *fn* returns the value, and in which result positions."""
         barriers = sorted(set(sanitizer_lines.get((fn, label), ())))
         open_spans = [
-            (start, end) for start, end in return_spans.get(fn, ())
+            span for span in return_spans.get(fn, ())
             if not any(
                 (io_at.get((fn, line), set()) - own_sources[fn])
                 or line in barriers
-                for line in range(start, end + 1)
+                for line in range(span[0], span[1] + 1)
             )
         ]
         if not open_spans:
-            return False
-        if any(start <= line <= end
-               for line in lines for start, end in open_spans):
-            return True
+            return False, None
+        direct = [span for span in open_spans
+                  if any(span[0] <= line <= span[1] for line in lines)]
+        if direct:
+            # A tail call returns the callee's results as they are.
+            tail = all(len(span[2]) == 1 for span in direct)
+            return True, (received if tail else None)
         if reaches_return is None:
-            return False
-        return reaches_return(
-            fn, lines, sorted({start for start, _ in open_spans}), barriers,
-            label,
+            return False, None
+        hit = reaches_return(
+            fn, lines, sorted({span[0] for span in open_spans}), barriers,
+            label, received,
         )
+        if hit is None:
+            return False, None
+        var, line = hit
+        reached = [span for span in open_spans if span[0] == line]
+        arities = {len(span[2]) for span in reached}
+        if len(arities) != 1 or min(arities) < 2:
+            return True, None
+        positions = frozenset(
+            i for span in reached for i, names in enumerate(span[2])
+            if var in names
+        )
+        return True, ((min(arities), positions) if positions else None)
 
     seen: set[tuple[str, str, int]] = set()
     queue: deque[SourceEntry] = deque(
@@ -3885,9 +3929,14 @@ def _lift_returned_sources(
         if _seeds_at_caller(entry[2]) and entry[2].return_tainted
     )
     while queue:
-        fn, callee, src, chain = queue.popleft()
+        fn, callee, src, chain, received = queue.popleft()
         lines = sorted(set(call_lines.get((fn, callee), ())))
-        if not lines or not returns_value(fn, lines, src.taint_label):
+        if not lines:
+            continue
+        returned, positions = returns_value(
+            fn, lines, src.taint_label, received,
+        )
+        if not returned:
             continue
         lifted_chain = tuple(sorted(set(chain) | {fn}))
         for caller in sorted(callers_of.get(fn, ())):
@@ -3895,10 +3944,34 @@ def _lift_returned_sources(
             if visit in seen:
                 continue
             seen.add(visit)
-            entry = (caller, fn, src, lifted_chain)
+            entry = (caller, fn, src, lifted_chain, positions)
             entries.append(entry)
             queue.append(entry)
     return entries
+
+
+def _received_seeds(
+    fn: str,
+    lines: Sequence[int],
+    received: Received,
+    defines_at: Mapping[tuple[str, int], Sequence[tuple[str, ...]]],
+) -> Optional[frozenset[str]]:
+    """The variables *fn*'s call defines at the RECEIVED result positions.
+
+    ``None`` -- seed every variable, the walk's default -- unless some call
+    line holds a statement defining exactly ``arity`` variables, in order
+    (``stmt_defuse`` keeps the left-hand side's order). See
+    :func:`_lift_returned_sources`, "WHICH RESULT CARRIES IT".
+    """
+    if received is None:
+        return None
+    arity, positions = received
+    seeds: set[str] = set()
+    for line in lines:
+        for defines in defines_at.get((fn, line), ()):
+            if len(defines) == arity:
+                seeds.update(defines[i] for i in positions)
+    return frozenset(seeds) if seeds else None
 
 
 def _returns_to_caller(edge: dict[str, Any]) -> bool:
@@ -3973,7 +4046,7 @@ def propagate_taint_structural(
     sanitizers: list[TaintSanitizer],
     ambiguous_names: frozenset[str] = frozenset(),
     language: str = "",
-    return_spans: Mapping[str, Sequence[tuple[int, int]]] | None = None,
+    return_spans: Mapping[str, Sequence[ReturnSpan]] | None = None,
     include_community: bool = True,
 ) -> list[TaintFlowFinding]:
     """Structural taint-flow propagation via call-graph BFS.
@@ -4109,7 +4182,9 @@ def propagate_taint_structural(
     # without passing through sanitizers.
     findings: list[TaintFlowFinding] = []
 
-    for caller_id, source_callee_id, taint_source, returned_by in source_entries:
+    for caller_id, source_callee_id, taint_source, returned_by, _received in (
+        source_entries
+    ):
         taint_label = taint_source.taint_label
 
         # Choose BFS seed by source's start_at field. "caller" (default)
@@ -4507,6 +4582,8 @@ def _ddg_taint_reaches(
     escape_sites: list[EscapeSite] | None = None,
     credited_user_summaries: set[str] | None = None,
     unaccounted: AbstractSet[str] | None = None,
+    seed_variables: AbstractSet[str] | None = None,
+    reached: list[tuple[str, int]] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -4658,6 +4735,14 @@ def _ddg_taint_reaches(
             (the §7b classification question) — and folding those is how the
             expression-read family was first priced. Purely observational —
             the verdict is identical whether or not it is passed.
+        seed_variables: Restrict the seeds to these of the variables the
+            source call line defines (INV-komoj: the variables a lifted call
+            defines at the result positions its callee returned the value
+            in). ``None`` seeds them all. Seeds it leaves empty are an
+            unrecorded definition, i.e. ``source_undefined`` -- ignorance,
+            never ``False`` on that account.
+        reached: Optional out-param. On ``True``, the ``(variable, line)``
+            whose use at a target line decided it. Purely observational.
 
     Returns:
         True if a tainted value is used at a line where the sink is called;
@@ -4676,6 +4761,8 @@ def _ddg_taint_reaches(
     frontier: list[tuple[str, int]] = []
     for line in source_lines:
         seeds = (defs_at or {}).get((symbol_id, line))
+        if seeds and seed_variables is not None:
+            seeds = set(seeds) & set(seed_variables)
         if not seeds:
             escaped = True
             if escape_sites is not None:
@@ -4748,6 +4835,8 @@ def _ddg_taint_reaches(
                 )
             continue
         if uses & targets:
+            if reached is not None:
+                reached.append((var, min(uses & targets)))
             return True
         for use_line in uses:
             if use_line in barriers:
@@ -5044,7 +5133,7 @@ def propagate_taint_ddg(
     refuted_flows: list["TaintFlowFinding"] | None = None,
     unaccounted_names: Mapping[str, AbstractSet[str]] | None = None,
     include_community: bool = True,
-    return_spans: Mapping[str, Sequence[tuple[int, int]]] | None = None,
+    return_spans: Mapping[str, Sequence[ReturnSpan]] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -5307,18 +5396,30 @@ def propagate_taint_ddg(
     # lines as targets and its sanitizer lines as barriers; only ``True``
     # lifts. Forfeiture is not passed: it withholds ``False`` alone, and
     # ``False`` lifts nothing here.
+    # The ordered defines per (function, line), for the received-position
+    # seeds (INV-komoj, "WHICH RESULT CARRIES IT").
+    defines_at: dict[tuple[str, int], list[tuple[str, ...]]] = defaultdict(list)
+    for sym_id, statements in (stmt_defuse or {}).items():
+        for line, defines, _uses in statements:
+            if defines:
+                defines_at[(sym_id, line)].append(defines)
+
     def _walk_reaches_return(
         fn: str, lines: list[int], targets: list[int], barriers: list[int],
-        _label: str,
-    ) -> bool:
+        _label: str, received: Received,
+    ) -> Optional[tuple[str, int]]:
         if fn not in analyzed:
-            return False
-        return _ddg_taint_reaches(
+            return None
+        reached: list[tuple[str, int]] = []
+        found = _ddg_taint_reaches(
             fn, lines, targets, ddg_uses, callee_names, summaries,
             defs_at=defs_at, inherits=inherits,
             barrier_lines=frozenset(barriers),
             unaccounted=(unaccounted_names or {}).get(fn),
-        ) is True
+            seed_variables=_received_seeds(fn, lines, received, defines_at),
+            reached=reached,
+        )
+        return reached[0] if found is True else None
 
     source_entries = _lift_returned_sources(
         source_callers, call_edges, return_spans or {},
@@ -5328,7 +5429,9 @@ def propagate_taint_ddg(
 
     findings: list[TaintFlowFinding] = []
 
-    for caller_id, source_callee_id, taint_source, returned_by in source_entries:
+    for caller_id, source_callee_id, taint_source, returned_by, received in (
+        source_entries
+    ):
         taint_label = taint_source.taint_label
         # Seed selection mirrors the structural pass — see propagate_taint_structural.
         seed_id = (
@@ -5343,6 +5446,12 @@ def propagate_taint_ddg(
         source_fn = caller_id
         source_call_lines = call_lines.get((caller_id, source_callee_id), [])
         fn_has_ddg = source_fn in analyzed
+        # INV-komoj: a lifted entry seeds only the variables its call defines
+        # at the positions the callee returned the value in; ``None`` (every
+        # direct read) leaves the walk's seeding as it was.
+        entry_seeds = _received_seeds(
+            source_fn, source_call_lines, received, defines_at,
+        )
 
         # Structural BFS for reachability (used for mixed-coverage), through
         # the SHARED helper — this pass and the structural one had already
@@ -5508,6 +5617,7 @@ def propagate_taint_ddg(
                         ),
                         credited_user_summaries=credited_user_summaries,
                         unaccounted=(unaccounted_names or {}).get(source_fn),
+                        seed_variables=entry_seeds,
                     )
                     adjudicated = walk_result is True
 
@@ -5573,6 +5683,7 @@ def propagate_taint_ddg(
                             unaccounted=(
                                 unaccounted_names or {}
                             ).get(source_fn),
+                            seed_variables=entry_seeds,
                         ) is False
                         # INV-pojib: THIS ARM DECIDES THE SAME-FUNCTION SHAPE,
                         # and it is the arm the measured repro went through --
