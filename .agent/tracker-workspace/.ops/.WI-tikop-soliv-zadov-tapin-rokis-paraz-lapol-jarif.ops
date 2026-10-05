@@ -28,3 +28,18 @@
   clock: 2  # e461
   nonce: e461  # e461
   message: "Branch jgstern-agent/fix/darik, commits 80ecd183ca (edge_source) and c7c31f7676 (c, cpp). NOT merged, no status change.\n\nDecision taken (per the owner's brief): no name is invented for a macro-named definition. Every edge drawn from inside one -- c: calls, callback-argument calls, &f references, dispatch-table uses; cpp: every edge of the walk -- comes from the nearest enclosing record with a symbol (an outer definition, else the file anchor) and carries meta.src_stands_in_for = \"unnamed_definition\" (registered edge_meta key, per call site, single writer: edge_source.mark_stand_in). Before, those calls were left unemitted, or, inside a NAMED outer definition, silently drawn from it.\n\nMeasured (~/hypergumbo_lab_notebook/decontend/run_10032026/darik/{base,after1}.{c,cpp}.*.json): redis 2,816 of 2,823 call sites in unnamed definitions now have an edge (2,985 calls + 54 references edges, all from the file, all marked); tmate 26 of 26 (compat/tree.h RB_* macro bodies); x265 1 of 1 (x265::cpu_detect, a real call); sherpa-onnx 3 edges, ALL THREE parse artifacts of the export-macro class misparse (an \"if (...)\" read as a call to if, two \"X() = default\"). crun, falco, bento4, modsecurity: 0. Read samples: 12 random redis stand-ins are real calls in jemalloc TEST_BEGIN bodies; 12 tmate ones are real macro uses.\n\nNot done: the export-macro class misparse itself -- filed WI-divus-garom-zojav-golog-sidod-hibit-kavit-tozij. Also found with the new gate: c.py's dispatch-table VARIABLE is never emitted, so dispatches_to srcs dangle (crun 94, redis 505, tmate 129; unchanged by this branch) -- filed WI-dirij-norod-pugup-sasoh-satab-lubut-tahap-jupuz."  # e461
+- op: update  # 870e
+  at: '2026-10-05T04:42:35Z'  # 870e
+  by: agent  # 870e
+  actor: jgstern_agent  # 870e
+  clock: 3  # 870e
+  nonce: 870e  # 870e
+  set:  # 870e
+    status: done  # 870e
+- op: discuss  # bd78
+  at: '2026-10-05T04:42:35Z'  # bd78
+  by: agent  # bd78
+  actor: jgstern_agent  # bd78
+  clock: 4  # bd78
+  nonce: bd78  # bd78
+  message: "Merged in PR #1459 (dev ecbb226a0d).\n\nFixed in PR #1459 (80ecd183ca, c7c31f7676), by the rule the owner set: no invented name. Every edge drawn from inside a definition whose name comes from an unexpandable macro comes from the nearest enclosing record with a symbol (an outer definition, else the file) and carries meta.src_stands_in_for=\"unnamed_definition\". Behavioral evidence: test_c_call_anchor::test_a_call_in_an_unnamed_definition_stands_in (TEST_BEGIN body: calls/&f/callback edges from the file, marked; a macro-named definition inside a named one: from the outer, marked; plain calls unmarked), plus the cpp misparse/PFX tests. redis: 2,816 of 2,823 call sites recovered (2,985 calls + 54 references, marked); tmate 26/26; x265 1/1 (real). NOT done: the export-macro class misparse (filed as WI-divus-garom-zojav-golog-sidod-hibit-kavit-tozij; its 3 stand-in edges on sherpa-onnx are parse artifacts), and the dispatch-table variable's dangling src the new gate found (WI-dirij-norod-pugup-sasoh-satab-lubut-tahap-jupuz)."  # bd78
