@@ -2698,6 +2698,25 @@ class Store:
                 continue
         return items
 
+    def item_ops(self) -> list[tuple[str, list[dict[str, Any]]]]:
+        """Every item's raw op log as ``(item_id, ops)``, for analyses of an item's history.
+
+        Compiled state answers only "what is true now"; ``priority_trend`` replays
+        these logs day by day. Unreadable files are skipped as ``_compile_all``
+        skips them: a corrupt file silently, any other OSError into the race log.
+        """
+        from . import race_log
+
+        out: list[tuple[str, list[dict[str, Any]]]] = []
+        for path in self._list_item_files():
+            try:
+                out.append((self._id_from_filename(path), _parse_ops_file(path)))
+            except CorruptFileError:
+                continue
+            except OSError as exc:
+                race_log.log_compile_suppression(path, exc)
+        return out
+
     def _compile_all_cached(self, cache: Any) -> list[CompiledItem]:
         """Compile all items, using cache for unchanged files.
 

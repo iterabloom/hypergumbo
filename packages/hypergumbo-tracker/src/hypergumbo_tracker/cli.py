@@ -5,7 +5,7 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with 40 top-level subcommands, grouped by what they
+- main(): Primary CLI with 41 top-level subcommands, grouped by what they
   touch:
 
   - **Items:** add, update, delete, show, list, ready, log, discuss, deps,
@@ -21,7 +21,9 @@ Entry points:
   - **Sync and setup:** sync, init, setup, fork-setup, migrate
   - **Surfaces:** tui, serve, textconv
   - **Agent governance:** count-todos, hash-todos, guidance
-  - **Analysis:** clusters (predicted clusters of open items; see clusters.py)
+  - **Analysis:** clusters (predicted clusters of open items; see clusters.py),
+    priority-trend (SVG scatterplot of the open items' mean priority per day;
+    see priority_trend.py)
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 
@@ -38,6 +40,7 @@ See ADR-0013 for the full design specification.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import subprocess  # nosec B404 — needed for `screen -Q` query
@@ -48,6 +51,11 @@ from typing import Any
 
 from hypergumbo_tracker.clusters import (
     DEFAULT_K, DEFAULT_SHARED, compute_clusters, id_pattern_for,
+)
+from hypergumbo_tracker.priority_trend import (
+    DEFAULT_OUT as PRIORITY_TREND_DEFAULT_OUT,
+    priority_trend,
+    render_svg,
 )
 from hypergumbo_tracker.models import (
     CompiledItem,
@@ -1806,6 +1814,13 @@ def _cmd_guidance(args: argparse.Namespace, ts: TrackerSet) -> int:
         return EXIT_USER_ERROR
 
 
+def _analysis_tiers(ts: TrackerSet) -> list[Tier]:
+    """The tiers an analysis command reads: workspace scope sees only its own tiers."""
+    if ts.config.scope == "workspace":
+        return [Tier.WORKSPACE, Tier.STEALTH]
+    return list(Tier)
+
+
 def _cmd_clusters(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'clusters' subcommand — predicted clusters of the open items.
 
@@ -1815,13 +1830,8 @@ def _cmd_clusters(args: argparse.Namespace, ts: TrackerSet) -> int:
     while only the selected items are clustered. Rationale and the measurements
     behind the defaults: the module docstring of clusters.py.
     """
-    tiers_to_check: list[Tier]
-    if ts.config.scope == "workspace":
-        tiers_to_check = [Tier.WORKSPACE, Tier.STEALTH]
-    else:
-        tiers_to_check = list(Tier)
     fit_items: list[CompiledItem] = []
-    for t in tiers_to_check:
+    for t in _analysis_tiers(ts):
         for item in ts._tier_stores[t]._compile_all():
             if item.status != "deleted":
                 item.tier = t
@@ -1874,6 +1884,55 @@ def _cmd_clusters(args: argparse.Namespace, ts: TrackerSet) -> int:
         for m in members(c.item_ids):
             print(f"    {m.id}  [{m.status}]  {m.title}")
     return EXIT_SUCCESS
+
+
+def _cmd_priority_trend(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'priority-trend' — the open items' mean priority per day, as an SVG scatterplot.
+
+    The history is replayed from each item's raw op log (see priority_trend.py).
+    Text mode always writes the SVG (``--out``, default in the working
+    directory); ``--json`` prints the series and writes the SVG only when
+    ``--out`` is given.
+    """
+    ops_by_item: dict[str, list[dict[str, Any]]] = {}
+    for t in _analysis_tiers(ts):
+        for item_id, ops in ts._tier_stores[t].item_ops():
+            ops_by_item.setdefault(item_id, []).extend(ops)
+    points = priority_trend(ops_by_item, ts.config.resolved_statuses, since=args.since, until=args.until)
+    out = args.out if args.out is not None or args.json else PRIORITY_TREND_DEFAULT_OUT
+    if out is not None:
+        Path(out).write_text(render_svg(points))
+    if args.json:
+        print(json.dumps({
+            "resolved_statuses": list(ts.config.resolved_statuses),
+            "svg": out,
+            "points": [
+                {"day": p.day.isoformat(), "open": p.open_count,
+                 "mean_priority": None if p.mean_priority is None else round(p.mean_priority, 4)}
+                for p in points
+            ],
+        }, indent=2))
+        return EXIT_SUCCESS
+    if not points:
+        print(f"wrote {out}: no days with history in this window")
+        return EXIT_SUCCESS
+    summary = f"wrote {out}: {len(points)} day(s), {points[0].day} to {points[-1].day}; "
+    plotted = [p for p in points if p.mean_priority is not None]
+    if not plotted:
+        print(summary + "no open items on any day")
+        return EXIT_SUCCESS
+    a, b = plotted[0], plotted[-1]
+    print(summary + f"mean priority of open items {a.mean_priority:.2f} ({a.open_count} open) on {a.day}"
+          f" -> {b.mean_priority:.2f} ({b.open_count} open) on {b.day}")
+    return EXIT_SUCCESS
+
+
+def _iso_day(value: str) -> datetime.date:
+    """argparse type for a ``YYYY-MM-DD`` day."""
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected YYYY-MM-DD, got {value!r}") from None
 
 
 def _cmd_check_messages(args: argparse.Namespace, ts: TrackerSet) -> int:
@@ -2852,6 +2911,15 @@ def _build_parser() -> argparse.ArgumentParser:
                             help="drop clusters smaller than this (default 2)")
     p_clusters.add_argument("--limit", type=int, default=None, help="show only the top N clusters")
 
+    p_trend = sub.add_parser(
+        "priority-trend",
+        help="SVG scatterplot of the open items' mean priority, one point per day",
+    )
+    p_trend.add_argument("--out", default=None,
+                         help=f"SVG path (default {PRIORITY_TREND_DEFAULT_OUT}; with --json, none unless given)")
+    p_trend.add_argument("--since", type=_iso_day, default=None, help="first day, YYYY-MM-DD (UTC)")
+    p_trend.add_argument("--until", type=_iso_day, default=None, help="last day, YYYY-MM-DD (UTC)")
+
     # --- init ---
     sub.add_parser("init", help="Initialize tracker directory structure")
     sub.add_parser(
@@ -3760,6 +3828,7 @@ def main(argv: list[str] | None = None) -> None:
         "guidance": _cmd_guidance,
         "check-messages": _cmd_check_messages,
         "clusters": _cmd_clusters,
+        "priority-trend": _cmd_priority_trend,
         "cache-rebuild": _cmd_cache_rebuild,
         "reconcile-reset": _cmd_reconcile_reset,
         "fork-setup": _cmd_fork_setup,
