@@ -1,0 +1,22 @@
+- op: create  # 805f
+  at: '2026-10-04T23:55:52Z'  # 805f
+  by: agent  # 805f
+  actor: jgstern_agent  # 805f
+  clock: 1  # 805f
+  nonce: 805f  # 805f
+  data:  # 805f
+    kind: work_item  # 805f
+    title: "rust: a Rust 2024 'unsafe extern' block does not parse in the shipped tree-sitter-rust, so its declarations get no symbol and calls to them stay external stubs (11146 such block lines in the corpus)"  # 805f
+    status: todo_hard  # 805f
+    priority: 3  # 805f
+    parent:  # 805f
+    tags:  # 805f
+    - rust  # 805f
+    - analysis_quality  # 805f
+    - io_boundary  # 805f
+    isbefore: []  # 805f
+    duplicate_of: []  # 805f
+    not_duplicate_of: []  # 805f
+    pr_ref:  # 805f
+    description: "FOUND 2026-10-04 while fixing INV-lopus-mamoz-tokum-padab-mivuv-vomum-gosal-votit (branch jgstern-agent/fix/lopus, not integrated).\n\nThe shipped tree-sitter-rust (0.24.0) does not parse a Rust 2024 `unsafe extern \"C\" { ... }` block. It yields a top-level function_signature_item carrying function_modifiers + an ERROR node, and a stray ERROR for the closing brace. No foreign_mod_item exists, so the INV-lopus extern-block arm (which requires item -> declaration_list -> foreign_mod_item) emits no symbol for any declaration in it, and a call to one stays an `external` stub exactly as before INV-lopus.\n\nPinned as a stated gap by test_rust_extern_block_symbols.py::test_a_signature_outside_any_block_is_no_foreign_symbol.\n\nPOPULATION (grep, corpus ~/whole_bunch_of_repos, lines matching `^\\s*unsafe extern( \"..\")? *\\{`): 11146, of which pdfium-render 11056 (bindgen output under src/bindgen/, which the survey does not analyse at all), wasmtime 82, nextjs 3. Plain `extern {}` blocks: 146. bindgen >= 0.71 emits the unsafe form, so the share grows with every regenerated binding.\n\nNOT MEASURED: whether a newer tree-sitter-rust grammar parses the form (no network check made); how many calls into these declarations hit a catalogue row by short name.\n\nDIRECTION: upgrade the grammar if a release parses it; otherwise recognise the error-recovery shape (function_signature_item whose function_modifiers holds an extern_modifier, at a level no block encloses) as a foreign declaration."  # 805f
+    fields: {}  # 805f

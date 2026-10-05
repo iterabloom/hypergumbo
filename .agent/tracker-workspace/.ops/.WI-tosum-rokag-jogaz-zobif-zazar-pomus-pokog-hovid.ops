@@ -60,3 +60,10 @@
   clock: 7  # b1ad
   nonce: b1ad  # b1ad
   message: "BEARS ON THIS ITEM (2026-10-04, WI-rokus, branch jgstern-agent/fix/binap, commit 829ef03b24, not yet merged): pony moves from UNVERIFIED to VERIFIED in test_call_anchor_gate_extended1.py (test_pony_same_named_callables). Its enclosing lookup WAS name-keyed in the repository-wide registry: on ponyc (shallow clone 44f94baea5) 4,420 call edges had a src whose span did not hold the call or that sat in another file (every program declares actor Main / new create); 0 after, by core enclosing_declared_symbol over the file's own declarations. The gate's containment assertion alone cannot see a cross-FILE swap whose spans overlap, so the pony test also asserts the src and dst paths match the call's file. Remaining UNVERIFIED rows in extended1 are unchanged."  # b1ad
+- op: discuss  # 9f20
+  at: '2026-10-04T23:00:08Z'  # 9f20
+  by: agent  # 9f20
+  actor: jgstern_agent  # 9f20
+  clock: 8  # 9f20
+  nonce: 9f20  # 9f20
+  message: "From WI-darik's branch (jgstern-agent/fix/darik): each package's call-anchor gate (_assert_contained) now also asserts hypergumbo_core.analyze.edge_source.unemitted_edge_sources(...) == [] -- no edge's src is an id no symbol carries. It passes for every VERIFIED analyzer's fixture (40). The UNVERIFIED rows listed here are therefore unchecked for dangling srcs as well as for containment. cuda moved from unenumerated to VERIFIED (it spelled edge_type through a variable, so _CALLS never saw it)."  # 9f20

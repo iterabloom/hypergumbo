@@ -1,0 +1,22 @@
+- op: create  # b0c7
+  at: '2026-10-05T00:12:00Z'  # b0c7
+  by: agent  # b0c7
+  actor: jgstern_agent  # b0c7
+  clock: 1  # b0c7
+  nonce: b0c7  # b0c7
+  data:  # b0c7
+    kind: work_item  # b0c7
+    title: "scala: a bare call brought into scope by importing a VALUE's members (import reader._; readByte()) carries no owner, so it still reaches scala.io.StdIn by short name (pekko GzipDecompressor, the WI-vidof residual)"  # b0c7
+    status: todo_hard  # b0c7
+    priority: 3  # b0c7
+    parent:  # b0c7
+    tags:  # b0c7
+    - scala  # b0c7
+    - io_boundary  # b0c7
+    - catalogue  # b0c7
+    isbefore: []  # b0c7
+    duplicate_of: []  # b0c7
+    not_duplicate_of: []  # b0c7
+    pr_ref:  # b0c7
+    description: "FOUND 2026-10-04 while fixing WI-vidof-rokim-dodog-bunuv-lizav-nidav-zotin-vakoz (branch jgstern-agent/fix/lopus, commit 57d10d835f, not integrated). The residual of that item's family that its fix does NOT reach.\n\npekko stream/src/main/scala/org/apache/pekko/stream/impl/io/compression/GzipDecompressor.scala:45-49:\n\n    override def parse(reader: ByteStringParser.ByteReader): ParseResult[ByteString] = {\n      import reader._\n      if (readByte() != 0x1F || readByte() != 0x8B) fail(\"Not in GZIP format\")\n\n`readByte()` is pekko's own ByteStringParser.ByteReader.readByte, brought into scope by importing a VALUE's members. The scala analyzer emits it as `scala:external:0-0:readByte:external_symbol` with no call_construct, nothing resolves it to the in-repo method, so no `superseded_by` is stamped, and the no-module gate matches scala.io.StdIn.readByte: a false ipc_recv chain (io-boundaries, ReadHeaders.parse), present identically before and after the WI-vidof fix (pekko A/B: 20255 -> 20255 chains, 0 moved).\n\nWI-vidof's fix keys on the graph's own statement that a call is bound in-repo (meta.superseded_by). Here the graph makes no such statement, so the fix correctly does not fire. The fix belongs to the analyzer: under `import v._` where v has a declared type T, a bare call's module slot is T (or it resolves to T's in-repo member), exactly as `import scala.io.StdIn._` should put scala.io.StdIn in the slot -- which today it does NOT either (the genuine `import scala.io.StdIn._; readInt()` also lands on the `external` slot and reaches the row only through the gate; pinned as the positive control in test_short_name_bound_call.py).\n\nMEASURED: pekko 1 chain of this shape. NOT MEASURED: the scala corpus population of `import <value>._` followed by a bare call whose name is a scala catalogue function row."  # b0c7
+    fields: {}  # b0c7

@@ -1,0 +1,22 @@
+- op: create  # 3897
+  at: '2026-10-04T23:56:22Z'  # 3897
+  by: agent  # 3897
+  actor: jgstern_agent  # 3897
+  clock: 1  # 3897
+  nonce: '3897'  # 3897
+  data:  # 3897
+    kind: work_item  # 3897
+    title: "rust: a Type::name() path call, a receiver call, or a use-bound std name binds by short name to an in-repo FREE function of that name (one free 'now' captured 44 Instant::now() chains on loro)"  # 3897
+    status: todo_hard  # 3897
+    priority: 3  # 3897
+    parent:  # 3897
+    tags:  # 3897
+    - rust  # 3897
+    - analysis_quality  # 3897
+    - io_boundary  # 3897
+    isbefore: []  # 3897
+    duplicate_of: []  # 3897
+    not_duplicate_of: []  # 3897
+    pr_ref:  # 3897
+    description: "FOUND 2026-10-04 while fixing INV-lopus-mamoz-tokum-padab-mivuv-vomum-gosal-votit (branch jgstern-agent/fix/lopus, commit f9052cbde3, not integrated).\n\nThe rust analyzer binds a call to an in-repo FREE function by its short name through three doors that Rust's scoping does not open:\n\n1. Strategy 2 (`callee_name in local_symbols`) binds a `Type::name()` path call or an `x.name()` receiver call to a same-file free function `name`.\n2. The method / scoped-path fallback pool (ListNameResolver built in RustAnalyzer.extract_edges_from_file from every `method` AND `function` symbol) binds `Instant::now()` in ANY file to the repository's only free `now`.\n3. The cross-file bare resolver returns an exact name hit even when the calling file binds the name by `use std::fs::write;` -- so `write(p, b)` there binds to an in-repo `fn write` instead of std::fs::write (and the real fs_write is lost).\n\nMEASURED, on the first INV-lopus A/B before it guarded its own symbols: emitting ONE free `now` (loro's wasm_bindgen extern declaration) bound 44 Instant::now() / SystemTime::now() call chains to it, removing 44 true host_info_read chains. INV-lopus closed all three doors for FOREIGN declarations only (pinned in test_rust_extern_block_symbols.py: TestOnlyABareCallReachesADeclaration, TestAnExternalUseIsNotCapturedAcrossFiles). An ordinary in-repo `fn now` / `fn write` / `fn read` still opens them.\n\nNOT MEASURED: the population for ordinary free functions on the rust corpus (count resolved edges whose call is a scoped path or receiver call and whose dst is a kind=function symbol with a different owner, and bare calls whose file use-binds the name outside the crate).\n\nDIRECTION: the guards INV-lopus applied to ffi_import symbols, applied to every free function: a path or receiver call never binds to a free function whose module the path does not name, and a `use`-bound external name is never captured by an in-repo item."  # 3897
+    fields: {}  # 3897

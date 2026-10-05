@@ -1,0 +1,23 @@
+- op: create  # cc1b
+  at: '2026-10-04T23:56:12Z'  # cc1b
+  by: agent  # cc1b
+  actor: jgstern_agent  # cc1b
+  clock: 1  # cc1b
+  nonce: cc1b  # cc1b
+  data:  # cc1b
+    kind: work_item  # cc1b
+    title: "rust: a call to an extern-block declaration is classified by no catalogue; its ffi_import binding (C ABI, wasm_bindgen js_namespace) names the foreign catalogue that could classify it (loro's Date.now host_info_read now unreported)"  # cc1b
+    status: todo_hard  # cc1b
+    priority: 3  # cc1b
+    parent:  # cc1b
+    tags:  # cc1b
+    - rust  # cc1b
+    - io_boundary  # cc1b
+    - taint  # cc1b
+    - analysis_quality  # cc1b
+    isbefore: []  # cc1b
+    duplicate_of: []  # cc1b
+    not_duplicate_of: []  # cc1b
+    pr_ref:  # cc1b
+    description: "FOUND 2026-10-04 while fixing INV-lopus-mamoz-tokum-padab-mivuv-vomum-gosal-votit (branch jgstern-agent/fix/lopus, commit f9052cbde3, not integrated).\n\nAfter INV-lopus a call to a Rust extern-block declaration resolves to that declaration's symbol, which carries the binding the source states in meta[\"ffi_import\"] (abi; wasm_bindgen js_namespace / js_name / module; #[link(name)] / #[link_name]). The call is then a first-party resolved edge and NO catalogue classifies it. That is the item's statement (a declaration names no catalogued Rust module), and it removed the one filed false primitive (loro change.rs:300-311, std::time::Instant.now). It also means the call's REAL crossing is now unreported:\n\n- loro's `#[wasm_bindgen(js_namespace = Date)] fn now()` IS JavaScript's Date.now, a host_info_read the old wrong primitive happened to get right;\n- `extern \"C\" { fn getpid(); fn write(..); }` with no #[link] IS libc's getpid / write at link time (the C/C++ analogue: a local prototype of a libc function is the libc function).\n\nDIRECTION: classify a call to an ffi_import symbol through the FOREIGN catalogue, the way _resolve_ffi_catalog already redirects go's `C` pseudo-package and python's ctypes `C_stdlib` to the c catalogue: abi C/system with no `link` (or link = \"c\") -> c catalogue by foreign_name or name; js_namespace X -> javascript catalogue, module X, name js_name or name. Needs the symbol's meta at classification time (classify_call sees only dst + edge meta), so either the analyzer stamps the binding on the call edge or the tagger is handed the node map.\n\nMEASURED POPULATION (INV-lopus A/B): loro 4 foreign declarations, 1 call into them. Larger populations (wasmtime 82 unsafe-extern blocks, pdfium-render) are hidden behind the unsafe-extern grammar gap and the unanalysed bindgen files. NOT MEASURED: how many such calls a foreign-catalogue redirect would classify."  # cc1b
+    fields: {}  # cc1b
