@@ -1,0 +1,12 @@
+Original commit body from 9049c0db17dd3dedfbf721ecb646e1bd4eeb8e72:
+
+Stage 9a of the 10-03 sequence: three taint/DDG fixes integrated on one branch.
+
+- **INV-komoj** (addresses; partial): a source a helper returns is followed into its callers. New additive evidence key `source_returned_by`; VERIFY_CLAIMS_SCHEMA_VERSION stays 2.6. Residuals filed: WI-sodoj (Rust tail expr / JS-TS arrow bodies), WI-sitaf (Go `_, err :=`).
+- **WI-losod + WI-faful**: loop headers and if/switch initializers define their bindings in all six DDG languages; an atomic statement holding control flow or a nested function stays one statement; Java arrow-form switch arms recognised. Residuals filed: WI-nohuv, WI-bufar, WI-sozob, WI-nogil.
+- **WI-gajir**: the per-situation collapse keys on `resource_naming_only` and `trusted_sink`, so an excluded sink no longer hides a content flow it was grouped with.
+- Integration fix: INV-komoj's walk site is spelled `... is True` so the INV-lupav refutation-gate guard sees it as collapsed; the guard now expects three sites.
+
+Corpus A/B effects (from each item's own run, not re-measured on the merged tree): komoj moved 2 verdicts inconclusive->violated (podman-compose real flow; runc false positive via call-reachability); losod moved 2 evidence rows to ddg/confirmed, no verdict moved; gajir moved 2 container-libs claims inconclusive->violated.
+
+Local: affected suite 22975 passed, 0 failed; scoped coverage 100% on changed files.
