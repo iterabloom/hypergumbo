@@ -1,0 +1,21 @@
+- op: create  # a47b
+  at: '2026-10-05T05:03:14Z'  # a47b
+  by: agent  # a47b
+  actor: jgstern_agent  # a47b
+  clock: 1  # a47b
+  nonce: a47b  # a47b
+  data:  # a47b
+    kind: work_item  # a47b
+    title: "Clause bindings outside loop headers and if/switch initializers stay invisible to def/use: python except-as, match-case patterns and for/while else; go type switch and select; ts catch parameter"  # a47b
+    status: todo_hard  # a47b
+    priority: 3  # a47b
+    parent:  # a47b
+    tags:  # a47b
+    - adr_0017  # a47b
+    - taint  # a47b
+    isbefore: []  # a47b
+    duplicate_of: []  # a47b
+    not_duplicate_of: []  # a47b
+    pr_ref:  # a47b
+    description: "FOUND 2026-10-04 while fixing WI-losod (loop headers and if/switch initializers now recorded as statements; branch jgstern-agent/fix/losod). The same statement-model gap remains for binding constructs that are neither a loop header nor an if/switch initializer. Probed on the losod branch (CfgBuilder + the registered extractor + solve_reaching_defs, as ddg_build runs them):\n\n- Python `except ValueError as e:` -- `e` is recorded as an identifier USE, never defined (the except clause is decomposed into leaves).\n- Python `match x:` / `case [a, b]:` -- the pattern's names are uses only; `a` is never defined.\n- Python `for ... else:` and `while ... else:` -- the else clause is never processed by the loop hook (no statement at all); uncovered_semantic_lines reports its lines, so the function forfeits refutation rather than misreport.\n- Go `switch v := x.(type)` -- type_switch_statement is not mapped in go.yaml: `v` is a use only, and the cases are walked as straight-line code, not as arms.\n- Go `select { case m := <-ch: ... }` -- select_statement is not mapped: `m` is a use only, cases straight-line.\n- TypeScript `catch (e)` -- `e` is a use only (Java's catch_formal_parameter is atomic and defines; TS has no equivalent entry).\n\nShape of the fix (same mechanism as WI-losod): record the binding clause as a statement that DEFINES its names (a handler per clause node, or a mapping key on try_catch / switch for the clause's binding part), and map Go's type switch and select as switches. Each needs its own fixture; none is measured for volume."  # a47b
+    fields: {}  # a47b
