@@ -33,12 +33,13 @@ its caller to have done it, and ``test_dataflow_scope`` carries a non-vacuity
 floor asserting the four registered languages read capable.
 
 WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — I. Capability is reported per
-LANGUAGE, and that is not a per-function completeness claim. ``cfg_nodes/go.yaml``
-self-documents that ``if err := do(); err != nil`` initializers are invisible to
-def/use — 700 of caddy's 6,596 ``if`` statements carry a call there — so Go reads
-``dataflow_capable`` while containing functions the walk cannot see into, and a
-reader who took the bit for coverage would be making exactly the assumption
-clause (a3) forbids. The finer signal is WI-joluk's per-function coverage gate
+LANGUAGE, and that is not a per-function completeness claim. Until WI-losod,
+Go's ``if err := do(); err != nil`` initializers were invisible to def/use — 700
+of caddy's 6,596 ``if`` statements carried a call there — so Go read
+``dataflow_capable`` while containing functions the walk could not see into.
+Constructs the CFG still does not model (a Go ``select`` case's ``v := <-ch``
+binding, a Python ``for ... else:`` clause) keep that true, and a reader who took the bit for
+coverage would be making exactly the assumption clause (a3) forbids. The finer signal is WI-joluk's per-function coverage gate
 (a function whose CFG statement extents miss a call node in its body forfeits
 refutation), which landed on 2026-08-26. So ``coverage_granularity`` reads
 ``function`` in the emitted record, which counts the forfeiting functions, rather

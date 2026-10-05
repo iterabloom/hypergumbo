@@ -5,7 +5,8 @@ THE INVARIANT, as filed: the §3a walk may return ``False`` — "ran to completi
 and accounted for the value at every step" — only when it actually followed the
 value at every step. It does not. A *partially* recorded definition (the source
 def recorded, a later use invisible because the construct is not modelled —
-Go's ``if err := do(); err != nil`` initializer is the documented population)
+Go's ``if err := do(); err != nil`` initializer was the documented population
+until WI-losod)
 still exhausts to ``False``. Verified live at dev tip: with the use at the sink
 line recorded the walk returns ``True``; with it absent it returns ``False``,
 and ``forfeit_refutation=True`` flips that to ``None``.

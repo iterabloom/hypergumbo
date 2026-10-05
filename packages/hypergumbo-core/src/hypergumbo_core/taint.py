@@ -4178,8 +4178,9 @@ class EscapeSite(NamedTuple):
 #:
 #: * ``source_undefined`` — the DDG recorded no definition at the SOURCE call
 #:   line, so the walk was never handed anything to follow. An extraction gap
-#:   (INV-lupav), not an escape: ``if err := do(); err != nil`` initializers
-#:   are invisible to Go's def/use extractor.
+#:   (INV-lupav), not an escape: a construct the CFG never recorded as a
+#:   statement (``if err := do(); err != nil`` initializers were the documented
+#:   case until WI-losod recorded header bindings).
 #: * ``definition_unrecorded`` — a frontier entry the DDG holds no uses for.
 #:   Defensive and unreachable as the code stands; see the branch comment.
 #: * ``call_beside_heir`` — the taint DID continue along a chain still
@@ -4463,10 +4464,10 @@ def _ddg_taint_reaches(
             # is now caught at SEEDING instead — `if not seeds` above — which
             # is the earlier and more precise place for it: the DDG holding no
             # definition at a source call line is exactly "was never given
-            # anything", and `cfg_nodes/go.yaml` self-documents the extraction
-            # gap that produces it (`if err := do(); err != nil` initializers
-            # invisible to def/use; 700 of caddy's 6,596 `if` statements carry
-            # a call there).
+            # anything". Its filed population was Go's `if err := do(); err !=
+            # nil` initializers, invisible to def/use until WI-losod (700 of
+            # caddy's 6,596 `if` statements carried a call there); any
+            # construct the CFG still does not record produces it the same way.
             escaped = True
             if escape_sites is not None:
                 escape_sites.append(
@@ -5116,10 +5117,11 @@ def propagate_taint_ddg(
             #     nothing about where that value went — absence of evidence,
             #     not evidence of absence. caddy's printEnvironment binds
             #     `for _, v := range os.Environ()`; the Go CFG mapping's loop
-            #     hook never names the range clause, so `v` has no definition
-            #     in the DDG at all (WI-losod), and without this guard the
-            #     walk "proved" that a literal `fmt.Println(v)` on the next
-            #     line was unreachable.
+            #     hook did not name the range clause, so `v` had no definition
+            #     in the DDG at all, and without this guard the walk "proved"
+            #     that a literal `fmt.Println(v)` on the next line was
+            #     unreachable. WI-losod records loop headers now; the guard
+            #     stays for every construct still unrecorded.
             #
             # (2) A sink call site recorded BEFORE the source cannot be the
             #     one that consumes it, and — crucially — is not necessarily
