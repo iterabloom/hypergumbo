@@ -9,7 +9,7 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ### Added
 
-- **`tracker priority-trend` plots the mean priority of the open items, one point per day**, as an SVG scatterplot (`--out`, default `tracker-priority-trend.svg`; `--since` / `--until` window it; `--json` prints the series). The history is replayed from each item's op log: an item's state on a day is its ops up to the end of that UTC day, folded by `compile_ops`, and "open" means not in `resolved_statuses`. Hovering a point shows its date, mean and open-item count. On this repository's tracker (2663 items, 14691 ops) it takes 0.9 s, and its last point matches the live state (492 open, mean 2.976). New `Store.item_ops()` returns each item's raw op log.
+- **`tracker priority-trend` plots the mean priority of the open items, one point per day**, as an SVG scatterplot (`--out`, default `tracker-priority-trend.svg`; `--since` / `--until` window it; `--json` or `--csv` prints the series instead, writing the SVG only when `--out` is given). The history is replayed from each item's op log: an item's state on a day is its ops up to the end of that UTC day, folded by `compile_ops`, and "open" means not in `resolved_statuses`. Hovering a point shows its date, mean and open-item count. On this repository's tracker (2663 items, 14691 ops) it takes 0.9 s, and its last point matches the live state (492 open, mean 2.976). New `Store.item_ops()` returns each item's raw op log.
 
 ### Changed
 

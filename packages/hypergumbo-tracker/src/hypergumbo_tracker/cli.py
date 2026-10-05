@@ -55,7 +55,9 @@ from hypergumbo_tracker.clusters import (
 from hypergumbo_tracker.priority_trend import (
     DEFAULT_OUT as PRIORITY_TREND_DEFAULT_OUT,
     priority_trend,
+    render_csv,
     render_svg,
+    rounded_mean,
 )
 from hypergumbo_tracker.models import (
     CompiledItem,
@@ -1891,15 +1893,18 @@ def _cmd_priority_trend(args: argparse.Namespace, ts: TrackerSet) -> int:
 
     The history is replayed from each item's raw op log (see priority_trend.py).
     Text mode always writes the SVG (``--out``, default in the working
-    directory); ``--json`` prints the series and writes the SVG only when
-    ``--out`` is given.
+    directory); ``--json`` and ``--csv`` print the series instead and write the
+    SVG only when ``--out`` is given. They are mutually exclusive.
     """
+    if args.json and args.csv:
+        print("error: --csv and --json are mutually exclusive", file=sys.stderr)
+        return EXIT_USER_ERROR
     ops_by_item: dict[str, list[dict[str, Any]]] = {}
     for t in _analysis_tiers(ts):
         for item_id, ops in ts._tier_stores[t].item_ops():
             ops_by_item.setdefault(item_id, []).extend(ops)
     points = priority_trend(ops_by_item, ts.config.resolved_statuses, since=args.since, until=args.until)
-    out = args.out if args.out is not None or args.json else PRIORITY_TREND_DEFAULT_OUT
+    out = args.out if args.out is not None or args.json or args.csv else PRIORITY_TREND_DEFAULT_OUT
     if out is not None:
         Path(out).write_text(render_svg(points))
     if args.json:
@@ -1907,11 +1912,13 @@ def _cmd_priority_trend(args: argparse.Namespace, ts: TrackerSet) -> int:
             "resolved_statuses": list(ts.config.resolved_statuses),
             "svg": out,
             "points": [
-                {"day": p.day.isoformat(), "open": p.open_count,
-                 "mean_priority": None if p.mean_priority is None else round(p.mean_priority, 4)}
+                {"day": p.day.isoformat(), "open": p.open_count, "mean_priority": rounded_mean(p)}
                 for p in points
             ],
         }, indent=2))
+        return EXIT_SUCCESS
+    if args.csv:
+        print(render_csv(points), end="")
         return EXIT_SUCCESS
     if not points:
         print(f"wrote {out}: no days with history in this window")
@@ -2916,7 +2923,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="SVG scatterplot of the open items' mean priority, one point per day",
     )
     p_trend.add_argument("--out", default=None,
-                         help=f"SVG path (default {PRIORITY_TREND_DEFAULT_OUT}; with --json, none unless given)")
+                         help=f"SVG path (default {PRIORITY_TREND_DEFAULT_OUT}; with --json or --csv, none unless given)")
+    p_trend.add_argument("--csv", action="store_true", default=False,
+                         help="print the series as CSV (day,open,mean_priority) instead of the summary")
     p_trend.add_argument("--since", type=_iso_day, default=None, help="first day, YYYY-MM-DD (UTC)")
     p_trend.add_argument("--until", type=_iso_day, default=None, help="last day, YYYY-MM-DD (UTC)")
 
