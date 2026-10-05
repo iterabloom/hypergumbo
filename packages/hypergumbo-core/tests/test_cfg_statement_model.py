@@ -527,6 +527,35 @@ class TestNestedFunctions:
         assert _succ(cfg, holder.id) == {_block_of(cfg, "done()").id}
         assert all(b.statements or b.id == cfg.exit_block for b in cfg.blocks.values())
 
+    def test_a_body_that_is_itself_control_flow_is_processed_as_such(self) -> None:
+        """Rust's ``|x| if x { .. } else { .. }``: the closure body is an
+        ``if_expression``, not a block, and keeps its true/false edges."""
+        cfg, _, _ = _build("rust", (
+            "fn f() {\n"
+            "    let h = |x: bool| if x { go1() } else { go2() };\n"
+            "    h(true);\n"
+            "}\n"
+        ))
+        holder = _block_of(cfg, "let h =")
+        [cond] = [b for b in cfg.blocks.values()
+                  if {"true", "false"} <= {e.edge_type for e in b.successors}]
+        assert cond.id in _succ(cfg, holder.id)
+
+    def test_a_bodiless_nested_declaration_attaches_no_region(self) -> None:
+        """A local interface's method has no body: it is recorded as a
+        statement and nothing hangs off it."""
+        cfg, _, _ = _build("java", (
+            "class A {\n"
+            "  void f() {\n"
+            "    interface L { void g(); }\n"
+            "    after();\n"
+            "  }\n"
+            "}\n"
+        ))
+        decl = _block_of(cfg, "void g();")
+        assert decl.statements[0].node_type == "method_declaration"
+        assert _succ(cfg, decl.id) == {_block_of(cfg, "after()").id}
+
     def test_a_branch_inside_a_lambda_does_not_decompose_the_statement(self) -> None:
         """Before WI-faful, ``xs.forEach(x -> { if (x) ... })`` became leaves:
         ``xs``, ``forEach``, ``x`` -- the call itself was never a statement."""
