@@ -27,3 +27,27 @@
   clock: 2  # 7e45
   nonce: '7e45'  # 7e45
   message: "WORK DONE (decontend run 10032026, stage 8) on local branch jgstern-agent/fix/hilum, commits 179d46a25f (core overload_arity) + cbecfb65ae (cpp). Not pushed; integrator merges.\n\nMechanism: every cpp definition records meta[\"parameters\"] (ADR-0058 home; defaults from a separate prototype merged at registration); the name's pick is re-chosen among its same-named definitions by the call's argument count via hypergumbo_core.overload_arity (own file first, run-wide second). Several admitting = ambiguous record (resolution_quality=\"ambiguous\", conf x 1/sqrt(N)) except #if alternatives with one signature; none admitting = the name's pick stands. Not re-chosen: a non-callable pick (struct), and an explicit-receiver member call other than this-> (pimpl: the arity match there IS the caller -- 13 sites measured before the guard).\n\nFiled instance, live repro (reduced fixture of keyword-spotter-transducer-impl.h): dev draws InitKeywords@12 -> InitKeywords@12 (self) at the sibling call; branch draws -> InitKeywords(std::istream&)@5. On sherpa-onnx d7526c8 frozen copy: L300 and L314 (and the rknn twins L239/L253) no longer self-calls. L336 (inside the TEMPLATE InitKeywords(Manager*)) is STILL a self-call: WI-rugin names that member template unqualified, so it is not in the class's overload set.\n\nMeasured by call site (sherpa-onnx): 372 sites moved (20/20 sampled reach the right definition or an ambiguous set holding it), 185 same target now stamped ambiguous, self-call sites 998 -> 990 (9 false ones gone, 1 true recursion IsByteBPE added). 959 of the remaining 990 self-call sites are explicit-receiver member calls (pimpl impl_->X) -- a separate mechanism, filed as its own item.\n\nTests: test_cpp_overload_arity.py (11), test_overload_arity.py (core); board smart-test 13352 passed, 0 failed, 100% coverage on changed files.\nResiduals filed: WI-lamij-bafur-kutid-furut-kisob-lijap-muzod-majup (explicit-receiver/pimpl self-calls, P2), WI-jutur-tonul-buloj-toson-mijum-jozot-havok-pipih (same-arity overloads: argument shapes; field-chain path, P3). Note posted on WI-rugin (member-template naming hides L319 from the overload set)."  # 7e45
+- op: update  # 6d54
+  at: '2026-10-05T00:30:19Z'  # 6d54
+  by: agent  # 6d54
+  actor: jgstern_agent  # 6d54
+  clock: 3  # 6d54
+  nonce: 6d54  # 6d54
+  set:  # 6d54
+    status: done  # 6d54
+- op: discuss  # 0837
+  at: '2026-10-05T00:30:19Z'  # 0837
+  by: agent  # 0837
+  actor: jgstern_agent  # 0837
+  clock: 4  # 0837
+  nonce: '0837'  # 0837
+  message: "Merged in PR #1456 (dev 05fefe416b).\n\nFixed in PR #1456 (commits 179d46a25f, cbecfb65ae).\n- Behavior: in a reduced fixture of keyword-spotter-transducer-impl.h, dev emits `InitKeywords()@12 -> InitKeywords@12` (a self-call) for the `InitKeywords(is)` call. The branch emits `-> InitKeywords(std::istream &is)@5` (test `test_an_overload_calling_its_sibling_is_not_a_self_call`).\n- On sherpa-onnx d7526c8 the filed L300/L314 calls no longer self-call. 9 false self-calls are gone in total, and 372 call sites move (20/20 sampled now correct or honestly ambiguous).\n- The arity check exists for bare, `this->` and qualified calls. When arity cannot decide, the edge says `resolution_quality=\"ambiguous\"` at 1/sqrt(N).\n- NOT asserted: the title's general claim for explicit-receiver member calls (`impl_->f()`), which keep the name's pick (WI-lamij, P2).\n- L336 inside the template `InitKeywords(Manager*)` remains a self-call until WI-rugin qualifies member templates.\n- Argument-shape narrowing of same-arity overloads is WI-jutur (P3).\n\nIntegration: the first stage-8 integration run failed the scoped coverage gate on 13 new lines (elixir/nim/cpp); fixed by 1788619572 (tests + 3 justified pragmas) before merge."  # 0837
+- op: update  # 6388
+  at: '2026-10-05T00:30:21Z'  # 6388
+  by: agent  # 6388
+  actor: jgstern_agent  # 6388
+  clock: 5  # 6388
+  nonce: '6388'  # 6388
+  set: {}  # 6388
+  add:  # 6388
+    tags: [awaits_bakeoff_validation]  # 6388

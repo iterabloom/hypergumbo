@@ -24,3 +24,27 @@
   clock: 2  # eafc
   nonce: eafc  # eafc
   message: "WORK DONE (decontend run 10032026, stage 8) on local branch jgstern-agent/fix/hilum, commits 179d46a25f (core) + 2d40bce3fa (elixir). Not pushed.\n\nEach def/defp/defmacro clause records meta[\"parameters\"] (\\\\ default marked). A bare call reaches the clauses of the FUNCTIONS (qualified name, total arity) admitting its argument count (+1 for a |> left side, +1 for a do block not absorbed by a trailing keyword list); a bodiless head's defaults lower the required count for every clause of its arity; one-arity multi-clause fan-out is kept (livebook do_transform/4 still reaches all 12 clauses, correctly). No admitting local clause -> falls through to import/Kernel/cross-file paths. unquote_splicing -> unknown count, nothing excluded.\n\nFiled instance, live repro: dev get_timeout(opts, key) calling get_timeout() emits edges to BOTH clauses (/2 self-loop + /0); branch emits only the /0 clause.\n\nMeasured by call site: livebook c39254b 109 narrowed / 5 dropped, self-call sites 287 -> 251; phoenix d4440ac 83 narrowed / 28 dropped (all read: each calls an arity no local clause has), self-call sites 118 -> 68, resolved calls edges 7967 -> 5744.\n\nTests: test_elixir_call_arity.py (8); board smart-test 13352 passed, 0 failed, 100% coverage on changed files.\nNot filed, noted: the pre-existing bare-identifier pipe branch (x |> func, no parens) still reads binary_operator children[1]/[2] by position, so a comment between pipe stages hides it; the new arity path reads the operator by field."  # eafc
+- op: update  # 1393
+  at: '2026-10-05T00:30:19Z'  # 1393
+  by: agent  # 1393
+  actor: jgstern_agent  # 1393
+  clock: 3  # 1393
+  nonce: '1393'  # 1393
+  set:  # 1393
+    status: done  # 1393
+- op: discuss  # 18b1
+  at: '2026-10-05T00:30:19Z'  # 18b1
+  by: agent  # 18b1
+  actor: jgstern_agent  # 18b1
+  clock: 4  # 18b1
+  nonce: 18b1  # 18b1
+  message: "Merged in PR #1456 (dev 05fefe416b).\n\nFixed in PR #1456 (commits 179d46a25f, 2d40bce3fa).\n- Behavior: `get_timeout()` inside `get_timeout(opts, key)` emitted edges to both the /0 and /2 clauses on dev (a self-loop). It now emits only the /0 edge (`test_a_call_of_another_arity_is_not_a_self_loop`).\n- Defaults (`\\\\`, including a bodiless head), the pipe (+1), the do block (+1, unless absorbed by keywords) and `unquote_splicing` (unknown) are each pinned by a test.\n- A multi-clause function of one arity still fans out to all its clauses (livebook do_transform/4: 12 clauses, unchanged).\n- Measured: self-call sites on livebook went 287->251 and on phoenix 118->68. All 28 phoenix dropped sites were read; each calls an arity no local clause has.\n\nIntegration: the first stage-8 integration run failed the scoped coverage gate on 13 new lines (elixir/nim/cpp); fixed by 1788619572 (tests + 3 justified pragmas) before merge."  # 18b1
+- op: update  # 0f2d
+  at: '2026-10-05T00:30:22Z'  # 0f2d
+  by: agent  # 0f2d
+  actor: jgstern_agent  # 0f2d
+  clock: 5  # 0f2d
+  nonce: 0f2d  # 0f2d
+  set: {}  # 0f2d
+  add:  # 0f2d
+    tags: [awaits_bakeoff_validation]  # 0f2d
