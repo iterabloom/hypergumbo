@@ -46,7 +46,7 @@ _CASES = {
         "ipc_send", "ipc",
     ),
     # WI-potog: a Unix-domain connection is process-local (WI-baran's rule).
-    # Its TCP control is the strict xfail at the bottom of this file.
+    # Its TCP control is at the bottom of this file (WI-gajir).
     "unix_dial_fprintln": (
         'import (\n\t"fmt"\n\t"net"\n\t"os"\n)\n\nfunc F(p string) {\n'
         '\tcon, _ := net.Dial("unix", p)\n'
@@ -112,20 +112,15 @@ def test_taint_and_io_boundaries_agree(
     assert _writer_zones(tmp_path, repo, monkeypatch) == {zone}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "WI-gajir-hiral-havip-dosan-fapun-jufuk-mahum-hugih: the content flow "
-        "into fmt.Fprintln is collapsed with net.Dial's resource-naming-only "
-        "flow in the same zone and excluded with it"
-    ),
-)
 def test_a_tcp_dials_print_reaches_the_network_zone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """WI-potog's TCP control. io-boundaries already says ``net_send``; taint
-    reports NO flow, because the one collapsed finding for the ``network`` zone
-    is keyed on ``net.Dial``, a class-R row (WI-bulag)."""
+    """WI-potog's TCP control, fixed by WI-gajir. io-boundaries says
+    ``net_send``. Taint used to report NO flow: the content flow into
+    ``fmt.Fprintln`` and ``net.Dial``'s resource-naming flow (a class-R row,
+    WI-bulag) collapsed into one ``network`` finding that took
+    ``resource_naming_only`` from ``net.Dial`` alone, and the consumer
+    excluded the whole group. The two now stay separate rows."""
     repo = _repo(tmp_path, (
         'import (\n\t"fmt"\n\t"net"\n\t"os"\n)\n\nfunc F(a string) {\n'
         '\tcon, _ := net.Dial("tcp", a)\n'
@@ -133,3 +128,39 @@ def test_a_tcp_dials_print_reaches_the_network_zone(
     ))
     assert _write_boundaries(tmp_path, repo, monkeypatch) == {"net_send"}
     assert _writer_zones(tmp_path, repo, monkeypatch) == {"network"}
+    network = _network_verdict(tmp_path, repo, monkeypatch)
+    assert network["evidence_count"] == 1
+    assert network["evidence"][0]["sink_primitives"] == ["fmt.Fprintln"]
+    assert network["resource_naming_flows"] == 1
+
+
+def test_a_dial_alone_only_names_the_resource(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WI-gajir's control: a function whose only network sink is
+    ``net.Dial`` can only have told it WHICH host to reach, so the flow stays
+    excluded from the verdict and disclosed beside it."""
+    repo = _repo(tmp_path, (
+        'import (\n\t"net"\n\t"os"\n)\n\nfunc F() {\n'
+        '\tcon, _ := net.Dial("tcp", os.Getenv("API_KEY"))\n'
+        '\t_ = con\n}\n'
+    ))
+    network = _network_verdict(tmp_path, repo, monkeypatch)
+    assert network["verdict"] != "violated"
+    assert network["evidence_count"] == 0
+    assert network["resource_naming_flows"] == 1
+
+
+def _network_verdict(
+    tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> dict:
+    claims = tmp_path / "network.yaml"
+    claims.write_text(
+        "claims:\n  - id: network\n    text: t\n    constraint:\n"
+        "      taint_flow:\n        source_taint: host_secret\n"
+        "        prohibited_sink_zone: network\n"
+    )
+    out = _run(["verify-claims", str(repo), "--claims", str(claims),
+                "--format", "json"], tmp_path / "cache", monkeypatch)
+    (verdict,) = json.loads(out)["verdicts"]
+    return verdict

@@ -38,9 +38,10 @@ field's own docs below for what each value licenses.
 Both propagators return through :func:`collapse_unadjudicated_flows`
 (INV-karud): every ``structural`` / ``ddg_mixed`` finding is grouped one per
 situation — ``(taint_label, source_symbol, sink_zone, sanitized,
-source_boundary, analysis_method)`` — and the group's primitive names, sink
-symbols and sink call sites are carried as sorted tuples beside
-``collapsed_flow_count``. ``ddg`` findings pass through unchanged, since the
+source_boundary, analysis_method, resource_naming_only, trusted_sink)`` (the
+last two because the consumer excludes on them, WI-gajir) — and the group's
+primitive names, sink symbols and sink call sites are carried as sorted tuples
+beside ``collapsed_flow_count``. ``ddg`` findings pass through unchanged, since the
 walk earned their per-pair claim.
 
 Catalog Format
@@ -643,7 +644,8 @@ class TaintFlowFinding:
     #:
     #: So an unadjudicated finding is collapsed to one per situation —
     #: (taint_label, source_symbol, sink_zone, sanitized, source_boundary,
-    #: analysis_method) — and these tuples carry the full sets it stands for:
+    #: analysis_method, resource_naming_only, trusted_sink) — and these tuples
+    #: carry the full sets it stands for:
     #: "symbol S reads {source_primitives} and reaches zone Z via
     #: {sink_primitives}". Names are MODULE-QUALIFIED (clause a1: a reader must
     #: be able to confirm the match by catalogue lookup, and the emitted symbol
@@ -841,6 +843,17 @@ def collapse_unadjudicated_flows(
         ``ddg_mixed`` and ``structural`` are different facts about how hard the
         analysis looked, and INV-karud clause (a3) requires a reader to be able
         to tell them apart from the record.
+    ``resource_naming_only``, ``trusted_sink``
+        WI-gajir. The two per-SINK flags the consumer EXCLUDES on (WI-bulag's
+        class-R rows, WI-lukoz's ``trust_level: trusted``). Both reached the
+        record after this key was written and neither was added to it, so a
+        group took both from ``grp[0]`` alone: ``net.Dial("tcp", a)`` then
+        ``fmt.Fprintln(con, os.Getenv("API_KEY"))`` put the content flow and
+        net.Dial's resource-naming flow in one ``network`` group keyed on
+        net.Dial, and verify-claims confirmed "no secret reaches the network"
+        with 0 flows. In the other member order the excluded sink was counted
+        as evidence instead. A flag in the key is ALL-members by construction:
+        a group carries it only when every member does.
 
     ADJUDICATED FLOWS PASS THROUGH UNTOUCHED. ``ddg`` means the walk confirmed
     a reaching-def chain from the variable the source defines to a use at the
@@ -853,9 +866,13 @@ def collapse_unadjudicated_flows(
 
     THIS DOES NOT CHANGE ANY VERDICT. A claim verdict is a disjunction over its
     flows, and every filter the consumer applies — label, zone, ``sanitized``,
-    and the production-scope test, which reads ``source_symbol`` and nothing
-    else — tests a field that is in this key. So no group can be half-included,
-    and existence is preserved exactly.
+    ``resource_naming_only``, ``trusted_sink``, and the production-scope test,
+    which reads ``source_symbol`` and nothing else — tests a field that is in
+    this key. So no group can be half-included, and existence is preserved
+    exactly. A NEW per-finding filter in ``verify_taint_claim`` must add its
+    field here, or it re-opens WI-gajir: the scalars below are ``grp[0]``'s.
+    (``walk_blocked_by_values`` is the one filter that reads a UNION instead,
+    and it asks whether EVERY member carries the value, which is safe.)
     """
     slots: list[TaintFlowFinding | None] = []
     at: dict[tuple[Any, ...], int] = {}
@@ -867,6 +884,7 @@ def collapse_unadjudicated_flows(
         key = (
             f.taint_label, f.source_symbol, f.sink_zone,
             f.sanitized, f.source_boundary, f.analysis_method,
+            f.resource_naming_only, f.trusted_sink,
         )
         if key not in at:
             at[key] = len(slots)
