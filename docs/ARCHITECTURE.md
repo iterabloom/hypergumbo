@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **349** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 104 core, 4 CLI, 36 tracker)
-- **52270** symbols (functions, classes, methods)
-- **206687** edges by type:
-  - calls: 117792
-  - contains: 47936
-  - imports: 17047
-  - instantiates: 12155
-  - references: 8191
+- **350** Python modules (143 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 105 core, 4 CLI, 36 tracker)
+- **52495** symbols (functions, classes, methods)
+- **207566** edges by type:
+  - calls: 118314
+  - contains: 48146
+  - imports: 17119
+  - instantiates: 12189
+  - references: 8233
   - module_attr_ref: 1962
-  - other: 1604
+  - other: 1603
 
 ## Package Architecture
 
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 52270 Symbols + 206687 Edges + UsageContexts           │
+│  Output: 52495 Symbols + 207566 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -279,20 +279,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 10003.3 | ir.py |
-| `len` | external_symbol | 7700.0 | <external> |
-| `write_text` | external_symbol | 6948.0 | <external> |
-| `Span` | class | 6584.1 | ir.py |
-| `LinkerContext` | class | 3589.6 | registry.py |
-| `get` | external_symbol | 3320.0 | <external> |
-| `load_catalog` | function | 3236.5 | io_boundary.py |
-| `Edge.create` | method | 2427.3 | ir.py |
-| `str` | external_symbol | 2275.0 | <external> |
-| `Path` | external_symbol | 2249.0 | <external> |
-| `next` | external_symbol | 2179.0 | <external> |
+| `Symbol` | class | 10049.6 | ir.py |
+| `len` | external_symbol | 7718.0 | <external> |
+| `write_text` | external_symbol | 6982.0 | <external> |
+| `Span` | class | 6610.6 | ir.py |
+| `LinkerContext` | class | 3614.4 | registry.py |
+| `get` | external_symbol | 3342.0 | <external> |
+| `load_catalog` | function | 3244.5 | io_boundary.py |
+| `Edge.create` | method | 2430.9 | ir.py |
+| `str` | external_symbol | 2283.0 | <external> |
+| `Path` | external_symbol | 2256.0 | <external> |
+| `next` | external_symbol | 2185.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `append` | external_symbol | 1732.0 | <external> |
+| `append` | external_symbol | 1745.0 | <external> |
 | `main` | function | 1723.8 | cli.py |
 
 ## Pattern System
@@ -643,6 +643,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.multi_value_field_axis`**: Multi-value field axis declaration linter (WI-busij).
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
 - **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
+- **`hypergumbo_core.overload_arity`**: Choose among same-named callables by the call's argument count.
 - **`hypergumbo_core.partial_install_warnings`**: Runtime warnings for partial installations (ADR-0010 Item 8).
 - **`hypergumbo_core.pass_clock`**: Per-pass cost clock: a pass's wall time AND its own-thread CPU time.
 - **`hypergumbo_core.pass_metadata`**: Per-pass metadata lookup for the finalize stage (run-lifecycle:F1 /...
@@ -955,8 +956,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 411cb92b9eac
-  commit_count: 8094
+  commit: 9a2987a5da7b
+  commit_count: 8113
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
