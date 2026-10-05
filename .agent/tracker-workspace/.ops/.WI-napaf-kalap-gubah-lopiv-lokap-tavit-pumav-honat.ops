@@ -42,3 +42,12 @@
   clock: 4  # 7976
   nonce: '7976'  # 7976
   message: "Merged in PR #1456 (dev 05fefe416b).\n\nFixed in PR #1456 (commit 09f38364f8). A receiverless ruby `call` whose name no project symbol carries now emits `ruby:external:0-0:<name>:unresolved` (python's INV-foluz residual shape, javascript's WI-fahod), in method bodies, class bodies and at file level.\n\nBehavioural evidence, the filed repro re-run on the branch: `class App; def boot; puts \"x\"; has_many :y; end; end` emitted no calls edge at either line. It now emits `App#boot -> ruby:external:0-0:puts:unresolved` (line 3) and `-> ...:has_many:unresolved` (line 4). Production-path tests are in test_ruby_receiverless_unresolved.py (3 red before, 6 green after).\n\nThere is no local-binding refusal: a receiverless `call` node is always a send to self in Ruby. `super(...)`, bare identifiers (`puts` with no args, `params`), AMB-METHOD names, untyped variable receivers and recursion stay silent and are filed as WI-misir-runir-danil-sugad-vovan-kotid-nipav-rabim.\n\nCorpus A/B by call site:\n- postal +2,330, chatwoot +6,442, mastodon +20,520 call sites;\n- 0 removed and 0 non-placeholder changes;\n- 0 io tags in either arm (ruby ships no catalogue).\n\nWI-javaf's short-name hazard: in Ruby the reach is the wanted one (Kernel methods are ambient). A shadowing project method resolves first, which is pinned through classify_call with a Kernel overlay row. The general claim \"every ruby call site emits an edge\" is NOT asserted."  # 7976
+- op: update  # 4d2c
+  at: '2026-10-05T00:30:20Z'  # 4d2c
+  by: agent  # 4d2c
+  actor: jgstern_agent  # 4d2c
+  clock: 5  # 4d2c
+  nonce: 4d2c  # 4d2c
+  set: {}  # 4d2c
+  add:  # 4d2c
+    tags: [awaits_bakeoff_validation]  # 4d2c
