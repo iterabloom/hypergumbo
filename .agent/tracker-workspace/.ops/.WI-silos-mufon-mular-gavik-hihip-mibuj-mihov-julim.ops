@@ -33,3 +33,18 @@
   clock: 3  # b657
   nonce: b657  # b657
   message: "From WI-hojib + WI-tagir (branch jgstern-agent/fix/hojib, commits on top of 41fd9834a6, not merged). The recall loss measured here, re-measured with silos's method (4 frozen repos, call-site rows, arm A = origin/dev 385ec63be1, S = this branch 41fd9834a6, B = silos+hojib):\n\n- Of the 272 call sites where S asserts less than A (a resolved edge, a filled slot or a hint removed), B restores A's exact rows at 141. Sites: vapor 11/48, hummingbird 4/33, Kingfisher 25/32, Alamofire 101/159. A read of 20 random restored sites found 20 right.\n- At 121 sites B keeps S's rows. A read of 30 random kept sites found:\n  - 13 wrong stamps correctly staying removed;\n  - 11 right stamps still lost, all through closure parameters (WI-zobif), case payloads / tuples (WI-rajig), collection elements (WI-bodav), or closure-result typing;\n  - 6 unclear.\n- At 10 sites B has a third state, read and all right.\n- Kingfisher io-boundaries total_io_edges: 63 (A) -> 60 (S) -> 68 (B). The 3 lost FileManager chains return; 0 catalogued chains are lost on any of the 4 repos.\n\nRecord: ~/hypergumbo_lab_notebook/decontend/run_10032026/hojib.md."  # b657
+- op: update  # bc85
+  at: '2026-10-05T04:40:56Z'  # bc85
+  by: agent  # bc85
+  actor: jgstern_agent  # bc85
+  clock: 4  # bc85
+  nonce: bc85  # bc85
+  set:  # bc85
+    status: done  # bc85
+- op: discuss  # 9f24
+  at: '2026-10-05T04:40:56Z'  # 9f24
+  by: agent  # 9f24
+  actor: jgstern_agent  # 9f24
+  clock: 5  # 9f24
+  nonce: 9f24  # 9f24
+  message: "Merged in PR #1459 (dev ecbb226a0d).\n\nWI-silos is fixed on branch `jgstern-agent/fix/silos`, commit 41fd9834a6.\n\nThe swift binding pass now records every declaration, typed or not, in its scope, and the innermost visible binding decides. if/while/for/catch/switch-case and every `statements` block are scopes.\n\nBehavioral evidence (tests in `test_swift_untyped_binding_shadows.py`, red on dev 385ec63be1):\n- The item's fixture `func go(s: FileManager...) { let s = s.makeSession(store); s.dataTask(with: u) }`:\n  - dev: `swift:FileManager:0-0:dataTask:unresolved`\n  - branch: `swift:external:0-0:dataTask:unresolved`, receiver_type_hint None\n  - the initialiser's `s.makeSession` stays FileManager.\n- The hummingbird URI.swift:46-47 shape: the unannotated closure parameter `query` no longer takes the outer `guard var query`'s type.\n- A binding inside an if/for/do/switch body no longer types a same-named receiver after the block or in the `else`.\n\nMeasured A/B on 4 frozen repos: calls totals unchanged; 375 sites change, almost all stamp removals. Read-back shows most removed stamps were right only by name coincidence, so this is a recall loss. Kingfisher loses 3 catalogued FileManager fs chains (63→60 io edges) through `config.fileManager` (WI-hojib, WI-sizas). Wrong stamps removed concentrate in closure parameters, `[T]` parameters and loop variables.\n\nThe general claim (every Swift receiver name resolves at its position) is NOT asserted. Residuals: WI-tagir (the file-level map pools every type's properties), WI-sajol (capture lists), implicit newValue/oldValue/error (WI-rajig)."  # 9f24
