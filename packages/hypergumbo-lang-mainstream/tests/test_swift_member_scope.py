@@ -247,3 +247,18 @@ def test_a_requirement_of_an_associated_type_names_no_type(tmp_path: Path) -> No
     ))
     assert _hint(edges, "respond") is None
     assert _hint(edges, "fileExists") == "FileManager"
+
+
+def test_self_outside_any_type_names_no_member(tmp_path: Path) -> None:
+    """``self.store`` in a free function has no enclosing type to be a member
+    of: the global ``store`` is NOT what ``self.store`` reads."""
+    edges = _edges(tmp_path, (
+        "import Foundation\n"
+        "let store = URLSession.shared\n"
+        "func free() {\n"
+        "    self.store.zap()\n"
+        "    store.zop()\n"
+        "}\n"
+    ))
+    assert _hint(edges, "zap") is None
+    assert _hint(edges, "zop") == "URLSession"
