@@ -2,7 +2,7 @@
 # ADR-0017: Taint-Zone Dataflow Analysis
 
 Date: 2026-03-22
-Status: Partially superseded by ADR-0037 (§3a: the `:unresolved` dst kind token), ADR-0038 (the `dest_access_mode` reliance), ADR-0052 (§3a's removal-COVERAGE ambition; the removal capability stays in force); core STRUCTURAL taint analysis in force. Per-subsection implementation state: **§3a** the DDG walk runs and adjudicates — it removes a flow whose walk returns `unconfirmed` (WI-kabif, PR #716) — and is confirm-only in practice (ADR-0052: measurement 0007 found the `unconfirmed` population empty on an 11-repo corpus); **§3c–3d** mixed-coverage verdicts live; **§4b** declared summaries live (declared terminating entries reach `_use_site_terminates`; the catalogue's size is deliberately not pinned here); **§4a** inferred summaries implemented but unwired (`infer_summary` has zero production callers, and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite implemented but unwired (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it, so the two are named separately. See Phased Implementation for anchor commits
+Status: Partially superseded by ADR-0037 (§3a: the `:unresolved` dst kind token), ADR-0038 (the `dest_access_mode` reliance), ADR-0052 (§3a's removal-COVERAGE ambition; the removal capability stays in force); core STRUCTURAL taint analysis in force. Per-subsection implementation state: **§3a** the DDG walk runs and adjudicates — it removes a flow whose walk returns `unconfirmed` (WI-kabif, PR #716) — and is confirm-only in practice (ADR-0052: measurement 0007 found the `unconfirmed` population empty on an 11-repo corpus); **§3c–3d** mixed-coverage verdicts live; **§4b** declared summaries live (declared terminating entries reach `_use_site_terminates`; the catalogue's size is deliberately not pinned here); **§4c** return flow into callers live, by lifting the caller's call site into a source (INV-komoj); **§4a** inferred summaries implemented but unwired (`infer_summary` has zero production callers, and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite implemented but unwired (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it, so the two are named separately. See Phased Implementation for anchor commits
 
 > **Two pieces of this ADR are governed elsewhere.** (a) The `:unresolved` kind token in the dst shape §3a's sink matching and refinement pass read (`{lang}:external:0-0:{name}:unresolved`) folds into `external_symbol` on the final graph (ADR-0037 ruling 4); the refinement pass reads the resolution verdict from `Edge.is_resolved`, not from the kind slot. Sink matching still parses the callee name and module from the `dst` string, because `dst_ref` is `None` by construction on resolved edges and on edges whose module is the `"external"` sentinel (ADR-0037; WI-lonad). (b) The §"Interaction with ADR-0015 `access_mode` metadata" subsection's reliance on `dest_access_mode` is superseded by ADR-0038: `dest_access_mode` is removed, and bridge direction is the `data_direction` meta key.
 
@@ -784,6 +784,44 @@ summaries:
     side_effect: true                   # Sink — writes to filesystem
 ```
 
+#### 4c. Return flow into callers (the `source_to_return` direction)
+
+**Implemented** (INV-komoj), and not as an inferred summary: §4a stays unwired. A value a function RETURNS is followed into its callers by lifting the call, not by a second walk.
+
+Inclusion (§3b) runs a call-graph BFS FORWARD from the function that reads a source, so a sink in a CALLER of that function is outside the reachable set. Without the lift, `def get(): return os.getenv("K")` with `send(get())` in the caller reads as a qualified clean (`confirmed_with_caveats`), where the same flow written inline reads `violated`.
+
+The lift (`taint._lift_returned_sources`, shared by both propagators): when function F's return statement carries the value a source call in F defines, each call G makes to F is the point where that value enters G, which is what a source call site is. `(G, F, source)` joins the propagators' source call sites, and the forward BFS, the §3a walk in G (seeded on what G's call to F defines), the sanitizer barrier and the INV-karud collapse then decide the flow exactly as they decide a direct read. G may itself return the value, so the lift repeats from G.
+
+"F's return carries the value" is decided positively, two ways:
+
+1. **The source call sits inside one of F's return statements** (`return os.getenv("K")`). This needs no reaching-def data, so the structural arm asks it too. It is the filed instance: the helper defines nothing and has no DDG edge at all.
+2. **The §3a walk over F, with F's return lines as its targets, returns `True`.** This is the same walk, with the same INV-fumod inheritance rule, that decides whether a value reaches a sink argument.
+
+An `escaped` walk lifts nothing. That is a deliberate false-negative residual: lifting on ignorance would seed every caller of every function a source value merely passed through.
+
+Not a return of the value:
+
+- A return statement that also calls an I/O primitive other than the source (`return os.path.exists(os.getenv("P"))`). This is INV-fumod's rule: a result from the far side of a boundary is not a computation on the argument.
+- A return statement that calls a sanitizer for the label. The walk's routes treat the label's sanitizer lines as barriers too.
+- A source whose entry says `return_tainted: false`, and a callee-seeded (`start_at: callee`) source.
+- A `return` inside a nested callable. Each function's own return statements, with their full line extents, are read from the AST (`ddg_build.return_statement_spans`), stopping at every node that opens a callable scope. The CFG cannot be used for this: it descends into nested callables and records only start lines.
+
+The lifted seed's BFS omits the call the value came out of, when G calls F on exactly one line. A value a call returns cannot be that call's argument (`_source_and_sink_are_one_call`'s rule, INV-lozat), and that edge leads only to F's own sinks, which F's own read already reports.
+
+The machinery's existing limits apply unchanged:
+
+- Callers are the edges the forward BFS walks (`_is_taint_call_edge`).
+- There is no depth bound, because the BFS has none.
+- Recursion ends on a visited set: each `(caller, callee, source)` is lifted once, by the shortest chain.
+
+A finding reached this way names the functions in `source_returned_by`. These are the functions whose return carried the value to `source_symbol`, sorted, and unioned on a collapsed row. The field is on `TaintFlowFinding` and on the verify-claims evidence row.
+
+**Coverage by language.** Tested with a helper that returns a source and a caller that passes the value to a sink:
+
+- **Lifts:** Python, Go, Java, C, JavaScript and TypeScript function declarations, and Rust's explicit `return`.
+- **Does not lift:** expression-bodied callables, because nothing in them is a return statement. This covers Rust tail expressions (`fn get() -> String { env::var("K").unwrap() }`), JavaScript and TypeScript arrow expression bodies (`() => process.env.K`), and Python lambdas.
+- **Never lifts:** languages without a registered DDG spec. Neither arm has return spans for them.
+
 ### 5. Cross-language taint propagation
 
 Hypergumbo's existing linkers create edges across language boundaries: `wasm_bindgen`, `tauri_ipc`, `napi`, `grpc`, `pyffi`. Taint propagation extends through these edges using the function-summary mechanism:
@@ -901,7 +939,7 @@ Verdicts become more precise:
 
 - **Path sensitivity.** The solver does not track which branch conditions hold at each point. It knows that `encrypt()` is on one path and `send()` is on another, but it does not prove they are mutually exclusive. Overapproximation (false positives) is preferred over underapproximation (missed violations).
 
-- **Whole-program analysis.** The solver is intraprocedural + function summaries. It does not build a whole-program DDG. This bounds both cost and complexity.
+- **Whole-program analysis.** The solver is intraprocedural + function summaries. It does not build a whole-program DDG. This bounds both cost and complexity. A value RETURNED to a caller is followed by lifting the caller's call site into a source (§4c), not by a whole-program walk.
 
 - **Dynamic dispatch precision.** If a method call resolves to multiple candidates (virtual dispatch), all candidates' summaries are unioned. This is sound (no missed flows) but imprecise (may report flows that cannot actually happen).
 
