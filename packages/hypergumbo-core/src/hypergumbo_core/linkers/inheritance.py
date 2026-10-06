@@ -589,7 +589,7 @@ def _create_inheritance_edges(
 
 @register_linker(
     "inheritance-linker",
-    priority=15,  # Before type_hierarchy (priority 20)
+    priority=15,  # Before type_hierarchy (priority 60)
     # CNF: the analyzers that actually write the two Symbol.meta keys this
     # linker reads — ``base_classes`` and ``included_modules`` — enumerated
     # from their sources rather than from which languages have inheritance

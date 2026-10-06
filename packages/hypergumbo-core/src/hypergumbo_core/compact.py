@@ -15,10 +15,12 @@ between them based on the requested output mode:
   capture a target percentage of total centrality mass. Adapts to
   the codebase's centrality distribution (concentrated codebases
   need fewer items; flat codebases need more).
-- ``select_by_tokens`` — token-budget tier mode. Emits multiple
-  successively-larger views (``DEFAULT_TIERS`` = 4k / 16k / 64k by
-  default; configurable via ``--tier``). ``format_tiered_behavior_map``
-  + ``generate_tier_filename`` materialize the multi-tier output.
+- Token-budget tier mode emits successively-larger views
+  (``DEFAULT_TIERS`` = 4k / 16k / 64k by default; configurable via
+  ``--tier``). ``format_tiered_behavior_map`` + ``generate_tier_filename``
+  materialize them, selecting each tier with ``select_by_connectivity``.
+  ``select_by_tokens``, the earlier centrality-only selector, is kept but has
+  no production caller.
 - ``select_by_connectivity`` — UnionFind / frontier algorithm that
   prefers component-bridging edges, so the included subgraph is
   connected rather than a disjoint top-N. Seeded with
@@ -32,17 +34,21 @@ between them based on the requested output mode:
 
 Pre- and post-selection passes
 ------------------------------
-- Entrypoints are force-included above the confidence threshold (0.7)
-  before budget enforcement, then capped to keep the entry-point
-  bucket from dominating.
+- Seeds are force-included before budget enforcement. The default compact
+  path seeds entrypoints first, then cross-cutting endpoints, under one quota
+  of half the symbol budget. The tiered path force-includes entrypoints at
+  confidence >= 0.7, capped at half the tier's estimated capacity.
 - Filters: test / example / external-boundary symbols are dropped
   via ``selection.filters`` (consuming ``EXCLUDED_KINDS`` /
   ``EXCLUDED_FRAMEWORK_ROLES`` via the ``is_excluded_kind`` dual-shape
   predicate, per ADR-0027 Phase 3 Wave 5).
-- Name-deduplication for repeated-symbol cases.
-- Post-selection victim removal enforces the final budget, guarded by
-  ``_VICTIM_REMOVAL_EXCLUDE_DAMPENERS`` so structurally-important
-  symbols aren't dropped by accident.
+- Name-deduplication (``deduplicate_names``) exists only in
+  ``select_by_tokens``, so no production path applies it.
+- Post-selection victim removal enforces a tier's final budget. Edgeless
+  symbols go first, then non-forced ones, then the lowest centrality, where
+  centrality is computed without the selection-time dampeners
+  (``_VICTIM_REMOVAL_EXCLUDE_DAMPENERS``) so those signals do not propagate
+  into post-budget pruning.
 
 Residual summarization
 ----------------------
@@ -50,6 +56,7 @@ Omitted items are summarized with cheap extractive signals:
 - Word frequency on symbol names (bag-of-words)
 - File path pattern analysis
 - Kind distribution (functions, classes, methods)
+- Supply-chain tier distribution (``tiers``, keyed by ``supply_chain_tier``)
 
 Example output (the omitted-residual summary, ``OmittedSummary.to_dict``):
     {
@@ -59,7 +66,7 @@ Example output (the omitted-residual summary, ``OmittedSummary.to_dict``):
       "top_words": [{"word": "test", "count": 42}, {"word": "mock", "count": 30}],
       "top_paths": [{"pattern": "tests/", "count": 55}, {"pattern": "vendor/", "count": 21}],
       "kinds": {"function": 900, "class": 200, "method": 100},
-      "tiers": {"4000": 12, "16000": 40, "64000": 148}
+      "tiers": {"1": 1100, "2": 60, "3": 40}
     }
 
 Why Bag-of-Words

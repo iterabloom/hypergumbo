@@ -66,7 +66,7 @@ bugs. Over 65,187 external refs on a 21-repo, 10-language cold cohort, 7.8% of
 slots are not a single module identity.
 
 The producer surface says the same thing in a different way: 54 ``ExternalRef``
-construction sites across 20 analyzers, and the local feeding ``module_path`` is
+construction sites across 22 analyzers, and the local feeding ``module_path`` is
 variously ``path_hint``, ``module_hint``, ``module_name``, ``mod``, ``hint``,
 ``ns``, ``pkg``, ``receiver_name``, ``wildcard_module`` and the literal
 ``"redirect"``. No two analyzers call the thing the same name.
@@ -86,7 +86,7 @@ from typing import Final
 
 #: The axiom, as one sentence, so a consumer can quote it without
 #: re-deriving it from prose. Cited by ADR-0051 and by WI-virav's
-#: annotation sweep over the ~18-item pile.
+#: annotation sweep over the 20-item pile.
 MODULE_KEY_AXIOM: Final[str] = (
     "The module key names the STATIC OWNER PATH of the called symbol -- the "
     "namespace or type in which it is DEFINED, spelled in the source "

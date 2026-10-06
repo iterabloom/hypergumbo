@@ -2,18 +2,19 @@
 """Python dependency manifest parsing for ``pyproject.toml`` projects.
 
 Parallel of ``jvm_deps.py`` for Python. Extracts declared dependencies from
-``pyproject.toml`` so that ``ir.create_boundary_nodes`` can classify
-unresolved Python imports as tier 2 (direct dependency the project
-declares) vs tier 3 (indirect / stdlib / unknown).
+``pyproject.toml`` so that ``ir.create_boundary_nodes`` can stamp an
+unresolved Python import's boundary node ``meta["directness"]`` as a direct
+dependency the project declares, or not. Every boundary node is tier 3
+(ADR-0041 §1 made tier 3 the sole external tier and moved direct/transitive
+onto the ``directness`` stamp); this module does not change tiers.
 
 Why
 ---
-Without a manifest, every Python boundary node falls back to tier 3.
-On a Python-heavy repo with hypergumbo's own pyproject (``click``,
-``rich``, ``pydantic``, …) every direct dep is the same tier-3 as some
-deep transitive thing — sketch / slice ranking and dead-code analysis
-can't distinguish the project's own pinned deps from arbitrary externals
-(WI-nunuj).
+Without a manifest, no Python boundary node can be called direct. On a
+Python-heavy repo with hypergumbo's own pyproject (``click``, ``rich``,
+``pydantic``, …) every direct dep would read the same as some deep transitive
+thing — sketch / slice ranking and dead-code analysis can't distinguish the
+project's own pinned deps from arbitrary externals (WI-nunuj).
 
 Sources parsed
 --------------
@@ -52,7 +53,7 @@ Stdlib carve-out
 The single-source ``python.yaml`` ``stdlib_modules`` catalog (ADR-0041 §3,
 via ``io_boundary.load_catalog("python").is_stdlib_module``) filters the
 resolved import-name set. A user who declares ``os`` (or any other stdlib
-name) in ``pyproject.toml`` won't accidentally promote it to tier 2. This is
+name) in ``pyproject.toml`` won't accidentally have it stamped direct. This is
 the SAME stdlib recognizer the supply-chain ecosystem classifier uses — one
 source, not the live interpreter's ``sys.stdlib_module_names`` (which would
 be a second, version-drifting source the §3 single-source constraint forbids).

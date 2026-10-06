@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""ADR-0047 rulings 3 and 4 — a findable home for the user's catalogue data,
-created only when the user asks for it.
+"""ADR-0047 rulings 3 and 4: a findable home for the user's catalogue data.
+
+The home is created only when the user asks for it, and read on every run.
 
 WHY THIS MODULE EXISTS. The registry (ADR-0047 ruling 7) already records which
 catalogue families are user-extensible and what each one's overlay directory is
@@ -21,8 +22,10 @@ command. :func:`materialize_catalogue_home` therefore seeds from the shipped
 OVERLAY directory and never from the catalogue directory, and a test pins the
 two sets disjoint rather than trusting this paragraph.
 
-**Explicit, never implicit (ruling 4).** Nothing here is called during
-analysis. ADR-0045's precedent is a human-owned config file the tool may read
+**Explicit, never implicit (ruling 4).** Nothing here WRITES during analysis:
+:func:`materialize_catalogue_home` runs only from ``init-catalogs``. The read
+side (:func:`user_channel_files`, :func:`user_overlay_paths`) is called by the
+loaders during every analysis. ADR-0045's precedent is a human-owned config file the tool may read
 and must not write, and silently creating files in someone's config directory on
 first invocation is the surprise that precedent exists to avoid. Default-on
 loading does not need materialization either: the shipped overlays load from the
@@ -158,9 +161,10 @@ def user_channel_files(
 ) -> "list[Path]":
     """Every YAML in the user's channel for ``family``, sorted, lowest first.
 
-    THE ONE PLACE THAT TURNS A REGISTRY ANSWER INTO A DIRECTORY LISTING. Three
-    loaders need it (io_primitives, frameworks, dataflow_patterns) and a fourth
-    will; writing the join four times is how the four drift apart. The channel
+    THE ONE PLACE THAT TURNS A REGISTRY ANSWER INTO A DIRECTORY LISTING. The
+    frameworks, dataflow_patterns, function_summaries and library_signatures
+    loaders and the taint channels all call it; writing the join once per
+    loader is how the loaders drift apart. The channel
     NAME is the registry's (``<family>.d``), not a string built here, so a
     family whose channel is renamed cannot leave one loader reading the old
     directory.

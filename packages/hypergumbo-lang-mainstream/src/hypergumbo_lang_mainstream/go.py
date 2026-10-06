@@ -15,7 +15,8 @@ This analyzer uses tree-sitter to parse Go files and extract:
   ``var`` initializer (a cobra ``Run:`` literal, ``var logger = log.New(...)``)
 - Function references in struct literal fields (cobra, http dispatch), and
   known functions passed as call arguments (``calls`` edges with
-  ``evidence_type="function_reference_arg"``, confidence 0.70;
+  ``evidence_type="function_reference_arg"``; confidence 0.70 x the target's
+  for a function in another file, the default for a same-file hit or a method;
   ``_extract_function_reference_edges``)
 - Import relationships (import statements)
 - ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
@@ -45,8 +46,9 @@ How It Works
      ``var`` declarations, function parameters and method receivers
      (e.g., in ``func foo() { s := &Server{} }``, s has type Server only in foo)
    - When resolving ``s.Method()``, looks up ``Server.Method``; if that
-     misses, a tracked local receiver gets an unresolved edge (the package
-     slot when the type is external) rather than a short-name fallback,
+     misses, a tracked local receiver gets an unresolved edge (its module
+     slot is the import path plus the type, e.g. ``net/http.Client``, when the
+     type is external) rather than a short-name fallback,
      preventing incorrect disambiguation when multiple types define the
      same method name
    - The return-type registry (``Type.Method`` or function name -> return
@@ -211,14 +213,17 @@ A SELECTOR FUNCTION REFERENCE IS RESOLVED BY ITS OPERAND (WI-kibah,
 ``Command{RunE: o.Run}`` used to ask the repo-wide resolver for the field name
 alone, so ``reg(http.NotFound)`` bound a repo function ``NotFound`` at 0.70.
 Now an import operand resolves in that package only, a typed operand to its
-type's method, a type operand to its method (a method expression), anything
-else to nothing. A package hint is also checked on the call arm's resolved
+type's method, a type or pointer-type operand to its method (a method
+expression, ``(*T).m``), a composite-literal operand (``(&T{}).M``) to its
+type's method, anything else to nothing. A package hint is also checked on the call arm's resolved
 emit (``_go_in_hinted_package``): among two or more same-named candidates the
 resolver falls back to the path-sorted first when the hint matches none, and
-``http.Get(u)`` bound a repo ``Get``. A typed receiver's ``Type.Method`` is
-taken from the TYPE's package (``_go_method_of_type``): symbols are keyed with
-an unqualified type, so every package's ``SDConfig.UnmarshalYAML`` shared one
-key and the first was bound whatever the receiver's package.
+``http.Get(u)`` bound a repo ``Get``. A typed local's or method value's
+``Type.Method`` is taken from the TYPE's package (``_go_method_of_type``):
+symbols are keyed with an unqualified type, so every package's
+``SDConfig.UnmarshalYAML`` shared one key and the first was bound whatever the
+receiver's package. The field-chain and chained-return-type arms do not use it
+yet: they still take the first global candidate for the bare key.
 
 A PACKAGE-LEVEL FUNCTION ALIAS CONTINUES (WI-labik, 2026-10-03). ``var
 NewWebhook = testutils.NewWebhook`` gets ``calls`` variable -> function

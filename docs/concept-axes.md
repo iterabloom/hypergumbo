@@ -599,7 +599,7 @@ The callable's parameter-and-return surface, preserved verbatim for a reader. Th
 
 A fact that is real and worth having but is not a signature, so the slot is answering a question the symbol did not ask. Each one names the declared home it belongs in; see the fact-home table below.
 
-- **`value_type`** — The declared type of a symbol that is NOT callable -- a field or a variable: 'int', 'list[Edge]', "'Mapping[str, str]'", "&'static str". 1,911 of 38,573 populated slots (4.95%): 1,886 fields and 25 variables; python 1,817, rust 49, typescript 35, and single digits in java, swift, csharp, go, solidity. Non-conformant: a field has no signature, so the slot is answering a question the field did not ask. The fact is real and worth having -- its home is FileAnalysis.class_field_types, which csharp and cpp populate.
+- **`value_type`** — The declared type of a symbol that is NOT callable -- a field or a variable: 'int', 'list[Edge]', "'Mapping[str, str]'", "&'static str". 1,911 of 38,573 populated slots (4.95%): 1,886 fields and 25 variables; python 1,817, rust 49, typescript 35, and single digits in java, swift, csharp, go, solidity. Non-conformant: a field has no signature, so the slot is answering a question the field did not ask. The fact is real and worth having -- its home is FileAnalysis.class_field_types, which csharp, cpp, go, rust and swift populate.
 
 ### `pending_classification` — per-value audit pending
 
@@ -614,8 +614,8 @@ A consumer needing one of these reads its home. The nine that parse the string i
 
 | Fact | Declared home | Populated by |
 | --- | --- | --- |
-| `return_type` | `FileAnalysis.method_return_types` | go, rust, swift, objc |
+| `return_type` | `FileAnalysis.method_return_types` | go, rust, scala, swift, objc |
 | `parameter_arity` | `Symbol.meta["parameters"] / Symbol.meta["params"]` | 18 analyzers, including py.py, cpp, elixir and nim |
-| `value_type` | `FileAnalysis.class_field_types` | csharp, cpp |
+| `value_type` | `FileAnalysis.class_field_types` | csharp, cpp, go, rust, swift |
 
 **Closed parser set.** 8 consumers parse the value and are grandfathered by the 2026-09-21 owner ruling; `signature_axis.find_undeclared_value_parsers` fails on any site not among them. Adding one is a decision, and that gate is where it gets made. The count may only go DOWN — it was 9 at declaration and each drop is one language reading its declared home instead.

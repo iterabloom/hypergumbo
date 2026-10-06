@@ -11,16 +11,22 @@ ADR-0017 §1c Phase 2:
 - Field writes (``self.field = expr``) — treated as mutation of ``self``
 - Index writes (``data[idx] = val``) — treated as mutation of ``data``
 - ``for`` loops (``for item in iter``)
-- ``if let`` / ``match`` arm bindings
+- ``if let`` / ``while let`` / let-chains and ``match`` arm bindings
 - ``return`` expressions
-- Closure parameters (conservative: all captured vars are uses)
+- Writes through a dereference (``*y = expr``)
+- Closures: every identifier the body reads is a use of the statement that
+  creates the closure, except the closure's own parameters. The body itself
+  is built as its own CFG region (``nested_function`` in
+  ``cfg_nodes/rust.yaml``), so its bindings never define the outer variables.
 
 The ``?`` operator is handled at the CFG level (dual control-flow edges
-via the ``early_return_on_error`` semantic hook). The extractor treats
-the Ok-side binding as a simple ``let`` define.
+via the ``early_return`` hook, ``semantics: return_on_err``, in
+``cfg_nodes/rust.yaml``). The extractor treats the Ok-side binding as a
+simple ``let`` define.
 
-Hard patterns (borrow alias tracking, ``ref``/``ref mut`` in match arms,
-macro invocation analysis) were addressed in Phase 2b (WI-bifog).
+``ref``/``ref mut`` match-arm patterns and macro invocation arguments were
+addressed in Phase 2b (WI-bifog). Borrow aliasing is not tracked: a write
+through one reference does not define the variable it borrows.
 """
 from __future__ import annotations
 

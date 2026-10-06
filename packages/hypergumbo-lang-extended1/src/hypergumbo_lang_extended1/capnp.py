@@ -15,9 +15,9 @@ gracefully degrades and returns an empty result.
 How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
-1. Parse all .capnp files and extract symbols
-2. Detect import statements and create import edges
-3. Create contains edges from interfaces to their methods
+1. Pass 1: parse all .capnp files and extract symbols
+2. Pass 2: create import edges and interface-to-method ``contains`` edges,
+   both built by one shared helper
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Cap'n Proto-specific

@@ -55,7 +55,7 @@ judgment" carveout permits, already used by :mod:`qualified_name_axis` and
 
 THE FACTS INSIDE HAVE HOMES, AND THIS IS THE ACTIONABLE HALF. A return type
 lives in ``FileAnalysis.method_return_types`` -- the language-neutral registry
-that go, rust and swift populate in Pass 1 and that the base analyzer
+that go, rust, scala and swift populate in Pass 1 and that the base analyzer
 aggregates across files into ``_method_return_type_registry`` (objc keeps a
 same-shaped registry on its own ``FileAnalysis``) -- or in the
 registered ``return_type`` / ``inferred_return_type`` meta keys, which java,
@@ -215,7 +215,8 @@ SIGNATURE_NOTIONS: Final[tuple[SignatureNotion, ...]] = (
             "solidity. Non-conformant: a field has no signature, so the "
             "slot is answering a question the field did not ask. The fact "
             "is real and worth having -- its home is "
-            "FileAnalysis.class_field_types, which csharp and cpp populate."
+            "FileAnalysis.class_field_types, which csharp, cpp, go, rust "
+            "and swift populate."
         ),
         emission_sites=(
             CitedSite(
@@ -252,7 +253,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
         line=301,
         anchor="method_return_types: dict[str, str]",
         home="FileAnalysis.method_return_types",
-        populated_by=("go", "rust", "swift", "objc"),
+        populated_by=("go", "rust", "scala", "swift", "objc"),
         note=(
             "INV-dihos / WI-kuroj. Aggregated across files by the base "
             "analyzer into _method_return_type_registry, with library rows "
@@ -292,7 +293,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
         line=263,
         anchor="class_field_types: dict[str, dict[str, str]]",
         home="FileAnalysis.class_field_types",
-        populated_by=("csharp", "cpp"),
+        populated_by=("csharp", "cpp", "go", "rust", "swift"),
         note=(
             "Aggregated into _field_type_registry beside the return-type "
             "one, first writer wins. This is the home for the 1,911 slots "

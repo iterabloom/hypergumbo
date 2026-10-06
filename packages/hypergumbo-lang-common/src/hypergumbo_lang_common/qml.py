@@ -8,11 +8,9 @@ How It Works
 ------------
 Regex-based extraction (no tree-sitter grammar available on PyPI):
 1. Find all .qml files
-2. Extract component definitions (root element type)
-3. Extract property declarations
-4. Extract signal declarations
-5. Extract JavaScript function definitions
-6. Extract id declarations
+2. Scan each file once, line by line. The first pattern that matches a line
+   wins, in this order: component definition (root element type), property
+   declaration, signal declaration, JavaScript function, id declaration
 
 Symbols Extracted
 -----------------

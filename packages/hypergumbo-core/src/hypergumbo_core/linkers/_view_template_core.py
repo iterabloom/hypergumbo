@@ -64,7 +64,7 @@ class TemplateCandidate:
 
 @dataclass(frozen=True)
 class TemplateRenderEmission:
-    """A potential renders-edge: one action symbol + ordered candidates.
+    """A potential action-to-template edge: one action symbol + ordered candidates.
 
     Strategies yield emissions; the core filters by filesystem existence and
     emits an edge for every candidate that actually exists. A single action
@@ -102,7 +102,7 @@ class TemplateStrategy(ABC):
 
     @abstractmethod
     def find_emissions(self, ctx: LinkerContext) -> Iterator[TemplateRenderEmission]:
-        """Yield candidate ``renders`` emissions for this strategy's framework."""
+        """Yield candidate template-render emissions for this strategy's framework."""
 
 
 class MethodNameStrategy(TemplateStrategy):
@@ -247,7 +247,7 @@ class ExplicitStringStrategy(TemplateStrategy):
 def link_via_strategies(
     ctx: LinkerContext, strategies: Sequence[TemplateStrategy]
 ) -> LinkerResult:
-    """Run each strategy, probe candidates, emit ``renders`` edges + symbols.
+    """Run each strategy, probe candidates, emit ``references`` edges + symbols.
 
     Args:
         ctx: Linker context (provides ``repo_root`` for the existence probe).
@@ -258,7 +258,7 @@ def link_via_strategies(
             template) pair (the first-yielded emission wins).
 
     Returns:
-        LinkerResult with new ``renders`` edges and ``kind=template`` symbols.
+        LinkerResult with new ``references`` edges and ``kind=template`` symbols.
     """
     # Create the AnalysisRun up front so its execution_id can be stamped onto
     # every synthesised template Symbol (INV-sopon).

@@ -55,12 +55,15 @@ How It Works
    call edge against the catalog via ``lookup_with_module``, applying
    module-hint filtering, FFI redirection, ``io_mode`` discrimination
    (across every collapsed call site — INV-vukiv), ``io_target_kind``
-   discrimination from the call site's own stamp (so a write that
-   discards, or one whose target is a pipe rather than a file, selects the
-   right row or none), a retry with the module qualifier stripped when the
-   name slot re-states it, and a
-   short-name fallback gated on the destination not being a first-party
-   callable. (``match_edge_to_primitive`` is a bare name-only lookup with no
+   discrimination from the call site's own stamp (so a write whose target
+   is a pipe rather than a file selects the right row or none), a retry with
+   the module qualifier stripped when the name slot re-states it, and a
+   short-name fallback that :func:`short_name_fallback_withheld` withholds
+   when the destination is a first-party callable or the unresolved stub was
+   superseded by a resolved in-repo edge. A write that only discards (an
+   in-memory or null-device target) still matches its row here; it is
+   ``tag_io_boundaries`` that declines to tag it, because the catalogue did
+   examine the call. (``match_edge_to_primitive`` is a bare name-only lookup with no
    production caller — it exists for tests and ad-hoc probing. Do not reach
    for it expecting the tagger's behaviour.)
 3. The boundary-tagging pass (ADR-0016 Phase 1b) lives **in this module** —
@@ -69,8 +72,8 @@ How It Works
    (plural) when more than one boundary is true of the edge: a primitive
    that crosses several at once, collapsed call sites that span read and
    write, or a producer opacity stamp kept beside the catalogue row.
-4. ``compute_boundary_map`` walks the tagged graph back to each reachable
-   caller, producing the chains the ``io-boundaries`` command prints and
+4. ``compute_boundary_map`` runs the tagger itself, then walks the tagged
+   graph back to each reachable caller, producing the chains the ``io-boundaries`` command prints and
    ``verify-claims`` adjudicates.
 
 Why YAML Catalogs
@@ -1337,8 +1340,9 @@ class IoBoundaryCatalog:
 
         NOR IS IT A SUFFIX, which is the other half of the safety argument.
         :func:`_module_matches` — the boundary TAGGER's rule — matches trailing
-        components, so a bare ``unix`` slot finds the ``golang.org/x/sys/unix``
-        row. The two stay separate on purpose: the tagger is permissive
+        components when the catalogue row is the longer side, so a bare
+        ``unix`` slot finds the ``golang.org/x/sys/unix`` row (a slot with MORE
+        leading components than the row is a different owner, WI-mujod). The two stay separate on purpose: the tagger is permissive
         because a missed tag loses a finding, while this gate is strict because
         a wrong permit manufactures a false all-clear. Unifying them toward the
         tagger would make a cosmetic module-string respell a security-relevant

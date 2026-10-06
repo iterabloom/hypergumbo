@@ -33,9 +33,11 @@ name to every call of it.
 Scope, stated rather than implied
 ---------------------------------
 Intraprocedural and statement-level, like the other extractors. A ``for``
-initializer and update are not handed to the walker by the CFG hooks, so their
-bindings are not recorded and ``uncovered_semantic_lines`` forfeits refutation
-for that function rather than claim to have seen them. Aliasing through a
+initializer and update are recorded as header statements of their own
+(``initializer_child`` / ``update_child`` in ``cfg_nodes/c.yaml``), so the
+walker sees their bindings. ``goto`` and labels are not modelled as control-flow
+edges: the CFG continues to the next statement instead of the jump's target,
+so a flow that exists only through a jump is not seen. Aliasing through a
 pointer (``q = p; *q = secret; send(p)``) is not modelled: a write through
 ``*q`` defines ``q``, not ``p``. Macros are whatever tree-sitter parses them as,
 which for an unexpanded function-like macro is a call.

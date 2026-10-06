@@ -4,7 +4,7 @@
 Detects:
 - Package specifications and bodies
 - Function and procedure declarations/implementations
-- Type definitions (records, enums, arrays)
+- Type definitions (records, enums, arrays; all emitted as kind ``type``)
 - Constants and variables
 - With clauses (imports)
 
@@ -16,7 +16,9 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract all symbols from all files
-2. Pass 2: Extract edges (imports + calls) using NameResolver
+2. Pass 2: Extract edges: calls resolved with NameResolver (a
+   ``package X renames Y`` alias is passed as a path hint), and imports to a
+   ``package`` placeholder
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Ada-specific extraction

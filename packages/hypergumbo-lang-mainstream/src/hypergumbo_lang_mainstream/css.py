@@ -12,6 +12,7 @@ Uses tree-sitter-css to parse CSS files and extract:
 - @keyframes animations
 - @media queries (breakpoints)
 - @font-face declarations
+- class and id selectors
 
 The analyzer produces Symbols for:
 - variable: CSS custom properties (--var-name)
@@ -27,7 +28,8 @@ Symbol, per audit-findings 0010 Cluster E sub-case (b) fold).
 Why This Design
 ---------------
 - CSS analysis helps understand theming and styling patterns
-- @import tracking enables cross-file dependency resolution
+- @import edges record cross-file dependencies (the target is a module
+  placeholder, not resolved to the imported file)
 - Variable detection helps identify design system patterns
 - Useful for frontend-heavy applications
 """

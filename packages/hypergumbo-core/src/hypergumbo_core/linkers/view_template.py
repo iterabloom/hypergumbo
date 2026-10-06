@@ -67,7 +67,7 @@ _CONTROLLER_BASES = frozenset({
 # WI-votut: ``.csv.erb`` is a non-default but legitimate Rails template
 # format used by CSV-export endpoints (e.g. chatwoot
 # Api::V2::Accounts::ReportsController#inboxes). Recognized here so the
-# 11 such actions in chatwoot get the ``renders`` edge they should.
+# 11 such actions in chatwoot get the ``references`` edge they should.
 _EXTENSION_LANGUAGE: dict[str, str] = {
     ".html.erb": "erb",
     ".html.haml": "haml",

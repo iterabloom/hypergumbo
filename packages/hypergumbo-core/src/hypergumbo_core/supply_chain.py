@@ -15,27 +15,34 @@ Tiers
 
 Classification Algorithm
 ------------------------
-Classification happens at discovery time, before analysis. Signals are
-checked in order; first match wins:
+Classification runs after analysis, over the symbols: ``cli._classify_symbols``
+calls :func:`classify_file` once per file path and stamps every symbol in that
+file. Signals are checked in order; first match wins:
 
-1. Derived artifact detection (tier 4) - path patterns + content heuristics
-2. External dependency detection (tier 3) - node_modules/, vendor/, etc.
+1. Derived artifact detection (tier 4) - configured ``derived_patterns``, then
+   path and filename patterns, then a content check for minified output
+2. External dependency detection (tier 3) - node_modules/, vendor/, and
+   vendored SDKs anywhere in the path
 3. Example/demo detection (tier 1, is_example=True) - examples/, demos/,
    samples/, tutorials/ (in-repo → first-party; the role is on is_example)
-4. Workspace package detection:
-   - If file matches a test directory pattern → tier 1 with is_test=True
-   - Otherwise → tier 1 (workspace IS the project)
+4. Documentation detection (tier 1) - in-repo docs; the role is carried by
+   the reason string (INV-naduh)
 5. Configured internal_package_roots → tier 2 (the only tier-2 producer
    *within* ``classify_file``; ``cli._classify_symbols`` additionally tiers a
    workspace-sibling *dependency declaration* tier-2 via
    :func:`collect_workspace_package_names` — INV-nuzas / ADR-0041 D8a)
-6. Test code detection (tier 1 with is_test=True) - tests/, spec/,
-   __tests__/, _test.go, .test.js, etc. Routing tests through tier 2
-   historically made tier 2 a synonym for is_test and drowned out the
-   real internal-dep signal (INV-tisid).
-7. Documentation / notebook (.ipynb) / fuzz-bench detection (tier 1) -
-   in-repo role files; the role is carried by the reason string (INV-naduh).
-8. First-party detection (tier 1) - src/, lib/, app/ or default
+6. Workspace package detection:
+   - If file is in a test directory, or matches a test file pattern beside
+     its source → tier 1 with is_test=True
+   - Otherwise → tier 1 (workspace IS the project)
+7. Test code detection (tier 1 with is_test=True) - language-specific
+   overrides first, then tests/, spec/, __tests__/, _test.go, .test.js, etc.
+   Routing tests through tier 2 historically made tier 2 a synonym for
+   is_test and drowned out the real internal-dep signal (INV-tisid).
+8. Notebook (.ipynb) and fuzz/bench detection (tier 1) - in-repo role files;
+   the role is carried by the reason string (INV-naduh).
+9. First-party detection (tier 1) - configured ``first_party_patterns``, then
+   src/, lib/, app/, or default
 
 Per INV-naduh / ADR-0041 §1 the tier names supply-chain DISTANCE only: all
 in-repo files are first-party (distance 0), and tier 2 is reserved for
@@ -400,8 +407,8 @@ FUZZ_BENCH_PATTERNS = [
 # Patterns for test code — checked BEFORE first-party patterns.
 # Per INV-tisid, BOTH dedicated test directories AND co-located test
 # files route to tier 1 (FIRST_PARTY) with is_test=True. Tier 2 is
-# reserved for in-repo non-test code (examples, fuzz harnesses,
-# vendored deps); a "test dir → tier 2" rule made tier 2 a synonym
+# reserved for org-internal dependency packages (INV-naduh); a
+# "test dir → tier 2" rule had made tier 2 a synonym
 # for is_test (~99% of self-analysis tier-2 entries were tests).
 TEST_DIR_PATTERNS = [
     r"(?:^|/)tests?/",       # tests/ or test/ at any level
@@ -646,7 +653,7 @@ def classify_file(
         when the basename matches a dependency/build manifest filename
         (``pyproject.toml``, ``package.json``, ``Cargo.toml``, etc.) —
         but NOT when ``is_test`` or ``is_example`` is already True, so
-        the role flags remain mutually exclusive within tier 2.
+        the role flags remain mutually exclusive.
     """
     # Get relative path for pattern matching
     try:
@@ -665,7 +672,7 @@ def classify_file(
     if generated:
         result.is_generated = True
     # WI-jobuj: is_config is mutually exclusive with is_test / is_example
-    # within tier 2 (test and example detection wins on a tie, e.g., a
+    # (test and example detection wins on a tie, e.g., a
     # package.json under examples/ is is_example=True, not is_config).
     if config_filename and not result.is_test and not result.is_example:
         result.is_config = True
@@ -748,8 +755,8 @@ def _classify_file_core(
                     rel_to_pkg = str(path.relative_to(pkg_root)).replace("\\", "/")
                     # INV-tisid: test directories inside workspace packages
                     # are tier 1 with is_test=True. Tier 2 is reserved for
-                    # in-repo non-test code (examples, fuzz harnesses,
-                    # vendored deps). Previously this branch returned
+                    # org-internal dependency packages (INV-naduh).
+                    # Previously this branch returned
                     # INTERNAL_DEP, causing 99% of self-analysis tier-2
                     # entries to be tests rather than actual internal deps.
                     for test_pat in TEST_DIR_PATTERNS:
@@ -794,8 +801,8 @@ def _classify_file_core(
             )
 
     # 5b. INV-tisid: test directories are tier 1 with is_test=True.
-    # Tier 2 is reserved for in-repo non-test code (examples, fuzz
-    # harnesses, vendored deps); test code is first-party code that
+    # Tier 2 is reserved for org-internal dependency packages
+    # (INV-naduh); test code is first-party code that
     # the project's authors write, not a vendored dependency.
     for pattern in TEST_DIR_PATTERNS:
         if re.search(pattern, rel):
