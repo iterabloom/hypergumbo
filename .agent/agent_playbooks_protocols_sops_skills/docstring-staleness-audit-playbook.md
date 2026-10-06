@@ -42,7 +42,11 @@ scripts/check-docstring-drift --phase-markers # "not yet", "Slice B", etc.
 scripts/check-docstring-drift --registry-refs # names the registries lack
 scripts/check-docstring-drift --all           # all four
 scripts/check-docstring-drift --json          # machine-readable
+scripts/check-docstring-drift --rolling 30    # + 30 least-recently-reviewed files
 ```
+
+`--rolling` is not a fifth drift signal. It selects files the signals
+cannot reach; see "The candidate pool" below for why every audit uses it.
 
 What each sub-check produces:
 
@@ -214,6 +218,49 @@ review. **Four** known measurement artifacts to watch for:
   artifact been used to skip the file, that finding would have been
   missed twice running.
 
+### The candidate pool: the flags PLUS a rolling read
+
+The flags do not separate drifted files from accurate ones. Drift is
+close to everywhere this audit has looked (calibration table below):
+
+- **Flagged files:** 57-91% drifted across runs.
+- **Unflagged files with the most body commits:** 26/28 (2026-09-25b),
+  14/15 (2026-10-05).
+- **Unflagged, code-changed files:** 31/35 (2026-09-28, reconstructed).
+- **Unflagged files no audit had read, sampled at random** (2026-10-06;
+  seed 20261006, stratified by package, median 2 body commits since the
+  docstring): **19/30 drifted (95% CI 46-78%), 14/30 with a wrong
+  reference or a false claim.** That is a lower bound; see Step 3.
+  Extrapolated to that 215-file population: about 136 drifted files
+  (CI 99-168).
+
+So the scan's true-positive rate is close to the base rate, which makes it
+a weak filter, and a low flagged count says nothing about the tree outside
+it. The pool is therefore the flagged set PLUS a rolling read:
+
+```bash
+scripts/check-docstring-drift --rolling 30
+```
+
+`--rolling N` lists the N files whose last recorded review in
+`.ci/docstring-review-ledger.json` is oldest, never-reviewed first (oldest
+docstring first), excluding the flagged set and generated code. At 30 per
+audit, the 185 scanned files with no recorded review on 2026-10-06 take
+about six audits. Choose N for the review budget, not for the flag count.
+
+**Record every file you read, matches included,** in the fix PR:
+
+```bash
+scripts/check-docstring-drift --record-review <file> [<file> ...] --run 2026-10-06
+```
+
+A file read and found accurate leaves no commit behind. Without its ledger
+row the next audit reads it again, and a never-read file waits another
+round. The ledger records reviews; it does not infer them, because blame
+cannot tell an audit fix from a mass stamp (Step 2). `--record-review`
+validates every path before writing any. Prune the rows that `--rolling`'s
+header lists as having no scanned file (renames, deletions).
+
 ### Step 3 — parallel sub-agent semantic review
 
 For each file in the candidate pool, spawn a read-only sub-agent
@@ -249,6 +296,20 @@ tell the agent to read the file **IN FULL** (several analyzers exceed
 3,000 lines and sampling produces confident wrong answers), and tell it
 to **quote the contradicting code with line numbers**. The line numbers
 are what make Step 4 verifiable instead of a second round of searching.
+
+Two more from the 2026-10-06 sample:
+
+- **A first-pass "matches" is a lower bound on drift, not a clearance.**
+  Tell reviewers they are measuring a rate, not hunting, and to be as
+  willing to answer "matches" as "drift". Then re-review a few "matches"
+  blind, with a fresh agent and no hint. In that run a fresh agent found
+  drift in 2 of 5 files the first pass had cleared. One of them hid a
+  reproduced code defect: `coverage_census`'s lazy-greedy test selection
+  picks a worse set under grouped fixed costs (INV-jupaf).
+- **Send every finding to a verifier that defaults to REJECT and reads the
+  code itself.** In that run 36 of 39 findings held, 3 were rejected, and
+  4 changed severity. A claim that something is NOT wired gets the
+  stricter check in "Wiring that never happened" below.
 
 ### Step 4 — severity triage + PR batching
 
@@ -332,14 +393,35 @@ real signal.
 ## Reference: calibration runs
 
 The thresholds `--window=120` and `--min-delta=90` were calibrated on
-2026-05-15 and have not changed since. These runs measure them:
+2026-05-15 and have not changed since. These runs measure them. The
+unflagged columns are the control the flagged rate needs: a flagged rate
+means something only if it beats the rate outside the flags.
 
-| Run | Flagged | Real drift | TP rate | PRs |
-|---|---:|---:|---:|---|
-| 2026-05-15 | 28 | 21 | 75% | #3749 (A+B+D), #3751, #3752 (C) |
-| 2026-08-18 | 45 | 41 | **91%** | #414 (A+B+D), #416 (C) |
-| 2026-09-04 | 24 | 18 | 75% | #776 (A+B+D), C bundle |
-| 2026-10-05 | 19 | 16 | 84% | #1479 (A+B+D), #1481 (C), #1488 (re-scan tail) |
+| Run | Flagged | Flagged with drift | Unflagged read (how chosen) | Unflagged with drift | PRs |
+|---|---:|---:|---|---:|---|
+| 2026-05-15 | 28 | 21 (75%) | — | — | #3749 (A+B+D), #3751, #3752 (C) |
+| 2026-06-19 | 70 | 55 of 79 read (70%)¹ | 9 (tracker-ref hits) | ¹ | #4226 (A+B+D), 21532da5dc (C) |
+| 2026-07-27 | 75 | not measured² | 29 (hand-picked) | 24 (83%)² | — |
+| 2026-08-18 | 45 | 41 (**91%**) | — | — | #414 (A+B+D), #416 (C) |
+| 2026-09-04 | 24 | 18 (75%) | 7 (found by the registry pass)³ | 7³ | #776 (A+B+D), C bundle |
+| 2026-09-25 | 44 | 39 (89%) | — | — | #1197 (A+B+D), #1199 (C) |
+| 2026-09-25b | 5 | 0 (all 5 fixed that morning) | 28 (most body commits) | 26 (93%) | 9bb5bd2c23, 5e524f0545 |
+| 2026-09-28 | 28 | 16 of 23 read (70%)⁴ | 35 (code changed since last audit)⁴ | 31 (89%)⁴ | #1285 (A+B+D), #1286 (C) |
+| 2026-10-05 | 19 | 16 (84%) | 15 (most body commits) | 14 (93%) | #1479 (A+B+D), #1481 (C), #1488 (re-scan tail) |
+| 2026-10-06 | — | — | **30 (seeded random, never read)** | **19 (≥63%)**⁵ | #1492 |
+
+¹ The pool was the 70 flagged plus 9 tracker-ref-only files; the notebook
+records 55 drifted files across all 79, not split by source.
+² The 29 were picked by hand toward likely drift, not from the flags,
+so neither rate is comparable to the others.
+³ Selected BECAUSE they had a defect, so not a rate.
+⁴ Reconstructed from the saved scan output and the notebook's list of
+11 accurate files. 5 flagged files were 09-25-verified and not re-read.
+The unflagged split assumes the two flagged files outside the 21
+"flagged-and-unreviewed" were inside the 37 code-changed ones.
+⁵ A lower bound: a blind re-review found drift in 2 of 5 first-pass
+"matches", and 6 other "matches" were not re-read. 14/30 carry a
+wrong reference or a false claim.
 
 The 2026-05-15 run also produced #3751 as a side-effect (widening the
 `verify-generated` window 5 → 15 commits). Its notebook entry is at
@@ -387,6 +469,76 @@ for n in MODULE_KEY_NOTIONS:
 Tracked as INV-fogul (make the anchor authoritative and regenerate the line, the
 way `test_cli_docs_prose_gate.py` already regenerates its flag matrix).
 
+### A fourth family: wiring that never happened — check it carefully
+
+Found 2026-10-06 in a random sample of files no audit had read. A docstring
+describes an integration the code never made: a class "adopted by the
+analyzers" that no analyzer has ever constructed (`ImportScope`), an HTTP view
+"with WebAuthn, password, session and duress authentication" whose routes check
+nothing and import none of those modules, route markers "wired to Scala
+controller methods" by a linker that has no branch for them, a fingerprint "used
+by the circuit breaker" that the circuit breaker never calls. No co-change ever
+touches these files because nothing changed: the wiring was planned, the module
+landed, the connecting step did not. Every later author reads the claim as true
+because nothing nearby contradicts it.
+
+**This is the easiest family to get wrong in the other direction.** "Nothing
+calls X" is a claim about the whole repository, and wiring often happens in a
+way nobody expected: a registry, a decorator, an entry point, a dispatch table,
+a shell hook calling a CLI subcommand, an import done for its side effect, a
+name built from a string. A reviewer who greps the obvious name and finds
+nothing has not shown the wiring is absent. Before you write "not wired",
+"unused" or "never adopted" into a docstring or a tracker item, do ALL of these
+and cite what you checked:
+
+1. **Ask the call graph first: `hypergumbo survey .` once, then `hypergumbo
+   explain <Name>`** for each piece of the claimed wiring (the class, its
+   constructor, the function, the CLI handler). Read every inbound section, not
+   just "Called by": `Instantiated by`, `Imported by`, `Referenced by` (CLI
+   dispatch tables show up here), `Dispatched-to by` (the linker registry;
+   not checked for the analyzer registry), and import-time registration
+   calls. Split the callers into tests and production code: a symbol whose only callers are under `tests/` is
+   the signature of this family. Measured on this repo 2026-10-06 (survey 4.5
+   min, 291 MB): it found the decorator-registry dispatch of a linker
+   (`Dispatched-to by run_all_linkers`), CLI dispatch-table references
+   (`Referenced by main`), import-time `register_ddg_language` calls, and a
+   same-module wrapper (`hash_todos_safe`) the reviewer had not mentioned.
+2. **Then cover what the call graph does not see.** Measured the same day:
+   `stop_logic.sh` running `scripts/tracker guidance` does NOT appear as a caller
+   of `_cmd_guidance` — a shell, hook or CI step invoking a CLI subcommand is
+   invisible to it. Grep, with both spellings (`hash-todos` and `hash_todos`):
+   `.agent/hooks/`, `scripts/`, `.github/` and `.woodpecker/` workflows,
+   `[project.entry-points]` in every `packages/*/pyproject.toml` (the
+   language packages reach the core only through the `hypergumbo.analyzers`
+   group, so an analyzer module has no importer in core by design),
+   YAML/TOML/JSON config, and string-built lookups (`getattr`, `importlib`,
+   `__import__`, registry keys). Also check the other packages: wiring may
+   live one package over.
+3. **Disambiguate the name.** `hash_todos` is both `stop_hook.hash_todos` and
+   `TrackerSet.hash_todos`; a hit on one says nothing about the other. `explain`
+   lists same-named symbols separately — make sure you are reading the one the
+   docstring means.
+4. **Check history: `git log -S<Name> -- packages/`.** If the wiring existed
+   and was removed, the finding is "removed in <sha>", a different fix (maybe a
+   regression) from "never landed".
+5. **If the claim is about behavior, run it.** An absent edge in the graph is
+   not proof — the graph has blind spots, and you are claiming one is not
+   hiding the wiring. Route resolution, authentication, a hook's effect: build
+   the smallest input and observe (the Play-routes finding was confirmed by a
+   three-route fixture plus a full `survey` showing zero `dispatches_to` edges;
+   the serve-auth finding by a request that reached the handler with no
+   credentials, AND by checking that the shipped entry point never passes the
+   handlers a TrackerSet, so they answer 503 — which changed the finding from
+   "exposed" to "latent").
+6. **Word the result as a dated, scoped observation**, not a universal: "no
+   production caller as of <sha> (hypergumbo explain; grep of hooks, scripts,
+   workflows, entry points)". File the code side as a tracker item: an
+   unwired module is usually a code finding, not only a docstring one.
+
+The Step 4 verifier must apply the same list to any reviewer claim of
+this shape; default to REJECT a "never wired" claim whose evidence is a single
+grep.
+
 The 2026-09-04 run reviewed 24 files and found 18 with real drift, plus 7
 files the scan flagged NONE of (the registry pass). Its notebook entry is at
 `~/<repo>_lab_notebook/staleness_audit_09042026.md`.
@@ -402,10 +554,21 @@ for 16 code defects, among them one family: an analyzer finding a call's
 enclosing callable by name through the repo-wide resolver (WI-kosar). Its
 notebook entry is at `~/<repo>_lab_notebook/staleness_audit_10052026.md`.
 
+The 2026-10-06 follow-up read no flagged files at all: it was the random
+sample described in "The candidate pool". It fixed 19 docstrings (#1492),
+added `--rolling` and the review ledger (#1494), and filed four code items:
+INV-jupaf (lazy greedy), INV-nabas (Play routes never resolve, reproduced),
+INV-pamum (repo-fingerprint algorithm changed without a scheme bump) and
+WI-hopip (the tracker server's write routes have no authentication, latent
+until a TrackerSet is wired). The notebook entry is the "Follow-up" section of
+`~/<repo>_lab_notebook/staleness_audit_10052026.md`.
+
 **A caveat to carry into any future run: the flagged count measures the
 scan, not the tree.** The two most consequential findings of the
 2026-08-18 audit — the `schema.json` leak and the 21-site retired
 vocabulary residue — were invisible to the three change-keyed sub-checks by
 construction (see "What change-keyed scans CANNOT see"). A low flagged count is
 evidence about co-change drift only. Do not report it as evidence that
-the docstrings are accurate.
+the docstrings are accurate. The 2026-10-06 random sample measured the
+point directly: unflagged files no audit had read drifted at about the
+rate flagged files do.
