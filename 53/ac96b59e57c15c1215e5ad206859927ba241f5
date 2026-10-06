@@ -1,0 +1,14 @@
+Original commit body from 5ccb931f710dbc0288acb3d9cf275579d477f98b:
+
+Unreleased had 4,682 words for 330 substantive commits since v8.1.0
+(14.2 words/commit) against the 8.1.0 entry's 7.5. Rewritten at the
+released sections' granularity: 1,882 words, 5.7 words/commit.
+
+Every entry is kept, consolidated by effect: per-language scope fixes
+become one "names bind to the declaration in scope" list, verdict
+withholding fixes one bullet, caveat fixes one, the three survey stalls
+one, instrument fixes one. Each bullet keeps at most one measured
+number; ADR references, version transitions and stated gaps ("not
+covered yet", "not re-measured") are preserved.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
