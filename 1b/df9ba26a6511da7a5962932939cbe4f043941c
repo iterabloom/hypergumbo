@@ -1,0 +1,24 @@
+Original commit body from 41517db9c064a50fcb92c1738eafec1f2613c381:
+
+Owner decision (2026-10-06), recorded in place per the ADR lifecycle rules:
+parsing the source of installed dependencies (Mix deps/, node_modules/,
+venv site-packages, package-manager vendor/, Pods/, ...) is off by default,
+recognised by content (generalising the virtualenv rule), disclosed when
+skipped, and opted into per package with a planned --trace-deps.
+
+- ADR-0004: new section "Installed dependency source" (third answer to
+  "why was this file skipped?"); corrects the false claim that symbol
+  extraction runs only on tiers 1-2 (a Mix fixture yields tier-3 deps/
+  symbols and a resolved call into them); rewrites the "additions only"
+  banner and the matching Consequences line.
+- ADR-0016 §7: "trace everything" becomes "trace only when opted in;
+  otherwise a call into dependency source is untraced, I/O unknown,
+  never clean"; Context sentence points at the rule.
+- Spec: §14 Motivation and default behaviour, the stale --exclude
+  default list (venv/ is not a default exclude), --trace-deps marked
+  planned, installed_deps_skipped planned, §15 symbol-extraction row.
+
+Implementation tracked by WI-bapal and WI-pogar; nothing here ships
+behaviour. Closes WI-mogit.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
