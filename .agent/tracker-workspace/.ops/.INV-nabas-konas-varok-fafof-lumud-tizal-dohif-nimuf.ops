@@ -1,0 +1,24 @@
+- op: create  # 814a
+  at: '2026-10-06T08:06:11Z'  # 814a
+  by: agent  # 814a
+  actor: jgstern_agent  # 814a
+  clock: 1  # 814a
+  nonce: 814a  # 814a
+  data:  # 814a
+    kind: invariant  # 814a
+    title: "Play Framework route markers never resolve to Scala controller methods: route_handler sends controllers.Foo.bar down the Rails branch, which needs '#', so 0 dispatches_to edges"  # 814a
+    status: violated  # 814a
+    priority: 3  # 814a
+    parent:  # 814a
+    tags:  # 814a
+    - linker  # 814a
+    - framework_linker  # 814a
+    - routes  # 814a
+    isbefore: []  # 814a
+    duplicate_of: []  # 814a
+    not_duplicate_of: []  # 814a
+    pr_ref:  # 814a
+    description: "Found by the 2026-10-06 docstring-audit random sample (play_routes.py docstring claims the route handler linker wires these to Scala controller methods). Reproduced: a 3-route conf/routes plus app/controllers/UserController.scala (UserController.list/show, HomeController.index); analyze_play_routes + analyze_scala + link_routes_to_handlers -> 0 edges, _extract_handler_ref classified all three as rails; full 'hypergumbo survey' (rc=0) -> only containment 'contains' edges on the route markers, no dispatches_to. Analogue check needed: any other producer whose controller_action format is neither '#' nor '@' (structural: dispatch on producer/language, not on a separator guess)."  # 814a
+    fields:  # 814a
+      statement: "Every route producer whose markers carry handler info gets a route->handler edge when the handler symbol exists (INV-nimik), including Play (conf/routes, controller_action=controllers.Foo.bar)."  # 814a
+      root_cause: "linkers/route_handler.py ~:596-603 classifies controller_action by separator only: '@' -> laravel, else rails; the rails resolver returns None without '#' (~:147). play_routes.py ~:133-144 stores the dotted Play form (leading '@' stripped). No other linker reads these markers for dispatch (http.py ~:1612 lists play-routes only as an HTTP-client destination)."  # 814a
