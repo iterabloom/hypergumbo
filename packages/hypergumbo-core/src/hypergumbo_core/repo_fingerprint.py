@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Repository fingerprint: spec-defined hash of analyzed code state.
 
-Implements ``AnalysisRun.repo_fingerprint`` per
-``docs/hypergumbo-spec.md:378-384``. The field's purpose is **cache
-invalidation and provenance tracking** — every IR ``AnalysisRun`` carries
+Implements ``AnalysisRun.repo_fingerprint`` per the ``repo_fingerprint``
+entry under "Provenance field semantics" in ``docs/hypergumbo-spec.md``
+(whose git-branch text is stale; see Scheme below). The field's purpose is
+**cache invalidation and provenance tracking** — every IR ``AnalysisRun`` carries
 a hash identifying the exact code snapshot it analyzed, so downstream
 consumers can answer "was this the same repo state?" without re-running.
 
@@ -17,9 +18,10 @@ Two branches, selected by the presence of ``repo_root/.git``:
       content on different commits stay distinguishable.
     * The file set is the same working-tree walk the non-git branch uses.
     * Content-hash each file by reading its bytes. The spec is explicit
-      (line 382): the field must change when contents change, not when
-      paths or mtimes change. This is what makes this function the
-      recommended replacement for the legacy
+      (the git branch's "Purpose" sub-bullet): the field must change when
+      contents change, not just when paths change. Keying on content
+      rather than mtime is what makes this function the recommended
+      replacement for the legacy
       ``sketch_embeddings._get_repo_state_hash`` whose path:size:mtime
       key picks up tracker ``.ops`` mtime jitter (INV-magul).
     * **This branch used to derive a "dirty file" set from ``git status
@@ -65,13 +67,19 @@ field without conditional logic.
 
 ## Scheme
 
-The top-level ``repo_fingerprint_scheme`` declared in the spec
-(``hypergumbo-repofp-v2``) covers this algorithm and its field rendering.
-Future algorithm changes must bump the scheme version. v2 (WI-bosog) added
-the ``sha256:`` prefix to the AR-record FIELD (:func:`compute_repo_fingerprint_field`),
-uniform with run_signature / config_fingerprint; the bare digest returned by
-:func:`compute_repo_fingerprint` (the colon-free cache-dir path segment) is
-unchanged.
+The top-level ``repo_fingerprint_scheme`` (``schema.REPO_FINGERPRINT_SCHEME``,
+currently ``hypergumbo-repofp-v2``) identifies this algorithm and its field
+rendering, and any algorithm change must bump the scheme version. v2 (WI-bosog)
+added the ``sha256:`` prefix to the AR-record FIELD
+(:func:`compute_repo_fingerprint_field`), uniform with run_signature /
+config_fingerprint; the bare digest returned by :func:`compute_repo_fingerprint`
+(the colon-free cache-dir path segment) is unchanged.
+
+That rule is currently violated (INV-pamum): the git branch's switch from the
+``git status`` dirty-file set to hashing HEAD plus the whole source tree landed
+AFTER the v2 bump and did not bump the scheme, so two v2 fingerprints can come
+from different algorithms. The spec's git-branch definition still describes
+the dirty-file algorithm and is stale.
 
 ## Performance
 
@@ -224,7 +232,7 @@ def _format_pairs(pairs: list[tuple[str, str]]) -> str:
 
 
 def _compute_git_fingerprint(repo_root: Path) -> str:
-    """Spec lines 378-382: git branch.
+    """Git branch of the algorithm (see the module docstring; INV-pamum).
 
     NO LONGER USES ``git status``, and that is a security property rather
     than a refactor. Running ``git status`` with cwd inside a target repo
@@ -257,7 +265,7 @@ def _compute_git_fingerprint(repo_root: Path) -> str:
 
 
 def _compute_non_git_fingerprint(repo_root: Path) -> str:
-    """Spec line 383: non-git branch."""
+    """Non-git branch of the algorithm (see the module docstring)."""
     files = _iter_non_git_files(repo_root)
     pairs = sorted(
         (str(p.relative_to(repo_root)), _hash_file_content(p))
@@ -269,8 +277,9 @@ def _compute_non_git_fingerprint(repo_root: Path) -> str:
 def compute_repo_fingerprint(repo_root: Path) -> str:
     """Compute the spec-defined ``repo_fingerprint`` for ``repo_root``.
 
-    See the module docstring for the algorithm; see
-    ``docs/hypergumbo-spec.md:378-384`` for the source of truth. Returns
+    See the module docstring for the algorithm and for how it relates to
+    the ``repo_fingerprint`` entry in ``docs/hypergumbo-spec.md``
+    (stale for the git branch, INV-pamum). Returns
     a 64-char hex ``sha256`` digest.
     """
     if (repo_root / ".git").exists():

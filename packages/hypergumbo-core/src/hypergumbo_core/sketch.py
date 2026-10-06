@@ -7,9 +7,14 @@ is token-budgeted to fill the available context.
 
 How It Works
 ------------
-``generate_sketch`` emits up to 13 sections in priority order. Each
-section is gated on (a) data availability and (b) remaining token
-budget. Section budget allocation follows ADR-0005 (Entry Points
+``generate_sketch`` emits up to 13 sections in priority order. The
+base sections (1-6) are built unconditionally and joined first; if
+they alone reach the budget (and no ``require_sections`` is set),
+the truncated base is returned. Sections 7-9 and 11-13 are each
+gated on data availability and remaining budget (``_section_ok``). Key Symbols is not budget-gated: it renders
+at least ``MIN_KEY_SYMBOLS`` (5) entries whenever analysis yields
+symbols. A final ``truncate_to_tokens`` pass then trims the whole
+sketch. Section budget allocation follows ADR-0005 (Entry Points
 ~33% of remaining; Data Models ~20%; Source Files Content ~75% of
 what remains after the structural sections; etc.).
 
@@ -21,13 +26,22 @@ Sections in emission order:
 4.  Frameworks — detected build systems / web frameworks /
     test frameworks
 5.  Tests — test framework + estimated coverage breakdown
-6.  Configuration — config-file callouts (``CONFIG_FILES_BY_LANG``).
+6.  Configuration — config-file callouts (``CONFIG_FILES_BY_LANG``),
+    extracted per ``config_extraction_mode``: heuristic (known-field
+    patterns), embedding (semantic line selection, plus embedding
+    discovery of config files outside ``CONFIG_FILES_BY_LANG`` via
+    ``_discover_config_files_embedding``), or hybrid (heuristic, then
+    embedding for the leftover budget). The ``sketch`` CLI defaults to
+    ``--config-extraction hybrid``; embedding modes fall back to
+    heuristic when sentence-transformers is unavailable.
     Environment variables and dotenv keys are NOT extracted
 7.  Entry Points — CLI commands, HTTP routes, IPC handlers,
     cron / scheduler entries
 8.  Data Models — dataclasses, ORM entities, schema definitions,
     with the four-strategy detection from ``datamodels.py``
-9.  Source Files — centrality-ranked file list with stats
+9.  Source Files — file paths (with module docstring when known),
+    ordered by ``rank_files`` density score when analysis ran, then
+    "... and N more files"
 10. Key Symbols — top symbols by dampened centrality
 11. Additional Files — always emitted when the budget allows;
     ``--with-source`` shrinks its budget to 5% rather than gating it
@@ -41,13 +55,19 @@ Behavioral flags
 - ``require_sections`` — force-include the named sections even when
   the token budget is exhausted, and skip final truncation. It does not
   raise; it overrides the budget gate (WI-nakam).
-- ``stats_out`` — emit per-section size statistics for sketch
-  tuning experiments.
+- ``stats_out`` — a ``SketchStats`` to fill with representativeness
+  mass (per-section in-degree and confidence sums plus ``has_*`` flags,
+  against repo totals) for the "How Representative Is This Sketch?"
+  table.
+- ``config_extraction_mode`` — heuristic / embedding / hybrid config
+  extraction for section 6 (function default heuristic).
 - ``language_proportional`` — switch from global ranking to
   per-language proportional selection (avoids one language
   dominating the sketch on polyglot repos).
-- ``--no-sketch-fan-out`` (CLI) — skip producing per-handler
-  fan-out sketch files alongside the main sketch.
+- ``--no-sketch-fan-out`` (``survey`` CLI, not ``sketch``) — skip the
+  ``<stem>.{4k,16k,64k}.json`` sketch-tier preview files written next
+  to ``--out`` (equivalent to ``--budgets none``). Per-handler slice
+  output is suppressed separately by ``--no-handler-slices``.
 
 Token budgeting uses a simple heuristic (~4 chars per token) which is
 accurate enough for approximate sizing. There is no exact-tokenizer
@@ -59,9 +79,9 @@ Symbol ranking flows through ``compute_dampened_centrality``, which
 applies the pinned ``_CANONICAL_DAMPENERS`` stage stack — seven stages:
 tier, noise, utility, common_method, trivial_sink, generated, file_kind.
 (The sibling-impl group weighting was removed by WI-karad.) The stack
-order is invariant — its pinning
-tests live alongside this module and catch internal-reorder
-regressions a tuple-identity check would miss.
+order is invariant — ``_CANONICAL_DAMPENERS`` is defined in
+``ranking.py`` and pinned by
+``tests/test_ranking.py::test_canonical_dampener_order_pinned``.
 
 Why Progressive Expansion
 -------------------------
@@ -5750,7 +5770,7 @@ def _format_symbols(
     if not key_symbols:
         return ""
 
-    # Compute centrality + canonical 8-stage dampener stack via the
+    # Compute centrality + canonical 7-stage dampener stack via the
     # shared helper (WI-tahum). file_kind is excluded because
     # KEY_SYMBOL_KINDS already filters out kind="file" symbols, making
     # apply_file_kind_weights a no-op for this surface.

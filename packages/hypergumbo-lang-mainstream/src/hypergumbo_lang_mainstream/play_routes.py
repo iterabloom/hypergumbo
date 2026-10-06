@@ -18,8 +18,11 @@ How It Works
    ``kind="function"`` with ``meta.framework_role='route'`` per the
    ADR-0027 Phase-3 route→function fold (there is no ``route`` symbol
    kind) — carrying ``meta.route_path``, ``meta.http_method``, and
-   ``meta.controller_action`` so the route handler linker can wire them
-   to Scala controller methods.
+   ``meta.controller_action`` (the dotted ``controllers.Foo.bar`` form).
+   No linker wires these markers to Scala controller methods today: the
+   route handler linker classifies a ``controller_action`` without ``@``
+   as Rails, whose resolver needs ``#``, so Play markers get no
+   ``dispatches_to`` edge (INV-nabas).
 4. Mints a second marker for each module-include line, carrying
    ``meta.framework_role='route_include'`` with ``meta.route_prefix`` and
    ``meta.module_ref``, so a prefix-mounted sub-router is a node in its own

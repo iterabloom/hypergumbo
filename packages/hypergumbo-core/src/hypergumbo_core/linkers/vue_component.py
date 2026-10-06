@@ -1,26 +1,37 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Infrastructure linker: Vue component for resolving cross-file component imports.
 
-The Vue analyzer creates `imports` edges with raw import paths
-(e.g., './Header.vue', '@/components/Button.vue') as their dst instead
-of Symbol IDs. This linker resolves those paths to actual file symbols,
+The Vue analyzer emits one `imports` edge per component reference, with
+the source file's id (`make_file_id`) as src and a synthetic component
+id as dst: `vue:{import_path}:0-0:{name}:component` when a companion
+import statement names the path, or a dangling
+`vue:component:{tag}:0-0:{tag}:component` when it does not. The raw path
+(e.g., './Header.vue', '@/components/Button.vue') rides in
+`meta['import_path']`. Neither dst form is a real Symbol id, so the edge
+dangles until this linker resolves the path to an actual file symbol,
 creating proper edges that connect Vue component composition graphs.
 
 How It Works
 ------------
 1. Scan all existing edges for `imports` carrying `meta['import_path']`
+   (edges with an empty path, the unresolved-tag form, are skipped)
 2. For each, resolve the import path (relative, subdirectory, @ alias)
    to an actual .vue file on disk
-3. Create `component_file` symbols for each .vue file involved
-4. Create resolved `imports` edges from component_ref to
-   component_file symbols
+3. Get or create a canonical `kind="file"` symbol (`make_file_id` shape,
+   `meta['component_framework'] = "vue"`) for the target and source
+   .vue files, reusing one already in the graph when present (INV-bahov)
+4. Create a resolved `imports` edge from the original src (the source
+   file id) to the target file symbol; the producer's dangling edge is
+   left in place
 
 Why This Matters
 ----------------
-Without this linker, ALL Vue component_ref symbols are orphaned because
-their `imports` edges point to raw strings instead of Symbol IDs.
-On Chatwoot (1093 Vue component nodes), this caused 100% orphan rate.
-With this linker, component composition graphs become traversable.
+Without this linker, every Vue component `imports` edge points at a
+synthetic dst that matches no Symbol, so the component composition graph
+cannot be traversed. Before the producer emitted file-sourced edges
+(when it still minted per-reference `component_ref` symbols), this gap
+left 100% of Chatwoot's 1093 Vue component nodes orphaned. With this
+linker, component composition graphs become traversable.
 
 Import Path Resolution
 ----------------------
@@ -128,15 +139,16 @@ def _resolve_import_path(
 def link_vue_components(ctx: LinkerContext) -> LinkerResult:
     """Resolve Vue component imports to symbol-to-symbol edges.
 
-    Finds all `imports` edges (created by the Vue analyzer with
-    raw import paths as dst), resolves the paths to actual .vue files,
-    creates component_file symbols for each file, and creates proper edges.
+    Finds all `imports` edges the Vue analyzer emitted with a dangling
+    component dst (the raw path is in ``meta['import_path']``), resolves
+    the paths to actual .vue files, gets or creates the canonical
+    ``kind="file"`` symbol for each file, and creates proper edges.
 
     Args:
         ctx: LinkerContext with repo_root, symbols, and edges.
 
     Returns:
-        LinkerResult with new component_file symbols and resolved edges.
+        LinkerResult with new file symbols and resolved edges.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -162,7 +174,7 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
     for sym in ctx.symbols:
         symbol_path_map[sym.id] = sym.path
 
-    # Track component_file symbols already returned to avoid duplicates
+    # Track file symbols already returned to avoid duplicates
     # within this run. Keyed on rel_path.
     file_symbol_cache: dict[str, Symbol] = {}
 
@@ -255,10 +267,10 @@ def link_vue_components(ctx: LinkerContext) -> LinkerResult:
         except ValueError:  # pragma: no cover — resolved is always under repo_root
             continue  # pragma: no cover
 
-        # Create component_file symbol for the target
+        # Get or create the canonical file symbol for the target
         target_file_sym = get_or_create_file_symbol(rel_resolved)
 
-        # Also create component_file symbol for the source .vue file
+        # Also get or create the canonical file symbol for the source .vue file
         if src_path.endswith(".vue"):
             get_or_create_file_symbol(src_path)
 

@@ -27,7 +27,9 @@ the module: bindings, loop and comprehension targets, tuple positions,
 collection elements, dict keys and values, module-local function returns and
 parameters, and record-class fields. The producer gates
 (:mod:`hypergumbo_core.producer_coherence`) call it as the fallback for any
-keyword value their own shapes leave unresolved.
+keyword value their own shapes leave unresolved. The meta-key gate
+(:mod:`hypergumbo_core.meta_key_coherence`) calls it to list the keys a
+``meta`` dict can hold and the strings a ``meta[K]`` key can be.
 
 How it works
 ------------
@@ -60,6 +62,13 @@ produced was resolved. That is what lets a gate trust a ``frozenset``:
 - a record field resolves only for a module-local ``@dataclass`` /
   ``NamedTuple`` whose constructions are all direct calls, and never when the
   module assigns to an attribute of that name.
+
+Two caller overrides relax these rules, as claims the CALLER makes rather
+than this module: ``readers`` names callees that add nothing to a collection
+passed to them, so such a call is not an escape, and ``known_empty`` marks
+expressions that contribute the empty set. ``meta_key_coherence`` passes
+``readers=EDGE_CONSTRUCTORS``, plus a ``known_empty`` for post-hoc ``.meta``
+writes. Answers are memoized per override pair, never shared across pairs.
 
 Recognized non-``None`` results that hold no string (``None``, numbers,
 ``return`` with no value) contribute the empty set; a cycle (a recursive

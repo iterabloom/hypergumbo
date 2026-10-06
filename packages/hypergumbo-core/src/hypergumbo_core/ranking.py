@@ -1104,7 +1104,7 @@ def _apply_canonical_dampeners(
     first_party_priority: bool = True,
     exclude_dampeners: tuple[str, ...] = (),
 ) -> Dict[str, float]:
-    """Apply the canonical 8-stage dampener stack to pre-computed scores.
+    """Apply the canonical 7-stage dampener stack to pre-computed scores.
 
     Internal helper shared by ``compute_dampened_centrality`` (which
     bundles compute_centrality + this stack) and ``rank_symbols``

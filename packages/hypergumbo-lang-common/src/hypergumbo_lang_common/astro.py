@@ -26,17 +26,24 @@ extraction logic.
 
 Symbols Extracted
 -----------------
-- **Components**: Imported components used in template (capitalized tags)
-- **Imports**: Import statements from frontmatter
-- **Variables**: Variables defined in frontmatter
-- **Slots**: Slot elements in template
-- **Client directives**: Hydration directives (client:load, etc.)
+- **Variables** (``variable``): const/let/var declarations in frontmatter
+- **Slots** (``slot``): Slot elements in template
+- **Client directives** (``directive``): Hydration directives
+  (client:load, etc.) on component tags
 
 Edges Extracted
 ---------------
-- **imports**: Links component usage to import paths
-  (ADR-0023 §6 folded the former `imports_component` type into
-  canonical `imports`)
+- **imports** (frontmatter): one per default import of a ``.astro`` path,
+  from the file id to a dangling ``astro:{import_path}:1-1:file:file`` id,
+  with ``import_name`` / ``import_path`` in meta. The former per-import
+  Symbol is no longer emitted (audit-findings 0010, WI-kunag).
+- **imports** (component use): one per capitalized template tag, from the
+  file id to the raw import path (or a dangling
+  ``astro:component:{tag}:0-0:{tag}:component`` id when no import names
+  it), with ``component_name``, ``client_directive`` and ``attributes`` in
+  meta. This replaces the former per-reference ``component_ref`` Symbol
+  (audit-findings 0011). ADR-0023 §6 folded the former
+  `imports_component` type into canonical `imports`.
 
 Why This Design
 ---------------

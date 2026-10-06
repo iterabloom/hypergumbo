@@ -26,6 +26,14 @@ Handled statement shapes, all of them children of a ``statement_list``:
 - ``go f(x)``, bare calls                   — go_statement, expression_statement
 - ``k, v := range xs``                      — range_clause (loop header)
 
+Importing the module also calls ``register_ddg_language`` to make Go a DDG
+language: every ``function_declaration`` and ``method_declaration`` is a
+function, named and kinded exactly as ``go.py`` names them (``Recv.name``
+for methods, via the analyzer's receiver-type helper) so the DDG ids match
+the Go analyzer's ids. The spec also walks the outermost function-literal
+bodies bound under a package-level ``var`` (cobra's ``Run: func(...)``,
+``var h = func(...)``), anchored on that variable's symbol (WI-rovun).
+
 Why a Node Type Must Also Be Declared Atomic
 --------------------------------------------
 This module is only half the mechanism. ``CfgBuilder`` decides which AST

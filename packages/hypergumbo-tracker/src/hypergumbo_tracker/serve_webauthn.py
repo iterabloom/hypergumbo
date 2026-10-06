@@ -22,7 +22,10 @@ Authentication flow:
 Why This Design
 ---------------
 - In-memory credential storage: restart invalidates all credentials (security).
-  Re-registration via ``htrac setup`` required after restart.
+  Re-registration is required after restart, but registration has no CLI
+  entry point yet (``htrac setup`` does not register credentials), and
+  nothing outside this module constructs a ``WebAuthnManager`` -- the serve
+  auth modules are not wired into ``serve.py`` (WI-hopip).
 - The ``webauthn`` library handles the cryptographic verification.
 - Challenges are stored per-manager for verification (single-user server).
 """
