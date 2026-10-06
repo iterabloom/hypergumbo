@@ -14,13 +14,11 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Summary
 
-Five threads run through this cycle so far.
-
-- **Catalogue tiers (ADR-0061).** Only standard-library rows hypergumbo vouches for can make a verdict cleaner. Community rows can add findings, and a repository's own catalogue data loads only when you opt in.
-- **Calls bind to what is in scope.** Go, JS/TS, Python, Swift and Perl resolve a name by the binding visible where it is used, and C++, Elixir and Nim choose overloads by arity. A call no longer lands on a same-named function elsewhere in the repository.
-- **Taint follows more flows.** A source a helper returns reaches its callers, loop headers and initializers define their variables, and new `code_execution`, `dom_injection` and `navigation_read` boundaries cover code injection and DOM XSS.
-- **Catalogue rows say what the call actually does.** Rows claiming a crossing the call does not make are removed or moved, and a process's own standard output is `logging`, not IPC.
-- **Large surveys no longer stall** in supply-chain classification, crypto-flow-linker or the sketch's file ranking.
+- **Catalogue tiers (ADR-0061).** Only standard-library rows hypergumbo vouches for can make a verdict cleaner, and a repository's own catalogue data loads only on opt-in.
+- **Calls bind to what is in scope.** Go, JS/TS, Python, Swift and Perl resolve a name by the binding visible where it is used, and C++, Elixir and Nim choose overloads by arity.
+- **Taint follows more flows**: sources a helper returns, loop-header bindings, and new code-execution, DOM-injection and page-URL boundaries.
+- **Catalogue rows say what the call does.** Rows claiming crossings their calls do not make are removed or moved, and standard output is `logging`, not IPC.
+- **Large surveys no longer stall** in three passes.
 
 `SCHEMA_VERSION` advances 0.20.13 → 0.20.14 (additive: `metrics.edge_confidence`, `profile.languages[*].test_files`, `AnalysisRun.cpu_ms`, slice `limits_detail`, the pub/sub `*_identifier` meta keys), the `verify-claims --json` envelope 2.4 → 2.6, and the validation report 0.3 → 0.4.
 
@@ -28,147 +26,105 @@ Five threads run through this cycle so far.
 
 #### Catalogue tiers (ADR-0061)
 
-- **Every shipped catalogue file declares its tier**: `provenance: builtin` (standard-library rows hypergumbo vouches for) or `provenance: community` (third-party rows, with a `retrieved:` date). A gate refuses a file that declares neither, or a built-in file that names anything outside the standard library. Third-party rows that sat in built-in files moved to community companion files; the merged catalogues are unchanged, so no verdict moves.
-- **A community row can add a finding but never make a verdict cleaner.** A community sanitizer no longer clears a flow (the verdict names it under `withheld_sanitizers` and says how to vouch for it), and a community function summary no longer ends a taint branch (`withheld_community_summary`). A file counts as community by its `provenance:` line wherever it sits, so overlays that `init-catalogs` copies into your config home no longer license a clean verdict. `--no-default-overlays` now omits community rows from the taint arm as well.
-- **A repository's own `.hypergumbo.toml` catalogue data loads only on opt-in**: `--in-repo-catalogues` for one run, or `hypergumbo trust-catalogues [PATH]` per repository (`--revoke` records a refusal). Until you decide, a run names the file it skipped. Preferences (`[merge]`, `[backends]`) still load by default.
-- **Your taint channels are read.** `taint_sources.d/`, `taint_sinks.d/` (new) and `taint_sanitizers.d/` under `$XDG_CONFIG_HOME/hypergumbo/` load as a user layer below the claims file and flags.
-- **The verdict names every catalogue file it rested on**, grouped under `catalog_provenance.tiers` (`builtin`, `community`, `yours`, `in_repo`, with git state for in-repo files). `user_supplied` is true when any of them loaded.
+- **Every shipped catalogue file declares `provenance: builtin` (standard library) or `provenance: community` (third-party)**, and a gate enforces it. Third-party rows moved out of built-in files; the merged catalogues are unchanged.
+- **A community row can add a finding but never make a verdict cleaner.** Community sanitizers and function summaries are withheld and named (`withheld_sanitizers`, `withheld_community_summary`), wherever the file sits.
+- **A repository's own `.hypergumbo.toml` catalogue data loads only on opt-in** (`--in-repo-catalogues`, or `hypergumbo trust-catalogues [PATH]`); preferences still load.
+- **User taint channels are read** (`taint_sources.d/`, `taint_sinks.d/`, `taint_sanitizers.d/`), and **the verdict names every catalogue file it rested on**, by tier, under `catalog_provenance.tiers`.
 
 #### Taint and verify-claims
 
-- **Taint claims can forbid code execution and HTML injection.** New sink zones `code_execution` (Python `eval`/`exec`/`compile`, JS/TS `eval`) and `dom_injection` (`document.write`/`writeln`). JS/TS shapes no edge reaches yet are named in an `unreached_sink_shapes` caveat. On django the new zone finds three real flows.
-- **The page URL is attacker input as well as a possible secret.** A new `navigation_read` boundary (`document.location`, `window.location`, `document.URL`, `document.referrer`, `window.name`, ...) derives `untrusted_input`, so DOM-XSS claims can find flows that start at the URL. The URL spellings also stay `host_secret` sources, now including `window.location`. On 10 JS/TS repositories, 12 verdicts move inconclusive → violated.
-- **The data-flow walk covers more code.** Java and C gain def/use extractors, so their findings read `ddg`/`confirmed` or `ddg_mixed` instead of `structural` (C: reachability-only findings 205 → 70 on 10 repositories). JS/TS arrow functions and callbacks are walked (dash.js: 2,315 → 4,275 functions), as are Go function literals under a package-level `var` (Cobra `Run:` handlers). Python `with open(...) as f:` bindings and nested calls enter the graph, so the same-function sanitizer rule fires on real code. C++ is not covered.
-- **One write is one finding.** `print(k, file=sys.stderr)` was two evidence rows, one for the stream and one for `print`. A stream use carried by a call that is itself a sink is now dropped, and a surviving stream row names its carriers in `sink_carriers` (envelope 2.6). Python, Go, Java and JavaScript are wired; C++ is not.
-- **A sink declared `trust_level: trusted` is excluded and disclosed** in `trusted_sink_flows` (envelope 2.5). The field had been documented but never read.
-- **A catalogue row can require a target kind** (`requires_target_kind`). Java's `PrintStream` rows apply only where the receiver is `System.out`/`System.err`, which are now typed and stamped `io_target_kind: std_stream`.
+- **New sink zones `code_execution` and `dom_injection`** (`eval`/`exec`, `document.write`), and a **`navigation_read` boundary** that makes the page URL `untrusted_input` (10 JS/TS repositories: 12 verdicts inconclusive → violated).
+- **The data-flow walk covers more code**: Java and C def/use, JS/TS arrow functions and callbacks, Go function literals under a package-level `var`, and Python `with` bindings. C++ is not covered.
+- **One write is one finding**: a stream use carried by a sink call is folded into it, with carriers listed in `sink_carriers` (envelope 2.6).
+- **`trust_level: trusted` sinks are excluded and disclosed** in `trusted_sink_flows` (envelope 2.5), and a row can require a target kind (`requires_target_kind`: Java's `PrintStream` rows apply only to `System.out`/`System.err`).
 
 #### Analysis output
 
-- **The edge-confidence distribution behind `avg_confidence`**: `metrics.edge_confidence = {histogram, median}`.
-- **Per-language test-file counts** (`profile.languages[*].test_files`), so a language present only in fixtures reads as such.
-- **Per-pass CPU time beside wall time** (`analysis_runs[].cpu_ms`). Both come from one clock, so `duration_ms - cpu_ms` is waiting time.
-- **Truncated slices say how much each limit dropped** (`limits_detail`, one entry per limit), and the `slice` summary prints one line per limit.
+- **New fields**: `metrics.edge_confidence` (histogram, median), `profile.languages[*].test_files`, `analysis_runs[].cpu_ms` beside wall time, and per-limit slice truncation counts (`limits_detail`).
 
 #### Analyzers
 
-- **Scala types receivers bound by inference**: declared return types, typed members and container element types type call results, chains, `for` generators, lambda parameters and `.get`/`.head`. External method calls with a receiver type: sbt 19.7% → 24.6%, lila 7.6% → 12.2%, none lost.
-- **Elixir behaviours are modelled.** `@callback` symbols, `implements` from `@behaviour` and `use`, and callback dispatch to the implementing module (phoenix: +95 `implements`, +146 dispatch edges).
-- **Java records are analysed.** Records, their components, compact constructors and members are emitted (trino: +4,480 `instantiates` edges, 3,624 misattributed call edges removed). Implicit accessors are not emitted yet.
-- **C headers that declare no I/O are examined negatives.** Fifteen headers whose whole surface is types, macros and pure functions (`stdint`, `ctype`, `math`, ...) are declared complete ([survey](docs/surveys/c-stdlib-module-io-enumeration.md)); `string`, `assert`, `stdio`, `unistd` and others are refused, with reasons.
+- **Scala types receivers bound by inference** (sbt: typed external method calls 19.7% → 24.6%).
+- **Elixir behaviours are modelled**: `@callback`, `implements` and callback dispatch.
+- **Java records are analysed** (trino: +4,480 `instantiates` edges); implicit accessors are not emitted yet.
+- **Fifteen C headers with no I/O surface** (`stdint`, `ctype`, `math`, ...) are declared complete.
 
 #### Developer tooling
 
-- **`Edge.meta` keys are gated.** `axis_meta_keys` claimed to declare every meta key, but nothing checked it, and 35 keys on serialised edges were unregistered (two written by `make_unresolved_edge` itself). `hypergumbo_core.meta_key_coherence` now requires every key a producer writes to be registered, as a fourth axis of the shrink-only producer ratchet; 79 keys were registered. Keys passed to `Symbol(...)` are not gated yet.
-- **`check-docstring-drift --registry-refs`** flags comment and docstring vocabulary that names an edge type, symbol kind, evidence type, meta key or boundary no registry holds.
+- **`Edge.meta` keys must be registered**, as a fourth axis of the producer ratchet (79 unregistered keys registered; `Symbol(...)` keys are not gated yet), and **`check-docstring-drift --registry-refs`** flags prose naming vocabulary no registry holds.
 
 ### Fixed
 
 #### Taint and verify-claims
 
-- **A source a helper returns is followed into its callers** (ADR-0017 §4c). `def get(): return os.getenv("K")` then `send(get())` read clean in Python and Go, while the inline version read `violated`. Each call to such a helper is now a source site. A multi-value return taints only the position carrying the value, so a propagated `err` stays clean. New evidence key `source_returned_by`. Rust tail expressions and JS/TS arrow expression bodies are not covered yet.
-- **Loop headers and if/switch initializers define their variables**, in all six DDG languages. A for-each variable, a classic `for`'s init and update, Go's `range` and `if err := cmd.Run(); err != nil` defined nothing, nor did `let x = match ..`, `let k = f()?;` or `int r = switch ..;`. A nested function or closure body is now its own region instead of being inlined, so its bindings no longer kill the outer function's variables and its `return` no longer ends it. Java `case X ->` arms are recognised. On a six-repository A/B two rows moved to `ddg`/`confirmed`; no verdict moved.
-- **A resource-naming or trusted sink no longer hides a content flow it was collapsed with.** `net.Dial(...)` followed by `fmt.Fprintln(conn, secret)` read as "no secret reaches the network", because the collapsed group took both flags from its first member.
-- **A call to a shipped non-I/O sink no longer withholds every claim.** JS/TS `eval`, `window.eval` and `document.write` counted as a module the I/O catalogue could not classify, so every claim in a repository that called one read inconclusive. Such a call is now an examined, opaque site, like a subprocess launch: alone it gives `confirmed_with_caveats`, and if the claim's data reaches it the verdict stays `inconclusive` (ADR-0060 §6).
-- **First-party code is no longer disclosed as unexamined third-party.** A relative import is first-party only if it lands on source the analysis read, not through `node_modules`/`vendor` or above the analysed root. JS import edges drop the `node:` scheme as call edges already did, so `require('node:path')` no longer withholds. On 26 repositories no verdict moved toward clean.
-- **Taint and `io-boundaries` pick a call's catalogue row by one rule.** C and C++ taint now finds sources and sinks through the `#include` set (`send(fd, getenv("API_KEY"), ...)` had confirmed "no secret reaches the network"), and a writer's sink follows its target, so `io.WriteString(os.Stderr, secret)` is logging. On 11 C/C++ repositories, 11 withheld verdicts became `violated`.
-- **A language with no taint catalogue no longer withholds every taint verdict.** A claim over a project-declared label is gated only on the languages that declare it and those they call into; built-in labels are gated as before.
-- **Taint, `io-boundaries` and slices follow a construction into the constructor**, in Python, JS/TS and Dart, so a secret passed to a constructor that runs `subprocess.run(cmd, shell=True)` is found.
-- **A harmless call no longer hides a real one to the same callee in the same function**: a collapsed site with no per-site value is listed as `null` instead of dropped.
-- **A clean `untrusted_input` verdict carries ADR-0049's `deferred_crossing` caveat**: a Go handler writing to a request-chosen path had printed a bare `confirmed`.
-- **A module reached only through a JS handler assignment or a Python implicit dunder is no longer reported "structurally invisible"**: the starvation gate reads the row kind a `call_construct` reaches, and `call_construct` is a declared vocabulary.
-- **The "receivers of unknown scope" caveat counts only real method calls.** Go package calls and Java calls on a type are stamped `function`, so the printed untyped share rises (jenkins 42.5% → 47.5%). No verdict changed.
-- **`verify-claims` no longer hangs on a repository with a self-referencing directory symlink.** Every hand-written repository walk now uses one rule that never descends into a directory symlink.
-- **An I/O overlay works for a language with no shipped catalogue** (Ruby, PHP, Lua and others); it was ignored, and a Ruby overlay beside Python aborted the run.
-- **`verify-claims --help` derives its boundary list from the registry**; the hand-written copy had drifted.
-- **hypergumbo's 18 self-claims are `confirmed_with_caveats` again.** The self overlay now declares `rich.text.Text`, which a receiver-typing fix made reachable.
+- **A source a helper returns is followed into its callers** (ADR-0017 §4c; new evidence key `source_returned_by`); it had read clean in Python and Go. Rust tail expressions and JS/TS arrow bodies are not covered yet.
+- **Loop headers, if/switch initializers and `let x = match ..` define their variables** in all six DDG languages, and a nested function or closure body is its own region instead of being inlined.
+- **A collapsed group no longer takes its resource-naming and trusted flags from its first member**, which had hidden `fmt.Fprintln(conn, secret)` behind `net.Dial(...)`.
+- **Fewer verdicts are withheld for no reason**: a call to a shipped non-I/O sink (`eval`, `document.write`) is an examined opaque site (ADR-0060 §6); a relative or `node:` import is first-party only when it lands on source the analysis read; a language with no taint catalogue gates only claims over labels it declares; an I/O overlay works for a language with no shipped catalogue.
+- **C and C++ taint finds sources and sinks through the `#include` set**, by the same row rule as `io-boundaries`, and a writer's sink follows its target (11 C/C++ repositories: 11 withheld verdicts → `violated`).
+- **Taint, `io-boundaries` and slices follow a construction into the constructor** (Python, JS/TS, Dart), and a harmless call no longer hides a real one to the same callee in the same function.
+- **Caveats are accurate**: a clean `untrusted_input` verdict carries `deferred_crossing` (ADR-0049); modules reached through a JS handler assignment or a Python dunder are no longer "structurally invisible"; the unknown-scope share counts only real method calls.
+- **`verify-claims` no longer hangs on a self-referencing directory symlink**, its `--help` boundary list comes from the registry, and hypergumbo's 18 self-claims are `confirmed_with_caveats` again.
 
 #### Receiver typing and call resolution
 
-- **Declarations that produced no symbol now do, so the calls inside them are kept.** C and C++ function definitions of every declarator shape (pointer, parenthesised, reference, operators, specialisations; x265 had dropped 15,390 call sites) and CUDA functions returning a pointer (pytorch CUDA call edges 15,866 → 18,292); C# property accessors, indexers, operators, destructors and events; Pony behaviours; Pascal methods and nested procedures (sherpa-onnx call edges 163 → 810); Rust `extern` block functions, with the foreign binding in `meta.ffi_import`. A call inside a C/C++ definition named by an unexpandable macro is drawn from the nearest enclosing record and marked `src_stands_in_for: unnamed_definition` (redis: 2,816 of 2,823 such sites recovered). A new gate fails when an edge's source is neither an emitted symbol nor the file.
-- **C++ and Pony find a call's enclosing function by position, not by name** (ponyc: 4,420 edges whose source did not contain the call → 0), and a libc call is no longer captured by a same-named stub elsewhere in the repository.
-- **Calls outside any function appear in ten more languages** (Ruby, Lua, Rust, Swift, Kotlin, Scala, Java, C, C++, Elixir), anchored on the enclosing type or the file. C# emits calls into the framework, and every Kotlin method call emits an edge, whatever its receiver.
-- **Overloads are chosen by arity in C++, Elixir and Nim.** A C++ overload calling its sibling read as a self-call, and Elixir's `get_timeout()` inside `get_timeout/2` as a self-loop. When several overloads fit, the edge says `resolution_quality="ambiguous"` instead of guessing. Nim also uses the first argument's declared type (of 4,543 guessed sites, 947 are now unique).
-- **Linkers resolve names only in the languages their mechanism reaches**: a Python `User.objects` call no longer binds a Ruby `User` model, nor `set_defaults(func=...)` a Go function (ORM, subprocess, argparse-dispatch and cobra linkers).
-- **A bare JS/TS identifier is resolved by its enclosing scopes.** A call to a function declared in the caller's own file had bound to another file's same-named function; it now binds the declaration in scope, a parameter or local emits nothing, and only a name nothing in the file binds falls back to the repository-wide lookup (hls.js, nest, Tone.js, dash.js: 5,023 call sites rebound, 7,153 wrong edges removed). An unbound, unimported name emits the `external` placeholder. `ws['send'](x)` emits the same edge as `ws.send(x)`, and `ws.onmessage = handle` emits a references edge that taint follows as a callback.
-- **Go resolves a name by the scope at its use site.** A bare identifier binds in the caller's own package, not repository-wide (eight repositories: 2,450 placeholders now bind, 1,014 edges move to the right package). A local or parameter shadows a function or import only where it is in scope, `reg(http.NotFound)` is resolved by its operand, and a package-level alias such as `var NewWebhook = testutils.NewWebhook` reaches the function. A path-hinted call no longer binds a same-named symbol outside the imported package (alertmanager/coredns/cert-manager/prometheus: 403/53/49/150 calls).
-- **A Go method on a call's result is typed by that result**: `slog.New(h).Error` is `log/slog.Logger.Error`, and a receiver known to be outside the module no longer binds a same-named in-repository method (otel-collector: 43 `zap.Logger` calls). Explicit generic instantiations (`Map[int](x)`) emit their call edge.
-- **Python `self.method()` resolves through the class `self` denotes**, found by position rather than the file's bare-name table, which had bound `Order.finish`'s `self.save()` to an unrelated `Fee.save` (django: 539 sites retargeted, 138 wrong edges removed; pretix: 344 and 110). Inherited methods go through the MRO walk, which now also applies the builtin-base shadow check.
-- **A Python base class named through an import resolves through that import.** `TestCase` from `unittest` had bound to any repository class with that last name, so Django's `SimpleTestCase` inherited from Django's own `TestCase`, a cycle that stopped inherited-method resolution for every test class under it. External bases are now module-qualified (Django: 5,338 more call sites resolve, 123 wrong base bindings removed; pretix loses 46).
-- **A Python local shadows an imported module or builtin.** In `def f(socket): socket.socket()`, `socket` is the parameter, not the stdlib module; locals, closure and lambda variables behave the same.
-- **Swift resolves a receiver name to the binding in scope at its position**, for every binding form. An untyped declaration shadows instead of falling through to an outer binding or a field, and every block is a scope. Initialisers are typed by what they evaluate to, properties are recorded per type rather than file-wide, and `v.p.m()` is no longer typed by its head `v` (vapor's catalogued chains 87 → 106, Kingfisher's I/O edges 63 → 68, none lost).
-- **Java types four more receiver shapes** (chains on a static factory, `var` from a factory, fully-qualified parameter types, constructor receivers). Its library-signature rows, keyed by short owner, had never matched; they are keyed by fully-qualified owner now, and **Kotlin and Scala read them too**, so `Runtime.getRuntime().exec(cmd)` reaches the subprocess row.
-- **Ruby records a receiverless call to a name the repository does not define.** `puts`, `raise`, `system(...)` and the Rails class-body DSL (`has_many`, `validates`, ...) emitted no edge; they now emit the external placeholder Python and JavaScript use (mastodon: +20,520 call sites, no existing edge changed).
-- **A Perl class-method call is resolved by its package.** `Pkg->m(...)` looked `m` up across every package (git's `SVN::Pool->new` bound `Git::new`); it now looks up `Pkg::m` exactly and emits an unresolved placeholder on a miss (five repositories: cross-package bindings 173 → 0).
-- **Module slots name what the source names.** Objective-C no longer puts a first-party class or a type keyword in the module slot, and Ruby records an external constant receiver as written (`Net::HTTP`, not `http`). A Ruby call on a constant is no longer bound to an unrelated same-named method.
-- **Django managers and QuerySets reached through a model `@property` are typed ORM** (pretix: +785 edges, none lost), and `self.order.save()` through a relation field is an ORM write.
-- **Each `.h` header is parsed by one grammar** (Objective-C, else C++ when the repository has C++ sources, else C).
-- **A file tree-sitter could only partly parse is reported** in `limits.failed_files` (`partial_parse:`); it is still analysed.
+- **Declarations that produced no symbol now do, so the calls inside them are kept**: C/C++ definitions of every declarator shape, pointer-returning CUDA functions, C# accessors, indexers, operators and events, Pony behaviours, Pascal methods and nested procedures, and Rust `extern` functions (`meta.ffi_import`). A call in a macro-named C/C++ definition is drawn from the enclosing record (`src_stands_in_for: unnamed_definition`). A gate fails when an edge's source is neither a symbol nor the file.
+- **Calls are credited by position**: C++ and Pony find a call's enclosing function by position, and calls outside any function appear in ten more languages, anchored on the enclosing type or the file.
+- **Overloads are chosen by arity** in C++, Elixir and Nim; several matches stamp `resolution_quality="ambiguous"`.
+- **Names bind to the declaration in scope**:
+  - JS/TS: enclosing scopes before the repository-wide lookup (four repositories: 7,153 wrong edges removed); computed-property calls and property-assigned callbacks emit edges.
+  - Go: the scope at the use site and the caller's own package; a method on a call's result is typed by that result; explicit generic instantiations emit calls.
+  - Python: `self.method()` through the class `self` denotes; an imported base class through its import (Django's `TestCase` inheritance cycle is gone); a local shadows an imported module or builtin.
+  - Swift: the binding in scope at the position, with initialisers typed by value and properties recorded per type.
+  - Perl: `Pkg->m()` by its package.
+  - ORM, subprocess, argparse and cobra linkers: only in the languages their mechanism reaches.
+- **More receivers are typed**: four more Java shapes, with library-signature rows (now keyed by fully-qualified owner) read by Kotlin and Scala too; Django managers through a model `@property` or a relation field.
+- **Unresolved calls are recorded, not dropped**: Ruby receiverless calls (`puts`, the Rails DSL) and Go bare calls emit the external placeholder, and Objective-C and Ruby module slots name what the source names.
+- **Each `.h` header is parsed by one grammar**, and a partly parsed file is listed in `limits.failed_files`.
 
 #### Inheritance and linkers
 
-- **TypeScript `interface X extends Y`, Dart heritage clauses and Kotlin interface inheritance emit inheritance edges**, and the inheritance linker labels an edge from an interface, trait or protocol `extends`. C++ and C# dispatch through abstract-base hierarchies (grpc: +1,905 `dispatches_to`).
-- **JS/TS `module_exports` edges reach only what a module exports**, which needed CommonJS exports and `export { a as b }` read correctly (koel: 2,084 → 94 edges).
-- **JS-family linkers label TypeScript files `typescript`**, and HTML `<script src>` edges land on the in-repo script file (11,932 of 12,614 corpus edges now resolve).
-- **Pub/sub linkers no longer store an identifier as the topic.** A same-file string constant is resolved; anything else goes under the new `topic_identifier` / `channel_identifier` / `event_identifier` meta keys.
-- **JS/TS module links no longer depend on the working directory, and tsconfig `paths` aliases resolve.**
+- **TypeScript, Dart and Kotlin interface inheritance emit edges**, and C++/C# dispatch through abstract bases (grpc: +1,905 `dispatches_to`).
+- **JS/TS `module_exports` edges reach only exported names** (koel: 2,084 → 94). Module links resolve tsconfig `paths` whatever the working directory, JS-family linkers label TypeScript `typescript`, and HTML `<script src>` edges land on the in-repo file.
+- **Pub/sub linkers store an unresolved identifier under `topic_identifier`/`channel_identifier`/`event_identifier`**, not as the topic.
 
 #### Reaching the I/O catalogue
 
-- **A call bound to a function inside the repository no longer falls through to a library row by short name**, in io-boundaries and taint alike. gatling's 15 false `scala.io.StdIn` reads are gone; real `StdIn.readLine` calls still classify. The untyped-receiver caveat marks sites whose method name collides with a known builtin.
-- **A launch that returns a handle has its crossing at the read**: Python `Popen.communicate()` and `os.popen().read()`, C reads from a `popen()` stream and Java reads from `Process.getInputStream()` are `untrusted_input` sources. Go's `exec.Command` rows stay for now: removing them was measured to lose real flows that need a source returned from a helper to be followed. That has since landed (see Fixed) but the removal has not been re-measured.
-- **Every JS/TS extension reaches the data-flow graph and the linkers.** The DDG specs and twelve linkers had private `*.js`/`*.ts` globs; they now share the language taxonomy's list, so `.mjs`/`.cjs`/`.jsx`/`.tsx`/`.mts`/`.cts` are covered (growthbook: `.tsx` functions with DDG edges 0 → 2,090).
-- **A request sent through `urllib.request.build_opener()` is found**: the opener is typed and its `open` is a network send. Because `build_opener` reads the proxy environment, every send through an opener now also shows an environment-to-network flow; whether that is wanted is not yet decided.
-- **csv writes are found where the data goes in.** `csv.DictWriter` writes are rowed, and `csv.writer(f)` is typed, so the write row sits on `writerow`/`writerows` instead of the factory (ADR-0049 Ruling 3). A writer built in one function and used in another, a false clean, now reads `violated`. A factory's return type is now one `library_signatures` line.
-- **A Go Unix-domain connection is IPC, not network.** The socket family is read where the connection is made (`net.Dial("unix", ...)`, `DialUnix`, ...), so writes and reads on it are `ipc_send`/`ipc_recv`; a non-literal network argument stays `net_stream` (21 Go repositories: 5 rows moved).
-- **A row no longer claims a longer module that ends in its name.** `mycsvlib.csv` was stdlib `csv`, and koel's `@/services/http` was Node's `http` (41 false network sends). Go's `filepath`, `grpc` and `x/sys/unix` rows are keyed by import path, and C++'s `<cstdlib>`/`<cstdio>`/... reach the C rows (four C++ repositories: +223 classified call sites).
-- **A process's own standard output is `logging` in every catalogue.** Go, Java and C++ stdio was `ipc_send`, a false IPC sink, and Kotlin and Scala writes to `System.out`/`System.err` now classify as Java's do (sbt +96, okhttp +31 I/O chains, none lost). `logging` names a channel whose far side the launcher chose, `ipc_send` one the program set up; standard input stays `ipc_recv`.
-- **More calls reach their row**: a Python call through a from-imported module, a call on a typed receiver (credited to its type's row, not a same-named package function), inline fully-qualified Scala and Rust calls, and PHP grouped `use`. An import no longer counts as a call to a same-named function.
-- **`io-boundaries` lists calls into unclassified libraries again**; the `external_potential` bucket had been empty since ADR-0037.
-- **Row corrections:**
-  - Added: C `open`/`openat`/`creat` (read or write by their flags), Go writes through a file handle and `os.OpenFile` by its flags, Swift and Objective-C process launches, `defusedcsv` and Django `default_storage`.
-  - Removed, because the call makes no crossing: rust `std::process::exit`/`abort` and elixir `System.halt` (they end the calling process, they launch nothing); logging-configuration calls that write nothing (python `basicConfig`/`StreamHandler`, go `slog.New*Handler`, elixir `Logger.metadata`/`configure`); in-process notification posts in objc/swift; objc `removeObserver`; erlang `ets:info`/`mnesia:table_info` and `application:start`; haskell `exitWith`; Node listeners for data-less events.
-  - Moved: working-, home- and temp-directory reads are `host_info_read` in every catalogue (rust `current_dir`/`path::absolute`, haskell `getCurrentDirectory`/`makeAbsolute`/`getHomeDirectory`/`getTemporaryDirectory`); go `exec.LookPath` is `fs_read`, not a launch; elixir GenServer, `Process.send` and `Task` spawns are `process_send` like erlang's `!`, and `Task.Supervisor.start_child` now matches; community `Oban.insert*` and python `sqlite3.Connection.backup` are `db_write`.
+- **A call bound inside the repository no longer falls through to a library row by short name** (gatling: 15 false `StdIn` reads gone).
+- **A launch that returns a handle has its crossing at the read** (`Popen.communicate()`, `popen` streams, `Process.getInputStream()`). Go's `exec.Command` rows stay until re-measured now that returned sources are followed.
+- **Every JS/TS extension** (`.mjs`, `.cjs`, `.jsx`, `.tsx`, `.mts`, `.cts`) reaches the DDG specs and linkers, from one shared list.
+- **Factory results are typed through `library_signatures`**, so `urllib` opener sends and `csv.writer` writes are found where the data goes in. Every send through an opener also shows an environment-to-network flow, not yet ruled on.
+- **Module matching is exact**: a row no longer claims a longer module ending in its name (koel: 41 false network sends), Go rows are keyed by import path, and C++ `<cstdio>`-style headers reach the C rows.
+- **Channels are named for what they are**: a process's own standard output is `logging` in every catalogue, Kotlin/Scala `System.out` included, and a Go Unix-domain socket is IPC.
+- **More calls reach their row** (from-imported modules, typed receivers, fully-qualified Scala and Rust, PHP grouped `use`), and `io-boundaries` lists calls into unclassified libraries again.
+- **Row corrections**: added C `open`/`creat`, Go file-handle writes, Swift and Objective-C launches, `defusedcsv` and Django storage; removed calls that cross nothing (process exits, logging configuration, in-process notifications, Erlang table info, data-less Node events); moved directory reads to `host_info_read`, `exec.LookPath` to `fs_read`, Elixir message sends to `process_send`, and `Oban.insert*` and `sqlite3` backup to `db_write`.
 
 #### Identity and output
 
-- **`stable_id` is no longer null for whole symbol populations whose producers compute none** (every function of the Clojure, Elixir, Erlang, Haskell, OCaml and Zig analyzers, among others). The floor key is used only when it is unique in its file; same-name groups stay null rather than take ids that would move between symbols (ADR-0035 §1). `stable_id_stats` gains `floor_cohort` and `floor_abstained`. No `stable_id_scheme` bump: only nulls become values.
-- **Swift and Rust symbols no longer depend on which grammar release is installed.** The floors rise to tree-sitter-swift 0.7.4 and tree-sitter-rust 0.24.2. A Swift raw identifier containing spaces is spelled with underscores on every grammar, and Rust 2024 `unsafe extern "C" { ... }` functions are foreign symbols.
-- **An imported file's node carries that file's own language, not the importer's.** A `.ts` file importing `./util.js` minted a second, `typescript`-labelled node beside the real one, and imported images and fonts were labelled `javascript`. Imported assets are now file nodes with no language (the importer's is kept as `discovery_language`), and an existing node for the path is reused.
-- **Python standard-library recognition covers 3.10 to 3.13**, not just 3.12, so `distutils`, `imp`, `asyncore` and the other modules removed in 3.12 are no longer labelled `ecosystem=third_party`. Only the label changes; no verdict reads it.
-- **bash emits one `export` symbol per exported variable**, and `export A=1 B=2` no longer drops `B`.
-- **`compact`'s default view leads with key symbols**, not file seeds or external placeholders.
-- **Ansible needs Ansible evidence** (`ansible.cfg`, a playbook or a role entry point): repositories with any Ansible claim fall 180 → 9 on the corpus. Astro paths are relative to the analysis root, and PHP reads double-quoted Laravel route literals and refuses interpolated ones.
-- **A shell script with an appended binary** no longer reports archive fragments as launched programs.
+- **`stable_id` is filled for symbol populations whose producers computed none**, when the floor key is unique in its file (ADR-0035 §1; no `stable_id_scheme` bump).
+- **Swift and Rust symbols no longer vary with the installed grammar**: the floors rise to tree-sitter-swift 0.7.4 and tree-sitter-rust 0.24.2.
+- **An imported file's node carries its own language**; an imported asset has none (`discovery_language` records the importer's).
+- **Python stdlib recognition covers 3.10–3.13**, so `distutils` and the other modules removed in 3.12 are no longer `third_party`.
+- **Smaller**: bash multi-variable `export`; `compact` leads with key symbols; Ansible needs Ansible evidence (repositories with claims 180 → 9); Astro paths and Laravel route literals; no launched programs read from a script's appended binary.
 
 #### Survey speed on large repositories
 
-- **Supply-chain classification reads each file once, not once per symbol.** A file with N symbols was read N times: 40× the bytes on nestjs, and 319 s of CPU on flink. On a nestjs sample per-path classification is 8.2× faster; the end-to-end saving on flink has not been re-measured.
-- **crypto-flow-linker no longer stalls on JavaScript repositories that import images or fonts.** It parsed binary assets as JavaScript before checking for a crypto keyword, with a comment-masking walk quadratic in a node's children; on nextjs it ran for over an hour. It now checks the raw text first and walks children in one pass. Findings are unchanged; the end-to-end nextjs time has not been re-measured.
-- **The sketch's Additional Files ranking no longer stalls on large repositories.** It matched every symbol name against every doc file as one regex (flink: fewer than 100 of 1,775 files done after 32 minutes); it now tokenizes each file once, and a 19 KB file takes 0.6 ms instead of 5.7 s. Each name now counts on its own, so `run` inside a mentioned `Svc.run` also counts, which can shift a file's rank.
+- **Three stalls fixed**: supply-chain classification reads each file once, not once per symbol (319 s of CPU on flink); crypto-flow-linker checks for a crypto keyword before parsing (over an hour on nextjs); the sketch's file ranking tokenizes each doc once instead of matching a names-wide regex. Only the ranking's output changes, since each name now counts on its own. End-to-end times have not been re-measured.
 
 #### Tooling and release
 
-- **Registry gates follow values carried through data.** The producer-coherence gates saw only literal keyword arguments, so a value reaching `Edge.create`/`Symbol(...)` through a loop, a helper's return, a dict or a dataclass field was invisible. The new `hypergumbo_core.value_flow` follows those routes. It found Kotlin's undeclared `extends`/`implements` producer (now declared), SCIP's unregistered `has_type`/`defined_by` edges (folded onto `references`, the flag kept in `meta.scip_relationship_flag`) and four unregistered lua_ffi/napi evidence types (registered as pending). No measured analysis output changes.
-- **`python -m hypergumbo_core.cli` no longer exits 0 silently.** It ran nothing and reported success, which a JSON-reading driver took as "no findings"; it now exits 2 and names `python -m hypergumbo_core <command>`. A gate requires every module with a `main` to have a `__main__` block that is not a silent 0.
-- **Measurement scripts no longer silently measure the wrong tree.** Three `scripts/measure-*` scripts put their own tree ahead of `PYTHONPATH`, so an A/B arm could run the other arm's analyzer and report a 0 delta. They now print the tree under test, refuse a mixed tree, and exit 2 when `PYTHONPATH` names another tree unless `HG_MEASURE_TREE=script|pythonpath` chooses.
-- **Cohort instruments say how much of the cohort they covered.** The 12 `scripts/measure-*` instruments that take a list of repositories dropped or zeroed a member whose run failed and exited 0. They now print `COHORT: covered K of N given`, name each missing member and its error, and exit 4 when K ≠ N.
-- **The test-only-reachability ratchet runs on scheduled CI.** It lived only in the GitHub workflow, unscheduled since 07-23; it now runs in the Woodpecker cron, and that step's two self-map ratchets no longer hide each other's verdict. The baseline was re-frozen after a reviewed first run, and the 8 unwired functions it found are filed.
-- **The catalogue scope gate gives the same verdict on every supported Python**; python.yaml's `tomllib` row had failed the 3.10 nightly leg.
-- **`auto-pr --tracker-id` no longer stalls 15 minutes after a merge**: the pending gate is released before the tracker write.
-- **The mypy strict surface shrinks 666 → 503**, with no behaviour change.
-- **`measure-taint-precision.py packet` lists each sink site once**, and its bash listings follow `bash.py`.
-- **The scheduled suites install and measure hypergumbo-lang-scip-python**; the dependency audit drops 24 stale ignores; `bakeoff-deep`/`bakeoff-broad run` no longer treat a crashed run's empty output as finished; the release scripts read `SCHEMA_VERSION` correctly (8.1.0 shipped a garbled schema line); and the dormant GitHub workflow's manifest banners count the test selection, not a path prefix.
+- **Registry gates follow values carried through data** (`hypergumbo_core.value_flow`), which found undeclared Kotlin, SCIP and evidence-type producers, now fixed.
+- **Instruments no longer report success on bad input**: `python -m hypergumbo_core.cli` exits 2 instead of a silent 0, measurement scripts name and check the code tree under test, and cohort instruments print `COHORT: covered K of N given` and exit 4 when short.
+- **CI**: the test-only-reachability ratchet runs on the Woodpecker cron, the catalogue scope gate agrees across Python 3.10–3.13, the scheduled suites cover scip-python, and the release scripts read `SCHEMA_VERSION` correctly (8.1.0 shipped a garbled line).
+- **Smaller**: `auto-pr --tracker-id` no longer stalls after a merge; the mypy strict surface shrinks 666 → 503; bakeoff runs treat a crashed run as unfinished; the dependency audit drops 24 stale ignores; `measure-taint-precision.py packet` lists each sink site once; the dormant GitHub workflow's manifest banners count correctly.
 
 ### Documentation
 
-- **ADR-0049's Lazy rows outside Django were checked against each library's source**; none moved. `TypedQuery.getResultStream` executes the query, so the ADR's list is corrected. `EntityManager.getReference`, `sqlite3.Connection.iterdump`, `TcpListener.incoming`, the NSURLSession task factories and `Ecto.Repo.stream` are held, each with its reason in the row note and a pinning test.
-- **[Audit 0022](docs/audits/0022-inv-nular-remainder-sweep-tranche-3.md) source-checks 335 more catalogue rows**: those earlier sweeps could not reach and those added since 2026-09-11, two blind reviewers per chunk (30 planted errors, all found). It yields 19 candidate fixes, each filed; no row changes yet. Adds the `io_boundary_row_candidates` audit format.
-- **[docs/CATALOGUES.md](docs/CATALOGUES.md)**: one page for catalogue data, covering the four tiers, what each may do to a verdict, every family with its file counts, and the in-repo opt-in. Its registry facts are generated and tested. "Project-local" is retired from user-facing text.
-- **ADR-0061 decides catalogue tiers for every family**, and ADR-0016, 0017, 0045, 0047 and 0060 agree with it. ADR-0017 also records the loop-header model and how returned sources reach callers (§4c). 21 ADRs now state the shipped design, with retracted text and superseded bodies removed.
-- **Module docstrings brought up to date** by two staleness audits: wrong claims and drift corrected in 50 files, missing functionality described in 33.
-- **Measurements.** Measurement 0030 prices the JS handler-assignment construct (4 correct sites, no verdict change). ADR-0048 quotes measurement 0006's published 33.9%. Records that publish a per-row taint precision say it counts reachability pairs, not value flows.
-- **`VERIFY-CLAIMS-SCOPE.md` says why no verdict consults partial parses.**
+- **[docs/CATALOGUES.md](docs/CATALOGUES.md)** covers catalogue tiers, families and the in-repo opt-in.
+- **ADR-0061 decides catalogue tiers**, and ADR-0016, 0017, 0045, 0047 and 0060 agree with it. ADR-0017 adds §4c, and 21 ADRs now state the shipped design.
+- **ADR-0049's Lazy rows outside Django were checked against library source**: `getResultStream` leaves the list, and the rest are held with reasons.
+- **[Audit 0022](docs/audits/0022-inv-nular-remainder-sweep-tranche-3.md) source-checks 335 more catalogue rows** and files 19 candidate fixes.
+- **Module docstrings corrected in 50 files and extended in 33**; measurement 0030 and corrections to earlier measurement records; `VERIFY-CLAIMS-SCOPE.md` explains why no verdict consults partial parses.
 
 ## [8.1.0] - 2026-09-25
 
