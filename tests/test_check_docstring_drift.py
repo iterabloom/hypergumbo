@@ -496,3 +496,174 @@ def test_registry_refs_is_part_of_all_and_never_sets_the_exit_code(
                                       str(tmp_path)])
     assert cdd.main() == 0
     assert "m.py:1  routes_to  [edge-type]" in capsys.readouterr().out
+
+
+# --- rolling read: the review ledger ---------------------------------------
+#
+# A co-change flag is not a selection rule. Measured 2026-10-06: a seeded
+# random sample of 30 files no audit had read (median 2 body commits since the
+# docstring, so none flagged) drifted at >= 19/30, against 57-89% for flagged
+# files across runs. The rolling read covers what the flags cannot: each audit
+# also reads the N files whose last recorded review is oldest.
+
+
+def _rrow(path, ds_ts=100 * DAY):
+    return {"path": f"/repo/{path}", "ds_ts": ds_ts}
+
+
+def _ledger(**files):
+    return {"version": 1, "files": {
+        p.replace("__", "/"): {"reviewed": d, "run": "r"} for p, d in files.items()}}
+
+
+def test_rolling_puts_never_reviewed_files_first_oldest_docstring_first():
+    rows = [_rrow("a.py", ds_ts=300 * DAY), _rrow("b.py", ds_ts=50 * DAY),
+            _rrow("c.py", ds_ts=10 * DAY)]
+    ledger = _ledger(**{"c.py": "2026-09-01"})
+    out = cdd.rolling_selection(rows, ledger, 3, repo_root="/repo")
+    assert [f["path"] for f in out] == ["b.py", "a.py", "c.py"], (
+        "never-reviewed first (older docstring first), then the reviewed one")
+    assert out[0]["last_reviewed"] is None and out[2]["last_reviewed"] == "2026-09-01"
+
+
+def test_rolling_orders_reviewed_files_by_review_date_not_docstring_age():
+    """POSITIVE CONTROL: once a file is in the ledger, its review date rules."""
+    rows = [_rrow("old_ds.py", ds_ts=1 * DAY), _rrow("new_ds.py", ds_ts=900 * DAY)]
+    ledger = _ledger(**{"old_ds.py": "2026-10-01", "new_ds.py": "2026-08-01"})
+    out = cdd.rolling_selection(rows, ledger, 2, repo_root="/repo")
+    assert [f["path"] for f in out] == ["new_ds.py", "old_ds.py"]
+
+
+def test_rolling_excludes_the_flagged_set_and_caps_at_n():
+    rows = [_rrow(f"f{i}.py", ds_ts=i * DAY) for i in range(5)]
+    out = cdd.rolling_selection(rows, _ledger(), 2, repo_root="/repo",
+                                exclude=frozenset({"f0.py"}))
+    assert [f["path"] for f in out] == ["f1.py", "f2.py"], (
+        "N is IN ADDITION to the flagged set, so flagged files never use a slot")
+
+
+def test_rolling_zero_selects_nothing():
+    assert cdd.rolling_selection([_rrow("a.py")], _ledger(), 0, repo_root="/repo") == []
+
+
+def test_ledger_coverage_counts_unreviewed_and_entries_for_vanished_files():
+    rows = [_rrow("a.py"), _rrow("b.py")]
+    ledger = _ledger(**{"a.py": "2026-09-01", "gone.py": "2026-09-01"})
+    cov = cdd.ledger_coverage(rows, ledger, repo_root="/repo")
+    assert cov == {"scanned": 2, "reviewed": 1, "never_reviewed": 1,
+                   "entries_without_a_scanned_file": ["gone.py"]}
+
+
+def test_record_reviews_overwrites_only_the_named_files_and_sorts():
+    ledger = _ledger(**{"z.py": "2026-01-01", "a.py": "2026-01-01"})
+    new = cdd.record_reviews(ledger, ["z.py", "m.py"], date="2026-10-06", run="s1")
+    assert list(new["files"]) == ["a.py", "m.py", "z.py"], "sorted for stable diffs"
+    assert new["files"]["z.py"] == {"reviewed": "2026-10-06", "run": "s1"}
+    assert new["files"]["a.py"]["reviewed"] == "2026-01-01", "others untouched"
+    assert ledger["files"]["z.py"]["reviewed"] == "2026-01-01", "input not mutated"
+
+
+def test_load_ledger_missing_file_is_empty_not_an_error(tmp_path):
+    assert cdd.load_ledger(str(tmp_path / "none.json")) == {"version": 1, "files": {}}
+
+
+def test_load_ledger_rejects_an_unknown_shape(tmp_path):
+    p = tmp_path / "l.json"
+    p.write_text('{"version": 2, "files": {}}')
+    try:
+        cdd.load_ledger(str(p))
+    except ValueError as e:
+        assert "version-1" in str(e)
+    else:  # pragma: no cover
+        raise AssertionError("a ledger of unknown shape must not be read as empty")
+
+
+def test_save_then_load_round_trips(tmp_path):
+    p = tmp_path / "l.json"
+    led = cdd.record_reviews(_ledger(), ["b.py", "a.py"], date="2026-10-06", run="x")
+    cdd.save_ledger(str(p), led)
+    assert cdd.load_ledger(str(p)) == led
+    assert p.read_text().endswith("\n")
+
+
+def _git_repo_with(tmp_path, monkeypatch, files):
+    import subprocess as sp
+    for rel, text in files.items():
+        f = tmp_path / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(text)
+    sp.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    sp.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "add", "."],
+           cwd=tmp_path, check=True)
+    sp.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm",
+            "init"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
+
+
+def test_main_record_review_writes_the_ledger(tmp_path, monkeypatch, capsys):
+    _git_repo_with(tmp_path, monkeypatch, {
+        "packages/p/src/m.py": '"""Doc."""\nX = 1\n'})
+    ledger = tmp_path / "led.json"
+    monkeypatch.setattr(sys, "argv", [
+        "check-docstring-drift", "--ledger", str(ledger),
+        "--record-review", "packages/p/src/m.py", "--run", "2026-10-06-test",
+        "--date", "2026-10-06"])
+    assert cdd.main() == 0
+    assert json.loads(ledger.read_text())["files"] == {
+        "packages/p/src/m.py": {"reviewed": "2026-10-06", "run": "2026-10-06-test"}}
+    assert "recorded 1" in capsys.readouterr().out
+
+
+def test_main_record_review_refuses_a_path_outside_the_scan_scope(
+        tmp_path, monkeypatch, capsys):
+    """A typo must fail loudly, not land a ledger row nothing will ever match."""
+    _git_repo_with(tmp_path, monkeypatch, {
+        "packages/p/src/m.py": '"""Doc."""\nX = 1\n'})
+    ledger = tmp_path / "led.json"
+    monkeypatch.setattr(sys, "argv", [
+        "check-docstring-drift", "--ledger", str(ledger),
+        "--record-review", "packages/p/src/nope.py", "--run", "r"])
+    assert cdd.main() == 2
+    assert not ledger.exists()
+    assert "nope.py" in capsys.readouterr().err
+
+
+def test_main_record_review_requires_a_run_label(tmp_path, monkeypatch, capsys):
+    _git_repo_with(tmp_path, monkeypatch, {
+        "packages/p/src/m.py": '"""Doc."""\nX = 1\n'})
+    monkeypatch.setattr(sys, "argv", [
+        "check-docstring-drift", "--ledger", str(tmp_path / "l.json"),
+        "--record-review", "packages/p/src/m.py"])
+    assert cdd.main() == 2
+    assert "--run" in capsys.readouterr().err
+
+
+def test_main_rolling_lists_unreviewed_files_beyond_the_flags(
+        tmp_path, monkeypatch, capsys):
+    _git_repo_with(tmp_path, monkeypatch, {
+        "packages/p/src/a.py": '"""Doc a."""\nX = 1\n',
+        "packages/p/src/b.py": '"""Doc b."""\nY = 1\n'})
+    ledger = tmp_path / "led.json"
+    cdd.save_ledger(str(ledger), cdd.record_reviews(
+        {"version": 1, "files": {}}, ["packages/p/src/a.py"],
+        date="2026-10-01", run="r"))
+    monkeypatch.setattr(sys, "argv", [
+        "check-docstring-drift", "--ledger", str(ledger), "--rolling", "5",
+        "--json"])
+    cdd.main()
+    out = json.loads(capsys.readouterr().out)["rolling"]
+    assert [f["path"] for f in out["files"]] == [
+        "packages/p/src/b.py", "packages/p/src/a.py"]
+    assert out["coverage"]["never_reviewed"] == 1
+    monkeypatch.setattr(sys, "argv", [
+        "check-docstring-drift", "--ledger", str(ledger), "--rolling", "1"])
+    cdd.main()
+    text = capsys.readouterr().out
+    assert "Rolling read" in text and "never  packages/p/src/b.py" in text
+
+
+def test_rolling_skips_generated_code():
+    """A protoc output's docstring is the generator's, not ours to review."""
+    rows = [_rrow("pkg/_generated/scip_pb2.py", ds_ts=1 * DAY), _rrow("pkg/a.py")]
+    out = cdd.rolling_selection(rows, _ledger(), 5, repo_root="/repo")
+    assert [f["path"] for f in out] == ["pkg/a.py"]

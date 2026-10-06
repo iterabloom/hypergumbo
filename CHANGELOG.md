@@ -52,6 +52,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Developer tooling
 
 - **`Edge.meta` keys must be registered**, as a fourth axis of the producer ratchet (79 unregistered keys registered; `Symbol(...)` keys are not gated yet), and **`check-docstring-drift --registry-refs`** flags prose naming vocabulary no registry holds.
+- **`check-docstring-drift --rolling N`** adds the least-recently-reviewed files, from a committed review ledger, to each audit.
 
 ### Fixed
 
