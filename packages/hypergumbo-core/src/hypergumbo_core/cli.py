@@ -5817,6 +5817,26 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             reverse_graph_for_filter = _build_reverse_graph(edges)
         return reverse_graph_for_filter
 
+    def _is_test_chain(chain: Any) -> bool:
+        src_node = nodes_by_id.get(chain.io_edge_src)
+        if src_node:
+            return _is_test_node(src_node.get("path", ""), src_node.get("meta"))
+        return False
+
+    # WI-pogar / ADR-0016 §7: the calls whose I/O is UNKNOWN because their
+    # source was not analysed. Taken from the UNFILTERED bucket on purpose --
+    # ``--boundary net_send`` asks about network sends, and an untraced call
+    # may be one, so the disclosure must not vanish with the bucket it lives
+    # in. Only the test filter applies: a test's untraced call is not a
+    # production one, the same rule every chain here follows.
+    untraced_chains = [
+        c for c in (
+            bmap.entries["external_potential"].chains
+            if "external_potential" in bmap.entries else []
+        )
+        if not (exclude_tests and _is_test_chain(c))
+    ]
+
     filtered_entries: Dict[str, BoundaryMapEntry] = {}
     for btype, entry in bmap.entries.items():
         if boundary_filter and btype != boundary_filter:
@@ -5830,11 +5850,6 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
 
         # Filter out chains where the source symbol is in a test file
         if exclude_tests:
-            def _is_test_chain(chain: Any) -> bool:
-                src_node = nodes_by_id.get(chain.io_edge_src)
-                if src_node:
-                    return _is_test_node(src_node.get("path", ""), src_node.get("meta"))
-                return False
             chains = [c for c in chains if not _is_test_chain(c)]
 
         if not chains and (primitive_filter or exclude_tests):
@@ -5864,6 +5879,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                 IO_BOUNDARIES_SCHEMA_VERSION,
                 _DISCLOSED_ONLY_BOUNDARIES,
                 disclosed_chain_count,
+                untraced_modules,
             )
 
             # INV-pubom (amended, WI-huhit/WI-foduh): total_io_edges is the
@@ -5894,6 +5910,9 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                     filtered_entries, "net_listen"),
                 "db_compose_edges": disclosed_chain_count(
                     filtered_entries, "db_compose"),
+                # WI-pogar: from ``untraced_chains``, not ``filtered_entries``
+                # -- see where that list is built.
+                "untraced_modules": untraced_modules(untraced_chains),
                 "boundaries": {
                     k: v.to_dict() for k, v in sorted(filtered_entries.items())
                 },
@@ -5914,31 +5933,90 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # targeting the bucket with `--boundary external_potential`.
     show_ep = getattr(args, "show_external_potential", False)
     ep_targeted = (boundary_filter == "external_potential")
-    ep_suppressed_count = 0
     display_entries = filtered_entries
     if not show_ep and not ep_targeted and "external_potential" in filtered_entries:
-        ep_suppressed_count = len(
-            filtered_entries["external_potential"].chains,
-        )
         display_entries = {
             k: v for k, v in filtered_entries.items()
             if k != "external_potential"
         }
 
-    if getattr(args, "by_file", False):
+    if not display_entries and untraced_chains:
+        # WI-pogar: "No I/O boundary calls detected." over a call whose source
+        # was never read is the "no I/O" ADR-0016 §7 forbids. Say what is true:
+        # nothing was CLASSIFIED, and the disclosure below says what is unknown.
+        print("No classified I/O boundary calls detected.")
+    elif getattr(args, "by_file", False):
         _print_io_boundaries_by_file(display_entries, nodes_by_id, repo_root)
     else:
         _print_io_boundaries_by_type(display_entries, nodes_by_id, bmap, repo_root)
-    if ep_suppressed_count:
-        print(
-            f"  external_potential: {ep_suppressed_count} chain(s) "
-            f"suppressed and excluded from the headline total (unclassified "
-            f"calls into named external modules; pass --show-external-potential to "
-            f"include them, or use --boundary external_potential).",
+    if untraced_chains:
+        _print_untraced_disclosure(
+            untraced_chains,
+            bucket_shown="external_potential" in display_entries,
         )
     _print_unsupported_languages_notice(unsupported_languages)
 
     return 0
+
+
+#: How the untraced disclosure names each ``untraced_modules`` group.
+_UNTRACED_GROUP_LABELS: tuple[tuple[str, str], ...] = (
+    ("third_party", "untraced dependency"),
+    ("unknown", "dependency or runtime module (this language's standard "
+                "library is not enumerated)"),
+    ("stdlib", "standard-library module the catalogue has not enumerated"),
+)
+
+
+def _print_untraced_disclosure(
+    untraced_chains: list[Any], *, bucket_shown: bool,
+) -> None:
+    """Say that calls into unanalysed source have UNKNOWN I/O (WI-pogar).
+
+    ADR-0016 §7: installed dependency source is not parsed by default, so a
+    chain into it stops at a boundary stub, and the absence of a chain there is
+    not the absence of I/O. These calls are the ``external_potential`` bucket;
+    this replaced a one-line note that called them "unclassified calls into
+    named external modules" and printed under "No I/O boundary calls detected."
+    -- accurate about the bucket, silent about what it means.
+
+    Modules are grouped by the ``dst_ecosystem`` stamp so a dependency (the
+    ``--trace-deps`` / overlay errand) is not confused with a runtime module
+    the catalogue has not enumerated (a catalogue errand); where the language
+    enumerates no standard library hypergumbo says it cannot tell. Printed
+    whenever the population is non-empty, whatever ``--boundary`` or
+    ``--primitive`` asked about.
+    """
+    from .io_boundary import (
+        ECOSYSTEM_THIRD_PARTY,
+        ECOSYSTEM_UNKNOWN,
+        untraced_modules,
+    )
+    from .verify_claims import _render_capped_names
+
+    groups = untraced_modules(untraced_chains)
+    n_modules = sum(len(mods) for mods in groups.values())
+    print(
+        f"  I/O unknown: {len(untraced_chains)} call(s) into {n_modules} "
+        f"module(s) whose source was not analysed and that no catalogue row "
+        f"classifies (the external_potential bucket, excluded from the "
+        f"headline total) -- untraced, NOT evidence of no I/O.",
+    )
+    for key, label in _UNTRACED_GROUP_LABELS:
+        if groups[key]:
+            print(f"    {label}: {_render_capped_names(groups[key])}")
+    hint = (
+        "" if bucket_shown else
+        " Pass --show-external-potential to list the call sites (or use "
+        "--boundary external_potential)."
+    )
+    dependency_note = (
+        " Installed dependency source is not traced (ADR-0016 §7); an "
+        "--io-primitives overlay can classify these calls."
+        if groups[ECOSYSTEM_THIRD_PARTY] or groups[ECOSYSTEM_UNKNOWN] else ""
+    )
+    if hint or dependency_note:
+        print(f"  {(dependency_note + hint).strip()}")
 
 
 def _print_unsupported_languages_notice(
@@ -6072,6 +6150,14 @@ def _print_io_boundaries_by_type(
                         f"  [tier-{chain.dst_tier} {chain.dst_tier_name}]"
                     )
                     break
+            # WI-pogar: an unclassified call into dependency source that was
+            # not analysed -- its I/O is unknown, not absent (ADR-0016 §7).
+            if any(
+                c.boundary == "external_potential"
+                and c.dst_ecosystem == "third_party"
+                for c in chains_by_prim[prim]
+            ):
+                prim_tier_tag += "  [untraced dependency]"
             print(f"    {prim} ({count}){risk_flag}{prim_tier_tag}")
             for chain in chains_by_prim[prim]:
                 caller = _format_io_caller(chain.io_edge_src, nodes_by_id, repo_root)
@@ -7367,6 +7453,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         "taint_sanitizers": (cli_sanitizers, claims_sanitizers),
     }, () if getattr(args, "no_default_overlays", False) else languages,
        load_bearing=coverage.load_bearing_grants,
+       untraced_vouched=coverage.untraced_vouched_grants,  # WI-pogar
        # INV-nular. `languages` UNCONDITIONALLY, unlike the argument above:
        # --no-default-overlays suppresses the COMMUNITY layer, not the shipped
        # catalogue, so the run still rests on base rows and still owes the
@@ -11565,22 +11652,19 @@ def _make_ecosystem_classifier() -> Callable[[str, str], Optional[str]]:
     enumerated stdlib, so an unmatched module is never mislabelled
     ``third_party`` on a language whose stdlib set we don't know. Catalogs are
     loaded lazily and cached per language.
+
+    The predicate itself is :func:`io_boundary.module_ecosystem` (WI-pogar):
+    ``verify_claims`` asks the same question of raw edges, and one home keeps
+    the node stamp and the verdict's "untraced dependency" wording from
+    disagreeing about a module.
     """
-    from .io_boundary import load_catalog
+    from .io_boundary import load_catalog, module_ecosystem
     cache: Dict[str, Any] = {}
 
     def classify(language: str, module: str) -> Optional[str]:
         if language not in cache:
-            cat = load_catalog(language)
-            # Usable only when the catalog enumerates the stdlib; otherwise
-            # "not in set" is indistinguishable from "stdlib set unknown".
-            cache[language] = (
-                cat if (cat.stdlib_modules or cat.stdlib_prefixes) else None
-            )
-        cat = cache[language]
-        if cat is None:
-            return None
-        return "stdlib" if cat.is_stdlib_module(module) else "third_party"
+            cache[language] = load_catalog(language)
+        return module_ecosystem(cache[language], module)
 
     return classify
 
