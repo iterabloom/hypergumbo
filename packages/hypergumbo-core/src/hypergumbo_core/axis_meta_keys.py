@@ -1543,17 +1543,17 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "publisher and subscriber were joined on, or None when only "
                 "identifiers were compared (then see ``event_identifier``)."),
     MetaKeySpec("publisher_framework", AXIS_EDGE_META,
-                "event_sourcing edge: the framework pattern that matched the "
+                "event_sourcing event_publishes edge: the framework pattern that matched the "
                 "publish site."),
     MetaKeySpec("subscriber_framework", AXIS_EDGE_META,
-                "event_sourcing edge: the framework pattern that matched the "
+                "event_sourcing event_publishes edge: the framework pattern that matched the "
                 "subscribe site."),
     MetaKeySpec("publisher_event_type", AXIS_EDGE_META,
-                "event_sourcing edge: how the publish site's event name is "
+                "event_sourcing event_publishes edge: how the publish site's event name is "
                 "known (``_name_args`` kind: 'literal', 'constant', "
                 "'unresolved', 'variable')."),
     MetaKeySpec("subscriber_event_type", AXIS_EDGE_META,
-                "event_sourcing edge: the same, for the subscribe site."),
+                "event_sourcing event_publishes edge: the same, for the subscribe site."),
     # -- component / template / include edges from analyzers
     MetaKeySpec("import_path", AXIS_EDGE_META,
                 "Component ``imports`` edge (astro / svelte / vue): the import "

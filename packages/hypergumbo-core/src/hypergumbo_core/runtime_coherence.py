@@ -35,7 +35,8 @@ violation totals. As Phase 2/3 reduce the offender set the per-substrate
 baselines ratchet down — Phase 4's expectation is that the offender set
 goes empty modulo the allow-list.
 
-Allow-list: ``docs/edge-type-runtime-allowlist.yaml``. Each entry
+Allow-list: ``docs/edge-type-runtime-allowlist.yaml``, read only when passed
+with ``--allowlist`` (the CLI defaults to none). Each entry
 permits multiple ``edge_type`` values within a single partition.
 ADR-0023 §3 mandates that allow-list growth requires an ADR amendment.
 """

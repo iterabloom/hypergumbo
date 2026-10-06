@@ -2243,7 +2243,7 @@ def _try_receiver_call(
 
     Special case: ActiveJob/Sidekiq enqueue methods (perform_later, perform_async,
     perform_in, perform_at) are redirected to the job class's ``perform`` instance
-    method and emit ``enqueues`` edges instead of ``calls``.
+    method and emit ``event_publishes`` edges instead of ``calls``.
 
     Returns True if an edge was created, False to fall through to bare name lookup.
     """
@@ -2498,11 +2498,11 @@ def _try_job_enqueue(
     edges: list[Edge],
     run_id: str,
 ) -> bool:
-    """Create an enqueues edge from current method to a job's perform method.
+    """Create an event_publishes edge from current method to a job's perform method.
 
     When SomeJob.perform_later(args) is called, the actual work is done by
     SomeJob#perform at runtime. This function resolves the job class and creates
-    an ``enqueues`` edge to its ``perform`` instance method.
+    an ``event_publishes`` edge to its ``perform`` instance method.
 
     Falls back to an unresolved edge targeting the job class symbol if
     the ``perform`` method is not found (e.g., job defined in a gem).

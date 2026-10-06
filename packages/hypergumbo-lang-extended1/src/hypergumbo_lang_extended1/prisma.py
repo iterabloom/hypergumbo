@@ -2,7 +2,9 @@
 """Prisma schema analyzer using tree-sitter.
 
 This module provides static analysis for Prisma schema files (.prisma), extracting
-models, enums, fields, and relationships for database schema visualization.
+models, enums, datasource/generator blocks and relationships for database schema
+visualization. A model's fields are counted (``field_count``), not emitted as
+symbols.
 
 Prisma is an ORM for Node.js and TypeScript that uses a declarative schema file
 to define database models and their relationships.
@@ -12,7 +14,7 @@ Implementation approach:
 - Uses tree-sitter-language-pack for Prisma grammar
 - Extracts models, enums, datasources, and generators
 - Detects field relationships (@relation) for inter-model edges
-- Tracks field types for schema understanding
+- Reads a field's type only to find a ``@relation`` target
 
 Key constructs extracted:
 - model_block: Database models (tables)

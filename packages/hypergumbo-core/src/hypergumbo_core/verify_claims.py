@@ -34,7 +34,9 @@ Each claim in ``claims`` specifies:
   - ``taint_flow``: Sub-object with taint-flow verification parameters
     - ``source_taint``: Taint label that must not reach the sink zone
     - ``prohibited_sink_zone``: Zone where tainted data must not arrive
-    - ``allowed_sanitizers``: List of sanitizer qualified names (optional)
+    - ``allowed_sanitizers``: List of sanitizer qualified names (optional).
+      Parsed and validated, but no verdict consults it yet: a flow counts as
+      sanitized only through the taint catalogue's sanitizers.
 
 Verdict Types
 -------------
@@ -165,7 +167,10 @@ How It Works
    backstop that applies to every constraint kind: given a ``blind_reason``,
    a confirming verdict becomes ``inconclusive`` (caveats kept), or
    ``confirmed_with_caveats`` with an opaque-boundary caveat when named
-   opaque launch sites are the only blocker. ``violated`` is never touched.
+   opaque sites (program launches, or calls to a shipped non-I/O sink such
+   as ``eval``) are the only blocker. ``_withhold_for_tainted_evaluation``
+   then keeps a taint verdict ``inconclusive`` when the claim's own label
+   reaches such an evaluation site. ``violated`` is never touched.
    For a taint claim whose source label only a project catalogue declares,
    ``blind_by_source_taint`` substitutes a per-label ``ScopedBlindness``
    that ignores no-catalogue languages the label cannot start in, and

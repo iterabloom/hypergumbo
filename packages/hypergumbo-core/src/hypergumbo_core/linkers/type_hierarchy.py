@@ -443,7 +443,7 @@ def build_method_index(
 
     Extracted from ``_TypeHierarchyIndex.build`` so the upcoming
     ``inherited_calls`` linker (priority=18, runs before
-    ``type_hierarchy`` at priority=20) can share the same index
+    ``type_hierarchy`` at priority=60) can share the same index
     construction without reaching for a private name or depending on
     ``type_hierarchy``'s execution. Both linkers call this helper
     independently. WI-gifar (PR-1 of INV-nilud).

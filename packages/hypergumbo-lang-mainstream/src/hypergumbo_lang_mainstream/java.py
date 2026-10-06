@@ -15,7 +15,11 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
   interface constant, one per enum constant, and one per record component
   (a ``private final`` field, JLS 8.10.3; ``_java_field_symbol``)
 - Method call relationships (edges)
-- Inheritance relationships: extends, implements (edges)
+- Inheritance relationships: this analyzer emits ``extends`` / ``implements``
+  edges for classes only. A record's ``implements`` and an interface's
+  ``extends`` reach the graph through ``meta["base_classes"]``, which the
+  core ``inheritance`` linker turns into edges. An enum's ``implements``
+  reaches neither, so it has no edge.
 - Instantiation: new ClassName() and ``ClassName::new`` (``instantiates`` edges)
 - Method references: ``Type::method`` / ``this::method`` (``references`` edges)
 - Annotations: ``decorated_by`` edges to the annotation type (unresolved for
@@ -94,14 +98,16 @@ How It Works
      populate per-file import / static-import / wildcard-import scope
    - Between the passes: build the repo-wide class-parent and class-field maps
      and a method return-type registry (merged with library signatures; in-repo
-     declarations win) so chained receivers like ``var w = f.make(); w.write()``
-     get typed
+     declarations win) so a receiver assigned from a call
+     (``var w = f.make(); w.write()``) or a chain followed link by link
+     (``s.getOutputStream().write(b)``) gets typed
    - Pass 2: Detect calls/inheritance, resolve against global symbol
      registry, attach canonical ``dst_ref`` for cross-translation-unit
      edges
 4. Detect method calls, inheritance, and instantiation patterns. Calls on
    inherited methods or typed receivers that do not resolve locally are emitted
-   unresolved with ``enclosing_class`` / ``receiver_type_hint`` hints; the
+   unresolved with ``enclosing_class`` / ``receiver_type_hint`` /
+   ``inherited_field_receiver`` hints; the
    Tier-2 ``inherited_calls`` linker walks the hierarchy and resolves them
 5. Stamp ``io_target_kind`` on stream reads from the receiver's binding, and
    annotate edges with dataflow access modes (ADR-0015)

@@ -1558,10 +1558,10 @@
               "description": "Wire-level protocol on ``calls`` edges that absorb the IPC family (e.g. 'abi', 'ipc', 'ipc_event'), and on ``implements`` edges for protocol-contract implementations folded from the resolver/OpenAPI/RPC family (audit-findings 0016, WI-sumik): a GraphQL resolver satisfying a schema field carries 'graphql'; a Go method satisfying a proto RPC carries 'grpc'. Value vocabulary tracked at ``edge_types.PROTOCOL_KINDS``; per ADR-0023 Phase 4b precedent."
             },
             "publisher_event_type": {
-              "description": "event_sourcing edge: how the publish site's event name is known (``_name_args`` kind: 'literal', 'constant', 'unresolved', 'variable')."
+              "description": "event_sourcing event_publishes edge: how the publish site's event name is known (``_name_args`` kind: 'literal', 'constant', 'unresolved', 'variable')."
             },
             "publisher_framework": {
-              "description": "event_sourcing edge: the framework pattern that matched the publish site."
+              "description": "event_sourcing event_publishes edge: the framework pattern that matched the publish site."
             },
             "query_type": {
               "description": "SQL operation of a database-query edge: 'SELECT', 'INSERT', 'UPDATE', or 'DELETE' (database_query linker)."
@@ -1651,10 +1651,10 @@
               "description": "subprocess_cli: the first argument after the executable, when the call names one."
             },
             "subscriber_event_type": {
-              "description": "event_sourcing edge: the same, for the subscribe site."
+              "description": "event_sourcing event_publishes edge: the same, for the subscribe site."
             },
             "subscriber_framework": {
-              "description": "event_sourcing edge: the framework pattern that matched the subscribe site."
+              "description": "event_sourcing event_publishes edge: the framework pattern that matched the subscribe site."
             },
             "superseded_by": {
               "description": "ADR-0057 \u00a714 (WI-lihis): the id of the RESOLVED edge that superseded this unresolved edge to an external stub \u2014 same src, a shared call line, the same edge type and the same declared callee name, from a producer this edge's origin lacks. Stamped by finalize sub-step 7a when it multiplies this edge's rank_score by SUPERSEDED_STUB_RANK_FACTOR, so the low rank is a stated fact rather than an unexplained number. Present only on a superseded edge; confidence is untouched and the edge is never deleted."

@@ -25,7 +25,7 @@ The linker dispatches per unresolved-call edge by which hint(s)
 - **Site 3** (``inherited_field_receiver`` + ``enclosing_class``):
   ``field.method()`` where ``field`` is declared on an ancestor of
   ``enclosing_class``. The linker walks ``extends``/``implements``/
-  ``includes`` edges from the enclosing class, consults each parent
+  ``inherits``/``includes`` edges from the enclosing class, consults each parent
   symbol's ``meta["fields"]`` (populated by the Java analyzer in PR-5)
   for a matching field name, looks up the field's type as a class
   symbol, and resolves the method on that type's MRO. Emits
@@ -65,8 +65,8 @@ ceremony for static language semantics). Initial table (PR-2):
   in declaration order. Per-source visited set guards against cycles.
 - ``_walk_single_then_interfaces`` (Java; PR-3 / WI-dukog): single
   superclass (``extends``) walked before interfaces
-  (``implements``/``includes``) via edge-type priority. Default /
-  Kotlin / C# extension still future.
+  (``implements``/``includes``) via edge-type priority. Also registered
+  for PHP, JavaScript, TypeScript, C# and Objective-C (see below).
 
 - ``_walk_c3`` (Python; WI-hiziz / D1): true C3 linearization over the
   in-tree ``extends`` chain. Python's MRO is C3, not insertion-order BFS —
@@ -80,21 +80,22 @@ ceremony for static language semantics). Initial table (PR-2):
   for ``scala``.
 - ``_walk_left_to_right`` (Swift; WI-sojim): left-to-right pre-order DFS
   (single superclass chain, then protocol extensions in declaration
-  order). Registered for ``swift``; the same walker fits PHP/Obj-C/C++
-  when those analyzers are onboarded (they stamp ``enclosing_class`` but
-  are not yet in ``_MRO_WALKERS``).
+  order). Registered for ``swift``.
+- INV-fahub registered walkers for eight more languages: Go, Rust and C++
+  use ``_walk_insertion_order``; PHP, JavaScript, TypeScript, C# and
+  Objective-C use ``_walk_single_then_interfaces``.
 
 Both recover Step-2 (inherited-method) calls for the Scala/Swift facets
 (WI-bihit/WI-votar), which already stamp ``receiver_type_hint`` and so
 already resolve Step-1 (direct method on the typed receiver); the walker
 adds the ancestor-chain hop. External-base shadowing (INV-guviv) stays
-Python-scoped — the guard is applied at the Site-2 resolver for
-``python`` only; the Scala/Swift walkers resolve in-tree ancestors and
-inherit that tracked limitation rather than worsening it.
+Python-scoped — the guard is applied at Site-1, Site-2 and Site-3 for
+``python`` only; the other walkers resolve in-tree ancestors and inherit
+that tracked limitation rather than worsening it.
 
-Languages whose walker isn't registered yet are silently no-op'd; the
-analyzer must opt in by emitting the hint AND the linker must have a
-walker registered for that source language.
+The analyzer must opt in by emitting the hint. Without a registered walker
+for the source language, Site-2 still resolves a method directly on the
+typed receiver (its step 1); only the ancestor-chain steps need a walker.
 
 Language scoping (INV-milud)
 ----------------------------
@@ -860,7 +861,7 @@ def _extract_method_short_name(callee_name: str) -> str:
 
 @register_linker(
     "inherited-calls-linker",
-    priority=18,  # Between inheritance (15) and type_hierarchy (20).
+    priority=18,  # Between inheritance (15) and type_hierarchy (60).
     description=(
         "Walks ancestor chains to resolve unresolved calls that carry the "
         "enclosing_class hint added by make_unresolved_edge (PR-1). PR-2 "

@@ -36,7 +36,8 @@ assume every finding carries ``analysis_method="structural"`` — see the
 field's own docs below for what each value licenses.
 
 Both propagators follow a source a function RETURNS into its callers
-(INV-komoj, :func:`_lift_returned_sources`). The BFS above runs FORWARD from the
+(INV-komoj, :func:`_lift_returned_sources`); the structural arm has no walk, so
+it lifts only a source called on a ``return`` statement itself. The BFS above runs FORWARD from the
 function that reads the source, so a sink in a CALLER of that function was never
 reachable and ``def get(): return os.getenv("K")`` / ``send(get())`` read as a
 qualified clean. The lift turns each caller's call to such a function into one
@@ -71,10 +72,14 @@ boundary is a key of :data:`AUTO_SOURCE_LABEL_MAP` (``env_read``,
 ``navigation_read``) becomes a source
 carrying that label and its ``source_boundary``; ``taint_sources/`` adds only
 the labels no boundary implies (``plaintext``, ``key_material``). The entry
-point end-users hit is :func:`load_full_taint_catalog`, which stacks four
-layers — io_primitives-derived, shipped YAML, the claims file's
-``extra_catalogs``, then CLI flags — each replacing lower layers'
-sources/sinks on ``(module, name, kind)`` (sanitizers concatenate).
+point end-users hit is :func:`load_full_taint_catalog`, which stacks
+io_primitives-derived entries, the built-in YAML (``taint_sources/``,
+``taint_sanitizers/``, and ``taint_sinks/`` for ADR-0060's non-boundary sinks:
+code execution, DOM injection), the user's ``taint_*.d`` channels, the claims
+file's ``extra_catalogs``, then CLI flags — each replacing lower layers'
+sources/sinks on ``(module, name, kind)`` (sanitizers concatenate). Community
+files (ADR-0061) form one more layer that only ADDS: it never displaces a
+vouched row, and its sanitizers do not clear a flow.
 Displaced rows are kept on the catalog as ``_displaced_sources`` /
 ``_displaced_sinks`` (INV-faput) so a verdict can disclose a shipped row a
 user row replaced.
@@ -2272,8 +2277,9 @@ def load_full_taint_catalog(
        default: every write-side primitive is a sink, every read-side
        sensitive primitive is a source).
     2. Built-in YAML under ``taint_sources/`` and ``taint_sanitizers/``
-       alongside this module.  (Built-in sinks come from layer 1 only;
-       the ``taint_sinks/`` directory was retired in 51e1d232f3.)
+       alongside this module, plus ``taint_sinks/`` for ADR-0060's
+       non-boundary sinks (code execution, DOM injection). Boundary sinks
+       come from layer 1 only.
     3. Claims-file extras — ``extra_*_paths`` (the ``extra_catalogs:`` key in
        the claims YAML, WI-votan).
     4. CLI extras — ``cli_*_paths`` (the ``--taint-sources`` /

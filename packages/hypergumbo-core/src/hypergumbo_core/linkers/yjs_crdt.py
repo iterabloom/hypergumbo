@@ -299,7 +299,7 @@ def _find_yjs_dependency(symbols: list[Symbol]) -> Symbol | None:
     A Rails+Vue customer-engagement app like chatwoot has many
     ``json`` symbols but none whose ``name`` matches the yjs ecosystem,
     so the gate fires and the linker skips text-pattern scanning entirely
-    — eliminating the 68 false-positive crdt_publishes edges observed in
+    — eliminating the 68 false-positive ``event_publishes`` edges observed in
     DEEP cohort 1 reflect (2026-05-10).
 
     Returned rather than tested so an emitted edge can name it (INV-rukor):
@@ -337,7 +337,7 @@ def link_yjs_crdt(
 
     # WI-vurig manifest-presence gate. Before the gate, the linker scanned
     # every .js / .ts file in the repo for text patterns like ".set(" /
-    # ".observe(" / ".on(" and emitted crdt_publishes edges based on
+    # ".observe(" / ".on(" and emitted ``event_publishes`` edges based on
     # write/read API matching. Those patterns are common Vue/Rails/Express
     # vocabulary; on chatwoot (no Yjs dependency) the scan produced 68
     # false-positive edges. Gating on a real yjs npm dependency cuts the

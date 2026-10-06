@@ -1055,8 +1055,8 @@ def _find_git_dir(path: Path) -> Path | None:
 class Store:
     """Single-tier store for tracker items.
 
-    Operates on a single .ops/ directory. No TrackerSet, no cache,
-    no multi-tier merging — those come in later PRs.
+    Operates on a single .ops/ directory. No TrackerSet and no multi-tier
+    merging; :meth:`list_items` can read through a cache (``cache=``).
 
     Args:
         ops_dir: Path to the .ops/ directory (must exist).

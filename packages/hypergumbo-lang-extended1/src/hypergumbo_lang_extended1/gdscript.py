@@ -3,7 +3,8 @@
 
 This analyzer uses tree-sitter to parse GDScript files and extract:
 - Function definitions (_ready, _process, custom methods)
-- Variable declarations (class members)
+- Variable declarations: every ``var`` statement, so class members and
+  function locals alike
 - Signal declarations
 - Class names and inner classes
 - Function calls

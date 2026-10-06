@@ -603,7 +603,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
 - **`hypergumbo_core.call_constructs`**: The declared vocabulary of ``Edge.meta["call_construct"]``, and wha...
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes (registry-derived).
-- **`hypergumbo_core.catalogue_home`**: ADR-0047 rulings 3 and 4 — a findable home for the user's catalogue...
+- **`hypergumbo_core.catalogue_home`**: ADR-0047 rulings 3 and 4: a findable home for the user's catalogue ...
 - **`hypergumbo_core.catalogue_inventory`**: WI-vafit — the inventory a USER needs of what this installation knows.
 - **`hypergumbo_core.catalogues_doc`**: Render ``docs/CATALOGUES.md``: the one user-facing page about catal...
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
@@ -959,8 +959,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 75907f1c033b
-  commit_count: 8177
+  commit: 53ac96b59e57
+  commit_count: 8180
   hypergumbo: 8.1.0
   python: 3.12.3
 -->
