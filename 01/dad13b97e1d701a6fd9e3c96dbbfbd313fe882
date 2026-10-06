@@ -1,0 +1,45 @@
+Original commit body from b627aab950d50ec7d308a96c51628bd2eb994c8d:
+
+Second half of the 2026-10-05 audit (the A+B+D half is c970d55e05).
+Each docstring below was accurate but silent on substantial behaviour;
+five writers extended them, every added sentence checked against the
+code, and every identifier the new prose names was confirmed to exist
+outside that prose.
+
+- compact: the compact entry point's two paths (centrality: key symbols,
+  production edges, half-budget seed quota; connectivity, the CLI
+  default: placeholders dropped, metered seed/bridge interleave, key
+  symbols only as seeds) and the shared projected-view shape. One
+  sentence of the A+B+D pass called the quota path "the default"; fixed.
+- tracker store: durability via the journal mirror, the custom-field-key
+  gate, human-authority gates, freeze/drift, edit-mode message ops, and
+  the read API including item_ops().
+- io_boundary: the shared row-choice rule (named_lookup_arm,
+  prefer_exact_owner, include-list split, <cstdio> table), first-party
+  detection, and row annotations.
+- taint: a "Which Pairs Count" section (entry gates, call-site and pair
+  refusal gates, sink subsumption, multi-label sources, ADR-0061
+  community rows), the full collapse tuple list, ADR-0060 helpers.
+- verify_claims: opaque gate covers eval-type sinks, known_collisions,
+  catalog_provenance tiers and withheld_completeness_grants.
+- supply_chain (role flags, manifest readers), inherited_calls (Python
+  fields and C3 field walk, ambiguity guards, class-id hints),
+  crypto_flow (how files are filtered and paired), catalogue_home (the
+  read side; seeding does not vouch), runtime_coherence (CLI and exit
+  codes), core __init__ (taint_sinks, scip-python, six more modules).
+- go (field-chain, chained-return and promoted-method typing, the
+  unexported guard, typed-target fallback, OpenFile flags, the external
+  placeholder), py (self.method() by position, factory typing, chain
+  walk, Django evaluation edges and writes, metadata), java (calls
+  outside methods, call_construct, stream stamps, java_callable_name).
+- ada, css, matlab, purescript, gdscript, prisma, odin, tlaplus,
+  mainstream __init__ (def/use extractors), py_deps (workspace-member
+  subtraction), rust_def_use and c_def_use (DDG registration). Known
+  bugs filed by the A+B+D pass are stated as known gaps, not as
+  intended behaviour (purescript, odin, tlaplus, ada overloads).
+
+Also: py_deps function docstrings still spoke of tier-2 promotion, and a
+taint.py comment said only sources carry requires_target_kind; both
+corrected (line counts kept).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
