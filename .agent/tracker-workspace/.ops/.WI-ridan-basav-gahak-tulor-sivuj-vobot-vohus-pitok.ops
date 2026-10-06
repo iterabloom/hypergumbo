@@ -18,3 +18,18 @@
     pr_ref:  # a361
     description: "Found by WI-sipuk's new registry cross-reference sub-check (scripts/check-docstring-drift --registry-refs, branch jgstern-agent/feat/sipuk-registry-refs, not yet merged), on dev 96155dd17f. Each site was verified against the code that emits the edge.\n\nRetired edge-type names documented as live, all on the ADR-0023 §6 fold list, all removed from edge_types by Phase 4b (685e672c48):\n- `renders`: linkers/view_template.py:70 (\"get the ``renders`` edge they should\"), linkers/_view_template_core.py:250 (\"emit ``renders`` edges + symbols\") and :261 (\"LinkerResult with new ``renders`` edges\"). The emit site, _view_template_core.py:308, is edge_type=\"references\".\n- `enqueues`: hypergumbo_lang_mainstream/ruby.py:2241 (\"emit ``enqueues`` edges instead of ``calls``\"), :2490 (\"Create an enqueues edge\", which the scan does NOT flag because a bare word without an underscore is not read as a name) and :2495. _try_job_enqueue emits edge_type=\"event_publishes\" (three Edge.create sites, at about :2515-:2548).\n- `crdt_publishes`: linkers/yjs_crdt.py:302 and :340 describe the false positives the WI-vurig gate removed as \"crdt_publishes edges\". crdt_publishes was folded onto event_publishes on 2026-05-01 (a9f030c93b), before the 2026-05-10 observation those lines cite. So the name was wrong even when that prose was written.\n\nFix: reword each in place to the canonical name (references / event_publishes), keeping line counts so nothing line-pinned moves. I found no line-pinned citations into these files (signature_axis / module_key_axis). Docs-only. After the fix, `--registry-refs` on the live tree drops from 16 flagged to 9."  # a361
     fields: {}  # a361
+- op: update  # 456b
+  at: '2026-10-06T01:52:54Z'  # 456b
+  by: agent  # 456b
+  actor: jgstern_agent  # 456b
+  clock: 2  # 456b
+  nonce: 456b  # 456b
+  set:  # 456b
+    status: done  # 456b
+- op: discuss  # c51b
+  at: '2026-10-06T01:52:54Z'  # c51b
+  by: agent  # c51b
+  actor: jgstern_agent  # c51b
+  clock: 3  # c51b
+  nonce: c51b  # c51b
+  message: "Fixed in PR #1479 (c970d55e05). All 8 listed sites reworded to the emitted edge type (renders -> references in view_template/_view_template_core, enqueues -> event_publishes in ruby.py, crdt_publishes -> event_publishes in yjs_crdt.py), line counts kept; plus 5 sites the item did not list (_view_template_core.py:67 'renders-edge', :105, and axis_meta_keys' four 'event_sourcing edge:' MetaKeySpec descriptions, which also published into docs/schema.json and docs/concept-axes.md, both regenerated). Evidence on dev: grep for the retired spellings in the four files returns 0 lines; scripts/check-docstring-drift --registry-refs reports 5 flagged names (was 16), and the 5 are the false positives WI-sipuk's measurement classified (make_file_id, two UsageContext kind=call, websocket_endpoint fold note, my_brand_new_label placeholder)."  # c51b
