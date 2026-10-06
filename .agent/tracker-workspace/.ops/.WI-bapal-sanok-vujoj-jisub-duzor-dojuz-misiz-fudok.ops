@@ -1,0 +1,22 @@
+- op: create  # a8d0
+  at: '2026-10-06T21:32:30Z'  # a8d0
+  by: agent  # a8d0
+  actor: jgstern_agent  # a8d0
+  clock: 1  # a8d0
+  nonce: a8d0  # a8d0
+  data:  # a8d0
+    kind: work_item  # a8d0
+    title: "Installed dependency source off by default: content-conditioned detection, skip disclosure, --trace-deps opt-in"  # a8d0
+    status: todo_hard  # a8d0
+    priority: 2  # a8d0
+    parent:  # a8d0
+    tags:  # a8d0
+    - discovery  # a8d0
+    - supply_chain  # a8d0
+    - sketch  # a8d0
+    isbefore: []  # a8d0
+    duplicate_of: []  # a8d0
+    not_duplicate_of: []  # a8d0
+    pr_ref:  # a8d0
+    description: "Implement the policy recorded by the ADR-0004/ADR-0016/spec item:\n\n1. discovery.py: content-conditioned detection of installed-dependency directories per ecosystem (registry of {dir name, marker check}); generalise _looks_like_virtualenv. Start with Mix deps/ (sibling mix.exs + mix.lock, or hex_metadata.config inside deps/*/ -- 80 of 81 thc_dev packages have it; the git dep heroicons does not), then move node_modules and vendor/ from name-only DEFAULT_EXCLUDES onto content checks. Update the discovery.py module docstring in the same PR.\n2. Disclosure, only when something was skipped: stderr line AND a line in the sketch, e.g. \"Installed dependency source not analysed: deps/ (81 Mix packages, 40 MB). Calls into them appear as external stubs. To trace into them: --trace-deps <pkg,...|all>\". Add supply_chain_summary.installed_deps_skipped beside derived_skipped.\n3. --trace-deps <pkg,...|all> (and a key in the ADR-0045 user config). Per-package opt-in. The flag must be part of the results-cache key.\n4. Cheap parts stay on by default: boundary stubs, manifest/lockfile reading, committed-vendored tier classification, tier 4.\n\nAcceptance: one cold sketch of ~/special_repos/thc_dev matches the pristine ~/special_repos/thc baseline (hypergumbo 8.1.0 @ ea165f53fa: 49,539 symbols, 163,207 edges, wall 5:00.7, peak RSS 2.43 GiB; notebook ~/hypergumbo_lab_notebook/notebookjournal_10062026_2048.md). With --trace-deps all, the deps/ symbols reappear as tier 3. Later (separate item if wanted): cache dependency analysis by package@version from lockfile pins."  # a8d0
+    fields: {}  # a8d0
