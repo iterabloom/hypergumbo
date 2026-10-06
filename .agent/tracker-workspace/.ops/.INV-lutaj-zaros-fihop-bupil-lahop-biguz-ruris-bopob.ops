@@ -1,0 +1,23 @@
+- op: create  # 69c6
+  at: '2026-10-06T05:07:18Z'  # 69c6
+  by: agent  # 69c6
+  actor: jgstern_agent  # 69c6
+  clock: 1  # 69c6
+  nonce: 69c6  # 69c6
+  data:  # 69c6
+    kind: invariant  # 69c6
+    title: "cobol.py resolves a PERFORM target repo-wide by name (picks another file's same-named paragraph), and a section header does not update the current caller (statements in a section are credited to the previous paragraph)"  # 69c6
+    status: violated  # 69c6
+    priority: 3  # 69c6
+    parent:  # 69c6
+    tags:  # 69c6
+    - analysis_quality  # 69c6
+    - call_resolution  # 69c6
+    isbefore: []  # 69c6
+    duplicate_of: []  # 69c6
+    not_duplicate_of: []  # 69c6
+    pr_ref:  # 69c6
+    description: "Found by the 2026-10-06 docstring audit tail pass; reviewer reproduced by calling analyze_cobol directly: in b.cbl 'PERFORM INIT-PARA' pointed to a.cbl:12 INIT-PARA; a PERFORM/CALL in 'WORK-SEC SECTION' was credited to the earlier INIT-PARA. cobol.py's module docstring states both gaps."  # 69c6
+    fields:  # 69c6
+      statement: "A PERFORM binds the paragraph or section of that name in the performing program; a statement's src is the paragraph or section that contains it."  # 69c6
+      root_cause: "PERFORM targets go through the repo-wide resolver by name (~L252); section_header never updates current_paragraph_name (~L236), the variable that supplies the caller."  # 69c6
