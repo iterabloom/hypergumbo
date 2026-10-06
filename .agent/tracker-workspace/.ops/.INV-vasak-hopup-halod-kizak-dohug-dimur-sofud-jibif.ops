@@ -1,0 +1,22 @@
+- op: create  # dd7a
+  at: '2026-10-06T05:03:23Z'  # dd7a
+  by: agent  # dd7a
+  actor: jgstern_agent  # dd7a
+  clock: 1  # dd7a
+  nonce: dd7a  # dd7a
+  data:  # dd7a
+    kind: invariant  # dd7a
+    title: "zig.py emits an @import bound by a variable_declaration twice (variable_declaration branch and builtin_function branch); inside a function the two edges have different srcs, and the file-level src id matches no file node"  # dd7a
+    status: violated  # dd7a
+    priority: 3  # dd7a
+    parent:  # dd7a
+    tags:  # dd7a
+    - analysis_quality  # dd7a
+    isbefore: []  # dd7a
+    duplicate_of: []  # dd7a
+    not_duplicate_of: []  # dd7a
+    pr_ref:  # dd7a
+    description: "Found by the 2026-10-06 docstring staleness audit tail pass; reviewer reproduced: top-level const std = @import(\"std\") yields two identical edges (same id, merged downstream); inside a function const m = @import(\"mod\") yields two distinct edges, one from zig:c.zig:0-0:file:file and one from zig:c.zig:1-4:go:function. zig.py's module docstring now states the duplicate-edge gap."  # dd7a
+    fields:  # dd7a
+      statement: "One import construct produces one import edge, from a node that exists."  # dd7a
+      root_cause: "The variable_declaration branch (~L477-500) emits the import edge, then falls through to push its children (~L597), so the builtin_function branch (~L502-520) emits another. Separately, the import edge src zig:<rel>:0-0:file:file (~L488) does not match the real file node id zig:<rel>:1-1:file:file, leaving a stray external_symbol node."  # dd7a

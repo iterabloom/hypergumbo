@@ -1,0 +1,23 @@
+- op: create  # 4d7b
+  at: '2026-10-06T05:04:55Z'  # 4d7b
+  by: agent  # 4d7b
+  actor: jgstern_agent  # 4d7b
+  clock: 1  # 4d7b
+  nonce: 4d7b  # 4d7b
+  data:  # 4d7b
+    kind: invariant  # 4d7b
+    title: "llvm_ir.py finds a call's caller by name in the repo-wide registry, so two .ll files defining @foo get their calls crossed; Pass 1's _pending_calls are collected and never read"  # 4d7b
+    status: violated  # 4d7b
+    priority: 2  # 4d7b
+    parent:  # 4d7b
+    tags:  # 4d7b
+    - analysis_quality  # 4d7b
+    - call_resolution  # 4d7b
+    isbefore: []  # 4d7b
+    duplicate_of: []  # 4d7b
+    not_duplicate_of: []  # 4d7b
+    pr_ref:  # 4d7b
+    description: "Found by the 2026-10-06 docstring audit tail pass; reviewer reproduced: a.ll and b.ll each define @foo, a.ll's calls @alpha, b.ll's calls @beta; output has b.ll:3-7:foo -> a.ll:alpha at line 3 (a line in a.ll) and a.ll's foo has no outgoing edges. Same family as INV-razus, INV-musij. llvm_ir.py's module docstring states the gap."  # 4d7b
+    fields:  # 4d7b
+      statement: "A call edge's src is the callable whose body contains the call, found by position in the call's own file (the INV-midag rule)."  # 4d7b
+      root_cause: "The caller is the enclosing fn_define's NAME (~L104-116), looked up repo-wide (~L280). Pass 2 re-walks the file into a throwaway FileAnalysis (~L352-355); the calls Pass 1 stores in _pending_calls (~L337, ~L360) are never read and keep growing."  # 4d7b
