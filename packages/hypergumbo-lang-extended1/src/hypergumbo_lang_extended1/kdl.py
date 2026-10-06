@@ -6,9 +6,10 @@ a cleaner syntax than JSON or XML while being more structured than YAML.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for single-pass orchestration:
-1. Pass 1: Extract nodes with their arguments and properties
-2. Identifies top-level configuration sections and nested structures
+Uses the TreeSitterAnalyzer base class. Pass 1 extracts every node with its
+arguments and properties (signature string, plus ``meta`` depth, arguments and
+properties); Pass 2 adds nothing, since no edge is extracted. The grammar
+comes from the language pack.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the KDL-specific extraction
@@ -17,7 +18,7 @@ logic.
 Symbols Extracted
 -----------------
 - **Nodes**: KDL nodes representing configuration entries
-- **Sections**: Top-level nodes that contain children (configuration sections)
+- **Sections**: Nodes that contain children, at any depth (configuration sections)
 
 Why This Design
 ---------------
