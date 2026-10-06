@@ -1,0 +1,23 @@
+- op: create  # 61fc
+  at: '2026-10-06T08:06:16Z'  # 61fc
+  by: agent  # 61fc
+  actor: jgstern_agent  # 61fc
+  clock: 1  # 61fc
+  nonce: 61fc  # 61fc
+  data:  # 61fc
+    kind: invariant  # 61fc
+    title: "repo_fingerprint algorithm changed (whole-tree hash, 8611a7a73d) after the hypergumbo-repofp-v2 bump without bumping the scheme; spec still describes the git dirty-file algorithm"  # 61fc
+    status: violated  # 61fc
+    priority: 3  # 61fc
+    parent:  # 61fc
+    tags:  # 61fc
+    - provenance  # 61fc
+    - spec_drift  # 61fc
+    isbefore: []  # 61fc
+    duplicate_of: []  # 61fc
+    not_duplicate_of: []  # 61fc
+    pr_ref:  # 61fc
+    description: "Found by the 2026-10-06 docstring-audit random sample; statically confirmed by a verifier (not a behavioral repro: two runs with the same scheme string can mean different algorithms across 8611a7a73d). Fix: bump to v3 and update the spec definition, or document why the change is fingerprint-compatible. The module docstring's spec line citation (378-384) has also rotted to ~676-683."  # 61fc
+    fields:  # 61fc
+      statement: "Any change to the repo_fingerprint algorithm bumps REPO_FINGERPRINT_SCHEME, and the spec's definition matches the algorithm the scheme names (repo_fingerprint.py's own docstring states this rule)."  # 61fc
+      root_cause: "24c52b5c94 (2026-07-21) bumped to hypergumbo-repofp-v2; 8611a7a73d (2026-08-06) changed the git path to hash HEAD plus the whole source tree (repo_fingerprint.py ~:249-250, _iter_non_git_files) without a bump; schema.py ~:199 is still v2 and docs/hypergumbo-spec.md ~:677-680 still describes sha256(git_head + dirty files)."  # 61fc

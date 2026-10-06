@@ -1,0 +1,22 @@
+- op: create  # 291a
+  at: '2026-10-06T08:06:21Z'  # 291a
+  by: agent  # 291a
+  actor: jgstern_agent  # 291a
+  clock: 1  # 291a
+  nonce: 291a  # 291a
+  data:  # 291a
+    kind: work_item  # 291a
+    title: "htrac serve: the auth modules (password, webauthn, sessions, duress) are imported by nothing; serve.py's write API has no auth — latent today (API 503s), live the moment ADR-0019 Part A wires a TrackerSet"  # 291a
+    status: todo_hard  # 291a
+    priority: 2  # 291a
+    parent:  # 291a
+    tags:  # 291a
+    - security  # 291a
+    - tracker_serve  # 291a
+    isbefore:  # 291a
+    - WI-pupod-kajon-zimip-dapof-raban-rujaf-sarob-sikor  # 291a
+    duplicate_of: []  # 291a
+    not_duplicate_of: []  # 291a
+    pr_ref:  # 291a
+    description: "Found by the 2026-10-06 docstring-audit random sample (tracker __init__.py and serve_password.py docstrings describe an authenticated HTTP view). Facts: serve.py routes POST /api/items, /api/items/{id}/update, /api/items/{id}/discuss and /ws carry no auth check, and serve.py imports none of serve_password / serve_webauthn / serve_sessions / serve_duress; RateLimiter is constructed nowhere. TODAY run_server() calls create_app() with no tracker_set, so every /api/* returns 503 and only /health answers (verified with starlette TestClient). With a TrackerSet wired (stub), an unauthenticated POST /api/items returns 201 and reaches TrackerSet.add (scratch serve_noauth.py). deploy/torrc.example forwards the onion service to 127.0.0.1:7380 with client authorization commented out, and says visitors 'would still need WebAuthn + password'. Requirement: whoever wires the TrackerSet into run_server (WI-pupod, ADR-0019 Part A) must wire auth in the same change, with a test that every non-/health route rejects an unauthenticated request. Also: serve_password says lockout is 'permanent until re-registration via htrac setup' but the lockout is an in-process dict cleared by restart or record_success, and htrac setup does no credential registration (same false reference in serve_webauthn.py ~:25)."  # 291a
+    fields: {}  # 291a
