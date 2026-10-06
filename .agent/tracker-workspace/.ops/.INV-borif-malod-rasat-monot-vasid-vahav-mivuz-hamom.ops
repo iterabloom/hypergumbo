@@ -1,0 +1,23 @@
+- op: create  # 86a6
+  at: '2026-10-06T00:42:50Z'  # 86a6
+  by: agent  # 86a6
+  actor: jgstern_agent  # 86a6
+  clock: 1  # 86a6
+  nonce: 86a6  # 86a6
+  data:  # 86a6
+    kind: invariant  # 86a6
+    title: "A Java enum's implements clause produces no edge: java.py emits extends/implements only for class_declaration, and enums do not reach the inheritance linker either"  # 86a6
+    status: violated  # 86a6
+    priority: 3  # 86a6
+    parent:  # 86a6
+    tags:  # 86a6
+    - analysis_quality  # 86a6
+    - java  # 86a6
+    isbefore: []  # 86a6
+    duplicate_of: []  # 86a6
+    not_duplicate_of: []  # 86a6
+    pr_ref:  # 86a6
+    description: "Found by the 2026-10-05 docstring staleness audit and reproduced on the shipped CLI: for 'enum Kind implements Shape' no implements edge exists, while 'record Circle(...) implements Shape' (inheritance-linker) and 'class Sq implements Shape' (java) both have one. Consequence: enum method dispatch through the interface is invisible to inherited_calls and type_hierarchy. java.py's module docstring now states the gap."  # 86a6
+    fields:  # 86a6
+      statement: "Every declared supertype relation in a supported language yields an extends/implements edge."  # 86a6
+      root_cause: "java.py emits extends/implements edges only inside 'if node.type == \"class_declaration\"' (~L2547). Records and interfaces get edges via meta base_classes and the core inheritance linker; enums carry nothing that linker reads."  # 86a6
