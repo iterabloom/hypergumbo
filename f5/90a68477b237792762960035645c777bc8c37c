@@ -1,0 +1,43 @@
+Original commit body from b3bea5e90dc5fa908ac0c4ba8fc0c6cadb685e3b:
+
+A seeded random sample of 30 modules that no audit since 2026-09-25 had
+read (215-file population, stratified by package; median 2 body commits
+since the docstring, so none flagged by the co-change scan) found 19 with
+drift, 14 with a wrong reference or false claim. Every finding went
+through an adversarial verifier; 31 of 34 held. This commit fixes those
+19 files plus 2 sibling docstrings carrying the same false claims
+(serve_webauthn, ranking) and stale comments next to them.
+
+Wrong references (A):
+- sketch: --no-sketch-fan-out is a survey flag skipping the 4k/16k/64k
+  tier previews, not per-handler output (that is --no-handler-slices).
+- vue_component: component_file was folded to kind="file".
+- selection_shadow: selectable_test_files moved to selection_index.
+- serve_password / serve_webauthn: `htrac setup` registers no credentials.
+- tracker __init__: no serve_auth_* auth modules exist under that name.
+
+False claims (B), among them:
+- import_scope: ImportScope was never adopted by any analyzer (WI-tihup).
+- coverage_census: no line->tests index is built; the CELF upper-bound
+  claim fails under grouped fixed costs (INV-jupaf, reproduced).
+- repo_fingerprint: the algorithm changed after repofp-v2 without a
+  bump; the spec text is stale (INV-pamum). Spec line pins replaced.
+- play_routes: no linker resolves Play actions to Scala methods
+  (INV-nabas, reproduced).
+- tracker __init__ / serve_password: serve.py wires no auth; lockout is
+  in-process, not permanent (WI-hopip).
+- stop_hook: the circuit breaker does not use hash_todos.
+- astro: components and imports are Edges now, not Symbols.
+- scip/calls, analyzer_disclosure, graceful_degrade, sketch (x3).
+
+Omissions (C): value_flow caller overrides, survey_io's strict loader
+and ADR-0042 filename registry, discovery's FileIndex (and find_files
+ignoring excludes under an installed index, WI-duhih), go_def_use's DDG
+spec, sketch's config extraction modes, stop_hook's reply-first branch
+and outbound OpenRouter call.
+
+Verified: AST identical with docstrings stripped on all 21 .py files;
+ruff clean; generate-{architecture,concepts,concept-axes,schema} --check
+clean; smart-test 22306 passed, changed files at 100% coverage.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
