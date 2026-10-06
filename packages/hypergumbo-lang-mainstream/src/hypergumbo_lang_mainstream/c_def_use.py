@@ -41,6 +41,9 @@ so a flow that exists only through a jump is not seen. Aliasing through a
 pointer (``q = p; *q = secret; send(p)``) is not modelled: a write through
 ``*q`` defines ``q``, not ``p``. Macros are whatever tree-sitter parses them as,
 which for an unexpanded function-like macro is a call.
+
+The module also registers C's DDG spec: ``*.c`` files only (headers are not
+walked), each ``function_definition`` named as ``c.py`` names it.
 """
 from __future__ import annotations
 

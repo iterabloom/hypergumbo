@@ -31,16 +31,30 @@ Analysis proceeds in two passes for cross-file resolution:
   when every call site across the repo agrees on one type
 - Build every class's ``__init__`` field-type map once, keyed by class id, so
   ``obj.field.method()`` binds in files that only import the class
-- For Django trees, build the model-relation index and type ``setUp`` fixture
-  fields (``self.x = Model.objects.create(...)``)
+- For Django trees, build the model-relation index, then admit model
+  ``@property`` getters that return a manager or QuerySet
+  (``_collect_django_property_managers``, a monotone fixed point, WI-valav),
+  then type ``setUp`` fixture fields (``self.x = Model.objects.create(...)``)
 
 **Pass 2 - Edge Extraction:**
 - Walk AST to find function/method call sites
 - Resolve callees using local symbols first, then imports
-- Detect self.method() calls within classes
+- Detect ``self.method()`` calls from the OWN body of the class ``self``
+  denotes, found by POSITION per code block -- the innermost frame binding
+  ``self`` must be a non-static method (``_self_receiver_class_id`` over
+  ``methods_by_class_id``, WI-kutal) -- which also reaches a class nested in
+  that body as ``self.<Nested>()``. A miss is an inherited (or absent) method:
+  its unresolved edge carries ``enclosing_class`` / ``enclosing_class_id`` so
+  the ``inherited_calls`` linker walks the MRO, and an unresolved
+  ``self.field.method()`` carries ``inherited_field_receiver`` the same way
 - Detect self.field.method() calls using field type inference from __init__
-- Detect ClassName() instantiation patterns
-- Track return type annotations for variable type inference
+- Detect ClassName() instantiation patterns as ``instantiates`` edges
+  (``ast_new``); a PascalCase external import or ``module.ClassName()`` too,
+  unresolved (WI-jubag)
+- Track return type annotations for variable type inference, including a
+  multi-hop receiver ``obj.a.b.method()`` walked hop by hop through declared
+  return types, where any failed hop yields no hint
+  (``_chain_receiver_class_from_return_types``, WI-fikoh)
 - Create import edges from files to imported symbols
 - Annotate call edges with dataflow access modes (``annotate_dataflow_ast``)
 
@@ -75,7 +89,12 @@ Detected Patterns
   io-boundaries and taint can match it. See ``_receiver_type`` (the single
   receiver predicate), ``_external_constructor_type`` (binding-checked against
   imports), ``EXTERNAL_CONSTRUCTOR_TYPES`` (derived from the I/O catalogue) and
-  ``TYPE_PRESERVING_MEMBERS`` (members whose result keeps the receiver's type)
+  ``TYPE_PRESERVING_MEMBERS`` (members whose result keeps the receiver's type).
+  A library FACTORY types its result from its signature row
+  (``w = csv.writer(f)`` -> ``_csv.Writer``, ``urllib.request.build_opener``;
+  ``_library_producer_type``, WI-kozaj), and a dotted field path is a receiver
+  of its own: ``self.conn`` typed in ``__init__``, and ``svc.conn`` /
+  ``self.svc.conn`` one hop through a project-class field (INV-mumov)
 - Scope of an import: ``imports`` / ``module_imports`` are file-scoped maps, so
   each call site reads them narrowed by ``ScopeStack.value_shadowed()`` -- a
   parameter or local named like an import (``def f(socket): socket.socket(h)``)
@@ -99,7 +118,14 @@ Detected Patterns
   which are constructor-shaped rather than method-shaped and so take their own
   extraction path (``_extract_starlette_usage_contexts``)
 - Django ORM I/O: queryset and manager calls routed to db_read / db_write /
-  db_compose (lazy combinators such as filter / order_by / all)
+  db_compose (lazy combinators such as filter / order_by / all). Evaluating a
+  QuerySet (a ``for``, a comprehension, an index, ``list(qs)``) emits a
+  ``calls`` edge to ``django.db.models.__iter__`` / ``__aiter__`` /
+  ``__getitem__`` with ``call_construct="protocol"`` (WI-fasap); instance
+  writes include ``super().save()`` / ``super().delete()`` in an override
+  (WI-sihoh); a reverse-relation manager's ``add`` / ``remove`` / ``clear`` /
+  ``set`` are writes (WI-gulaz). The constants block above
+  ``DJANGO_ORM_MODULE`` records each rule's history and deferrals
 
 Route Detection Architecture
 -----------------------------
@@ -148,6 +174,14 @@ Symbols include structured metadata in `meta` dict:
   Example: `[{"name": "x", "type": "int", "default": False}]`
 - **return_type**: the unparsed return annotation, when present.
 - **nesting_parent**: the immediately enclosing function's name, on nested defs.
+- **constructed_from**: on a ``variable`` bound from a call, the callee's dotted
+  name (``declarative_base``), constructor and factory alike.
+- **router_prefix**: on a function or method decorated through a FastAPI
+  ``APIRouter(prefix=...)`` variable (``@v2_router.get``), the resolved prefix
+  (``_scan_router_prefixes``).
+- **fields** / **field_type_ids**: on a class, its ``__init__`` field -> project
+  type name, plus type id where that id is trustworthy, for the
+  ``inherited_calls`` linker's ``self.field.method()`` walk (WI-hiziz, WI-supat).
 
 Why This Design
 ---------------

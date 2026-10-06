@@ -21,6 +21,13 @@ Key constructs extracted:
 - enum_block: Enumerations
 - key_value_block: Datasource and generator configs
 - model_field with @relation: Foreign key relationships
+
+Symbol kinds: a model is ``kind="class"`` with ``meta["is_model"]``, an enum is
+``kind="enum"``, and a datasource or generator is ``kind="block"`` with the
+construct kept in ``meta["block_type"]``. Each ``@relation`` field yields a
+``references`` edge from its model to the target model, looked up by name in
+the repo-wide registry: a hit is confidence 1.0, a miss goes to
+``prisma:unresolved:<Target>`` at 0.6.
 """
 
 from __future__ import annotations

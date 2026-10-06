@@ -29,7 +29,17 @@ Submodules
 - ``io_boundary`` + ``io_primitives`` — IO-edge composition
   (ADR-0016)
 - ``taint`` + ``taint_refine`` + ``taint_sources`` +
-  ``taint_sanitizers`` — taint-zone analysis (ADR-0017)
+  ``taint_sanitizers`` + ``taint_sinks`` — taint-zone analysis
+  (ADR-0017; ``taint_sinks/`` holds ADR-0060's non-boundary sinks)
+- ``function_summaries`` (YAML function summaries for interprocedural
+  taint) + ``library_signatures`` (what a library producer returns)
+- ``ddg_build`` — repo-level DDG construction over ``cfg``;
+  ``dataflow_scope`` — the published data-flow coverage scope of taint
+  output (INV-karud)
+- ``symbol_resolution`` — shared cross-file symbol resolution for the
+  analyzers
+- ``value_flow`` — static string-value flow within one module, for the
+  registry gates
 - ``verify_claims`` — security-claim verification CLI surface
 - ``safety_zones`` — wrapper functions for fs-write sites that
   carry per-entry-point trust-zone labels
@@ -40,7 +50,7 @@ Submodules
   fields (ADR-0023 / ADR-0024 / ADR-0027 / ADR-0028)
 - ``audit_findings`` — verdict-table loader for per-axis audits
 - ``scip`` — SCIP protobuf shim shared with
-  ``hypergumbo-lang-rust-analyzer``
+  ``hypergumbo-lang-rust-analyzer`` and ``hypergumbo-lang-scip-python``
 
 Version Note
 ------------

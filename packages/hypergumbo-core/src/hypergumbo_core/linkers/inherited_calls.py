@@ -26,10 +26,15 @@ The linker dispatches per unresolved-call edge by which hint(s)
   ``field.method()`` where ``field`` is declared on an ancestor of
   ``enclosing_class``. The linker walks ``extends``/``implements``/
   ``inherits``/``includes`` edges from the enclosing class, consults each parent
-  symbol's ``meta["fields"]`` (populated by the Java analyzer in PR-5)
-  for a matching field name, looks up the field's type as a class
-  symbol, and resolves the method on that type's MRO. Emits
-  ``ast_call_inherited_field`` at confidence 0.80.
+  symbol's ``meta["fields"]`` (``{field: type_name}``, populated by the
+  Java analyzer in PR-5 and the Python analyzer in WI-hiziz) for a
+  matching field name, looks up the field's type as a class symbol, and
+  resolves the method on that type's MRO. Emits
+  ``ast_call_inherited_field`` at confidence 0.80. For Python the parent
+  walk follows the C3 linearization (WI-rarab), so a field name declared
+  at two depths with divergent types takes the MRO-earlier declaration,
+  as Python's attribute lookup does; other languages walk insertion-order
+  BFS.
 
 - **Site 2** (``receiver_type_hint``): ``var.method()`` where the
   analyzer inferred ``var``'s type. Three-step resolution:
@@ -111,6 +116,27 @@ closes two failures at once: a confidently-wrong cross-language ``calls`` edge
 would otherwise bind to a foreign namesake), and a false-negative where a
 foreign namesake inflates the strict ``len(...) > 1`` ambiguity count and
 suppresses a legitimate same-language resolution.
+
+Same-name ambiguity guards and class-id hints (INV-fahub, WI-supat)
+-------------------------------------------------------------------
+Name hints under-determine the class when two same-language classes share a
+short name. Site-2 refuses such a collision for every language outside
+``_LEGACY_SITE2_LANGS`` (Java). At Site-1 and Site-3 the guard is limited to
+``_SITE1_STRICT_LANGS`` (Python only): Python's module namespaces make
+same-name classes distinct, while in Ruby they are one reopened class, and
+guarding there would drop the Ruby ``X.new`` -> inherited ``#initialize``
+resolution. Site-3 applies the guard twice, to the enclosing class and to the
+field's type name.
+
+To recover the recall the guard gives up, a producer can attach concrete
+class ids next to the names: ``enclosing_class_id`` (an exact lexical
+method-to-class map) and ``receiver_type_id`` (stamped only when the type's
+short name is unique within the file) on the edge meta, and
+``meta["field_type_ids"]`` (``{field: class_id}``) on the parent class
+symbol for Site-3. The Python analyzer is the only producer today. An id
+that is a known class symbol in the call's language replaces the name lookup
+and skips that guard; a missing, stale or foreign-language id falls back to
+the name path and its guard.
 """
 
 from __future__ import annotations

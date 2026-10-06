@@ -37,6 +37,14 @@ shared ``DEFAULT_EXCLUDES`` directory set (``node_modules``, ``venv``,
 Mirrors :func:`hypergumbo_lang_mainstream.py._detect_source_roots`,
 which fixed the same monorepo gap for file discovery (WI-davan E1).
 
+Workspace-member subtraction (INV-nuzas, ADR-0041 D8a): the walk also reads
+each pyproject's OWN distribution name (``_extract_distribution_name``:
+``[project].name``, else ``[tool.poetry].name``). Those names go through the
+same dist-to-import resolution and are removed from the final set, after the
+stdlib carve-out, so a monorepo sibling one package depends on (e.g.
+``hypergumbo_core``) is treated as first-party source, never stamped as a
+direct external dependency.
+
 Distribution-name vs import-name resolution
 -------------------------------------------
 The dist name on PyPI doesn't always equal the Python import name —
@@ -136,9 +144,9 @@ def _extract_distribution_name(data: dict) -> str | None:
     ADR-0041 D8a). In a monorepo, a sibling package that another package
     declares as a dependency is first-party workspace source, not a
     third-party direct dependency. Collecting each package's own name lets
-    :func:`parse_python_dependencies` remove the sibling from the tier-2
-    "direct dependency" set instead of mislabelling in-repo code as an
-    external dependency (the "tier-2 direct dependency lie", leverage #27).
+    :func:`parse_python_dependencies` remove the sibling from the declared
+    dependency set instead of mislabelling in-repo code as a direct external
+    dependency (the "direct dependency lie", leverage #27).
     """
     project = data.get("project")
     if isinstance(project, dict):
@@ -214,8 +222,8 @@ def _resolve_import_names(dist_names: set[str]) -> set[str]:
     the dist installed, ``packages_distributions()`` gives us the real
     mapping; otherwise we fall back to the dist name verbatim (with
     hyphens swapped for underscores) — most deps match this anyway, and
-    a false negative falls through to the tier-3 default rather than
-    silently promoting something to tier 2.
+    a false negative leaves a dependency unstamped rather than silently
+    stamping something direct.
     """
     dist_to_import = _build_dist_to_import_map()
     out: set[str] = set()
@@ -274,7 +282,7 @@ def parse_python_dependencies(repo_root: Path) -> DependencyManifest:
     ``python.yaml`` stdlib catalog (ADR-0041 §3,
     ``io_boundary.load_catalog("python").is_stdlib_module``) so a user who
     erroneously declares ``os`` (or any other stdlib name) in pyproject
-    doesn't accidentally promote it to tier 2. Same dependency declared by
+    doesn't accidentally have it stamped direct. Same dependency declared by
     multiple packages collapses to one entry (set-union semantics).
 
     Returns:

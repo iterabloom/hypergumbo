@@ -50,6 +50,37 @@ org-internal *dependency* packages declared via config. Role files
 (examples, docs, notebooks, fuzz/bench, tests) carry their role on a
 separate axis (is_example / is_test / reason), not by tier.
 
+Role Flags Beside the Tier
+--------------------------
+:func:`classify_file` stamps two more flags after the tier walk, independent
+of which step matched:
+
+- ``is_generated`` (WI-tizij / WI-pofin) - a path match against
+  ``GENERATED_CODE_PATTERNS`` (OpenAPI models, protobuf stubs, k8s code-gen,
+  go-swagger, openapi-gen TS), else a declaration in the file's leading
+  comment block within the first 4 KiB. The header test is one predicate,
+  ``_has_generated_marker``, shared with the minified-content check in step 1
+  so the flag and tier 4 cannot disagree (INV-bokim / INV-pogob).
+- ``is_config`` (WI-jobuj) - the basename is a package-manager or build
+  manifest in ``CONFIG_FILE_NAMES``; suppressed when ``is_test`` or
+  ``is_example`` is already set, so the three role flags stay exclusive.
+
+Manifest Readers
+----------------
+- :func:`detect_package_roots` reads npm/yarn/pnpm workspaces, Cargo
+  workspace members, Maven modules and Gradle ``include`` lines into the
+  workspace roots that step 6 consults.
+- :class:`DependencyManifest` holds what a language analyzer parsed from
+  go.mod / Maven / Gradle / Python manifests. Per ADR-0041 §1 it no longer
+  sets tier (every boundary node is tier 3); ``classify_directness`` returns
+  ``direct`` / ``transitive`` / ``undeclared`` by longest-prefix match, and
+  ``ir.create_boundary_nodes`` stamps that on the ``directness`` meta key.
+- :func:`collect_first_party_package_names` (INV-vivok) reads the names the
+  repo publishes itself under (Cargo ``[package].name``, the go.mod module
+  path, ``package.json`` ``name``) so ``verify-claims`` stops reporting a
+  repo's self-references by published name as uncatalogued third-party
+  modules.
+
 See §14 of the hypergumbo spec for full details.
 """
 

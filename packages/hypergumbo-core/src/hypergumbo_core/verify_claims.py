@@ -113,7 +113,11 @@ one unconstanted kind (``deferred_crossing``). The four longest-standing:
   make coverage incomplete: it qualifies a verdict that is otherwise clean.
   Both arms consume it: the boundary arm and, since INV-nuhun, the taint arm
   (``_ARM_TAINT``, ``untyped_receiver_sink_zones``), which discloses the sink
-  receivers it could not type.
+  receivers it could not type. Sites whose method name is a known collision
+  (the catalogue's ``ambiguous_names``, e.g. ``.replace()``) are still
+  disclosed, but listed last in a clause of their own and carried in the
+  caveat's ``known_collisions`` field
+  (``BoundaryCoverage.untyped_receiver_collisions``, WI-jiful).
 
 The remaining eleven — ``CAVEAT_ACCESSOR_NAME_RECEIVER``,
 ``CAVEAT_UNKNOWN_RECEIVER_SCOPE``, ``CAVEAT_ANALYZER_METHOD_CALL_BLIND``,
@@ -136,10 +140,12 @@ How It Works
    has no I/O catalogue (uncatalogued languages); a supported language that
    produced zero call edges (blind languages); an external module whose
    method rows no emitted call could have matched
-   (``method_starved_modules``); a launch of an external program
-   (``_opaque_launch_sites``, marked ``qualifying_only`` when it is the sole
-   blocker); and calls into modules no catalogue row classifies
-   (``_uncatalogued_external_modules``). Every result, complete or not, also
+   (``method_starved_modules``); opaque sites, which are launches of an
+   external program (``_opaque_launch_sites``) and calls to a shipped non-I/O
+   sink such as ``eval`` (INV-dudal), fed through one gate as
+   ``opaque = launches + sorted(evaluations)`` and marked ``qualifying_only``
+   when they are the sole blocker; and calls into modules no catalogue row
+   classifies (``_uncatalogued_external_modules``). Every result, complete or not, also
    carries the qualifying disclosures the caveats above are built from
    (untyped / accessor-name receivers, deferred crossings, analyzer
    blindness declarations, load-bearing grants, unused higher-fidelity
@@ -188,7 +194,16 @@ How It Works
    output. With only the shipped catalogue it still renders the run-level
    notes (the ``kind_adjudication`` census, shipped community overlays,
    load-bearing completeness grants); the user-supplied block appears only
-   when a user catalogue was used. It changes no verdict.
+   when a user catalogue was used. ``tiers`` lists every loaded catalogue file
+   (``LoadedCatalogueFile``), not only the flag's and the claims file's, under
+   ``CATALOGUE_TIERS`` (``builtin`` / ``community`` / ``yours`` / ``in_repo``;
+   ``catalogue_tiers``, ADR-0061 ruling 5): a ``provenance: community`` line
+   wins, other shipped files are builtin, and the rest are placed by whether
+   they sit inside the analysed repository (a file inside it also carries its
+   git state). ``user_supplied`` is also true when a ``yours`` / ``in_repo``
+   file came from the config tiers or a channel directory, and a
+   ``module_completeness`` grant in a community file is listed under
+   ``withheld_completeness_grants`` (INV-lamap). It changes no verdict.
 """
 from __future__ import annotations
 

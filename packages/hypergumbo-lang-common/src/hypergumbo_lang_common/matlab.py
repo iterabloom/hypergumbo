@@ -20,6 +20,15 @@ Key constructs extracted:
 - properties: counted per class and recorded in the class symbol's meta (property_count), not emitted as separate symbols
 - methods: Method definitions within a class
 - function_call: Direct function calls
+
+Pass 1 collects symbols from every file and fills their docstrings with
+``populate_docstrings_from_tree``. The registry built between passes maps the
+bare symbol name (methods too, not ``Class.method``) to its id across
+functions, methods and classes; it is last-writer-wins, so same-named symbols
+in different files or classes collapse to whichever was collected last.
+Pass 2 emits a ``calls`` edge for each ``function_call`` inside a function: a
+registry hit at confidence 1.0, otherwise ``matlab:unresolved:<name>`` at 0.6.
+Calls outside any function are dropped.
 """
 
 import time

@@ -25,6 +25,16 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract all symbols into global registry
 2. Pass 2: Detect imports and references
 
+``create_file_symbols = True`` makes the base class emit a ``file`` symbol per
+``.tla`` file, so the EXTENDS/INSTANCE import edges (``src`` = the file id)
+start from a real node. Reference edges are deduplicated per
+(enclosing, referenced) pair, at confidence 0.80.
+
+Known gap: both the enclosing operator/theorem/assumption and the referenced
+name are resolved through the repo-wide resolver by bare name, so when two
+specs define a same-named operator, references can be credited to or aimed
+at the other spec's symbol.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly.  This module provides only the TLA+-specific
 extraction logic.
@@ -34,7 +44,7 @@ Why This Design
 - TreeSitterAnalyzer eliminates ~150 lines of boilerplate
 - Optional dependency keeps base install lightweight
 - Uses tree-sitter-tlaplus package for grammar
-- Two-pass allows cross-file resolution
+- Two-pass allows cross-file resolution (by bare name; see the known gap above)
 - References model fits formal specification languages better than calls
 
 TLA+-Specific Considerations

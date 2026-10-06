@@ -29,6 +29,10 @@ This analyzer uses tree-sitter-java to parse Java files and extract:
 - Import relationships: file → external ref, one per import declaration (edges)
 - Native method declarations for JNI bridge detection
 
+The exported :func:`java_callable_name` (``Outer.Inner.m``) is the one naming
+rule for methods and constructors, shared with ``java_def_use``'s DDG spec so
+the ids it mints are the ids emitted here (WI-gotun).
+
 Per-file scope threading includes regular ``imports``,
 ``static_imports`` (``import static pkg.Type.member;``) and
 ``wildcard_imports`` (``import java.util.*;``), so call resolution can
@@ -108,9 +112,26 @@ How It Works
    inherited methods or typed receivers that do not resolve locally are emitted
    unresolved with ``enclosing_class`` / ``receiver_type_hint`` /
    ``inherited_field_receiver`` hints; the
-   Tier-2 ``inherited_calls`` linker walks the hierarchy and resolves them
+   Tier-2 ``inherited_calls`` linker walks the hierarchy and resolves them.
+   A call or ``new`` in no method or constructor (a field initialiser, an
+   initialiser block) is anchored on the enclosing class / interface / enum /
+   record, else the file (``_get_enclosing_type_symbol``, INV-bamij); a method
+   reference there gets no such fallback and emits nothing. An unresolved call
+   with a receiver token is stamped ``call_construct="function"`` when the receiver
+   provably names a TYPE (``Files.readAllBytes(p)``), else ``method``; a bare
+   ``m(x)`` stays unstamped (``_java_call_construct``, WI-fuvaj). Receivers
+   are typed from constructors, return types, parameters, fields, declared
+   locals (including ``catch``, for-each, try-with-resources and typed lambda
+   parameters), record components and a ``new X().m()`` receiver; the
+   ``_ParsedFile`` docstring lists the sources and their scoping
 5. Stamp ``io_target_kind`` on stream reads from the receiver's binding, and
-   annotate edges with dataflow access modes (ADR-0015)
+   annotate edges with dataflow access modes (ADR-0015). ``System.in`` reads
+   are ``std_stream``, a file or buffer constructor at the root of a
+   decorator chain ``host_path`` / ``in_memory``, and
+   ``Process.getInputStream()`` / ``getErrorStream()`` ``pipe`` (WI-kanor);
+   ``net_stream`` is never stamped. ``System.out`` / ``System.err`` (unless
+   shadowed) are typed ``java.io.PrintStream`` and their writes stamped
+   ``std_stream`` (WI-dorus)
 6. Parse Gradle/Maven dependencies so boundary nodes can be tier-classified
 
 Why This Design

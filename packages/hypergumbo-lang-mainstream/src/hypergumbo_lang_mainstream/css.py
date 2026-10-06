@@ -25,6 +25,12 @@ The analyzer produces Symbols for:
 ``@import`` rules are emitted as ``imports`` Edges only (no per-import
 Symbol, per audit-findings 0010 Cluster E sub-case (b) fold).
 
+``CSSAnalyzer`` overrides the base class's two-pass ``analyze`` with a single
+pass: each ``*.css`` file is parsed once and ``_process_css_tree`` emits its
+symbols and ``@import`` edges together, since no edge needs a cross-file
+symbol lookup. Import edges originate from a per-file ``file``-kind id that
+is not itself emitted as a Symbol.
+
 Why This Design
 ---------------
 - CSS analysis helps understand theming and styling patterns

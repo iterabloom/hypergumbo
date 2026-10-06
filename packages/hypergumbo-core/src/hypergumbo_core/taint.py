@@ -51,9 +51,46 @@ Both propagators return through :func:`collapse_unadjudicated_flows`
 situation — ``(taint_label, source_symbol, sink_zone, sanitized,
 source_boundary, analysis_method, resource_naming_only, trusted_sink)`` (the
 last two because the consumer excludes on them, WI-gajir) — and the group's
-primitive names, sink symbols and sink call sites are carried as sorted tuples
-beside ``collapsed_flow_count``. ``ddg`` findings pass through unchanged, since the
-walk earned their per-pair claim.
+primitive names, sink symbols, sink call sites and ``sink_carriers``, its
+sanitizer credits (``sanitized_by``, ``sanitized_by_user_supplied``,
+``withheld_sanitizers``), its ``walk_verdict_values`` / ``walk_blocked_by_values``
+and its ``source_returned_by`` are unioned and carried as sorted tuples beside
+``collapsed_flow_count``; every other scalar is the first member's. ``ddg``
+findings pass through unchanged, since the walk earned their per-pair claim.
+
+Which Pairs Count
+-----------------
+Upstream of the §3a walk, both propagators share gates that decide what counts
+as a source/sink pair at all. Each refuses only on positive evidence; an
+absent or unrecognised stamp keeps the finding.
+
+- ``_match_propagation_entry`` refuses a callee of another language, and admits
+  an entry gated by ``requires_mode`` (sinks only) or ``requires_target_kind``
+  only when the collapsed sites' mode / target kind, resolved in the entry's
+  direction, selects it (INV-vukiv). An abstaining target-kind stamp admits the
+  unconditional entries plus the primitive's ``abstention_fallback`` entry, so
+  an unstamped call reads here as it does in io-boundaries (INV-minol).
+- ``_sink_call_can_carry_taint`` refuses a sink site whose arguments are all
+  literals (INV-fubag), whose target discards (``> /dev/null``, INV-kosur), or
+  that no externally-derived name can reach (bash redirects, WI-zovuz).
+  ``_source_call_can_mint_taint`` refuses a source site whose target-kind stamp
+  proves it crosses no minting boundary (WI-lipis).
+- ``_source_and_sink_are_one_call`` refuses a pair that is one invocation (one
+  recorded call line), and ``_source_names_can_reach_sink`` a pair whose source
+  names and sink-reaching names are provably disjoint (INV-fumod).
+
+One write is one finding: ``_subsume_sink_sites`` drops a slot-family parent
+whose child matched at the same caller (``sys.stderr`` beside
+``sys.stderr.write``, INV-sukoh), and a stream-object sink every use of which is
+carried by a call that is itself a sink in the same zone (INV-hopib); a stream
+sink that survives names its carrying calls in ``sink_carriers``. A primitive
+declared under two labels (``document.location``) mints one source per label
+(``find_source_callers``, INV-dadu).
+
+Community rows (ADR-0061) only ever add. A community sanitizer is not a
+barrier: the flow is reported and the sanitizer named in
+``withheld_sanitizers``. A community terminating function summary never closes
+a walk branch; ``withheld_community_summaries`` names the ones the run calls.
 
 Catalog Format
 --------------
@@ -83,6 +120,13 @@ vouched row, and its sanitizers do not clear a flow.
 Displaced rows are kept on the catalog as ``_displaced_sources`` /
 ``_displaced_sinks`` (INV-faput) so a verdict can disclose a shipped row a
 user row replaced.
+
+ADR-0060's non-boundary zones have no I/O row behind them, so verify-claims
+reads ``taint_sinks/`` through two helpers: ``shipped_non_boundary_sink_zones``
+(each zone and, per language, its ``unreached:`` shapes, which a clean verdict
+names, INV-pivam) and ``shipped_non_boundary_sink_sites`` (the ``(module,
+function)`` pairs of ``provenance: builtin`` files only, which the coverage
+gate counts as examined, INV-dudal).
 """
 from __future__ import annotations
 
@@ -1247,7 +1291,7 @@ def _match_propagation_entry(
     # WI-lipis: the same gate on the axis a mode literal cannot answer. Kept
     # beside the mode gate rather than in a second pass so both dual-classified
     # shapes are refused in one place, and ``getattr`` for the same reason --
-    # only sources carry this one.
+    # both TaintSource and TaintSink carry it now (WI-suhug).
     #
     # ``None`` from the resolver is an ABSTENTION, and it deliberately admits
     # only the unconditional entries: a stream whose origin the analyzer could
