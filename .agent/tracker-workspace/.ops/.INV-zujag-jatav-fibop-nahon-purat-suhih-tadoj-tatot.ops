@@ -1,0 +1,24 @@
+- op: create  # f2fe
+  at: '2026-10-06T00:44:26Z'  # f2fe
+  by: agent  # f2fe
+  actor: jgstern_agent  # f2fe
+  clock: 1  # f2fe
+  nonce: f2fe  # f2fe
+  data:  # f2fe
+    kind: invariant  # f2fe
+    title: "Go field-chain and chained-return-type receiver arms bind the first global candidate for a bare Type.Method key, whatever its package"  # f2fe
+    status: violated  # f2fe
+    priority: 3  # f2fe
+    parent:  # f2fe
+    tags:  # f2fe
+    - analysis_quality  # f2fe
+    - call_resolution  # f2fe
+    - go  # f2fe
+    isbefore: []  # f2fe
+    duplicate_of: []  # f2fe
+    not_duplicate_of: []  # f2fe
+    pr_ref:  # f2fe
+    description: "Found by the 2026-10-05 docstring staleness audit (code read, not yet reproduced on a corpus). The SDConfig.UnmarshalYAML case that motivated _go_method_of_type (every package's SDConfig shared one key) applies equally when the receiver is reached through a struct field or a call's declared return type. Repro to write: two packages each defining Config.Load, a struct field typed with the second package's Config, a call through the field. go.py's module docstring now states the gap."  # f2fe
+    fields:  # f2fe
+      statement: "A typed receiver's method binds to the method of the receiver's own type in that type's package (the _go_method_of_type rule)."  # f2fe
+      root_cause: "Symbols are keyed by unqualified Type.Method. The typed-local and method-value arms use _go_method_of_type, but the field-chain arm (go.py ~L4417-4420) and the chained-return-type arm (~L4556-4559) do 'target = candidates[0]' from global_symbols."  # f2fe
