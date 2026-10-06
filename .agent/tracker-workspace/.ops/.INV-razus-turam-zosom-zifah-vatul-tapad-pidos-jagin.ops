@@ -1,0 +1,23 @@
+- op: create  # f681
+  at: '2026-10-06T00:41:52Z'  # f681
+  by: agent  # f681
+  actor: jgstern_agent  # f681
+  clock: 1  # f681
+  nonce: f681  # f681
+  data:  # f681
+    kind: invariant  # f681
+    title: "tlaplus.py finds a call's enclosing operator by name repo-wide (resolver.lookup(enclosing_name)), so two specs defining Init credit one's body to the other"  # f681
+    status: violated  # f681
+    priority: 2  # f681
+    parent:  # f681
+    tags:  # f681
+    - analysis_quality  # f681
+    - call_resolution  # f681
+    isbefore: []  # f681
+    duplicate_of: []  # f681
+    not_duplicate_of: []  # f681
+    pr_ref:  # f681
+    description: "Found by the 2026-10-05 docstring staleness audit (reviewer reproduced). Repro: A.tla and B.tla each define Init; B.tla's Init body is credited to A.tla's Init (edge A.tla:Init -> B.tla:y), and B.tla:Bar points at A.tla:Init. Same family as the Pony / Pascal / CUDA by-position fixes (WI-rokus, WI-darik, WI-fohuh). Fix: find the enclosing definition by position in the current file (the base class helper), and add a two-file same-name fixture."  # f681
+    fields:  # f681
+      statement: "A call edge's src is the callable whose body contains the call, found by position in the call's own file (the INV-midag rule the base analyzer follows)."  # f681
+      root_cause: "tlaplus.py ~L281 looks up the enclosing operator/theorem/assumption with resolver.lookup(enclosing_name) over the repo-wide resolver instead of the file's own symbols by span."  # f681
