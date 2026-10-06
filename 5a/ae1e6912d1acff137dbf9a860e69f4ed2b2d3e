@@ -1,0 +1,27 @@
+Original commit body from f44a87cd59749d5110ccd668992629499d7fbaeb:
+
+Approved by the owner in session (2026-10-06), including merging with
+auto-pr without --gov.
+
+- The candidate pool. A seeded random sample of 30 never-audited,
+  unflagged files drifted at >= 19/30 (14/30 with a wrong reference or
+  false claim), about the rate of flagged files (57-91%). The flags are
+  a weak filter, so every audit now adds `check-docstring-drift
+  --rolling N` (#1494) and records every file it read, matches
+  included, with `--record-review`.
+- Step 3: a first-pass "matches" is a lower bound (a blind re-review
+  found drift in 2 of 5); verify every finding with a default-REJECT
+  verifier (36 of 39 held).
+- A fourth family the scan cannot see: docstrings describing wiring
+  that never landed. Because wiring often happens in unexpected ways,
+  a "not wired" claim needs: hypergumbo survey + explain (all inbound
+  sections, tests vs production), greps for what the call graph misses
+  (shell/hook/CI invocations of CLI subcommands, entry points, string
+  lookups), name disambiguation, git log -S, a behavioral repro when
+  the claim is about behavior, and dated, scoped wording. The
+  hypergumbo coverage and its blind spot are measured on this repo.
+- Calibration table: adds unflagged-read and unflagged-drift columns
+  and backfills 06-19, 07-27, 09-25, 09-25b and 09-28 (09-28 split
+  reconstructed; caveats footnoted) plus the 10-06 random sample.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
