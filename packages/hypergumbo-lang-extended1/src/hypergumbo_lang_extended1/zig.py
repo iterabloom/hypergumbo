@@ -2,13 +2,25 @@
 """Zig language analyzer using tree-sitter.
 
 This module provides static analysis for Zig source code, extracting symbols
-(functions, structs, enums, unions, error sets, tests) and edges (imports, calls).
+(functions, methods, structs, enums, unions, error sets, tests, container
+fields and variables) and edges (imports, calls).
 
 Implementation approach:
 - Two-pass analysis: First pass collects all symbols, second pass extracts edges
   with cross-file resolution using the symbol table from pass 1.
 - Uses tree-sitter-zig grammar for parsing
-- Handles Zig-specific constructs like comptime, error sets, test blocks, etc.
+- Handles error sets and test blocks; ``comptime`` has no special handling
+
+Calls: an import alias (``const m = @import("m")``) is passed as a path hint;
+a weak method match is deferred to an unresolved edge carrying
+``enclosing_class`` (``defer_bare_method_call``); a callee found nowhere gets a
+``zig:<caller file>:0-0:<name>:function`` placeholder at 0.6. Builtin calls are
+not filtered. Fields and variables are not registered for call resolution.
+
+Known gaps: a call's enclosing function is looked up by name through the
+repo-wide resolver, so two files defining a same-named function can have a
+call credited to the other file's; and an ``@import`` bound by a
+``variable_declaration`` emits its import edge twice, once from each branch.
 
 Uses TreeSitterAnalyzer base class for two-pass orchestration.
 The base class handles grammar checking, parser creation, file discovery,

@@ -7,9 +7,9 @@ management and citation analysis.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for single-pass orchestration:
-1. Pass 1: Extract bibliography entries with their fields
-2. Categorizes entries by type (article, book, inproceedings, etc.)
+Uses the TreeSitterAnalyzer base class. Pass 1 extracts each bibliography
+entry as ``kind="entry"``, with its type (article, book, inproceedings, etc.)
+in ``meta["entry_type"]``; Pass 2 adds nothing, since no edge is extracted.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the BibTeX-specific extraction
@@ -23,8 +23,8 @@ Why This Design
 ---------------
 - BibTeX is the standard for academic references
 - Entry types reveal document types being cited
-- Fields like author, year, journal provide metadata
-- Citation keys enable cross-reference analysis
+- ``meta`` carries author, year, title and the field count
+- Citation keys are recorded; no citation edges are extracted
 """
 
 from __future__ import annotations

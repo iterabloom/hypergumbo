@@ -4,7 +4,7 @@
 This analyzer uses tree-sitter to parse Verilog/SystemVerilog files and extract:
 - Module definitions
 - Interface definitions (SystemVerilog)
-- Module instantiations
+- Module instantiations, as ``instantiates`` edges (not symbols)
 
 If tree-sitter-verilog is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -14,6 +14,13 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract all module/interface definitions
 2. Pass 2: Resolve module instantiations and create edges
+
+An instantiation's source is the enclosing ``module_declaration``, found by
+position; one outside any module (e.g. inside an interface) is dropped. The
+target type is looked up case-insensitively, preferring ``kind="module"``: a
+unique match gets confidence 0.90, several candidates 0.50 with
+``disambiguation_fallback``, and no match ``verilog:external:<type>:module`` at
+0.70.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Verilog-specific extraction

@@ -14,7 +14,17 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 - Pass 1: Parse all files, extract all symbols into global registry
-- Pass 2: Detect calls and resolve against global symbol registry
+- Pass 2: Detect calls and resolve against global symbol registry (it re-walks
+  the file for its calls; the calls Pass 1 collects are not read)
+
+A call edge is emitted only when both ends are in the registry: a call to a
+function the repository does not define is dropped. The caller is the
+enclosing ``define``, taken by name and looked up in the repo-wide registry.
+
+Known gaps: two files defining a same-named function can have one file's calls
+credited to the other's (the caller is found by name, not position); and an
+indirect call (``call void %fp(ptr @g)``) is credited to the first ``@name`` in
+the instruction, here the argument ``@g``.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the LLVM IR-specific

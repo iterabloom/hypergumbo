@@ -2,10 +2,13 @@
 """Wolfram Language analysis pass using tree-sitter-wolfram.
 
 This analyzer uses tree-sitter to parse Wolfram Language files and extract:
-- Function definitions (SetDelayed :=)
-- Variable assignments (Set =)
-- Function calls
-- Import statements (Get, Needs, Import)
+- Function definitions (``f[x_] := ...``, and ``f[x_] = ...`` too)
+- Variable assignments (Set =), including ones inside a function body, which
+  become file-level variables
+- Function calls, as edges from the FILE node (not the enclosing function),
+  one per callee name per file; a callee found nowhere gets a
+  ``wolfram:builtin:0-0:<name>:function`` id
+- Import statements (calls to Get, Needs, Import)
 
 Wolfram Language (also known as Mathematica) is a symbolic programming language
 used for technical computing, data science, and mathematical modeling.
@@ -32,7 +35,13 @@ Wolfram Language Considerations
 -------------------------------
 - Function definitions use SetDelayed (:=) or Set (=)
 - Pattern matching uses underscores (x_) for arguments
-- Imports use Get["package`"], Needs["package`"], or <<package`
+- Imports use Get["package`"], Needs["package`"], or <<package`; only the
+  three call forms are extracted, not ``<<package```
+
+Known gaps: the left-hand side of a definition (``f[x_] := ...``) is itself a
+call node, so every definition also yields a ``calls`` edge to the function it
+defines; and ``.m`` files are not analyzed (``*.m`` is not in the file
+patterns, and ``find_wolfram_files`` has no caller).
 - Package names end with backtick (`)
 - Comments use (* ... *)
 """

@@ -12,11 +12,21 @@ Pass 1 (Symbol Extraction):
 - Programs: PROGRAM-ID declarations
 - Paragraphs: Procedure division paragraph headers
 - Sections: Procedure division section headers
-- Data items: WORKING-STORAGE and FILE SECTION entries
+- Data items: every data description entry, in any DATA DIVISION section
+  (WORKING-STORAGE, FILE, LINKAGE, ...)
 
 Pass 2 (Edge Extraction):
 - PERFORM edges: PERFORM paragraph-name statements
 - CALL edges: CALL "program-name" statements
+- Both carry the resolver's confidence scaled by 0.85; a target found nowhere
+  still gets an edge, via ``make_unresolved_edge``.
+- The caller is the last paragraph header seen; paragraph symbols span only
+  their header line.
+
+Known gaps: a PERFORM target is looked up repo-wide by name, so a paragraph of
+the same name in another file can be chosen; and a section header does not
+update the current caller, so a statement in a section is credited to the
+paragraph before it.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the COBOL-specific extraction
