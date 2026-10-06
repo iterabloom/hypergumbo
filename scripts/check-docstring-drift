@@ -104,6 +104,22 @@ Run with no args to do a co-change scan over the default scope::
 Pass ``--all`` to run all four sub-checks, ``--json`` for
 machine-readable output, ``--window`` / ``--min-delta`` /
 ``--min-body-commits`` to tune co-change thresholds.
+
+Rolling read
+------------
+The flags are not a selection rule: a 2026-10-06 random sample of
+never-audited, unflagged files drifted at >= 19/30, about the rate of
+flagged files. So an audit also reads the files whose last recorded
+review is oldest, and records every file it read (matches included,
+since a read that finds nothing leaves no commit) in the committed
+ledger ``.ci/docstring-review-ledger.json``::
+
+    scripts/check-docstring-drift --rolling 30
+    scripts/check-docstring-drift --record-review <file> [...] --run 2026-10-06
+
+``--rolling`` does not change the exit code. ``--record-review``
+validates every path before writing any (exit 2 on a path outside the
+scan scope or without ``--run``).
 """
 from __future__ import annotations
 
@@ -451,6 +467,121 @@ def co_change_scan(
         "pinned": part["pinned"],
         "rows": rows,
     }
+
+
+# ---------------------------------------------------------------------------
+# Rolling read (review ledger)
+# ---------------------------------------------------------------------------
+#
+# The co-change flags are not a selection rule. On 2026-10-06 a seeded random
+# sample of 30 files that no audit had read -- median 2 body commits since the
+# docstring, so none flagged -- drifted at >= 19/30 (14/30 with a wrong
+# reference or false claim), against 57-89% for flagged files across runs.
+# What drifts there is invisible to blame by construction: a fold or move in
+# ANOTHER file, or a docstring describing wiring that never landed. So each
+# audit also reads the N files whose last recorded review is oldest, and
+# records every file it read -- matches included, since a file that was read
+# and found accurate leaves no commit behind.
+#
+# The ledger records reviews, not blame: an audit fix commit and a mass stamp
+# look alike to blame (see floor_facts), but only an audit writes a ledger row.
+
+DEFAULT_LEDGER = os.path.join(".ci", "docstring-review-ledger.json")
+
+# Generated code (protoc output under scip/_generated/) carries the
+# generator's docstring; nobody reviews it, so it never takes a rolling slot.
+GENERATED_DIR = "_generated"
+
+
+def load_ledger(path: str) -> dict:
+    """Read the review ledger; a missing file is an empty ledger.
+
+    A file of any other shape raises rather than reading as empty, which
+    would silently put every file back at the front of the rolling queue.
+    """
+    if not os.path.exists(path):
+        return {"version": 1, "files": {}}
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    if (not isinstance(data, dict) or data.get("version") != 1
+            or not isinstance(data.get("files"), dict)):
+        raise ValueError(f"{path}: not a version-1 docstring review ledger")
+    return data
+
+
+def save_ledger(path: str, ledger: dict) -> None:
+    """Write the ledger with sorted keys so a review is a minimal diff."""
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(ledger, fh, indent=1, sort_keys=True)
+        fh.write("\n")
+
+
+def record_reviews(ledger: dict, rel_paths: list[str], *, date: str,
+                   run: str) -> dict:
+    """Return a new ledger with ``rel_paths`` marked reviewed on ``date``."""
+    files = dict(ledger["files"])
+    for p in rel_paths:
+        files[p] = {"reviewed": date, "run": run}
+    return {"version": 1, "files": dict(sorted(files.items()))}
+
+
+def rolling_selection(rows: list[dict], ledger: dict, n: int, *,
+                      repo_root: str,
+                      exclude: frozenset[str] = frozenset()) -> list[dict]:
+    """The ``n`` co-change rows whose last recorded review is oldest.
+
+    Never-reviewed files come first, oldest docstring first (``ds_ts``); then
+    reviewed files by review date. ``exclude`` takes the flagged set, so the
+    rolling slots are in addition to it; generated code is skipped. Paths are
+    repo-relative, the ledger's key form.
+    """
+    files = ledger["files"]
+    cands = []
+    for r in rows:
+        rel = os.path.relpath(r["path"], repo_root)
+        if rel in exclude or GENERATED_DIR in rel.split(os.sep):
+            continue
+        entry = files.get(rel)
+        cands.append({
+            "path": rel,
+            "last_reviewed": entry["reviewed"] if entry else None,
+            "run": entry["run"] if entry else None,
+            "ds_ts": r["ds_ts"],
+        })
+    cands.sort(key=lambda c: (c["last_reviewed"] is not None,
+                              c["last_reviewed"] or "", c["ds_ts"] or 0,
+                              c["path"]))
+    return cands[:max(n, 0)]
+
+
+def ledger_coverage(rows: list[dict], ledger: dict, *, repo_root: str) -> dict:
+    """How much of the scanned tree has a recorded review, plus ledger rows
+    whose file was not scanned (deleted or renamed: prune them by hand)."""
+    scanned = {os.path.relpath(r["path"], repo_root) for r in rows}
+    reviewed = scanned & set(ledger["files"])
+    return {
+        "scanned": len(scanned),
+        "reviewed": len(reviewed),
+        "never_reviewed": len(scanned) - len(reviewed),
+        "entries_without_a_scanned_file": sorted(set(ledger["files"]) - scanned),
+    }
+
+
+def format_rolling_text(rolling: dict) -> str:
+    cov = rolling["coverage"]
+    lines = [
+        f"## Rolling read: {len(rolling['files'])} least-recently-reviewed "
+        f"files beyond the flagged set",
+        f"# ledger: {rolling['ledger']}  scanned={cov['scanned']} "
+        f"reviewed={cov['reviewed']} never_reviewed={cov['never_reviewed']}",
+    ]
+    if cov["entries_without_a_scanned_file"]:
+        lines.append("# ledger rows with no scanned file (prune): "
+                     + ", ".join(cov["entries_without_a_scanned_file"]))
+    lines.append("")
+    for f in rolling["files"]:
+        lines.append(f"  {f['last_reviewed'] or 'never':>10}  {f['path']}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -1015,6 +1146,33 @@ def _repo_root() -> str:
         return os.getcwd()
 
 
+def _record_review_main(args: argparse.Namespace, repo_root: str,
+                        ledger_path: str) -> int:
+    """``--record-review``: validate every path, then write all or nothing."""
+    if not args.run:
+        print("error: --record-review needs --run LABEL", file=sys.stderr)
+        return 2
+    scope = [os.path.relpath(d, repo_root) for d in default_scope(repo_root)]
+    rels = []
+    for f in args.record_review:
+        rel = os.path.normpath(os.path.relpath(os.path.abspath(f), repo_root)
+                               if os.path.isabs(f) else f)
+        in_scope = any(rel.startswith(d + os.sep) for d in scope)
+        if not (rel.endswith(".py") and in_scope
+                and os.path.isfile(os.path.join(repo_root, rel))):
+            print(f"error: {f}: not a .py file under the scan scope "
+                  f"({', '.join(scope)})", file=sys.stderr)
+            return 2
+        rels.append(rel)
+    date = args.date or dt.date.today().isoformat()
+    ledger = record_reviews(load_ledger(ledger_path), rels, date=date,
+                            run=args.run)
+    save_ledger(ledger_path, ledger)
+    print(f"recorded {len(rels)} review(s) in "
+          f"{os.path.relpath(ledger_path, repo_root)}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="check-docstring-drift",
@@ -1072,7 +1230,39 @@ def main() -> int:
         "--json", action="store_true",
         help="Emit a machine-readable JSON report instead of text.",
     )
+    parser.add_argument(
+        "--rolling", type=int, default=0, metavar="N",
+        help="Also list the N files whose last recorded review is oldest "
+        "(never-reviewed first), beyond the flagged set. Implies --co-change.",
+    )
+    parser.add_argument(
+        "--ledger", default=DEFAULT_LEDGER,
+        help=f"Review ledger path, relative to the repo root unless absolute "
+        f"(default: {DEFAULT_LEDGER}).",
+    )
+    parser.add_argument(
+        "--record-review", action="append", default=[], metavar="FILE",
+        help="Record FILE (repo-relative .py under the scan scope) as "
+        "reviewed in the ledger, then exit. Repeatable. Record every file "
+        "an audit read, matches included.",
+    )
+    parser.add_argument(
+        "--run", default=None,
+        help="Run label stored with --record-review (e.g. 2026-10-06).",
+    )
+    parser.add_argument(
+        "--date", default=None,
+        help="Review date for --record-review, YYYY-MM-DD (default: today).",
+    )
     args = parser.parse_args()
+
+    repo_root = _repo_root()
+    ledger_path = (args.ledger if os.path.isabs(args.ledger)
+                   else os.path.join(repo_root, args.ledger))
+    if args.record_review:
+        return _record_review_main(args, repo_root, ledger_path)
+    if args.rolling:
+        args.co_change = True
 
     # If no mode flag, default to --co-change.
     if not (args.co_change or args.tracker_refs or args.phase_markers
@@ -1084,7 +1274,6 @@ def main() -> int:
         args.phase_markers = True
         args.registry_refs = True
 
-    repo_root = _repo_root()
     scope: tuple[str, ...]
     if args.paths:
         scope = tuple(args.paths)
@@ -1104,6 +1293,18 @@ def main() -> int:
         cc = report["co_change"]
         if cc["flagged"] or cc["pinned"]:
             exit_code = 1
+
+    if args.rolling:
+        cc = report["co_change"]
+        flagged = frozenset(os.path.relpath(r["path"], repo_root)
+                            for r in cc["flagged"] + cc["pinned"])
+        ledger = load_ledger(ledger_path)
+        report["rolling"] = {
+            "ledger": os.path.relpath(ledger_path, repo_root),
+            "coverage": ledger_coverage(cc["rows"], ledger, repo_root=repo_root),
+            "files": rolling_selection(cc["rows"], ledger, args.rolling,
+                                       repo_root=repo_root, exclude=flagged),
+        }
 
     if args.tracker_refs:
         hits = extract_tracker_ids(scope)
@@ -1131,6 +1332,8 @@ def main() -> int:
     sections = []
     if args.co_change:
         sections.append(format_co_change_text(report["co_change"], args.top))
+    if args.rolling:
+        sections.append(format_rolling_text(report["rolling"]))
     if args.tracker_refs:
         sections.append(format_tracker_text(report["tracker_refs"]))
     if args.phase_markers:
