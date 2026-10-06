@@ -41,3 +41,18 @@
   clock: 4  # e6ea
   nonce: e6ea  # e6ea
   message: "Fixed on branch jgstern-agent/fix/losod (same commits as WI-losod: 11a10f98b0, 445768867b, a9e3a869f4, 2c26be3459; not pushed). An atomic statement that holds control flow in a VALUE (let x = if/match .., int r = switch .., let k = f()?;) now processes that control flow first and is recorded ONCE after it, so it defines its target. A nested function is listed under a new cfg_nodes key, nested_function, and is not a classify() category. The statement holding one stays one statement. The function's body is built as its own region, with its own exit, loop stack and deferred list, that may run: it is entered from the statement, may repeat, and rejoins after it, while the statement's own fall-through is kept. This keeps ADR-0017's closure over-approximation: captured values are seen at the body's own lines, and a binding inside the body can no longer kill an outer definition. Also fixed: Java arrow-form switch_rule arms. Before, an arrow switch left every later statement unreachable. Rust closure parameters are no longer definitions of the enclosing function.\nBehavioral evidence: verify-claims, base c1dd831558 vs branch. Java `String w = switch ..`: not_attempted -> ddg/confirmed. Java Supplier lambda with an if: escaped -> ddg/confirmed. Rust let-if and let-match: escaped -> ddg/confirmed. Rust `let v = env::var(..)?;`: structural -> ddg/confirmed. Kill case, where a closure-local t used to hide the outer tainted t, in go, ts, python and rust: not_attempted -> ddg/confirmed. A sink inside a Java forEach callback stays ddg/confirmed. Mutation control: dropping the region's skip edge sends the four kill fixtures back to escaped. Corpus: ansible _cmd_help sys.argv -> print moved from cross_function to ddg/confirmed. Two nested defs there no longer wire their `return` to the outer function's exit. No verdict moved on any of the 6 repos.\nNOT fixed: `h := func(){..v..}; sink(h())` stays escaped in go/ts/rust, because the callee name is not counted as a use. Filed as WI-bufar-riban-titit-kujon-nonoh-zovut-duhap-gadik. Also found and filed: switch has no \"no case matched\" edge (pre-existing, P2), WI-sozob-robof-folub-sujit-gopov-bisoz-pirub-norom."  # e6ea
+- op: update  # 2d0e
+  at: '2026-10-05T11:48:23Z'  # 2d0e
+  by: agent  # 2d0e
+  actor: jgstern_agent  # 2d0e
+  clock: 5  # 2d0e
+  nonce: 2d0e  # 2d0e
+  set:  # 2d0e
+    status: done  # 2d0e
+- op: discuss  # d2b2
+  at: '2026-10-05T11:48:23Z'  # d2b2
+  by: agent  # d2b2
+  actor: jgstern_agent  # d2b2
+  clock: 6  # d2b2
+  nonce: d2b2  # d2b2
+  message: "Fixed in PR #1469 (stage 9a), together with WI-losod. An atomic statement holding control flow (let x = if/match, let k = f()?;, int r = switch) runs its control flow then records the statement once, defining its variable; a nested function/lambda/closure body is its own may-run region instead of being inlined, so its bindings no longer kill the enclosing function's variables and its return no longer ends it; Java arrow-form case arms are recognised. Behavioural evidence (verify-claims fixtures, losod.md): Java switch initializer not_attempted -> ddg/confirmed; Java lambda with if, Rust let-if/let-match escaped -> ddg/confirmed; Rust let v = env::var(..)?; structural -> ddg/confirmed; closure shadowing (Go/TS/Python/Rust) not_attempted -> ddg/confirmed; sink in a Java callback unchanged. Mutation of the region bypass edge reverts them. Residual filed: WI-bufar (calling a local function variable is not a use)."  # d2b2

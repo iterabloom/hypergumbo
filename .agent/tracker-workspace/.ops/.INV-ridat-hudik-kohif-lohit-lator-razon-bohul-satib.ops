@@ -1,0 +1,23 @@
+- op: create  # dbd5
+  at: '2026-10-06T00:41:58Z'  # dbd5
+  by: agent  # dbd5
+  actor: jgstern_agent  # dbd5
+  clock: 1  # dbd5
+  nonce: dbd5  # dbd5
+  data:  # dbd5
+    kind: invariant  # dbd5
+    title: "odin.py emits two call edges for obj.method(args): the member_expression handler and the plain call_expression handler both fire (fmt.println -> fmt.println AND a spurious println)"  # dbd5
+    status: violated  # dbd5
+    priority: 2  # dbd5
+    parent:  # dbd5
+    tags:  # dbd5
+    - analysis_quality  # dbd5
+    - call_resolution  # dbd5
+    isbefore: []  # dbd5
+    duplicate_of: []  # dbd5
+    not_duplicate_of: []  # dbd5
+    pr_ref:  # dbd5
+    description: "Found by the 2026-10-05 docstring staleness audit (reviewer reproduced): fmt.println(...) yields two unresolved edges, one to fmt.println and one to println. Fix: skip a call_expression whose parent member_expression the member handler consumes; fixture asserting one edge per member call."  # dbd5
+    fields:  # dbd5
+      statement: "One call site produces one call edge."  # dbd5
+      root_cause: "In tree-sitter-odin, obj.method(args) is a member_expression wrapping a call_expression (odin.py ~L320-330), so the plain call handler (~L287-318) also fires on the inner call and emits an edge to the bare method name."  # dbd5

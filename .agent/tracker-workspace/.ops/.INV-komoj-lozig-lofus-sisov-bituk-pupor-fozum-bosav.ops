@@ -29,3 +29,20 @@
   clock: 2  # bd50
   nonce: bd50  # bd50
   message: "2026-10-05 work, branch jgstern-agent/fix/komoj (f4cd45ee60..585923e4f1, 9 commits, local, based on c1dd831558). Report: ~/hypergumbo_lab_notebook/decontend/run_10032026/komoj.md.\n\nMECHANISM. taint._lift_returned_sources is shared by both propagators. A source a function F returns becomes a source call site (G, F, source) in each caller G, and is then decided by the existing forward BFS, the §3a walk in G, the barrier and the collapse (ADR-0017 §4c).\n- \"Returns\" is positive only: the source call sits in a return statement, or the walk over F reaches a return line.\n- Callers are counted only across invocations (no dispatches_to and no protocol calls).\n- A lifted seed's BFS omits its single call to F.\n- Multi-value returns seed the caller only at the result positions that carry the value. Without this, the Go err cascade made runc lift 13 of 39 times through err.\n- Findings and evidence rows carry source_returned_by.\n\nEVIDENCE.\n- Python and Go helper shapes go confirmed_with_caveats -> violated, equal to their inline twins.\n- Controls stay clean: constant return, nested-scope return, return through an I/O primitive, err-only return, the other tuple element.\n- C, Java, JS/TS declarations and Rust explicit `return` lift with no per-language work. Rust tail expressions and JS arrow expression bodies do not lift: filed as WI-sodoj.\n- Corpus (runc, buildah, podman-compose, prospector, qemu-meson): 2 verdicts moved inconclusive -> violated, 0 atoms lost.\n  - podman-compose: TP (argv -> podman_path -> create_subprocess_exec; ADR-0046 CONFIGURED-ACTION candidate).\n  - runc: rests on call-reachability rows that read FP.\n- New rows are mostly ddg_mixed/not_attempted. Every one read was FP: the existing inclusion rule, applied from the lifted seed. The 6 walk-adjudicated new rows read TP.\n\nRESIDUALS: WI-sodoj (expression bodies, P2), WI-sitaf (Go `_, err :=` arity fallback, P3).\n\nThe strict xfail in test_taint_recall_corpus that named WI-sirod XPASSes and is removed.\n\nINV-dukam re-measurement: still blocked (note on INV-dukam).\nFINAL: smart-test on HEAD 585923e4f1 -> 19488 passed, 0 failed; ✅ All changed source files are at 100% coverage (exit 0; one Rust grammar test deselected, see INV-lopus note)."  # bd50
+- op: update  # 384b
+  at: '2026-10-05T11:48:23Z'  # 384b
+  by: agent  # 384b
+  actor: jgstern_agent  # 384b
+  clock: 3  # 384b
+  nonce: 384b  # 384b
+  set:  # 384b
+    status: pending_validation  # 384b
+  add:  # 384b
+    tags: [awaits_bakeoff_validation]  # 384b
+- op: discuss  # 6412
+  at: '2026-10-05T11:48:24Z'  # 6412
+  by: agent  # 6412
+  actor: jgstern_agent  # 6412
+  clock: 4  # 6412
+  nonce: '6412'  # 6412
+  message: "Partial fix merged in PR #1469 (stage 9a). A function whose return statement carries a source's value now makes each caller's invocation of it a source site, decided by the existing reachability, DDG walk and collapse; a multi-value return seeds only the result position carrying the value. Behavioural evidence (komoj.md fixtures): the filed Python and Go helper shapes move from confirmed_with_caveats/inconclusive to violated, matching their inline twins; controls (constant return, return inside a nested function, os.path.exists(os.getenv(..)), caller returning only err) stay clean. Integration fix: the lift's walk is spelled 'is True' so the INV-lupav guard sees it collapsed. Status set to pending_validation, NOT satisfied: the general statement still fails for Rust tail expressions and JS/TS arrow expression bodies (WI-sodoj, P2) and Go '_, err := get()' (WI-sitaf, P3). Corpus A/B (branch run): podman-compose and runc verdicts inconclusive -> violated (runc is a false positive via call-reachability rows): tagged awaits_bakeoff_validation."  # 6412
