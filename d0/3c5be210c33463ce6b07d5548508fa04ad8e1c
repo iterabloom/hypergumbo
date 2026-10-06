@@ -1,0 +1,36 @@
+Original commit body from dd1f04e29d67d52c77268f79787dd1f6a7920d89:
+
+The post-merge re-scan of the 2026-10-05 audit (#1479, #1481) left 10
+files flagged: 3 already verified as true negatives, and these 7
+extended1 analyzers, all [days]-only and all floored by the Phase-3
+TreeSitterAnalyzer migration (cfd3132756). Two read-only reviewers read
+them in full; all 7 had real drift and 4 had reproduced code bugs.
+
+- verilog: instantiations are edges, not symbols; enclosing module by
+  position; case-insensitive, module-preferring lookup and its 0.90 /
+  0.50 / 0.70 confidences.
+- zig: kinds include methods, fields, variables; comptime has no special
+  handling (B); call path hints, deferral, placeholder. Known gaps
+  stated: enclosing function by name (INV-musij), @import emitted twice
+  (INV-vasak).
+- kdl, bibtex: "single-pass orchestration" was wrong (B: the base class
+  always runs two passes; these extract no edges); kdl sections are any
+  node with children, at any depth (B); bibtex kind is always entry,
+  journal is not captured, no citation edges.
+- llvm_ir: calls to undefined functions are dropped; Pass 2 re-walks
+  the file. Known gaps: caller by name (INV-nafij), indirect call
+  credited to an argument (INV-nupak).
+- wolfram: calls come from the file node, deduplicated per callee; only
+  Get/Needs/Import calls are imports (not <<package`). Known gaps:
+  definitions counted as calls, .m files never analyzed (INV-kafir).
+- cobol: data items from every DATA DIVISION section; 0.85 confidence
+  scaling and unresolved edges for both PERFORM and CALL. Known gaps:
+  PERFORM repo-wide, section headers do not update the caller
+  (INV-lutaj). Separately, the noise filter drops section/paragraph in
+  every language, hiding all COBOL call edges (INV-sizap).
+
+The by-name enclosing-callable defect is now in three analyzers plus
+agda (code-read): filed as a family with a proposed gate (WI-kosar).
+AST with docstrings stripped: all 7 files identical.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
