@@ -1,0 +1,23 @@
+- op: create  # 95d2
+  at: '2026-10-06T05:08:06Z'  # 95d2
+  by: agent  # 95d2
+  actor: jgstern_agent  # 95d2
+  clock: 1  # 95d2
+  nonce: 95d2  # 95d2
+  data:  # 95d2
+    kind: invariant  # 95d2
+    title: "noise filter drops kind=section and kind=paragraph in EVERY language: COBOL paragraphs/sections (callables with PERFORM/CALL edges) and their call edges vanish from the default view (WI-tisom residual)"  # 95d2
+    status: violated  # 95d2
+    priority: 2  # 95d2
+    parent:  # 95d2
+    tags:  # 95d2
+    - analysis_quality  # 95d2
+    - noise_filter  # 95d2
+    isbefore: []  # 95d2
+    duplicate_of: []  # 95d2
+    not_duplicate_of: []  # 95d2
+    pr_ref:  # 95d2
+    description: "Found by the 2026-10-06 docstring audit tail pass; reviewer reproduced: the COBOL pass emitted 9 nodes and 5 edges, the default survey kept 6 nodes and 0 edges; with --include-docs 4 call edges come back. WI-tisom fixed the same shape for kind=property via _NOISE_PROPERTY_LANGUAGES; section/paragraph need the same language scoping (markdown/rst/asciidoc etc. keep being filtered)."  # 95d2
+    fields:  # 95d2
+      statement: "A kind used for documentation structure in one language and for callables in another is filtered only for the documentation languages (the rule WI-tisom applied to property)."  # 95d2
+      root_cause: "noise_filter._NOISE_SYMBOL_KINDS lists 'section' and 'paragraph' as documentation kinds (~L77-78) and is_noise_symbol filters them by kind alone (~L113), with no language scope; cobol.py emits both kinds for PROCEDURE DIVISION callables."  # 95d2
