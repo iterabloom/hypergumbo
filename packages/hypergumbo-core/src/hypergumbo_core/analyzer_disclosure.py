@@ -37,17 +37,22 @@ containing that language can no longer be a BARE ``confirmed``. It becomes
 ``confirmed_with_caveats`` (rc 3) carrying
 :data:`~hypergumbo_core.verify_claims.CAVEAT_ANALYZER_METHOD_CALL_BLIND`, which
 names the language and the size of what went unexamined. It is a QUALIFIED
-OPINION rather than a disclaimer (ADR-0016 §4) on purpose: kotlin and
-javascript do emit call edges, just not this shape, so "I examined everything I
-could see, except this whole construct" is the true sentence — withholding to
+OPINION rather than a disclaimer (ADR-0016 §4) on purpose: a language declared
+``False`` still emits call edges of other shapes (kotlin and javascript did
+while they were declared ``False``), so "I examined everything I could see,
+except this whole construct" is the true sentence — withholding to
 ``inconclusive`` would say the analysis formed no view at all, which is false
 and less useful.
 
-WHEN AN ENTRY FLIPS TO ``True`` (WI-nasuf builds the missing edges), the caveat
-stops firing on its own and no invariant changes colour. That is the point of
-declaring rather than blocking: under a CAPABILITY-phrased bar, teaching kotlin
-to emit these edges would have read as a mass NEW violation, because those
-sinks would suddenly become visible-but-untyped. LIVE.md rule 19.
+WHEN AN ENTRY FLIPS TO ``True``, the caveat stops firing on its own and no
+invariant changes colour. kotlin and javascript were declared ``False`` on
+2026-08-23 and flipped on 2026-09-03, when WI-nasuf built the missing edges.
+Every entry in :data:`DECLARATIONS` is now ``True``, so the caveat fires only
+for a language with method-kind sinks and no entry at all, which is the case
+the gate test above exists to catch. That is the point of declaring rather than
+blocking: under a CAPABILITY-phrased bar, teaching kotlin to emit these edges
+would have read as a mass NEW violation, because those sinks would suddenly
+become visible-but-untyped. LIVE.md rule 19.
 
 THREE SHAPES LIVE HERE, kept apart because their remedies differ.
 :data:`DECLARATIONS` is a whole construct an analyzer cannot see (fix: build
@@ -55,8 +60,10 @@ the edges). :data:`SUPPRESSED_METHOD_NAMES` is named methods an analyzer
 deliberately drops (policy: stays). :data:`CONSTRUCT_BLIND_ROWS` is a
 catalogued row that source reaches by a construct which is NOT A CALL, so no
 analyzer emits an edge for it at all (fix: emit a registration edge, which is
-recall work). Each is dated, each fails closed in its own way, and each is
-derived against the shipped catalogue at render time where it can be.
+recall work). The two declaration shapes carry a ``measured`` date; the
+denylist carries none, because it is the analyzer's own live object rather
+than a measurement. Each fails closed in its own way, and each is derived
+against the shipped catalogue at render time where it can be.
 """
 from __future__ import annotations
 

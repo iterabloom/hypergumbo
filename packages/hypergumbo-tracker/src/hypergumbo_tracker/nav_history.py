@@ -18,9 +18,9 @@ Jump control row needs browser-like semantics:
   button-disabled state.
 
 The class is a pure data structure — no rendering, no Textual imports —
-so it can be unit tested exhaustively and later mounted inside a
-``ModalScreen`` subclass without coupling the history logic to the
-Textual event loop.
+so it can be unit tested exhaustively and is mounted inside the
+``ItemNavModal`` ``ModalScreen`` subclass in ``tui.py`` without coupling
+the history logic to the Textual event loop.
 
 Deliberate non-features:
 

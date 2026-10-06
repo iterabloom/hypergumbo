@@ -11,6 +11,17 @@ respecting exclude patterns. Also provides:
   ``set_locale_excludes()`` / ``get_locale_excludes()`` provide a global hook
   (like ``set_max_file_bytes``) that ``find_files`` checks.
 
+- **Single-walk file index:** ``set_file_index()`` installs a global
+  ``FileIndex`` that REPLACES ``find_files``' source of files: whenever the
+  installed index's ``repo_root`` equals the requested one, ``find_files``
+  matches patterns against the index (applying only ``max_files`` and the
+  size limit -- the ``excludes`` argument is not re-checked) and never walks
+  the tree. ``cli.run_survey`` installs one built from a single ``os.walk``
+  (``FileIndex.build``) and clears it on every exit path; ``sketch`` installs
+  a map-scoped ``FileIndex.from_paths`` for the ``--input`` / warm-map case
+  (INV-jumim), so ``find_files`` then yields only the map's files. With no
+  index installed, ``find_files`` falls back to ``rglob`` per pattern.
+
 - **Ambiguous extension disambiguation:**
 
   - ``.m`` files: shared by Objective-C, MATLAB, and Wolfram.
@@ -1041,10 +1052,12 @@ def find_files(
 ) -> Iterator[Path]:
     """Find files matching patterns while respecting exclude rules.
 
-    When a global FileIndex is set (via set_file_index()), delegates to
-    the index for O(1) lookups instead of calling rglob() per pattern.
-    Falls back to rglob() when no index is available or when custom
-    excludes differ from the index's excludes.
+    When a global FileIndex is set (via set_file_index()) for the same
+    ``repo_root``, delegates to the index for O(1) lookups instead of
+    calling rglob() per pattern. The index was built with its own
+    excludes, and in that case the ``excludes`` argument is NOT applied:
+    only ``repo_root`` is compared (WI-duhih).
+    Falls back to rglob() when no index is installed for this root.
 
     Exclude patterns are classified once per call into exact names
     (frozenset lookup) and glob patterns (fnmatch). This avoids

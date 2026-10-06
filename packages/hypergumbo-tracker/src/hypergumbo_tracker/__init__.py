@@ -28,9 +28,13 @@ Beyond storage, the package ships the surfaces that consume it:
 
 - **TUI** (``tui.py``): the full-screen interactive client, and the largest
   module in the package.
-- **Web server** (``serve.py`` and the ``serve_auth_*`` modules): an HTTP
-  view with WebAuthn, password, session and duress-code authentication
-  (ADR-0019).
+- **Web server** (``serve.py``): an HTTP/WebSocket view (ADR-0019). The
+  shipped ``htrac serve`` path calls ``create_app()`` without a TrackerSet,
+  so ``/api/*`` return 503 and only ``/health`` answers. The ADR-0019 auth
+  modules (``serve_webauthn.py``, ``serve_password.py`` with its duress
+  password, ``serve_sessions.py``, ``serve_duress.py``, configured by
+  ``serve_auth_config.py``) exist but are not yet wired into ``serve.py``,
+  whose routes perform no auth check (WI-hopip).
 - **Sync** (``sync.py``, ``sync_log.py``): the auto-sync mechanism that
   batches pending ops into a branch, pushes, polls CI and merges, plus its
   audit log.
