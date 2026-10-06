@@ -1,0 +1,44 @@
+Original commit body from cc9b39113f5929761b773c3eabb448c3102044f7:
+
+Refs WI-pogar-gahij-nolun-ruhun-konij-rokup-budof-ninif. ADR-0016 §7: a call into dependency source that was not analysed must report I/O unknown, never clean. This lands before WI-bapal, which will turn Mix `deps/` parsing off.
+
+## What was already true and what was not
+- `verify-claims` already returned `inconclusive` across such a call: the uncatalogued-module gate counts it. The one exception was a `module_completeness` grant.
+- `io-boundaries` printed **"No I/O boundary calls detected."**. The call's only home was `external_potential`, and the text view hides that bucket.
+
+## Mechanism (no new boundary value)
+- `IoChain.dst_ecosystem` copies the ADR-0041 §3 `ecosystem` stamp from the boundary node. `io_boundary.module_ecosystem` is now the only place that predicate is computed (the CLI node stamp calls it too).
+- `untraced_modules` groups the `external_potential` modules as `third_party` (untraced dependency), `stdlib` (runtime module the catalogue has not enumerated) or `unknown` (the language has no stdlib enumeration, which is every language except Python). It is on `BoundaryMap` and in the envelope, schema 2.3 → 2.4.
+- In text, `io-boundaries` prints "No classified I/O boundary calls detected." followed by an I/O-unknown disclosure. The disclosure appears whatever `--boundary`/`--primitive` asked for. When the bucket is shown, a dependency chain is tagged `[untraced dependency]`.
+- The reason `verify-claims` gives for withholding a verdict now names untraced dependency source.
+- **Overlay-grant decision** (recorded in ADR-0016 §7): an operator-loaded `module_completeness` grant for untraced source **stands**, and the verdict and exit code are unchanged. The confirming verdict's details say the dependency source was not traced, and `catalog_provenance.load_bearing_grants[].untraced_vouched` lists the modules. Built-in catalogue grants (stdlib audits) are not flagged.
+
+## Before / after (real CLI, one-file fixtures, each calling one function of an absent `llmkit`)
+Python (`app/main.py` with `from llmkit import Chain; Chain().run(text)`, plus an in-tree `.venv/` holding `llmkit`, which is excluded):
+
+Before:
+```
+$ hypergumbo io-boundaries .
+No I/O boundary calls detected.
+  external_potential: 2 chain(s) suppressed and excluded from the headline total (unclassified calls into named external modules; pass --show-external-potential to include them, or use --boundary external_potential).
+```
+After:
+```
+$ hypergumbo io-boundaries .
+No classified I/O boundary calls detected.
+  I/O unknown: 2 call(s) into 2 module(s) whose source was not analysed and that no catalogue row classifies (the external_potential bucket, excluded from the headline total) -- untraced, NOT evidence of no I/O.
+    untraced dependency: llmkit, llmkit.Chain
+  Installed dependency source is not traced (ADR-0016 §7); an --io-primitives overlay can classify these calls. Pass --show-external-potential to list the call sites (or use --boundary external_potential).
+```
+`verify-claims` with the claim "never sends data over the network": `inconclusive` rc 2 both before and after. After, the reason adds: `; 2 of them are untraced dependency source (llmkit, llmkit.Chain): the analysis did not read their code, so their I/O is unknown, not absent (ADR-0016 §7)`.
+
+The same claim with `--io-primitives grant.yaml`, where `grant.yaml` holds a `module_completeness` entry for `llmkit`: `confirmed` rc 0 before and after. After, the details read: `No net_send chains found. Rests on an overlay's module_completeness grant for module(s) whose source this analysis did not read (python: llmkit, llmkit.Chain): the dependency source was not traced -- the grant, not a trace, vouches for their I/O (ADR-0016 §7).`
+
+Analogues: the same fixture shape in JS (with `node_modules/llmkit`), Elixir (with `mix.exs`) and Go (with `go.mod`). Before, all three printed "No I/O boundary calls detected.". After, all three print the I/O-unknown disclosure, with the modules under "dependency or runtime module (this language's standard library is not enumerated)". `verify-claims` is `inconclusive` rc 2 for all three, before and after.
+
+## Known gaps
+- Only Python's catalogue enumerates its stdlib. Everywhere else the "dependency" label is unavailable, and the call is reported I/O-unknown with no label.
+- A call through an untyped receiver (the `external` placeholder) names no module and stays outside this population. That is the existing INV-linub/INV-fibis residual.
+- `io-boundaries` follows a user grant without naming its modules. This is the INV-tabaf residual and is unchanged.
+
+Tests: new `test_untraced_dependency_io_unknown.py` (23 tests). The schema lock tests were updated. The affected suite (18,257 passed) had 100% coverage on changed sources.
