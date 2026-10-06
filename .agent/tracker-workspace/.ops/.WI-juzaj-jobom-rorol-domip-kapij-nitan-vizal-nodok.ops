@@ -1,0 +1,22 @@
+- op: create  # d921
+  at: '2026-10-06T21:34:35Z'  # d921
+  by: agent  # d921
+  actor: jgstern_agent  # d921
+  clock: 1  # d921
+  nonce: d921  # d921
+  data:  # d921
+    kind: work_item  # d921
+    title: "Mix (mix.exs/mix.lock) and npm (package.json) not read as dependency manifests: directness unknown for all 2,129 thc boundary stubs"  # d921
+    status: todo_soft  # d921
+    priority: 3  # d921
+    parent:  # d921
+    tags:  # d921
+    - manifest  # d921
+    - supply_chain  # d921
+    - elixir  # d921
+    isbefore: []  # d921
+    duplicate_of: []  # d921
+    not_duplicate_of: []  # d921
+    pr_ref:  # d921
+    description: "On thc, all 2,129 tier-3 symbols have directness=unknown and 2,112 have ecosystem=unknown: per spec §14 directness is computed only from go.mod, Gradle/pom.xml and pyproject.toml; mix.exs/mix.lock and package.json are not read as DependencyManifests, and Elixir has no stdlib catalogue for ecosystem. The run also warns \"DEPENDENCY-LINKER linker found 9740 Import edges from code analyzers but 0 TOML dependency declarations (Cargo.toml, pyproject.toml)\" although mix.exs and package.json exist. With installed-dependency source off by default, boundary stubs are the main view of \"which dependencies does my code call, and how much\" -- this attribution is what makes them useful. Add Mix and npm manifest readers; make the warning name the manifests it actually looked for."  # d921
+    fields: {}  # d921

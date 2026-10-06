@@ -1,0 +1,24 @@
+- op: create  # c7d9
+  at: '2026-10-06T21:34:59Z'  # c7d9
+  by: agent  # c7d9
+  actor: jgstern_agent  # c7d9
+  clock: 1  # c7d9
+  nonce: c7d9  # c7d9
+  data:  # c7d9
+    kind: invariant  # c7d9
+    title: "Phoenix route symbols (framework_role=route) are classified library_export, so the sketch's HTTP Routes omits them (thc: 377 routes, 0 shown)"  # c7d9
+    status: violated  # c7d9
+    priority: 2  # c7d9
+    parent:  # c7d9
+    tags:  # c7d9
+    - elixir  # c7d9
+    - entrypoints  # c7d9
+    - sketch  # c7d9
+    isbefore: []  # c7d9
+    duplicate_of: []  # c7d9
+    not_duplicate_of: []  # c7d9
+    pr_ref:  # c7d9
+    description: "Invariant: a symbol carrying meta.framework_role=route (route_framework set) is classified as an http_route entrypoint and appears in the sketch's \"HTTP Routes\" section.\n\nViolated on thc (pristine clone @ 0ab75985d, hypergumbo 8.1.0 @ ea165f53fa, 2026-10-06): lib/thunderhillcinema_web/router.ex yields 377 function symbols named like \"GET /users/csrf_refresh\" with meta {framework_role: route, route_framework: phoenix, http_method, route_path, controller, action} and 373 dispatches_to edges -- but entrypoints holds 436 library_export and only 2 http_route (both scanner/server.js, Express). The router symbols carry concepts=[library_export]. The sketch's HTTP Routes section lists only the Express /scan and /health; router.ex has ~339 get/post/live/... lines. Check analogues: other route frameworks whose route symbols are kind=function."  # c7d9
+    fields:  # c7d9
+      statement: "A symbol carrying meta.framework_role=route (route_framework set) is classified as an http_route entrypoint and appears in the sketch's HTTP Routes section."  # c7d9
+      root_cause: "Not yet investigated. Observed: the Phoenix router symbols are kind=function with concepts=[library_export]; the entrypoint classifier appears to take the library_export concept over the route meta."  # c7d9
