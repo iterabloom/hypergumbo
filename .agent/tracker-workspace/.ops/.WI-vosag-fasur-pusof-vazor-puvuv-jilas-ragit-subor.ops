@@ -1,0 +1,22 @@
+- op: create  # 5975
+  at: '2026-10-06T21:32:46Z'  # 5975
+  by: agent  # 5975
+  actor: jgstern_agent  # 5975
+  clock: 1  # 5975
+  nonce: '5975'  # 5975
+  data:  # 5975
+    kind: work_item  # 5975
+    title: "Sketch Tests section names vitest but not ExUnit on an Elixir repo (thc: 2,717 mostly ExUnit test files)"  # 5975
+    status: todo_soft  # 5975
+    priority: 3  # 5975
+    parent:  # 5975
+    tags:  # 5975
+    - elixir  # 5975
+    - sketch  # 5975
+    - framework  # 5975
+    isbefore: []  # 5975
+    duplicate_of: []  # 5975
+    not_duplicate_of: []  # 5975
+    pr_ref:  # 5975
+    description: "On thc (2,717 test files, nearly all ExUnit .exs under test/), the sketch's Tests section reads \"2717 test files · vitest\" -- ExUnit is not named; vitest comes from extension/package.json. Test files are counted correctly; the framework label is wrong/incomplete. Detect ExUnit (test/test_helper.exs with ExUnit.start, `use ExUnit.Case`) and list every detected test framework."  # 5975
+    fields: {}  # 5975

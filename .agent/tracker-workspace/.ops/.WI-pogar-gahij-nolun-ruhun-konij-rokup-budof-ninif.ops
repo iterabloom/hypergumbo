@@ -1,0 +1,23 @@
+- op: create  # ff13
+  at: '2026-10-06T21:32:35Z'  # ff13
+  by: agent  # ff13
+  actor: jgstern_agent  # ff13
+  clock: 1  # ff13
+  nonce: ff13  # ff13
+  data:  # ff13
+    kind: work_item  # ff13
+    title: "io-boundaries/verify-claims: a call into an untraced installed dependency reports I/O unknown, never clean"  # ff13
+    status: todo_hard  # ff13
+    priority: 2  # ff13
+    parent:  # ff13
+    tags:  # ff13
+    - io_boundary  # ff13
+    - adr_0016  # ff13
+    - supply_chain  # ff13
+    isbefore:  # ff13
+    - WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok  # ff13
+    duplicate_of: []  # ff13
+    not_duplicate_of: []  # ff13
+    pr_ref:  # ff13
+    description: "io-boundaries and verify-claims must report a call into an untraced installed dependency as \"untraced dependency, I/O unknown\", never as \"no I/O\". ADR-0016 keeps the shipped I/O catalogue stdlib-only and finds e.g. an LLM API call by tracing chain.run -> library internals -> httpx -> stdlib socket; when the dependency source is not analysed, that chain ends at a boundary stub and the network egress silently disappears. This is already true today for node_modules and venv site-packages (excluded by default), and becomes true for Mix deps/ once installed-dependency source is off by default -- so this must land before (or with) that change. Model it like unknown_dynamic (ADR-0016 §7). Community overlay rows for a third-party sink still count as detection."  # ff13
+    fields: {}  # ff13

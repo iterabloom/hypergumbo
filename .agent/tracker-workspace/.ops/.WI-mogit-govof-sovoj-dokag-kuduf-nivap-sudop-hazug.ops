@@ -1,0 +1,26 @@
+- op: create  # 0fde
+  at: '2026-10-06T21:32:40Z'  # 0fde
+  by: agent  # 0fde
+  actor: jgstern_agent  # 0fde
+  clock: 1  # 0fde
+  nonce: 0fde  # 0fde
+  data:  # 0fde
+    kind: work_item  # 0fde
+    title: "docs: record installed-dependency-source policy in place (ADR-0004 section, ADR-0016 §7, spec §14 + stale default-exclude list)"  # 0fde
+    status: todo_hard  # 0fde
+    priority: 2  # 0fde
+    parent:  # 0fde
+    tags:  # 0fde
+    - docs  # 0fde
+    - adr  # 0fde
+    - adr_0016  # 0fde
+    - spec  # 0fde
+    - supply_chain  # 0fde
+    isbefore:  # 0fde
+    - WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok  # 0fde
+    - WI-pogar-gahij-nolun-ruhun-konij-rokup-budof-ninif  # 0fde
+    duplicate_of: []  # 0fde
+    not_duplicate_of: []  # 0fde
+    pr_ref:  # 0fde
+    description: "Decision (owner, 2026-10-06): parsing the SOURCE of installed dependencies is off by default, detected by content, disclosed when skipped, and enabled by flag/config. Record it by editing existing docs IN PLACE (no new ADR):\n\n- ADR-0004 (File Taxonomy) is the home. Add a section: \"installed dependency source\" is a third answer to \"why was this file skipped?\" beside tier and role. Content-conditioned detection per ecosystem (generalising discovery.py's virtualenv rule: a dir is a venv because of pyvenv.cfg/bin/activate, not its name), e.g. Mix deps/ (sibling mix.exs+mix.lock, or deps/*/hex_metadata.config), node_modules/, venv site-packages, package-manager vendor/ (composer.json+vendor/autoload.php, go.mod+vendor/modules.txt), Pods/, .dart_tool/, .stack-work/, elm-stuff/. Committed vendored code (third_party/, committed vendor/, submodules, vendored SDKs) is NOT covered: it stays parsed and tier-classified. Tool-generated build output (_build, .elixir_ls, cover/, digested assets) is excluded as before.\n  Fix the false implementation note \"symbol extraction runs on Tiers 1-2\": a 2026-10-06 fixture (mix.exs, lib/app.ex calling Foo.greet, deps/foo/lib/foo.ex) produced tier-3 symbols from deps/ and a resolved call App.hi -> Foo.greet. Update the banner \"additions only; no section bodies removed\".\n- ADR-0016 §7 \"Transitive dependencies\" currently rules \"trace everything, group by supply chain tier\". Rewrite: trace into installed dependencies when enabled; when not, calls into them are marked untraced/unknown, never clean (same pattern as unknown_dynamic).\n- Spec §14 Motivation: rewrite \"The solution is not to exclude dependencies entirely ... but to classify\" -> classify committed code and boundary stubs; installed dependency source is excluded unless asked, and its absence is disclosed.\n- Spec \"Analysis options\": the default-exclude list (node_modules/, venv/, dist/, build/, ...) is stale (venv is deliberately NOT a default exclude; ~50 entries in DEFAULT_EXCLUDES are unlisted). Replace it with the current policy and document --trace-deps.\n\nWhy: (1) a dev box and a fresh clone of the same commit should give the same default output (thc: pristine clone has no deps/; thc_dev has 40 MB / 81 Mix packages of deps/); (2) cost (parsing deps/ got thc's 6 GB VM OOM-killed); (3) the real use for dependency source is targeted (\"what does chain.run actually send to the LLM API?\"), so it is opt-in and per-package. Today's behaviour is inconsistent: node_modules and venvs are excluded silently, Mix deps/ is fully parsed."  # 0fde
+    fields: {}  # 0fde
