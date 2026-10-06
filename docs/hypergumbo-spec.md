@@ -203,9 +203,15 @@ rust-analyzer via rustup for the SCIP backend. **That backend executes `build.rs
 
 These options apply to all analysis commands (`run`, `slice`, and default sketch mode).
 
-🟩 **`--exclude PATTERN`**
-Gitignore-style glob patterns for paths to skip. Uses `fnmatch` matching.
-* Default excludes: `node_modules/`, `venv/`, `dist/`, `build/`, `*.min.js`, `*.bundle.js`, `.git/`, `__pycache__/`
+🟩 **`--exclude PATTERN`** (`-e`, repeatable)
+Additional gitignore-style glob patterns for paths to skip, on top of the defaults (`fnmatch` matching; a bare name matches that path component at any depth).
+* **Default excludes** — the single source is `DEFAULT_EXCLUDES` in `hypergumbo_core/discovery.py`; read it there rather than trusting a copy. By category: dependency directories excluded by name (`node_modules`, `vendor`, `.eggs`); build output (`dist`, `build`, `_build`, `out`, `target`); VCS directories; tool caches (`__pycache__`, `.pytest_cache`, `.mypy_cache`, `.tox`, `.cache`, `*.egg-info`, `.terraform`, …); coverage and test reports (`htmlcov`, `coverage`, `.nyc_output`, `lcov-report`, `TestResults`, …); generated documentation sites (`site`, `_site`); hypergumbo's own outputs and `.agent`; and lock files (`package-lock.json`, `yarn.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`, …).
+* **Virtualenvs are excluded by content, not by name.** `venv` / `.venv` / `env` are deliberately **not** default excludes: a directory with one of those names is pruned only if it holds `pyvenv.cfg`, `bin/activate` or `Scripts/activate`, because an `env/` directory is as often first-party source.
+* Minified and bundled files (`*.min.js`, `*.bundle.js`) are not excluded by name; they are classified tier 4 (derived) and dropped after classification ([§14](#14-supply-chain-classification)).
+* **Installed dependency source — decided policy, not yet implemented** (WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok): source a package manager installed into the working tree (Mix `deps/`, `node_modules/`, virtualenv `site-packages`, package-manager `vendor/`, `Pods/`, `.dart_tool/`, `.stack-work/`, `elm-stuff/`, …) is **not parsed by default**, is recognised by **content** (the virtualenv rule above, generalised per ecosystem), and is **disclosed** when skipped; committed vendored code (`third_party/`, committed `vendor/`, submodules, vendored SDKs) stays parsed as tier 3. See [ADR-0004](adr/0004-file-taxonomy.md) §"Installed dependency source". **Today** the behaviour is inconsistent: `node_modules` and `vendor` are excluded by name and silently (including a committed `vendor/`), virtualenvs by content and silently, and Mix `deps/` is parsed in full as tier 3.
+
+⬜ **`--trace-deps <pkg,...|all>`** — planned, not yet implemented (WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok)
+Opt in to parsing installed dependency source, per package (`--trace-deps langchain,httpx`) or wholesale (`--trace-deps all`). Traced dependency files are classified tier 3. A `trace_deps` key in the user configuration ([Configuration files](#configuration-files), ADR-0045) will carry the same setting, and the setting is part of the results-cache key. Without it, a run that skipped installed dependency source says so on stderr, in a sketch line, and in `supply_chain_summary.installed_deps_skipped`, and `io-boundaries` / `verify-claims` report calls into the untraced source as I/O unknown, never clean (ADR-0016 §7; WI-pogar-gahij-nolun-ruhun-konij-rokup-budof-ninif).
 
 🟩 **`--max-file-bytes N`** (default: no limit)
 Skip files exceeding this size. Particularly useful for HTML and minified JavaScript.
@@ -1378,6 +1384,8 @@ When the headline `total_files` is computed without a profile (e.g., by callers 
 
 Per-tier file and symbol counts (`first_party`, `internal_dep`, `external_dep`), plus a `derived_skipped` object listing files excluded from analysis. Each tier's `files` counts distinct paths of that tier's **`kind=="file"` nodes only** (not distinct paths across all tier nodes — a symbol-level count would fold in function paths and the `<external>` sentinel path of `external_symbol` nodes, inflating the count with phantom "files"; WI-mutuv); `symbols` counts every node of the tier regardless of kind. `derived_skipped.paths` is capped at 10 entries; full list available via `--verbose`. Unlike the analyzed tiers, `derived_skipped` intentionally carries `{files, paths}` rather than `{files, symbols}`: tier-4 derived artifacts are excluded from analysis entirely (§14), so they emit no symbols and a `symbols` count would be a structurally-always-0 field carrying no signal (cf. ADR-0040's declared-⇒-populated discipline). In its place `paths` is a genuinely different quantity — a capped sample of *which* derived files were skipped, a diagnostic for spotting a source file misclassified as derived — and per ADR-0039 ("a new quantity gets a new name") it is named for what it is rather than forced into the sibling shape. `derived_skipped` is thus an exclusion-disclosure bucket, not a peer tier: its `files` counts files *excluded from* analysis, not files *classified into* a tier (WI-gabos). The `external_dep` tier carries an `ecosystem` sub-object counting tier-3 symbols by provenance class (`stdlib` / `third_party` / `unknown`), per the ADR-0041 §3 ecosystem axis.
 
+⬜ **`installed_deps_skipped`** (planned, WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok): a second exclusion-disclosure bucket beside `derived_skipped`, naming the installed-dependency directories that were not parsed because nobody opted into them with `--trace-deps` ([§14](#14-supply-chain-classification), ADR-0004 §"Installed dependency source"). Its exact shape is fixed by that item.
+
 ### limits — explicit gaps
 
 Documents what the analysis *didn't* capture. Key arrays:
@@ -1735,7 +1743,7 @@ Without supply chain awareness, analysis results are polluted:
 - Edge counts inflated by calls within third-party libraries
 - Sketch output filled with framework internals rather than application logic
 
-The solution is not to exclude dependencies entirely—sometimes tracing into them is valuable—but to **classify** code by its position in the supply chain and let users control their viewport.
+The solution has two parts. **Code committed to the repository is classified**, not excluded: first-party, internal, vendored third-party and derived code each get a tier ([Tiers](#tiers)), and users control their viewport with tier weighting and `--max-tier`. Calls out to dependencies are kept as boundary stubs, and manifests and lockfiles are read for declaration relationships. **Installed dependency source** — what a package manager put into the working tree (Mix `deps/`, `node_modules/`, virtualenv `site-packages`, …) — **is not parsed unless asked for**, and its absence is disclosed rather than silent. Three reasons: a developer's checkout and a fresh clone of the same commit should produce the same default output; parsing an installed `deps/` (40 MB, 81 Mix packages) got a 6 GB VM OOM-killed; and the real use of dependency source is targeted ("what does `chain.run` actually send to the LLM API?"), so the opt-in is per package (`--trace-deps`). Detection is by content, per ecosystem ([ADR-0004](adr/0004-file-taxonomy.md) §"Installed dependency source"). ⬜ **Not yet implemented** — WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok (skip, disclosure, opt-in) and WI-pogar-gahij-nolun-ruhun-konij-rokup-budof-ninif (calls into untraced source report I/O unknown); today `node_modules`, `vendor` and virtualenvs are excluded silently and Mix `deps/` is parsed in full.
 
 ### Tiers
 
@@ -1774,6 +1782,7 @@ in-repo generated *routes* promote from tier 4 to tier 1, not tier 2.)
 **Default behavior:**
 - Tiers 1-3: Analyzed, with tier used for ranking/filtering
 - Tier 4: Excluded from analysis entirely (pure noise)
+- ⬜ Installed dependency source (package-manager-filled directories, detected by content): not parsed unless opted into with `--trace-deps`; skipped directories are disclosed. When traced, it is tier 3. Not yet implemented (WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok); see the Motivation above.
 
 **Design principle:** Analyze the canonical source, skip derived artifacts. If both `src/app.ts` and `dist/app.js` exist, analyze the TypeScript (tier 1), skip the transpiled JavaScript (tier 4).
 
@@ -1823,15 +1832,18 @@ def is_likely_derived(path: Path) -> bool:
 
 #### 2. External dependency detection (tier 3)
 
-**Path patterns:**
+**Path patterns** (root-anchored; the source is `EXTERNAL_DEP_PATTERNS` in `supply_chain.py`, plus `EXTERNAL_DEP_DEEP_PATTERNS` for vendored SDKs at any depth, e.g. `*-sdk-go/`):
 ```
 node_modules/
 vendor/              # PHP (Composer), Go (historical)
-third_party/
+third_party/, third-party/, thirdparty/, external/
+deps/                # Elixir (Mix)
 Pods/, Carthage/     # iOS
 .yarn/cache/
 _vendor/             # Hugo
 ```
+
+Classification only sees files discovery did not prune: today `node_modules/` and `vendor/` are default excludes and never reach it. Under the decided installed-dependency-source policy (⬜, WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok) these patterns classify committed vendored code and any dependency source opted into with `--trace-deps`; package-manager-filled directories are skipped before classification, by content.
 
 **Package name extraction:**
 For `node_modules/`, the package name is extracted for metadata:
@@ -1989,7 +2001,7 @@ Tier and Role compose for analysis decisions:
 | Decision | Tier constraint | Role constraint |
 |----------|----------------|-----------------|
 | Count in LOC | Tiers 1-2 | CODE roles |
-| Extract symbols | Tiers 1-2 | ANALYZABLE only |
+| Extract symbols | none — every file discovery does not prune is parsed; symbols above the tier ceiling (3 by default, so tier 4 is dropped) are filtered afterwards | ANALYZABLE only |
 | Additional Files | Tiers 1-2 | CONFIG + DOCUMENTATION |
 
 **Status:** 🟩 Implemented (ADR-0004). The `taxonomy.py` module provides the unified file classification system with `FileRole` enum and `LanguageSpec` dataclass for 89 languages.

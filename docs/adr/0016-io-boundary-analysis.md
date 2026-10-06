@@ -2,7 +2,7 @@
 # ADR-0016: I/O Boundary Analysis and Security Claim Verification
 
 Date: 2026-03-18
-Updated: 2026-08-13
+Updated: 2026-10-06
 Status: Accepted
 
 ## Context
@@ -22,7 +22,7 @@ If you can answer these four questions exhaustively, you can reason about whethe
 
 ### Why static analysis can answer this (mostly)
 
-**hypergumbo analyzes the target repository, not its installed dependencies.** `site-packages` is not in the tree, so no edge reaches a dependency's internals and the syscall it eventually makes is never observed. Measured, with controls firing in the same run: a file whose body is `requests.post(url, data={"s": secret})` produced **zero `net_send` chains**, while `open()` / `file.read` / `os.environ` in the same file produced theirs (INV-fotav).
+**hypergumbo analyzes the target repository, not its installed dependencies.** Installed dependency source is not parsed by default (a virtualenv's `site-packages` is excluded even when it sits inside the tree; the general rule and its per-package opt-in are [ADR-0004](0004-file-taxonomy.md) §"Installed dependency source" and §7 below), so no edge reaches a dependency's internals and the syscall it eventually makes is never observed. Measured, with controls firing in the same run: a file whose body is `requests.post(url, data={"s": secret})` produced **zero `net_send` chains**, while `open()` / `file.read` / `os.environ` in the same file produced theirs (INV-fotav).
 
 The I/O primitive catalog for any given language is therefore **finite and stable** — a curated list of stdlib functions, not an unbounded set of library APIs. What bounds it is what hypergumbo can be *responsible for*: widening the shipped catalog to cover requests/httpx/urllib3 would make hypergumbo the owner of every third-party library's API surface.
 
@@ -388,7 +388,13 @@ hypergumbo slice --io-boundary net_send --reverse repo/
 
 **`open()` dual classification.** Python's `open()` is both `fs_read` and `fs_write` depending on mode. Decision: **conservatively classify as both** by default. If the analyzer can extract the mode argument (literal string), narrow to the correct boundary. If the mode is a variable, keep both classifications. This is consistent with the "honest about limitations" principle.
 
-**Transitive dependencies.** Decision: **trace everything, group by supply chain tier.** The boundary map includes all code paths (first-party and dependency), but the output groups chains by tier so users can focus on first-party code or drill into dependency paths.
+**Transitive dependencies.** Decision (owner, 2026-10-06; the file-level rule is [ADR-0004](0004-file-taxonomy.md) §"Installed dependency source"): **trace into installed dependency source only when it was opted into; otherwise report a call into it as untraced — I/O unknown, never clean.**
+
+- **Default.** Installed dependency source (Mix `deps/`, `node_modules/`, virtualenv `site-packages`, package-manager `vendor/`, …) is not parsed, so a chain such as `chain.run → library internals → httpx → socket` stops at a boundary stub at the first call into the dependency. `io-boundaries` reports that call as *untraced dependency, I/O unknown*, and `verify-claims` cannot `confirm` a `must_not_exist` claim across it — the absence of a chain into code that was never read is not the absence of I/O. This is the shape of `unknown_dynamic` below: the boundary map states what it could not determine. A community overlay row for the third-party call still counts as detection; per [ADR-0061](0061-catalogue-tiers-for-every-family.md) it can add a finding but never make the verdict cleaner. How a `module_completeness` grant in a *yours* overlay (the Context section's one route by which a third-party module becomes confirmable) interacts with this rule is for WI-pogar to settle.
+- **Opted in.** With `--trace-deps <pkg,...|all>` (or the matching user-config key), the named packages' source is parsed and classified tier 3; chains continue into it, and dependency chains are grouped by supply-chain tier so a user can focus on first-party code or drill into a dependency path. The use this serves is targeted: "what does `chain.run` actually send to the LLM API?"
+- **Committed vendored code** (`third_party/`, a committed `vendor/`, submodules, vendored SDKs) is not installed dependency source; it is parsed and traced by default, as tier 3. (Today a committed `vendor/` is still excluded by name — see ADR-0004's **Today** paragraph.)
+
+**Not yet implemented.** Untraced-call reporting is WI-pogar-gahij-nolun-ruhun-konij-rokup-budof-ninif; the opt-in and the content-conditioned skip are WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok, which must not land before WI-pogar. Today `node_modules/` and venv `site-packages` are already excluded, and a chain into them ends at a stub with no untraced marker in the boundary map (`verify-claims`' coverage gate still returns `inconclusive` for uncatalogued modules — Context, INV-fibis); Mix `deps/` is parsed and traced in full. `unknown_dynamic` is itself reserved but not yet emitted (WI-datoz).
 
 **Runtime I/O.** Decision: **include but tag as `runtime_io`.** Python's import system reads `.py`/`.pyc` files — this is real I/O but universal. Tag it distinctly so it can be filtered from reports that focus on application-level I/O.
 
