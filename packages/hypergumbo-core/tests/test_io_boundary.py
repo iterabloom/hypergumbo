@@ -3295,14 +3295,16 @@ class TestIoBoundariesEnvelopeSchema:
     """
 
     def test_io_boundaries_schema_version_constant_pinned(self) -> None:
-        """The exported constant pins ``2.3`` (bumped from 2.2 by WI-fasap /
+        """The exported constant pins ``2.4`` (bumped from 2.3 by WI-pogar /
+        ADR-0016 §7: the untraced_modules disclosure key and the per-chain
+        dst_ecosystem; 2.3 was bumped from 2.2 by WI-fasap /
         ADR-0049: the db_compose_edges disclosure key, the database twin of
         net_listen; 2.2 was WI-nosah's net_listen_edges for deferred
         crossings; 2.1 was WI-javoh's command_launch_edges; 2.0 was
         WI-huhit/WI-foduh — total_io_edges redefined to real categories +
         external_potential_edges).
         """
-        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.3", (
+        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.4", (
             "io-boundaries schema_version is a wire-format contract. "
             "Do NOT change the value without bumping it deliberately "
             "AND updating the inline schema docs + CHANGELOG."
@@ -3324,7 +3326,7 @@ class TestIoBoundariesEnvelopeSchema:
         expected_keys = {
             "schema_version", "total_io_edges", "external_potential_edges",
             "command_launch_edges", "net_listen_edges", "db_compose_edges",
-            "boundaries",
+            "untraced_modules", "boundaries",
         }
         assert set(d.keys()) == expected_keys, (
             f"Unexpected top-level keys in BoundaryMap.to_dict(): "

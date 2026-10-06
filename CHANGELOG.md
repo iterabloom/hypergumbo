@@ -20,7 +20,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Catalogue rows say what the call does.** Rows claiming crossings their calls do not make are removed or moved, and standard output is `logging`, not IPC.
 - **Large surveys no longer stall** in three passes.
 
-`SCHEMA_VERSION` advances 0.20.13 → 0.20.14 (additive: `metrics.edge_confidence`, `profile.languages[*].test_files`, `AnalysisRun.cpu_ms`, slice `limits_detail`, the pub/sub `*_identifier` meta keys), the `verify-claims --json` envelope 2.4 → 2.6, and the validation report 0.3 → 0.4.
+`SCHEMA_VERSION` advances 0.20.13 → 0.20.14 (additive: `metrics.edge_confidence`, `profile.languages[*].test_files`, `AnalysisRun.cpu_ms`, slice `limits_detail`, the pub/sub `*_identifier` meta keys), the `verify-claims --json` envelope 2.4 → 2.6, the `io-boundaries --json` envelope 2.3 → 2.4 (additive: `untraced_modules`, per-chain `dst_ecosystem`), and the validation report 0.3 → 0.4.
 
 ### Added
 
@@ -58,6 +58,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 #### Taint and verify-claims
 
+- **A call into dependency source that was not analysed is reported as I/O unknown, not as "no I/O"** (ADR-0016 §7). `io-boundaries` printed "No I/O boundary calls detected." for a program whose only I/O goes through an absent or excluded package (`node_modules/`, a virtualenv); it now names those modules under an *I/O unknown* disclosure, whatever `--boundary` asked about, and the envelope lists them as `untraced_modules`. The *dependency* label needs an enumerated standard library, so it is Python-only; other languages say "dependency or runtime module". `verify-claims` already withheld these verdicts and now names untraced dependency source in its reason. An overlay's completeness grant for such a module can still confirm a claim, and the verdict says the dependency source was not traced.
 - **A source a helper returns is followed into its callers** (ADR-0017 §4c; new evidence key `source_returned_by`); it had read clean in Python and Go. Rust tail expressions and JS/TS arrow bodies are not covered yet.
 - **Loop headers, if/switch initializers and `let x = match ..` define their variables** in all six DDG languages, and a nested function or closure body is its own region instead of being inlined.
 - **A collapsed group no longer takes its resource-naming and trusted flags from its first member**, which had hidden `fmt.Fprintln(conn, secret)` behind `net.Dial(...)`.

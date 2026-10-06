@@ -1771,6 +1771,13 @@ class BoundaryCoverage:
     #: Not the whole grant list, which is 121 modules for python and would be
     #: the always-there disclosure a reader discounts.
     load_bearing_grants: dict[str, list[str]] = field(default_factory=dict)
+    #: Language -> the subset of :attr:`load_bearing_grants` that an OVERLAY
+    #: granted and the built-in catalogue does not (WI-pogar,
+    #: :func:`untraced_vouched_grants`): modules whose source this analysis did
+    #: not read, vouched for by someone's dated grant rather than by a trace.
+    #: The grant stands (owner decision, ADR-0016 §7); every confirming verdict
+    #: it supports says so in ``details``.
+    untraced_vouched_grants: dict[str, list[str]] = field(default_factory=dict)
     #: Language -> pass IDs behind its call edges (WI-lagod). Carried here for
     #: the reason every field on this object is: one computation site the
     #: verdict paths share, so a caller cannot forget it.
@@ -2257,6 +2264,7 @@ def catalog_provenance(
     tier_files: "Sequence[LoadedCatalogueFile]" = (),
     repo_root: "Optional[Path]" = None,
     io_overlay_origins: "Sequence[tuple[Path, str]]" = (),
+    untraced_vouched: "Optional[Mapping[str, Sequence[str]]]" = None,
 ) -> dict[str, Any]:
     """Record which catalogues a verdict was computed against (INV-zosun).
 
@@ -2389,8 +2397,14 @@ def catalog_provenance(
     # gate declared examined negatives because a grant said so. Empty when the
     # caller has no coverage to hand (older callers) and when nothing was
     # load-bearing, so the key is always present and a consumer can rely on it.
+    # WI-pogar: each row also names the modules only an OVERLAY vouched for
+    # (``BoundaryCoverage.untraced_vouched_grants``) -- source this analysis
+    # did not read, confirmed on a grant rather than a trace. Always present,
+    # empty when every grant was the built-in catalogue's.
+    _untraced = untraced_vouched or {}
     bearing = [
-        {"language": lang, "modules": sorted(mods)}
+        {"language": lang, "modules": sorted(mods),
+         "untraced_vouched": sorted(_untraced.get(lang, ()))}
         for lang, mods in sorted((load_bearing or {}).items()) if mods
     ]
     # INV-nular. The three keys above answer "whose rows were these?"; this one
@@ -2575,6 +2589,15 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
         )
         for row in bearing:
             lines.append(f"    {row['language']}: {', '.join(row['modules'])}")
+        untraced_rows = [r for r in bearing if r.get("untraced_vouched")]
+        for row in untraced_rows:
+            # WI-pogar / ADR-0016 §7: the grant stands, and says what it is.
+            lines.append(
+                f"  Of these, an overlay -- not the built-in catalogue -- "
+                f"vouched for {row['language']}: "
+                f"{', '.join(row['untraced_vouched'])}; their source was not "
+                f"analysed (untraced dependency).",
+            )
         lines.append(
             "  A wrong entry here is a false all-clear; the audits are dated in "
             "the catalogue's module_completeness block.",
@@ -3764,7 +3787,7 @@ def _uncatalogued_external_modules(
     # function's residual depends on. Adding a seventh home is how the drift
     # WI-ribuz files gets one entry longer. Imported inside the function because
     # ``taint`` is heavy and only this one path needs it.
-    unknown, _vouched, _evaluations = _adjudicate_external_modules(
+    unknown, _vouched, _evaluations, _untraced = _adjudicate_external_modules(
         raw_edges, catalogs, first_party_packages,
     )
     return sorted(unknown)
@@ -3783,18 +3806,58 @@ def load_bearing_grants(
     load-bearing and is not listed; a call a row classified was examined by the
     row and is not listed either.
     """
-    _unknown, vouched, _evaluations = _adjudicate_external_modules(
+    _unknown, vouched, _evaluations, _untraced = _adjudicate_external_modules(
         raw_edges, catalogs, first_party_packages,
     )
     return {lang: sorted(mods) for lang, mods in sorted(vouched.items()) if mods}
+
+
+def untraced_vouched_grants(
+    load_bearing: Mapping[str, Sequence[str]],
+) -> dict[str, list[str]]:
+    """The load-bearing grants an OVERLAY made, not the built-in catalogue.
+
+    WI-pogar / ADR-0016 §7. Every load-bearing grant vouches for a module whose
+    source this analysis did not read -- the gate only ever adjudicates calls
+    into external stubs. A grant in the built-in catalogue is hypergumbo's own
+    dated audit of a RUNTIME module (that catalogue is stdlib-scoped by
+    policy); a grant only an overlay makes is someone's vouch for code that was
+    never traced -- typically a dependency, since "overlays are where
+    third-party modules go" (ADR-0016 Context). The owner decision: such a
+    grant may still confirm, and the verdict must say the source behind it was
+    not traced. This is the set that sentence names.
+
+    Asked of the built-in catalogue ALONE (``include_defaults=False``): a
+    community overlay may not declare ``module_completeness`` at all, and a
+    user overlay is precisely what is being separated out.
+    """
+    from .io_boundary import load_catalog
+
+    out: dict[str, list[str]] = {}
+    for lang, modules in sorted(load_bearing.items()):
+        builtin = load_catalog(lang, include_defaults=False)
+        vouched = sorted(
+            m for m in modules if not builtin.module_io_is_enumerated(m)
+        )
+        if vouched:
+            out[lang] = vouched
+    return out
 
 
 def _adjudicate_external_modules(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
     first_party_packages: frozenset[str] = frozenset(),
-) -> tuple[set[str], dict[str, set[str]], set[str]]:
-    """``(unknown, vouched, evaluations)`` over one walk of the external call sites.
+) -> tuple[set[str], dict[str, set[str]], set[str], set[str]]:
+    """``(unknown, vouched, evaluations, untraced)`` over one walk of the external call sites.
+
+    ``untraced`` (WI-pogar) is the subset of ``unknown`` that
+    :func:`io_boundary.module_ecosystem` calls ``third_party`` under the call's
+    own catalogue: UNTRACED DEPENDENCY SOURCE, whose I/O is unknown because it
+    was never read (ADR-0016 §7). It only ever changes wording -- every member
+    is already in ``unknown`` and already withholds the verdict -- and it is
+    empty for a language that enumerates no standard library, where a
+    dependency and a runtime module cannot be told apart.
 
     Extracted from :func:`_uncatalogued_external_modules` when WI-lavut needed
     the complementary set: two walks sharing ``classify_call`` but not the
@@ -3808,6 +3871,7 @@ def _adjudicate_external_modules(
     written markup goes on to do is not in the edge set. They come back as site
     names for the opaque-site channel, never as modules.
     """
+    from .io_boundary import ECOSYSTEM_THIRD_PARTY, module_ecosystem
     from .taint import _module_from_symbol_path, shipped_non_boundary_sink_sites
 
     analyzed = _analyzed_modules(raw_edges)
@@ -3816,6 +3880,12 @@ def _adjudicate_external_modules(
     unknown: set[str] = set()
     vouched: dict[str, set[str]] = {}
     evaluations: set[str] = set()
+    untraced: set[str] = set()
+
+    def _unknown(name: str, catalog: IoBoundaryCatalog) -> None:
+        unknown.add(name)
+        if module_ecosystem(catalog, name) == ECOSYSTEM_THIRD_PARTY:
+            untraced.add(name)
     for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
         module = _module_from_symbol_path(dst)
         if not module:
@@ -3933,7 +4003,7 @@ def _adjudicate_external_modules(
             continue
         if len(disjuncts) > 1:
             for spellings in unenumerated:
-                unknown.add(spellings[-1])
+                _unknown(spellings[-1], catalog)
             continue
         # (3) A SHIPPED NON-I/O SINK IS AN EXAMINED CALL, AND AN OPAQUE ONE
         # (INV-dudal). ``taint_sinks/`` (ADR-0060) rows ``eval``,
@@ -4001,8 +4071,8 @@ def _adjudicate_external_modules(
         # behaving exactly as before.
         if _is_first_party_package(module, first_party_packages):
             continue
-        unknown.add(module)
-    return unknown, vouched, evaluations
+        _unknown(module, catalog)
+    return unknown, vouched, evaluations, untraced
 
 
 def _non_boundary_sink_site(
@@ -4722,6 +4792,9 @@ def compute_boundary_coverage(
     coverage.load_bearing_grants = load_bearing_grants(
         raw_edges, catalogs, frozenset(first_party_packages or ()),
     )
+    coverage.untraced_vouched_grants = untraced_vouched_grants(
+        coverage.load_bearing_grants,
+    )
     coverage.suppressed_sink_methods = {
         lang: sorted(hidden)
         for lang, catalog in catalogs.items()
@@ -4953,10 +5026,11 @@ def _call_production_coverage(
     # no grant examined, and the shipped non-I/O sink sites that are examined
     # but opaque. ``_uncatalogued_external_modules`` is the same walk keeping
     # only the first.
-    unknown_set, _vouched, evaluations = _adjudicate_external_modules(
+    unknown_set, _vouched, evaluations, untraced = _adjudicate_external_modules(
         raw_edges, catalogs, first_party_packages,
     )
     unknown = sorted(unknown_set)
+    untraced_clause = _untraced_dependency_clause(untraced, catalogs)
     # Launches first, then evaluations: one channel, because both are total
     # opacity and every consumer of ``opaque_sites`` already handles it.
     opaque = launches + sorted(evaluations)
@@ -4993,7 +5067,7 @@ def _call_production_coverage(
                 f"({_render_capped_names(_rank_modules_for_disclosure(unknown, catalogs))})"
                 f", which is what withholds the qualified verdict the "
                 f"{'launches' if not evaluations else 'sites above'} "
-                f"alone would have earned"
+                f"alone would have earned{untraced_clause}"
             )
         return BoundaryCoverage(
             complete=False,
@@ -5029,10 +5103,34 @@ def _call_production_coverage(
                 f"the analysis makes calls into {len(unknown)} module(s) that "
                 f"the I/O catalog could not classify ({shown}), so "
                 f"whether those calls perform this I/O was never examined"
+                f"{untraced_clause}"
             ),
         )
 
     return BoundaryCoverage(complete=True)
+
+
+def _untraced_dependency_clause(
+    untraced: "AbstractSet[str]", catalogs: dict[str, IoBoundaryCatalog],
+) -> str:
+    """``; N of them are untraced dependency source (...)`` or ``""`` (WI-pogar).
+
+    APPENDED, never substituted: the "could not classify" sentence stays true
+    and stays first, because it names the errand that works for every module
+    (catalogue the call). This adds the CAUSE for the ones that are installed
+    dependency source -- the analysis never read them, which ADR-0016 §7
+    rules is "I/O unknown, never clean" -- so a reader knows ``--trace-deps``
+    or an overlay is the remedy rather than a missing stdlib row. Empty when no
+    member is known to be a dependency, so a repo with none reads as before.
+    """
+    if not untraced:
+        return ""
+    names = _render_capped_names(_rank_modules_for_disclosure(untraced, catalogs))
+    return (
+        f"; {len(untraced)} of them are untraced dependency source ({names}): "
+        f"the analysis did not read their code, so their I/O is unknown, not "
+        f"absent (ADR-0016 §7)"
+    )
 
 
 def _default_coverage(boundary_map: BoundaryMap) -> BoundaryCoverage:
@@ -6612,5 +6710,41 @@ def verify_claims(
             verdict = _disclose_scoped_blindness(
                 verdict, claim.constraint_taint_flow.source_taint, scoped,
             )
+        if coverage is not None:
+            verdict = _disclose_untraced_vouch(verdict, coverage)
         verdicts.append(verdict)
     return verdicts
+
+
+def _disclose_untraced_vouch(
+    verdict: ClaimVerdict, coverage: BoundaryCoverage,
+) -> ClaimVerdict:
+    """Say that a clean verdict rests on a grant for code nobody traced.
+
+    WI-pogar, owner decision recorded in ADR-0016 §7: a ``module_completeness``
+    grant an operator loaded from an overlay is a deliberate, dated vouch, so
+    it may still turn a call into untraced dependency source into an examined
+    negative -- refusing it would leave no way to confirm anything for a repo
+    with dependencies, the case the 2026-08-15 ruling permitted the key for.
+    What it may not do is leave the verdict reading as though the dependency
+    had been analysed. So the verdict category and exit code are unchanged and
+    ``details`` names the modules.
+
+    Applied AFTER the coverage gate, in the one loop both arms leave through,
+    and only to a CONFIRMING verdict: a violated or withheld one does not rest
+    on the grant.
+    """
+    if verdict.verdict not in CONFIRMING_VERDICTS:
+        return verdict
+    if not coverage.untraced_vouched_grants:
+        return verdict
+    named = "; ".join(
+        f"{lang}: {', '.join(mods)}"
+        for lang, mods in sorted(coverage.untraced_vouched_grants.items())
+    )
+    return replace(verdict, details=(
+        f"{verdict.details} Rests on an overlay's module_completeness grant "
+        f"for module(s) whose source this analysis did not read ({named}): "
+        f"the dependency source was not traced -- the grant, not a trace, "
+        f"vouches for their I/O (ADR-0016 §7)."
+    ))

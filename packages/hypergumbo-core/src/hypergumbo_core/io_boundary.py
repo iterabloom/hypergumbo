@@ -43,6 +43,19 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
   versioned by ``IO_BOUNDARIES_SCHEMA_VERSION``, with ``compute_leaf_rollups``
   aggregating chains per leaf and ``_compute_external_potential`` synthesizing
   the opt-in external-potential bucket.
+- **Untraced calls are I/O unknown, not no I/O (WI-pogar, ADR-0016 §7).** An
+  ``external_potential`` chain is a call into a named module whose source was
+  not analysed -- installed dependency source is not parsed by default -- and
+  that no row classifies. Each chain carries ``dst_ecosystem``, the ADR-0041
+  §3 stamp already on the boundary node (``module_ecosystem`` is its one
+  predicate, shared with ``cli._make_ecosystem_classifier``), and
+  ``untraced_modules`` groups the modules by it: ``third_party`` is an
+  untraced dependency, ``stdlib`` a runtime module the catalogue has not
+  enumerated, ``unknown`` a language whose standard library is not enumerated
+  (every language but Python today), where hypergumbo cannot tell the two
+  apart and does not guess. No new boundary value: the population already had
+  one, and what it lacked was its cause and a text view that did not hide it
+  under "No I/O boundary calls detected."
 - **One row-choice rule.** ``named_lookup_arm`` is how BOTH ``lookup_with_module``
   and taint's ``_lookup_named_entry`` decide which row a named call reaches
   (INV-foda): an exact qualified-name hit first, then the module slot filtering
@@ -172,6 +185,8 @@ if TYPE_CHECKING:
 #   - external_potential_edges / command_launch_edges / net_listen_edges /
 #     db_compose_edges: int  (disclosed-only bucket counts)
 #   - boundaries: dict[str, BoundaryMapEntry.to_dict()]
+#   - untraced_modules: dict[str, list[str]]  (WI-pogar: the modules behind
+#     the ``external_potential`` chains, grouped by ``dst_ecosystem``)
 #   - unsupported_languages: list[str]  (added by ``cmd_io_boundaries``)
 #
 # Bumping rules:
@@ -180,7 +195,7 @@ if TYPE_CHECKING:
 #     (1.0 -> 2.0).
 #   - Changes to ``BoundaryMapEntry.to_dict()`` / ``IoChain.to_dict()``
 #     shape are part of this same contract — they share the version.
-IO_BOUNDARIES_SCHEMA_VERSION: str = "2.3"  # WI-fasap/ADR-0049: db_compose_edges added (the database twin of net_listen). 2.2: WI-nosah/ADR-0049: net_listen_edges added (deferred crossings disclosed, excluded from total_io_edges, shadowing net_recv). 2.1: WI-javoh command_launch_edges added. 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
+IO_BOUNDARIES_SCHEMA_VERSION: str = "2.4"  # WI-pogar/ADR-0016 §7: untraced_modules added + IoChain.dst_ecosystem (calls into source that was not analysed report I/O unknown). 2.3: WI-fasap/ADR-0049: db_compose_edges added (the database twin of net_listen). 2.2: WI-nosah/ADR-0049: net_listen_edges added (deferred crossings disclosed, excluded from total_io_edges, shadowing net_recv). 2.1: WI-javoh command_launch_edges added. 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
 
 
 # ---------------------------------------------------------------------------
@@ -3668,6 +3683,68 @@ def match_edge_to_primitive(
 # ---------------------------------------------------------------------------
 
 
+#: The two ADR-0041 §3 ecosystem values :func:`module_ecosystem` returns, and
+#: the bucket :func:`untraced_modules` files a ``None`` under.
+ECOSYSTEM_STDLIB = "stdlib"
+ECOSYSTEM_THIRD_PARTY = "third_party"
+ECOSYSTEM_UNKNOWN = "unknown"
+
+
+def module_ecosystem(catalog: IoBoundaryCatalog, module: str) -> Optional[str]:
+    """``"stdlib"`` / ``"third_party"`` for ``module`` under ``catalog``, or None.
+
+    THE ONE HOME of the ADR-0041 §3 ecosystem predicate. It lived as a closure
+    in ``cli._make_ecosystem_classifier`` (the boundary-node stamp); WI-pogar
+    needed the same answer in ``verify_claims``'s raw-edge walk, and a second
+    copy of "is this a dependency" is how the stamp and the verdict would come
+    to disagree about one module.
+
+    NONE WHEN THE LANGUAGE ENUMERATES NO STANDARD LIBRARY -- every catalogue
+    but Python's today -- because "not in the set" is then indistinguishable
+    from "set unknown", and calling a runtime module a dependency would send a
+    reader to ``--trace-deps`` for code that ships with the interpreter.
+
+    RECOGNITION, NOT EXAMINATION (:meth:`IoBoundaryCatalog.is_stdlib_module`):
+    this labels a call, it never decides whether one was examined.
+    """
+    if not (catalog.stdlib_modules or catalog.stdlib_prefixes):
+        return None
+    if catalog.is_stdlib_module(module):
+        return ECOSYSTEM_STDLIB
+    return ECOSYSTEM_THIRD_PARTY
+
+
+def untraced_modules(chains: Iterable["IoChain"]) -> dict[str, list[str]]:
+    """The modules behind the ``external_potential`` chains, by ecosystem.
+
+    WI-pogar / ADR-0016 §7: a call into source this analysis did not read,
+    that no row classifies, has UNKNOWN I/O. ``external_potential`` is exactly
+    that population (its dst is a synthetic ``external_boundary`` stub), so
+    this reads it rather than defining a second one. A chain under any OTHER
+    boundary is a detection -- a row classified the call -- and is not
+    I/O-unknown, even when the row is a community one into a dependency.
+
+    The module is the dst id's path slot (:func:`ir.symbol_path_slot`), the
+    same slot ``verify_claims``' uncatalogued-module gate names, so the two
+    commands list one call under one spelling. Grouped under
+    ``third_party`` (an untraced dependency), ``stdlib`` (a runtime module the
+    catalogue has not enumerated) and ``unknown`` (no stdlib enumeration for
+    the language: either one). Every key is present, lists sorted.
+    """
+    groups: dict[str, set[str]] = {
+        ECOSYSTEM_THIRD_PARTY: set(), ECOSYSTEM_STDLIB: set(), ECOSYSTEM_UNKNOWN: set(),
+    }
+    for chain in chains:
+        if chain.boundary != "external_potential":
+            continue
+        module = symbol_path_slot(chain.io_edge_dst)
+        if not module:  # pragma: no cover - the bucket requires a named module (F3 Filter 1)
+            continue
+        key = chain.dst_ecosystem if chain.dst_ecosystem in groups else ECOSYSTEM_UNKNOWN
+        groups[key].add(module)
+    return {key: sorted(mods) for key, mods in groups.items()}
+
+
 @dataclass
 class IoChain:
     """A call chain from an entry point to an I/O boundary call.
@@ -3694,6 +3771,15 @@ class IoChain:
             from the (incomplete) catalog does not authoritatively mean
             the dst is third-party — the language's stdlib enumeration
             isn't yet provenance-validated.
+        dst_ecosystem: The dst node's ADR-0041 §3 ``meta.ecosystem`` stamp --
+            ``"stdlib"`` (the language runtime), ``"third_party"`` (a
+            dependency) or ``None`` (not an external dst, or a language whose
+            standard library is not enumerated, so the two cannot be told
+            apart). Copied, never re-derived: ``create_boundary_nodes``
+            stamped it through :func:`module_ecosystem`. On an
+            ``external_potential`` chain ``"third_party"`` is what makes the
+            call an UNTRACED DEPENDENCY -- its source was not analysed, so its
+            I/O is unknown rather than absent (WI-pogar, ADR-0016 §7).
     """
 
     boundary: str  # axis: io-boundary
@@ -3705,6 +3791,7 @@ class IoChain:
     dst_tier_name: Optional[str] = None  # axis: bounded-enum
     dst_external_boundary: bool = False
     dst_classification_unreliable: bool = False
+    dst_ecosystem: Optional[str] = None  # axis: bounded-enum — "stdlib" / "third_party" / None, the ADR-0041 §3 ecosystem vocabulary (see docstring)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict including high-risk flag."""
@@ -3721,6 +3808,7 @@ class IoChain:
             "dst_classification_unreliable": (
                 self.dst_classification_unreliable
             ),
+            "dst_ecosystem": self.dst_ecosystem,
         }
 
 
@@ -3823,6 +3911,15 @@ class BoundaryMap:
     #: Chain count of the ``db_compose`` bucket (WI-fasap) -- the database twin
     #: of ``net_listen``, disclosed for the same reason.
     db_compose_edges: int = 0
+    #: The modules behind the ``external_potential`` chains, grouped by
+    #: ``dst_ecosystem`` (:func:`untraced_modules`; WI-pogar). Each is a module
+    #: this analysis called into without reading its source and without a row
+    #: to classify the call, so its I/O is UNKNOWN -- the ``third_party`` group
+    #: is untraced dependency source (ADR-0016 §7). Every key is always
+    #: present so a consumer never reads a missing one as "nothing untraced".
+    untraced_modules: dict[str, list[str]] = field(
+        default_factory=lambda: untraced_modules(()),
+    )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict.
@@ -3840,6 +3937,7 @@ class BoundaryMap:
             "command_launch_edges": self.command_launch_edges,
             "net_listen_edges": self.net_listen_edges,
             "db_compose_edges": self.db_compose_edges,
+            "untraced_modules": self.untraced_modules,
             "boundaries": {
                 k: v.to_dict() for k, v in sorted(self.entries.items())
             },
@@ -4052,6 +4150,7 @@ def _compute_external_potential(
             dst_tier_name=sc.get("tier_name"),
             dst_external_boundary=True,
             dst_classification_unreliable=(catalog.status == "in_progress"),
+            dst_ecosystem=dst_meta.get("ecosystem"),
         )
         chains.append(chain)
     return chains
@@ -4136,6 +4235,7 @@ def compute_boundary_map(
         dst_tier: Optional[int] = None
         dst_tier_name: Optional[str] = None
         dst_external = False
+        dst_ecosystem: Optional[str] = None
         if nodes_by_id is not None:
             dst_node = nodes_by_id.get(edge.dst)
             if dst_node is not None:
@@ -4144,6 +4244,7 @@ def compute_boundary_map(
                 dst_tier_name = sc.get("tier_name")
                 dst_meta = dst_node.get("meta") or {}
                 dst_external = bool(dst_meta.get("external_boundary"))
+                dst_ecosystem = dst_meta.get("ecosystem")
         # INV-zumin: ONE CHAIN PER SIMULTANEOUSLY-TRUE BOUNDARY. Chains are what
         # a ``must_not_exist`` claim counts, and they were built from the single
         # ``io_boundary`` string — so reaching both declarations in the
@@ -4162,6 +4263,7 @@ def compute_boundary_map(
                 dst_tier=dst_tier,
                 dst_tier_name=dst_tier_name,
                 dst_external_boundary=dst_external,
+                dst_ecosystem=dst_ecosystem,
             ))
 
     # Plan C, PR C: external_potential second pass.  Synthesize chains
@@ -4214,6 +4316,7 @@ def compute_boundary_map(
         command_launch_edges=disclosed_chain_count(entries, "command_launch"),
         net_listen_edges=disclosed_chain_count(entries, "net_listen"),
         db_compose_edges=disclosed_chain_count(entries, "db_compose"),
+        untraced_modules=untraced_modules(by_boundary.get("external_potential", ())),
     )
 
     return bmap

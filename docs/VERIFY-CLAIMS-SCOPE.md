@@ -119,6 +119,15 @@ rests on them. It lists only what *this* run's gate passed on, shipped or
 overlay, so it stays short; the full audit list, with dates, is the
 catalogue's `module_completeness` block.
 
+A grant in your overlay for a **dependency whose source was not analysed**
+(installed dependency source is not parsed by default — ADR-0016 §7) still
+confirms: it is your dated vouch. The verdict says so. Its `details` end with
+"Rests on an overlay's module_completeness grant for module(s) whose source this
+analysis did not read (…): the dependency source was not traced", and the
+provenance row lists those modules under `untraced_vouched`. Without such a
+grant, a call into untraced dependency source keeps the verdict `inconclusive`,
+and the reason names it as untraced dependency source.
+
 ### A source outside any walked function is never data-flow adjudicated
 
 The ADR-0017 §3a walk is **intraprocedural**. Its guard is "is the source's
