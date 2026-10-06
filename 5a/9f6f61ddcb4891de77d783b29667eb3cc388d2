@@ -1,0 +1,24 @@
+Original commit body from abcda258ececb05f7273fd87cb1de5cf57c0f43e:
+
+Covers the 75 non-tracker commits since the last audit (d96145dde9).
+
+Main changelog:
+- Add a draft Summary of the cycle's five threads, as released sections have.
+- Strip tracker IDs and internal audit pointers; keep ADR refs and version
+  transitions.
+- Move two fixes (non-I/O sink withholding, first-party relative imports)
+  from Added to Fixed.
+- Merge overlaps: C/C++ declarator shapes into the no-symbol-declarations
+  entry; the three Go resolution entries into two; both Swift scope entries;
+  Java and Kotlin/Scala library signatures; Kotlin/Scala System.out into the
+  stdout-is-logging entry; new/removed rows into one Row corrections list.
+- Cut the long recent bullets to effect plus one measured number.
+- Add the missing tree-sitter-swift 0.7.4 / tree-sitter-rust 0.24.2 floor
+  change and the ADR-0017 additions.
+- Note that the Go exec.Command hold predates returned-source following and
+  has not been re-measured.
+Unreleased goes from 5,429 to 4,686 words, Summary included.
+
+Tracker changelog: shorten the priority-trend entry.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
