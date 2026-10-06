@@ -21,3 +21,18 @@
     pr_ref:  # ff13
     description: "io-boundaries and verify-claims must report a call into an untraced installed dependency as \"untraced dependency, I/O unknown\", never as \"no I/O\". ADR-0016 keeps the shipped I/O catalogue stdlib-only and finds e.g. an LLM API call by tracing chain.run -> library internals -> httpx -> stdlib socket; when the dependency source is not analysed, that chain ends at a boundary stub and the network egress silently disappears. This is already true today for node_modules and venv site-packages (excluded by default), and becomes true for Mix deps/ once installed-dependency source is off by default -- so this must land before (or with) that change. Model it like unknown_dynamic (ADR-0016 §7). Community overlay rows for a third-party sink still count as detection."  # ff13
     fields: {}  # ff13
+- op: update  # ebe6
+  at: '2026-10-06T23:43:28Z'  # ebe6
+  by: agent  # ebe6
+  actor: jgstern_agent  # ebe6
+  clock: 2  # ebe6
+  nonce: ebe6  # ebe6
+  set:  # ebe6
+    status: done  # ebe6
+- op: discuss  # 8468
+  at: '2026-10-06T23:43:28Z'  # 8468
+  by: agent  # 8468
+  actor: jgstern_agent  # 8468
+  clock: 3  # 8468
+  nonce: '8468'  # 8468
+  message: "Merged in PR #1500 (4f351deeb7). Mechanism: no new boundary value -- external_potential already is the population (unclassified call into a named module whose source was not analysed). IoChain.dst_ecosystem copies the ADR-0041 §3 stamp (io_boundary.module_ecosystem is now its one home); envelope untraced_modules (schema 2.4) groups modules third_party/stdlib/unknown; io-boundaries text prints 'No classified I/O boundary calls detected.' + an I/O-unknown disclosure regardless of --boundary/--primitive; verify-claims' withholding reason names untraced dependency source. Overlay-grant decision (ADR-0016 §7): an operator-loaded module_completeness grant stands (verdict/exit unchanged); confirming verdict details say the dependency source was not traced; catalog_provenance.load_bearing_grants[].untraced_vouched lists the modules. Evidence (re-run on merged dev): fixture app/main.py 'from llmkit import Chain; Chain().run(text)' with llmkit only in an excluded in-tree .venv: 'hypergumbo io-boundaries .' -> before 'No I/O boundary calls detected.', after 'No classified I/O boundary calls detected. / I/O unknown: 2 call(s) into 2 module(s) ... / untraced dependency: llmkit, llmkit.Chain'; 'hypergumbo verify-claims . --claims claims.yaml' (net_send must_not_exist) -> inconclusive rc 2 before and after, reason now '; 2 of them are untraced dependency source (llmkit, llmkit.Chain) ...'; with --io-primitives grant.yaml (module_completeness llmkit) -> confirmed rc 0, details '... the dependency source was not traced -- the grant, not a trace, vouches for their I/O'. Analogues JS (node_modules), Elixir, Go: io-boundaries 'No I/O boundary calls detected.' -> I/O-unknown disclosure in all three (grouped 'dependency or runtime module'); verify-claims inconclusive rc 2 throughout. Gap: the dependency label needs an enumerated stdlib (Python only)."  # 8468
