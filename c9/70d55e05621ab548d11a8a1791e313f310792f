@@ -1,0 +1,59 @@
+Original commit body from e72dde75eb754e685f6a289d4c44184f9820acf7:
+
+check-docstring-drift --all flagged 19 files by co-change and 16 retired
+names by --registry-refs; 15 more files with the most body commits since
+their docstring joined the pool. 14 read-only reviewers read all 34 in
+full; every finding below was checked against the code before editing.
+
+Retired vocabulary (WI-ridan, plus 5 sites it did not list):
+- renders -> references (view_template, _view_template_core x4),
+  enqueues -> event_publishes (ruby x3), crdt_publishes ->
+  event_publishes (yjs_crdt x2), "event_sourcing edge:" ->
+  "event_sourcing event_publishes edge:" (axis_meta_keys x4, which
+  publishes into docs/schema.json and docs/concept-axes.md; both
+  regenerated). --registry-refs: 16 flagged -> 5, all five the known
+  false positives.
+
+Wrong claims (B) and wrong references (A):
+- rust_def_use: "early_return_on_error" hook does not exist (it is
+  early_return / return_on_err); closure params are dropped, not uses;
+  borrow aliasing is NOT tracked.
+- c_def_use: for-loop init/update ARE recorded now (WI-losod); goto is
+  the real gap.
+- compact: tiers are selected by select_by_connectivity, not
+  select_by_tokens (no production caller); name-dedup is dead; the 0.7
+  entrypoint threshold is the tiered path only; the example "tiers" keys
+  are supply-chain tiers, not token budgets.
+- supply_chain: classification runs after analysis, per file; the
+  documented step order was wrong (docs before roots before workspace).
+  Comments saying tier 2 holds examples/fuzz/vendored corrected.
+- inherited_calls: the INV-guviv gate is at Sites 1-3, not Site 2; PHP,
+  Obj-C, C++, C# and four more have walkers; Site-2 step 1 needs none.
+  type_hierarchy's priority is 60, not 20 (three comments).
+- taint: the catalogue stacks six layers incl. community (add-only) and
+  user channels, and taint_sinks/ ships again (ADR-0060).
+- io_boundary: discards are dropped by tag_io_boundaries, not the
+  matcher; the short-name gate is short_name_fallback_withheld.
+- verify_claims: allowed_sanitizers is parsed and never read (filed);
+  opaque sites include eval-type sinks and can be withdrawn.
+- java: enum implements produces no edge (filed); records/interfaces
+  get theirs via the inheritance linker.
+- go: field-chain and chained-return arms do not use
+  _go_method_of_type (filed); external slot is path+type.
+- catalogue_home: the read side runs during every analysis; only the
+  write side is explicit.
+- py_deps: no tier-2 promotion since ADR-0041 §1 (directness stamp).
+- gdscript, prisma, css, qml, capnp, ada, purescript: extraction lists.
+- tracker store: class docstring denied the cache list_items has.
+
+Minor (D): runtime_coherence allow-list default, module_key_axis 20 ->
+22 analyzers, signature_axis populated_by lists (scala; go/rust/swift).
+
+Code bugs found and filed, not fixed here: INV-razus (tlaplus enclosing
+by name), INV-ridat (odin double call edge), INV-nusir (purescript
+duplicate symbols), INV-borif (java enum implements), WI-biraf
+(allowed_sanitizers), INV-zujag (go first-candidate arms).
+
+Omissions (C) are left for a separate bundle. cli.py reviewed: matches.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
