@@ -43,6 +43,43 @@ Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
   versioned by ``IO_BOUNDARIES_SCHEMA_VERSION``, with ``compute_leaf_rollups``
   aggregating chains per leaf and ``_compute_external_potential`` synthesizing
   the opt-in external-potential bucket.
+- **One row-choice rule.** ``named_lookup_arm`` is how BOTH ``lookup_with_module``
+  and taint's ``_lookup_named_entry`` decide which row a named call reaches
+  (INV-foda): an exact qualified-name hit first, then the module slot filtering
+  the short-name rows (an empty result is a refusal), then ``gate_named_entry``
+  when there is no usable slot. ``prefer_exact_owner`` narrows the survivors to
+  rows whose module IS the slot, so a receiver call on ``requests.Session`` is
+  not credited to the package function ``requests.get`` (INV-vusum). A c/cpp
+  slot is the file's comma-joined ``#include`` list; ``module_hint_disjuncts``
+  splits it per header (INV-funuf) and, in c/cpp only, maps a C++ C-library
+  header to its C stem through ``_CXX_C_LIBRARY_HEADERS`` (``<cstdio>`` reaches
+  the ``stdio`` rows, WI-hilot). The c/cpp analyzers ask
+  ``declared_by_an_included_header`` through the same rule (WI-rimon), so a
+  call to a primitive an included header declares is not captured by a
+  same-named definition in another file (a platform shim) and stays catalogued.
+- **First-party detection.** ``is_definitionally_first_party`` answers, from
+  each language's resolution rules in ``FIRST_PARTY_MODULE_GRAMMARS`` (Rust's
+  ``crate``/``super``/``self``, JS/TS relative specifiers), whether a module
+  reference names this repository, which lets ``verify-claims``' coverage gate
+  stop reporting it as an unexamined dependency. A relative specifier counts
+  only when it lands on source the analysis read: one through ``node_modules``
+  / ``vendor``, or one climbing above the analysed root, stays reported
+  (INV-juvul). An unknown language suppresses nothing.
+- **Row annotations**, each validated at load because each fails silently:
+  ``abstains_to`` names the row an unstamped call falls back to (INV-fatok);
+  ``requires_target_kind`` drops a row unless every collapsed site's
+  ``io_target_kind`` resolves to it, with no fallback (WI-dorus, for
+  ``java.io.PrintStream``); ``boundary_ruling`` records why a primitive carries
+  several boundaries, and ``multi_boundary_reason`` is the one predicate that
+  combines it with mode discrimination and ``simultaneous`` (INV-vaduk). The
+  T9 ``resource_naming`` map feeds ``suppresses_resource_naming_finding``, which
+  lets taint mark a finding resource-naming-only only when the row is
+  classified, naming is not itself the danger, and ``content_args`` is
+  explicitly ``[]``. Every catalogue and overlay is parsed by
+  ``load_yaml_strict``, which raises ``DuplicateYamlKeyError`` instead of
+  PyYAML's silent last-wins (INV-nular), and ``kind_assertion_census`` counts
+  the name-to-boundary assertions a run rests on, how many carry a written
+  rationale, and the community-overlay ones apart.
 
 How It Works
 ------------

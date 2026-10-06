@@ -20,6 +20,15 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
    ``package X renames Y`` alias is passed as a path hint), and imports to a
    ``package`` placeholder
 
+A call whose callee the resolver cannot find still gets an edge, built by
+``make_unresolved_edge`` (e.g. ``Ada.Text_IO.Put_Line``). The caller is the
+enclosing ``subprogram_body``, looked up by name in the file's
+``symbol_by_name``; calls outside any subprogram body are dropped.
+
+Known gap: ``symbol_by_name`` (and the repo-wide registry) is keyed by bare
+name, last writer wins, so overloaded subprograms collapse into one symbol
+for both caller attribution and callee resolution.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Ada-specific extraction
 logic.

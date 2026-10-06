@@ -19,6 +19,13 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, variables, signals, and classes
 2. Pass 2: Extract preload/load import edges and function call edges
 
+For a call edge the caller is the enclosing ``function_definition``, found by
+its position rather than its name, so same-named functions in two inner
+classes are kept apart. Calls with no enclosing function (e.g. in a
+class-level ``var`` initializer) are dropped, as are the logging builtins
+``print``, ``push_error``, ``push_warning`` and ``printerr``. A callee the
+resolver cannot find still gets an edge, via ``make_unresolved_edge``.
+
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the GDScript-specific
 extraction logic.

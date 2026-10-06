@@ -21,6 +21,17 @@ Key constructs extracted:
 - type Name = ... - type aliases
 - class Name ... where - type classes
 - instance ... - class instances
+
+Symbol names are module-qualified (``Module.name``) when the file declares a
+module. Traversal does not descend into function bodies, so local ``where``
+and ``let`` bindings are not extracted. In pass 2 each ``exp_apply`` inside a
+function becomes a ``calls`` edge unless its head is on a small builtins
+skip-list (``pure``, ``map``, ``show``, ``liftEffect``, ...). The callee is
+looked up by the bare name, then qualified with the current module: a hit is
+confidence 1.0, a miss goes to ``purescript:unresolved:<name>`` at 0.6.
+
+Known gap: a function preceded by its type signature yields two function
+symbols, one for the ``signature`` node and one for the ``function`` node.
 """
 
 import time

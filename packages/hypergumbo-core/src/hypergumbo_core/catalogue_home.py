@@ -31,6 +31,23 @@ first invocation is the surprise that precedent exists to avoid. Default-on
 loading does not need materialization either: the shipped overlays load from the
 wheel, and this exists so a user can *edit* them.
 
+THE READ SIDE. :func:`user_channel_files` is the one join from a registry
+family to its ``<family>.d/`` listing under the user home: sorted YAML paths,
+lowest precedence first, ``[]`` for a family with no channel or a missing
+directory. :func:`user_overlay_paths` is that call for ``io_primitives``. The
+frameworks, dataflow_patterns, function_summaries, library_signatures and
+taint loaders call it too. ``WIRED_CHANNELS`` lists the channels some loader
+consults today. It is hand-kept, not derived, because the registry cannot
+tell "declared extensible" from "wired", and a test pins its contents. The
+seeded README uses it to tell the user which directories are read and which
+are inert.
+
+SEEDING DOES NOT VOUCH (ADR-0061 ruling 3). The loader takes a file's tier
+from its ``provenance:`` line, never from its directory, so a community overlay
+seeded here stays community wherever it sits: its rows can add a detection but
+never count as examined. Deleting that line is how the user vouches for the
+file, and the README says so.
+
 IDEMPOTENCE IS A USABILITY PROPERTY, NOT A TIDINESS ONE. A command that
 overwrites an edited overlay teaches people not to run it a second time, so an
 existing file is never rewritten — it is reported as skipped, and the caller

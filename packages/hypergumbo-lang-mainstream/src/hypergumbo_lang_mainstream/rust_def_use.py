@@ -27,6 +27,10 @@ simple ``let`` define.
 ``ref``/``ref mut`` match-arm patterns and macro invocation arguments were
 addressed in Phase 2b (WI-bifog). Borrow aliasing is not tracked: a write
 through one reference does not define the variable it borrows.
+
+Importing the module also calls ``register_ddg_language`` to make Rust a DDG
+language: every ``function_item`` (methods included) is a function, named and
+kinded by the spec's defaults so the DDG ids match the Rust analyzer's ids.
 """
 from __future__ import annotations
 

@@ -25,6 +25,27 @@ Two API surfaces are covered:
 - Read (consume key material/ciphertext): ``.expand()``,
   ``.decrypt()``, ``.decrypt_in_place()``
 
+How it works
+------------
+The file list is the set of paths of JavaScript/TypeScript/Rust symbols
+already in the graph. Each file is checked for a crypto keyword
+(``crypto.subtle``; ``Hkdf`` / ``Aes256Gcm`` / ``encrypt`` / ... for Rust) in
+the RAW text before anything is parsed (WI-kakov): most files cannot match,
+and parsing them first never finished on nextjs. Survivors go through
+``mask_doc_regions``, which blanks comments and docstrings so a crypto call
+mentioned only in prose is not a site, then the keyword test runs again and
+the per-line patterns run on the masked text.
+
+Every write site is paired with every read site of the same API surface
+(webcrypto or rust_crypto) in a DIFFERENT file; a write/read pair in one
+file is not cross-component coupling and is skipped. Each paired site
+becomes a synthetic ``function`` symbol (``framework_role`` ``crypto_producer``
+or ``crypto_consumer``, ``protocol_origin="crypto_flow"``) so the edge has
+endpoints, and the edge carries confidence 0.75. The run's
+``silence_reason`` comes from ``silence_reason_for_candidates`` over the sites
+found, so a silent run says whether no crypto call was seen or calls were
+seen but nothing paired.
+
 Why This Design
 ---------------
 Applications with layered encryption (like PlazaFlow's three-tier DEK model

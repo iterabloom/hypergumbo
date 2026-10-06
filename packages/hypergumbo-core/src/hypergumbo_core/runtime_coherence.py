@@ -39,6 +39,15 @@ Allow-list: ``docs/edge-type-runtime-allowlist.yaml``, read only when passed
 with ``--allowlist`` (the CLI defaults to none). Each entry
 permits multiple ``edge_type`` values within a single partition.
 ADR-0023 §3 mandates that allow-list growth requires an ADR amendment.
+
+CLI: :func:`main` takes a behavior-map JSON path and an optional
+``--allowlist``, prints the report from ``format_report`` (un-allow-listed
+offender partitions, the allow-listed count, edges scanned), and returns
+0 when no un-allow-listed offender remains, 1 when one does, and 2 when the
+behavior map cannot be read or is not valid JSON. The documented entry point
+is ``scripts/check-edge-type-runtime-coherence``; ``python -m
+hypergumbo_core.runtime_coherence`` runs the same check through the
+``__main__`` guard instead of exiting 0 having done nothing (WI-burol).
 """
 
 from __future__ import annotations

@@ -68,6 +68,20 @@ How It Works
    - An explicitly instantiated generic callee (``Map[int](x)``,
      ``pkg.Zero[int]()``) is read as its plain spelling
      (``_go_instantiated_callee``, WI-nulig).
+   - A field-chain receiver (``r.integration.Notify()``) is typed by walking
+     ``field_type_registry`` (struct -> field name -> declared type, from Pass 1)
+     from the root local's type (``_resolve_field_chain``); a hit is a ``calls``
+     edge with ``meta["receiver"]="typed_field"``, and a package-qualified
+     field type with no in-repo method fills the module slot from the import.
+   - A method on an in-repo call's result (``e.NewQuery().Exec()``) is typed
+     through the return-type registry from the inner receiver's tracked type
+     (``resolution_quality: "chained_return_type"``, WI-vadin). A call-result
+     receiver still untyped, with no package hint, gets an unresolved edge
+     with ``meta["receiver"]="field_chain"`` (the chained-call ambiguity guard,
+     after ``c.CoreV1().Endpoints(ns).Update()`` bound a lone ``Manager.Update``).
+   - A qualified type whose package declares no such method takes one promoted
+     through ONE level of embedding, when exactly one embedded type declares
+     it (``_go_promoted_method``, the last step of ``_go_method_of_type``).
 6. Ambiguous method call guard:
    - When a method call ``x.Method()`` has no inferred receiver type and the
      method name has 2+ candidates in global symbols, creates an unresolved
@@ -90,6 +104,13 @@ How It Works
      in the repo. This prevents ``sync.Mutex.Lock()`` calls from resolving
      to ``DirLocker.Lock`` (the only repo candidate), which would give
      DirLocker.Lock 255+ false in-degree edges.
+   - Between guards 6 and 7, an unexported (lowercase) method name on a
+     receiver of unknown type gets an unresolved edge to the ``external``
+     placeholder, with
+     ``meta={"call_construct": "method", "visibility": "unexported"}``: a
+     package-private method cannot be called from another package, so global
+     resolution would only cross package boundaries (``recalcRequest.string``
+     drew 577 spurious callers).
 8. Route detection:
    - Gin/Echo: r.GET("/path", handler), e.POST("/path", handler)
    - Fiber: app.Get("/path", handler) (lowercase methods)
@@ -115,7 +136,14 @@ How It Works
      The target argument comes from ``_GO_TARGET_ARGUMENT_INDEX``
      (``bufio.NewReader(r)``, ``fmt.Fprintf(w, ...)``) and is followed
      through its last binding in the function (``_go_wrapped_handle_kind``,
-     ``_go_receiver_handle_kind``). Anything unproven stamps nothing.
+     ``_go_receiver_handle_kind``). A name with no usable binding falls back
+     to its DECLARED type in ``_GO_TYPED_TARGET_KINDS`` (``bytes.Buffer`` ->
+     ``in_memory``, ``http.ResponseWriter`` -> ``net_stream``; ``io.Writer``
+     and ``*os.File`` deliberately absent; WI-suhug). Anything unproven
+     stamps nothing.
+   - ``meta["io_mode"]`` is stamped from ``os.OpenFile``'s flag expression by
+     the shared ``stamp_io_mode_from_call`` (any writing flag such as
+     ``os.O_WRONLY`` makes it a write; a flag variable stamps nothing; WI-ninuz).
    - A connection's kind is its socket FAMILY (WI-potog, the Go twin of
      c.py's WI-baran): the network literal of ``net.Dial`` / ``net.Listen``
      (``"unix*"`` -> ``pipe``, ``"tcp*"`` / ``"udp*"`` / ``"ip*"`` ->
@@ -194,6 +222,12 @@ right package. The dot-import fallback still uses the repo-wide resolver with
 the dot-imported path as its hint, the one way a bare name reaches another
 package. Directory, not go.mod-relative import path, is the identity: one
 directory is one package (plus its ``_test`` twin) in every module layout.
+
+A bare call that still resolves nowhere -- no local symbol, nothing (or an
+ambiguity-withheld set) from the resolver, no dot import to claim it -- gets the
+``external`` placeholder edge with ``call_construct="function"``
+(``make_unresolved_edge``, INV-guzuj). It used to emit nothing, so the call
+site vanished; every other analyzer mints the placeholder there.
 
 A NAME IS LOCAL ONLY WHERE ITS BINDING IS IN SCOPE (WI-bopiv, 2026-10-03).
 ``_GoLocalScope`` records, per top-level declaration, the byte ranges over

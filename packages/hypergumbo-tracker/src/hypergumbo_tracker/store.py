@@ -18,8 +18,42 @@ This module provides the core storage operations for the tracker:
   detection on add().
 - **CRUD:** add(), update(), discuss(), lock/unlock methods with advisory
   file locking (flock) around appends.
+- **Durability:** Each op is written and fsynced under the per-file flock and
+  mirrored to the out-of-repo journal (`journal.mirror_op`) inside the same
+  lock, so no working-tree git operation can lose it.
+- **Custom-field key gate:** add() and update() pass every custom-field key
+  being written through `check_field_key` (in the store, not just the CLI, so
+  every writer is gated): a key may not reuse a core attribute name, nor differ
+  from a field in the kind's `fields_schema` only in spelling unless
+  `force_field_key` is set. A removal in update() is never refused, because
+  deleting an offending key is the remedy.
+- **Human-authority gates:** The actor is resolved from the OS uid
+  (`resolve_actor`). Agents get HumanAuthorityError for human-only statuses,
+  discuss_clear, lock/unlock, freeze/unfreeze, repair_drift and edit-mode
+  on/off, and LockedFieldError for touching a field locked on HEAD or any
+  Lamport branch.
+- **Freeze:** freeze() copies the ops file to a read-only `.frozen` sentinel;
+  `_append_op` refuses agent writes while it exists and a human write
+  refreshes it. drift_check() compares ops file and sentinel byte-for-byte;
+  repair_drift() restores the ops file from the sentinel via temp file plus
+  rename.
+- **Edit mode and message ops:** Human-only edit_mode_on()/edit_mode_off()
+  append to a global log, `.edit-mode/edit-mode.ops`, kept outside `.ops/` so
+  sync never touches it and ignored entirely if an agent uid owns it. While a
+  window is open, delete_msg()/undelete_msg()/edit_msg_text() append message
+  ops to the item's file; edit_mode_status() reports the window. Readers
+  compile each item with the global log appended, and the compile pass
+  `_apply_edit_mode_message_ops` applies only message ops inside a
+  human-opened window, under its per-window cap (undeletes are free). The
+  cached read path bypasses the cache whenever the log exists, since the cache
+  keys on per-item mtime.
 - **Prefix matching:** Resolve unambiguous ID prefixes to full IDs.
-- **ready/list:** Filtered, sorted item queries.
+- **Read API:** get() (one item by ID or prefix), list_items() and ready()
+  (filtered, sorted; ready() drops duplicates, cross-tier conflicts and items
+  blocked by an unresolved `isbefore` predecessor), children()/ancestors()
+  (parent links), check_before_cycles() (DFS over `isbefore` links), and
+  item_ops(), which returns each item's raw op log rather than compiled state,
+  for history replays such as `tracker priority-trend`.
 
 The Store operates on a single tier directory (no multi-tier merging —
 that lives in TrackerSet). list_items()/ready() accept an optional Cache

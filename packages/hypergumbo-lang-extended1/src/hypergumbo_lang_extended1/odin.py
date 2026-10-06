@@ -25,6 +25,16 @@ Odin grammar key patterns:
 - import_declaration: import "package:module"
 - call_expression: func(args) or obj.method(args)
 - member_expression: module.symbol
+
+Symbol kinds: a procedure is ``kind="function"``, a struct ``kind="class"``,
+an enum ``kind="enum"``, and a union ``kind="class"`` with ``meta["is_union"]``.
+A plain call resolves its callee by name through the registry, else it gets
+an unresolved edge; a qualified ``module.func(...)`` call always gets an
+unresolved edge named ``module.func``. Calls outside a procedure are dropped.
+
+Known gap: the grammar nests the ``call_expression`` inside the
+``member_expression``, so ``obj.method(args)`` currently yields two call
+edges, one for ``obj.method`` and one for the inner ``method`` call.
 """
 
 from __future__ import annotations

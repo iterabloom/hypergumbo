@@ -34,10 +34,9 @@ between them based on the requested output mode:
 
 Pre- and post-selection passes
 ------------------------------
-- Seeds are force-included before budget enforcement. The default compact
-  path seeds entrypoints first, then cross-cutting endpoints, under one quota
-  of half the symbol budget. The tiered path force-includes entrypoints at
-  confidence >= 0.7, capped at half the tier's estimated capacity.
+- Seeds: the tiered path force-includes entrypoints at confidence >= 0.7,
+  capped at half the tier's estimated capacity. The compact view's seed order
+  and budgeting are described under "Compact entry point" below.
 - Filters: test / example / external-boundary symbols are dropped
   via ``selection.filters`` (consuming ``EXCLUDED_KINDS`` /
   ``EXCLUDED_FRAMEWORK_ROLES`` via the ``is_excluded_kind`` dual-shape
@@ -49,6 +48,46 @@ Pre- and post-selection passes
   centrality is computed without the selection-time dampeners
   (``_VICTIM_REMOVAL_EXCLUDE_DAMPENERS``) so those signals do not propagate
   into post-budget pruning.
+
+Compact entry point
+-------------------
+``format_compact_behavior_map`` builds the ``view: "compact"`` map. Both of its
+selection paths draw seeds from one fixed, budget-independent order
+(entrypoints by confidence, then cross-cutting endpoints by edge count), which
+keeps a smaller ``--max-symbols`` budget's nodes contained in a larger one's:
+
+- Centrality path (``connectivity_aware=False``, the function default;
+  ``--no-connectivity`` on the CLI) narrows the population to ``key_symbols``
+  and drops test-originated edges (``production_edges``, run on the unfiltered
+  symbol list first), so it ranks the same population sketch does and a
+  non-key file node cannot become a seed. Seeds are a prefix of the order under
+  a quota of half the symbol budget; ``select_by_coverage`` fills the rest.
+- Connectivity path (the CLI default) drops external-boundary placeholders,
+  which would manufacture connectivity the code does not have, and calls
+  ``select_by_connectivity`` with ``interleave=True``: seeds alternate with
+  greedy bridge picks against the total budget, so seeds are metered rather
+  than preloaded. Only key symbols may enter as seeds
+  (``seed_eligible=is_key_symbol``); bridge picks stay unfiltered.
+
+Projected-view shape
+--------------------
+The compact view and the tiered view share one projection:
+
+- Top-level blocks in ``_COMPACT_STRIP_KEYS`` (``usage_contexts``,
+  ``sketch_precomputed``) are dropped; ``_TIERED_STRIP_KEYS`` also drops
+  ``analysis_runs`` and ``validation_report``.
+- Each node is the slim ``compact_node`` projection (navigation fields only,
+  no identity hashes, provenance or supply-chain block); compact nodes also
+  carry their selection-time ``centrality``.
+- Edges are the induced subgraph, entrypoints are filtered to retained nodes,
+  and ``features`` are re-projected onto the retained node/edge ids
+  (``_reproject_features``; a feature whose entry nodes were all pruned is
+  dropped). ``features_summary`` (plus ``entrypoints_summary`` in the compact
+  view) reports included/omitted counts for those arrays.
+- Summaries are re-derived from the emitted arrays rather than copied from the
+  full map: ``_recompute_view_metrics`` recomputes ``metrics``, and the tiered
+  path calls ``recompute_view_summary`` to rebuild ``nodes_summary`` after its
+  shrink loop.
 
 Residual summarization
 ----------------------

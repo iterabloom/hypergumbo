@@ -13,6 +13,14 @@ XML, TOML, INI, properties, gitignore, requirements — plus build-system
 descriptors (Dockerfile, Make, CMake), cross-language manifest target
 extraction, Jupyter notebooks, and the Play framework's routes DSL.
 
+It also hosts the per-language def/use extractors for ADR-0017 dataflow
+(``c_def_use``, ``go_def_use``, ``java_def_use``, ``py_def_use``,
+``rust_def_use``, ``ts_def_use``). These are not in ``ANALYZER_MODULES`` and
+are not discovered via the entry point: ``hypergumbo_core.dataflow_scope``
+imports them by name, and importing each registers its extractor and (all but
+``py_def_use``, whose spec lives in ``hypergumbo_core.ddg_build``) its DDG
+language spec.
+
 See `docs/LANGUAGES.md` for the authoritative inventory.
 """
 
