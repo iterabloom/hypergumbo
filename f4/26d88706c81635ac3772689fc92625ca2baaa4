@@ -1,0 +1,26 @@
+Original commit body from d7dbf9c3ae7529cd7a250330efbc5b0e5e27e1e3:
+
+The co-change flags are not a selection rule. A seeded random sample of
+30 never-audited files (median 2 body commits since the docstring, none
+flagged) drifted at >= 19/30 on 2026-10-06, against 57-89% for flagged
+files across runs. What drifts there cannot be seen from blame: a fold
+or move in another file, or a docstring describing wiring that never
+landed. So each audit now also reads the N files whose last recorded
+review is oldest.
+
+- `--rolling N` lists them (never-reviewed first, oldest docstring
+  first; then by review date), beyond the flagged set, skipping
+  generated code. It reports ledger coverage and rows whose file is
+  gone. It never changes the exit code.
+- `--record-review FILE ... --run LABEL [--date]` records reviews,
+  matches included (a read that finds nothing leaves no commit). Every
+  path is validated before anything is written; exit 2 otherwise.
+- `.ci/docstring-review-ledger.json` is seeded with 189 files: those
+  edited by the nine audit fix commits since 2026-09-25, the files the
+  lab notebook records as read-and-matched, and the 2026-10-06 sample.
+  185 scanned files have no recorded review.
+
+The ledger records reviews rather than inferring them from blame,
+because blame cannot tell an audit fix from a mass stamp (floor_facts).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
