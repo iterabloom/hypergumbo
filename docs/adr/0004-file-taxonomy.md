@@ -4,9 +4,9 @@
 Date: 2025-01-14
 Status: Accepted
 
-> Amended in place — see implementation-state and cross-ref notes below (additions only; no section bodies removed).
+> Edited in place per [`README.md` §"ADR lifecycle"](README.md#adr-lifecycle-status-supersession-and-excision); git history holds earlier text. The 2026-10-06 owner decision added §"Installed dependency source" (a third answer to "why was this file skipped?", **not yet implemented** — WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok, WI-pogar-gahij-nolun-ruhun-konij-rokup-budof-ninif), corrected the implementation-state note on symbol extraction, and revised the matching Consequences line.
 >
-> Implementation state: the Decision/Migration Path below read as a forward-looking proposal, but the core taxonomy has landed. `Tier` (IntEnum: FIRST_PARTY/INTERNAL_DEP/EXTERNAL_DEP/DERIVED) lives in `packages/hypergumbo-core/src/hypergumbo_core/supply_chain.py`; `FileRole` (Flag: ANALYZABLE/CONFIG/DOCUMENTATION/DATA), the `LanguageSpec` dataclass, the `LANGUAGES` dict, and the composed `CODE_ROLES` constant all live in `packages/hypergumbo-core/src/hypergumbo_core/taxonomy.py`. (Role flags on `FileClassification` — `is_test`/`is_example`/`is_config`/`is_generated` — are independent boolean axes per WI-jobuj/WI-rigun-patuz and INV-tisid.) The `should_extract_symbols`/`config.analysis_tiers` knob in the Decision-section pseudocode below was **not** implemented — symbol extraction runs on Tiers 1-2 with the ANALYZABLE role, gated by file classification, not a configurable tier list. The vestigial `SupplyChainConfig.analysis_tiers` field (round-tripped but never read) was removed (WI-josad); the pseudocode is preserved as the original proposal. A consumer that needs a language's file extensions or a file's language reads `LANGUAGES` through `extension_globs` / `extension_suffixes` / `get_language` (and `js_ts_language_for_path` / `grammar_for_path` for the JS/TS family) rather than holding a private literal: the JS/TS-scanning linkers and the DDG language specs do, and two gates (`test_js_ts_extension_single_source.py`, `test_js_ts_ddg_extension_reach.py`) fail when one re-grows a private list (WI-fovus, WI-hizon, WI-pokij).
+> Implementation state: the Decision/Migration Path below read as a forward-looking proposal, but the core taxonomy has landed. `Tier` (IntEnum: FIRST_PARTY/INTERNAL_DEP/EXTERNAL_DEP/DERIVED) lives in `packages/hypergumbo-core/src/hypergumbo_core/supply_chain.py`; `FileRole` (Flag: ANALYZABLE/CONFIG/DOCUMENTATION/DATA), the `LanguageSpec` dataclass, the `LANGUAGES` dict, and the composed `CODE_ROLES` constant all live in `packages/hypergumbo-core/src/hypergumbo_core/taxonomy.py`. (Role flags on `FileClassification` — `is_test`/`is_example`/`is_config`/`is_generated` — are independent boolean axes per WI-jobuj/WI-rigun-patuz and INV-tisid.) The `should_extract_symbols`/`config.analysis_tiers` knob in the Decision-section pseudocode below was **not** implemented, and symbol extraction is **not gated by tier at all**. A file pruned by discovery's excludes (`DEFAULT_EXCLUDES`, the content-conditioned virtualenv rule, `--exclude`) is never parsed; every other file is parsed, its symbols are tier-stamped, and a post-parse filter in `cli.run_survey` drops symbols above the effective tier ceiling — 3 by default, which removes tier 4; `--max-tier` / `--first-party-only` lower it. Tier-3 files that discovery does not prune are therefore analysed by default. Measured 2026-10-06 on a three-file fixture (`mix.exs`; `lib/app.ex` whose `App.hi` calls `Foo.greet`; `deps/foo/lib/foo.ex`): `Foo` and `Foo.greet` were emitted as tier-3 symbols (`reason: in deps/`) and `App.hi -> Foo.greet` was a resolved `calls` edge. That is the behaviour §"Installed dependency source" changes for package-manager-filled directories. The vestigial `SupplyChainConfig.analysis_tiers` field (round-tripped but never read) was removed (WI-josad); the pseudocode is preserved as the original proposal. A consumer that needs a language's file extensions or a file's language reads `LANGUAGES` through `extension_globs` / `extension_suffixes` / `get_language` (and `js_ts_language_for_path` / `grammar_for_path` for the JS/TS family) rather than holding a private literal: the JS/TS-scanning linkers and the DDG language specs do, and two gates (`test_js_ts_extension_single_source.py`, `test_js_ts_ddg_extension_reach.py`) fail when one re-grows a private list (WI-fovus, WI-hizon, WI-pokij).
 >
 > Cross-ref (NOT supersession): ADR-0022 (Language Profile Registry) and ADR-0041 (Supply-Tier Purity) are topically adjacent successors that build on this taxonomy but do NOT supersede it; this ADR remains Accepted/in force.
 
@@ -191,6 +191,44 @@ def classify_json_file(path: Path) -> FileRole:
     return FileRole.CONFIG
 ```
 
+### Installed dependency source
+
+> **Decided 2026-10-06 (owner); not yet implemented.** Content-conditioned detection, skip disclosure and the `--trace-deps` opt-in are tracked by WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok. The I/O consequence (a call into untraced dependency source reports I/O unknown, never clean — [ADR-0016](0016-io-boundary-analysis.md) §7) is tracked by WI-pogar-gahij-nolun-ruhun-konij-rokup-budof-ninif and must land before or with it. Until both merge, the shipped behaviour is the one described under **Today** at the end of this section, not the rule.
+
+Tier and role do not cover every skipped file. There is a third answer to "why was this file skipped?": **it is installed dependency source** — code a package manager put into the working tree — and parsing that source is **off by default**.
+
+**1. What counts.** A directory a package manager fills from a manifest/lockfile: Mix `deps/`, `node_modules/`, a virtualenv's `site-packages`, a package-manager `vendor/`, CocoaPods `Pods/`, `.dart_tool/`, `.stack-work/`, `elm-stuff/`, and their analogues.
+
+**2. Recognised by content, not by name.** This generalises discovery.py's virtualenv rule: a directory is a virtualenv because it holds `pyvenv.cfg` (or `bin/activate` / `Scripts/activate`), not because it is called `venv` or `env` — name-matching `env` once deleted 427 source files (425 of them first-party) across 39 corpus repos. Each ecosystem gets a {candidate directory name, content marker} entry; the name only selects which directories get the test. Markers named in the decision:
+
+| Ecosystem | Candidate | Content marker |
+|---|---|---|
+| Python | `venv/`, `.venv/`, `env/` | `pyvenv.cfg`, `bin/activate` or `Scripts/activate` at the root (shipped today as `_looks_like_virtualenv`) |
+| Elixir (Mix) | `deps/` | sibling `mix.exs` + `mix.lock`, or `deps/*/hex_metadata.config` |
+| PHP (Composer) | `vendor/` | sibling `composer.json` + `vendor/autoload.php` |
+| Go modules | `vendor/` | sibling `go.mod` + `vendor/modules.txt` |
+| npm / yarn / pnpm, CocoaPods, Dart, Stack, Elm | `node_modules/`, `Pods/`, `.dart_tool/`, `.stack-work/`, `elm-stuff/` | per ecosystem; WI-bapal fixes the exact checks |
+
+**3. Committed vendored code is not installed dependency source.** `third_party/`, a committed `vendor/` that carries no package-manager marker, git submodules, and vendored SDKs inside source trees (`EXTERNAL_DEP_DEEP_PATTERNS`, e.g. `*-sdk-go/`) stay parsed and stay tier 3. Open for WI-bapal: a `go mod vendor` tree is frequently committed and carries `vendor/modules.txt`, so the content marker alone would class it as installed; whether git-tracked status overrides the marker is not yet decided.
+
+**4. Disclosed when something was skipped.** A stderr line, a line in the sketch, and `supply_chain_summary.installed_deps_skipped` beside `derived_skipped` — for example *"Installed dependency source not analysed: deps/ (81 Mix packages, 40 MB). Calls into them appear as external stubs. To trace into them: --trace-deps <pkg,...|all>"*. Nothing is printed when nothing was skipped.
+
+**5. Opt-in, per package.** `--trace-deps <pkg,...|all>`, and a matching key in the [ADR-0045](0045-user-config-and-backend-trust.md) user configuration. The setting is part of the results-cache key. Traced dependency source is classified tier 3, exactly as dependency source is classified today.
+
+**6. What stays on by default** (cheap, and needed for the default output): boundary stubs for calls into dependencies (unresolved external edges, [ADR-0037](0037-edge-resolution-semantics.md)); manifest and lockfile reading (`directness`, [ADR-0041](0041-supply-tier-purity.md)); tier-3 classification of committed vendored code (point 3); tier-4 derived detection.
+
+**7. Tool build output is build output, not dependency source.** Mix `_build/`, `.elixir_ls/`, `cover/` and digested static assets (e.g. `mix phx.digest` output) are excluded as build output, with no opt-in. Today `_build` is in `DEFAULT_EXCLUDES`; `.elixir_ls/`, `cover/` and digested assets are not.
+
+**8. Absence is never read as cleanliness.** When dependency source is not traced, `io-boundaries` and `verify-claims` report a call into it as *untraced dependency, I/O unknown* — [ADR-0016](0016-io-boundary-analysis.md) §7.
+
+**Why.**
+
+- **A dev box and a fresh clone of the same commit should give the same default output.** A pristine clone has no `deps/`; a developer's checkout of the same commit had 40 MB / 81 Mix packages of it.
+- **Cost.** Parsing that `deps/` got a 6 GB VM OOM-killed.
+- **The real use of dependency source is targeted** — "what does `chain.run` actually send to the LLM API?" — so the opt-in is per package rather than all-or-nothing.
+
+**Today** (until WI-bapal merges), the behaviour is inconsistent: `node_modules` and `vendor` are excluded by name in `DEFAULT_EXCLUDES`, silently — which also drops a committed `vendor/`, contrary to point 3; virtualenvs are excluded by content, silently; Mix `deps/` (like `third_party/` and `external/`) is parsed in full and classified tier 3. No `installed_deps_skipped` field and no `--trace-deps` flag exist yet.
+
 ## Consequences
 
 ### Positive
@@ -199,7 +237,7 @@ def classify_json_file(path: Path) -> FileRole:
 
 * **Correct LOC counts**: Data files no longer inflate statistics. A repo with 34K lines of pricing data won't report 34K extra "lines of code."
 
-* **Clear semantics**: "Why was this file skipped?" has an answer: its tier, its role, or both.
+* **Clear semantics**: "Why was this file skipped?" has an answer: its tier, its role, or — for a package-manager-filled directory nobody opted into — that it is installed dependency source (§"Installed dependency source"), which is disclosed rather than skipped silently.
 
 * **Extensible**: Adding a new language requires one entry in `LANGUAGES`, not edits to multiple files.
 

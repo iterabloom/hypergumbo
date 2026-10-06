@@ -123,6 +123,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **[docs/CATALOGUES.md](docs/CATALOGUES.md)** covers catalogue tiers, families and the in-repo opt-in.
 - **ADR-0061 decides catalogue tiers**, and ADR-0016, 0017, 0045, 0047 and 0060 agree with it. ADR-0017 adds §4c, and 21 ADRs now state the shipped design.
+- **Installed dependency source will be off by default** (decided 2026-10-06, not yet implemented). ADR-0004 adds the rule: package-manager-filled directories (Mix `deps/`, `node_modules/`, venv `site-packages`, …) are recognised by content, skipped with a disclosure, and parsed per package with a planned `--trace-deps`; committed vendored code stays parsed as tier 3. ADR-0016 §7 now reports a call into untraced dependency source as I/O unknown, never clean. The spec's motivation, its default-exclude list (which wrongly listed `venv/`) and its claim that symbols are extracted only from tiers 1-2 are corrected.
 - **ADR-0049's Lazy rows outside Django were checked against library source**: `getResultStream` leaves the list, and the rest are held with reasons.
 - **[Audit 0022](docs/audits/0022-inv-nular-remainder-sweep-tranche-3.md) source-checks 335 more catalogue rows** and files 19 candidate fixes.
 - **Module docstrings corrected in 50 files and extended in 33**; measurement 0030 and corrections to earlier measurement records; `VERIFY-CLAIMS-SCOPE.md` explains why no verdict consults partial parses.
