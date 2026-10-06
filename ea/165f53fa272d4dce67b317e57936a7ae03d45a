@@ -1,0 +1,14 @@
+Original commit body from 758ce590736575769bb1d60d63f03e580d2ec86f:
+
+Approved by the owner in session (2026-10-06), including merging with
+auto-pr without --gov.
+
+AGENTS.md's essentialization and the transcript-hook summary (the text
+that decides whether the playbook is injected) still described a ranked
+co-change pool. After #1494 and #1496 the pool is the flagged set plus
+`check-docstring-drift --rolling N`, every file read is recorded with
+`--record-review`, findings go to a default-REJECT verifier, and a "not
+wired" claim needs the playbook's careful check. Both summaries now say
+so, and name the registry cross-ref sub-check they had omitted.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
