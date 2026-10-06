@@ -332,13 +332,14 @@ real signal.
 ## Reference: calibration runs
 
 The thresholds `--window=120` and `--min-delta=90` were calibrated on
-2026-05-15 and have not changed since. Two runs measure them:
+2026-05-15 and have not changed since. These runs measure them:
 
 | Run | Flagged | Real drift | TP rate | PRs |
 |---|---:|---:|---:|---|
 | 2026-05-15 | 28 | 21 | 75% | #3749 (A+B+D), #3751, #3752 (C) |
 | 2026-08-18 | 45 | 41 | **91%** | #414 (A+B+D), #416 (C) |
 | 2026-09-04 | 24 | 18 | 75% | #776 (A+B+D), C bundle |
+| 2026-10-05 | 19 | 16 | 84% | #1479 (A+B+D), #1481 (C), #1488 (re-scan tail) |
 
 The 2026-05-15 run also produced #3751 as a side-effect (widening the
 `verify-generated` window 5 → 15 commits). Its notebook entry is at
@@ -389,6 +390,17 @@ way `test_cli_docs_prose_gate.py` already regenerates its flag matrix).
 The 2026-09-04 run reviewed 24 files and found 18 with real drift, plus 7
 files the scan flagged NONE of (the registry pass). Its notebook entry is at
 `~/<repo>_lab_notebook/staleness_audit_09042026.md`.
+
+The 2026-10-05 run reviewed 41 files: the 19 flagged (16 with real drift),
+15 unflagged files with the most body commits since their docstring (14), and
+the 7 the post-merge re-scan still flagged (7). Those 7 were all `[days]`-only
+and all floored by the Phase-3 `TreeSitterAnalyzer` migration commit, and 4 of
+them had reproduced code bugs. So a `[days]`-only row whose floor is a mass
+migration means "nobody has read this docstring since the migration", which is
+worth reviewing, not weak evidence to skip. The review filed 14 tracker items
+for 16 code defects, among them one family: an analyzer finding a call's
+enclosing callable by name through the repo-wide resolver (WI-kosar). Its
+notebook entry is at `~/<repo>_lab_notebook/staleness_audit_10052026.md`.
 
 **A caveat to carry into any future run: the flagged count measures the
 scan, not the tree.** The two most consequential findings of the
