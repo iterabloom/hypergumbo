@@ -3030,6 +3030,100 @@ class TestFormatEntrypoints:
         assert "`ep1`" in result
 
 
+class TestEntrypointSectionBudget:
+    """INV-liraj follow-through: the Entry Points section stays inside its budget.
+
+    ``max_entries`` used to cap each display GROUP, so a repo with hundreds
+    of routes AND hundreds of library exports printed max_entries of each
+    (thc: 57 + 57 + more — 22.7k of a 31.7k-char sketch). It is now one
+    budget shared across groups: small groups are shown whole and the rest
+    is split evenly among the large ones.
+    """
+
+    @staticmethod
+    def _eps(tmp_path: Path, kind: EntrypointKind, n: int, prefix: str):
+        syms = [
+            Symbol(id=f"{prefix}{i}", name=f"{prefix}{i}", kind="function",
+                   language="python", path=str(tmp_path / "app.py"),
+                   span=Span(i + 1, 1, i + 1, 10))
+            for i in range(n)
+        ]
+        eps = [
+            Entrypoint(symbol_id=f"{prefix}{i}", kind=kind, confidence=0.9,
+                       label=f"{prefix} {i}")
+            for i in range(n)
+        ]
+        return syms, eps
+
+    def test_budget_is_shared_across_groups(self, tmp_path: Path) -> None:
+        s1, e1 = self._eps(tmp_path, EntrypointKind.HTTP_ROUTE, 100, "route")
+        s2, e2 = self._eps(tmp_path, EntrypointKind.LIBRARY_EXPORT, 100, "lib")
+        s3, e3 = self._eps(tmp_path, EntrypointKind.CLI_MAIN, 2, "cli")
+        result = _format_entrypoints(e1 + e2 + e3, s1 + s2 + s3, tmp_path,
+                                     max_entries=20)
+        shown = [ln for ln in result.splitlines()
+                 if ln.startswith("- `")]
+        assert len(shown) == 20
+        # The small group is shown whole; the two large ones split the rest.
+        assert sum("`cli" in ln for ln in shown) == 2
+        assert sum("`route" in ln for ln in shown) == 9
+        assert sum("`lib" in ln for ln in shown) == 9
+        assert "... and 91 more" in result
+
+    def test_every_nonempty_group_shows_at_least_one(self, tmp_path: Path) -> None:
+        syms, eps = [], []
+        for kind, prefix in ((EntrypointKind.HTTP_ROUTE, "r"),
+                             (EntrypointKind.LIBRARY_EXPORT, "l"),
+                             (EntrypointKind.CLI_MAIN, "c")):
+            s, e = self._eps(tmp_path, kind, 5, prefix)
+            syms += s
+            eps += e
+        result = _format_entrypoints(eps, syms, tmp_path, max_entries=2)
+        for heading in ("### HTTP Routes", "### Library API",
+                        "### CLI & Scripts"):
+            assert heading in result
+
+    def test_route_overflow_points_at_routes_command(self, tmp_path: Path) -> None:
+        syms, eps = self._eps(tmp_path, EntrypointKind.HTTP_ROUTE, 10, "route")
+        result = _format_entrypoints(eps, syms, tmp_path, max_entries=3)
+        assert "- ... and 7 more (`hypergumbo routes` lists all)" in result
+
+
+class TestRouteMarkerEntryLine:
+    """A route marker's line names its handler instead of repeating itself.
+
+    A route marker is named after the route ("GET /feed") and its entrypoint
+    label is "HTTP GET /feed", so the old line said the route twice and never
+    said what serves it.
+    """
+
+    def _render(self, tmp_path: Path, meta: dict) -> str:
+        sym = Symbol(
+            id="m", name="GET /feed", kind="function", language="elixir",
+            path=str(tmp_path / "lib/app_web/router.ex"), span=Span(3, 3, 1, 9),
+            meta={"framework_role": "route", "http_method": "GET",
+                  "route_path": "/feed", **meta},
+        )
+        ep = Entrypoint(symbol_id="m", kind=EntrypointKind.HTTP_ROUTE,
+                        confidence=0.9, label="HTTP GET /feed")
+        return _format_entrypoints([ep], [sym], tmp_path)
+
+    def test_controller_action_handler(self, tmp_path: Path) -> None:
+        out = self._render(tmp_path, {"controller": "FeedController",
+                                      "action": "index"})
+        assert ("- `GET /feed` → `FeedController.index` — "
+                "`lib/app_web/router.ex`") in out
+        assert "(HTTP GET /feed)" not in out
+
+    def test_handler_ref(self, tmp_path: Path) -> None:
+        out = self._render(tmp_path, {"handler_ref": "list_feed"})
+        assert "- `GET /feed` → `list_feed` — `lib/app_web/router.ex`" in out
+
+    def test_no_handler_known(self, tmp_path: Path) -> None:
+        out = self._render(tmp_path, {})
+        assert "- `GET /feed` — `lib/app_web/router.ex`" in out
+
+
 class TestFormatDatamodels:
     """Tests for data model formatting."""
 

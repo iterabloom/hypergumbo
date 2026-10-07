@@ -1459,6 +1459,37 @@ def _dedup_route_marker_concepts(
     return kept
 
 
+#: ADR-0027 route-family marker roles: synthetic declaration symbols an
+#: analyzer mints for a route registration (``get "/x", C, :a``), a mounted
+#: sub-router, or an included route table. They are named after the route
+#: ("GET /users"), not after anything a consumer could import.
+_ROUTE_FAMILY_ROLES = frozenset({"route", "route_mount", "route_include"})
+
+
+def _drop_library_export_on_route_marker(
+    meta: dict[str, Any], matches: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """INV-liraj: a route-family marker is never a library export.
+
+    The definition-based ``library_export`` patterns in library-exports.yaml
+    key on symbol kind + a name/modifier convention, and a route marker is
+    ``kind="function"``, so it matches them by accident: the Elixir pattern
+    takes every non-``defp`` function (the marker has no ``private``
+    modifier), the Go pattern every uppercase-initial name ("GET /users").
+    ``library_export`` means "externally importable public API"; nothing can
+    import a route registration. Left in place the concept leaked into
+    ``meta.concepts`` and, through first-emitted-wins dedup, displaced the
+    marker's HTTP_ROUTE entrypoint (thc: 377 Phoenix routes filed as library
+    exports). Dropped here — the one point every definition-based match
+    passes through — rather than per-language in the YAML, because the YAML
+    matcher has no ``framework_role`` exclusion and every current and future
+    language's export convention would need its own.
+    """
+    if meta.get("framework_role") not in _ROUTE_FAMILY_ROLES:
+        return matches
+    return [c for c in matches if c.get("concept") != "library_export"]
+
+
 def enrich_symbols(
     symbols: list[Symbol],
     detected_frameworks: set[str],
@@ -1545,9 +1576,14 @@ def enrich_symbols(
             # bash's ``shell_script``, go's ``middleware``) lost that fact
             # the moment any framework pattern matched it. Both facts are
             # independently true; the union is the sound fold.
+            # INV-liraj: and a route marker is not importable API, so the
+            # accidental library_export match is dropped too.
             write_meta_key(
                 symbol.meta, "concepts",
-                _dedup_route_marker_concepts(symbol.meta, matches),
+                _drop_library_export_on_route_marker(
+                    symbol.meta,
+                    _dedup_route_marker_concepts(symbol.meta, matches),
+                ),
             )
 
     # Phase 1.5: APIRouter prefix composition

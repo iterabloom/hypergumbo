@@ -114,6 +114,8 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **`stable_id` is filled for symbol populations whose producers computed none**, when the floor key is unique in its file (ADR-0035 §1; no `stable_id_scheme` bump).
 - **Swift and Rust symbols no longer vary with the installed grammar**: the floors rise to tree-sitter-swift 0.7.4 and tree-sitter-rust 0.24.2.
 - **An imported file's node carries its own language**; an imported asset has none (`discovery_language` records the importer's).
+- **Route markers are HTTP routes, not library exports** (INV-liraj). When several detectors classify one symbol, the most confident entry is kept (it was whichever ran first), and a route marker no longer takes the `library_export` concept (the Elixir and Go export conventions matched it by name). On a Phoenix app (thc) `http_route` entrypoints go 2 → 240 (372 before the entrypoint cap) and the sketch's HTTP Routes section lists the router's routes.
+- **The sketch's Entry Points section keeps to its budget**: its entry count is shared across groups instead of applied to each (thc: 22.7k → 7.4k characters of a 32k sketch); a route line names its handler (`GET /feed` → `FeedController.index`), and a route overflow points at `hypergumbo routes`.
 - **Python stdlib recognition covers 3.10–3.13**, so `distutils` and the other modules removed in 3.12 are no longer `third_party`.
 - **Smaller**: bash multi-variable `export`; `compact` leads with key symbols; Ansible needs Ansible evidence (repositories with claims 180 → 9); Astro paths and Laravel route literals; no launched programs read from a script's appended binary.
 

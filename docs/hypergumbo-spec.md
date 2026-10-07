@@ -1322,6 +1322,8 @@ deletions-in-waiting.
 
 **Penalties and boosts apply to `rank_score`, not to `confidence`** — the move [ADR-0039](adr/0039-confidence-separation.md) described as "slated" has shipped (WI-lutad / WI-dojor). `confidence` is now pure detection reliability and carries only the base above; `rank_score` starts from that base and then takes the ranking adjustments: test files ×0.1, vendor/external deps at tier ≥ 3 ×0.3, utility files ×0.5, plus an additive connectivity boost of `min(0.25, log(1 + out_edges) / 10)`. Deliberately demoted entries — build wrappers, vendored exports, infrastructure-path exports — are excluded from that boost, because an additive boost otherwise undoes a multiplicative demotion and the entry climbs back over the `MIN_ENTRYPOINT_CONFIDENCE` floor. Both fields are emitted on every entrypoint (measured: 118 of 118 carry `rank_score`, spanning 0.345–1.000, while `confidence` holds the discrete bases). This resolves the contradiction WI-sohov filed between the discrete-tier and continuous descriptions of the same field: they were describing what are now two different fields.
 
+**One entrypoint per symbol:** when several detectors classify the same symbol, the entry with the highest `confidence` is kept, ties going to the earlier detector (INV-liraj). It previously kept the first-emitted entry, so a route marker (`meta.framework_role == "route"`) that also matched a language's library-export convention came out as `library_export` (0.75) rather than `http_route` (0.90). Route-family markers (`route`, `route_mount`, `route_include`) also no longer take the `library_export` concept during enrichment: a route registration is not importable API.
+
 **Sorting:** Ranked by `rank_score` (highest first), not by `confidence` — ranking prominence is what ordering is for, and the two diverge whenever a penalty or boost applies (ADR-0039).
 
 **Not redundant with nodes:** While nodes carry `meta.concepts` metadata from framework pattern matching, the `entrypoints` array provides pre-computed confidence (with penalties and boosts), ranking, and labeled kinds. Consumers would otherwise need to iterate all nodes, check concepts, apply scoring logic, and sort. Used by sketch generation, slicing, and compact output.
@@ -1426,6 +1428,8 @@ Markdown output to stdout (not a file). This is the default output mode. Designe
 | 13 | 🟩 Additional File Content | Code for semantic picks (--with-source only) |
 
 **Token budget:** `-t N` truncates at section boundaries, preserving higher-priority sections. With `--with-source`, budget shifts from file listings to actual source code.
+
+**Entry Points budget:** the section gets a third of the remaining budget (ADR-0005), turned into one entry count shared by all its groups (CLI & Scripts, HTTP Routes, Library API, …): groups that fit their fair share are shown whole, and the rest is split evenly among the larger groups, each keeping at least one entry. A group that overflows ends with `... and N more`; for HTTP Routes that line points at `hypergumbo routes`, which lists every route. A route marker's line names its handler (`GET /feed` → `FeedController.index`) rather than repeating the route as its label (INV-liraj).
 
 ### Additional Files selection
 

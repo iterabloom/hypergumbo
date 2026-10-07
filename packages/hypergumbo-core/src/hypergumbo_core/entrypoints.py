@@ -51,6 +51,13 @@ Connectivity-Based Fallback:
 - This ensures --entry auto never hard-fails, even for repos with no
   matching YAML patterns (e.g., Rust libraries without pub tracking)
 
+One Entrypoint Per Symbol (INV-liraj):
+- When several detectors classify the same symbol (a Phoenix route marker is
+  both a route marker and, by the Elixir export convention, a public
+  function), the most CONFIDENT entry is kept, ties going to the earlier
+  detector. Keeping the first-emitted entry made the kind an accident of
+  detector order and filed every Phoenix route under library_export.
+
 Post-Processing Filters (INV-mahap):
 - Minimum confidence threshold (MIN_ENTRYPOINT_CONFIDENCE = 0.10): entries below
   this threshold are excluded. This removes noise entries like library_export
@@ -1490,14 +1497,26 @@ def detect_entrypoints(
     # detected here rather than via a concept handler.
     entrypoints.extend(_detect_script_modules(nodes, edges))
 
-    # Remove duplicates (same symbol detected by multiple strategies)
-    # Keep the first (highest confidence) entry for each symbol
-    seen_ids: set[str] = set()
+    # Remove duplicates (same symbol detected by multiple strategies): keep
+    # the MOST CONFIDENT entry per symbol, ties going to the earlier detector.
+    # INV-liraj: this used to keep the first-EMITTED entry, which made the
+    # chosen kind an accident of detector order. A Phoenix route marker
+    # (kind=function, framework_role=route) also matched the Elixir
+    # public-function library_export pattern; the concept pass emits that
+    # LIBRARY_EXPORT (0.75) before the route-marker pass emits HTTP_ROUTE
+    # (0.90), so every Phoenix route was filed under "Library API" and the
+    # sketch's HTTP Routes section lost them all. Choosing by detection
+    # confidence makes the outcome independent of emission order and of the
+    # order concepts happen to be listed on the symbol.
+    best_index: dict[str, int] = {}
     unique_entrypoints: List[Entrypoint] = []
     for ep in entrypoints:
-        if ep.symbol_id not in seen_ids:
-            seen_ids.add(ep.symbol_id)
+        idx = best_index.get(ep.symbol_id)
+        if idx is None:
+            best_index[ep.symbol_id] = len(unique_entrypoints)
             unique_entrypoints.append(ep)
+        elif ep.confidence > unique_entrypoints[idx].confidence:
+            unique_entrypoints[idx] = ep
 
     # Deduplicate declaration vs definition entrypoints (C forward declarations).
     # Functions like cmd_add appear twice: once from builtin.h (declaration) and
