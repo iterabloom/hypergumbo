@@ -1,0 +1,29 @@
+Original commit body from 6887d2933597d39356fa41f0fd209af2d270310f:
+
+A Phoenix route marker (kind=function, meta.framework_role=route) also
+matched the Elixir public-function library_export pattern. The concept
+pass emitted LIBRARY_EXPORT (0.75) before the route-marker pass emitted
+HTTP_ROUTE (0.90), and detect_entrypoints' per-symbol dedup kept the
+first-emitted entry -- so every Phoenix route was filed under Library API
+and the sketch's HTTP Routes section showed none of them (thc: 377 router
+markers, 2 http_route entrypoints, both Express).
+
+- detect_entrypoints keeps the most confident entry per symbol (ties to
+  the earlier detector), so the kind no longer depends on detector or
+  concept order.
+- enrich_symbols drops the library_export concept from route-family
+  markers (route / route_mount / route_include): a route registration is
+  not importable API. The Go uppercase-name pattern matched "GET /x"
+  markers the same way.
+- The sketch's Entry Points section shares one entry budget across its
+  groups instead of applying it to each (thc: 22.7k -> 7.4k chars), a
+  route line names its handler instead of repeating the route, and a
+  route overflow points at `hypergumbo routes`.
+
+thc after: 240 http_route entrypoints (372 before the entrypoint cap),
+0 router markers carrying library_export; HTTP Routes lists 19 routes
+with handlers plus "... and 221 more".
+
+Refs INV-liraj-pasup-sikak-pogof-vahir-mimol-zubur-homol
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
