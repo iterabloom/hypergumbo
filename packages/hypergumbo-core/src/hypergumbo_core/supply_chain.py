@@ -71,9 +71,11 @@ Manifest Readers
   workspace members, Maven modules and Gradle ``include`` lines into the
   workspace roots that step 6 consults.
 - :class:`DependencyManifest` holds what a language analyzer parsed from
-  go.mod / Maven / Gradle / Python manifests. Per ADR-0041 §1 it no longer
-  sets tier (every boundary node is tier 3); ``classify_directness`` returns
-  ``direct`` / ``transitive`` / ``undeclared`` by longest-prefix match, and
+  go.mod / Maven / Gradle / Python manifests (the flat ``entries``) and from
+  Mix and npm manifests (the per-package-scheme ``scoped`` tables, WI-juzaj).
+  Per ADR-0041 §1 it no longer sets tier (every boundary node is tier 3);
+  ``directness_for(language, module)`` returns ``direct`` / ``transitive`` /
+  ``undeclared`` (or ``None`` when it cannot tell), and
   ``ir.create_boundary_nodes`` stamps that on the ``directness`` meta key.
 - :func:`collect_first_party_package_names` (INV-vivok) reads the names the
   repo publishes itself under (Cargo ``[package].name``, the go.mod module
@@ -125,6 +127,18 @@ class DependencyManifest:
     """
 
     entries: dict[str, dict[str, Any]] = field(default_factory=dict)
+    scoped: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
+    """Per-package-scheme tables (WI-juzaj): ``{"hex": {...}, "npm": {...}}``.
+
+    Each maps a *package name* (a Mix dep / mix.lock key, an npm package name)
+    to ``{"direct": bool}``. They are kept apart from the flat ``entries``
+    because those are matched by raw longest-prefix against every legacy
+    language's import path, and a bare npm name (``yaml``, ``redis``) would
+    then stamp an unrelated Python import of the same spelling. A scoped table
+    is consulted only for the languages :data:`LANGUAGE_PACKAGE_SCHEME` routes
+    to it, after the scheme's own name rule maps the boundary's module path to
+    a package name.
+    """
 
     def classify_import(self, import_path: str) -> "Tier":
         """Classify the supply-chain *tier* of an external import path.
@@ -175,16 +189,185 @@ class DependencyManifest:
             return "undeclared"
         return "direct" if self.entries[best_match].get("direct", False) else "transitive"
 
+    def directness_for(self, language: str, module: str) -> Optional[str]:
+        """Directness of a boundary node of ``language`` at ``module``, or None.
+
+        The single dispatch ``ir.create_boundary_nodes`` calls (WI-juzaj):
+
+        * Go / Java / Kotlin / Python match the flat ``entries`` by
+          :meth:`classify_directness` -- but only when some manifest produced
+          flat entries. Without one, "undeclared" would be a claim made from
+          the absence of a file we never read (a Mix-only repo's one Python
+          script would otherwise read as importing phantom dependencies).
+        * Elixir / JavaScript / TypeScript map ``module`` to a package name by
+          their scheme's rule (:func:`hex_module_package`,
+          :func:`npm_specifier_package`) and look it up in ``scoped``.
+          A module that maps to no declared or locked package returns None,
+          NOT "undeclared": those boundary paths also carry unresolved
+          in-repo references (an un-expanded alias, a relative import the
+          analyzer stripped to a bare name, the ``external`` placeholder), so
+          "declared nowhere" cannot be told apart from "not a package".
+        * Every other language: None.
+        """
+        if language in LEGACY_MANIFEST_LANGUAGES:
+            if not self.entries:
+                return None
+            return self.classify_directness(module)
+        scheme = LANGUAGE_PACKAGE_SCHEME.get(language)
+        if scheme is None:
+            return None
+        packages = self.scoped.get(scheme)
+        if not packages:
+            return None
+        package = _SCHEME_RESOLVERS[scheme](module, packages)
+        if package is None:
+            return None
+        return "direct" if packages[package].get("direct", False) else "transitive"
+
     @classmethod
     def merge(cls, manifests: list["DependencyManifest"]) -> "DependencyManifest":
         """Merge multiple manifests into one.
 
-        Later entries override earlier ones for the same module path.
+        Later entries override earlier ones for the same module path in the
+        flat ``entries``. Scoped tables union, and a package any manifest
+        declares direct stays direct (one package.json declaring ``ws`` makes
+        it direct even if another workspace only has it in a lockfile).
         """
         merged: dict[str, dict[str, Any]] = {}
+        scoped: dict[str, dict[str, dict[str, Any]]] = {}
         for m in manifests:
             merged.update(m.entries)
-        return cls(entries=merged)
+            for scheme, packages in m.scoped.items():
+                table = scoped.setdefault(scheme, {})
+                for name, info in packages.items():
+                    direct = bool(info.get("direct", False)) or bool(
+                        table.get(name, {}).get("direct", False)
+                    )
+                    table[name] = {"direct": direct}
+        return cls(entries=merged, scoped=scoped)
+
+
+#: Languages whose boundary paths are matched against the flat ``entries``.
+LEGACY_MANIFEST_LANGUAGES = frozenset({"go", "java", "kotlin", "python"})
+
+#: Language -> package scheme of its scoped manifest table (WI-juzaj).
+LANGUAGE_PACKAGE_SCHEME: dict[str, str] = {
+    "elixir": "hex",
+    "javascript": "npm",
+    "typescript": "npm",
+}
+
+_UNDERSCORE_ACRONYM_RE = re.compile(r"([A-Z]+)([A-Z][a-z])")
+_UNDERSCORE_WORD_RE = re.compile(r"([a-z\d])([A-Z])")
+
+
+def macro_underscore(segment: str) -> str:
+    """Elixir's ``Macro.underscore`` for one module-name segment.
+
+    ``LiveView`` -> ``live_view``, ``HTTPoison`` -> ``htt_poison`` (sic --
+    Elixir's own result, which is why HTTPoison is an exception below),
+    ``NimbleTOTP`` -> ``nimble_totp``, ``JOSE`` -> ``jose``. This is the rule
+    Mix itself uses to turn ``Phoenix.LiveView`` into the app name
+    ``phoenix_live_view``, which is why it is the first-choice mapping.
+    """
+    out = _UNDERSCORE_ACRONYM_RE.sub(r"\1_\2", segment)
+    out = _UNDERSCORE_WORD_RE.sub(r"\1_\2", out)
+    return out.lower()
+
+
+#: Module namespaces whose Hex package is NOT the underscored namespace.
+#: Consulted before the underscore rule at each prefix length, and only
+#: honoured when the named package is actually in the project's manifest, so
+#: an entry here can never introduce a dependency the project does not have.
+HEX_MODULE_PACKAGE_EXCEPTIONS: dict[str, str] = {
+    "Phoenix.Component": "phoenix_live_view",
+    "Phoenix.LiveComponent": "phoenix_live_view",
+    "Phoenix.LiveViewTest": "phoenix_live_view",
+    "Phoenix.PubSub": "phoenix_pubsub",
+    "Phoenix.PubSub.Redis": "phoenix_pubsub_redis",
+    "Ecto.Adapters.SQL": "ecto_sql",
+    "Ecto.Migration": "ecto_sql",
+    "Ecto.Migrator": "ecto_sql",
+    "HTTPoison": "httpoison",
+    "Bcrypt": "bcrypt_elixir",
+    "Argon2": "argon2_elixir",
+    "Pbkdf2": "pbkdf2_elixir",
+    "Stripe": "stripity_stripe",
+    "Cluster": "libcluster",
+    "EQRCode": "eqrcode",
+}
+
+
+def hex_module_package(module: str, packages: Container[str]) -> Optional[str]:
+    """Map an Elixir/Erlang module reference to a Mix package, or None.
+
+    Conservative by construction -- an answer is always a name in
+    ``packages`` (the project's mix.exs deps plus its mix.lock keys), never a
+    synthesised guess:
+
+    * An Erlang atom module (``:telemetry`` arrives as ``telemetry``) matches
+      only a package of exactly that name. Erlang libraries routinely ship
+      modules prefixed by, but not named after, their app (``jose_jwk`` in
+      ``jose``), and prefix-guessing those would misattribute.
+    * An Elixir alias is tried from its longest dotted prefix down: at each
+      length first :data:`HEX_MODULE_PACKAGE_EXCEPTIONS`, then the
+      ``Macro.underscore`` join (``Phoenix.LiveView.JS`` -> try
+      ``phoenix_live_view_js``, then ``phoenix_live_view``). Longest-first
+      matters because ``phoenix`` is also a package.
+    """
+    if module.startswith("Elixir."):
+        # The fully-qualified atom form (``Elixir.Stripe.PaymentIntent``).
+        module = module[len("Elixir."):]
+    if not module or module == "external":
+        return None
+    if module[0].islower():
+        return module if module in packages else None
+    segments = module.split(".")
+    for end in range(len(segments), 0, -1):
+        prefix = ".".join(segments[:end])
+        exception = HEX_MODULE_PACKAGE_EXCEPTIONS.get(prefix)
+        if exception is not None and exception in packages:
+            return exception
+        candidate = "_".join(macro_underscore(seg) for seg in segments[:end])
+        if candidate in packages:
+            return candidate
+    return None
+
+
+def npm_specifier_package(specifier: str) -> Optional[str]:
+    """Map a JS/TS import specifier to its npm package name, or None.
+
+    ``lodash/fp`` -> ``lodash``; ``@scope/name/sub`` -> ``@scope/name``;
+    ``lit@3`` (a Deno ``npm:`` specifier after the analyzer strips the
+    scheme) -> ``lit``. Relative and absolute paths are not packages. The
+    analyzer has already stripped ``node:`` from built-ins, so ``fs`` comes
+    through as a bare name and simply matches no declared package.
+    """
+    if not specifier or specifier.startswith((".", "/")) or specifier == "external":
+        return None
+    parts = specifier.split("/")
+    if specifier.startswith("@"):
+        if len(parts) < 2 or not parts[1]:
+            return None
+        name = f"{parts[0]}/{parts[1]}"
+        at = name.find("@", 1)
+    else:
+        name = parts[0]
+        at = name.find("@")
+    if at > 0:
+        name = name[:at]
+    return name or None
+
+
+def _npm_resolver(module: str, packages: Container[str]) -> Optional[str]:
+    name = npm_specifier_package(module)
+    return name if name is not None and name in packages else None
+
+
+_SCHEME_RESOLVERS: dict[str, Callable[[str, Container[str]], Optional[str]]] = {
+    "hex": hex_module_package,
+    "npm": _npm_resolver,
+}
 
 
 @dataclass

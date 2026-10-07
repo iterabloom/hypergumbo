@@ -22,6 +22,15 @@ How It Works
    declaration — confidence 0.9, or 0.5 with
    ``meta["disambiguation_fallback"] = True`` when step 5 was ambiguous
 
+Requirement diagnostics
+-----------------------
+The ``import_edges`` requirement counts only what step 3 can use --
+third-party Rust/Python imports -- so the partial-requirement warning names
+the manifests this linker actually reads (Cargo.toml, pyproject.toml) and stays
+silent on repos whose imports are in other languages. Mix, npm, go.mod and
+Gradle/Maven declarations reach boundary nodes through ``DependencyManifest``
+(``supply_chain``), not through this linker (WI-juzaj).
+
 Why This Design
 ---------------
 - Separate linker keeps language analyzers focused on their own language
@@ -259,9 +268,40 @@ def _count_toml_dependencies(ctx: LinkerContext) -> int:
     return sum(1 for s in ctx.symbols if s.language == "toml" and s.kind == "dependency")
 
 
+#: Rust crate roots that ship with the toolchain or name the current crate;
+#: no Cargo.toml ever declares them, so they can never be linked.
+_RUST_NON_DEPENDENCY_ROOTS = frozenset({"std", "core", "alloc", "crate", "self", "super"})
+
+
 def _count_import_edges(ctx: LinkerContext) -> int:
-    """Count available import edges for requirement check."""
-    return sum(1 for e in ctx.edges if e.edge_type == "imports")
+    """Count the import edges this linker could link to a manifest entry.
+
+    Only Rust and Python imports are read by :func:`link_dependencies`
+    (``_extract_root_package`` returns None for every other language), and a
+    toolchain/stdlib import (``std::``, ``json``) is declared in no manifest.
+    Counting every ``imports`` edge made the partial-requirement warning fire
+    on any repo with imports and no TOML -- e.g. "found 9740 Import edges ...
+    but 0 TOML dependency declarations" on a Phoenix app whose imports are
+    Elixir and JavaScript, whose mix.exs / package.json this linker never
+    reads (WI-juzaj). The stdlib test is the single-source python catalog
+    (ADR-0041 §3).
+    """
+    from ..io_boundary import load_catalog
+
+    python_catalog = load_catalog("python")
+    count = 0
+    for e in ctx.edges:
+        if e.edge_type != "imports":
+            continue
+        root = _extract_root_package(e.dst)
+        if not root:
+            continue
+        if e.dst.startswith("rust:"):
+            if root not in _RUST_NON_DEPENDENCY_ROOTS:
+                count += 1
+        elif not python_catalog.is_stdlib_module(root):
+            count += 1
+    return count
 
 
 DEPENDENCY_REQUIREMENTS = [
@@ -272,7 +312,7 @@ DEPENDENCY_REQUIREMENTS = [
     ),
     LinkerRequirement(
         name="import_edges",
-        description="Import edges from code analyzers",
+        description="third-party Rust/Python import edges",
         check=_count_import_edges,
     ),
 ]

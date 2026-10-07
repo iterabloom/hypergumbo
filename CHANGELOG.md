@@ -49,6 +49,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Analysis output
 
 - **New fields**: `metrics.edge_confidence` (histogram, median), `profile.languages[*].test_files`, `analysis_runs[].cpu_ms` beside wall time, and per-limit slice truncation counts (`limits_detail`).
+- **Mix and npm manifests set `directness` on external stubs** (WI-juzaj). `mix.exs` deps (read statically, never executed) are `direct` and other `mix.lock` keys `transitive`; `package.json` dependency sections are `direct` and `package-lock.json` / `npm-shrinkwrap.json` / `yarn.lock` / `pnpm-lock.yaml` entries `transitive`; `path:` / `in_umbrella:` / `workspace:` references and the project's own app and package names are excluded. An Elixir module maps to a package by the longest dotted prefix whose `Macro.underscore` join is in the manifest (`Phoenix.LiveView.JS` → `phoenix_live_view`), plus a short list of exceptions that apply only when the package is in the manifest (`Phoenix.Component` → `phoenix_live_view`, `Stripe` → `stripity_stripe`); a JS specifier maps to its package (`@scope/name/sub` → `@scope/name`, `lodash/fp` → `lodash`). A module that maps to no package gets no stamp, not `undeclared`. A stub the manifest resolves to a package is also stamped `ecosystem=third_party` when the stdlib catalogue is silent; this applies to Go and JVM `direct` / `transitive` stubs too. Go/JVM/Python stubs are stamped only when a manifest for them was read. thc (2,158 tier-3 stubs): directness unknown 2,158 → 1,882, direct 186, transitive 90 (Elixir 167 / 90, JS 19 / 0); ecosystem `third_party` 3 → 279. The stubs left unknown are Elixir/Erlang stdlib, in-repo modules, browser globals and the `external` placeholder. Cargo.toml, Gemfile and composer.json are not manifest sources yet.
 
 #### Analyzers
 
@@ -123,6 +124,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 #### Survey speed on large repositories
 
 - **Three stalls fixed**: supply-chain classification reads each file once, not once per symbol (319 s of CPU on flink); crypto-flow-linker checks for a crypto keyword before parsing (over an hour on nextjs); the sketch's file ranking tokenizes each doc once instead of matching a names-wide regex. Only the ranking's output changes, since each name now counts on its own. End-to-end times have not been re-measured.
+
+#### Warnings
+
+- **The dependency linker's partial-requirement warning counts only imports it can link** (WI-juzaj). It counted every `imports` edge, so a Phoenix app warned *"found 9740 Import edges from code analyzers but 0 TOML dependency declarations (Cargo.toml, pyproject.toml)"* even though mix.exs and package.json are present. That linker never reads them. It now counts third-party Rust/Python imports (`std`/`core`/`alloc`/`crate` and catalogued Python stdlib excluded) and names them that way: *"found N third-party Rust/Python import edges but 0 TOML dependency declarations (Cargo.toml, pyproject.toml)"*. thc no longer warns.
 
 #### Tooling and release
 

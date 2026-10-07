@@ -7394,9 +7394,15 @@ def _analyze_javascript_impl(
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
 
+    # WI-juzaj: package.json declarations (direct) and lockfile entries
+    # (transitive) give JS/TS boundary nodes a ``directness`` stamp.
+    from hypergumbo_lang_mainstream.npm_deps import parse_npm_dependencies
+    npm_manifest = parse_npm_dependencies(repo_root)
+
     return JsAnalysisResult(
         symbols=all_symbols,
         edges=all_edges,
         usage_contexts=all_usage_contexts,
         run=run,
+        dependency_manifest=npm_manifest if npm_manifest.scoped else None,
     )
