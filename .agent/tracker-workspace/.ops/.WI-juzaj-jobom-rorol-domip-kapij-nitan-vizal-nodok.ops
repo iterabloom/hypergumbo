@@ -20,3 +20,18 @@
     pr_ref:  # d921
     description: "On thc, all 2,129 tier-3 symbols have directness=unknown and 2,112 have ecosystem=unknown: per spec §14 directness is computed only from go.mod, Gradle/pom.xml and pyproject.toml; mix.exs/mix.lock and package.json are not read as DependencyManifests, and Elixir has no stdlib catalogue for ecosystem. The run also warns \"DEPENDENCY-LINKER linker found 9740 Import edges from code analyzers but 0 TOML dependency declarations (Cargo.toml, pyproject.toml)\" although mix.exs and package.json exist. With installed-dependency source off by default, boundary stubs are the main view of \"which dependencies does my code call, and how much\" -- this attribution is what makes them useful. Add Mix and npm manifest readers; make the warning name the manifests it actually looked for."  # d921
     fields: {}  # d921
+- op: update  # 1101
+  at: '2026-10-07T08:46:12Z'  # 1101
+  by: agent  # 1101
+  actor: jgstern_agent  # 1101
+  clock: 2  # 1101
+  nonce: '1101'  # 1101
+  set:  # 1101
+    status: done  # 1101
+- op: discuss  # 4802
+  at: '2026-10-07T08:46:12Z'  # 4802
+  by: agent  # 4802
+  actor: jgstern_agent  # 4802
+  clock: 3  # 4802
+  nonce: '4802'  # 4802
+  message: "Merged in PR #1511 (9b3ee5db28): mix_deps.py (mix.exs deps direct, read statically; mix.lock transitive; path:/in_umbrella:/own app excluded) and npm_deps.py (package.json dep sections direct; package-lock/npm-shrinkwrap/yarn.lock/pnpm-lock.yaml transitive; workspace members excluded) feed DependencyManifest.scoped (hex/npm); directness_for() maps Elixir modules by longest Macro.underscore prefix + manifest-gated exceptions, JS specifiers to packages; unmapped -> no stamp. Manifest-resolved stubs get ecosystem=third_party where the catalog is silent. Dependency-linker import requirement now counts only third-party Rust/Python imports. Evidence: XDG_CACHE_HOME=<fresh scratch> hypergumbo survey ~/special_repos/thc --out <scratch>/after.json --no-sketch-fan-out --no-handler-slices on 9b3ee5db28's code, tier-3 stubs (2158): directness before unknown 2158 -> after unknown 1882 / direct 186 / transitive 90 (elixir 167/90, javascript 19/0); ecosystem third_party 3 -> 279, stdlib 14 -> 14. Stderr before: 'DEPENDENCY-LINKER linker found 9740 Import edges from code analyzers but 0 TOML dependency declarations (Cargo.toml, pyproject.toml).'; after: no DEPENDENCY-LINKER line. Production-path tests: test_mix_deps.py::TestElixirBoundaryDirectnessEndToEnd and test_npm_deps.py::TestJsBoundaryDirectnessEndToEnd (run_behavior_map). Remaining unknowns are Elixir/Erlang stdlib, in-repo modules, browser globals, the 'external' placeholder -> follow-ups WI-hotut (stdlib catalogs), WI-hajag (Cargo), WI-tikar (Gemfile/composer)."  # 4802

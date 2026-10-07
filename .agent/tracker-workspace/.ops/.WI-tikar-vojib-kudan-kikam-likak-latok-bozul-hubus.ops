@@ -1,0 +1,23 @@
+- op: create  # e67d
+  at: '2026-10-07T07:21:51Z'  # e67d
+  by: agent  # e67d
+  actor: jgstern_agent  # e67d
+  clock: 1  # e67d
+  nonce: e67d  # e67d
+  data:  # e67d
+    kind: work_item  # e67d
+    title: "Gemfile(.lock) and composer.json/.lock are not DependencyManifest sources: Ruby/PHP boundary nodes never get a directness stamp"  # e67d
+    status: todo_hard  # e67d
+    priority: 3  # e67d
+    parent:  # e67d
+    tags:  # e67d
+    - manifest  # e67d
+    - supply_chain  # e67d
+    - ruby  # e67d
+    - php  # e67d
+    isbefore: []  # e67d
+    duplicate_of: []  # e67d
+    not_duplicate_of: []  # e67d
+    pr_ref:  # e67d
+    description: "Analogue check for WI-juzaj. Neither Ruby (Gemfile / Gemfile.lock) nor PHP (composer.json / composer.lock) feeds a DependencyManifest, so Ruby and PHP boundary nodes get no directness stamp. Both need a name rule from the code reference to the package: Ruby require paths -> gem names (require 'active_support/core_ext' -> activesupport; not 1:1, needs a conservative rule + Gemfile.lock specs), PHP namespaces -> composer packages (composer.lock autoload psr-4 prefixes give an exact namespace->package map, preferable to any heuristic). Mirror mix_deps.py / npm_deps.py: scoped tables in DependencyManifest.scoped, a resolver in supply_chain._SCHEME_RESOLVERS, a LANGUAGE_PACKAGE_SCHEME entry, unmatched -> no stamp."  # e67d
+    fields: {}  # e67d

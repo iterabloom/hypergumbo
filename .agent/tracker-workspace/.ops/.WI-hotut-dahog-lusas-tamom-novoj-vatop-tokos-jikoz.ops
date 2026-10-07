@@ -1,0 +1,23 @@
+- op: create  # d908
+  at: '2026-10-07T07:21:56Z'  # d908
+  by: agent  # d908
+  actor: jgstern_agent  # d908
+  clock: 1  # d908
+  nonce: d908  # d908
+  data:  # d908
+    kind: work_item  # d908
+    title: "Elixir/Erlang and Node built-in stdlib references get no ecosystem/directness: no stdlib catalog for elixir/javascript, and enabling one would mislabel unresolved in-repo paths third_party"  # d908
+    status: todo_hard  # d908
+    priority: 3  # d908
+    parent:  # d908
+    tags:  # d908
+    - supply_chain  # d908
+    - elixir  # d908
+    - javascript  # d908
+    - stdlib  # d908
+    isbefore: []  # d908
+    duplicate_of: []  # d908
+    not_duplicate_of: []  # d908
+    pr_ref:  # d908
+    description: "After WI-juzaj, an Elixir or JS/TS boundary node that maps to a declared/locked package gets ecosystem=third_party, but stdlib references still get no ecosystem and no directness: Elixir (Enum, String, Map, GenServer, Logger...) and Erlang/OTP atom modules (:ets, :crypto, :erlang...) - the most common Elixir boundary paths on thc - and Node built-ins (fs, path, url, assert/strict; the JS analyzer strips 'node:'). ADR-0041 §3 requires the stdlib list to come from the single-source io_primitives catalog (stdlib_modules / stdlib_prefixes in elixir.yaml / javascript.yaml), not from a reader-local list. Blocker to solve first: io_boundary.module_ecosystem returns third_party for EVERY non-stdlib module once a catalog enumerates a stdlib, and Elixir/JS boundary paths also carry unresolved in-repo references (un-expanded aliases like 'Repo'/'JS', first-party modules the analyzer did not resolve, relative imports the JS analyzer strips to a bare name, the 'external' placeholder) - they would be mislabelled third_party. Also check verify_claims consumers of is_stdlib_module (untraced_modules grouping) before populating the catalogs."  # d908
+    fields: {}  # d908
