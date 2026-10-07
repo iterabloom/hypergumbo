@@ -874,9 +874,12 @@ CONFIG_FILES_BY_LANG: dict[str, list[str]] = {
 }
 
 # Flatten for backwards compatibility
-CONFIG_FILES = list({
+# Ordered dedup in declaration order. ``list({...})`` was per-process
+# str-hash order, so the Configuration section's root manifests (and, under
+# its line cap, WHICH of them were shown) changed between runs (WI-vosag).
+CONFIG_FILES = list(dict.fromkeys(
     f for files in CONFIG_FILES_BY_LANG.values() for f in files
-})
+))
 
 # Subdirectories to check for config files (monorepo support)
 CONFIG_SUBDIRS = ["", "server", "client", "backend", "frontend", "src", "app", "api"]
@@ -1025,7 +1028,8 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             for dep_type in ["dependencies", "devDependencies"]:
                 if dep_type in data and isinstance(data[dep_type], dict):
                     deps = data[dep_type]
-                    for dep_name in INTERESTING_DEPS:
+                    # sorted: INTERESTING_DEPS is a frozenset (WI-vosag)
+                    for dep_name in sorted(INTERESTING_DEPS):
                         if dep_name in deps:
                             info.append(f"{dep_name}: {deps[dep_name]}")
 
@@ -1058,7 +1062,7 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
                 "labstack/echo", "gofiber/fiber", "lib/pq", "go-sql-driver/mysql",
                 "jackc/pgx", "go-redis/redis", "mongodb/mongo-go-driver",
             }
-            for dep in interesting_go:
+            for dep in sorted(interesting_go):  # a set: fix the order
                 if dep in content:
                     extracted.append(dep.split("/")[-1])
 
@@ -1195,7 +1199,7 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
 
             # Key gems
             interesting_gems = {"rails", "sinatra", "puma", "devise", "sidekiq", "redis", "pg", "mysql2"}
-            for gem in interesting_gems:
+            for gem in sorted(interesting_gems):  # a set: fix the order
                 if re.search(rf"gem\s+['\"]({gem})['\"]", content):
                     extracted.append(gem)
 
@@ -1277,7 +1281,7 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             license_paths.append(root_license)
             seen_license_paths.add(root_license.resolve())
         for pattern in (f"*/{license_name}", f"*/*/{license_name}"):
-            for match in repo_root.glob(pattern):
+            for match in sorted(repo_root.glob(pattern)):
                 if not match.is_file():
                     continue  # pragma: no cover
                 resolved = match.resolve()
@@ -2656,6 +2660,118 @@ class _TestAnalysis:
             self.frameworks = set()
 
 
+# How many test files framework detection reads. Each read is capped at
+# 5 000 chars, so this bounds detection at ~1 MB of I/O on any repo.
+_TEST_FRAMEWORK_SAMPLE_BUDGET = 200
+
+
+def _sample_test_files_for_frameworks(
+    test_files: List[Path],
+    repo_root: Path,
+    budget: int = _TEST_FRAMEWORK_SAMPLE_BUDGET,
+) -> List[Path]:
+    """Pick a bounded, representative, order-independent set of test files.
+
+    Why stratify: frameworks cluster by language and by sub-project. A repo
+    whose tests are 2 700 ExUnit scripts plus five vitest files under
+    ``extension/`` needs one of those five read, and a first-N sample of any
+    order is dominated by the majority. Files are grouped by
+    ``(suffix, top-level directory)``; the budget is dealt round-robin across
+    the strata (sorted), so every stratum gets a file before any gets a
+    second, and up to ``budget`` strata are covered. Within a stratum the
+    picks are spread evenly over its sorted paths rather than taken from the
+    front, so one alphabetical corner does not stand for the whole directory.
+
+    Why sort everything: the result must be a function of the SET of paths
+    only — never of walk order, which is what made WI-vosag's Tests line
+    differ between two runs on identical files.
+
+    Args:
+        test_files: Test file paths (any order, no duplicates).
+        repo_root: Root the paths are relative to (for the stratum key).
+        budget: Maximum number of files to return.
+
+    Returns:
+        The sample, sorted by stratum then path.
+    """
+    strata: dict[tuple[str, str], List[Path]] = {}
+    for path in test_files:
+        try:
+            parts = path.relative_to(repo_root).parts
+        except ValueError:  # pragma: no cover - callers pass in-repo paths
+            parts = path.parts
+        top = parts[0] if len(parts) > 1 else ""
+        strata.setdefault((path.suffix.lower(), top), []).append(path)
+
+    keys = sorted(strata)
+    members = {k: sorted(strata[k], key=str) for k in keys}
+
+    # Round-robin quota: one more file per stratum per round until the budget
+    # or every stratum is exhausted.
+    quota = dict.fromkeys(keys, 0)
+    remaining = budget
+    progressed = True
+    while remaining > 0 and progressed:
+        progressed = False
+        for k in keys:
+            if remaining == 0:
+                break
+            if quota[k] < len(members[k]):
+                quota[k] += 1
+                remaining -= 1
+                progressed = True
+
+    sample: List[Path] = []
+    for k in keys:
+        n, q = len(members[k]), quota[k]
+        sample.extend(members[k][(i * n) // q] for i in range(q))
+    return sample
+
+
+# Repo-root runner configuration that names a test framework on its own:
+# (filename glob, framework, regex the content must match or None). These
+# cover runners used through injected globals — jest's ``test()``, rspec's
+# ``describe`` — whose test files import nothing a content pattern can see.
+# ``test/test_helper.exs`` is ExUnit's mandatory bootstrap; its
+# ``ExUnit.start`` often sits past the 5 000-char head the sample reads.
+# Root only, deliberately: a nested config is found through its own test
+# files by the stratified sample, and a recursive search would bypass the
+# map-scoped FileIndex (INV-jumim).
+_TEST_FRAMEWORK_MARKERS: list[tuple[str, str, Optional[str]]] = [
+    ("test/test_helper.exs", "ExUnit", r"\bExUnit\.start\b"),
+    ("vitest.config.*", "vitest", None),
+    ("vitest.workspace.*", "vitest", None),
+    ("jest.config.*", "jest", None),
+    ("pytest.ini", "pytest", None),
+    ("conftest.py", "pytest", None),
+    ("pyproject.toml", "pytest", r"(?m)^\[tool\.pytest[.\]]"),
+    ("setup.cfg", "pytest", r"(?m)^\[tool:pytest\]"),
+    ("tox.ini", "pytest", r"(?m)^\[pytest\]"),
+    (".rspec", "rspec", None),
+]
+
+
+def _detect_test_frameworks_from_markers(repo_root: Path) -> set[str]:
+    """Frameworks named by repo-root runner config (see the table above)."""
+    import re
+
+    found: set[str] = set()
+    for glob, framework, required in _TEST_FRAMEWORK_MARKERS:
+        for path in sorted(repo_root.glob(glob)):
+            if not path.is_file():  # pragma: no cover - a dir named like config
+                continue
+            if required is not None:
+                try:
+                    text = path.read_text(encoding="utf-8", errors="replace")
+                except OSError:  # pragma: no cover
+                    continue
+                if not re.search(required, text):
+                    continue
+            found.add(framework)
+            break
+    return found
+
+
 def _analyze_test_files(
     repo_root: Path,
     extra_excludes: Optional[List[str]] = None,
@@ -2666,8 +2782,22 @@ def _analyze_test_files(
     count LOC and detect test frameworks.  Per-language LOC is computed
     separately by ``profile._detect_languages(count_loc=True)``.
 
-    After the walk it samples up to 20 test files and scans their first
-    5 000 chars for test-framework import patterns.
+    Framework detection (WI-vosag) has two deterministic sources, unioned:
+
+    * a STRATIFIED sample of the test files
+      (:func:`_sample_test_files_for_frameworks`), whose first 5 000 chars
+      are matched against ``TEST_FRAMEWORK_PATTERNS``;
+    * repo-root runner config (:data:`_TEST_FRAMEWORK_MARKERS`) — the only
+      evidence for runners used through globals (jest, rspec), whose test
+      files import nothing.
+
+    It used to read the FIRST 20 test files in walk order, and the walk order
+    came from ``list(<set of globs>)`` — per-process string-hash order. On a
+    repo with 2 717 ExUnit files and a handful of vitest files, whether any
+    vitest file landed in those 20 changed from run to run, so the Tests line
+    named vitest on one run and nothing on the next; ExUnit was never named
+    because no pattern existed for it. The globs are now sorted, and the
+    sample no longer depends on walk order at all.
 
     Args:
         repo_root: Repository root path.
@@ -2689,7 +2819,9 @@ def _analyze_test_files(
     for pattern_list in LANGUAGE_EXTENSIONS.values():
         all_patterns.update(pattern_list)
     all_patterns.add("*.bats")  # Bash Automated Testing System (test-only)
-    patterns = list(all_patterns)
+    # Sorted (WI-vosag): ``list(<set>)`` is per-process str-hash order, and
+    # find_files yields pattern by pattern, so the walk order varied by run.
+    patterns = sorted(all_patterns)
 
     test_loc = 0
     test_file_paths: list[Path] = []
@@ -2722,25 +2854,29 @@ def _analyze_test_files(
             frameworks=set(),
         )
 
-    # Detect frameworks from a sample of test files
-    frameworks_found: set[str] = set()
-    sample_size = min(20, test_files)
-    for test_file in test_file_paths[:sample_size]:
+    # Detect frameworks: root runner config, then a stratified sample.
+    frameworks_found = _detect_test_frameworks_from_markers(repo_root)
+    sample = _sample_test_files_for_frameworks(test_file_paths, repo_root)
+    for test_file in sample:
         try:
             content = test_file.read_text(encoding="utf-8", errors="replace")[:5000]
-            suffix = test_file.suffix
-            for pattern, framework, extensions in TEST_FRAMEWORK_PATTERNS:
-                if extensions is not None and suffix not in extensions:
-                    continue
-                if re.search(pattern, content):
-                    frameworks_found.add(framework)
         except OSError:  # pragma: no cover
             continue
+        suffix = test_file.suffix
+        for pattern, framework, extensions in TEST_FRAMEWORK_PATTERNS:
+            if framework in frameworks_found:
+                continue  # presence is all we report; skip the regex
+            if extensions is not None and suffix not in extensions:
+                continue
+            if re.search(pattern, content):
+                frameworks_found.add(framework)
 
     # Build summary string
     file_word = "file" if test_files == 1 else "files"
     if frameworks_found:
-        framework_str = ", ".join(sorted(frameworks_found))
+        # Case-insensitive so proper names (ExUnit, XCTest) interleave with
+        # the lowercase ones instead of all sorting first.
+        framework_str = ", ".join(sorted(frameworks_found, key=str.lower))
         summary = f"{test_files} test {file_word} · {framework_str}"
     else:
         summary = f"{test_files} test {file_word}"
@@ -4811,6 +4947,7 @@ TEST_FILE_PATTERNS = [
 # false positives when fixture data or YAML catalogs contain literal syntax
 # from another language (e.g., Rust ``#[test]`` in a Python test file).
 # Patterns whose syntax is unambiguous across languages use None (match any file).
+_C_FAMILY_SUFFIXES = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx")
 TEST_FRAMEWORK_PATTERNS: list[tuple[str, str, tuple[str, ...] | None]] = [
     # Python
     (r"import pytest|from pytest", "pytest", None),
@@ -4821,16 +4958,62 @@ TEST_FRAMEWORK_PATTERNS: list[tuple[str, str, tuple[str, ...] | None]] = [
     (r"from ['\"]vitest['\"]|import.*vitest", "vitest", None),
     (r"from ['\"]mocha['\"]|require\(['\"]mocha['\"]", "mocha", None),
     (r"import.*@testing-library", "testing-library", None),
-    # Go (built-in testing package)
-    (r'import.*"testing"', "go test", None),
+    (r"from ['\"]node:test['\"]|require\(['\"]node:test['\"]\)", "node:test", None),
+    (r"from ['\"]@playwright/test['\"]", "playwright", None),
+    # Go (built-in testing package). Grouped ``import ( ... )`` blocks span
+    # lines, which ``import.*"testing"`` never matched (WI-vosag).
+    (r'\bimport\s*(?:\([^)]*)?"testing"', "go test", (".go",)),
     # Ruby
     (r"require ['\"]rspec['\"]|RSpec\.describe", "rspec", None),
     (r"require ['\"]minitest['\"]", "minitest", None),
+    # Rails tests load minitest through ``require "test_helper"`` and name
+    # only the base class.
+    (
+        r"\b(?:ActiveSupport::TestCase|ActionDispatch::IntegrationTest|Minitest::Test)\b",
+        "minitest",
+        (".rb",),
+    ),
     # Rust — short attribute syntax appears as fixture data in other languages
-    (r"#\[cfg\(test\)\]|#\[test\]", "cargo test", (".rs",)),
+    (r"#\[cfg\(test\)\]|#\[(?:tokio::)?test[\](]", "cargo test", (".rs",)),
     # Java
     (r"import org\.junit", "junit", None),
     (r"import org\.testng", "testng", None),
+    # Kotlin
+    (r"(?m)^\s*import\s+kotlin\.test\b", "kotlin.test", (".kt", ".kts")),
+    # Elixir — ExUnit is the only runner. Test scripts usually ``use`` an
+    # app-defined case template (``MyAppWeb.ConnCase``/``MyApp.DataCase``),
+    # itself ``use ExUnit.CaseTemplate``, rather than ``ExUnit.Case``.
+    (r"\bExUnit\.(?:start|Case|CaseTemplate)\b", "ExUnit", (".ex", ".exs")),
+    (r"(?m)^\s*use\s+[A-Z][\w.]*Case\b", "ExUnit", (".exs",)),
+    # Swift
+    (r"(?m)^\s*(?:@testable\s+)?import\s+XCTest\b", "XCTest", (".swift",)),
+    (r"(?m)^\s*import\s+Testing\b", "swift-testing", (".swift",)),
+    # C#
+    (r"(?m)^\s*using\s+Xunit\b", "xunit", (".cs",)),
+    (r"(?m)^\s*using\s+NUnit\.Framework\b", "nunit", (".cs",)),
+    (
+        r"(?m)^\s*using\s+Microsoft\.VisualStudio\.TestTools\.UnitTesting\b",
+        "mstest",
+        (".cs",),
+    ),
+    # PHP
+    (r"PHPUnit\\Framework\\", "phpunit", (".php",)),
+    # C / C++
+    (r'#include\s*[<"]gtest/', "googletest", _C_FAMILY_SUFFIXES),
+    (r'#include\s*[<"](?:catch2/|catch\.hpp)', "catch2", _C_FAMILY_SUFFIXES),
+    # Dart
+    (r"package:test/test\.dart", "dart test", (".dart",)),
+    (r"package:flutter_test/", "flutter_test", (".dart",)),
+    # Scala
+    (r"\borg\.scalatest\b", "scalatest", (".scala", ".sc")),
+    (r"\bmunit\.(?:FunSuite|ScalaCheckSuite|CatsEffectSuite)\b", "munit", (".scala", ".sc")),
+    # Haskell
+    (r"(?m)^import\s+(?:qualified\s+)?Test\.Hspec\b", "hspec", (".hs", ".lhs")),
+    (r"(?m)^import\s+(?:qualified\s+)?Test\.Tasty\b", "tasty", (".hs", ".lhs")),
+    # Clojure
+    (r"\bclojure\.test\b", "clojure.test", (".clj", ".cljs", ".cljc")),
+    # Julia
+    (r"(?m)^\s*using\s+Test\b", "julia Test", (".jl",)),
 ]
 
 

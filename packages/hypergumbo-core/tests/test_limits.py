@@ -121,6 +121,21 @@ class TestLimits:
         assert len(d["failed_files"]) == 2
         assert "go" in d["skipped_languages"]
 
+    def test_merge_skipped_languages_is_ordered_and_deduplicated(self) -> None:
+        """merge() keeps first-seen order (WI-vosag analogue).
+
+        ``list(set(a + b))`` emitted the merged list in per-process hash
+        order, so the same analysis serialised differently run to run.
+        """
+        a = Limits()
+        for lang in ("zig", "go", "ada"):
+            a.add_skipped_language(lang)
+        b = Limits()
+        for lang in ("go", "cobol", "zig", "basic"):
+            b.add_skipped_language(lang)
+        merged = a.merge(b)
+        assert merged.skipped_languages == ["zig", "go", "ada", "cobol", "basic"]
+
     def test_analysis_depth_field_removed(self) -> None:
         """analysis_depth was a dead hardcoded "syntax_only" constant — never
         reassigned in any production path, factually false for the semantic maps

@@ -6633,6 +6633,261 @@ class TestAnalyzeTestFiles:
         assert result.test_loc == 3  # import, def, assert (blank lines excluded)
 
 
+class TestTestFrameworkDetectionDeterminism:
+    """WI-vosag: the framework sample must not depend on set/walk order.
+
+    The original code built the glob list from a ``set`` (per-process str
+    hash order), walked pattern by pattern and detected frameworks from the
+    FIRST 20 test files of that order — so on one repo the Tests line named
+    vitest on one run and nothing on the next.
+    """
+
+    def test_find_files_receives_sorted_patterns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import hypergumbo_core.sketch as sketch_mod
+
+        seen: list[list[str]] = []
+        real = sketch_mod.find_files
+
+        def spy(root, patterns, *args, **kwargs):  # type: ignore[no-untyped-def]
+            seen.append(list(patterns))
+            return real(root, patterns, *args, **kwargs)
+
+        monkeypatch.setattr(sketch_mod, "find_files", spy)
+        (tmp_path / "test_a.py").write_text("import pytest\n")
+        _analyze_test_files(tmp_path)
+        assert seen and seen[0] == sorted(seen[0])
+
+    def test_minority_stratum_detected_under_adverse_walk_order(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A lone vitest file after 30 framework-less files is still sampled.
+
+        The walk order is forced adversarial (the minority file last); the
+        old first-20 sample missed it, the stratified sample cannot.
+        """
+        import hypergumbo_core.sketch as sketch_mod
+
+        tests = tmp_path / "test"
+        tests.mkdir()
+        py_files = []
+        for i in range(30):
+            p = tests / f"test_{i:02d}.py"
+            p.write_text("def test_x():\n    assert True\n")
+            py_files.append(p)
+        ext = tmp_path / "extension" / "test"
+        ext.mkdir(parents=True)
+        js = ext / "api.test.js"
+        js.write_text("import { describe } from 'vitest';\n")
+
+        def adverse(root, patterns, *args, **kwargs):  # type: ignore[no-untyped-def]
+            yield from py_files
+            yield js
+
+        monkeypatch.setattr(sketch_mod, "find_files", adverse)
+        result = _analyze_test_files(tmp_path)
+        assert result.test_files == 31
+        assert "vitest" in result.frameworks
+
+    def test_sample_is_independent_of_input_order(self, tmp_path: Path) -> None:
+        import random
+
+        from hypergumbo_core.sketch import _sample_test_files_for_frameworks
+
+        paths = [
+            tmp_path / d / f"f{i}{ext}"
+            for d in ("test", "lib", "extension")
+            for ext in (".exs", ".js", ".py")
+            for i in range(40)
+        ]
+        baseline = _sample_test_files_for_frameworks(paths, tmp_path, budget=25)
+        assert len(baseline) == 25
+        for seed in range(5):
+            shuffled = list(paths)
+            random.Random(seed).shuffle(shuffled)  # noqa: S311
+            assert (
+                _sample_test_files_for_frameworks(shuffled, tmp_path, budget=25)
+                == baseline
+            )
+        # Every (extension, top-level dir) stratum is represented.
+        strata = {(p.suffix, p.relative_to(tmp_path).parts[0]) for p in baseline}
+        assert len(strata) == 9
+
+    def test_sample_takes_everything_under_budget(self, tmp_path: Path) -> None:
+        from hypergumbo_core.sketch import _sample_test_files_for_frameworks
+
+        paths = [tmp_path / "b_test.py", tmp_path / "a_test.py"]
+        assert _sample_test_files_for_frameworks(paths, tmp_path, budget=10) == [
+            tmp_path / "a_test.py",
+            tmp_path / "b_test.py",
+        ]
+
+    def test_sample_spreads_within_a_large_stratum(self, tmp_path: Path) -> None:
+        """Picks inside one stratum are spread across it, not the first k."""
+        from hypergumbo_core.sketch import _sample_test_files_for_frameworks
+
+        paths = [tmp_path / "test" / f"t{i:03d}_test.exs" for i in range(100)]
+        sample = _sample_test_files_for_frameworks(paths, tmp_path, budget=4)
+        names = [p.name for p in sample]
+        assert names == [
+            "t000_test.exs", "t025_test.exs", "t050_test.exs", "t075_test.exs"
+        ]
+
+
+class TestTestFrameworkCoverage:
+    """WI-vosag: default test frameworks of more languages are named."""
+
+    def test_exunit_from_test_helper(self, tmp_path: Path) -> None:
+        tests = tmp_path / "test"
+        tests.mkdir()
+        (tests / "test_helper.exs").write_text(
+            "# probe redis\n" + "x = 1\n" * 2000 + "ExUnit.start(exclude: [])\n"
+        )
+        (tests / "page_test.exs").write_text(
+            "defmodule PageTest do\n  def ok, do: true\nend\n"
+        )
+        result = _analyze_test_files(tmp_path)
+        assert "ExUnit" in result.frameworks
+
+    def test_exunit_from_case_template(self, tmp_path: Path) -> None:
+        tests = tmp_path / "test"
+        tests.mkdir()
+        (tests / "booth_test.exs").write_text(
+            "defmodule BoothTest do\n  use MyAppWeb.ConnCase, async: false\nend\n"
+        )
+        result = _analyze_test_files(tmp_path)
+        assert "ExUnit" in result.frameworks
+
+    def test_exunit_from_use_exunit_case(self, tmp_path: Path) -> None:
+        tests = tmp_path / "test"
+        tests.mkdir()
+        (tests / "math_test.exs").write_text(
+            "defmodule MathTest do\n  use ExUnit.Case, async: true\nend\n"
+        )
+        result = _analyze_test_files(tmp_path)
+        assert result.frameworks == {"ExUnit"}
+
+    def test_case_template_word_in_non_elixir_file_ignored(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "test_x.py").write_text("# use MyApp.DataCase here\n")
+        result = _analyze_test_files(tmp_path)
+        assert "ExUnit" not in result.frameworks
+
+    def test_lists_every_framework_case_insensitively_sorted(
+        self, tmp_path: Path
+    ) -> None:
+        tests = tmp_path / "test"
+        tests.mkdir()
+        (tests / "math_test.exs").write_text("use ExUnit.Case\n")
+        (tests / "api.test.js").write_text("import { it } from 'vitest';\n")
+        (tests / "test_a.py").write_text("import pytest\n")
+        result = _analyze_test_files(tmp_path)
+        assert result.summary == "3 test files · ExUnit, pytest, vitest"
+
+    @pytest.mark.parametrize(
+        ("rel", "body", "framework"),
+        [
+            (
+                "pkg/main_test.go",
+                'package main\n\nimport (\n\t"fmt"\n\t"testing"\n)\n',
+                "go test",
+            ),
+            ("Tests/AppTests.swift", "@testable import App\nimport XCTest\n", "XCTest"),
+            ("Tests/NewTests.swift", "import Testing\n", "swift-testing"),
+            ("tests/FooTests.cs", "using System;\nusing Xunit;\n", "xunit"),
+            ("tests/BarTests.cs", "using NUnit.Framework;\n", "nunit"),
+            (
+                "tests/BazTests.cs",
+                "using Microsoft.VisualStudio.TestTools.UnitTesting;\n",
+                "mstest",
+            ),
+            (
+                "tests/FooTest.php",
+                "<?php\nuse PHPUnit\\Framework\\TestCase;\n",
+                "phpunit",
+            ),
+            ("tests/FooTest.kt", "import kotlin.test.Test\n", "kotlin.test"),
+            ("tests/foo_test.cc", "#include <gtest/gtest.h>\n", "googletest"),
+            ("tests/bar_test.cpp", "#include <catch2/catch_test_macros.hpp>\n", "catch2"),
+            ("test/foo_test.dart", "import 'package:test/test.dart';\n", "dart test"),
+            (
+                "test/widget_test.dart",
+                "import 'package:flutter_test/flutter_test.dart';\n",
+                "flutter_test",
+            ),
+            ("tests/async_test.rs", "#[tokio::test]\nasync fn t() {}\n", "cargo test"),
+            (
+                "test/models/user_test.rb",
+                'require "test_helper"\nclass UserTest < ActiveSupport::TestCase\nend\n',
+                "minitest",
+            ),
+            ("test/a.test.mjs", "import test from 'node:test';\n", "node:test"),
+            ("tests/e2e.spec.ts", "import { test } from '@playwright/test';\n", "playwright"),
+            (
+                "src/test/scala/FooSpec.scala",
+                "import org.scalatest.funsuite.AnyFunSuite\n",
+                "scalatest",
+            ),
+            ("src/test/scala/BarSuite.scala", "class BarSuite extends munit.FunSuite\n", "munit"),
+            ("test/Spec.hs", "import Test.Hspec\n", "hspec"),
+            ("test/Main.hs", "import Test.Tasty\n", "tasty"),
+            ("test/foo_test.clj", "(ns foo-test (:require [clojure.test :refer :all]))\n", "clojure.test"),
+            ("test/runtests.jl", "using Test\n@test 1 == 1\n", "julia Test"),
+        ],
+    )
+    def test_language_default_frameworks(
+        self, tmp_path: Path, rel: str, body: str, framework: str
+    ) -> None:
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+        result = _analyze_test_files(tmp_path)
+        assert result.test_files == 1
+        assert framework in result.frameworks
+
+    @pytest.mark.parametrize(
+        ("marker", "body", "framework"),
+        [
+            ("vitest.config.ts", "export default {}\n", "vitest"),
+            ("vitest.workspace.js", "export default []\n", "vitest"),
+            ("jest.config.js", "module.exports = {}\n", "jest"),
+            ("pytest.ini", "[pytest]\n", "pytest"),
+            ("conftest.py", "import os\n", "pytest"),
+            ("pyproject.toml", "[project]\nname='x'\n\n[tool.pytest.ini_options]\n", "pytest"),
+            ("setup.cfg", "[metadata]\n[tool:pytest]\n", "pytest"),
+            ("tox.ini", "[tox]\n[pytest]\n", "pytest"),
+            (".rspec", "--require spec_helper\n", "rspec"),
+        ],
+    )
+    def test_root_config_markers(
+        self, tmp_path: Path, marker: str, body: str, framework: str
+    ) -> None:
+        """Runners used through globals (jest, rspec) are named from config."""
+        (tmp_path / marker).write_text(body)
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "a_test.js").write_text("test('x', () => {});\n")
+        result = _analyze_test_files(tmp_path)
+        assert framework in result.frameworks
+
+    def test_content_marker_without_its_section_does_not_fire(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n")
+        (tmp_path / "test_a.py").write_text("def test_a(): pass\n")
+        result = _analyze_test_files(tmp_path)
+        assert result.frameworks == set()
+
+    def test_markers_ignored_without_test_files(self, tmp_path: Path) -> None:
+        (tmp_path / "jest.config.js").write_text("module.exports = {}\n")
+        (tmp_path / "main.js").write_text("x()\n")
+        result = _analyze_test_files(tmp_path)
+        assert result.summary is None
+        assert result.frameworks == set()
+
+
 class TestFormatTestSummary:
     """Tests for _format_test_summary function."""
 

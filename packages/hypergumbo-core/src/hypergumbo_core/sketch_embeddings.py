@@ -1684,6 +1684,7 @@ def _extract_file_samples(
     """
     import random
     import re
+    import zlib
 
     try:
         content = file_path.read_text(encoding='utf-8', errors='replace')
@@ -1709,9 +1710,11 @@ def _extract_file_samples(
     if len(first_third) <= total_needed:
         return first_third
 
-    # Extract non-overlapping samples with deterministic seeding
-    # Use file path hash for reproducibility (not cryptographic, just for stability)
-    seed = hash(str(file_path)) % (2**32)
+    # Extract non-overlapping samples with deterministic seeding. The seed is
+    # a STABLE digest of the path: ``hash(str)`` is salted per process
+    # (PYTHONHASHSEED), so it picked different windows — and so different
+    # embedding rankings — on every run (WI-vosag analogue).
+    seed = zlib.crc32(str(file_path).encode("utf-8"))
     rng = random.Random(seed)  # noqa: S311 # nosec B311
 
     samples: list[str] = []
