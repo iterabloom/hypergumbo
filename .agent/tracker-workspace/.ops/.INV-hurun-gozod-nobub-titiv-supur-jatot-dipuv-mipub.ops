@@ -1,0 +1,23 @@
+- op: create  # 24f7
+  at: '2026-10-07T03:58:12Z'  # 24f7
+  by: agent  # 24f7
+  actor: jgstern_agent  # 24f7
+  clock: 1  # 24f7
+  nonce: 24f7  # 24f7
+  data:  # 24f7
+    kind: invariant  # 24f7
+    title: "elixir: bare get/put calls outside a Phoenix router mint route markers (thc cache modules: 14 false http_route entrypoints such as \"GET /post_\")"  # 24f7
+    status: violated  # 24f7
+    priority: 2  # 24f7
+    parent:  # 24f7
+    tags:  # 24f7
+    - elixir  # 24f7
+    - routes  # 24f7
+    isbefore: []  # 24f7
+    duplicate_of: []  # 24f7
+    not_duplicate_of: []  # 24f7
+    pr_ref:  # 24f7
+    description: "Found while fixing INV-liraj. On thc, lib/thunderhillcinema/cache/ets_cache.ex, cinema_cache.ex and redis_cache.ex (plain GenServer/ETS cache modules, no `use ...Router`) yield route markers such as \"GET /post_\", \"PUT /user_\", \"PUT /feed:location:\" -- the bare `get(key)` / `put(key, data, ttl)` calls (and string-interpolated keys) are read as Phoenix route macros. 14 such markers become http_route entrypoints (rank 0.90) now that route markers are classified correctly. Test files also carry route markers (e.g. 20 in test/thunderhillcinema_web/live/lab_print_opens_as_print_test.exs -- likely Phoenix.ConnTest `get(conn, \"/x\")` / `live(conn, \"/x\")` calls); those are rank-filtered by the test-file penalty but are still false route symbols.\n\nInvariant: a route marker is minted only for a route macro inside a router module (`use Phoenix.Router` / `use <App>Web, :router`), never for a same-named call elsewhere."  # 24f7
+    fields:  # 24f7
+      statement: "A Phoenix route marker is minted only for a route macro inside a router module, never for a same-named call elsewhere."  # 24f7
+      root_cause: "Not yet investigated. Observed: the Elixir analyzer's route detection matches get/put/live call names without checking that the enclosing module is a router."  # 24f7

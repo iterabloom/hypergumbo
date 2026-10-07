@@ -1,0 +1,21 @@
+- op: create  # 1767
+  at: '2026-10-07T03:57:43Z'  # 1767
+  by: agent  # 1767
+  actor: jgstern_agent  # 1767
+  clock: 1  # 1767
+  nonce: '1767'  # 1767
+  data:  # 1767
+    kind: work_item  # 1767
+    title: "elixir: Phoenix route markers ignore the enclosing scope prefix (scope \"/admin\" + get \"/users\" -> /users, not /admin/users)"  # 1767
+    status: todo_hard  # 1767
+    priority: 2  # 1767
+    parent:  # 1767
+    tags:  # 1767
+    - elixir  # 1767
+    - routes  # 1767
+    isbefore: []  # 1767
+    duplicate_of: []  # 1767
+    not_duplicate_of: []  # 1767
+    pr_ref:  # 1767
+    description: "Found while fixing INV-liraj. The Elixir analyzer's Phoenix route markers take the literal path of `get`/`live`/... and do not prepend the enclosing `scope \"/prefix\"`.\n\nRepro (fresh fixture, hypergumbo dev @ jgstern-agent/fix/route-marker-entrypoint-precedence):\n  lib/app_web/router.ex:\n    scope \"/admin\", AppWeb do\n      live \"/\", Admin.DashboardLive\n      get \"/users\", Admin.UserController, :index\n    end\n  `hypergumbo routes <repo>` prints `[LIVE] /` and `[GET] /users` -- expected `/admin` and `/admin/users`.\n\nOn thc (~/special_repos/thc) router.ex has scopes \"/admin\" (line 1208), \"/venue-mod\" (1188) etc.; their routes collide with root routes of the same label (\"LIVE /\" appears for TVHomeLive and Admin.DashboardLive), and detect_entrypoints' route-label dedup then collapses distinct routes into one (377 router markers -> 359 unique names). Nested scopes and `scope path: ..., as: ...` keyword forms need the same treatment."  # 1767
+    fields: {}  # 1767
