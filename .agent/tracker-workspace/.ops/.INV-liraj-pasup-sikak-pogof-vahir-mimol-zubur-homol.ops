@@ -22,3 +22,21 @@
     fields:  # c7d9
       statement: "A symbol carrying meta.framework_role=route (route_framework set) is classified as an http_route entrypoint and appears in the sketch's HTTP Routes section."  # c7d9
       root_cause: "Not yet investigated. Observed: the Phoenix router symbols are kind=function with concepts=[library_export]; the entrypoint classifier appears to take the library_export concept over the route meta."  # c7d9
+- op: update  # ab1d
+  at: '2026-10-07T04:59:13Z'  # ab1d
+  by: agent  # ab1d
+  actor: jgstern_agent  # ab1d
+  clock: 2  # ab1d
+  nonce: ab1d  # ab1d
+  set:  # ab1d
+    status: satisfied  # ab1d
+    pr_ref: '#1507'  # ab1d
+    fields:  # ab1d
+      root_cause: "Two compounding defects. (1) detect_entrypoints' per-symbol dedup kept the FIRST-EMITTED entrypoint although its comment claimed highest confidence; the concept pass (pass 1) emits LIBRARY_EXPORT (0.75) from a symbol's library_export concept before the route-marker pass (pass 2) emits HTTP_ROUTE (0.90) from meta.framework_role=route, so the library export won. (2) Route markers (kind=function, synthetic, named 'GET /x') matched library-exports.yaml definition patterns by accident: Elixir takes every non-private function, Go every uppercase-initial name. Exposed for Phoenix when INV-vokak (8e8a1e42a5) dropped the redundant path-less concept=route that had previously been emitted first in pass 1."  # ab1d
+- op: discuss  # 9eaf
+  at: '2026-10-07T04:59:27Z'  # 9eaf
+  by: agent  # 9eaf
+  actor: jgstern_agent  # 9eaf
+  clock: 3  # 9eaf
+  nonce: 9eaf  # 9eaf
+  message: "Fixed in PR #1507 (merged as e3f091d458). Fix: detect_entrypoints keeps the most confident entry per symbol (ties to the earlier detector); enrich_symbols drops library_export from route-family markers (route/route_mount/route_include); sketch Entry Points shares one entry budget across groups, route lines name the handler, route overflow points at 'hypergumbo routes'.\n\nBehavioral evidence (live repros):\n- Fixture (mix.exs + router.ex with scope/pipe_through/get/post/live/resources): 'hypergumbo run' entrypoints before = {library_export: 15} (all 10 route markers library_export); after (on merged dev, exit 0) = {http_route: 10, library_export: 5}. Go/gin fixture: route markers 'GET /users'/'POST /users' no longer carry library_export entrypoints (before: 2 library_export 'Library export: GET /users'; after: none, handlers stay http_route).\n- thc (~/special_repos/thc, fresh XDG_CACHE_HOME, 'hypergumbo sketch' 4m55s exit 0): entrypoints before (filed) 436 library_export / 2 http_route; after 240 http_route / 198 library_export (cap 495, diversity cap 40%/kind; uncapped detect_entrypoints gives 372 http_route); router.ex markers carrying a library_export concept: 0 of 377. 'hypergumbo routes' reports 373 routes. Sketch HTTP Routes now lists 19 router routes as e.g. 'LIVE /profile -> User.UserProfileLive.index' plus '... and 221 more (hypergumbo routes lists all)'; Entry Points section 22.7k -> 7.4k chars of a 32k-char sketch.\n- Tests: test_entrypoints::TestPerSymbolDedupKeepsMostConfidentKind, test_framework_patterns::TestRouteMarkerIsNotALibraryExport, lang-common test_elixir_phoenix_route_entrypoints (production path via run_behavior_map), test_sketch::TestEntrypointSectionBudget/TestRouteMarkerEntryLine.\n\nNote on root_cause: the INV-vokak link (its drop of the path-less concept=route that pass 1 used to emit first) is inferred from reading the code, not bisected.\n\nFollow-ups filed: WI-kibij (Phoenix scope prefix not composed), INV-hurun (bare get/put calls in non-router Elixir modules minted as routes; 14 false http_route on thc), WI-mapaj (routes saturate at rank_score 1.0 -> cap/sketch pick by insertion order; thc's Express /scan,/health now crowded out of the capped list)."  # 9eaf

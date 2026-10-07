@@ -1,0 +1,29 @@
+- op: create  # b4d5
+  at: '2026-10-07T06:20:27Z'  # b4d5
+  by: agent  # b4d5
+  actor: jgstern_agent  # b4d5
+  clock: 1  # b4d5
+  nonce: b4d5  # b4d5
+  data:  # b4d5
+    kind: work_item  # b4d5
+    title: "Independent I/O-primitive allowlist gate: every write/subprocess/network/eval/pickle/ctypes call site in packages/*/src must be on a committed allowlist (AST-based, CI)"  # b4d5
+    status: todo_hard  # b4d5
+    priority: 2  # b4d5
+    parent:  # b4d5
+    tags:  # b4d5
+    - security  # b4d5
+    - ci  # b4d5
+    isbefore: []  # b4d5
+    duplicate_of: []  # b4d5
+    not_duplicate_of: []  # b4d5
+    pr_ref:  # b4d5
+    description: "An independent check on hypergumbo's own I/O surface that does NOT share hypergumbo's static-analysis blind spots (the self-claims are hypergumbo grading itself; every verdict carries opaque_boundary / unknown_receiver_scope caveats). A syntactic gate over packages/*/src: every call site of a risky primitive -- filesystem writes/deletes (write_text/write_bytes, open(...,'w'/'a'/'x'), shutil copy/move/rmtree, os.remove/unlink/rename/replace, Path.unlink/mkdir/touch), subprocess/os.system/exec*/spawn*, network (socket, urllib.request, http.client, httpx, requests, aiohttp, huggingface_hub/from_pretrained downloads), servers (uvicorn/HTTPServer/serve_forever), eval/exec/compile, pickle/marshal/torch.load, ctypes/cffi/dlopen, importlib/__import__ with non-literal names -- must be listed in a committed allowlist naming file, function, the CLI command(s) that reach it and why. New unlisted site -> CI fails; stale entry -> CI fails. Use AST, not grep, so catalogue strings (io_boundary/axis_meta_keys hold primitive names as DATA) don't count and aliasing (`from subprocess import run as r`) does. Initial rough grep, 2026-10-07: subprocess in 24 files (14 core, 7 tracker, 2 rust-analyzer, 1 scip-python), ~150 write/delete sites. Cross-check the allowlist against the self-claims zones (user_cache, user_out, tmp, install_artifact) and report disagreements. Owner request 2026-10-07."  # b4d5
+    fields: {}  # b4d5
+- op: update  # 0490
+  at: '2026-10-07T06:36:52Z'  # 0490
+  by: agent  # 0490
+  actor: jgstern_agent  # 0490
+  clock: 2  # 0490
+  nonce: '0490'  # 0490
+  set:  # 0490
+    description: "An independent check on hypergumbo's own I/O surface that does NOT share hypergumbo's static-analysis blind spots (the self-claims are hypergumbo grading itself; every verdict carries opaque_boundary / unknown_receiver_scope caveats). A syntactic gate over packages/*/src: every call site of a risky primitive -- filesystem writes/deletes (write_text/write_bytes, open(...,'w'/'a'/'x'), shutil copy/move/rmtree, os.remove/unlink/rename/replace, Path.unlink/mkdir/touch), subprocess/os.system/exec*/spawn*, network (socket, urllib.request, http.client, httpx, requests, aiohttp, huggingface_hub/from_pretrained downloads), servers (uvicorn/HTTPServer/serve_forever), eval/exec/compile, pickle/marshal/torch.load, ctypes/cffi/dlopen, importlib/__import__ with non-literal names -- must be listed in a committed allowlist naming file, function, the CLI command(s) that reach it and why. New unlisted site -> CI fails; stale entry -> CI fails. Use AST, not grep, so catalogue strings (io_boundary/axis_meta_keys hold primitive names as DATA) don't count and aliasing (`from subprocess import run as r`) does. Initial rough grep, 2026-10-07: subprocess in 24 files (14 core, 7 tracker, 2 rust-analyzer, 1 scip-python), ~150 write/delete sites. Cross-check the allowlist against the self-claims zones (user_cache, user_out, tmp, install_artifact) and report disagreements. Owner request 2026-10-07.\n\nADRs that bear on this (start here):\n- ADR-0016 (I/O Boundary Analysis and Security Claim Verification): the self-proof can never reach plain `confirmed` because hypergumbo launches git/pip/rustup by design, so it uses the `opaque_boundary` caveat, raised only when named launch sites are the sole blocker -- and \"its soundness rests entirely on the launch list being complete\". This gate's subprocess arm is the independent check of that completeness: reuse or cross-check ADR-0016's launch list rather than keeping a second list that can drift.\n- ADR-0047 ruling 9: \"hypergumbo never writes into an analysed repository\" -- the invariant for the filesystem arm (every allowlisted write lands in user cache/config/output or temp, never under the target repo).\n- ADR-0045: a trust grant is never a config key; the rust-analyzer backend (executes the analysed repo's build.rs/proc macros) is gated by the machine-written trust store -- its subprocess entry's justification is \"only after an explicit trust grant\"."  # 0490

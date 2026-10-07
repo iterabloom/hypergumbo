@@ -27,3 +27,18 @@
   clock: 2  # 2960
   nonce: '2960'  # 2960
   message: "Additional finding (2026-10-06, while measuring WI-bapal on thc vs thc_dev): the Tests line is also NONDETERMINISTIC across runs on identical file sets. Two cold sketches with identical surveys (49,568 nodes / 163,259 edges each) printed '2717 test files · vitest' (thc) and '2717 test files' (thc_dev). Cause: sketch._analyze_test_files builds patterns = list(all_patterns) from a SET of glob strings (str hash randomisation reorders it per process), find_files yields files pattern by pattern, and frameworks are detected from only the first 20 test files of that order. So which 20 files are sampled -- here, whether any extension/test/*.test.js is among them -- varies per process. Fix shape: sort the patterns (or the file list) and sample across languages/extensions rather than the first 20, which also bears on the ExUnit omission this item is about."  # 2960
+- op: update  # 9644
+  at: '2026-10-07T07:03:20Z'  # 9644
+  by: agent  # 9644
+  actor: jgstern_agent  # 9644
+  clock: 3  # 9644
+  nonce: '9644'  # 9644
+  set:  # 9644
+    status: done  # 9644
+- op: discuss  # a1f6
+  at: '2026-10-07T07:03:20Z'  # a1f6
+  by: agent  # a1f6
+  actor: jgstern_agent  # a1f6
+  clock: 4  # a1f6
+  nonce: a1f6  # a1f6
+  message: "Merged in PR #1509 (7e1cc21305). Root cause of nondeterminism: sketch._analyze_test_files built its glob list as list(<set>) (per-process str-hash order), find_files yields per pattern, and frameworks came from the first 20 test files of that order. Fix: sorted globs + order-independent stratified sample (200-file budget dealt round-robin over sorted (extension, top-level dir) strata, spread within each) + repo-root runner config markers (test/test_helper.exs ExUnit.start, vitest/jest config, pytest.ini/conftest.py/[tool.pytest], .rspec); new patterns incl. ExUnit (ExUnit.Case/CaseTemplate and app case templates like 'use XWeb.ConnCase'), XCTest, swift-testing, xunit/nunit/mstest, phpunit, kotlin.test, googletest, catch2, dart/flutter_test, node:test, playwright, scalatest, munit, hspec, tasty, clojure.test, julia Test, Rails minitest; Go grouped imports and #[tokio::test] fixed. Evidence: 'XDG_CACHE_HOME=<fresh dir> hypergumbo sketch ~/special_repos/thc' run twice cold on the merged code (exit 0 both): Tests line '2717 test files · ExUnit, node:test, vitest' in both runs; the two sketches are byte-identical apart from cache paths. Earlier pair (before node:test pattern) also identical: '2717 test files · ExUnit, vitest'. Analogues fixed in same PR: Configuration section set iteration (CONFIG_FILES, INTERESTING_DEPS, go/gem sets; thc package.json/mix.exs lines swapped between runs), --frameworks all list(<set>), Limits.merge skipped_languages, sketch_embeddings RNG seeded with hash(str(path)). Filed: WI-takil (PascalCase test-file classification gap), WI-dizad (additional-files walk excludes on absolute path parts)."  # a1f6

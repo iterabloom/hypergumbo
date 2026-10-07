@@ -20,3 +20,12 @@
     pr_ref:  # 291a
     description: "Found by the 2026-10-06 docstring-audit random sample (tracker __init__.py and serve_password.py docstrings describe an authenticated HTTP view). Facts: serve.py routes POST /api/items, /api/items/{id}/update, /api/items/{id}/discuss and /ws carry no auth check, and serve.py imports none of serve_password / serve_webauthn / serve_sessions / serve_duress; RateLimiter is constructed nowhere. TODAY run_server() calls create_app() with no tracker_set, so every /api/* returns 503 and only /health answers (verified with starlette TestClient). With a TrackerSet wired (stub), an unauthenticated POST /api/items returns 201 and reaches TrackerSet.add (scratch serve_noauth.py). deploy/torrc.example forwards the onion service to 127.0.0.1:7380 with client authorization commented out, and says visitors 'would still need WebAuthn + password'. Requirement: whoever wires the TrackerSet into run_server (WI-pupod, ADR-0019 Part A) must wire auth in the same change, with a test that every non-/health route rejects an unauthenticated request. Also: serve_password says lockout is 'permanent until re-registration via htrac setup' but the lockout is an in-process dict cleared by restart or record_success, and htrac setup does no credential registration (same false reference in serve_webauthn.py ~:25)."  # 291a
     fields: {}  # 291a
+- op: update  # ac52
+  at: '2026-10-07T06:25:54Z'  # ac52
+  by: agent  # ac52
+  actor: jgstern_agent  # ac52
+  clock: 2  # ac52
+  nonce: ac52  # ac52
+  set: {}  # ac52
+  add:  # ac52
+    isbefore: [WI-sunan-gazum-tuhov-nofak-zokav-luguj-vamik-suraz]  # ac52

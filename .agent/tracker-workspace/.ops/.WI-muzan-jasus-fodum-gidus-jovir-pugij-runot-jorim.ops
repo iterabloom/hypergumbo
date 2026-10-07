@@ -1,0 +1,29 @@
+- op: create  # 8bd6
+  at: '2026-10-07T06:25:47Z'  # 8bd6
+  by: agent  # 8bd6
+  actor: jgstern_agent  # 8bd6
+  clock: 1  # 8bd6
+  nonce: 8bd6  # 8bd6
+  data:  # 8bd6
+    kind: work_item  # 8bd6
+    title: "README: plain-language trust section -- AI-written and not line-reviewed, what reads/writes/networks, self-checked claims with blind spots, htrac not yet audited, running confined"  # 8bd6
+    status: todo_hard  # 8bd6
+    priority: 2  # 8bd6
+    parent:  # 8bd6
+    tags:  # 8bd6
+    - security  # 8bd6
+    - docs  # 8bd6
+    isbefore: []  # 8bd6
+    duplicate_of: []  # 8bd6
+    not_duplicate_of: []  # 8bd6
+    pr_ref:  # 8bd6
+    description: "README.md already points to SECURITY.md (line ~29, \"Audited IO surface\"). Add a short plain-language security/trust section so a colleague deciding whether to install hypergumbo on a personal machine gets the material facts up front:\n- the code is largely AI-agent-written (~349k production + ~508k test LOC as of 2026-10) and has not been human-reviewed line by line;\n- what the default `hypergumbo .` reads/writes (the repo read-only; ~/.cache/hypergumbo; no network) and which commands touch the network or execute code (install-*, add-extras, install-embeddings, build-grammars compiles C, the rust-analyzer backend runs the analysed repo's build.rs, tracker sync, htrac serve);\n- SECURITY.md's claims are checked by hypergumbo itself (self-claims gate), with named blind spots -- \"confirmed_with_caveats\" is not proof; the independent allowlist gate (if landed) as a second check;\n- the tracker package (htrac) is not yet covered by the audit (until its self-claims item lands);\n- analysing an untrusted repository: what it can influence (in-repo .hypergumbo.toml catalogue data is off unless opted in per ADR-0061; backend trust per ADR-0045);\n- how to run confined (container, or network blocked for its Python + fs_usage/strace once).\nKeep claims exact and dated; update the section as the self-claims and allowlist-gate items land. Owner request 2026-10-07."  # 8bd6
+    fields: {}  # 8bd6
+- op: update  # 9fa4
+  at: '2026-10-07T06:36:53Z'  # 9fa4
+  by: agent  # 9fa4
+  actor: jgstern_agent  # 9fa4
+  clock: 2  # 9fa4
+  nonce: 9fa4  # 9fa4
+  set:  # 9fa4
+    description: "README.md already points to SECURITY.md (line ~29, \"Audited IO surface\"). Add a short plain-language security/trust section so a colleague deciding whether to install hypergumbo on a personal machine gets the material facts up front:\n- the code is largely AI-agent-written (~349k production + ~508k test LOC as of 2026-10) and has not been human-reviewed line by line;\n- what the default `hypergumbo .` reads/writes (the repo read-only; ~/.cache/hypergumbo; no network) and which commands touch the network or execute code (install-*, add-extras, install-embeddings, build-grammars compiles C, the rust-analyzer backend runs the analysed repo's build.rs, tracker sync, htrac serve);\n- SECURITY.md's claims are checked by hypergumbo itself (self-claims gate), with named blind spots -- \"confirmed_with_caveats\" is not proof; the independent allowlist gate (if landed) as a second check;\n- the tracker package (htrac) is not yet covered by the audit (until its self-claims item lands);\n- analysing an untrusted repository: what it can influence (in-repo .hypergumbo.toml catalogue data is off unless opted in per ADR-0061; backend trust per ADR-0045);\n- how to run confined (container, or network blocked for its Python + fs_usage/strace once).\nKeep claims exact and dated; update the section as the self-claims and allowlist-gate items land. Owner request 2026-10-07.\n\nADRs that bear on this (use their wording):\n- ADR-0045: the rust-analyzer backend runs the analysed workspace's build.rs and proc macros as the invoking user; off unless the user grants trust; no config file at any tier (including one inside the analysed repo) can enable it.\n- ADR-0061: catalogue data inside an analysed repo is ignored until the operator opts in (--in-repo-catalogues / trust-catalogues).\n- ADR-0047 ruling 9: nothing is ever written into an analysed repository.\n- ADR-0016: disclaimer vs. qualified opinion -- use it to explain what `confirmed_with_caveats` means.\n- ADR-0013 Security Model (human-owned config, human-authority ops): the reference for what to say about htrac until WI-sunan lands."  # 9fa4

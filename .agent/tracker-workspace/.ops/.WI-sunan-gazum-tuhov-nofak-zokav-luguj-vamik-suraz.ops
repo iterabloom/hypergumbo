@@ -1,0 +1,22 @@
+- op: create  # 187b
+  at: '2026-10-07T06:20:18Z'  # 187b
+  by: agent  # 187b
+  actor: jgstern_agent  # 187b
+  clock: 1  # 187b
+  nonce: 187b  # 187b
+  data:  # 187b
+    kind: work_item  # 187b
+    title: "Self-claims cover hypergumbo-tracker (htrac) as a product: serve, sync, tui, CLI -- today it is only a forbidden 'dev zone' sink"  # 187b
+    status: todo_hard  # 187b
+    priority: 2  # 187b
+    parent:  # 187b
+    tags:  # 187b
+    - security  # 187b
+    - verify_claims  # 187b
+    - tracker  # 187b
+    isbefore: []  # 187b
+    duplicate_of: []  # 187b
+    not_duplicate_of: []  # 187b
+    pr_ref:  # 187b
+    description: "The self-audit (docs/hypergumbo.claims.yaml + docs/hypergumbo-self-catalog/, gated by scripts/check-self-claims, published in SECURITY.md) covers hypergumbo-core's CLI only: its sources are the core cmd_* handlers. hypergumbo-tracker appears only as a \"dev zone\" SINK (claims assert the analysis commands never reach tracker code). Nothing audits the tracker package as a product, although it ships on PyPI (`htrac`): `htrac serve` (Starlette/uvicorn HTTP + WebSocket server with a write API), `sync` (git branch/commit/push, GitHub/Forgejo API), `tui`, the CLI, the stop hook, embeddings.\n\nAdd tracker self-claims in the same machinery: declare the htrac entry points (serve handlers, sync, tui, CLI subcommands) as sources; state per-entry-point claims (e.g. CLI/tui: writes only under the tracker dirs and journal, no network; sync: network only to the configured forge, subprocess only git; serve: binds only to the configured address, every mutating route requires an authenticated session); extend the snapshot (docs/hypergumbo.claims.expected.json) and SECURITY.md generation; make check-self-claims cover it. Expect `violated` on serve until WI-hopip lands (serve.py's write API has no auth; the auth modules are imported by nothing) -- record that verdict honestly rather than waiting. Owner request 2026-10-07 (comfort installing hypergumbo on a personal daily-driver machine and recommending it)."  # 187b
+    fields: {}  # 187b
