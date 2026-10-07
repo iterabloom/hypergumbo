@@ -3582,7 +3582,9 @@ def detect_profile(
     elif framework_spec.mode == FrameworkMode.ALL:
         # Use ALL known frameworks for detected languages (don't scan dependency files)
         # This enables pattern matching even when frameworks aren't in dependency manifests
-        detected_frameworks = list(framework_spec.frameworks)
+        # Sorted: ``frameworks`` is a set, and ``list(<set>)`` emitted the
+        # profile's framework list in per-process hash order (WI-vosag).
+        detected_frameworks = sorted(framework_spec.frameworks)
     elif framework_spec.mode == FrameworkMode.EXPLICIT:
         # User explicitly requested these frameworks - trust them, don't scan dependency files
         # This enables pattern matching even when frameworks aren't in manifest files

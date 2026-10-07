@@ -4994,3 +4994,18 @@ def test_profile_finds_an_analyzer_enumerator_by_language_not_by_pass_name(tmp_p
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)
     languages = json.loads(out_path.read_text())["profile"]["languages"]
     assert languages.get("makefile", {}).get("files") == 1, languages
+
+
+def test_all_mode_frameworks_are_sorted(tmp_path: Path) -> None:
+    """``--frameworks all`` emits a stable framework order (WI-vosag analogue).
+
+    The ALL-mode list was ``list(<set>)`` — per-process hash order — so the
+    serialised profile differed between two runs on the same repo.
+    """
+    from hypergumbo_core.profile import detect_profile
+
+    (tmp_path / "app.py").write_text("x = 1\n")
+    (tmp_path / "app.js").write_text("x = 1\n")
+    profile = detect_profile(tmp_path, frameworks="all")
+    assert len(profile.frameworks) > 1
+    assert profile.frameworks == sorted(profile.frameworks)
