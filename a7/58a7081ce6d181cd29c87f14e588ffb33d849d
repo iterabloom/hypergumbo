@@ -1,0 +1,44 @@
+Original commit body from 44a69cee46c3d46d07232c18a59f465abce4e5f1:
+
+Implements ADR-0004 §"Installed dependency source" (WI-bapal).
+
+- discovery.INSTALLED_DEP_RULES: per-ecosystem {candidate name, content
+  marker, package listing} registry generalising the virtualenv rule. Mix
+  deps/ (mix.exs+mix.lock beside, or deps/*/hex_metadata.config),
+  node_modules/ (package.json beside, or npm/yarn/pnpm state file inside),
+  Composer vendor/ (composer.json + vendor/autoload.php), Go vendor/ (go.mod +
+  vendor/modules.txt), Bundler vendor/bundle (Gemfile.lock), CocoaPods Pods/
+  (Podfile.lock + Pods/Manifest.lock), virtualenvs. node_modules and vendor
+  leave DEFAULT_EXCLUDES.
+- Owner decision recorded in ADR-0004: a committed directory (non-dot entries
+  in HEAD's tree, via git ls-tree; never the index) is vendored code, never
+  installed; it is analysed and classified tier 3 (node_modules/ and vendor/
+  below the root are now tier 3 too).
+- BUILD_OUTPUT_RULES: Mix cover/, Phoenix priv/static/assets, .dart_tool,
+  .stack-work, elm-stuff by content; .elixir_ls by name.
+- Disclosure when something was skipped: one stderr line, one sketch
+  Overview line, supply_chain_summary.installed_deps_skipped
+  {dirs, packages, entries}.
+- --trace-deps <pkg,...|all|none> on sketch/survey/slice and a trace_deps
+  config key (ADR-0045); part of the results-cache key (-deps-all /
+  -deps-<hash> state suffix). Per package, only the traced packages'
+  directories inside an installed directory are analysed; traced source is
+  tier 3.
+- Project-manifest walks, profile/sketch manifest scans, the sketch's
+  Additional Files and Structure counts never treat installed source as the
+  project's (an installed deps/cowboy/mix.exs had declared the cowboy
+  framework).
+
+Evidence: Mix fixture (mix.exs, mix.lock, lib/app.ex -> Foo.greet,
+deps/foo): default -> no deps/ symbols, App.hi -> Foo.greet external stub,
+disclosure on stderr and in the sketch; --trace-deps foo / all -> deps/foo
+symbols tier 3 and the call resolves; deps/ committed -> tier 3 by default.
+Cold sketch of ~/special_repos/thc_dev: 49,568 symbols / 163,259 edges,
+wall 5:11.7, peak RSS 2.45 GiB, identical graph to a new-code cold sketch of
+pristine ~/special_repos/thc (49,568 / 163,259, 5:02.4); the +29 symbols /
++52 edges against the 8.1.0 baseline (49,539 / 163,207) are thc's committed
+assets/vendor + assets/css/vendor, now analysed.
+
+Refs WI-bapal-sanok-vujoj-jisub-duzor-dojuz-misiz-fudok
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
