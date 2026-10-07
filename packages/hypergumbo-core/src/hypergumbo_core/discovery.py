@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""File discovery with exclude patterns, locale handling, and extension disambiguation.
+"""File discovery: excludes, installed-dependency detection, locales, ambiguous extensions.
 
 Provides shared utilities for finding source files across the repository while
 respecting exclude patterns. Also provides:
@@ -41,6 +41,38 @@ respecting exclude patterns. Also provides:
   tooling) at the directory root. Disclosed limit: the Windows arm has no
   real-world positive control (zero hits across the 467-repo corpus), so it
   is asserted by fixture only and is not claimed to be validated.
+
+- **Installed dependency source, recognised by content (ADR-0004
+  §"Installed dependency source").** The virtualenv rule generalised to every
+  ecosystem: ``INSTALLED_DEP_RULES`` is a registry of
+  ``ContentRule(dir_name, ecosystem, marker, packages)`` entries — Mix
+  ``deps/``, ``node_modules/``, Composer and Go ``vendor/``, Bundler
+  ``vendor/bundle``, CocoaPods ``Pods/``, virtualenvs. The name only selects
+  which directories get the marker test (one set lookup, so every other
+  directory costs nothing); the marker decides; and a directory whose files
+  are COMMITTED (present in HEAD, ``_is_committed_dir``) is vendored code,
+  never installed, whatever marker it carries. ``match_content_rule`` is the
+  single test. Installed source is pruned unless ``--trace-deps`` / the
+  ``trace_deps`` config key opts in — wholesale (``all``) or per package, in
+  which case ``content_rule_prunes`` keeps only the traced packages' paths
+  inside the directory (and the directories on the way to them). The policy
+  the walk applies lives in process state set by ``cli.run_survey``
+  (``set_active_trace_deps``), like the file index, because the walkers are
+  reached from every analyzer without a parameter path; the flag's value is
+  recorded by ``cli.main`` (``set_trace_deps_override``) and
+  ``resolve_trace_deps`` is the one place flag, config and default are
+  combined, read by both the walk and the results-cache key.
+  ``BUILD_OUTPUT_RULES`` uses the same shape for tool output whose name is
+  too generic to exclude outright (Mix ``cover/``, Phoenix
+  ``priv/static/assets``, ``.dart_tool``, ``.stack-work``, ``elm-stuff``):
+  always pruned, no opt-in, not disclosed. ``FileIndex.build`` records every
+  installed directory it meets (``installed_dep_roots``);
+  ``installed_deps_summary`` / ``format_installed_deps_disclosure`` turn
+  those into ``supply_chain_summary.installed_deps_skipped`` and the
+  one-line stderr/sketch disclosure. Hand-written project-manifest walks
+  (``walks_into`` + ``manifest_walk_skip``) never enter a content-claimed
+  directory, traced or not, and keep skipping ``node_modules`` / ``vendor``
+  by name: a dependency's manifest never names the project.
 """
 from __future__ import annotations
 
@@ -49,7 +81,7 @@ import re
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Callable, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator
 
 from .paths import is_test_file
 
@@ -417,17 +449,19 @@ def classify_dot_d_file(path: Path) -> str:
 
 # Default exclude patterns (gitignore-style)
 DEFAULT_EXCLUDES = [
-    # Dependency directories
-    "node_modules",
-    "vendor",  # PHP (Composer), Go
-    # NOTE: venv / .venv / env are NOT here. They are content-conditioned via
-    # VENV_DIR_NAMES + _looks_like_virtualenv — a directory is a virtualenv
-    # because of what it CONTAINS, not what it is called. See that helper.
+    # Dependency directories.
+    # NOTE: node_modules / vendor / deps / venv / .venv / env / Pods are NOT
+    # here. Installed dependency source is recognised by CONTENT, per
+    # ecosystem, through INSTALLED_DEP_RULES (ADR-0004 §"Installed dependency
+    # source"): a directory is installed dependency source because a package
+    # manager filled it, not because of its name -- and a committed
+    # (git-tracked) directory is never installed. See match_content_rule.
     ".eggs",
     # Build output
     "dist",
     "build",
-    "_build",  # Sphinx docs
+    "_build",  # Sphinx docs, Mix
+    ".elixir_ls",  # ElixirLS language-server build/cache dir (ADR-0004 §7)
     "out",
     "target",  # Rust, Maven
     # VCS and IDE
@@ -529,11 +563,657 @@ def _looks_like_virtualenv(directory: str) -> bool:
     files — is what the markers prevent; this repo's own ``.venv`` (26,882 source
     files) is a live positive control in the test suite.
 
+    This is the Python entry of :data:`INSTALLED_DEP_RULES`; the other ecosystems
+    follow the same shape (a candidate name selects the test, content decides).
+
     Cached because discovery calls this once per candidate directory per walk and the
     answer cannot change within a run. Keyed on ``str`` so the cache is hashable.
     """
     base = Path(directory)
     return any((base / marker).exists() for marker in _VENV_MARKERS)
+
+
+# ---------------------------------------------------------------------------
+# Installed dependency source and tool build output, recognised by content
+# (ADR-0004 §"Installed dependency source", points 1-3 and 7)
+# ---------------------------------------------------------------------------
+
+
+def _exists(base: Path, *names: str) -> bool:
+    """Every one of ``names`` exists under ``base``."""
+    return all((base / n).exists() for n in names)
+
+
+def _child_dirs(base: Path) -> list[Path]:
+    """Sorted real subdirectories of ``base`` (never a symlink -- INV-pivir)."""
+    try:
+        return sorted(
+            c for c in base.iterdir() if c.is_dir() and not c.is_symlink()
+        )
+    except OSError:  # pragma: no cover - unreadable directory
+        return []
+
+
+def _mix_deps_marker(d: Path) -> bool:
+    """Mix ``deps/``: the project's ``mix.exs`` + ``mix.lock`` beside it, or a
+    Hex-fetched package inside it (``deps/<pkg>/hex_metadata.config``, written
+    by ``mix deps.get`` for every Hex package -- not for git/path deps, which
+    is why the sibling arm comes first)."""
+    if _exists(d.parent, "mix.exs", "mix.lock"):
+        return True
+    return any((c / "hex_metadata.config").is_file() for c in _child_dirs(d))
+
+
+def _mix_deps_packages(d: Path) -> dict[str, Path]:
+    """One package per ``deps/<app>/`` directory; the name is the OTP app."""
+    return {c.name: c for c in _child_dirs(d) if not c.name.startswith(".")}
+
+
+#: Package-manager state files npm (>=7), Yarn classic, pnpm and Yarn Berry
+#: (``nodeLinker: node-modules``) write at the root of a ``node_modules`` they
+#: populated.
+_NODE_MODULES_STATE_FILES: tuple[str, ...] = (
+    ".package-lock.json", ".yarn-integrity", ".modules.yaml", ".yarn-state.yml",
+)
+
+
+def _node_modules_marker(d: Path) -> bool:
+    """``node_modules/``: a ``package.json`` beside it, or a package manager's
+    state file inside it.
+
+    WHY THE SIBLING MANIFEST. npm, Yarn and pnpm all install into the
+    ``node_modules`` next to the ``package.json`` they resolved, and Node's
+    resolver walks up looking for exactly that layout -- so a ``node_modules``
+    with a manifest beside it is one a package manager made. That covers nested
+    installs too (``node_modules/a/node_modules`` sits beside
+    ``node_modules/a/package.json``). The state-file arm covers a tree whose
+    manifest has moved away. What is NOT recognised, deliberately: a bare
+    ``node_modules`` with neither (resolver test fixtures such as
+    ``test/fixtures/node_modules/x/index.js``), which stays analysed; it is
+    still classified tier 3 by ``supply_chain``'s ``node_modules/`` pattern.
+    Not chosen: "children carry package.json", which needs a listing per
+    candidate and is fooled by the same fixtures.
+    """
+    if (d.parent / "package.json").is_file():
+        return True
+    return any((d / f).is_file() for f in _NODE_MODULES_STATE_FILES)
+
+
+def _node_modules_packages(d: Path) -> dict[str, Path]:
+    """``node_modules/<pkg>`` and ``node_modules/@scope/<pkg>``; ``.bin`` and
+    other dot-entries are tooling, not packages."""
+    out: dict[str, Path] = {}
+    for c in _child_dirs(d):
+        if c.name.startswith("."):
+            continue
+        if c.name.startswith("@"):
+            for s in _child_dirs(c):
+                out[f"{c.name}/{s.name}"] = s
+        else:
+            out[c.name] = c
+    return out
+
+
+def _composer_vendor_marker(d: Path) -> bool:
+    """Composer ``vendor/``: ``composer.json`` beside it and the
+    ``vendor/autoload.php`` Composer generates on every install."""
+    return (d.parent / "composer.json").is_file() and (d / "autoload.php").is_file()
+
+
+def _composer_vendor_packages(d: Path) -> dict[str, Path]:
+    """``vendor/<vendor>/<package>``, named ``vendor/package`` as Composer
+    does; ``vendor/bin`` and ``vendor/composer`` are Composer's own."""
+    out: dict[str, Path] = {}
+    for v in _child_dirs(d):
+        if v.name in ("bin", "composer") or v.name.startswith("."):
+            continue
+        for p in _child_dirs(v):
+            out[f"{v.name}/{p.name}"] = p
+    return out
+
+
+def _go_vendor_marker(d: Path) -> bool:
+    """Go modules ``vendor/``: ``go.mod`` beside it and the
+    ``vendor/modules.txt`` manifest ``go mod vendor`` writes."""
+    return (d.parent / "go.mod").is_file() and (d / "modules.txt").is_file()
+
+
+def _go_vendor_packages(d: Path) -> dict[str, Path]:
+    """One package per ``# <module> <version>`` line of ``modules.txt``,
+    named by module path, at ``vendor/<module path>``. A line whose directory
+    is absent (a module with no vendored packages) names nothing."""
+    out: dict[str, Path] = {}
+    try:
+        text = (d / "modules.txt").read_text(encoding="utf-8", errors="replace")
+    except OSError:  # pragma: no cover - unreadable manifest
+        return out
+    for line in text.splitlines():
+        if line.startswith("# "):
+            fields = line[2:].split()
+            if fields and (d / fields[0]).is_dir():
+                out[fields[0]] = d / fields[0]
+    return out
+
+
+#: A gem directory is ``<name>-<version>``; the version starts with a digit.
+_GEM_DIR_RE = re.compile(r"^(?P<name>.+?)-\d[\w.\-]*$")
+
+
+def _bundler_marker(d: Path) -> bool:
+    """Bundler ``vendor/bundle`` (``bundle install --path vendor/bundle``):
+    the candidate is ``bundle`` itself, inside ``vendor``, with ``Gemfile.lock``
+    beside that ``vendor`` and the ``ruby/<abi>/`` layout Bundler writes.
+    Keyed on ``bundle`` rather than ``vendor`` because a Rails ``vendor/`` also
+    holds committed hand-placed code (``vendor/javascript``), which must stay."""
+    return (
+        d.parent.name == "vendor"
+        and (d.parent.parent / "Gemfile.lock").is_file()
+        and (d / "ruby").is_dir()
+    )
+
+
+def _bundler_packages(d: Path) -> dict[str, Path]:
+    """``vendor/bundle/ruby/<abi>/gems/<name>-<version>``, named ``<name>``."""
+    out: dict[str, Path] = {}
+    for abi in _child_dirs(d / "ruby"):
+        for g in _child_dirs(abi / "gems"):
+            m = _GEM_DIR_RE.match(g.name)
+            out[m.group("name") if m else g.name] = g
+    return out
+
+
+#: Directories CocoaPods writes into ``Pods/`` that are not pods.
+_PODS_NON_PACKAGES = frozenset({
+    "Target Support Files", "Local Podspecs", "Headers", "Pods.xcodeproj",
+})
+
+
+def _pods_marker(d: Path) -> bool:
+    """CocoaPods ``Pods/``: ``Podfile.lock`` beside it and the
+    ``Pods/Manifest.lock`` copy ``pod install`` writes."""
+    return (d.parent / "Podfile.lock").is_file() and (d / "Manifest.lock").is_file()
+
+
+def _pods_packages(d: Path) -> dict[str, Path]:
+    return {
+        c.name: c for c in _child_dirs(d)
+        if c.name not in _PODS_NON_PACKAGES and not c.name.startswith(".")
+    }
+
+
+def _venv_marker(d: Path) -> bool:
+    return _looks_like_virtualenv(str(d))
+
+
+#: Entries of ``site-packages`` that are install metadata, not importable code.
+_SITE_PACKAGES_METADATA_SUFFIXES: tuple[str, ...] = (
+    ".dist-info", ".egg-info", ".data", ".pth",
+)
+
+
+def _venv_packages(d: Path) -> dict[str, Path]:
+    """Importable top-level names in the virtualenv's ``site-packages``
+    (``lib/python*/site-packages`` on POSIX, ``Lib/site-packages`` on
+    Windows): a package directory or a single-module ``<name>.py``. Named by
+    IMPORT name (``yaml``, not ``PyYAML``) -- the directory name is all the
+    layout gives without reading install metadata."""
+    sites = [lib / "site-packages" for lib in _child_dirs(d / "lib")]
+    sites.append(d / "Lib" / "site-packages")
+    out: dict[str, Path] = {}
+    for site in sites:
+        try:
+            entries = sorted(site.iterdir())
+        except OSError:
+            continue
+        for e in entries:
+            if e.name.startswith(".") or e.name == "__pycache__" or e.is_symlink():
+                continue
+            if e.name.endswith(_SITE_PACKAGES_METADATA_SUFFIXES):
+                continue
+            if e.is_dir():
+                out[e.name] = e
+            elif e.suffix == ".py":
+                out[e.stem] = e
+    return out
+
+
+def _sibling_file(*names: str) -> Callable[[Path], bool]:
+    """Marker: one of ``names`` sits beside the candidate directory."""
+    def check(d: Path) -> bool:
+        return any((d.parent / n).is_file() for n in names)
+    return check
+
+
+def _phoenix_assets_marker(d: Path) -> bool:
+    """Phoenix ``priv/static/assets``: the esbuild/tailwind output directory
+    ``mix assets.build`` writes, identified by its full ``priv/static/assets``
+    position under a directory holding ``mix.exs``. ``assets`` alone is far
+    too common a name to condition on anything less."""
+    static = d.parent
+    priv = static.parent
+    return (
+        static.name == "static"
+        and priv.name == "priv"
+        and (priv.parent / "mix.exs").is_file()
+    )
+
+
+@dataclass(frozen=True)
+class ContentRule:
+    """One {candidate directory name, content marker} registry entry.
+
+    ``dir_name`` only SELECTS which directories get ``marker``; the marker
+    decides. ``packages`` lists what the directory holds, keyed by the name a
+    user passes to ``--trace-deps``; it is ``None`` for tool build output,
+    which has no packages and no opt-in (ADR-0004 §"Installed dependency
+    source" point 7). ``ecosystem`` is the display label used in the
+    disclosure line.
+    """
+
+    dir_name: str
+    ecosystem: str
+    marker: Callable[[Path], bool]
+    packages: Callable[[Path], dict[str, Path]] | None = None
+
+    @property
+    def is_installed_dep(self) -> bool:
+        return self.packages is not None
+
+
+#: Installed dependency source, per ecosystem. Not parsed unless traced
+#: (``--trace-deps``), disclosed when skipped. Two entries may share a
+#: candidate name (Composer and Go both use ``vendor``); the first whose marker
+#: passes wins. NOT YET COVERED (no entry, so such a directory is analysed):
+#: Carthage ``Carthage/Checkouts``, Yarn PnP ``.yarn/cache`` zips, Bower
+#: ``bower_components``, Elm 0.18 ``elm-stuff/packages``, Swift PM
+#: ``.build/checkouts``, Cargo ``vendor/`` (``cargo vendor``), Bundler outside
+#: ``vendor/bundle``.
+INSTALLED_DEP_RULES: tuple[ContentRule, ...] = (
+    ContentRule("deps", "Mix", _mix_deps_marker, _mix_deps_packages),
+    ContentRule("node_modules", "npm", _node_modules_marker, _node_modules_packages),
+    ContentRule("vendor", "Composer", _composer_vendor_marker, _composer_vendor_packages),
+    ContentRule("vendor", "Go module", _go_vendor_marker, _go_vendor_packages),
+    ContentRule("bundle", "Bundler", _bundler_marker, _bundler_packages),
+    ContentRule("Pods", "CocoaPods", _pods_marker, _pods_packages),
+    *(
+        ContentRule(name, "Python virtualenv", _venv_marker, _venv_packages)
+        for name in sorted(VENV_DIR_NAMES)
+    ),
+)
+
+#: Tool build output and tool state that is conditioned on content because the
+#: name alone is too generic (``cover``, ``assets``) or is shared with source
+#: elsewhere. Always pruned, no opt-in, not disclosed -- like ``_build``.
+#: ``.dart_tool``, ``.stack-work`` and ``elm-stuff`` (Elm 0.19) hold generated
+#: code and build products; Dart, Stack and Elm keep package SOURCE in a
+#: per-user cache outside the repository, so there is nothing to trace.
+#: NOT YET COVERED: Phoenix ``mix phx.digest`` output (``priv/static/*-<hash>.*``
+#: beside ``cache_manifest.json``), which is per-file, not per-directory.
+BUILD_OUTPUT_RULES: tuple[ContentRule, ...] = (
+    ContentRule("cover", "Mix coverage report", _sibling_file("mix.exs")),
+    ContentRule("assets", "Phoenix built assets", _phoenix_assets_marker),
+    ContentRule(".dart_tool", "Dart tool state", _sibling_file("pubspec.yaml")),
+    ContentRule(".stack-work", "Stack build output", _sibling_file("stack.yaml")),
+    ContentRule("elm-stuff", "Elm build output", _sibling_file("elm.json")),
+)
+
+_RULES_BY_NAME: dict[str, tuple[ContentRule, ...]] = {}
+for _rule in (*INSTALLED_DEP_RULES, *BUILD_OUTPUT_RULES):
+    _RULES_BY_NAME[_rule.dir_name] = (*_RULES_BY_NAME.get(_rule.dir_name, ()), _rule)
+del _rule
+
+#: Every directory name some content rule examines.
+CONTENT_RULE_DIR_NAMES: frozenset[str] = frozenset(_RULES_BY_NAME)
+
+
+@functools.lru_cache(maxsize=4096)
+def _is_committed_dir(directory: str) -> bool:
+    """Does HEAD's tree hold a non-dot file under ``directory``?
+
+    THE DECISION (owner, 2026-10-06; ADR-0004 §"Installed dependency source"
+    point 3): a directory whose files are committed is vendored code, never
+    "installed" -- even when it carries a package manager's marker, as a
+    committed ``go mod vendor`` tree carries ``vendor/modules.txt``. It is
+    analysed and classified tier 3. A fresh clone holds the same files, which
+    is the point of the policy: a dev box and a clone of one commit agree.
+
+    HOW, AND WHY NOT ``git ls-files``. One ``git ls-tree --name-only HEAD --
+    <name>/`` per marker-positive candidate (a handful per repository, zero in
+    most), cached. ``ls-tree`` reads tree objects only. ``ls-files`` reads the
+    INDEX, and reading the index with ``core.fsmonitor`` configured runs a
+    program the analysed repository names -- the same class of hazard that
+    removed ``git status`` from ``repo_fingerprint`` (see its module
+    docstring). Consequence: "committed" means present in HEAD; a tree that is
+    only staged counts as not committed. Children that are all dot-files
+    (``.gitkeep``, ``.gitignore``) do not count -- a placeholder that keeps an
+    empty ``vendor/`` in the tree does not make the installed contents
+    committed.
+
+    Fails open to "not committed" (markers then decide): no git binary, not a
+    work tree, no commits yet, or any git error. ``GIT_DIR`` and friends are
+    dropped from the child environment so an ambient hook environment cannot
+    point the query at a different repository; ``GIT_NO_LAZY_FETCH`` keeps a
+    partial clone from fetching over the network.
+    """
+    import os
+    import shutil
+    import subprocess  # nosec B404 - only for SubprocessError; the call goes through repo_inspect_git
+
+    from .safety_zones import repo_inspect_git
+
+    git = shutil.which("git")
+    if git is None:  # pragma: no cover - git is installed wherever the suite runs
+        return False
+    d = Path(directory)
+    env = {
+        k: v for k, v in os.environ.items()
+        if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+                     "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR")
+    }
+    env["GIT_NO_LAZY_FETCH"] = "1"
+    try:
+        proc = repo_inspect_git(
+            [git, "ls-tree", "--name-only", "HEAD", "--", f"{d.name}/"],
+            cwd=d.parent, capture_output=True, text=True, check=False,
+            env=env, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover - defensive
+        return False
+    if proc.returncode != 0:
+        return False
+    return any(
+        line and not line.rsplit("/", 1)[-1].startswith(".")
+        for line in proc.stdout.splitlines()
+    )
+
+
+@functools.lru_cache(maxsize=8192)
+def _match_content_rule(directory: str, name: str) -> ContentRule | None:
+    path = Path(directory)
+    if not path.is_dir() or path.is_symlink():
+        return None
+    for rule in _RULES_BY_NAME.get(name, ()):
+        if rule.marker(path):
+            return None if _is_committed_dir(directory) else rule
+    return None
+
+
+def match_content_rule(path: Path) -> ContentRule | None:
+    """The content rule that claims directory ``path``, or ``None``.
+
+    THE single test for "is this installed dependency source / tool build
+    output". The name selects candidate rules (a set lookup, so every other
+    directory costs nothing); the first rule whose marker passes claims the
+    directory unless it is committed (:func:`_is_committed_dir`). Cached per
+    path: discovery asks once per candidate per walk and the answer cannot
+    change within a run.
+    """
+    if path.name not in CONTENT_RULE_DIR_NAMES:
+        return None
+    return _match_content_rule(str(path), path.name)
+
+
+def under_content_rule_dir(repo_root: Path, dir_parts: "Iterable[str]") -> bool:
+    """Does the repo-relative directory chain ``dir_parts`` pass through a
+    directory a content rule claims (installed dependency source or
+    content-conditioned build output)?
+
+    For scans that glob or ``rglob`` rather than walk with
+    :func:`is_pruned_dir` -- the profile's and sketch's manifest scans, the
+    sketch's Additional Files candidates -- so ``deps/<pkg>/mix.exs`` is not
+    read as a sub-project and ``node_modules/<pkg>/README.md`` is not
+    offered as a project document.
+    """
+    parts = tuple(dir_parts)
+    return any(
+        match_content_rule(repo_root.joinpath(*parts[: i + 1])) is not None
+        for i in range(len(parts))
+    )
+
+
+# ---------------------------------------------------------------------------
+# --trace-deps: the per-package opt-in (ADR-0004 §"Installed dependency
+# source" point 5)
+# ---------------------------------------------------------------------------
+
+
+def _fold_package_name(name: str) -> str:
+    """Comparison key for package names: case-folded, ``-``/``_``/``.``
+    unified, so ``--trace-deps typing-extensions`` finds ``typing_extensions``
+    and ``Phoenix_HTML`` finds ``phoenix_html``. Applied to both sides."""
+    return re.sub(r"[-_.]", "-", name.strip().lower())
+
+
+@dataclass(frozen=True)
+class TraceDeps:
+    """Which installed dependency source to analyse.
+
+    ``everything`` is ``--trace-deps all``; otherwise ``names`` holds the
+    folded package names. The empty value (the default) traces nothing.
+    """
+
+    everything: bool = False
+    names: frozenset[str] = frozenset()
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.everything and not self.names
+
+    def traces(self, package: str) -> bool:
+        return self.everything or _fold_package_name(package) in self.names
+
+    def cache_token(self) -> str:
+        """Stable, filesystem-safe token for the results-cache key; ``""``
+        when nothing is traced, so every untraced cache entry keeps its key."""
+        import hashlib
+
+        if self.is_empty:
+            return ""
+        if self.everything:
+            return "deps-all"
+        digest = hashlib.sha256(",".join(sorted(self.names)).encode()).hexdigest()
+        return f"deps-{digest[:12]}"
+
+    @classmethod
+    def parse(cls, spec: "str | Iterable[str] | None") -> "TraceDeps":
+        """Parse ``"all"``, ``"none"``, ``"a,b"`` or a list of names.
+
+        ``all`` traces everything, ``none`` (or an empty value) nothing. Raises
+        ``ValueError`` when ``all``/``none`` is mixed with package names --
+        ``--trace-deps all,phoenix`` has no single meaning.
+        """
+        if spec is None:
+            return cls()
+        items = spec.split(",") if isinstance(spec, str) else list(spec)
+        names = [str(i).strip() for i in items if str(i).strip()]
+        keywords = {n.lower() for n in names} & {"all", "none"}
+        if keywords and len(names) > 1:
+            raise ValueError(
+                f"'{', '.join(names)}': 'all' and 'none' cannot be combined "
+                f"with package names",
+            )
+        if not names or keywords == {"none"}:
+            return cls()
+        if keywords == {"all"}:
+            return cls(everything=True)
+        return cls(names=frozenset(_fold_package_name(n) for n in names))
+
+
+#: The command-line value (``--trace-deps``) for the running command, or None
+#: when the flag was not given. Set by ``cli.main`` around dispatch.
+_trace_deps_override: TraceDeps | None = None
+
+#: What the walk in progress applies, and the root it applies under. Set by
+#: ``cli.run_survey`` for the duration of one analysis; empty otherwise, so
+#: every other caller of :func:`find_files` / :func:`is_excluded` prunes all
+#: installed dependency source.
+_active_trace: TraceDeps = TraceDeps()
+_active_trace_root: Path | None = None
+
+
+def set_trace_deps_override(value: TraceDeps | None) -> None:
+    """Record (or clear, with ``None``) the ``--trace-deps`` flag value."""
+    global _trace_deps_override
+    _trace_deps_override = value
+
+
+def resolve_trace_deps(repo_root: Path) -> TraceDeps:
+    """The effective setting for ``repo_root``: the flag if given, else the
+    ``trace_deps`` key of the ADR-0045 user/project configuration, else
+    nothing. Used by the analysis AND by the results-cache key, so the two
+    cannot disagree. An unreadable config resolves to nothing here; the
+    analysis itself reports a bad config and exits 2 before it walks."""
+    if _trace_deps_override is not None:
+        return _trace_deps_override
+    from .user_config import ConfigError, load_layered_config
+
+    try:
+        return load_layered_config(repo_root=repo_root).trace_deps
+    except ConfigError:
+        return TraceDeps()
+
+
+def set_active_trace_deps(value: TraceDeps, repo_root: Path | None) -> None:
+    """Install the policy the next walks apply (``cli.run_survey``)."""
+    global _active_trace, _active_trace_root
+    _active_trace = value
+    _active_trace_root = repo_root
+
+
+@functools.lru_cache(maxsize=1024)
+def _package_map(directory: str, rule: ContentRule) -> dict[str, Path]:
+    assert rule.packages is not None
+    return rule.packages(Path(directory))
+
+
+def installed_packages(path: Path, rule: ContentRule) -> dict[str, Path]:
+    """The packages installed dependency directory ``path`` holds."""
+    return _package_map(str(path), rule)
+
+
+def _traced_paths(root: Path, rule: ContentRule, trace: TraceDeps) -> list[Path]:
+    return [
+        p for name, p in installed_packages(root, rule).items() if trace.traces(name)
+    ]
+
+
+def _nearest_installed_root(path: Path) -> tuple[Path, ContentRule] | None:
+    """The innermost installed-dependency directory strictly above ``path``,
+    searched no higher than the active root (a repository that itself lives
+    under someone's ``deps/`` is not inside installed source)."""
+    for anc in path.parents:
+        if _active_trace_root is not None and (
+            anc == _active_trace_root or not anc.is_relative_to(_active_trace_root)
+        ):
+            return None
+        if anc.name in CONTENT_RULE_DIR_NAMES:
+            rule = match_content_rule(anc)
+            if rule is not None and rule.is_installed_dep:
+                return anc, rule
+    return None
+
+
+def content_rule_prunes(name: str, path: Path) -> bool:
+    """Does the content-rule arm prune ``path`` (a directory or a file)?
+
+    1. ``path`` is claimed by a rule: build output is always pruned; installed
+       dependency source is pruned unless ``--trace-deps`` traces all of it
+       or at least one of its packages.
+    2. Per-package tracing (``--trace-deps a,b``): inside an installed
+       directory only the traced packages survive -- ``path`` is kept when it
+       IS a traced package, lies inside one, or is a directory on the way to
+       one (``node_modules/@scope``, ``lib/python3.12``). A file sitting in
+       such an on-the-way directory is not a package and is pruned.
+    """
+    trace = _active_trace
+    rule = match_content_rule(path) if name in CONTENT_RULE_DIR_NAMES else None
+    if rule is not None:
+        if not rule.is_installed_dep:
+            return True
+        if trace.everything:
+            return False
+        return not _traced_paths(path, rule, trace)
+    if not trace.names:
+        return False
+    found = _nearest_installed_root(path)
+    if found is None:
+        return False
+    allowed = _traced_paths(*found, trace)
+    return not any(
+        path == a or path.is_relative_to(a) or a.is_relative_to(path)
+        for a in allowed
+    )
+
+
+def installed_deps_summary(
+    roots: "Iterable[tuple[Path, ContentRule]]",
+    repo_root: Path,
+    trace: TraceDeps,
+) -> dict[str, Any]:
+    """``supply_chain_summary.installed_deps_skipped`` for the installed
+    directories a walk met (``FileIndex.installed_dep_roots``).
+
+    One entry per directory with packages left unanalysed -- ``packages``
+    counts the skipped ones, ``traced`` names the ones analysed under a
+    per-package ``--trace-deps``. ``dirs`` and ``packages`` are totals over
+    every entry; ``entries`` is capped at 10, like ``derived_skipped.paths``.
+    Sizes are not reported: measuring one walks the tree the skip exists to
+    avoid. A directory with no packages (only ``.bin``) is still an entry,
+    with ``packages: 0`` -- its files were skipped.
+    """
+    entries: list[dict[str, Any]] = []
+    for root, rule in roots:
+        if trace.everything:
+            continue
+        pkgs = installed_packages(root, rule)
+        traced = sorted(n for n in pkgs if trace.traces(n))
+        skipped = len(pkgs) - len(traced)
+        if pkgs and skipped == 0:
+            continue
+        try:
+            rel = root.relative_to(repo_root).as_posix()
+        except ValueError:  # pragma: no cover - the walk only yields children
+            rel = root.as_posix()
+        entries.append({
+            "path": rel,
+            "ecosystem": rule.ecosystem,
+            "packages": skipped,
+            "traced": traced,
+        })
+    entries.sort(key=lambda e: str(e["path"]))
+    return {
+        "dirs": len(entries),
+        "packages": sum(e["packages"] for e in entries),
+        "entries": entries[:10],
+    }
+
+
+#: The opt-in hint closing every disclosure line.
+TRACE_DEPS_HINT = "To trace into them: --trace-deps <pkg,...|all>"
+
+
+def format_installed_deps_disclosure(summary: "dict[str, Any] | None") -> str | None:
+    """The one-line disclosure, or ``None`` when nothing was skipped.
+
+    ``Installed dependency source not analysed: deps/ (81 Mix packages).
+    Calls into them appear as external stubs. To trace into them:
+    --trace-deps <pkg,...|all>`` -- naming at most three directories.
+    """
+    if not summary or not summary.get("dirs"):
+        return None
+    entries = summary.get("entries") or []
+    parts = []
+    for e in entries[:3]:
+        n = e["packages"]
+        noun = "package" if n == 1 else "packages"
+        parts.append(f"{e['path']}/ ({n} {e['ecosystem']} {noun})")
+    more = int(summary["dirs"]) - len(parts)
+    if more > 0:
+        parts.append(f"{more} more director{'y' if more == 1 else 'ies'}")
+    return (
+        f"Installed dependency source not analysed: {', '.join(parts)}. "
+        f"Calls into them appear as external stubs. {TRACE_DEPS_HINT}"
+    )
 
 
 def walks_into(entry: Path, skip: "Iterable[str]" = ()) -> bool:
@@ -548,13 +1228,35 @@ def walks_into(entry: Path, skip: "Iterable[str]" = ()) -> bool:
     level -- then makes the walk exponential, and ``verify-claims`` sat at 100%
     CPU for 30+ minutes before any analysis ran. Every such walk asks this, so
     the rule cannot be fixed in one walker and forgotten in the next.
+
+    Nor into a directory a content rule claims (:func:`match_content_rule`) --
+    installed dependency source or tool build output -- whatever
+    ``--trace-deps`` says. These walks read the PROJECT's own manifests and
+    source roots; a dependency's ``mix.exs`` or ``pyproject.toml`` names a
+    third-party package, never the project.
     """
     return (
         entry.is_dir()
         and not entry.is_symlink()
         and entry.name not in set(skip)
         and not entry.name.startswith(".")
+        and match_content_rule(entry) is None
     )
+
+
+#: Names hand-written PROJECT-manifest walks skip on top of
+#: :data:`DEFAULT_EXCLUDES` and :func:`walks_into`'s content test.
+#: ``node_modules`` and ``vendor`` left ``DEFAULT_EXCLUDES`` when installed
+#: dependency source became content-conditioned; for analysis that is right (a
+#: committed ``vendor/`` is analysed as tier 3), but a manifest under either --
+#: committed or not -- describes a dependency, never the project, so these
+#: walks keep skipping them by name.
+DEPENDENCY_DIR_NAMES: frozenset[str] = frozenset({"node_modules", "vendor"})
+
+
+def manifest_walk_skip() -> set[str]:
+    """The name set a project-manifest walk passes to :func:`walks_into`."""
+    return set(DEFAULT_EXCLUDES) | DEPENDENCY_DIR_NAMES
 
 
 def is_pruned_dir(
@@ -577,15 +1279,20 @@ def is_pruned_dir(
     fourth copy that merely looks right.
 
     ``abs_dir`` is the absolute path of the directory named ``name``; it is only
-    consulted for the content-conditioned venv arm.
+    consulted for the content-rule arm (:func:`content_rule_prunes` --
+    virtualenvs, the other installed dependency directories, and
+    content-conditioned build output). ``_is_excluded_classified`` also passes
+    the final FILE component through here, which is how per-package
+    ``--trace-deps`` drops a stray file beside the traced packages on both
+    walkers alike.
     """
     if name in exact:
         return True
-    # Content-conditioned venv names. Skipped when the caller already listed the name
+    # Content-conditioned names. Skipped when the caller already listed the name
     # in ``exact`` — an explicit ``--exclude env`` is a direct instruction and is
     # obeyed literally; second-guessing it would be a different bug from the DEFAULT
     # this rule fixes.
-    if name in VENV_DIR_NAMES and _looks_like_virtualenv(str(abs_dir)):
+    if content_rule_prunes(name, abs_dir):
         return True
     return any(fnmatch(name, pattern) for pattern in globs)
 
@@ -808,7 +1515,9 @@ class FileIndex:
     - _repo_root: the repository root used during construction
     """
 
-    __slots__ = ("_all_files", "_by_ext", "_by_name", "_repo_root")
+    __slots__ = (
+        "_all_files", "_by_ext", "_by_name", "_installed_dep_roots", "_repo_root",
+    )
 
     def __init__(
         self,
@@ -816,11 +1525,20 @@ class FileIndex:
         by_ext: dict[str, list[Path]],
         by_name: dict[str, list[Path]],
         all_files: list[Path],
+        installed_dep_roots: "list[tuple[Path, ContentRule]] | None" = None,
     ) -> None:
         self._repo_root = repo_root
         self._by_ext = by_ext
         self._by_name = by_name
         self._all_files = all_files
+        self._installed_dep_roots = installed_dep_roots or []
+
+    @property
+    def installed_dep_roots(self) -> "list[tuple[Path, ContentRule]]":
+        """Installed-dependency directories the walk MET, pruned or traced
+        (never one nested inside a pruned directory) -- the input to
+        :func:`installed_deps_summary`."""
+        return self._installed_dep_roots
 
     @classmethod
     def build(
@@ -852,6 +1570,11 @@ class FileIndex:
         by_ext: dict[str, list[Path]] = {}
         by_name: dict[str, list[Path]] = {}
         all_files: list[Path] = []
+        installed_roots: list[tuple[Path, ContentRule]] = []
+        # Per-package --trace-deps is the one mode in which a FILE can be
+        # pruned by the content-rule arm (a stray file beside the traced
+        # packages); every other mode skips that per-file check entirely.
+        per_package = bool(_active_trace.names)
 
         for dirpath_str, dirnames, filenames in os.walk(repo_root):
             dirpath = Path(dirpath_str)
@@ -862,10 +1585,6 @@ class FileIndex:
             # relative path for fnmatch.
             kept_dirs: list[str] = []
             for d in dirnames:
-                # Shared with _is_excluded_classified — see is_pruned_dir for why
-                # this is not an inline membership test any more.
-                if is_pruned_dir(d, dirpath / d, exact_exc, glob_exc):
-                    continue
                 if path_exc:
                     rel_dir = (dirpath / d).relative_to(repo_root).as_posix()
                     if any(
@@ -873,6 +1592,17 @@ class FileIndex:
                         for p in path_exc
                     ):
                         continue
+                if d in exact_exc:
+                    continue
+                # Record every installed-dependency directory the walk meets,
+                # pruned or traced: the disclosure is computed from these.
+                rule = match_content_rule(dirpath / d)
+                if rule is not None and rule.is_installed_dep:
+                    installed_roots.append((dirpath / d, rule))
+                # Shared with _is_excluded_classified — see is_pruned_dir for why
+                # this is not an inline membership test any more.
+                if is_pruned_dir(d, dirpath / d, exact_exc, glob_exc):
+                    continue
                 kept_dirs.append(d)
             dirnames[:] = kept_dirs
 
@@ -896,6 +1626,8 @@ class FileIndex:
                     rel_file = (dirpath / fname).relative_to(repo_root).as_posix()
                     if any(fnmatch(rel_file, p) for p in path_exc):
                         continue
+                if per_package and content_rule_prunes(fname, dirpath / fname):
+                    continue
 
                 fpath = dirpath / fname
                 all_files.append(fpath)
@@ -912,7 +1644,7 @@ class FileIndex:
         for v in by_name.values():
             v.sort()
 
-        return cls(repo_root, by_ext, by_name, all_files)
+        return cls(repo_root, by_ext, by_name, all_files, installed_roots)
 
     @classmethod
     def from_paths(cls, repo_root: Path, paths: Iterable[Path]) -> "FileIndex":

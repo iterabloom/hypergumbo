@@ -44,6 +44,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, Mapping, Optional, Tuple, Union
 
+from .discovery import TraceDeps
+
 # ``tomllib`` is stdlib from Python 3.11. Every package here declares
 # ``requires-python = ">=3.10"``, so a BARE top-level import breaks the declared
 # minimum -- and this module is imported broadly enough that the failure is not
@@ -122,8 +124,13 @@ def project_forbidden_settings() -> FrozenSet[str]:
 #: allow-list; see the module docstring on why an unknown key raises.
 #: ``merge.*`` is the ADR-0057 §5 arbitration default (WI-hukuf): a
 #: preference, allowed in both tiers, validated by :func:`_validate_merge`.
+#: ``trace_deps`` is the ADR-0004 §"Installed dependency source" opt-in
+#: (``--trace-deps``): a list of package names or the string ``"all"``. A
+#: preference -- it costs parse time and executes nothing -- so both tiers may
+#: carry it, and the project tier replaces the user tier's value.
 _KNOWN_SETTINGS: Dict[str, Union[type, Tuple[type, ...]]] = {
     "io_primitives": list,
+    "trace_deps": (str, list),
     "merge.prefer": list,
     "merge.corroborated_confidence": (int, float),
     "merge.superseded_stub_rank_factor": (int, float),
@@ -218,6 +225,9 @@ class LayeredConfig:
     #: ``[backends] <name> = true|false`` for the non-executing opt-in
     #: backends (ADR-0045 ruling 5 / WI-nanom); project replaces user per key.
     backends: "dict[str, bool]" = field(default_factory=dict)
+    #: ``trace_deps`` (ADR-0004 §"Installed dependency source"); the project
+    #: tier replaces the user tier. ``--trace-deps`` outranks both.
+    trace_deps: TraceDeps = field(default_factory=TraceDeps)
 
 
 def user_config_path(
@@ -331,6 +341,18 @@ def _validate(flat: Mapping[str, Any], path: Path, *, is_project: bool) -> None:
             )
         if setting.startswith(_MERGE_PREFIX):
             _validate_merge(setting, value, path)
+        if setting == "trace_deps":
+            _validate_trace_deps(value, path)
+
+
+def _validate_trace_deps(value: Any, path: Path) -> None:
+    """Package names (strings), or ``"all"`` / ``"none"`` on their own."""
+    if isinstance(value, list) and not all(isinstance(v, str) for v in value):
+        raise ConfigError(f"{path}: 'trace_deps' entries must be package names (strings).")
+    try:
+        TraceDeps.parse(value)
+    except ValueError as exc:
+        raise ConfigError(f"{path}: 'trace_deps' {exc}.") from exc
 
 
 def _paths_from(flat: Mapping[str, Any], config_path: Path) -> "list[Path]":
@@ -372,6 +394,8 @@ def load_layered_config(
     )
     for flat in (user_flat, proj_flat):  # ascending: the project tier wins each key it sets
         _apply_merge_settings(merged, flat)
+        if "trace_deps" in flat:
+            merged.trace_deps = TraceDeps.parse(flat["trace_deps"])
         for setting, value in flat.items():
             if setting.startswith(_BACKENDS_PREFIX):
                 merged.backends[setting[len(_BACKENDS_PREFIX):]] = bool(value)

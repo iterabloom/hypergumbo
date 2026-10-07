@@ -31,9 +31,11 @@ The walk collects every ``pyproject.toml`` under ``repo_root`` rather
 than just the root file. Monorepo layouts where the root pyproject is
 shared-tool-configuration only and actual ``[project].dependencies``
 live in ``packages/<pkg>/pyproject.toml`` are first-class. Skips the
-shared ``DEFAULT_EXCLUDES`` directory set (``node_modules``, ``venv``,
-``dist``, …) and dot-prefixed dirs so a ``pyproject.toml`` inside a
-``.venv/`` site-packages directory cannot smuggle a fake dep.
+shared ``discovery.manifest_walk_skip()`` directory set (``DEFAULT_EXCLUDES``
+plus ``node_modules`` / ``vendor``), dot-prefixed dirs, and directories a
+discovery content rule claims (a virtualenv, Mix ``deps/``, …) so a
+``pyproject.toml`` inside a virtualenv's site-packages cannot smuggle a fake
+dep.
 Mirrors :func:`hypergumbo_lang_mainstream.py._detect_source_roots`,
 which fixed the same monorepo gap for file discovery (WI-davan E1).
 
@@ -243,16 +245,17 @@ def _find_pyproject_files(repo_root: Path) -> list[Path]:
 
     Monorepo support: collects the root pyproject AND every
     ``packages/<pkg>/pyproject.toml`` (or any depth). Skips
-    ``DEFAULT_EXCLUDES`` directories (``node_modules``, ``venv``,
-    ``dist``, …) and dot-prefixed dirs so fake deps inside a vendored
-    ``.venv/site-packages/<some-pkg>/pyproject.toml`` cannot leak
+    ``discovery.manifest_walk_skip()`` names (``node_modules``, ``vendor``,
+    ``dist``, …), dot-prefixed dirs and content-claimed dependency dirs
+    (``walks_into``) so fake deps inside a vendored
+    ``venv/lib/.../site-packages/<some-pkg>/pyproject.toml`` cannot leak
     into the manifest.
 
     Returns sorted by path for deterministic output.
     """
-    from hypergumbo_core.discovery import DEFAULT_EXCLUDES, walks_into
+    from hypergumbo_core.discovery import manifest_walk_skip, walks_into
 
-    skip = set(DEFAULT_EXCLUDES)
+    skip = manifest_walk_skip()
     out: list[Path] = []
     stack: list[Path] = [repo_root]
     while stack:

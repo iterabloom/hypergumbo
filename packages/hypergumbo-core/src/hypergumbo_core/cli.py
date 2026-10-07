@@ -336,6 +336,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from .cfg import DdgEdge
     from .dataflow_scope import LanguageDataflowScope, SanitizerScope
     from .ddg_build import ReturnStatement
+    from .discovery import TraceDeps
     from .io_boundary import IoChain
     from .taint import TaintSanitizer, TaintSink, TaintSource
 
@@ -6011,8 +6012,10 @@ def _print_untraced_disclosure(
         "--boundary external_potential)."
     )
     dependency_note = (
-        " Installed dependency source is not traced (ADR-0016 §7); an "
-        "--io-primitives overlay can classify these calls."
+        " Installed dependency source is not traced by default (ADR-0016 "
+        "§7); set trace_deps = [\"<pkg>\", ...] (or \"all\") in the "
+        "configuration to trace it, or classify these calls with an "
+        "--io-primitives overlay."
         if groups[ECOSYSTEM_THIRD_PARTY] or groups[ECOSYSTEM_UNKNOWN] else ""
     )
     if hint or dependency_note:
@@ -9510,6 +9513,41 @@ def _nonneg_int_arg(label: str):
     return _parse
 
 
+def _trace_deps_arg(raw: str) -> "TraceDeps":
+    """argparse ``type=`` for ``--trace-deps``: ``all``, ``none`` or ``a,b``."""
+    from .discovery import TraceDeps
+
+    try:
+        return TraceDeps.parse(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"--trace-deps {exc}") from exc
+
+
+def _add_trace_deps_argument(parser: argparse.ArgumentParser) -> None:
+    """``--trace-deps`` on every command that can run an analysis.
+
+    ADR-0004 §"Installed dependency source": installed dependency source
+    (Mix ``deps/``, ``node_modules/``, a virtualenv, a package-manager
+    ``vendor/``, ``Pods/``) is not parsed by default. The flag outranks the
+    ``trace_deps`` configuration key for this one command; read commands find
+    a traced survey through that key, not through a one-off flag, exactly as
+    with an opt-in backend.
+    """
+    parser.add_argument(
+        "--trace-deps",
+        type=_trace_deps_arg,
+        default=None,
+        dest="trace_deps",
+        metavar="PKG,...|all",
+        help="Also analyse installed dependency source (Mix deps/, "
+             "node_modules/, virtualenv site-packages, package-manager "
+             "vendor/, Pods/), which is skipped by default: a comma-"
+             "separated list of package names, 'all', or 'none' to "
+             "override the trace_deps config key. Traced files are "
+             "classified tier 3.",
+    )
+
+
 def _unit_interval_arg(label: str):
     """argparse ``type=`` factory: require a float in the inclusive range [0.0, 1.0].
 
@@ -9732,6 +9770,7 @@ Output is Markdown, printed to stdout. Pipe to a file or clipboard:
         metavar="PATTERN",
         help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
     )
+    _add_trace_deps_argument(p_sketch)
     p_sketch.add_argument(
         "--config-extraction",
         choices=["heuristic", "embedding", "hybrid"],
@@ -9984,6 +10023,7 @@ Cache location:
         metavar="PATTERN",
         help="Additional exclude pattern (can be repeated, e.g. -e '*.json' -e 'vendor')",
     )
+    _add_trace_deps_argument(p_run)
     p_run.add_argument(
         "--frameworks",
         type=str,
@@ -10089,6 +10129,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _add_path_argument(p_slice)
+    _add_trace_deps_argument(p_slice)
     p_slice.add_argument(
         "--entry",
         default="auto",
@@ -11709,12 +11750,15 @@ def _find_derived_skipped(repo_root: Path) -> list[str]:
     """
     import re
 
-    from .discovery import DEFAULT_EXCLUDES
+    from .discovery import manifest_walk_skip, match_content_rule
 
     derived_res = [re.compile(p) for p in DERIVED_PATH_PATTERNS]
     # Prune dep/VCS/cache dirs (so we don't walk or misattribute them) but keep
     # the derived dirs themselves so the walk can reach and record them.
-    prune = {d for d in DEFAULT_EXCLUDES if d not in _DERIVED_DIR_NAMES}
+    # Dependency directories (``node_modules``/``vendor`` by name, installed
+    # dependency source and content-conditioned build output by content) are
+    # pruned too: their build output is a dependency's, not the project's.
+    prune = {d for d in manifest_walk_skip() if d not in _DERIVED_DIR_NAMES}
     skipped: list[str] = []
     for dirpath, dirnames, _filenames in os.walk(repo_root):
         rel = os.path.relpath(dirpath, repo_root)
@@ -11727,16 +11771,24 @@ def _find_derived_skipped(repo_root: Path) -> list[str]:
                 skipped.extend(sub_rel + "/" + f for f in sub_files)
             dirnames[:] = []
             continue
-        dirnames[:] = [d for d in dirnames if d not in prune]
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in prune and match_content_rule(Path(dirpath) / d) is None
+        ]
     return sorted(skipped)
 
 
 def _compute_supply_chain_summary(
-    symbols: list[Symbol], derived_paths: list[str]
+    symbols: list[Symbol],
+    derived_paths: list[str],
+    installed_deps_skipped: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Compute supply chain summary from classified symbols.
 
-    Returns a dict with counts per tier plus derived_skipped info. Tier-3
+    Returns a dict with counts per tier plus the two exclusion-disclosure
+    buckets: ``derived_skipped`` and ``installed_deps_skipped`` (ADR-0004
+    §"Installed dependency source" -- ``discovery.installed_deps_summary``'s
+    ``{dirs, packages, entries}``, empty when nothing was skipped). Tier-3
     (external_dep) carries two sub-buckets counting its symbols by ``meta``
     provenance stamps: ``ecosystem`` (ADR-0041 §3: stdlib / third_party / unknown)
     and ``directness`` (ADR-0041 §2: direct / transitive / undeclared / unknown).
@@ -11786,6 +11838,9 @@ def _compute_supply_chain_summary(
     summary["derived_skipped"] = {
         "files": len(tier_files[4]) + len(derived_paths),
         "paths": derived_paths[:10],
+    }
+    summary["installed_deps_skipped"] = installed_deps_skipped or {
+        "dirs": 0, "packages": 0, "entries": [],
     }
 
     return summary
@@ -12124,12 +12179,18 @@ def _releases_file_index(fn: _SurveyFn) -> _SurveyFn:
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        from hypergumbo_core.discovery import set_file_index
+        from hypergumbo_core.discovery import (
+            TraceDeps, set_active_trace_deps, set_file_index,
+        )
 
         try:
             return fn(*args, **kwargs)
         finally:
             set_file_index(None)
+            # The --trace-deps policy the walk applied is scoped to the same
+            # run as the index it shaped (ADR-0004 §"Installed dependency
+            # source").
+            set_active_trace_deps(TraceDeps(), None)
 
     return cast(_SurveyFn, wrapper)
 
@@ -12244,7 +12305,9 @@ def run_survey(
     # This replaces 80+ redundant rglob() calls across analyzers,
     # profile detection, and linkers — ~75% of uncached runtime.
     from hypergumbo_core.discovery import (
-        DEFAULT_EXCLUDES, FileIndex, set_file_index, set_max_file_bytes,
+        DEFAULT_EXCLUDES, FileIndex, format_installed_deps_disclosure,
+        installed_deps_summary, resolve_trace_deps, set_active_trace_deps,
+        set_file_index, set_max_file_bytes,
     )
     # ADR-0057 §5 (WI-hukuf): the arbitration policy is a preference in the
     # ADR-0045 config tiers. Resolved BEFORE any analysis so a bad `[merge]`
@@ -12256,8 +12319,20 @@ def run_survey(
     combined_excludes = list(DEFAULT_EXCLUDES)
     if extra_excludes:
         combined_excludes.extend(extra_excludes)
+    # ADR-0004 §"Installed dependency source": installed dependency source is
+    # pruned by the walk unless --trace-deps / the trace_deps config key opts
+    # into it; what was skipped is disclosed (stderr here, the sketch, and
+    # supply_chain_summary.installed_deps_skipped).
+    trace_deps = resolve_trace_deps(repo_root)
+    set_active_trace_deps(trace_deps, repo_root)
     file_index = FileIndex.build(repo_root, excludes=combined_excludes)
     set_file_index(file_index)
+    installed_deps_skipped = installed_deps_summary(
+        file_index.installed_dep_roots, repo_root, trace_deps,
+    )
+    _deps_disclosure = format_installed_deps_disclosure(installed_deps_skipped)
+    if _deps_disclosure:
+        print(_deps_disclosure, file=sys.stderr)
 
     # Detect repo profile (languages, frameworks) with LOC counting.
     # Analyzers will read the same files shortly, so OS cache is warm.
@@ -12729,7 +12804,8 @@ def run_survey(
     # sees them, so we recover them with a direct scan to keep derived_skipped
     # an honest "what did we ignore" view rather than a silent {files:0}.
     behavior_map["supply_chain_summary"] = _compute_supply_chain_summary(
-        all_symbols, derived_paths=_find_derived_skipped(repo_root)
+        all_symbols, derived_paths=_find_derived_skipped(repo_root),
+        installed_deps_skipped=installed_deps_skipped,
     )
 
     # Pre-extract sketch data (config, readme)
@@ -13172,6 +13248,11 @@ def main(argv=None) -> int:
         parser.print_help()  # pragma: no cover
         return 1  # pragma: no cover
 
+    # ADR-0004 §"Installed dependency source": --trace-deps holds for this one
+    # command (``discovery.resolve_trace_deps`` reads it for the analysis AND
+    # the results-cache key) and is cleared on every exit path below.
+    from .discovery import set_trace_deps_override
+    set_trace_deps_override(getattr(args, "trace_deps", None))
     try:
         result = args.func(args)
         # ADR-0047 ruling 9 (WI-putat). Asked AFTER the command has produced
@@ -13225,6 +13306,8 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
         return 1
+    finally:
+        set_trace_deps_override(None)
 
 
 

@@ -59,6 +59,8 @@ class TestJsTsFileDiscovery:
         node_mods = tmp_path / "node_modules" / "pkg"
         node_mods.mkdir(parents=True)
         (node_mods / "index.js").write_text("// ignored")
+        # An installed tree, recognised by content (ADR-0004 §"Installed dependency source").
+        (tmp_path / "node_modules" / ".package-lock.json").write_text("{}")
         (tmp_path / "app.js").write_text("// included")
         files = list(find_js_ts_files(tmp_path))
         assert len(files) == 1

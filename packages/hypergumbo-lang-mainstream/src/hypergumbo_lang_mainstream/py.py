@@ -2437,8 +2437,9 @@ def _detect_source_roots(repo_root: Path) -> list[Path]:
     ``packages.hypergumbo-core.src.hypergumbo_core.taxonomy`` — invalid
     Python (hyphen) and not the real importable name (WI-davan E1).
 
-    Implementation: iterative directory walk. Skips DEFAULT_EXCLUDES
-    directories and dot-prefixed dirs to avoid `.git` / `node_modules` /
+    Implementation: iterative directory walk. Skips
+    ``discovery.manifest_walk_skip()`` names, content-claimed dependency dirs
+    and dot-prefixed dirs to avoid `.git` / `node_modules` / virtualenvs /
     build outputs. When a ``src`` directory satisfies both conditions, it
     is collected and not descended into; nested ``src`` directories
     deeper inside another source root are not searched (they would be
@@ -2446,9 +2447,9 @@ def _detect_source_roots(repo_root: Path) -> list[Path]:
 
     Returns a list sorted by path (deterministic for tests and consumers).
     """
-    from hypergumbo_core.discovery import DEFAULT_EXCLUDES, walks_into
+    from hypergumbo_core.discovery import manifest_walk_skip, walks_into
 
-    skip = set(DEFAULT_EXCLUDES)
+    skip = manifest_walk_skip()
     roots: list[Path] = []
     stack: list[Path] = [repo_root]
     while stack:

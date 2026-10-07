@@ -338,6 +338,9 @@ class TestFindProtoFilesEdgeCases:
         vendor = tmp_path / "vendor" / "google"
         vendor.mkdir(parents=True)
         (vendor / "timestamp.proto").write_text('syntax = "proto3";')
+        # An installed tree, recognised by content (ADR-0004 §"Installed dependency source").
+        (tmp_path / "go.mod").write_text("module x\n")
+        (tmp_path / "vendor" / "modules.txt").write_text("# google v1\n")
         (tmp_path / "api.proto").write_text('syntax = "proto3";')
 
         files = list(find_proto_files(tmp_path))

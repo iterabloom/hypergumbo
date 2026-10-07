@@ -19,8 +19,9 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Taint follows more flows**: sources a helper returns, loop-header bindings, and new code-execution, DOM-injection and page-URL boundaries.
 - **Catalogue rows say what the call does.** Rows claiming crossings their calls do not make are removed or moved, and standard output is `logging`, not IPC.
 - **Large surveys no longer stall** in three passes.
+- **Installed dependency source is off by default** (ADR-0004): an installed `deps/`, `node_modules/`, virtualenv or package-manager `vendor/` is recognised by content, skipped, and disclosed; `--trace-deps` opts in per package; a committed vendor tree is analysed as tier 3.
 
-`SCHEMA_VERSION` advances 0.20.13 → 0.20.14 (additive: `metrics.edge_confidence`, `profile.languages[*].test_files`, `AnalysisRun.cpu_ms`, slice `limits_detail`, the pub/sub `*_identifier` meta keys), the `verify-claims --json` envelope 2.4 → 2.6, the `io-boundaries --json` envelope 2.3 → 2.4 (additive: `untraced_modules`, per-chain `dst_ecosystem`), and the validation report 0.3 → 0.4.
+`SCHEMA_VERSION` advances 0.20.13 → 0.20.14 (additive: `metrics.edge_confidence`, `profile.languages[*].test_files`, `AnalysisRun.cpu_ms`, slice `limits_detail`, the pub/sub `*_identifier` meta keys, `supply_chain_summary.installed_deps_skipped`), the `verify-claims --json` envelope 2.4 → 2.6, the `io-boundaries --json` envelope 2.3 → 2.4 (additive: `untraced_modules`, per-chain `dst_ecosystem`), and the validation report 0.3 → 0.4.
 
 ### Added
 
@@ -37,6 +38,13 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **The data-flow walk covers more code**: Java and C def/use, JS/TS arrow functions and callbacks, Go function literals under a package-level `var`, and Python `with` bindings. C++ is not covered.
 - **One write is one finding**: a stream use carried by a sink call is folded into it, with carriers listed in `sink_carriers` (envelope 2.6).
 - **`trust_level: trusted` sinks are excluded and disclosed** in `trusted_sink_flows` (envelope 2.5), and a row can require a target kind (`requires_target_kind`: Java's `PrintStream` rows apply only to `System.out`/`System.err`).
+
+#### Installed dependency source (ADR-0004)
+
+- **Installed dependency source is not parsed by default, and the skip is disclosed.** Detection is by content, per ecosystem (`discovery.INSTALLED_DEP_RULES`): Mix `deps/` (beside `mix.exs` + `mix.lock`, or holding `hex_metadata.config`), `node_modules/` (beside `package.json`, or holding a package manager's state file), Composer and Go `vendor/` (`autoload.php` / `modules.txt`), Bundler `vendor/bundle`, CocoaPods `Pods/`, and virtualenvs (the existing rule, now one entry). A run that skipped any prints one stderr line and one sketch line — *"Installed dependency source not analysed: deps/ (81 Mix packages). Calls into them appear as external stubs. To trace into them: --trace-deps <pkg,...\|all>"* — and records `supply_chain_summary.installed_deps_skipped` (`{dirs, packages, entries}`). Calls into skipped source become external stubs, which `io-boundaries` / `verify-claims` report as I/O unknown. A sketch of a developer checkout of the thc repository (81 Mix packages, 69 npm packages installed) now matches the pristine clone's.
+- **`--trace-deps <pkg,...|all|none>`** on `sketch`, `survey` and `slice`, and a `trace_deps` configuration key (ADR-0045), analyse the named packages (or all) as tier 3. The setting is part of the results-cache key.
+- **A committed directory is never installed dependency source** (owner decision): `node_modules` and `vendor` left `DEFAULT_EXCLUDES`, so a committed vendor tree — a `go mod vendor` tree included — is now analysed and classified tier 3 instead of silently dropped (`node_modules/` and `vendor/` below the root are tier 3 too). Repositories that commit their vendor tree take longer to survey; `--exclude vendor` restores the old behaviour.
+- **Tool build output conditioned on content is excluded**: `.elixir_ls/`, Mix `cover/`, Phoenix `priv/static/assets/`, `.dart_tool/`, `.stack-work/`, `elm-stuff/`. Phoenix digest output and Carthage, Yarn PnP, Bower, Swift PM and `cargo vendor` trees are not covered yet.
 
 #### Analysis output
 
