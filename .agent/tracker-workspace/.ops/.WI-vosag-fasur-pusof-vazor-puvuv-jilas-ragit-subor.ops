@@ -20,3 +20,10 @@
     pr_ref:  # 5975
     description: "On thc (2,717 test files, nearly all ExUnit .exs under test/), the sketch's Tests section reads \"2717 test files · vitest\" -- ExUnit is not named; vitest comes from extension/package.json. Test files are counted correctly; the framework label is wrong/incomplete. Detect ExUnit (test/test_helper.exs with ExUnit.start, `use ExUnit.Case`) and list every detected test framework."  # 5975
     fields: {}  # 5975
+- op: discuss  # 2960
+  at: '2026-10-07T00:33:43Z'  # 2960
+  by: agent  # 2960
+  actor: jgstern_agent  # 2960
+  clock: 2  # 2960
+  nonce: '2960'  # 2960
+  message: "Additional finding (2026-10-06, while measuring WI-bapal on thc vs thc_dev): the Tests line is also NONDETERMINISTIC across runs on identical file sets. Two cold sketches with identical surveys (49,568 nodes / 163,259 edges each) printed '2717 test files · vitest' (thc) and '2717 test files' (thc_dev). Cause: sketch._analyze_test_files builds patterns = list(all_patterns) from a SET of glob strings (str hash randomisation reorders it per process), find_files yields files pattern by pattern, and frameworks are detected from only the first 20 test files of that order. So which 20 files are sampled -- here, whether any extension/test/*.test.js is among them -- varies per process. Fix shape: sort the patterns (or the file list) and sample across languages/extensions rather than the first 20, which also bears on the ExUnit omission this item is about."  # 2960
