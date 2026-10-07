@@ -36,7 +36,9 @@ Sections in emission order:
     heuristic when sentence-transformers is unavailable.
     Environment variables and dotenv keys are NOT extracted
 7.  Entry Points — CLI commands, HTTP routes, IPC handlers,
-    cron / scheduler entries
+    cron / scheduler entries, grouped by kind; one entry budget is
+    shared across the groups (``_share_entry_budget``) so a repo with
+    hundreds of routes and exports cannot flood the sketch
 8.  Data Models — dataclasses, ORM entities, schema definitions,
     with the four-strategy detection from ``datamodels.py``
 9.  Source Files — file paths (with module docstring when known),
@@ -5394,6 +5396,49 @@ _ENTRYPOINT_GROUPS: list[tuple[str, set[str]]] = [
 ]
 
 
+def _share_entry_budget(sizes: list[int], total: int) -> list[int]:
+    """Split one entry budget across display groups (water-filling).
+
+    Groups no larger than their fair share are shown whole; whatever they
+    leave is split evenly among the larger groups, leftover slots going to
+    the earlier (higher-priority) groups. Every non-empty group keeps at
+    least one entry even when ``total`` is smaller than the group count, so
+    no kind of entrypoint silently disappears from the section.
+    """
+    quotas = [0] * len(sizes)
+    open_groups = [i for i, n in enumerate(sizes) if n > 0]
+    budget = total
+    while open_groups and budget > 0:
+        share = max(1, budget // len(open_groups))
+        small = [i for i in open_groups if sizes[i] <= share]
+        if not small:
+            base, extra = divmod(budget, len(open_groups))
+            for rank, i in enumerate(open_groups):
+                quotas[i] = base + (1 if rank < extra else 0)
+            break
+        for i in small:
+            quotas[i] = sizes[i]
+            budget -= sizes[i]
+        open_groups = [i for i in open_groups if i not in small]
+    return [max(q, 1) if n > 0 else 0 for q, n in zip(quotas, sizes, strict=True)]
+
+
+def _route_handler_hint(sym: Symbol) -> str:
+    """Name what serves a route marker, from the marker's own meta.
+
+    Controller-style routers (Phoenix, Rails) record ``controller`` and
+    ``action``; other producers record the handler as ``handler_ref`` (or
+    Go's ``handler_name``). Empty when the marker names no handler.
+    """
+    meta = sym.meta or {}
+    controller = meta.get("controller")
+    action = meta.get("action")
+    if controller and action:
+        return f"{controller}.{action}"
+    return str(controller or meta.get("handler_ref")
+               or meta.get("handler_name") or "")
+
+
 def _format_entrypoints(
     entrypoints: list[Entrypoint],
     symbols: list[Symbol],
@@ -5407,8 +5452,16 @@ def _format_entrypoints(
     Controllers, etc.). Groups with zero entries are omitted. Test functions
     are excluded entirely — the Tests section already covers them.
 
-    Within each group, entries are sorted by confidence (highest first) and
-    capped at max_entries per group.
+    Within each group, entries are sorted by rank_score (highest first).
+    ``max_entries`` is ONE budget shared by all groups (see
+    :func:`_share_entry_budget`), not a per-group cap: per group, a repo with
+    hundreds of routes and hundreds of library exports printed max_entries of
+    each and the section swallowed most of the sketch (thc: 22.7k of 31.7k
+    chars once its Phoenix routes were classified, INV-liraj).
+
+    A route marker (``meta.framework_role == "route"``) is named after its
+    route, so its label would only repeat the name; its line names the
+    handler instead (:func:`_route_handler_hint`).
     """
     if not entrypoints:
         return ""
@@ -5444,35 +5497,42 @@ def _format_entrypoints(
 
     lines = [_section_header("Entry Points", exclude_tests), ""]
 
-    repo_root_str = str(repo_root)
-    for group_name, _kinds in _ENTRYPOINT_GROUPS:
-        eps = grouped.get(group_name)
-        if not eps:
-            continue
+    present = [(name, grouped[name]) for name, _k in _ENTRYPOINT_GROUPS
+               if grouped.get(name)]
+    quotas = _share_entry_budget([len(eps) for _n, eps in present], max_entries)
 
+    repo_root_str = str(repo_root)
+    for (group_name, eps), quota in zip(present, quotas, strict=True):
         lines.append(f"### {group_name}")
         lines.append("")
 
-        shown = eps[:max_entries]
-        for ep in shown:
+        for ep in eps[:quota]:
             sym = symbol_by_id.get(ep.symbol_id)
             if sym:
+                if (sym.meta or {}).get("framework_role") == "route":
+                    handler = _route_handler_hint(sym)
+                    head = f"- `{sym.name}`" + (f" → `{handler}`" if handler else "")
+                else:
+                    head = f"- `{sym.name}` ({ep.label})"
                 # WI-kipod: prefer the captured docstring (what the entry
                 # point does) over the path (where it lives). The path is
                 # recoverable via `explain` / the Source Files section, but
                 # the human-written intent was previously never surfaced.
                 if sym.docstring:
-                    lines.append(f"- `{sym.name}` ({ep.label}) — {sym.docstring}")
+                    lines.append(f"{head} — {sym.docstring}")
                 else:
                     rel_path = sym.path
                     if rel_path.startswith(repo_root_str):
                         rel_path = rel_path[len(repo_root_str) + 1:]
-                    lines.append(f"- `{sym.name}` ({ep.label}) — `{rel_path}`")
+                    lines.append(f"{head} — `{rel_path}`")
             else:
                 lines.append(f"- `{ep.symbol_id}` ({ep.label})")
 
-        if len(eps) > max_entries:
-            lines.append(f"- ... and {len(eps) - max_entries} more")
+        if len(eps) > quota:
+            more = f"- ... and {len(eps) - quota} more"
+            if group_name == "HTTP Routes":
+                more += " (`hypergumbo routes` lists all)"
+            lines.append(more)
 
         lines.append("")
 

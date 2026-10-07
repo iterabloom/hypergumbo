@@ -21500,3 +21500,51 @@ class TestRouteMarkerSingleHome:
         )
         assert kept == []
         assert meta["route_framework"] == "sinatra"  # first-wins, not clobbered
+
+
+class TestRouteMarkerIsNotALibraryExport:
+    """INV-liraj: a route marker is a declaration, not importable API.
+
+    Route markers (ADR-0027: kind="function" + meta.framework_role in the route
+    family) are synthetic symbols named after the route ("GET /users"). The
+    definition-based ``library_export`` patterns match them by accident — the
+    Elixir pattern takes every non-private function, the Go pattern every
+    uppercase-initial name ("GET ..."). Nothing can import a route, so
+    ``enrich_symbols`` must not stamp the concept on one.
+    """
+
+    @staticmethod
+    def _marker(language: str, role: str = "route") -> Symbol:
+        return Symbol(
+            id=f"{language}:r:1-1:GET /users:function",
+            name="GET /users",
+            kind="function",
+            language=language,
+            path="lib/app_web/router.ex" if language == "elixir" else "main.go",
+            span=Span(1, 1, 0, 0),
+            meta={"framework_role": role, "http_method": "GET",
+                  "route_path": "/users"},
+        )
+
+    @staticmethod
+    def _concepts(sym: Symbol) -> list:
+        return [c.get("concept") for c in (sym.meta or {}).get("concepts", [])
+                if isinstance(c, dict)]
+
+    @pytest.mark.parametrize("language", ["elixir", "go"])
+    @pytest.mark.parametrize("role", ["route", "route_mount", "route_include"])
+    def test_route_family_marker_gets_no_library_export(
+        self, language: str, role: str,
+    ) -> None:
+        sym = self._marker(language, role)
+        enrich_symbols([sym], set())
+        assert "library_export" not in self._concepts(sym)
+
+    def test_ordinary_public_elixir_function_still_exported(self) -> None:
+        sym = Symbol(
+            id="elixir:lib/a.ex:1-2:A.run:function", name="A.run",
+            kind="function", language="elixir", path="lib/a.ex",
+            span=Span(1, 2, 0, 0), meta={},
+        )
+        enrich_symbols([sym], set())
+        assert "library_export" in self._concepts(sym)
