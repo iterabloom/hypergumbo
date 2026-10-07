@@ -1,0 +1,43 @@
+Original commit body from 1949014a910ad84db37f7c494714bdac316be0e8:
+
+The sketch's Tests line changed between runs on identical files (thc:
+"2717 test files · vitest" on one cold run, "2717 test files" on the
+next). _analyze_test_files built its glob list with list(<set>) --
+per-process str-hash order -- find_files yields pattern by pattern, and
+frameworks were detected from the FIRST 20 test files of that order. So
+whether any extension/test/*.test.js landed in the sample depended on the
+hash salt. ExUnit was never named because no pattern existed for it.
+
+- Globs are sorted, and detection no longer depends on walk order at all:
+  _sample_test_files_for_frameworks deals a budget of 200 files
+  round-robin across sorted (extension, top-level dir) strata and spreads
+  picks evenly within each, so a minority sub-project is always read.
+- Repo-root runner config names frameworks used through globals
+  (test/test_helper.exs ExUnit.start, vitest/jest config, pytest.ini /
+  conftest.py / [tool.pytest...] / [tool:pytest] / [pytest], .rspec).
+- New patterns: ExUnit (ExUnit.Case/CaseTemplate/start, and app case
+  templates like `use MyAppWeb.ConnCase`), XCTest, swift-testing, xunit,
+  nunit, mstest, phpunit, kotlin.test, googletest, catch2, dart test,
+  flutter_test, node:test, playwright, scalatest, munit, hspec, tasty,
+  clojure.test, julia Test, Rails minitest. Go grouped
+  `import ( ... "testing" )` and Rust #[tokio::test] now match.
+- Frameworks are listed case-insensitively sorted.
+
+Same defect class (set/hash order reaching output), fixed here:
+- Configuration section: CONFIG_FILES = list({...}) and the
+  INTERESTING_DEPS / go / gem sets were iterated unordered, so root
+  manifest lines swapped between runs (thc: package.json vs mix.exs) and
+  the line cap made WHICH manifests appear vary; license globs sorted.
+- profile: --frameworks all emitted list(<set>).
+- Limits.merge: skipped_languages via list(set(...)).
+- sketch_embeddings._extract_file_samples seeded its RNG with
+  hash(str(path)) (salted per process); now zlib.crc32.
+
+Evidence: thc cold sketches, two runs each, Tests line identical:
+"2717 test files · ExUnit, node:test, vitest".
+
+Refs WI-vosag-fasur-pusof-vazor-puvuv-jilas-ragit-subor
+Filed: WI-takil (PascalCase test-file classification gap),
+WI-dizad (additional-files walk excludes on absolute path parts).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
