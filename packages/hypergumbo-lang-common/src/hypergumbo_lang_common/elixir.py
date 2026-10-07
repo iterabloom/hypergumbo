@@ -2548,5 +2548,16 @@ def analyze_elixir(repo_root: Path) -> AnalysisResult:
 
     Returns an AnalysisResult with symbols, edges, and provenance.
     If tree-sitter-elixir is not available, returns a skipped result.
+
+    A non-skipped result carries the repo's Mix ``DependencyManifest``
+    (``mix_deps.parse_mix_dependencies``: mix.exs deps direct, mix.lock
+    transitive) so Elixir boundary nodes get a ``directness`` stamp
+    (WI-juzaj). None when the repo has no Mix project.
     """
-    return _analyzer.analyze(repo_root)
+    result = _analyzer.analyze(repo_root)
+    if not result.skipped:
+        from hypergumbo_lang_common.mix_deps import parse_mix_dependencies
+
+        manifest = parse_mix_dependencies(repo_root)
+        result.dependency_manifest = manifest if manifest.scoped else None
+    return result

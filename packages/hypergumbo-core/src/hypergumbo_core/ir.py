@@ -2002,8 +2002,11 @@ def create_boundary_nodes(
         edges: All edges (after deduplication).
         dependency_manifest: Optional DependencyManifest from
             supply_chain.py. When provided, boundary nodes for
-            languages with a manifest parser (go, java, kotlin, python)
-            get a ``meta["directness"]`` stamp from the declared deps.
+            languages with a manifest parser (go, java, kotlin, python,
+            elixir, javascript, typescript) get a ``meta["directness"]``
+            stamp from ``DependencyManifest.directness_for`` whenever it
+            can tell; a manifest-resolved package also gets
+            ``ecosystem="third_party"`` when the stdlib catalog is silent.
 
     Returns:
         Tuple ``(boundary_symbols, id_remap)``.
@@ -2121,12 +2124,12 @@ def create_boundary_nodes(
         # undeclared declaration relationship the classifier still knows is
         # re-emitted as the `directness` meta stamp, stamped once here (the
         # single classification chokepoint for boundary nodes).
+        # WI-juzaj: the manifest owns the per-language dispatch (flat entries
+        # for go/java/kotlin/python, scoped Hex/npm tables for elixir/js/ts)
+        # and returns None when it cannot tell -- no stamp then.
         directness: str | None = None
-        if (
-            dependency_manifest is not None
-            and language in ("go", "java", "kotlin", "python")
-        ):
-            directness = dependency_manifest.classify_directness(key_path)
+        if dependency_manifest is not None:
+            directness = dependency_manifest.directness_for(language, key_path)
 
         boundary_meta: dict[str, Any] = {"external_boundary": True}
         if directness is not None:
@@ -2140,10 +2143,19 @@ def create_boundary_nodes(
         # tier-3 external, from the single-source language stdlib catalog.
         # Absent when the language has no enumerated stdlib (classifier
         # returns None) — orthogonal to directness (declaration relationship).
+        ecosystem: str | None = None
         if ecosystem_classifier is not None:
             ecosystem = ecosystem_classifier(language, key_path)
-            if ecosystem is not None:
-                boundary_meta["ecosystem"] = ecosystem
+        # WI-juzaj: a module the project's manifest resolves to a declared or
+        # locked package IS fetched from a package registry -- positive
+        # evidence of ``third_party`` that needs no stdlib enumeration. Only
+        # fills the gap the catalog leaves (languages with no enumerated
+        # stdlib); it never relabels a catalog verdict, and it is not a
+        # second stdlib recognizer (ADR-0041 §3 single-source constraint).
+        if ecosystem is None and directness in ("direct", "transitive"):
+            ecosystem = "third_party"
+        if ecosystem is not None:
+            boundary_meta["ecosystem"] = ecosystem
 
         sym = Symbol(
             id=canonical_id,

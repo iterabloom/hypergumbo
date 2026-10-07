@@ -752,3 +752,43 @@ def test_rust_bare_crate_import():
     )
 
     assert len(result.edges) == 1
+
+
+def _bare_import(dst: str) -> Edge:
+    return Edge.create(src="f", dst=dst, edge_type="imports", line=1,
+                       origin="test", origin_run_id="test")
+
+
+def test_import_requirement_counts_only_linkable_imports():
+    """WI-juzaj: the import_edges requirement counts only the third-party
+    Rust/Python imports link_dependencies can use, so a repo whose imports are
+    Elixir/JS (or stdlib-only Python) does not trigger a partial-requirement
+    warning about Cargo.toml/pyproject.toml."""
+    from pathlib import Path
+
+    from hypergumbo_core.linkers.dependency import _count_import_edges
+    from hypergumbo_core.linkers.registry import LinkerContext
+
+    edges = [
+        _bare_import("elixir:Phoenix.LiveView:0-0:module:module"),
+        _bare_import("javascript:leaflet:0-0:module:module"),
+        _bare_import("python:json:0-0:module:module"),
+        _bare_import("python:os.path:0-0:module:module"),
+        _bare_import("rust:std::collections::HashMap:0-0:module:module"),
+        _bare_import("rust:crate::util:0-0:module:module"),
+        _bare_import("python:requests.adapters:0-0:module:module"),
+        _bare_import("rust:serde::Serialize:0-0:module:module"),
+        Edge.create(src="f", dst="python:click:0-0:x:unresolved", edge_type="calls",
+                    line=1, origin="test", origin_run_id="test"),
+    ]
+    ctx = LinkerContext(repo_root=Path("."), edges=edges)
+    assert _count_import_edges(ctx) == 2
+
+
+def test_import_requirement_description_names_languages():
+    from hypergumbo_core.linkers.dependency import DEPENDENCY_REQUIREMENTS
+
+    by_name = {r.name: r.description for r in DEPENDENCY_REQUIREMENTS}
+    assert by_name["import_edges"] == "third-party Rust/Python import edges"
+    assert "Cargo.toml" in by_name["toml_dependencies"]
+    assert "pyproject.toml" in by_name["toml_dependencies"]
