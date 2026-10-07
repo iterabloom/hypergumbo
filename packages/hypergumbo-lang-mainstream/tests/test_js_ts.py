@@ -55,6 +55,8 @@ class TestFindJsTsFiles:
         nm = tmp_path / "node_modules"
         nm.mkdir()
         (nm / "pkg.js").write_text("module.exports = {};")
+        # An installed tree, recognised by content (ADR-0004 §"Installed dependency source").
+        (nm / ".package-lock.json").write_text("{}")
 
         files = list(find_js_ts_files(tmp_path))
 

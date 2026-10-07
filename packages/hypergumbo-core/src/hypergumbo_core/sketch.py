@@ -99,7 +99,10 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional
 if TYPE_CHECKING:
     from .discovery import FileIndex
 
-from .discovery import find_files, DEFAULT_EXCLUDES
+from .discovery import (
+    DEFAULT_EXCLUDES, DEPENDENCY_DIR_NAMES, find_files,
+    format_installed_deps_disclosure, match_content_rule, under_content_rule_dir,
+)
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol, Edge, is_external_boundary
 from .paths import names_no_source_file
@@ -1235,7 +1238,9 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
     # Mirrors _collect_config_content's glob so heuristic (and HYBRID-fallback)
     # config_info reports every sub-package's identity on a monorepo (WI-lirub).
     # Matches are sorted and grouped by manifest kind for deterministic output.
-    _manifest_exclude = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    _manifest_exclude = (
+        _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES) | DEPENDENCY_DIR_NAMES
+    )
     for manifest_name, extractor in _extractors.items():
         matches: list[Path] = []
         for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
@@ -1249,6 +1254,8 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
             rel = match.relative_to(repo_root)
             if any(p.startswith(".") or p in _manifest_exclude for p in rel.parts[:-1]):
                 continue
+            if under_content_rule_dir(repo_root, rel.parts[:-1]):
+                continue
             prefix = f"{rel.parent.as_posix()}/"
             lines.extend(extractor(match, prefix))
             seen_manifest_paths.add(resolved)
@@ -1257,7 +1264,9 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
     # package dirs (depth 1-2). A dual-licensed monorepo — e.g. an AGPL root plus
     # an MPL sub-package — must report every distinct license rather than
     # collapsing to the first file found (WI-gojuz).
-    _license_exclude = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    _license_exclude = (
+        _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES) | DEPENDENCY_DIR_NAMES
+    )
     license_paths: list[Path] = []
     seen_license_paths: set[Path] = set()
     for license_name in LICENSE_FILES:
@@ -1272,10 +1281,10 @@ def _extract_config_heuristic(repo_root: Path) -> list[str]:
                 resolved = match.resolve()
                 if resolved in seen_license_paths:
                     continue  # pragma: no cover
+                lic_dirs = match.relative_to(repo_root).parts[:-1]
                 if any(
-                    p.startswith(".") or p in _license_exclude
-                    for p in match.relative_to(repo_root).parts[:-1]
-                ):
+                    p.startswith(".") or p in _license_exclude for p in lic_dirs
+                ) or under_content_rule_dir(repo_root, lic_dirs):
                     continue
                 license_paths.append(match)
                 seen_license_paths.add(resolved)
@@ -1334,7 +1343,9 @@ def _collect_config_content(
 
     # Monorepo discovery: scan depth 1-2 for manifest files.
     # Catches packages/core/pyproject.toml, services/api/package.json, etc.
-    _exclude_dirs = _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES)
+    _exclude_dirs = (
+        _CONFIG_EXCLUDE_DIRS | frozenset(DEFAULT_EXCLUDES) | DEPENDENCY_DIR_NAMES
+    )
     for manifest_name in _MONOREPO_MANIFEST_NAMES:
         for pattern in (f"*/{manifest_name}", f"*/*/{manifest_name}"):
             for match in repo_root.glob(pattern):
@@ -1347,6 +1358,8 @@ def _collect_config_content(
                 rel = match.relative_to(repo_root)
                 parts = rel.parts[:-1]  # directory components only
                 if any(p.startswith(".") or p in _exclude_dirs for p in parts):
+                    continue
+                if under_content_rule_dir(repo_root, parts):
                     continue
                 try:
                     content = match.read_text(encoding="utf-8", errors="replace")
@@ -2914,6 +2927,10 @@ def _count_dir_items(
     for name, is_dir in children:
         if any(fnmatch(name, p) for p in name_excludes):
             continue
+        # Installed dependency source / content-conditioned build output is
+        # not the project's structure (ADR-0004 §"Installed dependency source").
+        if is_dir and match_content_rule(dir_path / name) is not None:
+            continue
         if exclude_tests:
             rel_path = str((dir_path / name).relative_to(repo_root))
             if _is_test_path(rel_path):
@@ -3001,7 +3018,7 @@ def _format_structure_tree_fallback(
             if not d.is_dir():
                 continue
             excluded = any(fnmatch(d.name, pattern) for pattern in name_excludes)
-            if not excluded:
+            if not excluded and match_content_rule(d) is None:
                 dirs.append(d.name)
         # Also get root-level files (source and config/doc files)
         for f in repo_root.iterdir():
@@ -4401,6 +4418,12 @@ def _select_additional_files(
             return True
 
         if not is_additional_file_candidate(filepath):
+            return True
+
+        # Installed dependency source / content-conditioned build output
+        # (ADR-0004): no longer name-excluded, so the rglob fallback below
+        # must ask the content rules.
+        if under_content_rule_dir(repo_root, rel_path.parts[:-1]):
             return True
 
         for pattern in all_excludes:
@@ -6272,6 +6295,15 @@ def _generate_sketch_impl(
             f"# {repo_name}\n\n{_section_header('Overview', exclude_tests)}\n"
             f"{_format_language_stats(profile, repo_root, extra_excludes, exclude_tests, test_analysis=test_analysis)}"
         )
+    # ADR-0004 §"Installed dependency source": say what was not analysed, in
+    # the section that states what was. Absent when nothing was skipped.
+    deps_line = format_installed_deps_disclosure(
+        ((cached_results or {}).get("supply_chain_summary") or {}).get(
+            "installed_deps_skipped",
+        ),
+    )
+    if deps_line:
+        header = f"{header}\n\n{deps_line}"
     sections.append(header)
 
     # Section 2: Structure (using tree format from the start)

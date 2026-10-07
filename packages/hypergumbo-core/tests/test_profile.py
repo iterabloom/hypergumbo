@@ -187,6 +187,8 @@ def test_excludes_node_modules_from_profile(tmp_path: Path) -> None:
     node_modules = tmp_path / "node_modules" / "some-package"
     node_modules.mkdir(parents=True)
     (node_modules / "index.js").write_text("module.exports = {};\n")
+    # An installed tree, recognised by content (ADR-0004 §"Installed dependency source").
+    (tmp_path / "node_modules" / ".package-lock.json").write_text("{}")
 
     out_path = tmp_path / "out.json"
     run_behavior_map(repo_root=tmp_path, out_path=out_path, include_sketch_precomputed=False)

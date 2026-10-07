@@ -408,9 +408,9 @@ class TestARelativePathIntoCodeTheAnalysisDidNotRead:
 
     * a path THROUGH A DEPENDENCY DIRECTORY -- ``require('../node_modules/
       axios')`` is the installed third-party package, and ``./vendor/jquery``
-      is a vendored copy of one. Discovery excludes both directories
-      (``discovery.DEFAULT_EXCLUDES``), so their source never reached the
-      analysis;
+      is a vendored copy of one. Installed copies are not read by default
+      (ADR-0004 §"Installed dependency source"); a committed ``vendor/`` is
+      read as tier 3 but is still not the repository's own code;
     * a path that CLIMBS OUT OF THE ANALYSED ROOT -- ``../../shared/x`` from
       ``lib/a.js`` resolves outside the tree. Only decidable when the importing
       file is known; without it the rule cannot tighten and does not guess.
@@ -460,10 +460,13 @@ class TestARelativePathIntoCodeTheAnalysisDidNotRead:
         assert "../../outside" in coverage.reason
         assert "./post" not in coverage.reason
 
-    def test_every_dependency_directory_named_is_one_discovery_excludes(self) -> None:
-        """The rule's premise is 'discovery did not read it'; a name discovery
-        DOES read would make the rule a guess."""
-        from hypergumbo_core.discovery import DEFAULT_EXCLUDES
+    def test_every_dependency_directory_named_is_one_discovery_knows(self) -> None:
+        """The rule's premise is 'this names dependency source'. Discovery no
+        longer drops these names wholesale (installed dependency source is
+        recognised by content, a committed vendor/ is read as tier 3 --
+        ADR-0004), so the pin is to discovery's dependency-name set, the one
+        its own project-manifest walks skip."""
+        from hypergumbo_core.discovery import DEPENDENCY_DIR_NAMES
 
         assert io_boundary.UNREAD_DEPENDENCY_DIRS
-        assert io_boundary.UNREAD_DEPENDENCY_DIRS <= set(DEFAULT_EXCLUDES)
+        assert io_boundary.UNREAD_DEPENDENCY_DIRS <= DEPENDENCY_DIR_NAMES

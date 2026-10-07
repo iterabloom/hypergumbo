@@ -746,8 +746,20 @@ class TestTopLevelBlockTyping:
                 "files": 1, "symbols": 2, "ecosystem": {"stdlib": 2},
             },
             "derived_skipped": {"files": 0, "paths": []},
+            "installed_deps_skipped": {
+                "dirs": 1, "packages": 81,
+                "entries": [{
+                    "path": "deps", "ecosystem": "Mix", "packages": 81,
+                    "traced": [],
+                }],
+            },
         }
         jsonschema.Draft202012Validator(scs).validate(real)
+        # ADR-0004 §"Installed dependency source": the bucket's shape is pinned,
+        # not just its name.
+        real["installed_deps_skipped"] = {"dirs": 1, "packages": 1}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.Draft202012Validator(scs).validate(real)
 
     def test_metrics_edge_confidence_validates_and_states_scope(self):
         """WI-zimor: the edge-confidence distribution block validates against

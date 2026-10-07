@@ -213,7 +213,63 @@
     },
     "supply_chain_summary": {
       "type": "object",
-      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus derived_skipped. Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets and derived_skipped a {files, paths} shape. WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
+      "description": "Supply-chain classification summary, keyed by tier name (first_party / internal_dep / external_dep) plus the exclusion-disclosure buckets derived_skipped and installed_deps_skipped. Each tier carries {files, symbols}; external_dep also `ecosystem` and `directness` sub-buckets, derived_skipped a {files, paths} shape, and installed_deps_skipped a {dirs, packages, entries} shape (ADR-0004 \u00a7\"Installed dependency source\"). WI-vafid: the producer emits these at the top level, not under a by_tier wrapper.",
+      "properties": {
+        "installed_deps_skipped": {
+          "type": "object",
+          "description": "Installed dependency directories (Mix deps/, node_modules/, a virtualenv, a package-manager vendor/, Pods/) that were not parsed because --trace-deps / the trace_deps config key did not opt into them (ADR-0004 \u00a7\"Installed dependency source\"). dirs and packages total every entry; entries is capped at 10. {dirs: 0, packages: 0, entries: []} when nothing was skipped.",
+          "required": [
+            "dirs",
+            "packages",
+            "entries"
+          ],
+          "properties": {
+            "dirs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "packages": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "entries": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "ecosystem",
+                  "packages",
+                  "traced"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Repo-relative directory."
+                  },
+                  "ecosystem": {
+                    "type": "string",
+                    "description": "Display label of the content rule that claimed it, e.g. Mix, npm, Python virtualenv."
+                  },
+                  "packages": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Packages in the directory left unanalysed."
+                  },
+                  "traced": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Packages analysed under a per-package --trace-deps."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "additionalProperties": {
         "type": "object",
         "properties": {

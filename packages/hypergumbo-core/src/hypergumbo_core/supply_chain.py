@@ -356,6 +356,17 @@ EXTERNAL_DEP_DEEP_PATTERNS = [
     (r"(?:^|/)vendored/", "vendored assets"),
     (r"(?:^|/)npm_mirror/", "vendored npm mirror"),
     (r"(?:^|/)bower_components/", "bower_components/"),
+    # ADR-0004 §"Installed dependency source" point 3: a COMMITTED vendor tree
+    # below the root (kata-containers ``src/runtime/vendor``, 3,282 files; a
+    # ``web/node_modules`` committed for offline builds) is analysed now that
+    # discovery no longer drops these names wholesale, and it is dependency
+    # code wherever it sits. The root-anchored patterns above keep their
+    # labels; these catch the nested remainder. Cost, stated: a first-party
+    # directory that is literally named ``vendor`` below the root (a
+    # marketplace app's domain module) is tier 3 rather than tier 1 -- still
+    # analysed, which is more than the old name exclusion gave it.
+    (r"(?:^|/)node_modules/", "node_modules/"),
+    (r"(?:^|/)vendor/", "vendor/"),
 ]
 
 FIRST_PARTY_PATTERNS = [
@@ -753,6 +764,18 @@ def _classify_file_core(
             pkg = _extract_package_name(rel, label)
             return FileClassification(Tier.EXTERNAL_DEP, f"in {label}", pkg)
 
+    # 3c. Installed dependency source traced with --trace-deps where no path
+    # pattern reaches it (a virtualenv's site-packages, a nested Mix
+    # ``server/deps/``). ADR-0004 §"Installed dependency source" point 5:
+    # traced dependency source is tier 3, as dependency source always was.
+    installed = _installed_dependency_root(rel, repo_root)
+    if installed is not None:
+        return FileClassification(
+            Tier.EXTERNAL_DEP,
+            f"in installed dependency source {installed[0]}/",
+            installed[1],
+        )
+
     # 4. Check example/demo patterns (lower priority than workspace packages).
     # INV-naduh / ADR-0041 §1: tier names supply-chain DISTANCE only. In-repo
     # example/demo files are the project's OWN code (distance 0) → tier 1
@@ -1098,6 +1121,38 @@ def _extract_package_name(rel_path: str, pattern_label: str) -> Optional[str]:
     return None
 
 
+def _installed_dependency_root(
+    rel: str, repo_root: Path,
+) -> Optional[tuple[str, Optional[str]]]:
+    """``(root, package)`` when ``rel`` lies inside a directory discovery's
+    content rules recognise as installed dependency source, else ``None``.
+
+    Asks :func:`discovery.match_content_rule` -- the same test that pruned
+    the untraced directories -- for each ancestor directory, so the two can
+    never disagree about what is installed. ``package`` is the name of the
+    package directory ``rel`` falls in, when it is one of the root's listed
+    packages.
+    """
+    from .discovery import installed_packages, match_content_rule
+
+    parts = rel.split("/")[:-1]
+    for i in range(len(parts)):
+        root = repo_root.joinpath(*parts[: i + 1])
+        rule = match_content_rule(root)
+        if rule is None or not rule.is_installed_dep:
+            continue
+        path = repo_root / rel
+        pkg = next(
+            (
+                name for name, p in installed_packages(root, rule).items()
+                if path == p or path.is_relative_to(p)
+            ),
+            None,
+        )
+        return "/".join(parts[: i + 1]), pkg
+    return None
+
+
 # INV-nuzas / ADR-0041 D8a — workspace-sibling dependency recognition.
 #
 # A monorepo sibling that another workspace member declares as a *dependency*
@@ -1146,7 +1201,8 @@ def collect_workspace_package_names(repo_root: Path) -> set[str]:
 
     Walks ``repo_root`` for every ``pyproject.toml`` (the root manifest and any
     ``packages/<pkg>/pyproject.toml`` at any depth), skipping
-    ``discovery.DEFAULT_EXCLUDES`` and dot-prefixed directories so a vendored
+    ``discovery.manifest_walk_skip()`` names, content-claimed dependency
+    directories and dot-prefixed directories so a vendored
     ``.venv/site-packages/<pkg>/pyproject.toml`` cannot leak in, and reads each
     package's own distribution name (``[project].name`` /
     ``[tool.poetry].name``).
@@ -1177,8 +1233,10 @@ def collect_workspace_package_names(repo_root: Path) -> set[str]:
 def _manifest_files(repo_root: Path, file_names: "Container[str]") -> "Iterator[Path]":
     """Every file under ``repo_root`` whose name is in ``file_names``.
 
-    Skips ``discovery.DEFAULT_EXCLUDES`` and dot-prefixed directories, so a
-    vendored ``.venv/site-packages/<pkg>/`` manifest cannot leak in.
+    Skips ``discovery.manifest_walk_skip()`` names (``DEFAULT_EXCLUDES`` plus
+    ``node_modules`` / ``vendor``), directories a discovery content rule claims
+    (a virtualenv, Mix ``deps/``, ...; see ``discovery.walks_into``) and
+    dot-prefixed directories, so a dependency's manifest cannot leak in.
 
     DOES NOT DESCEND INTO A DIRECTORY SYMLINK (INV-pivir), which is what
     ``Path.rglob`` and discovery already do. ``Path.is_dir()`` follows links,
@@ -1188,9 +1246,9 @@ def _manifest_files(repo_root: Path, file_names: "Container[str]") -> "Iterator[
     30+ minutes before any analysis ran. A symlinked manifest FILE is still
     read -- reading one file is bounded.
     """
-    from .discovery import DEFAULT_EXCLUDES, walks_into
+    from .discovery import manifest_walk_skip, walks_into
 
-    skip = set(DEFAULT_EXCLUDES)
+    skip = manifest_walk_skip()
     stack = [repo_root]
     while stack:
         cur = stack.pop()
@@ -1303,8 +1361,8 @@ def collect_first_party_package_names(repo_root: Path) -> set[str]:
     Reading the manifest is a fact; the tier is a proxy that fails open.
 
     Scoped to the three manifests that publish a name a callee slot can carry
-    (see :data:`_FIRST_PARTY_MANIFESTS`). Skips ``DEFAULT_EXCLUDES`` and
-    dot-prefixed directories, so a vendored ``node_modules/<dep>/package.json``
+    (see :data:`_FIRST_PARTY_MANIFESTS`). Skips dependency directories (see
+    :func:`_manifest_files`), so a vendored ``node_modules/<dep>/package.json``
     — which names a THIRD-PARTY package — cannot leak in. Returns names in
     their published spelling; the separator fold belongs to the consumer.
 

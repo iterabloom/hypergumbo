@@ -1552,6 +1552,10 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     before this change is still reachable, and a read command finds a
     two-arm artifact only under the same resolved set (the environment
     variable or the per-repository trust grant, not a one-off flag).
+    The same segment is suffixed ``-deps-all`` / ``-deps-<hash>`` when
+    installed dependency source is traced (``--trace-deps`` or the
+    ``trace_deps`` config key; ``discovery.resolve_trace_deps``), so a traced
+    and an untraced survey of one tree never share an entry.
 
     The fourth segment (``<analyzer_identity>``) keys on the analyzer
     surface that produces the cached output — ``__version__`` plus a
@@ -1571,12 +1575,19 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     """
     from . import backend_selection
     from .analyzer_identity import compute_analyzer_identity_hash
+    from .discovery import resolve_trace_deps
 
     fingerprint = _get_repo_fingerprint(repo_root)
     state_hash = _get_repo_state_hash(repo_root)
     backends = backend_selection.resolved_backend_set(repo_root=repo_root)
     if backends:
         state_hash = f"{state_hash}-{'+'.join(backends)}"
+    # ADR-0004 §"Installed dependency source": which installed dependency
+    # source was traced is run configuration too. Suffixed only when something
+    # is traced, so every untraced entry keeps its key.
+    trace_token = resolve_trace_deps(repo_root).cache_token()
+    if trace_token:
+        state_hash = f"{state_hash}-{trace_token}"
     analyzer_identity = compute_analyzer_identity_hash()
     cache_base = _get_xdg_cache_base()
     cache_dir = (

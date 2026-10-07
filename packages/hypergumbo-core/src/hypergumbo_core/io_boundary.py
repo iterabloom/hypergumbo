@@ -4942,14 +4942,18 @@ FIRST_PARTY_MODULE_GRAMMARS: dict[str, FirstPartyModuleGrammar] = {
 }
 
 
-#: Directory names whose contents are OTHER PEOPLE'S CODE and which discovery
-#: never reads (both are in ``discovery.DEFAULT_EXCLUDES``, pinned by
+#: Directory names whose contents are OTHER PEOPLE'S CODE (they are
+#: ``discovery.DEPENDENCY_DIR_NAMES``, pinned by
 #: ``test_first_party_module_grammar.py``). A relative specifier that passes
 #: through one -- ``require('../node_modules/axios')``, ``./vendor/jquery`` --
-#: is a path, but a path to source this analysis did not examine, so it is not
-#: first-party in the only sense the coverage gate cares about (INV-juvul).
-#: Build outputs (``dist``, ``build``) are deliberately NOT here: they are the
-#: repository's own source, compiled, and the source itself was read.
+#: is a path, but a path to dependency source, so it is not first-party in the
+#: sense the coverage gate cares about (INV-juvul). Installed copies are not
+#: read by default (ADR-0004 §"Installed dependency source"); a COMMITTED
+#: ``vendor/`` is now read, as tier 3, and a call into it is still reported
+#: here -- the withholding direction, a report the reader can dismiss, never a
+#: suppressed one. Build outputs (``dist``, ``build``) are deliberately NOT
+#: here: they are the repository's own source, compiled, and the source itself
+#: was read.
 UNREAD_DEPENDENCY_DIRS: frozenset[str] = frozenset({"node_modules", "vendor"})
 
 

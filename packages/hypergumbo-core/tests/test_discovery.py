@@ -14,8 +14,8 @@ from hypergumbo_core.discovery import (
 
 def test_is_excluded_with_default_patterns(tmp_path: Path) -> None:
     """Should exclude paths matching default patterns."""
-    node_modules = tmp_path / "node_modules" / "package" / "index.py"
-    assert is_excluded(node_modules, tmp_path) is True
+    cache = tmp_path / "__pycache__" / "package" / "index.py"
+    assert is_excluded(cache, tmp_path) is True
 
 
 def test_is_excluded_returns_false_for_normal_paths(tmp_path: Path) -> None:
@@ -126,7 +126,7 @@ def test_is_excluded_does_not_match_substring_of_part(tmp_path: Path) -> None:
 def test_is_excluded_with_path_outside_repo_root(tmp_path: Path) -> None:
     """Should handle paths that are not relative to repo_root."""
     # Create a path that's not under tmp_path
-    outside_path = Path("/some/other/node_modules/file.py")
+    outside_path = Path("/some/other/__pycache__/file.py")
     # Should still work - checks path components
     assert is_excluded(outside_path, tmp_path) is True
 
@@ -158,6 +158,9 @@ def test_find_files_excludes_by_default(tmp_path: Path) -> None:
     bad_file = tmp_path / "node_modules" / "pkg" / "index.py"
     bad_file.parent.mkdir(parents=True)
     bad_file.write_text("# bad")
+    # An npm-populated node_modules (its state file), not a bare directory:
+    # installed dependency source is recognised by content (ADR-0004).
+    (tmp_path / "node_modules" / ".package-lock.json").write_text("{}")
 
     results = list(find_files(tmp_path, ["*.py"]))
     assert len(results) == 1
@@ -192,8 +195,10 @@ def test_public_directory_not_excluded(tmp_path: Path) -> None:
 def test_default_excludes_contains_expected_patterns() -> None:
     """DEFAULT_EXCLUDES should contain all expected patterns."""
     expected = [
-        "node_modules",
-        "vendor",  # PHP Composer dependencies
+        # node_modules / vendor are DELIBERATELY ABSENT too: installed
+        # dependency source is content-conditioned (discovery.INSTALLED_DEP_RULES,
+        # ADR-0004 §"Installed dependency source"), and a committed vendor/ is
+        # analysed. test_installed_dependency_source.py asserts it.
         # venv / .venv / env are DELIBERATELY ABSENT. They are no longer bare names
         # here — a directory is a virtualenv because of what it CONTAINS
         # (VENV_DIR_NAMES + _looks_like_virtualenv), not what it is called. As bare
@@ -693,6 +698,7 @@ class TestFileIndex:
         (tmp_path / "build.gradle.kts").write_text("plugins {}")
         (tmp_path / "node_modules").mkdir()
         (tmp_path / "node_modules" / "pkg.js").write_text("// excluded")
+        (tmp_path / "node_modules" / ".package-lock.json").write_text("{}")
         (tmp_path / ".git").mkdir()
         (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main")
         (tmp_path / "sub").mkdir()

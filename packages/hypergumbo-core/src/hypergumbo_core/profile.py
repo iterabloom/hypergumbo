@@ -84,7 +84,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from .discovery import find_files
+from .discovery import find_files, under_content_rule_dir
 
 if TYPE_CHECKING:
     from .ir import Edge, Symbol
@@ -952,6 +952,25 @@ def _detect_languages(
     return languages
 
 
+def _in_non_project_dir(repo_root: Path, dir_parts: tuple[str, ...]) -> bool:
+    """Is a manifest under ``dir_parts`` someone else's, not the project's?
+
+    Dot-directories, the dependency names ``node_modules`` / ``vendor`` /
+    ``venv`` / ``.venv`` / ``__pycache__``, and -- by content -- any directory
+    a discovery content rule claims (Mix ``deps/``, a virtualenv named
+    ``env``, build output; ADR-0004 §"Installed dependency source"). Without
+    the content arm an installed ``deps/cowboy/mix.exs`` declared the cowboy
+    framework for a Phoenix project that never names it.
+    """
+    if any(
+        p.startswith(".")
+        or p in ("node_modules", "vendor", "venv", ".venv", "__pycache__")
+        for p in dir_parts
+    ):
+        return True
+    return under_content_rule_dir(repo_root, dir_parts)
+
+
 def _find_manifest_files(repo_root: Path, filename: str, max_depth: int = 3) -> list[Path]:
     """Find manifest files recursively up to max_depth.
 
@@ -981,11 +1000,7 @@ def _find_manifest_files(repo_root: Path, filename: str, max_depth: int = 3) -> 
             if path.is_file():
                 # Skip common non-project directories
                 parts = path.relative_to(repo_root).parts
-                if any(
-                    p.startswith(".")
-                    or p in ("node_modules", "vendor", "venv", ".venv", "__pycache__")
-                    for p in parts[:-1]
-                ):
+                if _in_non_project_dir(repo_root, parts[:-1]):
                     continue
                 # WI-sudug: skip manifests inside test-fixture directories.
                 # detekt (Kotlin static-analysis tool) triggered a false
@@ -1246,11 +1261,7 @@ def _collect_pip_requirements_deps(repo_root: Path, max_depth: int = 3) -> set[s
                     continue
                 parts = path.relative_to(repo_root).parts
                 # Mirror _find_manifest_files's directory exclusions.
-                if any(
-                    p.startswith(".")
-                    or p in ("node_modules", "vendor", "venv", ".venv", "__pycache__")
-                    for p in parts[:-1]
-                ):
+                if _in_non_project_dir(repo_root, parts[:-1]):
                     continue
                 from .paths import is_test_file as _is_test_file
                 rel_for_fixture_check = "/".join(parts)

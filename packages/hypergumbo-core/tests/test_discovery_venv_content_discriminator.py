@@ -145,25 +145,36 @@ class TestRealVirtualenvsStayExcluded:
 
 
 class TestTheRestOfTheExcludeListIsUntouched:
-    """Blast radius control. Only the venv-named entries change behaviour; the other
-    53 exact names keep matching at any depth. ``vendor`` is called out because it was
-    measured: 19,251 of its files sit BELOW the root and are genuine dependencies, so
-    it must stay unanchored and unconditioned."""
+    """Blast radius control. Only the venv-named entries change behaviour here; the
+    other exact names keep matching at any depth.
 
-    @pytest.mark.parametrize("name", ["node_modules", "vendor", "__pycache__", ".git"])
+    ``node_modules`` and ``vendor`` USED to be among them, unconditioned, because
+    19,251 ``vendor`` files measured below the root are genuine dependencies. The
+    2026-10-06 owner decision (ADR-0004 §"Installed dependency source") moved both
+    onto content rules like the venv rule here: an installed tree (a package
+    manager's marker, not committed) is skipped and disclosed; a COMMITTED vendored
+    tree -- kata-containers' ``src/runtime/vendor`` is one -- is analysed and
+    classified tier 3 rather than silently dropped. Both directions are pinned in
+    ``test_installed_dependency_source.py``."""
+
+    @pytest.mark.parametrize("name", ["__pycache__", ".git"])
     def test_other_excludes_still_match_at_any_depth(
         self, tmp_path: Path, name: str,
     ) -> None:
         d = _source_pkg(tmp_path, f"src/deep/{name}")
         assert is_excluded(d / "base.py", tmp_path) is True
 
-    def test_vendor_below_root_stays_excluded_without_a_content_test(
+    def test_vendor_below_root_is_analysed_as_dependency_code(
         self, tmp_path: Path,
     ) -> None:
-        """kata-containers ``src/runtime/vendor`` — 3,282 genuine dependency files.
-        No marker required, and none must be demanded."""
+        """kata-containers ``src/runtime/vendor`` — 3,282 genuine dependency files,
+        committed. No package-manager marker here, so it is analysed; it is tier 3,
+        not first-party."""
+        from hypergumbo_core.supply_chain import Tier, classify_file
+
         d = _source_pkg(tmp_path, "src/runtime/vendor")
-        assert is_excluded(d / "base.py", tmp_path) is True
+        assert is_excluded(d / "base.py", tmp_path) is False
+        assert classify_file(d / "base.py", tmp_path).tier == Tier.EXTERNAL_DEP
 
     def test_venv_names_are_no_longer_bare_entries_in_the_default_list(self) -> None:
         """They moved from name-matching to content-conditioned matching. If a later

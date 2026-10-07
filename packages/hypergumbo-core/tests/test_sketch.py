@@ -1765,6 +1765,8 @@ class TestFormatAdditionalFiles:
         nm = tmp_path / "node_modules"
         nm.mkdir()
         (nm / "package.json").write_text("{}")
+        # An installed tree, recognised by content (ADR-0004 §"Installed dependency source").
+        (nm / ".package-lock.json").write_text("{}")
         # Use a config file instead of .js (ANALYZABLE files are not Additional Files)
         (tmp_path / "config.yaml").write_text("key: value")
         src = tmp_path / "main.py"
@@ -4662,6 +4664,8 @@ class TestFormatStructureTreeFallback:
         """Excludes directories matching exclude patterns."""
         (tmp_path / "src").mkdir()
         (tmp_path / "node_modules").mkdir()
+        # An installed tree, recognised by content (ADR-0004 §"Installed dependency source").
+        (tmp_path / "node_modules" / ".package-lock.json").write_text("{}")
         (tmp_path / ".git").mkdir()
 
         from hypergumbo_core.discovery import DEFAULT_EXCLUDES
@@ -6483,6 +6487,8 @@ class TestAnalyzeTestFiles:
         nm = tmp_path / "node_modules" / "pkg"
         nm.mkdir(parents=True)
         (nm / "test.spec.js").write_text("test('foo', () => {})")
+        # An installed tree, recognised by content (ADR-0004 §"Installed dependency source").
+        (tmp_path / "node_modules" / ".package-lock.json").write_text("{}")
         # Only the excluded file, no test files in main tree
         result = _analyze_test_files(tmp_path)
         assert result.summary is None

@@ -194,6 +194,7 @@
     "--path",
     "--progress",
     "--tiers",
+    "--trace-deps",
     "-e",
     "-h"
   ],
@@ -228,6 +229,7 @@
     "--readme-debug",
     "--require-section",
     "--tokens",
+    "--trace-deps",
     "--verbose",
     "--with-source",
     "-e",
@@ -261,6 +263,7 @@
     "--output",
     "--path",
     "--reverse",
+    "--trace-deps",
     "-h"
   ],
   "survey": [
@@ -287,6 +290,7 @@
     "--path",
     "--progress",
     "--tiers",
+    "--trace-deps",
     "-e",
     "-h"
   ],

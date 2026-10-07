@@ -30,6 +30,9 @@ class TestFindPhpFiles:
         vendor = tmp_path / "vendor"
         vendor.mkdir()
         (vendor / "pkg.php").write_text("<?php class Vendor {} ?>")
+        # An installed tree, recognised by content (ADR-0004 §"Installed dependency source").
+        (tmp_path / "composer.json").write_text("{}")
+        (vendor / "autoload.php").write_text("<?php")
 
         files = list(find_php_files(tmp_path))
 
