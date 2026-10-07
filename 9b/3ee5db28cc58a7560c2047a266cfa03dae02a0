@@ -1,0 +1,34 @@
+Original commit body from bbf4e360caa66c9a624ffbe624dd46b9a87c1f85:
+
+On a Phoenix app (thc) every one of 2,158 tier-3 boundary stubs read
+directness=unknown: DependencyManifest was fed only by go.mod,
+Gradle/Maven and pyproject.toml. With installed dependency source off
+by default, these stubs are the main view of which dependencies the
+code calls, and attribution is what makes them useful.
+
+- mix_deps.py (lang-common): mix.exs deps (parsed statically, never
+  executed) direct, mix.lock keys transitive; path:/in_umbrella: deps
+  and own app: names excluded. Attached to the Elixir analyzer result.
+- npm_deps.py (lang-mainstream): package.json dependency sections
+  direct; package-lock/npm-shrinkwrap/yarn.lock/pnpm-lock.yaml entries
+  transitive; workspace members and workspace:/file:/link: refs
+  excluded. Attached to the JS/TS analyzer result.
+- supply_chain: DependencyManifest.scoped per-scheme tables (hex, npm)
+  so a bare npm name never stamps a Python import; directness_for()
+  owns the per-language dispatch. Elixir module -> package by longest
+  Macro.underscore prefix plus manifest-gated exceptions; JS specifier
+  -> package (@scope/name/sub -> @scope/name). Unmapped -> no stamp
+  (not "undeclared"). Legacy languages stamp only when a flat manifest
+  exists.
+- ir: manifest-resolved direct/transitive stubs get
+  ecosystem=third_party where the stdlib catalog is silent.
+- dependency linker: the import_edges requirement counts only
+  third-party Rust/Python imports, so thc no longer warns "found 9740
+  Import edges ... but 0 TOML dependency declarations".
+
+thc: directness unknown 2158 -> 1882, direct 186, transitive 90;
+ecosystem third_party 3 -> 279; warning gone.
+
+Refs WI-juzaj-jobom-rorol-domip-kapij-nitan-vizal-nodok
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
