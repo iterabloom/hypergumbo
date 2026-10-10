@@ -1,0 +1,32 @@
+- op: create  # dd85
+  at: '2026-10-10T19:25:59Z'  # dd85
+  by: agent  # dd85
+  actor: jgstern_agent  # dd85
+  clock: 1  # dd85
+  nonce: dd85  # dd85
+  data:  # dd85
+    kind: invariant  # dd85
+    title: "build-grammars / add-extras grammars cannot work from a PyPI install: VENDOR_ROOT is parents[4] of the module, and the wheel ships no vendor/ tree"  # dd85
+    status: violated  # dd85
+    priority: 2  # dd85
+    parent:  # dd85
+    tags:  # dd85
+    - packaging  # dd85
+    - developer_experience  # dd85
+    isbefore: []  # dd85
+    duplicate_of: []  # dd85
+    not_duplicate_of: []  # dd85
+    pr_ref:  # dd85
+    description: "Found while verifying facts for the README trust section (WI-muzan), 2026-10-10, static reading of dev @ 0e6e72265c.\n\n`hypergumbo_core/build_grammars.py` resolves `_REPO_ROOT = Path(__file__).resolve().parents[4]` and `VENDOR_ROOT = _REPO_ROOT / \"vendor\"` (WI-fipab-kivoj). That path exists only in a source checkout (packages/hypergumbo-core/src/hypergumbo_core/ -> repo root). The hypergumbo-core wheel packages only `src/hypergumbo_core` (`[tool.hatch.build.targets.wheel] packages = [\"src/hypergumbo_core\"]`), so in a pip/pipx install `parents[4]` lands somewhere under the venv's lib/ and `vendor/tree-sitter-<name>/src` does not exist: `build_grammar` prints \"Error: vendored source not found ... See docs/grammars/vendor-sync.md\" and returns False for all three grammars (lean, wolfram, circom).\n\nUser impact: README tells PyPI users \"For optional extras (embeddings, gitleaks, grammars), run `hypergumbo add-extras` after installing\"; the grammars component of add-extras and `hypergumbo build-grammars` cannot succeed from a PyPI install.\n\nNot verified live from a clean pipx install (repro: `pipx install hypergumbo && hypergumbo build-grammars`, expect the error above). Fix options: ship the vendored C sources as package data (importlib.resources), or fetch a pinned tarball with a checksum, or document build-grammars as source-checkout-only and drop it from add-extras.\n\nStatement: every installed-CLI subcommand that the README offers to PyPI users finds its inputs in the installed distribution."  # dd85
+    fields:  # dd85
+      statement: "Every installed-CLI subcommand the README offers to PyPI users finds its inputs in the installed distribution."  # dd85
+      root_cause: "WI-fipab-kivoj moved grammar sources to a repo-root vendor/ tree and resolved it relative to the module file; the core wheel packages only src/hypergumbo_core, so the path exists only in a source checkout."  # dd85
+- op: update  # 1e68
+  at: '2026-10-10T20:30:59Z'  # 1e68
+  by: agent  # 1e68
+  actor: jgstern_agent  # 1e68
+  clock: 2  # 1e68
+  nonce: '1e68'  # 1e68
+  set:  # 1e68
+    status: satisfied  # 1e68
+    pr_ref: '1518'  # 1e68
