@@ -191,7 +191,7 @@ changing the environment.
 🟩 **`hypergumbo add-extras [--check] [--skip COMPONENTS]`** / **`hypergumbo remove-extras [--skip COMPONENTS]`** —
 all optional extras at once (grammars, gitleaks, embeddings, rust-analyzer).
 🟩 **`hypergumbo build-grammars [--check]`** — build the from-source tree-sitter
-grammars (Lean, Wolfram, Circom); see [§4](#4-supported-stacks).
+grammars (Lean, Wolfram, Circom) from the C sources vendored as `hypergumbo-core` package data (`hypergumbo_core/vendor/`, so a PyPI install has them; INV-bazoz) — offline except for the build tools `pip` may fetch; needs a C/C++ compiler; see [§4](#4-supported-stacks).
 🟩 **`hypergumbo install-embeddings [--check]`** / **`hypergumbo uninstall-embeddings [--all]`** — the
 `sentence-transformers` stack used by embedding-based config extraction.
 🟩 **`hypergumbo install-gitleaks [--check]`** / **`hypergumbo uninstall-gitleaks`** — the secret scanner.

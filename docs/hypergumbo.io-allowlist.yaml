@@ -107,8 +107,9 @@ modules:
       family: process
       count: 1
       zone: install
-      target: python -m pip install <vendored vendor/tree-sitter-<name> dir>; python -c 'import
-        tree_sitter_<name>' (post-install check)
+      target: python -m pip install <tmp scaffold whose setup.py compiles the packaged
+        hypergumbo_core/vendor/tree-sitter-<name>/src>; python -c 'import tree_sitter_<name>'
+        (post-install check)
       purpose: build and install the three source-only grammars from vendored source (no clone,
         no download by hypergumbo; pip resolves build deps)
     - function: check_grammar_availability
