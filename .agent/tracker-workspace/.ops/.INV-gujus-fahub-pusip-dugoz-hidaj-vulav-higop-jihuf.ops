@@ -1,0 +1,24 @@
+- op: create  # 2609
+  at: '2026-10-10T18:39:32Z'  # 2609
+  by: agent  # 2609
+  actor: jgstern_agent  # 2609
+  clock: 1  # 2609
+  nonce: '2609'  # 2609
+  data:  # 2609
+    kind: invariant  # 2609
+    title: "runtime-cli-no-network is false as written: the first sketch after install-embeddings downloads both embedding models from huggingface.co (install-embeddings never fetches them)"  # 2609
+    status: violated  # 2609
+    priority: 2  # 2609
+    parent:  # 2609
+    tags:  # 2609
+    - security  # 2609
+    - self_claims  # 2609
+    - io_allowlist  # 2609
+    isbefore: []  # 2609
+    duplicate_of: []  # 2609
+    not_duplicate_of: []  # 2609
+    pr_ref:  # 2609
+    description: "**Found by the independent I/O allowlist gate (WI-vumum, `scripts/check-io-allowlist`).**\n\n`runtime-cli-no-network` (docs/hypergumbo.claims.yaml) says: \"Embeddings downloads happen only via the install-embeddings extras subcommand and downstream library calls — never from the analyze-my-code path.\"\n\nWhat the code does (static reading, 2026-10-10, dev @ ade05975ae):\n- `cmd_install_embeddings` (cli.py ~4850) only runs `pip install sentence-transformers~=5.2.2`. It does NOT fetch either model.\n- `sketch_embeddings._load_embedding_model` / `_load_modernbert_model` (reached from `sketch` via sketch.py:1570/1898 and sketch_embeddings.py:1052/1809/1856/1916) pass the `SentenceTransformer` CLASS as a parameter to `_load_st_model_offline_first(st_cls, ...)`, which tries `local_files_only=True` and on `OSError`/`ValueError` falls back to `st_cls(model_name, **kwargs)` with network allowed.\n- So the first `sketch` after `install-embeddings` downloads `microsoft/unixcoder-base` and the ModernBERT model from huggingface.co. INV-dasig's closure kept this deliberately (\"the one-time first-install download — the only sanctioned runtime fetch\") but the claim text was never changed, so the published claim is false as written.\n\nWhy the self-proof does not see it: the constructor call is `st_cls(...)` on a parameter, so no edge reaches the catalogued constructor. The allowlist gate sees it because a non-call REFERENCE to `sentence_transformers.SentenceTransformer` counts as a site.\n\nNot verified live (would need an uncached model and network). Repro sketch: fresh `XDG_CACHE_HOME`/`HF_HOME`, `hypergumbo install-embeddings`, then `strace -f -e trace=connect hypergumbo sketch .` on any repo.\n\nFix options: (a) make `install-embeddings` pre-fetch both models so the runtime path is truly offline (and make the runtime fallback refuse to download, printing the install hint), or (b) restate the claim honestly. (a) keeps the claim; (b) weakens it — owner call.\n\nAllowlist entries carrying this finding: `hypergumbo_core.sketch_embeddings` `_load_embedding_model` / `_load_modernbert_model` `sentence_transformers.SentenceTransformer`."  # 2609
+    fields:  # 2609
+      statement: "No runtime CLI subcommand initiates a network send, including a first-use model download; embedding models are fetched only by install-embeddings."  # 2609
+      root_cause: "install-embeddings only pip-installs sentence-transformers; sketch_embeddings._load_st_model_offline_first falls back to a network-allowed SentenceTransformer(...) when the model is not cached, and INV-dasig kept that fallback without restating the claim. The self-proof cannot see it because the class is passed as a parameter (st_cls)."  # 2609
