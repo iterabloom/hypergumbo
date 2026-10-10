@@ -186,6 +186,17 @@ steps:
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - PYTHON=python scripts/check-self-claims
 
+  # ── WI-vumum independent I/O allowlist — cron arm ──────────────────────────
+  # The per-PR arm (woodpecker.yml `io-allowlist`) is path-filtered; this arm is
+  # unconditional so a site that slipped in through a path the filter missed
+  # still fails within one cron cadence. ~2 s, no hypergumbo install by design.
+  - name: io-allowlist
+    image: python:3.11-bookworm
+    depends_on: []
+    commands:
+      - pip install --upgrade pip && pip install "pyyaml>=6"
+      - scripts/check-io-allowlist
+
   # ── top-level forge/governance + agent-infra suite (no package coverage) ───
   - name: test-agent-infra
     image: python:3.11-bookworm

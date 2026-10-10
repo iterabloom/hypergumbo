@@ -317,6 +317,11 @@ jobs:
             exit 0
           fi
           exit "$rc"
+      - name: Independent I/O allowlist gate (WI-vumum)
+        run: |
+          # Unconditional cron arm of the per-PR io-allowlist-gate. Seconds,
+          # and needs only PyYAML (already installed above).
+          ./scripts/check-io-allowlist
       - name: Self-claim drift gate (WI-vanun)
         run: |
           # SECURITY.md asserted that claim regressions "fail the gate". No
