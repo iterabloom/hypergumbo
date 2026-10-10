@@ -139,6 +139,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ### Documentation
 
+- **README has a plain-language "Security and trust" section** for someone deciding whether to install hypergumbo: that agents wrote most of the code and no human reviewed it line by line, what a default run reads, writes and runs (including the one-time embedding-model download from huggingface.co), which commands download or execute code, how the self-claims and I/O-allowlist gates check it and their open findings, what an untrusted repository can and cannot influence, and how to run it confined. The README no longer says the meta-package installs the tracker.
 - **[docs/CATALOGUES.md](docs/CATALOGUES.md)** covers catalogue tiers, families and the in-repo opt-in.
 - **ADR-0061 decides catalogue tiers**, and ADR-0016, 0017, 0045, 0047 and 0060 agree with it. ADR-0017 adds §4c, and 21 ADRs now state the shipped design.
 - **Installed dependency source will be off by default** (decided 2026-10-06, not yet implemented). ADR-0004 adds the rule: package-manager-filled directories (Mix `deps/`, `node_modules/`, venv `site-packages`, …) are recognised by content, skipped with a disclosure, and parsed per package with a planned `--trace-deps`; committed vendored code stays parsed as tier 3. ADR-0016 §7 now reports a call into untraced dependency source as I/O unknown, never clean. The spec's motivation, its default-exclude list (which wrongly listed `venv/`) and its claim that symbols are extracted only from tiers 1-2 are corrected.
