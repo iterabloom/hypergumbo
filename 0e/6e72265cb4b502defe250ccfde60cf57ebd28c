@@ -1,0 +1,46 @@
+Original commit body from aa565ed2107c29627fc73dad037a5b50a6a4b8e8:
+
+Refs WI-vumum-dibot-bivuf-sanog-mobug-kohol-zuluj-vulid
+
+## What
+
+`scripts/check-io-allowlist`: a stdlib-only AST gate that imports nothing from hypergumbo. It finds every call site, and every non-call reference, of a risky primitive in `packages/*/src`. Families: fs write/delete/mkdir/chmod, process launch, network and model downloads, servers, eval/exec/compile, unsafe deserialize, native loading, and dynamic import of a non-literal name. Each site must be listed in `docs/hypergumbo.io-allowlist.yaml`, keyed by (module, enclosing function, primitive) with a count, and must carry a zone, purpose and commands (plus the target program for launches). The gate fails on a new site, a stale entry, a count change, or an entry still marked TODO, and it prints exactly what to add or remove. `--update` keeps the review data, `--list` prints line numbers, `--summary` prints counts.
+
+- Import aliases are resolved (`from subprocess import run as r`, `import os as _os`). Strings that name primitives (catalogues, docstrings) are not sites.
+- Method names that clearly mean I/O (`write_text`, `write_bytes`, `unlink`, `mkdir`, `chmod`, `rename`, `touch`, `extractall`, `from_pretrained`, `serve_forever`, ...) count no matter what the receiver is. `.replace` counts only on a `Path(...)` receiver. Common generic names (`write`, `send`, `run`, `load`) do not count. For those the gate lists where the handle is created instead (`open(.., "w")`, `socket.socket()`).
+- Blind spots, stated in the docstring: `getattr`/`globals` indirection, star imports, re-export through first-party modules, no shadowing analysis (this over-counts), I/O done inside a library behind a harmless-looking call, and non-Python code.
+
+Allowlist: 264 sites in 224 entries. The file was generated, then every entry's purpose, commands and target were filled in by hand after reading the code.
+
+| family | core | rust-analyzer | scip-python | tracker |
+|---|---|---|---|---|
+| fs_write | 42 | 0 | 1 | 153 |
+| process | 12 | 1 | 1 | 28 |
+| dynamic_import | 14 | 0 | 0 | 3 |
+| network | 4 | 0 | 0 | 3 |
+| server / deserialize | 0 | 0 | 0 | 1 / 1 |
+| code_exec / native | 0 | 0 | 0 | 0 |
+
+## Findings (filed and marked `finding:` on their entries, not silently allowlisted)
+
+- **INV-gujus**: the `runtime-cli-no-network` claim is false as written. `install-embeddings` only pip-installs the package. The first `sketch` afterwards downloads both models, because `SentenceTransformer` is passed as a parameter to an offline-first loader that falls back to downloading. The self-proof misses this: the class is called through a parameter, so no edge exists. This gate sees it because it counts the reference to the class.
+- **INV-tusos**: `rust-analyzer scip` and `scip-python index` launch through raw `subprocess.run`, called via `run = runner or subprocess.run`. That is outside the `repo_inspection` zone, which `runtime-cli-no-subprocess` says is the only launch zone. The scip-python launch can be switched on by the analysed repo's own `.hypergumbo.toml`. The scip-python temp dir also skips `tmp_artifact_dir`.
+- **INV-kuroj**: these writes use raw Path methods, and no self-catalogue zone declares them: trust grants, in-repo grants and offer answers (in `$XDG_STATE_HOME`), `init-catalogs` (in `$XDG_CONFIG_HOME`), and `~/hypergumbo/.hypergumbo-examples`. The repo-tier offer runs from `cli.main()` after the command finishes, so no claim's taint source covers it.
+- **WI-puban** (needs human review): the tracker stop hook POSTs to OpenRouter when `OPENROUTER_API_KEY` is set, and `openrouter.ai` is not in ALLOWED_WEBSITES.md.
+
+No site writes into the analysed repository, apart from the conditional `~/hypergumbo` case covered by INV-kuroj.
+
+## Cross-checks
+
+- **Process entries vs the `opaque_boundary` launch list.** I ran a local `verify-claims` on this tree. Its launch list is a set of qualified primitive NAMES: `subprocess.run`, `subprocess.Popen`, `subprocess.Popen.communicate`. This gate's process sites use exactly `subprocess.run` (40) and `subprocess.Popen` (2). No `os.system`/`exec*`/asyncio launch exists that the analysis could have missed, so the lists agree on names. **They disagree on programs.** ADR-0016 names git, pip and rustup, and the claim text names git, gitleaks and `rust-analyzer --version`. Not named anywhere: `rust-analyzer scip` and `scip-python index` (INV-tusos), the build-grammars `python -c` check, and the tracker's git/screen/chafa launches plus its textconv command read from git config. The tracker is outside the claims' scope (WI-sunan). The launch list cannot catch any of these, because one `subprocess.run` site anywhere satisfies the name.
+- **fs-write entries vs the self-catalogue zones** (user_cache, user_out, tmp_artifact, install_artifact, repo_inspection, dev_zone). Every write inside a `safety_zones` wrapper matches its declared zone. Writes under user_state (8 sites), user_config (3) and developer_checkout (2) have no catalogue zone (INV-kuroj). The selection_index / selection_log writes are dev tooling shipped in core that no subcommand imports, so they are listed as dev_zone.
+- Locally, all 18 self-claims came out `inconclusive`: `datetime.date` was unclassifiable and withheld the qualified verdict. The committed snapshot says `confirmed_with_caveats`. This looks like a difference in the local environment (Python 3.12 here, 3.11 in CI). I did not investigate it.
+
+## CI
+
+- `.woodpecker/woodpecker.yml`: new step `io-allowlist`, which blocks merges. It runs when `packages/*/src/**`, the allowlist or the script changes, installs only pyyaml, and takes about 2 s.
+- `.github/workflows/ci.yml`: new `io-allowlist-gate` job, triggered by a new `io_surface` output and added to `ci-complete`.
+- Both full-suite workflows: an unconditional step.
+- SECURITY.md (via `scripts/generate-security-md`) now describes the gate and lists the findings, read from the allowlist.
+
+Demo: I appended `sp.run(["curl", ...])` in a new function in `repo_fingerprint.py`. The gate exited 1 with `NEW — hypergumbo_core.repo_fingerprint: function: _demo_unlisted primitive: subprocess.run family: process count: 1 (line 311)`.
