@@ -1,0 +1,22 @@
+- op: create  # 1d14
+  at: '2026-10-10T18:39:05Z'  # 1d14
+  by: agent  # 1d14
+  actor: jgstern_agent  # 1d14
+  clock: 1  # 1d14
+  nonce: 1d14  # 1d14
+  data:  # 1d14
+    kind: work_item  # 1d14
+    title: "Tracker stop hook POSTs to OpenRouter (openrouter.ai, absent from ALLOWED_WEBSITES.md) when OPENROUTER_API_KEY is set"  # 1d14
+    status: needs_human_review  # 1d14
+    priority: 3  # 1d14
+    parent:  # 1d14
+    tags:  # 1d14
+    - security  # 1d14
+    - governance  # 1d14
+    - io_allowlist  # 1d14
+    isbefore: []  # 1d14
+    duplicate_of: []  # 1d14
+    not_duplicate_of: []  # 1d14
+    pr_ref:  # 1d14
+    description: "**Found by the independent I/O allowlist gate (WI-vumum, `scripts/check-io-allowlist`).** For human decision — touches governance (ALLOWED_WEBSITES.md), so no implementation without approval.\n\n`hypergumbo_tracker.stop_hook._call_openrouter` POSTs to OpenRouter (constant https URL) with `OPENROUTER_API_KEY` when that variable is set, sending the text of unread human tracker messages that start with `[[preface]]` (WI-mofaz precedence gate). It runs from the stop hook (`tracker guidance`), i.e. inside agent sessions.\n\n`openrouter.ai` does not appear in ALLOWED_WEBSITES.md (case-insensitive grep, 2026-10-10). AGENTS.md: \"Any network access must be limited to the allowlisted domains in ALLOWED_WEBSITES.md.\" The code path is dormant without the key, so this is a policy disagreement, not an observed violation.\n\nOptions: (a) add openrouter.ai to ALLOWED_WEBSITES.md with the use-case (governance edit, human approval); (b) remove/disable the outbound call; (c) document that the key must not be set in agent sessions."  # 1d14
+    fields: {}  # 1d14

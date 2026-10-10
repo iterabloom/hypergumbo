@@ -1,0 +1,21 @@
+- op: create  # 1ebc
+  at: '2026-10-07T08:48:02Z'  # 1ebc
+  by: agent  # 1ebc
+  actor: jgstern_agent  # 1ebc
+  clock: 1  # 1ebc
+  nonce: 1ebc  # 1ebc
+  data:  # 1ebc
+    kind: work_item  # 1ebc
+    title: "smart-test coverage-select crawls (>12 min, ~110 KB/s random reads) when the 2.3 GB selection_index.sqlite is cold in page cache"  # 1ebc
+    status: todo_hard  # 1ebc
+    priority: 2  # 1ebc
+    parent:  # 1ebc
+    tags:  # 1ebc
+    - smart_test  # 1ebc
+    - ci  # 1ebc
+    isbefore: []  # 1ebc
+    duplicate_of: []  # 1ebc
+    not_duplicate_of: []  # 1ebc
+    pr_ref:  # 1ebc
+    description: "smart-test's coverage-select step queries ~/hypergumbo_lab_notebook/selection_index.sqlite (2.3 GB). Observed 2026-10-06 on this VM: with the file cold in page cache, coverage-select sat in D state (folio_wait) for 12+ min reading ~110 KB/s by random page access (81 MB read), although the disk reads sequentially at ~40 MB/s and 4 KB direct reads take 4-20 ms. A full sequential read (`cat file > /dev/null`, ~100 s) unblocked it; even then only ~1.1 GB stayed resident, so it recurs under memory pressure. Every agent run since has needed the warm-up advice. Fix in coverage-select: check the query plans (missing index → full scans in random order), shrink the index (prune/compact/VACUUM), or read the needed table sequentially. Acceptance: coverage-select finishes in < 1 min from a cold cache."  # 1ebc
+    fields: {}  # 1ebc
