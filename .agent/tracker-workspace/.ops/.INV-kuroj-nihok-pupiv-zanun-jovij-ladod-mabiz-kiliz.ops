@@ -1,0 +1,24 @@
+- op: create  # adbb
+  at: '2026-10-10T18:41:07Z'  # adbb
+  by: agent  # adbb
+  actor: jgstern_agent  # adbb
+  clock: 1  # adbb
+  nonce: adbb  # adbb
+  data:  # adbb
+    kind: invariant  # adbb
+    title: "Installed-CLI writes to XDG_STATE (trust grants, offers), XDG_CONFIG (init-catalogs) and ~/hypergumbo bypass safety_zones and no self-catalogue zone declares them; the repo-tier offer runs from main(), outside every claim's taint source"  # adbb
+    status: violated  # adbb
+    priority: 2  # adbb
+    parent:  # adbb
+    tags:  # adbb
+    - security  # adbb
+    - self_claims  # adbb
+    - io_allowlist  # adbb
+    isbefore: []  # adbb
+    duplicate_of: []  # adbb
+    not_duplicate_of: []  # adbb
+    pr_ref:  # adbb
+    description: "**Found by the independent I/O allowlist gate (WI-vumum, `scripts/check-io-allowlist`).**\n\nSECURITY.md (`runtime-cli-no-host-fs`): \"All writes go through the safety_zones wrappers (cache_write / user_out_write / tmp_artifact_write) in their respective peer zones.\" The self-catalogue declares zones user_cache, user_out, tmp_artifact, install_artifact, repo_inspection, dev_zone. These runtime-CLI writes use raw `Path.mkdir/write_text/chmod` and land in places NO zone declares:\n\n| site (module.function) | where it writes | reached from |\n|---|---|---|\n| backend_trust.record_decision | $XDG_STATE_HOME/hypergumbo/trust.d/<sha>.json (0600) | `trust-backend` |\n| in_repo_catalogues.record_in_repo_decision | $XDG_STATE_HOME/hypergumbo/<store>/<sha>.json (0600) | `trust-catalogues` |\n| repo_tier_offer.record_offer_decision | $XDG_STATE_HOME/hypergumbo/offers.json | `main()` after ANY subcommand (interactive stdin only) |\n| repo_tier_offer.write_repo_tier_examples | ~/hypergumbo/.hypergumbo-examples/ (a git checkout) | same, on a \"y\" answer |\n| catalogue_home.materialize_catalogue_home | $XDG_CONFIG_HOME/hypergumbo/ or `--home` | `init-catalogs` |\n\nTwo distinct problems:\n1. **No zone, no wrapper.** user_state / user_config / developer-checkout writes are visible to the self-proof only as `untyped_receiver` caveat counts (the `mkdir 19, write_text 12` in SECURITY.md), never as a zone the claims can permit or prohibit.\n2. **Outside every taint source.** The repo-tier offer runs from `cli.main()` after `args.func(args)` returns, not from a `cmd_*` handler. Every self-claim's source is a `cmd_*` handler, so NO claim covers these two writes at all. The `~/hypergumbo` destination is a repository checkout; ADR-0047 ruling 9 sanctions it with consent and `write_repo_tier_examples` asserts containment, but if a user analyses `~/hypergumbo` itself the tool writes into the analysed repository.\n\nStatement: every filesystem write reachable from the installed CLI (including `main()`'s post-command hooks) goes through a `safety_zones` wrapper whose zone is declared in docs/hypergumbo-self-catalog/, and is covered by at least one claim's taint source.\n\nSuggested shape: `user_state_write` / `user_config_write` (+ mkdir/chmod) wrappers and zone files; add `main` (or the offer function) as a runtime source anchor."  # adbb
+    fields:  # adbb
+      statement: "Every filesystem write reachable from the installed CLI (including main()'s post-command hooks) goes through a safety_zones wrapper whose zone is declared in docs/hypergumbo-self-catalog/ and is covered by at least one claim's taint source."  # adbb
+      root_cause: "safety_zones has no user_state/user_config wrapper family, so features added after the wrapper discipline (ADR-0045 trust store, ADR-0047 catalogue home and repo-tier offer) wrote with raw Path methods; the offer hook lives in main(), which no claim names as a source."  # adbb
