@@ -1,0 +1,25 @@
+Original commit body from 70a430a3e01f9a95ccabb4c79d55730092a0aef0:
+
+`hypergumbo build-grammars` (and the grammars step of `add-extras`)
+could not work from a pip/pipx install. The Lean, Wolfram and Circom C
+sources lived in a repo-root `vendor/`, found as
+`Path(__file__).parents[4] / "vendor"`; the hypergumbo-core wheel packages
+only `src/hypergumbo_core`, so from an install that path resolved to
+`<venv>/vendor` and all three grammars failed (exit 1). Reproduced from
+fresh venvs built from the release workflow's `python -m build` wheels.
+
+Move the tree to `hypergumbo_core/vendor/` (package data, resolved beside
+the module), so one path serves source checkout, editable install, sdist
+and wheel. Each grammar's MIT LICENSE and UPSTREAM pin ship with it.
+Compressed wheel grows 2,703,208 -> 3,419,413 bytes (+0.7 MB).
+
+The missing-source error now names the looked-up path and tells an
+installed user to reinstall hypergumbo-core, instead of pointing at a doc
+that exists only in a source checkout; it is now tested (no pragma).
+scripts/build-source-grammars, docs/grammars/vendor-sync.md, the I/O
+allowlist target text, README command table (root + meta copy), spec and
+CHANGELOG follow.
+
+Refs INV-bazoz-jurog-jihav-butod-pabih-tobob-vofor-susug
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
