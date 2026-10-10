@@ -1,0 +1,24 @@
+- op: create  # 25ce
+  at: '2026-10-10T18:40:20Z'  # 25ce
+  by: agent  # 25ce
+  actor: jgstern_agent  # 25ce
+  clock: 1  # 25ce
+  nonce: 25ce  # 25ce
+  data:  # 25ce
+    kind: invariant  # 25ce
+    title: "Runtime path launches rust-analyzer scip and scip-python index through raw subprocess.run (runner indirection), outside the repo_inspection zone the runtime-cli-no-subprocess claim says is the only one"  # 25ce
+    status: violated  # 25ce
+    priority: 2  # 25ce
+    parent:  # 25ce
+    tags:  # 25ce
+    - security  # 25ce
+    - self_claims  # 25ce
+    - io_allowlist  # 25ce
+    isbefore: []  # 25ce
+    duplicate_of: []  # 25ce
+    not_duplicate_of: []  # 25ce
+    pr_ref:  # 25ce
+    description: "**Found by the independent I/O allowlist gate (WI-vumum, `scripts/check-io-allowlist`).**\n\n`runtime-cli-no-subprocess` says runtime subcommands shell out ONLY through the declared `repo_inspection` zone (git, gitleaks, `rust-analyzer --version`) and that \"an unwrapped subprocess call — is prohibited\". SECURITY.md repeats it. Two runtime-path launches are unwrapped and outside that list:\n\n1. `hypergumbo_lang_rust_analyzer.invoke.run_rust_analyzer_scip` — `run = runner if runner is not None else subprocess.run`; `run([rust-analyzer, \"scip\", workspace])`. Reached from any analysis command with `--backend rust-analyzer` / `HYPERGUMBO_RUST_ANALYZER=1` after a `trust-backend` grant (ADR-0045). This launch EXECUTES the analysed repo's build.rs / proc macros. The trust gate is the right policy; the gap is that the claim and the zone catalogue do not declare it and no wrapper names it.\n2. `hypergumbo_lang_scip_python.invoke.run_scip_python_index` — same `runner or subprocess.run` shape; `scip-python index <project>`. Opt-in can come from flag, env, or a config tier — including the analysed repo's own `.hypergumbo.toml` (gate.py), i.e. a repository can turn this launch on for itself. scip-python executes nothing from the project (static inference), so a preference opt-in is ADR-0045-consistent, but it is still an undeclared launch.\n3. Same package: `hypergumbo_lang_scip_python.analyzer.analyze_python_with_scip_impl` uses raw `tempfile.TemporaryDirectory` instead of `safety_zones.tmp_artifact_dir` (wrapper discipline, cf. INV-lalad).\n\nWhy the self-proof misses them: the call is through a LOCAL bound to `subprocess.run`, so no edge reaches the catalogued primitive; `opaque_boundary`'s launch list is per primitive NAME (`subprocess.run`, `subprocess.Popen`), so it is satisfied by other sites and says nothing about which programs launch. The allowlist gate sees them because it counts non-call references to `subprocess.run`.\n\nStatement: every process launch reachable from a runtime `cmd_*` handler goes through a named `safety_zones` wrapper declared in a self-catalogue zone, and the `runtime-cli-no-subprocess` claim text enumerates every program it can launch (including opt-in analyser backends and the condition that enables each).\n\nSuggested shape: an `analyser_backend` wrapper family (`backend_index_rust_analyzer`, `backend_index_scip_python`) + `docs/hypergumbo-self-catalog/analyser_backend_sinks.yaml` + claim text naming both launches and their gates; route the scip-python temp dir through `tmp_artifact_dir`."  # 25ce
+    fields:  # 25ce
+      statement: "Every process launch reachable from a runtime cmd_* handler goes through a named safety_zones wrapper declared in a self-catalogue zone, and runtime-cli-no-subprocess enumerates every program it can launch with the condition that enables it."  # 25ce
+      root_cause: "The analyser-backend packages call subprocess.run through an injectable local (run = runner or subprocess.run) instead of a zone wrapper, so the self-proof sees no edge to a catalogued launch and the claim text was written without them."  # 25ce
