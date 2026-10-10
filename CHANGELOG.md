@@ -62,6 +62,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 - **`Edge.meta` keys must be registered**, as a fourth axis of the producer ratchet (79 unregistered keys registered; `Symbol(...)` keys are not gated yet), and **`check-docstring-drift --registry-refs`** flags prose naming vocabulary no registry holds.
 - **`check-docstring-drift --rolling N`** adds the least-recently-reviewed files, from a committed review ledger, to each audit.
+- **Independent I/O allowlist gate** (`scripts/check-io-allowlist`, per-PR and cron CI). Every call site or reference of a risky primitive in `packages/*/src` (file writes and deletes, process launch, network, servers, `eval`/`exec`, unsafe deserialization, native loading, non-literal dynamic import) must appear in the reviewed `docs/hypergumbo.io-allowlist.yaml` (264 sites, 224 entries), with its zone, target program, purpose and commands. It is a stdlib AST walk that imports nothing from hypergumbo, so it does not share the self-proof's blind spots. Its first review filed three self-claim gaps the self-proof missed: a first-use model download on `sketch` (INV-gujus), unwrapped analyser-backend launches (INV-tusos), and unwrapped user-state/config writes (INV-kuroj). SECURITY.md now describes the gate and lists those findings.
 
 ### Fixed
 

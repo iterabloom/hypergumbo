@@ -1,0 +1,1594 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Reviewed allowlist of every risky I/O primitive call site in packages/*/src.
+# Gate: scripts/check-io-allowlist (WI-vumum) -- read its docstring for what
+# it can and cannot see. Regenerate counts/keys with `--update`, then REVIEW:
+# every entry's zone / purpose / commands (and target, for process entries)
+# is a human statement, and a TODO keeps CI red.
+#
+# Key: (module, function, primitive) + count. A module block's
+# zone/purpose/commands/target are defaults its sites inherit.
+# Zones: user_cache user_out user_config user_state developer_checkout
+#        tmp_artifact install_artifact repo_inspection install analyser_backend
+#        dev_zone dev_ui in_process; analysed_repo is always a finding
+#        (ADR-0047 ruling 9). The script's ZONES table defines each.
+# `finding: <tracker id>` marks a site that is a known problem, not a blessing.
+#
+# Command shorthands used below:
+#   <analysis>   any `hypergumbo` subcommand that builds or loads an analysis:
+#                sketch survey slice search routes explain symbols compact
+#                test-coverage dead-code-maybe repeat-finder io-boundaries
+#                verify-claims backend-agreement
+#   <any>        after ANY `hypergumbo` subcommand (cli.main)
+#   tracker:X    `hypergumbo-tracker X` (alias htrac / scripts/tracker)
+#   library      no caller anywhere in packages/*/src; reachable only by
+#                importing the function
+#   scripts/X    repository development tooling, not the installed CLI
+version: 1
+modules:
+  hypergumbo_core.analyze.base:
+    zone: in_process
+    commands:
+    - <analysis>
+    sites:
+    - function: TreeSitterAnalyzer._create_parser
+      primitive: importlib.import_module[dynamic]
+      family: dynamic_import
+      count: 1
+      purpose: import the tree_sitter_<lang> grammar module named by the analyzer's own registration
+        (grammar_module, a first-party constant), never a name from the analysed repo
+  hypergumbo_core.analyze.registry:
+    zone: in_process
+    commands:
+    - <analysis>
+    sites:
+    - function: RegisteredAnalyzer.get_func
+      primitive: importlib.import_module[dynamic]
+      family: dynamic_import
+      count: 1
+      purpose: lazy-load an analyzer function from the module path its registration recorded
+    - function: _import_module_list
+      primitive: importlib.import_module[dynamic]
+      family: dynamic_import
+      count: 1
+      purpose: import the analyzer modules an entry point lists, to fire their @register_analyzer
+        decorators
+    - function: _load_entry_point_modules
+      primitive: importlib.metadata.entry_points
+      family: dynamic_import
+      count: 1
+      purpose: 'discover the `hypergumbo.analyzers` entry-point group: every installed distribution
+        that registers there is imported on every analysis. Trust boundary is the Python environment,
+        the same as any installed package; nothing from the analysed repo can register'
+    - function: _register_from_specs
+      primitive: importlib.import_module[dynamic]
+      family: dynamic_import
+      count: 1
+      purpose: import the module named by an AnalyzerSpec from an entry point (transition
+        format)
+  hypergumbo_core.analyzer_identity:
+    zone: in_process
+    commands:
+    - <analysis>
+    sites:
+    - function: _try_import
+      primitive: builtins.__import__[dynamic]
+      family: dynamic_import
+      count: 1
+      purpose: import each installed distribution whose name starts with `hypergumbo` to hash
+        its source into the results-cache key; same environment trust boundary as entry points
+  hypergumbo_core.backend_trust:
+    zone: user_state
+    commands:
+    - trust-backend
+    purpose: persist a per-repository trust grant for an executing backend (ADR-0045 r8) at
+      $XDG_STATE_HOME/hypergumbo/trust.d/<sha256(repo path)>.json, mode 0600; raw Path methods,
+      no safety_zones wrapper or self-catalogue zone
+    finding: INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz
+    sites:
+    - function: record_decision
+      primitive: '*.chmod'
+      family: fs_write
+      count: 1
+    - function: record_decision
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: record_decision
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+  hypergumbo_core.build_grammars:
+    commands:
+    - build-grammars
+    - add-extras
+    sites:
+    - function: _run_command
+      primitive: subprocess.run
+      family: process
+      count: 1
+      zone: install
+      target: python -m pip install <vendored vendor/tree-sitter-<name> dir>; python -c 'import
+        tree_sitter_<name>' (post-install check)
+      purpose: build and install the three source-only grammars from vendored source (no clone,
+        no download by hypergumbo; pip resolves build deps)
+    - function: check_grammar_availability
+      primitive: builtins.__import__[dynamic]
+      family: dynamic_import
+      count: 1
+      zone: in_process
+      commands:
+      - build-grammars
+      - add-extras
+      - remove-extras
+      purpose: probe whether tree_sitter_<name> for each SOURCE_GRAMMARS entry imports (names
+        from a first-party constant)
+  hypergumbo_core.catalogue_home:
+    zone: user_config
+    commands:
+    - init-catalogs
+    purpose: 'materialize the catalogue home ($XDG_CONFIG_HOME/hypergumbo or --home): channel
+      dirs, README, seeded community overlays; existing files left untouched; raw Path methods,
+      no wrapper/zone'
+    finding: INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz
+    sites:
+    - function: materialize_catalogue_home
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: materialize_catalogue_home
+      primitive: '*.write_text'
+      family: fs_write
+      count: 2
+  hypergumbo_core.cli:
+    zone: install
+    sites:
+    - function: _install_embeddings_impl
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: python -m pip install sentence-transformers onnxruntime
+      commands:
+      - add-extras
+      purpose: install the embedding extras (pip; downloads from PyPI)
+    - function: _suppress_broken_stdout_pipe
+      primitive: os.open
+      family: fs_write
+      count: 1
+      zone: in_process
+      commands:
+      - <any>
+      purpose: os.open(os.devnull, O_WRONLY) to dup2 over a closed stdout after EPIPE; creates
+        nothing
+    - function: _uninstall_embeddings_impl
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: python -m pip uninstall -y sentence-transformers onnxruntime
+      commands:
+      - remove-extras
+      purpose: remove the embedding extras
+    - function: _uninstall_grammars
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: python -m pip uninstall -y tree-sitter-lean tree-sitter-wolfram tree-sitter-circom
+      commands:
+      - remove-extras
+      purpose: remove the source-built grammars
+    - function: cmd_install_embeddings
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: python -m pip install sentence-transformers~=5.2.2
+      commands:
+      - install-embeddings
+      purpose: install sentence-transformers; does NOT fetch the models (see INV-gujus)
+    - function: cmd_uninstall_embeddings
+      primitive: subprocess.run
+      family: process
+      count: 2
+      target: python -m pip uninstall -y sentence-transformers (and torch, torchvision, torchaudio
+        with --all)
+      commands:
+      - uninstall-embeddings
+      purpose: remove sentence-transformers (optionally PyTorch)
+  hypergumbo_core.dataflow_scope:
+    zone: in_process
+    commands:
+    - <analysis>
+    purpose: import / reload the def-use extractor modules (first-party names) so their registrations
+      are present; reload recovers a registry a test cleared
+    sites:
+    - function: ensure_def_use_extractors_registered
+      primitive: importlib.import_module[dynamic]
+      family: dynamic_import
+      count: 1
+    - function: ensure_def_use_extractors_registered
+      primitive: importlib.reload
+      family: dynamic_import
+      count: 2
+  hypergumbo_core.gitleaks:
+    zone: install
+    target: api.github.com (latest gitleaks release) / github.com release asset
+    commands:
+    - install-gitleaks
+    - add-extras
+    sites:
+    - function: _get_download_url
+      primitive: urllib.request.urlopen
+      family: network
+      count: 1
+      purpose: resolve the latest gitleaks release asset URL for this platform
+    - function: install_gitleaks
+      primitive: urllib.request.urlopen
+      family: network
+      count: 1
+      purpose: download the gitleaks release archive (then extracted/installed via tmp_artifact_*
+        and install_artifact_* wrappers)
+  hypergumbo_core.in_repo_catalogues:
+    zone: user_state
+    commands:
+    - trust-catalogues
+    purpose: record a grant/decline for a repository's in-repo catalogue data at $XDG_STATE_HOME/hypergumbo/<store>/<sha256(repo
+      path)>.json, mode 0600; raw Path methods, no wrapper/zone
+    finding: INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz
+    sites:
+    - function: record_in_repo_decision
+      primitive: '*.chmod'
+      family: fs_write
+      count: 1
+    - function: record_in_repo_decision
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: record_in_repo_decision
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+  hypergumbo_core.pass_metadata:
+    zone: in_process
+    commands:
+    - <analysis>
+    purpose: import a registered linker's / gap pass's own module (first-party) to read PASS_ID
+      or hash its code
+    sites:
+    - function: _module_pass_version
+      primitive: importlib.import_module[dynamic]
+      family: dynamic_import
+      count: 1
+    - function: _resolve_linker_pass_id
+      primitive: importlib.import_module[dynamic]
+      family: dynamic_import
+      count: 1
+  hypergumbo_core.repo_tier_offer:
+    commands:
+    - <any>
+    finding: INV-kuroj-nihok-pupiv-zanun-jovij-ladod-mabiz-kiliz
+    sites:
+    - function: record_offer_decision
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      zone: user_state
+      purpose: record the answer to the one-time repo-tier examples offer in $XDG_STATE_HOME/hypergumbo/offers.json;
+        runs from cli.main() after the command, interactive stdin only, outside every claim's
+        taint source
+    - function: record_offer_decision
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      zone: user_state
+      purpose: record the answer to the one-time repo-tier examples offer in $XDG_STATE_HOME/hypergumbo/offers.json;
+        runs from cli.main() after the command, interactive stdin only, outside every claim's
+        taint source
+    - function: write_repo_tier_examples
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      zone: developer_checkout
+      purpose: on a 'y' answer, write example overlay files under ~/hypergumbo/.hypergumbo-examples
+        (containment asserted); ~/hypergumbo is a repository checkout, so analysing it would
+        make this a write into the analysed repo
+    - function: write_repo_tier_examples
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      zone: developer_checkout
+      purpose: on a 'y' answer, write example overlay files under ~/hypergumbo/.hypergumbo-examples
+        (containment asserted); ~/hypergumbo is a repository checkout, so analysing it would
+        make this a write into the analysed repo
+  hypergumbo_core.rust_analyzer_install:
+    zone: install
+    sites:
+    - function: install_rust_analyzer
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: rustup component add rust-analyzer
+      commands:
+      - install-rust-analyzer
+      - add-extras
+      purpose: install rust-analyzer through rustup (called via an injectable `run` local)
+    - function: uninstall_rust_analyzer
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: rustup component remove rust-analyzer
+      commands:
+      - uninstall-rust-analyzer
+      - remove-extras
+      purpose: remove the rustup-managed rust-analyzer
+  hypergumbo_core.safety_zones:
+    sites:
+    - function: cache_mkdir
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      zone: user_cache
+      commands:
+      - <analysis>
+      purpose: 'user_cache wrapper: create a cache directory'
+    - function: cache_rename
+      primitive: '*.rename'
+      family: fs_write
+      count: 1
+      zone: user_cache
+      commands:
+      - cache-clear
+      purpose: zone-enforced rename; both ends must be inside the cache root
+    - function: cache_rmtree
+      primitive: shutil.rmtree
+      family: fs_write
+      count: 1
+      zone: user_cache
+      commands:
+      - cache-clear
+      purpose: zone-enforced recursive delete inside the cache root (refuses paths outside
+        it)
+    - function: cache_save_npy
+      primitive: numpy.save
+      family: fs_write
+      count: 1
+      zone: user_cache
+      commands:
+      - sketch
+      purpose: 'user_cache wrapper: persist an embedding vector (.npy)'
+    - function: cache_unlink
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+      zone: user_cache
+      commands:
+      - cache-clear
+      purpose: zone-enforced unlink inside the cache root
+    - function: cache_write
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      zone: user_cache
+      commands:
+      - <analysis>
+      purpose: 'user_cache wrapper: write a text file under $XDG_CACHE_HOME/hypergumbo (analysis
+        results, gitleaks scan cache)'
+    - function: cache_write_bytes
+      primitive: '*.write_bytes'
+      family: fs_write
+      count: 1
+      zone: user_cache
+      commands:
+      - library
+      purpose: user_cache wrapper (bytes); no caller today
+    - function: cache_write_zip
+      primitive: '*.write_bytes'
+      family: fs_write
+      count: 1
+      zone: user_cache
+      commands:
+      - cache-clear
+      purpose: zone-enforced soft-delete archive written inside the cache root
+    - function: cache_write_zip
+      primitive: zipfile.ZipFile[w]
+      family: fs_write
+      count: 1
+      zone: user_cache
+      commands:
+      - cache-clear
+      purpose: zone-enforced soft-delete archive written inside the cache root
+    - function: install_artifact_chmod
+      primitive: '*.chmod'
+      family: fs_write
+      count: 1
+      zone: install_artifact
+      commands:
+      - install-gitleaks
+      - add-extras
+      purpose: 'install_artifact wrapper: chmod +x the installed binary'
+    - function: install_artifact_copy
+      primitive: shutil.copy2
+      family: fs_write
+      count: 1
+      zone: install_artifact
+      commands:
+      - install-gitleaks
+      - add-extras
+      purpose: 'install_artifact wrapper: copy the extracted binary into ~/.local/bin'
+    - function: install_artifact_mkdir
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      zone: install_artifact
+      commands:
+      - install-gitleaks
+      - add-extras
+      purpose: 'install_artifact wrapper: create ~/.local/bin'
+    - function: install_artifact_unlink
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+      zone: install_artifact
+      commands:
+      - uninstall-gitleaks
+      - remove-extras
+      purpose: zone-enforced unlink inside ~/.local/bin
+    - function: install_artifact_write_bytes
+      primitive: '*.write_bytes'
+      family: fs_write
+      count: 1
+      zone: install_artifact
+      commands:
+      - install-gitleaks
+      - add-extras
+      purpose: 'install_artifact wrapper: write the gitleaks binary'
+    - function: repo_inspect_git
+      primitive: subprocess.run
+      family: process
+      count: 1
+      zone: repo_inspection
+      target: git (rev-parse HEAD, rev-list --max-parents=0 HEAD, config --get remote.origin.url)
+      commands:
+      - <analysis>
+      - trust-catalogues
+      purpose: 'repo_inspection wrapper: local read-only git plumbing for cache keys and repo
+        identity'
+    - function: repo_inspect_probe
+      primitive: subprocess.run
+      family: process
+      count: 1
+      zone: repo_inspection
+      target: rust-analyzer --version / scip-python --version
+      commands:
+      - <analysis>
+      - install-rust-analyzer
+      purpose: 'repo_inspection wrapper: installed-and-version probe that reads nothing'
+    - function: repo_inspect_scan
+      primitive: subprocess.run
+      family: process
+      count: 1
+      zone: repo_inspection
+      target: gitleaks stdin --report-format json (only when installed)
+      commands:
+      - sketch
+      purpose: 'repo_inspection wrapper: best-effort secret scan over content handed on stdin'
+    - function: tmp_artifact_dir
+      primitive: tempfile.TemporaryDirectory
+      family: fs_write
+      count: 1
+      zone: tmp_artifact
+      commands:
+      - install-gitleaks
+      - add-extras
+      - <analysis>
+      purpose: tmp_artifact wrapper around TemporaryDirectory (gitleaks install; rust-analyzer
+        graceful-degrade probe)
+    - function: tmp_artifact_extract
+      primitive: '*.extractall'
+      family: fs_write
+      count: 2
+      zone: tmp_artifact
+      commands:
+      - install-gitleaks
+      - add-extras
+      purpose: zone-enforced archive extraction into a temp dir (each member's destination
+        checked)
+    - function: tmp_artifact_mkdir
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      zone: tmp_artifact
+      commands:
+      - build-grammars
+      - add-extras
+      purpose: 'tmp_artifact wrapper: create a build dir under the temp dir'
+    - function: tmp_artifact_rmtree
+      primitive: shutil.rmtree
+      family: fs_write
+      count: 1
+      zone: tmp_artifact
+      commands:
+      - build-grammars
+      - add-extras
+      - sketch
+      purpose: zone-enforced recursive delete under the temp dir (build dirs, legacy sketch-compare
+        dir)
+    - function: tmp_artifact_write
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      zone: tmp_artifact
+      commands:
+      - build-grammars
+      - add-extras
+      purpose: 'tmp_artifact wrapper: write grammar build scaffolding under the temp dir'
+    - function: user_out_mkdir
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      zone: user_out
+      commands:
+      - <analysis>
+      purpose: 'user_out wrapper: create the parent of a user-named output path'
+    - function: user_out_open_json_dump
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 1
+      zone: user_out
+      commands:
+      - <analysis>
+      purpose: 'user_out wrapper: open(path, ''w'') + json.dump at a user-named path'
+    - function: user_out_open_json_dump_gzip
+      primitive: gzip.open[w]
+      family: fs_write
+      count: 1
+      zone: user_out
+      commands:
+      - <analysis>
+      purpose: 'user_out wrapper: gzip.open(path, ''wt'') + json.dump at a user-named path'
+    - function: user_out_write
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      zone: user_out
+      commands:
+      - <analysis>
+      purpose: 'user_out wrapper: write a file at a path the user named (-o/--out)'
+  hypergumbo_core.selection_index:
+    zone: dev_zone
+    commands:
+    - scripts/smart-test
+    - scripts/coverage-select
+    purpose: coverage-directed test-selection index (sqlite) for this repository's own test
+      runs; dev tooling shipped inside hypergumbo-core, imported by no hypergumbo subcommand
+    sites:
+    - function: open_index
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: open_index
+      primitive: sqlite3.connect
+      family: fs_write
+      count: 1
+  hypergumbo_core.selection_log:
+    zone: dev_zone
+    commands:
+    - scripts/smart-test
+    purpose: append-only JSONL log of test-selection shadow observations; dev tooling, no
+      hypergumbo subcommand imports it
+    sites:
+    - function: append_observation
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: append_observation
+      primitive: '*.open[w]'
+      family: fs_write
+      count: 1
+  hypergumbo_core.sketch:
+    zone: in_process
+    commands:
+    - <analysis>
+    sites:
+    - function: _run_analysis
+      primitive: importlib.import_module[dynamic]
+      family: dynamic_import
+      count: 1
+      purpose: import an analyzer module by name from the first-party package list (hypergumbo_lang_mainstream/common/extended1)
+  hypergumbo_core.sketch_embeddings:
+    zone: install
+    target: huggingface.co (model download on first use)
+    commands:
+    - sketch
+    purpose: 'the SentenceTransformer CLASS is handed to _load_st_model_offline_first, which
+      falls back to a network-allowed load when the model is not cached: the first sketch
+      after install-embeddings downloads the model, contrary to runtime-cli-no-network''s
+      text'
+    finding: INV-gujus-fahub-pusip-dugoz-hidaj-vulav-higop-jihuf
+    sites:
+    - function: _load_embedding_model
+      primitive: sentence_transformers.SentenceTransformer
+      family: network
+      count: 1
+    - function: _load_modernbert_model
+      primitive: sentence_transformers.SentenceTransformer
+      family: network
+      count: 1
+  hypergumbo_core.spec_validator:
+    zone: in_process
+    commands:
+    - <analysis>
+    sites:
+    - function: _check_verdict_enum_completeness
+      primitive: importlib.import_module[dynamic]
+      family: dynamic_import
+      count: 1
+      purpose: import the first-party module named in an internal table to compare a Literal
+        against its documented values
+  hypergumbo_lang_rust_analyzer.invoke:
+    zone: analyser_backend
+    target: rust-analyzer scip <workspace> (EXECUTES the analysed repo's build.rs and proc
+      macros)
+    commands:
+    - <analysis> with --backend rust-analyzer or HYPERGUMBO_RUST_ANALYZER=1, after trust-backend
+    purpose: SCIP indexing for the rust-analyzer backend, gated by the ADR-0045 trust grant;
+      launched through raw subprocess.run via an injectable `run` local, outside the repo_inspection
+      zone the runtime-cli-no-subprocess claim names
+    finding: INV-tusos-gibog-pupan-ratid-tutug-kivub-fison-zuhad
+    sites:
+    - function: run_rust_analyzer_scip
+      primitive: subprocess.run
+      family: process
+      count: 1
+  hypergumbo_lang_scip_python.analyzer:
+    zone: tmp_artifact
+    commands:
+    - <analysis> with --backend scip-python, HYPERGUMBO_SCIP_PYTHON, or [backends] scip_python
+      in config.toml / the analysed repo's .hypergumbo.toml
+    purpose: scratch dir for the scip-python index output; raw tempfile.TemporaryDirectory
+      instead of safety_zones.tmp_artifact_dir
+    finding: INV-tusos-gibog-pupan-ratid-tutug-kivub-fison-zuhad
+    sites:
+    - function: analyze_python_with_scip_impl
+      primitive: tempfile.TemporaryDirectory
+      family: fs_write
+      count: 1
+  hypergumbo_lang_scip_python.invoke:
+    zone: analyser_backend
+    target: scip-python index <project> --output <tmp>/index.scip (static inference; executes
+      nothing from the project)
+    commands:
+    - <analysis> with --backend scip-python, HYPERGUMBO_SCIP_PYTHON, or [backends] scip_python
+      in config.toml / the analysed repo's .hypergumbo.toml
+    purpose: SCIP indexing for the scip-python backend; raw subprocess.run via an injectable
+      `run` local, outside any declared zone, and enable-able by the analysed repo's own config
+    finding: INV-tusos-gibog-pupan-ratid-tutug-kivub-fison-zuhad
+    sites:
+    - function: run_scip_python_index
+      primitive: subprocess.run
+      family: process
+      count: 1
+  hypergumbo_tracker.cache:
+    zone: dev_zone
+    commands:
+    - tracker:show
+    - tracker:list
+    - tracker:ready
+    - tracker:cache-rebuild
+    sites:
+    - function: Cache._ensure_db
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+      purpose: delete a corrupt cache db before recreating it
+    - function: Cache._ensure_db
+      primitive: sqlite3.connect
+      family: fs_write
+      count: 2
+      purpose: open/create the tracker's sqlite read cache
+    - function: Cache._recover
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+      purpose: delete the corrupt cache db
+    - function: Cache._recover
+      primitive: sqlite3.connect
+      family: fs_write
+      count: 1
+      purpose: reopen the cache db after recovery
+    - function: Cache.repo_fingerprint
+      primitive: subprocess.run
+      family: process
+      count: 2
+      target: git remote get-url origin; git rev-list --max-parents=0 HEAD
+      purpose: identify the repository for the cache key
+  hypergumbo_tracker.cli:
+    zone: dev_zone
+    sites:
+    - function: _cmd_fork_setup
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:fork-setup
+      purpose: write the fork's tracker config
+    - function: _cmd_init
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:init
+      purpose: scaffold .agent/tracker* directories, config and templates in the governed
+        repo
+    - function: _cmd_init
+      primitive: '*.write_text'
+      family: fs_write
+      count: 4
+      commands:
+      - tracker:init
+      purpose: scaffold .agent/tracker* directories, config and templates in the governed
+        repo
+    - function: _cmd_init
+      primitive: shutil.copy2
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:init
+      purpose: scaffold .agent/tracker* directories, config and templates in the governed
+        repo
+    - function: _cmd_priority_trend
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:priority-trend
+      purpose: write the priority-trend SVG to the requested output path
+    - function: _cmd_sync
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: git rev-parse --show-toplevel
+      commands:
+      - tracker:sync
+      purpose: locate the repo root
+    - function: _cmd_tui
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: git rev-parse --show-toplevel
+      commands:
+      - tracker:tui
+      purpose: locate the repo root
+    - function: _detect_screen_altscreen_off
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: screen -Q altscreen
+      commands:
+      - tracker:tui
+      purpose: detect GNU screen's altscreen setting for TUI rendering
+    - function: _escalate_disable_autonomous
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      commands:
+      - every mutating tracker subcommand (auto-sync failure path)
+      purpose: after repeated auto-sync failures, write AUTONOMOUS_MODE.txt to stop autonomous
+        mode
+    - function: _maybe_auto_sync
+      primitive: '*.unlink'
+      family: fs_write
+      count: 3
+      commands:
+      - every mutating tracker subcommand
+      purpose: clear auto-sync failure/lock marker files
+    - function: _maybe_auto_sync
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      commands:
+      - every mutating tracker subcommand
+      purpose: record the auto-sync failure counter
+    - function: _maybe_auto_sync
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: git rev-parse --show-toplevel
+      commands:
+      - every mutating tracker subcommand
+      purpose: locate the repo root before auto-sync
+    - function: _print_sync_reminder
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: git rev-parse --show-toplevel
+      commands:
+      - every mutating tracker subcommand
+      purpose: locate the repo root to count pending ops
+    - function: main
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:<any>
+      purpose: create the tracker's working directories
+  hypergumbo_tracker.configure:
+    zone: dev_zone
+    commands:
+    - tracker:setup configure
+    purpose: interactive (human) edit of the governed repo's tracker config.yaml
+    sites:
+    - function: run_configure
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 2
+  hypergumbo_tracker.embeddings:
+    zone: dev_zone
+    commands:
+    - tracker:validate (with the dedup extra installed)
+    sites:
+    - function: EmbeddingModel._load
+      primitive: onnxruntime.InferenceSession
+      family: deserialize
+      count: 1
+      purpose: load the downloaded ONNX model into onnxruntime (a model file is a program
+        for a native runtime)
+    - function: download_model
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      target: huggingface.co/<model>/resolve/main (ONNX model + tokenizer, hardcoded URL)
+      purpose: download the dedup embedding model into $XDG_CACHE_HOME/hypergumbo-tracker/models
+        (temp file then rename)
+    - function: download_model
+      primitive: '*.rename'
+      family: fs_write
+      count: 1
+      target: huggingface.co/<model>/resolve/main (ONNX model + tokenizer, hardcoded URL)
+      purpose: download the dedup embedding model into $XDG_CACHE_HOME/hypergumbo-tracker/models
+        (temp file then rename)
+    - function: download_model
+      primitive: urllib.request.urlretrieve
+      family: network
+      count: 1
+      target: huggingface.co/<model>/resolve/main (ONNX model + tokenizer, hardcoded URL)
+      purpose: download the dedup embedding model into $XDG_CACHE_HOME/hypergumbo-tracker/models
+        (temp file then rename)
+  hypergumbo_tracker.journal:
+    zone: dev_zone
+    commands:
+    - every mutating tracker subcommand
+    - tracker:reconcile
+    - tracker:recover
+    - .githooks (post-checkout, reference-transaction)
+    purpose: mirror pending .ops to the out-of-repo journal (~/hypergumbo_lab_notebook/tracker-ops-journal)
+      and union-restore them; recover-suppression lock file
+    sites:
+    - function: RecoverSuppressionLock.release
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+    - function: RecoverSuppressionLock.try_acquire
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 1
+    - function: _locked_union_restore
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: _locked_union_restore
+      primitive: os.fdopen[w]
+      family: fs_write
+      count: 1
+    - function: _locked_union_restore
+      primitive: os.open
+      family: fs_write
+      count: 1
+    - function: mirror_op
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: mirror_op
+      primitive: os.open
+      family: fs_write
+      count: 1
+  hypergumbo_tracker.migration:
+    zone: dev_zone
+    commands:
+    - tracker:migrate
+    purpose: 'migrate a legacy tracker layout: write the new tree and config template'
+    sites:
+    - function: migrate
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 3
+    - function: migrate
+      primitive: '*.write_text'
+      family: fs_write
+      count: 3
+    - function: migrate
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 1
+    - function: write_config_template
+      primitive: '*.write_text'
+      family: fs_write
+      count: 2
+  hypergumbo_tracker.preview:
+    zone: dev_zone
+    commands:
+    - tracker:tui
+    sites:
+    - function: _svg_to_png
+      primitive: cairosvg.svg2png
+      family: fs_write
+      count: 1
+      purpose: cairosvg rasterizes the preview SVG to PNG (write_to a temp path)
+    - function: render_svg_preview
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: chafa (resolved by shutil.which)
+      purpose: render an SVG preview as terminal art
+  hypergumbo_tracker.preview_pipeline:
+    zone: dev_zone
+    target: chafa --size <w>x <tmp.png>
+    commands:
+    - tracker:tui
+    purpose: 'render a preview: SVG -> PNG (cairosvg, NamedTemporaryFile) -> chafa terminal
+      art'
+    sites:
+    - function: _render_pipeline
+      primitive: cairosvg.svg2png
+      family: fs_write
+      count: 1
+    - function: _render_pipeline
+      primitive: subprocess.run
+      family: process
+      count: 1
+    - function: _render_pipeline
+      primitive: tempfile.NamedTemporaryFile
+      family: fs_write
+      count: 1
+  hypergumbo_tracker.race_log:
+    zone: dev_zone
+    commands:
+    - tracker:tui
+    purpose: append race-condition diagnostics to the configured race-log file
+    sites:
+    - function: _write_record
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: _write_record
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 1
+  hypergumbo_tracker.screenshot_save:
+    zone: dev_zone
+    commands:
+    - tracker:tui
+    purpose: save a TUI screenshot SVG into the tracker-workspace screenshots dir
+    sites:
+    - function: save_screenshot
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: save_screenshot
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+  hypergumbo_tracker.serve:
+    zone: dev_ui
+    commands:
+    - tracker:serve
+    sites:
+    - function: remove_pid_file
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+      purpose: remove the pid file on stop
+    - function: run_server
+      primitive: uvicorn.run
+      family: server
+      count: 1
+      purpose: uvicorn serves the htrac Starlette app, default bind 127.0.0.1:7380
+    - function: write_pid_file
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      purpose: record the server pid
+  hypergumbo_tracker.serve_duress:
+    zone: dev_ui
+    commands:
+    - library
+    purpose: load_duress_handler imports and EXECUTES a Python file named by its caller; no
+      caller in packages/*/src today
+    sites:
+    - function: load_duress_handler
+      primitive: '*.exec_module'
+      family: dynamic_import
+      count: 1
+    - function: load_duress_handler
+      primitive: importlib.util.module_from_spec
+      family: dynamic_import
+      count: 1
+    - function: load_duress_handler
+      primitive: importlib.util.spec_from_file_location
+      family: dynamic_import
+      count: 1
+  hypergumbo_tracker.setup:
+    zone: dev_zone
+    commands:
+    - tracker:setup
+    - tracker:init
+    sites:
+    - function: _check_agents_md
+      primitive: '*.write_text'
+      family: fs_write
+      count: 2
+      purpose: add the tracker section to the governed repo's AGENTS.md
+    - function: _check_config_ownership
+      primitive: '*.rename'
+      family: fs_write
+      count: 1
+      purpose: hand config.yaml to the human owner (copy, chown, rename) - defence in depth
+    - function: _check_config_ownership
+      primitive: '*.unlink'
+      family: fs_write
+      count: 2
+      purpose: hand config.yaml to the human owner (copy, chown, rename) - defence in depth
+    - function: _check_config_ownership
+      primitive: os.chown
+      family: fs_write
+      count: 1
+      purpose: hand config.yaml to the human owner (copy, chown, rename) - defence in depth
+    - function: _check_config_ownership
+      primitive: shutil.copy2
+      family: fs_write
+      count: 1
+      purpose: hand config.yaml to the human owner (copy, chown, rename) - defence in depth
+    - function: _check_config_template
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      purpose: write the tracker config template
+    - function: _check_config_template
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      purpose: write the tracker config template
+    - function: _check_config_yaml
+      primitive: '*.rename'
+      family: fs_write
+      count: 1
+      purpose: back up and replace config.yaml
+    - function: _check_config_yaml
+      primitive: shutil.copy2
+      family: fs_write
+      count: 2
+      purpose: back up and replace config.yaml
+    - function: _check_directory_structure
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      purpose: create tracker dirs with group ownership and mode
+    - function: _check_directory_structure
+      primitive: os.chmod
+      family: fs_write
+      count: 1
+      purpose: create tracker dirs with group ownership and mode
+    - function: _check_directory_structure
+      primitive: os.chown
+      family: fs_write
+      count: 1
+      purpose: create tracker dirs with group ownership and mode
+    - function: _check_gitattributes
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      purpose: add the .ops textconv/merge attributes to .gitattributes
+    - function: _check_gitattributes
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 1
+      purpose: add the .ops textconv/merge attributes to .gitattributes
+    - function: _check_gitignore
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      purpose: add tracker entries to .gitignore
+    - function: _check_gitignore
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 2
+      purpose: add tracker entries to .gitignore
+    - function: _check_group_permissions
+      primitive: os.chmod
+      family: fs_write
+      count: 2
+      purpose: set group-writable modes on tracker dirs
+    - function: _check_hooks_path
+      primitive: subprocess.run
+      family: process
+      count: 2
+      target: git config [--get] core.hooksPath (.githooks)
+      purpose: read/set the repo's hooks path
+    - function: _check_shared_repository
+      primitive: subprocess.run
+      family: process
+      count: 2
+      target: git config [--get] core.sharedRepository group
+      purpose: read/set group-shared repository mode
+    - function: _check_sync_prerequisites
+      primitive: subprocess.run
+      family: process
+      count: 3
+      target: git remote get-url origin; git config user.name / user.email
+      purpose: verify sync prerequisites
+    - function: _check_textconv
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      purpose: write textconv attributes
+    - function: _check_textconv
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 2
+      purpose: append textconv attributes
+    - function: _check_textconv
+      primitive: subprocess.run
+      family: process
+      count: 2
+      target: git config diff.<driver>.textconv [value]
+      purpose: read/set the .ops textconv driver
+    - function: _config_chmod_fallback
+      primitive: '*.chmod'
+      family: fs_write
+      count: 1
+      purpose: lock/unlock config.yaml mode via copy + rename when chmod is refused
+    - function: _config_chmod_fallback
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+      purpose: lock/unlock config.yaml mode via copy + rename when chmod is refused
+    - function: _config_chmod_fallback
+      primitive: os.rename
+      family: fs_write
+      count: 1
+      purpose: lock/unlock config.yaml mode via copy + rename when chmod is refused
+    - function: _config_chmod_fallback
+      primitive: shutil.copy2
+      family: fs_write
+      count: 1
+      purpose: lock/unlock config.yaml mode via copy + rename when chmod is refused
+    - function: _config_chmod_fallback
+      primitive: tempfile.mkstemp
+      family: fs_write
+      count: 1
+      purpose: lock/unlock config.yaml mode via copy + rename when chmod is refused
+    - function: _ensure_safe_directory
+      primitive: subprocess.run
+      family: process
+      count: 2
+      target: git status --porcelain; git config --global --add safe.directory <repo>
+      purpose: add the repo to git's safe.directory when ownership differs (writes the user's
+        global git config)
+    - function: _git_https_url
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: git -C <repo> remote get-url origin
+      purpose: derive the forge URL
+    - function: _head_sha
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: git -C <repo> rev-parse HEAD
+      purpose: read HEAD
+    - function: _install_shim
+      primitive: '*.chmod'
+      family: fs_write
+      count: 2
+      purpose: write executable tracker / textconv shims (mode 0755)
+    - function: _install_shim
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      purpose: write executable tracker / textconv shims (mode 0755)
+    - function: _install_shim
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      purpose: write executable tracker / textconv shims (mode 0755)
+    - function: _verify_textconv_runs
+      primitive: subprocess.run
+      family: process
+      count: 2
+      target: git config diff.<driver>.textconv, then the CONFIGURED textconv command (shlex.split
+        of the local git config value) on an .ops file
+      purpose: check that the configured textconv actually runs; executes whatever command
+        the local git config names
+    - function: config_lock
+      primitive: '*.chmod'
+      family: fs_write
+      count: 1
+      purpose: make config.yaml read-only
+    - function: config_unlock
+      primitive: '*.chmod'
+      family: fs_write
+      count: 1
+      purpose: make config.yaml writable
+  hypergumbo_tracker.stop_hook:
+    zone: dev_zone
+    commands:
+    - tracker:guidance
+    - tracker:count-todos
+    sites:
+    - function: _call_openrouter
+      primitive: urllib.request.urlopen
+      family: network
+      count: 1
+      target: OpenRouter chat-completions API (constant https URL), only when OPENROUTER_API_KEY
+        is set
+      purpose: LLM precedence gate over [[preface]] human messages (WI-mofaz); sends message
+        text off-machine; domain not in ALLOWED_WEBSITES.md
+      finding: WI-puban-modig-mifip-mazov-dakas-jufot-bokob-vodut
+    - function: generate_guidance
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      purpose: write the stop-hook guidance markdown into the lab notebook guidance_log
+    - function: generate_guidance
+      primitive: '*.write_text'
+      family: fs_write
+      count: 2
+      purpose: write the stop-hook guidance markdown into the lab notebook guidance_log
+  hypergumbo_tracker.store:
+    zone: dev_zone
+    commands:
+    - every mutating tracker subcommand (add, update, discuss, lock, unlock, freeze, unfreeze,
+      delete, promote, demote, ...)
+    purpose: 'the tracker''s append-only .ops store in the governed repo: atomic create/append
+      (os.open + fdopen), freeze copies, mode/ownership repair, tmp-file + rename rewrites'
+    sites:
+    - function: Store._append_global_op
+      primitive: os.open
+      family: fs_write
+      count: 1
+    - function: Store._append_op
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+    - function: Store._append_op
+      primitive: os.chmod
+      family: fs_write
+      count: 1
+    - function: Store._append_op
+      primitive: os.fchmod
+      family: fs_write
+      count: 1
+    - function: Store._append_op
+      primitive: os.fdopen[w]
+      family: fs_write
+      count: 1
+    - function: Store._append_op
+      primitive: os.open
+      family: fs_write
+      count: 2
+    - function: Store._append_op
+      primitive: shutil.copyfile
+      family: fs_write
+      count: 1
+    - function: Store._cross_branch_locked_fields
+      primitive: subprocess.Popen
+      family: process
+      count: 1
+      target: git cat-file --batch
+      purpose: read locked fields from other branches
+    - function: Store._ensure_dir_group_writable
+      primitive: os.chmod
+      family: fs_write
+      count: 1
+    - function: Store._ensure_edit_mode_dir
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: Store._take_ownership_via_tmp
+      primitive: '*.unlink'
+      family: fs_write
+      count: 2
+    - function: Store._take_ownership_via_tmp
+      primitive: os.fchmod
+      family: fs_write
+      count: 1
+    - function: Store._take_ownership_via_tmp
+      primitive: os.rename
+      family: fs_write
+      count: 1
+    - function: Store._take_ownership_via_tmp
+      primitive: tempfile.mkstemp
+      family: fs_write
+      count: 1
+    - function: Store.add
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: Store.add
+      primitive: os.fdopen[w]
+      family: fs_write
+      count: 1
+    - function: Store.add
+      primitive: os.open
+      family: fs_write
+      count: 1
+    - function: Store.freeze
+      primitive: os.chmod
+      family: fs_write
+      count: 1
+    - function: Store.freeze
+      primitive: shutil.copy2
+      family: fs_write
+      count: 1
+    - function: Store.repair_drift
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+    - function: Store.repair_drift
+      primitive: os.fchmod
+      family: fs_write
+      count: 1
+    - function: Store.repair_drift
+      primitive: os.rename
+      family: fs_write
+      count: 1
+    - function: Store.repair_drift
+      primitive: tempfile.mkstemp
+      family: fs_write
+      count: 1
+    - function: Store.unfreeze
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+    - function: _batch_peek_clocks
+      primitive: subprocess.Popen
+      family: process
+      count: 1
+      target: git cat-file --batch
+      purpose: read .ops blobs from other branches for the Lamport clock
+    - function: _compute_lamport_clock
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: git branch --no-merged <primary> --format=%(refname:short)
+      purpose: scope the Lamport clock to unmerged branches
+  hypergumbo_tracker.sync:
+    zone: dev_zone
+    commands:
+    - tracker:sync
+    - every mutating tracker subcommand (auto-sync above the ops threshold)
+    sites:
+    - function: SyncGate.release
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+      purpose: remove the sync-gate lock file
+    - function: SyncGate.try_acquire
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 1
+      purpose: create the sync-gate lock file
+    - function: _api_call
+      primitive: urllib.request.urlopen
+      family: network
+      count: 1
+      target: the forge REST API (GitHub / Forgejo) with HG_GITHUB_TOKEN / FORGEJO_TOKEN
+      purpose: create/poll/merge the tracker-sync PR
+    - function: _git
+      primitive: subprocess.run
+      family: process
+      count: 1
+      target: git <args> (branch, commit, push, fetch, merge for the sync PR)
+      purpose: the sync workflow's git operations, including push
+    - function: _union_restore_ops
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      purpose: restore pending .ops after the sync's checkout
+    - function: _union_restore_ops
+      primitive: '*.write_text'
+      family: fs_write
+      count: 2
+      purpose: restore pending .ops after the sync's checkout
+    - function: check_sync_gate_held
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+      purpose: probe and clear a stale sync-gate lock file
+    - function: check_sync_gate_held
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 1
+      purpose: probe and clear a stale sync-gate lock file
+    - function: do_sync
+      primitive: '*.unlink'
+      family: fs_write
+      count: 2
+      purpose: remove the sync gate / marker files
+  hypergumbo_tracker.sync_log:
+    zone: dev_zone
+    commands:
+    - tracker:sync
+    - every mutating tracker subcommand (auto-sync)
+    purpose: 'daily sync log files: create, append, garbage-collect old logs'
+    sites:
+    - function: gc_old_logs
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+    - function: init_sync_log
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: init_sync_log
+      primitive: builtins.open[w]
+      family: fs_write
+      count: 1
+  hypergumbo_tracker.tag_catalog:
+    zone: dev_zone
+    commands:
+    - tracker:tags (add, rename, remove)
+    - tracker:add
+    - tracker:update
+    purpose: atomically rewrite the tag catalogue (mkstemp + fdopen + rename)
+    sites:
+    - function: save_catalog
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+    - function: save_catalog
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+    - function: save_catalog
+      primitive: os.fdopen[w]
+      family: fs_write
+      count: 1
+    - function: save_catalog
+      primitive: os.rename
+      family: fs_write
+      count: 1
+    - function: save_catalog
+      primitive: tempfile.mkstemp
+      family: fs_write
+      count: 1
+  hypergumbo_tracker.trackerset:
+    zone: dev_zone
+    sites:
+    - function: TrackerSet.__init__
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 3
+      commands:
+      - tracker:<any>
+      purpose: create the tier directories
+    - function: TrackerSet._do_reconcile
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:reconcile-reset
+      - tracker:<any> (cross-tier reconcile)
+      purpose: 'reconcile cross-tier conflicts: write the reconciled file, remove the loser'
+    - function: TrackerSet._do_reconcile
+      primitive: '*.unlink'
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:reconcile-reset
+      - tracker:<any> (cross-tier reconcile)
+      purpose: 'reconcile cross-tier conflicts: write the reconciled file, remove the loser'
+    - function: TrackerSet._do_reconcile
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:reconcile-reset
+      - tracker:<any> (cross-tier reconcile)
+      purpose: 'reconcile cross-tier conflicts: write the reconciled file, remove the loser'
+    - function: TrackerSet._save_last_list
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:list
+      - tracker:ready
+      purpose: remember the last listing for index shorthands
+    - function: TrackerSet._save_last_list
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:list
+      - tracker:ready
+      purpose: remember the last listing for index shorthands
+    - function: TrackerSet.demote
+      primitive: shutil.move
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:demote
+      purpose: move an item file between tiers
+    - function: TrackerSet.promote
+      primitive: shutil.move
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:promote
+      purpose: move an item file between tiers
+    - function: TrackerSet.stealth_item
+      primitive: shutil.move
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:stealth
+      purpose: move an item into the stealth tier
+    - function: TrackerSet.unstealth_item
+      primitive: shutil.move
+      family: fs_write
+      count: 1
+      commands:
+      - tracker:unstealth
+      purpose: move an item out of the stealth tier
+  hypergumbo_tracker.tui:
+    zone: dev_zone
+    commands:
+    - tracker:tui
+    sites:
+    - function: TrackerApp._on_annotation_result
+      primitive: '*.write_text'
+      family: fs_write
+      count: 1
+      purpose: write the screenshot annotation
+    - function: TrackerApp.action_capture_screenshot
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 2
+      purpose: save a screenshot SVG
+    - function: TrackerApp.action_capture_screenshot
+      primitive: '*.write_text'
+      family: fs_write
+      count: 2
+      purpose: save a screenshot SVG
+    - function: TrackerApp.deliver_screenshot
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      purpose: create the screenshot delivery dir
+    - function: _save_tui_preferences
+      primitive: '*.mkdir'
+      family: fs_write
+      count: 1
+      purpose: atomically persist TUI preferences (mkstemp + fdopen + chmod + replace)
+    - function: _save_tui_preferences
+      primitive: os.chmod
+      family: fs_write
+      count: 1
+      purpose: atomically persist TUI preferences (mkstemp + fdopen + chmod + replace)
+    - function: _save_tui_preferences
+      primitive: os.fdopen[w]
+      family: fs_write
+      count: 1
+      purpose: atomically persist TUI preferences (mkstemp + fdopen + chmod + replace)
+    - function: _save_tui_preferences
+      primitive: os.replace
+      family: fs_write
+      count: 1
+      purpose: atomically persist TUI preferences (mkstemp + fdopen + chmod + replace)
+    - function: _save_tui_preferences
+      primitive: os.unlink
+      family: fs_write
+      count: 1
+      purpose: atomically persist TUI preferences (mkstemp + fdopen + chmod + replace)
+    - function: _save_tui_preferences
+      primitive: tempfile.mkstemp
+      family: fs_write
+      count: 1
+      purpose: atomically persist TUI preferences (mkstemp + fdopen + chmod + replace)

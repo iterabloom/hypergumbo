@@ -30,6 +30,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       tracker_data: ${{ steps.filter.outputs.tracker_data }}
       claims_surface: ${{ steps.filter.outputs.claims_surface }}
+      io_surface: ${{ steps.filter.outputs.io_surface }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -103,6 +104,16 @@ jobs:
             echo "Self-claim surface changes detected"
           else
             echo "claims_surface=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Independent I/O allowlist surface (WI-vumum): any shipped source,
+          # the allowlist itself, or the gate script. Cheap (~2 s), so it runs
+          # on every source change rather than on a narrowed surface.
+          IO_SURFACE='^packages/[^/]+/src/|^docs/hypergumbo\.io-allowlist\.yaml$|^scripts/check-io-allowlist$'
+          if echo "$CHANGED" | grep -qE "$IO_SURFACE"; then
+            echo "io_surface=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "io_surface=false" >> "$GITHUB_OUTPUT"
           fi
 
           if [ "$has_code" = "true" ]; then
@@ -1275,10 +1286,31 @@ jobs:
         run: |
           PYTHON=python ./scripts/check-self-claims
 
+  # Independent I/O-primitive allowlist gate (WI-vumum). Every risky call site
+  # in packages/*/src must be on docs/hypergumbo.io-allowlist.yaml; new or stale
+  # entries fail. Stdlib AST + PyYAML only -- it installs nothing from this
+  # repo on purpose, since it is the check that must not share the
+  # self-proof's machinery.
+  io-allowlist-gate:
+    needs: [changes]
+    if: needs.changes.outputs.io_surface == 'true'
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: I/O allowlist gate
+        run: |
+          pip install "pyyaml>=6"
+          ./scripts/check-io-allowlist
+
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
   ci-complete:
-    needs: [changes, stop-the-line, lint, hook-tests, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate, mypy, self-claims-gate]
+    needs: [changes, stop-the-line, lint, hook-tests, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate, mypy, self-claims-gate, io-allowlist-gate]
     if: always()
     runs-on: self-hosted
     timeout-minutes: 5
@@ -1299,6 +1331,7 @@ jobs:
           echo "  tracker-validate: ${{ needs.tracker-validate.result }}"
           echo "  mypy: ${{ needs.mypy.result }}"
           echo "  self-claims-gate: ${{ needs.self-claims-gate.result }}"
+          echo "  io-allowlist-gate: ${{ needs.io-allowlist-gate.result }}"
 
           # pytest passes if primary OR retry succeeded
           pytest_ok=false
@@ -1318,7 +1351,8 @@ jobs:
              [[ "${{ needs.dco.result }}" == "failure" ]] || \
              [[ "${{ needs.tracker-validate.result }}" == "failure" ]] || \
              [[ "${{ needs.mypy.result }}" == "failure" ]] || \
-             [[ "${{ needs.self-claims-gate.result }}" == "failure" ]]; then
+             [[ "${{ needs.self-claims-gate.result }}" == "failure" ]] || \
+             [[ "${{ needs.io-allowlist-gate.result }}" == "failure" ]]; then
             echo "❌ One or more jobs failed"
             exit 1
           fi

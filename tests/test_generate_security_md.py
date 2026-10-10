@@ -240,3 +240,59 @@ def test_scope_marks_the_md_txt_finding_as_configuration_not_structure() -> None
     mod = _load_script_module()
     block = mod._render_full_generated_block({"claims": []})
     assert "configuration" in block.lower()
+
+
+# ---------------------------------------------------------------------------
+# WI-vumum: the independent I/O allowlist gate is named in SECURITY.md, with
+# the sites it records as FINDINGS listed by tracker id — generated from the
+# allowlist, so a finding added or cleared there cannot drift from this text.
+# ---------------------------------------------------------------------------
+
+
+def _allowlist(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "allow.yaml"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_independent_gate_section_names_the_script() -> None:
+    mod = _load_script_module()
+    block = mod._render_full_generated_block({"claims": []})
+    assert "### Independent check: the I/O allowlist" in block
+    assert "scripts/check-io-allowlist" in block
+    assert "docs/hypergumbo.io-allowlist.yaml" in block
+
+
+def test_independent_gate_lists_findings_from_the_allowlist(
+        tmp_path: Path, monkeypatch) -> None:
+    mod = _load_script_module()
+    monkeypatch.setattr(mod, "IO_ALLOWLIST_PATH", _allowlist(tmp_path, (
+        "version: 1\n"
+        "modules:\n"
+        "  pkg.a:\n"
+        "    finding: INV-aaaa\n"
+        "    sites:\n"
+        "    - {function: f, primitive: subprocess.run, family: process, count: 2}\n"
+        "  pkg.b:\n"
+        "    sites:\n"
+        "    - {function: g, primitive: '*.mkdir', family: fs_write, count: 1,\n"
+        "       finding: INV-bbbb}\n"
+        "    - {function: h, primitive: '*.mkdir', family: fs_write, count: 1}\n"
+    )))
+    text = "\n".join(mod._render_independent_gate_section())
+    # Counts are deliberately NOT rendered (they move with every tracker
+    # write and would make this file churn); families with no site are,
+    # because that is a statement a reader can rely on.
+    assert "call site(s)" not in text
+    assert "code_exec" in text and "process" not in text.split("no site")[1]
+    assert "INV-aaaa" in text and "pkg.a.f" in text
+    assert "INV-bbbb" in text and "pkg.b.g" in text
+    assert "pkg.b.h" not in text
+
+
+def test_independent_gate_section_survives_missing_allowlist(
+        tmp_path: Path, monkeypatch) -> None:
+    mod = _load_script_module()
+    monkeypatch.setattr(mod, "IO_ALLOWLIST_PATH", tmp_path / "missing.yaml")
+    text = "\n".join(mod._render_independent_gate_section())
+    assert "not found" in text

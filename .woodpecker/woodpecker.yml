@@ -292,6 +292,28 @@ steps:
         done
       - echo "✅ All commits have DCO sign-off (54a041c171 grandfathered)"
 
+  # ── independent I/O-primitive allowlist (WI-vumum) ─────────────────────────
+  # Every risky call site in packages/*/src (fs write/delete, process launch,
+  # network, server, eval/exec, unsafe deserialize, native load, dynamic
+  # import) must be on docs/hypergumbo.io-allowlist.yaml; a new unlisted site
+  # or a stale entry fails. Pure stdlib AST + PyYAML, ~2 s, so unlike the
+  # self-claims gate it can afford to run per-PR on every source change. It
+  # deliberately imports nothing from hypergumbo: it is the check that does
+  # not share the self-proof's blind spots, so it must not share its install.
+  - name: io-allowlist
+    image: python:3.11-bookworm
+    depends_on: []
+    when:
+      - path:
+          include:
+            - "packages/*/src/**"
+            - "docs/hypergumbo.io-allowlist.yaml"
+            - "scripts/check-io-allowlist"
+    commands:
+      - pip install --upgrade pip
+      - pip install "pyyaml>=6"
+      - scripts/check-io-allowlist
+
   # ── tracker data validation (only when tracker files changed) ──────────────
   - name: tracker-validate
     image: python:3.11-bookworm
