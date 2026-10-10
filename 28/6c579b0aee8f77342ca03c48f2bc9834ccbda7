@@ -1,0 +1,24 @@
+Original commit body from ab4385c4f354f26ec9cba5474b48e0ac3783491b:
+
+For a colleague deciding whether to install hypergumbo on a personal
+machine: who wrote it (agents; not line-reviewed by a human; measured
+LOC and commit counts with the method), what a default run reads,
+writes and runs, the one-time embedding-model download from
+huggingface.co after install-embeddings (INV-gujus), which commands
+download or execute code (install-*, add-extras, build-grammars, the
+rust-analyzer backend per ADR-0045, the scip-python backend that a
+repo's .hypergumbo.toml can enable per INV-tusos), the tracker package
+(not installed by the meta-package; sync/auto-sync, serve without auth
+per WI-hopip, OpenRouter per WI-puban, not covered by self-claims per
+WI-sunan), how the self-claims and I/O-allowlist gates check it and
+their open findings (INV-gujus, INV-tusos, INV-kuroj, WI-puban), what
+an untrusted repository can influence (ADR-0061, INV-nihab), and how
+to run it confined (verified strace recipe).
+
+Also corrects the Architecture line that said the meta-package
+installs the tracker. packages/hypergumbo/README.md is kept identical
+to README.md.
+
+Refs WI-muzan-jasus-fodum-gidus-jovir-pugij-runot-jorim
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
