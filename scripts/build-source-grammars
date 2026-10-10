@@ -6,8 +6,10 @@
 # tree-sitter-circom from source. These grammars require building because
 # they are not published to PyPI.
 #
-# Source is vendored under vendor/tree-sitter-{lean,wolfram,circom}/
-# (WI-fipab-kivoj) — the build is offline-deterministic and does not
+# Source is vendored under
+# packages/hypergumbo-core/src/hypergumbo_core/vendor/tree-sitter-{lean,wolfram,circom}/
+# (WI-fipab-kivoj; moved into the core package by INV-bazoz so the wheel
+# ships it and `hypergumbo build-grammars` works from a PyPI install) — the build is offline-deterministic and does not
 # clone from upstream. To re-sync from upstream, see
 # docs/grammars/vendor-sync.md.
 #
@@ -32,7 +34,7 @@ WHEELS_DIR=""
 # Repo root resolution (script lives in $REPO/scripts/).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-VENDOR_ROOT="$REPO_ROOT/vendor"
+VENDOR_ROOT="$REPO_ROOT/packages/hypergumbo-core/src/hypergumbo_core/vendor"
 
 # Pinning is preserved in vendor/tree-sitter-<name>/UPSTREAM. Updating a
 # grammar version means re-syncing the vendor directory per

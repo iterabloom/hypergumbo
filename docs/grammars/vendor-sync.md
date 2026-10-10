@@ -2,11 +2,19 @@
 # Re-syncing vendored tree-sitter grammars
 
 Hypergumbo ships three tree-sitter grammars from source under
-`vendor/tree-sitter-{lean,wolfram,circom}/`. They're vendored (WI-fipab-kivoj)
+`packages/hypergumbo-core/src/hypergumbo_core/vendor/tree-sitter-{lean,wolfram,circom}/`
+(written `$VENDOR` below). They're vendored (WI-fipab-kivoj)
 rather than cloned at build time, so the build is offline-deterministic and
 independent of upstream git hygiene (a force-push of the upstream `main`
 branch broke nightly's source-grammar build on 2026-05-20 when the previously
 pinned commit became unreachable).
+
+The tree is package data of `hypergumbo_core` (INV-bazoz), so the
+`hypergumbo-core` wheel carries it, together with each grammar's `LICENSE`
+and `UPSTREAM` file, and `hypergumbo build-grammars` works from a PyPI
+install. It used to sit at the repo root (`vendor/`), which no wheel
+contained. Keep it inside the package: anything outside
+`src/hypergumbo_core` is not in the wheel.
 
 ## When to re-sync
 
@@ -45,11 +53,12 @@ git checkout <sha>
 
 # 3. From the hypergumbo repo, replace the vendored src/ in place
 cd /path/to/hypergumbo
-rm -rf vendor/tree-sitter-<name>/src
-cp -r /tmp/tree-sitter-<name>/src vendor/tree-sitter-<name>/
-cp /tmp/tree-sitter-<name>/LICENSE vendor/tree-sitter-<name>/LICENSE
+VENDOR=packages/hypergumbo-core/src/hypergumbo_core/vendor
+rm -rf $VENDOR/tree-sitter-<name>/src
+cp -r /tmp/tree-sitter-<name>/src $VENDOR/tree-sitter-<name>/
+cp /tmp/tree-sitter-<name>/LICENSE $VENDOR/tree-sitter-<name>/LICENSE
 
-# 4. Update the UPSTREAM file in vendor/tree-sitter-<name>/UPSTREAM:
+# 4. Update the UPSTREAM file in $VENDOR/tree-sitter-<name>/UPSTREAM:
 #    - Commit:    <new sha>
 #    - Sync date: <YYYY-MM-DD>
 
@@ -67,8 +76,9 @@ python3 -c "import tree_sitter_<name>; print(tree_sitter_<name>.language())"
 All three vendored grammars are MIT. If a future upstream relicenses to a
 non-permissive license, do not pull the new version — open a tracker
 item and discuss alternatives. The vendored LICENSE file in
-`vendor/tree-sitter-<name>/LICENSE` must always match the upstream
-LICENSE at the synced commit.
+`$VENDOR/tree-sitter-<name>/LICENSE` must always match the upstream
+LICENSE at the synced commit. It is redistributed in the
+`hypergumbo-core` wheel and sdist next to the sources it covers.
 
 ## Why vendor rather than git-subtree
 

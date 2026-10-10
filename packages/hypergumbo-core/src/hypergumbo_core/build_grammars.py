@@ -7,22 +7,37 @@ and tree-sitter-circom from their source repositories. These grammars are not
 published to PyPI and must be compiled from source. The set must stay in sync
 with `scripts/build-source-grammars` (the CI/dev path).
 
-WI-fipab-kivoj: source is vendored under ``vendor/tree-sitter-{lean,
-wolfram,circom}/`` (plain directory copy from upstream at a pinned commit).
-Both this module and ``scripts/build-source-grammars`` read from the vendor
-tree instead of cloning at build time, so the build is offline-deterministic
-and independent of upstream git hygiene. The upstream URL and pinned commit
-for each grammar live in ``vendor/tree-sitter-<name>/UPSTREAM``;
-``GrammarSpec.repo_url`` is kept here as documentation metadata for the
-re-sync procedure (see ``docs/grammars/vendor-sync.md``), not as a build-
-time fetch target.
+WI-fipab-kivoj: source is vendored as plain directory copies of upstream
+at a pinned commit. Both this module and ``scripts/build-source-grammars``
+read from the vendor tree instead of cloning at build time, so the build is
+offline-deterministic and independent of upstream git hygiene. The upstream
+URL and pinned commit for each grammar live in
+``vendor/tree-sitter-<name>/UPSTREAM`` next to its upstream ``LICENSE``
+(all three are MIT); ``GrammarSpec.repo_url`` is kept here as documentation
+metadata for the re-sync procedure (see ``docs/grammars/vendor-sync.md`` in
+the source repository), not as a build-time fetch target.
+
+Where the vendor tree lives, and why there (INV-bazoz): it is package data
+of ``hypergumbo_core`` — ``hypergumbo_core/vendor/tree-sitter-<name>/`` —
+resolved relative to this module's own directory. It used to sit at the
+repo root, found as ``Path(__file__).parents[4] / "vendor"``; that path
+exists only in a source checkout, because the core wheel packages only
+``src/hypergumbo_core``. From a pip/pipx install it resolved to
+``<venv>/vendor`` and ``build-grammars`` (and the grammars step of
+``add-extras``) failed for every grammar. Inside the package, one path
+serves the editable install, the sdist and the wheel alike, with no
+build-hook copying. Cost: about 0.7 MB on the compressed core wheel, almost
+all of it lean's generated ``parser.c`` (10.7 MB raw). Shipping the source
+means ``build-grammars`` downloads no grammar source; it still needs a local
+C/C++ compiler, and ``pip``'s isolated build may fetch setuptools from PyPI.
 
 Requirements:
 - A C/C++ compiler (gcc, clang, or MSVC)
 - Python development headers
 
 The build process:
-1. Locates the vendored grammar source under ``vendor/tree-sitter-<name>/``
+1. Locates the vendored grammar source under
+   ``hypergumbo_core/vendor/tree-sitter-<name>/`` (installed package data)
 2. Generates Python binding code (C extension)
 3. Builds and installs via pip
 """
@@ -38,11 +53,9 @@ from typing import Literal
 from .safety_zones import tmp_artifact_mkdir, tmp_artifact_rmtree, tmp_artifact_write
 
 
-# Repo root resolution. This module lives at
-# packages/hypergumbo-core/src/hypergumbo_core/build_grammars.py; the
-# vendor/ tree is at the project root four levels up.
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-VENDOR_ROOT = _REPO_ROOT / "vendor"
+# INV-bazoz: the vendor tree is package data beside this module, so the
+# same path holds in a source checkout, an editable install and a wheel.
+VENDOR_ROOT = Path(__file__).resolve().parent / "vendor"
 
 
 @dataclass
@@ -50,7 +63,7 @@ class GrammarSpec:
     """Specification for a tree-sitter grammar to build from source.
 
     ``repo_url`` is documentation metadata — the build path reads source
-    from ``vendor/tree-sitter-<name>/`` (WI-fipab-kivoj), not from a fresh
+    from ``VENDOR_ROOT / "tree-sitter-<name>"`` (WI-fipab-kivoj), not a fresh
     clone of ``repo_url``. The field is kept to support the re-sync
     procedure in ``docs/grammars/vendor-sync.md``.
     """
@@ -223,9 +236,21 @@ def build_grammar(
         print(f"\n=== Building tree-sitter-{spec.name} ===")
 
     if not (repo_dir / "src").exists():
-        if not quiet:  # pragma: no cover
-            print(f"Error: vendored source not found at {repo_dir}/src")
-            print("See docs/grammars/vendor-sync.md to restore the vendor tree.")
+        # INV-bazoz: the sources ship inside the hypergumbo-core wheel, so
+        # their absence means a damaged or stripped install. Name the path
+        # that was looked up and a remedy an installed user can act on;
+        # the vendor-sync doc exists only in a source checkout.
+        if not quiet:
+            print(f"Error: grammar source not found at {repo_dir / 'src'}")
+            print(
+                "It ships inside the hypergumbo-core package; this install "
+                "is incomplete. Reinstall it, e.g.:"
+            )
+            print("  pip install --force-reinstall --no-deps hypergumbo-core")
+            print(
+                "(In a source checkout, see docs/grammars/vendor-sync.md to "
+                "restore the vendor tree.)"
+            )
         return False
 
     # Create Python package directory
