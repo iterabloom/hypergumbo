@@ -1,0 +1,36 @@
+Original commit body from 23374af1c240e7bde83b483d6f3cc4a3a6bf79a6:
+
+Pool: 57 files = 4 flagged by check-docstring-drift, the 30-file rolling
+read (never reviewed), and the 24 files whose code changed since the
+2026-10-06 audit. 19 read-only reviewers read every file in full; every
+finding went to a default-REJECT verifier that re-read the code and, for
+code-defect claims, built a repro. A blind re-review of 5 "matches"
+found 1 more drifted file. 40 of 57 files drifted (lower bound).
+
+This commit applies the A, B and D findings plus stale function/class
+docstrings and comments; the C omissions follow separately.
+
+Notable corrections:
+- "ADR-0041 D8a" (10 sites, incl. spec and tests) named a row of an
+  out-of-repo decision register; now ADR-0041 §1.
+- supply_chain: SupplyChainConfig tier-2/derived/first-party arms are
+  "configured" by nothing — no CLI flag or config key feeds them.
+- linkers/dependency, py_deps, verify_claims: docstrings now describe
+  what the code does (first-party imports counted; false negative stamps
+  `undeclared`; CLI/claims-file community overlays skip the check);
+  the code defects are filed separately.
+- tracker serve_sessions/serve_duress/serve_auth_config/screenshot_save,
+  preview/preview_pipeline, cache: describe as unwired what no production
+  code calls; docs/hypergumbo.io-allowlist.yaml's preview and
+  preview_pipeline entries said tracker:tui and are now library.
+- entrypoints: confidence tiers, size-scaled cap, boost formula.
+- latex: overrides analyze(); jvm_deps: directness stamping, not tier 2;
+  scip/__init__: Phases 1 and 2 B-D are implemented.
+- _embedding_data (and its generator): config probes are encoded live;
+  the precomputed ones have no reader.
+
+module_key_axis and signature_axis file:line citations re-pointed after
+the line shifts. Ledger records all 57 reviews. ARCHITECTURE.md and
+schema.json regenerated.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
