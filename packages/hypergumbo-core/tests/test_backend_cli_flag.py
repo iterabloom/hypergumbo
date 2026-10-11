@@ -138,15 +138,83 @@ class TestMainStripping:
         assert rc == 0
         assert ENV_VAR not in os.environ
 
-    def test_trailing_backend_without_arg_does_not_crash(self) -> None:
-        """A lone --backend at the end falls through to argparse's error.
+    def test_trailing_backend_without_arg_is_a_clear_usage_error(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A lone --backend at the end exits 2 with argparse's own wording.
 
-        The stripping loop uses ``range(len(argv) - 1)`` so a trailing
-        --backend (without a following choice) is not consumed; argparse
-        then rejects the incomplete flag with its usual error.
+        It must neither crash (IndexError reading the missing value) nor be
+        misreported as an unrecognised argument of the subcommand.
         """
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit) as exc:
             main(["cache-status", "--quiet", "--backend"])
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "argument --backend: expected one argument" in err
+
+    def test_backend_followed_by_a_flag_is_missing_its_value(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """``--backend --quiet`` does not consume ``--quiet`` as the choice."""
+        with pytest.raises(SystemExit) as exc:
+            main(["cache-status", "--backend", "--quiet"])
+        assert exc.value.code == 2
+        assert "expected one argument" in capsys.readouterr().err
+
+    def test_backend_equals_form_as_the_final_token(self) -> None:
+        """``--backend=X`` needs no following token, so it works last too.
+
+        The pre-scan used to iterate ``range(len(argv) - 1)`` and never
+        examined the last token, so ``hypergumbo catalog
+        --backend=tree-sitter`` reached argparse unstripped and exited 2
+        with "unrecognized arguments".
+        """
+        with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+            rc = main(["cache-status", "--quiet", "--backend=tree-sitter"])
+        assert rc == 0
+        assert os.environ.get(ENV_VAR) == "0"
+
+    def test_backend_equals_form_as_the_only_token(self) -> None:
+        """A one-token argv is also scanned (default sketch mode path)."""
+        with patch("hypergumbo_core.cli._apply_backend_choice") as apply, \
+                patch("hypergumbo_core.cli.cmd_sketch", return_value=0):
+            rc = main(["--backend=tree-sitter"])
+        assert rc == 0
+        apply.assert_called_once_with("tree-sitter")
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--backend", "bogus", "cache-status", "--quiet"],
+            ["cache-status", "--backend", "bogus", "--quiet"],
+            ["--backend=bogus", "cache-status", "--quiet"],
+            ["cache-status", "--quiet", "--backend=bogus"],
+            ["cache-status", "--quiet", "--backend="],
+        ],
+    )
+    def test_unknown_choice_is_rejected_in_every_position(
+        self, argv: list[str], capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The pre-scan strips the flag before argparse sees it, so it must
+        enforce the parser's ``choices=`` itself; it used to swallow any
+        value and run the command."""
+        with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0) as cmd:
+            with pytest.raises(SystemExit) as exc:
+                main(argv)
+        assert exc.value.code == 2
+        assert "argument --backend: invalid choice" in capsys.readouterr().err
+        cmd.assert_not_called()
+
+    def test_tokens_after_double_dash_are_not_scanned(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """After ``--`` every token is positional, so the pre-scan stops."""
+        with pytest.raises(SystemExit) as exc:
+            main(["cache-status", "--", "--backend=tree-sitter"])
+        assert exc.value.code == 2
+        err = capsys.readouterr().err
+        assert "unrecognized arguments" in err
+        assert ENV_VAR not in os.environ
 
 
 class TestBackendIntegrationGate:
@@ -330,24 +398,17 @@ class TestTheAdvertisedOptOutActuallyOptsOut:
     def test_an_unrecognised_backend_leaves_the_opt_in_alone(self) -> None:
         """`--backend nonsense` must not be read as a refusal.
 
-        My first version of this test asserted argparse would reject the
-        unknown choice. It does not, and the code is right rather than the
-        test: the preprocessing loop strips ``--backend <anything>`` from
-        argv before argparse runs, so the parser's ``choices=`` constraint
-        never sees the global flag and an unrecognised value is silently
-        swallowed. That swallowing is a real (separate, smaller) usability
-        defect and is recorded on the tracker item rather than widened into
-        this fix.
-
-        What matters HERE is the precedence property: an unrecognised choice
-        is no-opinion at the flag tier, so it must leave a lower tier's
-        decision standing rather than clobbering it in either direction.
+        The pre-scan in ``main`` now rejects an unknown choice with exit 2
+        (it used to swallow it and run the command). The precedence property
+        still matters: rejecting must happen before anything is written, so a
+        lower tier's decision is left standing rather than clobbered.
         """
         os.environ[ENV_VAR] = "1"
         try:
             with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
-                rc = main(["--backend", "nonsense", "cache-status", "--quiet"])
-            assert rc == 0
+                with pytest.raises(SystemExit) as exc:
+                    main(["--backend", "nonsense", "cache-status", "--quiet"])
+            assert exc.value.code == 2
             assert os.environ.get(ENV_VAR) == "1"
         finally:
             os.environ.pop(ENV_VAR, None)
