@@ -117,8 +117,8 @@ def test_filed_repro_scope_alias_only_except(tmp_path: Path) -> None:
     posts = [r for r in routes if r[2] == "AppWeb.PostController"]
     assert len(users) == 2
     assert len(posts) == 7
-    assert {r[0] for r in posts} >= {"PUT /posts/:id", "PATCH /posts/:id"}
-    assert ("GET /x", "x", "AppWeb.XController") in routes
+    assert {r[0] for r in posts} >= {"PUT /api/posts/:id", "PATCH /api/posts/:id"}
+    assert ("GET /api/x", "x", "AppWeb.XController") in routes
     assert len(routes) == 10
 
 
@@ -151,8 +151,8 @@ def test_nested_scope_aliases_concatenate_and_inherit(tmp_path: Path) -> None:
         '  end\n'
         '  get "/outside", OutsideController, :index'))
     by_name = {n: c for n, _, c in routes}
-    assert by_name["GET /"] == "AppWeb.Admin.DashboardController"
-    assert by_name["GET /tools"] == "AppWeb.Admin.ToolsController"
+    assert by_name["GET /admin"] == "AppWeb.Admin.DashboardController"
+    assert by_name["GET /admin/dev/tools"] == "AppWeb.Admin.ToolsController"
     assert by_name["GET /after"] == "AppWeb.AfterController"
     assert by_name["GET /outside"] == "OutsideController"
 
@@ -172,10 +172,10 @@ def test_scope_keyword_alias_and_alias_false(tmp_path: Path) -> None:
         '    get "/d", DController, :d\n'
         '  end'))
     by_name = {n: c for n, _, c in routes}
-    assert by_name["GET /a"] == "AppWeb.Api.AController"
-    assert by_name["GET /b"] == "Other.BController"
-    assert by_name["GET /c"] == "AppWeb.V2.CController"
-    assert by_name["GET /d"] == "AppWeb.Opts.DController"
+    assert by_name["GET /api/a"] == "AppWeb.Api.AController"
+    assert by_name["GET /api/raw/b"] == "Other.BController"
+    assert by_name["GET /v2/c"] == "AppWeb.V2.CController"
+    assert by_name["GET /opts/d"] == "AppWeb.Opts.DController"
 
 
 def test_scope_alias_is_itself_lexically_expanded(tmp_path: Path) -> None:
@@ -186,7 +186,7 @@ def test_scope_alias_is_itself_lexically_expanded(tmp_path: Path) -> None:
         '    live "/", VenueLive\n'
         "  end\n"
         "end\n"))
-    assert routes == [("LIVE /", "mount", "AppWeb.Live.VenueLive")]
+    assert routes == [("LIVE /venues", "mount", "AppWeb.Live.VenueLive")]
 
 
 def test_nested_resources_are_found_and_qualified(tmp_path: Path) -> None:

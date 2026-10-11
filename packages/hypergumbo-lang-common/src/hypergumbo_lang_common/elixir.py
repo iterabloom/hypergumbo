@@ -13,7 +13,9 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
   ``mix phx.routes`` lists: eight by default (``:update`` on both PATCH and
   PUT), filtered by ``only:``/``except:``, reshaped by ``singleton: true``
   and ``param:``. Every route's controller is lexically alias-expanded and
-  then prefixed with the enclosing ``scope`` aliases, as Phoenix does
+  then prefixed with the enclosing ``scope`` aliases, and every path is
+  joined onto the enclosing ``scope`` / nested-``resources`` paths, as
+  Phoenix does
 - Function call relationships, in BOTH module-qualified receiver syntaxes:
   an ``alias`` receiver for an Elixir module (``Logger.error``) and an
   ``atom`` receiver for an Erlang/OTP one (``:ets.insert``). The atom form
@@ -123,8 +125,9 @@ Why This Design
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Iterator, NamedTuple, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
@@ -1112,60 +1115,183 @@ def _keyword_options(
     return options
 
 
-def _phoenix_scope_alias(
-    call: "tree_sitter.Node", source: bytes, outer: str | None,
+class _RouterScope(NamedTuple):
+    """What the enclosing ``scope`` / ``resources`` blocks impose on a route.
+
+    ``alias`` is the module prefix Phoenix concatenates onto a controller
+    (``None`` outside any aliased scope); ``path`` is the list of path
+    segments it prepends to the route's own path.
+    """
+
+    alias: str | None
+    path: tuple[str, ...]
+
+
+def _path_segments(path: str) -> tuple[str, ...]:
+    """``String.split(path, "/", trim: true)``, as Phoenix splits a path."""
+    return tuple(segment for segment in path.split("/") if segment)
+
+
+def _join_route_path(prefix: tuple[str, ...], path: str) -> str:
+    """Phoenix's ``join_path``: scope segments plus the route's own segments.
+
+    ``"/" <> Enum.join(scope.path ++ String.split(path, "/", trim: true),
+    "/")`` -- so ``scope "/admin"`` + ``live "/"`` is ``/admin`` and a
+    trailing slash never survives (``get "/vid/"`` is ``/vid``).
+    """
+    return "/" + "/".join(prefix + _path_segments(path))
+
+
+def _phoenix_resource_name(controller: str) -> str:
+    """``Phoenix.Naming.resource_name(controller, "Controller")``.
+
+    The module's last segment with a trailing ``Controller`` removed, then
+    underscored (``Admin.UserPostController`` -> ``user_post``,
+    ``HTTPClientController`` -> ``http_client``). It names the nested
+    ``:<name>_id`` segment of a ``resources ... do`` block.
+    """
+    last = controller.rsplit(".", 1)[-1]
+    if last.endswith("Controller"):
+        last = last[: -len("Controller")]
+    return re.sub(
+        r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", last,
+    ).lower()
+
+
+def _parse_route_args(
+    call: "tree_sitter.Node", source: bytes,
+) -> tuple[str | None, str | None, str | None, dict[str, Any]]:
+    """``(path, controller, action, options)`` of a route macro call.
+
+    Positional: the path string, the controller / LiveView module as
+    written, the action atom (``get``/``post``/.../``live``); a trailing
+    keyword list (``only:``, ``singleton:``, ``as:`` ...) at position two or
+    later becomes ``options``. Missing pieces are ``None`` / ``{}``.
+    """
+    route_path = None
+    controller = None
+    action = None
+    options: dict[str, Any] = {}
+    args_node = find_child_by_type(call, "arguments")
+    if args_node is None:  # pragma: no cover - route macros always take args
+        return route_path, controller, action, options
+    arg_index = 0
+    for child in args_node.children:
+        if child.type in ("(", ")", ","):
+            continue
+        if arg_index == 0:
+            # First arg is the path (string)
+            if child.type == "string":
+                content = find_child_by_type(child, "quoted_content")
+                route_path = (
+                    node_text(content, source) if content is not None
+                    else node_text(child, source).strip('"\''))
+        elif arg_index == 1:
+            # Second arg is the controller/module (alias, identifier, or
+            # dotted alias like UserLive.Show)
+            if child.type in ("alias", "dot"):
+                controller = node_text(child, source)
+            elif child.type == "identifier":  # pragma: no cover
+                controller = node_text(child, source)
+        elif arg_index == 2 and child.type == "atom":
+            # Third arg is the action (atom) of get/post/.../live
+            action = node_text(child, source).lstrip(":")
+        elif arg_index >= 2 and child.type in ("keywords", "list"):
+            # Trailing keyword options (resources' only:/except:/...)
+            options = _keyword_options(child, source)
+        arg_index += 1
+    return route_path, controller, action, options
+
+
+def _phoenix_scope(
+    call: "tree_sitter.Node", source: bytes, outer: _RouterScope,
     alias_hints: dict[str, str],
-) -> str | None:
-    """The module alias a ``scope`` call establishes for the routes inside it.
+) -> _RouterScope:
+    """The alias and path a ``scope`` call establishes for the routes inside it.
 
     ``Phoenix.Router.scope`` takes ``(options)``, ``(path, options)``,
-    ``(path, alias)`` or ``(path, alias, options)``, with the alias given
-    positionally or as ``alias:``. It is lexically expanded against the
-    router's own ``alias`` directives and joined onto the enclosing scope's
-    alias (``scope "/", AppWeb`` + ``scope "/admin", Admin`` ->
-    ``AppWeb.Admin``); ``alias: false`` resets it, and a scope that names no
-    alias inherits the outer one.
+    ``(path, alias)`` or ``(path, alias, options)``, with the path given
+    positionally or as ``path:`` and the alias positionally or as
+    ``alias:``. The path's segments are appended to the outer scope's. The
+    alias is lexically expanded against the router's own ``alias``
+    directives and joined onto the enclosing scope's alias (``scope "/",
+    AppWeb`` + ``scope "/admin", Admin`` -> ``AppWeb.Admin``); ``alias:
+    false`` resets it, and a scope that names no alias inherits the outer
+    one.
     """
     args = find_child_by_type(call, "arguments")
     if args is None:
         return outer
     alias: Any = None
+    path: Any = None
     for child in args.children:
         if child.type == "alias":
             alias = node_text(child, source)
+        elif child.type == "string":
+            path = _literal_value(child, source)
         elif child.type in ("keywords", "list"):
             options = _keyword_options(child, source)
-            if "alias" in options:
-                alias = options["alias"]
+            alias = options.get("alias", alias)
+            path = options.get("path", path)
+    segments = outer.path + (
+        _path_segments(path) if isinstance(path, str) else ())
     if alias is False:
-        return None
+        return _RouterScope(None, segments)
     if not isinstance(alias, str):
-        return outer
+        return _RouterScope(outer.alias, segments)
     alias = _expand_alias(alias, alias_hints)
-    return f"{outer}.{alias}" if outer else alias
+    return _RouterScope(
+        f"{outer.alias}.{alias}" if outer.alias else alias, segments)
+
+
+def _phoenix_resources_scope(
+    call: "tree_sitter.Node", source: bytes, outer: _RouterScope,
+) -> _RouterScope:
+    """The scope a ``resources ... do`` block opens for its nested routes.
+
+    Phoenix nests them under the resource's member path:
+    ``<path>/:<name>_<param>`` (``resources "/users", UserController do``
+    -> ``/users/:user_id``), or the bare ``<path>`` for ``singleton: true``.
+    ``name:`` overrides the controller-derived name and ``param:`` the
+    ``id``. The alias is unchanged.
+    """
+    route_path, controller, _action, options = _parse_route_args(call, source)
+    segments = outer.path + _path_segments(route_path or "")
+    if options.get("singleton") is not True:
+        name = options.get("name")
+        if not isinstance(name, str):
+            name = _phoenix_resource_name(controller or "")
+        param = options.get("param")
+        param = param if isinstance(param, str) else "id"
+        segments += (f":{name}_{param}",)
+    return _RouterScope(outer.alias, segments)
 
 
 def _iter_router_calls(
     root: "tree_sitter.Node", source: bytes, alias_hints: dict[str, str],
-) -> Iterator[tuple["tree_sitter.Node", str | None]]:
-    """Every ``call`` node with the scope alias in force where it is written.
+) -> Iterator[tuple["tree_sitter.Node", _RouterScope]]:
+    """Every ``call`` node with the router scope in force where it is written.
 
     A pre-order walk (the same order as ``iter_tree``) that carries the
-    enclosing ``scope`` alias down into each scope's ``do`` block, so a route
-    macro knows which module prefix Phoenix will concatenate onto its
-    controller. Non-scope nodes, including a nested ``resources ... do``
-    block, pass the alias through unchanged.
+    enclosing ``scope`` alias and path down into each scope's ``do`` block
+    (and a ``resources`` call's ``do`` block, which nests under the
+    resource's member path), so a route macro knows which module prefix
+    Phoenix concatenates onto its controller and which path it prepends.
     """
-    stack: list[tuple["tree_sitter.Node", str | None]] = [(root, None)]
+    stack: list[tuple["tree_sitter.Node", _RouterScope]] = [
+        (root, _RouterScope(None, ()))]
     while stack:
-        node, scope_alias = stack.pop()
-        inner = scope_alias
+        node, scope = stack.pop()
+        inner = scope
         if node.type == "call":
-            yield node, scope_alias
+            yield node, scope
             target = find_child_by_type(node, "identifier")
-            if target is not None and node_text(target, source) == "scope":
-                inner = _phoenix_scope_alias(
-                    node, source, scope_alias, alias_hints)
+            name = node_text(target, source) if target is not None else ""
+            if name == "scope":
+                inner = _phoenix_scope(node, source, scope, alias_hints)
+            elif (name == "resources"
+                  and find_child_by_type(node, "do_block") is not None):
+                inner = _phoenix_resources_scope(node, source, scope)
         stack.extend((child, inner) for child in reversed(node.children))
 
 
@@ -1198,7 +1324,10 @@ def _extract_phoenix_routes(
     the enclosing ``scope`` alias (:func:`_iter_router_calls`), so it names
     the module Phoenix actually dispatches to (``AppWeb.PageController``, not
     ``PageController``) and the route-handler linker can match it exactly
-    instead of by suffix.
+    instead of by suffix. Likewise every path is joined onto the enclosing
+    ``scope`` paths and ``resources ... do`` member paths
+    (:func:`_join_route_path`): ``scope "/admin"`` + ``get "/users"`` is
+    ``/admin/users``, as ``mix phx.routes`` lists it.
 
     Returns:
         Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
@@ -1209,7 +1338,7 @@ def _extract_phoenix_routes(
     route_symbols: list[Symbol] = []
     hints = alias_hints or {}
 
-    for n, scope_alias in _iter_router_calls(node, source, hints):
+    for n, scope in _iter_router_calls(node, source, hints):
         # Get the function name (get, post, resources, etc.)
         target_node = find_child_by_type(n, "identifier")
         if not target_node:
@@ -1224,47 +1353,8 @@ def _extract_phoenix_routes(
         ):
             continue
 
-        # Find arguments
-        args_node = find_child_by_type(n, "arguments")
-        if not args_node:  # pragma: no cover
-            continue
-
-        route_path = None
-        controller = None
-        action = None
-        options: dict[str, Any] = {}
-
-        # Parse arguments: path, Controller, :action
-        arg_index = 0
-        for child in args_node.children:
-            if child.type in ("(", ")", ","):
-                continue
-
-            if arg_index == 0:
-                # First arg is the path (string)
-                if child.type == "string":
-                    # Extract string content
-                    for sc in child.children:
-                        if sc.type == "quoted_content":
-                            route_path = node_text(sc, source)
-                            break
-                    if not route_path:  # pragma: no cover
-                        route_path = node_text(child, source).strip('"\'')
-            elif arg_index == 1:
-                # Second arg is the controller/module (alias, identifier, or
-                # dotted alias like UserLive.Show)
-                if child.type in ("alias", "dot"):
-                    controller = node_text(child, source)
-                elif child.type == "identifier":  # pragma: no cover
-                    controller = node_text(child, source)
-            elif arg_index == 2 and child.type == "atom":
-                # Third arg is the action (atom) of get/post/.../live
-                action = node_text(child, source).lstrip(":")
-            elif arg_index >= 2 and child.type in ("keywords", "list"):
-                # Trailing keyword options (resources' only:/except:/...)
-                options = _keyword_options(child, source)
-
-            arg_index += 1
+        route_path, controller, action, options = _parse_route_args(
+            n, source)
 
         if not route_path:  # pragma: no cover
             continue
@@ -1273,11 +1363,11 @@ def _extract_phoenix_routes(
         # lexical aliases, then concatenates the enclosing scope alias.
         if controller:
             controller = _expand_alias(controller, hints)
-            if scope_alias:
-                controller = f"{scope_alias}.{controller}"
+            if scope.alias:
+                controller = f"{scope.alias}.{controller}"
 
         # Build metadata
-        normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
+        normalized_path = _join_route_path(scope.path, route_path)
         if method_name in PHOENIX_HTTP_METHODS:
             http_method = method_name.upper()
         elif method_name == "live":

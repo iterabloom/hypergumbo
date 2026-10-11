@@ -1014,7 +1014,8 @@ end
         get_ctx = next((c for c in result.usage_contexts if c.context_name == "get"), None)
         assert get_ctx is not None
         assert get_ctx.kind == "call"
-        assert get_ctx.metadata["route_path"] == "/users"
+        # Phoenix joins the route onto its enclosing scope path
+        assert get_ctx.metadata["route_path"] == "/api/users"
         assert get_ctx.metadata["http_method"] == "GET"
         assert get_ctx.metadata["controller"] == "UserController"
         assert get_ctx.metadata["action"] == "index"
