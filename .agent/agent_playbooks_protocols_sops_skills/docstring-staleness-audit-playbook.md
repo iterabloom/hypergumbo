@@ -409,6 +409,7 @@ means something only if it beats the rate outside the flags.
 | 2026-09-28 | 28 | 16 of 23 read (70%)⁴ | 35 (code changed since last audit)⁴ | 31 (89%)⁴ | #1285 (A+B+D), #1286 (C) |
 | 2026-10-05 | 19 | 16 (84%) | 15 (most body commits) | 14 (93%) | #1479 (A+B+D), #1481 (C), #1488 (re-scan tail) |
 | 2026-10-06 | — | — | **30 (seeded random, never read)** | **19 (≥63%)**⁵ | #1492 |
+| 2026-10-10 | 4 | 1 (25%) | 30 (rolling, never read) + 23 (code changed since last audit) | 21 (70%) + 18 (78%)⁶ | #1521 (A+B+D), #1522 (C) |
 
 ¹ The pool was the 70 flagged plus 9 tracker-ref-only files; the notebook
 records 55 drifted files across all 79, not split by source.
@@ -422,6 +423,10 @@ The unflagged split assumes the two flagged files outside the 21
 ⁵ A lower bound: a blind re-review found drift in 2 of 5 first-pass
 "matches", and 6 other "matches" were not re-read. 14/30 carry a
 wrong reference or a false claim.
+⁶ A lower bound for the same reason: a blind re-review of 5 first-pass
+"matches" found drift in 1 (discovery.py), and 12 others were not re-read.
+The code-changed 18 include files touched that week by PRs whose own
+docstrings had not caught up (installed-dependency skip, untraced vouch).
 
 The 2026-05-15 run also produced #3751 as a side-effect (widening the
 `verify-generated` window 5 → 15 commits). Its notebook entry is at
@@ -562,6 +567,18 @@ INV-pamum (repo-fingerprint algorithm changed without a scheme bump) and
 WI-hopip (the tracker server's write routes have no authentication, latent
 until a TrackerSet is wired). The notebook entry is the "Follow-up" section of
 `~/<repo>_lab_notebook/staleness_audit_10052026.md`.
+
+The 2026-10-10 run read 57 files: the 4 flagged, the 30-file rolling read and
+the 23 other files whose code changed since the 2026-10-06 audit. 40 drifted
+(lower bound). Verifiers reproduced about 20 code defects and the run filed 19
+tracker items. Two lessons. First, the 4 flagged files were the LEAST drifted
+group (1 of 4), against 21 of 30 in the never-read rolling set: the rolling read
+is where the yield is. Second, docstring edits shift line numbers, and two
+citation registries rotted three times across the two PRs: `module_key_axis`
+`MODULE_KEY_NOTIONS` and `signature_axis` `FACT_HOMES` / `LEGACY_VALUE_PARSERS`.
+Re-run both checks (the loop above, plus `test_signature_axis.py`) after EVERY
+bundle, not once per audit. The notebook entry is
+`~/<repo>_lab_notebook/staleness_audit_10102026.md`.
 
 **A caveat to carry into any future run: the flagged count measures the
 scan, not the tree.** The two most consequential findings of the
