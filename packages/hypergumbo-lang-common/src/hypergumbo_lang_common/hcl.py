@@ -17,7 +17,16 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract all symbols (resources, data, modules, etc.)
-2. Pass 2: Extract reference edges between symbols
+2. Pass 2: Extract edges:
+   - ``depends_on`` edges from the enclosing resource, data, module or
+     output block to each symbol its expressions reference (confidence
+     0.95 for a same-file target, 0.85 x resolver confidence for a
+     cross-file one; unresolved references produce no edge). References
+     inside locals, variable and provider blocks produce no edge, because
+     those blocks are not used as edge sources.
+   - ``imports`` edges from the file for module blocks whose ``source``
+     starts with ``./``; the destination is the raw source string. Other
+     sources, including ``../`` paths and registry addresses, get no edge.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the HCL-specific extraction

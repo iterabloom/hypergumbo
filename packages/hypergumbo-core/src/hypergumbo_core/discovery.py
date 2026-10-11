@@ -22,6 +22,12 @@ respecting exclude patterns. Also provides:
   (INV-jumim), so ``find_files`` then yields only the map's files. With no
   index installed, ``find_files`` falls back to ``rglob`` per pattern.
 
+- **Test-file gate for content-scanning linkers:** ``find_non_test_files()``
+  wraps ``find_files`` (same signature, every argument forwarded) and
+  withholds paths that ``paths.is_test_file`` classifies as test files, so
+  linkers that regex-scan file content do not build production edges out of
+  fixtures and assertions (linker-evidence-gating:F1; WI-nitob, WI-rilin).
+
 - **Ambiguous extension disambiguation:**
 
   - ``.m`` files: shared by Objective-C, MATLAB, and Wolfram.

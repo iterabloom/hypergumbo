@@ -26,6 +26,18 @@ Why This Design
 - Remainder redistribution gives extra slots to largest languages
 - Works with any selection strategy (coverage, centrality, etc.)
 
+Other helpers
+-------------
+- group_files_by_language assigns each file to its first symbol's
+  language. sketch's two-phase file-coverage selection
+  (_select_symbols_two_phase) uses it to allocate its per-file coverage
+  slots by language.
+- find_underrepresented_language_seeds returns extra BFS seeds for
+  compact.format_tiered_behavior_map: for each language with at least 10%
+  of edge mentions (an edge counts once for each endpoint language when
+  the two differ) but no node among the current seeds' immediate
+  neighbors, it returns that language's highest-degree node.
+
 Usage
 -----
     from hypergumbo_core.selection.language_proportional import (
@@ -246,8 +258,10 @@ def find_underrepresented_language_seeds(
         symbols: Eligible symbols (already filtered for test/example exclusion).
         edges: All edges.
         current_seeds: Current seed node IDs (entrypoint IDs).
-        edge_share_threshold: Minimum fraction of total edges for a language
-            to be considered significant.  Default 0.10 (10%).
+        edge_share_threshold: Minimum fraction of per-language edge mentions
+            for a language to be considered significant (an edge counts once
+            for each endpoint language when the two differ).  Default 0.10
+            (10%).
 
     Returns:
         Set of additional seed IDs to inject.  Empty if all significant

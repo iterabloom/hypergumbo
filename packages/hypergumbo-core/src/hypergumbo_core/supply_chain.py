@@ -22,8 +22,16 @@ file. Signals are checked in order; first match wins:
 
 1. Derived artifact detection (tier 4) - ``derived_patterns``, then
    path and filename patterns, then a content check for minified output
-2. External dependency detection (tier 3) - node_modules/, vendor/, and
-   vendored SDKs anywhere in the path
+2. External dependency detection (tier 3) - root-anchored node_modules/,
+   vendor/, third_party/ (and the third-party/, thirdparty/ spellings),
+   external/, deps/, Pods/, Carthage/, .yarn/cache/, _vendor/
+   (``EXTERNAL_DEP_PATTERNS``); then nested node_modules/, vendor/,
+   bower_components/ and vendoring markers such as vendored Go SDKs anywhere
+   in the path (``EXTERNAL_DEP_DEEP_PATTERNS``); then installed dependency
+   source that discovery's content rules recognise
+   (``_installed_dependency_root`` asks ``discovery.match_content_rule``),
+   which reaches classification only when traced via ``--trace-deps``
+   (ADR-0004) - e.g. a virtualenv's site-packages or a nested ``server/deps/``
 3. Example/demo detection (tier 1, is_example=True) - examples/, demos/,
    samples/, tutorials/ (in-repo → first-party; the role is on is_example)
 4. Documentation detection (tier 1) - in-repo docs; the role is carried by

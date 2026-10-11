@@ -11,6 +11,7 @@ This analyzer uses tree-sitter to parse Common Lisp files and extract:
 - Variable (defvar, defparameter) and constant (defconstant) definitions
 - Generic function definitions (defgeneric)
 - Function call relationships
+- Import edges from `use-package` forms (file -> package)
 
 If tree-sitter with Common Lisp support is not installed, the analyzer
 gracefully degrades and returns an empty result.

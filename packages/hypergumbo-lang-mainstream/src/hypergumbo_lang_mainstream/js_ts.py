@@ -17,6 +17,12 @@ extract:
 - ``field`` symbols for class properties and ``variable`` for module-level
   bindings
 - One ``file`` symbol per module, anchoring top-level calls
+- ``Symbol.is_exported``, decided both ways (INV-kubup,
+  ``_mark_exported_symbols``) from the file's top-level ESM ``export``
+  clauses and CommonJS ``module.exports = ...`` / ``exports.k = ...``
+  assignments: a declaration they do not name is measured ``False``. Dotted
+  member names (``Class.method``) stay ``False``, and the ``file`` symbol is
+  left ``None``
 - Import/require statements (edges)
 - Function call relationships (edges)
 - Method call relationships (edges)
@@ -147,6 +153,10 @@ How It Works
    ``meta.base_classes``, ``decorated_by`` from ``meta.decorators``, and
    ``references`` edges with evidence_type ``ast_type_ref`` from TypeScript
    type-alias and interface declarations (read from the parse trees)
+5. Parse ``package.json`` and lockfiles via
+   ``npm_deps.parse_npm_dependencies`` and return them as the result's
+   ``dependency_manifest`` (only when its scoped table is non-empty), which
+   gives JS/TS boundary nodes their ``directness`` (WI-juzaj)
 
 Svelte / Vue Support
 --------------------

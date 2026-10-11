@@ -9,6 +9,15 @@ Detects entrypoints via semantic concepts from YAML framework patterns (ADR-3aaa
 - Scheduled jobs
 - GraphQL resolvers
 - Android lifecycle hooks
+- Language conventions and structural entries: main functions and
+  ``__main__`` guards, library exports, test functions, controllers,
+  middleware, error handlers, forms, serializers, SPA bootstrap calls,
+  shell scripts and HTML entry pages
+
+Two detectors do not read YAML concepts: the route-marker pass (symbols an
+analyzer or ``materialize_route_symbols`` minted with ``framework_role ==
+'route'``) and ``_detect_script_modules`` (TS/JS files with top-level calls
+and no inbound imports, which needs the edge set).
 
 How It Works
 ------------
@@ -63,6 +72,21 @@ Connectivity-Based Fallback:
 - This ensures --entry auto never hard-fails, even for repos with no
   matching YAML patterns (e.g., Rust libraries without pub tracking)
 
+Ranking Penalties (``rank_score`` only, applied before the boost):
+- Test files (broad ``paths.is_test_file`` heuristic): x 0.1
+- Utility / example / docs files (``is_utility_file``): x 0.5
+- Vendored or derived code (``supply_chain_tier >= 3``): x 0.3
+- Maven/Gradle build wrappers (``mvnw`` / ``gradlew`` shell scripts): x 0.1,
+  and the boost is suppressed (WI-batit)
+- Go ``main()`` under a ``cmd/`` directory preceded by 2+ path components:
+  x 0.5, so plugin shims do not outrank the primary binary
+- Library-export demotion: x 0.1 for a LIBRARY_EXPORT whose OWN language has
+  a semantic entrypoint (route, command, main, controller, task, ...; ones in
+  utility/example files do not count), so a few Python helper scripts do not
+  bury a Lean library's exports. A vendored (tier >= 3) export is demoted in
+  every language. Vendored and infrastructure-path exports also skip the
+  boost.
+
 One Entrypoint Per Symbol (INV-liraj):
 - When several detectors classify the same symbol (e.g. a function that is
   both main() and a CLI command), the most CONFIDENT entry is kept, ties
@@ -70,6 +94,12 @@ One Entrypoint Per Symbol (INV-liraj):
   matched the Elixir library_export convention and, under first-emitted-wins,
   every Phoenix route was filed under library_export; framework_patterns now
   drops that concept upstream (INV-liraj).
+- Three further dedups follow: when several entries share a symbol NAME,
+  C-style forward declarations (``declaration`` modifier) are dropped in
+  favour of the definition; a file's MAIN_GUARD entry is dropped when the
+  same file also has a MAIN_FUNCTION on a function (INV-hosuh, WI-tuvun);
+  and route entries sharing one ``HTTP <METHOD> <path>`` or ``WS <path>``
+  label collapse to the highest-``rank_score`` one.
 
 Post-Processing Filters (INV-mahap):
 - Minimum confidence threshold (MIN_ENTRYPOINT_CONFIDENCE = 0.10): entries below

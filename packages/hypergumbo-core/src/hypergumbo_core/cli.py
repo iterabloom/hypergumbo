@@ -36,6 +36,15 @@ common case (`hypergumbo .`) as simple as possible.
 The `survey` command (``run_survey``) builds the unified behavior map in
 this order:
 
+0. **Indexing** (ADR-0004): one ``FileIndex`` walk shared by profile
+   detection, the analyzers and the linkers. Installed dependency source
+   (Mix ``deps/``, ``node_modules/``, virtualenv ``site-packages``,
+   package-manager ``vendor/``, ``Pods/``) is skipped unless ``--trace-deps``
+   (sketch/survey/slice) or the ``trace_deps`` config key opts back in. The
+   skip is disclosed on stderr and in
+   ``supply_chain_summary.installed_deps_skipped``. ``main`` installs the
+   per-command ``--trace-deps`` override (``set_trace_deps_override``) and
+   clears it on every exit path.
 1. **Analyzers** run independently across 100+ languages
    (``run_all_analyzers``). Cross-file usage-context references are then
    resolved (``resolve_deferred_symbol_refs``) and every id and path is made
