@@ -19,6 +19,10 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 - **Tracker tests no longer flake under load.** Modal unit tests wait for the dismiss callback instead of reading the result after one `pilot.pause()`, which a starved worker could pass before the result arrived. The four `compile_ops` Hypothesis properties run with `deadline=None`.
 
+### Documentation
+
+- **Module docstrings corrected in six modules** (`store`, `serve_password`, `serve_webauthn`, `stop_hook`, `nav_history` and the package `__init__`). Among the false claims removed: `htrac setup` registers credentials, the web server wires authentication, and the login lockout is permanent (it is in-process).
+
 ## [0.9.0] - 2026-09-25
 
 ### Added
