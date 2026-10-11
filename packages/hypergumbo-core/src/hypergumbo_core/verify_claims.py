@@ -219,7 +219,12 @@ How It Works
    withholds it on every one (INV-lamap). Only files the run LOADED are
    described: an overlay ``--no-default-overlays`` omitted is listed under
    ``omitted_community_overlays`` (and a text NOTE), never as user-supplied
-   input or a withheld grant (INV-dozav). It changes no verdict.
+   input or a withheld grant (INV-dozav); a community taint file it omitted
+   is listed there too, with its ``family``. A taint file a flag or claims
+   file named that declares ``provenance: community`` loaded as a community
+   row, so it is listed under ``named_community_files`` (and a text NOTE),
+   never in ``layers`` or the user-supplied block, and it does not set
+   ``user_supplied``. It changes no verdict.
 """
 from __future__ import annotations
 
@@ -2282,6 +2287,8 @@ def catalog_provenance(
     io_overlay_origins: "Sequence[tuple[Path, str]]" = (),
     untraced_vouched: "Optional[Mapping[str, Sequence[str]]]" = None,
     omitted_overlays: "Sequence[tuple[Path, str]]" = (),
+    named_community: "Sequence[tuple[Path, str, str]]" = (),
+    omitted_taint: "Sequence[tuple[Path, str, str]]" = (),
 ) -> dict[str, Any]:
     """Record which catalogues a verdict was computed against (INV-zosun).
 
@@ -2359,11 +2366,23 @@ def catalog_provenance(
     omitted file's rows or grants was used, so it is not user-supplied input
     and its grant is not "withheld": the run never read it.
 
+    A NAMED TAINT FILE'S TIER IS ITS LINE TOO (ADR-0061 ruling 3). A taint
+    file a flag or the claims file named that declares ``provenance:
+    community`` loads into the community layer: it only adds, and its
+    sanitizers are withheld. So the caller leaves it out of ``layers`` --
+    which hold the user-supplied input a verdict rests on -- and passes it as
+    ``named_community`` (``(path, origin, family)``), listed under
+    ``named_community_files``; ``tiers`` lists it under ``community``. Under
+    ``--no-default-overlays`` the caller passes it, with any community file in
+    the user's ``taint_*.d`` channels, as ``omitted_taint`` instead, listed
+    under ``omitted_community_overlays`` with its ``family``.
+
     Returns:
         ``{"user_supplied": bool, "layers": {kind: {"cli": [...],
         "claims_file": [...]}}, "completeness_grants": [...],
         "withheld_completeness_grants": [...], "omitted_community_overlays":
-        [{"path", "origin"}], "tiers": {tier: [...]},
+        [{"path", "origin"[, "family"]}], "named_community_files":
+        [{"family", "path", "origin"}], "tiers": {tier: [...]},
         "kind_adjudication": {...}}`` — paths as strings, exactly as the user
         wrote them, so a reader can find the file; one grant record per overlay
         that vouched for at least one module; and
@@ -2457,6 +2476,13 @@ def catalog_provenance(
         "withheld_completeness_grants": withheld,
         "omitted_community_overlays": [
             {"path": str(p), "origin": origin} for p, origin in omitted_overlays
+        ] + [
+            {"path": str(p), "origin": origin, "family": family}
+            for p, origin, family in omitted_taint
+        ],
+        "named_community_files": [
+            {"family": family, "path": str(p), "origin": origin}
+            for p, origin, family in named_community
         ],
         "tiers": tiers,
         "shipped_default": shipped,
@@ -2663,13 +2689,35 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
     if omitted:
         lines.append("")
         lines.append(
-            f"NOTE: {len(omitted)} overlay(s) omitted by --no-default-overlays "
-            f"(they declare provenance: community);",
+            f"NOTE: {len(omitted)} catalogue file(s) omitted by "
+            f"--no-default-overlays (they declare provenance: community);",
         )
         lines.append(
             "  none of their rows or completeness grants was used:",
         )
         for entry in omitted:
+            lines.append(
+                f"    {entry.get('path')}  [{_grant_origin_label(entry)}]",
+            )
+    # ADR-0061 ruling 3: a community taint file a flag or claims file named
+    # is a COMMUNITY row, not user-supplied input -- so it is named here, in
+    # the same words as the JSON's ``named_community_files``, and never in the
+    # user-supplied block below.
+    named_community = provenance.get("named_community_files") or []
+    if named_community:
+        lines.append("")
+        lines.append(
+            f"NOTE: {len(named_community)} catalogue file(s) named by flag or "
+            f"claims file declare provenance: community,",
+        )
+        lines.append(
+            "  so they loaded as COMMUNITY rows: they only add, and their "
+            "sanitizers never clear a",
+        )
+        lines.append(
+            "  flow (ADR-0061). Delete the line to vouch for a file:",
+        )
+        for entry in named_community:
             lines.append(
                 f"    {entry.get('path')}  [{_grant_origin_label(entry)}]",
             )
@@ -2772,11 +2820,18 @@ _GRANT_ORIGIN_LABELS: dict[str, str] = {
 def _grant_origin_label(grant: "Mapping[str, Any]") -> str:
     """The text rendering's name for a grant record's origin, else the raw one.
 
-    Shared by the applied, the withheld and the omitted blocks so all three
-    say where a file came from in the same words.
+    Shared by the applied, the withheld, the omitted and the named-community
+    blocks so all four say where a file came from in the same words. A record
+    carrying a ``family`` (a taint file) names it too, and its channel is that
+    family's ``.d`` directory, not io_primitives.d.
     """
     origin = str(grant.get("origin"))
-    return _GRANT_ORIGIN_LABELS.get(origin, origin)
+    family = grant.get("family")
+    if family is None:
+        return _GRANT_ORIGIN_LABELS.get(origin, origin)
+    if origin == "user_channel":
+        return f"your {family}.d"
+    return f"{_GRANT_ORIGIN_LABELS.get(origin, origin)}, {family}"
 
 
 def validate_taint_flow_vocabulary(

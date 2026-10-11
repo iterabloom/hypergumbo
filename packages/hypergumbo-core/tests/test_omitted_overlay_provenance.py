@@ -162,7 +162,7 @@ def test_the_omitted_block_renders_without_user_input() -> None:
         ],
     })
     text = "\n".join(lines)
-    assert "2 overlay(s) omitted by --no-default-overlays" in text
+    assert "2 catalogue file(s) omitted by --no-default-overlays" in text
     assert "seed.yaml  [your io_primitives.d]" in text
     assert "odd.yaml  [somewhere]" in text
     assert "USER-SUPPLIED" not in text

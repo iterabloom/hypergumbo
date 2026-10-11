@@ -116,7 +116,8 @@ code execution, DOM injection), the user's ``taint_*.d`` channels, the claims
 file's ``extra_catalogs``, then CLI flags — each replacing lower layers'
 sources/sinks on ``(module, name, kind)`` (sanitizers concatenate). Community
 files (ADR-0061) form one more layer that only ADDS: it never displaces a
-vouched row, and its sanitizers do not clear a flow.
+vouched row, and its sanitizers do not clear a flow. A file's provenance line,
+not the path that named it, puts it there (``split_community_files``).
 Displaced rows are kept on the catalog as ``_displaced_sources`` /
 ``_displaced_sinks`` (INV-faput) so a verdict can disclose a shipped row a
 user row replaced.
@@ -354,18 +355,19 @@ class TaintSanitizer:
     input_taint: str
     output_taint: str
     qualified_name: str
-    #: INV-pojib: True when this entry came from a PROJECT-LOCAL catalogue
-    #: (``--taint-sanitizers`` or a claims-file ``extra_catalogs:`` block)
+    #: INV-pojib: True when this entry came from the operator's own file
+    #: (``--taint-sanitizers``, a claims-file ``extra_catalogs:`` block or a
+    #: ``taint_sanitizers.d`` channel) with no ``provenance: community`` line,
     #: rather than the shipped one. Stamped once where the user layer is
     #: assembled, so every consumer reads the same answer instead of trying to
     #: re-derive provenance from a path it no longer has.
     user_supplied: bool = False
     #: ADR-0061 ruling 2 (WI-dikit): True when this entry came from a file
-    #: declaring ``provenance: community`` -- shipped, or left in a taint
-    #: channel with the line intact. A community sanitizer REMOVES a finding,
-    #: which is the half an unvouched row may not do, so the walks do not treat
-    #: it as a barrier: the flow is reported and names it
-    #: (``TaintFlowFinding.withheld_sanitizers``). Stamped at load, like
+    #: declaring ``provenance: community`` -- shipped, or named by a taint
+    #: channel, claims file or flag with the line intact. A community
+    #: sanitizer REMOVES a finding, which is the half an unvouched row may not
+    #: do, so the walks do not treat it as a barrier: the flow is reported and
+    #: names it (``TaintFlowFinding.withheld_sanitizers``). Stamped at load, like
     #: ``user_supplied``, never read from the YAML.
     community: bool = False
 
@@ -2336,8 +2338,16 @@ def load_full_taint_catalog(
     repository and a flag lasts one run. They form a user layer BELOW the
     claims file -- a scanned directory is the least specific statement of
     intent -- and their sanitizers are stamped ``user_supplied`` like the
-    others. A channel file that still declares ``provenance: community`` is
-    not the operator's: it joins the community layer and only adds.
+    others.
+
+    THE TIER IS THE FILE'S LINE, NOT THE PATH THAT NAMED IT (ADR-0061 ruling
+    3). A file that still declares ``provenance: community`` is not the
+    operator's, whether a channel, the claims file or a flag named it: it
+    joins the community layer, so its sources and sinks only add (never
+    displacing a shipped entry), its sanitizers are stamped ``community`` and
+    withheld rather than ``user_supplied``, and ``include_community=False``
+    drops it with the rest of that layer. Naming a file vouches for nothing;
+    deleting the line does.
 
     INV-hukug: layers 3 and 4 are kept distinct so a CLI flag (layer 4)
     *replaces* a claims-file entry (layer 3) on a matching
@@ -2350,35 +2360,33 @@ def load_full_taint_catalog(
     The helper is the single entry point for end-users running
     ``verify-claims`` on a repo other than hypergumbo's own.
     """
-    extra_source_paths = _resolve_catalog_paths(extra_source_paths or [])
-    extra_sink_paths = _resolve_catalog_paths(extra_sink_paths or [])
-    extra_sanitizer_paths = _resolve_catalog_paths(extra_sanitizer_paths or [])
-    cli_source_paths = _resolve_catalog_paths(cli_source_paths or [])
-    cli_sink_paths = _resolve_catalog_paths(cli_sink_paths or [])
-    cli_sanitizer_paths = _resolve_catalog_paths(cli_sanitizer_paths or [])
-
-    channels = [
-        _resolve_catalog_paths(list(paths or []))
-        for paths in (channel_source_paths, channel_sink_paths,
-                      channel_sanitizer_paths)
-    ]
-    community_channels = [
-        [p for p in paths if _declares_community_file(p)] for paths in channels
-    ]
-    yours_channels = [
-        [p for p in paths if not _declares_community_file(p)] for paths in channels
-    ]
+    # ADR-0061 ruling 3: a file's tier is its own provenance line, whatever
+    # path named it -- channel, claims file or flag. Each path family is split
+    # the same way: a file declaring ``provenance: community`` joins the
+    # community layer (adds only, sanitizers withheld, dropped whole by
+    # ``include_community=False``); the rest stay in their user layer.
+    community: "list[list[Path]]" = [[], [], []]
+    layers: "list[list[list[Path]]]" = []
+    for group in (
+        (channel_source_paths, channel_sink_paths, channel_sanitizer_paths),
+        (extra_source_paths, extra_sink_paths, extra_sanitizer_paths),
+        (cli_source_paths, cli_sink_paths, cli_sanitizer_paths),
+    ):
+        yours: "list[list[Path]]" = []
+        for kind, paths in enumerate(group):
+            mine, theirs = split_community_files(
+                _resolve_catalog_paths(list(paths or [])))
+            yours.append(mine)
+            community[kind].extend(theirs)
+        layers.append(yours)
+    yours_channels, extra_paths, cli_paths = layers
 
     catalog = load_builtin_taint_catalog(
         io_overlay_paths, include_community=include_community,
-        community_channel_paths=(
-            community_channels[0], community_channels[1], community_channels[2],
-        ),
+        community_named_paths=(community[0], community[1], community[2]),
     )
 
-    any_extra = extra_source_paths or extra_sink_paths or extra_sanitizer_paths
-    any_cli = cli_source_paths or cli_sink_paths or cli_sanitizer_paths
-    if not (any_extra or any_cli or any(yours_channels)):
+    if not any(any(layer) for layer in layers):
         return catalog
 
     # Three user layers, ascending: the user's channels, claims-file extras,
@@ -2386,12 +2394,8 @@ def load_full_taint_catalog(
     # kind) for sources/sinks (INV-hukug); sanitizers concatenate. The unified
     # user layer then overrides the built-in catalog (layers 1+2).
     channel_layer = load_taint_catalog(*yours_channels)
-    claims_layer = load_taint_catalog(
-        extra_source_paths, extra_sink_paths, extra_sanitizer_paths,
-    )
-    cli_layer = load_taint_catalog(
-        cli_source_paths, cli_sink_paths, cli_sanitizer_paths,
-    )
+    claims_layer = load_taint_catalog(*extra_paths)
+    cli_layer = load_taint_catalog(*cli_paths)
     # User-over-user. A displacement here is one user layer overriding
     # another, which INV-hukug already documents as intended precedence and
     # which removes no SHIPPED coverage — so it is not carried.
@@ -2429,16 +2433,46 @@ def load_full_taint_catalog(
 
 
 def _declares_community_file(path: Path) -> bool:
-    """Does a shipped taint file declare ``provenance: community``?"""
+    """Does a taint file declare ``provenance: community``?
+
+    Asked of every file a flag, claims file or channel names BEFORE the real
+    load, so an unparseable file raises :class:`TaintCatalogError` -- the
+    clean exit-2 error the load would have given (INV-nufob) -- never a raw
+    ``yaml.YAMLError``. A wrong-shape document is not this question's to
+    refuse: it answers False and the load refuses it.
+    """
     from .yaml_catalogs import declares_community
 
-    return declares_community(yaml.safe_load(path.read_text(encoding="utf-8")))
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise TaintCatalogError(
+            f"could not parse taint catalog {path}: {exc}"
+        ) from exc
+    return declares_community(data)
+
+
+def split_community_files(
+    paths: "Iterable[Path]",
+) -> "tuple[list[Path], list[Path]]":
+    """``(yours, community)``: taint files split by their provenance line.
+
+    The one partition every taint path family goes through -- the shipped
+    directories, the user's channels, the claims file's ``extra_catalogs:``
+    and the ``--taint-*`` flags -- so the loader and the verify-claims
+    disclosure cannot disagree about a file's tier (ADR-0061 ruling 3).
+    """
+    yours: "list[Path]" = []
+    community: "list[Path]" = []
+    for path in paths:
+        (community if _declares_community_file(path) else yours).append(path)
+    return yours, community
 
 
 def load_builtin_taint_catalog(
     io_overlay_paths: "Sequence[Path] | None" = None,
     include_community: bool = True,
-    community_channel_paths: "tuple[Sequence[Path], Sequence[Path], Sequence[Path]]" = (
+    community_named_paths: "tuple[Sequence[Path], Sequence[Path], Sequence[Path]]" = (
         (), (), ()),
 ) -> TaintCatalog:
     """Load built-in taint catalogs shipped with hypergumbo.
@@ -2468,19 +2502,19 @@ def load_builtin_taint_catalog(
     sink_paths = sorted(_TAINT_SINKS_DIR.glob("*.yaml"))
     sanitizer_paths = sorted(_TAINT_SANITIZERS_DIR.glob("*.yaml")) if _TAINT_SANITIZERS_DIR.exists() else []
     # ADR-0061: a file's tier is its provenance line. The built-in files load
-    # as they always have; the COMMUNITY ones -- shipped, plus any the operator
-    # dropped in a taint channel still declaring the line -- load as their own
+    # as they always have; the COMMUNITY ones -- shipped, plus any a taint
+    # channel, claims file or flag named that still declares the line
+    # (``community_named_paths``) -- load as their own
     # layer below, which only ADDS (ruling 2). ``--no-default-overlays`` omits
     # that layer entirely (ruling 5, INV-fikoh).
     shipped = (source_paths, sink_paths, sanitizer_paths)
-    builtin_paths = [
-        [p for p in paths if not _declares_community_file(p)] for paths in shipped
-    ]
+    split = [split_community_files(paths) for paths in shipped]
+    builtin_paths = [mine for mine, _ in split]
     community_paths: "list[list[Path]]" = [[], [], []]
     if include_community:
         community_paths = [
-            [p for p in paths if _declares_community_file(p)] + list(extra)
-            for paths, extra in zip(shipped, community_channel_paths, strict=True)
+            theirs + list(extra)
+            for (_, theirs), extra in zip(split, community_named_paths, strict=True)
         ]
     user_catalog = load_taint_catalog(*builtin_paths)
 
