@@ -1,0 +1,25 @@
+- op: create  # a71d
+  at: '2026-10-11T04:27:59Z'  # a71d
+  by: agent  # a71d
+  actor: jgstern_agent  # a71d
+  clock: 1  # a71d
+  nonce: a71d  # a71d
+  data:  # a71d
+    kind: invariant  # a71d
+    title: "dependency linker: partial-requirement warning counts resolved first-party Python imports as 'third-party' (regression from WI-juzaj, PR #1511)"  # a71d
+    status: violated  # a71d
+    priority: 3  # a71d
+    parent:  # a71d
+    tags:  # a71d
+    - linkers  # a71d
+    - dependency  # a71d
+    - warnings  # a71d
+    - docstring_audit  # a71d
+    isbefore: []  # a71d
+    duplicate_of: []  # a71d
+    not_duplicate_of: []  # a71d
+    pr_ref:  # a71d
+    description: "Repro: a repo with pyproject.toml (no dependencies), two modules importing each other, no Cargo.toml -> `hypergumbo survey` prints 'DEPENDENCY-LINKER linker found 3 third-party Rust/Python import edges but 0 TOML dependency declarations'; all 3 edges point at in-repo files. A stdlib-only control repo prints nothing. Fix: skip edges whose dst is a resolved in-repo id (path/`:file` shape) or has dst_ref None; add the first-party case to the WI-juzaj tests. The module docstring was reworded to describe current behaviour in the 2026-10-10 audit PR; revert when fixed.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # a71d
+    fields:  # a71d
+      statement: "The dependency linker's import_edges requirement counts only third-party Rust/Python imports, so a repo with no third-party imports does not warn about missing TOML dependency declarations."  # a71d
+      root_cause: "_count_import_edges excludes only Rust toolchain roots and catalogued Python stdlib; a resolved first-party import's dst (python:src/pkg/b.py:1-1:file:file) yields root src/pkg/b and is counted."  # a71d

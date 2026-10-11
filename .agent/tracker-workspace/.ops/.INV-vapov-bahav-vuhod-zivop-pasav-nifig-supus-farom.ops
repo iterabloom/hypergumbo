@@ -1,0 +1,24 @@
+- op: create  # 67ae
+  at: '2026-10-11T04:27:54Z'  # 67ae
+  by: agent  # 67ae
+  actor: jgstern_agent  # 67ae
+  clock: 1  # 67ae
+  nonce: 67ae  # 67ae
+  data:  # 67ae
+    kind: invariant  # 67ae
+    title: "profile.frameworks repeats a framework detected by two ecosystems (hardhat, hardhat, ktor, ktor) in survey.json and the sketch"  # 67ae
+    status: violated  # 67ae
+    priority: 3  # 67ae
+    parent:  # 67ae
+    tags:  # 67ae
+    - profile  # 67ae
+    - frameworks  # 67ae
+    - docstring_audit  # 67ae
+    isbefore: []  # 67ae
+    duplicate_of: []  # 67ae
+    not_duplicate_of: []  # 67ae
+    pr_ref:  # 67ae
+    description: "Repro: package.json with hardhat + ethers, hardhat.config.js, build.gradle.kts using ktor, App.kt, src/index.js -> detect_profile(...).to_dict()['frameworks'] == ['ethers','hardhat','hardhat','ktor','ktor']; survey.json profile.frameworks and the sketch's ## Frameworks section show the duplicates. Only symbol enrichment dedups internally (cli.py ~12421).\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 67ae
+    fields:  # 67ae
+      statement: "profile.frameworks lists each detected framework once."  # 67ae
+      root_cause: "_detect_frameworks (profile.py ~3086-3116) concatenates per-ecosystem results; names defined for several ecosystems (hardhat, ktor, grpc, tauri, ethers, foundry, graphql) appear once per detecting ecosystem. refine_frameworks does not dedup either."  # 67ae
