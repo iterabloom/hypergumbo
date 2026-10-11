@@ -5574,14 +5574,73 @@ def _split_community_overlays(
             omitted.append((path, origin))
         else:
             kept.append((path, origin))
-    if omitted:
+    _notice_omitted_community([p for p, _ in omitted], "overlay(s)")
+    return kept, omitted
+
+
+def _notice_omitted_community(paths: "Sequence[Path]", noun: str) -> None:
+    """The one stderr line ``--no-default-overlays`` prints per family it trims."""
+    if paths:
         print(
-            f"--no-default-overlays: omitted {len(omitted)} overlay(s) that "
+            f"--no-default-overlays: omitted {len(paths)} {noun} that "
             f"declare provenance: community: "
-            f"{', '.join(str(p) for p, _ in omitted)}.",
+            f"{', '.join(str(p) for p in paths)}.",
             file=sys.stderr,
         )
-    return kept, omitted
+
+
+def _split_named_taint_files(
+    named: "Mapping[str, tuple[Sequence[Path], Sequence[Path]]]",
+    include_community: bool,
+) -> "tuple[dict[str, tuple[list[Path], list[Path]]], list[tuple[Path, str, str]], list[tuple[Path, str, str]]]":
+    """``(yours, community, omitted)`` for the taint files flags and claims file named.
+
+    ADR-0061 ruling 3: the tier is the file's own line, whatever named it, and
+    the loader (:func:`~.taint.load_full_taint_catalog`) puts a
+    ``provenance: community`` file in the community layer however it arrived.
+    This is the same partition for the report, so the report cannot describe a
+    file differently from how it loaded:
+
+    - ``yours`` -- ``{family: (cli, claims_file)}``, each path as the operator
+      wrote it, minus community files (a directory stays while it holds any
+      file of theirs). These are the user-supplied layers a verdict rests on.
+    - ``community`` -- ``(path, origin, family)`` for each community file
+      that loaded: it added sources and sinks, and its sanitizers were
+      withheld. Empty under ``--no-default-overlays``.
+    - ``omitted`` -- the same records for each community file
+      ``--no-default-overlays`` dropped: named, and never read. The user's
+      ``taint_*.d`` channels are included here (origin ``user_channel``),
+      since the flag drops theirs too; a loaded community channel file is
+      already in ``tiers.community`` and needs no second listing.
+
+    Paths are the ones the load already resolved successfully, so the
+    resolution here cannot raise.
+    """
+    from .taint import _resolve_catalog_paths, split_community_files
+
+    yours: "dict[str, tuple[list[Path], list[Path]]]" = {}
+    community: "list[tuple[Path, str, str]]" = []
+    for family, origins in named.items():
+        kept: "list[list[Path]]" = []
+        for origin, paths in zip(("cli", "claims_file"), origins, strict=True):
+            mine_raw: "list[Path]" = []
+            for raw in paths:
+                mine, theirs = split_community_files(
+                    _resolve_catalog_paths([Path(raw)]))
+                if mine or not theirs:
+                    mine_raw.append(Path(raw))
+                community += [(p, origin, family) for p in theirs]
+            kept.append(mine_raw)
+        yours[family] = (kept[0], kept[1])
+    if include_community:
+        return yours, community, []
+    omitted = [
+        (p, "user_channel", family) for family in named
+        for p in split_community_files(user_channel_files(family))[1]
+    ] + community
+    _notice_omitted_community(
+        [p for p, _, _ in omitted], "taint catalogue file(s)")
+    return yours, [], omitted
 
 
 def _loaded_catalogue_files(
@@ -5599,7 +5658,9 @@ def _loaded_catalogue_files(
     and every overlay path. When the taint
     catalogue loaded (``taint_paths`` is not ``None``): the shipped taint and
     function-summary files, the files the flags and claims file named (a
-    directory stands for its YAML files), and the user's function_summaries.d.
+    directory stands for its YAML files) and the user's taint channels -- a
+    community one of these only when community rows loaded, since its tier
+    is its own line whatever named it -- and the user's function_summaries.d.
     Then the user's analysis-stage channels (frameworks.d, dataflow_patterns.d,
     library_signatures.d), marked ``stage="analysis"``.
 
@@ -5638,10 +5699,14 @@ def _loaded_catalogue_files(
                       if include_default_overlays
                       or not _declares_community_file(p)]
         for family, paths in taint_paths.items():
+            # WI-mimap: the operator's taint channel for this family. Like the
+            # shipped files, a community file -- whatever named it -- is
+            # listed only when the run loaded it (ADR-0061 ruling 3).
             files += [F(family, p, False)
-                      for p in _resolve_catalog_paths(list(paths))]
-            # WI-mimap: the operator's taint channel for this family.
-            files += [F(family, p, False) for p in user_channel_files(family)]
+                      for p in [*_resolve_catalog_paths(list(paths)),
+                                *user_channel_files(family)]
+                      if include_default_overlays
+                      or not _declares_community_file(p)]
         files += [F("function_summaries", p, False)
                   for p in user_channel_files("function_summaries")]
     for family in ("frameworks", "dataflow_patterns", "library_signatures"):
@@ -7094,6 +7159,17 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         cli_sources or cli_sinks or cli_sanitizers
         or claims_sources or claims_sinks or claims_sanitizers
     )
+    # ADR-0061 ruling 3: what the report says about each named taint file is
+    # what the load did with it. Filled once the load succeeds; until then
+    # (and on a run with no taint catalogue) the named files are the layers.
+    taint_named: "dict[str, tuple[list[Path], list[Path]]]" = {
+        "taint_sources": (cli_sources, claims_sources),
+        "taint_sinks": (cli_sinks, claims_sinks),
+        "taint_sanitizers": (cli_sanitizers, claims_sanitizers),
+    }
+    taint_layers = taint_named
+    named_community_taint: "list[tuple[Path, str, str]]" = []
+    omitted_taint: "list[tuple[Path, str, str]]" = []
 
     # INV-nufob: resolve+validate the taint catalog whenever taint flags are
     # present, even with no taint_flow claim to consume them. Previously this
@@ -7128,6 +7204,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         except (FileNotFoundError, TaintCatalogError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
+        taint_layers, named_community_taint, omitted_taint = (
+            _split_named_taint_files(
+                taint_named,
+                include_community=not getattr(
+                    args, "no_default_overlays", False),
+            )
+        )
 
         if any_taint_flags:
             print(
@@ -7140,6 +7223,15 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 "on (module, name, kind) match.",
                 file=sys.stderr,
             )
+            if named_community_taint:
+                print(
+                    f"{len(named_community_taint)} of those taint catalogue "
+                    f"file(s) declare provenance: community, so they loaded "
+                    f"as community rows: they only add, and their sanitizers "
+                    f"never clear a flow (ADR-0061): "
+                    f"{', '.join(str(p) for p, _, _ in named_community_taint)}.",
+                    file=sys.stderr,
+                )
 
         if any_taint_flags and not has_taint_claims:
             # INV-nufob: flags present but no taint_flow claim to consume them.
@@ -7537,9 +7629,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             [p for p, origin in io_overlay_origins if origin == "cli"],
             [p for p, origin in io_overlay_origins if origin == "claims_file"],
         ),
-        "taint_sources": (cli_sources, claims_sources),
-        "taint_sinks": (cli_sinks, claims_sinks),
-        "taint_sanitizers": (cli_sanitizers, claims_sanitizers),
+        # ADR-0061 ruling 3: the operator's own taint files only. A named
+        # file declaring provenance: community loaded as a community row (or
+        # was omitted), and is reported as one below, never as user input.
+        **taint_layers,
     }, () if getattr(args, "no_default_overlays", False) else languages,
        load_bearing=coverage.load_bearing_grants,
        untraced_vouched=coverage.untraced_vouched_grants,  # WI-pogar
@@ -7565,7 +7658,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
        ),
        repo_root=repo_root,
        io_overlay_origins=io_overlay_origins,
-       omitted_overlays=omitted_io_overlays)
+       omitted_overlays=omitted_io_overlays,
+       named_community=named_community_taint,
+       omitted_taint=omitted_taint)
 
     # Output
     if _read_view_wants_json(args):
