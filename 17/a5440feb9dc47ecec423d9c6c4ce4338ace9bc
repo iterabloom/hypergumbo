@@ -1,0 +1,19 @@
+Original commit body from 006826c135ce68ab6de859d0f6512159f62b0732:
+
+ADR-0020's status read "Implemented" and listed preview.py,
+preview_pipeline.py, svg_detection.py and svg_injection.py as shipped.
+Only Part 1 (screenshot capture + annotation overlay) is wired into the
+TUI; the discussion renderer calls just preview.extract_svg_paths and
+format_preview_placeholder, so threads show a "[screenshot: name]" line
+and no preview is ever rendered.
+
+The status is now "Accepted — partially implemented", and a new
+Implementation status section records what runs (with Part 1's
+deviations: annotated SVG overwrites the original, no JSON sidecar),
+what Part 2 does not do, and which modules are library code with no
+production caller. The README index row and the tracker v0.2.0
+changelog entry are aligned. No code changed.
+
+Refs WI-hobuj-susot-rohob-dofug-jodut-lumik-zufor-dijog
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
