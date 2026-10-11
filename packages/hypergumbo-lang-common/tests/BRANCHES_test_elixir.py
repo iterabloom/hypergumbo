@@ -238,6 +238,7 @@ class TestElixirPhoenixRoutes:
         """Test GET route detection."""
         make_elixir_file(tmp_path, "router.ex", """
 defmodule MyApp.Router do
+  use Phoenix.Router
   get "/", PageController, :index
 end
 """)
@@ -249,6 +250,7 @@ end
         """Test POST route detection."""
         make_elixir_file(tmp_path, "router.ex", """
 defmodule MyApp.Router do
+  use Phoenix.Router
   post "/users", UserController, :create
 end
 """)
@@ -260,6 +262,7 @@ end
         """Test resources macro creates multiple routes."""
         make_elixir_file(tmp_path, "router.ex", """
 defmodule MyApp.Router do
+  use Phoenix.Router
   resources "/posts", PostController
 end
 """)
@@ -273,6 +276,7 @@ end
         """Test PUT route detection."""
         make_elixir_file(tmp_path, "router.ex", """
 defmodule MyApp.Router do
+  use Phoenix.Router
   put "/users/:id", UserController, :update
 end
 """)
@@ -284,6 +288,7 @@ end
         """Test DELETE route detection."""
         make_elixir_file(tmp_path, "router.ex", """
 defmodule MyApp.Router do
+  use Phoenix.Router
   delete "/users/:id", UserController, :destroy
 end
 """)

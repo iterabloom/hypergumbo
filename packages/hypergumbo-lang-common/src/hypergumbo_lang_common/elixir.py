@@ -9,7 +9,13 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
   (``_extract_defstruct_field_names``); they are data anchors and never
   enter call resolution
 - Phoenix route-marker symbols (``_extract_phoenix_routes``), stashed per
-  file and appended in ``post_process``. ``resources`` expands to the routes
+  file and appended in ``post_process``. Only a route macro written in a
+  router module mints one -- a ``defmodule`` whose body runs ``use
+  Phoenix.Router`` or the web-module dispatcher ``use AppWeb, :router``
+  (any route macro), or ``use Plug.Router`` (the HTTP verbs) -- and never
+  the right side of ``|>``: elsewhere ``get`` / ``put`` / ``live`` are
+  plain calls (a cache's ``get("user_1")``, a ConnTest ``conn |>
+  get("/pages")``). ``resources`` expands to the routes
   ``mix phx.routes`` lists: eight by default (``:update`` on both PATCH and
   PUT), filtered by ``only:``/``except:``, reshaped by ``singleton: true``
   and ``param:``. Every route's controller is lexically alias-expanded and
@@ -1267,32 +1273,92 @@ def _phoenix_resources_scope(
     return _RouterScope(outer.alias, segments)
 
 
+#: The route macros each router DSL defines. ``Phoenix.Router`` adds
+#: ``resources`` and ``live`` (``Phoenix.LiveView.Router``, imported by every
+#: generated router) to the HTTP verbs; ``Plug.Router`` has the verbs only.
+_ROUTER_MACROS: dict[str, frozenset[str]] = {
+    "phoenix": frozenset(PHOENIX_HTTP_METHODS | {"resources", "live"}),
+    "plug": frozenset(PHOENIX_HTTP_METHODS),
+}
+
+
+def _module_router_kind(
+    defmodule: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """Which router DSL a ``defmodule`` body opts into, else None.
+
+    ``"phoenix"`` for ``use Phoenix.Router`` or the generated web module's
+    dispatcher ``use AppWeb, :router`` (its ``def router`` quotes ``use
+    Phoenix.Router``, which runs in the module that uses it -- so the
+    ``:router`` atom IS the evidence, and the quote in ``AppWeb`` itself
+    makes ``AppWeb`` no router); ``"plug"`` for ``use Plug.Router``. Only
+    the body's top-level statements are read: a ``use`` inside a ``def``,
+    a ``quote`` or a nested ``defmodule`` belongs to some other module.
+    """
+    body = find_child_by_type(defmodule, "do_block")
+    if body is None:
+        return None
+    for stmt in body.named_children:
+        if stmt.type != "call":
+            continue
+        target = find_child_by_type(stmt, "identifier")
+        if target is None or node_text(target, source) != "use":
+            continue
+        args = find_child_by_type(stmt, "arguments")
+        if args is None:  # pragma: no cover - a bare ``use`` does not compile
+            continue
+        written = [c for c in args.named_children if c.type != "comment"]
+        if not written or written[0].type != "alias":
+            continue
+        module = node_text(written[0], source)
+        if module == "Phoenix.Router":
+            return "phoenix"
+        if module == "Plug.Router":
+            return "plug"
+        if (len(written) > 1 and written[1].type == "atom"
+                and node_text(written[1], source) == ":router"):
+            return "phoenix"
+    return None
+
+
 def _iter_router_calls(
     root: "tree_sitter.Node", source: bytes, alias_hints: dict[str, str],
-) -> Iterator[tuple["tree_sitter.Node", _RouterScope]]:
-    """Every ``call`` node with the router scope in force where it is written.
+) -> Iterator[tuple["tree_sitter.Node", _RouterScope, str]]:
+    """Every ``call`` inside a router module, with the scope in force there.
 
-    A pre-order walk (the same order as ``iter_tree``) that carries the
-    enclosing ``scope`` alias and path down into each scope's ``do`` block
-    (and a ``resources`` call's ``do`` block, which nests under the
-    resource's member path), so a route macro knows which module prefix
-    Phoenix concatenates onto its controller and which path it prepends.
+    Yields ``(call, scope, router_kind)`` where ``router_kind`` is the DSL
+    the innermost enclosing ``defmodule`` opts into
+    (:func:`_module_router_kind`). A call in no router module is not
+    yielded: ``get`` / ``put`` / ``live`` are ordinary function names
+    everywhere else (a cache module's ``get("user_1")``, a test's
+    ``conn |> get("/pages")``), so the router module is what makes them
+    route macros. A pre-order walk (the same order as ``iter_tree``) that
+    carries the enclosing ``scope`` alias and path down into each scope's
+    ``do`` block (and a ``resources`` call's ``do`` block, which nests under
+    the resource's member path), so a route macro knows which module prefix
+    Phoenix concatenates onto its controller and which path it prepends. A
+    nested ``defmodule`` starts afresh: its own ``use`` decides, and no
+    outer scope applies to it.
     """
-    stack: list[tuple["tree_sitter.Node", _RouterScope]] = [
-        (root, _RouterScope(None, ()))]
+    stack: list[tuple["tree_sitter.Node", _RouterScope, Optional[str]]] = [
+        (root, _RouterScope(None, ()), None)]
     while stack:
-        node, scope = stack.pop()
+        node, scope, router = stack.pop()
         inner = scope
         if node.type == "call":
-            yield node, scope
             target = find_child_by_type(node, "identifier")
             name = node_text(target, source) if target is not None else ""
-            if name == "scope":
-                inner = _phoenix_scope(node, source, scope, alias_hints)
-            elif (name == "resources"
-                  and find_child_by_type(node, "do_block") is not None):
-                inner = _phoenix_resources_scope(node, source, scope)
-        stack.extend((child, inner) for child in reversed(node.children))
+            if name == "defmodule":
+                router = _module_router_kind(node, source)
+                inner = _RouterScope(None, ())
+            elif router is not None:
+                yield node, scope, router
+                if name == "scope":
+                    inner = _phoenix_scope(node, source, scope, alias_hints)
+                elif (name == "resources"
+                      and find_child_by_type(node, "do_block") is not None):
+                    inner = _phoenix_resources_scope(node, source, scope)
+        stack.extend((child, inner, router) for child in reversed(node.children))
 
 
 def _extract_phoenix_routes(
@@ -1305,6 +1371,11 @@ def _extract_phoenix_routes(
     alias_hints: dict[str, str] | None = None,
 ) -> tuple[list[UsageContext], list[Symbol]]:
     """Extract UsageContext records AND Symbol objects for Phoenix router DSL calls.
+
+    Only calls inside a router module are read (:func:`_iter_router_calls`),
+    and only the macros that module's DSL defines (``_ROUTER_MACROS``: a
+    ``use Plug.Router`` module has the HTTP verbs, not ``resources`` /
+    ``live``). A call on the right of ``|>`` is never a route macro.
 
     Detects patterns like:
     - get "/", PageController, :index
@@ -1338,7 +1409,7 @@ def _extract_phoenix_routes(
     route_symbols: list[Symbol] = []
     hints = alias_hints or {}
 
-    for n, scope in _iter_router_calls(node, source, hints):
+    for n, scope, router in _iter_router_calls(node, source, hints):
         # Get the function name (get, post, resources, etc.)
         target_node = find_child_by_type(n, "identifier")
         if not target_node:
@@ -1346,11 +1417,12 @@ def _extract_phoenix_routes(
 
         method_name = node_text(target_node, source).lower()
 
-        # Check if it's a Phoenix route macro
-        if (
-            method_name not in PHOENIX_HTTP_METHODS
-            and method_name not in ("resources", "live")
-        ):
+        # A route macro of THIS module's router DSL, written as a macro call:
+        # never the right side of ``|>``, which would hand it the conn as
+        # its path (``conn |> get("/x")`` is a request helper, even when a
+        # router's plug function makes it).
+        if (method_name not in _ROUTER_MACROS[router]
+                or _is_pipe_rhs(n, source)):
             continue
 
         route_path, controller, action, options = _parse_route_args(
