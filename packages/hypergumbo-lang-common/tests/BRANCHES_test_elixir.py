@@ -265,9 +265,9 @@ end
 """)
         data = analyze(tmp_path)
         routes = [n for n in data["nodes"] if (n.get("meta") or {}).get("framework_role") == "route"]
-        # resources creates 7 RESTful routes
+        # resources creates 8 routes (update on both PATCH and PUT)
         post_routes = [r for r in routes if "posts" in r["name"]]
-        assert len(post_routes) >= 7
+        assert len(post_routes) == 8
 
     def test_put_route(self, tmp_path: Path) -> None:
         """Test PUT route detection."""
