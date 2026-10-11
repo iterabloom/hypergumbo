@@ -1,0 +1,24 @@
+- op: create  # 9257
+  at: '2026-10-11T04:26:56Z'  # 9257
+  by: agent  # 9257
+  actor: jgstern_agent  # 9257
+  clock: 1  # 9257
+  nonce: '9257'  # 9257
+  data:  # 9257
+    kind: invariant  # 9257
+    title: "cli: --backend=X as the final argv token is not stripped, so argparse exits 2"  # 9257
+    status: violated  # 9257
+    priority: 3  # 9257
+    parent:  # 9257
+    tags:  # 9257
+    - cli  # 9257
+    - bug  # 9257
+    - docstring_audit  # 9257
+    isbefore: []  # 9257
+    duplicate_of: []  # 9257
+    not_duplicate_of: []  # 9257
+    pr_ref:  # 9257
+    description: "Repro: `hypergumbo catalog --backend=tree-sitter` -> exit 2 'unrecognized arguments: --backend=tree-sitter'; `hypergumbo catalog --backend tree-sitter`, `hypergumbo --backend=tree-sitter catalog` and `... --backend=tree-sitter --help` all exit 0. test_backend_cli_flag.py only tests `=` before the subcommand. Fix: iterate range(len(argv)) and read argv[idx+1] only when it exists; add a test with `--backend=X` last.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 9257
+    fields:  # 9257
+      statement: "`--backend` is accepted in any position, in both `--backend X` and `--backend=X` forms (cli.py module docstring)."  # 9257
+      root_cause: "main's pre-scan loops `for idx in range(len(argv) - 1)`, so the last token is never examined, even in the `=` form that needs no following token."  # 9257
