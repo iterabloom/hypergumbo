@@ -25,6 +25,7 @@ in-process tests pin the candidate order and the cap.
 
 from __future__ import annotations
 
+import inspect
 import os
 import subprocess
 import sys
@@ -158,7 +159,48 @@ def test_discovered_path_already_collected_is_not_appended_twice(
     assert len(sources) == len(set(sources)) == 32
 
 
-def test_embedding_extraction_stops_at_the_file_cap(tmp_path: Path) -> None:
+# A stand-in for the sentence-transformers model: a character histogram per
+# text. Deterministic, str-hash-free and weight-free, so these tests measure
+# the candidate ORDER and the cap, not the model (CI has no torch; numpy is
+# still required by the code under test, hence importorskip).
+class _HistogramModel:
+    def encode(self, texts: list[str], convert_to_numpy: bool = True) -> object:
+        import numpy as np
+
+        out = np.zeros((len(texts), 64), dtype=np.float32)
+        for row, text in enumerate(texts):
+            for ch in text:
+                out[row, ord(ch) % 64] += 1.0
+        return out
+
+
+# The same stand-in, installed in a fresh interpreter for the salted runs.
+_FAKE_MODEL_SRC = (
+    inspect.getsource(_HistogramModel)
+    + "from hypergumbo_core import sketch_embeddings\n"
+    + "sketch_embeddings._load_embedding_model = _HistogramModel\n"
+)
+
+
+def _salted_runs(code: str, root: Path) -> set[str]:
+    outputs = set()
+    for salt in ("0", "1", "2"):
+        env = {**os.environ, "PYTHONHASHSEED": salt}
+        result = subprocess.run(
+            [sys.executable, "-c", code, str(root)],
+            capture_output=True, text=True, env=env, check=True,
+        )
+        outputs.add(result.stdout)
+    return outputs
+
+
+def test_embedding_extraction_stops_at_the_file_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("numpy")
+    from hypergumbo_core import sketch_embeddings
+
+    monkeypatch.setattr(sketch_embeddings, "_load_embedding_model", _HistogramModel)
     root = _monorepo(tmp_path)
     candidates = [
         s for s, _ in sketch._collect_config_content_with_discovery(root)
@@ -170,24 +212,28 @@ def test_embedding_extraction_stops_at_the_file_cap(tmp_path: Path) -> None:
     assert shown <= set(candidates[:15])
 
 
-def test_same_embedding_section_under_different_hash_salts(tmp_path: Path) -> None:
-    root = _monorepo(tmp_path)
+def test_same_candidates_under_different_hash_salts(tmp_path: Path) -> None:
+    """Behavioural evidence that needs no embedding stack at all."""
     code = (
         "import sys; from pathlib import Path;"
-        "from hypergumbo_core.sketch import ("
-        "_collect_config_content_with_discovery, _extract_config_embedding);"
-        "root = Path(sys.argv[1]);"
-        "srcs = [s for s, _ in _collect_config_content_with_discovery(root)];"
-        "sys.stdout.write('\\n'.join(srcs) + '\\n---\\n'"
-        " + '\\n'.join(_extract_config_embedding(root)))"
+        "from hypergumbo_core.sketch import _collect_config_content_with_discovery;"
+        "srcs = [s for s, _ in _collect_config_content_with_discovery("
+        "Path(sys.argv[1]))];"
+        "sys.stdout.write('\\n'.join(srcs))"
     )
-    outputs = set()
-    for salt in ("0", "1", "2"):
-        env = {**os.environ, "PYTHONHASHSEED": salt}
-        result = subprocess.run(
-            [sys.executable, "-c", code, str(root)],
-            capture_output=True, text=True, env=env, check=True,
-        )
-        outputs.add(result.stdout)
+    outputs = _salted_runs(code, _monorepo(tmp_path))
+    assert len(outputs) == 1
+    assert len(next(iter(outputs)).splitlines()) == 32
+
+
+def test_same_embedding_section_under_different_hash_salts(tmp_path: Path) -> None:
+    pytest.importorskip("numpy")
+    code = _FAKE_MODEL_SRC + (
+        "import sys\nfrom pathlib import Path\n"
+        "from hypergumbo_core.sketch import _extract_config_embedding\n"
+        "sys.stdout.write('\\n'.join(_extract_config_embedding("
+        "Path(sys.argv[1]))))\n"
+    )
+    outputs = _salted_runs(code, _monorepo(tmp_path))
     assert len(outputs) == 1
     assert "[packages/" in next(iter(outputs))
