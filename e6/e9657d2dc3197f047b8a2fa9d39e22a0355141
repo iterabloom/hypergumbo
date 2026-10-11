@@ -1,0 +1,20 @@
+Original commit body from 6264e65772532730ae44ff414a83a68033c29cc6:
+
+Route markers took the literal path of `get`/`live`/`resources`, so
+`scope "/admin"` + `get "/users"` was `/users`, and routes in different
+scopes with the same tail collapsed under one label. The scope-aware walk
+now carries path segments as well as the alias: a `scope` contributes its
+positional or `path:` segments, and a `resources ... do` block nests its
+routes under the member path `<path>/:<name>_<param>` (Phoenix.Naming
+resource_name of the controller, `name:`/`param:` overrides; bare path for
+a singleton). Paths are joined the way Phoenix's join_path does, so empty
+and trailing segments vanish (`scope "/admin"` + `live "/"` is `/admin`).
+Route-argument parsing is extracted into `_parse_route_args`, shared by the
+extractor and the nested-resources scope.
+
+On thc: 377 router markers, 359 -> 377 distinct names; `hypergumbo routes`
+lists 371 -> 389 routes.
+
+Refs WI-kibij-gukom-lidaf-hulos-jasif-vobul-kuhip-fosih
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
