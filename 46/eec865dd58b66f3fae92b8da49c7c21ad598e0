@@ -1,0 +1,9 @@
+Original commit body from 01db7c747cbcbe46e918048f80d12362933c7c0a:
+
+57 files read (4 flagged, 30 rolling, 23 code-changed); 40 drifted (lower
+bound). The flagged group was the least drifted (1/4) and the never-read
+rolling set the most (21/30). Citation registries (module_key_axis,
+signature_axis) rotted three times across the two fix PRs, so the note
+now says to re-run both checks after every bundle.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
