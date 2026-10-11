@@ -1,0 +1,23 @@
+Original commit body from 83be70c42a6781cc3522742722fb6e8780b575bf:
+
+Covers the 19 commits since the last audit (53ac96b59e).
+
+Main changelog:
+- Move the build-grammars PyPI fix out of the released [8.1.0] section,
+  where it had been filed by mistake, into [Unreleased] Fixed.
+- Summary: add the security-review aids (README trust section, I/O
+  allowlist gate) and the build-grammars fix.
+- Cut the entries added since the last audit (installed dependency
+  source, Mix/npm directness, allowlist gate, I/O unknown, route
+  markers, Tests line, dependency-linker warning) to effect plus one
+  measured number, matching released-section density.
+- Strip tracker IDs; fold the one-bullet Warnings heading into
+  Identity and output.
+- Replace the stale "will be off by default, not yet implemented" docs
+  entry with the ADR record of the shipped rule.
+- Count the two later docstring audits (59 files).
+Unreleased goes from 3,269 to about 2,950 words.
+
+Tracker changelog: add the six tracker module docstring corrections.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
