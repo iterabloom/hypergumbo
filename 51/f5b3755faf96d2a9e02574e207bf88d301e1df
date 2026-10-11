@@ -1,0 +1,19 @@
+Original commit body from 45b83ce10d54459e775829b2d5f765bf2f09d6e4:
+
+catalog_provenance asked "does this file declare provenance: community?"
+only of overlays from the config tiers and channel directories. Files given
+by --io-primitives or a claims file's extra_catalogs: were read from
+`layers` and listed under completeness_grants unconditionally, so the text
+output said "COMPLETENESS GRANTS ... counts as an EXAMINED negative ...
+python: telnetlib from comm.yaml [CLI flag]" for a grant load_catalog had
+withheld. The verdict was unaffected; the disclosure was false.
+
+One partition (_partition_completeness_grants) now runs over every origin.
+The withheld block in the text rendering also names each file's origin, as
+the applied block does (shared _grant_origin_label). The module and
+catalog_provenance docstrings, reworded in the 2026-10-10 audit to describe
+the gap, describe the fixed behaviour again.
+
+Refs INV-kobam-labiv-katak-gapim-jupak-vatak-mujap-mavuh
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
