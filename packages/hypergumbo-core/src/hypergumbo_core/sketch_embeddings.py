@@ -12,6 +12,24 @@ The main entry points are:
 - batch_embed_files(): Batch embed files with caching
 - compute_5w1h_similarity(): Score a file against the 5W1H rubric
 
+Two models back these. ``microsoft/unixcoder-base`` (``_load_embedding_model``)
+serves README description extraction, and ``sketch.py``'s config discovery
+and extraction import ``_load_embedding_model`` and ``NEGATIVE_PATTERNS``
+from here directly. ``nomic-ai/modernbert-embed-base``
+(``_load_modernbert_model``) serves the Additional Files semantic ranking:
+``embed_file_for_semantic_ranking``, ``batch_embed_files`` and the 5W1H
+probe embeddings. Once both models are in the HF cache, loading either one
+sets ``HF_HUB_OFFLINE=1`` for the whole process
+(``_ensure_hf_offline_for_cached_models``, INV-dasig).
+
+The module also hosts the per-repo XDG cache layout under
+``$XDG_CACHE_HOME/hypergumbo/<fingerprint>/`` (``_get_repo_fingerprint``,
+``_get_xdg_cache_base``): the content-hash-keyed embedding cache
+(``_get_cache_dir``) and the analysis-results cache (``_get_results_cache_dir``),
+keyed by repo state hash, resolved opt-in backend set, trace_deps token and
+analyzer identity. ``cli.py`` and ``sketch.py`` import the results-cache
+helpers from here; they have nothing to do with embeddings.
+
 Degradation contract — TWO failure modes, not one
 -------------------------------------------------
 "sentence-transformers is unavailable" means two independent things, and

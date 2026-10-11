@@ -145,12 +145,18 @@ How It Works
    sink such as ``eval`` (INV-dudal), fed through one gate as
    ``opaque = launches + sorted(evaluations)`` and marked ``qualifying_only``
    when they are the sole blocker; and calls into modules no catalogue row
-   classifies (``_uncatalogued_external_modules``). Every result, complete or not, also
-   carries the qualifying disclosures the caveats above are built from
-   (untyped / accessor-name receivers, deferred crossings, analyzer
-   blindness declarations, load-bearing grants, unused higher-fidelity
-   backends) plus ``analysis_fidelity``: language -> the pass IDs behind its
-   call edges, ``unattributed`` for an edge with no origin.
+   classifies (``_uncatalogued_external_modules``). When some of those
+   unclassified modules are third-party dependency source,
+   ``_untraced_dependency_clause`` appends to the withheld reason that N of
+   them are untraced dependency source whose I/O is unknown, not absent
+   (WI-pogar). Every result, complete or not, also carries the qualifying
+   disclosures the caveats above are built from (untyped / accessor-name
+   receivers, deferred crossings, analyzer blindness declarations,
+   load-bearing grants, unused higher-fidelity backends),
+   ``untraced_vouched_grants`` (the load-bearing grants an overlay made and
+   the built-in catalogue does not), plus ``analysis_fidelity``: language ->
+   the pass IDs behind its call edges, ``unattributed`` for an edge with no
+   origin.
 3. ``verify_claim(claim, boundary_map, coverage)`` checks one boundary claim
    and ``verify_taint_claim(claim, findings, ...)`` one taint-flow claim, each
    returning a ``ClaimVerdict``; both thin wrappers stamp
@@ -186,7 +192,10 @@ How It Works
    non-boundary zones (ADR-0060) then passes through ``_apply_sink_zone_gap``:
    a present language with no sink in the zone withholds a clean verdict, and
    declared unreached shapes qualify it with ``CAVEAT_UNREACHED_SINK_SHAPES``
-   (INV-pivam).
+   (INV-pivam). Last, ``_disclose_untraced_vouch`` appends to a confirming
+   verdict's ``details`` the modules that only an overlay's
+   ``module_completeness`` grant vouched for, whose source was not traced;
+   the category and exit code stay the same (WI-pogar, ADR-0016 §7).
 5. ``catalog_provenance`` records which catalogues the verdicts were computed
    against, keeping command-line catalogues apart from the claims file's
    ``extra_catalogs`` (the analysed repository supplying its own grading
@@ -194,7 +203,8 @@ How It Works
    ``render_catalog_provenance_text`` renders the same disclosure for text
    output. With only the shipped catalogue it still renders the run-level
    notes (the ``kind_adjudication`` census, shipped community overlays,
-   load-bearing completeness grants); the user-supplied block appears only
+   load-bearing completeness grants, each row carrying ``untraced_vouched``,
+   the overlay-only subset); the user-supplied block appears only
    when a user catalogue was used. ``tiers`` lists every loaded catalogue file
    (``LoadedCatalogueFile``), not only the flag's and the claims file's, under
    ``CATALOGUE_TIERS`` (``builtin`` / ``community`` / ``yours`` / ``in_repo``;

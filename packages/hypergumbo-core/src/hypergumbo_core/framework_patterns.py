@@ -12,6 +12,28 @@ How It Works
 3. When a pattern matches, the symbol is enriched with a "concept" (route, model, etc.)
 4. Linkers use concepts to understand symbol semantics without framework knowledge
 
+Also provides:
+
+- Nine language-convention pattern files (``_CONVENTION_PATTERN_IDS``:
+  main-functions, test-frameworks, library-exports, naming-conventions, ...)
+  that ``enrich_symbols`` applies on every repo regardless of framework
+  detection.
+- A user-channel override: a ``frameworks/`` file in the user channel whose
+  stem matches a framework id (or its alias) replaces the shipped YAML whole
+  rather than merging into it (ADR-0047 ruling 10, ``load_framework_patterns``).
+- Route-marker hygiene at enrichment: on a symbol that already carries a
+  route marker, a redundant path-less ``route`` concept is dropped and its
+  framework lifted onto ``route_framework`` (``_dedup_route_marker_concepts``,
+  INV-vokak), and on any route-family marker a ``library_export`` match is
+  dropped (``_drop_library_export_on_route_marker``, INV-liraj).
+- Pipeline passes run outside ``enrich_symbols``:
+  ``resolve_deferred_symbol_refs`` (resolves UsageContext handler references
+  against the full symbol table once every analyzer has run),
+  ``strip_test_file_only_concepts`` (drops ``is_test_file: false`` concepts
+  from symbols supply-chain classification marked as test code),
+  ``materialize_route_symbols`` and ``expand_class_based_view_routes`` (see
+  below).
+
 Pattern Types
 -------------
 **Definition-based (v1.0.x+):** Match against symbol definition metadata.

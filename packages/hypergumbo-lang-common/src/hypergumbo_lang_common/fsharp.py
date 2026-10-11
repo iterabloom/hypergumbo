@@ -3,8 +3,11 @@
 
 This analyzer uses tree-sitter to parse F# files and extract:
 - Module definitions (named_module)
-- Function/value definitions (function_or_value_defn)
-- Record type definitions (record_type_defn)
+- Function/value definitions (function_or_value_defn): functions with
+  parameters (kind ``function``) and module-level ``let`` values (kind
+  ``variable``; function-body locals are not emitted)
+- Record type definitions (record_type_defn) and their fields (kind
+  ``field``, named ``Type.field``)
 - Discriminated union definitions (union_type_defn)
 - Open statements (import_decl)
 - Function call relationships
