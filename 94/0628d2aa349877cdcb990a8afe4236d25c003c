@@ -1,0 +1,32 @@
+Original commit body from 9bff38c135ee30c7996489d460347c748630cdb9:
+
+The import_edges requirement behind the partial-requirement warning
+counted every non-stdlib Rust/Python import edge, including imports the
+Python analyzer had resolved to the repo's own files. A pyproject.toml
+package with no dependencies whose modules import each other warned
+"found 2 third-party Rust/Python import edges but 0 TOML dependency
+declarations".
+
+Discriminator: an edge whose dst is an in-repo symbol id is first-party
+(the ADR-0037 definition, and the same dst-in-symbol-ids test the
+finalize boundary step uses). Edge.is_resolved cannot be read instead:
+when linkers run it is still the producer's advisory default (True),
+external imports included.
+
+Rust analogue: Rust import dsts never resolve, so a crate's own modules
+(`use util::helper` beside `mod util;`, `src/net/mod.rs` -> `net`) and
+its own Cargo package name (`use my_crate::x` from tests/ or src/bin/)
+are recognised by name and not counted.
+
+The module docstring and requirement comment, reworded by the
+2026-10-10 staleness audit to describe the bug, now describe the fixed
+behaviour. Also re-points a stale dependency.py:49 comment citation in
+test_io_boundary.py (now :69).
+
+Residual, filed as INV-tugim-folup-jumak-posin-zavul-somug-fusil-topiv:
+a bare same-directory Python import (tests/test_a.py: `import conftest`)
+stays unresolved in the analyzer and is still counted.
+
+Refs INV-nuraf-nuvif-pifut-budoh-gafim-midab-juvuv-zonin
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
