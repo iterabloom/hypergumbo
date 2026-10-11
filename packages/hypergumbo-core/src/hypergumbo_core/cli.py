@@ -5513,6 +5513,22 @@ def _resolve_io_overlay_origins(
     completeness grant came from (ADR-0061 ruling 5), which the flat list
     cannot say once the layers are concatenated.
     """
+    return _resolve_io_overlay_layers(args, claims_paths, repo_root)[0]
+
+
+def _resolve_io_overlay_layers(
+    args: argparse.Namespace,
+    claims_paths: "list[Path] | None" = None,
+    repo_root: "Path | None" = None,
+) -> "tuple[list[tuple[Path, str]], list[tuple[Path, str]]]":
+    """``(loaded, omitted)``: :func:`_resolve_io_overlay_origins` and what it dropped.
+
+    ``omitted`` is every overlay ``--no-default-overlays`` removed (empty
+    without the flag), with its origin. A report on the run needs both halves
+    (INV-dozav): describing the loaded files from the RAW flag and claims-file
+    lists named a file the run never read as user-supplied input with a
+    withheld grant, while stderr said it had been omitted.
+    """
     out: "list[tuple[Path, str]]" = [
         (p, "user_channel") for p in user_overlay_paths()
     ]
@@ -5527,38 +5543,45 @@ def _resolve_io_overlay_origins(
         (Path(p), "cli") for p in (getattr(args, "io_primitives", None) or [])
     ]
     if getattr(args, "no_default_overlays", False):
-        out = _omit_community_overlays(out)
-    return out
+        return _split_community_overlays(out)
+    return out, []
 
 
 def _omit_community_overlays(
     origins: "list[tuple[Path, str]]",
 ) -> "list[tuple[Path, str]]":
-    """Drop overlays declaring ``provenance: community``, and say which.
+    """The overlays :func:`_split_community_overlays` keeps."""
+    return _split_community_overlays(origins)[0]
+
+
+def _split_community_overlays(
+    origins: "list[tuple[Path, str]]",
+) -> "tuple[list[tuple[Path, str]], list[tuple[Path, str]]]":
+    """``(kept, omitted)``: drop overlays declaring ``provenance: community``, and say which.
 
     ``--no-default-overlays`` omits COMMUNITY rows (ADR-0061 ruling 5,
     INV-fikoh), and the tier is the file's own line (ruling 3), so a community
     copy in io_primitives.d -- the ones ``init-catalogs`` seeds -- goes with
-    the shipped originals. A path that does not exist is kept for the real
-    load to refuse.
+    the shipped originals, and so does one named by flag or claims file. A
+    path that does not exist is kept for the real load to refuse.
     """
     from .io_boundary import overlay_declares_community
 
     kept: "list[tuple[Path, str]]" = []
-    omitted: "list[Path]" = []
+    omitted: "list[tuple[Path, str]]" = []
     for path, origin in origins:
         if path.is_file() and overlay_declares_community(path):
-            omitted.append(path)
+            omitted.append((path, origin))
         else:
             kept.append((path, origin))
     if omitted:
         print(
             f"--no-default-overlays: omitted {len(omitted)} overlay(s) that "
             f"declare provenance: community: "
-            f"{', '.join(str(p) for p in omitted)}.",
+            f"{', '.join(str(p) for p, _ in omitted)}.",
             file=sys.stderr,
         )
-    return kept
+    return kept, omitted
 
 
 def _loaded_catalogue_files(
@@ -6936,7 +6959,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # the same layering the taint arm uses (INV-hukug).
     from .verify_claims import load_extra_catalog_paths as _load_extras
     _, _, _, _claims_io_overlays = _load_extras(claims_path)
-    io_overlay_origins = _resolve_io_overlay_origins(
+    io_overlay_origins, omitted_io_overlays = _resolve_io_overlay_layers(
         args, _claims_io_overlays, repo_root=repo_root,
     )
     io_overlays = [p for p, _ in io_overlay_origins]
@@ -7503,13 +7526,16 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # passed on the command line comes from whoever ran the tool, while one
     # reached through `extra_catalogs:` travels with the repository, and a
     # claims file living inside the analysed tree means the repo is supplying
-    # its own criteria. `_resolve_io_overlays` concatenates the two, so the
-    # unmerged lists are read here rather than recovered from the merged one.
+    # its own criteria. Both are read from the LOADED origins, each path
+    # tagged with its layer, never from the raw flag and claims-file lists:
+    # those still hold a file --no-default-overlays omitted, which the report
+    # then named as user-supplied input with a withheld grant (INV-dozav). The
+    # omitted files are passed on separately and reported as omitted.
     from .verify_claims import catalog_provenance, render_catalog_provenance_text
     _provenance = catalog_provenance({
         "io_primitives": (
-            [Path(p) for p in (getattr(args, "io_primitives", None) or [])],
-            _claims_io_overlays,
+            [p for p, origin in io_overlay_origins if origin == "cli"],
+            [p for p, origin in io_overlay_origins if origin == "claims_file"],
         ),
         "taint_sources": (cli_sources, claims_sources),
         "taint_sinks": (cli_sinks, claims_sinks),
@@ -7538,7 +7564,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
            ),
        ),
        repo_root=repo_root,
-       io_overlay_origins=io_overlay_origins)
+       io_overlay_origins=io_overlay_origins,
+       omitted_overlays=omitted_io_overlays)
 
     # Output
     if _read_view_wants_json(args):
