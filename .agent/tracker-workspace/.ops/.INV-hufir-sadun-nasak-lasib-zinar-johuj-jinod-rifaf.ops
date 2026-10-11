@@ -1,0 +1,25 @@
+- op: create  # d5f3
+  at: '2026-10-11T04:29:14Z'  # d5f3
+  by: agent  # d5f3
+  actor: jgstern_agent  # d5f3
+  clock: 1  # d5f3
+  nonce: d5f3  # d5f3
+  data:  # d5f3
+    kind: invariant  # d5f3
+    title: "elm: the callee of a function application is taken as the first value_expr anywhere in the node, so an argument can be credited as the callee"  # d5f3
+    status: violated  # d5f3
+    priority: 3  # d5f3
+    parent:  # d5f3
+    tags:  # d5f3
+    - elm  # d5f3
+    - analyzer  # d5f3
+    - calls  # d5f3
+    - docstring_audit  # d5f3
+    isbefore: []  # d5f3
+    duplicate_of: []  # d5f3
+    not_duplicate_of: []  # d5f3
+    pr_ref:  # d5f3
+    description: "Repro: `main = (identity helper) other` -> only edge main -> other.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # d5f3
+    fields:  # d5f3
+      statement: "An Elm call edge targets the applied function, not one of its arguments."  # d5f3
+      root_cause: "elm.py ~365 `find_child_by_type(node, \"value_expr\")` returns the first value_expr child, not the callee position."  # d5f3

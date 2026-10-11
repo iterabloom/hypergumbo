@@ -1,0 +1,24 @@
+- op: create  # fa47
+  at: '2026-10-11T04:29:08Z'  # fa47
+  by: agent  # fa47
+  actor: jgstern_agent  # fa47
+  clock: 1  # fa47
+  nonce: fa47  # fa47
+  data:  # fa47
+    kind: work_item  # fa47
+    title: "sketch: config probes are re-encoded on every call while precomputed ANSWER/BIGPIC/NEGATIVE probe embeddings ship unread"  # fa47
+    status: todo_hard  # fa47
+    priority: 4  # fa47
+    parent:  # fa47
+    tags:  # fa47
+    - sketch  # fa47
+    - embeddings  # fa47
+    - perf  # fa47
+    - dead_code  # fa47
+    - docstring_audit  # fa47
+    isbefore: []  # fa47
+    duplicate_of: []  # fa47
+    not_duplicate_of: []  # fa47
+    pr_ref:  # fa47
+    description: "_extract_config_embedding encodes ANSWER_PATTERNS (41), BIG_PICTURE_QUESTIONS (127) and NEGATIVE_PATTERNS (12) live on every call (fake-model repro: encode batches [41,127,4,12,41,127,4,12] over two calls). _embedding_data ships ANSWER/BIGPIC/NEGATIVE_PROBES_B64; the ANSWER/BIGPIC getters (sketch_embeddings ~751/768) have no caller and NEGATIVE has no reader; sketch.py and sketch_embeddings.py keep duplicate pattern lists. Either use the precomputed arrays (guarded by a model/list hash) or stop generating them.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # fa47
+    fields: {}  # fa47

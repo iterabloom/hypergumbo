@@ -1,0 +1,25 @@
+- op: create  # 7f7a
+  at: '2026-10-11T04:29:03Z'  # 7f7a
+  by: agent  # 7f7a
+  actor: jgstern_agent  # 7f7a
+  clock: 1  # 7f7a
+  nonce: 7f7a  # 7f7a
+  data:  # 7f7a
+    kind: invariant  # 7f7a
+    title: "py_deps: a declared dependency whose distribution is not installed (bs4 from beautifulsoup4) is stamped directness='undeclared', a phantom-dependency label"  # 7f7a
+    status: violated  # 7f7a
+    priority: 3  # 7f7a
+    parent:  # 7f7a
+    tags:  # 7f7a
+    - supply_chain  # 7f7a
+    - py_deps  # 7f7a
+    - directness  # 7f7a
+    - docstring_audit  # 7f7a
+    isbefore: []  # 7f7a
+    duplicate_of: []  # 7f7a
+    not_duplicate_of: []  # 7f7a
+    pr_ref:  # 7f7a
+    description: "Repro: pyproject declares requests and beautifulsoup4, only requests installed -> requests imports stamped direct, bs4 stamped undeclared. Both stay tier 3. Fix options: unknown (not undeclared) when the dist->import map is incomplete, or a static dist->top-level-name table for common mismatches.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 7f7a
+    fields:  # 7f7a
+      statement: "An import of a declared dependency is never stamped 'undeclared'; a name py_deps cannot map stays unstamped."  # 7f7a
+      root_cause: "py_deps maps dist names to import names via installed metadata; an uninstalled dist yields no mapping, and DependencyManifest.directness_for returns 'undeclared' for any unmatched module once a pyproject produced entries (supply_chain.py ~180-208)."  # 7f7a
