@@ -174,7 +174,8 @@ analysis that builds the graph.
   `catalog_provenance.tiers` (`builtin` / `community` / `yours` / `in_repo`,
   with git state `committed` / `modified` / `untracked` for a file inside the
   repository), names every `module_completeness` grant and where it came from,
-  and lists a community file's withheld grants separately.
+  lists a community file's withheld grants separately, and names each overlay
+  `--no-default-overlays` omitted under `omitted_community_overlays`.
 - `hypergumbo catalog-inventory` shows each family, its file count, your
   channel and whether it is read.
 - `hypergumbo init-catalogs` creates your catalogue home and seeds the

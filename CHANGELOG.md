@@ -79,6 +79,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **Taint, `io-boundaries` and slices follow a construction into the constructor** (Python, JS/TS, Dart), and a harmless call no longer hides a real one to the same callee in the same function.
 - **Caveats are accurate**: a clean `untrusted_input` verdict carries `deferred_crossing` (ADR-0049); modules reached through a JS handler assignment or a Python dunder are no longer "structurally invisible"; the unknown-scope share counts only real method calls.
 - **A `provenance: community` overlay passed by `--io-primitives` or a claims file's `extra_catalogs:` is listed under *WITHHELD GRANTS*, not as an applied completeness grant.** The load already ignored its grants; the catalogue disclosure said they applied. Each withheld grant now also names where its file came from.
+- **Under `--no-default-overlays`, a community overlay named by flag or claims file is reported as omitted** (`catalog_provenance.omitted_community_overlays` and a text note), no longer as user-supplied input with a withheld grant for a file the run never read.
 - **`verify-claims` no longer hangs on a self-referencing directory symlink**, its `--help` boundary list comes from the registry, and hypergumbo's 18 self-claims are `confirmed_with_caveats` again.
 
 #### Receiver typing and call resolution

@@ -216,7 +216,10 @@ How It Works
    ``module_completeness`` grant in a community file is listed under
    ``withheld_completeness_grants`` whatever path loaded it -- CLI flag,
    claims file, config tier or channel directory -- because the load
-   withholds it on every one (INV-lamap). It changes no verdict.
+   withholds it on every one (INV-lamap). Only files the run LOADED are
+   described: an overlay ``--no-default-overlays`` omitted is listed under
+   ``omitted_community_overlays`` (and a text NOTE), never as user-supplied
+   input or a withheld grant (INV-dozav). It changes no verdict.
 """
 from __future__ import annotations
 
@@ -2278,6 +2281,7 @@ def catalog_provenance(
     repo_root: "Optional[Path]" = None,
     io_overlay_origins: "Sequence[tuple[Path, str]]" = (),
     untraced_vouched: "Optional[Mapping[str, Sequence[str]]]" = None,
+    omitted_overlays: "Sequence[tuple[Path, str]]" = (),
 ) -> dict[str, Any]:
     """Record which catalogues a verdict was computed against (INV-zosun).
 
@@ -2347,10 +2351,19 @@ def catalog_provenance(
     CLI flag and the claims file exactly as for the config tiers and channel
     directories.
 
+    ONLY LOADED FILES ARE DESCRIBED (INV-dozav). ``--no-default-overlays``
+    drops every community overlay before the load, one named by flag or
+    claims file included, so ``layers`` and ``io_overlay_origins`` must hold
+    the files that survived; ``omitted_overlays`` -- each dropped path with
+    its origin -- is listed under ``omitted_community_overlays``. None of an
+    omitted file's rows or grants was used, so it is not user-supplied input
+    and its grant is not "withheld": the run never read it.
+
     Returns:
         ``{"user_supplied": bool, "layers": {kind: {"cli": [...],
         "claims_file": [...]}}, "completeness_grants": [...],
-        "withheld_completeness_grants": [...], "tiers": {tier: [...]},
+        "withheld_completeness_grants": [...], "omitted_community_overlays":
+        [{"path", "origin"}], "tiers": {tier: [...]},
         "kind_adjudication": {...}}`` — paths as strings, exactly as the user
         wrote them, so a reader can find the file; one grant record per overlay
         that vouched for at least one module; and
@@ -2442,6 +2455,9 @@ def catalog_provenance(
         "layers": out,
         "completeness_grants": grants,
         "withheld_completeness_grants": withheld,
+        "omitted_community_overlays": [
+            {"path": str(p), "origin": origin} for p, origin in omitted_overlays
+        ],
         "tiers": tiers,
         "shipped_default": shipped,
         "load_bearing_grants": bearing,
@@ -2640,6 +2656,23 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
             "  A wrong entry here is a false all-clear; the audits are dated in "
             "the catalogue's module_completeness block.",
         )
+    # INV-dozav: BEFORE the user-supplied early return, because a run whose
+    # only user input was omitted has none left -- and the omission is still
+    # worth a line on the page, not only on stderr.
+    omitted = provenance.get("omitted_community_overlays") or []
+    if omitted:
+        lines.append("")
+        lines.append(
+            f"NOTE: {len(omitted)} overlay(s) omitted by --no-default-overlays "
+            f"(they declare provenance: community);",
+        )
+        lines.append(
+            "  none of their rows or completeness grants was used:",
+        )
+        for entry in omitted:
+            lines.append(
+                f"    {entry.get('path')}  [{_grant_origin_label(entry)}]",
+            )
     if not provenance.get("user_supplied"):
         return lines
     lines += [
@@ -2739,8 +2772,8 @@ _GRANT_ORIGIN_LABELS: dict[str, str] = {
 def _grant_origin_label(grant: "Mapping[str, Any]") -> str:
     """The text rendering's name for a grant record's origin, else the raw one.
 
-    Shared by the applied and the withheld blocks so both say where a file
-    came from in the same words.
+    Shared by the applied, the withheld and the omitted blocks so all three
+    say where a file came from in the same words.
     """
     origin = str(grant.get("origin"))
     return _GRANT_ORIGIN_LABELS.get(origin, origin)
