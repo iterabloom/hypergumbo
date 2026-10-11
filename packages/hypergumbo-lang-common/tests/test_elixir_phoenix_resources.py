@@ -181,6 +181,7 @@ def test_scope_keyword_alias_and_alias_false(tmp_path: Path) -> None:
 def test_scope_alias_is_itself_lexically_expanded(tmp_path: Path) -> None:
     routes = _routes(tmp_path, (
         "defmodule AppWeb.Router do\n"
+        "  use AppWeb, :router\n"
         "  alias AppWeb.Live\n"
         '  scope "/venues", Live do\n'
         '    live "/", VenueLive\n'

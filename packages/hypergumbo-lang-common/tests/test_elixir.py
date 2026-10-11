@@ -1105,6 +1105,7 @@ class TestPhoenixRouteSymbols:
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use Phoenix.Router
   get "/users", UserController, :index
   post "/sessions", SessionController, :create
 end
@@ -1133,6 +1134,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use Phoenix.Router
   resources "/posts", PostController
 end
 ''')
@@ -1232,6 +1234,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use MyAppWeb, :router
   live "/settings", SettingsLive
   live "/users", UserLive.Index, :index
   live "/users/new", UserLive.Index, :new
@@ -1268,6 +1271,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use Phoenix.Router
   live "/users/:id/edit", UserLive.Edit, :edit
 end
 ''')
@@ -2350,6 +2354,7 @@ class TestPhoenixRouteAliasResolution:
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use MyAppWeb, :router
   alias MyAppWeb.UserController, as: UserCtrl
 
   get "/users", UserCtrl, :index
@@ -2370,6 +2375,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use Phoenix.Router
   alias MyAppWeb.Controllers.UserController
 
   get "/users", UserController, :index
@@ -2390,6 +2396,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use MyAppWeb, :router
   alias MyAppWeb.PostController, as: PC
 
   resources "/posts", PC
@@ -2410,6 +2417,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use Phoenix.Router
   alias MyAppWeb.SessionController, as: SessCtrl
 
   post "/login", SessCtrl, :create
@@ -2429,6 +2437,7 @@ end
 
         (tmp_path / "router.ex").write_text('''
 defmodule MyAppWeb.Router do
+  use MyAppWeb, :router
   get "/users", UserController, :index
 end
 ''')
