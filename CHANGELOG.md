@@ -78,6 +78,7 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 - **C and C++ taint finds sources and sinks through the `#include` set**, by the same row rule as `io-boundaries`, and a writer's sink follows its target (11 C/C++ repositories: 11 withheld verdicts → `violated`).
 - **Taint, `io-boundaries` and slices follow a construction into the constructor** (Python, JS/TS, Dart), and a harmless call no longer hides a real one to the same callee in the same function.
 - **Caveats are accurate**: a clean `untrusted_input` verdict carries `deferred_crossing` (ADR-0049); modules reached through a JS handler assignment or a Python dunder are no longer "structurally invisible"; the unknown-scope share counts only real method calls.
+- **A `provenance: community` overlay passed by `--io-primitives` or a claims file's `extra_catalogs:` is listed under *WITHHELD GRANTS*, not as an applied completeness grant.** The load already ignored its grants; the catalogue disclosure said they applied. Each withheld grant now also names where its file came from.
 - **`verify-claims` no longer hangs on a self-referencing directory symlink**, its `--help` boundary list comes from the registry, and hypergumbo's 18 self-claims are `confirmed_with_caveats` again.
 
 #### Receiver typing and call resolution
