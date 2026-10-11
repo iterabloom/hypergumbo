@@ -67,8 +67,8 @@ def test_every_phoenix_route_marker_is_an_http_route_entrypoint(
         n["id"]: n for n in data["nodes"]
         if (n.get("meta") or {}).get("framework_role") == "route"
     }
-    # get + post + live + 7 resources actions
-    assert len(markers) == 10, sorted(n["name"] for n in markers.values())
+    # get + post + live + 8 resources routes (update on PATCH and PUT)
+    assert len(markers) == 11, sorted(n["name"] for n in markers.values())
     kind_by_symbol = {e["symbol_id"]: e["kind"] for e in data["entrypoints"]}
     kinds = {markers[sid]["name"]: kind_by_symbol.get(sid) for sid in markers}
     assert set(kinds.values()) == {"http_route"}, kinds

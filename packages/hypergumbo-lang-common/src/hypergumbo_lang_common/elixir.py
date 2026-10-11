@@ -9,8 +9,11 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
   (``_extract_defstruct_field_names``); they are data anchors and never
   enter call resolution
 - Phoenix route-marker symbols (``_extract_phoenix_routes``), stashed per
-  file and appended in ``post_process``; ``resources`` expands to its seven
-  RESTful routes
+  file and appended in ``post_process``. ``resources`` expands to the routes
+  ``mix phx.routes`` lists: eight by default (``:update`` on both PATCH and
+  PUT), filtered by ``only:``/``except:``, reshaped by ``singleton: true``
+  and ``param:``. Every route's controller is lexically alias-expanded and
+  then prefixed with the enclosing ``scope`` aliases, as Phoenix does
 - Function call relationships, in BOTH module-qualified receiver syntaxes:
   an ``alias`` receiver for an Elixir module (``Logger.error``) and an
   ``atom`` receiver for an Erlang/OTP one (``:ets.insert``). The atom form
@@ -1016,6 +1019,156 @@ def _reachable_clauses(
     ]
 
 
+#: ``Phoenix.Router.Resource``'s action set, in its own order. ``only:`` keeps
+#: and ``except:`` drops members of it, so filtered output keeps this order.
+_PHOENIX_RESOURCE_ACTIONS = (
+    "index", "edit", "new", "show", "create", "update", "delete",
+)
+
+
+def _phoenix_resource_routes(
+    path: str, options: dict[str, Any],
+) -> list[tuple[str, str, str]]:
+    """The ``(verb, path, action)`` routes one ``resources`` call mounts.
+
+    Mirrors ``Phoenix.Router.Resource.build`` and the router's
+    ``add_resources``: the action set is filtered by ``only:`` (if present)
+    else ``except:``; ``singleton: true`` removes ``:index`` from the default
+    set and mounts member actions on the bare path instead of ``/:id``;
+    ``param:`` renames the ``id`` segment; ``:update`` is mounted on BOTH
+    ``PATCH`` and ``PUT``. An option whose value is not a literal (``only:
+    @actions``) arrives here absent, so the unfiltered set is emitted -- a
+    statically unreadable filter hides no route.
+    """
+    singleton = options.get("singleton") is True
+    actions = [a for a in _PHOENIX_RESOURCE_ACTIONS
+               if not (singleton and a == "index")]
+    if isinstance(options.get("only"), list):
+        actions = [a for a in actions if a in options["only"]]
+    elif isinstance(options.get("except"), list):
+        actions = [a for a in actions if a not in options["except"]]
+    param = options.get("param")
+    member = path if singleton else (
+        f"{path.rstrip('/')}/:{param if isinstance(param, str) else 'id'}")
+    by_action: dict[str, list[tuple[str, str]]] = {
+        "index": [("GET", path)],
+        "edit": [("GET", f"{member.rstrip('/')}/edit")],
+        "new": [("GET", f"{path.rstrip('/')}/new")],
+        "show": [("GET", member)],
+        "create": [("POST", path)],
+        "update": [("PATCH", member), ("PUT", member)],
+        "delete": [("DELETE", member)],
+    }
+    return [(verb, route, action)
+            for action in actions for verb, route in by_action[action]]
+
+
+def _literal_value(node: "tree_sitter.Node", source: bytes) -> Any:
+    """A router option's value when it is a literal, else ``None``.
+
+    Reads the literals Phoenix router options are written with: a string
+    (``param: "slug"``), a boolean (``singleton: true``), an atom, an alias,
+    and a list of atoms (``only: [:index, :show]``). Anything else -- a
+    module attribute, a variable, a function call -- cannot be evaluated
+    statically and reads as ``None``.
+    """
+    text = node_text(node, source)
+    if node.type == "string":
+        content = find_child_by_type(node, "quoted_content")
+        return node_text(content, source) if content is not None else ""
+    if node.type == "boolean":
+        return text == "true"
+    if node.type == "atom":
+        return text.lstrip(":")
+    if node.type == "alias":
+        return text
+    if node.type == "list":
+        items = [c for c in node.children if c.type not in ("[", "]", ",")]
+        if all(c.type == "atom" for c in items):
+            return [node_text(c, source).lstrip(":") for c in items]
+    return None
+
+
+def _keyword_options(
+    node: "tree_sitter.Node", source: bytes,
+) -> dict[str, Any]:
+    """The ``key: value`` pairs of a trailing keyword-list argument.
+
+    Accepts both spellings Elixir allows for a keyword argument: the bare
+    ``only: [:index]`` (a ``keywords`` node) and the bracketed
+    ``[only: [:index]]`` (a ``list`` wrapping one). Values go through
+    :func:`_literal_value`, so a non-literal value is recorded as ``None``.
+    """
+    if node.type == "list":
+        node = find_child_by_type(node, "keywords") or node
+    options: dict[str, Any] = {}
+    if node.type != "keywords":
+        return options
+    for pair in node.children:
+        if pair.type != "pair" or len(pair.children) < 2:
+            continue
+        key = node_text(pair.children[0], source).strip().rstrip(":").strip()
+        options[key] = _literal_value(pair.children[-1], source)
+    return options
+
+
+def _phoenix_scope_alias(
+    call: "tree_sitter.Node", source: bytes, outer: str | None,
+    alias_hints: dict[str, str],
+) -> str | None:
+    """The module alias a ``scope`` call establishes for the routes inside it.
+
+    ``Phoenix.Router.scope`` takes ``(options)``, ``(path, options)``,
+    ``(path, alias)`` or ``(path, alias, options)``, with the alias given
+    positionally or as ``alias:``. It is lexically expanded against the
+    router's own ``alias`` directives and joined onto the enclosing scope's
+    alias (``scope "/", AppWeb`` + ``scope "/admin", Admin`` ->
+    ``AppWeb.Admin``); ``alias: false`` resets it, and a scope that names no
+    alias inherits the outer one.
+    """
+    args = find_child_by_type(call, "arguments")
+    if args is None:
+        return outer
+    alias: Any = None
+    for child in args.children:
+        if child.type == "alias":
+            alias = node_text(child, source)
+        elif child.type in ("keywords", "list"):
+            options = _keyword_options(child, source)
+            if "alias" in options:
+                alias = options["alias"]
+    if alias is False:
+        return None
+    if not isinstance(alias, str):
+        return outer
+    alias = _expand_alias(alias, alias_hints)
+    return f"{outer}.{alias}" if outer else alias
+
+
+def _iter_router_calls(
+    root: "tree_sitter.Node", source: bytes, alias_hints: dict[str, str],
+) -> Iterator[tuple["tree_sitter.Node", str | None]]:
+    """Every ``call`` node with the scope alias in force where it is written.
+
+    A pre-order walk (the same order as ``iter_tree``) that carries the
+    enclosing ``scope`` alias down into each scope's ``do`` block, so a route
+    macro knows which module prefix Phoenix will concatenate onto its
+    controller. Non-scope nodes, including a nested ``resources ... do``
+    block, pass the alias through unchanged.
+    """
+    stack: list[tuple["tree_sitter.Node", str | None]] = [(root, None)]
+    while stack:
+        node, scope_alias = stack.pop()
+        inner = scope_alias
+        if node.type == "call":
+            yield node, scope_alias
+            target = find_child_by_type(node, "identifier")
+            if target is not None and node_text(target, source) == "scope":
+                inner = _phoenix_scope_alias(
+                    node, source, scope_alias, alias_hints)
+        stack.extend((child, inner) for child in reversed(node.children))
+
+
 def _extract_phoenix_routes(
     node: "tree_sitter.Node",
     source: bytes,
@@ -1039,6 +1192,14 @@ def _extract_phoenix_routes(
     HTTP routes.  For handler linking, live routes without an explicit action
     default to ``action="mount"`` (the LiveView entry callback).
 
+    ``resources`` expands through :func:`_phoenix_resource_routes`, honouring
+    its trailing keyword options. Every controller / LiveView module is
+    expanded against the router's ``alias`` directives and then prefixed with
+    the enclosing ``scope`` alias (:func:`_iter_router_calls`), so it names
+    the module Phoenix actually dispatches to (``AppWeb.PageController``, not
+    ``PageController``) and the route-handler linker can match it exactly
+    instead of by suffix.
+
     Returns:
         Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
         Symbols are route markers (kind="function" +
@@ -1046,11 +1207,9 @@ def _extract_phoenix_routes(
     """
     contexts: list[UsageContext] = []
     route_symbols: list[Symbol] = []
+    hints = alias_hints or {}
 
-    for n in iter_tree(node):
-        if n.type != "call":
-            continue
-
+    for n, scope_alias in _iter_router_calls(node, source, hints):
         # Get the function name (get, post, resources, etc.)
         target_node = find_child_by_type(n, "identifier")
         if not target_node:
@@ -1073,6 +1232,7 @@ def _extract_phoenix_routes(
         route_path = None
         controller = None
         action = None
+        options: dict[str, Any] = {}
 
         # Parse arguments: path, Controller, :action
         arg_index = 0
@@ -1097,19 +1257,24 @@ def _extract_phoenix_routes(
                     controller = node_text(child, source)
                 elif child.type == "identifier":  # pragma: no cover
                     controller = node_text(child, source)
-            elif arg_index == 2:
-                # Third arg is the action (atom)
-                if child.type == "atom":
-                    action = node_text(child, source).lstrip(":")
+            elif arg_index == 2 and child.type == "atom":
+                # Third arg is the action (atom) of get/post/.../live
+                action = node_text(child, source).lstrip(":")
+            elif arg_index >= 2 and child.type in ("keywords", "list"):
+                # Trailing keyword options (resources' only:/except:/...)
+                options = _keyword_options(child, source)
 
             arg_index += 1
 
         if not route_path:  # pragma: no cover
             continue
 
-        # Resolve controller alias to fully-qualified module name
-        if controller and alias_hints and controller in alias_hints:
-            controller = alias_hints[controller]
+        # Phoenix expands the written controller against the router's
+        # lexical aliases, then concatenates the enclosing scope alias.
+        if controller:
+            controller = _expand_alias(controller, hints)
+            if scope_alias:
+                controller = f"{scope_alias}.{controller}"
 
         # Build metadata
         normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
@@ -1153,16 +1318,7 @@ def _extract_phoenix_routes(
 
         # Create route Symbol(s) - enables route-handler linking
         if method_name == "resources":
-            # Phoenix resources creates 7 RESTful routes (same as Rails)
-            restful_routes = [
-                ("GET", normalized_path, "index"),
-                ("GET", f"{normalized_path}/new", "new"),
-                ("POST", normalized_path, "create"),
-                ("GET", f"{normalized_path}/:id", "show"),
-                ("GET", f"{normalized_path}/:id/edit", "edit"),
-                ("PATCH", f"{normalized_path}/:id", "update"),
-                ("DELETE", f"{normalized_path}/:id", "delete"),  # Phoenix uses :delete
-            ]
+            restful_routes = _phoenix_resource_routes(normalized_path, options)
             for http_meth, route_pth, act in restful_routes:
                 route_symbols.append(make_route_symbol(
                     language="elixir",

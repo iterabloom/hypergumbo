@@ -1138,8 +1138,11 @@ end
         result = analyze_elixir(tmp_path)
 
         route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
-        # Phoenix resources creates 7 RESTful routes (same as Rails)
-        assert len(route_symbols) == 7
+        # Phoenix resources creates 8 routes: Rails' seven plus PUT update
+        assert len(route_symbols) == 8
+        assert {s.name for s in route_symbols
+                if s.meta["action"] == "update"} == {
+            "PATCH /posts/:id", "PUT /posts/:id"}
 
         routes_by_action = {s.meta["action"]: s for s in route_symbols}
 
@@ -2394,8 +2397,8 @@ end
         result = analyze_elixir(tmp_path)
 
         route_symbols = [s for s in result.symbols if (s.meta or {}).get("framework_role") == "route"]
-        # resources creates 7 RESTful routes
-        assert len(route_symbols) == 7
+        # resources creates 8 routes (update on both PATCH and PUT)
+        assert len(route_symbols) == 8
 
         for route in route_symbols:
             assert route.meta["controller"] == "MyAppWeb.PostController"
