@@ -26,3 +26,18 @@
   clock: 2  # 00ea
   nonce: 00ea  # 00ea
   message: "2026-10-10 docstring audit (verifier repro): beyond the scope PATH prefix, the same router fixture shows `resources` emits 7 routes with no PUT, ignores only:/except:, and leaves the controller unqualified by the scope alias (UserController, not AppWeb.UserController). Filed separately as the resources item; fixing both together is natural."  # 00ea
+- op: update  # 396e
+  at: '2026-10-11T11:26:46Z'  # 396e
+  by: agent  # 396e
+  actor: jgstern_agent  # 396e
+  clock: 3  # 396e
+  nonce: 396e  # 396e
+  set:  # 396e
+    status: done  # 396e
+- op: discuss  # da5b
+  at: '2026-10-11T11:26:46Z'  # da5b
+  by: agent  # da5b
+  actor: jgstern_agent  # da5b
+  clock: 4  # da5b
+  nonce: da5b  # da5b
+  message: "Fixed in PR #1536 (e6e9657d2d), on top of INV-lokut's PR #1535. Root cause: route paths were taken literally; the call walk carried no scope context. Fix: the scope-aware walk (_iter_router_calls) now carries path segments too — scope positional or path: segments, nested scopes concatenate, and a resources ... do block nests under <path>/:<name>_<param> (Phoenix.Naming.resource_name, name:/param: overrides, bare path for singleton); paths are joined like Phoenix join_path (empty/trailing segments dropped). Evidence: the filed fixture (scope \"/admin\", AppWeb: live \"/\", Admin.DashboardLive; get \"/users\", Admin.UserController, :index) -> 'hypergumbo routes <fixture> --minimal' prints '[LIVE] /admin' and '[GET] /admin/users' (was / and /users). thc: router markers 377, distinct names 359 -> 377; 'hypergumbo routes ~/special_repos/thc --language elixir' 371 -> 389 routes. http_route entrypoints stay 240 on thc because the size-scaled entrypoint cap is 240 there, not because of collisions."  # da5b
