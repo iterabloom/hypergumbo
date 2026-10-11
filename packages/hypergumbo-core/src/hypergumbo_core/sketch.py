@@ -3644,8 +3644,9 @@ def _collect_important_files(
 def _format_frameworks(profile: RepoProfile, exclude_tests: bool = False) -> str:
     """Format detected frameworks.
 
-    Production frameworks are listed first, followed by dev/test-only
-    frameworks annotated with ``(dev)``.
+    Production and dev/test-only frameworks share one alphabetical list, the
+    dev-only ones annotated with ``(dev)``. Each name appears once because
+    ``RepoProfile`` keeps both lists unique and disjoint (INV-vapov).
     """
     dev_fws: list[str] = getattr(profile, "dev_frameworks", [])
     all_frameworks = list(profile.frameworks) + list(dev_fws)
