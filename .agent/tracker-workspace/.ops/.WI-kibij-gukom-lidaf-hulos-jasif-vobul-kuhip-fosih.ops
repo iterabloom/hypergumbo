@@ -19,3 +19,10 @@
     pr_ref:  # 1767
     description: "Found while fixing INV-liraj. The Elixir analyzer's Phoenix route markers take the literal path of `get`/`live`/... and do not prepend the enclosing `scope \"/prefix\"`.\n\nRepro (fresh fixture, hypergumbo dev @ jgstern-agent/fix/route-marker-entrypoint-precedence):\n  lib/app_web/router.ex:\n    scope \"/admin\", AppWeb do\n      live \"/\", Admin.DashboardLive\n      get \"/users\", Admin.UserController, :index\n    end\n  `hypergumbo routes <repo>` prints `[LIVE] /` and `[GET] /users` -- expected `/admin` and `/admin/users`.\n\nOn thc (~/special_repos/thc) router.ex has scopes \"/admin\" (line 1208), \"/venue-mod\" (1188) etc.; their routes collide with root routes of the same label (\"LIVE /\" appears for TVHomeLive and Admin.DashboardLive), and detect_entrypoints' route-label dedup then collapses distinct routes into one (377 router markers -> 359 unique names). Nested scopes and `scope path: ..., as: ...` keyword forms need the same treatment."  # 1767
     fields: {}  # 1767
+- op: discuss  # 00ea
+  at: '2026-10-11T04:32:12Z'  # 00ea
+  by: agent  # 00ea
+  actor: jgstern_agent  # 00ea
+  clock: 2  # 00ea
+  nonce: 00ea  # 00ea
+  message: "2026-10-10 docstring audit (verifier repro): beyond the scope PATH prefix, the same router fixture shows `resources` emits 7 routes with no PUT, ignores only:/except:, and leaves the controller unqualified by the scope alias (UserController, not AppWeb.UserController). Filed separately as the resources item; fixing both together is natural."  # 00ea

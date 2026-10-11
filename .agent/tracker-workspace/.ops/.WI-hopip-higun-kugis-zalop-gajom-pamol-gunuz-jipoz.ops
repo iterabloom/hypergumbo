@@ -29,3 +29,10 @@
   set: {}  # ac52
   add:  # ac52
     isbefore: [WI-sunan-gazum-tuhov-nofak-zokav-luguj-vamik-suraz]  # ac52
+- op: discuss  # bd8d
+  at: '2026-10-11T04:32:13Z'  # bd8d
+  by: agent  # bd8d
+  actor: jgstern_agent  # bd8d
+  clock: 3  # bd8d
+  nonce: bd8d  # bd8d
+  message: "2026-10-10 docstring audit, two latent defects in serve_duress for when the auth modules are wired: (1) call_on_duress_login catches only asyncio.TimeoutError (~145), so a handler that raises propagates ValueError; (2) load_duress_handler silently returns the no-op handler on any import error or missing path, with no warning. Also serve_auth_config (AuthConfig.from_dict) has no production caller and load_config ignores the auth section. Docstrings now say these modules are unwired."  # bd8d

@@ -23,3 +23,18 @@
     fields:  # a71d
       statement: "The dependency linker's import_edges requirement counts only third-party Rust/Python imports, so a repo with no third-party imports does not warn about missing TOML dependency declarations."  # a71d
       root_cause: "_count_import_edges excludes only Rust toolchain roots and catalogued Python stdlib; a resolved first-party import's dst (python:src/pkg/b.py:1-1:file:file) yields root src/pkg/b and is counted."  # a71d
+- op: update  # 3eac
+  at: '2026-10-11T08:06:51Z'  # 3eac
+  by: agent  # 3eac
+  actor: jgstern_agent  # 3eac
+  clock: 2  # 3eac
+  nonce: 3eac  # 3eac
+  set:  # 3eac
+    status: satisfied  # 3eac
+- op: discuss  # ff9f
+  at: '2026-10-11T08:06:52Z'  # ff9f
+  by: agent  # ff9f
+  actor: jgstern_agent  # ff9f
+  clock: 3  # ff9f
+  nonce: ff9f  # ff9f
+  message: "Fixed in PR #1531 (940628d2aa). Root cause: _count_import_edges excluded only Rust toolchain roots and Python stdlib, so an import the Python analyzer had resolved to an in-repo file (dst python:pkg/b.py:1-1:file:file) was counted as third-party. Edge.is_resolved cannot tell them apart at linker time because it is still the producer's advisory True for external imports too. Fix: an edge whose dst is an in-repo symbol id (ADR-0037 definition, the same test finalize's boundary step uses) is not counted. Rust analogue fixed too: crate-own modules (file stems, mod.rs dirs) and the crate's own Cargo package name are not counted. The module docstring and the requirement comment now describe the fixed behaviour. Evidence, live on dev 940628d2aa: 'hypergumbo survey .' on pyproject (dependencies=[]) + pkg/a.py 'from pkg import b' + pkg/b.py 'import pkg.a' -> exit 0, 0 DEPENDENCY-LINKER warnings (before: 'found 2 third-party Rust/Python import edges but 0 TOML dependency declarations'). Controls: stdlib-only repo (import json, os.path) -> 0 warnings; 'import requests' repo -> 'found 1 third-party Rust/Python import edges but 0 TOML dependency declarations'; Rust crate with 'use util::helper' beside mod util; -> 0 warnings (before: 1). Tests: 3 new in test_dependency_linker.py, including the check_linker_requirements path. Residual filed as INV-tugim-folup-jumak-posin-zavul-somug-fusil-topiv: a bare same-directory Python import (tests/test_a.py: import conftest) stays unresolved in the analyzer and is still counted."  # ff9f
