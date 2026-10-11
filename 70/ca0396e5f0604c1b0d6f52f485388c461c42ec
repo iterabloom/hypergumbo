@@ -1,0 +1,22 @@
+Original commit body from f60ad00d38a4cd27b8c0f890b4ad3702e286320a:
+
+main's --backend pre-scan looped `for idx in range(len(argv) - 1)`, so the
+last token was never examined: `hypergumbo catalog --backend=tree-sitter`
+reached argparse unstripped and exited 2 with "unrecognized arguments",
+although the `=` form needs no following token.
+
+Same loop, second defect: because the flag is stripped before argparse
+runs, the root parser's `choices=` never applied, so `--backend bogus`
+(any position) was silently ignored and the command ran.
+
+The pre-scan moves into `_strip_backend_flag`, which scans every token
+(stopping at `--`), reads the value token only when it exists and is not
+another option, and rejects a missing value ("expected one argument") or
+an unknown one ("invalid choice") through parser.error with argparse's
+wording, exit 2. The choices live in one `BACKEND_CHOICES` tuple shared
+with the parser's add_argument. No other pre-scanned flag in main has a
+lookahead (--debug and --help/--all are membership tests).
+
+Refs INV-kutuh-himup-haruv-funap-lulag-maton-fibim-gimul
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
