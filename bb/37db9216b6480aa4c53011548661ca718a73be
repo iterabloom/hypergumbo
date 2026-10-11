@@ -1,0 +1,23 @@
+Original commit body from ca2fd22ef85c468d99787bf16c6069acb0964b7f:
+
+`resources` hardcoded seven routes (no `PUT /:id -> :update`) and read the
+third argument only when it was an atom, so `only:`/`except:` were ignored.
+It now mirrors Phoenix.Router.Resource: the action set
+[index, edit, new, show, create, update, delete] filtered by only:/except:,
+`update` on both PATCH and PUT, `singleton: true` (no index, no /:id) and
+`param:`; options are read in bare keyword and bracketed-list form, and a
+non-literal option falls back to the full set.
+
+Route macros never applied the enclosing `scope` alias, so
+`scope "/", AppWeb do get "/", PageController, :home end` pointed at
+`PageController`. A scope-aware walk now carries the alias (positional or
+`alias:`, lexically expanded, nested scopes concatenated, `alias: false`
+resets) and every get/post/.../live/resources controller is expanded and
+prefixed, as Phoenix does. On thc all 377 router markers are now fully
+qualified (were 2) and every dispatches_to edge lands on the named module.
+
+The scope PATH prefix (WI-kibij) is not part of this change.
+
+Refs INV-lokut-mokir-tonud-kagug-jikuh-jisag-kufav-likur
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
