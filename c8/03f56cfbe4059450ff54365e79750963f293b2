@@ -1,0 +1,33 @@
+Original commit body from d51308d1d64503972eb818b695ef10496fcaa3d1:
+
+ADR-0061 ruling 3 says a catalogue file's tier is its own provenance line,
+whatever path loaded it. The taint_*.d channels obeyed that; the
+--taint-sources/--taint-sinks/--taint-sanitizers flags and a claims file's
+extra_catalogs: did not. load_full_taint_catalog sent those paths straight
+into user layers, so a file declaring provenance: community had its
+sanitizers stamped user_supplied (clearing the flow: violated ->
+confirmed_with_caveats, exit 3), survived --no-default-overlays, and its
+sources/sinks could displace shipped rows. The report listed it as
+USER-SUPPLIED in text while JSON tiers listed it as community.
+
+Every taint path family now goes through one partition
+(taint.split_community_files). Community files join the community layer:
+they only add, their sanitizers are stamped community and withheld
+(withheld_community_sanitizer), and include_community=False drops them.
+verify-claims applies the same partition to its report: layers and
+user_supplied hold only the operator's own files; a loaded community file is
+listed under the new catalog_provenance.named_community_files (plus a text
+note and a stderr line). Under --no-default-overlays it is listed under
+omitted_community_overlays with its family, along with any community file
+in a taint channel (which tiers had listed as loaded), and a stderr notice
+reusing the overlay one.
+
+Reading the provenance line comes before the real load, so it now raises
+TaintCatalogError on an unparseable file instead of a raw YAMLError (this
+was already latent for channel files).
+
+Spec ADR-0061 status row and docs/CATALOGUES.md updated.
+
+Refs INV-rakab-zumod-zamur-vusal-mivar-libik-vuzak-juhap
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
