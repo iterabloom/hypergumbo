@@ -1,0 +1,24 @@
+- op: create  # cc0e
+  at: '2026-10-11T04:31:07Z'  # cc0e
+  by: agent  # cc0e
+  actor: jgstern_agent  # cc0e
+  clock: 1  # cc0e
+  nonce: cc0e  # cc0e
+  data:  # cc0e
+    kind: work_item  # cc0e
+    title: "tracker: inline SVG screenshot preview is never rendered (TUI shows placeholders); three duplicate module pairs, ADR-0020 says Implemented"  # cc0e
+    status: todo_hard  # cc0e
+    priority: 3  # cc0e
+    parent:  # cc0e
+    tags:  # cc0e
+    - tracker  # cc0e
+    - tui  # cc0e
+    - dead_code  # cc0e
+    - adr  # cc0e
+    - docstring_audit  # cc0e
+    isbefore: []  # cc0e
+    duplicate_of: []  # cc0e
+    not_duplicate_of: []  # cc0e
+    pr_ref:  # cc0e
+    description: "The TUI imports only preview.extract_svg_paths and preview.format_preview_placeholder. render_svg_preview (preview.py), preview_pipeline (whole module, its PreviewCache unused), svg_detection (a second path detector that disagrees: 'docs/x.svg' accepted vs rejected) and svg_injection (a second annotation transform; tui.py ~3815-3899 reimplements it differently) have no production caller (checked packages/, scripts/, hooks, workflows, entry points, git log -S: never wired since e4a0c60237). ADR-0020's Status lists them as shipped. Decide: wire the preview or delete the dead pairs and correct ADR-0020. Docstrings and the I/O allowlist were corrected in the 2026-10-10 audit PR.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # cc0e
+    fields: {}  # cc0e

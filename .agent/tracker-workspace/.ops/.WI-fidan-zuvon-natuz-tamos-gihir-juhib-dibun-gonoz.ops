@@ -1,0 +1,21 @@
+- op: create  # 3bf5
+  at: '2026-10-11T04:31:18Z'  # 3bf5
+  by: agent  # 3bf5
+  actor: jgstern_agent  # 3bf5
+  clock: 1  # 3bf5
+  nonce: 3bf5  # 3bf5
+  data:  # 3bf5
+    kind: work_item  # 3bf5
+    title: "Dead public helpers with no production caller: tracker cache.invalidate_stale / query_blocking, selection.TOKENS_PER_NODE_OVERHEAD, verify_claims allowed_sanitizers"  # 3bf5
+    status: todo_hard  # 3bf5
+    priority: 4  # 3bf5
+    parent:  # 3bf5
+    tags:  # 3bf5
+    - dead_code  # 3bf5
+    - docstring_audit  # 3bf5
+    isbefore: []  # 3bf5
+    duplicate_of: []  # 3bf5
+    not_duplicate_of: []  # 3bf5
+    pr_ref:  # 3bf5
+    description: "Each is referenced only by its definition, docstrings and tests (checked packages/, scripts/, hooks, workflows, entry points). cache.get_compiled treats any mtime change as a miss, so invalidate_stale's discussion-only fast path never runs; query_blocking's 'for count_todos' claim was false. TOKENS_PER_NODE_OVERHEAD is re-exported in selection/__init__ __all__ and tested only for > 0. Decide per helper: delete or wire.\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 3bf5
+    fields: {}  # 3bf5

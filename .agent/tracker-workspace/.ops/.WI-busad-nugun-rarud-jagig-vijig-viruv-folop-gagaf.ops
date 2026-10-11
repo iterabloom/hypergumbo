@@ -1,0 +1,23 @@
+- op: create  # 1da9
+  at: '2026-10-11T04:31:12Z'  # 1da9
+  by: agent  # 1da9
+  actor: jgstern_agent  # 1da9
+  clock: 1  # 1da9
+  nonce: 1da9  # 1da9
+  data:  # 1da9
+    kind: work_item  # 1da9
+    title: "tracker: screenshot_save (save to tracker-workspace/screenshots + auto-create a work item) is never called; the TUI saves to .agent/screenshots and creates no item"  # 1da9
+    status: todo_hard  # 1da9
+    priority: 3  # 1da9
+    parent:  # 1da9
+    tags:  # 1da9
+    - tracker  # 1da9
+    - tui  # 1da9
+    - dead_code  # 1da9
+    - docstring_audit  # 1da9
+    isbefore: []  # 1da9
+    duplicate_of: []  # 1da9
+    not_duplicate_of: []  # 1da9
+    pr_ref:  # 1da9
+    description: "WI-rujoz was closed done with 'TUI wiring is part of WI-fubij/WI-gikut'; both are done and neither wired it. tui.action_capture_screenshot (~3740-3791) saves under .agent/screenshots/ with a $TMPDIR fallback. .ci/test-only-reachability-baseline.json lists save_screenshot_with_item. Decide: wire or delete (ADR-0020 lists it shipped).\n\nFound by the 2026-10-10 docstring-staleness audit (reviewer + default-REJECT verifier, reproduced). Notebook: ~/hypergumbo_lab_notebook/staleness_audit_10102026.md."  # 1da9
+    fields: {}  # 1da9
