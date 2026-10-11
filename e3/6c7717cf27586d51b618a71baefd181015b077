@@ -1,0 +1,25 @@
+Original commit body from ccc895565f4dbbc8dd9e2f947029b680a117cb07:
+
+With --no-default-overlays, _resolve_io_overlay_origins drops every overlay
+declaring provenance: community before the load -- including one named by
+--io-primitives or a claims file's extra_catalogs -- and stderr says so. But
+cmd_verify_claims built catalog_provenance's io_primitives layers from the
+RAW flag and claims-file lists, so the report named a file the run never
+read as USER-SUPPLIED input with a WITHHELD grant, and the JSON said
+user_supplied: true while tiers.yours and tiers.community were empty.
+
+The layers are now derived from the loaded origins (each path tagged with
+its layer), and the omitted files -- with their origin -- are passed on and
+reported under catalog_provenance.omitted_community_overlays plus a text
+NOTE. _resolve_io_overlay_layers / _split_community_overlays return both
+halves; _resolve_io_overlay_origins and _omit_community_overlays keep their
+shape. The new key is additive inside catalog_provenance, which per the
+recorded convention does not bump the envelope version. No verdict changes.
+
+The taint layers (--taint-sources/sinks/sanitizers, extra_catalogs taint
+paths) are not filtered by --no-default-overlays, so their disclosure
+describes files that were loaded; no mismatch there.
+
+Refs INV-dozav-kasif-molor-vafad-haluv-hamal-hanav-dojuf
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
