@@ -1,0 +1,38 @@
+- op: create  # 2fcc
+  at: '2026-10-11T18:25:33Z'  # 2fcc
+  by: agent  # 2fcc
+  actor: jgstern_agent  # 2fcc
+  clock: 1  # 2fcc
+  nonce: 2fcc  # 2fcc
+  data:  # 2fcc
+    kind: invariant  # 2fcc
+    title: "verify-claims --no-default-overlays: a community overlay given by flag or claims file is omitted from the load but reported as user-supplied input with a withheld grant"  # 2fcc
+    status: violated  # 2fcc
+    priority: 3  # 2fcc
+    parent:  # 2fcc
+    tags:  # 2fcc
+    - catalogue  # 2fcc
+    - adr_0061  # 2fcc
+    isbefore: []  # 2fcc
+    duplicate_of: []  # 2fcc
+    not_duplicate_of: []  # 2fcc
+    pr_ref:  # 2fcc
+    description: "Found 2026-10-11 while checking a residual from INV-kobam (PR #1533).\n\nWith `--no-default-overlays`, `_io_overlay_origins` (cli.py ~5529) drops every overlay declaring `provenance: community` before the load, including one passed with `--io-primitives` or through a claims file's `extra_catalogs`, and stderr says so. But `cmd_verify_claims` builds `catalog_provenance`'s `layers` from the RAW `args.io_primitives` and `_claims_io_overlays` lists (cli.py ~7509-7516), so the report describes a file the run never read:\n- the NOTE block says \"these verdicts were computed against USER-SUPPLIED catalogue input\" and names comm.yaml [CLI flag];\n- the WITHHELD GRANTS block says the file's \"completeness grants did not apply ... delete the line to vouch for a file\" -- true but misleading: none of its rows (detections either) were used, and deleting the line would not help while the flag is set;\n- JSON: `user_supplied: true` and `withheld_completeness_grants` lists the file with origin cli, while `tiers.yours` and `tiers.community` are both empty -- the envelope contradicts itself.\n\nREPRO (dev 17a5440feb): repo/app.py `import telnetlib; telnetlib.Telnet(\"h\")`; comm.yaml = python overlay with `provenance: community` and a module_completeness grant for telnetlib; claims.yaml with one `boundary: net_send, must_not_exist: true` claim.\n`hypergumbo verify-claims repo --claims claims.yaml --io-primitives comm.yaml --no-default-overlays` -> exit 2; stderr \"--no-default-overlays: omitted 1 overlay(s) that declare provenance: community: .../comm.yaml.\"; stdout NOTE \"computed against USER-SUPPLIED catalogue input. io_primitives: .../comm.yaml [CLI flag]\" and WITHHELD GRANTS \"python: telnetlib from .../comm.yaml [CLI flag]\". `--json`: user_supplied true, tiers.yours [], tiers.community [].\n\nFix direction: pass catalog_provenance the post-omission layers (or the omitted list) so an omitted file is reported as omitted -- not as user-supplied input and not as a withheld grant -- and user_supplied reflects only files actually loaded. Same check for the taint layers (cli_sources/claims_sources etc.) if those are filtered too."  # 2fcc
+    fields:  # 2fcc
+      statement: "The catalogue provenance report describes only files the run loaded; a file --no-default-overlays omitted is reported as omitted, never as user-supplied input or as a withheld grant."  # 2fcc
+      root_cause: "cmd_verify_claims passes catalog_provenance the raw --io-primitives and claims-file overlay lists, not the post-omission list _io_overlay_origins loads."  # 2fcc
+- op: update  # ae28
+  at: '2026-10-11T20:45:46Z'  # ae28
+  by: agent  # ae28
+  actor: jgstern_agent  # ae28
+  clock: 2  # ae28
+  nonce: ae28  # ae28
+  set:  # ae28
+    status: satisfied  # ae28
+- op: discuss  # 1431
+  at: '2026-10-11T20:45:46Z'  # 1431
+  by: agent  # 1431
+  actor: jgstern_agent  # 1431
+  clock: 3  # 1431
+  nonce: '1431'  # 1431
+  message: "Fixed in PR #1540 (e36c7717cf). Root cause: cmd_verify_claims built catalog_provenance's io_primitives layers from the RAW --io-primitives and claims-file extra_catalogs lists, not from the origins left after --no-default-overlays omitted community files. Fix: layers are derived from the loaded origins; the omitted files (with origin) go to catalog_provenance.omitted_community_overlays and a text NOTE; _resolve_io_overlay_layers/_split_community_overlays return (loaded, omitted). Evidence (dev e36c7717cf, filed repro): 'hypergumbo verify-claims repo --claims claims.yaml --io-primitives comm.yaml --no-default-overlays' -> exit 2; stderr omitted notice unchanged; stdout no USER-SUPPLIED / WITHHELD GRANTS, instead 'NOTE: 1 overlay(s) omitted by --no-default-overlays ... comm.yaml [CLI flag]'. --json -> exit 2, user_supplied false, withheld_completeness_grants [], omitted_community_overlays [{path: comm.yaml, origin: cli}], tiers.yours/community []. Claims-file extra_catalogs variant -> same NOTE labelled [claims-file extra_catalogs]. Control without the flag -> exit 2, output byte-identical to before (USER-SUPPLIED + WITHHELD GRANTS telnetlib [CLI flag]). Tests: test_omitted_overlay_provenance.py (cli + claims_file, text + JSON, control). Taint layers are not filtered by the flag, so their disclosure matches the load."  # 1431
