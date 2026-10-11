@@ -7,7 +7,8 @@ This analyzer uses tree-sitter to parse Common Lisp files and extract:
 - Method definitions (defmethod)
 - Macro definitions (defmacro)
 - Class definitions (defclass)
-- Variable definitions (defvar, defparameter, defconstant)
+- Structure definitions (defstruct)
+- Variable (defvar, defparameter) and constant (defconstant) definitions
 - Generic function definitions (defgeneric)
 - Function call relationships
 

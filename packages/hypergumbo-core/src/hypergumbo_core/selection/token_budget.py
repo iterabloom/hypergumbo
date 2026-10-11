@@ -11,8 +11,10 @@ Token estimation uses a simple character-based heuristic: approximately
 4 characters per token. This is a reasonable approximation for English
 text with most tokenizers (GPT, Claude, etc.).
 
-For conservative estimates (to avoid exceeding budgets), we use ceiling
-division. For JSON output, we serialize to JSON first then count chars.
+estimate_tokens uses ceiling division (a conservative estimate, to avoid
+exceeding budgets). estimate_json_tokens serializes with json.dumps
+(default separators, no indentation) and uses floor division on the
+character count.
 
 The truncation logic for Markdown is section-aware: it attempts to cut
 at ## header boundaries to keep headers with their content, avoiding

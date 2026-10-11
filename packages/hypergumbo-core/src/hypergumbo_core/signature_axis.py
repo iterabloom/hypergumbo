@@ -267,7 +267,7 @@ FACT_HOMES: Final[dict[str, FactHome]] = {
     ),
     "parameter_arity": FactHome(
         path="packages/hypergumbo-core/src/hypergumbo_core/axis_meta_keys.py",
-        line=1181,
+        line=1182,
         anchor='MetaKeySpec("parameters"',
         home='Symbol.meta["parameters"] / Symbol.meta["params"]',
         populated_by=("18 analyzers, including py.py, cpp, elixir and nim",),
@@ -480,8 +480,8 @@ class _ParseSiteVisitor(ast.NodeVisitor):
     TWO STATED LIMITS, neither papered over:
 
     * A value bound to a LOCAL is beyond reach -- ``sig = sym.signature``
-      then ``sig.split('->')`` is caught at the first line (a read handed to
-      nothing is still flagged only if it flows into a call), and a parser's
+      then ``sig.split('->')`` is NOT caught (the assignment is not a call
+      handoff, and the later call's receiver is a bare local), and a parser's
       own body operating on its parameter is not an attribute read at all.
       The gate catches the HANDOFF, which is what the citations record.
     * A keyword argument named ``signature`` is treated as a carry, so a

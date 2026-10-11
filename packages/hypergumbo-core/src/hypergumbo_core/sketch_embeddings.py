@@ -20,7 +20,10 @@ conflating them is what made ``hypergumbo .`` exit 1 writing zero bytes
 
 1. **The library is not importable.** ``_has_sentence_transformers()``
    answers this, and only this — it catches ``ImportError`` and nothing
-   else. Every public function here checks it first.
+   else. The three embedding entry points check it first;
+   ``compute_5w1h_similarity`` needs only numpy and reaches the guard
+   only through ``_get_additional_files_probe_embeddings`` when the
+   precomputed probes are missing.
 2. **The library imports but the model WEIGHTS are not on disk** and
    cannot be downloaded (no network, ``HF_HUB_OFFLINE``, a cache miss on
    a machine that has never fetched them). ``_has_sentence_transformers()``
@@ -28,9 +31,10 @@ conflating them is what made ``hypergumbo .`` exit 1 writing zero bytes
    ``_load_st_model_offline_first`` converts that into
    :class:`EmbeddingsUnavailable`.
 
-Callers must handle BOTH. The four public entry points already do: each
+Callers must handle BOTH. The three embedding entry points already do: each
 catches :class:`EmbeddingsUnavailable` and degrades to the same result its
-import-guard branch returns, and :func:`_warn_embeddings_unavailable`
+import-guard branch returns (``compute_5w1h_similarity`` inherits this
+through its probe loader), and :func:`_warn_embeddings_unavailable`
 warns once per process rather than per file. Consumers outside this module
 (see ``sketch.py``) degrade to their heuristic path.
 
@@ -1826,7 +1830,7 @@ def embed_file_for_semantic_ranking(
 ) -> "np.ndarray | None":
     """Embed a file using ModernBERT for semantic ranking.
 
-    Uses 3 random non-overlapping 800-char substrings from first third,
+    Uses 3 random non-overlapping 400-char substrings from first third,
     de-HTMLified and ellipsis-concatenated.
 
     Args:

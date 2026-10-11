@@ -1779,7 +1779,7 @@ classify as **tier 1** with their role on the `is_example` / `is_test` / reason
 axis, not by tier. Tier 2 has **two** producers: config-declared
 `internal_package_roots`, and a workspace-sibling *dependency declaration* — a
 `kind=dependency` symbol naming an in-repo package that another workspace member
-lists as a dependency (INV-nuzas / ADR-0041 §1 tier table + D8a; this is the
+lists as a dependency (INV-nuzas / ADR-0041 §1 tier table; this is the
 "populate tier 2 with the workspace packages" end-state ADR-0041 §1 anticipated
 for the workspace-resolution fix, not a re-admission of the retired *third-party*
 direct-dependency → tier-2 mapping). Workspace member *source* stays tier 1, and
@@ -1879,7 +1879,7 @@ Tier 2 (`internal_dep`) has **two** producers, both representing an org-internal
    workspace package lists as a dependency is a workspace-**internal** dependency
    (tier 2), not a third-party external (tier 3) — INV-nuzas / ADR-0041 §1 (tier
    table + the anticipated "populate tier 2 with the workspace packages"
-   end-state) / D8a. This is orthogonal to the retired *third-party*
+   end-state). This is orthogonal to the retired *third-party*
    direct-dependency → tier-2 mapping (§1): a genuine third-party declaration
    stays tier 3. Python `pyproject.toml`-scoped; Cargo/npm sibling analogues are
    a documented follow-up (still tier 3).

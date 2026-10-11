@@ -4,6 +4,11 @@
 Saves annotated SVG screenshots to ``.agent/tracker-workspace/screenshots/``
 and auto-creates a ``work_item`` with ``needs_human_review`` status.
 
+Not called by the TUI as of 2026-10 (only tests call it; WI-rujoz's TUI
+wiring never landed). The TUI's ``action_capture_screenshot`` saves to
+``.agent/screenshots/<item-id>-<ts>.svg`` (with a $TMPDIR fallback) and
+creates no item. This module is a tested but unused backend.
+
 How It Works
 ------------
 ``save_screenshot(ts, svg_content)`` writes the SVG to the screenshots

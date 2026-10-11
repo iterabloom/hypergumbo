@@ -72,7 +72,7 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
     Phoenix web-module dispatcher, ``use AppWeb, :live_view``, whose quote
     lives in ``def live_view`` (WI-nunar).
   * each callback ``dispatches_to`` every clause of the same-named, same-kind
-    function in each implementing module (evidence ``behaviour_callback``), the
+    public function in each implementing module (evidence ``behaviour_callback``), the
     abstract-member -> implementation shape ``linkers/type_hierarchy`` builds
     for languages with methods. That linker cannot build it here: it indexes
     ``kind == "method"`` only, and an Elixir function is not a method.

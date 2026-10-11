@@ -11596,7 +11596,7 @@ def _classify_symbols(
     classified as tier 3 (EXTERNAL_DEP) since they represent references
     to external packages, not first-party code — EXCEPT a declaration
     naming an in-repo workspace sibling, which is workspace-internal
-    (tier 2 INTERNAL_DEP) per INV-nuzas / ADR-0041 D8a. Workspace-sibling
+    (tier 2 INTERNAL_DEP) per INV-nuzas / ADR-0041 §1. Workspace-sibling
     recognition uses ``collect_workspace_package_names`` (Python pyproject
     distribution names); Cargo/npm workspace-sibling analogues are a
     documented cross-language follow-up and still fall through to tier 3.
@@ -11610,7 +11610,7 @@ def _classify_symbols(
     """
     seen_failures: set[str] = set()
     classification_by_path: dict[str, FileClassification] = {}
-    # INV-nuzas / ADR-0041 D8a: recognize in-repo workspace-sibling package
+    # INV-nuzas / ADR-0041 §1: recognize in-repo workspace-sibling package
     # names so a sibling declared as a dependency is tiered workspace-internal
     # (tier 2), not external (tier 3). Empty set on a non-Python repo → the
     # dependency branch below is unchanged (all deps tier 3).

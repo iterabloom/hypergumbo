@@ -6,6 +6,8 @@ Tracks known limitations and failures during analysis:
 - Languages detected but not analyzed (no analyzer available)
 - Whole passes that crashed or were skipped (§17 fail-open)
 - Files truncated or skipped due to size
+- Files whose symbols/edges were dropped by the supply-chain tier filter
+  (tier_filtered_files)
 - Supply chain classification failures and ambiguous tier assignments
 - Fundamental limitations of static analysis (dynamic imports, eval, etc.)
 Plus scalar honesty signals: partial_results_reason, max_tier_applied,

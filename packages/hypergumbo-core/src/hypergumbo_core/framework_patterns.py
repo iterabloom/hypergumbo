@@ -14,12 +14,16 @@ How It Works
 
 Pattern Types
 -------------
-**Definition-based (v0.8.x):** Match against symbol definition metadata.
+**Definition-based (v1.0.x+):** Match against symbol definition metadata.
 
 - Decorator patterns: Match function/method decorators (e.g., @app.get)
-- Base class patterns: Match class inheritance (e.g., BaseModel)
+- Base class patterns: Match class inheritance (e.g., BaseModel), or a
+  method's parent class bases (parent_base_class + method_name)
 - Annotation patterns: Match Java annotations (e.g., @RequestMapping)
 - Parameter type patterns: Match function parameter types (e.g., Depends)
+- Further fields: symbol_name, symbol_kind, language, framework_role,
+  meta_match, modifiers/modifiers_exclude and symbol_path (plus an
+  is_test_file policy flag)
 
 **Usage-based (v1.1.x):** Match against UsageContext records for call-based
 frameworks where routing is done via function calls rather than decorators.
@@ -32,10 +36,16 @@ Relationship to Route Symbols
 -----------------------------
 Enrichment adds ``concept: route`` to *handler* symbols (e.g., a Django view
 function gets tagged as a route handler). This is complementary to — not a
-replacement for — the route-marker symbols that language analyzers create.
-Route symbols are first-class IR entities representing the route itself, consumed
-by the ``route_handler`` linker to create ``dispatches_to`` edges. Both outputs are
-derived from the same UsageContext extraction pass in each analyzer.
+replacement for — route-marker symbols. Route symbols are first-class IR
+entities representing the route itself, consumed by the ``route_handler``
+linker to create ``dispatches_to`` edges. Language analyzers create route
+markers directly for routing DSLs (Go, JS/TS, Django urls.py, Rails, Phoenix).
+For handlers enriched with ``concept: route`` that have no marker (decorator
+and annotation frameworks such as JAX-RS, Spring, ASP.NET, FastAPI),
+``materialize_route_symbols`` creates the marker.
+``expand_class_based_view_routes`` splits a Django CBV ``ANY`` route into one
+route per declared HTTP method. Handler enrichment comes from definition
+metadata or from UsageContext records, depending on the pattern.
 
 Why This Design
 ---------------
@@ -753,8 +763,8 @@ def extract_usage_value(ctx: "UsageContext", expr: str) -> str | None:
             elif transform == "last":
                 # Assumes previous was split, take last element.
                 # Re-parse to find delimiter from previous split.
-                # (We're always inside the " | " branch from line 520,
-                # so parts is guaranteed to exist.)
+                # (We're always inside the enclosing ``" | " in expr``
+                # branch, so parts is guaranteed to exist.)
                 for prev in reversed(parts[:parts.index(transform)]):
                     if prev.strip().startswith("split:"):
                         delim = prev.strip()[6:]
@@ -1497,11 +1507,14 @@ def enrich_symbols(
 ) -> list[Symbol]:
     """Enrich symbols with framework concept metadata.
 
-    Four-phase enrichment (v1.3.x):
-    1. Language conventions: Match main() functions and other language-level patterns
-    2. Definition-based: Match against decorators, base classes, annotations
-    3. Parent path inheritance: Combine paths from parent concepts (prefix_from_parent)
-    4. Usage-based: Match against UsageContext records for call-based frameworks
+    Enrichment phases (the language-convention YAMLs in
+    ``_CONVENTION_PATTERN_IDS`` are always loaded and merged into the
+    detected frameworks' patterns before phase 1, not run as a phase):
+    1. Definition-based: Match against decorators, base classes, annotations
+    1.5. APIRouter prefix composition: Prepend ``router_prefix`` to route paths
+    2. Parent path inheritance: Combine paths from parent concepts (prefix_from_parent)
+    2b. JAX-RS subresource locator path chaining
+    3. Usage-based: Match against UsageContext records for call-based frameworks
 
     Args:
         symbols: Symbols to enrich
@@ -1552,7 +1565,7 @@ def enrich_symbols(
                 symbol_by_name[simple_name] = s
     class_lookup = _build_class_symbol_lookup(symbols)
 
-    # Collect patterns that use prefix_from_parent (for phase 3)
+    # Collect patterns that use prefix_from_parent (for phase 2)
     patterns_with_prefix: list[tuple[Pattern, str]] = []  # (pattern, framework_id)
     for pattern_def in pattern_defs:
         for pattern in pattern_def.patterns:

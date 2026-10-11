@@ -20,7 +20,9 @@ Framework detection examines dependency manifests:
 - Each manifest format has a structured parser that extracts the declared
   dependency names, instead of substring-matching raw text (which matched
   comments and collisions like ``transformers`` in ``sentence-transformers``).
-  pip ``-r`` / ``-c`` includes are followed transitively, within the repo.
+  A token-matching raw-text fallback (``_manifest_has_package``) remains for
+  build-script DSL markers such as ``android {`` / ``qt +=``, and for
+  nginx.conf. pip ``-r`` / ``-c`` includes are followed transitively, within the repo.
 - Some frameworks come from file presence instead: ``.proto`` files
   (protobuf), Solidity config files (Foundry, Hardhat) and
   ``AndroidManifest.xml`` (android).
@@ -34,7 +36,9 @@ in subdirectories. This enables detection in:
 - Multi-project repositories
 
 Manifests found by name (``_find_manifest_files``) skip dot-directories,
-common non-project directories (node_modules, vendor, venv, etc.) and
+common non-project directories (node_modules, vendor, venv, etc.), any
+directory a discovery content rule identifies as installed dependency source
+or build output (Mix ``deps/``, a virtualenv named ``env``; ADR-0004), and
 test-fixture directories; glob-based detectors (e.g. ``*.cabal``) do not.
 
 Profiling is intentionally shallow - we look for package names in
@@ -70,7 +74,8 @@ This enables users to:
 
 Why This Design
 ---------------
-- Extension-based language detection is simple and reliable
+- Extension-based language detection (or an analyzer's own file
+  enumerator) is simple and reliable
 - Dependency file scanning catches frameworks even in empty repos
 - Shallow heuristics prioritize speed over precision
 - The profile informs which analyzers to run and what to expect
@@ -688,7 +693,7 @@ class FrameworkMode(Enum):
     - NONE: Skip framework detection entirely
     - ALL: Check all known frameworks for detected languages
     - EXPLICIT: Only check explicitly specified frameworks
-    - AUTO: Auto-detect based on detected languages (default)
+    - AUTO: Auto-detect by scanning every ecosystem's manifests (default)
     """
 
     NONE = "none"
@@ -3363,9 +3368,13 @@ def refine_frameworks(
        FPs (``react`` imported by build tooling, ``graphql`` imported
        for type definitions) while letting through scoped npm packages
        (``@apollo/server``), Go full paths (``github.com/.../gin``),
-       and Maven coords (``org.springframework.boot``). This phase
-       resolves the workspace-import surface of INV-rojip (WI-donud's
-       motivating case: apollo-server smoke-test consumer).
+       and Maven coords (``org.springframework.boot``). Bare-name
+       patterns have their own arm: they promote on a prod submodule
+       (prefix) import such as ``react/jsx-runtime`` (WI-pusad), or on
+       an exact import for ``_BARE_EXACT_PROMOTE_ROUTE_FRAMEWORKS``
+       (WI-tosul). This phase resolves the workspace-import surface of
+       INV-rojip (WI-donud's motivating case: apollo-server smoke-test
+       consumer).
 
     2. **Demote** — for every framework in the working list, check
        import edges in its languages. Frameworks with no prod-non-test

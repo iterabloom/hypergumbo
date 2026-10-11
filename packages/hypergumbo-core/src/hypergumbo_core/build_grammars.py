@@ -218,7 +218,8 @@ def build_grammar(
 
     Args:
         spec: Grammar specification
-        build_dir: Directory for cloning and building
+        build_dir: Directory for the generated Python-binding package and
+            pip's build artifacts (grammar sources come from the vendor tree)
         quiet: Suppress output if True
 
     Returns:
@@ -303,7 +304,8 @@ def build_all_grammars(
     Build all source-only tree-sitter grammars.
 
     Args:
-        build_dir: Directory for cloning and building (default: temp dir)
+        build_dir: Directory for the generated binding packages and pip's
+            build artifacts (default: temp dir)
         quiet: Suppress output if True
 
     Returns:

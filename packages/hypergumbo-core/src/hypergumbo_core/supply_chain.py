@@ -8,8 +8,9 @@ prioritized) and noise reduction (derived artifacts excluded).
 Tiers
 -----
 - FIRST_PARTY (1): Project's own source code (highest priority)
-- INTERNAL_DEP (2): Org-internal dependency packages (configured
-  internal_package_roots only)
+- INTERNAL_DEP (2): Org-internal dependency packages (workspace-sibling
+  dependency declarations; ``internal_package_roots`` when a caller passes a
+  ``SupplyChainConfig`` — see "Configuration" below)
 - EXTERNAL_DEP (3): Third-party dependencies in readable form
 - DERIVED (4): Build artifacts, transpiled/bundled output (skip analysis)
 
@@ -19,7 +20,7 @@ Classification runs after analysis, over the symbols: ``cli._classify_symbols``
 calls :func:`classify_file` once per file path and stamps every symbol in that
 file. Signals are checked in order; first match wins:
 
-1. Derived artifact detection (tier 4) - configured ``derived_patterns``, then
+1. Derived artifact detection (tier 4) - ``derived_patterns``, then
    path and filename patterns, then a content check for minified output
 2. External dependency detection (tier 3) - node_modules/, vendor/, and
    vendored SDKs anywhere in the path
@@ -27,10 +28,10 @@ file. Signals are checked in order; first match wins:
    samples/, tutorials/ (in-repo → first-party; the role is on is_example)
 4. Documentation detection (tier 1) - in-repo docs; the role is carried by
    the reason string (INV-naduh)
-5. Configured internal_package_roots → tier 2 (the only tier-2 producer
-   *within* ``classify_file``; ``cli._classify_symbols`` additionally tiers a
-   workspace-sibling *dependency declaration* tier-2 via
-   :func:`collect_workspace_package_names` — INV-nuzas / ADR-0041 D8a)
+5. ``SupplyChainConfig.internal_package_roots`` → tier 2 (the only tier-2
+   producer *within* ``classify_file``; ``cli._classify_symbols``
+   additionally tiers a workspace-sibling *dependency declaration* tier-2 via
+   :func:`collect_workspace_package_names` — INV-nuzas / ADR-0041 §1)
 6. Workspace package detection:
    - If file is in a test directory, or matches a test file pattern beside
      its source → tier 1 with is_test=True
@@ -41,14 +42,25 @@ file. Signals are checked in order; first match wins:
    is_test and drowned out the real internal-dep signal (INV-tisid).
 8. Notebook (.ipynb) and fuzz/bench detection (tier 1) - in-repo role files;
    the role is carried by the reason string (INV-naduh).
-9. First-party detection (tier 1) - configured ``first_party_patterns``, then
-   src/, lib/, app/, or default
+9. First-party detection (tier 1) - ``first_party_patterns``, then
+   src/, lib/, app/, pkg/, cmd/, internal/, crates/*/src/, packages/*/src/,
+   or default
 
 Per INV-naduh / ADR-0041 §1 the tier names supply-chain DISTANCE only: all
 in-repo files are first-party (distance 0), and tier 2 is reserved for
-org-internal *dependency* packages declared via config. Role files
-(examples, docs, notebooks, fuzz/bench, tests) carry their role on a
-separate axis (is_example / is_test / reason), not by tier.
+org-internal *dependency* packages. Role files (examples, docs, notebooks,
+fuzz/bench, tests) carry their role on a separate axis (is_example / is_test
+/ reason), not by tier.
+
+Configuration
+-------------
+The ``SupplyChainConfig`` arms (``derived_patterns``,
+``internal_package_roots``, ``first_party_patterns``) are honoured in steps
+1, 5 and 9 when a caller passes ``classify_file(config=...)``, but as of
+2026-10 no CLI flag or config key feeds them: both production callers
+(``cli._classify_symbols`` and ``sketch._run_analysis``) pass no ``config``,
+and ``.hypergumbo.toml`` rejects these keys as unknown settings. In a CLI run
+the only tier-2 producer is the workspace-sibling dependency declaration.
 
 Role Flags Beside the Tier
 --------------------------
@@ -374,7 +386,9 @@ _SCHEME_RESOLVERS: dict[str, Callable[[str, Container[str]], Optional[str]]] = {
 class SupplyChainConfig:
     """Configuration for supply chain classification.
 
-    Allows customizing tier classification via capsule plan.
+    Allows customizing tier classification when passed as
+    ``classify_file(config=...)``. No production caller constructs one as of
+    2026-10 (see the module docstring's "Configuration" section).
 
     Attributes:
         first_party_patterns: Additional patterns to classify as tier 1
@@ -415,7 +429,8 @@ class FileClassification:
     tier 2 a synonym for is_test (~99% of self-analysis tier-2 entries
     were tests, drowning out actual internal-dep signal). Per INV-naduh /
     ADR-0041 §1, tier 2 is reserved for org-internal *dependency* packages
-    (configured ``internal_package_roots`` only); other in-repo role files
+    (``SupplyChainConfig.internal_package_roots``, when a caller passes a
+    config); other in-repo role files
     — examples, docs, notebooks, fuzz/bench harnesses — are first-party
     (tier 1) with the role carried by the flag/reason, not by tier.
 
@@ -1336,7 +1351,7 @@ def _installed_dependency_root(
     return None
 
 
-# INV-nuzas / ADR-0041 D8a — workspace-sibling dependency recognition.
+# INV-nuzas / ADR-0041 §1 — workspace-sibling dependency recognition.
 #
 # A monorepo sibling that another workspace member declares as a *dependency*
 # is workspace-INTERNAL (tier 2 ``internal_dep``), not a third-party external
@@ -1345,7 +1360,7 @@ def _installed_dependency_root(
 # below lets it tier a matching declaration tier-2 instead. This parallels the
 # workspace-member *subtraction* in
 # ``hypergumbo_lang_mainstream.py_deps.parse_python_dependencies`` (same
-# ADR-0041 D8a rule, applied there to imported boundary nodes). The two cannot
+# ADR-0041 §1 rule, applied there to imported boundary nodes). The two cannot
 # share code: ``hypergumbo-core`` is the base package and must not import a
 # language-analyzer package, so the small name-collection logic is duplicated.
 _WORKSPACE_NAME_NORMALIZE_RE = re.compile(r"[-_.]+")
@@ -1394,7 +1409,7 @@ def collect_workspace_package_names(repo_root: Path) -> set[str]:
     :func:`cli._classify_symbols`: a ``kind='dependency'`` symbol whose
     normalized name is in this set is a workspace-internal dependency
     declaration (tier 2), not a third-party external (tier 3) —
-    INV-nuzas / ADR-0041 D8a. Returns an empty set when no ``pyproject.toml``
+    INV-nuzas / ADR-0041 §1. Returns an empty set when no ``pyproject.toml``
     is present (non-Python repo → all deps stay tier 3, unchanged behavior).
     """
     from .profile import _load_toml

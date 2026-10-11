@@ -30,8 +30,9 @@ What counts as direct, transitive, or neither
 * Neither: ``path:`` and ``in_umbrella:`` deps point at source inside the
   repository (umbrella siblings, local libraries) -- workspace code, not a
   third-party dependency. Same for every ``app: :name`` a walked ``mix.exs``
-  declares for itself (umbrella apps), the ADR-0041 D8a workspace-member
-  subtraction ``py_deps`` applies to pyproject names.
+  declares for itself (umbrella apps), the INV-nuzas workspace-member
+  subtraction (ADR-0041 §1: tier 2 is workspace-internal only) ``py_deps``
+  applies to pyproject names.
 * Transitive: every other top-level key of ``mix.lock``. The lock key is the
   dependency's app name, which is what module references map to; the Hex
   package name in the lock tuple can differ and is deliberately not used.
@@ -43,8 +44,8 @@ manifest owns one rule for every caller.
 Walk
 ----
 Every ``mix.exs`` / ``mix.lock`` under the repo (umbrella ``apps/*/``),
-skipping ``discovery.manifest_walk_skip()`` names, dot-dirs and directories a
-discovery content rule claims (Mix ``deps/`` and ``_build/``), so a fetched
+skipping ``discovery.manifest_walk_skip()`` names (``_build`` among them),
+dot-dirs, and directories a discovery content rule claims (Mix ``deps/``), so a fetched
 dependency's own ``mix.exs`` cannot declare deps on the project's behalf.
 """
 from __future__ import annotations

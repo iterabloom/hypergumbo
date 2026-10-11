@@ -912,9 +912,9 @@ TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = _derive_type_preserving_mem
 # recorded on the deferral is NOT this rule's precision -- it was taken
 # THROUGH the defect.
 # Still deferred (a different need -- instance/return-type inference):
-# SQLAlchemy ``Session.*``, fields assigned in a test's ``setUp`` (1,155
-# pretix sites, every one under ``src/tests``), and the loop variable of a
-# ``for`` over a QuerySet.
+# SQLAlchemy ``Session.*`` and the loop variable of a ``for`` over a
+# QuerySet. (Fields assigned in a test's ``setUp`` are typed since WI-zamud,
+# ``_collect_django_setup_fields``.)
 DJANGO_ORM_MODULE = "django.db.models"
 DJANGO_ORM_MANAGER_METHODS = frozenset({
     # reads (db_read) and lazy combinators (db_compose, WI-fasap) -- the
@@ -2368,9 +2368,8 @@ class FileAnalysis:
     """Intermediate analysis result for a single file.
 
     Note on type inference: Variable method calls (e.g., stub.method()) are resolved
-    using constructor-only type inference. This tracks types from direct constructor
-    calls (stub = Client()) but NOT from function returns (stub = get_client()).
-    This covers ~90% of real-world cases with minimal complexity.
+    from constructor calls (stub = Client()) and from annotated return types
+    (stub = get_client() where get_client() -> Client).
     """
 
     symbols: list[Symbol]
@@ -5759,7 +5758,7 @@ def _extract_edges(
     - Self method calls: self.method()
     - Self field method calls: self.field.method() (using field type inference from __init__)
     - Module-qualified calls: module.ClassName(), module.func()
-    - Variable method calls: variable.method() (with constructor-only type inference)
+    - Variable method calls: variable.method() (types from the sources below)
 
     Type inference sources:
     1. Direct constructor calls: stub = Client() → var_types['stub'] = Client

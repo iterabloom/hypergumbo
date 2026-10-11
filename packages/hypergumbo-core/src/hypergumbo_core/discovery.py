@@ -1818,8 +1818,9 @@ def find_files(
         on_file_skipped = _global_on_file_skipped
 
     # Fast path: use the global file index if available.
-    # The index was built with the same excludes and locale filtering,
-    # so we only need to apply max_file_bytes filtering here.
+    # The index was built with its own excludes and locale filtering (the
+    # ``excludes`` argument is not re-applied, WI-duhih), so only
+    # max_files / max_file_bytes are applied here.
     index = _global_file_index
     if index is not None and index.repo_root == repo_root:
         count = 0

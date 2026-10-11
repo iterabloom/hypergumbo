@@ -174,9 +174,10 @@ How It Works
    a confirming verdict becomes ``inconclusive`` (caveats kept), or
    ``confirmed_with_caveats`` with an opaque-boundary caveat when named
    opaque sites (program launches, or calls to a shipped non-I/O sink such
-   as ``eval``) are the only blocker. ``_withhold_for_tainted_evaluation``
-   then keeps a taint verdict ``inconclusive`` when the claim's own label
-   reaches such an evaluation site. ``violated`` is never touched.
+   as ``eval``) are the only blocker. Before the gate runs,
+   ``_withhold_for_tainted_evaluation`` withdraws the opaque qualification
+   for a taint claim whose own label reaches such an evaluation site, so
+   that verdict stays ``inconclusive``. ``violated`` is never touched.
    For a taint claim whose source label only a project catalogue declares,
    ``blind_by_source_taint`` substitutes a per-label ``ScopedBlindness``
    that ignores no-catalogue languages the label cannot start in, and
@@ -202,8 +203,12 @@ How It Works
    they sit inside the analysed repository (a file inside it also carries its
    git state). ``user_supplied`` is also true when a ``yours`` / ``in_repo``
    file came from the config tiers or a channel directory, and a
-   ``module_completeness`` grant in a community file is listed under
-   ``withheld_completeness_grants`` (INV-lamap). It changes no verdict.
+   ``module_completeness`` grant in a community file reached through the
+   config tiers or a channel directory is listed under
+   ``withheld_completeness_grants`` (INV-lamap). Files given by CLI flag or
+   in the claims file are not checked for community provenance: their grants
+   stay under ``completeness_grants`` (the load still withholds them). It
+   changes no verdict.
 """
 from __future__ import annotations
 
@@ -2329,8 +2334,11 @@ def catalog_provenance(
     / ``in_repo`` (:func:`catalogue_tiers`), and ``io_overlay_origins`` -- each
     I/O overlay path with where it came from -- lets the completeness grants of
     the config-tier and channel files be named like the flag's. A grant in a
-    COMMUNITY file is withheld at load (INV-lamap), so it is listed under
-    ``withheld_completeness_grants`` instead.
+    COMMUNITY file is withheld at load (INV-lamap); when that file came from
+    the config tiers or a channel directory it is listed under
+    ``withheld_completeness_grants`` instead. Files from the CLI flag or the
+    claims file skip that check, so a community file's grant given that way
+    is still listed under ``completeness_grants``.
 
     Returns:
         ``{"user_supplied": bool, "layers": {kind: {"cli": [...],

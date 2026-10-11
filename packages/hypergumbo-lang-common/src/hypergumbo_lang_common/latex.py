@@ -7,11 +7,11 @@ cross-reference relationships.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for two-pass orchestration.
-The base class handles grammar checking, parser creation,
-and result assembly. This module overrides file discovery for
-LaTeX-specific patterns (.tex, .sty, .cls) and provides the
-LaTeX-specific extraction logic.
+Overrides ``analyze()`` with its own two-pass loop and builds the
+``AnalysisResult`` itself. It uses the TreeSitterAnalyzer base only for
+``_check_grammar_available()`` and ``_create_parser()``; file discovery
+(``_find_source_files()``, for .tex/.sty/.cls) is overridden here, and
+the module provides the LaTeX-specific extraction logic.
 
 Pass 1 (Symbol Extraction):
 - Sections: \section{}, \subsection{}, \chapter{}, etc.
@@ -20,8 +20,10 @@ Pass 1 (Symbol Extraction):
 - Custom environments: \newenvironment{} definitions
 
 Pass 2 (Edge Extraction):
-- Reference edges: \ref{}, \cite{}, \autoref{}, etc.
-- Include edges: \input{}, \include{}, \usepackage{}
+- Reference edges (``references``, meta ref_type label/citation):
+  \ref{}, \cite{}, \autoref{}, etc.
+- Include edges (``includes``): \input{}, \include{}
+- Package edges (``imports``): \usepackage{}
 
 LaTeX-Specific Considerations
 -----------------------------

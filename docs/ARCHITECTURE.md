@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **355** Python modules (147 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 105 core, 4 CLI, 37 tracker)
-- **53556** symbols (functions, classes, methods)
-- **211766** edges by type:
-  - calls: 120688
-  - contains: 49127
-  - imports: 17539
-  - instantiates: 12306
-  - references: 8515
-  - module_attr_ref: 1976
+- **53586** symbols (functions, classes, methods)
+- **211843** edges by type:
+  - calls: 120728
+  - contains: 49128
+  - imports: 17571
+  - instantiates: 12309
+  - references: 8514
+  - module_attr_ref: 1978
   - other: 1615
 
 ## Package Architecture
@@ -86,7 +86,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 53556 Symbols + 211766 Edges + UsageContexts           │
+│  Output: 53586 Symbols + 211843 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -287,8 +287,8 @@ These symbols have the highest bidirectional centrality
 | `get` | external_symbol | 3392.0 | <external> |
 | `load_catalog` | function | 3308.5 | io_boundary.py |
 | `Edge.create` | method | 2452.7 | ir.py |
-| `str` | external_symbol | 2321.0 | <external> |
-| `Path` | external_symbol | 2285.0 | <external> |
+| `str` | external_symbol | 2322.0 | <external> |
+| `Path` | external_symbol | 2287.0 | <external> |
 | `next` | external_symbol | 2190.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
@@ -689,7 +689,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
 - **`hypergumbo_core.test_only_reachability`**: WI-ratuv: a production function whose only callers live in test mod...
-- **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3).
+- **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3, 5; ...
 - **`hypergumbo_core.validation_ratchet`**: Shrink-only ratchet comparison for validation-report violation matr...
 - **`hypergumbo_core.value_flow`**: Static string-value flow inside one module, for the registry gates.
 - **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary and taint-flow ana...
@@ -962,8 +962,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e6d99bb7f673
-  commit_count: 8218
+  commit: 9958adc22cfb
+  commit_count: 8223
   hypergumbo: 8.1.0
   python: 3.12.3
 -->

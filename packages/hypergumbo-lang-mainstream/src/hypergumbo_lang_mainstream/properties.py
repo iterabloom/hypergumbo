@@ -6,9 +6,11 @@ in Java applications, Android development, and i18n/l10n bundles.
 
 How It Works
 ------------
-Uses TreeSitterAnalyzer base class for single-pass orchestration:
+Uses the TreeSitterAnalyzer base class's two-pass orchestration; this
+module implements only Pass 1:
 1. Pass 1: Extract property key-value pairs with namespace categorization
-2. No Pass 2 (properties files have no cross-references)
+2. Pass 2 runs the base default ``extract_edges_from_file`` and yields
+   no edges (properties files have no cross-references)
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the properties-specific

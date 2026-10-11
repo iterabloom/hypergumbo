@@ -12,7 +12,12 @@ How It Works
 instances. ``create_session()`` generates a 32-byte URL-safe random token via
 ``secrets.token_urlsafe(32)``. ``validate()`` checks existence and expiry.
 ``revoke()`` removes a single session. ``clear()`` invalidates all sessions
-(called on server restart — no persistent session storage by design).
+(intended for the restart case; currently uncalled, and a process restart
+empties the in-memory dict anyway — no persistent session storage by design).
+
+Not yet wired into serve.py as of 2026-10 (WI-hopip): no route creates or
+checks sessions, and nothing reads ``auth_class`` yet. The restart and
+duress bullets below describe the ADR-0019 design intent.
 
 Why This Design
 ---------------

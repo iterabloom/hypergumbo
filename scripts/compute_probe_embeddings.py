@@ -122,8 +122,14 @@ This module contains base64-encoded float16 embedding vectors for the probe
 patterns used in README description extraction, config file analysis, and
 additional files ordering.
 
-Pre-computing these avoids the ~2-3 second startup cost of encoding probes
-at runtime.
+README_PROBES_B64 (README description extraction) and
+ADDITIONAL_FILES_PROBES_B64 (5W1H additional-files ordering) are decoded at
+runtime instead of re-encoding the probes, which avoids the ~2-3 second
+startup cost of encoding them. ANSWER/BIGPIC/NEGATIVE_PROBES_B64 are generated
+for config analysis, but as of 2026-10 nothing reads NEGATIVE_PROBES_B64 and
+the ANSWER/BIGPIC getters in sketch_embeddings.py have no caller:
+sketch._extract_config_embedding encodes those three probe sets live on every
+call.
 
 Generated with:
 - UnixCoder (microsoft/unixcoder-base) for README/config probes (768 dim)
@@ -139,19 +145,22 @@ README_PROBES_B64 = (
 )
 
 # Answer patterns: {len(ANSWER_PATTERNS)} probes, 768 dimensions
-# Used in extract_config_embedding()
+# Intended for sketch._extract_config_embedding(); no live reader as of 2026-10
+# (that function encodes these probes live)
 ANSWER_PROBES_B64 = (
     "{answer_b64}"
 )
 
 # Big picture questions: {len(BIG_PICTURE_QUESTIONS)} probes, 768 dimensions
-# Used in extract_config_embedding()
+# Intended for sketch._extract_config_embedding(); no live reader as of 2026-10
+# (that function encodes these probes live)
 BIGPIC_PROBES_B64 = (
     "{bigpic_b64}"
 )
 
 # Negative patterns: {len(NEGATIVE_PATTERNS)} probes, 768 dimensions
-# Used in extract_config_embedding() to penalize non-config content
+# Intended for sketch._extract_config_embedding() to penalize non-config
+# content; no reader as of 2026-10 (that function encodes these probes live)
 NEGATIVE_PROBES_B64 = (
     "{negative_b64}"
 )

@@ -24,10 +24,15 @@ How It Works
 
 Requirement diagnostics
 -----------------------
-The ``import_edges`` requirement counts only what step 3 can use --
-third-party Rust/Python imports -- so the partial-requirement warning names
-the manifests this linker actually reads (Cargo.toml, pyproject.toml) and stays
-silent on repos whose imports are in other languages. Mix, npm, go.mod and
+The ``import_edges`` requirement counts only Rust/Python import edges, minus
+Rust toolchain roots (``std``, ``core``, ...) and Python stdlib modules, so the
+partial-requirement warning names the manifests this linker actually reads
+(Cargo.toml, pyproject.toml) and stays silent on repos whose imports are in
+other languages. Resolved first-party Python imports (a dst such as
+``python:src/pkg/b.py:1-1:file:file``) are not excluded and are counted too,
+so a Python repo whose modules import each other can trip the warning with no
+third-party import at all; the warning text still calls the count
+"third-party". Mix, npm, go.mod and
 Gradle/Maven declarations reach boundary nodes through ``DependencyManifest``
 (``supply_chain``), not through this linker (WI-juzaj).
 
@@ -284,7 +289,8 @@ def _count_import_edges(ctx: LinkerContext) -> int:
     but 0 TOML dependency declarations" on a Phoenix app whose imports are
     Elixir and JavaScript, whose mix.exs / package.json this linker never
     reads (WI-juzaj). The stdlib test is the single-source python catalog
-    (ADR-0041 §3).
+    (ADR-0041 §3). Resolved first-party Python imports are not filtered out,
+    so they are counted as well.
     """
     from ..io_boundary import load_catalog
 
@@ -312,6 +318,9 @@ DEPENDENCY_REQUIREMENTS = [
     ),
     LinkerRequirement(
         name="import_edges",
+        # User-visible in the warning text. The count is non-stdlib Rust/Python
+        # import edges, resolved first-party Python imports included (see
+        # _count_import_edges), so "third-party" overstates what it measures.
         description="third-party Rust/Python import edges",
         check=_count_import_edges,
     ),
