@@ -1,0 +1,33 @@
+Original commit body from 1be031eee36217556020dede281ce7e56c28968c:
+
+Second half of the 2026-10-10 audit (the A+B+D half is PR #1521). Each
+docstring below was accurate after that PR but silent on substantial
+behaviour; every added sentence was checked against the code at HEAD.
+
+- cli: step 0, Indexing — installed dependency source is skipped unless
+  --trace-deps / trace_deps opts in; the skip is disclosed; main sets and
+  clears the per-command override (ADR-0004).
+- discovery: find_non_test_files, the test-file gate for content-scanning
+  linkers (19 importers; found by the blind re-review).
+- supply_chain: step 2's full root-anchored and nested pattern lists, and
+  step 3c (traced installed dependency source is tier 3).
+- js_ts: is_exported decided both ways (ESM + CommonJS); the npm
+  dependency_manifest that stamps boundary-node directness.
+- sketch_embeddings: both models and their users, the process-wide
+  HF_HUB_OFFLINE switch, and the per-repo results-cache layout it hosts.
+- verify_claims: the untraced-vouch disclosure (untraced_vouched_grants,
+  the withheld-reason clause, load_bearing_grants[].untraced_vouched).
+- framework_patterns: convention YAMLs on every repo, the user-channel
+  whole-file override, route-marker cleanup and the minting passes.
+- entrypoints: the remaining kinds, the ranking penalties and the
+  library_export demotion rule, and the three name dedups.
+- selection/language_proportional: group_files_by_language and
+  find_underrepresented_language_seeds.
+- commonlisp (use-package imports), fsharp (record fields, module-level
+  values), glsl (glsl:builtin targets), hcl (depends_on and ./ imports,
+  with their limits stated).
+
+module_key_axis and signature_axis file:line citations into js_ts.py
+re-pointed after the line shift. ARCHITECTURE.md regenerated.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
